@@ -1,0 +1,41 @@
+spec_version: "0.1"
+
+workflow:
+  id: "basic_image_transform"
+  version: "0.1.0"
+  title: "Basic Image Transform"
+
+  inputs:
+    - name: "source_image"
+      type: "image/rgb"
+
+  stages:
+    - id: "preparation"
+      label: "Preparation"
+    - id: "transform"
+      label: "Transform"
+    - id: "export"
+      label: "Export"
+
+  nodes:
+    - id: "resize_1"
+      operator: "image.resize@1.0.0"
+      stage: "preparation"
+      inputs:
+        image:
+          from: "input:source_image"
+      config:
+        width: 512
+        height: 512
+        resample_method: "lanczos"
+
+    - id: "grayscale_1"
+      operator: "image.grayscale@1.0.0"
+      stage: "transform"
+      inputs:
+        image:
+          from: "resize_1:image_out"
+
+  outputs:
+    - name: "result"
+      from: "grayscale_1:image_out"

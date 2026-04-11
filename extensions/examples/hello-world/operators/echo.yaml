@@ -1,0 +1,25 @@
+spec_version: "0.1"
+operator:
+  id: "echo"
+  version: "1.0.0"
+  display_name: "Echo"
+  description: "Echoes input text with an optional prefix."
+  category: "Utility"
+execution:
+  mode: "job"
+  cacheable: true
+  resumable: false
+inputs:
+  - name: "text"
+    type: "text/plain"
+    required: true
+outputs:
+  - name: "text_out"
+    type: "text/plain"
+config_schema:
+  type: object
+  properties:
+    prefix:
+      type: string
+resources:
+  gpu: false

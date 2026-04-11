@@ -1,0 +1,22 @@
+spec_version: "0.1"
+extension:
+  id: "nexus.utility.hello-world"
+  version: "0.1.0"
+  name: "Hello World"
+  description: "A minimal example extension that echoes input text."
+  publisher: "nexus"
+compatibility:
+  host_api: ">=0.1.0, <1.0.0"
+  protocol: ">=0.1.0, <1.0.0"
+  platforms:
+    - "linux-x64"
+    - "windows-x64"
+runtime:
+  family: "python"
+  entrypoint: "worker/main.py"
+  environment:
+    python: "3.11"
+capabilities:
+  - "filesystem.read"
+operators:
+  - file: "operators/echo.yaml"
