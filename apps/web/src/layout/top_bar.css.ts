@@ -1,36 +1,94 @@
 import { style } from "@vanilla-extract/css";
 import { vars } from "../theme/contract.css";
 
-export const title = style({
-  fontSize: vars.font.size.lg,
-  fontWeight: vars.font.weight.semibold,
-  color: vars.color.text.primary,
-  marginRight: "auto",
-});
-
-export const viewSwitcher = style({
+export const leftZone = style({
   display: "flex",
-  gap: vars.space.xxs,
+  alignItems: "center",
+  gap: vars.space.gapSm,
+  flex: "0 0 auto",
 });
 
-export const viewTab = style({
-  padding: `${vars.space.xs} ${vars.space.md}`,
-  fontSize: vars.font.size.sm,
+export const logo = style({
+  fontSize: vars.font.size.headingSm,
+  fontWeight: vars.font.weight.bold,
+  color: vars.color.accent.primary,
+  lineHeight: 1,
+});
+
+export const projectName = style({
+  fontSize: vars.font.size.body,
   fontWeight: vars.font.weight.medium,
+  color: vars.color.text.primary,
+  maxWidth: "200px",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+});
+
+export const savedDot = style({
+  width: "6px",
+  height: "6px",
+  borderRadius: vars.radius.full,
+  backgroundColor: vars.color.state.completed,
+});
+
+export const centerZone = style({
+  display: "flex",
+  justifyContent: "center",
+  flex: 1,
+});
+
+export const commandTrigger = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.gapSm,
+  padding: `${vars.space.insetXs} ${vars.space.insetLg}`,
+  backgroundColor: vars.color.bg.elevated,
+  border: `1px solid ${vars.color.border.subtle}`,
+  borderRadius: vars.radius.control,
   color: vars.color.text.muted,
-  backgroundColor: "transparent",
-  border: "none",
-  borderRadius: vars.radius.md,
+  fontSize: vars.font.size.bodySm,
+  fontFamily: vars.font.ui,
   cursor: "pointer",
-  transition: "background 150ms, color 150ms",
-  fontFamily: vars.font.family.body,
+  minWidth: "240px",
+  maxWidth: "280px",
+  transition: `border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {
-    backgroundColor: vars.color.surface.overlay,
-    color: vars.color.text.primary,
+    borderColor: vars.color.border.strong,
   },
 });
 
-export const viewTabActive = style({
-  backgroundColor: vars.color.surface.overlay,
-  color: vars.color.accent.primary,
+export const shortcutHint = style({
+  fontSize: vars.font.size.caption,
+  color: vars.color.text.muted,
+  fontFamily: vars.font.code,
+  marginLeft: "auto",
+});
+
+export const rightZone = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.gapSm,
+  flex: "0 0 auto",
+});
+
+export const controlGroup = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.gapXs,
+});
+
+export const healthBadge = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.space.gapXs,
+  fontSize: vars.font.size.caption,
+  color: vars.color.text.secondary,
+});
+
+export const healthDot = style({
+  width: "6px",
+  height: "6px",
+  borderRadius: vars.radius.full,
+  backgroundColor: vars.color.state.completed,
 });

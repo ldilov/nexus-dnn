@@ -1,57 +1,66 @@
 import { Button } from "../components/button";
 import * as styles from "./top_bar.css";
 
-export type ViewId = "stage" | "graph" | "trace" | "artifacts";
-
-const VIEW_LABELS: Record<ViewId, string> = {
-  stage: "Stage",
-  graph: "Graph",
-  trace: "Trace",
-  artifacts: "Artifacts",
-};
-
 type TopBarProps = {
-  workflowName: string;
-  activeView: ViewId;
-  onViewChange: (view: ViewId) => void;
+  projectName: string;
+  isDirty?: boolean;
   onRun: () => void;
   onCancel: () => void;
+  onValidate: () => void;
   isRunning: boolean;
+  onCommandPalette?: () => void;
 };
 
 export function TopBar({
-  workflowName,
-  activeView,
-  onViewChange,
+  projectName,
+  isDirty = false,
   onRun,
   onCancel,
+  onValidate,
   isRunning,
+  onCommandPalette,
 }: TopBarProps) {
   return (
     <>
-      <span className={styles.title}>{workflowName}</span>
-      <div className={styles.viewSwitcher}>
-        {(Object.keys(VIEW_LABELS) as ViewId[]).map((id) => {
-          const active = id === activeView;
-          const cls = active
-            ? `${styles.viewTab} ${styles.viewTabActive}`
-            : styles.viewTab;
-          return (
-            <button key={id} className={cls} onClick={() => onViewChange(id)}>
-              {VIEW_LABELS[id]}
-            </button>
-          );
-        })}
+      <div className={styles.leftZone}>
+        <span className={styles.logo}>N</span>
+        <span className={styles.projectName} title={projectName}>
+          {projectName}
+        </span>
+        {!isDirty && <span className={styles.savedDot} title="Saved" />}
       </div>
-      {isRunning ? (
-        <Button variant="secondary" size="sm" onClick={onCancel}>
-          Cancel
-        </Button>
-      ) : (
-        <Button variant="primary" size="sm" onClick={onRun}>
-          Run
-        </Button>
-      )}
+
+      <div className={styles.centerZone}>
+        <button
+          className={styles.commandTrigger}
+          onClick={onCommandPalette}
+          aria-label="Open command palette"
+        >
+          Search or run a command...
+          <span className={styles.shortcutHint}>Ctrl+K</span>
+        </button>
+      </div>
+
+      <div className={styles.rightZone}>
+        <div className={styles.controlGroup}>
+          <Button variant="ghost" size="sm" onClick={onValidate}>
+            Validate
+          </Button>
+          {isRunning ? (
+            <Button variant="ghost" size="sm" onClick={onCancel}>
+              Cancel
+            </Button>
+          ) : (
+            <Button variant="primary" size="sm" onClick={onRun}>
+              Run
+            </Button>
+          )}
+        </div>
+        <div className={styles.healthBadge}>
+          <span className={styles.healthDot} />
+          Healthy
+        </div>
+      </div>
     </>
   );
 }
