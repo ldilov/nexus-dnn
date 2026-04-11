@@ -8,11 +8,11 @@ export const container = style({
 });
 
 export const graphNode = style({
-  padding: vars.space.md,
-  borderRadius: vars.radius.md,
-  backgroundColor: vars.color.surface.raised,
-  border: `1px solid ${vars.color.border.default}`,
-  fontSize: vars.font.size.sm,
+  padding: vars.space.insetLg,
+  borderRadius: vars.radius.control,
+  backgroundColor: vars.color.bg.elevated,
+  border: `1px solid ${vars.color.border.subtle}`,
+  fontSize: vars.font.size.bodySm,
   color: vars.color.text.primary,
   minWidth: "120px",
   textAlign: "center",
@@ -20,7 +20,7 @@ export const graphNode = style({
 
 export const graphNodeRunning = style({
   borderColor: vars.color.accent.primary,
-  boxShadow: `0 0 0 2px ${vars.color.accent.muted}`,
+  boxShadow: `0 0 0 2px ${vars.color.accent.secondary}`,
 });
 
 export const graphNodeCompleted = style({
@@ -36,7 +36,7 @@ export const nodeName = style({
 });
 
 export const nodeOperator = style({
-  fontSize: vars.font.size.xs,
+  fontSize: vars.font.size.caption,
   color: vars.color.text.muted,
-  fontFamily: vars.font.family.mono,
+  fontFamily: vars.font.code,
 });
