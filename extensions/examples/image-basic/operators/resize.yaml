@@ -1,0 +1,42 @@
+spec_version: "0.1"
+
+operator:
+  id: "image.resize"
+  version: "1.0.0"
+  display_name: "Resize Image"
+  description: "Resize an image to specified dimensions."
+  category: "Image"
+
+execution:
+  mode: "job"
+  cacheable: true
+  resumable: false
+
+inputs:
+  - name: "image"
+    type: "image/rgb"
+    required: true
+
+outputs:
+  - name: "image_out"
+    type: "image/rgb"
+
+config_schema:
+  type: object
+  properties:
+    width:
+      type: integer
+      minimum: 1
+    height:
+      type: integer
+      minimum: 1
+    resample_method:
+      type: string
+      default: "lanczos"
+  required:
+    - width
+    - height
+
+resources:
+  gpu: false
+  cpu_cores: 1

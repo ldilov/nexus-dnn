@@ -1,0 +1,20 @@
+spec_version: "0.1"
+
+recipe:
+  id: "recipe.image.basic_transform"
+  version: "0.1.0"
+  display_name: "Basic Image Transform"
+  summary: "Resize and convert an image to grayscale."
+  category: "Image"
+  input_summary: "Source image, target width, target height"
+
+workflow_template: "workflows/basic_transform.yaml"
+
+bindings:
+  fields:
+    - field: "sourceImage"
+      maps_to: "input:source_image"
+    - field: "targetWidth"
+      maps_to: "node:resize_1.config.width"
+    - field: "targetHeight"
+      maps_to: "node:resize_1.config.height"

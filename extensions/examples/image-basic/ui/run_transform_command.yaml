@@ -1,0 +1,7 @@
+kind: command
+id: "run_basic_transform"
+display_name: "Run Basic Image Transform"
+category: "Image"
+target_type: "recipe"
+invocation:
+  recipe_id: "recipe.image.basic_transform"
