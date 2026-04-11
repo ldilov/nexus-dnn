@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus-dnn.dev/schemas/extension-manifest.json",
+  "type": "object",
+  "required": ["spec_version", "extension", "compatibility", "runtime"],
+  "properties": {
+    "spec_version": {
+      "type": "string",
+      "const": "0.1"
+    },
+    "extension": {
+      "type": "object",
+      "required": ["id", "version"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9]+(?:\\.[a-zA-Z0-9]+)+$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "publisher": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "compatibility": {
+      "type": "object",
+      "required": ["host_api", "protocol"],
+      "properties": {
+        "host_api": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "platforms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "runtime": {
+      "type": "object",
+      "required": ["family", "entrypoint"],
+      "properties": {
+        "family": {
+          "type": "string",
+          "enum": ["python", "native", "builtin", "external_service"]
+        },
+        "entrypoint": {
+          "type": "string"
+        },
+        "environment": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "gpu.compute",
+          "filesystem.read",
+          "filesystem.write",
+          "network.loopback",
+          "network.remote",
+          "process.spawn",
+          "model.registry.read",
+          "workspace.read",
+          "workspace.write"
+        ]
+      }
+    },
+    "operators": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file"],
+        "properties": {
+          "file": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "recipes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file"],
+        "properties": {
+          "file": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

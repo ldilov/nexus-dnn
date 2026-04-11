@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus-dnn.dev/schemas/ui-contribution.json",
+  "type": "object",
+  "required": ["kind", "id", "display_name"],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "artifact_viewer",
+        "command",
+        "config_widget",
+        "inspector_panel",
+        "recipe_card",
+        "tool_metadata"
+      ]
+    },
+    "id": {
+      "type": "string"
+    },
+    "display_name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "target": {
+      "type": "string"
+    },
+    "supported_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "metadata": {
+      "type": "object"
+    },
+    "fallback": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string"
+    },
+    "target_type": {
+      "type": "string"
+    },
+    "invocation": {
+      "type": "object",
+      "properties": {
+        "recipe_id": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
