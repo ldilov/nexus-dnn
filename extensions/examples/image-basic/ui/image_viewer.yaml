@@ -1,0 +1,9 @@
+kind: artifact_viewer
+id: "image_viewer"
+display_name: "Image Viewer"
+description: "Renders RGB and grayscale images."
+supported_types:
+  - "image/rgb"
+  - "image/grayscale"
+priority: 10
+fallback: "default_binary_viewer"

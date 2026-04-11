@@ -1,0 +1,28 @@
+spec_version: "0.1"
+
+workflow:
+  id: "echo-basic"
+  version: "0.1.0"
+  title: "Echo Workflow"
+
+  inputs:
+    - name: "text"
+      type: "text/plain"
+
+  stages:
+    - id: "process"
+      label: "Processing"
+
+  nodes:
+    - id: "echo_1"
+      operator: "echo@1.0.0"
+      stage: "process"
+      inputs:
+        text:
+          from: "input:text"
+      config:
+        prefix: ">>> "
+
+  outputs:
+    - name: "result"
+      from: "echo_1:text_out"
