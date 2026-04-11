@@ -41,9 +41,9 @@ export const darkTheme = createTheme(vars, {
       model: color.modality.model,
       system: color.modality.system,
     },
-    success: { base: color.green[400], text: color.green[400] },
-    warning: { base: color.amber[400], text: color.amber[400] },
-    error: { base: color.red[400], text: color.red[400] },
+    success: { base: color.green[400], text: "#bbf7d0" },
+    warning: { base: color.amber[400], text: "#fef3c7" },
+    error: { base: color.red[400], text: "#fecaca" },
     border: {
       subtle: color.navy[400],
       strong: color.navy[300],
@@ -75,7 +75,7 @@ export const darkTheme = createTheme(vars, {
     },
   },
   space: {
-    insetXs: spacing[1],
+    insetXs: spacing[2],
     insetSm: spacing[3],
     insetMd: spacing[4],
     insetLg: spacing[6],
@@ -114,9 +114,9 @@ export const darkTheme = createTheme(vars, {
     easingExit: motion.easing.exit,
   },
   shadow: {
-    sm: "0 1px 3px rgba(0, 0, 0, 0.4)",
-    md: "0 4px 8px rgba(0, 0, 0, 0.45)",
-    lg: "0 10px 20px rgba(0, 0, 0, 0.5)",
+    sm: "0 1px 2px rgba(0,0,0,0.4)",
+    md: "0 4px 8px rgba(0,0,0,0.4)",
+    lg: "0 12px 24px rgba(0,0,0,0.5)",
   },
   z: {
     base: "0",
