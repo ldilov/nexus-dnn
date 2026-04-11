@@ -1,0 +1,13 @@
+[package]
+name = "nexus-artifact"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { workspace = true, features = ["fs"] }
+sha2 = "0.10"
+uuid = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

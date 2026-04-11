@@ -1,0 +1,33 @@
+spec_version: "0.1"
+
+extension:
+  id: "example.image.basic"
+  name: "Basic Image Tools"
+  version: "0.1.0"
+  description: "Image resize and grayscale operators with recipe and UI contributions."
+  publisher: "nexus-dnn"
+
+compatibility:
+  host_api: ">=0.1.0, <1.0.0"
+  protocol: ">=0.1.0, <1.0.0"
+  platforms:
+    - linux-x64
+    - windows-x64
+
+runtime:
+  family: "python"
+  entrypoint: "worker/main.py"
+  environment:
+    python: "3.11"
+    requirements_file: "worker/requirements.txt"
+
+capabilities:
+  - "filesystem.read"
+  - "filesystem.write"
+
+operators:
+  - file: "operators/resize.yaml"
+  - file: "operators/grayscale.yaml"
+
+recipes:
+  - file: "recipes/basic_transform.yaml"

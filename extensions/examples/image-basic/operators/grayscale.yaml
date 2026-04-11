@@ -1,0 +1,30 @@
+spec_version: "0.1"
+
+operator:
+  id: "image.grayscale"
+  version: "1.0.0"
+  display_name: "Convert to Grayscale"
+  description: "Convert an RGB image to grayscale."
+  category: "Image"
+
+execution:
+  mode: "job"
+  cacheable: true
+  resumable: false
+
+inputs:
+  - name: "image"
+    type: "image/rgb"
+    required: true
+
+outputs:
+  - name: "image_out"
+    type: "image/grayscale"
+
+config_schema:
+  type: object
+  properties: {}
+
+resources:
+  gpu: false
+  cpu_cores: 1

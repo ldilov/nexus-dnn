@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus-dnn.dev/schemas/recipe-definition.json",
+  "type": "object",
+  "required": ["spec_version", "recipe"],
+  "properties": {
+    "spec_version": {
+      "type": "string",
+      "const": "0.1"
+    },
+    "recipe": {
+      "type": "object",
+      "required": ["id", "version", "display_name", "summary", "category"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "thumbnail": {
+          "type": "string"
+        },
+        "input_summary": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "workflow_template": {
+      "type": "string"
+    },
+    "bindings": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["field", "maps_to"],
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "maps_to": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
