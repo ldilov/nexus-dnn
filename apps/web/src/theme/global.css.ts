@@ -9,11 +9,13 @@ globalStyle("*, *::before, *::after", {
 
 globalStyle("html, body, #root", {
   height: "100%",
-  fontFamily: vars.font.family.body,
-  fontSize: vars.font.size.md,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
   color: vars.color.text.primary,
-  backgroundColor: vars.color.surface.base,
+  backgroundColor: vars.color.bg.app,
   lineHeight: vars.font.lineHeight.normal,
+  WebkitFontSmoothing: "antialiased",
+  MozOsxFontSmoothing: "grayscale",
 });
 
 globalStyle("a", {
@@ -22,5 +24,15 @@ globalStyle("a", {
 });
 
 globalStyle("a:hover", {
-  color: vars.color.accent.hover,
+  color: vars.color.accent.primaryHover,
+});
+
+globalStyle(":focus-visible", {
+  outline: `3px solid ${vars.color.accent.primary}`,
+  outlineOffset: "2px",
+});
+
+globalStyle("::selection", {
+  backgroundColor: vars.color.accent.primary,
+  color: vars.color.text.inverse,
 });
