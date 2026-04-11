@@ -1,0 +1,21 @@
+[package]
+name = "nexus-run"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { workspace = true, features = ["sync", "time", "fs"] }
+nexus-extension = { path = "../nexus-extension" }
+uuid = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+nexus-protocol = { path = "../nexus-protocol" }
+nexus-workflow = { path = "../nexus-workflow" }
+nexus-worker = { path = "../nexus-worker" }
+nexus-scheduler = { path = "../nexus-scheduler" }
+nexus-artifact = { path = "../nexus-artifact" }
+nexus-events = { path = "../nexus-events" }
+nexus-storage = { path = "../nexus-storage" }
