@@ -1,0 +1,12 @@
+[package]
+name = "nexus-scheduler"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+thiserror = { workspace = true }
+tracing = { workspace = true }
+nexus-protocol = { path = "../nexus-protocol" }
+nexus-extension = { path = "../nexus-extension" }
+nexus-workflow = { path = "../nexus-workflow" }
+nexus-worker = { path = "../nexus-worker" }
