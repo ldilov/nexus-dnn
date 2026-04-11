@@ -45,6 +45,11 @@ export const color = {
     400: "#94A3B8",
     500: "#7C8B9E",
   },
+  statusText: {
+    success: "#bbf7d0",
+    warning: "#fef3c7",
+    error: "#fecaca",
+  },
   modality: {
     image: "#B57CFF",
     video: "#21C7D9",

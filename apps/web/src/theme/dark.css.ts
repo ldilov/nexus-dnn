@@ -41,9 +41,9 @@ export const darkTheme = createTheme(vars, {
       model: color.modality.model,
       system: color.modality.system,
     },
-    success: { base: color.green[400], text: "#bbf7d0" },
-    warning: { base: color.amber[400], text: "#fef3c7" },
-    error: { base: color.red[400], text: "#fecaca" },
+    success: { base: color.green[400], text: color.statusText.success },
+    warning: { base: color.amber[400], text: color.statusText.warning },
+    error: { base: color.red[400], text: color.statusText.error },
     border: {
       subtle: color.navy[400],
       strong: color.navy[300],

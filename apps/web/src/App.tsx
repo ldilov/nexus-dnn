@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Shell } from "./layout/shell";
 import { TopBar } from "./layout/top_bar";
 import { IconRail, type NavItemId } from "./layout/icon_rail";
@@ -17,7 +17,7 @@ import {
   type Workflow,
   type WorkflowNode,
 } from "./api/client";
-import { useEffect } from "react";
+import * as styles from "./app.css";
 
 type ViewId = "stage" | "graph" | "trace" | "timeline" | "artifacts";
 
@@ -57,8 +57,9 @@ export function App() {
   const [activeView, setActiveView] = useState<ViewId>("stage");
   const [activeBottomTab, setActiveBottomTab] = useState<BottomTabId>("logs");
   const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
-  const [_runId, setRunId] = useState<string | null>(null);
+  const [runId, setRunId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { events } = useEventStream();
   const nodeProgress = latestProgressByNode(events);
 
@@ -66,11 +67,15 @@ export function App() {
     fetchWorkflows()
       .then((wfs) => {
         setWorkflows(wfs);
+        setLoadError(null);
         if (wfs[0]) {
           fetchWorkflow(wfs[0].id).then(setWorkflow);
         }
       })
-      .catch(() => {});
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : "Failed to load workflows";
+        setLoadError(message);
+      });
   }, []);
 
   const handleRun = useCallback(() => {
@@ -95,16 +100,22 @@ export function App() {
   }, []);
 
   const renderCanvas = () => {
+    if (loadError) {
+      return <p className={styles.placeholderText}>{loadError}</p>;
+    }
+
     if (activeNav === "workflows") {
       return (
-        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-          <Tabs
-            items={VIEW_TABS}
-            activeId={activeView}
-            onSelect={setActiveView}
-            variant="segmented"
-          />
-          <div style={{ flex: 1, overflow: "auto", padding: "12px" }}>
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasTabBar}>
+            <Tabs
+              items={VIEW_TABS}
+              activeId={activeView}
+              onSelect={setActiveView}
+              variant="segmented"
+            />
+          </div>
+          <div className={styles.canvasContent}>
             {activeView === "stage" && (
               <StageView
                 workflow={workflow}
@@ -118,11 +129,9 @@ export function App() {
             )}
             {activeView === "trace" && <RunTraceView events={events} />}
             {activeView === "timeline" && (
-              <p style={{ color: "var(--text-muted)", textAlign: "center", padding: "48px" }}>
-                Timeline view coming soon
-              </p>
+              <p className={styles.placeholderText}>Timeline view coming soon</p>
             )}
-            {activeView === "artifacts" && <ArtifactBrowser runId={_runId} />}
+            {activeView === "artifacts" && <ArtifactBrowser runId={runId} />}
           </div>
         </div>
       );
@@ -130,7 +139,7 @@ export function App() {
 
     if (activeNav === "recipes" || activeNav === "extensions" || activeNav === "models") {
       return (
-        <p style={{ color: "var(--text-muted)", textAlign: "center", padding: "48px" }}>
+        <p className={styles.placeholderText}>
           {activeNav.charAt(0).toUpperCase() + activeNav.slice(1)} view
         </p>
       );
@@ -157,7 +166,7 @@ export function App() {
         <>
           <LeftRail />
           {workflows.length > 1 && (
-            <div style={{ padding: "8px" }}>
+            <div className={styles.workflowListFallback}>
               {workflows.map((wf) => (
                 <button key={wf.id} onClick={() => handleWorkflowSelect(wf.id)}>
                   {wf.name}
@@ -175,12 +184,14 @@ export function App() {
         />
       }
       bottomDrawer={
-        <Tabs
-          items={BOTTOM_TABS}
-          activeId={activeBottomTab}
-          onSelect={setActiveBottomTab}
-          variant="underline"
-        />
+        <div className={styles.drawerContent}>
+          <Tabs
+            items={BOTTOM_TABS}
+            activeId={activeBottomTab}
+            onSelect={setActiveBottomTab}
+            variant="underline"
+          />
+        </div>
       }
       secondaryPanelVisible={activeNav !== "home"}
       inspectorVisible={activeNav === "workflows"}
