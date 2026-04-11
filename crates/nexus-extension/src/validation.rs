@@ -1,0 +1,78 @@
+use semver::{Version, VersionReq};
+
+use crate::error::ExtensionError;
+use crate::manifest::ExtensionManifest;
+
+const MANIFEST_SCHEMA: &str = include_str!("../../../schemas/extension-manifest.json");
+const OPERATOR_SCHEMA: &str = include_str!("../../../schemas/operator-definition.json");
+
+pub fn validate_manifest_schema(manifest_value: &serde_json::Value) -> Result<(), ExtensionError> {
+    validate_against_schema(manifest_value, MANIFEST_SCHEMA)
+}
+
+pub fn validate_operator_schema(operator_value: &serde_json::Value) -> Result<(), ExtensionError> {
+    validate_against_schema(operator_value, OPERATOR_SCHEMA)
+}
+
+fn validate_against_schema(
+    instance: &serde_json::Value,
+    schema_str: &str,
+) -> Result<(), ExtensionError> {
+    let schema: serde_json::Value =
+        serde_json::from_str(schema_str).expect("embedded schema is valid JSON");
+    let validator =
+        jsonschema::Validator::new(&schema).map_err(|e| ExtensionError::SchemaValidation {
+            errors: vec![format!("failed to compile schema: {e}")],
+        })?;
+    let errors: Vec<String> = validator
+        .iter_errors(instance)
+        .map(|e| e.to_string())
+        .collect();
+    if !errors.is_empty() {
+        return Err(ExtensionError::SchemaValidation { errors });
+    }
+    Ok(())
+}
+
+pub fn check_compatibility(
+    manifest: &ExtensionManifest,
+    host_version: &Version,
+    protocol_version: &Version,
+) -> Result<(), ExtensionError> {
+    let extension_id = &manifest.extension.id;
+
+    let host_req = parse_version_req(&manifest.compatibility.host_api, extension_id, "host_api")?;
+    if !host_req.matches(host_version) {
+        return Err(ExtensionError::CompatibilityMismatch {
+            extension_id: extension_id.clone(),
+            detail: format!(
+                "host_api requires {}, but host is {host_version}",
+                manifest.compatibility.host_api
+            ),
+        });
+    }
+
+    let proto_req = parse_version_req(&manifest.compatibility.protocol, extension_id, "protocol")?;
+    if !proto_req.matches(protocol_version) {
+        return Err(ExtensionError::CompatibilityMismatch {
+            extension_id: extension_id.clone(),
+            detail: format!(
+                "protocol requires {}, but host is {protocol_version}",
+                manifest.compatibility.protocol
+            ),
+        });
+    }
+
+    Ok(())
+}
+
+fn parse_version_req(
+    req_str: &str,
+    extension_id: &str,
+    field_name: &str,
+) -> Result<VersionReq, ExtensionError> {
+    VersionReq::parse(req_str).map_err(|e| ExtensionError::CompatibilityMismatch {
+        extension_id: extension_id.to_owned(),
+        detail: format!("invalid {field_name} version requirement '{req_str}': {e}"),
+    })
+}

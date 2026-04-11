@@ -1,0 +1,14 @@
+[package]
+name = "nexus-extension"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde-saphyr = "0.0.10"
+jsonschema = "0.28"
+semver = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+nexus-protocol = { path = "../nexus-protocol" }
