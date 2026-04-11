@@ -1,11 +1,28 @@
 import type { WorkflowNode } from "../api/client";
-import { StatusBadge, type BadgeStatus } from "../components/status_badge";
+import { Badge } from "../components/badge";
 import * as styles from "./right_inspector.css";
 
 type InspectorProps = {
   selectedNode: WorkflowNode | null;
   nodeStatus?: string;
 };
+
+type BadgeIntent = "neutral" | "info" | "success" | "warning" | "error";
+
+const STATUS_INTENT: Record<string, BadgeIntent> = {
+  created: "neutral",
+  planning: "info",
+  running: "info",
+  completed: "success",
+  paused: "warning",
+  cancelled: "neutral",
+  failed: "error",
+  pending: "neutral",
+};
+
+function resolveIntent(status: string): BadgeIntent {
+  return STATUS_INTENT[status] ?? "neutral";
+}
 
 function InspectorField({ label, value }: { label: string; value: string }) {
   return (
@@ -29,7 +46,11 @@ export function RightInspector({ selectedNode, nodeStatus }: InspectorProps) {
     <div className={styles.container}>
       <h2 className={styles.heading}>{selectedNode.id}</h2>
       {nodeStatus && (
-        <StatusBadge status={nodeStatus as BadgeStatus} />
+        <Badge
+          label={nodeStatus}
+          intent={resolveIntent(nodeStatus)}
+          showDot
+        />
       )}
       <InspectorField label="Operator" value={selectedNode.operator} />
       {Object.entries(selectedNode.inputs).map(([key, val]) => (
