@@ -1,0 +1,40 @@
+[package]
+name = "nexus-core"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "nexus-dnn"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-log = "0.2"
+tokio = { workspace = true }
+nexus-protocol = { path = "../nexus-protocol" }
+nexus-events = { path = "../nexus-events" }
+nexus-storage = { path = "../nexus-storage" }
+nexus-artifact = { path = "../nexus-artifact" }
+nexus-extension = { path = "../nexus-extension" }
+nexus-workflow = { path = "../nexus-workflow" }
+nexus-worker = { path = "../nexus-worker" }
+nexus-scheduler = { path = "../nexus-scheduler" }
+nexus-run = { path = "../nexus-run" }
+nexus-api = { path = "../nexus-api" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+semver = { workspace = true }
+chrono = { workspace = true }
+axum = "0.8"
+dirs = "6"
+
+[dev-dependencies]
+tokio = { workspace = true }
+semver = { workspace = true }
+serde_json = { workspace = true }
+nexus-extension = { path = "../nexus-extension" }
+nexus-workflow = { path = "../nexus-workflow" }
+nexus-scheduler = { path = "../nexus-scheduler" }
