@@ -9,16 +9,16 @@ export const container = style({
 
 export const tabStrip = style({
   display: "flex",
-  borderBottom: `1px solid ${vars.color.border.default}`,
+  borderBottom: `1px solid ${vars.color.border.subtle}`,
   flexShrink: 0,
 });
 
 export const tab = style({
   flex: 1,
-  padding: `${vars.space.sm} ${vars.space.xs}`,
-  fontSize: vars.font.size.xs,
+  padding: `${vars.space.insetMd} ${vars.space.insetXs}`,
+  fontSize: vars.font.size.caption,
   fontWeight: vars.font.weight.medium,
-  fontFamily: vars.font.family.body,
+  fontFamily: vars.font.ui,
   color: vars.color.text.muted,
   backgroundColor: "transparent",
   border: "none",
@@ -39,5 +39,5 @@ export const tabActive = style({
 export const content = style({
   flex: 1,
   overflow: "auto",
-  padding: vars.space.md,
+  padding: vars.space.insetLg,
 });
