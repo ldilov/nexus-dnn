@@ -1,0 +1,31 @@
+[package]
+name = "nexus-api"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = { version = "0.8", features = ["ws"] }
+tokio = { workspace = true }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+semver = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+nexus-protocol = { path = "../nexus-protocol" }
+nexus-events = { path = "../nexus-events" }
+nexus-extension = { path = "../nexus-extension" }
+nexus-workflow = { path = "../nexus-workflow" }
+nexus-worker = { path = "../nexus-worker" }
+nexus-run = { path = "../nexus-run" }
+nexus-scheduler = { path = "../nexus-scheduler" }
+nexus-artifact = { path = "../nexus-artifact" }
+nexus-storage = { path = "../nexus-storage" }
+uuid = { workspace = true }
+chrono = { workspace = true }
+tokio-stream = "0.1"
+tokio-util = { workspace = true }
+futures-util = "0.3"
+rust-embed = { workspace = true }
+mime_guess = { workspace = true }
