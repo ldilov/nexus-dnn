@@ -1,9 +1,24 @@
 import type { InputHTMLAttributes } from "react";
-import { inputStyle } from "./input.css";
+import { inputRecipe } from "./input.css";
 
-type InputProps = InputHTMLAttributes<HTMLInputElement>;
+type InputVariant = "default" | "ghost" | "mono";
+type InputSize = "sm" | "md" | "lg";
 
-export function Input({ className, ...rest }: InputProps) {
-  const combined = [inputStyle, className].filter(Boolean).join(" ");
-  return <input className={combined} {...rest} />;
+type InputProps = InputHTMLAttributes<HTMLInputElement> & {
+  variant?: InputVariant;
+  size?: InputSize;
+  hasError?: boolean;
+};
+
+export function Input({
+  variant,
+  size,
+  hasError,
+  className,
+  ...rest
+}: InputProps) {
+  const cls = [inputRecipe({ variant, size, hasError }), className]
+    .filter(Boolean)
+    .join(" ");
+  return <input className={cls} {...rest} />;
 }
