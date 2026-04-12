@@ -454,10 +454,7 @@ impl Database for SqliteDatabase {
             query = query.bind(v);
         }
 
-        Ok(query
-            .map(map_artifact_row)
-            .fetch_all(&self.pool)
-            .await?)
+        Ok(query.map(map_artifact_row).fetch_all(&self.pool).await?)
     }
 
     async fn insert_lineage_edge(&self, r: &LineageEdgeRecord) -> Result<(), StorageError> {
@@ -534,19 +531,14 @@ impl Database for SqliteDatabase {
         &self,
         extension_id: &str,
     ) -> Result<Vec<RecipeRecord>, StorageError> {
-        Ok(
-            sqlx::query("SELECT * FROM recipes WHERE extension_id = ?")
-                .bind(extension_id)
-                .map(map_recipe_row)
-                .fetch_all(&self.pool)
-                .await?,
-        )
+        Ok(sqlx::query("SELECT * FROM recipes WHERE extension_id = ?")
+            .bind(extension_id)
+            .map(map_recipe_row)
+            .fetch_all(&self.pool)
+            .await?)
     }
 
-    async fn delete_recipes_by_extension(
-        &self,
-        extension_id: &str,
-    ) -> Result<(), StorageError> {
+    async fn delete_recipes_by_extension(&self, extension_id: &str) -> Result<(), StorageError> {
         sqlx::query("DELETE FROM recipes WHERE extension_id = ?")
             .bind(extension_id)
             .execute(&self.pool)
@@ -554,10 +546,7 @@ impl Database for SqliteDatabase {
         Ok(())
     }
 
-    async fn insert_ui_contribution(
-        &self,
-        r: &UIContributionRecord,
-    ) -> Result<(), StorageError> {
+    async fn insert_ui_contribution(&self, r: &UIContributionRecord) -> Result<(), StorageError> {
         sqlx::query(
             "INSERT INTO ui_contributions (id, kind, extension_id, display_name, description, \
              target, supported_types, priority, metadata, availability) \
@@ -589,13 +578,11 @@ impl Database for SqliteDatabase {
         &self,
         kind: &str,
     ) -> Result<Vec<UIContributionRecord>, StorageError> {
-        Ok(
-            sqlx::query("SELECT * FROM ui_contributions WHERE kind = ?")
-                .bind(kind)
-                .map(map_ui_contribution_row)
-                .fetch_all(&self.pool)
-                .await?,
-        )
+        Ok(sqlx::query("SELECT * FROM ui_contributions WHERE kind = ?")
+            .bind(kind)
+            .map(map_ui_contribution_row)
+            .fetch_all(&self.pool)
+            .await?)
     }
 
     async fn list_ui_contributions_by_extension(
@@ -673,21 +660,18 @@ impl Database for SqliteDatabase {
 
     async fn list_namespaces(&self) -> Result<Vec<NamespaceRecord>, StorageError> {
         Ok(
-            sqlx::query_as::<_, NamespaceRecord>(
-                "SELECT * FROM extension_storage_namespaces",
-            )
-            .fetch_all(&self.pool)
-            .await?,
+            sqlx::query_as::<_, NamespaceRecord>("SELECT * FROM extension_storage_namespaces")
+                .fetch_all(&self.pool)
+                .await?,
         )
     }
 
     async fn update_namespace_status(&self, id: &str, status: &str) -> Result<(), StorageError> {
-        let result =
-            sqlx::query("UPDATE extension_storage_namespaces SET status = ? WHERE id = ?")
-                .bind(status)
-                .bind(id)
-                .execute(&self.pool)
-                .await?;
+        let result = sqlx::query("UPDATE extension_storage_namespaces SET status = ? WHERE id = ?")
+            .bind(status)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
         if result.rows_affected() == 0 {
             return Err(StorageError::NotFound {
                 entity: "namespace".into(),
@@ -1019,9 +1003,14 @@ mod tests {
         };
         db.insert_operation(&op).await.unwrap();
 
-        db.update_operation("op-1", "completed", Some(r#"{"ok":true}"#), Some("2026-01-01T00:01:00Z"))
-            .await
-            .unwrap();
+        db.update_operation(
+            "op-1",
+            "completed",
+            Some(r#"{"ok":true}"#),
+            Some("2026-01-01T00:01:00Z"),
+        )
+        .await
+        .unwrap();
     }
 
     #[tokio::test]

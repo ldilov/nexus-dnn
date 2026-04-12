@@ -8,9 +8,9 @@ use crate::error::ExtensionError;
 use crate::manifest::{
     ExtensionManifest, OperatorDefinition, parse_manifest, parse_operator_definition,
 };
-use crate::storage::contribution::StorageContribution;
 use crate::operator_index::OperatorIndex;
 use crate::recipe::{RecipeFile, parse_recipe_definition};
+use crate::storage::contribution::StorageContribution;
 use crate::ui_contribution::{UIContributionFile, UIContributionKind, parse_ui_contribution};
 use crate::validation::{check_compatibility, validate_manifest_schema, validate_operator_schema};
 
@@ -262,8 +262,14 @@ fn scan_extensions_dir(
     extensions_dir: &Path,
     host_version: &Version,
     protocol_version: &Version,
-) -> Result<(Vec<ActivatedExtension>, Vec<(String, OperatorDefinition)>, DiscoveryReport), ExtensionError>
-{
+) -> Result<
+    (
+        Vec<ActivatedExtension>,
+        Vec<(String, OperatorDefinition)>,
+        DiscoveryReport,
+    ),
+    ExtensionError,
+> {
     let mut activated_extensions = Vec::new();
     let mut all_operator_entries = Vec::new();
     let mut report = DiscoveryReport {

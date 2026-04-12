@@ -92,7 +92,9 @@ async fn valid_extension_is_discovered_and_activated() {
     .expect("registry creation should succeed");
 
     assert!(
-        report.activated.contains(&"nexus.utility.echotest".to_string()),
+        report
+            .activated
+            .contains(&"nexus.utility.echotest".to_string()),
         "extension must be activated; activated={:?}, invalid={:?}",
         report.activated,
         report.invalid,
@@ -105,7 +107,10 @@ async fn valid_extension_is_discovered_and_activated() {
 
     let extensions = registry.list_extensions();
     assert_eq!(extensions.len(), 1);
-    assert_eq!(extensions[0].manifest.extension.id, "nexus.utility.echotest");
+    assert_eq!(
+        extensions[0].manifest.extension.id,
+        "nexus.utility.echotest"
+    );
 
     let operators = registry.list_operators();
     assert!(!operators.is_empty(), "operators must be indexed");

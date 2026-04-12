@@ -21,10 +21,7 @@ pub enum StorageError {
     #[error("SQL validation failed: {detail}")]
     SqlValidation { detail: String },
     #[error("prefix violation: {object_name} does not start with {prefix}")]
-    PrefixViolation {
-        object_name: String,
-        prefix: String,
-    },
+    PrefixViolation { object_name: String, prefix: String },
     #[error("storage apply failed: {detail}")]
     ApplyFailed { detail: String },
     #[error("dry run failed: {detail}")]

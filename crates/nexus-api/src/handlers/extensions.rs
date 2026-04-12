@@ -18,7 +18,9 @@ pub async fn list_extensions(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    Ok(ApiResponse::ok(serde_json::json!({ "extensions": extensions })))
+    Ok(ApiResponse::ok(
+        serde_json::json!({ "extensions": extensions }),
+    ))
 }
 
 pub async fn get_extension(
@@ -45,7 +47,9 @@ pub async fn list_operators(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    Ok(ApiResponse::ok(serde_json::json!({ "operators": operators })))
+    Ok(ApiResponse::ok(
+        serde_json::json!({ "operators": operators }),
+    ))
 }
 
 pub async fn get_operator(

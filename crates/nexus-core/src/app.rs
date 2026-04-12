@@ -7,7 +7,9 @@ use semver::Version;
 use nexus_artifact::FilesystemArtifactStore;
 use nexus_events::bus::{BroadcastEventBus, EventBus};
 use nexus_events::types::NexusEvent;
-use nexus_extension::{ActivatedExtension, DiscoveryReport, ExtensionRegistry, InMemoryExtensionRegistry};
+use nexus_extension::{
+    ActivatedExtension, DiscoveryReport, ExtensionRegistry, InMemoryExtensionRegistry,
+};
 use nexus_run::DefaultRunEngine;
 use nexus_scheduler::RoundRobinScheduler;
 use nexus_storage::{Database, SqliteDatabase};
@@ -123,9 +125,7 @@ impl NexusApp {
             scheduler.clone(),
         ));
 
-        let storage_manager = std::sync::Arc::new(
-            nexus_storage::StorageManager::new(db.clone()),
-        );
+        let storage_manager = std::sync::Arc::new(nexus_storage::StorageManager::new(db.clone()));
 
         let app_for_health = Arc::new(self);
         let app_ref = Arc::clone(&app_for_health);

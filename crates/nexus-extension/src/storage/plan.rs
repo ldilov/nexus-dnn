@@ -151,9 +151,12 @@ pub fn build_plan_with_alias_check(
             None => {
                 let report = validate_sql(&expanded_sql, &effective_prefix);
                 if !report.errors.is_empty() {
-                    errors.extend(report.errors.iter().map(|e| {
-                        format!("migration '{}': {e}", file_ref.id)
-                    }));
+                    errors.extend(
+                        report
+                            .errors
+                            .iter()
+                            .map(|e| format!("migration '{}': {e}", file_ref.id)),
+                    );
                 }
                 for obj in &report.objects {
                     expected_objects.push(ExpectedObject {
@@ -180,7 +183,9 @@ pub fn build_plan_with_alias_check(
         return Err(errors);
     }
 
-    let has_new = planned.iter().any(|m| matches!(m.action, MigrationAction::Apply));
+    let has_new = planned
+        .iter()
+        .any(|m| matches!(m.action, MigrationAction::Apply));
 
     let plan_action = if is_upgrade && has_new {
         PlanAction::Upgrade
