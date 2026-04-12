@@ -110,6 +110,9 @@
         },
         "additionalProperties": false
       }
+    },
+    "storage": {
+      "$ref": "storage-contribution.schema.json"
     }
   },
   "additionalProperties": false
