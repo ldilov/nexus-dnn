@@ -9,9 +9,11 @@ export const leftZone = style({
 });
 
 export const logo = style({
+  fontFamily: vars.font.headline,
   fontSize: vars.font.size.headingSm,
   fontWeight: vars.font.weight.bold,
   color: vars.color.accent.primary,
+  letterSpacing: "-0.02em",
   lineHeight: 1,
 });
 
@@ -82,8 +84,12 @@ export const healthBadge = style({
   display: "inline-flex",
   alignItems: "center",
   gap: vars.space.gapXs,
-  fontSize: vars.font.size.caption,
-  color: vars.color.text.secondary,
+  fontFamily: vars.font.code,
+  fontSize: "10px",
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  color: vars.color.accent.primary,
+  opacity: 0.8,
 });
 
 export const healthDot = style({

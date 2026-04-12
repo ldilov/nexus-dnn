@@ -9,9 +9,11 @@ export const container = style({
 });
 
 export const heading = style({
-  fontSize: vars.font.size.bodyLg,
+  fontFamily: vars.font.headline,
+  fontSize: vars.font.size.headingSm,
   fontWeight: vars.font.weight.semibold,
   color: vars.color.text.primary,
+  letterSpacing: "-0.02em",
 });
 
 export const emptyState = style({
@@ -22,6 +24,7 @@ export const emptyState = style({
 });
 
 export const fieldLabel = style({
+  fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,
   fontWeight: vars.font.weight.medium,
   color: vars.color.text.muted,
