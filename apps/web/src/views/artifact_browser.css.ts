@@ -17,16 +17,15 @@ export const artifactCard = style({
   backgroundColor: vars.color.bg.elevated,
   borderRadius: vars.radius.control,
   padding: vars.space.insetLg,
-  border: `1px solid ${vars.color.border.subtle}`,
   cursor: "pointer",
-  transition: "border-color 150ms",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {
-    borderColor: vars.color.accent.primary,
+    backgroundColor: vars.color.bg.hover,
   },
 });
 
 export const artifactCardSelected = style({
-  borderColor: vars.color.accent.primary,
+  boxShadow: `0 0 12px 0 ${vars.color.accent.primaryDim}44`,
 });
 
 export const artifactName = style({
@@ -47,7 +46,6 @@ export const preview = style({
   padding: vars.space.insetXl,
   backgroundColor: vars.color.bg.elevated,
   borderRadius: vars.radius.card,
-  border: `1px solid ${vars.color.border.subtle}`,
 });
 
 export const previewImage = style({

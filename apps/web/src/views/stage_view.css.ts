@@ -22,7 +22,6 @@ export const stageHeader = style({
   textTransform: "uppercase",
   letterSpacing: "0.05em",
   paddingBottom: vars.space.insetXs,
-  borderBottom: `1px solid ${vars.color.border.subtle}`,
 });
 
 export const nodeCard = style({
@@ -30,15 +29,14 @@ export const nodeCard = style({
   borderRadius: vars.radius.control,
   padding: vars.space.insetLg,
   cursor: "pointer",
-  border: `1px solid ${vars.color.border.subtle}`,
-  transition: "border-color 150ms",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {
-    borderColor: vars.color.accent.primary,
+    backgroundColor: vars.color.bg.hover,
   },
 });
 
 export const nodeCardSelected = style({
-  borderColor: vars.color.accent.primary,
+  boxShadow: `0 0 12px 0 ${vars.color.accent.primaryDim}44`,
 });
 
 export const nodeName = style({

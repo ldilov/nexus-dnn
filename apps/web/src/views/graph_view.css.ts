@@ -11,7 +11,6 @@ export const graphNode = style({
   padding: vars.space.insetLg,
   borderRadius: vars.radius.control,
   backgroundColor: vars.color.bg.elevated,
-  border: `1px solid ${vars.color.border.subtle}`,
   fontSize: vars.font.size.bodySm,
   color: vars.color.text.primary,
   minWidth: "120px",
@@ -19,16 +18,15 @@ export const graphNode = style({
 });
 
 export const graphNodeRunning = style({
-  borderColor: vars.color.accent.primary,
-  boxShadow: `0 0 0 2px ${vars.color.accent.secondary}`,
+  boxShadow: `0 0 0 2px ${vars.color.accent.primaryDim}`,
 });
 
 export const graphNodeCompleted = style({
-  borderColor: vars.color.success.base,
+  boxShadow: `0 0 0 2px ${vars.color.success.base}`,
 });
 
 export const graphNodeFailed = style({
-  borderColor: vars.color.error.base,
+  boxShadow: `0 0 0 2px ${vars.color.error.base}`,
 });
 
 export const nodeName = style({

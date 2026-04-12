@@ -30,7 +30,7 @@ export const bottomGroup = style({
 export const divider = style({
   width: "24px",
   height: "1px",
-  backgroundColor: vars.color.border.subtle,
+  backgroundColor: vars.color.outline.variant,
   margin: `${vars.space.gapSm} 0`,
 });
 

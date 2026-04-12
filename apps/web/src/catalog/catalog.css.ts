@@ -20,10 +20,9 @@ export const itemCard = style({
   borderRadius: vars.radius.control,
   padding: vars.space.insetLg,
   marginBottom: vars.space.insetMd,
-  border: `1px solid ${vars.color.border.subtle}`,
-  transition: "border-color 150ms",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {
-    borderColor: vars.color.border.strong,
+    backgroundColor: vars.color.bg.hover,
   },
 });
 

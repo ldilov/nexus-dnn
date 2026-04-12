@@ -9,7 +9,6 @@ export const canvasColumn = style({
 
 export const canvasTabBar = style({
   padding: `${vars.space.insetMd} ${vars.space.insetXl}`,
-  borderBottom: `1px solid ${vars.color.border.subtle}`,
 });
 
 export const canvasContent = style({
