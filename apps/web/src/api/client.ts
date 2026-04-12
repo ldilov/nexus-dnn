@@ -188,3 +188,18 @@ export async function fetchArtifacts(runId: string): Promise<Artifact[]> {
   const data = await request<{ artifacts: Artifact[] }>(`/artifacts?run_id=${encodeURIComponent(runId)}`);
   return data.artifacts ?? [];
 }
+
+export type RuntimeMetrics = {
+  vram_used_bytes: number;
+  vram_total_bytes: number;
+  gpu_utilization_pct: number;
+  latency_ms: number;
+  worker_count: number;
+  active_run_count: number;
+  cached_artifact_count: number;
+  uptime_seconds: number;
+};
+
+export function fetchMetrics(): Promise<RuntimeMetrics> {
+  return request("/metrics");
+}
