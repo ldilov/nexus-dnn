@@ -1,61 +1,52 @@
 export const color = {
-  navy: {
-    50: "#E8EEF8",
-    100: "#A8B3C7",
-    200: "#718096",
-    300: "#334155",
-    400: "#253041",
-    500: "#212C3A",
-    600: "#1B2430",
-    700: "#151C24",
-    800: "#0F141B",
-    900: "#0B0F14",
+  surface: {
+    base: "#0c0e10",
+    containerLowest: "#000000",
+    containerLow: "#111416",
+    container: "#1c2025",
+    containerHigh: "#262a30",
+    containerHighest: "#31353b",
+    bright: "#36393f",
+    variant: "#31353b",
   },
-  blue: {
-    400: "#5EA1FF",
-    500: "#4A8FE8",
-    600: "#3A7BD4",
+  onSurface: {
+    base: "#e0e2ea",
+    variant: "#c1c6d4",
   },
-  violet: {
-    400: "#7C5CFF",
-    500: "#6B4FE0",
-    600: "#5A42C0",
+  primary: {
+    base: "#ba9eff",
+    dim: "#8455ef",
+    container: "#6a3de8",
+    onPrimary: "#1c0062",
   },
-  cyan: {
-    400: "#21C7D9",
-    500: "#1AB3C4",
-    600: "#158FA0",
+  secondary: {
+    base: "#9093ff",
+    container: "#4816cb",
+    onSecondary: "#1c0062",
   },
-  green: {
-    400: "#22C55E",
-    500: "#1DAF52",
-    600: "#189A47",
+  tertiary: {
+    base: "#ff8439",
+    container: "#5a3200",
   },
-  amber: {
-    400: "#F5B942",
-    500: "#E0A838",
-    600: "#C9952F",
+  acidGreen: "#22C55E",
+  error: {
+    base: "#ff6e84",
+    container: "#93000a",
   },
-  red: {
-    400: "#F05D5E",
-    500: "#D94F50",
-    600: "#C24344",
+  warning: {
+    base: "#F5B942",
+    text: "#fef3c7",
   },
-  slate: {
-    400: "#94A3B8",
-    500: "#7C8B9E",
-  },
-  statusText: {
-    success: "#bbf7d0",
-    warning: "#fef3c7",
-    error: "#fecaca",
+  outline: {
+    base: "#8b919d",
+    variant: "#414752",
   },
   modality: {
     image: "#B57CFF",
     video: "#21C7D9",
     audio: "#34D399",
     text: "#F5B942",
-    model: "#5EA1FF",
+    model: "#ba9eff",
     system: "#94A3B8",
   },
 } as const;
@@ -90,7 +81,8 @@ export const radii = {
 
 export const typography = {
   family: {
-    ui: "'Geist', 'Inter', system-ui, -apple-system, sans-serif",
+    headline: "'Space Grotesk', system-ui, sans-serif",
+    body: "'Inter', system-ui, -apple-system, sans-serif",
     code: "'JetBrains Mono', 'Fira Code', monospace",
   },
   size: {
