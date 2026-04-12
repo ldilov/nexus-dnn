@@ -336,8 +336,18 @@ fn process_extension(
 
     let storage = validate_storage_contribution(&manifest, &mut validation_errors);
 
+    if let Some(ref storage_block) = storage {
+        validate_storage_sql_files(ext_dir, storage_block, &mut validation_errors);
+    }
+
     let recipe_count = recipes.len();
     let ui_contribution_count = ui_contributions.len();
+
+    let status = if validation_errors.is_empty() {
+        ExtensionStatus::Active
+    } else {
+        ExtensionStatus::Disabled
+    };
 
     Ok(ActivatedExtension {
         manifest,
@@ -348,7 +358,7 @@ fn process_extension(
         recipe_count,
         ui_contribution_count,
         validation_errors,
-        status: ExtensionStatus::Active,
+        status,
         directory: ext_dir.to_path_buf(),
     })
 }
@@ -494,4 +504,35 @@ fn validate_storage_contribution(
     }
 
     Some(storage.clone())
+}
+
+fn validate_storage_sql_files(
+    ext_dir: &Path,
+    storage: &StorageContribution,
+    validation_errors: &mut Vec<String>,
+) {
+    use crate::storage::sql_validator;
+
+    let effective_prefix = storage.effective_prefix();
+
+    for file_ref in &storage.migrations.files {
+        let file_path = ext_dir.join(&file_ref.path);
+        let raw_sql = match std::fs::read_to_string(&file_path) {
+            Ok(content) => content,
+            Err(e) => {
+                validation_errors.push(format!(
+                    "storage migration file '{}' not readable: {e}",
+                    file_path.display()
+                ));
+                continue;
+            }
+        };
+
+        let expanded = sql_validator::expand_prefix(&raw_sql, &effective_prefix);
+        let report = sql_validator::validate_sql(&expanded, &effective_prefix);
+
+        for err in &report.errors {
+            validation_errors.push(format!("migration '{}': {err}", file_ref.id));
+        }
+    }
 }

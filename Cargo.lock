@@ -1396,6 +1396,8 @@ dependencies = [
 name = "nexus-storage"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "nexus-events",
  "serde",
  "serde_json",
  "sha2",
