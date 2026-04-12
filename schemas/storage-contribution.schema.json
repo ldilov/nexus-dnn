@@ -14,7 +14,7 @@
   "properties": {
     "spec_version": {
       "type": "string",
-      "const": "0.1"
+      "enum": ["0.1", "0.2"]
     },
     "engine": {
       "type": "string",

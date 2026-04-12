@@ -6,7 +6,7 @@
   "properties": {
     "spec_version": {
       "type": "string",
-      "const": "0.1"
+      "enum": ["0.1", "0.2"]
     },
     "extension": {
       "type": "object",
@@ -81,7 +81,8 @@
           "process.spawn",
           "model.registry.read",
           "workspace.read",
-          "workspace.write"
+          "workspace.write",
+          "storage.schema_contribute"
         ]
       }
     },
