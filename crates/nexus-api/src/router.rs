@@ -5,12 +5,13 @@ use tower_http::trace::TraceLayer;
 
 use crate::AppState;
 use crate::frontend;
-use crate::handlers::{artifacts, extensions, health, recipes, runs, system, tools, ui_contributions, workflows};
+use crate::handlers::{artifacts, extensions, health, metrics, recipes, runs, system, tools, ui_contributions, workflows};
 use crate::ws;
 
 pub fn build(state: AppState) -> Router {
     let api_v1 = Router::new()
         .route("/health", get(health::health_check))
+        .route("/metrics", get(metrics::get_metrics))
         .route("/extensions", get(extensions::list_extensions))
         .route("/extensions/{id}", get(extensions::get_extension))
         .route("/extensions/refresh", post(extensions::refresh_extensions))

@@ -1,6 +1,7 @@
 pub mod artifacts;
 pub mod extensions;
 pub mod health;
+pub mod metrics;
 pub mod recipes;
 pub mod runs;
 pub mod system;
