@@ -8,6 +8,7 @@ use crate::error::ExtensionError;
 use crate::manifest::{
     ExtensionManifest, OperatorDefinition, parse_manifest, parse_operator_definition,
 };
+use crate::storage::contribution::StorageContribution;
 use crate::operator_index::OperatorIndex;
 use crate::recipe::{RecipeFile, parse_recipe_definition};
 use crate::ui_contribution::{UIContributionFile, UIContributionKind, parse_ui_contribution};
@@ -40,6 +41,7 @@ pub struct ActivatedExtension {
     pub operators: Vec<OperatorDefinition>,
     pub recipes: Vec<RecipeFile>,
     pub ui_contributions: Vec<UIContributionFile>,
+    pub storage: Option<StorageContribution>,
     pub recipe_count: usize,
     pub ui_contribution_count: usize,
     pub validation_errors: Vec<String>,
@@ -326,6 +328,8 @@ fn process_extension(
     let recipes = load_recipes(ext_dir, &manifest, &mut validation_errors);
     let ui_contributions = load_ui_contributions(ext_dir, &mut validation_errors);
 
+    let storage = validate_storage_contribution(&manifest, &mut validation_errors);
+
     let recipe_count = recipes.len();
     let ui_contribution_count = ui_contributions.len();
 
@@ -334,6 +338,7 @@ fn process_extension(
         operators,
         recipes,
         ui_contributions,
+        storage,
         recipe_count,
         ui_contribution_count,
         validation_errors,
@@ -457,4 +462,30 @@ fn load_ui_contributions(
         }
     }
     contributions
+}
+
+fn validate_storage_contribution(
+    manifest: &ExtensionManifest,
+    validation_errors: &mut Vec<String>,
+) -> Option<StorageContribution> {
+    let storage = manifest.storage.as_ref()?;
+
+    let has_capability = manifest
+        .capabilities
+        .as_ref()
+        .map(|caps| caps.iter().any(|c| c == "storage.schema_contribute"))
+        .unwrap_or(false);
+
+    if !has_capability {
+        validation_errors.push(
+            "extension declares storage block but missing 'storage.schema_contribute' capability"
+                .to_owned(),
+        );
+    }
+
+    if let Err(errs) = storage.validate() {
+        validation_errors.extend(errs);
+    }
+
+    Some(storage.clone())
 }

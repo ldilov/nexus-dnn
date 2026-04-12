@@ -14,3 +14,4 @@ tracing = { workspace = true }
 nexus-protocol = { path = "../nexus-protocol" }
 sqlparser = { version = "0.55", features = ["visitor"] }
 sha2 = "0.10"
+regex-lite = "0.1"
