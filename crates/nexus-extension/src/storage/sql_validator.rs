@@ -413,4 +413,60 @@ mod tests {
                 .any(|e| e.contains("crosses namespace boundary"))
         );
     }
+
+    #[test]
+    fn update_statement_rejected() {
+        let sql = "UPDATE ext_chat_llama_threads SET title = 'new';";
+        let report = validate_sql(sql, PREFIX);
+        assert!(!report.errors.is_empty());
+        assert!(report.errors[0].contains("not allowed"));
+    }
+
+    #[test]
+    fn delete_statement_rejected() {
+        let sql = "DELETE FROM ext_chat_llama_threads;";
+        let report = validate_sql(sql, PREFIX);
+        assert!(!report.errors.is_empty());
+        assert!(report.errors[0].contains("not allowed"));
+    }
+
+    #[test]
+    fn create_trigger_rejected_as_parse_error() {
+        let sql = "CREATE TRIGGER ext_chat_llama_trg AFTER INSERT ON ext_chat_llama_threads BEGIN SELECT 1; END;";
+        let report = validate_sql(sql, PREFIX);
+        assert!(!report.errors.is_empty());
+        assert!(report.errors[0].contains("parse error"));
+    }
+
+    #[test]
+    fn attach_database_rejected() {
+        let sql = "ATTACH DATABASE ':memory:' AS aux;";
+        let report = validate_sql(sql, PREFIX);
+        assert!(!report.errors.is_empty());
+        assert!(report.errors[0].contains("not allowed"));
+    }
+
+    #[test]
+    fn detach_database_rejected_as_parse_error() {
+        let sql = "DETACH DATABASE aux;";
+        let report = validate_sql(sql, PREFIX);
+        assert!(!report.errors.is_empty());
+        assert!(report.errors[0].contains("parse error"));
+    }
+
+    #[test]
+    fn pragma_rejected_as_parse_error() {
+        let sql = "PRAGMA journal_mode=WAL;";
+        let report = validate_sql(sql, PREFIX);
+        assert!(!report.errors.is_empty());
+        assert!(report.errors[0].contains("parse error"));
+    }
+
+    #[test]
+    fn select_statement_rejected() {
+        let sql = "SELECT * FROM ext_chat_llama_threads;";
+        let report = validate_sql(sql, PREFIX);
+        assert!(!report.errors.is_empty());
+        assert!(report.errors[0].contains("not allowed"));
+    }
 }

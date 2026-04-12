@@ -6,7 +6,9 @@ use nexus_events::types::NexusEvent;
 
 use crate::database::Database;
 use crate::error::StorageError;
-use crate::records::{ArchiveRecord, MigrationRecord, NamespaceRecord, ObjectRecord, OperationRecord};
+use crate::records::{
+    ArchiveRecord, MigrationRecord, NamespaceRecord, ObjectRecord, OperationRecord,
+};
 use crate::sqlite::SqliteDatabase;
 
 pub struct UninstallReport {
@@ -113,12 +115,7 @@ impl StorageManager {
         Ok(op_id)
     }
 
-    async fn journal_complete(
-        &self,
-        op_id: &str,
-        status: &str,
-        result_json: Option<&str>,
-    ) {
+    async fn journal_complete(&self, op_id: &str, status: &str, result_json: Option<&str>) {
         let _ = self
             .db
             .update_operation(op_id, status, result_json, Some(&chrono_now()))
@@ -130,7 +127,10 @@ impl StorageManager {
     }
 
     pub async fn reserve_namespace(&self, record: &NamespaceRecord) -> Result<(), StorageError> {
-        let op_id = self.journal_start(&record.id, "reserve_namespace").await.ok();
+        let op_id = self
+            .journal_start(&record.id, "reserve_namespace")
+            .await
+            .ok();
 
         let prefix_pattern = format!("{}%", record.effective_prefix);
         let collision: Option<(String,)> = sqlx::query_as(
@@ -375,7 +375,10 @@ impl StorageManager {
     ) -> Result<UninstallReport, StorageError> {
         let ns = self.db.get_namespace(namespace_id).await?;
 
-        let op_id = self.journal_start(namespace_id, "uninstall_namespace").await.ok();
+        let op_id = self
+            .journal_start(namespace_id, "uninstall_namespace")
+            .await
+            .ok();
 
         self.emit(NexusEvent::StorageUninstallStarted {
             extension_id: ns.extension_id.clone(),
@@ -540,7 +543,10 @@ impl StorageManager {
         &self,
         namespace_id: &str,
     ) -> Result<IntegrityReport, StorageError> {
-        let op_id = self.journal_start(namespace_id, "verify_namespace").await.ok();
+        let op_id = self
+            .journal_start(namespace_id, "verify_namespace")
+            .await
+            .ok();
 
         let ns = self.db.get_namespace(namespace_id).await?;
         let prefix_pattern = format!("{}%", ns.effective_prefix);
@@ -925,5 +931,31 @@ mod tests {
 
         let objects = db.list_objects_for_namespace("ns-1").await.unwrap();
         assert!(objects.iter().any(|o| o.status == "drifted"));
+    }
+
+    #[tokio::test]
+    async fn duplicate_effective_prefix_rejected() {
+        let (_db, manager) = setup().await;
+
+        let ns1 = make_namespace_record("ns-1", "ext.alpha", "ext_test_ns_");
+        manager.reserve_namespace(&ns1).await.unwrap();
+
+        let ns2 = NamespaceRecord {
+            id: "ns-2".into(),
+            extension_id: "ext.beta".into(),
+            extension_version_first_seen: "1.0.0".into(),
+            namespace_alias: "test_ns".into(),
+            effective_prefix: "ext_test_ns_".into(),
+            engine: "sqlite".into(),
+            storage_spec_version: "0.1".into(),
+            sql_profile: "nexus_sqlite_v1".into(),
+            status: "reserved".into(),
+            uninstall_policy: "retain".into(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+        };
+
+        let result = manager.reserve_namespace(&ns2).await;
+        assert!(result.is_err());
     }
 }

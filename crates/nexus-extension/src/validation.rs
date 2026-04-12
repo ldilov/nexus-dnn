@@ -1,3 +1,4 @@
+use referencing::Resource;
 use semver::{Version, VersionReq};
 
 use crate::error::ExtensionError;
@@ -5,13 +6,47 @@ use crate::manifest::ExtensionManifest;
 
 const MANIFEST_SCHEMA: &str = include_str!("../../../schemas/extension-manifest.json");
 const OPERATOR_SCHEMA: &str = include_str!("../../../schemas/operator-definition.json");
+const STORAGE_CONTRIBUTION_SCHEMA: &str =
+    include_str!("../../../schemas/storage-contribution.schema.json");
 
 pub fn validate_manifest_schema(manifest_value: &serde_json::Value) -> Result<(), ExtensionError> {
-    validate_against_schema(manifest_value, MANIFEST_SCHEMA)
+    validate_manifest_with_refs(manifest_value)
 }
 
 pub fn validate_operator_schema(operator_value: &serde_json::Value) -> Result<(), ExtensionError> {
     validate_against_schema(operator_value, OPERATOR_SCHEMA)
+}
+
+fn validate_manifest_with_refs(instance: &serde_json::Value) -> Result<(), ExtensionError> {
+    let schema: serde_json::Value =
+        serde_json::from_str(MANIFEST_SCHEMA).expect("embedded schema is valid JSON");
+
+    let storage_schema: serde_json::Value =
+        serde_json::from_str(STORAGE_CONTRIBUTION_SCHEMA).expect("embedded schema is valid JSON");
+
+    let storage_resource =
+        Resource::from_contents(storage_schema).map_err(|e| ExtensionError::SchemaValidation {
+            errors: vec![format!("failed to load storage contribution schema: {e}")],
+        })?;
+
+    let validator = jsonschema::options()
+        .with_resource(
+            "https://nexus-dnn.dev/schemas/storage-contribution.schema.json",
+            storage_resource,
+        )
+        .build(&schema)
+        .map_err(|e| ExtensionError::SchemaValidation {
+            errors: vec![format!("failed to compile schema: {e}")],
+        })?;
+
+    let errors: Vec<String> = validator
+        .iter_errors(instance)
+        .map(|e| e.to_string())
+        .collect();
+    if !errors.is_empty() {
+        return Err(ExtensionError::SchemaValidation { errors });
+    }
+    Ok(())
 }
 
 fn validate_against_schema(

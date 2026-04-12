@@ -105,14 +105,11 @@ pub async fn validate_storage(
         .get_extension(&extension_id)
         .ok_or_else(|| ApiError::NotFound(format!("extension {extension_id} not found")))?;
 
-    let storage = ext
-        .storage
-        .as_ref()
-        .ok_or_else(|| {
-            ApiError::NotFound(format!(
-                "extension {extension_id} has no storage contribution"
-            ))
-        })?;
+    let storage = ext.storage.as_ref().ok_or_else(|| {
+        ApiError::NotFound(format!(
+            "extension {extension_id} has no storage contribution"
+        ))
+    })?;
 
     let effective_prefix = storage.effective_prefix();
     let mut static_errors = Vec::new();
@@ -125,22 +122,15 @@ pub async fn validate_storage(
         let raw_sql = match std::fs::read_to_string(&file_path) {
             Ok(content) => content,
             Err(e) => {
-                static_errors.push(format!(
-                    "cannot read {}: {e}",
-                    file_path.display()
-                ));
+                static_errors.push(format!("cannot read {}: {e}", file_path.display()));
                 continue;
             }
         };
 
-        let expanded = nexus_extension::storage::sql_validator::expand_prefix(
-            &raw_sql,
-            &effective_prefix,
-        );
-        let report = nexus_extension::storage::sql_validator::validate_sql(
-            &expanded,
-            &effective_prefix,
-        );
+        let expanded =
+            nexus_extension::storage::sql_validator::expand_prefix(&raw_sql, &effective_prefix);
+        let report =
+            nexus_extension::storage::sql_validator::validate_sql(&expanded, &effective_prefix);
 
         statements_checked += report.statements_checked;
         objects_found += report.objects.len();
@@ -186,14 +176,11 @@ pub async fn apply_storage(
         .get_extension(&extension_id)
         .ok_or_else(|| ApiError::NotFound(format!("extension {extension_id} not found")))?;
 
-    let storage = ext
-        .storage
-        .as_ref()
-        .ok_or_else(|| {
-            ApiError::NotFound(format!(
-                "extension {extension_id} has no storage contribution"
-            ))
-        })?;
+    let storage = ext.storage.as_ref().ok_or_else(|| {
+        ApiError::NotFound(format!(
+            "extension {extension_id} has no storage contribution"
+        ))
+    })?;
 
     let ext_id = &ext.manifest.extension.id;
     let ext_version = &ext.manifest.extension.version;
@@ -223,14 +210,17 @@ pub async fn apply_storage(
         None => Vec::new(),
     };
 
-    let plan = build_plan(ext_id, ext_version, &ext.directory, storage, &applied_migrations)
-        .map_err(|errs| ApiError::Internal(format!("plan errors: {}", errs.join("; "))))?;
+    let plan = build_plan(
+        ext_id,
+        ext_version,
+        &ext.directory,
+        storage,
+        &applied_migrations,
+    )
+    .map_err(|errs| ApiError::Internal(format!("plan errors: {}", errs.join("; "))))?;
 
     if matches!(plan.action, PlanAction::Noop) {
-        let ns_id = existing_ns
-            .as_ref()
-            .map(|ns| ns.id.as_str())
-            .unwrap_or("");
+        let ns_id = existing_ns.as_ref().map(|ns| ns.id.as_str()).unwrap_or("");
         return Ok(ApiResponse::ok(serde_json::json!({
             "namespace_id": ns_id,
             "action": "noop",
