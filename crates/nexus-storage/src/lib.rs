@@ -13,4 +13,4 @@ pub use records::{
     RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord,
 };
 pub use sqlite::SqliteDatabase;
-pub use storage_manager::StorageManager;
+pub use storage_manager::{IntegrityReport, StorageManager, UninstallReport};

@@ -1,12 +1,30 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::database::Database;
 use crate::error::StorageError;
-use crate::records::{MigrationRecord, NamespaceRecord, ObjectRecord};
+use crate::records::{ArchiveRecord, MigrationRecord, NamespaceRecord, ObjectRecord};
 use crate::sqlite::SqliteDatabase;
+
+pub struct UninstallReport {
+    pub namespace_id: String,
+    pub policy_executed: String,
+    pub objects_dropped: usize,
+    pub archive_path: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IntegrityReport {
+    pub namespace_id: String,
+    pub status: String,
+    pub objects_verified: usize,
+    pub objects_missing: Vec<String>,
+    pub objects_unexpected: Vec<String>,
+}
 
 pub struct StorageManager {
     db: Arc<SqliteDatabase>,
+    data_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -42,7 +60,14 @@ pub struct ObjectInput {
 
 impl StorageManager {
     pub fn new(db: Arc<SqliteDatabase>) -> Self {
-        Self { db }
+        Self { db, data_dir: None }
+    }
+
+    pub fn with_data_dir(db: Arc<SqliteDatabase>, data_dir: PathBuf) -> Self {
+        Self {
+            db,
+            data_dir: Some(data_dir),
+        }
     }
 
     pub fn db(&self) -> &SqliteDatabase {
@@ -252,6 +277,218 @@ impl StorageManager {
         temp_pool.close().await;
         Ok(())
     }
+
+    pub async fn uninstall_namespace(
+        &self,
+        namespace_id: &str,
+        policy: &str,
+    ) -> Result<UninstallReport, StorageError> {
+        match policy {
+            "retain" => self.uninstall_retain(namespace_id).await,
+            "drop_namespace_objects" => self.uninstall_drop(namespace_id).await,
+            "archive_then_drop" => self.uninstall_archive_then_drop(namespace_id).await,
+            other => Err(StorageError::ApplyFailed {
+                detail: format!("unknown uninstall policy: {other}"),
+            }),
+        }
+    }
+
+    async fn uninstall_retain(
+        &self,
+        namespace_id: &str,
+    ) -> Result<UninstallReport, StorageError> {
+        self.db
+            .update_namespace_status(namespace_id, "uninstalled_retain")
+            .await?;
+
+        Ok(UninstallReport {
+            namespace_id: namespace_id.to_owned(),
+            policy_executed: "retain".to_owned(),
+            objects_dropped: 0,
+            archive_path: None,
+        })
+    }
+
+    async fn uninstall_drop(
+        &self,
+        namespace_id: &str,
+    ) -> Result<UninstallReport, StorageError> {
+        let objects = self.db.list_objects_for_namespace(namespace_id).await?;
+
+        let mut tables: Vec<&ObjectRecord> = objects
+            .iter()
+            .filter(|o| o.object_type == "table" && o.status == "present")
+            .collect();
+        let indexes: Vec<&ObjectRecord> = objects
+            .iter()
+            .filter(|o| o.object_type == "index" && o.status == "present")
+            .collect();
+
+        tables.reverse();
+
+        let pool = self.db.pool();
+        let mut dropped = 0;
+
+        for idx in &indexes {
+            let sql = format!("DROP INDEX IF EXISTS {}", idx.object_name);
+            sqlx::query(&sql).execute(pool).await.map_err(|e| {
+                StorageError::ApplyFailed {
+                    detail: format!("failed to drop index {}: {e}", idx.object_name),
+                }
+            })?;
+            self.db.update_object_status(&idx.id, "dropped").await?;
+            dropped += 1;
+        }
+
+        for tbl in &tables {
+            let sql = format!("DROP TABLE IF EXISTS {}", tbl.object_name);
+            sqlx::query(&sql).execute(pool).await.map_err(|e| {
+                StorageError::ApplyFailed {
+                    detail: format!("failed to drop table {}: {e}", tbl.object_name),
+                }
+            })?;
+            self.db.update_object_status(&tbl.id, "dropped").await?;
+            dropped += 1;
+        }
+
+        self.db
+            .update_namespace_status(namespace_id, "dropped")
+            .await?;
+
+        Ok(UninstallReport {
+            namespace_id: namespace_id.to_owned(),
+            policy_executed: "drop_namespace_objects".to_owned(),
+            objects_dropped: dropped,
+            archive_path: None,
+        })
+    }
+
+    async fn uninstall_archive_then_drop(
+        &self,
+        namespace_id: &str,
+    ) -> Result<UninstallReport, StorageError> {
+        let objects = self.db.list_objects_for_namespace(namespace_id).await?;
+        let tables: Vec<&ObjectRecord> = objects
+            .iter()
+            .filter(|o| o.object_type == "table" && o.status == "present")
+            .collect();
+
+        let archive_dir = self
+            .data_dir
+            .clone()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("archives")
+            .join(namespace_id);
+
+        std::fs::create_dir_all(&archive_dir).map_err(|e| StorageError::ArchiveFailed {
+            detail: format!("failed to create archive directory: {e}"),
+        })?;
+
+        let pool = self.db.pool();
+
+        for tbl in &tables {
+            let rows: Vec<(String,)> = sqlx::query_as(&format!(
+                "SELECT json_object(*) FROM {}",
+                tbl.object_name
+            ))
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+            let json_lines: Vec<String> = rows.into_iter().map(|(row,)| row).collect();
+            let file_path = archive_dir.join(format!("{}.json", tbl.object_name));
+            let content = format!("[{}]", json_lines.join(",\n"));
+            std::fs::write(&file_path, &content).map_err(|e| StorageError::ArchiveFailed {
+                detail: format!("failed to write archive for {}: {e}", tbl.object_name),
+            })?;
+
+            let archive_record = ArchiveRecord {
+                id: format!("archive-{}-{}", namespace_id, tbl.object_name),
+                namespace_id: namespace_id.to_owned(),
+                archive_format: "json".to_owned(),
+                archive_path: file_path.to_string_lossy().to_string(),
+                content_hash: sha256_bytes(content.as_bytes()),
+                created_at: chrono_now(),
+            };
+            self.db.insert_archive(&archive_record).await?;
+        }
+
+        let archive_path_str = archive_dir.to_string_lossy().to_string();
+        let drop_report = self.uninstall_drop(namespace_id).await?;
+
+        Ok(UninstallReport {
+            namespace_id: namespace_id.to_owned(),
+            policy_executed: "archive_then_drop".to_owned(),
+            objects_dropped: drop_report.objects_dropped,
+            archive_path: Some(archive_path_str),
+        })
+    }
+
+    pub async fn verify_namespace(
+        &self,
+        namespace_id: &str,
+    ) -> Result<IntegrityReport, StorageError> {
+        let ns = self.db.get_namespace(namespace_id).await?;
+        let prefix_pattern = format!("{}%", ns.effective_prefix);
+
+        let actual_objects: Vec<(String, String)> = sqlx::query_as(
+            "SELECT name, type FROM sqlite_master \
+             WHERE name LIKE ?1 AND type IN ('table', 'index')",
+        )
+        .bind(&prefix_pattern)
+        .fetch_all(self.db.pool())
+        .await?;
+
+        let recorded_objects = self.db.list_objects_for_namespace(namespace_id).await?;
+        let present_objects: Vec<&ObjectRecord> = recorded_objects
+            .iter()
+            .filter(|o| o.status == "present")
+            .collect();
+
+        let actual_names: std::collections::HashSet<String> =
+            actual_objects.iter().map(|(name, _)| name.clone()).collect();
+        let recorded_names: std::collections::HashSet<String> =
+            present_objects.iter().map(|o| o.object_name.clone()).collect();
+
+        let missing: Vec<String> = recorded_names
+            .difference(&actual_names)
+            .cloned()
+            .collect();
+        let unexpected: Vec<String> = actual_names
+            .difference(&recorded_names)
+            .cloned()
+            .collect();
+
+        for obj in &present_objects {
+            if missing.contains(&obj.object_name) {
+                self.db.update_object_status(&obj.id, "drifted").await?;
+            }
+        }
+
+        let status = if missing.is_empty() {
+            "healthy".to_owned()
+        } else {
+            self.db
+                .update_namespace_status(namespace_id, "repair_required")
+                .await?;
+            "repair_required".to_owned()
+        };
+
+        Ok(IntegrityReport {
+            namespace_id: namespace_id.to_owned(),
+            status,
+            objects_verified: present_objects.len(),
+            objects_missing: missing,
+            objects_unexpected: unexpected,
+        })
+    }
+}
+
+fn sha256_bytes(data: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    format!("{:x}", hasher.finalize())
 }
 
 fn chrono_now() -> String {
@@ -384,5 +621,188 @@ mod tests {
         let sql = vec!["COMPLETELY INVALID SQL".to_owned()];
         let result = manager.validate_dry_run(&sql).await;
         assert!(result.is_err());
+    }
+
+    async fn setup_with_applied_namespace() -> (Arc<SqliteDatabase>, StorageManager) {
+        let (db, manager) = setup().await;
+        let ns = make_namespace_record("ns-1", "test.ext", "ext_test_ns_");
+        manager.reserve_namespace(&ns).await.unwrap();
+
+        let migrations = vec![MigrationInput {
+            record_id: "mig-rec-1".into(),
+            namespace_id: "ns-1".into(),
+            extension_id: "test.ext".into(),
+            extension_version: "1.0.0".into(),
+            migration_id: "001_init".into(),
+            path: "storage/migrations/001_init.sql".into(),
+            raw_checksum: "abc123".into(),
+            expanded_checksum: "def456".into(),
+            expanded_sql: "CREATE TABLE ext_test_ns_items (id TEXT PRIMARY KEY, name TEXT);"
+                .into(),
+            objects: vec![ObjectInput {
+                record_id: "obj-1".into(),
+                object_name: "ext_test_ns_items".into(),
+                object_type: "table".into(),
+                migration_id: "001_init".into(),
+            }],
+        }];
+
+        manager
+            .apply_plan("ns-1", "new_install", &migrations)
+            .await
+            .unwrap();
+
+        (db, manager)
+    }
+
+    #[tokio::test]
+    async fn disable_extension_tables_remain() {
+        let (db, _manager) = setup_with_applied_namespace().await;
+
+        db.update_namespace_status("ns-1", "active").await.unwrap();
+
+        let table_exists: Option<(String,)> = sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='ext_test_ns_items'",
+        )
+        .fetch_optional(db.pool())
+        .await
+        .unwrap();
+        assert!(table_exists.is_some());
+
+        let ns = db.get_namespace("ns-1").await.unwrap();
+        assert_eq!(ns.status, "active");
+    }
+
+    #[tokio::test]
+    async fn uninstall_retain_keeps_objects() {
+        let (db, manager) = setup_with_applied_namespace().await;
+
+        let report = manager.uninstall_namespace("ns-1", "retain").await.unwrap();
+        assert_eq!(report.policy_executed, "retain");
+        assert_eq!(report.objects_dropped, 0);
+
+        let table_exists: Option<(String,)> = sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='ext_test_ns_items'",
+        )
+        .fetch_optional(db.pool())
+        .await
+        .unwrap();
+        assert!(table_exists.is_some());
+
+        let ns = db.get_namespace("ns-1").await.unwrap();
+        assert_eq!(ns.status, "uninstalled_retain");
+    }
+
+    #[tokio::test]
+    async fn uninstall_drop_removes_objects() {
+        let (db, manager) = setup_with_applied_namespace().await;
+
+        let report = manager
+            .uninstall_namespace("ns-1", "drop_namespace_objects")
+            .await
+            .unwrap();
+        assert_eq!(report.policy_executed, "drop_namespace_objects");
+        assert_eq!(report.objects_dropped, 1);
+
+        let table_exists: Option<(String,)> = sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='ext_test_ns_items'",
+        )
+        .fetch_optional(db.pool())
+        .await
+        .unwrap();
+        assert!(table_exists.is_none());
+
+        let ns = db.get_namespace("ns-1").await.unwrap();
+        assert_eq!(ns.status, "dropped");
+
+        let objects = db.list_objects_for_namespace("ns-1").await.unwrap();
+        assert!(objects.iter().all(|o| o.status == "dropped"));
+    }
+
+    #[tokio::test]
+    async fn uninstall_archive_then_drop_creates_archive_and_drops() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (db, _) = setup().await;
+
+        let manager = StorageManager::with_data_dir(Arc::clone(&db), tmp.path().to_path_buf());
+
+        let ns = make_namespace_record("ns-1", "test.ext", "ext_test_ns_");
+        manager.reserve_namespace(&ns).await.unwrap();
+
+        let migrations = vec![MigrationInput {
+            record_id: "mig-rec-1".into(),
+            namespace_id: "ns-1".into(),
+            extension_id: "test.ext".into(),
+            extension_version: "1.0.0".into(),
+            migration_id: "001_init".into(),
+            path: "storage/migrations/001_init.sql".into(),
+            raw_checksum: "abc123".into(),
+            expanded_checksum: "def456".into(),
+            expanded_sql: "CREATE TABLE ext_test_ns_items (id TEXT PRIMARY KEY, name TEXT);"
+                .into(),
+            objects: vec![ObjectInput {
+                record_id: "obj-1".into(),
+                object_name: "ext_test_ns_items".into(),
+                object_type: "table".into(),
+                migration_id: "001_init".into(),
+            }],
+        }];
+
+        manager
+            .apply_plan("ns-1", "new_install", &migrations)
+            .await
+            .unwrap();
+
+        let report = manager
+            .uninstall_namespace("ns-1", "archive_then_drop")
+            .await
+            .unwrap();
+        assert_eq!(report.policy_executed, "archive_then_drop");
+        assert!(report.archive_path.is_some());
+        assert!(report.objects_dropped > 0);
+
+        let archive_path = std::path::Path::new(report.archive_path.as_ref().unwrap());
+        assert!(archive_path.exists());
+
+        let archive_file = archive_path.join("ext_test_ns_items.json");
+        assert!(archive_file.exists());
+
+        let table_exists: Option<(String,)> = sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='ext_test_ns_items'",
+        )
+        .fetch_optional(db.pool())
+        .await
+        .unwrap();
+        assert!(table_exists.is_none());
+    }
+
+    #[tokio::test]
+    async fn verify_healthy_namespace() {
+        let (_db, manager) = setup_with_applied_namespace().await;
+
+        let report = manager.verify_namespace("ns-1").await.unwrap();
+        assert_eq!(report.status, "healthy");
+        assert_eq!(report.objects_verified, 1);
+        assert!(report.objects_missing.is_empty());
+    }
+
+    #[tokio::test]
+    async fn verify_drift_detected_when_table_dropped() {
+        let (db, manager) = setup_with_applied_namespace().await;
+
+        sqlx::query("DROP TABLE ext_test_ns_items")
+            .execute(db.pool())
+            .await
+            .unwrap();
+
+        let report = manager.verify_namespace("ns-1").await.unwrap();
+        assert_eq!(report.status, "repair_required");
+        assert!(report.objects_missing.contains(&"ext_test_ns_items".to_owned()));
+
+        let ns = db.get_namespace("ns-1").await.unwrap();
+        assert_eq!(ns.status, "repair_required");
+
+        let objects = db.list_objects_for_namespace("ns-1").await.unwrap();
+        assert!(objects.iter().any(|o| o.status == "drifted"));
     }
 }
