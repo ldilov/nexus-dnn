@@ -4,6 +4,7 @@ pub mod health;
 pub mod metrics;
 pub mod recipes;
 pub mod runs;
+pub mod storage_contributions;
 pub mod system;
 pub mod tools;
 pub mod ui_contributions;

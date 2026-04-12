@@ -5,7 +5,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::AppState;
 use crate::frontend;
-use crate::handlers::{artifacts, extensions, health, metrics, recipes, runs, system, tools, ui_contributions, workflows};
+use crate::handlers::{artifacts, extensions, health, metrics, recipes, runs, storage_contributions, system, tools, ui_contributions, workflows};
 use crate::ws;
 
 pub fn build(state: AppState) -> Router {
@@ -22,6 +22,30 @@ pub fn build(state: AppState) -> Router {
         .route(
             "/extensions/{id}/disable",
             post(extensions::disable_extension),
+        )
+        .route(
+            "/extensions/{id}/storage",
+            get(storage_contributions::get_storage_status),
+        )
+        .route(
+            "/extensions/{id}/storage/validate",
+            post(storage_contributions::validate_storage),
+        )
+        .route(
+            "/extensions/{id}/storage/apply",
+            post(storage_contributions::apply_storage),
+        )
+        .route(
+            "/extensions/{id}/storage/verify",
+            post(storage_contributions::verify_storage),
+        )
+        .route(
+            "/extensions/{id}/storage/uninstall",
+            post(storage_contributions::uninstall_storage),
+        )
+        .route(
+            "/storage/namespaces",
+            get(storage_contributions::list_namespaces),
         )
         .route("/operators", get(extensions::list_operators))
         .route("/operators/{id}", get(extensions::get_operator))
