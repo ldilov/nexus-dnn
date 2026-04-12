@@ -125,8 +125,10 @@ impl NexusApp {
             scheduler.clone(),
         ));
 
-        let storage_manager =
-            std::sync::Arc::new(nexus_storage::StorageManager::with_event_bus(db.clone(), event_bus.clone()));
+        let storage_manager = std::sync::Arc::new(nexus_storage::StorageManager::with_event_bus(
+            db.clone(),
+            event_bus.clone(),
+        ));
 
         let app_for_health = Arc::new(self);
         let app_ref = Arc::clone(&app_for_health);

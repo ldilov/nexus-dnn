@@ -302,11 +302,13 @@ async fn apply_storage_for_extension(
                         .await
                         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-                    state.event_bus.publish(NexusEvent::StorageNamespaceReserved {
-                        extension_id: ext_id.clone(),
-                        namespace_id: ns_id.clone(),
-                        effective_prefix: plan.effective_prefix.clone(),
-                    });
+                    state
+                        .event_bus
+                        .publish(NexusEvent::StorageNamespaceReserved {
+                            extension_id: ext_id.clone(),
+                            namespace_id: ns_id.clone(),
+                            effective_prefix: plan.effective_prefix.clone(),
+                        });
 
                     ns_id
                 }
