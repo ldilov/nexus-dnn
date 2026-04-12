@@ -4,14 +4,11 @@ import "./theme/global.css";
 import { darkTheme } from "./theme/dark.css";
 import { App } from "./App";
 
-function Root() {
-  return (
-    <StrictMode>
-      <div className={darkTheme}>
-        <App />
-      </div>
-    </StrictMode>
-  );
-}
+const root = document.getElementById("root")!;
+root.classList.add(darkTheme);
 
-createRoot(document.getElementById("root")!).render(<Root />);
+createRoot(root).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
