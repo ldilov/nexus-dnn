@@ -2,9 +2,29 @@ import { createThemeContract } from "@vanilla-extract/css";
 
 export const vars = createThemeContract({
   color: {
-    bg: { app: "", canvas: "", panel: "", elevated: "", hover: "" },
-    text: { primary: "", secondary: "", muted: "", inverse: "" },
-    accent: { primary: "", primaryHover: "", secondary: "", cyan: "" },
+    bg: {
+      app: "",
+      canvas: "",
+      panel: "",
+      elevated: "",
+      hover: "",
+      lowest: "",
+      bright: "",
+    },
+    text: {
+      primary: "",
+      secondary: "",
+      muted: "",
+      inverse: "",
+    },
+    accent: {
+      primary: "",
+      primaryDim: "",
+      primaryHover: "",
+      secondary: "",
+      tertiary: "",
+      cyan: "",
+    },
     state: {
       created: "",
       planning: "",
@@ -15,13 +35,24 @@ export const vars = createThemeContract({
       cancelled: "",
       failed: "",
     },
-    mod: { image: "", video: "", audio: "", text: "", model: "", system: "" },
+    mod: {
+      image: "",
+      video: "",
+      audio: "",
+      text: "",
+      model: "",
+      system: "",
+    },
     success: { base: "", text: "" },
     warning: { base: "", text: "" },
     error: { base: "", text: "" },
-    border: { subtle: "", strong: "" },
+    outline: {
+      base: "",
+      variant: "",
+    },
   },
   font: {
+    headline: "",
     ui: "",
     code: "",
     size: {
@@ -34,8 +65,17 @@ export const vars = createThemeContract({
       headingLg: "",
       display: "",
     },
-    weight: { regular: "", medium: "", semibold: "", bold: "" },
-    lineHeight: { tight: "", normal: "", relaxed: "" },
+    weight: {
+      regular: "",
+      medium: "",
+      semibold: "",
+      bold: "",
+    },
+    lineHeight: {
+      tight: "",
+      normal: "",
+      relaxed: "",
+    },
   },
   space: {
     insetXs: "",
@@ -49,9 +89,23 @@ export const vars = createThemeContract({
     gapLg: "",
     gapXl: "",
   },
-  radius: { control: "", card: "", panel: "", container: "", full: "" },
-  control: { heightSm: "", heightMd: "", heightLg: "" },
-  icon: { sm: "", md: "", lg: "" },
+  radius: {
+    control: "",
+    card: "",
+    panel: "",
+    container: "",
+    full: "",
+  },
+  control: {
+    heightSm: "",
+    heightMd: "",
+    heightLg: "",
+  },
+  icon: {
+    sm: "",
+    md: "",
+    lg: "",
+  },
   motion: {
     durationInstant: "",
     durationFast: "",
@@ -62,6 +116,17 @@ export const vars = createThemeContract({
     easingSpring: "",
     easingExit: "",
   },
-  shadow: { sm: "", md: "", lg: "" },
-  z: { base: "", dropdown: "", drawer: "", modal: "", toast: "", overlay: "" },
+  shadow: {
+    sm: "",
+    md: "",
+    lg: "",
+  },
+  z: {
+    base: "",
+    dropdown: "",
+    drawer: "",
+    modal: "",
+    toast: "",
+    overlay: "",
+  },
 });
