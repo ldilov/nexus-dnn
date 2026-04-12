@@ -193,5 +193,7 @@ pub struct ArchiveRecord {
     pub archive_format: String,
     pub archive_path: String,
     pub content_hash: String,
+    pub table_count: i64,
+    pub row_count: i64,
     pub created_at: String,
 }

@@ -75,13 +75,14 @@ pub fn build_plan(
     storage: &StorageContribution,
     applied_migrations: &[AppliedMigrationInfo],
 ) -> Result<StoragePlan, Vec<String>> {
-    build_plan_with_alias_check(
+    build_plan_with_limits(
         extension_id,
         extension_version,
         extension_root,
         storage,
         applied_migrations,
         None,
+        u64::MAX,
     )
 }
 
@@ -92,6 +93,26 @@ pub fn build_plan_with_alias_check(
     storage: &StorageContribution,
     applied_migrations: &[AppliedMigrationInfo],
     recorded_alias: Option<&str>,
+) -> Result<StoragePlan, Vec<String>> {
+    build_plan_with_limits(
+        extension_id,
+        extension_version,
+        extension_root,
+        storage,
+        applied_migrations,
+        recorded_alias,
+        u64::MAX,
+    )
+}
+
+pub fn build_plan_with_limits(
+    extension_id: &str,
+    extension_version: &str,
+    extension_root: &Path,
+    storage: &StorageContribution,
+    applied_migrations: &[AppliedMigrationInfo],
+    recorded_alias: Option<&str>,
+    max_file_bytes: u64,
 ) -> Result<StoragePlan, Vec<String>> {
     let effective_prefix = storage.effective_prefix();
     let mut errors = Vec::new();
@@ -129,6 +150,21 @@ pub fn build_plan_with_alias_check(
                 continue;
             }
         };
+
+        if raw_sql.trim().is_empty() {
+            errors.push(format!("migration file '{}' is empty", file_path.display()));
+            continue;
+        }
+
+        if raw_sql.len() as u64 > max_file_bytes {
+            errors.push(format!(
+                "migration file '{}' exceeds size limit ({} bytes > {} max)",
+                file_path.display(),
+                raw_sql.len(),
+                max_file_bytes
+            ));
+            continue;
+        }
 
         let raw_checksum = sha256_hex(raw_sql.as_bytes());
         let expanded_sql = super::sql_validator::expand_prefix(&raw_sql, &effective_prefix);
@@ -536,5 +572,49 @@ mod tests {
         assert!(result.is_err());
         let errors = result.unwrap_err();
         assert!(errors.iter().any(|e| e.contains("alias changed")));
+    }
+
+    #[test]
+    fn empty_migration_file_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        write_migration(root, "storage/migrations/001_init.sql", "   \n  ");
+
+        let storage = make_storage(
+            "test_ns",
+            vec![MigrationFileRef {
+                id: "001_init".into(),
+                path: "storage/migrations/001_init.sql".into(),
+            }],
+        );
+
+        let result =
+            build_plan_with_limits("test.ext", "1.0.0", root, &storage, &[], None, u64::MAX);
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert!(errors.iter().any(|e| e.contains("is empty")));
+    }
+
+    #[test]
+    fn oversized_migration_file_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        let sql = "CREATE TABLE ext_test_ns_items (id TEXT PRIMARY KEY);";
+        write_migration(root, "storage/migrations/001_init.sql", sql);
+
+        let storage = make_storage(
+            "test_ns",
+            vec![MigrationFileRef {
+                id: "001_init".into(),
+                path: "storage/migrations/001_init.sql".into(),
+            }],
+        );
+
+        let result = build_plan_with_limits("test.ext", "1.0.0", root, &storage, &[], None, 10);
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert!(errors.iter().any(|e| e.contains("exceeds size limit")));
     }
 }

@@ -31,6 +31,7 @@ pub struct StorageManager {
     db: Arc<SqliteDatabase>,
     data_dir: Option<PathBuf>,
     event_bus: Option<Arc<dyn EventBus>>,
+    quarantine_threshold: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +71,7 @@ impl StorageManager {
             db,
             data_dir: None,
             event_bus: None,
+            quarantine_threshold: 3,
         }
     }
 
@@ -78,6 +80,7 @@ impl StorageManager {
             db,
             data_dir: None,
             event_bus: Some(event_bus),
+            quarantine_threshold: 3,
         }
     }
 
@@ -86,7 +89,13 @@ impl StorageManager {
             db,
             data_dir: Some(data_dir),
             event_bus: None,
+            quarantine_threshold: 3,
         }
+    }
+
+    pub fn with_quarantine_threshold(mut self, threshold: u32) -> Self {
+        self.quarantine_threshold = threshold;
+        self
     }
 
     fn emit(&self, event: NexusEvent) {
@@ -122,8 +131,41 @@ impl StorageManager {
             .await;
     }
 
+    async fn check_quarantine_threshold(&self, namespace_id: &str) {
+        let threshold = self.quarantine_threshold as i64;
+        let row: Option<(i64,)> = sqlx::query_as(
+            "SELECT COUNT(*) FROM ( \
+                 SELECT status FROM extension_storage_operations \
+                 WHERE namespace_id = ? AND operation_type = 'apply_plan' \
+                 ORDER BY started_at DESC LIMIT ? \
+             ) sub WHERE sub.status = 'failed'",
+        )
+        .bind(namespace_id)
+        .bind(threshold)
+        .fetch_optional(self.db.pool())
+        .await
+        .unwrap_or(None);
+
+        if let Some((count,)) = row
+            && count >= threshold
+        {
+            let _ = self
+                .db
+                .update_namespace_status(namespace_id, "quarantined_storage")
+                .await;
+        }
+    }
+
     pub fn db(&self) -> &SqliteDatabase {
         &self.db
+    }
+
+    pub async fn update_namespace_policy(
+        &self,
+        namespace_id: &str,
+        policy: &str,
+    ) -> Result<(), StorageError> {
+        self.db.update_namespace_policy(namespace_id, policy).await
     }
 
     pub async fn reserve_namespace(&self, record: &NamespaceRecord) -> Result<(), StorageError> {
@@ -298,6 +340,8 @@ impl StorageManager {
                         self.journal_complete(id, "failed", None).await;
                     }
 
+                    self.check_quarantine_threshold(namespace_id).await;
+
                     return Err(StorageError::ApplyFailed {
                         detail: format!("migration '{}' failed: {e}", migration.migration_id),
                     });
@@ -416,7 +460,7 @@ impl StorageManager {
 
     async fn uninstall_retain(&self, namespace_id: &str) -> Result<UninstallReport, StorageError> {
         self.db
-            .update_namespace_status(namespace_id, "uninstalled_retain")
+            .update_namespace_status(namespace_id, "retained")
             .await?;
 
         Ok(UninstallReport {
@@ -484,6 +528,9 @@ impl StorageManager {
         &self,
         namespace_id: &str,
     ) -> Result<UninstallReport, StorageError> {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+
         let objects = self.db.list_objects_for_namespace(namespace_id).await?;
         let tables: Vec<&ObjectRecord> = objects
             .iter()
@@ -494,41 +541,92 @@ impl StorageManager {
             .data_dir
             .clone()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("archives")
-            .join(namespace_id);
+            .join("archives");
 
         std::fs::create_dir_all(&archive_dir).map_err(|e| StorageError::ArchiveFailed {
             detail: format!("failed to create archive directory: {e}"),
         })?;
 
-        let pool = self.db.pool();
+        let timestamp = chrono::Utc::now().format("%Y%m%d%H%M%S");
+        let zip_filename = format!("ext_{namespace_id}_{timestamp}.zip");
+        let zip_path = archive_dir.join(&zip_filename);
 
-        for tbl in &tables {
-            let rows: Vec<(String,)> =
-                sqlx::query_as(&format!("SELECT json_object(*) FROM {}", tbl.object_name))
-                    .fetch_all(pool)
-                    .await
-                    .unwrap_or_default();
-
-            let json_lines: Vec<String> = rows.into_iter().map(|(row,)| row).collect();
-            let file_path = archive_dir.join(format!("{}.json", tbl.object_name));
-            let content = format!("[{}]", json_lines.join(",\n"));
-            std::fs::write(&file_path, &content).map_err(|e| StorageError::ArchiveFailed {
-                detail: format!("failed to write archive for {}: {e}", tbl.object_name),
+        let zip_file =
+            std::fs::File::create(&zip_path).map_err(|e| StorageError::ArchiveFailed {
+                detail: format!("failed to create archive ZIP: {e}"),
             })?;
 
-            let archive_record = ArchiveRecord {
-                id: format!("archive-{}-{}", namespace_id, tbl.object_name),
-                namespace_id: namespace_id.to_owned(),
-                archive_format: "json".to_owned(),
-                archive_path: file_path.to_string_lossy().to_string(),
-                content_hash: sha256_bytes(content.as_bytes()),
-                created_at: chrono_now(),
-            };
-            self.db.insert_archive(&archive_record).await?;
+        let mut zip_writer = zip::ZipWriter::new(zip_file);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+
+        let pool = self.db.pool();
+        let table_count = tables.len() as i64;
+        let mut total_row_count: i64 = 0;
+
+        for tbl in &tables {
+            let col_rows: Vec<(String,)> = sqlx::query_as(&format!(
+                "SELECT name FROM pragma_table_info('{}')",
+                tbl.object_name
+            ))
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+            let col_args: String = col_rows
+                .iter()
+                .map(|(c,)| format!("'{c}', {c}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            let rows: Vec<(String,)> = sqlx::query_as(&format!(
+                "SELECT json_object({col_args}) FROM {}",
+                tbl.object_name
+            ))
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+            let entry_name = format!("{}.jsonl", tbl.object_name);
+            zip_writer.start_file(&entry_name, options).map_err(|e| {
+                StorageError::ArchiveFailed {
+                    detail: format!("failed to start ZIP entry for {}: {e}", tbl.object_name),
+                }
+            })?;
+
+            for (row,) in &rows {
+                writeln!(zip_writer, "{row}").map_err(|e| StorageError::ArchiveFailed {
+                    detail: format!("failed to write JSONL row for {}: {e}", tbl.object_name),
+                })?;
+            }
+
+            total_row_count += rows.len() as i64;
         }
 
-        let archive_path_str = archive_dir.to_string_lossy().to_string();
+        zip_writer
+            .finish()
+            .map_err(|e| StorageError::ArchiveFailed {
+                detail: format!("failed to finalize ZIP archive: {e}"),
+            })?;
+
+        let zip_bytes = std::fs::read(&zip_path).map_err(|e| StorageError::ArchiveFailed {
+            detail: format!("failed to read ZIP for hashing: {e}"),
+        })?;
+        let content_hash = sha256_bytes(&zip_bytes);
+
+        let archive_record = ArchiveRecord {
+            id: format!("archive-{namespace_id}"),
+            namespace_id: namespace_id.to_owned(),
+            archive_format: "jsonl_zip".to_owned(),
+            archive_path: zip_path.to_string_lossy().to_string(),
+            content_hash,
+            table_count,
+            row_count: total_row_count,
+            created_at: chrono_now(),
+        };
+        self.db.insert_archive(&archive_record).await?;
+
+        let archive_path_str = zip_path.to_string_lossy().to_string();
         let drop_report = self.uninstall_drop(namespace_id).await?;
 
         Ok(UninstallReport {
@@ -814,7 +912,7 @@ mod tests {
         assert!(table_exists.is_some());
 
         let ns = db.get_namespace("ns-1").await.unwrap();
-        assert_eq!(ns.status, "uninstalled_retain");
+        assert_eq!(ns.status, "retained");
     }
 
     #[tokio::test]
@@ -845,6 +943,8 @@ mod tests {
 
     #[tokio::test]
     async fn uninstall_archive_then_drop_creates_archive_and_drops() {
+        use std::io::Read;
+
         let tmp = tempfile::tempdir().unwrap();
         let (db, _) = setup().await;
 
@@ -876,6 +976,11 @@ mod tests {
             .await
             .unwrap();
 
+        sqlx::query("INSERT INTO ext_test_ns_items (id, name) VALUES ('row1', 'Alice')")
+            .execute(db.pool())
+            .await
+            .unwrap();
+
         let report = manager
             .uninstall_namespace("ns-1", "archive_then_drop")
             .await
@@ -886,9 +991,22 @@ mod tests {
 
         let archive_path = std::path::Path::new(report.archive_path.as_ref().unwrap());
         assert!(archive_path.exists());
+        assert!(archive_path.extension().is_some_and(|ext| ext == "zip"));
 
-        let archive_file = archive_path.join("ext_test_ns_items.json");
-        assert!(archive_file.exists());
+        let zip_file = std::fs::File::open(archive_path).unwrap();
+        let mut archive = zip::ZipArchive::new(zip_file).unwrap();
+        assert_eq!(archive.len(), 1);
+
+        let mut entry = archive.by_name("ext_test_ns_items.jsonl").unwrap();
+        let mut contents = String::new();
+        entry.read_to_string(&mut contents).unwrap();
+        assert!(contents.contains("Alice"));
+
+        let archives = db.list_archives_for_namespace("ns-1").await.unwrap();
+        assert_eq!(archives.len(), 1);
+        assert_eq!(archives[0].archive_format, "jsonl_zip");
+        assert_eq!(archives[0].table_count, 1);
+        assert_eq!(archives[0].row_count, 1);
 
         let table_exists: Option<(String,)> = sqlx::query_as(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='ext_test_ns_items'",
@@ -957,5 +1075,53 @@ mod tests {
 
         let result = manager.reserve_namespace(&ns2).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn quarantine_after_threshold_failures() {
+        let (db, manager) = setup().await;
+        let ns = make_namespace_record("ns-q", "test.ext", "ext_q_");
+        manager.reserve_namespace(&ns).await.unwrap();
+
+        let bad_migration = vec![MigrationInput {
+            record_id: "mig-bad".into(),
+            namespace_id: "ns-q".into(),
+            extension_id: "test.ext".into(),
+            extension_version: "1.0.0".into(),
+            migration_id: "001_bad".into(),
+            path: "storage/migrations/001_bad.sql".into(),
+            raw_checksum: "abc".into(),
+            expanded_checksum: "def".into(),
+            expanded_sql: "INVALID SQL STATEMENT".into(),
+            objects: vec![],
+        }];
+
+        for _ in 0..3 {
+            let _ = manager
+                .apply_plan("ns-q", "new_install", &bad_migration)
+                .await;
+        }
+
+        let ns_record = db.get_namespace("ns-q").await.unwrap();
+        assert_eq!(ns_record.status, "quarantined_storage");
+    }
+
+    #[tokio::test]
+    async fn update_namespace_policy_changes_record() {
+        let (db, manager) = setup().await;
+        let ns = make_namespace_record("ns-pol", "test.ext", "ext_pol_");
+        manager.reserve_namespace(&ns).await.unwrap();
+
+        let before = db.get_namespace("ns-pol").await.unwrap();
+        assert_eq!(before.uninstall_policy, "retain");
+
+        manager
+            .update_namespace_policy("ns-pol", "drop_namespace_objects")
+            .await
+            .unwrap();
+
+        let after = db.get_namespace("ns-pol").await.unwrap();
+        assert_eq!(after.uninstall_policy, "drop_namespace_objects");
+        assert_ne!(after.updated_at, before.updated_at);
     }
 }

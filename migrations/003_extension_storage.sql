@@ -57,6 +57,8 @@ CREATE TABLE IF NOT EXISTS extension_storage_archives (
     archive_format TEXT NOT NULL,
     archive_path TEXT NOT NULL,
     content_hash TEXT NOT NULL,
+    table_count INTEGER NOT NULL DEFAULT 0,
+    row_count INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
 

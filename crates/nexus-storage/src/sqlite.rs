@@ -681,6 +681,25 @@ impl Database for SqliteDatabase {
         Ok(())
     }
 
+    async fn update_namespace_policy(&self, id: &str, policy: &str) -> Result<(), StorageError> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let result = sqlx::query(
+            "UPDATE extension_storage_namespaces SET uninstall_policy = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(policy)
+        .bind(&now)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(StorageError::NotFound {
+                entity: "namespace".into(),
+                id: id.into(),
+            });
+        }
+        Ok(())
+    }
+
     async fn insert_migration_record(&self, r: &MigrationRecord) -> Result<(), StorageError> {
         sqlx::query(
             "INSERT INTO extension_storage_migrations (id, namespace_id, extension_id, \
@@ -824,13 +843,16 @@ impl Database for SqliteDatabase {
     async fn insert_archive(&self, r: &ArchiveRecord) -> Result<(), StorageError> {
         sqlx::query(
             "INSERT INTO extension_storage_archives (id, namespace_id, archive_format, \
-             archive_path, content_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+             archive_path, content_hash, table_count, row_count, created_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&r.id)
         .bind(&r.namespace_id)
         .bind(&r.archive_format)
         .bind(&r.archive_path)
         .bind(&r.content_hash)
+        .bind(r.table_count)
+        .bind(r.row_count)
         .bind(&r.created_at)
         .execute(&self.pool)
         .await?;
@@ -1022,15 +1044,19 @@ mod tests {
         let archive = ArchiveRecord {
             id: "arc-1".into(),
             namespace_id: "ns-1".into(),
-            archive_format: "sqlite_dump".into(),
-            archive_path: "/tmp/archive.sql".into(),
+            archive_format: "jsonl_zip".into(),
+            archive_path: "/tmp/archive.zip".into(),
             content_hash: "sha256abc".into(),
+            table_count: 3,
+            row_count: 42,
             created_at: "2026-01-01T00:00:00Z".into(),
         };
         db.insert_archive(&archive).await.unwrap();
 
         let archives = db.list_archives_for_namespace("ns-1").await.unwrap();
         assert_eq!(archives.len(), 1);
-        assert_eq!(archives[0].archive_format, "sqlite_dump");
+        assert_eq!(archives[0].archive_format, "jsonl_zip");
+        assert_eq!(archives[0].table_count, 3);
+        assert_eq!(archives[0].row_count, 42);
     }
 }
