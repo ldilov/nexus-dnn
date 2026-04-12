@@ -33,6 +33,6 @@ globalStyle(":focus-visible", {
 });
 
 globalStyle("::selection", {
-  backgroundColor: vars.color.accent.primary,
-  color: vars.color.text.inverse,
+  backgroundColor: vars.color.accent.primaryDim,
+  color: vars.color.text.primary,
 });
