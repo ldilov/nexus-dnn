@@ -36,3 +36,7 @@ globalStyle("::selection", {
   backgroundColor: vars.color.accent.primaryDim,
   color: vars.color.text.primary,
 });
+
+globalStyle(".material-symbols-outlined", {
+  fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24",
+});
