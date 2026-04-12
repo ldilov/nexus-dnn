@@ -75,12 +75,47 @@ pub fn build_plan(
     storage: &StorageContribution,
     applied_migrations: &[AppliedMigrationInfo],
 ) -> Result<StoragePlan, Vec<String>> {
+    build_plan_with_alias_check(
+        extension_id,
+        extension_version,
+        extension_root,
+        storage,
+        applied_migrations,
+        None,
+    )
+}
+
+pub fn build_plan_with_alias_check(
+    extension_id: &str,
+    extension_version: &str,
+    extension_root: &Path,
+    storage: &StorageContribution,
+    applied_migrations: &[AppliedMigrationInfo],
+    recorded_alias: Option<&str>,
+) -> Result<StoragePlan, Vec<String>> {
     let effective_prefix = storage.effective_prefix();
     let mut errors = Vec::new();
     let mut planned = Vec::new();
     let mut expected_objects = Vec::new();
 
     let is_upgrade = !applied_migrations.is_empty();
+
+    if is_upgrade {
+        if let Some(existing_alias) = recorded_alias
+            && existing_alias != storage.namespace.alias
+        {
+            errors.push(format!(
+                "namespace alias changed from '{}' to '{}' after initial install",
+                existing_alias, storage.namespace.alias
+            ));
+            return Err(errors);
+        }
+
+        detect_migration_reorder(&storage.migrations.files, applied_migrations, &mut errors);
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+    }
 
     for file_ref in &storage.migrations.files {
         let file_path = extension_root.join(&file_ref.path);
@@ -164,6 +199,33 @@ pub fn build_plan(
         migrations_to_apply: planned,
         expected_objects,
     })
+}
+
+fn detect_migration_reorder(
+    declared_files: &[super::contribution::MigrationFileRef],
+    applied: &[AppliedMigrationInfo],
+    errors: &mut Vec<String>,
+) {
+    let applied_ids: Vec<&str> = applied.iter().map(|m| m.migration_id.as_str()).collect();
+    let declared_ids: Vec<&str> = declared_files.iter().map(|f| f.id.as_str()).collect();
+
+    let mut declared_idx = 0;
+    for applied_id in &applied_ids {
+        loop {
+            if declared_idx >= declared_ids.len() {
+                errors.push(format!(
+                    "previously applied migration '{}' no longer present in manifest",
+                    applied_id
+                ));
+                return;
+            }
+            if declared_ids[declared_idx] == *applied_id {
+                declared_idx += 1;
+                break;
+            }
+            declared_idx += 1;
+        }
+    }
 }
 
 fn extracted_object_type_str(obj: &ExtractedObject) -> String {
@@ -335,5 +397,139 @@ mod tests {
         assert_eq!(hash.len(), 64);
         assert_eq!(sha256_hex(b"hello"), hash);
         assert_ne!(sha256_hex(b"world"), hash);
+    }
+
+    #[test]
+    fn upgrade_v1_to_v2_only_applies_new_migration() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        let sql1 = "CREATE TABLE ext_test_ns_items (id TEXT PRIMARY KEY);";
+        let sql2 = "CREATE TABLE ext_test_ns_logs (id TEXT PRIMARY KEY);";
+        let sql3 = "CREATE TABLE ext_test_ns_events (id TEXT PRIMARY KEY);";
+        write_migration(root, "storage/migrations/001_init.sql", sql1);
+        write_migration(root, "storage/migrations/002_logs.sql", sql2);
+        write_migration(root, "storage/migrations/003_events.sql", sql3);
+
+        let storage = make_storage(
+            "test_ns",
+            vec![
+                MigrationFileRef {
+                    id: "001_init".into(),
+                    path: "storage/migrations/001_init.sql".into(),
+                },
+                MigrationFileRef {
+                    id: "002_logs".into(),
+                    path: "storage/migrations/002_logs.sql".into(),
+                },
+                MigrationFileRef {
+                    id: "003_events".into(),
+                    path: "storage/migrations/003_events.sql".into(),
+                },
+            ],
+        );
+
+        let applied = vec![
+            AppliedMigrationInfo {
+                migration_id: "001_init".into(),
+                raw_checksum_sha256: sha256_hex(sql1.as_bytes()),
+            },
+            AppliedMigrationInfo {
+                migration_id: "002_logs".into(),
+                raw_checksum_sha256: sha256_hex(sql2.as_bytes()),
+            },
+        ];
+
+        let plan = build_plan("test.ext", "2.0.0", root, &storage, &applied).unwrap();
+        assert!(matches!(plan.action, PlanAction::Upgrade));
+        assert!(matches!(
+            plan.migrations_to_apply[0].action,
+            MigrationAction::Skip
+        ));
+        assert!(matches!(
+            plan.migrations_to_apply[1].action,
+            MigrationAction::Skip
+        ));
+        assert!(matches!(
+            plan.migrations_to_apply[2].action,
+            MigrationAction::Apply
+        ));
+        assert_eq!(plan.expected_objects.len(), 1);
+        assert_eq!(plan.expected_objects[0].object_name, "ext_test_ns_events");
+    }
+
+    #[test]
+    fn reordered_migration_ids_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        let sql1 = "CREATE TABLE ext_test_ns_items (id TEXT PRIMARY KEY);";
+        let sql2 = "CREATE TABLE ext_test_ns_logs (id TEXT PRIMARY KEY);";
+        write_migration(root, "storage/migrations/001_init.sql", sql1);
+        write_migration(root, "storage/migrations/002_logs.sql", sql2);
+
+        let storage = make_storage(
+            "test_ns",
+            vec![
+                MigrationFileRef {
+                    id: "002_logs".into(),
+                    path: "storage/migrations/002_logs.sql".into(),
+                },
+                MigrationFileRef {
+                    id: "001_init".into(),
+                    path: "storage/migrations/001_init.sql".into(),
+                },
+            ],
+        );
+
+        let applied = vec![
+            AppliedMigrationInfo {
+                migration_id: "001_init".into(),
+                raw_checksum_sha256: sha256_hex(sql1.as_bytes()),
+            },
+            AppliedMigrationInfo {
+                migration_id: "002_logs".into(),
+                raw_checksum_sha256: sha256_hex(sql2.as_bytes()),
+            },
+        ];
+
+        let result = build_plan("test.ext", "2.0.0", root, &storage, &applied);
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert!(errors.iter().any(|e| e.contains("no longer present")));
+    }
+
+    #[test]
+    fn alias_change_after_install_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        let sql1 = "CREATE TABLE ext_new_ns_items (id TEXT PRIMARY KEY);";
+        write_migration(root, "storage/migrations/001_init.sql", sql1);
+
+        let storage = make_storage(
+            "new_ns",
+            vec![MigrationFileRef {
+                id: "001_init".into(),
+                path: "storage/migrations/001_init.sql".into(),
+            }],
+        );
+
+        let applied = vec![AppliedMigrationInfo {
+            migration_id: "001_init".into(),
+            raw_checksum_sha256: sha256_hex(sql1.as_bytes()),
+        }];
+
+        let result = build_plan_with_alias_check(
+            "test.ext",
+            "2.0.0",
+            root,
+            &storage,
+            &applied,
+            Some("old_ns"),
+        );
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert!(errors.iter().any(|e| e.contains("alias changed")));
     }
 }
