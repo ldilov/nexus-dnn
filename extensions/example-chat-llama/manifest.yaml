@@ -1,0 +1,44 @@
+spec_version: "0.2"
+
+extension:
+  id: "example.chat.llama"
+  version: "0.4.0"
+  name: "Local Chat for llama.cpp"
+  description: "Chat-oriented local LLM operators, recipes, and a chat history projection."
+  publisher: "example"
+
+compatibility:
+  host_api: ">=0.2.0, <0.3.0"
+  protocol: ">=0.2.0, <0.3.0"
+  platforms:
+    - "linux-x64"
+    - "windows-x64"
+
+runtime:
+  family: "native"
+  entrypoint: "worker/llama_adapter"
+
+capabilities:
+  - "model.registry.read"
+  - "network.loopback"
+  - "storage.schema_contribute"
+
+storage:
+  spec_version: "0.1"
+  engine: "sqlite"
+  namespace:
+    alias: "chat_llama"
+    prefix_mode: "host_derived"
+  migrations:
+    strategy: "sql_file_list"
+    files:
+      - id: "001_init"
+        path: "storage/migrations/001_init.sql"
+      - id: "002_indexes"
+        path: "storage/migrations/002_indexes.sql"
+  sql_profile:
+    profile: "nexus_sqlite_v1"
+  uninstall:
+    policy: "retain"
+  runtime_access:
+    mode: "host_api_only"
