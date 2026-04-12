@@ -70,4 +70,51 @@ pub enum NexusEvent {
     ExtensionQuarantined {
         extension_id: String,
     },
+    StorageNamespaceReserved {
+        extension_id: String,
+        namespace_id: String,
+        effective_prefix: String,
+    },
+    StorageValidationStarted {
+        extension_id: String,
+    },
+    StorageValidationFailed {
+        extension_id: String,
+        errors: Vec<String>,
+    },
+    StoragePlanReady {
+        extension_id: String,
+        action: String,
+    },
+    StorageApplyStarted {
+        extension_id: String,
+        namespace_id: String,
+    },
+    StorageMigrationApplied {
+        extension_id: String,
+        namespace_id: String,
+        migration_id: String,
+    },
+    StorageApplyFailed {
+        extension_id: String,
+        namespace_id: String,
+        error: String,
+    },
+    StorageIntegrityVerified {
+        extension_id: String,
+        namespace_id: String,
+    },
+    StorageIntegrityDriftDetected {
+        extension_id: String,
+        namespace_id: String,
+        objects: Vec<String>,
+    },
+    StorageUninstallStarted {
+        extension_id: String,
+        namespace_id: String,
+    },
+    StorageUninstallCompleted {
+        extension_id: String,
+        namespace_id: String,
+    },
 }
