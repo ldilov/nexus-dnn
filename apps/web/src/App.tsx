@@ -71,31 +71,14 @@ function SecondaryPanel() {
   const ActiveContent = SECONDARY_CONTENT[activeTab];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ display: "flex", flexShrink: 0 }}>
-        {SECONDARY_TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setActiveTab(t.id)}
-            style={{
-              flex: 1,
-              padding: "8px 4px",
-              fontSize: "11px",
-              fontWeight: t.id === activeTab ? 600 : 400,
-              border: "none",
-              backgroundColor: "transparent",
-              cursor: "pointer",
-              textAlign: "center",
-              opacity: t.id === activeTab ? 1 : 0.6,
-              borderBottom: t.id === activeTab ? "2px solid currentColor" : "2px solid transparent",
-              color: "inherit",
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-      <div style={{ flex: 1, overflow: "auto" }}>
+    <div className={styles.canvasColumn}>
+      <Tabs
+        items={SECONDARY_TABS}
+        activeId={activeTab}
+        onSelect={setActiveTab}
+        variant="underline"
+      />
+      <div className={styles.canvasContent}>
         <ActiveContent />
       </div>
     </div>
