@@ -5,7 +5,10 @@ use tower_http::trace::TraceLayer;
 
 use crate::AppState;
 use crate::frontend;
-use crate::handlers::{artifacts, extensions, health, metrics, recipes, runs, storage_contributions, system, tools, ui_contributions, workflows};
+use crate::handlers::{
+    artifacts, extensions, health, metrics, recipes, runs, storage_contributions, system, tools,
+    ui_contributions, workflows,
+};
 use crate::ws;
 
 pub fn build(state: AppState) -> Router {
@@ -75,7 +78,10 @@ pub fn build(state: AppState) -> Router {
             "/workflows",
             post(workflows::create_workflow).get(workflows::list_workflows),
         )
-        .route("/workflows/validate", post(workflows::validate_workflow_only))
+        .route(
+            "/workflows/validate",
+            post(workflows::validate_workflow_only),
+        )
         .route(
             "/workflows/{id}",
             get(workflows::get_workflow)

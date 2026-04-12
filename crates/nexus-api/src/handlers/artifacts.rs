@@ -32,7 +32,9 @@ pub async fn list_artifacts(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    Ok(ApiResponse::ok(serde_json::json!({ "artifacts": artifacts })))
+    Ok(ApiResponse::ok(
+        serde_json::json!({ "artifacts": artifacts }),
+    ))
 }
 
 pub async fn get_artifact(
@@ -58,10 +60,7 @@ pub async fn get_artifact(
     Ok(ApiResponse::ok(value))
 }
 
-async fn fetch_viewer_candidates(
-    state: &AppState,
-    artifact_type: &str,
-) -> Vec<serde_json::Value> {
+async fn fetch_viewer_candidates(state: &AppState, artifact_type: &str) -> Vec<serde_json::Value> {
     let contributions = state
         .db
         .list_ui_contributions_by_kind("artifact_viewer")

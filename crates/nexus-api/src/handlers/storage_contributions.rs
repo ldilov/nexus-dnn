@@ -1,5 +1,5 @@
-use axum::extract::{Path, State};
 use axum::Json;
+use axum::extract::{Path, State};
 use serde::Deserialize;
 
 use nexus_storage::Database;
@@ -23,9 +23,7 @@ pub async fn get_storage_status(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| {
-            ApiError::NotFound(format!(
-                "no storage namespace for extension {extension_id}"
-            ))
+            ApiError::NotFound(format!("no storage namespace for extension {extension_id}"))
         })?;
 
     let migrations = state
@@ -103,9 +101,7 @@ pub async fn validate_storage(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| {
-            ApiError::NotFound(format!(
-                "no storage namespace for extension {extension_id}"
-            ))
+            ApiError::NotFound(format!("no storage namespace for extension {extension_id}"))
         })?;
 
     let migrations = state
@@ -119,10 +115,7 @@ pub async fn validate_storage(
         .filter(|m| m.status == "applied")
         .map(|m| {
             nexus_extension::storage::sql_validator::expand_prefix(
-                &format!(
-                    "-- migration {} placeholder\nSELECT 1;",
-                    m.migration_id
-                ),
+                &format!("-- migration {} placeholder\nSELECT 1;", m.migration_id),
                 &ns.effective_prefix,
             )
         })
@@ -167,9 +160,7 @@ pub async fn apply_storage(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| {
-            ApiError::NotFound(format!(
-                "no storage namespace for extension {extension_id}"
-            ))
+            ApiError::NotFound(format!("no storage namespace for extension {extension_id}"))
         })?;
 
     let _ = storage_manager;
@@ -198,9 +189,7 @@ pub async fn verify_storage(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| {
-            ApiError::NotFound(format!(
-                "no storage namespace for extension {extension_id}"
-            ))
+            ApiError::NotFound(format!("no storage namespace for extension {extension_id}"))
         })?;
 
     let report = storage_manager
@@ -238,9 +227,7 @@ pub async fn uninstall_storage(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| {
-            ApiError::NotFound(format!(
-                "no storage namespace for extension {extension_id}"
-            ))
+            ApiError::NotFound(format!("no storage namespace for extension {extension_id}"))
         })?;
 
     let policy = body

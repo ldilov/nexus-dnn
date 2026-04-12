@@ -5,12 +5,7 @@ use sqlparser::ast::{
 use sqlparser::dialect::SQLiteDialect;
 use sqlparser::parser::Parser;
 
-const RESERVED_PREFIXES: &[&str] = &[
-    "ext_sqlite_",
-    "ext_host_",
-    "ext_nexus_",
-    "ext_core_",
-];
+const RESERVED_PREFIXES: &[&str] = &["ext_sqlite_", "ext_host_", "ext_nexus_", "ext_core_"];
 
 #[derive(Debug, Clone)]
 pub struct ExtractedObject {
@@ -69,11 +64,7 @@ pub fn validate_sql(sql: &str, effective_prefix: &str) -> SqlValidationReport {
     report
 }
 
-fn validate_statement(
-    stmt: &Statement,
-    effective_prefix: &str,
-    report: &mut SqlValidationReport,
-) {
+fn validate_statement(stmt: &Statement, effective_prefix: &str, report: &mut SqlValidationReport) {
     match stmt {
         Statement::CreateTable(create) => {
             let table_name = object_name_to_string(&create.name);
@@ -82,7 +73,12 @@ fn validate_statement(
                 name: table_name,
                 object_type: ObjectType::Table,
             });
-            validate_fk_constraints(&create.columns, &create.constraints, effective_prefix, report);
+            validate_fk_constraints(
+                &create.columns,
+                &create.constraints,
+                effective_prefix,
+                report,
+            );
         }
         Statement::CreateIndex(create_index) => {
             if let Some(ref index_name) = create_index.name {
@@ -100,9 +96,9 @@ fn validate_statement(
                 match op {
                     AlterTableOperation::AddColumn { .. } => {}
                     other => {
-                        report.errors.push(format!(
-                            "ALTER TABLE operation not allowed: {other}"
-                        ));
+                        report
+                            .errors
+                            .push(format!("ALTER TABLE operation not allowed: {other}"));
                     }
                 }
             }
@@ -150,10 +146,7 @@ fn validate_fk_constraints(
 ) {
     for col in columns {
         for ColumnOptionDef { option, .. } in &col.options {
-            if let ColumnOption::ForeignKey {
-                foreign_table, ..
-            } = option
-            {
+            if let ColumnOption::ForeignKey { foreign_table, .. } = option {
                 let ref_table = object_name_to_string(foreign_table);
                 if !ref_table.starts_with(effective_prefix) {
                     report.errors.push(format!(
@@ -166,10 +159,7 @@ fn validate_fk_constraints(
     }
 
     for constraint in constraints {
-        if let TableConstraint::ForeignKey {
-            foreign_table, ..
-        } = constraint
-        {
+        if let TableConstraint::ForeignKey { foreign_table, .. } = constraint {
             let ref_table = object_name_to_string(foreign_table);
             if !ref_table.starts_with(effective_prefix) {
                 report.errors.push(format!(
@@ -257,7 +247,12 @@ mod tests {
         let sql = "CREATE TABLE wrong_prefix_table (id TEXT PRIMARY KEY);";
         let report = validate_sql(sql, PREFIX);
         assert!(!report.errors.is_empty());
-        assert!(report.errors.iter().any(|e| e.contains("does not start with")));
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("does not start with"))
+        );
     }
 
     #[test]
@@ -268,7 +263,12 @@ mod tests {
         );";
         let report = validate_sql(sql, PREFIX);
         assert!(!report.errors.is_empty());
-        assert!(report.errors.iter().any(|e| e.contains("crosses namespace boundary")));
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("crosses namespace boundary"))
+        );
     }
 
     #[test]
@@ -319,7 +319,12 @@ mod tests {
         );";
         let report = validate_sql(sql, PREFIX);
         assert!(!report.errors.is_empty());
-        assert!(report.errors.iter().any(|e| e.contains("crosses namespace boundary")));
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("crosses namespace boundary"))
+        );
     }
 
     #[test]
@@ -356,13 +361,17 @@ mod tests {
         let sql = "CREATE INDEX ext_chat_llama_threads_updated ON ext_chat_llama_threads (id);";
         let report = validate_sql(sql, PREFIX);
         assert!(!report.errors.is_empty());
-        assert!(report.errors.iter().any(|e| e.contains("must match pattern")));
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("must match pattern"))
+        );
     }
 
     #[test]
     fn index_name_with_valid_idx_prefix_accepted() {
-        let sql =
-            "CREATE INDEX ext_chat_llama_idx_updated_at ON ext_chat_llama_threads (id);";
+        let sql = "CREATE INDEX ext_chat_llama_idx_updated_at ON ext_chat_llama_threads (id);";
         let report = validate_sql(sql, PREFIX);
         assert!(report.errors.is_empty(), "errors: {:?}", report.errors);
     }
@@ -381,7 +390,12 @@ mod tests {
         let sql = "CREATE TABLE my_private_table (id TEXT PRIMARY KEY);";
         let report = validate_sql(sql, PREFIX);
         assert!(!report.errors.is_empty());
-        assert!(report.errors.iter().any(|e| e.contains("does not start with")));
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("does not start with"))
+        );
     }
 
     #[test]
@@ -392,6 +406,11 @@ mod tests {
         );";
         let report = validate_sql(sql, PREFIX);
         assert!(!report.errors.is_empty());
-        assert!(report.errors.iter().any(|e| e.contains("crosses namespace boundary")));
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("crosses namespace boundary"))
+        );
     }
 }

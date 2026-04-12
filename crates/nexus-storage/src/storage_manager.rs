@@ -74,10 +74,7 @@ impl StorageManager {
         &self.db
     }
 
-    pub async fn reserve_namespace(
-        &self,
-        record: &NamespaceRecord,
-    ) -> Result<(), StorageError> {
+    pub async fn reserve_namespace(&self, record: &NamespaceRecord) -> Result<(), StorageError> {
         let prefix_pattern = format!("{}%", record.effective_prefix);
         let collision: Option<(String,)> = sqlx::query_as(
             "SELECT name FROM sqlite_master WHERE type IN ('table', 'index') AND name LIKE ?1 \
@@ -115,13 +112,11 @@ impl StorageManager {
 
         for migration in migrations {
             let savepoint_name = format!("sp_{}", migration.migration_id);
-            tx.execute(
-                sqlx::query(&format!("SAVEPOINT {savepoint_name}"))
-            )
-            .await
-            .map_err(|e| StorageError::ApplyFailed {
-                detail: format!("SAVEPOINT failed for {}: {e}", migration.migration_id),
-            })?;
+            tx.execute(sqlx::query(&format!("SAVEPOINT {savepoint_name}")))
+                .await
+                .map_err(|e| StorageError::ApplyFailed {
+                    detail: format!("SAVEPOINT failed for {}: {e}", migration.migration_id),
+                })?;
 
             let exec_result = tx.execute(sqlx::query(&migration.expanded_sql)).await;
 
@@ -190,26 +185,20 @@ impl StorageManager {
                         objects_count += 1;
                     }
 
-                    tx.execute(
-                        sqlx::query(&format!("RELEASE {savepoint_name}"))
-                    )
-                    .await
-                    .map_err(|e| StorageError::ApplyFailed {
-                        detail: format!("RELEASE failed for {}: {e}", migration.migration_id),
-                    })?;
+                    tx.execute(sqlx::query(&format!("RELEASE {savepoint_name}")))
+                        .await
+                        .map_err(|e| StorageError::ApplyFailed {
+                            detail: format!("RELEASE failed for {}: {e}", migration.migration_id),
+                        })?;
                     applied_count += 1;
                 }
                 Err(e) => {
-                    let _ = tx.execute(
-                        sqlx::query(&format!("ROLLBACK TO {savepoint_name}"))
-                    )
-                    .await;
+                    let _ = tx
+                        .execute(sqlx::query(&format!("ROLLBACK TO {savepoint_name}")))
+                        .await;
                     tx.rollback().await?;
                     return Err(StorageError::ApplyFailed {
-                        detail: format!(
-                            "migration '{}' failed: {e}",
-                            migration.migration_id
-                        ),
+                        detail: format!("migration '{}' failed: {e}", migration.migration_id),
                     });
                 }
             }
@@ -231,15 +220,11 @@ impl StorageManager {
         })
     }
 
-    pub async fn validate_dry_run(
-        &self,
-        migrations_sql: &[String],
-    ) -> Result<(), StorageError> {
-        let temp_pool =
-            sqlx::sqlite::SqlitePool::connect("sqlite::memory:").await.map_err(|e| {
-                StorageError::DryRunFailed {
-                    detail: format!("failed to create in-memory DB: {e}"),
-                }
+    pub async fn validate_dry_run(&self, migrations_sql: &[String]) -> Result<(), StorageError> {
+        let temp_pool = sqlx::sqlite::SqlitePool::connect("sqlite::memory:")
+            .await
+            .map_err(|e| StorageError::DryRunFailed {
+                detail: format!("failed to create in-memory DB: {e}"),
             })?;
 
         let host_migrations = [
@@ -293,10 +278,7 @@ impl StorageManager {
         }
     }
 
-    async fn uninstall_retain(
-        &self,
-        namespace_id: &str,
-    ) -> Result<UninstallReport, StorageError> {
+    async fn uninstall_retain(&self, namespace_id: &str) -> Result<UninstallReport, StorageError> {
         self.db
             .update_namespace_status(namespace_id, "uninstalled_retain")
             .await?;
@@ -309,10 +291,7 @@ impl StorageManager {
         })
     }
 
-    async fn uninstall_drop(
-        &self,
-        namespace_id: &str,
-    ) -> Result<UninstallReport, StorageError> {
+    async fn uninstall_drop(&self, namespace_id: &str) -> Result<UninstallReport, StorageError> {
         let objects = self.db.list_objects_for_namespace(namespace_id).await?;
 
         let mut tables: Vec<&ObjectRecord> = objects
@@ -331,22 +310,24 @@ impl StorageManager {
 
         for idx in &indexes {
             let sql = format!("DROP INDEX IF EXISTS {}", idx.object_name);
-            sqlx::query(&sql).execute(pool).await.map_err(|e| {
-                StorageError::ApplyFailed {
+            sqlx::query(&sql)
+                .execute(pool)
+                .await
+                .map_err(|e| StorageError::ApplyFailed {
                     detail: format!("failed to drop index {}: {e}", idx.object_name),
-                }
-            })?;
+                })?;
             self.db.update_object_status(&idx.id, "dropped").await?;
             dropped += 1;
         }
 
         for tbl in &tables {
             let sql = format!("DROP TABLE IF EXISTS {}", tbl.object_name);
-            sqlx::query(&sql).execute(pool).await.map_err(|e| {
-                StorageError::ApplyFailed {
+            sqlx::query(&sql)
+                .execute(pool)
+                .await
+                .map_err(|e| StorageError::ApplyFailed {
                     detail: format!("failed to drop table {}: {e}", tbl.object_name),
-                }
-            })?;
+                })?;
             self.db.update_object_status(&tbl.id, "dropped").await?;
             dropped += 1;
         }
@@ -387,13 +368,11 @@ impl StorageManager {
         let pool = self.db.pool();
 
         for tbl in &tables {
-            let rows: Vec<(String,)> = sqlx::query_as(&format!(
-                "SELECT json_object(*) FROM {}",
-                tbl.object_name
-            ))
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default();
+            let rows: Vec<(String,)> =
+                sqlx::query_as(&format!("SELECT json_object(*) FROM {}", tbl.object_name))
+                    .fetch_all(pool)
+                    .await
+                    .unwrap_or_default();
 
             let json_lines: Vec<String> = rows.into_iter().map(|(row,)| row).collect();
             let file_path = archive_dir.join(format!("{}.json", tbl.object_name));
@@ -445,19 +424,17 @@ impl StorageManager {
             .filter(|o| o.status == "present")
             .collect();
 
-        let actual_names: std::collections::HashSet<String> =
-            actual_objects.iter().map(|(name, _)| name.clone()).collect();
-        let recorded_names: std::collections::HashSet<String> =
-            present_objects.iter().map(|o| o.object_name.clone()).collect();
+        let actual_names: std::collections::HashSet<String> = actual_objects
+            .iter()
+            .map(|(name, _)| name.clone())
+            .collect();
+        let recorded_names: std::collections::HashSet<String> = present_objects
+            .iter()
+            .map(|o| o.object_name.clone())
+            .collect();
 
-        let missing: Vec<String> = recorded_names
-            .difference(&actual_names)
-            .cloned()
-            .collect();
-        let unexpected: Vec<String> = actual_names
-            .difference(&recorded_names)
-            .cloned()
-            .collect();
+        let missing: Vec<String> = recorded_names.difference(&actual_names).cloned().collect();
+        let unexpected: Vec<String> = actual_names.difference(&recorded_names).cloned().collect();
 
         for obj in &present_objects {
             if missing.contains(&obj.object_name) {
@@ -549,8 +526,7 @@ mod tests {
             path: "storage/migrations/001_init.sql".into(),
             raw_checksum: "abc123".into(),
             expanded_checksum: "def456".into(),
-            expanded_sql: "CREATE TABLE ext_test_ns_items (id TEXT PRIMARY KEY, name TEXT);"
-                .into(),
+            expanded_sql: "CREATE TABLE ext_test_ns_items (id TEXT PRIMARY KEY, name TEXT);".into(),
             objects: vec![ObjectInput {
                 record_id: "obj-1".into(),
                 object_name: "ext_test_ns_items".into(),
@@ -608,9 +584,7 @@ mod tests {
     #[tokio::test]
     async fn dry_run_validates_without_affecting_real_db() {
         let (_db, manager) = setup().await;
-        let sql = vec![
-            "CREATE TABLE ext_test_ns_items (id TEXT PRIMARY KEY);".to_owned(),
-        ];
+        let sql = vec!["CREATE TABLE ext_test_ns_items (id TEXT PRIMARY KEY);".to_owned()];
         let result = manager.validate_dry_run(&sql).await;
         assert!(result.is_ok());
     }
@@ -637,8 +611,7 @@ mod tests {
             path: "storage/migrations/001_init.sql".into(),
             raw_checksum: "abc123".into(),
             expanded_checksum: "def456".into(),
-            expanded_sql: "CREATE TABLE ext_test_ns_items (id TEXT PRIMARY KEY, name TEXT);"
-                .into(),
+            expanded_sql: "CREATE TABLE ext_test_ns_items (id TEXT PRIMARY KEY, name TEXT);".into(),
             objects: vec![ObjectInput {
                 record_id: "obj-1".into(),
                 object_name: "ext_test_ns_items".into(),
@@ -738,8 +711,7 @@ mod tests {
             path: "storage/migrations/001_init.sql".into(),
             raw_checksum: "abc123".into(),
             expanded_checksum: "def456".into(),
-            expanded_sql: "CREATE TABLE ext_test_ns_items (id TEXT PRIMARY KEY, name TEXT);"
-                .into(),
+            expanded_sql: "CREATE TABLE ext_test_ns_items (id TEXT PRIMARY KEY, name TEXT);".into(),
             objects: vec![ObjectInput {
                 record_id: "obj-1".into(),
                 object_name: "ext_test_ns_items".into(),
@@ -797,7 +769,11 @@ mod tests {
 
         let report = manager.verify_namespace("ns-1").await.unwrap();
         assert_eq!(report.status, "repair_required");
-        assert!(report.objects_missing.contains(&"ext_test_ns_items".to_owned()));
+        assert!(
+            report
+                .objects_missing
+                .contains(&"ext_test_ns_items".to_owned())
+        );
 
         let ns = db.get_namespace("ns-1").await.unwrap();
         assert_eq!(ns.status, "repair_required");

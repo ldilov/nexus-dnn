@@ -106,12 +106,7 @@ async fn fetch_filtered_contributions(
     };
 
     if let Some(target_type) = &filters.target_type {
-        records.retain(|r| {
-            r.target
-                .as_ref()
-                .map(|t| t == target_type)
-                .unwrap_or(false)
-        });
+        records.retain(|r| r.target.as_ref().map(|t| t == target_type).unwrap_or(false));
     }
 
     Ok(records)

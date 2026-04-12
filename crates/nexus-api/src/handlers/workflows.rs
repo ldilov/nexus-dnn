@@ -119,7 +119,9 @@ pub async fn list_workflows(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    Ok(ApiResponse::ok(serde_json::json!({ "workflows": workflows })))
+    Ok(ApiResponse::ok(
+        serde_json::json!({ "workflows": workflows }),
+    ))
 }
 
 pub async fn get_workflow(
