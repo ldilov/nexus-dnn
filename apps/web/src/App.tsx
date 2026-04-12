@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { Shell } from "./layout/shell";
-import { TopBar } from "./layout/top_bar";
+import { TopBar, type ViewId } from "./layout/top_bar";
 import { Sidebar, type NavItemId } from "./layout/sidebar";
 import { RightInspector } from "./layout/right_inspector";
 import { Tabs } from "./components/tabs";
@@ -10,8 +10,8 @@ import { ExtensionList } from "./catalog/extension_list";
 import { StageView } from "./views/stage_view";
 import { GraphView } from "./views/graph_view";
 import { RunTraceView } from "./views/run_trace_view";
-import { ArtifactBrowser } from "./views/artifact_browser";
 import { useEventStream } from "./hooks/use_event_stream";
+import { usePollingMetrics } from "./hooks/use_polling_metrics";
 import {
   fetchWorkflows,
   fetchWorkflow,
@@ -21,17 +21,7 @@ import {
 } from "./api/client";
 import * as styles from "./app.css";
 
-type ViewId = "stage" | "graph" | "trace" | "timeline" | "artifacts";
-
 type BottomTabId = "logs" | "events" | "problems" | "workers";
-
-const VIEW_TABS = [
-  { id: "stage" as const, label: "Stage" },
-  { id: "graph" as const, label: "Graph" },
-  { id: "trace" as const, label: "Trace" },
-  { id: "timeline" as const, label: "Timeline" },
-  { id: "artifacts" as const, label: "Artifacts" },
-] as const;
 
 const BOTTOM_TABS = [
   { id: "logs" as const, label: "Logs" },
@@ -92,12 +82,13 @@ export function App() {
   const [activeView, setActiveView] = useState<ViewId>("stage");
   const [activeBottomTab, setActiveBottomTab] = useState<BottomTabId>("logs");
   const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
-  const [runId, setRunId] = useState<string | null>(null);
+  const [_runId, setRunId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const { events } = useEventStream();
   const nodeProgress = latestProgressByNode(events);
+  const { metrics, connected } = usePollingMetrics();
 
   useEffect(() => {
     fetchWorkflows()
@@ -143,15 +134,10 @@ export function App() {
     if (activeNav === "workflows") {
       return (
         <div className={styles.canvasColumn}>
-          <div className={styles.canvasTabBar}>
-            <Tabs
-              items={VIEW_TABS}
-              activeId={activeView}
-              onSelect={setActiveView}
-              variant="segmented"
-            />
-          </div>
           <div className={styles.canvasContent}>
+            {activeView === "recipe" && (
+              <p className={styles.placeholderText}>Recipe view coming soon</p>
+            )}
             {activeView === "stage" && (
               <StageView
                 workflow={workflow}
@@ -167,7 +153,6 @@ export function App() {
             {activeView === "timeline" && (
               <p className={styles.placeholderText}>Timeline view coming soon</p>
             )}
-            {activeView === "artifacts" && <ArtifactBrowser runId={runId} />}
           </div>
         </div>
       );
@@ -204,6 +189,11 @@ export function App() {
       topBar={
         <TopBar
           projectName={workflow?.name ?? "Nexus DNN"}
+          activeView={activeView}
+          onViewChange={setActiveView}
+          showViewTabs={activeNav === "workflows"}
+          metrics={metrics}
+          metricsConnected={connected}
           onRun={handleRun}
           onCancel={handleCancel}
           onValidate={() => {}}
