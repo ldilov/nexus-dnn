@@ -3,30 +3,31 @@ import * as styles from "./shell.css";
 
 type ShellProps = {
   topBar: ReactNode;
-  iconRail: ReactNode;
-  secondaryPanel: ReactNode;
+  sidebar: ReactNode;
+  sidebarPinned: boolean;
   canvas: ReactNode;
   inspector: ReactNode;
   bottomDrawer: ReactNode;
-  secondaryPanelVisible?: boolean;
   inspectorVisible?: boolean;
   bottomDrawerVisible?: boolean;
 };
 
 export function Shell({
   topBar,
-  iconRail,
-  secondaryPanel,
+  sidebar,
+  sidebarPinned,
   canvas,
   inspector,
   bottomDrawer,
-  secondaryPanelVisible = true,
   inspectorVisible = true,
   bottomDrawerVisible = false,
 }: ShellProps) {
-  const secondaryCls = secondaryPanelVisible
-    ? styles.secondaryPanel
-    : `${styles.secondaryPanel} ${styles.secondaryPanelCollapsed}`;
+  const shellCls = [
+    styles.shellContainer,
+    sidebarPinned ? styles.shellContainerSidebarPinned : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const inspectorCls = inspectorVisible
     ? styles.inspector
@@ -37,13 +38,14 @@ export function Shell({
     : `${styles.bottomDrawer} ${styles.bottomDrawerCollapsed}`;
 
   return (
-    <div className={styles.shellContainer}>
-      <header className={styles.topBar}>{topBar}</header>
-      <nav className={styles.iconRail}>{iconRail}</nav>
-      <aside className={secondaryCls}>{secondaryPanel}</aside>
-      <main className={styles.canvas}>{canvas}</main>
-      <aside className={inspectorCls}>{inspector}</aside>
-      <section className={drawerCls}>{bottomDrawer}</section>
-    </div>
+    <>
+      {sidebar}
+      <div className={shellCls}>
+        <header className={styles.topBar}>{topBar}</header>
+        <main className={styles.canvas}>{canvas}</main>
+        <aside className={inspectorCls}>{inspector}</aside>
+        <section className={drawerCls}>{bottomDrawer}</section>
+      </div>
+    </>
   );
 }

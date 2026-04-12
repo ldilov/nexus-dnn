@@ -3,11 +3,17 @@ import { vars } from "../theme/contract.css";
 
 export const shellContainer = style({
   display: "grid",
-  gridTemplateColumns: "56px auto 1fr auto",
+  gridTemplateColumns: "1fr auto",
   gridTemplateRows: "48px 1fr auto",
   height: "100vh",
   backgroundColor: vars.color.bg.app,
   overflow: "hidden",
+  marginLeft: "64px",
+  transition: `margin-left ${vars.motion.durationNormal} cubic-bezier(0.4, 0, 0.2, 1)`,
+});
+
+export const shellContainerSidebarPinned = style({
+  marginLeft: "256px",
 });
 
 export const topBar = style({
@@ -21,40 +27,15 @@ export const topBar = style({
   zIndex: vars.z.base,
 });
 
-export const iconRail = style({
-  gridColumn: "1",
-  gridRow: "2 / -1",
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  paddingTop: vars.space.insetMd,
-  backgroundColor: vars.color.bg.panel,
-  width: "56px",
-  overflow: "hidden",
-});
-
-export const secondaryPanel = style({
-  gridColumn: "2",
-  gridRow: "2 / -1",
-  width: "240px",
-  backgroundColor: vars.color.bg.panel,
-  overflow: "auto",
-});
-
-export const secondaryPanelCollapsed = style({
-  width: "0px",
-  overflow: "hidden",
-});
-
 export const canvas = style({
-  gridColumn: "3",
+  gridColumn: "1",
   gridRow: "2",
   overflow: "auto",
   backgroundColor: vars.color.bg.canvas,
 });
 
 export const inspector = style({
-  gridColumn: "4",
+  gridColumn: "2",
   gridRow: "2 / -1",
   width: "320px",
   backgroundColor: vars.color.bg.panel,
@@ -67,7 +48,7 @@ export const inspectorCollapsed = style({
 });
 
 export const bottomDrawer = style({
-  gridColumn: "3",
+  gridColumn: "1",
   gridRow: "3",
   backgroundColor: vars.color.bg.panel,
   overflow: "hidden",
