@@ -3,6 +3,7 @@ pub mod error;
 pub mod records;
 mod row_mapping;
 pub mod sqlite;
+pub mod storage_manager;
 
 pub use database::Database;
 pub use error::StorageError;
@@ -12,3 +13,4 @@ pub use records::{
     RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord,
 };
 pub use sqlite::SqliteDatabase;
+pub use storage_manager::StorageManager;

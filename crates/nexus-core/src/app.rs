@@ -123,6 +123,10 @@ impl NexusApp {
             scheduler.clone(),
         ));
 
+        let storage_manager = std::sync::Arc::new(
+            nexus_storage::StorageManager::new(db.clone()),
+        );
+
         let app_for_health = Arc::new(self);
         let app_ref = Arc::clone(&app_for_health);
 
@@ -138,6 +142,7 @@ impl NexusApp {
             scheduler,
             artifact_store,
             extensions_dir: Some(extensions_dir),
+            storage_manager: Some(storage_manager),
         };
 
         let router = nexus_api::create_router(state);

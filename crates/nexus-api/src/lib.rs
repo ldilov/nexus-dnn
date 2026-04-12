@@ -17,7 +17,7 @@ use nexus_events::bus::EventBus;
 use nexus_extension::InMemoryExtensionRegistry;
 use nexus_run::DefaultRunEngine;
 use nexus_scheduler::Scheduler;
-use nexus_storage::SqliteDatabase;
+use nexus_storage::{SqliteDatabase, StorageManager};
 use nexus_worker::DefaultWorkerManager;
 
 #[derive(Clone)]
@@ -31,6 +31,7 @@ pub struct AppState {
     pub scheduler: Arc<dyn Scheduler>,
     pub artifact_store: Arc<FilesystemArtifactStore>,
     pub extensions_dir: Option<PathBuf>,
+    pub storage_manager: Option<Arc<StorageManager>>,
 }
 
 pub fn create_router(state: AppState) -> axum::Router {
