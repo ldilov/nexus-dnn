@@ -15,7 +15,7 @@ export const buttonRecipe = recipe({
     lineHeight: vars.font.lineHeight.tight,
     cursor: "pointer",
     whiteSpace: "nowrap",
-    transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}, border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+    transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
     ":disabled": {
       opacity: 0.5,
       cursor: "not-allowed",
@@ -29,12 +29,10 @@ export const buttonRecipe = recipe({
         ":hover": { backgroundColor: vars.color.accent.primaryHover },
       },
       secondary: {
-        backgroundColor: "transparent",
+        backgroundColor: vars.color.bg.elevated,
         color: vars.color.text.primary,
-        border: `1px solid ${vars.color.border.subtle}`,
         ":hover": {
           backgroundColor: vars.color.bg.hover,
-          borderColor: vars.color.border.strong,
         },
       },
       ghost: {

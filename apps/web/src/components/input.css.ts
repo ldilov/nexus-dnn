@@ -6,7 +6,8 @@ export const inputRecipe = recipe({
     width: "100%",
     backgroundColor: vars.color.bg.app,
     color: vars.color.text.primary,
-    border: `1px solid ${vars.color.border.subtle}`,
+    border: "none",
+    borderBottom: `1px solid ${vars.color.outline.variant}`,
     borderRadius: vars.radius.control,
     fontFamily: vars.font.ui,
     fontSize: vars.font.size.body,
@@ -17,7 +18,7 @@ export const inputRecipe = recipe({
       color: vars.color.text.muted,
     },
     ":focus": {
-      borderColor: vars.color.accent.primary,
+      borderBottomColor: vars.color.accent.primary,
       boxShadow: `0 0 0 2px ${vars.color.accent.primary}33`,
     },
     ":disabled": {
@@ -59,9 +60,9 @@ export const inputRecipe = recipe({
     },
     hasError: {
       true: {
-        borderColor: vars.color.error.base,
+        borderBottomColor: vars.color.error.base,
         ":focus": {
-          borderColor: vars.color.error.base,
+          borderBottomColor: vars.color.error.base,
           boxShadow: `0 0 0 2px ${vars.color.error.base}33`,
         },
       },

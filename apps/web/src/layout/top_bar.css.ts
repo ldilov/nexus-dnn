@@ -44,17 +44,17 @@ export const commandTrigger = style({
   gap: vars.space.gapSm,
   padding: `${vars.space.insetXs} ${vars.space.insetLg}`,
   backgroundColor: vars.color.bg.elevated,
-  border: `1px solid ${vars.color.border.subtle}`,
   borderRadius: vars.radius.control,
+  border: "none",
   color: vars.color.text.muted,
   fontSize: vars.font.size.bodySm,
   fontFamily: vars.font.ui,
   cursor: "pointer",
   minWidth: "240px",
   maxWidth: "280px",
-  transition: `border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {
-    borderColor: vars.color.border.strong,
+    backgroundColor: vars.color.bg.hover,
   },
 });
 

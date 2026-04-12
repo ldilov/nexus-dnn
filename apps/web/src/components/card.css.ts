@@ -5,9 +5,8 @@ export const cardRecipe = recipe({
   base: {
     backgroundColor: vars.color.bg.elevated,
     borderRadius: vars.radius.card,
-    border: `1px solid ${vars.color.border.subtle}`,
     padding: vars.space.insetLg,
-    transition: `border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}, transform ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+    transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}, transform ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   },
   variants: {
     variant: {
@@ -15,7 +14,7 @@ export const cardRecipe = recipe({
       interactive: {
         cursor: "pointer",
         ":hover": {
-          borderColor: vars.color.border.strong,
+          backgroundColor: vars.color.bg.hover,
           transform: "translateY(-1px)",
         },
       },
@@ -25,8 +24,7 @@ export const cardRecipe = recipe({
     },
     selected: {
       true: {
-        borderColor: vars.color.accent.primary,
-        boxShadow: `0 0 0 1px ${vars.color.accent.primary}4d`,
+        boxShadow: `0 0 12px 0 ${vars.color.accent.primaryDim}44`,
       },
     },
   },

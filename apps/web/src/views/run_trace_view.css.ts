@@ -14,7 +14,6 @@ export const eventRow = style({
   padding: vars.space.insetMd,
   borderRadius: vars.radius.control,
   backgroundColor: vars.color.bg.elevated,
-  border: `1px solid ${vars.color.border.subtle}`,
 });
 
 export const timestamp = style({

@@ -9,7 +9,6 @@ export const container = style({
 
 export const tabStrip = style({
   display: "flex",
-  borderBottom: `1px solid ${vars.color.border.subtle}`,
   flexShrink: 0,
 });
 
@@ -22,10 +21,9 @@ export const tab = style({
   color: vars.color.text.muted,
   backgroundColor: "transparent",
   border: "none",
-  borderBottom: "2px solid transparent",
   cursor: "pointer",
   textAlign: "center",
-  transition: "color 150ms, border-color 150ms",
+  transition: `color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {
     color: vars.color.text.primary,
   },
@@ -33,7 +31,7 @@ export const tab = style({
 
 export const tabActive = style({
   color: vars.color.accent.primary,
-  borderBottomColor: vars.color.accent.primary,
+  boxShadow: `inset 0 -2px 0 0 ${vars.color.accent.primary}`,
 });
 
 export const content = style({

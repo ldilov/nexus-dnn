@@ -26,7 +26,6 @@ export const tabRecipe = recipe({
         padding: `${vars.space.insetMd} ${vars.space.insetSm}`,
         fontSize: vars.font.size.bodySm,
         color: vars.color.text.muted,
-        borderBottom: "2px solid transparent",
         borderRadius: 0,
         ":hover": { color: vars.color.text.primary },
       },
@@ -50,7 +49,7 @@ export const tabRecipe = recipe({
       variants: { variant: "underline", active: true },
       style: {
         color: vars.color.accent.primary,
-        borderBottomColor: vars.color.accent.primary,
+        boxShadow: `inset 0 -2px 0 0 ${vars.color.accent.primary}`,
       },
     },
     {
