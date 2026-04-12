@@ -1,9 +1,12 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use nexus_events::bus::EventBus;
+use nexus_events::types::NexusEvent;
+
 use crate::database::Database;
 use crate::error::StorageError;
-use crate::records::{ArchiveRecord, MigrationRecord, NamespaceRecord, ObjectRecord};
+use crate::records::{ArchiveRecord, MigrationRecord, NamespaceRecord, ObjectRecord, OperationRecord};
 use crate::sqlite::SqliteDatabase;
 
 pub struct UninstallReport {
@@ -25,6 +28,7 @@ pub struct IntegrityReport {
 pub struct StorageManager {
     db: Arc<SqliteDatabase>,
     data_dir: Option<PathBuf>,
+    event_bus: Option<Arc<dyn EventBus>>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,14 +64,65 @@ pub struct ObjectInput {
 
 impl StorageManager {
     pub fn new(db: Arc<SqliteDatabase>) -> Self {
-        Self { db, data_dir: None }
+        Self {
+            db,
+            data_dir: None,
+            event_bus: None,
+        }
+    }
+
+    pub fn with_event_bus(db: Arc<SqliteDatabase>, event_bus: Arc<dyn EventBus>) -> Self {
+        Self {
+            db,
+            data_dir: None,
+            event_bus: Some(event_bus),
+        }
     }
 
     pub fn with_data_dir(db: Arc<SqliteDatabase>, data_dir: PathBuf) -> Self {
         Self {
             db,
             data_dir: Some(data_dir),
+            event_bus: None,
         }
+    }
+
+    fn emit(&self, event: NexusEvent) {
+        if let Some(ref bus) = self.event_bus {
+            bus.publish(event);
+        }
+    }
+
+    async fn journal_start(
+        &self,
+        namespace_id: &str,
+        operation_type: &str,
+    ) -> Result<String, StorageError> {
+        let op_id = format!("op-{namespace_id}-{}", chrono_now().replace(':', "-"));
+        let record = OperationRecord {
+            id: op_id.clone(),
+            namespace_id: namespace_id.to_owned(),
+            operation_type: operation_type.to_owned(),
+            status: "in_progress".to_owned(),
+            plan_json: None,
+            result_json: None,
+            started_at: chrono_now(),
+            completed_at: None,
+        };
+        self.db.insert_operation(&record).await?;
+        Ok(op_id)
+    }
+
+    async fn journal_complete(
+        &self,
+        op_id: &str,
+        status: &str,
+        result_json: Option<&str>,
+    ) {
+        let _ = self
+            .db
+            .update_operation(op_id, status, result_json, Some(&chrono_now()))
+            .await;
     }
 
     pub fn db(&self) -> &SqliteDatabase {
@@ -75,6 +130,8 @@ impl StorageManager {
     }
 
     pub async fn reserve_namespace(&self, record: &NamespaceRecord) -> Result<(), StorageError> {
+        let op_id = self.journal_start(&record.id, "reserve_namespace").await.ok();
+
         let prefix_pattern = format!("{}%", record.effective_prefix);
         let collision: Option<(String,)> = sqlx::query_as(
             "SELECT name FROM sqlite_master WHERE type IN ('table', 'index') AND name LIKE ?1 \
@@ -85,6 +142,9 @@ impl StorageManager {
         .await?;
 
         if let Some((colliding_name,)) = collision {
+            if let Some(ref id) = op_id {
+                self.journal_complete(id, "failed", None).await;
+            }
             return Err(StorageError::NamespaceCollision {
                 prefix: format!(
                     "{} (collides with existing object '{colliding_name}')",
@@ -93,7 +153,19 @@ impl StorageManager {
             });
         }
 
-        self.db.insert_namespace(record).await
+        self.db.insert_namespace(record).await?;
+
+        self.emit(NexusEvent::StorageNamespaceReserved {
+            extension_id: record.extension_id.clone(),
+            namespace_id: record.id.clone(),
+            effective_prefix: record.effective_prefix.clone(),
+        });
+
+        if let Some(ref id) = op_id {
+            self.journal_complete(id, "completed", None).await;
+        }
+
+        Ok(())
     }
 
     pub async fn apply_plan(
@@ -103,6 +175,18 @@ impl StorageManager {
         migrations: &[MigrationInput],
     ) -> Result<ApplyReport, StorageError> {
         use sqlx::Executor;
+
+        let ext_id = migrations
+            .first()
+            .map(|m| m.extension_id.as_str())
+            .unwrap_or("");
+
+        let op_id = self.journal_start(namespace_id, "apply_plan").await.ok();
+
+        self.emit(NexusEvent::StorageApplyStarted {
+            extension_id: ext_id.to_owned(),
+            namespace_id: namespace_id.to_owned(),
+        });
 
         let pool = self.db.pool();
         let mut tx = pool.begin().await?;
@@ -191,12 +275,29 @@ impl StorageManager {
                             detail: format!("RELEASE failed for {}: {e}", migration.migration_id),
                         })?;
                     applied_count += 1;
+
+                    self.emit(NexusEvent::StorageMigrationApplied {
+                        extension_id: migration.extension_id.clone(),
+                        namespace_id: migration.namespace_id.clone(),
+                        migration_id: migration.migration_id.clone(),
+                    });
                 }
                 Err(e) => {
                     let _ = tx
                         .execute(sqlx::query(&format!("ROLLBACK TO {savepoint_name}")))
                         .await;
                     tx.rollback().await?;
+
+                    self.emit(NexusEvent::StorageApplyFailed {
+                        extension_id: migration.extension_id.clone(),
+                        namespace_id: migration.namespace_id.clone(),
+                        error: e.to_string(),
+                    });
+
+                    if let Some(ref id) = op_id {
+                        self.journal_complete(id, "failed", None).await;
+                    }
+
                     return Err(StorageError::ApplyFailed {
                         detail: format!("migration '{}' failed: {e}", migration.migration_id),
                     });
@@ -210,6 +311,10 @@ impl StorageManager {
             .await?;
 
         tx.commit().await?;
+
+        if let Some(ref id) = op_id {
+            self.journal_complete(id, "completed", None).await;
+        }
 
         Ok(ApplyReport {
             namespace_id: namespace_id.to_owned(),
@@ -268,14 +373,42 @@ impl StorageManager {
         namespace_id: &str,
         policy: &str,
     ) -> Result<UninstallReport, StorageError> {
-        match policy {
+        let ns = self.db.get_namespace(namespace_id).await?;
+
+        let op_id = self.journal_start(namespace_id, "uninstall_namespace").await.ok();
+
+        self.emit(NexusEvent::StorageUninstallStarted {
+            extension_id: ns.extension_id.clone(),
+            namespace_id: namespace_id.to_owned(),
+        });
+
+        let result = match policy {
             "retain" => self.uninstall_retain(namespace_id).await,
             "drop_namespace_objects" => self.uninstall_drop(namespace_id).await,
             "archive_then_drop" => self.uninstall_archive_then_drop(namespace_id).await,
             other => Err(StorageError::ApplyFailed {
                 detail: format!("unknown uninstall policy: {other}"),
             }),
+        };
+
+        match &result {
+            Ok(_) => {
+                self.emit(NexusEvent::StorageUninstallCompleted {
+                    extension_id: ns.extension_id,
+                    namespace_id: namespace_id.to_owned(),
+                });
+                if let Some(ref id) = op_id {
+                    self.journal_complete(id, "completed", None).await;
+                }
+            }
+            Err(_) => {
+                if let Some(ref id) = op_id {
+                    self.journal_complete(id, "failed", None).await;
+                }
+            }
         }
+
+        result
     }
 
     async fn uninstall_retain(&self, namespace_id: &str) -> Result<UninstallReport, StorageError> {
@@ -407,6 +540,8 @@ impl StorageManager {
         &self,
         namespace_id: &str,
     ) -> Result<IntegrityReport, StorageError> {
+        let op_id = self.journal_start(namespace_id, "verify_namespace").await.ok();
+
         let ns = self.db.get_namespace(namespace_id).await?;
         let prefix_pattern = format!("{}%", ns.effective_prefix);
 
@@ -443,13 +578,26 @@ impl StorageManager {
         }
 
         let status = if missing.is_empty() {
+            self.emit(NexusEvent::StorageIntegrityVerified {
+                extension_id: ns.extension_id.clone(),
+                namespace_id: namespace_id.to_owned(),
+            });
             "healthy".to_owned()
         } else {
             self.db
                 .update_namespace_status(namespace_id, "repair_required")
                 .await?;
+            self.emit(NexusEvent::StorageIntegrityDriftDetected {
+                extension_id: ns.extension_id.clone(),
+                namespace_id: namespace_id.to_owned(),
+                objects: missing.clone(),
+            });
             "repair_required".to_owned()
         };
+
+        if let Some(ref id) = op_id {
+            self.journal_complete(id, "completed", None).await;
+        }
 
         Ok(IntegrityReport {
             namespace_id: namespace_id.to_owned(),
@@ -469,10 +617,7 @@ fn sha256_bytes(data: &[u8]) -> String {
 }
 
 fn chrono_now() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    format!("{}Z", now.as_secs())
+    chrono::Utc::now().to_rfc3339()
 }
 
 #[cfg(test)]
