@@ -5,6 +5,13 @@ use sqlparser::ast::{
 use sqlparser::dialect::SQLiteDialect;
 use sqlparser::parser::Parser;
 
+const RESERVED_PREFIXES: &[&str] = &[
+    "ext_sqlite_",
+    "ext_host_",
+    "ext_nexus_",
+    "ext_core_",
+];
+
 #[derive(Debug, Clone)]
 pub struct ExtractedObject {
     pub name: String,
@@ -22,6 +29,17 @@ pub fn expand_prefix(sql: &str, effective_prefix: &str) -> String {
     sql.replace("{{prefix}}", effective_prefix)
 }
 
+pub fn check_reserved_prefix(effective_prefix: &str) -> Option<String> {
+    for reserved in RESERVED_PREFIXES {
+        if effective_prefix == *reserved {
+            return Some(format!(
+                "prefix '{effective_prefix}' is reserved and cannot be used"
+            ));
+        }
+    }
+    None
+}
+
 pub fn validate_sql(sql: &str, effective_prefix: &str) -> SqlValidationReport {
     let expanded = expand_prefix(sql, effective_prefix);
     let mut report = SqlValidationReport {
@@ -29,6 +47,11 @@ pub fn validate_sql(sql: &str, effective_prefix: &str) -> SqlValidationReport {
         objects: Vec::new(),
         errors: Vec::new(),
     };
+
+    if let Some(err) = check_reserved_prefix(effective_prefix) {
+        report.errors.push(err);
+        return report;
+    }
 
     let statements = match Parser::parse_sql(&SQLiteDialect {}, &expanded) {
         Ok(stmts) => stmts,
@@ -65,6 +88,7 @@ fn validate_statement(
             if let Some(ref index_name) = create_index.name {
                 let name = object_name_to_string(index_name);
                 validate_prefix(&name, effective_prefix, report);
+                validate_index_name(&name, effective_prefix, report);
                 report.objects.push(ExtractedObject {
                     name,
                     object_type: ObjectType::Index,
@@ -96,6 +120,24 @@ fn validate_prefix(name: &str, effective_prefix: &str, report: &mut SqlValidatio
     if !name.starts_with(effective_prefix) {
         report.errors.push(format!(
             "object name '{name}' does not start with required prefix '{effective_prefix}'"
+        ));
+    }
+}
+
+fn validate_index_name(name: &str, effective_prefix: &str, report: &mut SqlValidationReport) {
+    let expected_prefix = format!("{effective_prefix}idx_");
+    if !name.starts_with(&expected_prefix) {
+        report.errors.push(format!(
+            "index name '{name}' must match pattern '{effective_prefix}idx_<name>'"
+        ));
+        return;
+    }
+
+    let suffix = &name[expected_prefix.len()..];
+    let pattern = regex_lite::Regex::new(r"^[a-z0-9_]{1,58}$").expect("invalid index regex");
+    if !pattern.is_match(suffix) {
+        report.errors.push(format!(
+            "index name '{name}' suffix '{suffix}' must match [a-z0-9_]{{1,58}}"
         ));
     }
 }
@@ -274,6 +316,79 @@ mod tests {
             id TEXT PRIMARY KEY, \
             thread_id TEXT NOT NULL, \
             FOREIGN KEY (thread_id) REFERENCES workflows(id)\
+        );";
+        let report = validate_sql(sql, PREFIX);
+        assert!(!report.errors.is_empty());
+        assert!(report.errors.iter().any(|e| e.contains("crosses namespace boundary")));
+    }
+
+    #[test]
+    fn reserved_prefix_ext_sqlite_rejected() {
+        let sql = "CREATE TABLE ext_sqlite_items (id TEXT PRIMARY KEY);";
+        let report = validate_sql(sql, "ext_sqlite_");
+        assert!(!report.errors.is_empty());
+        assert!(report.errors.iter().any(|e| e.contains("reserved")));
+    }
+
+    #[test]
+    fn reserved_prefix_ext_host_rejected() {
+        let report = validate_sql("SELECT 1;", "ext_host_");
+        assert!(!report.errors.is_empty());
+        assert!(report.errors.iter().any(|e| e.contains("reserved")));
+    }
+
+    #[test]
+    fn reserved_prefix_ext_nexus_rejected() {
+        let report = validate_sql("SELECT 1;", "ext_nexus_");
+        assert!(!report.errors.is_empty());
+        assert!(report.errors.iter().any(|e| e.contains("reserved")));
+    }
+
+    #[test]
+    fn reserved_prefix_ext_core_rejected() {
+        let report = validate_sql("SELECT 1;", "ext_core_");
+        assert!(!report.errors.is_empty());
+        assert!(report.errors.iter().any(|e| e.contains("reserved")));
+    }
+
+    #[test]
+    fn index_name_without_idx_prefix_rejected() {
+        let sql = "CREATE INDEX ext_chat_llama_threads_updated ON ext_chat_llama_threads (id);";
+        let report = validate_sql(sql, PREFIX);
+        assert!(!report.errors.is_empty());
+        assert!(report.errors.iter().any(|e| e.contains("must match pattern")));
+    }
+
+    #[test]
+    fn index_name_with_valid_idx_prefix_accepted() {
+        let sql =
+            "CREATE INDEX ext_chat_llama_idx_updated_at ON ext_chat_llama_threads (id);";
+        let report = validate_sql(sql, PREFIX);
+        assert!(report.errors.is_empty(), "errors: {:?}", report.errors);
+    }
+
+    #[test]
+    fn index_name_suffix_too_long_rejected() {
+        let long_suffix = "a".repeat(59);
+        let index_name = format!("ext_chat_llama_idx_{long_suffix}");
+        let sql = format!("CREATE INDEX {index_name} ON ext_chat_llama_threads (id);");
+        let report = validate_sql(&sql, PREFIX);
+        assert!(!report.errors.is_empty());
+    }
+
+    #[test]
+    fn table_name_missing_prefix_activation_blocked() {
+        let sql = "CREATE TABLE my_private_table (id TEXT PRIMARY KEY);";
+        let report = validate_sql(sql, PREFIX);
+        assert!(!report.errors.is_empty());
+        assert!(report.errors.iter().any(|e| e.contains("does not start with")));
+    }
+
+    #[test]
+    fn fk_referencing_host_core_table_blocked() {
+        let sql = "CREATE TABLE ext_chat_llama_messages (\
+            id TEXT PRIMARY KEY, \
+            wf_id TEXT REFERENCES workflows(id)\
         );";
         let report = validate_sql(sql, PREFIX);
         assert!(!report.errors.is_empty());
