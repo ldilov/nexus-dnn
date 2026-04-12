@@ -24,4 +24,8 @@ pub use tool_projection::{Tool, build_tool_from_operator, build_tool_from_recipe
 pub use ui_contribution::{
     UIContributionFile, UIContributionKind, parse_ui_contribution, parse_ui_contribution_from_str,
 };
+pub use storage::contribution::{
+    MigrationDeclaration, MigrationFileRef, NamespaceDeclaration, RuntimeAccessDeclaration,
+    SqlProfileDeclaration, StorageContribution, UninstallDeclaration,
+};
 pub use validation::{check_compatibility, validate_manifest_schema, validate_operator_schema};
