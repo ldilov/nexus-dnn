@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { type Operator, fetchOperators } from "../api/client";
+import { vars } from "../theme/contract.css";
 
 export function OperatorsList() {
   const [operators, setOperators] = useState<Operator[]>([]);
@@ -13,7 +14,7 @@ export function OperatorsList() {
       );
   }, []);
 
-  if (error) return <div style={{ color: "#e55" }}>{error}</div>;
+  if (error) return <div style={{ color: vars.color.error.base }}>{error}</div>;
 
   return (
     <div>

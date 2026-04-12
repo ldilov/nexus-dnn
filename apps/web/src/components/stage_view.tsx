@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { type Workflow, fetchWorkflows, fetchWorkflow } from "../api/client";
+import { vars } from "../theme/contract.css";
 
 export function StageView() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
@@ -22,7 +23,7 @@ export function StageView() {
       );
   };
 
-  if (error) return <div style={{ color: "#e55" }}>{error}</div>;
+  if (error) return <div style={{ color: vars.color.error.base }}>{error}</div>;
 
   return (
     <div>
@@ -44,7 +45,7 @@ export function StageView() {
             <div
               key={stage.name}
               style={{
-                border: "1px solid #555",
+                backgroundColor: vars.color.bg.elevated,
                 borderRadius: 4,
                 padding: 12,
                 minWidth: 180,
@@ -55,7 +56,7 @@ export function StageView() {
                 <div
                   key={node.id}
                   style={{
-                    background: "#2a2a2a",
+                    background: vars.color.bg.panel,
                     borderRadius: 4,
                     padding: 8,
                     marginBottom: 6,

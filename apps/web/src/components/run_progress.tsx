@@ -1,4 +1,5 @@
 import { useEventStream, type RunEvent } from "../hooks/use_event_stream";
+import { vars } from "../theme/contract.css";
 
 function latestByNode(events: RunEvent[]): Map<string, RunEvent> {
   const map = new Map<string, RunEvent>();
@@ -18,7 +19,7 @@ export function RunProgress() {
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
         <h3 style={{ margin: 0 }}>Run Progress</h3>
-        <span style={{ fontSize: 12, color: connected ? "#6d6" : "#e55" }}>
+        <span style={{ fontSize: 12, color: connected ? vars.color.success.base : vars.color.error.base }}>
           {connected ? "connected" : "disconnected"}
         </span>
         <button onClick={clearEvents} style={{ fontSize: 12, cursor: "pointer" }}>
@@ -33,7 +34,7 @@ export function RunProgress() {
           {event.progress !== undefined && (
             <div
               style={{
-                background: "#333",
+                background: vars.color.bg.elevated,
                 borderRadius: 2,
                 height: 6,
                 marginTop: 4,
@@ -42,7 +43,7 @@ export function RunProgress() {
             >
               <div
                 style={{
-                  background: "#6d6",
+                  background: vars.color.success.base,
                   borderRadius: 2,
                   height: 6,
                   width: `${Math.min(event.progress * 100, 100)}%`,
