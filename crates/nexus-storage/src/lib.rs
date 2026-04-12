@@ -7,7 +7,8 @@ pub mod sqlite;
 pub use database::Database;
 pub use error::StorageError;
 pub use records::{
-    ArtifactRecord, ExtensionRecord, LineageEdgeRecord, NodeExecutionRecord, OperatorRecord,
+    ArchiveRecord, ArtifactRecord, ExtensionRecord, LineageEdgeRecord, MigrationRecord,
+    NamespaceRecord, NodeExecutionRecord, ObjectRecord, OperationRecord, OperatorRecord,
     RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord,
 };
 pub use sqlite::SqliteDatabase;
