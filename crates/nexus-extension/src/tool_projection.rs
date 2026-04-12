@@ -50,11 +50,7 @@ pub fn build_tool_from_operator(
     }
 }
 
-pub fn build_tool_from_recipe(
-    recipe: &RecipeFile,
-    extension_id: &str,
-    availability: &str,
-) -> Tool {
+pub fn build_tool_from_recipe(recipe: &RecipeFile, extension_id: &str, availability: &str) -> Tool {
     let tags = build_tags(&recipe.recipe.category, &recipe.recipe.display_name);
 
     Tool {

@@ -4,6 +4,7 @@ use nexus_protocol::RuntimeFamily;
 use serde::Deserialize;
 
 use crate::error::ExtensionError;
+use crate::storage::contribution::StorageContribution;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ExtensionManifest {
@@ -14,6 +15,7 @@ pub struct ExtensionManifest {
     pub capabilities: Option<Vec<String>>,
     pub operators: Option<Vec<FileRef>>,
     pub recipes: Option<Vec<FileRef>>,
+    pub storage: Option<StorageContribution>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

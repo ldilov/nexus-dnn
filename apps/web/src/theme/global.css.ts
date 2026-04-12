@@ -9,11 +9,13 @@ globalStyle("*, *::before, *::after", {
 
 globalStyle("html, body, #root", {
   height: "100%",
-  fontFamily: vars.font.family.body,
-  fontSize: vars.font.size.md,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
   color: vars.color.text.primary,
-  backgroundColor: vars.color.surface.base,
+  backgroundColor: vars.color.bg.app,
   lineHeight: vars.font.lineHeight.normal,
+  WebkitFontSmoothing: "antialiased",
+  MozOsxFontSmoothing: "grayscale",
 });
 
 globalStyle("a", {
@@ -22,5 +24,67 @@ globalStyle("a", {
 });
 
 globalStyle("a:hover", {
-  color: vars.color.accent.hover,
+  color: vars.color.accent.primaryHover,
+});
+
+globalStyle(":focus-visible", {
+  outline: `3px solid ${vars.color.accent.primary}`,
+  outlineOffset: "2px",
+});
+
+globalStyle("::selection", {
+  backgroundColor: vars.color.accent.primaryDim,
+  color: vars.color.text.primary,
+});
+
+globalStyle("h1, h2, h3, h4, h5, h6", {
+  fontFamily: vars.font.headline,
+  letterSpacing: "-0.02em",
+  lineHeight: vars.font.lineHeight.tight,
+});
+
+globalStyle("h1", {
+  fontSize: vars.font.size.display,
+  fontWeight: vars.font.weight.bold,
+});
+
+globalStyle("h2", {
+  fontSize: vars.font.size.headingLg,
+  fontWeight: vars.font.weight.semibold,
+});
+
+globalStyle("h3", {
+  fontSize: vars.font.size.heading,
+  fontWeight: vars.font.weight.semibold,
+});
+
+globalStyle("h4", {
+  fontSize: vars.font.size.headingSm,
+  fontWeight: vars.font.weight.medium,
+});
+
+globalStyle("h5, h6", {
+  fontSize: vars.font.size.bodyLg,
+  fontWeight: vars.font.weight.medium,
+});
+
+globalStyle("code, pre, kbd, samp", {
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.bodySm,
+});
+
+globalStyle("pre", {
+  backgroundColor: vars.color.bg.lowest,
+  padding: vars.space.insetLg,
+  borderRadius: vars.radius.card,
+  overflowX: "auto",
+});
+
+globalStyle("button", {
+  fontFamily: "inherit",
+  fontSize: "inherit",
+});
+
+globalStyle(".material-symbols-outlined", {
+  fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24",
 });

@@ -1,11 +1,9 @@
 use std::collections::HashMap;
 
-use nexus_extension::{
-    ExecutionSpec, OperatorDefinition, OperatorInfo, PortSpec,
-};
+use nexus_extension::{ExecutionSpec, OperatorDefinition, OperatorInfo, PortSpec};
 use nexus_workflow::{
-    NodeInput, NodeInstance, Workflow, WorkflowError, WorkflowPort,
-    parse_workflow, validate_dag, validate_port_types, validate_workflow,
+    NodeInput, NodeInstance, Workflow, WorkflowError, WorkflowPort, parse_workflow, validate_dag,
+    validate_port_types, validate_workflow,
 };
 
 fn echo_operator() -> OperatorDefinition {
@@ -114,7 +112,12 @@ fn validate_workflow_succeeds_with_matching_types() {
     assert_eq!(sorted, vec!["echo_1"]);
 }
 
-fn make_operator(id: &str, version: &str, inputs: Vec<PortSpec>, outputs: Vec<PortSpec>) -> OperatorDefinition {
+fn make_operator(
+    id: &str,
+    version: &str,
+    inputs: Vec<PortSpec>,
+    outputs: Vec<PortSpec>,
+) -> OperatorDefinition {
     OperatorDefinition {
         spec_version: "0.1".into(),
         operator: OperatorInfo {
@@ -186,15 +189,15 @@ fn type_mismatch_detected_between_incompatible_ports() {
     let node_b = make_node(
         "consumer",
         "audio-consumer@1.0.0",
-        HashMap::from([("waveform".into(), NodeInput::Reference {
-            from: "producer:rgb".into(),
-        })]),
+        HashMap::from([(
+            "waveform".into(),
+            NodeInput::Reference {
+                from: "producer:rgb".into(),
+            },
+        )]),
     );
 
-    let workflow = make_workflow(
-        vec![node_a, node_b],
-        vec![],
-    );
+    let workflow = make_workflow(vec![node_a, node_b], vec![]);
 
     let result = validate_port_types(&workflow, &[image_producer, audio_consumer]);
 
@@ -210,16 +213,22 @@ fn cycle_detected_in_circular_workflow() {
     let node_a = make_node(
         "a",
         "op@1.0.0",
-        HashMap::from([("in".into(), NodeInput::Reference {
-            from: "b:out".into(),
-        })]),
+        HashMap::from([(
+            "in".into(),
+            NodeInput::Reference {
+                from: "b:out".into(),
+            },
+        )]),
     );
     let node_b = make_node(
         "b",
         "op@1.0.0",
-        HashMap::from([("in".into(), NodeInput::Reference {
-            from: "a:out".into(),
-        })]),
+        HashMap::from([(
+            "in".into(),
+            NodeInput::Reference {
+                from: "a:out".into(),
+            },
+        )]),
     );
 
     let workflow = make_workflow(vec![node_a, node_b], vec![]);
@@ -242,7 +251,10 @@ fn unknown_operator_rejected() {
 
     assert!(result.is_err(), "unknown operator must fail validation");
     match &result {
-        Err(WorkflowError::UnknownOperator { node_id, operator_ref }) => {
+        Err(WorkflowError::UnknownOperator {
+            node_id,
+            operator_ref,
+        }) => {
             assert_eq!(node_id, "echo_1");
             assert_eq!(operator_ref, "echo@1.0.0");
         }

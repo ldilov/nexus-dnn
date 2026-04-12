@@ -5,12 +5,16 @@ use tower_http::trace::TraceLayer;
 
 use crate::AppState;
 use crate::frontend;
-use crate::handlers::{artifacts, extensions, health, recipes, runs, system, tools, ui_contributions, workflows};
+use crate::handlers::{
+    artifacts, extensions, health, metrics, recipes, runs, storage_contributions, system, tools,
+    ui_contributions, workflows,
+};
 use crate::ws;
 
 pub fn build(state: AppState) -> Router {
     let api_v1 = Router::new()
         .route("/health", get(health::health_check))
+        .route("/metrics", get(metrics::get_metrics))
         .route("/extensions", get(extensions::list_extensions))
         .route("/extensions/{id}", get(extensions::get_extension))
         .route("/extensions/refresh", post(extensions::refresh_extensions))
@@ -21,6 +25,30 @@ pub fn build(state: AppState) -> Router {
         .route(
             "/extensions/{id}/disable",
             post(extensions::disable_extension),
+        )
+        .route(
+            "/extensions/{id}/storage",
+            get(storage_contributions::get_storage_status),
+        )
+        .route(
+            "/extensions/{id}/storage/validate",
+            post(storage_contributions::validate_storage),
+        )
+        .route(
+            "/extensions/{id}/storage/apply",
+            post(storage_contributions::apply_storage),
+        )
+        .route(
+            "/extensions/{id}/storage/verify",
+            post(storage_contributions::verify_storage),
+        )
+        .route(
+            "/extensions/{id}/storage/uninstall",
+            post(storage_contributions::uninstall_storage),
+        )
+        .route(
+            "/storage/namespaces",
+            get(storage_contributions::list_namespaces),
         )
         .route("/operators", get(extensions::list_operators))
         .route("/operators/{id}", get(extensions::get_operator))
@@ -50,7 +78,10 @@ pub fn build(state: AppState) -> Router {
             "/workflows",
             post(workflows::create_workflow).get(workflows::list_workflows),
         )
-        .route("/workflows/validate", post(workflows::validate_workflow_only))
+        .route(
+            "/workflows/validate",
+            post(workflows::validate_workflow_only),
+        )
         .route(
             "/workflows/{id}",
             get(workflows::get_workflow)

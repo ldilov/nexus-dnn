@@ -4,60 +4,58 @@ import { vars } from "../theme/contract.css";
 export const container = style({
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.md,
+  gap: vars.space.insetLg,
 });
 
 export const artifactGrid = style({
   display: "grid",
   gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-  gap: vars.space.md,
+  gap: vars.space.insetLg,
 });
 
 export const artifactCard = style({
-  backgroundColor: vars.color.surface.raised,
-  borderRadius: vars.radius.md,
-  padding: vars.space.md,
-  border: `1px solid ${vars.color.border.subtle}`,
+  backgroundColor: vars.color.bg.elevated,
+  borderRadius: vars.radius.control,
+  padding: vars.space.insetLg,
   cursor: "pointer",
-  transition: "border-color 150ms",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {
-    borderColor: vars.color.accent.primary,
+    backgroundColor: vars.color.bg.hover,
   },
 });
 
 export const artifactCardSelected = style({
-  borderColor: vars.color.accent.primary,
+  boxShadow: `0 0 12px 0 ${vars.color.accent.primaryDim}44`,
 });
 
 export const artifactName = style({
-  fontSize: vars.font.size.sm,
+  fontSize: vars.font.size.bodySm,
   fontWeight: vars.font.weight.medium,
   color: vars.color.text.primary,
-  marginBottom: vars.space.xxs,
+  marginBottom: vars.space.gapXs,
 });
 
 export const artifactMeta = style({
-  fontSize: vars.font.size.xs,
+  fontSize: vars.font.size.caption,
   color: vars.color.text.muted,
-  fontFamily: vars.font.family.mono,
+  fontFamily: vars.font.code,
 });
 
 export const preview = style({
-  marginTop: vars.space.lg,
-  padding: vars.space.lg,
-  backgroundColor: vars.color.surface.raised,
-  borderRadius: vars.radius.lg,
-  border: `1px solid ${vars.color.border.default}`,
+  marginTop: vars.space.gapLg,
+  padding: vars.space.insetXl,
+  backgroundColor: vars.color.bg.elevated,
+  borderRadius: vars.radius.card,
 });
 
 export const previewImage = style({
   maxWidth: "100%",
-  borderRadius: vars.radius.md,
+  borderRadius: vars.radius.control,
 });
 
 export const emptyState = style({
   color: vars.color.text.muted,
-  fontSize: vars.font.size.sm,
+  fontSize: vars.font.size.bodySm,
   textAlign: "center",
-  padding: vars.space.xxxl,
+  padding: "48px",
 });

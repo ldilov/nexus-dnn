@@ -84,7 +84,12 @@ impl ApiResponse<()> {
     }
 
     pub fn bad_request(message: String) -> Self {
-        Self::err(StatusCode::BAD_REQUEST, "BAD_REQUEST", "validation", message)
+        Self::err(
+            StatusCode::BAD_REQUEST,
+            "BAD_REQUEST",
+            "validation",
+            message,
+        )
     }
 
     pub fn conflict(message: String) -> Self {

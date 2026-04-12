@@ -1,22 +1,76 @@
-import { style } from "@vanilla-extract/css";
+import { recipe } from "@vanilla-extract/recipes";
 import { vars } from "../theme/contract.css";
 
-export const inputStyle = style({
-  width: "100%",
-  padding: `${vars.space.sm} ${vars.space.md}`,
-  backgroundColor: vars.color.surface.base,
-  color: vars.color.text.primary,
-  border: `1px solid ${vars.color.border.default}`,
-  borderRadius: vars.radius.md,
-  fontSize: vars.font.size.sm,
-  fontFamily: vars.font.family.body,
-  lineHeight: vars.font.lineHeight.normal,
-  outline: "none",
-  transition: "border-color 150ms",
-  ":focus": {
-    borderColor: vars.color.accent.primary,
+export const inputRecipe = recipe({
+  base: {
+    width: "100%",
+    backgroundColor: vars.color.bg.app,
+    color: vars.color.text.primary,
+    border: "none",
+    borderBottom: `1px solid ${vars.color.outline.variant}`,
+    borderRadius: vars.radius.control,
+    fontFamily: vars.font.ui,
+    fontSize: vars.font.size.body,
+    lineHeight: vars.font.lineHeight.normal,
+    outline: "none",
+    transition: `border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+    "::placeholder": {
+      color: vars.color.text.muted,
+    },
+    ":focus": {
+      borderBottomColor: vars.color.accent.primary,
+      boxShadow: `0 0 0 2px ${vars.color.accent.primary}33`,
+    },
+    ":disabled": {
+      opacity: 0.5,
+      cursor: "not-allowed",
+    },
   },
-  "::placeholder": {
-    color: vars.color.text.muted,
+  variants: {
+    variant: {
+      default: {},
+      ghost: {
+        border: "none",
+        backgroundColor: "transparent",
+        ":focus": {
+          boxShadow: "none",
+          backgroundColor: vars.color.bg.elevated,
+        },
+      },
+      mono: {
+        fontFamily: vars.font.code,
+        fontSize: vars.font.size.bodySm,
+      },
+    },
+    size: {
+      sm: {
+        height: vars.control.heightSm,
+        padding: `0 ${vars.space.insetMd}`,
+        fontSize: vars.font.size.caption,
+      },
+      md: {
+        height: vars.control.heightMd,
+        padding: `0 ${vars.space.insetLg}`,
+      },
+      lg: {
+        height: vars.control.heightLg,
+        padding: `0 ${vars.space.insetXl}`,
+        fontSize: vars.font.size.bodyLg,
+      },
+    },
+    hasError: {
+      true: {
+        borderBottomColor: vars.color.error.base,
+        ":focus": {
+          borderBottomColor: vars.color.error.base,
+          boxShadow: `0 0 0 2px ${vars.color.error.base}33`,
+        },
+      },
+    },
+  },
+  defaultVariants: {
+    variant: "default",
+    size: "md",
+    hasError: false,
   },
 });
