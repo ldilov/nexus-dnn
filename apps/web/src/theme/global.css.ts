@@ -37,6 +37,54 @@ globalStyle("::selection", {
   color: vars.color.text.primary,
 });
 
+globalStyle("h1, h2, h3, h4, h5, h6", {
+  fontFamily: vars.font.headline,
+  letterSpacing: "-0.02em",
+  lineHeight: vars.font.lineHeight.tight,
+});
+
+globalStyle("h1", {
+  fontSize: vars.font.size.display,
+  fontWeight: vars.font.weight.bold,
+});
+
+globalStyle("h2", {
+  fontSize: vars.font.size.headingLg,
+  fontWeight: vars.font.weight.semibold,
+});
+
+globalStyle("h3", {
+  fontSize: vars.font.size.heading,
+  fontWeight: vars.font.weight.semibold,
+});
+
+globalStyle("h4", {
+  fontSize: vars.font.size.headingSm,
+  fontWeight: vars.font.weight.medium,
+});
+
+globalStyle("h5, h6", {
+  fontSize: vars.font.size.bodyLg,
+  fontWeight: vars.font.weight.medium,
+});
+
+globalStyle("code, pre, kbd, samp", {
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.bodySm,
+});
+
+globalStyle("pre", {
+  backgroundColor: vars.color.bg.lowest,
+  padding: vars.space.insetLg,
+  borderRadius: vars.radius.card,
+  overflowX: "auto",
+});
+
+globalStyle("button", {
+  fontFamily: "inherit",
+  fontSize: "inherit",
+});
+
 globalStyle(".material-symbols-outlined", {
   fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24",
 });
