@@ -7,10 +7,6 @@ export const canvasColumn = style({
   height: "100%",
 });
 
-export const canvasTabBar = style({
-  padding: `${vars.space.insetMd} ${vars.space.insetXl}`,
-});
-
 export const canvasContent = style({
   flex: 1,
   overflow: "auto",
