@@ -1,10 +1,12 @@
 import { useState, useCallback, useEffect } from "react";
 import { Shell } from "./layout/shell";
 import { TopBar } from "./layout/top_bar";
-import { IconRail, type NavItemId } from "./layout/icon_rail";
-import { LeftRail } from "./layout/left_rail";
+import { Sidebar, type NavItemId } from "./layout/sidebar";
 import { RightInspector } from "./layout/right_inspector";
 import { Tabs } from "./components/tabs";
+import { ToolCatalog } from "./catalog/tool_catalog";
+import { RecipeCatalog } from "./catalog/recipe_catalog";
+import { ExtensionList } from "./catalog/extension_list";
 import { StageView } from "./views/stage_view";
 import { GraphView } from "./views/graph_view";
 import { RunTraceView } from "./views/run_trace_view";
@@ -38,6 +40,20 @@ const BOTTOM_TABS = [
   { id: "workers" as const, label: "Workers" },
 ] as const;
 
+type SecondaryTabId = "tools" | "recipes" | "extensions";
+
+const SECONDARY_TABS: { id: SecondaryTabId; label: string }[] = [
+  { id: "tools", label: "Tools" },
+  { id: "recipes", label: "Recipes" },
+  { id: "extensions", label: "Extensions" },
+];
+
+const SECONDARY_CONTENT: Record<SecondaryTabId, React.ComponentType> = {
+  tools: ToolCatalog,
+  recipes: RecipeCatalog,
+  extensions: ExtensionList,
+};
+
 function latestProgressByNode(
   events: { node_id?: string; status?: string; progress?: number }[],
 ): Record<string, { status: string; progress: number }> {
@@ -50,6 +66,42 @@ function latestProgressByNode(
   return map;
 }
 
+function SecondaryPanel() {
+  const [activeTab, setActiveTab] = useState<SecondaryTabId>("tools");
+  const ActiveContent = SECONDARY_CONTENT[activeTab];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{ display: "flex", flexShrink: 0 }}>
+        {SECONDARY_TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            style={{
+              flex: 1,
+              padding: "8px 4px",
+              fontSize: "11px",
+              fontWeight: t.id === activeTab ? 600 : 400,
+              border: "none",
+              backgroundColor: "transparent",
+              cursor: "pointer",
+              textAlign: "center",
+              opacity: t.id === activeTab ? 1 : 0.6,
+              borderBottom: t.id === activeTab ? "2px solid currentColor" : "2px solid transparent",
+              color: "inherit",
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div style={{ flex: 1, overflow: "auto" }}>
+        <ActiveContent />
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
@@ -60,6 +112,7 @@ export function App() {
   const [runId, setRunId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [sidebarPinned, setSidebarPinned] = useState(false);
   const { events } = useEventStream();
   const nodeProgress = latestProgressByNode(events);
 
@@ -148,6 +201,21 @@ export function App() {
     return null;
   };
 
+  const secondaryContent = activeNav !== "home" ? (
+    <>
+      <SecondaryPanel />
+      {workflows.length > 1 && (
+        <div className={styles.workflowListFallback}>
+          {workflows.map((wf) => (
+            <button key={wf.id} onClick={() => handleWorkflowSelect(wf.id)}>
+              {wf.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  ) : undefined;
+
   return (
     <Shell
       topBar={
@@ -159,23 +227,16 @@ export function App() {
           isRunning={isRunning}
         />
       }
-      iconRail={
-        <IconRail activeItem={activeNav} onNavigate={setActiveNav} />
+      sidebar={
+        <Sidebar
+          activeItem={activeNav}
+          onNavigate={setActiveNav}
+          pinned={sidebarPinned}
+          onTogglePin={() => setSidebarPinned((p) => !p)}
+          secondaryContent={secondaryContent}
+        />
       }
-      secondaryPanel={
-        <>
-          <LeftRail />
-          {workflows.length > 1 && (
-            <div className={styles.workflowListFallback}>
-              {workflows.map((wf) => (
-                <button key={wf.id} onClick={() => handleWorkflowSelect(wf.id)}>
-                  {wf.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </>
-      }
+      sidebarPinned={sidebarPinned}
       canvas={renderCanvas()}
       inspector={
         <RightInspector
@@ -193,7 +254,6 @@ export function App() {
           />
         </div>
       }
-      secondaryPanelVisible={activeNav !== "home"}
       inspectorVisible={activeNav === "workflows"}
     />
   );
