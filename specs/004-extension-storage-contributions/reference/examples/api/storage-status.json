@@ -1,0 +1,39 @@
+{
+  "extension_id": "example.chat.llama",
+  "namespace": {
+    "id": "extns_01",
+    "alias": "chat_llama",
+    "effective_prefix": "ext_chat_llama_",
+    "status": "active",
+    "engine": "sqlite",
+    "storage_spec_version": "0.1",
+    "sql_profile": "nexus_sqlite_v1",
+    "uninstall_policy": "retain"
+  },
+  "migrations": [
+    {
+      "migration_id": "001_init",
+      "status": "applied",
+      "path": "storage/migrations/001_init.sql"
+    },
+    {
+      "migration_id": "002_indexes",
+      "status": "applied",
+      "path": "storage/migrations/002_indexes.sql"
+    }
+  ],
+  "objects": {
+    "tables": [
+      "ext_chat_llama_threads",
+      "ext_chat_llama_messages",
+      "ext_chat_llama_message_attachments",
+      "ext_chat_llama_thread_model_profiles"
+    ],
+    "indexes": [
+      "ext_chat_llama_idx_threads_updated_at",
+      "ext_chat_llama_idx_messages_thread_created_at",
+      "ext_chat_llama_idx_messages_status",
+      "ext_chat_llama_idx_attachments_message_id"
+    ]
+  }
+}
