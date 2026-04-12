@@ -3,6 +3,7 @@ pub mod manifest;
 pub mod operator_index;
 pub mod recipe;
 pub mod registry;
+pub mod storage;
 pub mod tool_projection;
 pub mod ui_contribution;
 pub mod validation;

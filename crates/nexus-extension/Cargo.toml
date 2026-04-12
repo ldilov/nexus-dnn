@@ -12,3 +12,5 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 nexus-protocol = { path = "../nexus-protocol" }
+sqlparser = { version = "0.55", features = ["visitor"] }
+sha2 = "0.10"
