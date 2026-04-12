@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, type ReactNode, type CSSProperties } from "react";
 import * as styles from "./sidebar.css";
 
 export type NavItemId =
@@ -25,19 +25,23 @@ type UtilityItem = {
 };
 
 const NAV_ITEMS: readonly NavItem[] = [
-  { id: "home", label: "Home", icon: "\u2302" },
-  { id: "recipes", label: "Recipes", icon: "\u2630" },
-  { id: "workflows", label: "Workflows", icon: "\u2387" },
-  { id: "runs", label: "Runs", icon: "\u25B6" },
-  { id: "artifacts", label: "Artifacts", icon: "\u25A3" },
-  { id: "extensions", label: "Extensions", icon: "\u29C9" },
-  { id: "models", label: "Models", icon: "\u2338" },
+  { id: "home", label: "Home", icon: "home" },
+  { id: "recipes", label: "Recipes", icon: "description" },
+  { id: "workflows", label: "Workflows", icon: "account_tree" },
+  { id: "runs", label: "Runs", icon: "play_arrow" },
+  { id: "artifacts", label: "Artifacts", icon: "inventory_2" },
+  { id: "extensions", label: "Extensions", icon: "extension" },
+  { id: "models", label: "Models", icon: "settings_input_component" },
 ];
 
 const UTILITY_ITEMS: readonly UtilityItem[] = [
-  { id: "settings", label: "Settings", icon: "\u2699" },
-  { id: "help", label: "Help", icon: "?" },
+  { id: "settings", label: "Settings", icon: "settings" },
+  { id: "help", label: "Help", icon: "help" },
 ];
+
+const FILLED_ICON_STYLE: CSSProperties = {
+  fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24",
+};
 
 type SidebarProps = {
   activeItem: NavItemId;
@@ -101,22 +105,35 @@ export function Sidebar({
         aria-label={pinned ? "Unpin sidebar" : "Pin sidebar"}
         title={pinned ? "Unpin sidebar" : "Pin sidebar"}
       >
-        {"\u{1F4CC}"}
+        <span
+          className="material-symbols-outlined"
+          style={pinned ? FILLED_ICON_STYLE : undefined}
+        >
+          push_pin
+        </span>
       </button>
       <div className={styles.navSection}>
-        {NAV_ITEMS.map((item) => (
-          <button
-            key={item.id}
-            className={styles.navItemRecipe({ active: item.id === activeItem })}
-            onClick={() => onNavigate(item.id)}
-            title={item.label}
-            aria-label={item.label}
-            aria-current={item.id === activeItem ? "page" : undefined}
-          >
-            <span className={styles.navItemIcon}>{item.icon}</span>
-            <span className={labelCls}>{item.label}</span>
-          </button>
-        ))}
+        {NAV_ITEMS.map((item) => {
+          const isActive = item.id === activeItem;
+          return (
+            <button
+              key={item.id}
+              className={styles.navItemRecipe({ active: isActive })}
+              onClick={() => onNavigate(item.id)}
+              title={item.label}
+              aria-label={item.label}
+              aria-current={isActive ? "page" : undefined}
+            >
+              <span
+                className={`material-symbols-outlined ${styles.navItemIcon}`}
+                style={isActive ? FILLED_ICON_STYLE : undefined}
+              >
+                {item.icon}
+              </span>
+              <span className={labelCls}>{item.label}</span>
+            </button>
+          );
+        })}
       </div>
       <div className={styles.divider} />
       <div className={styles.utilitySection}>
@@ -128,7 +145,9 @@ export function Sidebar({
             title={item.label}
             aria-label={item.label}
           >
-            <span className={styles.navItemIcon}>{item.icon}</span>
+            <span className={`material-symbols-outlined ${styles.navItemIcon}`}>
+              {item.icon}
+            </span>
             <span className={labelCls}>{item.label}</span>
           </button>
         ))}
