@@ -153,11 +153,7 @@ impl WorkerProcess {
             "operator_id": operator_id,
             "config": config,
         });
-        let request = new_request(
-            self.transport.next_request_id(),
-            "validate_config",
-            params,
-        );
+        let request = new_request(self.transport.next_request_id(), "validate_config", params);
         let response = self
             .transport
             .send_request(&request)

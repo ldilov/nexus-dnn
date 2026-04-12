@@ -5,10 +5,17 @@ edition = "2024"
 
 [dependencies]
 serde-saphyr = "0.0.10"
-jsonschema = "0.28"
+jsonschema = { version = "0.28", default-features = false, features = ["resolve-file"] }
+referencing = "0.28"
 semver = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 nexus-protocol = { path = "../nexus-protocol" }
+sqlparser = { version = "0.55", features = ["visitor"] }
+sha2 = "0.10"
+regex-lite = "0.1"
+
+[dev-dependencies]
+tempfile = "3"

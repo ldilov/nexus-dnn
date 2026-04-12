@@ -3,7 +3,8 @@ use sqlx::sqlite::SqlitePool;
 use crate::database::Database;
 use crate::error::StorageError;
 use crate::records::{
-    ArtifactRecord, ExtensionRecord, LineageEdgeRecord, NodeExecutionRecord, OperatorRecord,
+    ArchiveRecord, ArtifactRecord, ExtensionRecord, LineageEdgeRecord, MigrationRecord,
+    NamespaceRecord, NodeExecutionRecord, ObjectRecord, OperationRecord, OperatorRecord,
     RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord,
 };
 use crate::row_mapping::{
@@ -49,6 +50,16 @@ impl Database for SqliteDatabase {
                 }
             }
         }
+
+        let migration_003 = include_str!("../../../migrations/003_extension_storage.sql");
+        for statement in migration_003.split(';') {
+            let trimmed = statement.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            sqlx::query(trimmed).execute(&self.pool).await?;
+        }
+
         Ok(())
     }
 
@@ -443,10 +454,7 @@ impl Database for SqliteDatabase {
             query = query.bind(v);
         }
 
-        Ok(query
-            .map(map_artifact_row)
-            .fetch_all(&self.pool)
-            .await?)
+        Ok(query.map(map_artifact_row).fetch_all(&self.pool).await?)
     }
 
     async fn insert_lineage_edge(&self, r: &LineageEdgeRecord) -> Result<(), StorageError> {
@@ -523,19 +531,14 @@ impl Database for SqliteDatabase {
         &self,
         extension_id: &str,
     ) -> Result<Vec<RecipeRecord>, StorageError> {
-        Ok(
-            sqlx::query("SELECT * FROM recipes WHERE extension_id = ?")
-                .bind(extension_id)
-                .map(map_recipe_row)
-                .fetch_all(&self.pool)
-                .await?,
-        )
+        Ok(sqlx::query("SELECT * FROM recipes WHERE extension_id = ?")
+            .bind(extension_id)
+            .map(map_recipe_row)
+            .fetch_all(&self.pool)
+            .await?)
     }
 
-    async fn delete_recipes_by_extension(
-        &self,
-        extension_id: &str,
-    ) -> Result<(), StorageError> {
+    async fn delete_recipes_by_extension(&self, extension_id: &str) -> Result<(), StorageError> {
         sqlx::query("DELETE FROM recipes WHERE extension_id = ?")
             .bind(extension_id)
             .execute(&self.pool)
@@ -543,10 +546,7 @@ impl Database for SqliteDatabase {
         Ok(())
     }
 
-    async fn insert_ui_contribution(
-        &self,
-        r: &UIContributionRecord,
-    ) -> Result<(), StorageError> {
+    async fn insert_ui_contribution(&self, r: &UIContributionRecord) -> Result<(), StorageError> {
         sqlx::query(
             "INSERT INTO ui_contributions (id, kind, extension_id, display_name, description, \
              target, supported_types, priority, metadata, availability) \
@@ -578,13 +578,11 @@ impl Database for SqliteDatabase {
         &self,
         kind: &str,
     ) -> Result<Vec<UIContributionRecord>, StorageError> {
-        Ok(
-            sqlx::query("SELECT * FROM ui_contributions WHERE kind = ?")
-                .bind(kind)
-                .map(map_ui_contribution_row)
-                .fetch_all(&self.pool)
-                .await?,
-        )
+        Ok(sqlx::query("SELECT * FROM ui_contributions WHERE kind = ?")
+            .bind(kind)
+            .map(map_ui_contribution_row)
+            .fetch_all(&self.pool)
+            .await?)
     }
 
     async fn list_ui_contributions_by_extension(
@@ -609,5 +607,430 @@ impl Database for SqliteDatabase {
             .execute(&self.pool)
             .await?;
         Ok(())
+    }
+
+    async fn insert_namespace(&self, r: &NamespaceRecord) -> Result<(), StorageError> {
+        sqlx::query(
+            "INSERT INTO extension_storage_namespaces (id, extension_id, \
+             extension_version_first_seen, namespace_alias, effective_prefix, engine, \
+             storage_spec_version, sql_profile, status, uninstall_policy, created_at, \
+             updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&r.id)
+        .bind(&r.extension_id)
+        .bind(&r.extension_version_first_seen)
+        .bind(&r.namespace_alias)
+        .bind(&r.effective_prefix)
+        .bind(&r.engine)
+        .bind(&r.storage_spec_version)
+        .bind(&r.sql_profile)
+        .bind(&r.status)
+        .bind(&r.uninstall_policy)
+        .bind(&r.created_at)
+        .bind(&r.updated_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn get_namespace(&self, id: &str) -> Result<NamespaceRecord, StorageError> {
+        sqlx::query_as::<_, NamespaceRecord>(
+            "SELECT * FROM extension_storage_namespaces WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| StorageError::NotFound {
+            entity: "namespace".into(),
+            id: id.into(),
+        })
+    }
+
+    async fn get_namespace_by_extension(
+        &self,
+        extension_id: &str,
+    ) -> Result<Option<NamespaceRecord>, StorageError> {
+        Ok(sqlx::query_as::<_, NamespaceRecord>(
+            "SELECT * FROM extension_storage_namespaces WHERE extension_id = ?",
+        )
+        .bind(extension_id)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    async fn list_namespaces(&self) -> Result<Vec<NamespaceRecord>, StorageError> {
+        Ok(
+            sqlx::query_as::<_, NamespaceRecord>("SELECT * FROM extension_storage_namespaces")
+                .fetch_all(&self.pool)
+                .await?,
+        )
+    }
+
+    async fn update_namespace_status(&self, id: &str, status: &str) -> Result<(), StorageError> {
+        let result = sqlx::query("UPDATE extension_storage_namespaces SET status = ? WHERE id = ?")
+            .bind(status)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        if result.rows_affected() == 0 {
+            return Err(StorageError::NotFound {
+                entity: "namespace".into(),
+                id: id.into(),
+            });
+        }
+        Ok(())
+    }
+
+    async fn insert_migration_record(&self, r: &MigrationRecord) -> Result<(), StorageError> {
+        sqlx::query(
+            "INSERT INTO extension_storage_migrations (id, namespace_id, extension_id, \
+             extension_version, migration_id, path, raw_checksum_sha256, \
+             expanded_checksum_sha256, status, applied_at, error_json) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&r.id)
+        .bind(&r.namespace_id)
+        .bind(&r.extension_id)
+        .bind(&r.extension_version)
+        .bind(&r.migration_id)
+        .bind(&r.path)
+        .bind(&r.raw_checksum_sha256)
+        .bind(&r.expanded_checksum_sha256)
+        .bind(&r.status)
+        .bind(&r.applied_at)
+        .bind(&r.error_json)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn list_migrations_for_namespace(
+        &self,
+        namespace_id: &str,
+    ) -> Result<Vec<MigrationRecord>, StorageError> {
+        Ok(sqlx::query_as::<_, MigrationRecord>(
+            "SELECT * FROM extension_storage_migrations WHERE namespace_id = ?",
+        )
+        .bind(namespace_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    async fn get_migration_record(
+        &self,
+        namespace_id: &str,
+        migration_id: &str,
+    ) -> Result<Option<MigrationRecord>, StorageError> {
+        Ok(sqlx::query_as::<_, MigrationRecord>(
+            "SELECT * FROM extension_storage_migrations WHERE namespace_id = ? AND migration_id = ?",
+        )
+        .bind(namespace_id)
+        .bind(migration_id)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    async fn insert_object_record(&self, r: &ObjectRecord) -> Result<(), StorageError> {
+        sqlx::query(
+            "INSERT INTO extension_storage_objects (id, namespace_id, object_name, object_type, \
+             created_by_migration_id, sql_hash, status, recorded_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&r.id)
+        .bind(&r.namespace_id)
+        .bind(&r.object_name)
+        .bind(&r.object_type)
+        .bind(&r.created_by_migration_id)
+        .bind(&r.sql_hash)
+        .bind(&r.status)
+        .bind(&r.recorded_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn list_objects_for_namespace(
+        &self,
+        namespace_id: &str,
+    ) -> Result<Vec<ObjectRecord>, StorageError> {
+        Ok(sqlx::query_as::<_, ObjectRecord>(
+            "SELECT * FROM extension_storage_objects WHERE namespace_id = ?",
+        )
+        .bind(namespace_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    async fn update_object_status(&self, id: &str, status: &str) -> Result<(), StorageError> {
+        let result = sqlx::query("UPDATE extension_storage_objects SET status = ? WHERE id = ?")
+            .bind(status)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        if result.rows_affected() == 0 {
+            return Err(StorageError::NotFound {
+                entity: "object".into(),
+                id: id.into(),
+            });
+        }
+        Ok(())
+    }
+
+    async fn insert_operation(&self, r: &OperationRecord) -> Result<(), StorageError> {
+        sqlx::query(
+            "INSERT INTO extension_storage_operations (id, namespace_id, operation_type, status, \
+             plan_json, result_json, started_at, completed_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&r.id)
+        .bind(&r.namespace_id)
+        .bind(&r.operation_type)
+        .bind(&r.status)
+        .bind(&r.plan_json)
+        .bind(&r.result_json)
+        .bind(&r.started_at)
+        .bind(&r.completed_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn update_operation(
+        &self,
+        id: &str,
+        status: &str,
+        result_json: Option<&str>,
+        completed_at: Option<&str>,
+    ) -> Result<(), StorageError> {
+        let result = sqlx::query(
+            "UPDATE extension_storage_operations SET status = ?, result_json = ?, \
+             completed_at = ? WHERE id = ?",
+        )
+        .bind(status)
+        .bind(result_json)
+        .bind(completed_at)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(StorageError::NotFound {
+                entity: "operation".into(),
+                id: id.into(),
+            });
+        }
+        Ok(())
+    }
+
+    async fn insert_archive(&self, r: &ArchiveRecord) -> Result<(), StorageError> {
+        sqlx::query(
+            "INSERT INTO extension_storage_archives (id, namespace_id, archive_format, \
+             archive_path, content_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&r.id)
+        .bind(&r.namespace_id)
+        .bind(&r.archive_format)
+        .bind(&r.archive_path)
+        .bind(&r.content_hash)
+        .bind(&r.created_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn list_archives_for_namespace(
+        &self,
+        namespace_id: &str,
+    ) -> Result<Vec<ArchiveRecord>, StorageError> {
+        Ok(sqlx::query_as::<_, ArchiveRecord>(
+            "SELECT * FROM extension_storage_archives WHERE namespace_id = ?",
+        )
+        .bind(namespace_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn setup_db() -> SqliteDatabase {
+        SqliteDatabase::new("sqlite::memory:").await.unwrap()
+    }
+
+    fn make_namespace(id: &str, ext_id: &str) -> NamespaceRecord {
+        NamespaceRecord {
+            id: id.into(),
+            extension_id: ext_id.into(),
+            extension_version_first_seen: "1.0.0".into(),
+            namespace_alias: "test_ns".into(),
+            effective_prefix: format!("ext_{id}_"),
+            engine: "sqlite".into(),
+            storage_spec_version: "0.1".into(),
+            sql_profile: "nexus_sqlite_v1".into(),
+            status: "reserved".into(),
+            uninstall_policy: "retain".into(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+        }
+    }
+
+    fn make_migration(id: &str, ns_id: &str, mig_id: &str) -> MigrationRecord {
+        MigrationRecord {
+            id: id.into(),
+            namespace_id: ns_id.into(),
+            extension_id: "test.ext".into(),
+            extension_version: "1.0.0".into(),
+            migration_id: mig_id.into(),
+            path: "migrations/001_init.sql".into(),
+            raw_checksum_sha256: "abc123".into(),
+            expanded_checksum_sha256: "def456".into(),
+            status: "planned".into(),
+            applied_at: None,
+            error_json: None,
+        }
+    }
+
+    fn make_object(id: &str, ns_id: &str) -> ObjectRecord {
+        ObjectRecord {
+            id: id.into(),
+            namespace_id: ns_id.into(),
+            object_name: format!("ext_{ns_id}_items"),
+            object_type: "table".into(),
+            created_by_migration_id: "mig-1".into(),
+            sql_hash: Some("hash123".into()),
+            status: "present".into(),
+            recorded_at: "2026-01-01T00:00:00Z".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn namespace_insert_and_read() {
+        let db = setup_db().await;
+        let ns = make_namespace("ns-1", "test.ext");
+
+        db.insert_namespace(&ns).await.unwrap();
+
+        let fetched = db.get_namespace("ns-1").await.unwrap();
+        assert_eq!(fetched.id, "ns-1");
+        assert_eq!(fetched.extension_id, "test.ext");
+        assert_eq!(fetched.status, "reserved");
+    }
+
+    #[tokio::test]
+    async fn namespace_list_and_by_extension() {
+        let db = setup_db().await;
+        let ns = make_namespace("ns-1", "test.ext");
+        db.insert_namespace(&ns).await.unwrap();
+
+        let all = db.list_namespaces().await.unwrap();
+        assert_eq!(all.len(), 1);
+
+        let by_ext = db.get_namespace_by_extension("test.ext").await.unwrap();
+        assert!(by_ext.is_some());
+        assert_eq!(by_ext.unwrap().id, "ns-1");
+
+        let missing = db.get_namespace_by_extension("no.such").await.unwrap();
+        assert!(missing.is_none());
+    }
+
+    #[tokio::test]
+    async fn namespace_update_status() {
+        let db = setup_db().await;
+        let ns = make_namespace("ns-1", "test.ext");
+        db.insert_namespace(&ns).await.unwrap();
+
+        db.update_namespace_status("ns-1", "active").await.unwrap();
+
+        let fetched = db.get_namespace("ns-1").await.unwrap();
+        assert_eq!(fetched.status, "active");
+    }
+
+    #[tokio::test]
+    async fn migration_insert_and_list() {
+        let db = setup_db().await;
+        let ns = make_namespace("ns-1", "test.ext");
+        db.insert_namespace(&ns).await.unwrap();
+
+        let mig = make_migration("m-1", "ns-1", "001_init");
+        db.insert_migration_record(&mig).await.unwrap();
+
+        let migrations = db.list_migrations_for_namespace("ns-1").await.unwrap();
+        assert_eq!(migrations.len(), 1);
+        assert_eq!(migrations[0].migration_id, "001_init");
+
+        let found = db.get_migration_record("ns-1", "001_init").await.unwrap();
+        assert!(found.is_some());
+
+        let missing = db.get_migration_record("ns-1", "999_nope").await.unwrap();
+        assert!(missing.is_none());
+    }
+
+    #[tokio::test]
+    async fn object_insert_list_and_update() {
+        let db = setup_db().await;
+        let ns = make_namespace("ns-1", "test.ext");
+        db.insert_namespace(&ns).await.unwrap();
+
+        let obj = make_object("obj-1", "ns-1");
+        db.insert_object_record(&obj).await.unwrap();
+
+        let objects = db.list_objects_for_namespace("ns-1").await.unwrap();
+        assert_eq!(objects.len(), 1);
+        assert_eq!(objects[0].object_type, "table");
+
+        db.update_object_status("obj-1", "dropped").await.unwrap();
+
+        let objects = db.list_objects_for_namespace("ns-1").await.unwrap();
+        assert_eq!(objects[0].status, "dropped");
+    }
+
+    #[tokio::test]
+    async fn operation_insert_and_update() {
+        let db = setup_db().await;
+        let ns = make_namespace("ns-1", "test.ext");
+        db.insert_namespace(&ns).await.unwrap();
+
+        let op = OperationRecord {
+            id: "op-1".into(),
+            namespace_id: "ns-1".into(),
+            operation_type: "apply".into(),
+            status: "started".into(),
+            plan_json: Some(r#"{"action":"new_install"}"#.into()),
+            result_json: None,
+            started_at: "2026-01-01T00:00:00Z".into(),
+            completed_at: None,
+        };
+        db.insert_operation(&op).await.unwrap();
+
+        db.update_operation(
+            "op-1",
+            "completed",
+            Some(r#"{"ok":true}"#),
+            Some("2026-01-01T00:01:00Z"),
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn archive_insert_and_list() {
+        let db = setup_db().await;
+        let ns = make_namespace("ns-1", "test.ext");
+        db.insert_namespace(&ns).await.unwrap();
+
+        let archive = ArchiveRecord {
+            id: "arc-1".into(),
+            namespace_id: "ns-1".into(),
+            archive_format: "sqlite_dump".into(),
+            archive_path: "/tmp/archive.sql".into(),
+            content_hash: "sha256abc".into(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+        };
+        db.insert_archive(&archive).await.unwrap();
+
+        let archives = db.list_archives_for_namespace("ns-1").await.unwrap();
+        assert_eq!(archives.len(), 1);
+        assert_eq!(archives[0].archive_format, "sqlite_dump");
     }
 }

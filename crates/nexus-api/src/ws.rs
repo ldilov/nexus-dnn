@@ -90,7 +90,18 @@ fn extract_run_id(event: &nexus_events::types::NexusEvent) -> Option<&str> {
         | ExtensionValidated { .. }
         | ExtensionActivated { .. }
         | ExtensionDisabled { .. }
-        | ExtensionQuarantined { .. } => None,
+        | ExtensionQuarantined { .. }
+        | StorageNamespaceReserved { .. }
+        | StorageValidationStarted { .. }
+        | StorageValidationFailed { .. }
+        | StoragePlanReady { .. }
+        | StorageApplyStarted { .. }
+        | StorageMigrationApplied { .. }
+        | StorageApplyFailed { .. }
+        | StorageIntegrityVerified { .. }
+        | StorageIntegrityDriftDetected { .. }
+        | StorageUninstallStarted { .. }
+        | StorageUninstallCompleted { .. } => None,
     }
 }
 
@@ -113,5 +124,16 @@ fn extract_event_type(event: &nexus_events::types::NexusEvent) -> &'static str {
         ExtensionActivated { .. } => "extension_activated",
         ExtensionDisabled { .. } => "extension_disabled",
         ExtensionQuarantined { .. } => "extension_quarantined",
+        StorageNamespaceReserved { .. } => "storage_namespace_reserved",
+        StorageValidationStarted { .. } => "storage_validation_started",
+        StorageValidationFailed { .. } => "storage_validation_failed",
+        StoragePlanReady { .. } => "storage_plan_ready",
+        StorageApplyStarted { .. } => "storage_apply_started",
+        StorageMigrationApplied { .. } => "storage_migration_applied",
+        StorageApplyFailed { .. } => "storage_apply_failed",
+        StorageIntegrityVerified { .. } => "storage_integrity_verified",
+        StorageIntegrityDriftDetected { .. } => "storage_integrity_drift_detected",
+        StorageUninstallStarted { .. } => "storage_uninstall_started",
+        StorageUninstallCompleted { .. } => "storage_uninstall_completed",
     }
 }

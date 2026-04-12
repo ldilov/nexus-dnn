@@ -32,7 +32,9 @@ async fn serve_embedded_file(path: &str) -> Response {
 }
 
 fn has_file_extension(path: &str) -> bool {
-    path.rsplit('/').next().is_some_and(|segment| segment.contains('.'))
+    path.rsplit('/')
+        .next()
+        .is_some_and(|segment| segment.contains('.'))
 }
 
 fn serve_index_html() -> Response {

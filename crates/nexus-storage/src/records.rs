@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ExtensionRecord {
@@ -128,4 +129,69 @@ pub struct UIContributionRecord {
     pub priority: i32,
     pub metadata: Option<String>,
     pub availability: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, FromRow)]
+pub struct NamespaceRecord {
+    pub id: String,
+    pub extension_id: String,
+    pub extension_version_first_seen: String,
+    pub namespace_alias: String,
+    pub effective_prefix: String,
+    pub engine: String,
+    pub storage_spec_version: String,
+    pub sql_profile: String,
+    pub status: String,
+    pub uninstall_policy: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, FromRow)]
+pub struct MigrationRecord {
+    pub id: String,
+    pub namespace_id: String,
+    pub extension_id: String,
+    pub extension_version: String,
+    pub migration_id: String,
+    pub path: String,
+    pub raw_checksum_sha256: String,
+    pub expanded_checksum_sha256: String,
+    pub status: String,
+    pub applied_at: Option<String>,
+    pub error_json: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, FromRow)]
+pub struct ObjectRecord {
+    pub id: String,
+    pub namespace_id: String,
+    pub object_name: String,
+    pub object_type: String,
+    pub created_by_migration_id: String,
+    pub sql_hash: Option<String>,
+    pub status: String,
+    pub recorded_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, FromRow)]
+pub struct OperationRecord {
+    pub id: String,
+    pub namespace_id: String,
+    pub operation_type: String,
+    pub status: String,
+    pub plan_json: Option<String>,
+    pub result_json: Option<String>,
+    pub started_at: String,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, FromRow)]
+pub struct ArchiveRecord {
+    pub id: String,
+    pub namespace_id: String,
+    pub archive_format: String,
+    pub archive_path: String,
+    pub content_hash: String,
+    pub created_at: String,
 }
