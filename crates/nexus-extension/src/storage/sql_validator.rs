@@ -1,6 +1,6 @@
 use sqlparser::ast::{
-    AlterTableOperation, ColumnDef, ColumnOption, ColumnOptionDef, ObjectType, Statement,
-    TableConstraint,
+    AlterTableOperation, ColumnDef, ColumnOption, ColumnOptionDef, ObjectType, ReferentialAction,
+    Statement, TableConstraint,
 };
 use sqlparser::dialect::SQLiteDialect;
 use sqlparser::parser::Parser;
@@ -62,6 +62,99 @@ pub fn validate_sql(sql: &str, effective_prefix: &str) -> SqlValidationReport {
     }
 
     report
+}
+
+pub fn validate_sql_with_limits(
+    sql: &str,
+    effective_prefix: &str,
+    max_statements: usize,
+) -> SqlValidationReport {
+    let expanded = expand_prefix(sql, effective_prefix);
+    let mut report = SqlValidationReport {
+        statements_checked: 0,
+        objects: Vec::new(),
+        errors: Vec::new(),
+    };
+
+    if let Some(err) = check_reserved_prefix(effective_prefix) {
+        report.errors.push(err);
+        return report;
+    }
+
+    let statements = match Parser::parse_sql(&SQLiteDialect {}, &expanded) {
+        Ok(stmts) => stmts,
+        Err(e) => {
+            report.errors.push(format!("SQL parse error: {e}"));
+            return report;
+        }
+    };
+
+    if statements.len() > max_statements {
+        report.errors.push(format!(
+            "statement count {} exceeds limit {}",
+            statements.len(),
+            max_statements
+        ));
+        return report;
+    }
+
+    for stmt in &statements {
+        report.statements_checked += 1;
+        validate_statement(stmt, effective_prefix, &mut report);
+        validate_fk_actions(stmt, &mut report);
+    }
+
+    report
+}
+
+fn validate_fk_actions(stmt: &Statement, report: &mut SqlValidationReport) {
+    let Statement::CreateTable(create) = stmt else {
+        return;
+    };
+
+    for col in &create.columns {
+        for ColumnOptionDef { option, .. } in &col.options {
+            if let ColumnOption::ForeignKey {
+                on_delete,
+                on_update,
+                ..
+            } = option
+            {
+                check_referential_action(on_delete, report);
+                check_referential_action(on_update, report);
+            }
+        }
+    }
+
+    for constraint in &create.constraints {
+        if let TableConstraint::ForeignKey {
+            on_delete,
+            on_update,
+            ..
+        } = constraint
+        {
+            check_referential_action(on_delete, report);
+            check_referential_action(on_update, report);
+        }
+    }
+}
+
+fn check_referential_action(action: &Option<ReferentialAction>, report: &mut SqlValidationReport) {
+    let Some(action) = action else {
+        return;
+    };
+
+    match action {
+        ReferentialAction::Cascade
+        | ReferentialAction::Restrict
+        | ReferentialAction::SetNull
+        | ReferentialAction::NoAction => {}
+        other => {
+            report
+                .errors
+                .push(format!("unsupported FK action: {other}"));
+        }
+    }
 }
 
 fn validate_statement(stmt: &Statement, effective_prefix: &str, report: &mut SqlValidationReport) {
@@ -468,5 +561,53 @@ mod tests {
         let report = validate_sql(sql, PREFIX);
         assert!(!report.errors.is_empty());
         assert!(report.errors[0].contains("not allowed"));
+    }
+
+    #[test]
+    fn statement_count_exceeds_limit_rejected() {
+        let sql = "\
+            CREATE TABLE ext_chat_llama_t1 (id TEXT PRIMARY KEY);\n\
+            CREATE TABLE ext_chat_llama_t2 (id TEXT PRIMARY KEY);\n\
+            CREATE TABLE ext_chat_llama_t3 (id TEXT PRIMARY KEY);\
+        ";
+        let report = validate_sql_with_limits(sql, PREFIX, 2);
+        assert!(!report.errors.is_empty());
+        assert!(report.errors.iter().any(|e| e.contains("exceeds limit")));
+    }
+
+    #[test]
+    fn statement_count_within_limit_accepted() {
+        let sql = "\
+            CREATE TABLE ext_chat_llama_t1 (id TEXT PRIMARY KEY);\n\
+            CREATE TABLE ext_chat_llama_t2 (id TEXT PRIMARY KEY);\
+        ";
+        let report = validate_sql_with_limits(sql, PREFIX, 2);
+        assert!(report.errors.is_empty(), "errors: {:?}", report.errors);
+    }
+
+    #[test]
+    fn fk_on_delete_cascade_allowed() {
+        let sql = "CREATE TABLE ext_chat_llama_messages (\
+            id TEXT PRIMARY KEY, \
+            thread_id TEXT REFERENCES ext_chat_llama_threads(id) ON DELETE CASCADE\
+        );";
+        let report = validate_sql_with_limits(sql, PREFIX, 10);
+        assert!(report.errors.is_empty(), "errors: {:?}", report.errors);
+    }
+
+    #[test]
+    fn fk_on_delete_set_default_rejected() {
+        let sql = "CREATE TABLE ext_chat_llama_messages (\
+            id TEXT PRIMARY KEY, \
+            thread_id TEXT REFERENCES ext_chat_llama_threads(id) ON DELETE SET DEFAULT\
+        );";
+        let report = validate_sql_with_limits(sql, PREFIX, 10);
+        assert!(!report.errors.is_empty());
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("unsupported FK action"))
+        );
     }
 }

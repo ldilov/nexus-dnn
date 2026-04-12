@@ -1,7 +1,9 @@
+use super::limits::StorageLimits;
 use serde::{Deserialize, Serialize};
 
 const ALIAS_PATTERN: &str = r"^[a-z][a-z0-9_]{2,48}$";
 const MIGRATION_ID_PATTERN: &str = r"^[0-9]{3}_[a-z0-9_]{2,64}$";
+const RESERVED_ALIASES: &[&str] = &["sqlite", "host", "nexus", "core"];
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StorageContribution {
@@ -25,6 +27,29 @@ impl StorageContribution {
         validate_alias(&self.namespace.alias, &mut errors);
         validate_migration_ids(&self.migrations.files, &mut errors);
         validate_migration_paths(&self.migrations.files, &mut errors);
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+
+    pub fn validate_with_limits(&self, limits: &StorageLimits) -> Result<(), Vec<String>> {
+        let mut errors = self.validate().err().unwrap_or_default();
+
+        if self.migrations.files.is_empty() {
+            errors.push("at least one migration file is required".into());
+        }
+
+        validate_migration_count(
+            &self.migrations.files,
+            limits.max_migrations_per_extension,
+            &mut errors,
+        );
+        validate_sql_extension(&self.migrations.files, &mut errors);
+        validate_migration_order(&self.migrations.files, &mut errors);
+        validate_reserved_alias(&self.namespace.alias, &mut errors);
 
         if errors.is_empty() {
             Ok(())
@@ -101,6 +126,45 @@ fn validate_migration_paths(files: &[MigrationFileRef], errors: &mut Vec<String>
                 file_ref.path
             ));
         }
+    }
+}
+
+fn validate_sql_extension(files: &[MigrationFileRef], errors: &mut Vec<String>) {
+    for file_ref in files {
+        if !file_ref.path.ends_with(".sql") {
+            errors.push(format!(
+                "migration path '{}' does not end with .sql extension",
+                file_ref.path
+            ));
+        }
+    }
+}
+
+fn validate_migration_order(files: &[MigrationFileRef], errors: &mut Vec<String>) {
+    for window in files.windows(2) {
+        if window[0].id >= window[1].id {
+            errors.push(format!(
+                "migration id '{}' is not in ascending order before '{}'",
+                window[0].id, window[1].id
+            ));
+        }
+    }
+}
+
+fn validate_reserved_alias(alias: &str, errors: &mut Vec<String>) {
+    if RESERVED_ALIASES.contains(&alias) {
+        errors.push(format!(
+            "alias '{alias}' is reserved and produces a protected prefix"
+        ));
+    }
+}
+
+fn validate_migration_count(files: &[MigrationFileRef], max: usize, errors: &mut Vec<String>) {
+    if files.len() > max {
+        errors.push(format!(
+            "migration count {} exceeds maximum of {max}",
+            files.len()
+        ));
     }
 }
 
@@ -259,5 +323,98 @@ sql_profile:
         assert!(contribution.uninstall.is_none());
         assert!(contribution.runtime_access.is_none());
         assert!(contribution.validate().is_ok());
+    }
+
+    #[test]
+    fn empty_files_rejected() {
+        let mut s = valid_storage();
+        s.migrations.files = vec![];
+        let limits = StorageLimits::default();
+        let err = s.validate_with_limits(&limits).unwrap_err();
+        assert!(err.iter().any(|e| e.contains("at least one migration")));
+    }
+
+    #[test]
+    fn migration_count_exceeds_limit() {
+        let mut s = valid_storage();
+        s.migrations.files = (0..65)
+            .map(|i| MigrationFileRef {
+                id: format!("{i:03}_m"),
+                path: format!("storage/migrations/{i:03}_m.sql"),
+            })
+            .collect();
+        let limits = StorageLimits::default();
+        let err = s.validate_with_limits(&limits).unwrap_err();
+        assert!(err.iter().any(|e| e.contains("exceeds maximum")));
+    }
+
+    #[test]
+    fn migration_file_without_sql_extension_rejected() {
+        let mut s = valid_storage();
+        s.migrations.files[0].path = "migrations/001_init.txt".into();
+        let limits = StorageLimits::default();
+        let err = s.validate_with_limits(&limits).unwrap_err();
+        assert!(err.iter().any(|e| e.contains(".sql extension")));
+    }
+
+    #[test]
+    fn migration_ids_not_ascending_rejected() {
+        let mut s = valid_storage();
+        s.migrations.files = vec![
+            MigrationFileRef {
+                id: "002_b".into(),
+                path: "storage/migrations/002_b.sql".into(),
+            },
+            MigrationFileRef {
+                id: "001_a".into(),
+                path: "storage/migrations/001_a.sql".into(),
+            },
+        ];
+        let limits = StorageLimits::default();
+        let err = s.validate_with_limits(&limits).unwrap_err();
+        assert!(err.iter().any(|e| e.contains("ascending order")));
+    }
+
+    #[test]
+    fn reserved_alias_sqlite_rejected() {
+        let mut s = valid_storage();
+        s.namespace.alias = "sqlite".into();
+        let limits = StorageLimits::default();
+        let err = s.validate_with_limits(&limits).unwrap_err();
+        assert!(err.iter().any(|e| e.contains("reserved")));
+    }
+
+    #[test]
+    fn reserved_alias_host_rejected() {
+        let mut s = valid_storage();
+        s.namespace.alias = "host".into();
+        let limits = StorageLimits::default();
+        let err = s.validate_with_limits(&limits).unwrap_err();
+        assert!(err.iter().any(|e| e.contains("reserved")));
+    }
+
+    #[test]
+    fn reserved_alias_nexus_rejected() {
+        let mut s = valid_storage();
+        s.namespace.alias = "nexus".into();
+        let limits = StorageLimits::default();
+        let err = s.validate_with_limits(&limits).unwrap_err();
+        assert!(err.iter().any(|e| e.contains("reserved")));
+    }
+
+    #[test]
+    fn reserved_alias_core_rejected() {
+        let mut s = valid_storage();
+        s.namespace.alias = "core".into();
+        let limits = StorageLimits::default();
+        let err = s.validate_with_limits(&limits).unwrap_err();
+        assert!(err.iter().any(|e| e.contains("reserved")));
+    }
+
+    #[test]
+    fn valid_storage_with_limits_passes() {
+        let s = valid_storage();
+        let limits = StorageLimits::default();
+        assert!(s.validate_with_limits(&limits).is_ok());
     }
 }

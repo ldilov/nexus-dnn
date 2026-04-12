@@ -106,6 +106,7 @@ pub trait Database: Send + Sync {
     ) -> Result<Option<NamespaceRecord>, StorageError>;
     async fn list_namespaces(&self) -> Result<Vec<NamespaceRecord>, StorageError>;
     async fn update_namespace_status(&self, id: &str, status: &str) -> Result<(), StorageError>;
+    async fn update_namespace_policy(&self, id: &str, policy: &str) -> Result<(), StorageError>;
 
     async fn insert_migration_record(&self, record: &MigrationRecord) -> Result<(), StorageError>;
     async fn list_migrations_for_namespace(
