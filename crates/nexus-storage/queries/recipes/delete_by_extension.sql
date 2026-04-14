@@ -1,0 +1,1 @@
+DELETE FROM recipes WHERE extension_id = ?

@@ -30,7 +30,7 @@ export const topBar = style({
 export const canvas = style({
   gridColumn: "1",
   gridRow: "2",
-  overflow: "auto",
+  overflow: "hidden",
   backgroundColor: vars.color.bg.canvas,
 });
 

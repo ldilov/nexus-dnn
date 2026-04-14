@@ -1,0 +1,23 @@
+spec_version: "0.1"
+operator:
+  id: "llm.output.persist"
+  version: "1.0.0"
+  display_name: "Persist Output"
+  description: "Persist an assistant message as a typed artifact"
+  category: "LLM"
+execution:
+  mode: "job"
+  cacheable: false
+  resumable: false
+inputs:
+  - name: "message"
+    type: "text/assistant-response"
+    required: true
+outputs:
+  - name: "artifact_ref"
+    type: "text/assistant-response"
+config_schema:
+  type: object
+  properties: {}
+resources:
+  gpu: false

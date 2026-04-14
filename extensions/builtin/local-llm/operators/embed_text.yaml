@@ -1,0 +1,26 @@
+spec_version: "0.1"
+operator:
+  id: "llm.embed.text"
+  version: "1.0.0"
+  display_name: "Embed Text"
+  description: "Generate embedding vectors for text input using a local model"
+  category: "LLM"
+execution:
+  mode: "job"
+  cacheable: true
+  resumable: false
+inputs:
+  - name: "text"
+    type: "text/plain"
+    required: true
+  - name: "backend_profile"
+    type: "model/backend-profile"
+    required: true
+outputs:
+  - name: "embeddings"
+    type: "embedding/vector-list"
+config_schema:
+  type: object
+  properties: {}
+resources:
+  gpu: true

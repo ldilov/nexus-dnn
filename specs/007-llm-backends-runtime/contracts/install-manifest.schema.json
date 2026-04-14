@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus-dnn/schemas/llm-backend-install-manifest.json",
+  "title": "LLM backend install manifest (per-install record)",
+  "type": "object",
+  "required": [
+    "runtime_install_id",
+    "backend",
+    "release_id",
+    "platform",
+    "accelerator_profile",
+    "source_url",
+    "install_path",
+    "binary_path",
+    "status",
+    "installed_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "runtime_install_id": { "type": "string", "pattern": "^rtinst_[0-9A-HJKMNP-TV-Z]{26}$" },
+    "backend": { "type": "string", "enum": ["llama.cpp", "tensorrt_llm"] },
+    "release_id": { "type": "string" },
+    "platform": { "type": "string", "enum": ["windows-x64", "linux-x64"] },
+    "accelerator_profile": { "type": "string", "enum": ["cpu", "cuda12", "cuda13"] },
+    "source_url": { "type": "string", "format": "uri" },
+    "checksum_sha256": {
+      "type": ["string", "null"],
+      "pattern": "^[A-Fa-f0-9]{64}$"
+    },
+    "install_path": { "type": "string" },
+    "binary_path": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["installed_unvalidated", "ready", "broken", "updating"]
+    },
+    "installed_at": { "type": "integer", "minimum": 0 },
+    "validated_at": { "type": ["integer", "null"], "minimum": 0 },
+    "last_failure_category": { "type": ["string", "null"] }
+  }
+}

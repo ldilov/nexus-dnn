@@ -110,6 +110,54 @@ impl NexusApp {
 
         emit_discovery_events(event_bus.as_ref(), &discovery_report);
 
+        let builtin_dir = self.config.builtin_extensions_dir();
+        if builtin_dir.exists() {
+            match extension_registry.scan_builtin_extensions_dir(
+                &builtin_dir,
+                &host_version,
+                &protocol_version,
+            ) {
+                Ok(builtin_report) => {
+                    tracing::info!(
+                        discovered = builtin_report.activated.len(),
+                        invalid = builtin_report.invalid.len(),
+                        path = %builtin_dir.display(),
+                        "builtin extension discovery complete"
+                    );
+
+                    for ext_id in &builtin_report.activated {
+                        match extension_registry.activate_builtin_extension(
+                            ext_id,
+                            &host_version,
+                            &protocol_version,
+                        ) {
+                            Ok(()) => {
+                                tracing::info!(extension_id = %ext_id, "builtin extension activated");
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    extension_id = %ext_id,
+                                    error = %e,
+                                    "failed to activate builtin extension"
+                                );
+                            }
+                        }
+                    }
+
+                    emit_discovery_events(event_bus.as_ref(), &builtin_report);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        path = %builtin_dir.display(),
+                        "builtin extension discovery failed"
+                    );
+                }
+            }
+        }
+
+        log_discovery_summary(&extension_registry);
+
         let extension_registry = Arc::new(extension_registry);
 
         persist_discovery_to_db(&db, &extension_registry).await?;
@@ -133,6 +181,14 @@ impl NexusApp {
         let app_for_health = Arc::new(self);
         let app_ref = Arc::clone(&app_for_health);
 
+        let backend_adapter_registry = build_backend_adapter_registry(
+            &app_for_health.config.resolved_data_dir(),
+            &app_for_health.config.builtin_extensions_dir(),
+            db.pool().clone(),
+            event_bus.clone(),
+        )
+        .await;
+
         let state = nexus_api::AppState {
             health_status_fn: Arc::new(move || {
                 serde_json::to_value(app_ref.health_status()).unwrap_or_default()
@@ -146,6 +202,7 @@ impl NexusApp {
             artifact_store,
             extensions_dir: Some(extensions_dir),
             storage_manager: Some(storage_manager),
+            backend_adapter_registry,
         };
 
         let router = nexus_api::create_router(state);
@@ -368,6 +425,70 @@ async fn persist_ui_contribution_records(
     Ok(())
 }
 
+fn log_discovery_summary(registry: &InMemoryExtensionRegistry) {
+    let extensions = registry.list_extensions();
+    let operators = registry.list_operators();
+    let recipes = registry.list_recipes();
+    let layouts = registry.list_layouts();
+    let ui_contributions = registry.list_ui_contributions();
+
+    tracing::info!("╔══════════════════════════════════════════════════╗");
+    tracing::info!("║          NEXUS-DNN Extension Discovery          ║");
+    tracing::info!("╠══════════════════════════════════════════════════╣");
+
+    if extensions.is_empty() {
+        tracing::warn!("║  No extensions discovered                        ║");
+    } else {
+        for ext in &extensions {
+            let status = ext.status.as_str();
+            let name = ext
+                .manifest
+                .extension
+                .name
+                .as_deref()
+                .unwrap_or(&ext.manifest.extension.id);
+            tracing::info!(
+                "║  Extension: {name} v{ver} [{status}]",
+                ver = ext.manifest.extension.version,
+            );
+        }
+    }
+
+    tracing::info!("╠──────────────────────────────────────────────────╣");
+    tracing::info!("║  Operators: {count}", count = operators.len());
+
+    for op in &operators {
+        tracing::info!(
+            "║    ✓ {id} v{ver}",
+            id = op.operator.id,
+            ver = op.operator.version,
+        );
+    }
+
+    tracing::info!("║  Recipes:   {count}", count = recipes.len());
+
+    for recipe in &recipes {
+        tracing::info!("║    ✓ {name}", name = recipe.recipe.display_name);
+    }
+
+    tracing::info!("║  Layouts:   {count}", count = layouts.len());
+
+    for layout in &layouts {
+        let default_marker = if layout.is_default { " (default)" } else { "" };
+        tracing::info!(
+            "║    ✓ {name}{default_marker}",
+            name = layout.display_name,
+        );
+    }
+
+    tracing::info!(
+        "║  UI:        {count} contributions",
+        count = ui_contributions.len()
+    );
+
+    tracing::info!("╚══════════════════════════════════════════════════╝");
+}
+
 fn emit_discovery_events(event_bus: &dyn EventBus, report: &DiscoveryReport) {
     for ext_id in &report.activated {
         event_bus.publish(NexusEvent::ExtensionDiscovered {
@@ -391,6 +512,56 @@ fn emit_discovery_events(event_bus: &dyn EventBus, report: &DiscoveryReport) {
             valid: false,
         });
     }
+}
+
+async fn build_backend_adapter_registry(
+    data_dir: &Path,
+    builtin_extensions_dir: &Path,
+    pool: sqlx::SqlitePool,
+    _event_bus: Arc<dyn EventBus>,
+) -> Option<Arc<nexus_local_llm::adapter::AdapterRegistry>> {
+    let version_manifest_path = builtin_extensions_dir
+        .join("local-llm")
+        .join("backends")
+        .join("llamacpp")
+        .join("versions.yaml");
+    if !version_manifest_path.exists() {
+        tracing::debug!(
+            manifest = %version_manifest_path.display(),
+            "local-llm version manifest missing; skipping backend adapter registry"
+        );
+        return None;
+    }
+    let runtimes_root = data_dir
+        .join("extensions")
+        .join("local-llm")
+        .join("runtimes");
+    if let Err(err) = tokio::fs::create_dir_all(&runtimes_root).await {
+        tracing::warn!(
+            error = %err,
+            path = %runtimes_root.display(),
+            "failed to create runtimes root"
+        );
+        return None;
+    }
+    let runtimes_root_utf8 = match camino::Utf8PathBuf::from_path_buf(runtimes_root) {
+        Ok(p) => p,
+        Err(_) => return None,
+    };
+    let publisher: nexus_local_llm::events::SharedPublisher =
+        Arc::new(nexus_local_llm::events::BroadcastPublisher::new(1024));
+    let adapter = nexus_local_llm::llamacpp::LlamaCppAdapter::new(
+        version_manifest_path,
+        runtimes_root_utf8,
+        pool,
+        publisher,
+    );
+    let mut registry = nexus_local_llm::adapter::AdapterRegistry::new();
+    registry.register(Arc::new(adapter));
+    registry.register(Arc::new(
+        nexus_local_llm::tensorrt_llm_stub::TensorRtLlmStub::new(),
+    ));
+    Some(Arc::new(registry))
 }
 
 async fn shutdown_signal() {

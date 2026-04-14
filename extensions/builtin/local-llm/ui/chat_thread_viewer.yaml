@@ -1,0 +1,12 @@
+kind: "artifact_viewer"
+id: "llm.chat_thread_viewer"
+display_name: "Chat Thread Viewer"
+description: "Renders chat thread artifacts as a conversation view"
+availability: "available"
+supportedTypes:
+  - "text/chat-thread"
+  - "text/chat-message"
+priority: 10
+metadata:
+  renderMode: "conversation"
+  fallback: "text"

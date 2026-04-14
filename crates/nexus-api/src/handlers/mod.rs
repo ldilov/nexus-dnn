@@ -1,4 +1,5 @@
 pub mod artifacts;
+pub mod backends;
 pub mod extensions;
 pub mod health;
 pub mod metrics;
@@ -8,4 +9,5 @@ pub mod storage_contributions;
 pub mod system;
 pub mod tools;
 pub mod ui_contributions;
+pub mod ui_layouts;
 pub mod workflows;

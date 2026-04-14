@@ -1,0 +1,8 @@
+kind: "command"
+id: "llm.open_backend_settings"
+display_name: "Backend Settings"
+description: "Configure local LLM backend profiles and runtime settings"
+availability: "available"
+metadata:
+  icon: "settings"
+  shortcut: null

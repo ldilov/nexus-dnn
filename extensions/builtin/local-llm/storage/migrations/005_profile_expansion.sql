@@ -1,0 +1,17 @@
+ALTER TABLE ext_local_llm_backend_profiles ADD COLUMN launch_mode TEXT DEFAULT 'http_server';
+ALTER TABLE ext_local_llm_backend_profiles ADD COLUMN host_bind TEXT DEFAULT '127.0.0.1';
+ALTER TABLE ext_local_llm_backend_profiles ADD COLUMN port INTEGER;
+ALTER TABLE ext_local_llm_backend_profiles ADD COLUMN context_size INTEGER DEFAULT 4096;
+ALTER TABLE ext_local_llm_backend_profiles ADD COLUMN threads INTEGER;
+ALTER TABLE ext_local_llm_backend_profiles ADD COLUMN batch_size INTEGER;
+ALTER TABLE ext_local_llm_backend_profiles ADD COLUMN gpu_layers INTEGER DEFAULT -1;
+ALTER TABLE ext_local_llm_backend_profiles ADD COLUMN flash_attention INTEGER DEFAULT 1;
+ALTER TABLE ext_local_llm_backend_profiles ADD COLUMN embeddings_enabled INTEGER DEFAULT 0;
+ALTER TABLE ext_local_llm_backend_profiles ADD COLUMN metrics_enabled INTEGER DEFAULT 1;
+ALTER TABLE ext_local_llm_backend_profiles ADD COLUMN auto_start INTEGER DEFAULT 0;
+ALTER TABLE ext_local_llm_backend_profiles ADD COLUMN startup_timeout INTEGER DEFAULT 30;
+ALTER TABLE ext_local_llm_backend_profiles ADD COLUMN health_check_interval INTEGER DEFAULT 5;
+ALTER TABLE ext_local_llm_backend_profiles ADD COLUMN last_started_at TEXT;
+ALTER TABLE ext_local_llm_backend_profiles ADD COLUMN last_stopped_at TEXT;
+ALTER TABLE ext_local_llm_backend_profiles ADD COLUMN last_pid INTEGER;
+ALTER TABLE ext_local_llm_backend_profiles ADD COLUMN effective_endpoint TEXT;

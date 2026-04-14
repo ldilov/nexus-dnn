@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use nexus_protocol::RuntimeFamily;
@@ -15,6 +16,7 @@ pub struct ExtensionManifest {
     pub capabilities: Option<Vec<String>>,
     pub operators: Option<Vec<FileRef>>,
     pub recipes: Option<Vec<FileRef>>,
+    pub ui: Option<UiDeclaration>,
     pub storage: Option<StorageContribution>,
 }
 
@@ -38,7 +40,28 @@ pub struct CompatibilitySpec {
 pub struct RuntimeSpec {
     pub family: RuntimeFamily,
     pub entrypoint: String,
-    pub environment: Option<serde_json::Value>,
+    pub environment: Option<EnvironmentSpec>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EnvironmentSpec {
+    pub python_version: Option<String>,
+    pub cuda_version: Option<String>,
+    pub pip_dependencies: Option<Vec<String>>,
+    pub env_vars: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct UiDeclaration {
+    pub layouts: Option<Vec<LayoutRef>>,
+    pub contributions: Option<Vec<FileRef>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LayoutRef {
+    pub file: String,
+    pub placement: Option<String>,
+    pub default: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

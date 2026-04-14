@@ -1,0 +1,1 @@
+SELECT * FROM ui_contributions WHERE extension_id = ?

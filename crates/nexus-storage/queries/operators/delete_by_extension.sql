@@ -1,0 +1,1 @@
+DELETE FROM operators WHERE extension_id = ?

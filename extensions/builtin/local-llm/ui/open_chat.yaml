@@ -1,0 +1,9 @@
+kind: "command"
+id: "llm.open_chat"
+display_name: "Open Chat"
+description: "Open the local LLM chat panel"
+availability: "available"
+metadata:
+  icon: "chat"
+  shortcut: null
+  primary: true

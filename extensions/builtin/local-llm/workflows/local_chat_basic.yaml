@@ -1,0 +1,65 @@
+specVersion: "0.1"
+workflow:
+  id: "local_chat_basic"
+  version: "0.1.0"
+  title: "Local Chat"
+
+  inputs:
+    - name: "user_message"
+      type: "text/chat-message"
+    - name: "system_prompt"
+      type: "text/system-prompt"
+    - name: "backend_profile"
+      type: "model/backend-profile"
+
+  stages:
+    - id: "prepare"
+      label: "Prepare"
+    - id: "generate"
+      label: "Generate"
+    - id: "persist"
+      label: "Persist"
+
+  nodes:
+    - id: "compose_prompt"
+      operator: "llm.prompt.compose@1.0.0"
+      stage: "prepare"
+      inputs:
+        user_message:
+          from: "input:user_message"
+        system_prompt:
+          from: "input:system_prompt"
+      config: {}
+
+    - id: "chat_turn"
+      operator: "llm.chat.turn@1.0.0"
+      stage: "generate"
+      inputs:
+        prompt:
+          from: "compose_prompt:prompt"
+        backend_profile:
+          from: "input:backend_profile"
+      config:
+        stream: false
+
+    - id: "persist_message"
+      operator: "llm.output.persist@1.0.0"
+      stage: "persist"
+      inputs:
+        message:
+          from: "chat_turn:assistant_message"
+      config: {}
+
+  edges:
+    - sourceNode: "compose_prompt"
+      sourcePort: "prompt"
+      targetNode: "chat_turn"
+      targetPort: "prompt"
+    - sourceNode: "chat_turn"
+      sourcePort: "assistant_message"
+      targetNode: "persist_message"
+      targetPort: "message"
+
+  outputs:
+    - name: "assistant_message"
+      from: "persist_message:artifact_ref"

@@ -1,0 +1,26 @@
+backend: llama.cpp
+default_release_id: b4970
+releases:
+  - release_id: b4970
+    release_notes_url: https://github.com/ggml-org/llama.cpp/releases/tag/b4970
+    assets:
+      - platform: windows-x64
+        accelerator_profile: cpu
+        url: https://github.com/ggml-org/llama.cpp/releases/download/b4970/llama-b4970-bin-win-cpu-x64.zip
+        archive_kind: zip
+      - platform: windows-x64
+        accelerator_profile: cuda12
+        url: https://github.com/ggml-org/llama.cpp/releases/download/b4970/llama-b4970-bin-win-cuda-cu12.4.1-x64.zip
+        archive_kind: zip
+      - platform: windows-x64
+        accelerator_profile: cuda13
+        url: https://github.com/ggml-org/llama.cpp/releases/download/b4970/llama-b4970-bin-win-cuda-cu13.0.0-x64.zip
+        archive_kind: zip
+      - platform: linux-x64
+        accelerator_profile: cpu
+        url: https://github.com/ggml-org/llama.cpp/releases/download/b4970/llama-b4970-bin-ubuntu-x64.zip
+        archive_kind: zip
+      - platform: linux-x64
+        accelerator_profile: cuda12
+        url: https://github.com/ggml-org/llama.cpp/releases/download/b4970/llama-b4970-bin-ubuntu-cuda-cu12.4.1-x64.zip
+        archive_kind: zip

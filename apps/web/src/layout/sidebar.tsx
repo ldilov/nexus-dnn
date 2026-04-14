@@ -8,7 +8,7 @@ export type NavItemId =
   | "runs"
   | "artifacts"
   | "extensions"
-  | "models";
+  | `ext:${string}`;
 
 type UtilityItemId = "settings" | "help";
 
@@ -24,14 +24,13 @@ type UtilityItem = {
   readonly icon: string;
 };
 
-const NAV_ITEMS: readonly NavItem[] = [
+const CORE_NAV_ITEMS: readonly NavItem[] = [
   { id: "home", label: "Home", icon: "home" },
   { id: "recipes", label: "Recipes", icon: "description" },
   { id: "workflows", label: "Workflows", icon: "account_tree" },
   { id: "runs", label: "Runs", icon: "play_arrow" },
   { id: "artifacts", label: "Artifacts", icon: "inventory_2" },
   { id: "extensions", label: "Extensions", icon: "extension" },
-  { id: "models", label: "Models", icon: "settings_input_component" },
 ];
 
 const UTILITY_ITEMS: readonly UtilityItem[] = [
@@ -43,6 +42,12 @@ const FILLED_ICON_STYLE: CSSProperties = {
   fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24",
 };
 
+type ExtensionNavItem = {
+  readonly id: NavItemId;
+  readonly label: string;
+  readonly icon: string;
+};
+
 type SidebarProps = {
   activeItem: NavItemId;
   onNavigate: (id: NavItemId) => void;
@@ -50,6 +55,7 @@ type SidebarProps = {
   onTogglePin: () => void;
   secondaryContent?: ReactNode;
   onUtility?: (id: UtilityItemId) => void;
+  extensionNavItems?: readonly ExtensionNavItem[];
 };
 
 export function Sidebar({
@@ -59,6 +65,7 @@ export function Sidebar({
   onTogglePin,
   secondaryContent,
   onUtility,
+  extensionNavItems = [],
 }: SidebarProps) {
   const [hovered, setHovered] = useState(false);
   const expanded = hovered || pinned;
@@ -113,7 +120,7 @@ export function Sidebar({
         </span>
       </button>
       <div className={styles.navSection}>
-        {NAV_ITEMS.map((item) => {
+        {[...CORE_NAV_ITEMS.slice(0, 1), ...extensionNavItems, ...CORE_NAV_ITEMS.slice(1)].map((item) => {
           const isActive = item.id === activeItem;
           return (
             <button

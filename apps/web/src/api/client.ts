@@ -203,3 +203,43 @@ export type RuntimeMetrics = {
 export function fetchMetrics(): Promise<RuntimeMetrics> {
   return request("/metrics");
 }
+
+export type LayoutSummary = {
+  id: string;
+  display_name: string;
+  extension_id: string;
+  placement: string;
+  is_default: boolean;
+};
+
+export type DataSource = {
+  method: string;
+  params?: Record<string, unknown>;
+  refreshInterval?: number;
+  events?: string[];
+};
+
+export type LayoutNode = {
+  type: string;
+  id?: string;
+  props?: Record<string, unknown>;
+  dataSource?: DataSource;
+  children?: LayoutNode[];
+  visibility?: { condition: string };
+};
+
+export type LayoutDefinition = {
+  id: string;
+  displayName: string;
+  icon?: string;
+  root: LayoutNode;
+};
+
+export async function fetchLayouts(): Promise<LayoutSummary[]> {
+  const data = await request<{ layouts: LayoutSummary[] }>("/ui/layouts");
+  return data.layouts ?? [];
+}
+
+export function fetchLayout(id: string): Promise<LayoutDefinition> {
+  return request(`/ui/layouts/${encodeURIComponent(id)}`);
+}

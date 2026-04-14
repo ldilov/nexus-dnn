@@ -14,7 +14,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "pattern": "^[a-zA-Z0-9]+(?:\\.[a-zA-Z0-9]+)+$"
+          "pattern": "^[a-zA-Z0-9-]+(?:\\.[a-zA-Z0-9-]+)+$"
         },
         "version": {
           "type": "string",
@@ -114,6 +114,36 @@
     },
     "storage": {
       "$ref": "storage-contribution.schema.json"
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "layouts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["file"],
+            "properties": {
+              "file": { "type": "string" },
+              "placement": { "type": "string", "enum": ["main", "sidebar", "inspector"] },
+              "default": { "type": "boolean" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "contributions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["file"],
+            "properties": {
+              "file": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

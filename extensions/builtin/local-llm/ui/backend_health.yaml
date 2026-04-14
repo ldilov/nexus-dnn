@@ -1,0 +1,23 @@
+kind: "inspector_panel"
+id: "llm.backend_health"
+display_name: "Backend Health"
+description: "Displays backend runtime health, metrics, and diagnostics"
+availability: "available"
+metadata:
+  target: "backend_profile"
+  refreshInterval: 5
+  fields:
+    - label: "Status"
+      key: "status"
+      format: "status_badge"
+    - label: "Backend"
+      key: "backend_id"
+    - label: "Version"
+      key: "backend_version"
+    - label: "Model"
+      key: "model_identity"
+    - label: "PID"
+      key: "runtime_pid"
+    - label: "Uptime"
+      key: "uptime_seconds"
+      format: "duration"

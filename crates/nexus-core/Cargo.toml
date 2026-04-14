@@ -24,6 +24,9 @@ nexus-worker = { path = "../nexus-worker" }
 nexus-scheduler = { path = "../nexus-scheduler" }
 nexus-run = { path = "../nexus-run" }
 nexus-api = { path = "../nexus-api" }
+nexus-local-llm = { path = "../nexus-local-llm" }
+camino = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 semver = { workspace = true }
@@ -35,6 +38,9 @@ dirs = "6"
 tokio = { workspace = true }
 semver = { workspace = true }
 serde_json = { workspace = true }
+serde-saphyr = "0.0.10"
+tempfile = "3"
 nexus-extension = { path = "../nexus-extension" }
+nexus-protocol = { path = "../nexus-protocol" }
 nexus-workflow = { path = "../nexus-workflow" }
 nexus-scheduler = { path = "../nexus-scheduler" }

@@ -1,0 +1,1 @@
+UPDATE extension_storage_objects SET status = ? WHERE id = ?

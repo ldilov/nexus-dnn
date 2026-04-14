@@ -46,7 +46,7 @@ export function ToolCatalog() {
             <div key={tool.id} className={styles.itemCard}>
               <div className={styles.itemName}>{tool.name}</div>
               <div className={styles.itemMeta}>
-                {tool.input_types.join(", ")} &rarr; {tool.output_types.join(", ")}
+                {(tool.input_types ?? []).join(", ")} &rarr; {(tool.output_types ?? []).join(", ")}
               </div>
             </div>
           ))}

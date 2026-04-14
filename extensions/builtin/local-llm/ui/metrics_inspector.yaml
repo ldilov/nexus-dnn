@@ -1,0 +1,14 @@
+kind: "inspector_panel"
+id: "llm.metrics_inspector"
+display_name: "Backend Metrics"
+description: "Displays normalized backend performance metrics and health indicators"
+availability: "available"
+metadata:
+  target: "backend_profile"
+  refreshInterval: 5
+  metrics:
+    - "prompt_tokens_per_second"
+    - "generated_tokens_per_second"
+    - "kv_cache_usage_ratio"
+    - "active_requests"
+    - "gpu_memory_used_mb"

@@ -1,0 +1,1 @@
+SELECT * FROM operators WHERE extension_id = ?
