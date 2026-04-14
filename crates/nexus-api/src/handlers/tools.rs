@@ -1,11 +1,11 @@
 use axum::extract::{Query, State};
-use serde_json::json;
 
 use nexus_extension::{
     ExtensionRegistry, ExtensionStatus, Tool, build_tool_from_operator, build_tool_from_recipe,
 };
 
 use crate::AppState;
+use crate::dto::{ListResponseDto, ToolDto};
 use crate::envelope::ApiResponse;
 use crate::error::ApiError;
 
@@ -18,7 +18,7 @@ pub struct ToolsFilter {
 pub async fn list_tools(
     State(state): State<AppState>,
     Query(filter): Query<ToolsFilter>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<ListResponseDto<ToolDto>>, ApiError> {
     let extensions = state.extension_registry.list_extensions();
     let mut tools: Vec<Tool> = Vec::new();
 
@@ -47,7 +47,8 @@ pub async fn list_tools(
         tools.retain(|t| matches_query(t, &lower));
     }
 
-    Ok(ApiResponse::ok(json!({ "tools": tools })))
+    let items = tools.iter().map(ToolDto::from).collect();
+    Ok(ApiResponse::ok(ListResponseDto { items }))
 }
 
 fn matches_query(tool: &Tool, query: &str) -> bool {

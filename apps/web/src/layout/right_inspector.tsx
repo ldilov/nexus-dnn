@@ -1,4 +1,8 @@
-import type { WorkflowNode } from "../api/client";
+import {
+  isNodeInputReference,
+  renderNodeInput,
+  type WorkflowNode,
+} from "../api/client";
 import { Badge } from "../components/badge";
 import * as styles from "./right_inspector.css";
 
@@ -53,9 +57,16 @@ export function RightInspector({ selectedNode, nodeStatus }: InspectorProps) {
         />
       )}
       <InspectorField label="Operator" value={selectedNode.operator} />
-      {Object.entries(selectedNode.inputs).map(([key, val]) => (
-        <InspectorField key={key} label={key} value={val} />
-      ))}
+      {Object.entries(selectedNode.inputs).map(([key, val]) => {
+        if (!val) return null;
+        return (
+          <InspectorField
+            key={key}
+            label={isNodeInputReference(val) ? `${key} ←` : key}
+            value={renderNodeInput(val)}
+          />
+        );
+      })}
     </div>
   );
 }

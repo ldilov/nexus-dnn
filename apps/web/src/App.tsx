@@ -6,6 +6,8 @@ import { RightInspector } from "./layout/right_inspector";
 import { Tabs } from "./components/tabs";
 import { ToolCatalog } from "./catalog/tool_catalog";
 import { RecipeCatalog } from "./catalog/recipe_catalog";
+import { WorkflowCatalog } from "./catalog/workflow_catalog";
+import { HomeDashboard } from "./catalog/home_dashboard";
 import { ExtensionList } from "./catalog/extension_list";
 import { StageView } from "./views/stage_view";
 import { GraphView } from "./views/graph_view";
@@ -21,6 +23,7 @@ import {
   type Workflow,
   type WorkflowNode,
   type LayoutSummary,
+  type Recipe,
 } from "./api/client";
 import * as styles from "./app.css";
 
@@ -140,7 +143,7 @@ export function App() {
     if (!workflow) return;
     setIsRunning(true);
     createRun(workflow.id)
-      .then((run) => setRunId(run.id))
+      .then((run) => setRunId(run.run_id))
       .catch(() => setIsRunning(false));
   }, [workflow]);
 
@@ -157,26 +160,48 @@ export function App() {
     setSelectedNode(null);
   }, []);
 
+  const handleOpenRecipe = useCallback((recipe: Recipe) => {
+    // Resolve the recipe's extension default layout and navigate to it.
+    const target =
+      extensionLayouts.find((l) => l.extension_id === recipe.extension_id && l.is_default) ??
+      extensionLayouts.find((l) => l.extension_id === recipe.extension_id);
+    if (target) {
+      setActiveNav(`ext:${target.id}` as NavItemId);
+    }
+  }, [extensionLayouts]);
+
   const renderCanvas = () => {
     if (activeExtensionLayoutId) {
       return <ExtensionLayoutView layoutId={activeExtensionLayoutId} />;
     }
 
     if (activeNav === "home") {
-      const defaultLayout = extensionLayouts.find((l) => l.is_default);
-      if (defaultLayout) {
-        return <ExtensionLayoutView layoutId={defaultLayout.id} />;
-      }
       return (
-        <p className={styles.placeholderText}>
-          Welcome to Nexus DNN. Enable an extension to get started.
-        </p>
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <HomeDashboard
+              onOpenRecipe={handleOpenRecipe}
+              onGoToRecipes={() => setActiveNav("recipes")}
+              onGoToWorkflows={() => setActiveNav("workflows")}
+              onGoToExtensions={() => setActiveNav("extensions")}
+            />
+          </div>
+        </div>
       );
     }
 
     if (activeNav === "workflows") {
       if (loadError) {
         return <p className={styles.placeholderText}>{loadError}</p>;
+      }
+      if (!workflow) {
+        return (
+          <div className={styles.canvasColumn}>
+            <div className={styles.canvasContent}>
+              <WorkflowCatalog selectedId={null} onSelect={handleWorkflowSelect} />
+            </div>
+          </div>
+        );
       }
       return (
         <div className={styles.canvasColumn}>
@@ -202,7 +227,7 @@ export function App() {
       return (
         <div className={styles.canvasColumn}>
           <div className={styles.canvasContent}>
-            <RecipeCatalog />
+            <RecipeCatalog onOpenRecipe={handleOpenRecipe} />
           </div>
         </div>
       );

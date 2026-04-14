@@ -52,6 +52,14 @@ export const color = {
     model: "#ba9eff",
     system: "#94A3B8",
   },
+  neon: {
+    cyan: "#22D3EE",
+    cyanDim: "#0891B2",
+    pink: "#F472B6",
+    pinkDim: "#DB2777",
+    magenta: "#E879F9",
+    lime: "#A3E635",
+  },
 } as const;
 
 export const spacing = {
@@ -84,7 +92,7 @@ export const radii = {
 
 export const typography = {
   family: {
-    headline: "'Space Grotesk', system-ui, sans-serif",
+    headline: "'Sora', 'Space Grotesk', system-ui, sans-serif",
     body: "'Inter', system-ui, -apple-system, sans-serif",
     code: "'JetBrains Mono', 'Fira Code', monospace",
   },

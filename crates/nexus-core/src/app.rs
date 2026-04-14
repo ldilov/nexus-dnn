@@ -255,10 +255,99 @@ async fn persist_discovery_to_db(
         persist_extension_record(db, ext).await?;
         persist_operator_records(db, ext).await?;
         persist_recipe_records(db, ext).await?;
+        persist_workflow_records(db, ext).await?;
         persist_ui_contribution_records(db, ext).await?;
     }
 
     Ok(())
+}
+
+async fn persist_workflow_records(
+    db: &Arc<SqliteDatabase>,
+    ext: &ActivatedExtension,
+) -> anyhow::Result<()> {
+    // Collect unique workflow template paths referenced by this extension's recipes.
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for recipe in &ext.recipes {
+        let Some(template_ref) = recipe.workflow_template.as_ref() else {
+            continue;
+        };
+        if !seen.insert(template_ref.clone()) {
+            continue;
+        }
+
+        let path = ext.directory.join(template_ref);
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "failed to read workflow template; skipping",
+                );
+                continue;
+            }
+        };
+
+        let workflow = match nexus_workflow::parse_workflow(&content) {
+            Ok(w) => w,
+            Err(e) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "failed to parse workflow template; skipping",
+                );
+                continue;
+            }
+        };
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let record = match build_workflow_record(&workflow, &now) {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to build workflow record; skipping");
+                continue;
+            }
+        };
+
+        if let Err(e) = db.insert_workflow(&record).await {
+            // Duplicate-key on reboot is expected; keep going.
+            tracing::debug!(workflow_id = %workflow.id, error = %e, "insert_workflow failed");
+        }
+    }
+
+    Ok(())
+}
+
+fn build_workflow_record(
+    workflow: &nexus_workflow::Workflow,
+    now: &str,
+) -> anyhow::Result<nexus_storage::WorkflowRecord> {
+    let edge_values: Vec<serde_json::Value> = workflow
+        .extract_edges()
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "source_node": e.source_node,
+                "source_port": e.source_port,
+                "target_node": e.target_node,
+                "target_port": e.target_port,
+            })
+        })
+        .collect();
+
+    Ok(nexus_storage::WorkflowRecord {
+        id: workflow.id.clone(),
+        title: workflow.title.clone(),
+        version: workflow.version.clone(),
+        inputs: Some(serde_json::to_string(&workflow.inputs)?),
+        outputs: Some(serde_json::to_string(&workflow.outputs)?),
+        nodes: serde_json::to_string(&workflow.nodes)?,
+        edges: serde_json::to_string(&edge_values)?,
+        stages: Some(serde_json::to_string(&workflow.stages)?),
+        created_at: now.to_owned(),
+        updated_at: now.to_owned(),
+    })
 }
 
 async fn persist_extension_record(
@@ -475,10 +564,7 @@ fn log_discovery_summary(registry: &InMemoryExtensionRegistry) {
 
     for layout in &layouts {
         let default_marker = if layout.is_default { " (default)" } else { "" };
-        tracing::info!(
-            "║    ✓ {name}{default_marker}",
-            name = layout.display_name,
-        );
+        tracing::info!("║    ✓ {name}{default_marker}", name = layout.display_name,);
     }
 
     tracing::info!(

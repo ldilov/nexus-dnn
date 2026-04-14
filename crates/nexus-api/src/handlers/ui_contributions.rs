@@ -3,6 +3,7 @@ use axum::extract::{Query, State};
 use nexus_storage::Database;
 
 use crate::AppState;
+use crate::dto::{ListResponseDto, UIContributionDto};
 use crate::envelope::ApiResponse;
 use crate::error::ApiError;
 
@@ -18,67 +19,47 @@ pub struct ContributionFilters {
 pub async fn list_contributions(
     State(state): State<AppState>,
     Query(filters): Query<ContributionFilters>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<ListResponseDto<UIContributionDto>>, ApiError> {
     let records = fetch_filtered_contributions(&state, &filters).await?;
-    Ok(ApiResponse::ok(
-        serde_json::json!({ "contributions": records }),
-    ))
+    let items = records.iter().map(UIContributionDto::from).collect();
+    Ok(ApiResponse::ok(ListResponseDto { items }))
 }
 
 pub async fn list_viewers(
     State(state): State<AppState>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
-    let records = state
-        .db
-        .list_ui_contributions_by_kind("artifact_viewer")
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    Ok(ApiResponse::ok(
-        serde_json::json!({ "contributions": records }),
-    ))
+) -> Result<ApiResponse<ListResponseDto<UIContributionDto>>, ApiError> {
+    list_by_kind(state, "artifact_viewer").await
 }
 
 pub async fn list_commands(
     State(state): State<AppState>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
-    let records = state
-        .db
-        .list_ui_contributions_by_kind("command")
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    Ok(ApiResponse::ok(
-        serde_json::json!({ "contributions": records }),
-    ))
+) -> Result<ApiResponse<ListResponseDto<UIContributionDto>>, ApiError> {
+    list_by_kind(state, "command").await
 }
 
 pub async fn list_inspectors(
     State(state): State<AppState>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
-    let records = state
-        .db
-        .list_ui_contributions_by_kind("inspector_panel")
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    Ok(ApiResponse::ok(
-        serde_json::json!({ "contributions": records }),
-    ))
+) -> Result<ApiResponse<ListResponseDto<UIContributionDto>>, ApiError> {
+    list_by_kind(state, "inspector_panel").await
 }
 
 pub async fn list_widgets(
     State(state): State<AppState>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<ListResponseDto<UIContributionDto>>, ApiError> {
+    list_by_kind(state, "config_widget").await
+}
+
+async fn list_by_kind(
+    state: AppState,
+    kind: &str,
+) -> Result<ApiResponse<ListResponseDto<UIContributionDto>>, ApiError> {
     let records = state
         .db
-        .list_ui_contributions_by_kind("config_widget")
+        .list_ui_contributions_by_kind(kind)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    Ok(ApiResponse::ok(
-        serde_json::json!({ "contributions": records }),
-    ))
+    let items = records.iter().map(UIContributionDto::from).collect();
+    Ok(ApiResponse::ok(ListResponseDto { items }))
 }
 
 async fn fetch_filtered_contributions(

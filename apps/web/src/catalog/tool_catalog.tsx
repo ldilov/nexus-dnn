@@ -27,7 +27,7 @@ export function ToolCatalog() {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return q ? tools.filter((t) => t.name.toLowerCase().includes(q)) : tools;
+    return q ? tools.filter((t) => t.display_name.toLowerCase().includes(q)) : tools;
   }, [tools, search]);
 
   const grouped = useMemo(() => groupByCategory(filtered), [filtered]);
@@ -44,9 +44,10 @@ export function ToolCatalog() {
           <div className={styles.groupLabel}>{category}</div>
           {items.map((tool) => (
             <div key={tool.id} className={styles.itemCard}>
-              <div className={styles.itemName}>{tool.name}</div>
+              <div className={styles.itemName}>{tool.display_name}</div>
               <div className={styles.itemMeta}>
-                {(tool.input_types ?? []).join(", ")} &rarr; {(tool.output_types ?? []).join(", ")}
+                {tool.kind} · {tool.category}
+                {tool.description ? ` — ${tool.description}` : ""}
               </div>
             </div>
           ))}

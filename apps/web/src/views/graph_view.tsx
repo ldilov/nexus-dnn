@@ -29,9 +29,12 @@ function buildLayout(workflow: Workflow, progress: Record<string, NodeProgress>)
 
   const nodes: Node[] = [];
   const edges: Edge[] = [];
+  const knownNodeIds = new Set<string>();
 
   workflow.stages.forEach((stage) => {
     stage.nodes.forEach((wfNode) => {
+      if (knownNodeIds.has(wfNode.id)) return;
+      knownNodeIds.add(wfNode.id);
       g.setNode(wfNode.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
       nodes.push({
         id: wfNode.id,
@@ -39,16 +42,25 @@ function buildLayout(workflow: Workflow, progress: Record<string, NodeProgress>)
         data: { label: wfNode.id, operator: wfNode.operator },
         className: statusClass(progress[wfNode.id]?.status),
       });
-
-      Object.values(wfNode.inputs).forEach((source) => {
-        edges.push({
-          id: `${source}->${wfNode.id}`,
-          source,
-          target: wfNode.id,
-        });
-        g.setEdge(source, wfNode.id);
-      });
     });
+  });
+
+  // Use the structured edges the backend returns. Drop any that reference a
+  // node we didn't add (e.g. workflow-level inputs surfaced as edge sources),
+  // since dagre requires both endpoints to be registered nodes.
+  (workflow.edges ?? []).forEach((e) => {
+    if (!knownNodeIds.has(e.source_node) || !knownNodeIds.has(e.target_node)) {
+      return;
+    }
+    const edgeId = `${e.source_node}:${e.source_port}->${e.target_node}:${e.target_port}`;
+    edges.push({
+      id: edgeId,
+      source: e.source_node,
+      target: e.target_node,
+      sourceHandle: e.source_port,
+      targetHandle: e.target_port,
+    });
+    g.setEdge(e.source_node, e.target_node);
   });
 
   dagre.layout(g);

@@ -26,6 +26,7 @@ import { DiagnosticsView } from "../components/layout/diagnostics_view";
 import { HistoryList } from "../components/layout/history_list";
 import { BackendSelector } from "../components/layout/backend_selector";
 import type { BackendOption } from "../components/layout/backend_selector";
+import { WorkspaceShell, type ToolbarAction, type DrawerConfig } from "../components/layout/workspace_shell";
 
 type ComponentRenderer = (node: LayoutNode, children: ReactNode[]) => ReactNode;
 
@@ -346,6 +347,40 @@ const registry: Record<string, ComponentRenderer> = {
       </BackendSelector>
     );
   },
+
+  workspace_shell: (node, children) => {
+    const props = toProps(node);
+    const rawChildren = node.children ?? [];
+    const toolbarActions = (props.toolbarActions as ToolbarAction[] | undefined) ?? [];
+    const eyebrow = props.eyebrow as string | undefined;
+
+    const drawers: DrawerConfig[] = [];
+    const contentNodes: ReactNode[] = [];
+
+    rawChildren.forEach((raw, i) => {
+      const rendered = children[i];
+      if (raw.type === "workspace_drawer") {
+        const drawerProps = raw.props ?? {};
+        drawers.push({
+          id: (drawerProps.id as string) ?? String(i),
+          title: (drawerProps.title as string) ?? "",
+          width: drawerProps.width as number | undefined,
+          body: rendered,
+        });
+      } else {
+        contentNodes.push(rendered);
+      }
+    });
+
+    return (
+      <WorkspaceShell eyebrow={eyebrow} toolbarActions={toolbarActions} drawers={drawers}>
+        {contentNodes}
+      </WorkspaceShell>
+    );
+  },
+
+  workspace_drawer: (_node, children) => <>{children}</>,
+  workspace_content: (_node, children) => <>{children}</>,
 };
 
 export function getComponentRenderer(type: string): ComponentRenderer | undefined {

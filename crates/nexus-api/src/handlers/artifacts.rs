@@ -8,6 +8,9 @@ use nexus_artifact::ArtifactStore;
 use nexus_storage::Database;
 
 use crate::AppState;
+use crate::dto::{
+    ArtifactDto, ArtifactLineageDto, ListResponseDto, ViewerCandidateDto, artifacts::LineageEdgeDto,
+};
 use crate::envelope::ApiResponse;
 use crate::error::ApiError;
 
@@ -21,7 +24,7 @@ pub struct ArtifactListParams {
 pub async fn list_artifacts(
     State(state): State<AppState>,
     Query(params): Query<ArtifactListParams>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<ListResponseDto<ArtifactDto>>, ApiError> {
     let artifacts = state
         .db
         .list_artifacts_filtered(
@@ -32,15 +35,14 @@ pub async fn list_artifacts(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    Ok(ApiResponse::ok(
-        serde_json::json!({ "artifacts": artifacts }),
-    ))
+    let items = artifacts.iter().map(ArtifactDto::from).collect();
+    Ok(ApiResponse::ok(ListResponseDto { items }))
 }
 
 pub async fn get_artifact(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<ArtifactDto>, ApiError> {
     let record = state
         .db
         .get_artifact(&id)
@@ -48,19 +50,13 @@ pub async fn get_artifact(
         .map_err(|e| ApiError::NotFound(e.to_string()))?;
 
     let viewer_candidates = fetch_viewer_candidates(&state, &record.artifact_type).await;
+    let mut dto = ArtifactDto::from(&record);
+    dto.viewer_candidates = Some(viewer_candidates);
 
-    let mut value = serde_json::to_value(&record).unwrap_or_default();
-    if let Some(obj) = value.as_object_mut() {
-        obj.insert(
-            "viewer_candidates".to_owned(),
-            serde_json::to_value(&viewer_candidates).unwrap_or_default(),
-        );
-    }
-
-    Ok(ApiResponse::ok(value))
+    Ok(ApiResponse::ok(dto))
 }
 
-async fn fetch_viewer_candidates(state: &AppState, artifact_type: &str) -> Vec<serde_json::Value> {
+async fn fetch_viewer_candidates(state: &AppState, artifact_type: &str) -> Vec<ViewerCandidateDto> {
     let contributions = state
         .db
         .list_ui_contributions_by_kind("artifact_viewer")
@@ -81,13 +77,11 @@ async fn fetch_viewer_candidates(state: &AppState, artifact_type: &str) -> Vec<s
 
     matching
         .iter()
-        .map(|c| {
-            serde_json::json!({
-                "id": c.id,
-                "display_name": c.display_name,
-                "extension_id": c.extension_id,
-                "priority": c.priority,
-            })
+        .map(|c| ViewerCandidateDto {
+            id: c.id.clone(),
+            display_name: c.display_name.clone(),
+            extension_id: c.extension_id.clone(),
+            priority: c.priority,
         })
         .collect()
 }
@@ -130,7 +124,7 @@ pub async fn get_artifact_content(
 pub async fn get_artifact_lineage(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<ArtifactLineageDto>, ApiError> {
     let _record = state
         .db
         .get_artifact(&id)
@@ -143,8 +137,8 @@ pub async fn get_artifact_lineage(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    Ok(ApiResponse::ok(serde_json::json!({
-        "artifact_id": id,
-        "lineage": lineage,
-    })))
+    Ok(ApiResponse::ok(ArtifactLineageDto {
+        artifact_id: id,
+        lineage: lineage.iter().map(LineageEdgeDto::from).collect(),
+    }))
 }
