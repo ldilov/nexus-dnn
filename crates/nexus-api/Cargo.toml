@@ -22,6 +22,7 @@ nexus-run = { path = "../nexus-run" }
 nexus-scheduler = { path = "../nexus-scheduler" }
 nexus-artifact = { path = "../nexus-artifact" }
 nexus-storage = { path = "../nexus-storage" }
+nexus-local-llm = { path = "../nexus-local-llm" }
 uuid = { workspace = true }
 chrono = { workspace = true }
 tokio-stream = "0.1"

@@ -40,6 +40,19 @@ impl NexusConfig {
         self.resolved_data_dir().join("extensions")
     }
 
+    pub fn builtin_extensions_dir(&self) -> PathBuf {
+        let from_env = std::env::var("NEXUS_BUILTIN_EXTENSIONS_DIR")
+            .ok()
+            .map(PathBuf::from);
+
+        if let Some(dir) = from_env {
+            return dir;
+        }
+
+        let workspace_root = PathBuf::from(env!("NEXUS_WORKSPACE_ROOT"));
+        workspace_root.join("extensions").join("builtin")
+    }
+
     pub fn logs_dir(&self) -> PathBuf {
         self.resolved_data_dir().join("logs")
     }

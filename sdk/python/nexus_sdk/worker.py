@@ -6,7 +6,7 @@ import time
 import threading
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from nexus_sdk.protocol import (
     format_error,
@@ -65,6 +65,7 @@ class BaseWorker:
         self._worker_name = worker_name
         self._session_id: str = ""
         self._operators: dict[str, OperatorRegistration] = {}
+        self._methods: dict[str, Callable[[dict[str, Any]], Any]] = {}
         self._active_contexts: dict[str, ExecutionContext] = {}
         self._lock = threading.Lock()
 
@@ -79,6 +80,13 @@ class BaseWorker:
             version=version,
             handler=handler,
         )
+
+    def register_method(
+        self,
+        method_name: str,
+        handler: Callable[[dict[str, Any]], Any],
+    ) -> None:
+        self._methods[method_name] = handler
 
     def send_progress(self, request_id: str, percent: int, message: str) -> None:
         notification = format_notification("progress", {
@@ -125,9 +133,17 @@ class BaseWorker:
 
         handler = dispatch.get(request.method)
         if handler is None:
-            self._write_line(
-                format_error(request.id, METHOD_NOT_FOUND, f"Unknown method: {request.method}")
-            )
+            custom_handler = self._methods.get(request.method)
+            if custom_handler is None:
+                self._write_line(
+                    format_error(request.id, METHOD_NOT_FOUND, f"Unknown method: {request.method}")
+                )
+                return
+            try:
+                result = custom_handler(request.params)
+                self._write_line(format_response(request.id, result))
+            except Exception as exc:
+                self._write_line(format_error(request.id, INTERNAL_ERROR, str(exc)))
             return
 
         try:
@@ -155,6 +171,7 @@ class BaseWorker:
                 "cancel",
                 "health",
                 "validate_config",
+                *sorted(self._methods.keys()),
             ],
         }
 

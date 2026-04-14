@@ -1,0 +1,10 @@
+kind: "recipe_card"
+id: "llm.local_chat_card"
+display_name: "Local Chat"
+description: "Chat with a local LLM model"
+availability: "available"
+metadata:
+  recipeId: "recipe.local_chat.basic"
+  badge: "Chat"
+  category: "LLM"
+  icon: "chat"

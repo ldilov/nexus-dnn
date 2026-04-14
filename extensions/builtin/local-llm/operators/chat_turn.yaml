@@ -1,0 +1,28 @@
+spec_version: "0.1"
+operator:
+  id: "llm.chat.turn"
+  version: "1.0.0"
+  display_name: "Chat Turn"
+  description: "Execute one chat turn against a local LLM backend"
+  category: "LLM"
+execution:
+  mode: "streaming"
+  cacheable: false
+  resumable: false
+inputs:
+  - name: "prompt"
+    type: "text/chat-message"
+    required: true
+  - name: "backend_profile"
+    type: "model/backend-profile"
+    required: true
+outputs:
+  - name: "assistant_message"
+    type: "text/assistant-response"
+  - name: "metrics"
+    type: "json/metrics"
+config_schema:
+  type: object
+  properties: {}
+resources:
+  gpu: true

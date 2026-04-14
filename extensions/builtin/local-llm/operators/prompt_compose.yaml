@@ -1,0 +1,29 @@
+spec_version: "0.1"
+operator:
+  id: "llm.prompt.compose"
+  version: "1.0.0"
+  display_name: "Compose Prompt"
+  description: "Assemble system prompt, user message, and optional context into a chat-ready prompt"
+  category: "LLM"
+execution:
+  mode: "job"
+  cacheable: true
+  resumable: false
+inputs:
+  - name: "user_message"
+    type: "text/chat-message"
+    required: true
+  - name: "system_prompt"
+    type: "text/system-prompt"
+    required: false
+  - name: "context"
+    type: "text/plain"
+    required: false
+outputs:
+  - name: "prompt"
+    type: "text/chat-message"
+config_schema:
+  type: object
+  properties: {}
+resources:
+  gpu: false

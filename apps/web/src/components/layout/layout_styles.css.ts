@@ -1,0 +1,1343 @@
+import { style, globalStyle, keyframes } from "@vanilla-extract/css";
+import { vars } from "../../theme/contract.css";
+
+export const splitPanel = style({
+  display: "flex",
+  height: "100%",
+  overflow: "hidden",
+});
+
+export const splitPanelVertical = style({
+  flexDirection: "column",
+});
+
+export const splitPanelChild = style({
+  overflow: "auto",
+  minWidth: 0,
+  minHeight: 0,
+});
+
+export const stack = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapSm,
+  height: "100%",
+  overflow: "auto",
+});
+
+export const tabsContainer = style({
+  display: "flex",
+  flexDirection: "column",
+  height: "100%",
+  overflow: "hidden",
+});
+
+export const tabsHeader = style({
+  display: "flex",
+  gap: vars.space.gapXs,
+  borderBottom: `1px solid ${vars.color.outline.variant}`,
+  padding: `0 ${vars.space.insetMd}`,
+  flexShrink: 0,
+});
+
+export const tabsPanel = style({
+  flex: 1,
+  overflow: "auto",
+});
+
+export const cardLayout = style({
+  backgroundColor: vars.color.bg.elevated,
+  borderRadius: vars.radius.card,
+  padding: vars.space.insetLg,
+});
+
+export const cardLayoutTitle = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.headingSm,
+  fontWeight: vars.font.weight.semibold,
+  color: vars.color.text.primary,
+  marginBottom: vars.space.gapMd,
+});
+
+export const chatPanel = style({
+  display: "flex",
+  flexDirection: "column",
+  height: "100%",
+  overflow: "hidden",
+  position: "relative",
+});
+
+export const chatPanelMaximized = style({
+  position: "fixed",
+  inset: 0,
+  zIndex: 9999,
+  backgroundColor: vars.color.bg.app,
+});
+
+export const chatMessages = style({
+  flex: 1,
+  overflow: "auto",
+  padding: vars.space.insetLg,
+  paddingBottom: "140px",
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapLg,
+});
+
+export const chatMessageRow = style({
+  display: "flex",
+  gap: vars.space.gapSm,
+  maxWidth: "80%",
+});
+
+export const chatMessageRowUser = style({
+  flexDirection: "row-reverse",
+  alignSelf: "flex-end",
+  alignItems: "flex-end",
+  marginLeft: "auto",
+});
+
+export const chatMessageRowAssistant = style({
+  flexDirection: "row",
+  alignSelf: "flex-start",
+});
+
+export const chatMessageIconBox = style({
+  width: "24px",
+  height: "24px",
+  borderRadius: vars.radius.full,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+});
+
+export const chatMessageIconBoxAssistant = style({
+  backgroundColor: vars.color.accent.primaryDim,
+  color: vars.color.text.primary,
+  fontSize: "14px",
+});
+
+export const chatMessageIconBoxUser = style({
+  backgroundColor: vars.color.bg.hover,
+  color: vars.color.text.secondary,
+  fontSize: "14px",
+});
+
+export const chatMessageBody = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapXs,
+  minWidth: 0,
+});
+
+export const chatRoleBadge = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.space.gapXs,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  fontWeight: vars.font.weight.medium,
+  textTransform: "uppercase",
+  letterSpacing: "0.1em",
+});
+
+export const chatRoleBadgeAssistant = style({
+  color: vars.color.accent.primary,
+});
+
+export const chatRoleBadgeUser = style({
+  color: vars.color.text.secondary,
+  textAlign: "right",
+});
+
+export const chatBubbleBase = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
+  lineHeight: vars.font.lineHeight.normal,
+  color: vars.color.text.primary,
+  wordBreak: "break-word",
+});
+
+export const chatBubbleUser = style({
+  backgroundColor: "#232629",
+  borderRadius: "16px",
+  borderTopRightRadius: 0,
+  border: "1px solid rgba(70, 72, 74, 0.1)",
+  padding: `${vars.space.insetMd} ${vars.space.insetLg}`,
+});
+
+export const chatBubbleAssistant = style({
+  backgroundColor: "rgba(17, 20, 22, 0.7)",
+  backdropFilter: "blur(20px)",
+  WebkitBackdropFilter: "blur(20px)",
+  boxShadow: "inset 0 0 20px rgba(186, 158, 255, 0.05), 0 0 15px rgba(186, 158, 255, 0.03)",
+  border: "1px solid rgba(186, 158, 255, 0.15)",
+  borderRadius: "24px",
+  borderTopLeftRadius: 0,
+  padding: "24px",
+});
+
+export const chatCodeBlock = style({
+  position: "relative",
+  backgroundColor: "rgba(0, 0, 0, 0.8)",
+  borderRadius: "12px",
+  marginTop: vars.space.gapSm,
+  overflow: "hidden",
+  border: `1px solid ${vars.color.outline.variant}`,
+});
+
+export const chatCodeBlockHeader = style({
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  padding: `${vars.space.insetXs} ${vars.space.insetMd}`,
+  borderBottom: `1px solid ${vars.color.outline.variant}`,
+});
+
+export const chatCodeBlockLang = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  color: vars.color.text.muted,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+});
+
+export const chatCodeBlockCopy = style({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "24px",
+  height: "24px",
+  border: "none",
+  borderRadius: vars.radius.control,
+  backgroundColor: "transparent",
+  color: vars.color.text.muted,
+  cursor: "pointer",
+  fontSize: "16px",
+  transition: `color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  ":hover": {
+    color: vars.color.text.primary,
+  },
+});
+
+export const chatCodeBlockBody = style({
+  padding: vars.space.insetMd,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.bodySm,
+  lineHeight: vars.font.lineHeight.relaxed,
+  color: vars.color.accent.secondaryDim,
+  overflowX: "auto",
+  whiteSpace: "pre",
+});
+
+export const chatCodeHighlightLine = style({
+  backgroundColor: "rgba(186, 158, 255, 0.05)",
+  borderLeft: `2px solid ${vars.color.accent.primary}`,
+  display: "block",
+  marginLeft: `-${vars.space.insetMd}`,
+  marginRight: `-${vars.space.insetMd}`,
+  paddingLeft: vars.space.insetMd,
+  paddingRight: vars.space.insetMd,
+});
+
+export const chatInputArea = style({
+  position: "absolute",
+  bottom: "32px",
+  left: "50%",
+  transform: "translateX(-50%)",
+  width: "100%",
+  maxWidth: "768px",
+  padding: "0 24px",
+  zIndex: 10,
+});
+
+export const chatInputGlass = style({
+  backgroundColor: "rgba(17, 20, 22, 0.7)",
+  backdropFilter: "blur(20px)",
+  WebkitBackdropFilter: "blur(20px)",
+  borderRadius: "16px",
+  border: "1px solid rgba(70, 72, 74, 0.2)",
+  padding: "8px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "8px",
+  transition: `all ${vars.motion.durationNormal} ${vars.motion.easingDefault}`,
+  selectors: {
+    "&:focus-within": {
+      boxShadow: "0 0 25px rgba(186, 158, 255, 0.15)",
+      borderColor: "rgba(186, 158, 255, 0.4)",
+    },
+  },
+});
+
+export const chatInputToolsRow = style({
+  display: "flex",
+  alignItems: "center",
+  gap: "4px",
+  padding: "0 4px",
+});
+
+export const chatInputIconButton = style({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "32px",
+  height: "32px",
+  border: "none",
+  borderRadius: vars.radius.card,
+  backgroundColor: "transparent",
+  color: vars.color.text.muted,
+  cursor: "pointer",
+  fontSize: "18px",
+  flexShrink: 0,
+  transition: `all ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  ":hover": {
+    backgroundColor: vars.color.bg.hover,
+  },
+});
+
+export const chatInputIconAttach = style({
+  selectors: {
+    "&:hover": {
+      color: vars.color.text.secondary,
+    },
+  },
+});
+
+export const chatInputIconScreenshot = style({
+  selectors: {
+    "&:hover": {
+      color: vars.color.accent.tertiary,
+    },
+  },
+});
+
+export const chatInputIconCode = style({
+  selectors: {
+    "&:hover": {
+      color: vars.color.accent.primary,
+    },
+  },
+});
+
+export const chatInputDivider = style({
+  width: "1px",
+  height: "16px",
+  backgroundColor: "rgba(70, 72, 74, 0.2)",
+  flexShrink: 0,
+});
+
+export const chatModelChip = style({
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "2px 8px",
+  borderRadius: vars.radius.control,
+  fontFamily: vars.font.code,
+  fontSize: "9px",
+  fontWeight: vars.font.weight.medium,
+  textTransform: "uppercase",
+  backgroundColor: "rgba(144, 147, 255, 0.1)",
+  border: "1px solid rgba(144, 147, 255, 0.2)",
+  color: vars.color.accent.secondary,
+});
+
+export const chatOptimizeChip = style({
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "2px 8px",
+  borderRadius: vars.radius.control,
+  fontFamily: vars.font.code,
+  fontSize: "9px",
+  fontWeight: vars.font.weight.medium,
+  textTransform: "uppercase",
+  backgroundColor: "rgba(186, 158, 255, 0.1)",
+  border: "1px solid rgba(186, 158, 255, 0.2)",
+  color: vars.color.accent.primary,
+});
+
+export const chatInputRow = style({
+  display: "flex",
+  gap: vars.space.gapSm,
+  alignItems: "flex-end",
+  padding: "0 4px",
+});
+
+export const chatInput = style({
+  flex: 1,
+  backgroundColor: "transparent",
+  color: vars.color.text.primary,
+  border: "none",
+  padding: "8px 0",
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
+  outline: "none",
+  resize: "none",
+  lineHeight: vars.font.lineHeight.normal,
+});
+
+export const chatSendButton = style({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "40px",
+  height: "40px",
+  border: "none",
+  borderRadius: "12px",
+  backgroundColor: "#ba9eff",
+  color: vars.color.onColor.primary,
+  cursor: "pointer",
+  fontSize: "18px",
+  flexShrink: 0,
+  boxShadow: "0 4px 12px rgba(186, 158, 255, 0.2)",
+  transition: `transform ${vars.motion.durationFast} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  ":hover": {
+    transform: "scale(1.05)",
+    boxShadow: "0 4px 16px rgba(186, 158, 255, 0.35)",
+  },
+});
+
+export const dataTable = style({
+  width: "100%",
+  borderCollapse: "collapse",
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
+});
+
+export const dataTableHead = style({
+  borderBottom: `2px solid ${vars.color.outline.variant}`,
+});
+
+export const dataTableTh = style({
+  textAlign: "left",
+  padding: `${vars.space.insetSm} ${vars.space.insetMd}`,
+  color: vars.color.text.secondary,
+  fontWeight: vars.font.weight.semibold,
+  fontSize: vars.font.size.caption,
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  cursor: "pointer",
+  userSelect: "none",
+  whiteSpace: "nowrap",
+  ":hover": {
+    color: vars.color.text.primary,
+  },
+});
+
+export const dataTableRow = style({
+  borderBottom: `1px solid ${vars.color.outline.variant}`,
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  ":hover": {
+    backgroundColor: vars.color.bg.hover,
+  },
+});
+
+export const dataTableRowSelected = style({
+  backgroundColor: `${vars.color.accent.primaryDim}22`,
+});
+
+export const dataTableTd = style({
+  padding: `${vars.space.insetSm} ${vars.space.insetMd}`,
+  color: vars.color.text.primary,
+});
+
+export const form = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapMd,
+  padding: vars.space.insetMd,
+});
+
+export const formField = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapXs,
+});
+
+export const formLabel = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
+  fontWeight: vars.font.weight.medium,
+  color: vars.color.text.secondary,
+});
+
+export const formSelect = style({
+  width: "100%",
+  height: vars.control.heightMd,
+  backgroundColor: vars.color.bg.app,
+  color: vars.color.text.primary,
+  border: `1px solid ${vars.color.outline.variant}`,
+  borderRadius: vars.radius.control,
+  padding: `0 ${vars.space.insetMd}`,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
+  outline: "none",
+  ":focus": {
+    borderColor: vars.color.accent.primary,
+  },
+});
+
+export const formTextarea = style({
+  width: "100%",
+  minHeight: "80px",
+  backgroundColor: vars.color.bg.app,
+  color: vars.color.text.primary,
+  border: `1px solid ${vars.color.outline.variant}`,
+  borderRadius: vars.radius.control,
+  padding: vars.space.insetMd,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
+  lineHeight: vars.font.lineHeight.normal,
+  outline: "none",
+  resize: "vertical",
+  ":focus": {
+    borderColor: vars.color.accent.primary,
+  },
+});
+
+export const formSliderRow = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.gapSm,
+});
+
+export const formSlider = style({
+  flex: 1,
+  accentColor: vars.color.accent.primary,
+});
+
+export const formSliderValue = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.bodySm,
+  color: vars.color.text.secondary,
+  minWidth: "40px",
+  textAlign: "right",
+});
+
+export const formToggleRow = style({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+});
+
+export const formToggle = style({
+  position: "relative",
+  width: "36px",
+  height: "20px",
+  backgroundColor: vars.color.bg.hover,
+  borderRadius: vars.radius.full,
+  cursor: "pointer",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  border: "none",
+  padding: 0,
+});
+
+export const formToggleActive = style({
+  backgroundColor: vars.color.accent.primary,
+});
+
+export const formToggleKnob = style({
+  position: "absolute",
+  top: "2px",
+  left: "2px",
+  width: "16px",
+  height: "16px",
+  borderRadius: vars.radius.full,
+  backgroundColor: vars.color.text.primary,
+  transition: `transform ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+});
+
+export const formToggleKnobActive = style({
+  transform: "translateX(16px)",
+});
+
+export const metricsDashboard = style({
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+  gap: vars.space.gapSm,
+  padding: vars.space.insetMd,
+});
+
+export const metricsDashboardCompact = style({
+  gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
+  gap: vars.space.gapXs,
+  padding: vars.space.insetSm,
+});
+
+export const metricCard = style({
+  backgroundColor: vars.color.bg.elevated,
+  borderRadius: vars.radius.card,
+  padding: vars.space.insetMd,
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapXs,
+});
+
+export const metricLabel = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.caption,
+  fontWeight: vars.font.weight.medium,
+  color: vars.color.text.muted,
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+});
+
+export const metricValue = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.headingSm,
+  fontWeight: vars.font.weight.bold,
+  color: vars.color.text.primary,
+});
+
+export const metricValueLarge = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.headingLg,
+  fontWeight: vars.font.weight.bold,
+  color: vars.color.text.primary,
+  lineHeight: vars.font.lineHeight.tight,
+});
+
+export const metricUnit = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.caption,
+  fontWeight: vars.font.weight.medium,
+  color: vars.color.text.muted,
+  marginLeft: vars.space.gapXs,
+});
+
+export const statusBar = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.gapMd,
+  padding: `${vars.space.insetSm} ${vars.space.insetMd}`,
+  backgroundColor: vars.color.bg.panel,
+  borderBottom: `1px solid ${vars.color.outline.variant}`,
+  flexShrink: 0,
+  minHeight: vars.control.heightSm,
+});
+
+export const statusBarCompact = style({
+  padding: `${vars.space.insetXs} ${vars.space.insetSm}`,
+  gap: vars.space.gapSm,
+});
+
+export const statusIndicator = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.space.gapXs,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.caption,
+  color: vars.color.text.secondary,
+});
+
+export const statusDot = style({
+  width: "6px",
+  height: "6px",
+  borderRadius: vars.radius.full,
+  backgroundColor: vars.color.success.base,
+});
+
+export const actionBar = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.gapSm,
+  padding: `${vars.space.insetSm} ${vars.space.insetMd}`,
+  borderBottom: `1px solid ${vars.color.outline.variant}`,
+  flexShrink: 0,
+});
+
+export const listContainer = style({
+  display: "flex",
+  flexDirection: "column",
+  overflow: "auto",
+  flex: 1,
+});
+
+export const listItem = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.gapSm,
+  padding: `${vars.space.insetSm} ${vars.space.insetMd}`,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
+  color: vars.color.text.primary,
+  cursor: "pointer",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  borderBottom: `1px solid ${vars.color.outline.variant}`,
+  ":hover": {
+    backgroundColor: vars.color.bg.hover,
+  },
+});
+
+export const listItemSelected = style({
+  backgroundColor: `${vars.color.accent.primary}15`,
+  borderLeft: `3px solid ${vars.color.accent.primary}`,
+  color: vars.color.accent.primary,
+});
+
+export const listItemEmpty = style({
+  padding: vars.space.insetXl,
+  textAlign: "center",
+  color: vars.color.text.muted,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
+});
+
+export const detailView = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapMd,
+  padding: vars.space.insetMd,
+  overflow: "auto",
+});
+
+export const detailHeader = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.gapSm,
+});
+
+export const detailHeaderDot = style({
+  width: "6px",
+  height: "6px",
+  borderRadius: vars.radius.full,
+  backgroundColor: vars.color.accent.secondary,
+  flexShrink: 0,
+});
+
+export const detailHeaderTitle = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  fontWeight: vars.font.weight.medium,
+  color: vars.color.text.secondary,
+  textTransform: "uppercase",
+  letterSpacing: "0.1em",
+});
+
+export const detailModelCard = style({
+  backgroundColor: vars.color.bg.canvas,
+  borderRadius: vars.radius.panel,
+  border: `1px solid ${vars.color.outline.variant}`,
+  padding: vars.space.insetLg,
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapSm,
+});
+
+export const detailModelLabel = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  fontWeight: vars.font.weight.medium,
+  color: vars.color.text.muted,
+  textTransform: "uppercase",
+  letterSpacing: "0.1em",
+});
+
+export const detailModelNameRow = style({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: vars.space.gapSm,
+});
+
+export const detailModelName = style({
+  fontFamily: vars.font.headline,
+  fontSize: vars.font.size.headingSm,
+  fontWeight: vars.font.weight.bold,
+  color: vars.color.text.primary,
+});
+
+export const detailModelVersion = style({
+  display: "inline-flex",
+  alignItems: "center",
+  padding: `2px ${vars.space.insetSm}`,
+  borderRadius: vars.radius.full,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  fontWeight: vars.font.weight.medium,
+  backgroundColor: `${vars.color.accent.secondary}1a`,
+  color: vars.color.accent.secondary,
+});
+
+export const detailModelInfo = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
+  color: vars.color.text.muted,
+});
+
+export const detailMetricsGrid = style({
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: vars.space.gapSm,
+});
+
+export const detailMetricCard = style({
+  backgroundColor: vars.color.bg.canvas,
+  borderRadius: vars.radius.panel,
+  border: `1px solid ${vars.color.outline.variant}`,
+  padding: vars.space.insetMd,
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapXs,
+});
+
+export const detailMetricLabel = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  fontWeight: vars.font.weight.medium,
+  color: vars.color.text.muted,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+});
+
+export const detailMetricValue = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.bodyLg,
+  fontWeight: vars.font.weight.bold,
+});
+
+export const detailMetricUnit = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  color: vars.color.text.muted,
+  marginLeft: vars.space.gapXs,
+});
+
+export const detailField = style({
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: vars.space.gapMd,
+  padding: `${vars.space.insetXs} 0`,
+  borderBottom: `1px solid ${vars.color.outline.variant}`,
+});
+
+export const detailFieldLabel = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
+  fontWeight: vars.font.weight.medium,
+  color: vars.color.text.muted,
+  flexShrink: 0,
+});
+
+export const detailFieldValue = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
+  color: vars.color.text.primary,
+  textAlign: "right",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+});
+
+export const detailSection = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapSm,
+});
+
+export const detailSectionTitle = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  fontWeight: vars.font.weight.medium,
+  color: vars.color.text.muted,
+  textTransform: "uppercase",
+  letterSpacing: "0.1em",
+});
+
+export const detailContextItem = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.gapSm,
+  padding: `${vars.space.insetSm} ${vars.space.insetMd}`,
+  backgroundColor: vars.color.bg.panel,
+  borderRadius: vars.radius.card,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  color: vars.color.text.secondary,
+});
+
+export const detailContextIcon = style({
+  fontSize: "14px",
+  color: vars.color.accent.primary,
+  flexShrink: 0,
+});
+
+export const detailContextClose = style({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "18px",
+  height: "18px",
+  border: "none",
+  borderRadius: vars.radius.full,
+  backgroundColor: "transparent",
+  color: vars.color.text.muted,
+  cursor: "pointer",
+  fontSize: "14px",
+  marginLeft: "auto",
+  flexShrink: 0,
+  ":hover": {
+    color: vars.color.text.primary,
+  },
+});
+
+export const detailAddRefButton = style({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: vars.space.gapXs,
+  padding: vars.space.insetSm,
+  border: `1px dashed ${vars.color.outline.variant}`,
+  borderRadius: vars.radius.card,
+  backgroundColor: "transparent",
+  color: vars.color.text.muted,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  cursor: "pointer",
+  transition: `border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  ":hover": {
+    borderColor: vars.color.accent.primary,
+    color: vars.color.accent.primary,
+  },
+});
+
+export const detailHealthCard = style({
+  backgroundColor: `${vars.color.accent.secondary}0d`,
+  borderRadius: vars.radius.panel,
+  padding: vars.space.insetMd,
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapSm,
+});
+
+export const detailHealthHeader = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.gapSm,
+});
+
+export const detailHealthDot = style({
+  width: "8px",
+  height: "8px",
+  borderRadius: vars.radius.full,
+  backgroundColor: vars.color.accent.secondary,
+});
+
+export const detailHealthLabel = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  fontWeight: vars.font.weight.medium,
+  color: vars.color.text.secondary,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+});
+
+export const emptyState = style({
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: vars.space.gapLg,
+  padding: vars.space.insetXl,
+  textAlign: "center",
+  flex: 1,
+  minHeight: "200px",
+});
+
+export const emptyStateIconBox = style({
+  width: "64px",
+  height: "64px",
+  borderRadius: vars.radius.container,
+  backgroundColor: `${vars.color.accent.primary}1a`,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: "32px",
+  color: vars.color.accent.primary,
+});
+
+export const emptyStateIcon = style({
+  fontSize: "48px",
+  color: vars.color.text.muted,
+  lineHeight: 1,
+});
+
+export const emptyStateTitle = style({
+  fontFamily: vars.font.headline,
+  fontSize: vars.font.size.headingLg,
+  fontWeight: vars.font.weight.black,
+  color: vars.color.text.primary,
+  letterSpacing: "-0.02em",
+});
+
+export const emptyStateDescription = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
+  color: vars.color.text.secondary,
+  maxWidth: "320px",
+  lineHeight: vars.font.lineHeight.relaxed,
+});
+
+export const progressTracker = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapSm,
+  padding: vars.space.insetMd,
+});
+
+export const progressBar = style({
+  width: "100%",
+  height: "8px",
+  backgroundColor: vars.color.bg.hover,
+  borderRadius: vars.radius.full,
+  overflow: "hidden",
+});
+
+export const progressFill = style({
+  height: "100%",
+  backgroundColor: vars.color.accent.secondary,
+  borderRadius: vars.radius.full,
+  transition: `width ${vars.motion.durationNormal} ${vars.motion.easingDefault}`,
+});
+
+export const progressInfo = style({
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+});
+
+export const progressLabel = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
+  color: vars.color.text.secondary,
+});
+
+export const progressPercent = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.bodySm,
+  fontWeight: vars.font.weight.semibold,
+  color: vars.color.text.primary,
+});
+
+export const logViewer = style({
+  display: "flex",
+  flexDirection: "column",
+  height: "100%",
+  overflow: "hidden",
+  backgroundColor: vars.color.bg.app,
+});
+
+export const logToolbar = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.gapSm,
+  padding: `${vars.space.insetXs} ${vars.space.insetSm}`,
+  borderBottom: `1px solid ${vars.color.outline.variant}`,
+  flexShrink: 0,
+});
+
+export const logFilterButton = style({
+  padding: `${vars.space.insetXs} ${vars.space.insetSm}`,
+  border: "none",
+  borderRadius: vars.radius.control,
+  backgroundColor: "transparent",
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.caption,
+  color: vars.color.text.muted,
+  cursor: "pointer",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  ":hover": {
+    backgroundColor: vars.color.bg.hover,
+    color: vars.color.text.primary,
+  },
+});
+
+export const logFilterActive = style({
+  backgroundColor: vars.color.bg.elevated,
+  color: vars.color.text.primary,
+});
+
+export const logContent = style({
+  flex: 1,
+  overflow: "auto",
+  padding: vars.space.insetSm,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  lineHeight: vars.font.lineHeight.relaxed,
+});
+
+export const logLine = style({
+  display: "flex",
+  gap: vars.space.gapSm,
+  padding: `1px 0`,
+});
+
+export const logTimestamp = style({
+  color: vars.color.text.muted,
+  flexShrink: 0,
+});
+
+export const logLevelInfo = style({
+  color: vars.color.accent.cyan,
+});
+
+export const logLevelWarn = style({
+  color: vars.color.warning.base,
+});
+
+export const logLevelError = style({
+  color: vars.color.error.base,
+});
+
+export const logLevelDebug = style({
+  color: vars.color.text.muted,
+});
+
+export const logMessage = style({
+  color: vars.color.text.primary,
+  wordBreak: "break-all",
+});
+
+export const codeBlock = style({
+  backgroundColor: vars.color.bg.app,
+  borderRadius: vars.radius.card,
+  padding: vars.space.insetMd,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.bodySm,
+  lineHeight: vars.font.lineHeight.relaxed,
+  color: vars.color.text.primary,
+  overflow: "auto",
+  whiteSpace: "pre-wrap",
+  border: `1px solid ${vars.color.outline.variant}`,
+});
+
+export const codeBlockHeader = style({
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  padding: `${vars.space.insetXs} ${vars.space.insetMd}`,
+  backgroundColor: vars.color.bg.panel,
+  borderBottom: `1px solid ${vars.color.outline.variant}`,
+  borderRadius: `${vars.radius.card} ${vars.radius.card} 0 0`,
+});
+
+export const codeBlockLanguage = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.caption,
+  color: vars.color.text.muted,
+  textTransform: "uppercase",
+});
+
+export const markdownView = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
+  lineHeight: vars.font.lineHeight.relaxed,
+  color: vars.color.text.primary,
+  padding: vars.space.insetMd,
+});
+
+globalStyle(`${markdownView} h1`, {
+  fontFamily: vars.font.headline,
+  fontSize: vars.font.size.headingLg,
+  fontWeight: vars.font.weight.bold,
+  marginBottom: vars.space.gapMd,
+  color: vars.color.text.primary,
+});
+
+globalStyle(`${markdownView} h2`, {
+  fontFamily: vars.font.headline,
+  fontSize: vars.font.size.heading,
+  fontWeight: vars.font.weight.semibold,
+  marginBottom: vars.space.gapSm,
+  color: vars.color.text.primary,
+});
+
+globalStyle(`${markdownView} h3`, {
+  fontFamily: vars.font.headline,
+  fontSize: vars.font.size.headingSm,
+  fontWeight: vars.font.weight.semibold,
+  marginBottom: vars.space.gapSm,
+  color: vars.color.text.primary,
+});
+
+globalStyle(`${markdownView} p`, {
+  marginBottom: vars.space.gapSm,
+});
+
+globalStyle(`${markdownView} a`, {
+  color: vars.color.accent.primary,
+  textDecoration: "none",
+});
+
+globalStyle(`${markdownView} a:hover`, {
+  textDecoration: "underline",
+});
+
+globalStyle(`${markdownView} code`, {
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.bodySm,
+  backgroundColor: vars.color.bg.elevated,
+  padding: `2px 6px`,
+  borderRadius: vars.radius.control,
+});
+
+globalStyle(`${markdownView} pre`, {
+  backgroundColor: vars.color.bg.app,
+  padding: vars.space.insetMd,
+  borderRadius: vars.radius.card,
+  overflow: "auto",
+  marginBottom: vars.space.gapSm,
+  border: `1px solid ${vars.color.outline.variant}`,
+});
+
+globalStyle(`${markdownView} pre code`, {
+  backgroundColor: "transparent",
+  padding: 0,
+});
+
+globalStyle(`${markdownView} strong`, {
+  fontWeight: vars.font.weight.semibold,
+});
+
+globalStyle(`${markdownView} em`, {
+  fontStyle: "italic",
+});
+
+globalStyle(`${markdownView} ul, ${markdownView} ol`, {
+  paddingLeft: vars.space.insetXl,
+  marginBottom: vars.space.gapSm,
+});
+
+globalStyle(`${markdownView} li`, {
+  marginBottom: vars.space.gapXs,
+});
+
+export const unknownComponent = style({
+  backgroundColor: vars.color.bg.panel,
+  borderRadius: vars.radius.card,
+  padding: vars.space.insetMd,
+  border: `1px dashed ${vars.color.outline.variant}`,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
+  color: vars.color.text.muted,
+  textAlign: "center",
+});
+
+export const chatMessageTimestamp = style({
+  fontFamily: vars.font.code,
+  fontSize: "10px",
+  color: vars.color.text.muted,
+  textAlign: "right",
+  marginTop: "4px",
+  opacity: 0.4,
+});
+
+export const chatMessageMeta = style({
+  fontFamily: vars.font.code,
+  fontSize: "10px",
+  color: vars.color.text.muted,
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  marginTop: "8px",
+  opacity: 0.4,
+});
+
+export const chatMessageActions = style({
+  display: "flex",
+  gap: "8px",
+  marginTop: "12px",
+  paddingTop: "12px",
+  borderTop: `1px solid ${vars.color.outline.variant}`,
+});
+
+export const chatActionButton = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  padding: "6px 12px",
+  borderRadius: vars.radius.card,
+  border: "1px solid rgba(70, 72, 74, 0.1)",
+  background: vars.color.bg.hover,
+  color: vars.color.text.secondary,
+  fontFamily: vars.font.ui,
+  fontSize: "11px",
+  cursor: "pointer",
+  transition: `all ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  ":hover": {
+    backgroundColor: vars.color.bg.bright,
+    color: vars.color.text.primary,
+  },
+});
+
+export const detailLiveBadge = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  marginLeft: "auto",
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  fontWeight: vars.font.weight.medium,
+  color: vars.color.accent.secondary,
+  textTransform: "uppercase",
+  letterSpacing: "0.1em",
+});
+
+const pulseLive = keyframes({
+  "0%, 100%": { opacity: 1 },
+  "50%": { opacity: 0.4 },
+});
+
+export const detailLiveDot = style({
+  width: "6px",
+  height: "6px",
+  borderRadius: vars.radius.full,
+  backgroundColor: vars.color.accent.secondary,
+  animation: `${pulseLive} 2s ease-in-out infinite`,
+});
+
+export const detailHealthCardGradient = style({
+  background: `linear-gradient(135deg, ${vars.color.accent.secondary}0d 0%, ${vars.color.accent.primary}0d 100%)`,
+  borderRadius: vars.radius.panel,
+  padding: "1px",
+});
+
+export const chatWelcome = style({
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  textAlign: "center",
+  padding: "48px 24px",
+  maxWidth: "600px",
+  margin: "0 auto",
+});
+
+export const chatWelcomeIconBox = style({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "12px",
+  borderRadius: "16px",
+  backgroundColor: "rgba(186, 158, 255, 0.1)",
+  color: vars.color.accent.primary,
+  marginBottom: "24px",
+});
+
+export const chatWelcomeTitle = style({
+  fontFamily: vars.font.headline,
+  fontSize: "28px",
+  fontWeight: "900",
+  letterSpacing: "-0.02em",
+  color: vars.color.text.primary,
+  margin: "0 0 8px 0",
+});
+
+export const chatWelcomeDescription = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
+  color: vars.color.text.muted,
+  maxWidth: "420px",
+  lineHeight: "1.5",
+  margin: 0,
+});

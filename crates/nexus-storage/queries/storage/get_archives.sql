@@ -1,0 +1,1 @@
+SELECT * FROM extension_storage_archives WHERE namespace_id = ?

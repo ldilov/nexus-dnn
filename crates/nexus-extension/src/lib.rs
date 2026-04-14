@@ -10,9 +10,9 @@ pub mod validation;
 
 pub use error::ExtensionError;
 pub use manifest::{
-    CompatibilitySpec, ExecutionSpec, ExtensionInfo, ExtensionManifest, FileRef,
-    OperatorDefinition, OperatorInfo, PortSpec, ResourceSpec, RuntimeSpec, parse_manifest,
-    parse_operator_definition,
+    CompatibilitySpec, EnvironmentSpec, ExecutionSpec, ExtensionInfo, ExtensionManifest, FileRef,
+    LayoutRef, OperatorDefinition, OperatorInfo, PortSpec, ResourceSpec, RuntimeSpec,
+    UiDeclaration, parse_manifest, parse_operator_definition,
 };
 pub use operator_index::OperatorIndex;
 pub use recipe::{
@@ -20,7 +20,7 @@ pub use recipe::{
 };
 pub use registry::{
     ActivatedExtension, DiscoveryReport, ExtensionRegistry, ExtensionStatus,
-    InMemoryExtensionRegistry,
+    InMemoryExtensionRegistry, LayoutFile,
 };
 pub use storage::contribution::{
     MigrationDeclaration, MigrationFileRef, NamespaceDeclaration, RuntimeAccessDeclaration,
@@ -30,4 +30,7 @@ pub use tool_projection::{Tool, build_tool_from_operator, build_tool_from_recipe
 pub use ui_contribution::{
     UIContributionFile, UIContributionKind, parse_ui_contribution, parse_ui_contribution_from_str,
 };
-pub use validation::{check_compatibility, validate_manifest_schema, validate_operator_schema};
+pub use validation::{
+    CapabilityGrant, check_compatibility, resolve_capabilities, validate_manifest_schema,
+    validate_operator_schema,
+};

@@ -1,0 +1,8 @@
+kind: "command"
+id: "llm.open_model_browser"
+display_name: "Model Browser"
+description: "Browse and download models from Hugging Face"
+availability: "available"
+metadata:
+  icon: "model_training"
+  shortcut: null

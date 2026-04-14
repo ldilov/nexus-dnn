@@ -1,0 +1,116 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Extension UI Layout Schema",
+  "description": "Defines how extensions compose their UI from host-provided components. Extensions reference component types and bind them to data sources via JSON-RPC.",
+  "type": "object",
+  "required": ["id", "displayName", "root"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique layout identifier within the extension"
+    },
+    "displayName": {
+      "type": "string",
+      "description": "Human-readable name for the layout"
+    },
+    "description": {
+      "type": "string"
+    },
+    "icon": {
+      "type": "string",
+      "description": "Material Symbols icon name"
+    },
+    "root": {
+      "$ref": "#/definitions/layoutNode"
+    }
+  },
+  "definitions": {
+    "layoutNode": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "tabs",
+            "split_panel",
+            "stack",
+            "card",
+            "chat_panel",
+            "data_table",
+            "form",
+            "file_browser",
+            "metrics_dashboard",
+            "status_bar",
+            "action_bar",
+            "list",
+            "detail_view",
+            "empty_state",
+            "code_block",
+            "markdown_view",
+            "progress_tracker",
+            "log_viewer",
+            "setup_stepper",
+            "install_modal",
+            "summary_strip",
+            "runtime_card",
+            "profile_card",
+            "diagnostics_view",
+            "history_list",
+            "backend_selector"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "description": "Optional ID for targeting updates"
+        },
+        "props": {
+          "type": "object",
+          "description": "Component-specific configuration"
+        },
+        "dataSource": {
+          "$ref": "#/definitions/dataSource"
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/layoutNode" }
+        },
+        "visibility": {
+          "$ref": "#/definitions/visibilityRule"
+        }
+      }
+    },
+    "dataSource": {
+      "type": "object",
+      "description": "Binds a component to extension data via JSON-RPC method calls",
+      "properties": {
+        "method": {
+          "type": "string",
+          "description": "JSON-RPC method name the host calls on the worker to fetch data"
+        },
+        "params": {
+          "type": "object",
+          "description": "Static parameters passed with each data request"
+        },
+        "refreshInterval": {
+          "type": "integer",
+          "description": "Auto-refresh interval in seconds (0 = manual only)"
+        },
+        "events": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Event types that trigger a data refresh"
+        }
+      }
+    },
+    "visibilityRule": {
+      "type": "object",
+      "properties": {
+        "condition": {
+          "type": "string",
+          "enum": ["always", "when_active", "when_data_available", "when_backend_ready"]
+        }
+      }
+    }
+  }
+}

@@ -13,6 +13,12 @@ export const canvasContent = style({
   padding: vars.space.insetXl,
 });
 
+export const extensionCanvas = style({
+  height: "100%",
+  width: "100%",
+  overflow: "hidden",
+});
+
 export const placeholderText = style({
   color: vars.color.text.muted,
   textAlign: "center",

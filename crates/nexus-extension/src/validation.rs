@@ -1,3 +1,6 @@
+use std::collections::HashSet;
+
+use nexus_protocol::RuntimeFamily;
 use referencing::Resource;
 use semver::{Version, VersionReq};
 
@@ -110,4 +113,56 @@ fn parse_version_req(
         extension_id: extension_id.to_owned(),
         detail: format!("invalid {field_name} version requirement '{req_str}': {e}"),
     })
+}
+
+const KNOWN_CAPABILITIES: &[&str] = &[
+    "filesystem.read",
+    "filesystem.write",
+    "network.loopback",
+    "network.remote",
+    "gpu.compute",
+    "process.spawn",
+    "model_registry.read",
+    "workspace.read",
+    "workspace.write",
+    "storage.schema_contribute",
+];
+
+pub struct CapabilityGrant {
+    pub granted: HashSet<String>,
+    pub denied: Vec<String>,
+    pub pre_approved: bool,
+}
+
+pub fn resolve_capabilities(manifest: &ExtensionManifest) -> CapabilityGrant {
+    let declared = manifest
+        .capabilities
+        .as_ref()
+        .cloned()
+        .unwrap_or_default();
+
+    let known: HashSet<&str> = KNOWN_CAPABILITIES.iter().copied().collect();
+
+    let mut granted = HashSet::new();
+    let mut denied = Vec::new();
+
+    for cap in &declared {
+        if known.contains(cap.as_str()) {
+            granted.insert(cap.clone());
+        } else {
+            denied.push(cap.clone());
+        }
+    }
+
+    let pre_approved = manifest.runtime.family == RuntimeFamily::Builtin;
+
+    if !pre_approved {
+        granted.clear();
+    }
+
+    CapabilityGrant {
+        granted,
+        denied,
+        pre_approved,
+    }
 }

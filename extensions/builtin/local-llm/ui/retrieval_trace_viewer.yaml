@@ -1,0 +1,11 @@
+kind: "artifact_viewer"
+id: "llm.retrieval_trace_viewer"
+display_name: "Retrieval Trace Viewer"
+description: "Renders retrieval trace artifacts showing retrieved chunks, scores, and context assembly"
+availability: "available"
+supportedTypes:
+  - "text/retrieval-trace"
+priority: 10
+metadata:
+  renderMode: "trace"
+  fallback: "json"

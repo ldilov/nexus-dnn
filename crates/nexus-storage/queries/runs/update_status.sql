@@ -1,0 +1,1 @@
+UPDATE runs SET status = ?, error = ? WHERE id = ?

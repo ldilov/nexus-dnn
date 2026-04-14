@@ -1,0 +1,1 @@
+UPDATE extension_storage_namespaces SET status = ? WHERE id = ?

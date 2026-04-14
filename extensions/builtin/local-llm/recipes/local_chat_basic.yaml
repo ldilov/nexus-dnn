@@ -1,0 +1,30 @@
+spec_version: "0.1"
+
+recipe:
+  id: "recipe.local_chat.basic"
+  version: "0.1.0"
+  display_name: "Local Chat"
+  summary: "Chat with a local LLM model"
+  category: "LLM"
+  input_summary: "User message, system prompt, backend profile"
+
+workflow_template: "workflows/local_chat_basic.yaml"
+
+bindings:
+  fields:
+    - field: "user_message"
+      label: "Message"
+      type: "text"
+      required: true
+      maps_to: "input:user_message"
+    - field: "system_prompt"
+      label: "System Prompt"
+      type: "textarea"
+      required: false
+      maps_to: "input:system_prompt"
+      default: "You are a helpful assistant."
+    - field: "backend_profile"
+      label: "Backend Profile"
+      type: "select"
+      required: true
+      maps_to: "input:backend_profile"

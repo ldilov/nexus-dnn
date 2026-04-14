@@ -10,14 +10,17 @@ import { ExtensionList } from "./catalog/extension_list";
 import { StageView } from "./views/stage_view";
 import { GraphView } from "./views/graph_view";
 import { RunTraceView } from "./views/run_trace_view";
+import { ExtensionLayoutView } from "./views/extension_layout_view";
 import { useEventStream } from "./hooks/use_event_stream";
 import { usePollingMetrics } from "./hooks/use_polling_metrics";
 import {
   fetchWorkflows,
   fetchWorkflow,
+  fetchLayouts,
   createRun,
   type Workflow,
   type WorkflowNode,
+  type LayoutSummary,
 } from "./api/client";
 import * as styles from "./app.css";
 
@@ -38,10 +41,9 @@ const SECONDARY_TABS: { id: SecondaryTabId; label: string }[] = [
   { id: "extensions", label: "Extensions" },
 ];
 
-const SECONDARY_CONTENT: Record<SecondaryTabId, React.ComponentType> = {
+const SECONDARY_CONTENT_STATIC: Partial<Record<SecondaryTabId, React.ComponentType>> = {
   tools: ToolCatalog,
   recipes: RecipeCatalog,
-  extensions: ExtensionList,
 };
 
 function latestProgressByNode(
@@ -56,9 +58,13 @@ function latestProgressByNode(
   return map;
 }
 
-function SecondaryPanel() {
+type SecondaryPanelProps = {
+  onExtensionToggled?: () => void;
+};
+
+function SecondaryPanel({ onExtensionToggled }: SecondaryPanelProps) {
   const [activeTab, setActiveTab] = useState<SecondaryTabId>("tools");
-  const ActiveContent = SECONDARY_CONTENT[activeTab];
+  const StaticContent = SECONDARY_CONTENT_STATIC[activeTab];
 
   return (
     <div className={styles.canvasColumn}>
@@ -69,7 +75,11 @@ function SecondaryPanel() {
         variant="underline"
       />
       <div className={styles.canvasContent}>
-        <ActiveContent />
+        {StaticContent ? (
+          <StaticContent />
+        ) : (
+          <ExtensionList onExtensionToggled={onExtensionToggled} />
+        )}
       </div>
     </div>
   );
@@ -78,7 +88,7 @@ function SecondaryPanel() {
 export function App() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
-  const [activeNav, setActiveNav] = useState<NavItemId>("workflows");
+  const [activeNav, setActiveNav] = useState<NavItemId>("home");
   const [activeView, setActiveView] = useState<ViewId>("stage");
   const [activeBottomTab, setActiveBottomTab] = useState<BottomTabId>("logs");
   const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
@@ -86,9 +96,16 @@ export function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sidebarPinned, setSidebarPinned] = useState(false);
+  const [extensionLayouts, setExtensionLayouts] = useState<LayoutSummary[]>([]);
   const { events } = useEventStream();
   const nodeProgress = latestProgressByNode(events);
   const { metrics, connected } = usePollingMetrics();
+
+  const refreshLayouts = useCallback(() => {
+    fetchLayouts()
+      .then(setExtensionLayouts)
+      .catch(() => setExtensionLayouts([]));
+  }, []);
 
   useEffect(() => {
     fetchWorkflows()
@@ -103,7 +120,21 @@ export function App() {
         const message = error instanceof Error ? error.message : "Failed to load workflows";
         setLoadError(message);
       });
-  }, []);
+
+    refreshLayouts();
+  }, [refreshLayouts]);
+
+  const extensionNavItems = extensionLayouts
+    .filter((l) => l.placement === "main")
+    .map((l) => ({
+      id: `ext:${l.id}` as NavItemId,
+      label: l.display_name,
+      icon: l.id.includes("chat") ? "chat" : l.id.includes("model") ? "model_training" : l.id.includes("backend") ? "settings" : "extension",
+    }));
+
+  const activeExtensionLayoutId = activeNav.startsWith("ext:")
+    ? activeNav.slice(4)
+    : null;
 
   const handleRun = useCallback(() => {
     if (!workflow) return;
@@ -127,17 +158,29 @@ export function App() {
   }, []);
 
   const renderCanvas = () => {
-    if (loadError) {
-      return <p className={styles.placeholderText}>{loadError}</p>;
+    if (activeExtensionLayoutId) {
+      return <ExtensionLayoutView layoutId={activeExtensionLayoutId} />;
+    }
+
+    if (activeNav === "home") {
+      const defaultLayout = extensionLayouts.find((l) => l.is_default);
+      if (defaultLayout) {
+        return <ExtensionLayoutView layoutId={defaultLayout.id} />;
+      }
+      return (
+        <p className={styles.placeholderText}>
+          Welcome to Nexus DNN. Enable an extension to get started.
+        </p>
+      );
     }
 
     if (activeNav === "workflows") {
+      if (loadError) {
+        return <p className={styles.placeholderText}>{loadError}</p>;
+      }
       return (
         <div className={styles.canvasColumn}>
           <div className={styles.canvasContent}>
-            {activeView === "recipe" && (
-              <p className={styles.placeholderText}>Recipe view coming soon</p>
-            )}
             {activeView === "stage" && (
               <StageView
                 workflow={workflow}
@@ -150,28 +193,62 @@ export function App() {
               <GraphView workflow={workflow} nodeProgress={nodeProgress} />
             )}
             {activeView === "trace" && <RunTraceView events={events} />}
-            {activeView === "timeline" && (
-              <p className={styles.placeholderText}>Timeline view coming soon</p>
-            )}
           </div>
         </div>
       );
     }
 
-    if (activeNav === "recipes" || activeNav === "extensions" || activeNav === "models") {
+    if (activeNav === "recipes") {
       return (
-        <p className={styles.placeholderText}>
-          {activeNav.charAt(0).toUpperCase() + activeNav.slice(1)} view
-        </p>
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <RecipeCatalog />
+          </div>
+        </div>
       );
     }
 
-    return null;
+    if (activeNav === "extensions") {
+      return (
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <ExtensionList onExtensionToggled={refreshLayouts} />
+          </div>
+        </div>
+      );
+    }
+
+    if (activeNav === "runs") {
+      return (
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <p className={styles.placeholderText}>Run history</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeNav === "artifacts") {
+      return (
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <p className={styles.placeholderText}>Artifact browser</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <p className={styles.placeholderText}>
+        Select a page from the sidebar
+      </p>
+    );
   };
 
-  const secondaryContent = activeNav !== "home" ? (
+  const showSecondaryPanel = !activeNav.startsWith("ext:") && activeNav !== "home";
+  const secondaryContent = showSecondaryPanel ? (
     <>
-      <SecondaryPanel />
+      <SecondaryPanel onExtensionToggled={refreshLayouts} />
       {workflows.length > 1 && (
         <div className={styles.workflowListFallback}>
           {workflows.map((wf) => (
@@ -207,6 +284,7 @@ export function App() {
           pinned={sidebarPinned}
           onTogglePin={() => setSidebarPinned((p) => !p)}
           secondaryContent={secondaryContent}
+          extensionNavItems={extensionNavItems}
         />
       }
       sidebarPinned={sidebarPinned}

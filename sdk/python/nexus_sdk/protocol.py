@@ -72,3 +72,18 @@ def format_error(request_id: int | None, code: int, message: str, data: Any = No
 def format_notification(method: str, params: dict[str, Any]) -> str:
     payload = {"jsonrpc": "2.0", "method": method, "params": params}
     return json.dumps(payload, separators=(",", ":"))
+
+
+def format_stream_event(event_type: str, data: dict[str, Any]) -> str:
+    """Create a JSON-RPC notification for a streaming event."""
+    return format_notification("stream_event", {"event_type": event_type, **data})
+
+
+def format_health_report(payload: dict[str, Any]) -> str:
+    """Create a JSON-RPC notification for a health status report."""
+    return format_notification("health_report", payload)
+
+
+def format_backend_state(state_data: dict[str, Any]) -> str:
+    """Create a JSON-RPC notification for a backend state change."""
+    return format_notification("backend_state", state_data)

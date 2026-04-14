@@ -6,8 +6,8 @@ use tower_http::trace::TraceLayer;
 use crate::AppState;
 use crate::frontend;
 use crate::handlers::{
-    artifacts, extensions, health, metrics, recipes, runs, storage_contributions, system, tools,
-    ui_contributions, workflows,
+    artifacts, backends, extensions, health, metrics, recipes, runs, storage_contributions, system,
+    tools, ui_contributions, ui_layouts, workflows,
 };
 use crate::ws;
 
@@ -74,6 +74,8 @@ pub fn build(state: AppState) -> Router {
             "/ui/contributions/widgets",
             get(ui_contributions::list_widgets),
         )
+        .route("/ui/layouts", get(ui_layouts::list_layouts))
+        .route("/ui/layouts/{id}", get(ui_layouts::get_layout))
         .route(
             "/workflows",
             post(workflows::create_workflow).get(workflows::list_workflows),
@@ -105,7 +107,27 @@ pub fn build(state: AppState) -> Router {
         )
         .route("/system/info", get(system::system_info))
         .route("/tools", get(tools::list_tools))
-        .route("/events", get(ws::events_ws));
+        .route("/events", get(ws::events_ws))
+        .route("/llm/backends", get(backends::list))
+        .route("/llm/backends/{backendId}", get(backends::detail))
+        .route(
+            "/llm/backends/{backendId}/install",
+            post(backends::install),
+        )
+        .route(
+            "/llm/backends/{backendId}/validate",
+            post(backends::validate),
+        )
+        .route("/llm/backends/{backendId}/repair", post(backends::repair))
+        .route(
+            "/llm/backends/{backendId}/settings",
+            get(backends::get_settings).put(backends::put_settings),
+        )
+        .route("/llm/backends/{backendId}/logs", get(backends::logs))
+        .route(
+            "/llm/backends/{backendId}/diagnostics",
+            get(backends::diagnostics),
+        );
 
     let cors = CorsLayer::new()
         .allow_origin(Any)

@@ -1,0 +1,179 @@
+id: "llm.layout.chat"
+displayName: "LLM Chat"
+description: "Interactive chat with local LLM models"
+icon: "chat"
+
+root:
+  type: split_panel
+  props:
+    direction: horizontal
+    sizes: [240, "1fr", 320]
+  children:
+    - type: stack
+      id: sidebar
+      props:
+        sidebarStyle: true
+      children:
+        - type: detail_view
+          id: sidebar_header
+          props:
+            headerTitle: "LLM Chat"
+            headerSubtitle: "Local Inference Engine"
+            headerSubtitleColor: "accent"
+            compact: true
+
+        - type: action_bar
+          id: model_selector
+          props:
+            actions:
+              - label: "Choose Model"
+                icon: "model_training"
+                action: "llm.open_model_browser"
+                variant: "secondary"
+                fullWidth: true
+          dataSource:
+            method: "llm.get_active_model"
+
+        - type: action_bar
+          id: new_thread_btn
+          props:
+            actions:
+              - label: "+ New Session"
+                icon: "add"
+                action: "llm.new_thread"
+                variant: "primary"
+                fullWidth: true
+
+        - type: list
+          id: thread_list
+          props:
+            itemType: thread
+            sectionTitle: "RECENT HISTORY"
+            emptyMessage: "No conversations yet"
+            selectable: true
+          dataSource:
+            method: "llm.list_threads"
+            params:
+              archived: false
+              limit: 50
+            events: ["session.state.changed"]
+
+        - type: list
+          id: sidebar_footer
+          props:
+            itemType: nav
+            items:
+              - id: "documentation"
+                label: "Documentation"
+                icon: "menu_book"
+
+    - type: stack
+      id: main_area
+      children:
+        - type: chat_panel
+          id: chat_view
+          props:
+            showStopButton: true
+            showRetryButton: true
+            streamingEnabled: true
+            welcomeIcon: "auto_awesome"
+            welcomeTitle: "Initialize Conversation"
+            welcomeDescription: "LLM Chat is ready. Select a model and start a conversation."
+            modelLabel: "LOCAL_LLM"
+            modelChips:
+              - label: "@LOCAL_MODEL"
+                variant: "secondary"
+              - label: "#CHAT"
+                variant: "tertiary"
+          dataSource:
+            method: "llm.get_thread_messages"
+            events: ["chat.stream.delta", "chat.stream.complete"]
+
+    - type: stack
+      id: inspector
+      props:
+        fillHeight: true
+      children:
+        - type: detail_view
+          id: session_details
+          props:
+            headerTitle: "Session Intel"
+            showLiveBadge: true
+            sections:
+              - title: null
+                type: metrics
+                metrics:
+                  - label: "Latency"
+                    value: "--"
+                    unit: "ms"
+                    color: "primary"
+                  - label: "Throughput"
+                    value: "--"
+                    unit: "t/s"
+                    color: "secondary"
+              - title: "Active Context"
+                type: context
+                contextRefs:
+                  - label: "session_config"
+                    icon: "description"
+                    meta: "Read-only"
+                  - label: "model_weights"
+                    icon: "model_training"
+                    meta: "Active"
+              - title: "Focus Vector"
+                type: health
+                health:
+                  label: "Convergence"
+                  value: 0
+                  displayLabel: "OPTIMIZATION"
+          dataSource:
+            method: "llm.get_session_details"
+            events: ["session.state.changed", "backend.health.changed", "backend.metrics.updated"]
+
+        - type: form
+          id: generation_settings
+          props:
+            headerTitle: "Generation Parameters"
+            collapsible: true
+            collapsed: true
+            fields:
+              - key: "temperature"
+                label: "Temperature"
+                type: "slider"
+                min: 0.0
+                max: 2.0
+                step: 0.1
+                default: 0.8
+              - key: "top_p"
+                label: "Top P"
+                type: "slider"
+                min: 0.0
+                max: 1.0
+                step: 0.05
+                default: 0.95
+              - key: "top_k"
+                label: "Top K"
+                type: "number"
+                min: 1
+                max: 100
+                default: 40
+              - key: "max_tokens"
+                label: "Max Tokens"
+                type: "number"
+                min: 1
+                max: 32768
+                default: 4096
+              - key: "repeat_penalty"
+                label: "Repeat Penalty"
+                type: "slider"
+                min: 0.0
+                max: 2.0
+                step: 0.1
+                default: 1.1
+              - key: "system_prompt"
+                label: "System Prompt"
+                type: "textarea"
+                default: "You are a helpful assistant."
+                rows: 3
+          dataSource:
+            method: "llm.get_generation_settings"

@@ -1,0 +1,1 @@
+SELECT * FROM extension_storage_migrations WHERE namespace_id = ?

@@ -62,9 +62,26 @@ impl WorkerProcess {
     pub fn new(
         worker_id: String,
         extension_id: String,
-        child: Child,
+        mut child: Child,
         transport: StdioTransport,
     ) -> Self {
+        if let Some(stderr) = child.stderr.take() {
+            let ext_id = extension_id.clone();
+            tokio::spawn(async move {
+                use tokio::io::{AsyncBufReadExt, BufReader};
+                let reader = BufReader::new(stderr);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    tracing::info!(
+                        target: "extension",
+                        extension_id = %ext_id,
+                        "{}",
+                        line,
+                    );
+                }
+            });
+        }
+
         Self {
             worker_id,
             extension_id,

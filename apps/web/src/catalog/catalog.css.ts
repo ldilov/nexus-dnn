@@ -58,3 +58,13 @@ export const badgeRow = style({
   gap: vars.space.gapSm,
   marginTop: vars.space.insetXs,
 });
+
+export const cardHeader = style({
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+});
+
+export const cardBody = style({
+  flex: 1,
+});

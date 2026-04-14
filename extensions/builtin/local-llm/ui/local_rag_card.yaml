@@ -1,0 +1,10 @@
+kind: "recipe_card"
+id: "llm.local_rag_card"
+display_name: "Local RAG"
+description: "Chat with retrieval from local document corpora"
+availability: "available"
+metadata:
+  recipeId: "recipe.local_chat.rag"
+  badge: "RAG"
+  category: "LLM"
+  icon: "search"

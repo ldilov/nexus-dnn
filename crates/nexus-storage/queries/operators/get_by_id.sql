@@ -1,0 +1,1 @@
+SELECT * FROM operators WHERE id = ? AND version = ?

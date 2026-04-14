@@ -53,6 +53,11 @@ export const buttonRecipe = recipe({
         color: vars.color.text.inverse,
         ":hover": { opacity: 0.9 },
       },
+      accent: {
+        backgroundColor: vars.color.accent.tertiary,
+        color: vars.color.text.inverse,
+        ":hover": { opacity: 0.9 },
+      },
     },
     size: {
       sm: {

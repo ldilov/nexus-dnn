@@ -133,13 +133,9 @@ impl StorageManager {
 
     async fn check_quarantine_threshold(&self, namespace_id: &str) {
         let threshold = self.quarantine_threshold as i64;
-        let row: Option<(i64,)> = sqlx::query_as(
-            "SELECT COUNT(*) FROM ( \
-                 SELECT status FROM extension_storage_operations \
-                 WHERE namespace_id = ? AND operation_type = 'apply_plan' \
-                 ORDER BY started_at DESC LIMIT ? \
-             ) sub WHERE sub.status = 'failed'",
-        )
+        let row: Option<(i64,)> = sqlx::query_as(include_str!(
+            "../queries/storage/check_quarantine_threshold.sql"
+        ))
         .bind(namespace_id)
         .bind(threshold)
         .fetch_optional(self.db.pool())
@@ -175,10 +171,9 @@ impl StorageManager {
             .ok();
 
         let prefix_pattern = format!("{}%", record.effective_prefix);
-        let collision: Option<(String,)> = sqlx::query_as(
-            "SELECT name FROM sqlite_master WHERE type IN ('table', 'index') AND name LIKE ?1 \
-             AND name NOT IN (SELECT object_name FROM extension_storage_objects)",
-        )
+        let collision: Option<(String,)> = sqlx::query_as(include_str!(
+            "../queries/storage/check_namespace_collision.sql"
+        ))
         .bind(&prefix_pattern)
         .fetch_optional(self.db.pool())
         .await?;
@@ -262,12 +257,7 @@ impl StorageManager {
                         applied_at: Some(now.clone()),
                         error_json: None,
                     };
-                    sqlx::query(
-                        "INSERT INTO extension_storage_migrations (id, namespace_id, \
-                         extension_id, extension_version, migration_id, path, \
-                         raw_checksum_sha256, expanded_checksum_sha256, status, applied_at, \
-                         error_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    )
+                    sqlx::query(include_str!("../queries/storage/insert_migration.sql"))
                     .bind(&mig_record.id)
                     .bind(&mig_record.namespace_id)
                     .bind(&mig_record.extension_id)
@@ -293,11 +283,7 @@ impl StorageManager {
                             status: "present".into(),
                             recorded_at: now.clone(),
                         };
-                        sqlx::query(
-                            "INSERT INTO extension_storage_objects (id, namespace_id, \
-                             object_name, object_type, created_by_migration_id, sql_hash, \
-                             status, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                        )
+                        sqlx::query(include_str!("../queries/storage/insert_object.sql"))
                         .bind(&obj_record.id)
                         .bind(&obj_record.namespace_id)
                         .bind(&obj_record.object_name)
@@ -349,7 +335,7 @@ impl StorageManager {
             }
         }
 
-        sqlx::query("UPDATE extension_storage_namespaces SET status = 'active' WHERE id = ?")
+        sqlx::query(include_str!("../queries/storage/activate_namespace.sql"))
             .bind(namespace_id)
             .execute(&mut *tx)
             .await?;
@@ -649,10 +635,9 @@ impl StorageManager {
         let ns = self.db.get_namespace(namespace_id).await?;
         let prefix_pattern = format!("{}%", ns.effective_prefix);
 
-        let actual_objects: Vec<(String, String)> = sqlx::query_as(
-            "SELECT name, type FROM sqlite_master \
-             WHERE name LIKE ?1 AND type IN ('table', 'index')",
-        )
+        let actual_objects: Vec<(String, String)> = sqlx::query_as(include_str!(
+            "../queries/storage/verify_actual_objects.sql"
+        ))
         .bind(&prefix_pattern)
         .fetch_all(self.db.pool())
         .await?;

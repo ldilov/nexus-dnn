@@ -1,0 +1,41 @@
+spec_version: "0.1"
+
+recipe:
+  id: "recipe.local_chat.rag"
+  version: "0.1.0"
+  display_name: "Local RAG Chat"
+  summary: "Chat with retrieval from local document corpora"
+  category: "LLM"
+  input_summary: "User message, system prompt, document corpus, backend profile, retrieval depth"
+
+workflow_template: "workflows/local_chat_rag.yaml"
+
+bindings:
+  fields:
+    - field: "user_message"
+      label: "Question"
+      type: "text"
+      required: true
+      maps_to: "input:user_message"
+    - field: "system_prompt"
+      label: "System Prompt"
+      type: "textarea"
+      required: false
+      maps_to: "input:system_prompt"
+      default: "You are a helpful assistant. Answer questions based on the provided context."
+    - field: "corpus_id"
+      label: "Document Corpus"
+      type: "select"
+      required: true
+      maps_to: "input:corpus_id"
+    - field: "backend_profile"
+      label: "Backend Profile"
+      type: "select"
+      required: true
+      maps_to: "input:backend_profile"
+    - field: "top_k"
+      label: "Retrieved Chunks"
+      type: "number"
+      required: false
+      maps_to: "node:retrieve.config.top_k"
+      default: 5

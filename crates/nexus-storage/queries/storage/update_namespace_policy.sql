@@ -1,0 +1,1 @@
+UPDATE extension_storage_namespaces SET uninstall_policy = ?, updated_at = ? WHERE id = ?

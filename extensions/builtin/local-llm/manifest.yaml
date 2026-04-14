@@ -1,0 +1,85 @@
+spec_version: "0.1"
+
+extension:
+  id: "nexus.local-llm"
+  version: "0.1.0"
+  name: "Local LLM Chat & RAG"
+  description: "Builtin extension for local LLM inference with managed backends, model management, interactive chat, and RAG"
+  publisher: "nexus"
+
+compatibility:
+  host_api: ">=0.1.0"
+  protocol: ">=0.1.0"
+
+runtime:
+  family: "builtin"
+  entrypoint: "worker/main.py"
+  environment:
+    python_version: "3.12"
+    cuda_version: null
+    pip_dependencies: []
+    env_vars: {}
+
+capabilities:
+  - "filesystem.read"
+  - "filesystem.write"
+  - "network.loopback"
+  - "network.remote"
+  - "process.spawn"
+  - "gpu.compute"
+  - "model.registry.read"
+  - "storage.schema_contribute"
+
+operators:
+  - file: "operators/chat_turn.yaml"
+  - file: "operators/prompt_compose.yaml"
+  - file: "operators/output_persist.yaml"
+  - file: "operators/embed_text.yaml"
+  - file: "operators/rag_retrieve.yaml"
+
+recipes:
+  - file: "recipes/local_chat_basic.yaml"
+  - file: "recipes/local_chat_rag.yaml"
+
+ui:
+  layouts:
+    - file: "ui/layouts/chat.yaml"
+      placement: "main"
+      default: true
+    - file: "ui/layouts/models.yaml"
+      placement: "main"
+    - file: "ui/layouts/backends.yaml"
+      placement: "main"
+  contributions:
+    - file: "ui/open_chat.yaml"
+    - file: "ui/model_browser.yaml"
+    - file: "ui/backend_settings.yaml"
+    - file: "ui/session_inspector.yaml"
+    - file: "ui/backend_health.yaml"
+    - file: "ui/chat_thread_viewer.yaml"
+    - file: "ui/retrieval_trace_viewer.yaml"
+    - file: "ui/local_chat_card.yaml"
+    - file: "ui/local_rag_card.yaml"
+    - file: "ui/metrics_inspector.yaml"
+
+storage:
+  spec_version: "0.1"
+  engine: "sqlite"
+  namespace:
+    alias: "local_llm"
+    prefix_mode: "host_derived"
+  migrations:
+    strategy: "sql_file_list"
+    files:
+      - id: "001_backend_and_models"
+        path: "storage/migrations/001_backend_and_models.sql"
+      - id: "002_chat_sessions"
+        path: "storage/migrations/002_chat_sessions.sql"
+      - id: "003_rag"
+        path: "storage/migrations/003_rag.sql"
+      - id: "004_run_history"
+        path: "storage/migrations/004_run_history.sql"
+      - id: "005_profile_expansion"
+        path: "storage/migrations/005_profile_expansion.sql"
+  sql_profile:
+    profile: "nexus_sqlite_v1"

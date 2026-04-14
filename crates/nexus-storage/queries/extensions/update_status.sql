@@ -1,0 +1,1 @@
+UPDATE extensions SET status = ? WHERE id = ?

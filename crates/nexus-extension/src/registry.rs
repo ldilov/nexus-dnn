@@ -20,10 +20,14 @@ pub struct DiscoveryReport {
     pub invalid: Vec<(String, String)>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExtensionStatus {
     Active,
     Disabled,
+    AvailableBuiltin,
+    Activating,
+    Degraded,
+    Error { diagnostics: Vec<String> },
 }
 
 impl ExtensionStatus {
@@ -31,8 +35,26 @@ impl ExtensionStatus {
         match self {
             Self::Active => "active",
             Self::Disabled => "disabled",
+            Self::AvailableBuiltin => "available_builtin",
+            Self::Activating => "activating",
+            Self::Degraded => "degraded",
+            Self::Error { .. } => "error",
         }
     }
+
+    pub fn is_active(&self) -> bool {
+        matches!(self, Self::Active | Self::Degraded)
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LayoutFile {
+    pub id: String,
+    pub display_name: String,
+    pub extension_id: String,
+    pub placement: Option<String>,
+    pub is_default: bool,
+    pub content: serde_json::Value,
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +63,7 @@ pub struct ActivatedExtension {
     pub operators: Vec<OperatorDefinition>,
     pub recipes: Vec<RecipeFile>,
     pub ui_contributions: Vec<UIContributionFile>,
+    pub layouts: Vec<LayoutFile>,
     pub storage: Option<StorageContribution>,
     pub recipe_count: usize,
     pub ui_contribution_count: usize,
@@ -66,6 +89,8 @@ pub trait ExtensionRegistry: Send + Sync {
     fn get_recipe(&self, id: &str) -> Option<RecipeFile>;
     fn list_ui_contributions(&self) -> Vec<UIContributionFile>;
     fn list_ui_contributions_by_kind(&self, kind: &UIContributionKind) -> Vec<UIContributionFile>;
+    fn list_layouts(&self) -> Vec<LayoutFile>;
+    fn get_layout(&self, id: &str) -> Option<LayoutFile>;
 }
 
 struct RegistryState {
@@ -144,6 +169,86 @@ impl InMemoryExtensionRegistry {
         Ok(())
     }
 
+    pub fn scan_builtin_extensions_dir(
+        &self,
+        builtin_dir: &Path,
+        host_version: &Version,
+        protocol_version: &Version,
+    ) -> Result<DiscoveryReport, ExtensionError> {
+        let (builtin_extensions, operator_entries, report) =
+            scan_builtin_dir(builtin_dir, host_version, protocol_version)?;
+
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| ExtensionError::RegistryLockPoisoned)?;
+
+        for ext in builtin_extensions {
+            let already_registered = state
+                .extensions
+                .iter()
+                .any(|e| e.manifest.extension.id == ext.manifest.extension.id);
+            if !already_registered {
+                state.extensions.push(ext);
+            }
+        }
+
+        state.operator_index = OperatorIndex::build(
+            rebuild_operator_entries(&state.extensions)
+                .into_iter()
+                .chain(operator_entries)
+                .collect(),
+        );
+
+        Ok(report)
+    }
+
+    pub fn activate_builtin_extension(
+        &self,
+        id: &str,
+        host_version: &Version,
+        protocol_version: &Version,
+    ) -> Result<(), ExtensionError> {
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| ExtensionError::RegistryLockPoisoned)?;
+
+        let ext = state
+            .extensions
+            .iter_mut()
+            .find(|e| e.manifest.extension.id == id)
+            .ok_or_else(|| ExtensionError::ExtensionNotFound(id.to_owned()))?;
+
+        if ext.status != ExtensionStatus::AvailableBuiltin {
+            return Err(ExtensionError::InvalidStateTransition {
+                extension_id: id.to_owned(),
+                detail: format!(
+                    "expected available_builtin state, found {}",
+                    ext.status.as_str()
+                ),
+            });
+        }
+
+        ext.status = ExtensionStatus::Activating;
+
+        let ext_dir = ext.directory.clone();
+        let manifest = ext.manifest.clone();
+
+        match activate_extension_inner(&ext_dir, &manifest, host_version, protocol_version) {
+            Ok(activated) => {
+                *ext = activated;
+                Ok(())
+            }
+            Err(e) => {
+                ext.status = ExtensionStatus::Error {
+                    diagnostics: vec![e.to_string()],
+                };
+                Err(e)
+            }
+        }
+    }
+
     pub fn refresh(
         &self,
         extensions_dir: &Path,
@@ -218,7 +323,7 @@ impl ExtensionRegistry for InMemoryExtensionRegistry {
         state
             .extensions
             .iter()
-            .filter(|e| e.status == ExtensionStatus::Active)
+            .filter(|e| e.status.is_active())
             .flat_map(|e| e.recipes.clone())
             .collect()
     }
@@ -228,7 +333,7 @@ impl ExtensionRegistry for InMemoryExtensionRegistry {
         state
             .extensions
             .iter()
-            .filter(|e| e.status == ExtensionStatus::Active)
+            .filter(|e| e.status.is_active())
             .flat_map(|e| &e.recipes)
             .find(|r| r.recipe.id == id)
             .cloned()
@@ -239,7 +344,7 @@ impl ExtensionRegistry for InMemoryExtensionRegistry {
         state
             .extensions
             .iter()
-            .filter(|e| e.status == ExtensionStatus::Active)
+            .filter(|e| e.status.is_active())
             .flat_map(|e| e.ui_contributions.clone())
             .collect()
     }
@@ -249,11 +354,32 @@ impl ExtensionRegistry for InMemoryExtensionRegistry {
         state
             .extensions
             .iter()
-            .filter(|e| e.status == ExtensionStatus::Active)
+            .filter(|e| e.status.is_active())
             .flat_map(|e| &e.ui_contributions)
             .filter(|c| &c.kind == kind)
             .cloned()
             .collect()
+    }
+
+    fn list_layouts(&self) -> Vec<LayoutFile> {
+        let state = self.state.read().expect("registry lock poisoned");
+        state
+            .extensions
+            .iter()
+            .filter(|e| e.status.is_active())
+            .flat_map(|e| e.layouts.clone())
+            .collect()
+    }
+
+    fn get_layout(&self, id: &str) -> Option<LayoutFile> {
+        let state = self.state.read().expect("registry lock poisoned");
+        state
+            .extensions
+            .iter()
+            .filter(|e| e.status.is_active())
+            .flat_map(|e| &e.layouts)
+            .find(|l| l.id == id)
+            .cloned()
     }
 }
 
@@ -305,6 +431,9 @@ fn scan_extensions_dir(
 }
 
 fn read_extension_dirs(extensions_dir: &Path) -> Result<Vec<PathBuf>, ExtensionError> {
+    if !extensions_dir.exists() {
+        return Ok(Vec::new());
+    }
     let mut dirs = Vec::new();
     let read_dir = std::fs::read_dir(extensions_dir)?;
     for entry in read_dir {
@@ -333,6 +462,7 @@ fn process_extension(
     let operators = load_operators(ext_dir, &manifest)?;
     let recipes = load_recipes(ext_dir, &manifest, &mut validation_errors);
     let ui_contributions = load_ui_contributions(ext_dir, &mut validation_errors);
+    let layouts = load_layouts(ext_dir, &manifest, &mut validation_errors);
 
     let storage = validate_storage_contribution(&manifest, &mut validation_errors);
 
@@ -354,6 +484,7 @@ fn process_extension(
         operators,
         recipes,
         ui_contributions,
+        layouts,
         storage,
         recipe_count,
         ui_contribution_count,
@@ -480,6 +611,81 @@ fn load_ui_contributions(
     contributions
 }
 
+fn load_layouts(
+    ext_dir: &Path,
+    manifest: &ExtensionManifest,
+    validation_errors: &mut Vec<String>,
+) -> Vec<LayoutFile> {
+    let layout_refs = match manifest.ui.as_ref().and_then(|ui| ui.layouts.as_ref()) {
+        Some(refs) => refs,
+        None => return Vec::new(),
+    };
+
+    let ext_id = &manifest.extension.id;
+    let mut layouts = Vec::with_capacity(layout_refs.len());
+
+    for layout_ref in layout_refs {
+        let layout_path = ext_dir.join(&layout_ref.file);
+        let raw = match std::fs::read_to_string(&layout_path) {
+            Ok(content) => content,
+            Err(e) => {
+                let msg = format!(
+                    "layout file '{}' not readable: {e}",
+                    layout_path.display()
+                );
+                warn!("{msg}");
+                validation_errors.push(msg);
+                continue;
+            }
+        };
+
+        let content: serde_json::Value = match serde_saphyr::from_str(&raw) {
+            Ok(v) => v,
+            Err(e) => {
+                let msg = format!(
+                    "layout file '{}' parse failed: {e}",
+                    layout_path.display()
+                );
+                warn!("{msg}");
+                validation_errors.push(msg);
+                continue;
+            }
+        };
+
+        let id = content
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_owned();
+        let display_name = content
+            .get("displayName")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_owned();
+
+        if id.is_empty() {
+            let msg = format!(
+                "layout file '{}' missing 'id' field",
+                layout_path.display()
+            );
+            warn!("{msg}");
+            validation_errors.push(msg);
+            continue;
+        }
+
+        layouts.push(LayoutFile {
+            id,
+            display_name,
+            extension_id: ext_id.clone(),
+            placement: layout_ref.placement.clone(),
+            is_default: layout_ref.default.unwrap_or(false),
+            content,
+        });
+    }
+
+    layouts
+}
+
 fn validate_storage_contribution(
     manifest: &ExtensionManifest,
     validation_errors: &mut Vec<String>,
@@ -535,4 +741,140 @@ fn validate_storage_sql_files(
             validation_errors.push(format!("migration '{}': {err}", file_ref.id));
         }
     }
+}
+
+#[allow(clippy::type_complexity)]
+fn scan_builtin_dir(
+    builtin_dir: &Path,
+    host_version: &Version,
+    protocol_version: &Version,
+) -> Result<
+    (
+        Vec<ActivatedExtension>,
+        Vec<(String, OperatorDefinition)>,
+        DiscoveryReport,
+    ),
+    ExtensionError,
+> {
+    let mut extensions = Vec::new();
+    let mut all_operator_entries = Vec::new();
+    let mut report = DiscoveryReport {
+        activated: Vec::new(),
+        invalid: Vec::new(),
+    };
+
+    let entries = read_extension_dirs(builtin_dir)?;
+
+    for entry_path in entries {
+        match process_builtin_extension(&entry_path, host_version, protocol_version) {
+            Ok(ext) => {
+                let ext_id = ext.manifest.extension.id.clone();
+                for op in &ext.operators {
+                    all_operator_entries.push((ext_id.clone(), op.clone()));
+                }
+                info!(extension_id = %ext_id, "discovered builtin extension");
+                report.activated.push(ext_id);
+                extensions.push(ext);
+            }
+            Err(e) => {
+                let dir_name = entry_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| entry_path.display().to_string());
+                warn!(dir = %dir_name, error = %e, "skipping invalid builtin extension");
+                report.invalid.push((dir_name, e.to_string()));
+            }
+        }
+    }
+
+    Ok((extensions, all_operator_entries, report))
+}
+
+fn process_builtin_extension(
+    ext_dir: &Path,
+    host_version: &Version,
+    protocol_version: &Version,
+) -> Result<ActivatedExtension, ExtensionError> {
+    let manifest_path = ext_dir.join("manifest.yaml");
+    let manifest = parse_manifest(&manifest_path)?;
+
+    let manifest_json = yaml_to_json_value(&manifest_path)?;
+    validate_manifest_schema(&manifest_json)?;
+    check_compatibility(&manifest, host_version, protocol_version)?;
+
+    Ok(ActivatedExtension {
+        manifest,
+        operators: Vec::new(),
+        recipes: Vec::new(),
+        ui_contributions: Vec::new(),
+        layouts: Vec::new(),
+        storage: None,
+        recipe_count: 0,
+        ui_contribution_count: 0,
+        validation_errors: Vec::new(),
+        status: ExtensionStatus::AvailableBuiltin,
+        directory: ext_dir.to_path_buf(),
+    })
+}
+
+fn activate_extension_inner(
+    ext_dir: &Path,
+    manifest: &ExtensionManifest,
+    host_version: &Version,
+    protocol_version: &Version,
+) -> Result<ActivatedExtension, ExtensionError> {
+    let manifest_path = ext_dir.join("manifest.yaml");
+    let manifest_json = yaml_to_json_value(&manifest_path)?;
+    validate_manifest_schema(&manifest_json)?;
+    check_compatibility(manifest, host_version, protocol_version)?;
+
+    let mut validation_errors = Vec::new();
+    let operators = load_operators(ext_dir, manifest)?;
+    let recipes = load_recipes(ext_dir, manifest, &mut validation_errors);
+    let ui_contributions = load_ui_contributions(ext_dir, &mut validation_errors);
+    let layouts = load_layouts(ext_dir, manifest, &mut validation_errors);
+
+    let storage = validate_storage_contribution(manifest, &mut validation_errors);
+
+    if let Some(ref storage_block) = storage {
+        validate_storage_sql_files(ext_dir, storage_block, &mut validation_errors);
+    }
+
+    let recipe_count = recipes.len();
+    let ui_contribution_count = ui_contributions.len();
+
+    let status = if validation_errors.is_empty() {
+        ExtensionStatus::Active
+    } else {
+        ExtensionStatus::Error {
+            diagnostics: validation_errors.clone(),
+        }
+    };
+
+    Ok(ActivatedExtension {
+        manifest: manifest.clone(),
+        operators,
+        recipes,
+        ui_contributions,
+        layouts,
+        storage,
+        recipe_count,
+        ui_contribution_count,
+        validation_errors,
+        status,
+        directory: ext_dir.to_path_buf(),
+    })
+}
+
+fn rebuild_operator_entries(extensions: &[ActivatedExtension]) -> Vec<(String, OperatorDefinition)> {
+    extensions
+        .iter()
+        .filter(|e| e.status.is_active())
+        .flat_map(|e| {
+            let ext_id = e.manifest.extension.id.clone();
+            e.operators
+                .iter()
+                .map(move |op| (ext_id.clone(), op.clone()))
+        })
+        .collect()
 }

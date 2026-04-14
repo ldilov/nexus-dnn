@@ -3,115 +3,147 @@
 **Input**: Design documents from `/specs/004-extension-storage-contributions/`
 **Prerequisites**: plan.md (required), spec.md (required), research.md, data-model.md, contracts/storage-api.md
 
-**Tests**: Included per constitution (cargo test required before merge).
+**Tests**: Included inline — this project uses `cargo test` with unit and integration tests per constitution.
 
-**Organization**: Tasks grouped by user story. US-1/US-2/US-3/US-4 are P1 (MVP), US-5/US-6/US-7 are P2, US-8 is P3.
+**Organization**: Tasks grouped by user story to enable independent implementation and testing. Most infrastructure already exists from prior sessions — tasks focus on verification + gaps identified in the updated specification.
 
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies)
-- **[Story]**: Which user story (US1-US8)
+- **[Story]**: Which user story (US1–US8)
 - Exact file paths from plan.md project structure
 
 ---
 
 ## Phase 1: Setup
 
-**Purpose**: Add dependencies and copy schemas
+**Purpose**: Verify existing infrastructure, add new dependencies, create missing modules.
 
-- [ ] T001 Add `sqlparser = "0.55"` and `sha2 = "0.10"` to `crates/nexus-extension/Cargo.toml`
-- [ ] T002 [P] Copy `storage-contribution.schema.json` from `specs/004-extension-storage-contributions/reference/schemas/` to `schemas/storage-contribution.schema.json`
-- [ ] T003 [P] Add optional `storage` field to `schemas/extension-manifest.json` referencing storage-contribution schema
-- [ ] T004 Create module directory `crates/nexus-extension/src/storage/` with `mod.rs` exporting submodules
+- [X] T001 Run `cargo test` across full workspace — document current test results and failures in `crates/nexus-extension/`, `crates/nexus-storage/`, `crates/nexus-api/`, `crates/nexus-events/`
+- [X] T002 [P] Run `cargo clippy` across full workspace — document warnings
+- [X] T003 [P] Verify `sqlparser` and `sha2` dependencies exist in `crates/nexus-extension/Cargo.toml` — add if missing: `sqlparser = "0.55"`, `sha2 = "0.10"`
+- [X] T004 [P] Add `zip = "2"` dependency to `crates/nexus-storage/Cargo.toml` for JSONL ZIP archive support
+- [X] T005 Create `crates/nexus-extension/src/storage/limits.rs` with `StorageLimits` struct: `max_migrations_per_extension: usize` (default 64), `max_statements_per_migration: usize` (default 128), `max_migration_file_bytes: u64` (default 1_048_576), `quarantine_threshold: u32` (default 3). Implement `Default` trait.
+- [X] T006 [P] Add `pub mod limits;` to `crates/nexus-extension/src/storage/mod.rs` and export `StorageLimits`
+- [X] T007 [P] Create `crates/nexus-storage/src/archiver.rs` with empty `StorageArchiver` struct and `pub mod archiver;` in `crates/nexus-storage/src/lib.rs`
+- [X] T008 Verify `schemas/storage-contribution.schema.json` matches spec — add `maxItems: 64` to `migrations.files` array if missing
+
+**Checkpoint**: Dependencies in place. New modules created. Existing tests documented.
 
 ---
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
-**Purpose**: Host metadata tables and record types that ALL user stories depend on
+**Purpose**: Enhanced error types and configurable limits that ALL user stories depend on.
 
-- [ ] T005 Create `migrations/003_extension_storage.sql` with 5 tables: `extension_storage_namespaces`, `extension_storage_migrations`, `extension_storage_objects`, `extension_storage_operations`, `extension_storage_archives` plus recommended indexes per `data-model.md`
-- [ ] T006 [P] Add `NamespaceRecord` struct to `crates/nexus-storage/src/records.rs` with all columns from `extension_storage_namespaces`
-- [ ] T007 [P] Add `MigrationRecord` struct to `crates/nexus-storage/src/records.rs` with all columns from `extension_storage_migrations`
-- [ ] T008 [P] Add `ObjectRecord` struct to `crates/nexus-storage/src/records.rs` with all columns from `extension_storage_objects`
-- [ ] T009 [P] Add `OperationRecord` struct to `crates/nexus-storage/src/records.rs` with all columns from `extension_storage_operations`
-- [ ] T010 [P] Add `ArchiveRecord` struct to `crates/nexus-storage/src/records.rs` with all columns from `extension_storage_archives`
-- [ ] T011 Add `StorageContributionError` variants to `crates/nexus-storage/src/error.rs`: `NamespaceCollision`, `MigrationChecksum`, `SqlValidation`, `PrefixViolation`, `ApplyFailed`, `DryRunFailed`, `IntegrityDrift`, `ArchiveFailed`
-- [ ] T012 Add Database trait methods for namespace CRUD to `crates/nexus-storage/src/database.rs`: `insert_namespace`, `get_namespace`, `get_namespace_by_extension`, `list_namespaces`, `update_namespace_status`
-- [ ] T013 Add Database trait methods for migration CRUD to `crates/nexus-storage/src/database.rs`: `insert_migration_record`, `list_migrations_for_namespace`, `get_migration_record`
-- [ ] T014 Add Database trait methods for object CRUD to `crates/nexus-storage/src/database.rs`: `insert_object_record`, `list_objects_for_namespace`, `update_object_status`
-- [ ] T015 Add Database trait methods for operation/archive CRUD to `crates/nexus-storage/src/database.rs`: `insert_operation`, `update_operation`, `insert_archive`, `list_archives_for_namespace`
-- [ ] T016 Implement all new Database trait methods in `crates/nexus-storage/src/sqlite.rs` with parameterized queries
-- [ ] T017 Write unit test in `crates/nexus-storage/src/sqlite.rs` `#[cfg(test)]` verifying migration 003 applies cleanly and all CRUD methods work against in-memory SQLite
-- [ ] T018 Run `cargo test -p nexus-storage` and `cargo clippy -p nexus-storage` — verify PASS
+- [X] T009 Add new `StorageContributionError` variants to `crates/nexus-storage/src/error.rs`: `MigrationFileNotFound`, `MigrationFileEmpty`, `MigrationFileTooLarge`, `MigrationFileNotUtf8`, `MigrationFileInvalidExtension`, `StatementCountExceeded`, `MigrationCountExceeded`, `MigrationOrderViolation`, `ReservedPrefix`, `UnsupportedFkAction`, `DowngradeRejected`, `AliasChangeRejected`, `QuarantineThresholdExceeded`
+- [X] T010 [P] Thread `StorageLimits` parameter into `validate_storage_contribution()` in `crates/nexus-extension/src/storage/contribution.rs` — use limits for migration count enforcement
+- [X] T011 [P] Thread `StorageLimits` parameter into SQL validator in `crates/nexus-extension/src/storage/sql_validator.rs` — use limits for statement count enforcement
+- [X] T012 [P] Thread `StorageLimits` parameter into `build_plan()` in `crates/nexus-extension/src/storage/plan.rs` — use limits for file size enforcement
+- [X] T013 [P] Add reserved prefix deny list constant to `crates/nexus-extension/src/storage/contribution.rs`: `["ext_sqlite_", "ext_host_", "ext_nexus_", "ext_core_"]`
+- [X] T014 Verify all existing Database trait methods in `crates/nexus-storage/src/database.rs` match `contracts/storage-api.md` — add missing methods: `get_namespace_by_extension`, `list_namespaces_by_status`, `update_namespace_policy`, `update_migration_status`, `list_operations_for_namespace`
+- [X] T015 Implement any newly added Database trait methods in `crates/nexus-storage/src/sqlite.rs` with parameterized queries
+- [X] T016 Run `cargo test -p nexus-storage` and `cargo clippy -p nexus-storage` — verify PASS
 
-**Checkpoint**: Database layer ready. All metadata tables exist with typed records and CRUD methods.
+**Checkpoint**: Error types, limits, and database layer ready. All user stories can proceed.
 
 ---
 
 ## Phase 3: US-1 — Extension Declares Storage in Manifest (Priority: P1) MVP
 
-**Goal**: Parse the optional `storage` block from extension manifests and validate capability declaration.
+**Goal**: Parse the optional `storage` block from extension manifests. Validate capability, alias, migration files, and limits. Compute effective prefix.
 
-**Independent Test**: Install an extension with a `storage` block. Host recognizes it and includes it in validation report.
+**Independent Test**: Install an extension with a `storage` block. Host recognizes storage declaration, computes prefix, and includes it in validation report without applying.
 
-- [ ] T019 [P] [US1] Create `crates/nexus-extension/src/storage/contribution.rs` with `StorageContribution`, `NamespaceDeclaration`, `MigrationDeclaration`, `MigrationFileRef`, `SqlProfileDeclaration`, `UninstallDeclaration`, `RuntimeAccessDeclaration` structs with serde Deserialize derives
-- [ ] T020 [P] [US1] Add `pub mod storage;` to `crates/nexus-extension/src/lib.rs` and export `StorageContribution` types
-- [ ] T021 [US1] Add `storage: Option<StorageContribution>` field to `ExtensionManifest` in `crates/nexus-extension/src/manifest.rs`
-- [ ] T022 [US1] Add validation in `crates/nexus-extension/src/registry.rs` `process_extension()`: if manifest has `storage` block, check that `capabilities` includes `storage.schema_contribute` — push validation error if missing
-- [ ] T023 [US1] Add validation for namespace alias regex `^[a-z][a-z0-9_]{2,48}$` in `contribution.rs`
-- [ ] T024 [US1] Add validation for migration file ID regex `^[0-9]{3}_[a-z0-9_]{2,64}$` and uniqueness check in `contribution.rs`
-- [ ] T025 [US1] Add path traversal check for migration file paths (must stay within extension directory) in `contribution.rs`
-- [ ] T026 [US1] Add effective prefix computation: `format!("ext_{}_", alias)` in `contribution.rs`
-- [ ] T027 [US1] Write unit tests in `crates/nexus-extension/src/storage/contribution.rs` `#[cfg(test)]`: valid storage block parses, missing capability fails, invalid alias fails, duplicate migration IDs fail, path traversal rejected, prefix computed correctly
-- [ ] T028 [US1] Run `cargo test -p nexus-extension` and `cargo clippy -p nexus-extension` — verify PASS
+### Tests for US-1
 
-**Checkpoint**: Manifest parsing works. Extensions can declare storage blocks and the host validates them.
+- [X] T017 [P] [US1] Write unit test in `crates/nexus-extension/src/storage/contribution.rs`: valid storage block parses correctly, computes effective prefix `ext_<alias>_`
+- [X] T018 [P] [US1] Write unit test: missing `storage.schema_contribute` capability → validation error
+- [X] T019 [P] [US1] Write unit test: invalid alias (too short, wrong chars) → validation error
+- [X] T020 [P] [US1] Write unit test: duplicate migration IDs → validation error
+- [X] T021 [P] [US1] Write unit test: path traversal (`../../etc/shadow`) → validation error
+- [X] T022 [P] [US1] Write unit test: migration file without `.sql` extension → validation error
+- [X] T023 [P] [US1] Write unit test: migration IDs not in ascending order → validation error
+- [X] T024 [P] [US1] Write unit test: migration count exceeds `StorageLimits.max_migrations_per_extension` → validation error
+- [X] T025 [P] [US1] Write unit test: reserved alias producing `ext_sqlite_` prefix → validation error
+- [X] T026 [P] [US1] Write unit test: empty `files` array (0 migrations) → validation error
+
+### Implementation for US-1
+
+- [X] T027 [US1] Add `.sql` extension check for migration file paths in `crates/nexus-extension/src/storage/contribution.rs`
+- [X] T028 [US1] Add migration ID ascending order enforcement (lexicographic comparison) in `crates/nexus-extension/src/storage/contribution.rs`
+- [X] T029 [US1] Add migration count enforcement against `StorageLimits.max_migrations_per_extension` in `crates/nexus-extension/src/storage/contribution.rs`
+- [X] T030 [US1] Add reserved prefix deny list check in `crates/nexus-extension/src/storage/contribution.rs` — reject aliases producing `ext_sqlite_`, `ext_host_`, `ext_nexus_`, `ext_core_`
+- [X] T031 [US1] Verify `crates/nexus-extension/src/registry.rs` `process_extension()` checks capability `storage.schema_contribute` when storage block present — fix if missing
+- [X] T032 [US1] Run `cargo test -p nexus-extension` — verify all US-1 tests PASS
+
+**Checkpoint**: Manifest parsing complete. Extensions can declare storage blocks and the host validates them with all 17 acceptance scenarios covered.
 
 ---
 
-## Phase 4: US-2 — Host Validates and Applies Migrations (Priority: P1) MVP
+## Phase 4: US-2 — Host Validates and Applies Migrations (Priority: P1)
 
 **Goal**: Multi-stage validation (static SQL + dry-run) then transactional apply with metadata recording.
 
-**Independent Test**: Install an extension with valid migrations. Host validates, dry-runs, applies, and records all metadata.
+**Independent Test**: Install extension with valid migrations. Host validates, dry-runs, applies, and records all metadata.
 
-- [ ] T029 [P] [US2] Create `crates/nexus-extension/src/storage/sql_validator.rs` with `validate_sql_profile()` function: parse SQL with `sqlparser::parser::Parser` using `sqlparser::dialect::SQLiteDialect`, match on `Statement` variants — allow `CreateTable`, `CreateIndex`, `AlterTable` (AddColumn only), reject all others
-- [ ] T030 [US2] Add object name extraction to `sql_validator.rs`: from each allowed statement, extract table/index names into a `Vec<ExtractedObject>` with name and type
-- [ ] T031 [US2] Add prefix validation to `sql_validator.rs`: every extracted object name MUST match `^{effective_prefix}[a-z][a-z0-9_]{1,62}$`
-- [ ] T032 [US2] Add FK validation to `sql_validator.rs`: scan `CreateTable` constraints, any FK reference to a table NOT starting with the effective prefix → reject
-- [ ] T033 [US2] Add `{{prefix}}` placeholder expansion function to `sql_validator.rs`: replace all `{{prefix}}` occurrences with the effective prefix string
-- [ ] T034 [US2] Write unit tests for `sql_validator.rs` `#[cfg(test)]`: CREATE TABLE allowed, CREATE INDEX allowed, ALTER TABLE ADD COLUMN allowed, DROP TABLE rejected, INSERT rejected, CREATE VIEW rejected, CREATE TRIGGER rejected, ATTACH/DETACH/PRAGMA rejected, prefix violation rejected, cross-namespace FK rejected, placeholder expansion works
-- [ ] T035 [P] [US2] Create `crates/nexus-extension/src/storage/plan.rs` with `StoragePlan` struct and `build_plan()` function: read migration files from extension directory, compute SHA-256 checksums (raw + expanded) using `sha2` crate, determine action (new_install/upgrade/noop)
-- [ ] T036 [US2] In `plan.rs` add upgrade detection: query existing `MigrationRecord` rows for namespace, compare checksums, skip already-applied, plan new ones, detect checksum drift
-- [ ] T037 [US2] Write unit tests for `plan.rs` `#[cfg(test)]`: new install plan has all migrations, upgrade plan skips applied, checksum drift detected
-- [ ] T038 [P] [US2] Create `crates/nexus-storage/src/storage_manager.rs` implementing `ExtensionStorageManager` trait with `reserve_namespace()`: insert `NamespaceRecord` with status `reserved`, query `sqlite_master` for prefix collision
-- [ ] T039 [US2] Implement `apply_plan()` in `storage_manager.rs`: open transaction, call `reserve_namespace` (if new), for each migration: SAVEPOINT → execute expanded SQL → insert `MigrationRecord` → insert `ObjectRecord` entries → RELEASE, update namespace status to `active`, commit
-- [ ] T040 [US2] Implement dry-run validation in `storage_manager.rs`: open `sqlite::memory:` pool (max_connections=1), run host migrations 001-003, then apply extension migrations, verify object inventory, close temp DB
-- [ ] T041 [US2] Write integration tests for `storage_manager.rs` `#[cfg(test)]`: namespace reservation succeeds, apply creates tables and records metadata, dry-run validates without affecting real DB, migration failure rolls back cleanly
-- [ ] T042 [US2] Add 11 storage event variants to `NexusEvent` enum in `crates/nexus-events/src/types.rs`: `StorageNamespaceReserved`, `StorageValidationStarted`, `StorageValidationFailed`, `StoragePlanReady`, `StorageApplyStarted`, `StorageMigrationApplied`, `StorageApplyFailed`, `StorageIntegrityVerified`, `StorageIntegrityDriftDetected`, `StorageUninstallStarted`, `StorageUninstallCompleted`
-- [ ] T043 [US2] Extend `process_extension()` in `crates/nexus-extension/src/registry.rs`: after manifest validation, if storage block present: build plan → validate static → validate dry-run → block activation on error. Store parsed storage contribution in `ActivatedExtension`
-- [ ] T044 [US2] Add `storage: Option<StorageContribution>` field to `ActivatedExtension` in `crates/nexus-extension/src/registry.rs`
-- [ ] T045 [US2] Extend `persist_discovered_extensions()` in `crates/nexus-api/src/handlers/extensions.rs`: after persisting extension record, if storage plan exists and action is `new_install`, call `apply_plan()` on the storage manager. Emit events at each stage.
-- [ ] T046 [US2] Add `storage_manager: Arc<dyn ExtensionStorageManager>` to `AppState` in `crates/nexus-api/src/lib.rs` (or use concrete type)
-- [ ] T047 [US2] Run `cargo test` (full workspace) and `cargo clippy` — verify PASS
+### Tests for US-2
+
+- [X] T033 [P] [US2] Write unit test in `crates/nexus-extension/src/storage/sql_validator.rs`: `CREATE TABLE` allowed
+- [X] T034 [P] [US2] Write unit test: `CREATE INDEX` and `CREATE UNIQUE INDEX` allowed
+- [X] T035 [P] [US2] Write unit test: `ALTER TABLE ADD COLUMN` allowed
+- [X] T036 [P] [US2] Write unit test: `DROP TABLE` rejected
+- [X] T037 [P] [US2] Write unit test: `INSERT`, `UPDATE`, `DELETE` rejected
+- [X] T038 [P] [US2] Write unit test: `CREATE VIEW`, `CREATE TRIGGER` rejected
+- [X] T039 [P] [US2] Write unit test: `ATTACH`, `DETACH`, `PRAGMA`, `VACUUM` rejected
+- [X] T040 [P] [US2] Write unit test: statement count exceeding `max_statements_per_migration` → rejected
+- [X] T041 [P] [US2] Write unit test: `{{prefix}}` placeholder expansion produces correct SQL
+- [X] T042 [P] [US2] Write unit test in `crates/nexus-extension/src/storage/plan.rs`: new install plan has all migrations marked `Apply`
+- [X] T043 [P] [US2] Write unit test: migration file not found → `MigrationFileNotFound` error
+- [X] T044 [P] [US2] Write unit test: empty migration file (0 bytes) → `MigrationFileEmpty` error
+- [X] T045 [P] [US2] Write unit test: migration file exceeding size limit → `MigrationFileTooLarge` error
+- [X] T046 [P] [US2] Write unit test: non-UTF-8 migration file → `MigrationFileNotUtf8` error
+
+### Implementation for US-2
+
+- [X] T047 [US2] Verify `crates/nexus-extension/src/storage/sql_validator.rs` rejects all forbidden statement types per `nexus_sqlite_v1` profile — fix any gaps
+- [X] T048 [US2] Add statement count enforcement against `StorageLimits.max_statements_per_migration` in `crates/nexus-extension/src/storage/sql_validator.rs`
+- [X] T049 [US2] Add UTF-8 encoding check on migration file read in `crates/nexus-extension/src/storage/plan.rs`
+- [X] T050 [US2] Add file size limit check against `StorageLimits.max_migration_file_bytes` in `crates/nexus-extension/src/storage/plan.rs`
+- [X] T051 [US2] Add non-empty content check (at least one executable statement after stripping comments) in `crates/nexus-extension/src/storage/plan.rs`
+- [X] T052 [US2] Verify dry-run validation in `crates/nexus-storage/src/storage_manager.rs` — opens in-memory SQLite, applies host migrations 001-003, then extension migrations, verifies object inventory
+- [X] T053 [US2] Verify transactional apply in `crates/nexus-storage/src/storage_manager.rs` — single transaction wrapping namespace reservation + savepoints per migration + metadata recording
+- [X] T054 [US2] Verify `process_extension()` in `crates/nexus-extension/src/registry.rs` calls build_plan → validate_static → validate_dry_run → block on error. Emit events at each stage.
+- [X] T055 [US2] Verify `persist_discovered_extensions()` in `crates/nexus-api/src/handlers/extensions.rs` calls `apply_plan()` for storage-contributing extensions
+- [X] T056 [US2] Write integration test in `crates/nexus-storage/src/storage_manager.rs`: apply creates tables and records metadata in all 5 metadata tables
+- [X] T057 [US2] Write integration test: migration failure rolls back cleanly — no partial objects, extension quarantined
+- [X] T058 [US2] Run `cargo test` (full workspace) — verify PASS
 
 **Checkpoint**: Full validate → dry-run → apply pipeline works. Extensions with valid storage activate. Invalid storage blocks activation.
 
 ---
 
-## Phase 5: US-3 — Namespace Isolation (Priority: P1)
+## Phase 5: US-3 — Namespace Isolation and SQL Safety (Priority: P1)
 
-**Goal**: Strict prefix enforcement and cross-namespace safety.
+**Goal**: Strict prefix enforcement and cross-namespace safety. No extension can escape its prefix boundary.
 
-**Independent Test**: Attempt migrations with wrong prefix, host-table FK, or cross-extension FK. All fail validation.
+**Independent Test**: Attempt migrations with wrong prefix, host-table FK, cross-extension FK. All fail validation.
 
-- [ ] T048 [US3] Add reserved prefix deny list to `sql_validator.rs`: `["ext_sqlite_", "ext_host_", "ext_nexus_", "ext_core_"]`. Reject if computed prefix collides.
-- [ ] T049 [US3] Add index name validation to `sql_validator.rs`: indexes MUST match `^{effective_prefix}idx_[a-z0-9_]{1,58}$`
-- [ ] T050 [US3] Write integration test: extension with table name missing prefix → activation blocked with naming violation
-- [ ] T051 [US3] Write integration test: extension with FK referencing host core table `workflows(id)` → activation blocked
-- [ ] T052 [US3] Write integration test: two extensions with same alias → second activation blocked with collision error
-- [ ] T053 [US3] Run `cargo test -p nexus-extension` — verify all isolation tests PASS
+### Tests for US-3
+
+- [X] T059 [P] [US3] Write unit test in `crates/nexus-extension/src/storage/sql_validator.rs`: table name missing prefix → rejected
+- [X] T060 [P] [US3] Write unit test: index name not matching `^{prefix}idx_[a-z][a-z0-9_]{1,58}$` → rejected
+- [X] T061 [P] [US3] Write unit test: FK referencing host core table `workflows(id)` → rejected
+- [X] T062 [P] [US3] Write unit test: FK referencing another extension's table `ext_other_sessions` → rejected
+- [X] T063 [P] [US3] Write unit test: FK with `ON DELETE SET DEFAULT` → rejected (only CASCADE, RESTRICT, SET NULL allowed)
+- [X] T064 [P] [US3] Write integration test: two extensions with same alias → second activation blocked with collision error
+
+### Implementation for US-3
+
+- [X] T065 [US3] Verify index name validation in `crates/nexus-extension/src/storage/sql_validator.rs` enforces `^{prefix}idx_[a-z][a-z0-9_]{1,58}$`
+- [X] T066 [US3] Add FK `ON DELETE`/`ON UPDATE` action validation in `crates/nexus-extension/src/storage/sql_validator.rs` — only CASCADE, RESTRICT, SET NULL allowed
+- [X] T067 [US3] Verify namespace collision detection in `crates/nexus-storage/src/storage_manager.rs` — queries both `extension_storage_namespaces` and `sqlite_master`
+- [X] T068 [US3] Run `cargo test -p nexus-extension` — verify all isolation tests PASS
 
 **Checkpoint**: Namespace isolation proven. No extension can escape its prefix boundary.
 
@@ -119,93 +151,134 @@
 
 ## Phase 6: US-4 — Extension Upgrade with New Migrations (Priority: P1)
 
-**Goal**: Append new migrations without re-running applied ones. Detect tampering.
+**Goal**: Append new migrations without re-running applied ones. Detect tampering and reordering.
 
 **Independent Test**: Install v0.4.0 with 2 migrations. Upgrade to v0.5.0 with 3 (same first 2 + new third). Only third runs.
 
-- [ ] T054 [US4] Extend `build_plan()` in `plan.rs` to detect reordered migration IDs → reject upgrade
-- [ ] T055 [US4] Extend `build_plan()` to detect alias change after install → reject upgrade
-- [ ] T056 [US4] Write integration test: install v1 with 2 migrations, upgrade to v2 with 3 → only 3rd applied, tables intact
-- [ ] T057 [US4] Write integration test: upgrade with modified contents of applied migration → blocked with checksum drift
-- [ ] T058 [US4] Write integration test: upgrade with reordered migration IDs → blocked
-- [ ] T059 [US4] Run `cargo test` — verify upgrade tests PASS
+### Tests for US-4
 
-**Checkpoint**: Upgrades work safely. Tampering and reordering detected.
+- [X] T069 [P] [US4] Write unit test in `crates/nexus-extension/src/storage/plan.rs`: upgrade plan skips applied migrations (checksum match), plans new ones
+- [X] T070 [P] [US4] Write unit test: checksum drift on applied migration → `repair_required`
+- [X] T071 [P] [US4] Write unit test: alias change after install → rejected
+- [X] T072 [P] [US4] Write unit test: migration ID reorder → rejected
+- [X] T073 [P] [US4] Write unit test: downgrade (fewer migrations than applied) → `DowngradeRejected`
+- [X] T074 [P] [US4] Write unit test: uninstall policy change on upgrade → accepted, recorded
+
+### Implementation for US-4
+
+- [X] T075 [US4] Verify `build_plan()` in `crates/nexus-extension/src/storage/plan.rs` detects and rejects migration ID reordering
+- [X] T076 [US4] Verify `build_plan()` detects and rejects alias change after install
+- [X] T077 [US4] Verify `build_plan()` detects and rejects downgrade (applied migrations missing from declared list)
+- [X] T078 [US4] Add uninstall policy change detection in `build_plan()` in `crates/nexus-extension/src/storage/plan.rs` — flag for namespace policy update on upgrade
+- [X] T079 [US4] In apply pipeline, update `extension_storage_namespaces.uninstall_policy` when policy changes on upgrade in `crates/nexus-storage/src/storage_manager.rs`
+- [X] T080 [US4] Write integration test: install v1 (2 migrations), upgrade to v2 (3 migrations) → only 3rd applied, all tables intact
+- [X] T081 [US4] Run `cargo test` — verify upgrade tests PASS
+
+**Checkpoint**: Upgrades work safely. Tampering, reordering, and downgrades detected.
 
 ---
 
 ## Phase 7: US-5 — Extension Disable and Uninstall (Priority: P2)
 
-**Goal**: Disable preserves data. Uninstall follows declared policy.
+**Goal**: Disable preserves data. Uninstall follows declared policy. Archive format is JSONL ZIP.
 
-**Independent Test**: Disable extension — tables remain. Uninstall with drop — tables removed. Archive — export created.
+**Independent Test**: Disable → tables remain. Uninstall with drop → tables removed. Archive → JSONL ZIP created.
 
-- [ ] T060 [US5] Implement disable behavior: mark extension inactive but do NOT drop namespace objects. Update namespace status. (May already work if activation pipeline only applies on `new_install`/`upgrade`)
-- [ ] T061 [US5] Implement re-enable check: if files/checksums match recorded state, re-enable without running migrations. If drift, block with `repair_required`
-- [ ] T062 [US5] Implement `uninstall_namespace()` in `storage_manager.rs` for `retain` policy: remove package registration, keep namespace objects and metadata
-- [ ] T063 [US5] Implement `uninstall_namespace()` for `drop_namespace_objects` policy: query `extension_storage_objects` for namespace, DROP tables/indexes in reverse dependency order, update object status to `dropped`, update namespace status to `dropped`
-- [ ] T064 [US5] Implement `uninstall_namespace()` for `archive_then_drop` policy: for each namespace table, SELECT all rows → serialize as JSONL → write to ZIP archive file → record in `extension_storage_archives` → then execute drop policy
-- [ ] T065 [US5] Write integration test: disable extension → tables remain in sqlite_master, namespace status stays `active`
-- [ ] T066 [US5] Write integration test: re-enable with matching checksums → activates without migrations
-- [ ] T067 [US5] Write integration test: re-enable with drifted files → blocked with `repair_required`
-- [ ] T068 [US5] Write integration test: uninstall with `retain` → tables remain, package record removed
-- [ ] T069 [US5] Write integration test: uninstall with `drop_namespace_objects` → all `ext_<alias>_*` tables/indexes gone from sqlite_master
-- [ ] T070 [US5] Write integration test: uninstall with `archive_then_drop` → archive file created, then tables dropped
-- [ ] T071 [US5] Run `cargo test` — verify all uninstall tests PASS
+### Tests for US-5
 
-**Checkpoint**: Full lifecycle works: install → disable → re-enable → uninstall with all 3 policies.
+- [X] T082 [P] [US5] Write integration test in `crates/nexus-storage/src/storage_manager.rs`: disable extension → tables remain in `sqlite_master`, namespace status stays `active`
+- [X] T083 [P] [US5] Write integration test: re-enable with matching checksums → activates without migrations
+- [X] T084 [P] [US5] Write integration test: re-enable with drifted files → blocked with `repair_required`
+- [X] T085 [P] [US5] Write integration test: uninstall with `retain` → tables remain, package record removed, namespace status `retained`
+- [X] T086 [P] [US5] Write integration test: uninstall with `drop_namespace_objects` → all `ext_<alias>_*` tables/indexes gone from `sqlite_master`, metadata retained with `dropped` status
+- [X] T087 [P] [US5] Write integration test: uninstall with `archive_then_drop` → JSONL ZIP archive created, verified, tables dropped
+
+### Implementation for US-5
+
+- [X] T088 [US5] Verify disable behavior in `crates/nexus-extension/src/registry.rs` — does NOT drop namespace objects, keeps migration metadata intact
+- [X] T089 [US5] Verify re-enable check — if files/checksums match, re-enable without migrations; if drift, block with `repair_required`
+- [X] T090 [US5] Verify `uninstall_namespace()` in `crates/nexus-storage/src/storage_manager.rs` for `retain` policy — removes package registration, keeps objects and metadata, marks namespace `retained`
+- [X] T091 [US5] Verify `uninstall_namespace()` for `drop_namespace_objects` — drops tables/indexes in reverse dependency order, updates object status to `dropped`, namespace status to `dropped`
+- [X] T092 [US5] Implement `archive_namespace()` in `crates/nexus-storage/src/archiver.rs` — for each table: SELECT all rows → serialize as JSONL (one JSON object per row) → write to temp file
+- [X] T093 [US5] Implement ZIP bundling in `crates/nexus-storage/src/archiver.rs` — collect JSONL files into single ZIP, compute SHA-256 content hash
+- [X] T094 [US5] Extend `ArchiveRecord` in `crates/nexus-storage/src/records.rs` with `table_count: i64` and `row_count: i64` fields
+- [X] T095 [US5] Update `insert_archive()` in `crates/nexus-storage/src/sqlite.rs` to include `table_count` and `row_count`
+- [X] T096 [US5] Wire archiver into `uninstall_namespace()` for `ArchiveThenDrop` — archive first, verify hash, then drop. If archive fails, abort drop.
+- [X] T097 [US5] Write integration test: archive creation failure → drop aborted, namespace remains `active`
+- [X] T098 [US5] Run `cargo test` — verify all uninstall tests PASS
+
+**Checkpoint**: Full lifecycle works: install → disable → re-enable → uninstall with all 3 policies. JSONL ZIP archives verified.
 
 ---
 
 ## Phase 8: US-6 + US-7 — Storage APIs and Integrity Verification (Priority: P2)
 
-**Goal**: REST endpoints for storage status, admin operations, and integrity verification.
+**Goal**: REST endpoints for storage status, admin operations, and integrity verification. Crash recovery detection.
 
-**Independent Test**: Call `GET /extensions/{id}/storage` after install. Call `/verify` to check integrity. Call `/uninstall` to execute policy.
+**Independent Test**: Call `GET /extensions/{id}/storage`. Call `/verify` to check integrity. Call `/uninstall` to execute policy.
 
-- [ ] T072 [P] [US6] Create `crates/nexus-api/src/handlers/storage_contributions.rs` with `get_storage_status()` handler: query namespace, migrations, objects for extension ID, return combined JSON per `contracts/storage-api.md`
-- [ ] T073 [P] [US6] Add `validate_storage()` handler: re-run static + dry-run validation, return report
-- [ ] T074 [P] [US6] Add `apply_storage()` handler: apply prepared plan, return apply report
-- [ ] T075 [P] [US6] Add `verify_storage()` handler: compare sqlite_master objects vs recorded inventory, return integrity report
-- [ ] T076 [P] [US6] Add `uninstall_storage()` handler: execute uninstall policy (with optional override from request body), return uninstall report
-- [ ] T077 [P] [US6] Add `list_namespaces()` handler: list all extension storage namespaces for diagnostics
-- [ ] T078 [US6] Add `pub mod storage_contributions;` to `crates/nexus-api/src/handlers/mod.rs`
-- [ ] T079 [US6] Register 6 routes in `crates/nexus-api/src/router.rs`: `GET /extensions/{id}/storage`, `POST /extensions/{id}/storage/validate`, `POST /extensions/{id}/storage/apply`, `POST /extensions/{id}/storage/verify`, `POST /extensions/{id}/storage/uninstall`, `GET /storage/namespaces`
-- [ ] T080 [US7] Implement `verify_namespace()` in `storage_manager.rs`: query `sqlite_master WHERE name LIKE prefix%`, compare against `extension_storage_objects` where status=`present`, report missing (drifted) and unexpected objects
-- [ ] T081 [US7] On drift detection: update affected object status to `drifted`, update namespace status to `repair_required`, emit `StorageIntegrityDriftDetected` event
-- [ ] T082 [US7] Write integration test: manually DELETE a namespace table from sqlite_master, call verify → drift detected, namespace marked `repair_required`
-- [ ] T083 [US7] Write integration test: call verify on healthy namespace → status `healthy`, zero drift
-- [ ] T084 [US6] Run `cargo test` (full workspace) and `cargo clippy` — verify PASS
+### Tests for US-6 + US-7
 
-**Checkpoint**: All 6 API endpoints functional. Integrity verification detects and reports drift.
+- [X] T099 [P] [US6] Write integration test for `GET /api/v1/extensions/{id}/storage` — response includes namespace, migrations, objects per `contracts/storage-api.md`
+- [X] T100 [P] [US6] Write integration test: 404 response for extension without storage
+- [X] T101 [P] [US6] Write integration test for `POST /api/v1/extensions/{id}/storage/validate` — returns static + dry-run reports
+- [X] T102 [P] [US6] Write integration test for `POST /api/v1/extensions/{id}/storage/verify` — returns healthy IntegrityReport
+- [X] T103 [P] [US7] Write integration test: manually DELETE namespace table, call `/verify` → drift detected, namespace `repair_required`
+- [X] T104 [P] [US6] Write integration test for `POST /api/v1/extensions/{id}/storage/uninstall` with `policy_override` in request body
+- [X] T105 [P] [US6] Write integration test for `GET /api/v1/storage/namespaces` — lists all namespaces
+
+### Implementation for US-6 + US-7
+
+- [X] T106 [US6] Verify `get_storage_status()` handler in `crates/nexus-api/src/handlers/storage_contributions.rs` returns response matching `contracts/storage-api.md` section 1.1
+- [X] T107 [US6] Verify `validate_storage()` handler returns combined `StaticValidationReport` + `DryRunReport` per section 1.2
+- [X] T108 [US6] Verify `apply_storage()` handler returns `ApplyReport` per section 1.3
+- [X] T109 [US6] Verify `verify_storage()` handler returns `IntegrityReport` per section 1.4
+- [X] T110 [US6] Verify `uninstall_storage()` handler accepts optional `policy_override` in request body per section 1.5
+- [X] T111 [US6] Verify `list_namespaces()` handler supports `status` query parameter filter per section 1.6
+- [X] T112 [US7] Verify `verify_namespace()` in `crates/nexus-storage/src/storage_manager.rs` — queries `sqlite_master WHERE name LIKE prefix%`, compares against `extension_storage_objects` where status=`present`, reports missing/unexpected
+- [X] T113 [US7] On drift detection: update object status to `drifted`, namespace status to `repair_required`, emit `StorageIntegrityDriftDetected` event
+- [X] T114 [US7] Add quarantine behavior — track consecutive failure count, auto-quarantine after `StorageLimits.quarantine_threshold` failures
+- [X] T115 [US7] Write integration test: 3 consecutive apply failures → extension quarantined
+- [X] T116 [US7] Write integration test: 2 failures then success → counter resets, not quarantined
+- [X] T117 [US6] Run `cargo test` (full workspace) — verify PASS
+
+**Checkpoint**: All 6 API endpoints functional. Integrity verification detects and reports drift. Quarantine prevents infinite retries.
 
 ---
 
 ## Phase 9: US-8 — Chat/LLM Extension Example (Priority: P3)
 
-**Goal**: Worked example demonstrating the full lifecycle end-to-end.
+**Goal**: Worked example demonstrating full lifecycle end-to-end.
 
-**Independent Test**: Install chat-llama → 4 tables + 4 indexes created. Disable → tables remain. Upgrade → new migration applies. Uninstall → policy executed.
+**Independent Test**: Install `example.chat.llama` → 4 tables + 4 indexes. Full lifecycle through uninstall.
 
-- [ ] T085 [US8] Add `storage` block to `extensions/example-image-basic/manifest.yaml` OR create a new `extensions/example-chat-llama/manifest.yaml` with storage block, operators, and recipes per `reference/examples/chat-llama/manifest.yaml`
-- [ ] T086 [US8] Create `extensions/example-chat-llama/storage/migrations/001_init.sql` with threads, messages, message_attachments, thread_model_profiles tables per `reference/examples/chat-llama/storage/migrations/001_init.sql`
-- [ ] T087 [US8] Create `extensions/example-chat-llama/storage/migrations/002_indexes.sql` with 4 indexes per `reference/examples/chat-llama/storage/migrations/002_indexes.sql`
-- [ ] T088 [US8] Write E2E integration test in `tests/integration/extension_storage_test.rs`: discover chat-llama → validate → apply → verify 4 tables + 4 indexes with `ext_chat_llama_` prefix → disable → verify tables remain → re-enable → uninstall with retain → verify tables remain
-- [ ] T089 [US8] Run full `cargo test` — verify E2E test PASS
+### Tests for US-8
 
-**Checkpoint**: Complete worked example proves the system end-to-end.
+- [X] T118 [P] [US8] Write E2E test in `tests/integration/extension_storage_test.rs`: discover `example.chat.llama` → validate → apply → verify 4 tables + 4 indexes with `ext_chat_llama_` prefix
+- [X] T119 [P] [US8] Write E2E test: disable → tables remain → re-enable → active without migrations
+- [X] T120 [P] [US8] Write E2E test: uninstall with `retain` → tables remain
+- [X] T121 [P] [US8] Write E2E test: uninstall with `drop_namespace_objects` → tables dropped
+- [X] T122 [P] [US8] Write E2E test: uninstall with `archive_then_drop` → JSONL ZIP archive created, tables dropped
+
+### Implementation for US-8
+
+- [X] T123 [US8] Verify `extensions/example-chat-llama/manifest.yaml` matches updated spec — storage block, capabilities, migration paths
+- [X] T124 [US8] Verify `extensions/example-chat-llama/storage/migrations/001_init.sql` uses `{{prefix}}` placeholders, creates 4 tables, follows naming conventions
+- [X] T125 [US8] Verify `extensions/example-chat-llama/storage/migrations/002_indexes.sql` uses `{{prefix}}` placeholders, creates 4 indexes, follows `{prefix}idx_` naming
+- [X] T126 [US8] Run full `cargo test` — verify all E2E tests PASS
+
+**Checkpoint**: Complete lifecycle proven end-to-end with real extension example.
 
 ---
 
 ## Phase 10: Polish & Cross-Cutting Concerns
 
-- [ ] T090 [P] Update `docs/extension-guide.md` with storage contributions section: how to declare storage in manifest, SQL profile rules, migration file format
-- [ ] T091 [P] Update `docs/database-schema.md` with 5 new metadata tables
-- [ ] T092 [P] Update `docs/api-reference.md` with 6 new storage endpoints
-- [ ] T093 Run `cargo fmt --check` across full workspace
-- [ ] T094 Run `cargo clippy` across full workspace — zero warnings
-- [ ] T095 Run `cargo test` across full workspace — all tests PASS
-- [ ] T096 Verify `cargo build --release` succeeds
+- [X] T127 [P] Update `schemas/storage-contribution.schema.json` — add `maxItems: 64` to `migrations.files`, verify all field patterns match spec
+- [X] T128 [P] Verify all 11 `NexusEvent` storage variants in `crates/nexus-events/src/types.rs` match `contracts/storage-api.md` event payloads
+- [X] T129 Run `cargo fmt --check` across full workspace
+- [X] T130 Run `cargo clippy` across full workspace — zero warnings
+- [X] T131 Run `cargo test` across full workspace — all tests PASS
+- [X] T132 Run `cargo build --release` — verify succeeds
 
 ---
 
@@ -215,58 +288,69 @@
 
 - **Setup (Phase 1)**: No dependencies — start immediately
 - **Foundational (Phase 2)**: Depends on Phase 1 — BLOCKS all user stories
-- **US-1 (Phase 3)**: Depends on Phase 2 — can start after foundational
-- **US-2 (Phase 4)**: Depends on Phase 3 (needs manifest parsing) + Phase 2 (needs DB methods)
-- **US-3 (Phase 5)**: Depends on Phase 4 (extends validator)
-- **US-4 (Phase 6)**: Depends on Phase 4 (extends plan builder)
-- **US-5 (Phase 7)**: Depends on Phase 4 (needs working apply pipeline)
-- **US-6+US-7 (Phase 8)**: Depends on Phase 4 + Phase 7 (needs manager + uninstall)
-- **US-8 (Phase 9)**: Depends on Phase 8 (needs APIs for full lifecycle test)
+- **US-1 (Phase 3)**: Depends on Phase 2 — entry point for storage system
+- **US-2 (Phase 4)**: Depends on US-1 (needs manifest parsing)
+- **US-3 (Phase 5)**: Depends on US-2 (extends validator)
+- **US-4 (Phase 6)**: Depends on US-2 (extends planner) — can parallel with US-3
+- **US-5 (Phase 7)**: Depends on US-2 (needs working apply pipeline)
+- **US-6+US-7 (Phase 8)**: Depends on US-2 + US-5 (needs manager + uninstall)
+- **US-8 (Phase 9)**: Depends on US-6 (needs APIs for full lifecycle test)
 - **Polish (Phase 10)**: Depends on all phases complete
 
 ### User Story Dependencies
 
-- **US-1 (P1)**: Independent after Foundational
-- **US-2 (P1)**: Depends on US-1
-- **US-3 (P1)**: Depends on US-2 (extends validator)
-- **US-4 (P1)**: Depends on US-2 (extends planner) — can parallel with US-3
-- **US-5 (P2)**: Depends on US-2
-- **US-6+US-7 (P2)**: Depends on US-2 + US-5
-- **US-8 (P3)**: Depends on US-6
+- **US-1 (P1)**: Can start after Foundational — no other story dependencies
+- **US-2 (P1)**: Depends on US-1 — core validation/apply pipeline
+- **US-3 (P1)**: Depends on US-2 — extends validator. Can parallel with US-4.
+- **US-4 (P1)**: Depends on US-2 — extends planner. Can parallel with US-3.
+- **US-5 (P2)**: Depends on US-2 — adds lifecycle management
+- **US-6+US-7 (P2)**: Depends on US-2 + US-5 — REST API + integrity
+- **US-8 (P3)**: Depends on US-6 — end-to-end demonstration
 
 ### Parallel Opportunities
 
-- T002, T003, T004 in Phase 1 (different files)
-- T006-T010 in Phase 2 (all add record structs to same file — but could be one commit)
-- T019, T020 in Phase 3 (different files)
-- T029, T035 in Phase 4 (sql_validator.rs vs plan.rs)
-- T072-T077 in Phase 8 (each handler is independent)
-- T090, T091, T092 in Phase 10 (different doc files)
+| Phase | Parallel Tasks |
+|-------|---------------|
+| Phase 1 (Setup) | T002, T003, T004, T006, T007 |
+| Phase 2 (Foundational) | T010, T011, T012, T013 |
+| Phase 3 (US-1) | T017–T026 (all tests), T027–T030 (different validation rules) |
+| Phase 4 (US-2) | T033–T046 (all tests), T047–T051 (different validation concerns) |
+| Phase 5 (US-3) | T059–T064 (all tests) |
+| Phase 6 (US-4) | T069–T074 (all tests) |
+| Phase 7 (US-5) | T082–T087 (all tests) |
+| Phase 8 (US-6+7) | T099–T105 (all tests), T106–T111 (different handlers) |
+| Phase 9 (US-8) | T118–T122 (all E2E tests) |
+| Phase 10 (Polish) | T127, T128 |
 
 ---
 
 ## Parallel Example: Phase 4 (US-2)
 
 ```bash
-# These can run in parallel (different files):
-Task T029: "Create sql_validator.rs with validate_sql_profile()"
-Task T035: "Create plan.rs with StoragePlan and build_plan()"
-Task T038: "Create storage_manager.rs with reserve_namespace()"
+# Launch all US-2 tests in parallel (different test files, no dependencies):
+Task T033: "Unit test: CREATE TABLE allowed"
+Task T034: "Unit test: CREATE INDEX allowed"
+Task T035: "Unit test: ALTER TABLE ADD COLUMN allowed"
+Task T036: "Unit test: DROP TABLE rejected"
+Task T037: "Unit test: INSERT/UPDATE/DELETE rejected"
+Task T042: "Unit test: new install plan has all migrations"
+Task T043: "Unit test: file not found error"
 
-# These must be sequential (same file dependencies):
-T029 → T030 → T031 → T032 → T033 → T034  (sql_validator build-up)
-T035 → T036 → T037                          (plan builder build-up)
-T038 → T039 → T040 → T041                  (storage manager build-up)
+# After tests written, implementation in parallel (different files):
+Task T047: "Verify sql_validator.rs rejects forbidden statements"
+Task T049: "Add UTF-8 check in plan.rs"
+Task T050: "Add file size check in plan.rs"
+Task T052: "Verify dry-run in storage_manager.rs"
 ```
 
 ---
 
 ## Implementation Strategy
 
-### MVP First (US-1 + US-2 only)
+### MVP First (US-1 + US-2 Only)
 
 1. Complete Phase 1: Setup
-2. Complete Phase 2: Foundational (metadata tables + DB methods)
+2. Complete Phase 2: Foundational (CRITICAL — blocks all stories)
 3. Complete Phase 3: US-1 (manifest parsing)
 4. Complete Phase 4: US-2 (validate + apply)
 5. **STOP and VALIDATE**: Extension with storage block installs, validates, and applies
@@ -274,22 +358,32 @@ T038 → T039 → T040 → T041                  (storage manager build-up)
 
 ### Incremental Delivery
 
-1. Setup + Foundational → DB ready
+1. Setup + Foundational → DB + limits ready
 2. US-1 (manifest) → parsing works
 3. US-2 (validate + apply) → core pipeline works (MVP!)
 4. US-3 (isolation) → security proven
 5. US-4 (upgrades) → lifecycle management
-6. US-5 (uninstall) → cleanup policies
-7. US-6+US-7 (APIs + integrity) → admin tools
+6. US-5 (uninstall) → cleanup policies + JSONL ZIP archives
+7. US-6+US-7 (APIs + integrity) → admin tools + quarantine
 8. US-8 (example) → demonstration
+
+### Parallel Team Strategy
+
+With multiple agents after Foundational:
+- Agent A: US-1 → US-2 (critical path)
+- Agent B: US-5 (uninstall/archive — independent after US-2)
+- Agent C: US-6+US-7 (API handlers — independent after US-2)
+
+US-3 and US-4 can parallel with each other after US-2 completes.
 
 ---
 
 ## Notes
 
 - [P] tasks = different files, no dependencies
-- [Story] label maps task to specific user story
-- Commit after each task or logical group of 2-3 related tasks
-- Run `cargo check` frequently to catch issues early
+- [Story] label maps task to specific user story for traceability
+- Since much infrastructure already exists, many "implementation" tasks are verification + gap-filling
+- Run `cargo check` frequently during implementation
 - Run `cargo clippy` before each checkpoint
-- The SQL validator is the most complex single component — budget extra time
+- Commit after each phase or logical group of related tasks
+- The SQL validator is the most complex single component — budget extra verification time

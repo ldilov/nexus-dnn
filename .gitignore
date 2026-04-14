@@ -55,3 +55,4 @@ venv/
 # Logs
 *.log
 logs/
+nexus-dnn.zip

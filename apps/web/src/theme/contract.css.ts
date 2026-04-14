@@ -22,8 +22,16 @@ export const vars = createThemeContract({
       primaryDim: "",
       primaryHover: "",
       secondary: "",
+      secondaryDim: "",
+      secondaryContainer: "",
       tertiary: "",
+      tertiaryDim: "",
       cyan: "",
+    },
+    onColor: {
+      primary: "",
+      secondary: "",
+      tertiary: "",
     },
     state: {
       created: "",
@@ -70,6 +78,7 @@ export const vars = createThemeContract({
       medium: "",
       semibold: "",
       bold: "",
+      black: "",
     },
     lineHeight: {
       tight: "",

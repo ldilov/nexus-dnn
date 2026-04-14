@@ -1,6 +1,17 @@
 use std::process::Command;
 
 fn main() {
+    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("failed to resolve workspace root");
+
+    println!(
+        "cargo:rustc-env=NEXUS_WORKSPACE_ROOT={}",
+        workspace_root.display()
+    );
+
+    println!("cargo:rerun-if-changed=../../extensions/builtin");
     println!("cargo:rerun-if-changed=../../apps/web/src");
     println!("cargo:rerun-if-changed=../../apps/web/index.html");
     println!("cargo:rerun-if-changed=../../apps/web/package.json");

@@ -1,0 +1,139 @@
+id: "llm.layout.models"
+displayName: "Models"
+description: "Browse, download, and manage local LLM models"
+icon: "model_training"
+
+root:
+  type: split_panel
+  props:
+    direction: horizontal
+    sizes: ["1fr", 360]
+  children:
+    - type: stack
+      id: main_area
+      children:
+        - type: tabs
+          props:
+            tabs:
+              - label: "Installed"
+                icon: "folder"
+              - label: "Browse Hugging Face"
+                icon: "search"
+          children:
+            - type: stack
+              children:
+                - type: action_bar
+                  props:
+                    actions:
+                      - label: "Refresh"
+                        icon: "refresh"
+                        action: "llm.refresh_models"
+                - type: data_table
+                  id: installed_models
+                  props:
+                    columns:
+                      - key: "display_name"
+                        label: "Model"
+                        sortable: true
+                      - key: "backend_tags"
+                        label: "Backend"
+                        format: "tags"
+                      - key: "quantization_hint"
+                        label: "Quantization"
+                      - key: "size_bytes"
+                        label: "Size"
+                        format: "bytes"
+                      - key: "state"
+                        label: "Status"
+                        format: "status_badge"
+                      - key: "last_used_at"
+                        label: "Last Used"
+                        format: "relative_time"
+                    selectable: true
+                    emptyMessage: "No models installed. Browse Hugging Face to download one."
+                  dataSource:
+                    method: "llm.list_models"
+                    events: ["model.download.complete"]
+
+            - type: stack
+              children:
+                - type: form
+                  id: search_form
+                  props:
+                    inline: true
+                    fields:
+                      - key: "query"
+                        label: "Search models"
+                        type: "search"
+                        placeholder: "e.g. Qwen2.5 GGUF"
+                      - key: "backend"
+                        label: "Backend"
+                        type: "select"
+                        options:
+                          - label: "All"
+                            value: ""
+                          - label: "llama.cpp (GGUF)"
+                            value: "llamacpp"
+                          - label: "TensorRT-LLM"
+                            value: "tensorrt_llm"
+
+                - type: data_table
+                  id: search_results
+                  props:
+                    columns:
+                      - key: "display_name"
+                        label: "Model"
+                        sortable: true
+                      - key: "downloads"
+                        label: "Downloads"
+                        format: "number"
+                      - key: "compatibility_hints"
+                        label: "Compatibility"
+                        format: "tags"
+                      - key: "installed"
+                        label: "Installed"
+                        format: "boolean"
+                    selectable: true
+                  dataSource:
+                    method: "llm.search_models"
+
+    - type: stack
+      id: detail_panel
+      children:
+        - type: detail_view
+          id: model_detail
+          props:
+            fields:
+              - label: "Repo"
+                key: "repo_id"
+              - label: "Revision"
+                key: "revision"
+              - label: "Format"
+                key: "backend_tags"
+                format: "tags"
+              - label: "Size"
+                key: "size_bytes"
+                format: "bytes"
+              - label: "Quantization"
+                key: "quantization_hint"
+          dataSource:
+            method: "llm.get_model_detail"
+
+        - type: list
+          id: file_list
+          props:
+            itemType: file
+            emptyMessage: "Select a model to see files"
+          dataSource:
+            method: "llm.inspect_model_files"
+
+        - type: progress_tracker
+          id: download_progress
+          props:
+            showCancel: true
+            showBytes: true
+          dataSource:
+            method: "llm.get_download_status"
+            events: ["model.download.progress", "model.download.complete", "model.download.failed"]
+          visibility:
+            condition: when_data_available
