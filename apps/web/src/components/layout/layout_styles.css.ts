@@ -168,14 +168,15 @@ export const chatBubbleUser = style({
 });
 
 export const chatBubbleAssistant = style({
-  backgroundColor: "rgba(17, 20, 22, 0.7)",
+  position: "relative",
+  background: "linear-gradient(155deg, rgba(29, 32, 35, 0.85) 0%, rgba(17, 20, 22, 0.78) 100%)",
   backdropFilter: "blur(20px)",
   WebkitBackdropFilter: "blur(20px)",
-  boxShadow: "inset 0 0 20px rgba(186, 158, 255, 0.05), 0 0 15px rgba(186, 158, 255, 0.03)",
-  border: "1px solid rgba(186, 158, 255, 0.15)",
-  borderRadius: "24px",
-  borderTopLeftRadius: 0,
-  padding: "24px",
+  boxShadow: "inset 0 0 30px rgba(186, 158, 255, 0.06), 0 8px 24px rgba(0, 0, 0, 0.35), 0 0 25px rgba(244, 114, 182, 0.05)",
+  border: "1px solid rgba(186, 158, 255, 0.22)",
+  borderRadius: "22px",
+  borderTopLeftRadius: 4,
+  padding: "22px 24px",
 });
 
 export const chatCodeBlock = style({
@@ -253,20 +254,39 @@ export const chatInputArea = style({
 });
 
 export const chatInputGlass = style({
-  backgroundColor: "rgba(17, 20, 22, 0.7)",
+  position: "relative",
+  backgroundColor: "rgba(17, 20, 22, 0.72)",
   backdropFilter: "blur(20px)",
   WebkitBackdropFilter: "blur(20px)",
-  borderRadius: "16px",
-  border: "1px solid rgba(70, 72, 74, 0.2)",
-  padding: "8px",
+  borderRadius: "18px",
+  border: "1px solid rgba(186, 158, 255, 0.18)",
+  padding: "10px",
   display: "flex",
   flexDirection: "column",
   gap: "8px",
-  transition: `all ${vars.motion.durationNormal} ${vars.motion.easingDefault}`,
+  boxShadow: `0 12px 36px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255,255,255,0.02), inset 0 1px 0 rgba(255,255,255,0.05)`,
+  transition: `border-color ${vars.motion.durationNormal} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationNormal} ${vars.motion.easingDefault}`,
   selectors: {
+    "&::before": {
+      content: "''",
+      position: "absolute",
+      inset: "-1px",
+      borderRadius: "19px",
+      padding: "1px",
+      background: `linear-gradient(120deg, rgba(186,158,255,0) 0%, rgba(186,158,255,0.3) 35%, rgba(244,114,182,0.25) 60%, rgba(34,211,238,0.3) 100%)`,
+      WebkitMask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+      WebkitMaskComposite: "xor",
+      maskComposite: "exclude",
+      pointerEvents: "none",
+      opacity: 0,
+      transition: `opacity ${vars.motion.durationNormal} ${vars.motion.easingDefault}`,
+    },
     "&:focus-within": {
-      boxShadow: "0 0 25px rgba(186, 158, 255, 0.15)",
-      borderColor: "rgba(186, 158, 255, 0.4)",
+      borderColor: "rgba(186, 158, 255, 0.5)",
+      boxShadow: `0 12px 36px rgba(0,0,0,0.5), 0 0 35px rgba(186, 158, 255, 0.18), 0 0 60px rgba(34, 211, 238, 0.1)`,
+    },
+    "&:focus-within::before": {
+      opacity: 1,
     },
   },
 });
@@ -331,29 +351,31 @@ export const chatInputDivider = style({
 export const chatModelChip = style({
   display: "inline-flex",
   alignItems: "center",
-  padding: "2px 8px",
-  borderRadius: vars.radius.control,
+  padding: "3px 10px",
+  borderRadius: vars.radius.full,
   fontFamily: vars.font.code,
-  fontSize: "9px",
-  fontWeight: vars.font.weight.medium,
+  fontSize: "10px",
+  fontWeight: 600,
+  letterSpacing: "0.08em",
   textTransform: "uppercase",
-  backgroundColor: "rgba(144, 147, 255, 0.1)",
-  border: "1px solid rgba(144, 147, 255, 0.2)",
-  color: vars.color.accent.secondary,
+  background: "linear-gradient(90deg, rgba(34, 211, 238, 0.12), rgba(144, 147, 255, 0.12))",
+  border: "1px solid rgba(34, 211, 238, 0.28)",
+  color: "#22D3EE",
 });
 
 export const chatOptimizeChip = style({
   display: "inline-flex",
   alignItems: "center",
-  padding: "2px 8px",
-  borderRadius: vars.radius.control,
+  padding: "3px 10px",
+  borderRadius: vars.radius.full,
   fontFamily: vars.font.code,
-  fontSize: "9px",
-  fontWeight: vars.font.weight.medium,
+  fontSize: "10px",
+  fontWeight: 600,
+  letterSpacing: "0.08em",
   textTransform: "uppercase",
-  backgroundColor: "rgba(186, 158, 255, 0.1)",
-  border: "1px solid rgba(186, 158, 255, 0.2)",
-  color: vars.color.accent.primary,
+  background: "linear-gradient(90deg, rgba(244, 114, 182, 0.14), rgba(186, 158, 255, 0.14))",
+  border: "1px solid rgba(244, 114, 182, 0.3)",
+  color: "#F472B6",
 });
 
 export const chatInputRow = style({
@@ -380,20 +402,26 @@ export const chatSendButton = style({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  width: "40px",
-  height: "40px",
+  width: "42px",
+  height: "42px",
   border: "none",
-  borderRadius: "12px",
-  backgroundColor: "#ba9eff",
-  color: vars.color.onColor.primary,
+  borderRadius: "13px",
+  background: `linear-gradient(135deg, #ba9eff 0%, #F472B6 55%, #22D3EE 120%)`,
+  backgroundSize: "200% 200%",
+  backgroundPosition: "0% 0%",
+  color: "#14061f",
   cursor: "pointer",
   fontSize: "18px",
   flexShrink: 0,
-  boxShadow: "0 4px 12px rgba(186, 158, 255, 0.2)",
-  transition: `transform ${vars.motion.durationFast} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  boxShadow: "0 6px 16px rgba(186, 158, 255, 0.35), inset 0 1px 0 rgba(255,255,255,0.3)",
+  transition: `transform ${vars.motion.durationFast} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}, background-position ${vars.motion.durationSlow} ${vars.motion.easingDefault}`,
   ":hover": {
-    transform: "scale(1.05)",
-    boxShadow: "0 4px 16px rgba(186, 158, 255, 0.35)",
+    transform: "translateY(-1px)",
+    backgroundPosition: "100% 100%",
+    boxShadow: "0 10px 24px rgba(244, 114, 182, 0.45), 0 0 28px rgba(34, 211, 238, 0.3)",
+  },
+  ":active": {
+    transform: "translateY(0)",
   },
 });
 
@@ -1302,42 +1330,92 @@ export const detailHealthCardGradient = style({
   padding: "1px",
 });
 
+const chatWelcomePulse = keyframes({
+  "0%, 100%": {
+    boxShadow: `0 0 60px rgba(186, 158, 255, 0.35), 0 0 120px rgba(244, 114, 182, 0.18), inset 0 1px 0 rgba(255,255,255,0.1)`,
+  },
+  "50%": {
+    boxShadow: `0 0 80px rgba(34, 211, 238, 0.4), 0 0 150px rgba(186, 158, 255, 0.25), inset 0 1px 0 rgba(255,255,255,0.15)`,
+  },
+});
+
+const chatWelcomeOrbit = keyframes({
+  "0%": { transform: "translate(-50%, -50%) rotate(0deg)" },
+  "100%": { transform: "translate(-50%, -50%) rotate(360deg)" },
+});
+
 export const chatWelcome = style({
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
   textAlign: "center",
-  padding: "48px 24px",
-  maxWidth: "600px",
-  margin: "0 auto",
+  padding: "64px 32px",
+  maxWidth: "640px",
+  margin: "auto",
+  position: "relative",
 });
 
 export const chatWelcomeIconBox = style({
+  position: "relative",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: "12px",
-  borderRadius: "16px",
-  backgroundColor: "rgba(186, 158, 255, 0.1)",
-  color: vars.color.accent.primary,
-  marginBottom: "24px",
+  width: "88px",
+  height: "88px",
+  borderRadius: "28px",
+  background: `linear-gradient(135deg, rgba(186, 158, 255, 0.28) 0%, rgba(244, 114, 182, 0.22) 50%, rgba(34, 211, 238, 0.26) 100%)`,
+  border: "1px solid rgba(186, 158, 255, 0.35)",
+  color: "#ffffff",
+  marginBottom: "28px",
+  animation: `${chatWelcomePulse} 4s ease-in-out infinite`,
+  backdropFilter: "blur(10px)",
+  WebkitBackdropFilter: "blur(10px)",
+  selectors: {
+    "&::before": {
+      content: "''",
+      position: "absolute",
+      top: "50%",
+      left: "50%",
+      width: "148px",
+      height: "148px",
+      borderRadius: "50%",
+      border: "1px dashed rgba(186, 158, 255, 0.25)",
+      transform: "translate(-50%, -50%)",
+      animation: `${chatWelcomeOrbit} 24s linear infinite`,
+      pointerEvents: "none",
+    },
+    "&::after": {
+      content: "''",
+      position: "absolute",
+      top: "50%",
+      left: "50%",
+      width: "200px",
+      height: "200px",
+      borderRadius: "50%",
+      border: "1px dashed rgba(34, 211, 238, 0.18)",
+      transform: "translate(-50%, -50%)",
+      animation: `${chatWelcomeOrbit} 40s linear infinite reverse`,
+      pointerEvents: "none",
+    },
+  },
 });
 
 export const chatWelcomeTitle = style({
   fontFamily: vars.font.headline,
-  fontSize: "28px",
-  fontWeight: "900",
-  letterSpacing: "-0.02em",
+  fontSize: "36px",
+  fontWeight: 800,
+  letterSpacing: "-0.035em",
+  lineHeight: 1.05,
+  margin: "0 0 12px 0",
   color: vars.color.text.primary,
-  margin: "0 0 8px 0",
 });
 
 export const chatWelcomeDescription = style({
   fontFamily: vars.font.ui,
-  fontSize: vars.font.size.body,
-  color: vars.color.text.muted,
-  maxWidth: "420px",
-  lineHeight: "1.5",
+  fontSize: "15px",
+  color: vars.color.text.secondary,
+  maxWidth: "460px",
+  lineHeight: 1.6,
   margin: 0,
 });

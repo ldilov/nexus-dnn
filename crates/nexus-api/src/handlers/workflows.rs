@@ -1,30 +1,63 @@
 use axum::extract::{Path, State};
 use chrono::Utc;
+use serde::Serialize;
 
 use nexus_extension::ExtensionRegistry;
 use nexus_storage::Database;
 use nexus_storage::records::WorkflowRecord;
+use ts_rs::TS;
 
 use crate::AppState;
+use crate::dto::{ListResponseDto, WorkflowDto};
 use crate::envelope::ApiResponse;
 use crate::error::ApiError;
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
+pub struct WorkflowValidationResponseDto {
+    pub valid: bool,
+    pub node_count: usize,
+    pub stage_count: usize,
+    pub input_count: usize,
+    pub output_count: usize,
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
+pub struct WorkflowMutationResponseDto {
+    pub id: String,
+    pub title: String,
+    pub version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub predecessor_run_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
+pub struct WorkflowDeleteResponseDto {
+    pub deleted: String,
+}
 
 pub async fn validate_workflow_only(
     State(state): State<AppState>,
     body: String,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<WorkflowValidationResponseDto>, ApiError> {
     let workflow = match nexus_workflow::parse_workflow(&body) {
         Ok(w) => w,
         Err(e) => {
-            return Ok(ApiResponse::ok(serde_json::json!({
-                "valid": false,
-                "node_count": 0,
-                "stage_count": 0,
-                "input_count": 0,
-                "output_count": 0,
-                "errors": [e.to_string()],
-                "warnings": [],
-            })));
+            return Ok(ApiResponse::ok(WorkflowValidationResponseDto {
+                valid: false,
+                node_count: 0,
+                stage_count: 0,
+                input_count: 0,
+                output_count: 0,
+                errors: vec![e.to_string()],
+                warnings: Vec::new(),
+            }));
         }
     };
 
@@ -35,22 +68,22 @@ pub async fn validate_workflow_only(
         errors.push(e.to_string());
     }
 
-    Ok(ApiResponse::ok(serde_json::json!({
-        "valid": errors.is_empty(),
-        "node_count": workflow.nodes.len(),
-        "stage_count": workflow.stages.len(),
-        "input_count": workflow.inputs.len(),
-        "output_count": workflow.outputs.len(),
-        "errors": errors,
-        "warnings": [],
-    })))
+    Ok(ApiResponse::ok(WorkflowValidationResponseDto {
+        valid: errors.is_empty(),
+        node_count: workflow.nodes.len(),
+        stage_count: workflow.stages.len(),
+        input_count: workflow.inputs.len(),
+        output_count: workflow.outputs.len(),
+        errors,
+        warnings: Vec::new(),
+    }))
 }
 
 pub async fn update_workflow(
     State(state): State<AppState>,
     Path(id): Path<String>,
     body: String,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<WorkflowMutationResponseDto>, ApiError> {
     let _existing = state
         .db
         .get_workflow(&id)
@@ -74,18 +107,19 @@ pub async fn update_workflow(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    Ok(ApiResponse::ok(serde_json::json!({
-        "id": workflow.id,
-        "title": workflow.title,
-        "version": workflow.version,
-        "updated_at": now,
-    })))
+    Ok(ApiResponse::ok(WorkflowMutationResponseDto {
+        id: workflow.id,
+        title: workflow.title,
+        version: workflow.version,
+        updated_at: Some(now),
+        predecessor_run_id: None,
+    }))
 }
 
 pub async fn create_workflow(
     State(state): State<AppState>,
     body: String,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<WorkflowMutationResponseDto>, ApiError> {
     let workflow =
         nexus_workflow::parse_workflow(&body).map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
@@ -103,53 +137,52 @@ pub async fn create_workflow(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    Ok(ApiResponse::created(serde_json::json!({
-        "id": workflow.id,
-        "title": workflow.title,
-        "version": workflow.version,
-    })))
+    Ok(ApiResponse::created(WorkflowMutationResponseDto {
+        id: workflow.id,
+        title: workflow.title,
+        version: workflow.version,
+        updated_at: None,
+        predecessor_run_id: None,
+    }))
 }
 
 pub async fn list_workflows(
     State(state): State<AppState>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<ListResponseDto<WorkflowDto>>, ApiError> {
     let workflows = state
         .db
         .list_workflows()
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    Ok(ApiResponse::ok(
-        serde_json::json!({ "workflows": workflows }),
-    ))
+    let items = workflows.iter().map(WorkflowDto::from).collect();
+    Ok(ApiResponse::ok(ListResponseDto { items }))
 }
 
 pub async fn get_workflow(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<WorkflowDto>, ApiError> {
     let record = state
         .db
         .get_workflow(&id)
         .await
         .map_err(|e| ApiError::NotFound(e.to_string()))?;
 
-    Ok(ApiResponse::ok(
-        serde_json::to_value(record).unwrap_or_default(),
-    ))
+    Ok(ApiResponse::ok(WorkflowDto::from(&record)))
 }
 
 pub async fn delete_workflow(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<WorkflowDeleteResponseDto>, ApiError> {
     state
         .db
         .delete_workflow(&id)
         .await
         .map_err(|e| ApiError::NotFound(e.to_string()))?;
 
-    Ok(ApiResponse::ok(serde_json::json!({ "deleted": id })))
+    Ok(ApiResponse::ok(WorkflowDeleteResponseDto { deleted: id }))
 }
 
 fn build_workflow_record(

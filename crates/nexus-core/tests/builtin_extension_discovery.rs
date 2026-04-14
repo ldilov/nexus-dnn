@@ -65,8 +65,7 @@ fn local_llm_manifest_passes_schema_validation() {
         .join("local-llm")
         .join("manifest.yaml");
 
-    let yaml_content = std::fs::read_to_string(&manifest_path)
-        .expect("should read manifest file");
+    let yaml_content = std::fs::read_to_string(&manifest_path).expect("should read manifest file");
 
     let json_value: serde_json::Value =
         serde_saphyr::from_str(&yaml_content).expect("should parse YAML as JSON value");
@@ -85,14 +84,10 @@ fn local_llm_manifest_passes_compatibility_check() {
         .join("local-llm")
         .join("manifest.yaml");
 
-    let manifest = nexus_extension::parse_manifest(&manifest_path)
-        .expect("manifest should parse");
+    let manifest = nexus_extension::parse_manifest(&manifest_path).expect("manifest should parse");
 
-    let result = nexus_extension::check_compatibility(
-        &manifest,
-        &host_version(),
-        &protocol_version(),
-    );
+    let result =
+        nexus_extension::check_compatibility(&manifest, &host_version(), &protocol_version());
 
     assert!(
         result.is_ok(),
@@ -108,22 +103,23 @@ fn builtin_extension_discovered_in_registry() {
     let pv = protocol_version();
 
     let empty_dir = tempfile::tempdir().unwrap();
-    let (registry, _report) =
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(InMemoryExtensionRegistry::from_directory(
-                empty_dir.path(),
-                &hv,
-                &pv,
-            ))
-            .expect("registry should initialize");
+    let (registry, _report) = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(InMemoryExtensionRegistry::from_directory(
+            empty_dir.path(),
+            &hv,
+            &pv,
+        ))
+        .expect("registry should initialize");
 
     let builtin_report = registry
         .scan_builtin_extensions_dir(&dir, &hv, &pv)
         .expect("builtin scan should succeed");
 
     assert!(
-        builtin_report.activated.contains(&"nexus.local-llm".to_string()),
+        builtin_report
+            .activated
+            .contains(&"nexus.local-llm".to_string()),
         "local-llm should be discovered, got: {:?}",
         builtin_report
     );
@@ -136,15 +132,14 @@ fn builtin_extension_activates_with_operators() {
     let pv = protocol_version();
 
     let empty_dir = tempfile::tempdir().unwrap();
-    let (registry, _) =
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(InMemoryExtensionRegistry::from_directory(
-                empty_dir.path(),
-                &hv,
-                &pv,
-            ))
-            .expect("registry should initialize");
+    let (registry, _) = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(InMemoryExtensionRegistry::from_directory(
+            empty_dir.path(),
+            &hv,
+            &pv,
+        ))
+        .expect("registry should initialize");
 
     registry
         .scan_builtin_extensions_dir(&dir, &hv, &pv)
@@ -177,15 +172,14 @@ fn builtin_extension_has_recipes_after_activation() {
     let pv = protocol_version();
 
     let empty_dir = tempfile::tempdir().unwrap();
-    let (registry, _) =
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(InMemoryExtensionRegistry::from_directory(
-                empty_dir.path(),
-                &hv,
-                &pv,
-            ))
-            .expect("registry should initialize");
+    let (registry, _) = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(InMemoryExtensionRegistry::from_directory(
+            empty_dir.path(),
+            &hv,
+            &pv,
+        ))
+        .expect("registry should initialize");
 
     registry
         .scan_builtin_extensions_dir(&dir, &hv, &pv)
@@ -209,15 +203,14 @@ fn builtin_extension_has_layouts_after_activation() {
     let pv = protocol_version();
 
     let empty_dir = tempfile::tempdir().unwrap();
-    let (registry, _) =
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(InMemoryExtensionRegistry::from_directory(
-                empty_dir.path(),
-                &hv,
-                &pv,
-            ))
-            .expect("registry should initialize");
+    let (registry, _) = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(InMemoryExtensionRegistry::from_directory(
+            empty_dir.path(),
+            &hv,
+            &pv,
+        ))
+        .expect("registry should initialize");
 
     registry
         .scan_builtin_extensions_dir(&dir, &hv, &pv)
@@ -248,15 +241,14 @@ fn builtin_extension_has_ui_contributions_after_activation() {
     let pv = protocol_version();
 
     let empty_dir = tempfile::tempdir().unwrap();
-    let (registry, _) =
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(InMemoryExtensionRegistry::from_directory(
-                empty_dir.path(),
-                &hv,
-                &pv,
-            ))
-            .expect("registry should initialize");
+    let (registry, _) = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(InMemoryExtensionRegistry::from_directory(
+            empty_dir.path(),
+            &hv,
+            &pv,
+        ))
+        .expect("registry should initialize");
 
     registry
         .scan_builtin_extensions_dir(&dir, &hv, &pv)
@@ -279,15 +271,14 @@ fn empty_extensions_dir_returns_empty_registry() {
     let hv = host_version();
     let pv = protocol_version();
 
-    let (registry, report) =
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(InMemoryExtensionRegistry::from_directory(
-                empty_dir.path(),
-                &hv,
-                &pv,
-            ))
-            .expect("should handle empty dir");
+    let (registry, report) = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(InMemoryExtensionRegistry::from_directory(
+            empty_dir.path(),
+            &hv,
+            &pv,
+        ))
+        .expect("should handle empty dir");
 
     assert!(report.activated.is_empty());
     assert!(registry.list_extensions().is_empty());
@@ -299,15 +290,14 @@ fn nonexistent_extensions_dir_returns_empty_registry() {
     let pv = protocol_version();
     let missing_dir = PathBuf::from("/nonexistent/path/that/does/not/exist");
 
-    let (registry, report) =
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(InMemoryExtensionRegistry::from_directory(
-                &missing_dir,
-                &hv,
-                &pv,
-            ))
-            .expect("should handle missing dir gracefully");
+    let (registry, report) = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(InMemoryExtensionRegistry::from_directory(
+            &missing_dir,
+            &hv,
+            &pv,
+        ))
+        .expect("should handle missing dir gracefully");
 
     assert!(report.activated.is_empty());
     assert!(registry.list_extensions().is_empty());

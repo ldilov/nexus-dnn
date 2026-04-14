@@ -154,25 +154,41 @@ function BackendCard({ backend }: { backend: BackendOption }) {
   }, [backend.name, appendLog]);
 
   const isActive = status === "running";
-  const cardCls = [styles.backendCard, isActive ? styles.backendCardActive : ""].filter(Boolean).join(" ");
+  // Alternate accents per backend id for visual variety (cyan vs pink).
+  const isPinkAccent = backend.id === "llamacpp" || backend.id === "llama.cpp";
+  const cardCls = [
+    styles.backendCard,
+    isActive ? styles.backendCardActive : "",
+    isPinkAccent ? styles.backendCardAccentPink : styles.backendCardAccentCyan,
+  ].filter(Boolean).join(" ");
+
+  const iconBoxCls = isActive
+    ? styles.backendIconBoxCyan
+    : isPinkAccent
+      ? styles.backendIconBoxPink
+      : styles.backendIconBoxPrimary;
 
   const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.available;
+  const familyLabel = isPinkAccent ? "Local · Hybrid Runtime" : "Accelerated · GPU Runtime";
 
   return (
     <div>
       <div className={cardCls}>
+        <div className={styles.backendCardInner}>
         <div className={styles.backendCardTopRow}>
-          <div className={isActive ? styles.backendIconBoxPrimary : styles.backendIconBoxSecondary}>
-            <span className="material-symbols-outlined" style={{ fontSize: "24px", fontVariationSettings: "'FILL' 1" }}>{backend.icon}</span>
+          <div className={styles.backendHeadlineRow}>
+            <div className={[styles.backendIconBox, iconBoxCls].join(" ")}>
+              <span className="material-symbols-outlined" style={{ fontSize: "26px", fontVariationSettings: "'FILL' 1, 'wght' 500" }}>{backend.icon}</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <span className={styles.backendFamilyLabel}>{familyLabel}</span>
+              <span className={styles.backendName}>{backend.name}</span>
+            </div>
           </div>
           <span className={styles.backendStatusBadge}>
             <span className={[styles.backendStatusDot, config.dot].join(" ")} />
             {config.label}
           </span>
-        </div>
-
-        <div className={styles.backendNameRow}>
-          <span className={styles.backendName}>{backend.name}</span>
         </div>
 
         {backend.accelerationOptions && backend.accelerationOptions.length > 1 && status !== "running" && (
@@ -215,6 +231,7 @@ function BackendCard({ backend }: { backend: BackendOption }) {
           )}
           {backend.optimizedFor && <span className={styles.backendOptimizedLabel}>Optimized for {backend.optimizedFor}</span>}
         </div>
+        </div>
       </div>
 
       {logs.length > 0 && (
@@ -239,6 +256,11 @@ export function BackendSelector({ backends = [], title, description, children }:
     <div className={styles.backendSelectorContainer}>
       {(title || description) && (
         <div className={styles.backendSelectorHeader}>
+          <span className={styles.backendSelectorEyebrow}>
+            <span className={styles.backendSelectorEyebrowDot} />
+            <span className="material-symbols-outlined" style={{ fontSize: "12px" }}>hub</span>
+            Inference Runtime Catalog
+          </span>
           {title && <h2 className={styles.backendSelectorTitle}>{title}</h2>}
           {description && <p className={styles.backendSelectorDescription}>{description}</p>}
         </div>

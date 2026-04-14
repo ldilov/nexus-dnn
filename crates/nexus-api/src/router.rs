@@ -110,10 +110,7 @@ pub fn build(state: AppState) -> Router {
         .route("/events", get(ws::events_ws))
         .route("/llm/backends", get(backends::list))
         .route("/llm/backends/{backendId}", get(backends::detail))
-        .route(
-            "/llm/backends/{backendId}/install",
-            post(backends::install),
-        )
+        .route("/llm/backends/{backendId}/install", post(backends::install))
         .route(
             "/llm/backends/{backendId}/validate",
             post(backends::validate),

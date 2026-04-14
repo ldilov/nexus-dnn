@@ -65,9 +65,12 @@ fn registry(state: &AppState) -> Option<Arc<nexus_local_llm::adapter::AdapterReg
 
 fn map_error(err: RuntimeAdapterError) -> ApiResponse<()> {
     match err {
-        RuntimeAdapterError::BackendNotFound(msg) => {
-            ApiResponse::<()>::err(axum::http::StatusCode::NOT_FOUND, "backend_not_found", "not_found", msg)
-        }
+        RuntimeAdapterError::BackendNotFound(msg) => ApiResponse::<()>::err(
+            axum::http::StatusCode::NOT_FOUND,
+            "backend_not_found",
+            "not_found",
+            msg,
+        ),
         RuntimeAdapterError::BackendUnavailable(msg) => ApiResponse::<()>::err(
             axum::http::StatusCode::CONFLICT,
             "backend_unavailable",

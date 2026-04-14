@@ -1,179 +1,269 @@
 id: "llm.layout.chat"
 displayName: "LLM Chat"
-description: "Interactive chat with local LLM models"
+description: "Interactive chat with local LLM models. Backends and models are managed from this workspace."
 icon: "chat"
 
 root:
-  type: split_panel
+  type: workspace_shell
   props:
-    direction: horizontal
-    sizes: [240, "1fr", 320]
+    eyebrow: "LLM Chat · Local Inference"
+    toolbarActions:
+      - id: "open_backends"
+        icon: "developer_board"
+        label: "Backends"
+        drawerId: "backends"
+      - id: "open_models"
+        icon: "model_training"
+        label: "Models"
+        drawerId: "models"
   children:
-    - type: stack
-      id: sidebar
+    - type: workspace_drawer
       props:
-        sidebarStyle: true
+        id: "backends"
+        title: "Backend Runtimes"
+        width: 560
       children:
-        - type: detail_view
-          id: sidebar_header
+        - type: backend_selector
+          id: backend_selection
           props:
-            headerTitle: "LLM Chat"
-            headerSubtitle: "Local Inference Engine"
-            headerSubtitleColor: "accent"
-            compact: true
-
-        - type: action_bar
-          id: model_selector
-          props:
-            actions:
-              - label: "Choose Model"
-                icon: "model_training"
-                action: "llm.open_model_browser"
-                variant: "secondary"
-                fullWidth: true
+            title: "Backend Selection"
+            description: "Choose your inference engine. TensorRT provides maximum hardware acceleration for NVIDIA GPUs, while Llama.cpp offers versatile CPU/GPU hybrid offloading."
+            backends:
+              - id: "tensorrt"
+                name: "TensorRT-LLM"
+                version: "v0.17"
+                description: "NVIDIA high-performance deep learning inference optimizer. Best for A100/H100 clusters requiring sub-millisecond latency and high throughput."
+                icon: "memory"
+                status: "available"
+                optimizedFor: "Ampere/Hopper"
+              - id: "llamacpp"
+                name: "Llama.cpp"
+                version: "vB4970"
+                description: "Portable GGML/GGUF inference engine. Ideal for hybrid deployments, edge devices, and environments with limited VRAM. Supports 4-bit and 8-bit quantization."
+                icon: "terminal"
+                status: "available"
+                accelerationOptions:
+                  - id: "cpu"
+                    label: "CPU only"
+                  - id: "cuda12"
+                    label: "CUDA 12 (NVIDIA GPU)"
+                  - id: "cuda13"
+                    label: "CUDA 13 (NVIDIA GPU)"
           dataSource:
-            method: "llm.get_active_model"
+            method: "llm.list_runtime_candidates"
+            events: ["backend.state.changed", "backend.install.complete"]
 
-        - type: action_bar
-          id: new_thread_btn
-          props:
-            actions:
-              - label: "+ New Session"
-                icon: "add"
-                action: "llm.new_thread"
-                variant: "primary"
-                fullWidth: true
-
-        - type: list
-          id: thread_list
-          props:
-            itemType: thread
-            sectionTitle: "RECENT HISTORY"
-            emptyMessage: "No conversations yet"
-            selectable: true
-          dataSource:
-            method: "llm.list_threads"
-            params:
-              archived: false
-              limit: 50
-            events: ["session.state.changed"]
-
-        - type: list
-          id: sidebar_footer
-          props:
-            itemType: nav
-            items:
-              - id: "documentation"
-                label: "Documentation"
-                icon: "menu_book"
-
-    - type: stack
-      id: main_area
-      children:
-        - type: chat_panel
-          id: chat_view
-          props:
-            showStopButton: true
-            showRetryButton: true
-            streamingEnabled: true
-            welcomeIcon: "auto_awesome"
-            welcomeTitle: "Initialize Conversation"
-            welcomeDescription: "LLM Chat is ready. Select a model and start a conversation."
-            modelLabel: "LOCAL_LLM"
-            modelChips:
-              - label: "@LOCAL_MODEL"
-                variant: "secondary"
-              - label: "#CHAT"
-                variant: "tertiary"
-          dataSource:
-            method: "llm.get_thread_messages"
-            events: ["chat.stream.delta", "chat.stream.complete"]
-
-    - type: stack
-      id: inspector
+    - type: workspace_drawer
       props:
-        fillHeight: true
+        id: "models"
+        title: "Models"
+        width: 520
       children:
-        - type: detail_view
-          id: session_details
+        - type: stack
+          children:
+            - type: action_bar
+              props:
+                actions:
+                  - label: "Refresh"
+                    icon: "refresh"
+                    action: "llm.refresh_models"
+                  - label: "Browse Hugging Face"
+                    icon: "search"
+                    action: "llm.open_model_browser"
+            - type: data_table
+              id: installed_models
+              props:
+                columns:
+                  - key: "display_name"
+                    label: "Model"
+                    sortable: true
+                  - key: "backend_tags"
+                    label: "Backend"
+                    format: "tags"
+                  - key: "quantization_hint"
+                    label: "Quantization"
+                  - key: "size_bytes"
+                    label: "Size"
+                    format: "bytes"
+                  - key: "state"
+                    label: "Status"
+                    format: "status_badge"
+                selectable: true
+                emptyMessage: "No models installed. Browse Hugging Face to download one."
+              dataSource:
+                method: "llm.list_models"
+                events: ["model.download.complete"]
+
+    - type: split_panel
+      props:
+        direction: horizontal
+        sizes: [240, "1fr", 320]
+      children:
+        - type: stack
+          id: sidebar
           props:
-            headerTitle: "Session Intel"
-            showLiveBadge: true
-            sections:
-              - title: null
-                type: metrics
-                metrics:
-                  - label: "Latency"
-                    value: "--"
-                    unit: "ms"
-                    color: "primary"
-                  - label: "Throughput"
-                    value: "--"
-                    unit: "t/s"
-                    color: "secondary"
-              - title: "Active Context"
-                type: context
-                contextRefs:
-                  - label: "session_config"
-                    icon: "description"
-                    meta: "Read-only"
-                  - label: "model_weights"
+            sidebarStyle: true
+          children:
+            - type: detail_view
+              id: sidebar_header
+              props:
+                headerTitle: "LLM Chat"
+                headerSubtitle: "Local Inference Engine"
+                headerSubtitleColor: "accent"
+                compact: true
+
+            - type: action_bar
+              id: model_selector
+              props:
+                actions:
+                  - label: "Choose Model"
                     icon: "model_training"
-                    meta: "Active"
-              - title: "Focus Vector"
-                type: health
-                health:
-                  label: "Convergence"
-                  value: 0
-                  displayLabel: "OPTIMIZATION"
-          dataSource:
-            method: "llm.get_session_details"
-            events: ["session.state.changed", "backend.health.changed", "backend.metrics.updated"]
+                    action: "llm.open_model_browser"
+                    variant: "secondary"
+                    fullWidth: true
+              dataSource:
+                method: "llm.get_active_model"
 
-        - type: form
-          id: generation_settings
+            - type: action_bar
+              id: new_thread_btn
+              props:
+                actions:
+                  - label: "+ New Session"
+                    icon: "add"
+                    action: "llm.new_thread"
+                    variant: "primary"
+                    fullWidth: true
+
+            - type: list
+              id: thread_list
+              props:
+                itemType: thread
+                sectionTitle: "RECENT HISTORY"
+                emptyMessage: "No conversations yet"
+                selectable: true
+              dataSource:
+                method: "llm.list_threads"
+                params:
+                  archived: false
+                  limit: 50
+                events: ["session.state.changed"]
+
+            - type: list
+              id: sidebar_footer
+              props:
+                itemType: nav
+                items:
+                  - id: "documentation"
+                    label: "Documentation"
+                    icon: "menu_book"
+
+        - type: stack
+          id: main_area
+          children:
+            - type: chat_panel
+              id: chat_view
+              props:
+                showStopButton: true
+                showRetryButton: true
+                streamingEnabled: true
+                welcomeIcon: "auto_awesome"
+                welcomeTitle: "Initialize Conversation"
+                welcomeDescription: "LLM Chat is ready. Select a model and start a conversation."
+                modelLabel: "LOCAL_LLM"
+                modelChips:
+                  - label: "@LOCAL_MODEL"
+                    variant: "secondary"
+                  - label: "#CHAT"
+                    variant: "tertiary"
+              dataSource:
+                method: "llm.get_thread_messages"
+                events: ["chat.stream.delta", "chat.stream.complete"]
+
+        - type: stack
+          id: inspector
           props:
-            headerTitle: "Generation Parameters"
-            collapsible: true
-            collapsed: true
-            fields:
-              - key: "temperature"
-                label: "Temperature"
-                type: "slider"
-                min: 0.0
-                max: 2.0
-                step: 0.1
-                default: 0.8
-              - key: "top_p"
-                label: "Top P"
-                type: "slider"
-                min: 0.0
-                max: 1.0
-                step: 0.05
-                default: 0.95
-              - key: "top_k"
-                label: "Top K"
-                type: "number"
-                min: 1
-                max: 100
-                default: 40
-              - key: "max_tokens"
-                label: "Max Tokens"
-                type: "number"
-                min: 1
-                max: 32768
-                default: 4096
-              - key: "repeat_penalty"
-                label: "Repeat Penalty"
-                type: "slider"
-                min: 0.0
-                max: 2.0
-                step: 0.1
-                default: 1.1
-              - key: "system_prompt"
-                label: "System Prompt"
-                type: "textarea"
-                default: "You are a helpful assistant."
-                rows: 3
-          dataSource:
-            method: "llm.get_generation_settings"
+            fillHeight: true
+          children:
+            - type: detail_view
+              id: session_details
+              props:
+                headerTitle: "Session Intel"
+                showLiveBadge: true
+                sections:
+                  - title: null
+                    type: metrics
+                    metrics:
+                      - label: "Latency"
+                        value: "--"
+                        unit: "ms"
+                        color: "primary"
+                      - label: "Throughput"
+                        value: "--"
+                        unit: "t/s"
+                        color: "secondary"
+                  - title: "Active Context"
+                    type: context
+                    contextRefs:
+                      - label: "session_config"
+                        icon: "description"
+                        meta: "Read-only"
+                      - label: "model_weights"
+                        icon: "model_training"
+                        meta: "Active"
+                  - title: "Focus Vector"
+                    type: health
+                    health:
+                      label: "Convergence"
+                      value: 0
+                      displayLabel: "OPTIMIZATION"
+              dataSource:
+                method: "llm.get_session_details"
+                events: ["session.state.changed", "backend.health.changed", "backend.metrics.updated"]
+
+            - type: form
+              id: generation_settings
+              props:
+                headerTitle: "Generation Parameters"
+                collapsible: true
+                collapsed: true
+                fields:
+                  - key: "temperature"
+                    label: "Temperature"
+                    type: "slider"
+                    min: 0.0
+                    max: 2.0
+                    step: 0.1
+                    default: 0.8
+                  - key: "top_p"
+                    label: "Top P"
+                    type: "slider"
+                    min: 0.0
+                    max: 1.0
+                    step: 0.05
+                    default: 0.95
+                  - key: "top_k"
+                    label: "Top K"
+                    type: "number"
+                    min: 1
+                    max: 100
+                    default: 40
+                  - key: "max_tokens"
+                    label: "Max Tokens"
+                    type: "number"
+                    min: 1
+                    max: 32768
+                    default: 4096
+                  - key: "repeat_penalty"
+                    label: "Repeat Penalty"
+                    type: "slider"
+                    min: 0.0
+                    max: 2.0
+                    step: 0.1
+                    default: 1.1
+                  - key: "system_prompt"
+                    label: "System Prompt"
+                    type: "textarea"
+                    default: "You are a helpful assistant."
+                    rows: 3
+              dataSource:
+                method: "llm.get_generation_settings"

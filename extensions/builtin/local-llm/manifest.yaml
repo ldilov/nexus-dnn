@@ -44,12 +44,9 @@ recipes:
 ui:
   layouts:
     - file: "ui/layouts/chat.yaml"
-      placement: "main"
       default: true
     - file: "ui/layouts/models.yaml"
-      placement: "main"
     - file: "ui/layouts/backends.yaml"
-      placement: "main"
   contributions:
     - file: "ui/open_chat.yaml"
     - file: "ui/model_browser.yaml"

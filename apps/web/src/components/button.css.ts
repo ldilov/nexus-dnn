@@ -24,9 +24,18 @@ export const buttonRecipe = recipe({
   variants: {
     variant: {
       primary: {
-        backgroundColor: vars.color.accent.primary,
-        color: vars.color.text.inverse,
-        ":hover": { backgroundColor: vars.color.accent.primaryHover },
+        background: `linear-gradient(120deg, ${vars.color.accent.primary} 0%, #F472B6 55%, #22D3EE 120%)`,
+        backgroundSize: "200% 100%",
+        backgroundPosition: "0% 50%",
+        color: "#14061f",
+        fontWeight: vars.font.weight.semibold,
+        boxShadow: "0 4px 14px rgba(186, 158, 255, 0.28), inset 0 1px 0 rgba(255,255,255,0.25)",
+        transition: `background-position ${vars.motion.durationSlow} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}, transform ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+        ":hover": {
+          backgroundPosition: "100% 50%",
+          boxShadow: "0 8px 22px rgba(244, 114, 182, 0.38), 0 0 20px rgba(34, 211, 238, 0.22)",
+          transform: "translateY(-1px)",
+        },
       },
       secondary: {
         backgroundColor: vars.color.bg.elevated,

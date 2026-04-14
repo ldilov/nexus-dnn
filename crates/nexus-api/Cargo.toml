@@ -30,3 +30,4 @@ tokio-util = { workspace = true }
 futures-util = "0.3"
 rust-embed = { workspace = true }
 mime_guess = { workspace = true }
+ts-rs = { version = "11", features = ["serde-compat", "chrono-impl", "serde-json-impl"] }

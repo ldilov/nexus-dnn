@@ -10,6 +10,7 @@ use crate::model::{NodeInput, NodeInstance, OutputBinding, Stage, Workflow, Work
 #[derive(Deserialize)]
 struct YamlDocument {
     #[allow(dead_code)]
+    #[serde(alias = "specVersion")]
     spec_version: String,
     workflow: YamlWorkflow,
 }

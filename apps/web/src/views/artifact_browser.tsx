@@ -10,6 +10,10 @@ function isImageMime(mime: string): boolean {
   return mime.startsWith("image/");
 }
 
+function displayName(art: Artifact): string {
+  return art.port_name || art.id;
+}
+
 export function ArtifactBrowser({ runId }: ArtifactBrowserProps) {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [selected, setSelected] = useState<Artifact | null>(null);
@@ -42,21 +46,23 @@ export function ArtifactBrowser({ runId }: ArtifactBrowserProps) {
               : styles.artifactCard;
           return (
             <div key={art.id} className={cls} onClick={() => setSelected(art)}>
-              <div className={styles.artifactName}>{art.name}</div>
-              <div className={styles.artifactMeta}>{art.mime_type}</div>
+              <div className={styles.artifactName}>{displayName(art)}</div>
+              <div className={styles.artifactMeta}>{art.artifact_type}</div>
             </div>
           );
         })}
       </div>
       {selected && (
         <div className={styles.preview}>
-          <div className={styles.artifactName}>{selected.name}</div>
-          <div className={styles.artifactMeta}>{selected.mime_type} - {selected.size_bytes} bytes</div>
-          {isImageMime(selected.mime_type) && (
+          <div className={styles.artifactName}>{displayName(selected)}</div>
+          <div className={styles.artifactMeta}>
+            {selected.artifact_type} - {selected.size_bytes} bytes
+          </div>
+          {isImageMime(selected.artifact_type) && (
             <img
               className={styles.previewImage}
-              src={`/api/v1/artifacts/${selected.id}/download`}
-              alt={selected.name}
+              src={`/api/v1/artifacts/${selected.id}/blob`}
+              alt={displayName(selected)}
             />
           )}
         </div>

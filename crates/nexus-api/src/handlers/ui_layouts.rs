@@ -3,26 +3,18 @@ use axum::extract::{Path, State};
 use nexus_extension::ExtensionRegistry;
 
 use crate::AppState;
+use crate::dto::{LayoutSummaryDto, ListResponseDto};
 use crate::envelope::ApiResponse;
 use crate::error::ApiError;
 
-#[derive(Debug, serde::Serialize)]
-pub struct LayoutSummary {
-    pub id: String,
-    pub display_name: String,
-    pub extension_id: String,
-    pub placement: Option<String>,
-    pub is_default: bool,
-}
-
 pub async fn list_layouts(
     State(state): State<AppState>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
-    let layouts: Vec<LayoutSummary> = state
+) -> Result<ApiResponse<ListResponseDto<LayoutSummaryDto>>, ApiError> {
+    let items: Vec<LayoutSummaryDto> = state
         .extension_registry
         .list_layouts()
         .into_iter()
-        .map(|l| LayoutSummary {
+        .map(|l| LayoutSummaryDto {
             id: l.id,
             display_name: l.display_name,
             extension_id: l.extension_id,
@@ -31,9 +23,7 @@ pub async fn list_layouts(
         })
         .collect();
 
-    Ok(ApiResponse::ok(
-        serde_json::json!({ "layouts": layouts }),
-    ))
+    Ok(ApiResponse::ok(ListResponseDto { items }))
 }
 
 pub async fn get_layout(
@@ -45,5 +35,8 @@ pub async fn get_layout(
         .get_layout(&id)
         .ok_or_else(|| ApiError::NotFound(format!("layout {id} not found")))?;
 
+    // Layout definitions are structurally recursive and extension-defined. We
+    // return the YAML-derived JSON tree verbatim; the frontend layout renderer
+    // walks it via the component registry.
     Ok(ApiResponse::ok(layout.content))
 }

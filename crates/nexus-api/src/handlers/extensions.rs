@@ -11,56 +11,55 @@ use nexus_storage::Database;
 use nexus_storage::storage_manager::MigrationInput;
 
 use crate::AppState;
+use crate::dto::{
+    EnableExtensionResponseDto, ExtensionDto, ListResponseDto, OperatorDto, RefreshReportDto,
+};
 use crate::envelope::ApiResponse;
 use crate::error::ApiError;
 
 pub async fn list_extensions(
     State(state): State<AppState>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<ListResponseDto<ExtensionDto>>, ApiError> {
     let extensions = state
         .db
         .list_extensions()
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    Ok(ApiResponse::ok(
-        serde_json::json!({ "extensions": extensions }),
-    ))
+    let items = extensions.iter().map(ExtensionDto::from).collect();
+    Ok(ApiResponse::ok(ListResponseDto { items }))
 }
 
 pub async fn get_extension(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<ExtensionDto>, ApiError> {
     let record = state
         .db
         .get_extension(&id)
         .await
         .map_err(|e| ApiError::NotFound(e.to_string()))?;
 
-    Ok(ApiResponse::ok(
-        serde_json::to_value(record).unwrap_or_default(),
-    ))
+    Ok(ApiResponse::ok(ExtensionDto::from(&record)))
 }
 
 pub async fn list_operators(
     State(state): State<AppState>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<ListResponseDto<OperatorDto>>, ApiError> {
     let operators = state
         .db
         .list_operators()
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    Ok(ApiResponse::ok(
-        serde_json::json!({ "operators": operators }),
-    ))
+    let items = operators.iter().map(OperatorDto::from).collect();
+    Ok(ApiResponse::ok(ListResponseDto { items }))
 }
 
 pub async fn get_operator(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<OperatorDto>, ApiError> {
     let operators = state
         .db
         .list_operators()
@@ -68,18 +67,16 @@ pub async fn get_operator(
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     let operator = operators
-        .into_iter()
+        .iter()
         .find(|op| op.id == id)
         .ok_or_else(|| ApiError::NotFound(format!("operator {id} not found")))?;
 
-    Ok(ApiResponse::ok(
-        serde_json::to_value(operator).unwrap_or_default(),
-    ))
+    Ok(ApiResponse::ok(OperatorDto::from(operator)))
 }
 
 pub async fn refresh_extensions(
     State(state): State<AppState>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<RefreshReportDto>, ApiError> {
     let host_version =
         semver::Version::parse("0.1.0").map_err(|e| ApiError::Internal(e.to_string()))?;
     let protocol_version =
@@ -98,16 +95,16 @@ pub async fn refresh_extensions(
     emit_discovery_events(&state.event_bus, &report);
     persist_discovered_extensions(&state).await?;
 
-    Ok(ApiResponse::ok(serde_json::json!({
-        "activated": report.activated,
-        "invalid": report.invalid,
-    })))
+    Ok(ApiResponse::ok(RefreshReportDto {
+        activated: report.activated.clone(),
+        invalid: report.invalid.clone(),
+    }))
 }
 
 pub async fn enable_extension(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<EnableExtensionResponseDto>, ApiError> {
     state
         .extension_registry
         .enable_extension(&id)
@@ -123,16 +120,16 @@ pub async fn enable_extension(
         extension_id: id.clone(),
     });
 
-    Ok(ApiResponse::ok(serde_json::json!({
-        "id": id,
-        "status": "active",
-    })))
+    Ok(ApiResponse::ok(EnableExtensionResponseDto {
+        id,
+        status: "active".to_owned(),
+    }))
 }
 
 pub async fn disable_extension(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<ApiResponse<serde_json::Value>, ApiError> {
+) -> Result<ApiResponse<EnableExtensionResponseDto>, ApiError> {
     state
         .extension_registry
         .disable_extension(&id)
@@ -148,10 +145,10 @@ pub async fn disable_extension(
         extension_id: id.clone(),
     });
 
-    Ok(ApiResponse::ok(serde_json::json!({
-        "id": id,
-        "status": "disabled",
-    })))
+    Ok(ApiResponse::ok(EnableExtensionResponseDto {
+        id,
+        status: "disabled".to_owned(),
+    }))
 }
 
 fn emit_discovery_events(event_bus: &std::sync::Arc<dyn EventBus>, report: &DiscoveryReport) {

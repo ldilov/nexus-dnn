@@ -1,22 +1,27 @@
 use axum::extract::State;
-use serde_json::json;
 
 use crate::AppState;
+use crate::dto::SystemInfoDto;
 use crate::envelope::ApiResponse;
 
-pub async fn system_info(State(state): State<AppState>) -> ApiResponse<serde_json::Value> {
+pub async fn system_info(State(state): State<AppState>) -> ApiResponse<SystemInfoDto> {
     let workspace_path = state
         .extensions_dir
         .as_ref()
         .map(|p| p.parent().unwrap_or(p).display().to_string());
 
-    ApiResponse::ok(json!({
-        "host_version": "0.1.0",
-        "api_version": "0.1.0",
-        "protocol_version": "0.1.0",
-        "supported_runtime_families": ["python", "native", "builtin", "external_service"],
-        "supported_spec_versions": ["0.1"],
-        "workspace_path": workspace_path,
-        "platform": std::env::consts::OS
-    }))
+    ApiResponse::ok(SystemInfoDto {
+        host_version: "0.1.0".to_owned(),
+        api_version: "0.1.0".to_owned(),
+        protocol_version: "0.1.0".to_owned(),
+        supported_runtime_families: vec![
+            "python".to_owned(),
+            "native".to_owned(),
+            "builtin".to_owned(),
+            "external_service".to_owned(),
+        ],
+        supported_spec_versions: vec!["0.1".to_owned()],
+        workspace_path,
+        platform: std::env::consts::OS.to_owned(),
+    })
 }
