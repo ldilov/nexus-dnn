@@ -55,6 +55,25 @@ impl LlamaCppAdapter {
             crate::manifest::version::load_from_path(&self.version_manifest_path).await?;
         Ok(manifest)
     }
+
+    async fn emit_unavailable_if_transitioned(
+        &self,
+        install: &InstallManifest,
+        new_status: InstallStatus,
+        failure_category: Option<String>,
+    ) {
+        if new_status != InstallStatus::Broken || install.status == InstallStatus::Broken {
+            return;
+        }
+        let reason = failure_category.unwrap_or_else(|| "unknown".into());
+        let event = crate::events::BackendEvent::new(
+            "install.unavailable",
+            self.id(),
+            serde_json::json!({ "reason": reason }),
+        )
+        .with_install(install.runtime_install_id.clone());
+        self.publisher.publish(event).await;
+    }
 }
 
 #[async_trait]
@@ -142,13 +161,16 @@ impl BackendAdapter for LlamaCppAdapter {
         } else {
             InstallStatus::Broken
         };
+        let failure_category_str = report.failure_category.map(|c| format!("{c:?}"));
         installs_store::update_status(
             &self.pool,
             &install.runtime_install_id,
             new_status,
-            report.failure_category.map(|c| format!("{c:?}")),
+            failure_category_str.clone(),
         )
         .await?;
+        self.emit_unavailable_if_transitioned(&install, new_status, failure_category_str)
+            .await;
         Ok(report)
     }
 
@@ -159,14 +181,20 @@ impl BackendAdapter for LlamaCppAdapter {
         let existing = installs_store::load_latest(&self.pool, self.id())
             .await?
             .ok_or_else(|| RuntimeAdapterError::InstallNotFound(self.id().into()))?;
-        self.install(
-            InstallRequest {
-                release_id: Some(existing.release_id),
-                accelerator_profile: Some(existing.accelerator_profile),
-            },
-            machine,
-        )
-        .await
+        let manifest = self
+            .install(
+                InstallRequest {
+                    release_id: Some(existing.release_id),
+                    accelerator_profile: Some(existing.accelerator_profile),
+                },
+                machine,
+            )
+            .await?;
+        let event =
+            crate::events::BackendEvent::new("install.repaired", self.id(), serde_json::json!({}))
+                .with_install(manifest.runtime_install_id.clone());
+        self.publisher.publish(event).await;
+        Ok(manifest)
     }
 
     async fn get_settings(&self) -> Result<RuntimeSettings, RuntimeAdapterError> {
