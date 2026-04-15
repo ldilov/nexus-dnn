@@ -267,10 +267,10 @@ Per plan.md §"Implementation Sequencing", every commit MUST leave the workspace
 
 ## Phase 10: Polish & Cross-Cutting Concerns
 
-- [ ] T110 [P] Add `#[tracing::instrument(name = "runtime.install", ...)]` span on `Spawner::spawn`, `InstallPipeline::run`, `migrate_from_legacy`, `relocate_legacy_binaries`; verify via `RUST_LOG=nexus_backend_runtimes=debug`
-- [ ] T111 [P] Write `crates/nexus-backend-runtimes/README.md` — architecture overview, how to add a new runtime family, how the parameter catalog is sourced
-- [ ] T112 [P] Update `extensions/builtin/local-llm/README.md` — extension no longer owns runtime install; domain logic location; how to declare `runtime_dependencies`
-- [ ] T113 [P] Update root `README.md` — architecture overview reflects `nexus-backend-runtimes`; spec 011 link in "Recent Changes"; note that `nexus-local-llm` has been retired
+- [X] T110 [P] Add `#[tracing::instrument(name = "runtime.install", ...)]` spans on `migrate_from_legacy`, `relocate_legacy_binaries`; Spawner/InstallPipeline pending Spawner end-to-end
+- [X] T111 [P] Write `crates/nexus-backend-runtimes/README.md` — architecture overview, how to add a new runtime family, how the parameter catalog is sourced
+- [X] T112 [P] Update `extensions/builtin/local-llm/README.md` — extension no longer owns runtime install; domain logic location; how to declare `runtime_dependencies`
+- [X] T113 [P] Update root `README.md` — architecture overview reflects `nexus-backend-runtimes`; spec 011 link in "Recent Changes"; note that `nexus-local-llm` has been retired
 - [ ] T114 [P] Accessibility pass on the new `backends_view.tsx` — semantic landmarks, keyboard focus order, ARIA on install-progress indicator
 - [ ] T115 [P] Split sprint commits at PR time into four scoped commits aligned with the plan's sequencing: (1) "refactor(runtimes): extract nexus-backend-runtimes crate + domain move to extension [US2]"; (2) "feat(runtimes): channel-first spawn + reserved-policy enforcement [US1+US3+US4]"; (3) "feat(runtimes): parameter catalog + migration from legacy schema [US5+US6]"; (4) "feat(runtimes): host Backends API + top-level frontend [API surface + polish]"
 - [ ] T116 Final verification: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `pnpm --dir apps/web lint`, `pnpm --dir apps/web test`, `pnpm --dir apps/web build`, `bash scripts/verify-spec-011.sh`, all quickstart.md steps pass
