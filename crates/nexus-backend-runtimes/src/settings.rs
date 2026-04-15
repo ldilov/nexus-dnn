@@ -78,7 +78,7 @@ pub struct RuntimeSettings {
 impl RuntimeSettings {
     pub fn llamacpp_defaults() -> Self {
         Self {
-            backend: "llama.cpp".to_string(),
+            backend: crate::family::RuntimeFamily::LLAMA_CPP.to_string(),
             install_ref: None,
             threads: 8,
             threads_batch: 8,

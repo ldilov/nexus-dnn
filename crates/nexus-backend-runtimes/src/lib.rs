@@ -17,6 +17,7 @@ pub mod download;
 pub mod error;
 pub mod events;
 pub mod extract;
+pub mod family;
 pub mod installs_store;
 pub mod launch_spec;
 pub mod lease;
@@ -47,6 +48,7 @@ pub use error::{
     ValidationError,
 };
 pub use events::{BackendEvent, EventPublisher};
+pub use family::RuntimeFamily;
 pub use launch_spec::{LaunchSpec, LlamaServerLaunchSpec, generate as generate_launch_spec};
 pub use lease::RuntimeLease;
 pub use manifest::install::InstallManifest;
@@ -76,7 +78,7 @@ pub async fn run_startup_migrations(
 ) -> Result<(), BackendRuntimeError> {
     if let Err(e) = installs_store::migrate_from_legacy(pool).await {
         tracing::error!(
-            family = "llama.cpp",
+            family = crate::family::RuntimeFamily::LLAMA_CPP,
             phase = "migrate_from_legacy",
             error = %e,
             "startup migration failed",
@@ -92,7 +94,7 @@ pub async fn run_startup_migrations(
         installs_store::relocate_legacy_binaries(pool, &legacy_root, &host_runtimes_root).await
     {
         tracing::error!(
-            family = "llama.cpp",
+            family = crate::family::RuntimeFamily::LLAMA_CPP,
             phase = "relocate_legacy_binaries",
             error = %e,
             "startup migration failed",
@@ -101,7 +103,7 @@ pub async fn run_startup_migrations(
     }
     if let Err(e) = installs_store::hydrate_on_start(pool).await {
         tracing::error!(
-            family = "llama.cpp",
+            family = crate::family::RuntimeFamily::LLAMA_CPP,
             phase = "hydrate_on_start",
             error = %e,
             "startup migration failed",

@@ -14,12 +14,14 @@ use crate::manifest::install::{InstallManifest, InstallStatus};
 use crate::manifest::version::{ReleaseAsset, VersionManifest};
 use crate::resolver::{MachineDescriptor, resolve_runtime_asset};
 
+use super::install_ctx::InstallCtx;
+
 const PHASES: [&str; 8] = [
     "resolve", "download", "verify", "extract", "detect", "validate", "persist", "complete",
 ];
 
 fn backend_id() -> &'static str {
-    "llama.cpp"
+    crate::family::RuntimeFamily::LLAMA_CPP
 }
 
 pub async fn run(
@@ -56,19 +58,17 @@ pub async fn run(
         });
     };
 
-    match run_inner(
+    let ctx = InstallCtx {
         manifest,
         machine,
         request,
         runtimes_root,
         pool,
-        publisher.clone(),
+        publisher: publisher.clone(),
         cancel,
-        &task_id,
-        emit_progress,
-    )
-    .await
-    {
+        task_id: &task_id,
+    };
+    match run_inner(ctx, emit_progress).await {
         Ok(m) => {
             let event = BackendEvent::new(
                 "llm.backend.install.completed",
@@ -133,21 +133,23 @@ pub async fn run(
     }
 }
 
-#[allow(clippy::too_many_arguments)] // Planned refactor: group into InstallCtx in Phase 3 modularization (spec 015).
 async fn run_inner<F>(
-    manifest: &VersionManifest,
-    machine: &MachineDescriptor,
-    request: InstallRequest,
-    runtimes_root: &Utf8PathBuf,
-    pool: &SqlitePool,
-    _publisher: SharedPublisher,
-    cancel: CancellationToken,
-    _task_id: &str,
+    ctx: InstallCtx<'_>,
     mut emit_progress: F,
 ) -> Result<InstallManifest, RuntimeAdapterError>
 where
     F: FnMut(usize, u64, Option<u64>),
 {
+    let InstallCtx {
+        manifest,
+        machine,
+        request,
+        runtimes_root,
+        pool,
+        publisher: _publisher,
+        cancel,
+        task_id: _task_id,
+    } = ctx;
     emit_progress(0, 0, None);
     let asset: &ReleaseAsset = resolve_runtime_asset(
         machine,
@@ -160,7 +162,7 @@ where
 
     let install_dir: PathBuf = runtimes_root
         .as_std_path()
-        .join("llama.cpp")
+        .join(crate::family::RuntimeFamily::LLAMA_CPP)
         .join(&release_id)
         .join(format!(
             "{}-{}",

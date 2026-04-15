@@ -458,8 +458,9 @@ pub async fn parameter_catalog(
     State(_state): State<AppState>,
     Path(family): Path<String>,
 ) -> axum::response::Response {
-    match family.as_str() {
-        "llama.cpp" | "llamacpp" => {
+    let canon = nexus_backend_runtimes::RuntimeFamily::canonical(family.as_str());
+    match canon {
+        Some(nexus_backend_runtimes::RuntimeFamily::LlamaCpp) => {
             match nexus_backend_runtimes::parameter_catalog::llamacpp_catalog() {
                 Ok(catalog) => ApiResponse::ok((*catalog).clone()).into_response(),
                 Err(e) => ApiResponse::<()>::err(
@@ -471,11 +472,11 @@ pub async fn parameter_catalog(
                 .into_response(),
             }
         }
-        other => ApiResponse::<()>::err(
+        _ => ApiResponse::<()>::err(
             axum::http::StatusCode::NOT_FOUND,
             "FAMILY_UNKNOWN",
             "not_found",
-            format!("no parameter catalog for runtime family {other}"),
+            format!("no parameter catalog for runtime family {family}"),
         )
         .into_response(),
     }
@@ -598,7 +599,7 @@ pub async fn create_lease(
         .as_ref()
         .map(|r| r.family.clone())
         .or_else(|| body.family.clone())
-        .unwrap_or_else(|| "llama.cpp".to_string());
+        .unwrap_or_else(|| nexus_backend_runtimes::RuntimeFamily::LLAMA_CPP.to_string());
     let accelerator = body.accelerator.unwrap_or(AcceleratorProfile::Cpu);
 
     let spawn_request = SpawnRuntimeRequest {
