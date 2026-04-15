@@ -60,13 +60,15 @@ crates/nexus-backend-runtimes/src/
 │   ├── relocation.rs
 │   └── resolution.rs
 ├── models_store/                       # NEW (US1)
-│   ├── mod.rs                          # public API surface: install_model, uninstall_model, list_installed_models, acquire_lease, release_lease, check_model_dependencies
+│   ├── mod.rs                          # public API surface: install_model, uninstall_model, list_installed_models, acquire_lease, release_lease, check_model_dependencies, resolve_dry_run
 │   ├── schema.rs                       # DDL for host_model_installs + host_model_leases; migrations
 │   ├── install.rs                      # install_model, uninstall_model, dedup, private-flag handling
 │   ├── download.rs                     # Semaphore-guarded download + Range-aware resume + per-file SHA-256 verify
+│   ├── blobs.rs                        # NEW (US10b) — content-addressed store under blobs/<sha[0:2]>/<sha>; hardlink/symlink materialize; gc_blobs
+│   ├── quantization.rs                 # NEW (US10a) — typed Quantization enum (incl. NVFP4, MXFP4, MXFP6/8, FP8_E4M3/E5M2) + family-match semantics
 │   ├── leases.rs                       # acquire_lease, release_lease, list_active_leases, VRAM accounting
-│   ├── resolver.rs                     # check_model_dependencies + tie-breaker (US5)
-│   ├── provenance.rs                   # license + source metadata helpers; HF model-card lookup
+│   ├── resolver.rs                     # check_model_dependencies + tie-breaker (US5) + resolve_dry_run (US10c)
+│   ├── provenance.rs                   # license + source metadata helpers; HF model-card lookup; revision pinning (US12)
 │   └── errors.rs                       # ModelStoreError
 └── lib.rs                              # re-export shim: pub use runtime_installs_store as installs_store; (removed in Phase J)
 
@@ -83,12 +85,14 @@ crates/nexus-api/src/handlers/backends/
 
 ```
 $host_model_root/
+├── blobs/                              # content-addressed (US10b)
+│   └── <sha[0:2]>/<sha256>             # raw file bytes, one copy per unique sha256
 └── <family>/
     └── <version>/
         └── <quantization>/
             └── <variant>/
-                ├── files.json
-                ├── <file1>
+                ├── files.json          # logical manifest
+                ├── <file1>             # hardlink (preferred) / symlink (fallback) into blobs/
                 └── ...
 ```
 
@@ -113,11 +117,11 @@ New contract tests live under `specs/017-host-managed-model-store/contracts/` (P
 1. **Phase A — Baseline + contracts**. Capture baseline `cargo test --workspace`. Author the contract-test skeletons (RED) in the listed files. No production code yet.
 2. **Phase B — Crate-vs-module audit**. Confirm `models_store/` lives inside `nexus-backend-runtimes` (v1). Record the module boundary decision in the PR so a future `nexus-models` extraction is mechanical.
 3. **Phase C — Schema + rename**. Add `host_model_installs` + `host_model_leases` migrations (FR-501/502). Rename `installs_store/` → `runtime_installs_store/` + add shim (US2). Green `cargo check --workspace`.
-4. **Phase D — `models_store::install` + `download`**. Implement `install_model`, `uninstall_model`, dedup via unique index, semaphore-capped download with `Range`-aware resume, per-file SHA-256 verify, `files.json` manifest emit. Contract tests SC-506, SC-508 go GREEN.
+4. **Phase D — `models_store::install` + `download` + `blobs` + `quantization`**. Implement `install_model`, `uninstall_model`, dedup via unique index, semaphore-capped download with `Range`-aware resume, per-file SHA-256 verify, content-addressed blob store with hardlink materialization + `gc_blobs` (US10b), `files.json` manifest emit, and the typed `Quantization` enum incl. NVFP4/MXFP4 (US10a). Contract tests SC-506, SC-508, SC-511, SC-514 go GREEN.
 5. **Phase E — `models_store::leases`**. Implement `acquire_lease`, `release_lease`, VRAM accounting, lease-blocks-uninstall path. Contract test SC-507 goes GREEN.
-6. **Phase F — `models_store::resolver`**. Implement `check_model_dependencies` + tie-breaker (FR-511/512/513). Private-model visibility filter (US6.3). Latency bench goes GREEN (SC-502).
-7. **Phase G — Manifest plumbing**. Add `ModelDependency` + `ParamCount` in `nexus-extension::manifest`; wire parse path + `ExtensionError::ManifestParse` reuse. Extension activation calls resolver.
-8. **Phase H — API wiring**. Add `handlers/backends/host_models.rs` backed by `models_store`. Wire existing DTOs + add license/provenance fields (FR-515). Add lease endpoints (FR-519). Contract test `host_models_contract.rs` goes GREEN.
+6. **Phase F — `models_store::resolver`**. Implement `check_model_dependencies` + tie-breaker using `Quantization` family-match (FR-511/512/513). Implement `resolve_dry_run` (US10c / FR-520) with row-count + blob-count invariants. Private-model visibility filter (US6.3). Latency bench goes GREEN (SC-502); SC-513 goes GREEN.
+7. **Phase G — Manifest plumbing**. Add `ModelDependency` + `ParamCount` + typed `Quantization` field + `revision` / `allow_unpinned` (US12) in `nexus-extension::manifest`; wire parse path + `ExtensionError::ManifestParse` reuse (incl. unpinned-rejection). Extension activation calls resolver. SC-512 goes GREEN.
+8. **Phase H — API wiring**. Add `handlers/backends/host_models.rs` backed by `models_store`. Wire existing DTOs + add license/provenance fields (FR-515). Add lease endpoints (FR-519) and `POST /api/v1/host-models/resolve` (FR-520). Contract test `host_models_contract.rs` goes GREEN.
 9. **Phase I — Provenance + exhaustive errors**. Populate `license_spdx` / `license_url` / `provenance_note` from HF card when source is `huggingface`; carry user-supplied license for `direct_url`. Implement exhaustive `http_status_for_model_error` (FR-517). License-coverage query (SC-509) returns 0.
 10. **Phase J — Shim removal + docs**. Delete the `pub use runtime_installs_store as installs_store` shim. Migrate any remaining `installs_store::*` call sites. Update `nexus-backend-runtimes/README.md` (new §"Model store"), `nexus-api/README.md` (new §"Host-model endpoints"), root README "Recent Changes". Final `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, SC-503/504/510 grep checks.
 
