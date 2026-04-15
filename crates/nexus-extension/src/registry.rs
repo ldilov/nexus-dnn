@@ -629,10 +629,7 @@ fn load_layouts(
         let raw = match std::fs::read_to_string(&layout_path) {
             Ok(content) => content,
             Err(e) => {
-                let msg = format!(
-                    "layout file '{}' not readable: {e}",
-                    layout_path.display()
-                );
+                let msg = format!("layout file '{}' not readable: {e}", layout_path.display());
                 warn!("{msg}");
                 validation_errors.push(msg);
                 continue;
@@ -642,10 +639,7 @@ fn load_layouts(
         let content: serde_json::Value = match serde_saphyr::from_str(&raw) {
             Ok(v) => v,
             Err(e) => {
-                let msg = format!(
-                    "layout file '{}' parse failed: {e}",
-                    layout_path.display()
-                );
+                let msg = format!("layout file '{}' parse failed: {e}", layout_path.display());
                 warn!("{msg}");
                 validation_errors.push(msg);
                 continue;
@@ -664,10 +658,7 @@ fn load_layouts(
             .to_owned();
 
         if id.is_empty() {
-            let msg = format!(
-                "layout file '{}' missing 'id' field",
-                layout_path.display()
-            );
+            let msg = format!("layout file '{}' missing 'id' field", layout_path.display());
             warn!("{msg}");
             validation_errors.push(msg);
             continue;
@@ -866,7 +857,9 @@ fn activate_extension_inner(
     })
 }
 
-fn rebuild_operator_entries(extensions: &[ActivatedExtension]) -> Vec<(String, OperatorDefinition)> {
+fn rebuild_operator_entries(
+    extensions: &[ActivatedExtension],
+) -> Vec<(String, OperatorDefinition)> {
     extensions
         .iter()
         .filter(|e| e.status.is_active())

@@ -135,11 +135,7 @@ pub struct CapabilityGrant {
 }
 
 pub fn resolve_capabilities(manifest: &ExtensionManifest) -> CapabilityGrant {
-    let declared = manifest
-        .capabilities
-        .as_ref()
-        .cloned()
-        .unwrap_or_default();
+    let declared = manifest.capabilities.as_ref().cloned().unwrap_or_default();
 
     let known: HashSet<&str> = KNOWN_CAPABILITIES.iter().copied().collect();
 

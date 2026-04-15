@@ -4,7 +4,10 @@ use crate::error::InstallError;
 
 pub fn find_binary(install_root: &Path, binary_name: &str) -> Result<PathBuf, InstallError> {
     walk(install_root, binary_name)?.ok_or_else(|| {
-        InstallError::BinaryMissing(format!("{binary_name} not found under {}", install_root.display()))
+        InstallError::BinaryMissing(format!(
+            "{binary_name} not found under {}",
+            install_root.display()
+        ))
     })
 }
 

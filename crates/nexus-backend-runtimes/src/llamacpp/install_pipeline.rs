@@ -157,11 +157,19 @@ where
         .as_std_path()
         .join("llama.cpp")
         .join(&release_id)
-        .join(format!("{}-{}", asset.platform, asset.accelerator_profile.as_wire()));
+        .join(format!(
+            "{}-{}",
+            asset.platform,
+            asset.accelerator_profile.as_wire()
+        ));
     let package_dir = install_dir.join("package");
     let tmp_archive = install_dir.join("download.archive");
-    tokio::fs::create_dir_all(&install_dir).await.map_err(InstallError::from)?;
-    tokio::fs::create_dir_all(&package_dir).await.map_err(InstallError::from)?;
+    tokio::fs::create_dir_all(&install_dir)
+        .await
+        .map_err(InstallError::from)?;
+    tokio::fs::create_dir_all(&package_dir)
+        .await
+        .map_err(InstallError::from)?;
 
     emit_progress(1, 0, None);
     let outcome = crate::download::download(

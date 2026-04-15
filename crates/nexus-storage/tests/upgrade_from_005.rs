@@ -67,10 +67,16 @@ async fn upgrading_to_006_preserves_row_counts() {
     .await
     .unwrap();
 
-    let pre_workflows: i64 =
-        sqlx::query("SELECT COUNT(*) AS c FROM workflows").fetch_one(&pool).await.unwrap().get("c");
-    let pre_runs: i64 =
-        sqlx::query("SELECT COUNT(*) AS c FROM runs").fetch_one(&pool).await.unwrap().get("c");
+    let pre_workflows: i64 = sqlx::query("SELECT COUNT(*) AS c FROM workflows")
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .get("c");
+    let pre_runs: i64 = sqlx::query("SELECT COUNT(*) AS c FROM runs")
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .get("c");
     drop(pool);
 
     // 3. Reopen via the full Database constructor — this applies all migrations
@@ -101,7 +107,10 @@ async fn upgrading_to_006_preserves_row_counts() {
     };
     db.insert_workflow(&rec).await.unwrap();
     let loaded = db.get_workflow("legacy_a").await.unwrap();
-    assert_eq!(loaded.extension_id, None, "pre-006 row defaults to NULL attribution");
+    assert_eq!(
+        loaded.extension_id, None,
+        "pre-006 row defaults to NULL attribution"
+    );
     assert_eq!(loaded.extension_version, None);
     assert_eq!(loaded.extension_version_first_seen, None);
 

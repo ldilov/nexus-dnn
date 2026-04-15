@@ -97,13 +97,7 @@ mod tests {
             classify(&catalog, "--novel-future-flag"),
             ClassifyOutcome::Unknown
         );
-        assert!(
-            validate_args(
-                &catalog,
-                &["--novel-future-flag".into(), "value".into()],
-            )
-            .is_ok()
-        );
+        assert!(validate_args(&catalog, &["--novel-future-flag".into(), "value".into()],).is_ok());
     }
 
     #[test]
@@ -142,7 +136,12 @@ mod tests {
         assert!(
             validate_args(
                 &catalog,
-                &["--ctx-size".into(), "8192".into(), "--temperature".into(), "0.7".into()],
+                &[
+                    "--ctx-size".into(),
+                    "8192".into(),
+                    "--temperature".into(),
+                    "0.7".into()
+                ],
             )
             .is_ok()
         );
