@@ -213,23 +213,16 @@ impl InMemoryExtensionRegistry {
 }
 
 impl ExtensionRegistry for InMemoryExtensionRegistry {
+    /// Spec 016 US4 (FR-408): perform real discovery by delegating to the
+    /// synchronous `refresh`. Trait signature remains async to preserve LSP
+    /// for `nexus-core` and `nexus-api` callers.
     async fn discover_and_activate(
         &self,
-        _extensions_dir: &Path,
-        _host_version: &Version,
-        _protocol_version: &Version,
+        extensions_dir: &Path,
+        host_version: &Version,
+        protocol_version: &Version,
     ) -> Result<DiscoveryReport, ExtensionError> {
-        // Phase 5 (US4) replaces this with a real `refresh` delegation.
-        let state = self.state.read();
-
-        Ok(DiscoveryReport {
-            activated: state
-                .extensions
-                .iter()
-                .map(|e| e.manifest.extension.id.clone())
-                .collect(),
-            invalid: Vec::new(),
-        })
+        self.refresh(extensions_dir, host_version, protocol_version)
     }
 
     fn list_extensions(&self) -> Vec<ActivatedExtension> {

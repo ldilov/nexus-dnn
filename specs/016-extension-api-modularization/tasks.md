@@ -68,16 +68,16 @@ Decision locked per spec.md US4: **branch (a)** — perform real discovery via `
 
 ### Tests (write first — RED)
 
-- [ ] T540 [P] [US4] Integration test `crates/nexus-extension/tests/discover_and_activate_scans_dir.rs::scans_new_extension`: empty registry + populated temp `extensions_dir` with one valid extension → call `discover_and_activate(dir, host_v, proto_v)` → assert new extension present in `list_extensions()` AND in the returned `DiscoveryReport.activated`.
-- [ ] T541 [P] [US4] Integration test `discover_and_activate_scans_dir.rs::idempotent_re_invocation`: pre-load registry with extension A; drop extension B into `extensions_dir`; re-invoke `discover_and_activate`; assert {A, B} present, no duplicate, no removal.
+- [X] T540 [P] [US4] Integration test `crates/nexus-extension/tests/discover_and_activate_scans_dir.rs::scans_new_extension`: empty registry + populated temp `extensions_dir` with one valid extension → call `discover_and_activate(dir, host_v, proto_v)` → assert new extension present in `list_extensions()` AND in the returned `DiscoveryReport.activated`.
+- [X] T541 [P] [US4] Integration test `discover_and_activate_scans_dir.rs::idempotent_re_invocation`: pre-load registry with extension A; drop extension B into `extensions_dir`; re-invoke `discover_and_activate`; assert {A, B} present, no duplicate, no removal.
 
 ### Implementation
 
-- [ ] T542 [US4] In `registry/mod.rs::ExtensionRegistry for InMemoryExtensionRegistry::discover_and_activate` (async trait method), replace the current ignore-args body with `let report = self.refresh(extensions_dir, host_version, protocol_version)?; Ok(report)`. Note: `refresh` is a **synchronous** `pub fn` — no `.await`. If FS scanning becomes a blocking concern inside the async context later, wrap with `tokio::task::spawn_blocking` in a follow-up; not required for this spec. Trait signature preserved per US4 acceptance scenario 3.
+- [X] T542 [US4] In `registry/mod.rs::ExtensionRegistry for InMemoryExtensionRegistry::discover_and_activate` (async trait method), replace the current ignore-args body with `let report = self.refresh(extensions_dir, host_version, protocol_version)?; Ok(report)`. Note: `refresh` is a **synchronous** `pub fn` — no `.await`. If FS scanning becomes a blocking concern inside the async context later, wrap with `tokio::task::spawn_blocking` in a follow-up; not required for this spec. Trait signature preserved per US4 acceptance scenario 3.
 
 ### Verification
 
-- [ ] T543 [US4] Both new tests GREEN; `cargo check -p nexus-core -p nexus-api` passes without edits to callers.
+- [X] T543 [US4] Both new tests GREEN; `cargo check -p nexus-core -p nexus-api` passes without edits to callers.
 
 ---
 
