@@ -1,4 +1,5 @@
 pub mod artifacts;
+pub mod backend_events_ws;
 pub mod backends;
 pub mod extensions;
 pub mod health;

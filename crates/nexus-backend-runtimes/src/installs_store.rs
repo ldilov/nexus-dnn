@@ -117,6 +117,9 @@ pub async fn hydrate_on_start(pool: &SqlitePool) -> BackendRuntimeResult<u64> {
 
 #[tracing::instrument(name = "runtime.migrate_from_legacy", skip(pool))]
 pub async fn migrate_from_legacy(pool: &SqlitePool) -> BackendRuntimeResult<u64> {
+    if migrated_guard_tripped(pool).await? {
+        return Ok(0);
+    }
     if !legacy_table_exists(pool).await? {
         return Ok(0);
     }
@@ -333,6 +336,54 @@ pub async fn resolve_dependency(
     Ok(matched)
 }
 
+/// Remove the on-disk install directory for a runtime (spec 012 US6 T277).
+///
+/// Non-fatal: logs a warning when the directory is absent or removal fails,
+/// letting callers proceed to delete the DB row. Idempotent.
+#[tracing::instrument(name = "runtime.remove_binary_directory", fields(path = %install_root.display()))]
+pub async fn remove_binary_directory(install_root: &std::path::Path) -> BackendRuntimeResult<()> {
+    if !install_root.exists() {
+        return Ok(());
+    }
+    if let Err(e) = tokio::fs::remove_dir_all(install_root).await {
+        tracing::warn!(error = %e, "remove_binary_directory failed");
+    }
+    Ok(())
+}
+
+/// Delete a runtime install row and append an audit entry to
+/// `host_runtime_state_log` (spec 012 US6 T278). Silent no-op when the row
+/// is already gone.
+pub async fn delete_row(pool: &SqlitePool, install_id: &str) -> BackendRuntimeResult<()> {
+    let existing = load_by_id(pool, install_id).await?;
+    let Some(row) = existing else {
+        return Ok(());
+    };
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO host_runtime_state_log \
+         (install_id, from_state, to_state, trigger, detail, occurred_at) \
+         VALUES ($1, $2, 'uninstalled', 'api.uninstall', NULL, $3)",
+    )
+    .bind(&row.install_id)
+    .bind(&row.state)
+    .bind(&now)
+    .execute(pool)
+    .await
+    .map_err(storage)?;
+    sqlx::query("DELETE FROM host_runtime_leases WHERE install_id = $1")
+        .bind(install_id)
+        .execute(pool)
+        .await
+        .map_err(storage)?;
+    sqlx::query("DELETE FROM host_runtime_installs WHERE install_id = $1")
+        .bind(install_id)
+        .execute(pool)
+        .await
+        .map_err(storage)?;
+    Ok(())
+}
+
 /// Return the extension ids currently holding (or declaring) a dependency on
 /// the given install. Walks `host_runtime_leases` for live leases; callers
 /// that also need manifest-declared dependents should merge with the registry
@@ -377,6 +428,24 @@ fn version_satisfies(have: &str, req: Option<&str>) -> bool {
         return have == rest.trim();
     }
     have == req
+}
+
+async fn migrated_guard_tripped(pool: &SqlitePool) -> BackendRuntimeResult<bool> {
+    let renamed = sqlx::query(
+        "SELECT name FROM sqlite_master \
+         WHERE type='table' AND name='ext_local_llm_runtime_installs_migrated_008'",
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(storage)?;
+    if renamed.is_none() {
+        return Ok(false);
+    }
+    let host_row = sqlx::query("SELECT 1 FROM host_runtime_installs LIMIT 1")
+        .fetch_optional(pool)
+        .await
+        .map_err(storage)?;
+    Ok(host_row.is_some())
 }
 
 async fn legacy_table_exists(pool: &SqlitePool) -> BackendRuntimeResult<bool> {

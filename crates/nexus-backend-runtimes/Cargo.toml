@@ -34,3 +34,4 @@ tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"
 rstest = "0.23"
 wiremock = "0.6"
 tempfile = "3"
+tracing-test = { version = "0.2", features = ["no-env-filter"] }

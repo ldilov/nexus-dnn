@@ -98,3 +98,32 @@ cargo test -p nexus-backend-runtimes
 ```
 
 33 unit tests cover the parameter catalog loader, reserved-policy classifier (per tier), state-machine transitions, port allocator (hint honoring + collision rerouting), HTTP error mapping, dependency resolver (version operators + accelerator membership), legacy row migration (field mapping, idempotency), and FS relocator (path rewriting).
+
+## CI checks
+
+`scripts/verify-spec-011.sh` enforces the spec 011 FR-046 / spec 012 FR-121 invariant: `nexus-backend-runtimes` must never depend on an extension crate. It runs three checks:
+
+1. **Direct deps** — greps `Cargo.toml` for any `extension-*`, `local-llm*`, `nexus-extension*`, or `nexus-local-llm*` entries.
+2. **Transitive deps** — walks `cargo metadata --no-deps` for the same pattern (requires `jq`).
+3. **Workspace compiles** — `cargo check --workspace --quiet`.
+
+Run locally:
+
+```bash
+bash scripts/verify-spec-011.sh
+```
+
+Expected output on a clean tree:
+
+```
+[INFO] Verifying zero-extension-deps invariant for nexus-backend-runtimes
+[PASS] No direct extension-crate dependencies in Cargo.toml
+[PASS] No extension-crate dependencies reported by cargo metadata
+[INFO] Running cargo check --workspace --quiet
+[PASS] cargo check --workspace succeeded
+[PASS] verify-spec-011 clean
+```
+
+Exit-code contract: `0` = all checks pass; non-zero = at least one `[FAIL]` line preceded the exit. Runtime is ~5s on a warm cargo cache (well under the 10s SC-107 budget). The companion harness `scripts/test_verify-spec-011.sh` mutates `Cargo.toml` and proves the script catches regressions.
+
+When a CI workflow is added to this repo (`.github/workflows/ci.yml` or equivalent), wire in a step that runs `bash scripts/verify-spec-011.sh`; until then this script is the local gate.

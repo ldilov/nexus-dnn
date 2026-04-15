@@ -1,8 +1,9 @@
-//! Spawn request shape.
+//! Spawn request types + `Spawner` supervising runtime child processes.
 //!
-//! The actual `Spawner` implementation lands in Phase 5 (US3); this module
-//! defines only the request/response types so that `ReservedPolicy` and the
-//! handler scaffolding can compile in Phase 2.
+//! Defines `SpawnRuntimeRequest`, `PortAllocator` (with RAII `PortLease`),
+//! `Spawner` with dual-mode `new(publisher)` (test) / `with_pool(...)`
+//! (production real-fork), `Spawner::shutdown` with 10s SIGTERM grace,
+//! reserved-policy validation, and host-governed flag injection (spec 012 US3).
 
 use std::collections::BTreeMap;
 
@@ -145,6 +146,11 @@ pub fn http_status_for(error: &BackendRuntimeError) -> (u16, &'static str, Strin
             422,
             "MANAGED_SPAWN_DISALLOWED",
             format!("flag {flag} is not allowed for managed spawn"),
+        ),
+        BackendRuntimeError::HostGovernedDenied { flag } => (
+            422,
+            "HOST_GOVERNED_DENIED",
+            format!("host-governed flag {flag} cannot be passed via raw argv/env"),
         ),
         BackendRuntimeError::FamilyUnavailable { family, reason } => (
             404,
@@ -466,8 +472,9 @@ impl Spawner {
     /// Gracefully stop a running lease.
     ///
     /// Idempotent: returns `Ok(())` if the lease is unknown. Signals the
-    /// supervisor to exit, waits for it to drain, and removes the lease from
-    /// the in-memory registry.
+    /// supervisor, which drives a SIGTERM plus 10s grace window before a
+    /// force kill (spec 012 US6 T276b). The call awaits supervisor drain
+    /// bounded by grace + force.
     pub async fn shutdown(&self, lease_id: &str) -> Result<(), BackendRuntimeError> {
         let handle = {
             let mut guard = self.leases.lock().await;
@@ -479,10 +486,37 @@ impl Spawner {
         handle.shutdown.notify_waiters();
         let sup = handle.supervisor.lock().await.take();
         if let Some(sup) = sup {
-            sup.abort();
-            let _ = sup.await;
+            let bounded = tokio::time::timeout(std::time::Duration::from_secs(11), sup).await;
+            if bounded.is_err() {
+                tracing::warn!(lease_id = %lease_id, "supervisor did not drain within 10s grace + 1s slack");
+            }
         }
         Ok(())
+    }
+
+    /// Return the lease ids currently bound to the given install.
+    ///
+    /// Reads the live in-memory map when present (test mode) and augments
+    /// with the un-released lease rows from `host_runtime_leases` when a
+    /// pool is configured (production).
+    pub async fn list_live_leases_for_install(&self, install_id: &str) -> Vec<String> {
+        let mut out = self.collect_memory_leases(install_id).await;
+        if let Some(pool) = self.pool.as_ref() {
+            out.extend(query_unreleased_leases(pool, install_id).await);
+        }
+        dedup_preserve_order(out)
+    }
+
+    async fn collect_memory_leases(&self, install_id: &str) -> Vec<String> {
+        let guard = self.leases.lock().await;
+        let mut out = Vec::new();
+        for (lease_id, handle) in guard.iter() {
+            let lease = handle.lease.read().await;
+            if lease.install_id == install_id && lease.released_at.is_none() {
+                out.push(lease_id.clone());
+            }
+        }
+        out
     }
 
     /// Production real-fork spawn path (spec 011 US3 T067). Invoked only when
@@ -557,6 +591,7 @@ impl Spawner {
             .await
             .map_err(|e| BackendRuntimeError::Internal(format!("launch_spec: {e}")))?;
 
+        let host_governed_args = load_host_governed_injections(pool, &row.family).await;
         let host_env = build_host_env(&launch.base_env, &request.env, request.bind_mode, port);
         let bind_host = match request.bind_mode {
             RuntimeBindMode::Loopback | RuntimeBindMode::LoopbackOnly => "127.0.0.1".to_string(),
@@ -564,11 +599,17 @@ impl Spawner {
         };
 
         let mut cmd = tokio::process::Command::new(&launch.binary);
-        cmd.args(launch.base_args.iter().chain(request.args.iter()))
-            .envs(host_env.iter())
-            .kill_on_drop(true)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        cmd.args(
+            launch
+                .base_args
+                .iter()
+                .chain(host_governed_args.iter())
+                .chain(request.args.iter()),
+        )
+        .envs(host_env.iter())
+        .kill_on_drop(true)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
         if let Some(wd) = launch.working_dir.as_ref() {
             cmd.current_dir(wd);
         }
@@ -726,7 +767,15 @@ async fn supervise_real(mut ctx: SupervisorCtx) {
     loop {
         tokio::select! {
             _ = ctx.shutdown.notified() => {
-                let _ = ctx.child.kill().await;
+                let _ = ctx.child.start_kill();
+                let bounded = tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    ctx.child.wait(),
+                )
+                .await;
+                if bounded.is_err() {
+                    let _ = ctx.child.kill().await;
+                }
                 break;
             }
             status = ctx.child.wait() => {
@@ -784,12 +833,70 @@ async fn supervise_real(mut ctx: SupervisorCtx) {
     ctx.live_leases.lock().await.remove(&ctx.lease_id);
 }
 
+fn dedup_preserve_order(items: Vec<String>) -> Vec<String> {
+    let mut seen = BTreeSet::new();
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        if seen.insert(item.clone()) {
+            out.push(item);
+        }
+    }
+    out
+}
+
+async fn query_unreleased_leases(pool: &SqlitePool, install_id: &str) -> Vec<String> {
+    use sqlx::Row;
+    let rows = sqlx::query(
+        "SELECT lease_id FROM host_runtime_leases \
+         WHERE install_id = $1 AND released_at IS NULL",
+    )
+    .bind(install_id)
+    .fetch_all(pool)
+    .await;
+    match rows {
+        Ok(rows) => rows
+            .into_iter()
+            .filter_map(|r| r.try_get::<String, _>("lease_id").ok())
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
 async fn drain_stream<R>(mut reader: R)
 where
     R: tokio::io::AsyncRead + Unpin + Send + 'static,
 {
     let mut sink = tokio::io::sink();
     let _ = tokio::io::copy(&mut reader, &mut sink).await;
+}
+
+const HOST_GOVERNED_INJECTABLE_FLAGS: &[&str] = &[
+    "--api-key",
+    "--ssl-cert-file",
+    "--ssl-key-file",
+    "--media-path",
+    "--tools",
+    "--webui-mcp-proxy",
+];
+
+async fn load_host_governed_injections(pool: &SqlitePool, family: &str) -> Vec<String> {
+    let settings = match crate::settings_store::load(pool, family).await {
+        Ok(Some(s)) => s,
+        _ => return Vec::new(),
+    };
+    let mut out = Vec::new();
+    for flag in HOST_GOVERNED_INJECTABLE_FLAGS {
+        match crate::reserved_policy::HostPolicy::gate_host_governed(flag, &settings) {
+            crate::reserved_policy::HostPolicyDecision::Inject(value) => {
+                out.push((*flag).to_string());
+                if !value.is_empty() {
+                    out.push(value);
+                }
+            }
+            crate::reserved_policy::HostPolicyDecision::Deny => {}
+        }
+    }
+    out
 }
 
 fn row_to_install_manifest(row: &installs_store::RuntimeInstallRow) -> InstallManifest {

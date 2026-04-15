@@ -79,6 +79,28 @@ impl ApiResponse<()> {
         }
     }
 
+    pub fn err_with_details(
+        status: StatusCode,
+        code: &str,
+        category: &str,
+        message: String,
+        details: serde_json::Value,
+    ) -> Self {
+        Self {
+            data: None,
+            meta: Meta {
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            },
+            error: Some(ErrorPayload {
+                code: code.to_owned(),
+                category: category.to_owned(),
+                message,
+                details: Some(details),
+            }),
+            status,
+        }
+    }
+
     pub fn not_found(message: String) -> Self {
         Self::err(StatusCode::NOT_FOUND, "NOT_FOUND", "not_found", message)
     }

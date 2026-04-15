@@ -11,8 +11,8 @@ pub mod validation;
 pub use error::ExtensionError;
 pub use manifest::{
     CompatibilitySpec, EnvironmentSpec, ExecutionSpec, ExtensionInfo, ExtensionManifest, FileRef,
-    LayoutRef, OperatorDefinition, OperatorInfo, PortSpec, ResourceSpec, RuntimeSpec,
-    UiDeclaration, parse_manifest, parse_operator_definition,
+    LayoutRef, OperatorDefinition, OperatorInfo, PortSpec, ResourceSpec, RuntimeDependency,
+    RuntimeSpec, UiDeclaration, parse_manifest, parse_operator_definition,
 };
 pub use operator_index::OperatorIndex;
 pub use recipe::{
@@ -20,7 +20,7 @@ pub use recipe::{
 };
 pub use registry::{
     ActivatedExtension, DiscoveryReport, ExtensionRegistry, ExtensionStatus,
-    InMemoryExtensionRegistry, LayoutFile,
+    InMemoryExtensionRegistry, LayoutFile, detect_intra_manifest_conflicts,
 };
 pub use storage::contribution::{
     MigrationDeclaration, MigrationFileRef, NamespaceDeclaration, RuntimeAccessDeclaration,

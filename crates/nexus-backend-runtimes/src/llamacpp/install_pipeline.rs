@@ -85,6 +85,10 @@ pub async fn run(
             .with_task(task_id.clone())
             .with_install(m.runtime_install_id.clone());
             publisher.publish(event).await;
+            let lifecycle_event =
+                BackendEvent::new("install.completed", backend_id(), serde_json::json!({}))
+                    .with_install(m.runtime_install_id.clone());
+            publisher.publish(lifecycle_event).await;
             Ok(m)
         }
         Err(err) => {

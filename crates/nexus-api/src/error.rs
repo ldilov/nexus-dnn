@@ -19,6 +19,13 @@ pub enum ApiError {
 
     #[error("invalid state transition: {0}")]
     InvalidState(String),
+
+    #[error("{message}")]
+    BadRequestDetailed {
+        code: &'static str,
+        message: String,
+        details: serde_json::Value,
+    },
 }
 
 impl ApiError {
@@ -29,6 +36,7 @@ impl ApiError {
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::InvalidState(_) => StatusCode::CONFLICT,
+            Self::BadRequestDetailed { .. } => StatusCode::BAD_REQUEST,
         }
     }
 
@@ -39,6 +47,7 @@ impl ApiError {
             Self::Conflict(_) => "CONFLICT",
             Self::Internal(_) => "INTERNAL_ERROR",
             Self::InvalidState(_) => "INVALID_STATE_TRANSITION",
+            Self::BadRequestDetailed { code, .. } => code,
         }
     }
 
@@ -49,6 +58,7 @@ impl ApiError {
             Self::Conflict(_) => "conflict",
             Self::Internal(_) => "internal",
             Self::InvalidState(_) => "conflict",
+            Self::BadRequestDetailed { .. } => "validation",
         }
     }
 
@@ -59,12 +69,28 @@ impl ApiError {
             | Self::Conflict(msg)
             | Self::Internal(msg)
             | Self::InvalidState(msg) => msg.clone(),
+            Self::BadRequestDetailed { message, .. } => message.clone(),
         }
     }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        if let Self::BadRequestDetailed {
+            code,
+            message,
+            details,
+        } = &self
+        {
+            return ApiResponse::<()>::err_with_details(
+                StatusCode::BAD_REQUEST,
+                code,
+                "validation",
+                message.clone(),
+                details.clone(),
+            )
+            .into_response();
+        }
         ApiResponse::<()>::err(
             self.status_code(),
             self.error_code(),
