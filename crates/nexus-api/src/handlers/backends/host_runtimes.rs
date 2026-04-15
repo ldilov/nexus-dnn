@@ -37,6 +37,12 @@ pub async fn list_host_runtimes(State(state): State<AppState>) -> axum::response
     {
         Ok(r) => r,
         Err(e) => {
+            crate::handlers::errors::log_handler_error(
+                &e,
+                "GET /backends",
+                "RUNTIMES_LIST_FAILED",
+                None,
+            );
             return ApiResponse::<()>::err(
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 "RUNTIMES_LIST_FAILED",

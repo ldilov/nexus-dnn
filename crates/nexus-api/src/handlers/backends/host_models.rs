@@ -42,6 +42,7 @@ pub async fn list_host_models(State(state): State<AppState>) -> Response {
         Ok(r) => r,
         Err(e) => {
             let (status, code) = http_status_for_model_error(&e);
+            crate::handlers::errors::log_handler_error(&e, "GET /host-models", code, None);
             return ApiResponse::<()>::err(status, code, "model_list", e.to_string())
                 .into_response();
         }
@@ -124,6 +125,7 @@ pub async fn resolve_host_models(
         Ok(report) => ApiResponse::ok(report).into_response(),
         Err(e) => {
             let (status, code) = http_status_for_model_error(&e);
+            crate::handlers::errors::log_handler_error(&e, "POST /host-models/resolve", code, None);
             ApiResponse::<()>::err(status, code, "model_resolve", e.to_string()).into_response()
         }
     }
@@ -166,6 +168,7 @@ pub async fn create_model_lease(
         .into_response(),
         Err(e) => {
             let (status, code) = http_status_for_model_error(&e);
+            crate::handlers::errors::log_handler_error(&e, "host-models/leases", code, None);
             ApiResponse::<()>::err(status, code, "model_lease", e.to_string()).into_response()
         }
     }
@@ -183,6 +186,7 @@ pub async fn release_model_lease(
         .into_response(),
         Err(e) => {
             let (status, code) = http_status_for_model_error(&e);
+            crate::handlers::errors::log_handler_error(&e, "host-models/leases", code, None);
             ApiResponse::<()>::err(status, code, "model_lease", e.to_string()).into_response()
         }
     }

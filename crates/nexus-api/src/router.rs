@@ -5,7 +5,7 @@ use axum::middleware::{self, Next};
 use axum::response::Response;
 use axum::routing::{get, post};
 use tower_http::cors::{Any, CorsLayer};
-use tower_http::trace::TraceLayer;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 
 /// Tag responses on legacy `/api/v1/llm/backends/*` paths with RFC 8594
 async fn deprecation_headers(req: Request, next: Next) -> Response {
@@ -225,7 +225,24 @@ pub fn build(state: AppState) -> Router {
         .nest("/api/v1", api_v1)
         .fallback(frontend::static_handler)
         .layer(middleware::from_fn(deprecation_headers))
-        .layer(TraceLayer::new_for_http())
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().include_headers(false))
+                .on_failure(DefaultOnFailure::new())
+                .on_response(
+                    |response: &axum::http::Response<_>,
+                     latency: std::time::Duration,
+                     _span: &tracing::Span| {
+                        if response.status().is_server_error() {
+                            tracing::error!(
+                                status = %response.status(),
+                                latency_ms = latency.as_millis() as u64,
+                                "5xx response — see preceding handler-error event for details",
+                            );
+                        }
+                    },
+                ),
+        )
         .layer(cors)
         .with_state(state)
 }

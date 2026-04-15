@@ -1,6 +1,7 @@
 pub mod artifacts;
 pub mod backend_events_ws;
 pub mod backends;
+pub mod errors;
 pub mod extensions;
 pub mod health;
 pub mod huggingface;
