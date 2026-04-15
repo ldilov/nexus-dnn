@@ -212,7 +212,7 @@ All seven open questions resolved:
 2. **R2** — reconciler: 60 s `tokio::spawn` task, single instance.
 3. **R3** — leases: persist + mark released on startup.
 4. **R4** — frontend nav: Sidebar top-level "Backends" entry.
-5. **R5** — manifest: optional `runtime_dependencies` field, no schema version bump.
+5. **R5** — manifest: optional `runtime_dependencies` field. **Update (2026-04-15, post-implementation)**: the JSON schema at `schemas/extension-manifest.json` DID need a bump after all — the field was added to `ExtensionManifest` (Rust) but the schema's `additionalProperties: false` rejected it at validation time, breaking 6 `builtin_extension_discovery` tests. The schema was patched to add `runtime_dependencies` (object array with `family`/`version`/`acceleration`) plus the missing `huggingface.search` and `huggingface.install` permission enum values. No formal `manifest_version` field bump was needed because the schema itself is unversioned; the additive change is backward compatible (existing manifests without `runtime_dependencies` continue to validate).
 6. **R6** — TRT: stub parity.
 7. **R7** — old routes: dual-route for 90 days with deprecation headers.
 
