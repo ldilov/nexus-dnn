@@ -61,6 +61,10 @@ crates/nexus-api/src/handlers/backends/
 - Replacing `VersionInterval` with `semver::VersionReq` + `LlamaCppBuildReq` is a net reduction (~155 LOC deleted, ~80 LOC added).
 - N+1 fix is a net simplification (loop + per-install query → one JOINed query).
 
+## Contracts Directory
+
+The `contracts/` directory is intentionally empty for this spec. No external HTTP surface changes — `list_host_runtimes` payload shape, `http_status_for` mapping codes, and `ExtensionRegistry` trait signatures are all preserved. Changes are observable only via internal query count (FR-409/410), error-variant exhaustiveness (FR-412), and structured-log emission (FR-411).
+
 ## Implementation Sequencing
 
 1. **Phase A — Baseline**.

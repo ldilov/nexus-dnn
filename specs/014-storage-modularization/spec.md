@@ -138,7 +138,7 @@ As a maintainer adding migration 009, I add a single `execute_migration_statemen
 ## Success Criteria *(mandatory)*
 
 - **SC-201**: No file under `crates/nexus-storage/src/` exceeds 400 LOC after the split.
-- **SC-202**: `cargo test --workspace` passes with the same count ± 0 (no regressions, no new `#[ignore]`s).
+- **SC-202**: `cargo test --workspace` passes with `count == baseline + len(new_tests_added_in_this_spec)`. No regressions in baseline tests, no new `#[ignore]`s. (US3 adds 2 tests + US4 adds 1 test — expected delta = +3.)
 - **SC-203**: `cargo clippy --workspace --all-targets -- -D warnings` remains clean.
-- **SC-204**: `apply_plan`, `journal_complete`, and every method in `manager/uninstall/*.rs` are ≤ 25 LOC (measured as line count between `fn` and the matching closing brace, excluding doc attributes).
+- **SC-204**: `apply_plan`, `journal_complete`, and every method in `manager/uninstall/*.rs` are ≤ 25 **non-blank executable lines** (counted between the `fn`'s opening `{` and matching closing `}`, excluding blank lines, comment-only lines, `#[cfg(...)]` / `#[allow(...)]` / doc attributes, and lines that are only `}` or `};`). Per analyze-pass M9, this measurement aligns with how Constitution Principle III's ≤ 25 SHOULD is read in code review.
 - **SC-205**: No `unwrap_or_default` or `let _ =` on `Result` in `nexus-storage/src/**/*.rs` outside `#[cfg(test)]` code.
