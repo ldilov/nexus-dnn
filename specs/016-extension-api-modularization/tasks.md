@@ -18,16 +18,16 @@ Per Principle IX. Recommended order: US1 (registry file moves) → US2 (semver s
 
 ## Phase 2: US1 — `registry.rs` file split (P1)
 
-- [ ] T510 Create `crates/nexus-extension/src/registry/` directory; move `registry.rs` → `registry/mod.rs`.
-- [ ] T511 [P] [US1] Extract `registry/types.rs` (DiscoveryReport, ExtensionStatus + impl, LayoutFile, ActivatedExtension, RegistryState).
-- [ ] T512 [P] [US1] Extract `registry/scanner.rs` (scan_extensions_dir, scan_builtin_dir, read_extension_dirs, process_extension, process_builtin_extension, rebuild_operator_entries, activate_extension_inner).
-- [ ] T513 [P] [US1] Extract `registry/loaders.rs` (load_operators, load_recipes, load_ui_contributions, load_layouts, yaml_to_json_value, yaml_to_json_value_for_operator).
-- [ ] T514 [P] [US1] Extract `registry/storage_validation.rs` (validate_storage_contribution, validate_storage_sql_files).
-- [ ] T515 [P] [US1] Extract `registry/version_conflict.rs` (detect_intra_manifest_conflicts + VersionInterval et al — semver swap happens in Phase 3).
+- [X] T510 Create `crates/nexus-extension/src/registry/` directory; move `registry.rs` → `registry/mod.rs`.
+- [X] T511 [P] [US1] Extract `registry/types.rs` (DiscoveryReport, ExtensionStatus + impl, LayoutFile, ActivatedExtension, RegistryState).
+- [X] T512 [P] [US1] Extract `registry/scanner.rs` (scan_extensions_dir, scan_builtin_dir, read_extension_dirs, process_extension, process_builtin_extension, rebuild_operator_entries, activate_extension_inner).
+- [X] T513 [P] [US1] Extract `registry/loaders.rs` (load_operators, load_recipes, load_ui_contributions, load_layouts, yaml_to_json_value, yaml_to_json_value_for_operator).
+- [X] T514 [P] [US1] Extract `registry/storage_validation.rs` (validate_storage_contribution, validate_storage_sql_files).
+- [X] T515 [P] [US1] Extract `registry/version_conflict.rs` (detect_intra_manifest_conflicts + VersionInterval et al — semver swap happens in Phase 3).
 
 ### Verification
 
-- [ ] T516 [US1] `cargo test -p nexus-extension --tests` GREEN; every submodule ≤ 350 LOC.
+- [X] T516 [US1] `cargo test -p nexus-extension --tests` GREEN; every submodule ≤ 350 LOC.
 
 ---
 
@@ -35,18 +35,18 @@ Per Principle IX. Recommended order: US1 (registry file moves) → US2 (semver s
 
 ### Tests (write first — RED)
 
-- [ ] T520 [P] [US2] Unit tests in `version_conflict.rs` for existing conflict cases: `[">=b5000", "<b4500"]` → conflict, `[">=b4000", ">=b4970"]` → no conflict, `[">=1.0.0", "<2.0.0"]` → no conflict (semver-happy path).
-- [ ] T521 [P] [US2] Unit tests for `LlamaCppBuildReq`: parse `>=b4970` / `<b5000` / `=b4970`; `overlaps` / `contains(&str)` helpers.
+- [X] T520 [P] [US2] Unit tests in `version_conflict.rs` for existing conflict cases: `[">=b5000", "<b4500"]` → conflict, `[">=b4000", ">=b4970"]` → no conflict, `[">=1.0.0", "<2.0.0"]` → no conflict (semver-happy path).
+- [X] T521 [P] [US2] Unit tests for `LlamaCppBuildReq`: parse `>=b4970` / `<b5000` / `=b4970`; `overlaps` / `contains(&str)` helpers.
 
 ### Implementation
 
-- [ ] T522 [US2] Add `LlamaCppBuildReq` pub(crate) struct in `version_conflict.rs` (≤ 40 LOC per spec US2 edge case): parses `^(>=|<=|=|<|>)?b(\d+)$` with `regex-lite` (already a workspace dep in `nexus-extension/Cargo.toml`); stores `(Op, u64)` where operator-less form means `Op::Eq`. `fn overlaps(&self, other: &Self) -> bool` = classical half-open interval intersection over u64 build numbers; `fn contains(&self, build: u64) -> bool` = direct comparator evaluation.
-- [ ] T523 [US2] Rewrite `detect_intra_manifest_conflicts`: try `semver::VersionReq::parse` first; on parse error, fall back to `LlamaCppBuildReq::parse`; if BOTH parsers fail, return `ExtensionError::ManifestParse { path: <manifest path>, detail: <offending range + both parser errors> }` per FR-403 (variant already exists in `crates/nexus-extension/src/error.rs`). Overlap check uses `VersionReq::matches(&candidate_versions)` or `LlamaCppBuildReq::overlaps`. Candidate set for `VersionReq::matches` = build numbers present in `host_runtime_installs` at evaluation time (deterministic runtime source).
-- [ ] T524 [US2] Delete `VersionInterval`, `intervals_all_overlap`, `pair_overlaps`, `value_in_interval`, `choose_tighter_lower`, `choose_tighter_upper`.
+- [X] T522 [US2] Add `LlamaCppBuildReq` pub(crate) struct in `version_conflict.rs` (≤ 40 LOC per spec US2 edge case): parses `^(>=|<=|=|<|>)?b(\d+)$` with `regex-lite` (already a workspace dep in `nexus-extension/Cargo.toml`); stores `(Op, u64)` where operator-less form means `Op::Eq`. `fn overlaps(&self, other: &Self) -> bool` = classical half-open interval intersection over u64 build numbers; `fn contains(&self, build: u64) -> bool` = direct comparator evaluation.
+- [X] T523 [US2] Rewrite `detect_intra_manifest_conflicts`: try `semver::VersionReq::parse` first; on parse error, fall back to `LlamaCppBuildReq::parse`; if BOTH parsers fail, return `ExtensionError::ManifestParse { path: <manifest path>, detail: <offending range + both parser errors> }` per FR-403 (variant already exists in `crates/nexus-extension/src/error.rs`). Overlap check uses `VersionReq::matches(&candidate_versions)` or `LlamaCppBuildReq::overlaps`. Candidate set for `VersionReq::matches` = build numbers present in `host_runtime_installs` at evaluation time (deterministic runtime source).
+- [X] T524 [US2] Delete `VersionInterval`, `intervals_all_overlap`, `pair_overlaps`, `value_in_interval`, `choose_tighter_lower`, `choose_tighter_upper`.
 
 ### Verification
 
-- [ ] T525 [US2] All existing + new conflict tests GREEN; grep for `VersionInterval` in `crates/nexus-extension/src/` returns zero hits.
+- [X] T525 [US2] All existing + new conflict tests GREEN; grep for `VersionInterval` in `crates/nexus-extension/src/` returns zero hits.
 
 ---
 
