@@ -223,13 +223,13 @@ Per plan.md §"Implementation Sequencing", every commit MUST leave the workspace
 
 ### Tests (write first — RED)
 
-- [ ] T089 [P] [US6] Integration test `crates/nexus-backend-runtimes/tests/migration_008_row_migration.rs::legacy_rows_copied_with_field_mapping` — seed `ext_local_llm_runtime_installs` with one row (status=ready, accelerator_profile=cuda12, install_path=/tmp/foo), run `migrate_from_legacy`, assert one row in `host_runtime_installs` with state=installed, accelerator=cuda12, install_root=/tmp/foo
-- [ ] T090 [P] [US6] Integration test `tests/migration_008_filesystem.rs::binary_relocated_to_host_path` — seed a legacy row + a fake binary at the old extension-scoped path; run the FS relocator; assert binary now lives at `<data_dir>/runtimes/llama.cpp/<version>/`, `install_root` column rewritten to the new path, binary is executable
-- [ ] T091 [P] [US6] Integration test `tests/migration_008_row_migration.rs::idempotent_second_run` — run migration twice, assert row count stable and no errors
+- [X] T089 [P] [US6] Integration test `crates/nexus-backend-runtimes/tests/migration_008_row_migration.rs::legacy_rows_copied_with_field_mapping` — seed `ext_local_llm_runtime_installs` with one row (status=ready, accelerator_profile=cuda12, install_path=/tmp/foo), run `migrate_from_legacy`, assert one row in `host_runtime_installs` with state=installed, accelerator=cuda12, install_root=/tmp/foo (placed inline in installs_store.rs#tests; covers ready/broken/installed_unvalidated → state mapping + table rename)
+- [X] T090 [P] [US6] Integration test `tests/migration_008_filesystem.rs::binary_relocated_to_host_path` — seed a legacy row + a fake binary at the old extension-scoped path; run the FS relocator; assert binary now lives at `<data_dir>/runtimes/llama.cpp/<version>/`, `install_root` column rewritten to the new path, binary is executable
+- [X] T091 [P] [US6] Integration test `tests/migration_008_row_migration.rs::idempotent_second_run` — run migration twice, assert row count stable and no errors
 
 ### Implementation
 
-- [ ] T092 [US6] Implement the filesystem relocator in `crates/nexus-backend-runtimes/src/installs_store.rs::relocate_legacy_binaries` — for each row whose `install_root` starts with `<data_dir>/extensions/local-llm/runtimes/`, `fs::rename` the directory to `<data_dir>/runtimes/{family}/{version}/` and UPDATE the row's `install_root` + `binary_paths` JSON
+- [X] T092 [US6] Implement the filesystem relocator in `crates/nexus-backend-runtimes/src/installs_store.rs::relocate_legacy_binaries` — for each row whose `install_root` starts with `<data_dir>/extensions/local-llm/runtimes/`, `fs::rename` the directory to `<data_dir>/runtimes/{family}/{version}/` and UPDATE the row's `install_root` + `binary_paths` JSON
 - [ ] T093 [US6] Wire `migrate_from_legacy` + `relocate_legacy_binaries` + `hydrate_on_start` into the host startup sequence in `crates/nexus-core/src/app.rs::run`, BEFORE the API server starts listening
 - [ ] T094 [US6] Add a one-shot idempotency guard: the migrator checks whether `ext_local_llm_runtime_installs_migrated_008` exists; if yes and `host_runtime_installs` is non-empty, no-op
 - [ ] T095 [US6] Verify US6: `cargo test -p nexus-backend-runtimes migration_008`, manual quickstart §"US6 — Migration from pre-spec-011 state"
