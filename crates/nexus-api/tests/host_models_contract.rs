@@ -179,6 +179,56 @@ async fn resolve_endpoint_does_not_mutate_state() {
 }
 
 #[tokio::test]
+async fn lease_endpoints_mirror_runtime_lease_shape() {
+    let state = build_state().await;
+    seed_install(&state.db, "leasable-1", false, None).await;
+    let db_handle = state.db.clone();
+    let router = nexus_api::create_router(state);
+
+    let acquire_payload = serde_json::json!({
+        "extension_id": "ext.test",
+        "device": "cuda:0",
+        "vram_reserved_bytes": 1024,
+        "device_budget_bytes": 12u64 * 1024 * 1024 * 1024,
+    });
+    let acquire_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/host-models/leasable-1/leases")
+        .header("Content-Type", "application/json")
+        .body(Body::from(serde_json::to_vec(&acquire_payload).unwrap()))
+        .unwrap();
+    let acquire_resp = router.clone().oneshot(acquire_req).await.unwrap();
+    assert_eq!(acquire_resp.status(), StatusCode::OK);
+    let acquire_body = collect_body(acquire_resp.into_body()).await;
+    let lease_id = acquire_body["data"]["lease_id"]
+        .as_str()
+        .expect("lease_id")
+        .to_string();
+    assert!(lease_id.starts_with("ml-"));
+
+    let release_req = Request::builder()
+        .method("DELETE")
+        .uri(format!("/api/v1/host-models/leases/{lease_id}"))
+        .body(Body::empty())
+        .unwrap();
+    let release_resp = router.oneshot(release_req).await.unwrap();
+    assert_eq!(release_resp.status(), StatusCode::OK);
+    let release_body = collect_body(release_resp.into_body()).await;
+    assert_eq!(release_body["data"]["lease_id"], lease_id);
+
+    use sqlx::Row;
+    let released: Option<String> =
+        sqlx::query("SELECT released_at FROM host_model_leases WHERE lease_id = $1")
+            .bind(&lease_id)
+            .fetch_one(db_handle.pool())
+            .await
+            .unwrap()
+            .try_get("released_at")
+            .ok();
+    assert!(released.is_some(), "released_at populated after DELETE");
+}
+
+#[tokio::test]
 async fn host_runtimes_and_host_models_are_independent_top_level_lists() {
     let state = build_state().await;
     seed_install(&state.db, "pub-1", false, None).await;

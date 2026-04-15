@@ -5,6 +5,7 @@ pub mod install;
 pub mod leases;
 pub mod provenance;
 pub mod quantization;
+pub mod reclaim;
 pub mod resolver;
 pub mod verify;
 
@@ -18,6 +19,7 @@ pub use install::{
 pub use leases::{ModelLease, acquire_lease, list_active_leases, release_lease};
 pub use provenance::{HfMetadata, HfProbe, LicenseInfo, ZeroHfProbe, resolve_license};
 pub use quantization::{MatchQuality, Quantization};
+pub use reclaim::{OwnerPredicate, ReclaimConfig, run_reclaim_pass, spawn_reclaim_ticker};
 pub use resolver::{
     MatchedDep, MissingDep, ModelDependency, ModelResolutionReport, ResolutionContext,
     ResolveReport, SizeProbe, UnsatisfiableDep, UnsatisfiableReason, ZeroSizeProbe,
