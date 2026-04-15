@@ -1,0 +1,81 @@
+### Extensions spawn a runtime process and receive a lease with a channel descriptor.
+### The X-Extension-Id header identifies the owner; enforced by the host.
+POST http://localhost:7878/api/v1/backends/ri_9f3a1c2e/lease HTTP/1.1
+Content-Type: application/json
+X-Extension-Id: local-llm
+
+{
+  "args": ["--model", "/home/user/.local/share/nexus-dnn/models/local-llm/qwen2.5-0.5b-q4_k_m.gguf", "-ngl", "999"],
+  "env": {
+    "LLAMA_ARG_THREADS": "8"
+  },
+  "bind_mode": "loopback",
+  "port_hint": null
+}
+
+### Response 202 — process spawning
+HTTP/1.1 202 Accepted
+Content-Type: application/json
+
+{
+  "ok": true,
+  "data": {
+    "lease_id": "rl_7c4b2d10",
+    "install_id": "ri_9f3a1c2e",
+    "pid": 48201,
+    "channel": {
+      "kind": "http_tcp",
+      "api_dialects": ["openai-compatible", "native-llama-server"],
+      "address": {"host": "127.0.0.1", "port": 53012},
+      "health": {"path": "/health"},
+      "metrics": null,
+      "ready": false
+    },
+    "progress_channel": "runtime:lease:rl_7c4b2d10"
+  },
+  "error": null
+}
+
+### Response 422 — reserved launch setting collision
+HTTP/1.1 422 Unprocessable Entity
+Content-Type: application/json
+
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "RESERVED_LAUNCH_SETTING",
+    "category": "validation",
+    "message": "'--port' is host-injected; use the 'bind_mode' + 'port_hint' fields instead",
+    "field": "args[3]"
+  }
+}
+
+### Response 422 — managed-spawn-disallowed flag
+HTTP/1.1 422 Unprocessable Entity
+Content-Type: application/json
+
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "MANAGED_SPAWN_DISALLOWED",
+    "category": "validation",
+    "message": "'--help' exits immediately; not usable in a managed backend process",
+    "field": "args[0]"
+  }
+}
+
+### Response 409 — install is in needs_repair
+HTTP/1.1 409 Conflict
+Content-Type: application/json
+
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "RUNTIME_NEEDS_REPAIR",
+    "category": "state",
+    "message": "ri_9f3a1c2e is in 'needs_repair' state; repair it before requesting leases"
+  }
+}

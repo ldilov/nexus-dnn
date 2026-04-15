@@ -6,11 +6,11 @@ use std::sync::Arc;
 
 use crate::AppState;
 use crate::envelope::ApiResponse;
-use nexus_local_llm::adapter::{ImplementationStatus, InstallRequest};
-use nexus_local_llm::error::{RuntimeAdapterError, SettingsError};
-use nexus_local_llm::resolver::MachineDescriptor;
-use nexus_local_llm::settings::{AcceleratorProfile, RuntimeSettings};
-use nexus_local_llm::state::RuntimeCardState;
+use nexus_backend_runtimes::adapter::{ImplementationStatus, InstallRequest};
+use nexus_backend_runtimes::error::{RuntimeAdapterError, SettingsError};
+use nexus_backend_runtimes::resolver::MachineDescriptor;
+use nexus_backend_runtimes::settings::{AcceleratorProfile, RuntimeSettings};
+use nexus_backend_runtimes::state::RuntimeCardState;
 
 #[derive(Debug, Serialize)]
 pub struct BackendSummary {
@@ -59,7 +59,7 @@ pub struct LogQuery {
     pub limit: Option<u32>,
 }
 
-fn registry(state: &AppState) -> Option<Arc<nexus_local_llm::adapter::AdapterRegistry>> {
+fn registry(state: &AppState) -> Option<Arc<nexus_backend_runtimes::adapter::AdapterRegistry>> {
     state.backend_adapter_registry.clone()
 }
 
@@ -327,14 +327,14 @@ pub async fn logs(
             .into_response();
     }
     let pool = state.db.pool().clone();
-    let store_query = nexus_local_llm::log_store::LogQuery {
+    let store_query = nexus_backend_runtimes::log_store::LogQuery {
         source: query.source.filter(|s| s != "all"),
         severity: query.level.filter(|s| s != "all"),
         since: query.since,
         until: query.until,
         limit: query.limit.unwrap_or(500),
     };
-    match nexus_local_llm::log_store::fetch(&pool, &store_query).await {
+    match nexus_backend_runtimes::log_store::fetch(&pool, &store_query).await {
         Ok(lines) => ApiResponse::ok(LogsResponse {
             lines: lines
                 .into_iter()

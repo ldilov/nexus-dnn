@@ -1,0 +1,58 @@
+### Retrieve the versioned parameter catalog for a runtime family.
+### Advisory; UI and tooling consume this for help/validation.
+GET http://localhost:7878/api/v1/backends/llama.cpp/parameters HTTP/1.1
+Accept: application/json
+
+### Response 200
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "ok": true,
+  "data": {
+    "family": "llama.cpp",
+    "snapshot_date": "2026-04-15",
+    "upstream_source": "ggml-org/llama.cpp tools/server/README.md",
+    "section_counts": {
+      "Common params": 84,
+      "Sampling params": 34,
+      "Server-specific params": 95
+    },
+    "total_entries": 213,
+    "entries": [
+      {
+        "section": "Common params",
+        "flags": ["-c", "--ctx-size"],
+        "policy": "extension-passthrough",
+        "summary": "Sets the prompt context.",
+        "default": "0, 0 = loaded from model",
+        "env_vars": ["LLAMA_ARG_CTX_SIZE"],
+        "security_gated": false
+      },
+      {
+        "section": "Server-specific params",
+        "flags": ["--host"],
+        "policy": "host-injected",
+        "summary": "IP address to listen.",
+        "default": "127.0.0.1",
+        "env_vars": ["LLAMA_ARG_HOST"],
+        "security_gated": false
+      }
+    ]
+  },
+  "error": null
+}
+
+### Response 404 — unknown family
+HTTP/1.1 404 Not Found
+Content-Type: application/json
+
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "FAMILY_UNKNOWN",
+    "category": "validation",
+    "message": "No parameter catalog for family 'foo-engine'"
+  }
+}

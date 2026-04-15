@@ -1,4 +1,64 @@
+//! Typed errors for runtime pool operations.
+
 use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum BackendRuntimeError {
+    #[error("family not registered: {0}")]
+    FamilyUnknown(String),
+
+    #[error("family unavailable: {family} ({reason})")]
+    FamilyUnavailable { family: String, reason: String },
+
+    #[error("install not found: {0}")]
+    InstallNotFound(String),
+
+    #[error("install already exists: {install_id}")]
+    InstallAlreadyExists { install_id: String },
+
+    #[error("install is in needs_repair state: {0}")]
+    RuntimeNeedsRepair(String),
+
+    #[error("illegal state transition {from} -> {to}")]
+    IllegalTransition { from: String, to: String },
+
+    #[error("reserved launch setting '{flag}' cannot be passed via raw argv/env")]
+    ReservedLaunchSetting { flag: String },
+
+    #[error("'{flag}' is managed-spawn-disallowed (exits immediately or inspection-only)")]
+    ManagedSpawnDisallowed { flag: String },
+
+    #[error("lease '{lease_id}' is owned by extension '{owner}', not '{caller}'")]
+    LeaseNotOwned {
+        lease_id: String,
+        owner: String,
+        caller: String,
+    },
+
+    #[error("dependency unmet: {family} {version_req:?} acc={acceleration:?}")]
+    DependencyUnmet {
+        family: String,
+        version_req: Option<String>,
+        acceleration: Vec<String>,
+    },
+
+    #[error("storage error: {0}")]
+    Storage(String),
+
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("internal: {0}")]
+    Internal(String),
+}
+
+impl From<sqlx::Error> for BackendRuntimeError {
+    fn from(e: sqlx::Error) -> Self {
+        Self::Storage(e.to_string())
+    }
+}
+
+pub type BackendRuntimeResult<T> = Result<T, BackendRuntimeError>;
 
 use crate::diagnostics::FailureCategory;
 

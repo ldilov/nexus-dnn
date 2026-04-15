@@ -1,0 +1,28 @@
+### Uninstall a runtime (drains active leases first)
+DELETE http://localhost:7878/api/v1/backends/ri_9f3a1c2e HTTP/1.1
+
+### Response 204 — no active leases
+HTTP/1.1 204 No Content
+
+### Response 409 — active leases require confirmation
+HTTP/1.1 409 Conflict
+Content-Type: application/json
+
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "RUNTIME_IN_USE",
+    "category": "conflict",
+    "message": "ri_9f3a1c2e has 2 active leases; retry with ?force=true to drain them first",
+    "dependents": [
+      {"extension_id": "local-llm", "lease_ids": ["rl_7c4b2d10", "rl_3a891f44"]}
+    ]
+  }
+}
+
+### Force uninstall with drain
+DELETE http://localhost:7878/api/v1/backends/ri_9f3a1c2e?force=true HTTP/1.1
+
+### Response 204 — leases drained, runtime removed
+HTTP/1.1 204 No Content

@@ -1,0 +1,50 @@
+### Install a runtime family at host level
+POST http://localhost:7878/api/v1/backends/llama.cpp/install HTTP/1.1
+Content-Type: application/json
+
+{
+  "version": "b4970",
+  "accelerator": "cuda12"
+}
+
+### Response 202
+HTTP/1.1 202 Accepted
+Content-Type: application/json
+
+{
+  "ok": true,
+  "data": {
+    "install_id": "ri_9f3a1c2e",
+    "install_task_id": "it_4e11a802",
+    "progress_channel": "runtime:install:it_4e11a802"
+  },
+  "error": null
+}
+
+### Response 409 — already installed
+HTTP/1.1 409 Conflict
+Content-Type: application/json
+
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "ALREADY_INSTALLED",
+    "category": "conflict",
+    "message": "llama.cpp b4970 cuda12 is already installed as ri_9f3a1c2e"
+  }
+}
+
+### Response 404 — unknown family
+HTTP/1.1 404 Not Found
+Content-Type: application/json
+
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "FAMILY_UNKNOWN",
+    "category": "validation",
+    "message": "No runtime family registered for 'foo-engine'"
+  }
+}

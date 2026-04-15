@@ -1,8 +1,9 @@
 [package]
-name = "nexus-local-llm"
+name = "nexus-backend-runtimes"
 version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-only"
+description = "Host-owned backend runtime pool: install, validate, spawn, and channel-broker inference engines for Nexus-DNN extensions"
 
 [dependencies]
 tokio = { workspace = true }
@@ -22,10 +23,11 @@ flate2 = "1"
 jsonschema = { version = "0.45", default-features = false }
 camino = "1"
 ulid = "1"
+uuid = { workspace = true }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "json", "chrono"] }
 futures-util = "0.3"
 async-trait = "0.1"
-nexus-huggingface = { path = "../nexus-huggingface" }
+rust-embed = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
