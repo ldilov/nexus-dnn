@@ -10,13 +10,15 @@ mod lease;
 mod lifecycle;
 mod observability;
 mod settings;
+mod uninstall;
 
 pub use catalog::{detail, list};
 pub use host_runtimes::{list_host_runtimes, parameter_catalog};
-pub use lease::{create_lease, release_lease, uninstall_runtime};
+pub use lease::{create_lease, release_lease};
 pub use lifecycle::{install, repair, validate};
 pub use observability::{diagnostics, logs};
 pub use settings::{get_settings, put_settings};
+pub use uninstall::uninstall_runtime;
 
 use std::sync::Arc;
 
