@@ -83,18 +83,18 @@ Decision locked per spec.md US4: **branch (a)** — perform real discovery via `
 
 ## Phase 6: US5 — `handlers/backends.rs` file split (P1)
 
-- [ ] T550 Create `crates/nexus-api/src/handlers/backends/` directory; move `backends.rs` → `backends/mod.rs`.
-- [ ] T551 [P] [US5] Extract `backends/catalog.rs` (list, detail, BackendSummary, BackendListResponse, BackendSummaryChips).
-- [ ] T552 [P] [US5] Extract `backends/lifecycle.rs` (install, validate, repair, InstallBody, InstallResponse).
-- [ ] T553 [P] [US5] Extract `backends/settings.rs` (get_settings, put_settings).
-- [ ] T554 [P] [US5] Extract `backends/observability.rs` (logs, diagnostics, LogQuery, LogsResponse, DiagnosticsResponse).
-- [ ] T555 [P] [US5] Extract `backends/host_runtimes.rs` (list_host_runtimes, parameter_catalog, HostRuntimeInstallView, HostRuntimesResponse).
-- [ ] T556 [P] [US5] Extract `backends/lease.rs` (create_lease, release_lease, uninstall_runtime + helpers).
-- [ ] T557 [US5] `mod.rs` retains registry, map_error, unwired, impl_status_str, ulid_lite, extension_from_headers + re-exports.
+- [X] T550 Create `crates/nexus-api/src/handlers/backends/` directory; move `backends.rs` → `backends/mod.rs`.
+- [X] T551 [P] [US5] Extract `backends/catalog.rs` (list, detail, BackendSummary, BackendListResponse, BackendSummaryChips).
+- [X] T552 [P] [US5] Extract `backends/lifecycle.rs` (install, validate, repair, InstallBody, InstallResponse).
+- [X] T553 [P] [US5] Extract `backends/settings.rs` (get_settings, put_settings).
+- [X] T554 [P] [US5] Extract `backends/observability.rs` (logs, diagnostics, LogQuery, LogsResponse, DiagnosticsResponse).
+- [X] T555 [P] [US5] Extract `backends/host_runtimes.rs` (list_host_runtimes, parameter_catalog, HostRuntimeInstallView, HostRuntimesResponse).
+- [X] T556 [P] [US5] Extract `backends/lease.rs` (create_lease, release_lease, uninstall_runtime + helpers).
+- [X] T557 [US5] `mod.rs` retains registry, map_error, unwired, impl_status_str, ulid_lite, extension_from_headers + re-exports.
 
 ### Verification
 
-- [ ] T558 [US5] `cargo test -p nexus-api --tests` GREEN; every submodule ≤ 300 LOC.
+- [X] T558 [US5] `cargo test -p nexus-api --tests` GREEN; every submodule ≤ 300 LOC.
 
 ---
 
