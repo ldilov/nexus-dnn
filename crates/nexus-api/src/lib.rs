@@ -7,6 +7,8 @@ pub mod mapping;
 pub mod router;
 mod ws;
 
+pub use nexus_backend_runtimes::events::BroadcastPublisher as BackendEventPublisher;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -15,6 +17,7 @@ pub use error::ApiError;
 
 use nexus_artifact::FilesystemArtifactStore;
 use nexus_backend_runtimes::adapter::AdapterRegistry as BackendAdapterRegistry;
+use nexus_backend_runtimes::events::BroadcastPublisher;
 use nexus_backend_runtimes::spawn::Spawner;
 use nexus_events::bus::EventBus;
 use nexus_extension::InMemoryExtensionRegistry;
@@ -39,6 +42,9 @@ pub struct AppState {
     pub backend_adapter_registry: Option<Arc<BackendAdapterRegistry>>,
     pub spawner: Option<Arc<Spawner>>,
     pub huggingface: Option<Arc<dyn HuggingFaceCapability>>,
+    /// Broadcast bus for [`nexus_backend_runtimes::events::BackendEvent`] fan-out.
+    /// Shared `Arc` with any `Spawner` so WS subscribers see every published event.
+    pub backend_event_bus: Arc<BroadcastPublisher>,
 }
 
 pub fn create_router(state: AppState) -> axum::Router {

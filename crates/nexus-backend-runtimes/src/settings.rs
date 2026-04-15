@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
 use crate::error::SettingsError;
@@ -59,6 +61,18 @@ pub struct RuntimeSettings {
     pub port_mode: PortMode,
     pub fixed_port: Option<u16>,
     pub extra_args: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tls_cert_path: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tls_key_path: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media_path: Option<PathBuf>,
+    #[serde(default)]
+    pub tools_enabled: bool,
+    #[serde(default)]
+    pub mcp_proxy_enabled: bool,
 }
 
 impl RuntimeSettings {
@@ -74,6 +88,12 @@ impl RuntimeSettings {
             port_mode: PortMode::Auto,
             fixed_port: None,
             extra_args: Vec::new(),
+            api_key: None,
+            tls_cert_path: None,
+            tls_key_path: None,
+            media_path: None,
+            tools_enabled: false,
+            mcp_proxy_enabled: false,
         }
     }
 
@@ -122,7 +142,7 @@ impl RuntimeSettings {
         }
         for arg in &self.extra_args {
             let token = arg.split('=').next().unwrap_or(arg);
-            if MANAGED_FLAGS.iter().any(|m| *m == token) {
+            if MANAGED_FLAGS.contains(&token) {
                 return Err(SettingsError::ConflictWithManagedFlag(token.to_string()));
             }
         }

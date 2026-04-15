@@ -31,4 +31,22 @@ pub enum ExtensionError {
     },
     #[error("registry lock poisoned")]
     RegistryLockPoisoned,
+    #[error(
+        "runtime dependency unmet for extension {extension_id}: family={family} range={version_req}"
+    )]
+    RuntimeDependencyUnmet {
+        extension_id: String,
+        family: String,
+        version_req: String,
+        available_versions: Vec<String>,
+        install_panel_url: String,
+    },
+    #[error(
+        "runtime dependency conflict for extension {extension_id}: family={family} ranges={ranges:?}"
+    )]
+    RuntimeDependencyConflict {
+        extension_id: String,
+        family: String,
+        ranges: Vec<String>,
+    },
 }

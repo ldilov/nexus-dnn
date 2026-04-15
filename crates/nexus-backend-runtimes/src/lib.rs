@@ -56,3 +56,57 @@ pub use resolver::{MachineDescriptor, resolve_runtime_asset};
 pub use settings::{AcceleratorProfile, PortMode, RuntimeSettings};
 pub use spawn::{RuntimeBindMode, SpawnRuntimeRequest, SpawnRuntimeResponse};
 pub use state::{InstallState, RuntimeCardEvent, RuntimeCardState, TransitionTrigger};
+
+use std::path::Path;
+
+use sqlx::SqlitePool;
+
+/// Run every startup-time runtime-pool migration in the correct order,
+/// invoked by `nexus-core::app::run` BEFORE the HTTP server binds
+/// (spec 012 US1 / FR-101). Chains legacy row migration, filesystem
+/// relocation, and lease hydration. Idempotent across restarts.
+///
+/// `data_dir` is the host data root. Legacy extension-scoped binaries
+/// live under `<data_dir>/extensions/local-llm/runtimes`; the host-owned
+/// layout is `<data_dir>/runtimes/{family}/{version}`.
+#[tracing::instrument(name = "runtime.startup_migrations", skip(pool))]
+pub async fn run_startup_migrations(
+    pool: &SqlitePool,
+    data_dir: &Path,
+) -> Result<(), BackendRuntimeError> {
+    if let Err(e) = installs_store::migrate_from_legacy(pool).await {
+        tracing::error!(
+            family = "llama.cpp",
+            phase = "migrate_from_legacy",
+            error = %e,
+            "startup migration failed",
+        );
+        return Err(e);
+    }
+    let legacy_root = data_dir
+        .join("extensions")
+        .join("local-llm")
+        .join("runtimes");
+    let host_runtimes_root = data_dir.join("runtimes");
+    if let Err(e) =
+        installs_store::relocate_legacy_binaries(pool, &legacy_root, &host_runtimes_root).await
+    {
+        tracing::error!(
+            family = "llama.cpp",
+            phase = "relocate_legacy_binaries",
+            error = %e,
+            "startup migration failed",
+        );
+        return Err(e);
+    }
+    if let Err(e) = installs_store::hydrate_on_start(pool).await {
+        tracing::error!(
+            family = "llama.cpp",
+            phase = "hydrate_on_start",
+            error = %e,
+            "startup migration failed",
+        );
+        return Err(e);
+    }
+    Ok(())
+}
