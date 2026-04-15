@@ -76,6 +76,7 @@ pub async fn hydrate_on_start(pool: &SqlitePool) -> BackendRuntimeResult<u64> {
     Ok(result.rows_affected())
 }
 
+#[tracing::instrument(name = "runtime.migrate_from_legacy", skip(pool))]
 pub async fn migrate_from_legacy(pool: &SqlitePool) -> BackendRuntimeResult<u64> {
     if !legacy_table_exists(pool).await? {
         return Ok(0);
@@ -180,6 +181,14 @@ pub async fn migrate_from_legacy(pool: &SqlitePool) -> BackendRuntimeResult<u64>
 /// reported as a warning via `tracing::warn!` but do not fail the relocator
 /// — orphan rows are surfaced to the operator via the Backends UI as
 /// `needs_repair`.
+#[tracing::instrument(
+    name = "runtime.relocate_legacy_binaries",
+    skip(pool),
+    fields(
+        legacy_root = %legacy_root.display(),
+        host_runtimes_root = %host_runtimes_root.display(),
+    ),
+)]
 pub async fn relocate_legacy_binaries(
     pool: &SqlitePool,
     legacy_root: &std::path::Path,
