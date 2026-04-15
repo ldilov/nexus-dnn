@@ -10,13 +10,13 @@ pub struct ChecksumVerification {
 
 impl ChecksumVerification {
     pub fn verify(&self) -> Result<(), InstallError> {
-        if let Some(expected) = &self.expected {
-            if !expected.eq_ignore_ascii_case(&self.actual) {
-                return Err(InstallError::ChecksumMismatch {
-                    expected: expected.clone(),
-                    actual: self.actual.clone(),
-                });
-            }
+        if let Some(expected) = &self.expected
+            && !expected.eq_ignore_ascii_case(&self.actual)
+        {
+            return Err(InstallError::ChecksumMismatch {
+                expected: expected.clone(),
+                actual: self.actual.clone(),
+            });
         }
         Ok(())
     }

@@ -194,11 +194,11 @@ async fn spawn_and_probe(
         .map_err(|_| FailureCategory::RuntimeValidationTimeout)?;
     let mut reached = false;
     while Instant::now() < deadline {
-        if let Ok(resp) = client.get(&url).send().await {
-            if resp.status().is_success() {
-                reached = true;
-                break;
-            }
+        if let Ok(resp) = client.get(&url).send().await
+            && resp.status().is_success()
+        {
+            reached = true;
+            break;
         }
         tokio::time::sleep(Duration::from_millis(250)).await;
     }

@@ -219,16 +219,13 @@ async fn live_lease_force_drains_within_12s() {
     let mut saw_withdrawn = false;
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
     while tokio::time::Instant::now() < deadline {
-        match tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await {
-            Ok(Ok(evt)) => {
-                if evt.topic == "process.withdrawn"
-                    && evt.payload["lease_id"].as_str() == Some(lease_id.as_str())
-                {
-                    saw_withdrawn = true;
-                    break;
-                }
-            }
-            _ => {}
+        if let Ok(Ok(evt)) =
+            tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await
+            && evt.topic == "process.withdrawn"
+            && evt.payload["lease_id"].as_str() == Some(lease_id.as_str())
+        {
+            saw_withdrawn = true;
+            break;
         }
     }
     assert!(saw_withdrawn, "process.withdrawn event must be emitted");
