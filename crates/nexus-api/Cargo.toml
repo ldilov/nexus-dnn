@@ -39,3 +39,4 @@ http-body-util = "0.1"
 tempfile = "3"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
 tokio-tungstenite = "0.24"
+tracing-test = { version = "0.2", features = ["no-env-filter"] }
