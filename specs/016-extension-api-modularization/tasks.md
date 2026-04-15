@@ -117,16 +117,16 @@ Decision locked per spec.md US4: **branch (a)** — perform real discovery via `
 
 ### Tests (write first — RED)
 
-- [ ] T570 [US7] Integration test `crates/nexus-api/tests/list_host_runtimes_query_count.rs`: wrap a test pool with a query counter middleware; seed 5 installs + 3 dependent extensions; call `GET /api/v1/host-runtimes`; assert query count = 2 (one list + one batched dependents).
+- [X] T570 [US7] Integration test `crates/nexus-api/tests/list_host_runtimes_query_count.rs`: wrap a test pool with a query counter middleware; seed 5 installs + 3 dependent extensions; call `GET /api/v1/host-runtimes`; assert query count = 2 (one list + one batched dependents).
 
 ### Implementation
 
-- [ ] T571 [US7] Add `installs_store::list_all_with_dependents(pool: &SqlitePool) -> BackendRuntimeResult<Vec<(RuntimeInstallRow, Vec<String>)>>` using one LEFT JOIN query against `host_runtime_leases` (the actual dependents source — current `list_dependents` walks `host_runtime_leases WHERE released_at IS NULL`). Reference SQL: `SELECT i.*, l.extension_id FROM host_runtime_installs i LEFT JOIN host_runtime_leases l ON l.install_id = i.install_id AND l.released_at IS NULL ORDER BY i.install_id, l.extension_id`. Aggregate consecutive `(install_row, extension_id)` rows in Rust into `Vec<(RuntimeInstallRow, Vec<String>)>` with deduplication of `extension_id`s per install.
-- [ ] T572 [US7] Rewrite `backends/host_runtimes.rs::list_host_runtimes` to call the batched helper; drop the per-install `list_dependents` call inside the loop.
+- [X] T571 [US7] Add `installs_store::list_all_with_dependents(pool: &SqlitePool) -> BackendRuntimeResult<Vec<(RuntimeInstallRow, Vec<String>)>>` using one LEFT JOIN query against `host_runtime_leases` (the actual dependents source — current `list_dependents` walks `host_runtime_leases WHERE released_at IS NULL`). Reference SQL: `SELECT i.*, l.extension_id FROM host_runtime_installs i LEFT JOIN host_runtime_leases l ON l.install_id = i.install_id AND l.released_at IS NULL ORDER BY i.install_id, l.extension_id`. Aggregate consecutive `(install_row, extension_id)` rows in Rust into `Vec<(RuntimeInstallRow, Vec<String>)>` with deduplication of `extension_id`s per install.
+- [X] T572 [US7] Rewrite `backends/host_runtimes.rs::list_host_runtimes` to call the batched helper; drop the per-install `list_dependents` call inside the loop.
 
 ### Verification
 
-- [ ] T573 [US7] New test GREEN; all existing `host-runtimes` tests still GREEN.
+- [X] T573 [US7] New test GREEN; all existing `host-runtimes` tests still GREEN.
 
 ---
 
