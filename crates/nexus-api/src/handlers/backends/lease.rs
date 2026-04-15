@@ -72,8 +72,12 @@ pub async fn create_lease(
         return spawn_error_response(err);
     }
 
-    let spawn_request =
-        build_spawn_request(extension_id.clone(), install_id.clone(), row.as_ref(), &body);
+    let spawn_request = build_spawn_request(
+        extension_id.clone(),
+        install_id.clone(),
+        row.as_ref(),
+        &body,
+    );
 
     if let Some(spawner) = state.spawner.as_ref() {
         return match spawner.spawn(spawn_request).await {

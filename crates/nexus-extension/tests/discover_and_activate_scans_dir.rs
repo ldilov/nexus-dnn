@@ -47,13 +47,10 @@ fn write_extension(dir: &Path, id: &str) {
 async fn scans_new_extension() {
     let tmp = TempDir::new().unwrap();
     // Registry starts empty (directory has no extensions at construction).
-    let (registry, initial) = InMemoryExtensionRegistry::from_directory(
-        tmp.path(),
-        &host_version(),
-        &protocol_version(),
-    )
-    .await
-    .unwrap();
+    let (registry, initial) =
+        InMemoryExtensionRegistry::from_directory(tmp.path(), &host_version(), &protocol_version())
+            .await
+            .unwrap();
     assert!(initial.activated.is_empty());
     assert!(registry.list_extensions().is_empty());
 
@@ -85,13 +82,10 @@ async fn idempotent_re_invocation() {
     let tmp = TempDir::new().unwrap();
     write_extension(tmp.path(), "ext.a");
 
-    let (registry, _) = InMemoryExtensionRegistry::from_directory(
-        tmp.path(),
-        &host_version(),
-        &protocol_version(),
-    )
-    .await
-    .unwrap();
+    let (registry, _) =
+        InMemoryExtensionRegistry::from_directory(tmp.path(), &host_version(), &protocol_version())
+            .await
+            .unwrap();
 
     // Drop a second extension and re-invoke.
     write_extension(tmp.path(), "ext.b");
