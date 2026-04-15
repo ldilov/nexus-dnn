@@ -78,6 +78,10 @@ pub struct OperatorDefinition {
     pub outputs: Option<Vec<PortSpec>>,
     pub config_schema: Option<serde_json::Value>,
     pub resources: Option<ResourceSpec>,
+    /// Optional UI hints (icon, accent, widget configs, preview slot). Loosely
+    /// typed so extensions can evolve the shape without a host release; the
+    /// frontend parses and drops unrecognized fields gracefully.
+    pub ui: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

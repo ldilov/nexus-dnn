@@ -86,6 +86,32 @@ pub async fn upsert(
     Ok(())
 }
 
+pub async fn append_state_log(
+    pool: &SqlitePool,
+    install_id: &str,
+    from_state: Option<&str>,
+    to_state: &str,
+    trigger: &str,
+    detail: Option<&str>,
+) -> Result<(), RuntimeAdapterError> {
+    let occurred_at = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO ext_local_llm_backend_state_log \
+         (install_id, from_state, to_state, trigger, detail, occurred_at) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(install_id)
+    .bind(from_state)
+    .bind(to_state)
+    .bind(trigger)
+    .bind(detail)
+    .bind(&occurred_at)
+    .execute(pool)
+    .await
+    .map_err(storage)?;
+    Ok(())
+}
+
 pub async fn update_status(
     pool: &SqlitePool,
     runtime_install_id: &str,

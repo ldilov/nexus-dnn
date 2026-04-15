@@ -1,15 +1,3 @@
-// Typed API client.
-//
-// Every hand-written request type in this file is gone — the wire shapes are
-// now defined in Rust under `crates/nexus-api/src/dto/` and emitted to
-// `./generated/` via `cargo test -p nexus-api export_bindings`. See
-// `crates/nexus-api/src/dto/mod.rs` for the authoritative DTO list.
-//
-// Call sites import `*Dto` types directly from `./generated/` and call the
-// endpoint wrappers below (which resolve the envelope + run a runtime sanity
-// check so contract drift surfaces as a clear `ContractError` instead of a
-// silent React crash).
-
 import type { ApiEnvelope } from "./generated/ApiEnvelope";
 import type { ApiErrorPayloadDto } from "./generated/ApiErrorPayloadDto";
 import type { ArtifactDto } from "./generated/ArtifactDto";
@@ -17,6 +5,7 @@ import type { ArtifactLineageDto } from "./generated/ArtifactLineageDto";
 import type { CreateRunResponseDto } from "./generated/CreateRunResponseDto";
 import type { EnableExtensionResponseDto } from "./generated/EnableExtensionResponseDto";
 import type { ExtensionDto } from "./generated/ExtensionDto";
+import type { ExtensionRevealDto } from "./generated/ExtensionRevealDto";
 import type { HealthDto } from "./generated/HealthDto";
 import type { LayoutSummaryDto } from "./generated/LayoutSummaryDto";
 import type { ListResponseDto } from "./generated/ListResponseDto";
@@ -30,12 +19,10 @@ import type { SystemInfoDto } from "./generated/SystemInfoDto";
 import type { ToolDto } from "./generated/ToolDto";
 import type { UIContributionDto } from "./generated/UIContributionDto";
 import type { WorkflowDto } from "./generated/WorkflowDto";
+import type { WorkflowUpdatePayloadDto } from "./generated/WorkflowUpdatePayloadDto";
+import type { CanvasStateDto } from "./generated/CanvasStateDto";
 
 const BASE_URL = "/api/v1";
-
-// ---------------------------------------------------------------------------
-// Contract monitoring
-// ---------------------------------------------------------------------------
 
 export type ContractViolation = {
   endpoint: string;
@@ -61,9 +48,6 @@ export const contractMonitor = {
   record(violation: ContractViolation): void {
     recentViolations.push(violation);
     if (recentViolations.length > 100) recentViolations.shift();
-    // Surface every violation in the console so it is impossible to miss
-    // during development; production builds can strip this via a log level.
-    // eslint-disable-next-line no-console
     console.warn(`[api] contract violation on ${violation.method} ${violation.endpoint}`, violation);
     for (const l of listeners) l(violation);
   },
@@ -88,12 +72,7 @@ export class ContractError extends Error {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Fetch pipeline
-// ---------------------------------------------------------------------------
-
 type RequestOptions = RequestInit & {
-  /** Allow endpoints that return the payload raw (no envelope). */
   expect?: "envelope" | "raw";
 };
 
@@ -118,7 +97,6 @@ export async function apiFetch<T>(path: string, options?: RequestOptions): Promi
     return undefined as T;
   }
 
-  // Network-level failures bypass envelope parsing.
   if (!response.ok) {
     let body: unknown;
     try {
@@ -187,15 +165,8 @@ export async function apiFetch<T>(path: string, options?: RequestOptions): Promi
     });
   }
 
-  // When the handler returns `ApiResponse::no_content()` the envelope has
-  // `data: undefined`; callers that ask for `void` handle that.
   return (body.data ?? (undefined as unknown)) as T;
 }
-
-// ---------------------------------------------------------------------------
-// Node-input helpers (kept here so frontend call sites don't have to know
-// about the ts-rs-generated union shape).
-// ---------------------------------------------------------------------------
 
 import type { WorkflowNodeInputDto } from "./generated/WorkflowNodeInputDto";
 
@@ -216,12 +187,6 @@ export function renderNodeInput(input: WorkflowNodeInputDto): string {
     return String(literal);
   }
 }
-
-// ---------------------------------------------------------------------------
-// Re-exports: generated DTO types used pervasively by the frontend. Importing
-// from `api/client` stays ergonomic without binding callers to the generated
-// directory layout.
-// ---------------------------------------------------------------------------
 
 export type {
   ApiEnvelope,
@@ -245,10 +210,10 @@ export type {
   UIContributionDto,
   WorkflowDto,
   WorkflowNodeInputDto,
+  WorkflowUpdatePayloadDto,
+  CanvasStateDto,
 };
 
-// Backwards-compatible aliases so the old, non-`Dto`-suffixed names that the
-// rest of the app uses keep compiling. These have no runtime cost.
 export type Extension = ExtensionDto;
 export type Operator = OperatorDto;
 export type Tool = ToolDto;
@@ -289,10 +254,6 @@ export type LayoutNode = {
   visibility?: { condition: string };
 };
 
-// ---------------------------------------------------------------------------
-// Endpoint wrappers
-// ---------------------------------------------------------------------------
-
 function unwrapItems<T>(resp: ListResponseDto<T>): T[] {
   return resp.items;
 }
@@ -321,6 +282,10 @@ export function disableExtension(id: string): Promise<EnableExtensionResponseDto
   return apiFetch(`/extensions/${encodeURIComponent(id)}/disable`, { method: "POST" });
 }
 
+export function revealExtensionFolder(id: string): Promise<ExtensionRevealDto> {
+  return apiFetch(`/extensions/${encodeURIComponent(id)}/reveal`, { method: "POST" });
+}
+
 export function fetchOperators(): Promise<OperatorDto[]> {
   return apiFetch<ListResponseDto<OperatorDto>>("/operators").then(unwrapItems);
 }
@@ -343,6 +308,46 @@ export function fetchWorkflows(): Promise<WorkflowDto[]> {
 
 export function fetchWorkflow(id: string): Promise<WorkflowDto> {
   return apiFetch(`/workflows/${encodeURIComponent(id)}`);
+}
+
+export function updateWorkflowGraph(
+  id: string,
+  payload: WorkflowUpdatePayloadDto,
+): Promise<WorkflowDto> {
+  return apiFetch(`/workflows/${encodeURIComponent(id)}/graph`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function revertWorkflow(id: string): Promise<WorkflowDto> {
+  return apiFetch(`/workflows/${encodeURIComponent(id)}/revert`, { method: "POST" });
+}
+
+export function fetchWorkflowCanvas(id: string): Promise<CanvasStateDto> {
+  return apiFetch(`/workflows/${encodeURIComponent(id)}/canvas`);
+}
+
+export function updateWorkflowCanvas(
+  id: string,
+  payload: CanvasStateDto,
+): Promise<CanvasStateDto> {
+  return apiFetch(`/workflows/${encodeURIComponent(id)}/canvas`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function validateWorkflowPayload(
+  payload: WorkflowUpdatePayloadDto,
+): Promise<{ valid: boolean; errors: string[]; warnings: string[] }> {
+  return apiFetch("/workflows/validate-payload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }
 
 export function validateWorkflow(body: string): Promise<{ valid: boolean; errors: string[] }> {
@@ -396,7 +401,108 @@ export function fetchLayouts(): Promise<LayoutSummaryDto[]> {
 }
 
 export function fetchLayout(id: string): Promise<LayoutDefinition> {
-  // Layout definitions are returned verbatim (raw layout JSON is the envelope
-  // `data`); the shape is extension-specific so we keep it untyped.
   return apiFetch(`/ui/layouts/${encodeURIComponent(id)}`);
+}
+
+import type { CatalogListDto } from "./generated/CatalogListDto";
+import type { HfSearchPageDto } from "./generated/HfSearchPageDto";
+import type { HyperparameterProfileDto } from "./generated/HyperparameterProfileDto";
+import type { InstallModelRequestDto } from "./generated/InstallModelRequestDto";
+import type { LoadStateDto } from "./generated/LoadStateDto";
+import type { LoadTaskDto } from "./generated/LoadTaskDto";
+import type { ModelInstallTaskDto } from "./generated/ModelInstallTaskDto";
+
+export function fetchLoadState(backendId: string): Promise<LoadStateDto> {
+  return apiFetch(`/llm/backends/${encodeURIComponent(backendId)}/load-state`);
+}
+
+// Host-level, extension-agnostic HF search/detail.
+
+export function hfSearch(params: {
+  q: string;
+  format?: string;
+  license?: string;
+  limit?: number;
+  page?: number;
+}): Promise<HfSearchPageDto> {
+  const qs = new URLSearchParams({ q: params.q });
+  if (params.format) qs.set("format", params.format);
+  if (params.license) qs.set("license", params.license);
+  if (params.limit) qs.set("limit", String(params.limit));
+  if (params.page) qs.set("page", String(params.page));
+  return apiFetch(`/huggingface/search?${qs}`);
+}
+
+export function hfRepoDetail(repoId: string): Promise<unknown> {
+  return apiFetch(`/huggingface/repos/${encodeURIComponent(repoId)}`);
+}
+
+// Per-extension model lifecycle. `extensionId` must match an extension
+// that registered the huggingface capability at app-assembly time;
+// the host returns 404 otherwise.
+
+export function listExtensionModels(
+  extensionId: string,
+  params?: {
+    q?: string;
+    format?: string;
+    license?: string;
+    includeHf?: boolean;
+  },
+): Promise<CatalogListDto> {
+  const qs = new URLSearchParams();
+  if (params?.q) qs.set("q", params.q);
+  if (params?.format) qs.set("format", params.format);
+  if (params?.license) qs.set("license", params.license);
+  if (params?.includeHf) qs.set("include_hf", "true");
+  const suffix = qs.toString() ? `?${qs}` : "";
+  return apiFetch(
+    `/extensions/${encodeURIComponent(extensionId)}/huggingface/models${suffix}`,
+  );
+}
+
+export function installExtensionModel(
+  extensionId: string,
+  body: InstallModelRequestDto,
+): Promise<ModelInstallTaskDto> {
+  return apiFetch(`/extensions/${encodeURIComponent(extensionId)}/huggingface/models`, {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+export function cancelExtensionInstallTask(
+  extensionId: string,
+  taskId: string,
+): Promise<void> {
+  return apiFetch(
+    `/extensions/${encodeURIComponent(extensionId)}/huggingface/tasks/${encodeURIComponent(taskId)}/cancel`,
+    { method: "POST" },
+  );
+}
+
+export function loadExtensionModel(
+  extensionId: string,
+  modelId: string,
+): Promise<LoadTaskDto> {
+  return apiFetch(
+    `/extensions/${encodeURIComponent(extensionId)}/huggingface/models/${encodeURIComponent(modelId)}/load`,
+    { method: "POST" },
+  );
+}
+
+export function patchExtensionHyperparameters(
+  extensionId: string,
+  modelId: string,
+  profile: HyperparameterProfileDto,
+): Promise<HyperparameterProfileDto> {
+  return apiFetch(
+    `/extensions/${encodeURIComponent(extensionId)}/huggingface/models/${encodeURIComponent(modelId)}/hyperparameters`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(profile),
+      headers: { "Content-Type": "application/json" },
+    },
+  );
 }

@@ -100,6 +100,11 @@
         }
       },
       "additionalProperties": false
+    },
+    "ui": {
+      "type": "object",
+      "description": "Optional UI hints for the graph node renderer (icon, accent, per-literal widgets, preview slot). The host parses this permissively; unknown widget/preview kinds are dropped by the frontend.",
+      "additionalProperties": true
     }
   },
   "additionalProperties": false

@@ -1,4 +1,4 @@
-import { useState, type ReactNode, type CSSProperties } from "react";
+import { type CSSProperties } from "react";
 import * as styles from "./sidebar.css";
 
 export type NavItemId =
@@ -53,7 +53,6 @@ type SidebarProps = {
   onNavigate: (id: NavItemId) => void;
   pinned: boolean;
   onTogglePin: () => void;
-  secondaryContent?: ReactNode;
   onUtility?: (id: UtilityItemId) => void;
   extensionNavItems?: readonly ExtensionNavItem[];
 };
@@ -63,18 +62,12 @@ export function Sidebar({
   onNavigate,
   pinned,
   onTogglePin,
-  secondaryContent,
   onUtility,
   extensionNavItems = [],
 }: SidebarProps) {
-  const [hovered, setHovered] = useState(false);
-  const expanded = hovered || pinned;
+  const expanded = pinned;
 
-  const containerCls = [
-    styles.container,
-    expanded ? styles.containerExpanded : "",
-    hovered && !pinned ? styles.containerHoveredOverlay : "",
-  ]
+  const containerCls = [styles.container, expanded ? styles.containerExpanded : ""]
     .filter(Boolean)
     .join(" ");
 
@@ -85,40 +78,32 @@ export function Sidebar({
     .filter(Boolean)
     .join(" ");
 
+  const headerCls = [styles.header, expanded ? styles.headerExpanded : ""]
+    .filter(Boolean)
+    .join(" ");
+
   const pinCls = [
     styles.pinButton,
-    expanded ? styles.pinButtonVisible : "",
     pinned ? styles.pinButtonActive : "",
   ]
     .filter(Boolean)
     .join(" ");
 
-  const secondaryCls = [
-    styles.secondaryContent,
-    pinned && secondaryContent ? styles.secondaryContentVisible : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
   return (
-    <div
-      className={containerCls}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <button
-        className={pinCls}
-        onClick={onTogglePin}
-        aria-label={pinned ? "Unpin sidebar" : "Pin sidebar"}
-        title={pinned ? "Unpin sidebar" : "Pin sidebar"}
-      >
-        <span
-          className="material-symbols-outlined"
-          style={pinned ? FILLED_ICON_STYLE : undefined}
+    <div className={containerCls}>
+      <div className={headerCls}>
+        <button
+          className={pinCls}
+          onClick={onTogglePin}
+          aria-label={pinned ? "Collapse sidebar" : "Expand sidebar"}
+          aria-expanded={pinned}
+          title={pinned ? "Collapse sidebar" : "Expand sidebar"}
         >
-          push_pin
-        </span>
-      </button>
+          <span className="material-symbols-outlined" style={{ fontSize: "22px" }}>
+            {pinned ? "menu_open" : "menu"}
+          </span>
+        </button>
+      </div>
       <div className={styles.navSection}>
         {[...CORE_NAV_ITEMS.slice(0, 1), ...extensionNavItems, ...CORE_NAV_ITEMS.slice(1)].map((item) => {
           const isActive = item.id === activeItem;
@@ -159,7 +144,6 @@ export function Sidebar({
           </button>
         ))}
       </div>
-      <div className={secondaryCls}>{secondaryContent}</div>
     </div>
   );
 }

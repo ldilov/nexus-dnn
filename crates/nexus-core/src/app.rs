@@ -189,6 +189,33 @@ impl NexusApp {
         )
         .await;
 
+        let huggingface: Arc<dyn nexus_huggingface::HuggingFaceCapability> =
+            Arc::new(nexus_huggingface::HuggingFaceClient::new(
+                db.pool().clone(),
+                nexus_huggingface::HfToken::from_env(),
+            ));
+
+        let models_root = app_for_health.config.resolved_data_dir().join("models");
+        std::fs::create_dir_all(&models_root).ok();
+        let trt_allowlist_path = app_for_health
+            .config
+            .builtin_extensions_dir()
+            .join("local-llm/backends/trt-llm/supported_architectures.yaml");
+        let trt_allowlist =
+            nexus_local_llm::manifest::install_models::load_trt_allowlist_from_yaml(
+                &trt_allowlist_path,
+            );
+        let local_llm_installer = Arc::new(
+            nexus_local_llm::manifest::install_models::ModelInstaller::with_trt_allowlist(
+                db.pool().clone(),
+                huggingface.clone(),
+                models_root.join("local-llm"),
+                trt_allowlist,
+            ),
+        );
+        let mut extension_model_installers = std::collections::HashMap::new();
+        extension_model_installers.insert("local-llm".to_owned(), local_llm_installer);
+
         let state = nexus_api::AppState {
             health_status_fn: Arc::new(move || {
                 serde_json::to_value(app_ref.health_status()).unwrap_or_default()
@@ -203,6 +230,11 @@ impl NexusApp {
             extensions_dir: Some(extensions_dir),
             storage_manager: Some(storage_manager),
             backend_adapter_registry,
+            huggingface: Some(huggingface),
+            extension_model_installers: Arc::new(extension_model_installers),
+            install_task_cancels: Arc::new(tokio::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
         };
 
         let router = nexus_api::create_router(state);
@@ -302,7 +334,51 @@ async fn persist_workflow_records(
         };
 
         let now = chrono::Utc::now().to_rfc3339();
-        let record = match build_workflow_record(&workflow, &now) {
+        let existing = db.get_workflow(&workflow.id).await.ok();
+
+        if let Some(existing) = existing.as_ref()
+            && existing.user_edited_at.is_some()
+        {
+            if existing.extension_id.is_none()
+                && let Err(e) = db
+                    .stamp_workflow_extension(
+                        &workflow.id,
+                        &ext.manifest.extension.id,
+                        &ext.manifest.extension.version,
+                        &now,
+                    )
+                    .await
+            {
+                tracing::debug!(
+                    workflow_id = %workflow.id,
+                    error = %e,
+                    "stamp_workflow_extension (user-edited row) failed"
+                );
+            }
+            tracing::debug!(
+                workflow_id = %workflow.id,
+                user_edited_at = %existing.user_edited_at.as_deref().unwrap_or(""),
+                "skipping workflow re-persistence: row has user edits"
+            );
+            continue;
+        }
+
+        let first_seen = existing
+            .as_ref()
+            .and_then(|e| e.extension_version_first_seen.clone())
+            .unwrap_or_else(|| now.clone());
+        let created_at = existing
+            .as_ref()
+            .map(|e| e.created_at.clone())
+            .unwrap_or_else(|| now.clone());
+        let record = match build_workflow_record(
+            &workflow,
+            &created_at,
+            &now,
+            Some(&ext.manifest.extension.id),
+            Some(&ext.manifest.extension.version),
+            Some(&first_seen),
+        ) {
             Ok(r) => r,
             Err(e) => {
                 tracing::warn!(error = %e, "failed to build workflow record; skipping");
@@ -311,7 +387,6 @@ async fn persist_workflow_records(
         };
 
         if let Err(e) = db.insert_workflow(&record).await {
-            // Duplicate-key on reboot is expected; keep going.
             tracing::debug!(workflow_id = %workflow.id, error = %e, "insert_workflow failed");
         }
     }
@@ -321,7 +396,11 @@ async fn persist_workflow_records(
 
 fn build_workflow_record(
     workflow: &nexus_workflow::Workflow,
-    now: &str,
+    created_at: &str,
+    updated_at: &str,
+    extension_id: Option<&str>,
+    extension_version: Option<&str>,
+    extension_version_first_seen: Option<&str>,
 ) -> anyhow::Result<nexus_storage::WorkflowRecord> {
     let edge_values: Vec<serde_json::Value> = workflow
         .extract_edges()
@@ -345,8 +424,12 @@ fn build_workflow_record(
         nodes: serde_json::to_string(&workflow.nodes)?,
         edges: serde_json::to_string(&edge_values)?,
         stages: Some(serde_json::to_string(&workflow.stages)?),
-        created_at: now.to_owned(),
-        updated_at: now.to_owned(),
+        created_at: created_at.to_owned(),
+        updated_at: updated_at.to_owned(),
+        user_edited_at: None,
+        extension_id: extension_id.map(str::to_owned),
+        extension_version: extension_version.map(str::to_owned),
+        extension_version_first_seen: extension_version_first_seen.map(str::to_owned),
     })
 }
 

@@ -25,6 +25,7 @@ ulid = "1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "json", "chrono"] }
 futures-util = "0.3"
 async-trait = "0.1"
+nexus-huggingface = { path = "../nexus-huggingface" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }

@@ -12,8 +12,10 @@
 //! consumers use hand-maintained types in `apps/web/src/backends/` for now.
 
 pub mod artifacts;
+pub mod canvas;
 pub mod envelope;
 pub mod extensions;
+pub mod models;
 pub mod recipes;
 pub mod runs;
 pub mod system;
@@ -22,9 +24,17 @@ pub mod ui;
 pub mod workflows;
 
 pub use artifacts::{ArtifactDto, ArtifactLineageDto, LineageEdgeDto, ViewerCandidateDto};
+pub use canvas::{CanvasNoteDto, CanvasPositionDto, CanvasRerouteDto, CanvasStateDto};
 pub use envelope::{ApiEnvelope, ApiErrorPayloadDto, ListResponseDto, MetaDto};
 pub use extensions::{
-    EnableExtensionResponseDto, ExtensionDto, OperatorDto, PortSpecDto, RefreshReportDto,
+    EnableExtensionResponseDto, ExtensionDto, ExtensionRevealDto, OperatorDto, PortSpecDto,
+    RefreshReportDto,
+};
+pub use models::{
+    BackendCompatDto, BackendCompatMapDto, CatalogListDto, HfSearchPageDto, HfSearchResultDto,
+    HyperparameterCommonDto, HyperparameterLlamacppDto, HyperparameterProfileDto,
+    HyperparameterTrtDto, InstallModelRequestDto, InstalledModelDto, LoadStateDto, LoadTaskDto,
+    ModelInstallTaskDto, ModelLimitsDto, RepoFileDto,
 };
 pub use recipes::{RecipeDto, RecipeFieldBindingDto};
 pub use runs::{CreateRunResponseDto, NodeExecutionDto, RunDetailDto, RunDto};
@@ -33,7 +43,9 @@ pub use tools::ToolDto;
 pub use ui::{LayoutSummaryDto, UIContributionDto};
 pub use workflows::{
     WorkflowDto, WorkflowEdgeDto, WorkflowNodeDto, WorkflowNodeInputDto, WorkflowOutputBindingDto,
-    WorkflowPortDto, WorkflowStageDto,
+    WorkflowPortDto, WorkflowStageDefDto, WorkflowStageDto, WorkflowStatusDto,
+    WorkflowUpdatePayloadDto,
+    WorkflowValidationErrorDto,
 };
 
 #[cfg(test)]
@@ -58,7 +70,13 @@ mod export_tests {
         ArtifactLineageDto::export_all().unwrap();
         LineageEdgeDto::export_all().unwrap();
 
+        CanvasStateDto::export_all().unwrap();
+        CanvasNoteDto::export_all().unwrap();
+        CanvasRerouteDto::export_all().unwrap();
+        CanvasPositionDto::export_all().unwrap();
+
         ExtensionDto::export_all().unwrap();
+        ExtensionRevealDto::export_all().unwrap();
         OperatorDto::export_all().unwrap();
         PortSpecDto::export_all().unwrap();
         RefreshReportDto::export_all().unwrap();
@@ -66,6 +84,23 @@ mod export_tests {
 
         RecipeDto::export_all().unwrap();
         RecipeFieldBindingDto::export_all().unwrap();
+
+        ModelLimitsDto::export_all().unwrap();
+        HyperparameterCommonDto::export_all().unwrap();
+        HyperparameterLlamacppDto::export_all().unwrap();
+        HyperparameterTrtDto::export_all().unwrap();
+        HyperparameterProfileDto::export_all().unwrap();
+        BackendCompatDto::export_all().unwrap();
+        BackendCompatMapDto::export_all().unwrap();
+        RepoFileDto::export_all().unwrap();
+        HfSearchResultDto::export_all().unwrap();
+        HfSearchPageDto::export_all().unwrap();
+        InstalledModelDto::export_all().unwrap();
+        CatalogListDto::export_all().unwrap();
+        InstallModelRequestDto::export_all().unwrap();
+        ModelInstallTaskDto::export_all().unwrap();
+        LoadStateDto::export_all().unwrap();
+        LoadTaskDto::export_all().unwrap();
 
         RunDto::export_all().unwrap();
         RunDetailDto::export_all().unwrap();
@@ -86,5 +121,9 @@ mod export_tests {
         WorkflowEdgeDto::export_all().unwrap();
         WorkflowPortDto::export_all().unwrap();
         WorkflowOutputBindingDto::export_all().unwrap();
+        WorkflowUpdatePayloadDto::export_all().unwrap();
+        WorkflowStageDefDto::export_all().unwrap();
+        WorkflowStatusDto::export_all().unwrap();
+        WorkflowValidationErrorDto::export_all().unwrap();
     }
 }

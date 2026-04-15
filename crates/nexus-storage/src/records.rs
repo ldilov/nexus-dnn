@@ -50,6 +50,18 @@ pub struct WorkflowRecord {
     pub stages: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// RFC3339 timestamp set when the UI saves a user edit. When `Some(_)`,
+    /// boot-time extension re-persistence must skip this row to preserve the
+    /// user's graph. `None` means this row is still tracking the shipped YAML.
+    pub user_edited_at: Option<String>,
+    /// Extension that contributed this workflow. `None` marks a user-authored
+    /// workflow or one whose source extension is no longer known.
+    pub extension_id: Option<String>,
+    /// Extension version captured at contribution time.
+    pub extension_version: Option<String>,
+    /// RFC3339 timestamp of the first time this workflow was persisted under
+    /// its current `extension_id`; preserved across extension upgrades.
+    pub extension_version_first_seen: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

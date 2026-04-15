@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus-dnn.local/schemas/recipe.v2.schema.json",
+  "title": "RecipeV2",
+  "type": "object",
+  "required": ["specVersion", "recipe", "workflowTemplate", "fields"],
+  "properties": {
+    "specVersion": { "const": "0.2" },
+    "recipe": {
+      "type": "object",
+      "required": ["id", "version", "title"],
+      "properties": {
+        "id": { "type": "string" },
+        "version": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "extensionId": { "type": "string" }
+      }
+    },
+    "workflowTemplate": {
+      "type": "object",
+      "required": ["ref"],
+      "properties": {
+        "ref": { "type": "string", "description": "relative path to a workflow.v2 yaml inside the extension" }
+      }
+    },
+    "fields": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/RecipeField" }
+    }
+  },
+  "$defs": {
+    "RecipeField": {
+      "type": "object",
+      "required": ["id", "label", "mapsTo", "visibility", "scope"],
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "inputKind": { "enum": ["text", "number", "boolean", "enum", "asset_selector", "model_picker", "multiline"] },
+        "options": { "type": "array" },
+        "default": {},
+        "mapsTo": {
+          "type": "object",
+          "required": ["kind", "ref"],
+          "properties": {
+            "kind": {
+              "enum": ["workflow_input", "workflow_output_metadata",
+                        "node_config", "node_runtime_binding",
+                        "node_model_parameter", "node_request_parameter",
+                        "node_literal_input"]
+            },
+            "ref": { "type": "string" }
+          }
+        },
+        "scope": { "enum": ["runtime", "model_load", "request", "structural", "ui_only"] },
+        "visibility": { "enum": ["hidden", "advanced", "standard", "recipe_exposed", "graph_only", "debug_only"] },
+        "validationRules": { "type": "object" },
+        "presets": { "type": "array" },
+        "advanced": { "type": "boolean" }
+      }
+    }
+  }
+}

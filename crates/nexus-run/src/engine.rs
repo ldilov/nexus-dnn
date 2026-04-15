@@ -406,6 +406,7 @@ fn operators_to_definitions(
                 .as_ref()
                 .and_then(|s| serde_json::from_str(s).ok()),
             resources: None,
+            ui: None,
         })
         .collect()
 }

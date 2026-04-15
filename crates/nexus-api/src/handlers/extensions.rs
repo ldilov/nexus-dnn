@@ -12,7 +12,8 @@ use nexus_storage::storage_manager::MigrationInput;
 
 use crate::AppState;
 use crate::dto::{
-    EnableExtensionResponseDto, ExtensionDto, ListResponseDto, OperatorDto, RefreshReportDto,
+    EnableExtensionResponseDto, ExtensionDto, ExtensionRevealDto, ListResponseDto, OperatorDto,
+    RefreshReportDto,
 };
 use crate::envelope::ApiResponse;
 use crate::error::ApiError;
@@ -43,16 +44,67 @@ pub async fn get_extension(
     Ok(ApiResponse::ok(ExtensionDto::from(&record)))
 }
 
+pub async fn reveal_extension_folder(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<ApiResponse<ExtensionRevealDto>, ApiError> {
+    let record = state
+        .db
+        .get_extension(&id)
+        .await
+        .map_err(|e| ApiError::NotFound(e.to_string()))?;
+
+    let path = record.directory.clone();
+    if path.is_empty() {
+        return Ok(ApiResponse::ok(ExtensionRevealDto {
+            revealed: false,
+            path,
+            message: Some("extension has no recorded source path".to_owned()),
+        }));
+    }
+    if !std::path::Path::new(&path).exists() {
+        return Ok(ApiResponse::ok(ExtensionRevealDto {
+            revealed: false,
+            path,
+            message: Some("path does not exist on disk".to_owned()),
+        }));
+    }
+
+    #[cfg(target_os = "windows")]
+    let reveal_result = std::process::Command::new("explorer").arg(&path).spawn();
+    #[cfg(target_os = "macos")]
+    let reveal_result = std::process::Command::new("open").arg(&path).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let reveal_result = std::process::Command::new("xdg-open").arg(&path).spawn();
+
+    match reveal_result {
+        Ok(_) => Ok(ApiResponse::ok(ExtensionRevealDto {
+            revealed: true,
+            path,
+            message: None,
+        })),
+        Err(e) => {
+            warn!(extension_id = %id, error = %e, "reveal_extension_folder failed");
+            Ok(ApiResponse::ok(ExtensionRevealDto {
+                revealed: false,
+                path,
+                message: Some(e.to_string()),
+            }))
+        }
+    }
+}
+
 pub async fn list_operators(
     State(state): State<AppState>,
 ) -> Result<ApiResponse<ListResponseDto<OperatorDto>>, ApiError> {
-    let operators = state
-        .db
-        .list_operators()
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    let items = operators.iter().map(OperatorDto::from).collect();
+    let extensions = state.extension_registry.list_extensions();
+    let mut items: Vec<OperatorDto> = Vec::new();
+    for ext in &extensions {
+        let ext_id = &ext.manifest.extension.id;
+        for def in &ext.operators {
+            items.push(OperatorDto::from_definition(def, ext_id));
+        }
+    }
     Ok(ApiResponse::ok(ListResponseDto { items }))
 }
 
@@ -60,18 +112,16 @@ pub async fn get_operator(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<ApiResponse<OperatorDto>, ApiError> {
-    let operators = state
-        .db
-        .list_operators()
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    let operator = operators
-        .iter()
-        .find(|op| op.id == id)
-        .ok_or_else(|| ApiError::NotFound(format!("operator {id} not found")))?;
-
-    Ok(ApiResponse::ok(OperatorDto::from(operator)))
+    let extensions = state.extension_registry.list_extensions();
+    for ext in &extensions {
+        let ext_id = &ext.manifest.extension.id;
+        for def in &ext.operators {
+            if def.operator.id == id {
+                return Ok(ApiResponse::ok(OperatorDto::from_definition(def, ext_id)));
+            }
+        }
+    }
+    Err(ApiError::NotFound(format!("operator {id} not found")))
 }
 
 pub async fn refresh_extensions(

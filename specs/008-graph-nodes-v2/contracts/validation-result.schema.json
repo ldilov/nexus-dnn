@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus-dnn.local/schemas/validation-result.schema.json",
+  "title": "ValidationResult",
+  "type": "object",
+  "required": ["severity", "code", "message", "source"],
+  "properties": {
+    "severity": { "enum": ["error", "warning", "info"] },
+    "code": { "type": "string" },
+    "message": { "type": "string" },
+    "nodeId": { "type": "string" },
+    "bindingId": { "type": "string" },
+    "path": { "type": "string" },
+    "source": { "enum": ["host_schema", "host_graph", "operator_schema", "runtime_adapter"] },
+    "suggestedFix": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["connect_port", "insert_conversion_node", "set_literal", "change_operator_version", "install_runtime", "load_model", "other"] },
+        "args": { "type": "object" },
+        "hint": { "type": "string" }
+      }
+    }
+  }
+}

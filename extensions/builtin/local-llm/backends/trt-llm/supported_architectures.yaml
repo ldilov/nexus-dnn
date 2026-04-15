@@ -1,0 +1,14 @@
+architectures:
+  - LlamaForCausalLM
+  - MistralForCausalLM
+  - MixtralForCausalLM
+  - Qwen2ForCausalLM
+  - Qwen2MoeForCausalLM
+  - GPT2LMHeadModel
+  - GPTNeoXForCausalLM
+  - FalconForCausalLM
+  - BaichuanForCausalLM
+  - ChatGLMForConditionalGeneration
+  - GemmaForCausalLM
+  - Gemma2ForCausalLM
+  - Phi3ForCausalLM

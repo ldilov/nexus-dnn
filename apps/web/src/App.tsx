@@ -4,11 +4,11 @@ import { TopBar, type ViewId } from "./layout/top_bar";
 import { Sidebar, type NavItemId } from "./layout/sidebar";
 import { RightInspector } from "./layout/right_inspector";
 import { Tabs } from "./components/tabs";
-import { ToolCatalog } from "./catalog/tool_catalog";
 import { RecipeCatalog } from "./catalog/recipe_catalog";
 import { WorkflowCatalog } from "./catalog/workflow_catalog";
 import { HomeDashboard } from "./catalog/home_dashboard";
-import { ExtensionList } from "./catalog/extension_list";
+import { ExtensionsGallery } from "./views/extensions_gallery";
+import { useOperatorSpecs } from "./hooks/use_operator_specs";
 import { StageView } from "./views/stage_view";
 import { GraphView } from "./views/graph_view";
 import { RunTraceView } from "./views/run_trace_view";
@@ -25,7 +25,7 @@ import {
   type LayoutSummary,
   type Recipe,
 } from "./api/client";
-import * as styles from "./app.css";
+import * as styles from "./App.css";
 
 type BottomTabId = "logs" | "events" | "problems" | "workers";
 
@@ -35,19 +35,6 @@ const BOTTOM_TABS = [
   { id: "problems" as const, label: "Problems" },
   { id: "workers" as const, label: "Workers" },
 ] as const;
-
-type SecondaryTabId = "tools" | "recipes" | "extensions";
-
-const SECONDARY_TABS: { id: SecondaryTabId; label: string }[] = [
-  { id: "tools", label: "Tools" },
-  { id: "recipes", label: "Recipes" },
-  { id: "extensions", label: "Extensions" },
-];
-
-const SECONDARY_CONTENT_STATIC: Partial<Record<SecondaryTabId, React.ComponentType>> = {
-  tools: ToolCatalog,
-  recipes: RecipeCatalog,
-};
 
 function latestProgressByNode(
   events: { node_id?: string; status?: string; progress?: number }[],
@@ -61,36 +48,14 @@ function latestProgressByNode(
   return map;
 }
 
-type SecondaryPanelProps = {
-  onExtensionToggled?: () => void;
-};
+const LAST_WORKFLOW_KEY = "nexus.catalog.workflows.lastOpened";
 
-function SecondaryPanel({ onExtensionToggled }: SecondaryPanelProps) {
-  const [activeTab, setActiveTab] = useState<SecondaryTabId>("tools");
-  const StaticContent = SECONDARY_CONTENT_STATIC[activeTab];
-
-  return (
-    <div className={styles.canvasColumn}>
-      <Tabs
-        items={SECONDARY_TABS}
-        activeId={activeTab}
-        onSelect={setActiveTab}
-        variant="underline"
-      />
-      <div className={styles.canvasContent}>
-        {StaticContent ? (
-          <StaticContent />
-        ) : (
-          <ExtensionList onExtensionToggled={onExtensionToggled} />
-        )}
-      </div>
-    </div>
-  );
-}
+type WorkflowViewMode = "catalog" | "editor";
 
 export function App() {
-  const [workflows, setWorkflows] = useState<Workflow[]>([]);
+  const [, setWorkflows] = useState<Workflow[]>([]);
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
+  const [workflowViewMode, setWorkflowViewMode] = useState<WorkflowViewMode>("catalog");
   const [activeNav, setActiveNav] = useState<NavItemId>("home");
   const [activeView, setActiveView] = useState<ViewId>("stage");
   const [activeBottomTab, setActiveBottomTab] = useState<BottomTabId>("logs");
@@ -100,6 +65,7 @@ export function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [extensionLayouts, setExtensionLayouts] = useState<LayoutSummary[]>([]);
+  const { specs: operatorSpecs } = useOperatorSpecs();
   const { events } = useEventStream();
   const nodeProgress = latestProgressByNode(events);
   const { metrics, connected } = usePollingMetrics();
@@ -115,9 +81,6 @@ export function App() {
       .then((wfs) => {
         setWorkflows(wfs);
         setLoadError(null);
-        if (wfs[0]) {
-          fetchWorkflow(wfs[0].id).then(setWorkflow);
-        }
       })
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : "Failed to load workflows";
@@ -156,8 +119,35 @@ export function App() {
   }, []);
 
   const handleWorkflowSelect = useCallback((id: string) => {
-    fetchWorkflow(id).then(setWorkflow);
+    if (workflow?.id === id) {
+      setWorkflowViewMode("editor");
+      return;
+    }
+    fetchWorkflow(id).then((wf) => {
+      setWorkflow(wf);
+      setWorkflowViewMode("editor");
+      try {
+        window.sessionStorage.setItem(LAST_WORKFLOW_KEY, wf.id);
+      } catch {
+        // sessionStorage unavailable — ignore
+      }
+    });
     setSelectedNode(null);
+  }, [workflow?.id]);
+
+  const handleBackToCatalog = useCallback(() => {
+    setWorkflowViewMode("catalog");
+  }, []);
+
+  const handleResumeLastOpened = useCallback(() => {
+    if (workflow) setWorkflowViewMode("editor");
+  }, [workflow]);
+
+  const handleNavigate = useCallback((id: NavItemId) => {
+    if (id === "workflows") {
+      setWorkflowViewMode("catalog");
+    }
+    setActiveNav(id);
   }, []);
 
   const handleOpenRecipe = useCallback((recipe: Recipe) => {
@@ -181,9 +171,9 @@ export function App() {
           <div className={styles.canvasContent}>
             <HomeDashboard
               onOpenRecipe={handleOpenRecipe}
-              onGoToRecipes={() => setActiveNav("recipes")}
-              onGoToWorkflows={() => setActiveNav("workflows")}
-              onGoToExtensions={() => setActiveNav("extensions")}
+              onGoToRecipes={() => handleNavigate("recipes")}
+              onGoToWorkflows={() => handleNavigate("workflows")}
+              onGoToExtensions={() => handleNavigate("extensions")}
             />
           </div>
         </div>
@@ -194,30 +184,70 @@ export function App() {
       if (loadError) {
         return <p className={styles.placeholderText}>{loadError}</p>;
       }
-      if (!workflow) {
-        return (
-          <div className={styles.canvasColumn}>
-            <div className={styles.canvasContent}>
-              <WorkflowCatalog selectedId={null} onSelect={handleWorkflowSelect} />
-            </div>
-          </div>
-        );
-      }
+      const showCatalog = workflowViewMode === "catalog" || workflow === null;
       return (
         <div className={styles.canvasColumn}>
-          <div className={styles.canvasContent}>
-            {activeView === "stage" && (
-              <StageView
-                workflow={workflow}
-                nodeProgress={nodeProgress}
-                selectedNodeId={selectedNode?.id ?? null}
-                onSelectNode={handleSelectNode}
+          <div
+            className={styles.canvasContent}
+            style={{ display: "flex", flexDirection: "column", minHeight: 0 }}
+          >
+            <div
+              style={{
+                display: showCatalog ? "block" : "none",
+                flex: showCatalog ? "1 1 auto" : "0 0 auto",
+                minHeight: 0,
+              }}
+            >
+              <WorkflowCatalog
+                selectedId={workflow?.id ?? null}
+                onSelect={handleWorkflowSelect}
+                resumeWorkflow={workflow}
+                onResume={handleResumeLastOpened}
               />
+            </div>
+            {workflow && (
+              <div
+                style={{
+                  display: showCatalog ? "none" : "flex",
+                  flexDirection: "column",
+                  flex: "1 1 auto",
+                  minHeight: 0,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={handleBackToCatalog}
+                  className={styles.backToCatalog}
+                >
+                  <span
+                    className="material-symbols-outlined"
+                    style={{ fontSize: "16px" }}
+                    aria-hidden="true"
+                  >
+                    arrow_back
+                  </span>
+                  Back to catalog
+                </button>
+                <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex" }}>
+                  {activeView === "stage" && (
+                    <StageView
+                      workflow={workflow}
+                      nodeProgress={nodeProgress}
+                      selectedNodeId={selectedNode?.id ?? null}
+                      onSelectNode={handleSelectNode}
+                    />
+                  )}
+                  {activeView === "graph" && (
+                    <GraphView
+                      workflow={workflow}
+                      nodeProgress={nodeProgress}
+                      onSelectNode={handleSelectNode}
+                    />
+                  )}
+                  {activeView === "trace" && <RunTraceView events={events} />}
+                </div>
+              </div>
             )}
-            {activeView === "graph" && (
-              <GraphView workflow={workflow} nodeProgress={nodeProgress} />
-            )}
-            {activeView === "trace" && <RunTraceView events={events} />}
           </div>
         </div>
       );
@@ -237,7 +267,7 @@ export function App() {
       return (
         <div className={styles.canvasColumn}>
           <div className={styles.canvasContent}>
-            <ExtensionList onExtensionToggled={refreshLayouts} />
+            <ExtensionsGallery onExtensionToggled={refreshLayouts} />
           </div>
         </div>
       );
@@ -270,22 +300,6 @@ export function App() {
     );
   };
 
-  const showSecondaryPanel = !activeNav.startsWith("ext:") && activeNav !== "home";
-  const secondaryContent = showSecondaryPanel ? (
-    <>
-      <SecondaryPanel onExtensionToggled={refreshLayouts} />
-      {workflows.length > 1 && (
-        <div className={styles.workflowListFallback}>
-          {workflows.map((wf) => (
-            <button key={wf.id} onClick={() => handleWorkflowSelect(wf.id)}>
-              {wf.name}
-            </button>
-          ))}
-        </div>
-      )}
-    </>
-  ) : undefined;
-
   return (
     <Shell
       topBar={
@@ -305,10 +319,9 @@ export function App() {
       sidebar={
         <Sidebar
           activeItem={activeNav}
-          onNavigate={setActiveNav}
+          onNavigate={handleNavigate}
           pinned={sidebarPinned}
           onTogglePin={() => setSidebarPinned((p) => !p)}
-          secondaryContent={secondaryContent}
           extensionNavItems={extensionNavItems}
         />
       }
@@ -317,6 +330,7 @@ export function App() {
       inspector={
         <RightInspector
           selectedNode={selectedNode}
+          selectedSpec={selectedNode ? operatorSpecs.get(selectedNode.operator) ?? null : null}
           nodeStatus={selectedNode ? nodeProgress[selectedNode.id]?.status : undefined}
         />
       }

@@ -80,6 +80,38 @@ pub struct WorkflowDto {
     pub stages: Vec<WorkflowStageDto>,
     pub created_at: String,
     pub updated_at: String,
+    /// RFC3339 timestamp when the UI last saved a user edit. `None` means the
+    /// row is tracking the shipped extension YAML and will be reapplied on
+    /// every boot.
+    pub user_edited_at: Option<String>,
+    /// Extension that contributed this workflow. `None` marks a user-authored
+    /// or orphaned workflow.
+    pub extension_id: Option<String>,
+    /// Extension version captured at contribution time.
+    pub extension_version: Option<String>,
+    /// RFC3339 of the first time this workflow was persisted under its current
+    /// `extension_id`.
+    pub extension_version_first_seen: Option<String>,
+    /// Derived status (Stable / Modified / User).
+    pub status: WorkflowStatusDto,
+    /// Flat node count across all stages.
+    pub node_count: u32,
+    /// Declared stage count.
+    pub stage_count: u32,
+}
+
+/// Derived workflow provenance + modification status.
+///
+/// - `Stable`: shipped by an extension and untouched by the user.
+/// - `Modified`: shipped by an extension, edited by the user.
+/// - `User`: no originating extension — created or imported by the user.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
+#[serde(rename_all = "lowercase")]
+pub enum WorkflowStatusDto {
+    Stable,
+    Modified,
+    User,
 }
 
 impl From<&WorkflowRecord> for WorkflowDto {
@@ -139,6 +171,16 @@ impl From<&WorkflowRecord> for WorkflowDto {
             });
         }
 
+        let status = if r.extension_id.is_none() {
+            WorkflowStatusDto::User
+        } else if r.user_edited_at.is_some() {
+            WorkflowStatusDto::Modified
+        } else {
+            WorkflowStatusDto::Stable
+        };
+        let node_count = nodes.len() as u32;
+        let stage_count = stages_with_nodes.len() as u32;
+
         Self {
             id: r.id.clone(),
             title: r.title.clone(),
@@ -151,8 +193,49 @@ impl From<&WorkflowRecord> for WorkflowDto {
             stages: stages_with_nodes,
             created_at: r.created_at.clone(),
             updated_at: r.updated_at.clone(),
+            user_edited_at: r.user_edited_at.clone(),
+            extension_id: r.extension_id.clone(),
+            extension_version: r.extension_version.clone(),
+            extension_version_first_seen: r.extension_version_first_seen.clone(),
+            status,
+            node_count,
+            stage_count,
         }
     }
+}
+
+/// Writable projection of a workflow. The UI `PUT`s this to
+/// `/workflows/:id/graph` and the server converts it back to the canonical
+/// `nexus_workflow::Workflow`, runs validation, and persists.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
+pub struct WorkflowUpdatePayloadDto {
+    pub title: String,
+    pub version: String,
+    pub inputs: Vec<WorkflowPortDto>,
+    pub outputs: Vec<WorkflowOutputBindingDto>,
+    pub nodes: Vec<WorkflowNodeDto>,
+    /// Raw stage definitions (`{id, label}`). The server does not rely on the
+    /// `nodes` array nested under stages in `WorkflowDto`; that's a derived
+    /// UI projection.
+    pub stages: Vec<WorkflowStageDefDto>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
+pub struct WorkflowStageDefDto {
+    pub id: String,
+    pub label: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
+pub struct WorkflowValidationErrorDto {
+    pub code: String,
+    pub severity: String,
+    pub message: String,
+    pub node_id: Option<String>,
+    pub edge_id: Option<String>,
 }
 
 fn parse_optional_json<T: serde::de::DeserializeOwned + Default>(raw: Option<&str>) -> T {

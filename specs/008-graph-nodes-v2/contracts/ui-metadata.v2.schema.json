@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus-dnn.local/schemas/ui-metadata.v2.schema.json",
+  "title": "UiMetadataV2",
+  "type": "object",
+  "properties": {
+    "icon": { "type": "string" },
+    "accentColor": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+    "widgets": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/Widget" }
+    },
+    "preview": { "$ref": "#/$defs/Preview" },
+    "collapsed": { "type": "boolean" },
+    "expandedSection": { "type": "string" },
+    "pinnedPresets": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "Widget": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["slider", "toggle", "select", "text", "multiline", "code", "number", "asset_selector", "model_picker"] },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "step": { "type": "number" },
+        "options": { "type": "array" },
+        "placeholder": { "type": "string" },
+        "language": { "type": "string" }
+      }
+    },
+    "Preview": {
+      "type": "object",
+      "required": ["kind", "source"],
+      "properties": {
+        "kind": { "enum": ["log_tail", "json", "image", "chart", "tensor"] },
+        "source": { "type": "string", "description": "literal/port name the preview reads" },
+        "maxLines": { "type": "integer" }
+      }
+    }
+  }
+}

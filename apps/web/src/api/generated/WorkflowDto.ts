@@ -4,6 +4,7 @@ import type { WorkflowNodeDto } from "./WorkflowNodeDto";
 import type { WorkflowOutputBindingDto } from "./WorkflowOutputBindingDto";
 import type { WorkflowPortDto } from "./WorkflowPortDto";
 import type { WorkflowStageDto } from "./WorkflowStageDto";
+import type { WorkflowStatusDto } from "./WorkflowStatusDto";
 
 export type WorkflowDto = { id: string, 
 /**
@@ -14,4 +15,36 @@ title: string,
  * Mirrors `title` for frontend callers that expect a `name` field from
  * the runtime execution model (`nexus_workflow::Workflow.title`).
  */
-name: string, version: string, inputs: Array<WorkflowPortDto>, outputs: Array<WorkflowOutputBindingDto>, nodes: Array<WorkflowNodeDto>, edges: Array<WorkflowEdgeDto>, stages: Array<WorkflowStageDto>, created_at: string, updated_at: string, };
+name: string, version: string, inputs: Array<WorkflowPortDto>, outputs: Array<WorkflowOutputBindingDto>, nodes: Array<WorkflowNodeDto>, edges: Array<WorkflowEdgeDto>, stages: Array<WorkflowStageDto>, created_at: string, updated_at: string, 
+/**
+ * RFC3339 timestamp when the UI last saved a user edit. `None` means the
+ * row is tracking the shipped extension YAML and will be reapplied on
+ * every boot.
+ */
+user_edited_at: string | null, 
+/**
+ * Extension that contributed this workflow. `None` marks a user-authored
+ * or orphaned workflow.
+ */
+extension_id: string | null, 
+/**
+ * Extension version captured at contribution time.
+ */
+extension_version: string | null, 
+/**
+ * RFC3339 of the first time this workflow was persisted under its current
+ * `extension_id`.
+ */
+extension_version_first_seen: string | null, 
+/**
+ * Derived status (Stable / Modified / User).
+ */
+status: WorkflowStatusDto, 
+/**
+ * Flat node count across all stages.
+ */
+node_count: number, 
+/**
+ * Declared stage count.
+ */
+stage_count: number, };

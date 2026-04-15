@@ -73,7 +73,7 @@ root:
                           - label: "All"
                             value: ""
                           - label: "llama.cpp (GGUF)"
-                            value: "llamacpp"
+                            value: "llama.cpp"
                           - label: "TensorRT-LLM"
                             value: "tensorrt_llm"
 

@@ -6,8 +6,8 @@ use tower_http::trace::TraceLayer;
 use crate::AppState;
 use crate::frontend;
 use crate::handlers::{
-    artifacts, backends, extensions, health, metrics, recipes, runs, storage_contributions, system,
-    tools, ui_contributions, ui_layouts, workflows,
+    artifacts, backends, extensions, health, huggingface, metrics, recipes, runs,
+    storage_contributions, system, tools, ui_contributions, ui_layouts, workflows,
 };
 use crate::ws;
 
@@ -17,6 +17,10 @@ pub fn build(state: AppState) -> Router {
         .route("/metrics", get(metrics::get_metrics))
         .route("/extensions", get(extensions::list_extensions))
         .route("/extensions/{id}", get(extensions::get_extension))
+        .route(
+            "/extensions/{id}/reveal",
+            post(extensions::reveal_extension_folder),
+        )
         .route("/extensions/refresh", post(extensions::refresh_extensions))
         .route(
             "/extensions/{id}/enable",
@@ -85,10 +89,27 @@ pub fn build(state: AppState) -> Router {
             post(workflows::validate_workflow_only),
         )
         .route(
+            "/workflows/validate-payload",
+            post(workflows::validate_workflow_payload),
+        )
+        .route(
             "/workflows/{id}",
             get(workflows::get_workflow)
                 .put(workflows::update_workflow)
                 .delete(workflows::delete_workflow),
+        )
+        .route(
+            "/workflows/{id}/graph",
+            axum::routing::put(workflows::update_workflow_graph),
+        )
+        .route(
+            "/workflows/{id}/revert",
+            post(workflows::revert_workflow),
+        )
+        .route(
+            "/workflows/{id}/canvas",
+            get(workflows::get_workflow_canvas)
+                .put(workflows::put_workflow_canvas),
         )
         .route("/runs", post(runs::create_run).get(runs::list_runs))
         .route("/runs/{id}", get(runs::get_run))
@@ -124,6 +145,28 @@ pub fn build(state: AppState) -> Router {
         .route(
             "/llm/backends/{backendId}/diagnostics",
             get(backends::diagnostics),
+        )
+        .route(
+            "/llm/backends/{backendId}/load-state",
+            get(huggingface::get_load_state),
+        )
+        .route("/huggingface/search", get(huggingface::search))
+        .route("/huggingface/repos/{repoId}", get(huggingface::repo_detail))
+        .route(
+            "/extensions/{extId}/huggingface/models",
+            get(huggingface::list_ext_models).post(huggingface::install_ext_model),
+        )
+        .route(
+            "/extensions/{extId}/huggingface/tasks/{taskId}/cancel",
+            post(huggingface::cancel_ext_task),
+        )
+        .route(
+            "/extensions/{extId}/huggingface/models/{modelId}/load",
+            post(huggingface::load_ext_model),
+        )
+        .route(
+            "/extensions/{extId}/huggingface/models/{modelId}/hyperparameters",
+            axum::routing::patch(huggingface::patch_ext_hyperparameters),
         );
 
     let cors = CorsLayer::new()

@@ -24,8 +24,18 @@ export const containerExpanded = style({
   width: EXPANDED_WIDTH,
 });
 
-export const containerHoveredOverlay = style({
-  boxShadow: vars.shadow.lg,
+export const header = style({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  height: "48px",
+  flexShrink: 0,
+  borderBottom: `1px solid ${vars.color.outline.variant}`,
+});
+
+export const headerExpanded = style({
+  justifyContent: "flex-end",
+  paddingRight: "12px",
 });
 
 export const navSection = style({
@@ -124,30 +134,28 @@ export const navItemLabelVisible = style({
 });
 
 export const pinButton = style({
-  position: "absolute",
-  top: "12px",
-  right: "12px",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  width: "28px",
-  height: "28px",
+  width: "32px",
+  height: "32px",
   border: "none",
   backgroundColor: "transparent",
-  color: vars.color.text.muted,
+  color: vars.color.text.secondary,
   cursor: "pointer",
   borderRadius: vars.radius.control,
-  opacity: 0,
-  transition: `opacity 200ms ${vars.motion.easingDefault}, background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {
     backgroundColor: vars.color.bg.hover,
-    color: vars.color.text.secondary,
+    color: vars.color.text.primary,
+  },
+  ":focus-visible": {
+    outline: `2px solid ${vars.color.accent.primary}`,
+    outlineOffset: "2px",
   },
 });
 
-export const pinButtonVisible = style({
-  opacity: 1,
-});
+export const pinButtonVisible = style({});
 
 export const pinButtonActive = style({
   color: vars.color.accent.primary,
