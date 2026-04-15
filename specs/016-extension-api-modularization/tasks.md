@@ -100,16 +100,16 @@ Decision locked per spec.md US4: **branch (a)** — perform real discovery via `
 
 ## Phase 7: US6 — `create_lease` split (P2)
 
-- [ ] T560 [US6] In `backends/lease.rs`, extract:
+- [X] T560 [US6] In `backends/lease.rs`, extract:
   - `fn validate_install_for_lease<'a>(row: Option<&'a RuntimeInstallRow>) -> Result<&'a RuntimeInstallRow, ApiError>` (~20 LOC) — returns a typed `ApiError` (existing in `nexus-api::error`); the calling handler maps via `?` + `IntoResponse`. Helper does NOT depend on `axum::Response` (per analyze pass M3).
   - `fn build_spawn_request(extension_id: String, install_id: String, body: LeaseBody) -> SpawnRuntimeRequest` (~15 LOC)
   - `fn stub_lease(install_id: String, extension_id: String, body: LeaseBody) -> LeaseEnvelope` (~25 LOC)
   - If `nexus-api::error::ApiError` does not exist, sub-task T560a authors a minimal typed-error enum + `IntoResponse` impl in `crates/nexus-api/src/error.rs` before T560 lands.
-- [ ] T561 [US6] Rewrite `create_lease` to orchestrate the three helpers; body ≤ 40 LOC.
+- [X] T561 [US6] Rewrite `create_lease` to orchestrate the three helpers; body ≤ 40 LOC.
 
 ### Verification
 
-- [ ] T562 [US6] `cargo test -p nexus-api --test host_backends_lease_contract` GREEN.
+- [X] T562 [US6] `cargo test -p nexus-api --test host_backends_lease_contract` GREEN.
 
 ---
 
