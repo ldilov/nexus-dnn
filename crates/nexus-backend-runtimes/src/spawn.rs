@@ -187,9 +187,7 @@ pub fn build_host_env(
     port: u16,
 ) -> BTreeMap<String, String> {
     let mut out: BTreeMap<String, String> = base_env.clone();
-    for (k, v) in extension_env {
-        out.insert(k.clone(), v.clone());
-    }
+    out.extend(extension_env.iter().map(|(k, v)| (k.clone(), v.clone())));
     let host = match bind_mode {
         RuntimeBindMode::Loopback | RuntimeBindMode::LoopbackOnly => "127.0.0.1",
         _ => "0.0.0.0",
@@ -643,8 +641,14 @@ impl Spawner {
         .bind(pid.map(|p| p as i64))
         .bind(port as i64)
         .bind("http_tcp")
-        .bind(serde_json::to_string(&descriptor.address).unwrap_or_else(|_| "{}".into()))
-        .bind(serde_json::to_string(&descriptor.api_dialects).unwrap_or_else(|_| "[]".into()))
+        .bind(serde_json::to_string(&descriptor.address).map_err(|e| {
+            BackendRuntimeError::Internal(format!("serialize channel address: {e}"))
+        })?)
+        .bind(
+            serde_json::to_string(&descriptor.api_dialects).map_err(|e| {
+                BackendRuntimeError::Internal(format!("serialize api_dialects: {e}"))
+            })?,
+        )
         .bind(&now)
         .execute(pool)
         .await?;

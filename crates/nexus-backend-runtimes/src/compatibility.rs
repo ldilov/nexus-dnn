@@ -49,12 +49,12 @@ pub fn tag_model(path: &Path) -> RequiredBackend {
 }
 
 pub fn pair_allowed(model: RequiredBackend, backend: &str) -> Result<(), RuntimeAdapterError> {
-    let ok = match (model, backend) {
-        (RequiredBackend::LlamaCpp, "llama.cpp") => true,
-        (RequiredBackend::TensorRtLlm, "tensorrt_llm") => true,
-        (RequiredBackend::Unknown, _) => true,
-        _ => false,
-    };
+    let ok = matches!(
+        (model, backend),
+        (RequiredBackend::LlamaCpp, "llama.cpp")
+            | (RequiredBackend::TensorRtLlm, "tensorrt_llm")
+            | (RequiredBackend::Unknown, _)
+    );
     if ok {
         Ok(())
     } else {

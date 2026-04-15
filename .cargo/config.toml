@@ -1,2 +1,4 @@
-[build]
-rustflags = ["-D", "warnings"]
+# Intentionally no workspace-wide rustflags.
+# Per constitution v1.1.0 Appendix D, workspace-wide `-D warnings` ties build
+# correctness to toolchain version. Use `-D warnings` in CI only:
+#   cargo clippy --workspace --all-targets -- -D warnings

@@ -137,11 +137,11 @@ impl HuggingFaceCapability for HuggingFaceClient {
         let now = chrono::Utc::now();
         let key = self.cache_key_for_search(&req);
 
-        if let Some(cached) = self.cache.get(&key).await? {
-            if CatalogCacheRepo::is_fresh(&cached, now) {
-                debug!(cache_key = %key, "hf search cache hit");
-                return serde_json::from_str::<SearchPage>(&cached.body).map_err(HfError::from);
-            }
+        if let Some(cached) = self.cache.get(&key).await?
+            && CatalogCacheRepo::is_fresh(&cached, now)
+        {
+            debug!(cache_key = %key, "hf search cache hit");
+            return serde_json::from_str::<SearchPage>(&cached.body).map_err(HfError::from);
         }
 
         let url = search::build_search_url(&self.base_url, &req);
@@ -200,10 +200,10 @@ impl HuggingFaceCapability for HuggingFaceClient {
         let now = chrono::Utc::now();
         let key = self.cache_key_for_detail(repo_id, rev);
 
-        if let Some(cached) = self.cache.get(&key).await? {
-            if CatalogCacheRepo::is_fresh(&cached, now) {
-                return serde_json::from_str::<RepoMetadata>(&cached.body).map_err(HfError::from);
-            }
+        if let Some(cached) = self.cache.get(&key).await?
+            && CatalogCacheRepo::is_fresh(&cached, now)
+        {
+            return serde_json::from_str::<RepoMetadata>(&cached.body).map_err(HfError::from);
         }
 
         let url = format!("{}/api/models/{}/revision/{}", self.base_url, repo_id, rev);

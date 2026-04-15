@@ -25,12 +25,11 @@ fn walk(root: &Path, name: &str) -> Result<Option<PathBuf>, InstallError> {
             let file_type = entry.file_type()?;
             if file_type.is_dir() {
                 stack.push(path);
-            } else if file_type.is_file() {
-                if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
-                    if file_name.eq_ignore_ascii_case(name) {
-                        return Ok(Some(path));
-                    }
-                }
+            } else if file_type.is_file()
+                && let Some(file_name) = path.file_name().and_then(|s| s.to_str())
+                && file_name.eq_ignore_ascii_case(name)
+            {
+                return Ok(Some(path));
             }
         }
     }

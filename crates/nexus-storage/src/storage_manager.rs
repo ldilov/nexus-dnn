@@ -131,7 +131,7 @@ impl StorageManager {
             .await;
     }
 
-    async fn check_quarantine_threshold(&self, namespace_id: &str) {
+    async fn check_quarantine_threshold(&self, namespace_id: &str) -> Result<(), StorageError> {
         let threshold = self.quarantine_threshold as i64;
         let row: Option<(i64,)> = sqlx::query_as(include_str!(
             "../queries/storage/check_quarantine_threshold.sql"
@@ -140,16 +140,16 @@ impl StorageManager {
         .bind(threshold)
         .fetch_optional(self.db.pool())
         .await
-        .unwrap_or(None);
+        .map_err(StorageError::Database)?;
 
         if let Some((count,)) = row
             && count >= threshold
         {
-            let _ = self
-                .db
+            self.db
                 .update_namespace_status(namespace_id, "quarantined_storage")
-                .await;
+                .await?;
         }
+        Ok(())
     }
 
     pub fn db(&self) -> &SqliteDatabase {
@@ -326,7 +326,9 @@ impl StorageManager {
                         self.journal_complete(id, "failed", None).await;
                     }
 
-                    self.check_quarantine_threshold(namespace_id).await;
+                    if let Err(qerr) = self.check_quarantine_threshold(namespace_id).await {
+                        tracing::warn!(namespace_id, error = %qerr, "quarantine threshold check failed");
+                    }
 
                     return Err(StorageError::ApplyFailed {
                         detail: format!("migration '{}' failed: {e}", migration.migration_id),
