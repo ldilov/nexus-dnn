@@ -369,6 +369,39 @@ pub async fn diagnostics(
     .into_response()
 }
 
+/// `GET /api/v1/backends/{family}/parameters` — return the versioned launch
+/// parameter catalog for a runtime family (spec 011 US5 T085).
+///
+/// 200 with the catalog on a known family. 404 `FAMILY_UNKNOWN` otherwise.
+/// The catalog is advisory: extensions may still pass unknown flags through
+/// at spawn time — they get classified as `extension-passthrough`.
+pub async fn parameter_catalog(
+    State(_state): State<AppState>,
+    Path(family): Path<String>,
+) -> axum::response::Response {
+    match family.as_str() {
+        "llama.cpp" | "llamacpp" => {
+            match nexus_backend_runtimes::parameter_catalog::llamacpp_catalog() {
+                Ok(catalog) => ApiResponse::ok((*catalog).clone()).into_response(),
+                Err(e) => ApiResponse::<()>::err(
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "CATALOG_LOAD_FAILED",
+                    "internal",
+                    e.to_string(),
+                )
+                .into_response(),
+            }
+        }
+        other => ApiResponse::<()>::err(
+            axum::http::StatusCode::NOT_FOUND,
+            "FAMILY_UNKNOWN",
+            "not_found",
+            format!("no parameter catalog for runtime family {other}"),
+        )
+        .into_response(),
+    }
+}
+
 fn ulid_lite() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let n = SystemTime::now()

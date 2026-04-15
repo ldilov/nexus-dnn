@@ -129,6 +129,10 @@ pub fn build(state: AppState) -> Router {
         .route("/system/info", get(system::system_info))
         .route("/tools", get(tools::list_tools))
         .route("/events", get(ws::events_ws))
+        .route(
+            "/backends/{family}/parameters",
+            get(backends::parameter_catalog),
+        )
         .route("/llm/backends", get(backends::list))
         .route("/llm/backends/{backendId}", get(backends::detail))
         .route("/llm/backends/{backendId}/install", post(backends::install))

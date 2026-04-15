@@ -416,6 +416,21 @@ export function fetchLoadState(backendId: string): Promise<LoadStateDto> {
   return apiFetch(`/llm/backends/${encodeURIComponent(backendId)}/load-state`);
 }
 
+// Spec 011 US5: host-level parameter catalog for a runtime family.
+// Loosely typed — the catalog evolves on its own cadence and the UI parses
+// progressively, dropping unrecognized fields.
+export interface ParameterCatalogResponse {
+  family: string;
+  snapshot_date: string;
+  upstream_source: string;
+  total_entries: number;
+  entries: Array<Record<string, unknown>>;
+}
+
+export function fetchParameterCatalog(family: string): Promise<ParameterCatalogResponse> {
+  return apiFetch(`/backends/${encodeURIComponent(family)}/parameters`);
+}
+
 // Host-level, extension-agnostic HF search/detail.
 
 export function hfSearch(params: {
