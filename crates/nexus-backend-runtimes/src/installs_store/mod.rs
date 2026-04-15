@@ -162,6 +162,68 @@ pub async fn delete_row(pool: &SqlitePool, install_id: &str) -> BackendRuntimeRe
     Ok(())
 }
 
+/// Spec 016 US7 (FR-409): batched counterpart to `list_all` + N× `list_dependents`.
+/// One LEFT JOIN against `host_runtime_leases WHERE released_at IS NULL`; the
+/// caller gets `(row, dedup'd extension_ids)` tuples. Query count: always 1.
+#[allow(clippy::type_complexity)]
+pub async fn list_all_with_dependents(
+    pool: &SqlitePool,
+) -> BackendRuntimeResult<Vec<(RuntimeInstallRow, Vec<String>)>> {
+    let rows = sqlx::query(
+        "SELECT i.install_id, i.family, i.version, i.accelerator, i.install_root, \
+                i.binary_paths, i.state, i.validation_result, i.last_failure_category, \
+                i.source_url, i.checksum, i.created_at, i.updated_at, \
+                l.extension_id AS dep_extension_id \
+         FROM host_runtime_installs i \
+         LEFT JOIN host_runtime_leases l \
+                ON l.install_id = i.install_id AND l.released_at IS NULL \
+         ORDER BY datetime(i.created_at) DESC, i.install_id, l.extension_id",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(storage)?;
+
+    let mut out: Vec<(RuntimeInstallRow, Vec<String>)> = Vec::new();
+    for row in rows {
+        let install_id: String = row.try_get("install_id").map_err(storage)?;
+        let dep: Option<String> = row
+            .try_get::<Option<String>, _>("dep_extension_id")
+            .map_err(storage)?
+            .filter(|s| !s.is_empty());
+
+        let entry = match out.last_mut() {
+            Some(last) if last.0.install_id == install_id => last,
+            _ => {
+                out.push((
+                    RuntimeInstallRow {
+                        install_id: install_id.clone(),
+                        family: row.try_get("family").map_err(storage)?,
+                        version: row.try_get("version").map_err(storage)?,
+                        accelerator: row.try_get("accelerator").map_err(storage)?,
+                        install_root: row.try_get("install_root").map_err(storage)?,
+                        binary_paths: row.try_get("binary_paths").map_err(storage)?,
+                        state: row.try_get("state").map_err(storage)?,
+                        validation_result: row.try_get("validation_result").ok(),
+                        last_failure_category: row.try_get("last_failure_category").ok(),
+                        source_url: row.try_get("source_url").ok(),
+                        checksum: row.try_get("checksum").ok(),
+                        created_at: row.try_get("created_at").map_err(storage)?,
+                        updated_at: row.try_get("updated_at").map_err(storage)?,
+                    },
+                    Vec::new(),
+                ));
+                out.last_mut().unwrap()
+            }
+        };
+        if let Some(ext) = dep
+            && !entry.1.contains(&ext)
+        {
+            entry.1.push(ext);
+        }
+    }
+    Ok(out)
+}
+
 pub async fn list_dependents(
     pool: &SqlitePool,
     install_id: &str,

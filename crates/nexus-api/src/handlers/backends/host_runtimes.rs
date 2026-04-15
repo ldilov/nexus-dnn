@@ -37,7 +37,9 @@ pub struct HostRuntimesResponse {
 /// `host_runtime_installs`; does NOT route through extension state.
 pub async fn list_host_runtimes(State(state): State<AppState>) -> axum::response::Response {
     let pool = state.db.pool();
-    let rows = match nexus_backend_runtimes::installs_store::list_all(pool).await {
+    // Spec 016 US7 (FR-410): single batched JOIN instead of N+1
+    // (previously: list_all + per-row list_dependents in a loop).
+    let rows = match nexus_backend_runtimes::installs_store::list_all_with_dependents(pool).await {
         Ok(r) => r,
         Err(e) => {
             return ApiResponse::<()>::err(
@@ -50,13 +52,9 @@ pub async fn list_host_runtimes(State(state): State<AppState>) -> axum::response
         }
     };
 
-    let mut installs = Vec::with_capacity(rows.len());
-    for row in rows {
-        let dependents =
-            nexus_backend_runtimes::installs_store::list_dependents(pool, &row.install_id)
-                .await
-                .unwrap_or_default();
-        installs.push(HostRuntimeInstallView {
+    let installs: Vec<HostRuntimeInstallView> = rows
+        .into_iter()
+        .map(|(row, dependents)| HostRuntimeInstallView {
             install_id: row.install_id,
             family: row.family,
             version: row.version,
@@ -66,8 +64,8 @@ pub async fn list_host_runtimes(State(state): State<AppState>) -> axum::response
             created_at: row.created_at,
             updated_at: row.updated_at,
             dependents,
-        });
-    }
+        })
+        .collect();
 
     let available_families = registry(&state)
         .map(|r| {
