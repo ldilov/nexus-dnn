@@ -133,6 +133,7 @@ pub async fn run(
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Planned refactor: group into InstallCtx in Phase 3 modularization (spec 015).
 async fn run_inner<F>(
     manifest: &VersionManifest,
     machine: &MachineDescriptor,

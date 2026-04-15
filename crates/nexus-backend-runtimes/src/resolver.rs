@@ -48,24 +48,23 @@ impl MachineDescriptor {
 }
 
 async fn detect_cuda_line() -> Option<u8> {
-    if let Ok(output) = Command::new("nvcc").arg("--version").output().await {
-        if output.status.success() {
-            let text = String::from_utf8_lossy(&output.stdout);
-            if let Some(line) = parse_cuda_line(&text) {
-                return Some(line);
-            }
+    if let Ok(output) = Command::new("nvcc").arg("--version").output().await
+        && output.status.success()
+    {
+        let text = String::from_utf8_lossy(&output.stdout);
+        if let Some(line) = parse_cuda_line(&text) {
+            return Some(line);
         }
     }
     if let Ok(output) = Command::new("nvidia-smi")
         .args(["--query-gpu=driver_version", "--format=csv,noheader"])
         .output()
         .await
+        && output.status.success()
     {
-        if output.status.success() {
-            let text = String::from_utf8_lossy(&output.stdout);
-            if let Some(driver) = parse_driver_major(&text) {
-                return Some(if driver >= 550 { 13 } else { 12 });
-            }
+        let text = String::from_utf8_lossy(&output.stdout);
+        if let Some(driver) = parse_driver_major(&text) {
+            return Some(if driver >= 550 { 13 } else { 12 });
         }
     }
     None

@@ -1875,6 +1875,7 @@ version = "0.1.0"
 dependencies = [
  "jsonschema 0.28.3",
  "nexus-protocol",
+ "parking_lot",
  "referencing 0.28.3",
  "regex-lite",
  "semver",

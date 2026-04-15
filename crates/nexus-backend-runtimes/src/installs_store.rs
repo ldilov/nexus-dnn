@@ -247,15 +247,15 @@ pub async fn relocate_legacy_binaries(
         if dest.exists() {
             continue;
         }
-        if let Some(parent) = dest.parent() {
-            if let Err(e) = std::fs::create_dir_all(parent) {
-                tracing::warn!(
-                    install_id = %row.install_id,
-                    error = %e,
-                    "relocate: failed to create destination parent",
-                );
-                continue;
-            }
+        if let Some(parent) = dest.parent()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            tracing::warn!(
+                install_id = %row.install_id,
+                error = %e,
+                "relocate: failed to create destination parent",
+            );
+            continue;
         }
         if !src.exists() {
             tracing::warn!(

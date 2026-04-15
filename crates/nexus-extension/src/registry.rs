@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
+
+use parking_lot::RwLock;
 
 use semver::Version;
 use tracing::{info, warn};
@@ -125,10 +126,7 @@ impl InMemoryExtensionRegistry {
     }
 
     pub fn enable_extension(&self, id: &str) -> Result<(), ExtensionError> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|_| ExtensionError::RegistryLockPoisoned)?;
+        let mut state = self.state.write();
 
         let ext = state
             .extensions
@@ -148,10 +146,7 @@ impl InMemoryExtensionRegistry {
     }
 
     pub fn disable_extension(&self, id: &str) -> Result<(), ExtensionError> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|_| ExtensionError::RegistryLockPoisoned)?;
+        let mut state = self.state.write();
 
         let ext = state
             .extensions
@@ -179,10 +174,7 @@ impl InMemoryExtensionRegistry {
         let (builtin_extensions, operator_entries, report) =
             scan_builtin_dir(builtin_dir, host_version, protocol_version)?;
 
-        let mut state = self
-            .state
-            .write()
-            .map_err(|_| ExtensionError::RegistryLockPoisoned)?;
+        let mut state = self.state.write();
 
         for ext in builtin_extensions {
             let already_registered = state
@@ -210,10 +202,7 @@ impl InMemoryExtensionRegistry {
         host_version: &Version,
         protocol_version: &Version,
     ) -> Result<(), ExtensionError> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|_| ExtensionError::RegistryLockPoisoned)?;
+        let mut state = self.state.write();
 
         let ext = state
             .extensions
@@ -261,10 +250,7 @@ impl InMemoryExtensionRegistry {
 
         let operator_index = OperatorIndex::build(operator_entries);
 
-        let mut state = self
-            .state
-            .write()
-            .map_err(|_| ExtensionError::RegistryLockPoisoned)?;
+        let mut state = self.state.write();
 
         state.extensions = activated_extensions;
         state.operator_index = operator_index;
@@ -280,10 +266,7 @@ impl ExtensionRegistry for InMemoryExtensionRegistry {
         _host_version: &Version,
         _protocol_version: &Version,
     ) -> Result<DiscoveryReport, ExtensionError> {
-        let state = self
-            .state
-            .read()
-            .map_err(|_| ExtensionError::RegistryLockPoisoned)?;
+        let state = self.state.read();
 
         Ok(DiscoveryReport {
             activated: state
@@ -296,12 +279,12 @@ impl ExtensionRegistry for InMemoryExtensionRegistry {
     }
 
     fn list_extensions(&self) -> Vec<ActivatedExtension> {
-        let state = self.state.read().expect("registry lock poisoned");
+        let state = self.state.read();
         state.extensions.clone()
     }
 
     fn get_extension(&self, id: &str) -> Option<ActivatedExtension> {
-        let state = self.state.read().expect("registry lock poisoned");
+        let state = self.state.read();
         state
             .extensions
             .iter()
@@ -310,17 +293,17 @@ impl ExtensionRegistry for InMemoryExtensionRegistry {
     }
 
     fn list_operators(&self) -> Vec<OperatorDefinition> {
-        let state = self.state.read().expect("registry lock poisoned");
+        let state = self.state.read();
         state.operator_index.all().to_vec()
     }
 
     fn get_operator(&self, id: &str) -> Option<OperatorDefinition> {
-        let state = self.state.read().expect("registry lock poisoned");
+        let state = self.state.read();
         state.operator_index.by_id(id).cloned()
     }
 
     fn list_recipes(&self) -> Vec<RecipeFile> {
-        let state = self.state.read().expect("registry lock poisoned");
+        let state = self.state.read();
         state
             .extensions
             .iter()
@@ -330,7 +313,7 @@ impl ExtensionRegistry for InMemoryExtensionRegistry {
     }
 
     fn get_recipe(&self, id: &str) -> Option<RecipeFile> {
-        let state = self.state.read().expect("registry lock poisoned");
+        let state = self.state.read();
         state
             .extensions
             .iter()
@@ -341,7 +324,7 @@ impl ExtensionRegistry for InMemoryExtensionRegistry {
     }
 
     fn list_ui_contributions(&self) -> Vec<UIContributionFile> {
-        let state = self.state.read().expect("registry lock poisoned");
+        let state = self.state.read();
         state
             .extensions
             .iter()
@@ -351,7 +334,7 @@ impl ExtensionRegistry for InMemoryExtensionRegistry {
     }
 
     fn list_ui_contributions_by_kind(&self, kind: &UIContributionKind) -> Vec<UIContributionFile> {
-        let state = self.state.read().expect("registry lock poisoned");
+        let state = self.state.read();
         state
             .extensions
             .iter()
@@ -363,7 +346,7 @@ impl ExtensionRegistry for InMemoryExtensionRegistry {
     }
 
     fn list_layouts(&self) -> Vec<LayoutFile> {
-        let state = self.state.read().expect("registry lock poisoned");
+        let state = self.state.read();
         state
             .extensions
             .iter()
@@ -373,7 +356,7 @@ impl ExtensionRegistry for InMemoryExtensionRegistry {
     }
 
     fn get_layout(&self, id: &str) -> Option<LayoutFile> {
-        let state = self.state.read().expect("registry lock poisoned");
+        let state = self.state.read();
         state
             .extensions
             .iter()
