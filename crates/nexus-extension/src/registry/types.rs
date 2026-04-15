@@ -1,10 +1,3 @@
-//! Data types shared across the registry submodules.
-//!
-//! `DiscoveryReport`, `ExtensionStatus`, `LayoutFile`, and `ActivatedExtension`
-//! are part of the crate's public API (re-exported from `registry/mod.rs`).
-//! `RegistryState` is internal to the registry and visible only to sibling
-//! submodules via `pub(super)`.
-
 use std::path::PathBuf;
 
 use crate::manifest::{ExtensionManifest, OperatorDefinition};

@@ -1,5 +1,3 @@
-//! Real-fork supervisor task + stream drainer (per spec 015 US1).
-
 use std::collections::HashMap;
 use std::sync::Arc;
 

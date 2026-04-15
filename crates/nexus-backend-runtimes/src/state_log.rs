@@ -1,5 +1,3 @@
-//! Append-only audit log for install state transitions.
-
 use sqlx::SqliteExecutor;
 
 use crate::error::BackendRuntimeResult;

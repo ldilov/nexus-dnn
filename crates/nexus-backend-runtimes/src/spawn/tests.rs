@@ -139,7 +139,6 @@ fn http_status_maps_each_error_variant() {
     assert_eq!(code, "RUNTIME_NEEDS_REPAIR");
 }
 
-/// Spec 016 US8 (FR-412, SC-403) — every variant maps to a non-placeholder
 /// code. If a new `BackendRuntimeError` variant is added without touching
 /// `http_status_for`, the exhaustive match inside that function is a compile
 /// error — this test is the runtime counterpart that enforces sensible codes.

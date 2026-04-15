@@ -1,12 +1,3 @@
-//! Host-owned backend runtime pool.
-//!
-//! Every generic runtime concern — install/repair/uninstall pipelines,
-//! accelerator-aware binary selection, validation and reconciler logic,
-//! managed spawn and drain, runtime channel descriptors, logs, and
-//! versioned parameter catalogs — lives here. Domain concerns (model
-//! choice, prompt templates, routing rules, request payload shapes) stay
-//! inside each consuming extension. See `specs/011-host-runtime-pool/spec.md`.
-
 pub mod adapter;
 pub mod channel;
 pub mod checksum;
@@ -18,16 +9,16 @@ pub mod error;
 pub mod events;
 pub mod extract;
 pub mod family;
-pub mod runtime_installs_store;
-pub use runtime_installs_store as installs_store;
 pub mod launch_spec;
 pub mod lease;
 pub mod log_pipeline;
 pub mod log_store;
 pub mod manifest;
+pub mod models_store;
 pub mod parameter_catalog;
 pub mod reserved_policy;
 pub mod resolver;
+pub mod runtime_installs_store;
 pub mod settings;
 pub mod settings_store;
 pub mod spawn;
@@ -66,7 +57,6 @@ use sqlx::SqlitePool;
 
 /// Run every startup-time runtime-pool migration in the correct order,
 /// invoked by `nexus-core::app::run` BEFORE the HTTP server binds
-/// (spec 012 US1 / FR-101). Chains legacy row migration, filesystem
 /// relocation, and lease hydration. Idempotent across restarts.
 ///
 /// `data_dir` is the host data root. Legacy extension-scoped binaries
@@ -77,7 +67,7 @@ pub async fn run_startup_migrations(
     pool: &SqlitePool,
     data_dir: &Path,
 ) -> Result<(), BackendRuntimeError> {
-    if let Err(e) = installs_store::migrate_from_legacy(pool).await {
+    if let Err(e) = runtime_installs_store::migrate_from_legacy(pool).await {
         tracing::error!(
             family = crate::family::RuntimeFamily::LLAMA_CPP,
             phase = "migrate_from_legacy",
@@ -92,7 +82,8 @@ pub async fn run_startup_migrations(
         .join("runtimes");
     let host_runtimes_root = data_dir.join("runtimes");
     if let Err(e) =
-        installs_store::relocate_legacy_binaries(pool, &legacy_root, &host_runtimes_root).await
+        runtime_installs_store::relocate_legacy_binaries(pool, &legacy_root, &host_runtimes_root)
+            .await
     {
         tracing::error!(
             family = crate::family::RuntimeFamily::LLAMA_CPP,
@@ -102,7 +93,7 @@ pub async fn run_startup_migrations(
         );
         return Err(e);
     }
-    if let Err(e) = installs_store::hydrate_on_start(pool).await {
+    if let Err(e) = runtime_installs_store::hydrate_on_start(pool).await {
         tracing::error!(
             family = crate::family::RuntimeFamily::LLAMA_CPP,
             phase = "hydrate_on_start",

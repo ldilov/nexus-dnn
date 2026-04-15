@@ -1,5 +1,3 @@
-//! SQL migration runner extracted from sqlite.rs per spec 014.
-
 use sqlx::sqlite::SqlitePool;
 
 use crate::error::StorageError;

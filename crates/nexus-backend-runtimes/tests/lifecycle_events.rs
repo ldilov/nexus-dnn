@@ -1,8 +1,3 @@
-//! Spec 012 US5 — FR-115/FR-116 lifecycle event topic emissions.
-//!
-//! Covers T260/T261/T262. The `process.withdrawn` event (FR-117, T267)
-//! is deferred to US6 since its emit site lives in the uninstall handler.
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -88,9 +83,7 @@ fn seed_manifest(status: InstallStatus) -> InstallManifest {
     }
 }
 
-/// T262 — `install.unavailable` MUST be emitted when `validate()` transitions
 /// an `Installed*` row to `Broken` (the functional `Installed → NeedsRepair`
-/// move, per spec 012 FR-116). Exercised end-to-end via a seeded install
 /// row pointing at a non-existent binary so the first validation check fails.
 #[tokio::test]
 async fn install_unavailable_emitted_on_validator_transition() {
@@ -128,7 +121,6 @@ async fn install_unavailable_emitted_on_validator_transition() {
     assert!(evt.payload.get("reason").is_some());
 }
 
-/// T260 — `install.completed` emit at the end of `install_pipeline::run`.
 /// The real pipeline requires network access, a release asset, checksum,
 /// and binary extraction; constructing a faithful fixture here is out of
 /// scope for this ticket. The emit site is covered in production code
@@ -139,9 +131,7 @@ async fn install_completed_emitted_on_install_completion() {
     unimplemented!("see install_completed_emit_site_present for structural check");
 }
 
-/// T261 — `install.repaired` emit at the end of `LlamaCppAdapter::repair`.
 /// Repair delegates to `install(...)`, which transitively requires the
-/// same network/binary fixtures as T260. The emit site is covered in
 /// production code and verified structurally by
 /// [`install_repaired_emit_site_present`].
 #[tokio::test]
@@ -150,7 +140,6 @@ async fn install_repaired_emitted_after_repair() {
     unimplemented!("see install_repaired_emit_site_present for structural check");
 }
 
-/// Structural guard for T260 — ensures the `install.completed` emit
 /// line is present in `install_pipeline.rs` at build time. Kept until
 /// the full-fixture test above is unblocked.
 #[test]
@@ -162,7 +151,6 @@ fn install_completed_emit_site_present() {
     );
 }
 
-/// Structural guard for T261 — ensures the `install.repaired` emit
 /// line is present in `llamacpp/mod.rs` at build time.
 #[test]
 fn install_repaired_emit_site_present() {

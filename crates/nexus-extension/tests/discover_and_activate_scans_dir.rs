@@ -1,11 +1,3 @@
-//! US4 regression tests — spec 016 FR-408.
-//!
-//! `ExtensionRegistry::discover_and_activate` MUST perform real discovery
-//! when called. Prior to spec 016 the trait impl ignored its arguments and
-//! returned already-loaded IDs (POLA violation). These tests pin the fixed
-//! behavior: the method delegates to `refresh` and reflects the current state
-//! of `extensions_dir`.
-
 use std::path::Path;
 
 use nexus_extension::{ExtensionRegistry, InMemoryExtensionRegistry};

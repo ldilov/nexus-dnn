@@ -1,14 +1,3 @@
-//! Shared Hugging Face Hub capability for Nexus-DNN extensions.
-//!
-//! Provides a single narrow-purpose trait, `HuggingFaceCapability`, that
-//! extensions can consume for model search, repository introspection, and
-//! resumable file download. All state (cache, token) is owned by the
-//! capability implementation, not by callers.
-//!
-//! The trait is deliberately minimal: domain concerns (routing, model
-//! registries, hyperparameters) stay inside each consuming extension and
-//! are composed on top of the raw metadata returned here.
-
 pub mod cache;
 pub mod checksum;
 pub mod detail;

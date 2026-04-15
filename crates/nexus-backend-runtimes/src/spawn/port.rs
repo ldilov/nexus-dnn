@@ -1,5 +1,3 @@
-//! Port allocation, lease guard, and bind-mode enum (per spec 015 US1).
-
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 

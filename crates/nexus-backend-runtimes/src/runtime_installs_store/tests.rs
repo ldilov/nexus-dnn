@@ -1,4 +1,3 @@
-//! Tests extracted per spec 015 US4.
 use super::*;
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -307,7 +306,6 @@ async fn migrate_from_legacy_idempotent_second_run() {
     );
 }
 
-// Spec 016 US7 (FR-409 / SC-405) — batched JOIN covering N+1 fix.
 #[tokio::test]
 async fn list_all_with_dependents_batches_in_one_query() {
     let pool = mem_pool().await;

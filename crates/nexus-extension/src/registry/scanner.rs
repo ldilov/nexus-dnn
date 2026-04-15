@@ -1,9 +1,3 @@
-//! Directory scanning + per-extension activation.
-//!
-//! Two entry points: `scan_extensions_dir` (regular extensions) and
-//! `scan_builtin_dir` (builtins discovered in an "available" state).
-//! Phase 4 (US3) will extract a `scan_dir_with<F>` helper to deduplicate them.
-
 use std::path::{Path, PathBuf};
 
 use semver::Version;
@@ -61,7 +55,6 @@ type ScanOutput = Result<
 >;
 
 /// Shared scan loop for `scan_extensions_dir` and `scan_builtin_dir`.
-/// `process_fn` is the only difference between them (spec 016 US3, FR-407).
 fn scan_dir_with<F>(
     dir: &Path,
     host_version: &Version,

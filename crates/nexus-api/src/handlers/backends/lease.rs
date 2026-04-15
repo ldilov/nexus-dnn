@@ -1,8 +1,3 @@
-//! `/api/v1/backends/{install_id}/lease` + release + uninstall.
-//!
-//! Phase 7 (US6) extracts `create_lease` helpers; Phase 9 (US8) replaces the
-//! silent `let _ = remove_binary_directory` with a structured warn-log.
-
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -43,7 +38,6 @@ pub struct LeaseEnvelope {
     pub progress_channel: String,
 }
 
-/// `POST /api/v1/backends/{installId}/lease` — spec 011 US3 T099. US6
 /// orchestrator: delegates to validate_install_for_lease + build_spawn_request
 /// + stub_lease.
 pub async fn create_lease(
@@ -63,10 +57,11 @@ pub async fn create_lease(
     };
 
     let pool = state.db.pool();
-    let row = match nexus_backend_runtimes::installs_store::load_by_id(pool, &install_id).await {
-        Ok(r) => r,
-        Err(e) => return ApiResponse::<()>::internal(e.to_string()).into_response(),
-    };
+    let row =
+        match nexus_backend_runtimes::runtime_installs_store::load_by_id(pool, &install_id).await {
+            Ok(r) => r,
+            Err(e) => return ApiResponse::<()>::internal(e.to_string()).into_response(),
+        };
 
     if let Err(err) = validate_install_for_lease(row.as_ref()) {
         return spawn_error_response(err);
@@ -103,7 +98,7 @@ pub async fn create_lease(
 
 /// Pure precondition check (framework-free).
 fn validate_install_for_lease(
-    row: Option<&nexus_backend_runtimes::installs_store::RuntimeInstallRow>,
+    row: Option<&nexus_backend_runtimes::runtime_installs_store::RuntimeInstallRow>,
 ) -> Result<(), nexus_backend_runtimes::error::BackendRuntimeError> {
     use nexus_backend_runtimes::error::BackendRuntimeError;
     let Some(r) = row else {
@@ -124,7 +119,7 @@ fn validate_install_for_lease(
 fn build_spawn_request(
     extension_id: String,
     install_id: String,
-    row: Option<&nexus_backend_runtimes::installs_store::RuntimeInstallRow>,
+    row: Option<&nexus_backend_runtimes::runtime_installs_store::RuntimeInstallRow>,
     body: &LeaseBody,
 ) -> SpawnRuntimeRequest {
     let family = row
@@ -180,7 +175,6 @@ fn stub_lease(install_id: String, extension_id: String, body: &LeaseBody) -> Lea
     }
 }
 
-/// `DELETE /api/v1/backends/leases/{leaseId}` — spec 011 US3 T100.
 pub async fn release_lease(
     State(state): State<AppState>,
     Path(lease_id): Path<String>,

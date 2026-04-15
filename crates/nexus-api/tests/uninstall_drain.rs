@@ -151,10 +151,12 @@ async fn no_dependents_204() {
     let response = router.oneshot(request).await.expect("oneshot");
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
-    let remaining =
-        nexus_backend_runtimes::installs_store::load_by_id(fx.state.db.pool(), "ri_uninstall")
-            .await
-            .unwrap();
+    let remaining = nexus_backend_runtimes::runtime_installs_store::load_by_id(
+        fx.state.db.pool(),
+        "ri_uninstall",
+    )
+    .await
+    .unwrap();
     assert!(remaining.is_none(), "install row must be deleted");
     assert!(
         !install_root.exists(),
@@ -187,10 +189,12 @@ async fn live_lease_no_force_409() {
         "dependents must include ext.alpha: {body}"
     );
 
-    let row =
-        nexus_backend_runtimes::installs_store::load_by_id(fx.state.db.pool(), "ri_uninstall")
-            .await
-            .unwrap();
+    let row = nexus_backend_runtimes::runtime_installs_store::load_by_id(
+        fx.state.db.pool(),
+        "ri_uninstall",
+    )
+    .await
+    .unwrap();
     assert!(row.is_some(), "install row must remain on 409");
 }
 

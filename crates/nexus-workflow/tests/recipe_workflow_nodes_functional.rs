@@ -1,12 +1,3 @@
-//! Integration check: workflow nodes referenced by a recipe are structurally
-//! functional — they reference operators that exist, their edges connect real
-//! ports, their DAG is acyclic, and `validate_workflow` accepts the graph.
-//!
-//! This is the end-to-end sanity test requested at audit time: "verify via
-//! tests that nodes are functional and tied to recipe." A shipping recipe
-//! must resolve to a workflow whose node graph passes host validation under
-//! a realistic operator registry.
-
 use nexus_extension::{ExecutionSpec, OperatorDefinition, OperatorInfo, PortSpec, ResourceSpec};
 use nexus_workflow::{parse_workflow, validate_workflow};
 

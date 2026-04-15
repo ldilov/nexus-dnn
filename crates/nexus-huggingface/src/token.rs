@@ -1,10 +1,3 @@
-//! Hugging Face auth token resolution.
-//!
-//! Tokens are resolved exclusively from the `HF_TOKEN` environment variable
-//! at construction time. There is intentionally no public string constructor
-//! so tokens cannot be collected through the UI and round-tripped through
-//! the capability.
-
 #[derive(Clone)]
 pub struct HfToken(Option<String>);
 

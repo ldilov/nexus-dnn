@@ -1,4 +1,3 @@
-//! Archive-then-drop test isolated from manager/tests.rs to keep both files ≤ 400 LOC.
 use super::*;
 use crate::database::Database;
 use crate::records::NamespaceRecord;

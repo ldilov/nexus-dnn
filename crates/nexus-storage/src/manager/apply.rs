@@ -1,5 +1,3 @@
-//! StorageManager `apply_plan` orchestration + helpers (per spec 014 H-09 split).
-
 use nexus_events::types::NexusEvent;
 use sqlx::Executor;
 use sqlx::Sqlite;

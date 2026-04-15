@@ -1,14 +1,3 @@
-//! Launch spec types used by the host runtime pool.
-//!
-//! Two shapes coexist here:
-//!
-//! - [`LlamaServerLaunchSpec`] — legacy deterministic llama-server arg builder
-//!   consumed by the settings preview endpoint.
-//! - [`LaunchSpec`] — spec 011 US3 adapter-owned fork payload: resolved binary
-//!   path, base args, base env, and optional working directory. Populated by
-//!   [`crate::adapter::BackendAdapter::launch_spec`] before the spawner merges
-//!   host-managed args and the extension's argv/env.
-
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -55,7 +44,6 @@ pub fn generate(
     }
 }
 
-/// Adapter-provided fork payload (spec 011 US3 T064).
 ///
 /// The adapter resolves the backend binary and any family-specific base args /
 /// env. The spawner then layers host-managed flags (port, bind host, metrics,

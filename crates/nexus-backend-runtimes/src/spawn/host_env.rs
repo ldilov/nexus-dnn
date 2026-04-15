@@ -1,5 +1,3 @@
-//! Host-controlled environment + argv injection (per spec 015 US1).
-
 use std::collections::BTreeMap;
 
 use sqlx::SqlitePool;

@@ -1,5 +1,3 @@
-//! Typed errors for runtime pool operations.
-
 use thiserror::Error;
 
 #[derive(Debug, Error)]

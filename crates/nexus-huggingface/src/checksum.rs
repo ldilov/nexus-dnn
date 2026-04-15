@@ -1,9 +1,3 @@
-//! Content-hash verification for downloaded artifacts.
-//!
-//! The hasher is an incremental `Sha256` wrapper so callers can feed
-//! streaming bytes without accumulating them in memory. Verification
-//! is case-insensitive on the hex digest.
-
 use sha2::{Digest, Sha256};
 
 use crate::error::{HfError, HfResult};

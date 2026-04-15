@@ -186,7 +186,6 @@ pub async fn enable_extension(
 }
 
 /// Resolve every `runtime_dependencies` entry in the manifest against
-/// `host_runtime_installs` (spec 012 US2, FR-104/105/106). Intra-manifest
 /// conflicts are detected FIRST via the pure `detect_intra_manifest_conflicts`
 /// helper; unmet dependencies are reported with the available-versions list
 /// so callers can render an actionable panel link.
@@ -202,7 +201,7 @@ pub async fn check_runtime_dependencies(
     detect_intra_manifest_conflicts(ext_id, deps)?;
     let pool = db.pool();
     for dep in deps {
-        let resolved = nexus_backend_runtimes::installs_store::resolve_dependency(
+        let resolved = nexus_backend_runtimes::runtime_installs_store::resolve_dependency(
             pool,
             dep.family.as_str(),
             dep.version.as_deref(),
@@ -225,7 +224,7 @@ pub async fn check_runtime_dependencies(
 }
 
 async fn available_versions_for(db: &nexus_storage::SqliteDatabase, family: &str) -> Vec<String> {
-    match nexus_backend_runtimes::installs_store::list_all(db.pool()).await {
+    match nexus_backend_runtimes::runtime_installs_store::list_all(db.pool()).await {
         Ok(rows) => rows
             .into_iter()
             .filter(|r| r.family == family)

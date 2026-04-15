@@ -1,6 +1,3 @@
-//! Storage-contribution validation: capability presence + SQL migration file
-//! schema checks.
-
 use std::path::Path;
 
 use crate::manifest::ExtensionManifest;

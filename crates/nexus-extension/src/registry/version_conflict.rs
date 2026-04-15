@@ -1,16 +1,3 @@
-//! Intra-manifest `runtime_dependencies` conflict detection.
-//!
-//! Spec 016 Phase 3 (US2): the legacy 155-LOC `VersionInterval` helper has
-//! been replaced by `semver::VersionReq` (Ecosystem-First, Principle I) plus a
-//! dedicated `LlamaCppBuildReq` for llama.cpp build numbers (`b4970`-style)
-//! that are intentionally *not* semver.
-//!
-//! Pure function, no I/O: `detect_intra_manifest_conflicts` only inspects the
-//! manifest entries handed to it. For semver requirements it probes against a
-//! fixed candidate set (see `SEMVER_PROBES`) since host_runtime_installs
-//! content is not wired into this pure layer; for build-number requirements
-//! it performs exact `u64` interval arithmetic.
-
 use std::collections::BTreeMap;
 
 use regex_lite::Regex;
@@ -25,7 +12,6 @@ use crate::manifest::RuntimeDependency;
 /// `Err(RuntimeDependencyConflict)` when any family contains two entries whose
 /// accepted version sets do not intersect; returns `Ok(())` otherwise.
 ///
-/// Parser fallback chain (per FR-403):
 /// 1. `semver::VersionReq::parse` — standard semver ranges.
 /// 2. `LlamaCppBuildReq::parse` — `>=b4970` / `<b5000` / `=b4970` / bare `b4970`.
 /// 3. Both fail → `ExtensionError::ManifestParse` with both parser errors.

@@ -1,11 +1,3 @@
-//! Integration test: recipe → workflow → nodes wiring.
-//!
-//! Verifies that when an extension contributes a recipe whose
-//! `workflow_template_ref` resolves to a workflow row, the stored nodes and
-//! edges round-trip through the DB and are still materially connected to the
-//! recipe that references them (SC-004, FR-004, plus the "nodes are
-//! functional and tied to recipe" sanity check requested at audit time).
-
 use nexus_storage::{Database, ExtensionRecord, RecipeRecord, SqliteDatabase, WorkflowRecord};
 
 async fn fresh_db() -> SqliteDatabase {

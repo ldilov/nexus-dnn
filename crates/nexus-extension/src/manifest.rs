@@ -20,10 +20,77 @@ pub struct ExtensionManifest {
     pub storage: Option<StorageContribution>,
     #[serde(default)]
     pub runtime_dependencies: Vec<RuntimeDependency>,
+    #[serde(default)]
+    pub model_dependencies: Vec<ModelDependencyManifest>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModelDependencyManifest {
+    pub family: String,
+    pub version: String,
+    #[serde(default)]
+    pub revision: Option<String>,
+    #[serde(default)]
+    pub allow_unpinned: bool,
+    #[serde(default, deserialize_with = "deserialize_param_count")]
+    pub min_params: Option<u64>,
+    #[serde(default)]
+    pub quantization: Option<String>,
+    #[serde(default)]
+    pub variant: Option<String>,
+    #[serde(default = "default_required")]
+    pub required: bool,
+}
+
+fn default_required() -> bool {
+    true
+}
+
+fn deserialize_param_count<'de, D>(d: D) -> Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+    let raw: Option<serde_json::Value> = Option::deserialize(d)?;
+    let Some(v) = raw else { return Ok(None) };
+    match v {
+        serde_json::Value::Null => Ok(None),
+        serde_json::Value::Number(n) => n
+            .as_u64()
+            .map(Some)
+            .ok_or_else(|| D::Error::custom("min_params must be non-negative")),
+        serde_json::Value::String(s) => parse_param_count(&s).map(Some).map_err(D::Error::custom),
+        _ => Err(D::Error::custom(
+            "min_params must be number or string like '7B'",
+        )),
+    }
+}
+
+fn parse_param_count(s: &str) -> Result<u64, String> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Err("empty param_count".into());
+    }
+    let (num_part, mult) = match s.chars().last().unwrap().to_ascii_uppercase() {
+        'B' => (&s[..s.len() - 1], 1_000_000_000u64),
+        'M' => (&s[..s.len() - 1], 1_000_000u64),
+        'K' => (&s[..s.len() - 1], 1_000u64),
+        _ => (s, 1u64),
+    };
+    let n: f64 = num_part
+        .parse()
+        .map_err(|e: std::num::ParseFloatError| e.to_string())?;
+    Ok((n * mult as f64) as u64)
+}
+
+pub fn validate_model_dependency(dep: &ModelDependencyManifest) -> Result<(), String> {
+    if dep.revision.is_none() && !dep.allow_unpinned {
+        return Err("revision required; set allow_unpinned: true to opt out".to_string());
+    }
+    Ok(())
 }
 
 /// A host-managed runtime this extension requires to function. Resolved
-/// against `host_runtime_installs` at enable time (spec 011 US1).
 #[derive(Debug, Clone, Deserialize)]
 pub struct RuntimeDependency {
     pub family: String,
@@ -134,10 +201,18 @@ pub fn parse_manifest(path: &Path) -> Result<ExtensionManifest, ExtensionError> 
         path: path.display().to_string(),
         detail: e.to_string(),
     })?;
-    serde_saphyr::from_str(&content).map_err(|e| ExtensionError::ManifestParse {
-        path: path.display().to_string(),
-        detail: e.to_string(),
-    })
+    let manifest: ExtensionManifest =
+        serde_saphyr::from_str(&content).map_err(|e| ExtensionError::ManifestParse {
+            path: path.display().to_string(),
+            detail: e.to_string(),
+        })?;
+    for dep in &manifest.model_dependencies {
+        validate_model_dependency(dep).map_err(|detail| ExtensionError::ManifestParse {
+            path: path.display().to_string(),
+            detail,
+        })?;
+    }
+    Ok(manifest)
 }
 
 pub fn parse_operator_definition(path: &Path) -> Result<OperatorDefinition, ExtensionError> {

@@ -1,9 +1,3 @@
-//! Spawner orchestrator + spawn pipeline.
-//!
-//! Submodules per spec 015 US1: `port`, `host_env`, `supervise`.
-//! Real-mode spawn lives here for now (split into `real`/`stub` arrives in
-//! Phase 6 method-split).
-
 mod host_env;
 mod port;
 mod supervise;
@@ -51,7 +45,6 @@ use crate::reserved_policy::{validate_args, validate_env};
 /// Validate a spawn request's args + env against a backend's parameter
 /// catalog. Returns `Ok(())` when extension-passthrough and unknown flags
 /// pass through; returns `BackendRuntimeError` naming the offending flag on
-/// the first reserved-policy collision (spec 011 US4 T077).
 pub fn validate_spawn_request(
     catalog: &ParameterCatalog,
     request: &SpawnRuntimeRequest,
@@ -61,12 +54,9 @@ pub fn validate_spawn_request(
     Ok(())
 }
 
-/// Process-wide allocator for host-claimed ephemeral ports (spec 011 US3 T066).
 ///
 /// HTTP-status-friendly view of `BackendRuntimeError` for the API handler
-/// layer (spec 011 US4 T080). Returns `(status_code, error_code, message)`.
 ///
-/// Spec 016 US8 (FR-412): exhaustive match — adding a new `BackendRuntimeError`
 /// variant MUST be a compile error until a status mapping is added here.
 pub fn http_status_for(error: &BackendRuntimeError) -> (u16, &'static str, String) {
     match error {
@@ -137,7 +127,6 @@ pub fn http_status_for(error: &BackendRuntimeError) -> (u16, &'static str, Strin
 }
 
 /// Merge base env + extension env + host-managed env, with host always winning
-/// (spec 011 US4 T079). The host forcibly stamps `LLAMA_ARG_HOST`,
 /// `LLAMA_ARG_PORT`, and `LLAMA_ARG_LOG_FORMAT` so extension overrides cannot
 /// subvert bind-mode policy, port allocation, or structured-log framing.
 use std::collections::HashMap;
@@ -152,8 +141,8 @@ use crate::channel::{
     ApiDialect, ChannelBuildCtx, RuntimeAddress, RuntimeChannelKind, RuntimeEndpoint,
 };
 use crate::events::SharedPublisher;
-use crate::installs_store;
 use crate::manifest::install::{InstallManifest, InstallStatus};
+use crate::runtime_installs_store as installs_store;
 
 /// Live runtime lease handle held in memory while the child is alive.
 pub struct LeaseHandle {
@@ -164,10 +153,8 @@ pub struct LeaseHandle {
     pub shutdown: Arc<tokio::sync::Notify>,
 }
 
-/// Spawn-mode discriminator (spec 015 US3). Replaces the implicit
 /// `Option<pool> + Option<adapters>` pair with an explicit type-level
 /// distinction. `publisher` stays on the `Spawner` because both modes
-/// share the same broadcast (single-owner clarity per spec FR-304).
 pub enum SpawnMode {
     Stub {
         port_allocator: Arc<PortAllocator>,
@@ -179,7 +166,6 @@ pub enum SpawnMode {
     },
 }
 
-/// Host-owned process spawner (spec 011 US3 T067; spec 015 US3 added `SpawnMode`).
 ///
 /// Two constructors are provided:
 /// - [`Spawner::new`] — test-oriented: publisher-only, HTTP-probe driven.
@@ -207,7 +193,6 @@ impl Spawner {
     }
 
     /// Production path constructor (`SpawnMode::Real`): carries a SQLite pool
-    /// and an [`AdapterRegistry`] for real-fork spawns (spec 011 US3 T067).
     pub fn with_pool(
         publisher: SharedPublisher,
         pool: SqlitePool,
@@ -249,7 +234,6 @@ impl Spawner {
         }
     }
 
-    /// Look up the lease row's owning extension id (spec 011 US3 T100).
     ///
     /// Returns `Ok(None)` when no row exists. Callers compare against the
     /// caller's `X-Extension-Id` to enforce ownership before
@@ -285,7 +269,6 @@ impl Spawner {
     ///
     /// Idempotent: returns `Ok(())` if the lease is unknown. Signals the
     /// supervisor, which drives a SIGTERM plus 10s grace window before a
-    /// force kill (spec 012 US6 T276b). The call awaits supervisor drain
     /// bounded by grace + force.
     pub async fn shutdown(&self, lease_id: &str) -> Result<(), BackendRuntimeError> {
         let handle = {
@@ -331,7 +314,6 @@ impl Spawner {
         out
     }
 
-    /// Production real-fork spawn path (spec 011 US3 T067). Invoked only when
     /// the spawner was constructed with [`Self::with_pool`]. Looks up the
     /// install row, runs reserved-policy validation against the family's
     /// parameter catalog, claims a host port, invokes the adapter's

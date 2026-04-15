@@ -1,5 +1,3 @@
-//! StorageManager `journal` methods extracted per spec 014.
-
 use crate::database::Database;
 use crate::error::StorageError;
 use crate::records::OperationRecord;

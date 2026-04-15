@@ -1,13 +1,3 @@
-//! End-to-end check: every shipped workflow YAML in `extensions/builtin/*`
-//! parses and validates against the operator definitions the same extension
-//! ships. This is the regression guard that catches user-visible issues like
-//! "retrieve: type mismatch: text/chat-message → text/retrieval-query"
-//! before they reach the frontend.
-//!
-//! Also covers the user's spec requirement: React Flow handles carry the
-//! operator port name verbatim; validating that the YAML graph resolves all
-//! ports against the operator spec proves handle IDs line up.
-
 use nexus_extension::{OperatorDefinition, parse_manifest};
 use nexus_workflow::{parse_workflow, validate_workflow};
 use std::fs;

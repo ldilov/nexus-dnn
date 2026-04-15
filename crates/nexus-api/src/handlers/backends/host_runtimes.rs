@@ -1,8 +1,3 @@
-//! `GET /api/v1/backends` + `/api/v1/backends/{family}/parameters`.
-//!
-//! Phase 8 (US7, FR-409/410) will swap the per-install `list_dependents` loop
-//! for a single batched `list_all_with_dependents` query.
-
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use serde::Serialize;
@@ -33,13 +28,13 @@ pub struct HostRuntimesResponse {
 
 /// `GET /api/v1/backends` — list every host-managed runtime install with its
 /// active dependents, alongside the families the host advertises adapters
-/// for (spec 011 US1 + Phase 9 T096). Reads directly from
 /// `host_runtime_installs`; does NOT route through extension state.
 pub async fn list_host_runtimes(State(state): State<AppState>) -> axum::response::Response {
     let pool = state.db.pool();
-    // Spec 016 US7 (FR-410): single batched JOIN instead of N+1
     // (previously: list_all + per-row list_dependents in a loop).
-    let rows = match nexus_backend_runtimes::installs_store::list_all_with_dependents(pool).await {
+    let rows = match nexus_backend_runtimes::runtime_installs_store::list_all_with_dependents(pool)
+        .await
+    {
         Ok(r) => r,
         Err(e) => {
             return ApiResponse::<()>::err(
@@ -84,7 +79,6 @@ pub async fn list_host_runtimes(State(state): State<AppState>) -> axum::response
 }
 
 /// `GET /api/v1/backends/{family}/parameters` — return the versioned launch
-/// parameter catalog for a runtime family (spec 011 US5 T085).
 ///
 /// 200 with the catalog on a known family. 404 `FAMILY_UNKNOWN` otherwise.
 /// The catalog is advisory: extensions may still pass unknown flags through

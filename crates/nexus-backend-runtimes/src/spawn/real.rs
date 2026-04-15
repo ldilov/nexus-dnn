@@ -1,5 +1,3 @@
-//! Real-mode (`SpawnMode::Real`) helpers + `Spawner::spawn_real` per spec 015 US2.
-
 use std::collections::BTreeMap;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -12,8 +10,8 @@ use crate::adapter::{AdapterRegistry, BackendAdapter};
 use crate::channel::{ChannelBuildCtx, RuntimeChannelDescriptor};
 use crate::error::BackendRuntimeError;
 use crate::events::BackendEvent;
-use crate::installs_store;
 use crate::lease::RuntimeLease;
+use crate::runtime_installs_store as installs_store;
 
 use super::host_env::{build_host_env, load_host_governed_injections};
 use super::port::{PortAllocator, PortLease};
@@ -21,7 +19,6 @@ use super::supervise::{SupervisorCtx, drain_stream, supervise_real};
 use super::{SpawnMode, SpawnRuntimeRequest, Spawner, bind_host_for, row_to_install_manifest};
 
 /// All the inputs collected during real-mode spawn prep — held in one struct so
-/// `spawn_real` can stay ≤ 25 LOC (per spec 015 FR-303).
 pub(super) struct RealSpawnPrep {
     pool: SqlitePool,
     port_allocator: Arc<PortAllocator>,
@@ -301,7 +298,6 @@ pub(super) fn build_real_descriptor(
 }
 
 /// Inputs to `insert_lease_row` + `build_real_lease` — groups what was
-/// previously an 8-arg signature (per spec 015 SC-306 post-impl fix).
 pub(super) struct LeaseRowArgs<'a> {
     pub lease_id: &'a str,
     pub row: &'a installs_store::RuntimeInstallRow,

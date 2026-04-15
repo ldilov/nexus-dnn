@@ -1,11 +1,3 @@
-//! Host-owned runtime install store + migration from the legacy
-//! extension-scoped table.
-//!
-//! The migrator is idempotent: if `host_runtime_installs` already holds rows
-//! and the legacy table has been renamed, re-running is a no-op. Filesystem
-//! relocation is a separate concern (handled by `relocate_legacy_binaries`
-//! after the row migration).
-
 use sqlx::{Row, SqlitePool};
 
 use crate::error::{BackendRuntimeError, BackendRuntimeResult};
@@ -124,7 +116,6 @@ pub async fn remove_binary_directory(install_root: &std::path::Path) -> BackendR
     if !install_root.exists() {
         return Ok(());
     }
-    // Spec 016 US8 (FR-411): surface I/O failures to the caller (which logs
     // with full context: install_id, path, error). Previously swallowed.
     tokio::fs::remove_dir_all(install_root)
         .await
@@ -161,7 +152,6 @@ pub async fn delete_row(pool: &SqlitePool, install_id: &str) -> BackendRuntimeRe
     Ok(())
 }
 
-/// Spec 016 US7 (FR-409): batched counterpart to `list_all` + N× `list_dependents`.
 /// One LEFT JOIN against `host_runtime_leases WHERE released_at IS NULL`; the
 /// caller gets `(row, dedup'd extension_ids)` tuples. Query count: always 1.
 #[allow(clippy::type_complexity)]

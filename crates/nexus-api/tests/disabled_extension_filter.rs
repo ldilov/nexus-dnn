@@ -1,9 +1,3 @@
-//! Contract test: verify that `WorkflowDto::from(&WorkflowRecord)` emits the
-//! fields the frontend needs to hide workflows/recipes whose contributing
-//! extension has been disabled. The filtering decision happens client-side
-//! in `filterByExtensionEnablement`; this test pins the backend contract that
-//! feeds it.
-
 use nexus_api::dto::{ExtensionDto, WorkflowDto, WorkflowStatusDto};
 use nexus_storage::{ExtensionRecord, WorkflowRecord};
 
