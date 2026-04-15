@@ -431,6 +431,28 @@ export function fetchParameterCatalog(family: string): Promise<ParameterCatalogR
   return apiFetch(`/backends/${encodeURIComponent(family)}/parameters`);
 }
 
+// Spec 011 Phase 9: host-level runtime install listing.
+export interface HostRuntimeInstallView {
+  install_id: string;
+  family: string;
+  version: string;
+  accelerator: string;
+  install_root: string;
+  state: string;
+  created_at: string;
+  updated_at: string;
+  dependents: string[];
+}
+
+export interface HostRuntimesResponse {
+  installs: HostRuntimeInstallView[];
+  available_families: string[];
+}
+
+export function fetchRuntimes(): Promise<HostRuntimesResponse> {
+  return apiFetch("/backends");
+}
+
 // Host-level, extension-agnostic HF search/detail.
 
 export function hfSearch(params: {
