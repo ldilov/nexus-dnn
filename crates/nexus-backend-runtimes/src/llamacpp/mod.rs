@@ -1,3 +1,4 @@
+pub mod channel_builder;
 pub mod install_pipeline;
 pub mod installs_store;
 pub mod probe;
