@@ -34,6 +34,12 @@ async fn make_ctx(fetcher: Arc<dyn ModelFetcher>) -> (ModelStoreCtx, TempDir) {
             sqlx::query(t).execute(&pool).await.unwrap();
         }
     }
+    for stmt in include_str!("../../../../../migrations/010_host_model_store_provenance.sql").split(';') {
+        let t = stmt.trim();
+        if !t.is_empty() {
+            sqlx::query(t).execute(&pool).await.unwrap();
+        }
+    }
     let ctx = ModelStoreCtx::new(
         pool,
         tmp.path().join("installs"),
@@ -56,6 +62,10 @@ fn sample_request(url: &str, bytes: &[u8]) -> InstallModelRequest {
         source_url: Some(url.to_string()),
         private: false,
         owner_extension_id: None,
+        license_spdx: Some("apache-2.0".into()),
+        license_url: None,
+        provenance_note: None,
+        param_count: None,
         files: vec![PlannedFile {
             path: "model.gguf".into(),
             sha256: sha(bytes),

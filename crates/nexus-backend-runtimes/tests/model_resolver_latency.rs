@@ -16,6 +16,12 @@ async fn resolver_p95_under_100ms_with_50_installs_and_5_deps() {
             sqlx::query(t).execute(&pool).await.unwrap();
         }
     }
+    for stmt in include_str!("../../../migrations/010_host_model_store_provenance.sql").split(';') {
+        let t = stmt.trim();
+        if !t.is_empty() {
+            sqlx::query(t).execute(&pool).await.unwrap();
+        }
+    }
     for i in 0..50 {
         let t = format!("2026-04-15T00:{:02}:00Z", i);
         sqlx::query(

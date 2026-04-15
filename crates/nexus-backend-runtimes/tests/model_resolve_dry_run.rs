@@ -16,6 +16,12 @@ async fn dry_run_leaves_row_count_and_blob_count_unchanged() {
             sqlx::query(t).execute(&pool).await.unwrap();
         }
     }
+    for stmt in include_str!("../../../migrations/010_host_model_store_provenance.sql").split(';') {
+        let t = stmt.trim();
+        if !t.is_empty() {
+            sqlx::query(t).execute(&pool).await.unwrap();
+        }
+    }
     let tmp = tempfile::TempDir::new().unwrap();
     sqlx::query(
         "INSERT INTO host_model_installs (install_id, family, version, variant, install_root, \

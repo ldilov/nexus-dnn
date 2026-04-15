@@ -32,6 +32,12 @@ async fn uninstall_with_active_lease_returns_leased_by_extensions() {
             sqlx::query(t).execute(&pool).await.unwrap();
         }
     }
+    for stmt in include_str!("../../../migrations/010_host_model_store_provenance.sql").split(';') {
+        let t = stmt.trim();
+        if !t.is_empty() {
+            sqlx::query(t).execute(&pool).await.unwrap();
+        }
+    }
     let ctx = ModelStoreCtx::new(
         pool.clone(),
         tmp.path().join("installs"),
@@ -53,6 +59,10 @@ async fn uninstall_with_active_lease_returns_leased_by_extensions() {
             source_url: Some("http://x/f".into()),
             private: false,
             owner_extension_id: None,
+            license_spdx: Some("apache-2.0".into()),
+            license_url: None,
+            provenance_note: None,
+            param_count: None,
             files: vec![PlannedFile {
                 path: "m.bin".into(),
                 sha256: sha(bytes),
