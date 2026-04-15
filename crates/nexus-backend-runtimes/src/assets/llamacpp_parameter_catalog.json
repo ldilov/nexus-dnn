@@ -1,0 +1,3426 @@
+{
+  "snapshot_date": "2026-04-15",
+  "upstream_source": "ggml-org/llama.cpp tools/server/README.md",
+  "section_counts": {
+    "Common params": 84,
+    "Sampling params": 34,
+    "Server-specific params": 95
+  },
+  "total_entries": 213,
+  "entries": [
+    {
+      "section": "Common params",
+      "flags": [
+        "-h",
+        "--help",
+        "--usage"
+      ],
+      "display": "-h, --help, --usage",
+      "policy": "managed-spawn-disallowed",
+      "summary": "Prints usage and exit.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--version"
+      ],
+      "display": "--version",
+      "policy": "managed-spawn-disallowed",
+      "summary": "Shows version and build info.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--license"
+      ],
+      "display": "--license",
+      "policy": "managed-spawn-disallowed",
+      "summary": "Shows source code license and dependencies.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-cl",
+        "--cache-list"
+      ],
+      "display": "-cl, --cache-list",
+      "policy": "managed-spawn-disallowed",
+      "summary": "Shows list of models in cache.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--completion-bash"
+      ],
+      "display": "--completion-bash",
+      "policy": "managed-spawn-disallowed",
+      "summary": "Prints source-able bash completion script for llama.cpp.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-t",
+        "--threads"
+      ],
+      "display": "-t, --threads N",
+      "policy": "extension-passthrough",
+      "summary": "Sets CPU threads to use during generation.",
+      "default": "-1",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_THREADS"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-tb",
+        "--threads-batch"
+      ],
+      "display": "-tb, --threads-batch N",
+      "policy": "extension-passthrough",
+      "summary": "Sets threads to use during batch and prompt processing.",
+      "default": "same as --threads",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-C",
+        "--cpu-mask"
+      ],
+      "display": "-C, --cpu-mask M",
+      "policy": "extension-passthrough",
+      "summary": "CPU affinity mask: arbitrarily long hex. Complements cpu-range.",
+      "default": "\"\"",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-Cr",
+        "--cpu-range"
+      ],
+      "display": "-Cr, --cpu-range lo-hi",
+      "policy": "extension-passthrough",
+      "summary": "Range of CPUs for affinity. Complements --cpu-mask.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--cpu-strict"
+      ],
+      "display": "--cpu-strict <0\\|1>",
+      "policy": "extension-passthrough",
+      "summary": "Uses strict CPU placement.",
+      "default": "0",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--prio"
+      ],
+      "display": "--prio N",
+      "policy": "extension-passthrough",
+      "summary": "Configures process/thread priority : low(-1), normal(0), medium(1), high(2), realtime(3).",
+      "default": "0",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--poll"
+      ],
+      "display": "--poll <0...100>",
+      "policy": "extension-passthrough",
+      "summary": "Uses polling level to wait for work (0 - no polling, default: 50).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-Cb",
+        "--cpu-mask-batch"
+      ],
+      "display": "-Cb, --cpu-mask-batch M",
+      "policy": "extension-passthrough",
+      "summary": "CPU affinity mask: arbitrarily long hex. Complements cpu-range-batch.",
+      "default": "same as --cpu-mask",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-Crb",
+        "--cpu-range-batch"
+      ],
+      "display": "-Crb, --cpu-range-batch lo-hi",
+      "policy": "extension-passthrough",
+      "summary": "Ranges of CPUs for affinity. Complements --cpu-mask-batch.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--cpu-strict-batch"
+      ],
+      "display": "--cpu-strict-batch <0\\|1>",
+      "policy": "extension-passthrough",
+      "summary": "Uses strict CPU placement.",
+      "default": "same as --cpu-strict",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--prio-batch"
+      ],
+      "display": "--prio-batch N",
+      "policy": "extension-passthrough",
+      "summary": "Configures process/thread priority : 0-normal, 1-medium, 2-high, 3-realtime.",
+      "default": "0",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--poll-batch"
+      ],
+      "display": "--poll-batch <0\\|1>",
+      "policy": "extension-passthrough",
+      "summary": "Uses polling to wait for work.",
+      "default": "same as --poll",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-c",
+        "--ctx-size"
+      ],
+      "display": "-c, --ctx-size N",
+      "policy": "extension-passthrough",
+      "summary": "Sets the prompt context.",
+      "default": "0, 0 = loaded from model",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_CTX_SIZE"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-n",
+        "--predict",
+        "--n-predict"
+      ],
+      "display": "-n, --predict, --n-predict N",
+      "policy": "extension-passthrough",
+      "summary": "Sets tokens to predict.",
+      "default": "-1, -1 = infinity",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_N_PREDICT"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-b",
+        "--batch-size"
+      ],
+      "display": "-b, --batch-size N",
+      "policy": "extension-passthrough",
+      "summary": "Sets the logical maximum batch size.",
+      "default": "2048",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_BATCH"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-ub",
+        "--ubatch-size"
+      ],
+      "display": "-ub, --ubatch-size N",
+      "policy": "extension-passthrough",
+      "summary": "Sets the physical maximum batch size.",
+      "default": "512",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_UBATCH"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--keep"
+      ],
+      "display": "--keep N",
+      "policy": "extension-passthrough",
+      "summary": "Sets tokens to keep from the initial prompt.",
+      "default": "0, -1 = all",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--swa-full"
+      ],
+      "display": "--swa-full",
+      "policy": "extension-passthrough",
+      "summary": "Uses full-size SWA cache.",
+      "default": "false",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_SWA_FULL"
+      ],
+      "notes": [
+        "(more info)"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-fa",
+        "--flash-attn"
+      ],
+      "display": "-fa, --flash-attn [on\\|off\\|auto]",
+      "policy": "extension-passthrough",
+      "summary": "Configures Flash Attention use ('on', 'off', or 'auto', default: 'auto').",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_FLASH_ATTN"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--perf",
+        "--no-perf"
+      ],
+      "display": "--perf, --no-perf",
+      "policy": "extension-passthrough",
+      "summary": "Toggles whether to enable internal libllama performance timings.",
+      "default": "false",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_PERF"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-e",
+        "--escape",
+        "--no-escape"
+      ],
+      "display": "-e, --escape, --no-escape",
+      "policy": "extension-passthrough",
+      "summary": "Toggles whether to process escapes sequences (\\n, \\r, \\t, \\', \\\", \\\\).",
+      "default": "true",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--rope-scaling"
+      ],
+      "display": "--rope-scaling {none,linear,yarn}",
+      "policy": "extension-passthrough",
+      "summary": "RoPE frequency scaling method, defaults to linear unless specified by the model.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_ROPE_SCALING_TYPE"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--rope-scale"
+      ],
+      "display": "--rope-scale N",
+      "policy": "extension-passthrough",
+      "summary": "RoPE context scaling factor, expands context by a factor of N.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_ROPE_SCALE"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--rope-freq-base"
+      ],
+      "display": "--rope-freq-base N",
+      "policy": "extension-passthrough",
+      "summary": "RoPE base frequency, used by NTK-aware scaling.",
+      "default": "loaded from model",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_ROPE_FREQ_BASE"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--rope-freq-scale"
+      ],
+      "display": "--rope-freq-scale N",
+      "policy": "extension-passthrough",
+      "summary": "RoPE frequency scaling factor, expands context by a factor of 1/N.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_ROPE_FREQ_SCALE"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--yarn-orig-ctx"
+      ],
+      "display": "--yarn-orig-ctx N",
+      "policy": "extension-passthrough",
+      "summary": "YaRN: original context size of model.",
+      "default": "0 = model training context size",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_YARN_ORIG_CTX"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--yarn-ext-factor"
+      ],
+      "display": "--yarn-ext-factor N",
+      "policy": "extension-passthrough",
+      "summary": "YaRN: extrapolation mix factor.",
+      "default": "-1.00, 0.0 = full interpolation",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_YARN_EXT_FACTOR"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--yarn-attn-factor"
+      ],
+      "display": "--yarn-attn-factor N",
+      "policy": "extension-passthrough",
+      "summary": "YaRN: scale sqrt(t) or attention magnitude.",
+      "default": "-1.00",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_YARN_ATTN_FACTOR"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--yarn-beta-slow"
+      ],
+      "display": "--yarn-beta-slow N",
+      "policy": "extension-passthrough",
+      "summary": "YaRN: high correction dim or alpha.",
+      "default": "-1.00",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_YARN_BETA_SLOW"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--yarn-beta-fast"
+      ],
+      "display": "--yarn-beta-fast N",
+      "policy": "extension-passthrough",
+      "summary": "YaRN: low correction dim or beta.",
+      "default": "-1.00",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_YARN_BETA_FAST"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-kvo",
+        "--kv-offload",
+        "-nkvo",
+        "--no-kv-offload"
+      ],
+      "display": "-kvo, --kv-offload, -nkvo, --no-kv-offload",
+      "policy": "extension-passthrough",
+      "summary": "Toggles whether to enable KV cache offloading.",
+      "default": "enabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_KV_OFFLOAD"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--repack",
+        "-nr",
+        "--no-repack"
+      ],
+      "display": "--repack, -nr, --no-repack",
+      "policy": "extension-passthrough",
+      "summary": "Toggles whether to enable weight repacking.",
+      "default": "enabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_REPACK"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--no-host"
+      ],
+      "display": "--no-host",
+      "policy": "extension-passthrough",
+      "summary": "Bypass host buffer allowing extra buffers to be used.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_NO_HOST"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-ctk",
+        "--cache-type-k"
+      ],
+      "display": "-ctk, --cache-type-k TYPE",
+      "policy": "extension-passthrough",
+      "summary": "KV cache data type for K.",
+      "default": "f16",
+      "allowed_values": "f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1",
+      "env_vars": [
+        "LLAMA_ARG_CACHE_TYPE_K"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-ctv",
+        "--cache-type-v"
+      ],
+      "display": "-ctv, --cache-type-v TYPE",
+      "policy": "extension-passthrough",
+      "summary": "KV cache data type for V.",
+      "default": "f16",
+      "allowed_values": "f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1",
+      "env_vars": [
+        "LLAMA_ARG_CACHE_TYPE_V"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-dt",
+        "--defrag-thold"
+      ],
+      "display": "-dt, --defrag-thold N",
+      "policy": "extension-passthrough",
+      "summary": "KV cache defragmentation threshold (DEPRECATED).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_DEFRAG_THOLD"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--mlock"
+      ],
+      "display": "--mlock",
+      "policy": "extension-passthrough",
+      "summary": "Forces system to keep model in RAM rather than swapping or compressing.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_MLOCK"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--mmap",
+        "--no-mmap"
+      ],
+      "display": "--mmap, --no-mmap",
+      "policy": "extension-passthrough",
+      "summary": "Toggles whether to memory-map model. (if mmap disabled, slower load but may reduce pageouts if not using mlock).",
+      "default": "enabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_MMAP"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-dio",
+        "--direct-io",
+        "-ndio",
+        "--no-direct-io"
+      ],
+      "display": "-dio, --direct-io, -ndio, --no-direct-io",
+      "policy": "extension-passthrough",
+      "summary": "Uses DirectIO if available.",
+      "default": "disabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_DIO"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--numa"
+      ],
+      "display": "--numa TYPE",
+      "policy": "extension-passthrough",
+      "summary": "Applies optimizations that optimizations that help on some NUMA systems.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_NUMA"
+      ],
+      "notes": [
+        "- distribute: spread execution evenly over all nodes",
+        "- isolate: only spawn threads on CPUs on the node that execution started on",
+        "- numactl: use the CPU map provided by numactl",
+        "if run without this previously, it is recommended to drop the system page cache before using this",
+        "see https://github.com/ggml-org/llama.cpp/issues/1437"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-dev",
+        "--device"
+      ],
+      "display": "-dev, --device <dev1,dev2,..>",
+      "policy": "extension-passthrough",
+      "summary": "Comma-separated list of devices to use for offloading (none = don't offload).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_DEVICE"
+      ],
+      "notes": [
+        "use --list-devices to see a list of available devices"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--list-devices"
+      ],
+      "display": "--list-devices",
+      "policy": "managed-spawn-disallowed",
+      "summary": "Prints list of available devices and exit.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-ot",
+        "--override-tensor"
+      ],
+      "display": "-ot, --override-tensor <tensor name pattern>=<buffer type>,...",
+      "policy": "extension-passthrough",
+      "summary": "Override tensor buffer type.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_OVERRIDE_TENSOR"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-cmoe",
+        "--cpu-moe"
+      ],
+      "display": "-cmoe, --cpu-moe",
+      "policy": "extension-passthrough",
+      "summary": "Keep all Mixture of Experts (MoE) weights in the CPU.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_CPU_MOE"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-ncmoe",
+        "--n-cpu-moe"
+      ],
+      "display": "-ncmoe, --n-cpu-moe N",
+      "policy": "extension-passthrough",
+      "summary": "Keep the Mixture of Experts (MoE) weights of the first N layers in the CPU.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_N_CPU_MOE"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-ngl",
+        "--gpu-layers",
+        "--n-gpu-layers"
+      ],
+      "display": "-ngl, --gpu-layers, --n-gpu-layers N",
+      "policy": "extension-passthrough",
+      "summary": "Caps layers to store in VRAM, either an exact number, 'auto', or 'all'.",
+      "default": "auto",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_N_GPU_LAYERS"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-sm",
+        "--split-mode"
+      ],
+      "display": "-sm, --split-mode {none,layer,row}",
+      "policy": "extension-passthrough",
+      "summary": "How to split the model across multiple GPUs, one of:.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_SPLIT_MODE"
+      ],
+      "notes": [
+        "- none: use one GPU only",
+        "- layer (default): split layers and KV across GPUs",
+        "- row: split rows across GPUs"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-ts",
+        "--tensor-split"
+      ],
+      "display": "-ts, --tensor-split N0,N1,N2,...",
+      "policy": "extension-passthrough",
+      "summary": "Fraction of the model to offload to each GPU, comma-separated list of proportions, e.g. 3,1.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_TENSOR_SPLIT"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-mg",
+        "--main-gpu"
+      ],
+      "display": "-mg, --main-gpu INDEX",
+      "policy": "extension-passthrough",
+      "summary": "The GPU to use for the model (with split-mode = none), or for intermediate results and KV (with split-mode = row).",
+      "default": "0",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_MAIN_GPU"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-fit",
+        "--fit"
+      ],
+      "display": "-fit, --fit [on\\|off]",
+      "policy": "extension-passthrough",
+      "summary": "Toggles whether to adjust unset arguments to fit in device memory ('on' or 'off', default: 'on').",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_FIT"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-fitt",
+        "--fit-target"
+      ],
+      "display": "-fitt, --fit-target MiB0,MiB1,MiB2,...",
+      "policy": "extension-passthrough",
+      "summary": "Target margin per device for --fit, comma-separated list of values, single value is broadcast across all devices, default: 1024.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_FIT_TARGET"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-fitc",
+        "--fit-ctx"
+      ],
+      "display": "-fitc, --fit-ctx N",
+      "policy": "extension-passthrough",
+      "summary": "Minimum ctx size that can be set by --fit option, default: 4096.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_FIT_CTX"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--check-tensors"
+      ],
+      "display": "--check-tensors",
+      "policy": "extension-passthrough",
+      "summary": "Check model tensor data for invalid values.",
+      "default": "false",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--override-kv"
+      ],
+      "display": "--override-kv KEY=TYPE:VALUE,...",
+      "policy": "extension-passthrough",
+      "summary": "Advanced option to override model metadata by key. to specify multiple overrides, either use comma-separated values.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [
+        "types: int, float, bool, str. example: --override-kv tokenizer.ggml.add_bos_token=bool:false,tokenizer.ggml.add_eos_token=bool:false"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--op-offload",
+        "--no-op-offload"
+      ],
+      "display": "--op-offload, --no-op-offload",
+      "policy": "extension-passthrough",
+      "summary": "Toggles whether to offload host tensor operations to device.",
+      "default": "true",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--lora"
+      ],
+      "display": "--lora FNAME",
+      "policy": "extension-passthrough",
+      "summary": "Specifies file path for LoRA adapter (use comma-separated values to load multiple adapters).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--lora-scaled"
+      ],
+      "display": "--lora-scaled FNAME:SCALE,...",
+      "policy": "extension-passthrough",
+      "summary": "Specifies file path for LoRA adapter with user defined scaling (format: FNAME:SCALE,...).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [
+        "note: use comma-separated values"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--control-vector"
+      ],
+      "display": "--control-vector FNAME",
+      "policy": "extension-passthrough",
+      "summary": "Adds a control vector.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [
+        "note: use comma-separated values to add multiple control vectors"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--control-vector-scaled"
+      ],
+      "display": "--control-vector-scaled FNAME:SCALE,...",
+      "policy": "extension-passthrough",
+      "summary": "Adds a control vector with user defined scaling SCALE.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [
+        "note: use comma-separated values (format: FNAME:SCALE,...)"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--control-vector-layer-range"
+      ],
+      "display": "--control-vector-layer-range START END",
+      "policy": "extension-passthrough",
+      "summary": "Layer range to apply the control vector(s) to, start and end inclusive.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-m",
+        "--model"
+      ],
+      "display": "-m, --model FNAME",
+      "policy": "extension-passthrough",
+      "summary": "Specifies local model path.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_MODEL"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-mu",
+        "--model-url"
+      ],
+      "display": "-mu, --model-url MODEL_URL",
+      "policy": "extension-passthrough",
+      "summary": "Specifies remote model download URL.",
+      "default": "unused",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_MODEL_URL"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-dr",
+        "--docker-repo"
+      ],
+      "display": "-dr, --docker-repo [<repo>/]<model>[:quant]",
+      "policy": "extension-passthrough",
+      "summary": "Docker Hub model repository. repo is optional, default to ai/. quant is optional, default to :latest.",
+      "default": "unused",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_DOCKER_REPO"
+      ],
+      "notes": [
+        "example: gemma3"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-hf",
+        "-hfr",
+        "--hf-repo"
+      ],
+      "display": "-hf, -hfr, --hf-repo <user>/<model>[:quant]",
+      "policy": "extension-passthrough",
+      "summary": "Hugging Face model repository; quant is optional, case-insensitive, default to Q4_K_M, or falls back to the first file in the repo if Q4_K_M doesn't exist.",
+      "default": "unused",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_HF_REPO"
+      ],
+      "notes": [
+        "mmproj is also downloaded automatically if available. to disable, add --no-mmproj",
+        "example: ggml-org/GLM-4.7-Flash-GGUF:Q4_K_M"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-hfd",
+        "-hfrd",
+        "--hf-repo-draft"
+      ],
+      "display": "-hfd, -hfrd, --hf-repo-draft <user>/<model>[:quant]",
+      "policy": "extension-passthrough",
+      "summary": "Same as --hf-repo, but for the draft model.",
+      "default": "unused",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_HFD_REPO"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-hff",
+        "--hf-file"
+      ],
+      "display": "-hff, --hf-file FILE",
+      "policy": "extension-passthrough",
+      "summary": "Hugging Face model file. If specified, it will override the quant in --hf-repo.",
+      "default": "unused",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_HF_FILE"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-hfv",
+        "-hfrv",
+        "--hf-repo-v"
+      ],
+      "display": "-hfv, -hfrv, --hf-repo-v <user>/<model>[:quant]",
+      "policy": "extension-passthrough",
+      "summary": "Hugging Face model repository for the vocoder model.",
+      "default": "unused",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_HF_REPO_V"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-hffv",
+        "--hf-file-v"
+      ],
+      "display": "-hffv, --hf-file-v FILE",
+      "policy": "extension-passthrough",
+      "summary": "Hugging Face model file for the vocoder model.",
+      "default": "unused",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_HF_FILE_V"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-hft",
+        "--hf-token"
+      ],
+      "display": "-hft, --hf-token TOKEN",
+      "policy": "extension-passthrough",
+      "summary": "Hugging Face access token.",
+      "default": "value from HF_TOKEN environment variable",
+      "allowed_values": null,
+      "env_vars": [
+        "HF_TOKEN"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--log-disable"
+      ],
+      "display": "--log-disable",
+      "policy": "host-governed",
+      "summary": "Log disable.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--log-file"
+      ],
+      "display": "--log-file FNAME",
+      "policy": "host-governed",
+      "summary": "Log to file.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_LOG_FILE"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--log-colors"
+      ],
+      "display": "--log-colors [on\\|off\\|auto]",
+      "policy": "host-governed",
+      "summary": "Configures colored logging ('on', 'off', or 'auto', default: 'auto').",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_LOG_COLORS"
+      ],
+      "notes": [
+        "'auto' enables colors when output is to a terminal"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-v",
+        "--verbose",
+        "--log-verbose"
+      ],
+      "display": "-v, --verbose, --log-verbose",
+      "policy": "host-governed",
+      "summary": "Configures verbosity level to infinity (i.e. log all messages, useful for debugging).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--offline"
+      ],
+      "display": "--offline",
+      "policy": "extension-passthrough",
+      "summary": "Runs in offline mode: forces use of cache, prevents network access.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_OFFLINE"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-lv",
+        "--verbosity",
+        "--log-verbosity"
+      ],
+      "display": "-lv, --verbosity, --log-verbosity N",
+      "policy": "host-governed",
+      "summary": "Configures the verbosity threshold. Messages with a higher verbosity will be ignored. Values:.",
+      "default": "3",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_LOG_VERBOSITY"
+      ],
+      "notes": [
+        "- 0: generic output",
+        "- 1: error",
+        "- 2: warning",
+        "- 3: info",
+        "- 4: debug"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--log-prefix"
+      ],
+      "display": "--log-prefix",
+      "policy": "host-governed",
+      "summary": "Enable prefix in log messages.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_LOG_PREFIX"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "--log-timestamps"
+      ],
+      "display": "--log-timestamps",
+      "policy": "host-governed",
+      "summary": "Enable timestamps in log messages.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_LOG_TIMESTAMPS"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-ctkd",
+        "--cache-type-k-draft"
+      ],
+      "display": "-ctkd, --cache-type-k-draft TYPE",
+      "policy": "extension-passthrough",
+      "summary": "KV cache data type for K for the draft model.",
+      "default": "f16",
+      "allowed_values": "f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1",
+      "env_vars": [
+        "LLAMA_ARG_CACHE_TYPE_K_DRAFT"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Common params",
+      "flags": [
+        "-ctvd",
+        "--cache-type-v-draft"
+      ],
+      "display": "-ctvd, --cache-type-v-draft TYPE",
+      "policy": "extension-passthrough",
+      "summary": "KV cache data type for V for the draft model.",
+      "default": "f16",
+      "allowed_values": "f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1",
+      "env_vars": [
+        "LLAMA_ARG_CACHE_TYPE_V_DRAFT"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--samplers"
+      ],
+      "display": "--samplers SAMPLERS",
+      "policy": "extension-passthrough",
+      "summary": "Samplers that will be used for generation in the order, separated by ';'.",
+      "default": "penalties;dry;top_n_sigma;top_k;typ_p;top_p;min_p;xtc;temperature",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "-s",
+        "--seed"
+      ],
+      "display": "-s, --seed SEED",
+      "policy": "extension-passthrough",
+      "summary": "RNG seed.",
+      "default": "-1, use random seed for -1",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--sampler-seq",
+        "--sampling-seq"
+      ],
+      "display": "--sampler-seq, --sampling-seq SEQUENCE",
+      "policy": "extension-passthrough",
+      "summary": "Simplified sequence for samplers that will be used.",
+      "default": "edskypmxt",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--ignore-eos"
+      ],
+      "display": "--ignore-eos",
+      "policy": "extension-passthrough",
+      "summary": "Ignore end of stream token and continue generating (implies --logit-bias EOS-inf).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--temp",
+        "--temperature"
+      ],
+      "display": "--temp, --temperature N",
+      "policy": "extension-passthrough",
+      "summary": "Temperature.",
+      "default": "0.80",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--top-k"
+      ],
+      "display": "--top-k N",
+      "policy": "extension-passthrough",
+      "summary": "Top-k sampling.",
+      "default": "40, 0 = disabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_TOP_K"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--top-p"
+      ],
+      "display": "--top-p N",
+      "policy": "extension-passthrough",
+      "summary": "Top-p sampling.",
+      "default": "0.95, 1.0 = disabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--min-p"
+      ],
+      "display": "--min-p N",
+      "policy": "extension-passthrough",
+      "summary": "Min-p sampling.",
+      "default": "0.05, 0.0 = disabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--top-nsigma",
+        "--top-n-sigma"
+      ],
+      "display": "--top-nsigma, --top-n-sigma N",
+      "policy": "extension-passthrough",
+      "summary": "Top-n-sigma sampling.",
+      "default": "-1.00, -1.0 = disabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--xtc-probability"
+      ],
+      "display": "--xtc-probability N",
+      "policy": "extension-passthrough",
+      "summary": "Xtc probability.",
+      "default": "0.00, 0.0 = disabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--xtc-threshold"
+      ],
+      "display": "--xtc-threshold N",
+      "policy": "extension-passthrough",
+      "summary": "Xtc threshold.",
+      "default": "0.10, 1.0 = disabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--typical",
+        "--typical-p"
+      ],
+      "display": "--typical, --typical-p N",
+      "policy": "extension-passthrough",
+      "summary": "Locally typical sampling, parameter p.",
+      "default": "1.00, 1.0 = disabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--repeat-last-n"
+      ],
+      "display": "--repeat-last-n N",
+      "policy": "extension-passthrough",
+      "summary": "Last n tokens to consider for penalize.",
+      "default": "64, 0 = disabled, -1 = ctx_size",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--repeat-penalty"
+      ],
+      "display": "--repeat-penalty N",
+      "policy": "extension-passthrough",
+      "summary": "Penalize repeat sequence of tokens.",
+      "default": "1.00, 1.0 = disabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--presence-penalty"
+      ],
+      "display": "--presence-penalty N",
+      "policy": "extension-passthrough",
+      "summary": "Repeat alpha presence penalty.",
+      "default": "0.00, 0.0 = disabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--frequency-penalty"
+      ],
+      "display": "--frequency-penalty N",
+      "policy": "extension-passthrough",
+      "summary": "Repeat alpha frequency penalty.",
+      "default": "0.00, 0.0 = disabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--dry-multiplier"
+      ],
+      "display": "--dry-multiplier N",
+      "policy": "extension-passthrough",
+      "summary": "Configures DRY sampling multiplier.",
+      "default": "0.00, 0.0 = disabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--dry-base"
+      ],
+      "display": "--dry-base N",
+      "policy": "extension-passthrough",
+      "summary": "Configures DRY sampling base value.",
+      "default": "1.75",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--dry-allowed-length"
+      ],
+      "display": "--dry-allowed-length N",
+      "policy": "extension-passthrough",
+      "summary": "Configures allowed length for DRY sampling.",
+      "default": "2",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--dry-penalty-last-n"
+      ],
+      "display": "--dry-penalty-last-n N",
+      "policy": "extension-passthrough",
+      "summary": "Configures DRY penalty for the last n tokens.",
+      "default": "-1, 0 = disable, -1 = context size",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--dry-sequence-breaker"
+      ],
+      "display": "--dry-sequence-breaker STRING",
+      "policy": "extension-passthrough",
+      "summary": "Adds sequence breaker for DRY sampling, clearing out default breakers ('\\n', ':', '\"', '*') in the process; use \"none\" to not use any sequence breakers.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--adaptive-target"
+      ],
+      "display": "--adaptive-target N",
+      "policy": "extension-passthrough",
+      "summary": "Adaptive-p: select tokens near this probability (valid range 0.0 to 1.0; negative = disabled).",
+      "default": "-1.00",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [
+        "(more info)"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--adaptive-decay"
+      ],
+      "display": "--adaptive-decay N",
+      "policy": "extension-passthrough",
+      "summary": "Adaptive-p: decay rate for target adaptation over time. lower values are more reactive, higher values are more stable.",
+      "default": "0.90",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [
+        "(valid range 0.0 to 0.99)"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--dynatemp-range"
+      ],
+      "display": "--dynatemp-range N",
+      "policy": "extension-passthrough",
+      "summary": "Dynamic temperature range.",
+      "default": "0.00, 0.0 = disabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--dynatemp-exp"
+      ],
+      "display": "--dynatemp-exp N",
+      "policy": "extension-passthrough",
+      "summary": "Dynamic temperature exponent.",
+      "default": "1.00",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--mirostat"
+      ],
+      "display": "--mirostat N",
+      "policy": "extension-passthrough",
+      "summary": "Uses Mirostat sampling.",
+      "default": "0, 0 = disabled, 1 = Mirostat, 2 = Mirostat 2.0",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [
+        "Top K, Nucleus and Locally Typical samplers are ignored if used."
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--mirostat-lr"
+      ],
+      "display": "--mirostat-lr N",
+      "policy": "extension-passthrough",
+      "summary": "Mirostat learning rate, parameter eta.",
+      "default": "0.10",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--mirostat-ent"
+      ],
+      "display": "--mirostat-ent N",
+      "policy": "extension-passthrough",
+      "summary": "Mirostat target entropy, parameter tau.",
+      "default": "5.00",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "-l",
+        "--logit-bias"
+      ],
+      "display": "-l, --logit-bias TOKEN_ID(+/-)BIAS",
+      "policy": "extension-passthrough",
+      "summary": "Modifies the likelihood of token appearing in the completion.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [
+        "i.e. --logit-bias 15043+1 to increase likelihood of token ' Hello'",
+        "or --logit-bias 15043-1 to decrease likelihood of token ' Hello'"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--grammar"
+      ],
+      "display": "--grammar GRAMMAR",
+      "policy": "extension-passthrough",
+      "summary": "BNF-like grammar to constrain generations (see samples in grammars/ dir).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "--grammar-file"
+      ],
+      "display": "--grammar-file FNAME",
+      "policy": "extension-passthrough",
+      "summary": "File to read grammar from.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "-j",
+        "--json-schema"
+      ],
+      "display": "-j, --json-schema SCHEMA",
+      "policy": "extension-passthrough",
+      "summary": "JSON schema to constrain generations (https://json-schema.org/), e.g. {} for any JSON object.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [
+        "For schemas w/ external $refs, use --grammar + example/json_schema_to_grammar.py instead"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "-jf",
+        "--json-schema-file"
+      ],
+      "display": "-jf, --json-schema-file FILE",
+      "policy": "extension-passthrough",
+      "summary": "File containing a JSON schema to constrain generations (https://json-schema.org/), e.g. {} for any JSON object.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [
+        "For schemas w/ external $refs, use --grammar + example/json_schema_to_grammar.py instead"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Sampling params",
+      "flags": [
+        "-bs",
+        "--backend-sampling"
+      ],
+      "display": "-bs, --backend-sampling",
+      "policy": "extension-passthrough",
+      "summary": "Enable backend sampling (experimental).",
+      "default": "disabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_BACKEND_SAMPLING"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-lcs",
+        "--lookup-cache-static"
+      ],
+      "display": "-lcs, --lookup-cache-static FNAME",
+      "policy": "extension-passthrough",
+      "summary": "Specifies file path for static lookup cache to use for lookup decoding (not updated by generation).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-lcd",
+        "--lookup-cache-dynamic"
+      ],
+      "display": "-lcd, --lookup-cache-dynamic FNAME",
+      "policy": "extension-passthrough",
+      "summary": "Specifies file path for dynamic lookup cache to use for lookup decoding (updated by generation).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-ctxcp",
+        "--ctx-checkpoints",
+        "--swa-checkpoints"
+      ],
+      "display": "-ctxcp, --ctx-checkpoints, --swa-checkpoints N",
+      "policy": "extension-passthrough",
+      "summary": "Max number of context checkpoints to create per slot.",
+      "default": "32",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_CTX_CHECKPOINTS"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-cpent",
+        "--checkpoint-every-n-tokens"
+      ],
+      "display": "-cpent, --checkpoint-every-n-tokens N",
+      "policy": "extension-passthrough",
+      "summary": "Create a checkpoint every n tokens during prefill (processing), -1 to disable.",
+      "default": "8192",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_CHECKPOINT_EVERY_NT"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-cram",
+        "--cache-ram"
+      ],
+      "display": "-cram, --cache-ram N",
+      "policy": "extension-passthrough",
+      "summary": "Configures the maximum cache size in MiB.",
+      "default": "8192, -1 - no limit, 0 - disable",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_CACHE_RAM"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-kvu",
+        "--kv-unified",
+        "-no-kvu",
+        "--no-kv-unified"
+      ],
+      "display": "-kvu, --kv-unified, -no-kvu, --no-kv-unified",
+      "policy": "extension-passthrough",
+      "summary": "Uses single unified KV buffer shared across all sequences.",
+      "default": "enabled if number of slots is auto",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_KV_UNIFIED"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--clear-idle",
+        "--no-clear-idle"
+      ],
+      "display": "--clear-idle, --no-clear-idle",
+      "policy": "extension-passthrough",
+      "summary": "Save and clear idle slots on new task.",
+      "default": "enabled, requires unified KV and cache-ram",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_CLEAR_IDLE"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--context-shift",
+        "--no-context-shift"
+      ],
+      "display": "--context-shift, --no-context-shift",
+      "policy": "extension-passthrough",
+      "summary": "Toggles whether to use context shift on infinite text generation.",
+      "default": "disabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_CONTEXT_SHIFT"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-r",
+        "--reverse-prompt"
+      ],
+      "display": "-r, --reverse-prompt PROMPT",
+      "policy": "extension-passthrough",
+      "summary": "Halt generation at PROMPT, return control in interactive mode.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-sp",
+        "--special"
+      ],
+      "display": "-sp, --special",
+      "policy": "extension-passthrough",
+      "summary": "Special tokens output enabled.",
+      "default": "false",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--warmup",
+        "--no-warmup"
+      ],
+      "display": "--warmup, --no-warmup",
+      "policy": "extension-passthrough",
+      "summary": "Toggles whether to perform warmup with an empty run.",
+      "default": "enabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--spm-infill"
+      ],
+      "display": "--spm-infill",
+      "policy": "extension-passthrough",
+      "summary": "Uses Suffix/Prefix/Middle pattern for infill (instead of Prefix/Suffix/Middle) as some models prefer this.",
+      "default": "disabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--pooling"
+      ],
+      "display": "--pooling {none,mean,cls,last,rank}",
+      "policy": "extension-passthrough",
+      "summary": "Pooling type for embeddings, use model default if unspecified.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_POOLING"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-np",
+        "--parallel"
+      ],
+      "display": "-np, --parallel N",
+      "policy": "extension-passthrough",
+      "summary": "Sets server slots.",
+      "default": "-1, -1 = auto",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_N_PARALLEL"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-cb",
+        "--cont-batching",
+        "-nocb",
+        "--no-cont-batching"
+      ],
+      "display": "-cb, --cont-batching, -nocb, --no-cont-batching",
+      "policy": "extension-passthrough",
+      "summary": "Toggles whether to enable continuous batching (a.k.a dynamic batching).",
+      "default": "enabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_CONT_BATCHING"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-mm",
+        "--mmproj"
+      ],
+      "display": "-mm, --mmproj FILE",
+      "policy": "extension-passthrough",
+      "summary": "Specifies file path for a multimodal projector file. see tools/mtmd/README.md.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_MMPROJ"
+      ],
+      "notes": [
+        "note: if -hf is used, this argument can be omitted"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-mmu",
+        "--mmproj-url"
+      ],
+      "display": "-mmu, --mmproj-url URL",
+      "policy": "extension-passthrough",
+      "summary": "Specifies URL for a multimodal projector file. see tools/mtmd/README.md.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_MMPROJ_URL"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--mmproj-auto",
+        "--no-mmproj",
+        "--no-mmproj-auto"
+      ],
+      "display": "--mmproj-auto, --no-mmproj, --no-mmproj-auto",
+      "policy": "extension-passthrough",
+      "summary": "Toggles whether to use multimodal projector file (if available), useful when using -hf.",
+      "default": "enabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_MMPROJ_AUTO"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--mmproj-offload",
+        "--no-mmproj-offload"
+      ],
+      "display": "--mmproj-offload, --no-mmproj-offload",
+      "policy": "extension-passthrough",
+      "summary": "Toggles whether to enable GPU offloading for multimodal projector.",
+      "default": "enabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_MMPROJ_OFFLOAD"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--image-min-tokens"
+      ],
+      "display": "--image-min-tokens N",
+      "policy": "extension-passthrough",
+      "summary": "Sets minimum tokens each image can take, only used by vision models with dynamic resolution.",
+      "default": "read from model",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_IMAGE_MIN_TOKENS"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--image-max-tokens"
+      ],
+      "display": "--image-max-tokens N",
+      "policy": "extension-passthrough",
+      "summary": "Caps tokens each image can take, only used by vision models with dynamic resolution.",
+      "default": "read from model",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_IMAGE_MAX_TOKENS"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-otd",
+        "--override-tensor-draft"
+      ],
+      "display": "-otd, --override-tensor-draft <tensor name pattern>=<buffer type>,...",
+      "policy": "extension-passthrough",
+      "summary": "Override tensor buffer type for draft model.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-cmoed",
+        "--cpu-moe-draft"
+      ],
+      "display": "-cmoed, --cpu-moe-draft",
+      "policy": "extension-passthrough",
+      "summary": "Keep all Mixture of Experts (MoE) weights in the CPU for the draft model.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_CPU_MOE_DRAFT"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-ncmoed",
+        "--n-cpu-moe-draft"
+      ],
+      "display": "-ncmoed, --n-cpu-moe-draft N",
+      "policy": "extension-passthrough",
+      "summary": "Keep the Mixture of Experts (MoE) weights of the first N layers in the CPU for the draft model.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_N_CPU_MOE_DRAFT"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-a",
+        "--alias"
+      ],
+      "display": "-a, --alias STRING",
+      "policy": "extension-passthrough",
+      "summary": "Configures model name aliases, comma-separated (to be used by API).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_ALIAS"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--tags"
+      ],
+      "display": "--tags STRING",
+      "policy": "extension-passthrough",
+      "summary": "Configures model tags, comma-separated (informational, not used for routing).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_TAGS"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--host"
+      ],
+      "display": "--host HOST",
+      "policy": "host-injected",
+      "summary": "Ip address to listen, or bind to an UNIX socket if the address ends with .sock.",
+      "default": "127.0.0.1",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_HOST"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--port"
+      ],
+      "display": "--port PORT",
+      "policy": "host-injected",
+      "summary": "Port to listen.",
+      "default": "8080",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_PORT"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--reuse-port"
+      ],
+      "display": "--reuse-port",
+      "policy": "host-injected",
+      "summary": "Allow multiple sockets to bind to the same port.",
+      "default": "disabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_REUSE_PORT"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--path"
+      ],
+      "display": "--path PATH",
+      "policy": "host-governed",
+      "summary": "Specifies file path for serve static files from (default: ).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_STATIC_PATH"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--api-prefix"
+      ],
+      "display": "--api-prefix PREFIX",
+      "policy": "host-governed",
+      "summary": "Prefix path the server serves from, without the trailing slash (default: ).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_API_PREFIX"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--webui-config"
+      ],
+      "display": "--webui-config JSON",
+      "policy": "host-governed",
+      "summary": "JSON that provides default WebUI settings (overrides WebUI defaults).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_WEBUI_CONFIG"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--webui-config-file"
+      ],
+      "display": "--webui-config-file PATH",
+      "policy": "host-governed",
+      "summary": "JSON file that provides default WebUI settings (overrides WebUI defaults).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_WEBUI_CONFIG_FILE"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--webui-mcp-proxy",
+        "--no-webui-mcp-proxy"
+      ],
+      "display": "--webui-mcp-proxy, --no-webui-mcp-proxy",
+      "policy": "host-governed",
+      "summary": "Experimental: whether to enable MCP CORS proxy - do not enable in untrusted environments.",
+      "default": "disabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_WEBUI_MCP_PROXY"
+      ],
+      "notes": [],
+      "security_gated": true
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--tools"
+      ],
+      "display": "--tools TOOL1,TOOL2,...",
+      "policy": "host-governed",
+      "summary": "Experimental: whether to enable built-in tools for AI agents - do not enable in untrusted environments.",
+      "default": "no tools",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_TOOLS"
+      ],
+      "notes": [
+        "specify \"all\" to enable all tools",
+        "available tools: read_file, file_glob_search, grep_search, exec_shell_command, write_file, edit_file, apply_diff"
+      ],
+      "security_gated": true
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--webui",
+        "--no-webui"
+      ],
+      "display": "--webui, --no-webui",
+      "policy": "host-governed",
+      "summary": "Toggles whether to enable the Web UI.",
+      "default": "enabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_WEBUI"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--embedding",
+        "--embeddings"
+      ],
+      "display": "--embedding, --embeddings",
+      "policy": "extension-passthrough",
+      "summary": "Restrict to only support embedding use case; use only with dedicated embedding models.",
+      "default": "disabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_EMBEDDINGS"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--rerank",
+        "--reranking"
+      ],
+      "display": "--rerank, --reranking",
+      "policy": "extension-passthrough",
+      "summary": "Enable reranking endpoint on server.",
+      "default": "disabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_RERANKING"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--api-key"
+      ],
+      "display": "--api-key KEY",
+      "policy": "host-governed",
+      "summary": "API key to use for authentication, multiple keys can be provided as a comma-separated list.",
+      "default": "none",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_API_KEY"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--api-key-file"
+      ],
+      "display": "--api-key-file FNAME",
+      "policy": "host-governed",
+      "summary": "Specifies file path for file containing API keys.",
+      "default": "none",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--ssl-key-file"
+      ],
+      "display": "--ssl-key-file FNAME",
+      "policy": "host-governed",
+      "summary": "Specifies file path for file a PEM-encoded SSL private key.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_SSL_KEY_FILE"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--ssl-cert-file"
+      ],
+      "display": "--ssl-cert-file FNAME",
+      "policy": "host-governed",
+      "summary": "Specifies file path for file a PEM-encoded SSL certificate.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_SSL_CERT_FILE"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--chat-template-kwargs"
+      ],
+      "display": "--chat-template-kwargs STRING",
+      "policy": "extension-passthrough",
+      "summary": "Sets additional params for the json template parser, must be a valid json object string, e.g. '{\"key1\":\"value1\",\"key2\":\"value2\"}'.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_CHAT_TEMPLATE_KWARGS"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-to",
+        "--timeout"
+      ],
+      "display": "-to, --timeout N",
+      "policy": "host-governed",
+      "summary": "Server read/write timeout in seconds.",
+      "default": "600",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_TIMEOUT"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--threads-http"
+      ],
+      "display": "--threads-http N",
+      "policy": "host-governed",
+      "summary": "Sets threads used to process HTTP requests.",
+      "default": "-1",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_THREADS_HTTP"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--cache-prompt",
+        "--no-cache-prompt"
+      ],
+      "display": "--cache-prompt, --no-cache-prompt",
+      "policy": "extension-passthrough",
+      "summary": "Toggles whether to enable prompt caching.",
+      "default": "enabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_CACHE_PROMPT"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--cache-reuse"
+      ],
+      "display": "--cache-reuse N",
+      "policy": "extension-passthrough",
+      "summary": "Min chunk size to attempt reusing from the cache via KV shifting, requires prompt caching to be enabled.",
+      "default": "0",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_CACHE_REUSE"
+      ],
+      "notes": [
+        "(card)"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--metrics"
+      ],
+      "display": "--metrics",
+      "policy": "host-governed",
+      "summary": "Enable prometheus compatible metrics endpoint.",
+      "default": "disabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_ENDPOINT_METRICS"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--props"
+      ],
+      "display": "--props",
+      "policy": "host-governed",
+      "summary": "Enable changing global properties via POST /props.",
+      "default": "disabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_ENDPOINT_PROPS"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--slots",
+        "--no-slots"
+      ],
+      "display": "--slots, --no-slots",
+      "policy": "host-governed",
+      "summary": "Expose slots monitoring endpoint.",
+      "default": "enabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_ENDPOINT_SLOTS"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--slot-save-path"
+      ],
+      "display": "--slot-save-path PATH",
+      "policy": "host-governed",
+      "summary": "Specifies file path for save slot kv cache.",
+      "default": "disabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--media-path"
+      ],
+      "display": "--media-path PATH",
+      "policy": "host-governed",
+      "summary": "Directory for loading local media files; files can be accessed via file:// URLs using relative paths.",
+      "default": "disabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": true
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--models-dir"
+      ],
+      "display": "--models-dir PATH",
+      "policy": "extension-passthrough",
+      "summary": "Directory containing models for the router server.",
+      "default": "disabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_MODELS_DIR"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--models-preset"
+      ],
+      "display": "--models-preset PATH",
+      "policy": "extension-passthrough",
+      "summary": "Specifies file path for INI file containing model presets for the router server.",
+      "default": "disabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_MODELS_PRESET"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--models-max"
+      ],
+      "display": "--models-max N",
+      "policy": "extension-passthrough",
+      "summary": "For router server, maximum number of models to load simultaneously.",
+      "default": "4, 0 = unlimited",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_MODELS_MAX"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--models-autoload",
+        "--no-models-autoload"
+      ],
+      "display": "--models-autoload, --no-models-autoload",
+      "policy": "extension-passthrough",
+      "summary": "For router server, whether to automatically load models.",
+      "default": "enabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_MODELS_AUTOLOAD"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--jinja",
+        "--no-jinja"
+      ],
+      "display": "--jinja, --no-jinja",
+      "policy": "extension-passthrough",
+      "summary": "Toggles whether to use jinja template engine for chat.",
+      "default": "enabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_JINJA"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--reasoning-format"
+      ],
+      "display": "--reasoning-format FORMAT",
+      "policy": "extension-passthrough",
+      "summary": "Controls whether thought tags are allowed and/or extracted from the response, and in which format they're returned; one of:.",
+      "default": "auto",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_THINK"
+      ],
+      "notes": [
+        "- none: leaves thoughts unparsed in message.content",
+        "- deepseek: puts thoughts in message.reasoning_content",
+        "- deepseek-legacy: keeps <think> tags in message.content while also populating message.reasoning_content"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-rea",
+        "--reasoning"
+      ],
+      "display": "-rea, --reasoning [on\\|off\\|auto]",
+      "policy": "extension-passthrough",
+      "summary": "Uses reasoning/thinking in the chat ('on', 'off', or 'auto', default: 'auto' (detect from template)).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_REASONING"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--reasoning-budget"
+      ],
+      "display": "--reasoning-budget N",
+      "policy": "extension-passthrough",
+      "summary": "Token budget for thinking: -1 for unrestricted, 0 for immediate end, N>0 for token budget.",
+      "default": "-1",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_THINK_BUDGET"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--reasoning-budget-message"
+      ],
+      "display": "--reasoning-budget-message MESSAGE",
+      "policy": "extension-passthrough",
+      "summary": "Message injected before the end-of-thinking tag when reasoning budget is exhausted.",
+      "default": "none",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_THINK_BUDGET_MESSAGE"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--chat-template"
+      ],
+      "display": "--chat-template JINJA_TEMPLATE",
+      "policy": "extension-passthrough",
+      "summary": "Configures custom jinja chat template.",
+      "default": "template taken from model's metadata",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_CHAT_TEMPLATE"
+      ],
+      "notes": [
+        "if suffix/prefix are specified, template will be disabled",
+        "only commonly used templates are accepted (unless --jinja is set before this flag):",
+        "list of built-in templates:",
+        "bailing, bailing-think, bailing2, chatglm3, chatglm4, chatml, command-r, deepseek, deepseek-ocr, deepseek2, deepseek3, exaone-moe, exaone3, exaone4, falcon3, gemma, gigachat, glmedge, gpt-oss, granite, grok-2, hunyuan-dense, hunyuan-moe, kimi-k2, llama2, llama2-sys, llama2-sys-bos, llama2-sys-strip, llama3, llama4, megrez, minicpm, mistral-v1, mistral-v3, mistral-v3-tekken, mistral-v7, mistral-v7-tekken, monarch, openchat, orion, pangu-embedded, phi3, phi4, rwkv-world, seed_oss, smolvlm, solar-open, vicuna, vicuna-orca, yandex, zephyr"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--chat-template-file"
+      ],
+      "display": "--chat-template-file JINJA_TEMPLATE_FILE",
+      "policy": "extension-passthrough",
+      "summary": "Configures custom jinja chat template file.",
+      "default": "template taken from model's metadata",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_CHAT_TEMPLATE_FILE"
+      ],
+      "notes": [
+        "if suffix/prefix are specified, template will be disabled",
+        "only commonly used templates are accepted (unless --jinja is set before this flag):",
+        "list of built-in templates:",
+        "bailing, bailing-think, bailing2, chatglm3, chatglm4, chatml, command-r, deepseek, deepseek-ocr, deepseek2, deepseek3, exaone-moe, exaone3, exaone4, falcon3, gemma, gigachat, glmedge, gpt-oss, granite, grok-2, hunyuan-dense, hunyuan-moe, kimi-k2, llama2, llama2-sys, llama2-sys-bos, llama2-sys-strip, llama3, llama4, megrez, minicpm, mistral-v1, mistral-v3, mistral-v3-tekken, mistral-v7, mistral-v7-tekken, monarch, openchat, orion, pangu-embedded, phi3, phi4, rwkv-world, seed_oss, smolvlm, solar-open, vicuna, vicuna-orca, yandex, zephyr"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--skip-chat-parsing",
+        "--no-skip-chat-parsing"
+      ],
+      "display": "--skip-chat-parsing, --no-skip-chat-parsing",
+      "policy": "extension-passthrough",
+      "summary": "Forces a pure content parser, even if a Jinja template is specified; model will output everything in the content section, including any reasoning and/or tool calls.",
+      "default": "disabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_SKIP_CHAT_PARSING"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--prefill-assistant",
+        "--no-prefill-assistant"
+      ],
+      "display": "--prefill-assistant, --no-prefill-assistant",
+      "policy": "extension-passthrough",
+      "summary": "Toggles whether to prefill the assistant's response if the last message is an assistant message.",
+      "default": "prefill enabled",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_PREFILL_ASSISTANT"
+      ],
+      "notes": [
+        "when this flag is set, if the last message is an assistant message then it will be treated as a full message and not prefilled"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-sps",
+        "--slot-prompt-similarity"
+      ],
+      "display": "-sps, --slot-prompt-similarity SIMILARITY",
+      "policy": "extension-passthrough",
+      "summary": "How much the prompt of a request must match the prompt of a slot in order to use that slot.",
+      "default": "0.10, 0.0 = disabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--lora-init-without-apply"
+      ],
+      "display": "--lora-init-without-apply",
+      "policy": "extension-passthrough",
+      "summary": "Load LoRA adapters without applying them (apply later via POST /lora-adapters).",
+      "default": "disabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--sleep-idle-seconds"
+      ],
+      "display": "--sleep-idle-seconds SECONDS",
+      "policy": "extension-passthrough",
+      "summary": "Sets seconds of idleness after which the server will sleep.",
+      "default": "-1; -1 = disabled",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-td",
+        "--threads-draft"
+      ],
+      "display": "-td, --threads-draft N",
+      "policy": "extension-passthrough",
+      "summary": "Sets threads to use during generation.",
+      "default": "same as --threads",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-tbd",
+        "--threads-batch-draft"
+      ],
+      "display": "-tbd, --threads-batch-draft N",
+      "policy": "extension-passthrough",
+      "summary": "Sets threads to use during batch and prompt processing.",
+      "default": "same as --threads-draft",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--draft",
+        "--draft-n",
+        "--draft-max"
+      ],
+      "display": "--draft, --draft-n, --draft-max N",
+      "policy": "extension-passthrough",
+      "summary": "Sets tokens to draft for speculative decoding.",
+      "default": "16",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_DRAFT_MAX"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--draft-min",
+        "--draft-n-min"
+      ],
+      "display": "--draft-min, --draft-n-min N",
+      "policy": "extension-passthrough",
+      "summary": "Sets minimum draft tokens to use for speculative decoding.",
+      "default": "0",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_DRAFT_MIN"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--draft-p-min"
+      ],
+      "display": "--draft-p-min P",
+      "policy": "extension-passthrough",
+      "summary": "Minimum speculative decoding probability (greedy).",
+      "default": "0.75",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_DRAFT_P_MIN"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-cd",
+        "--ctx-size-draft"
+      ],
+      "display": "-cd, --ctx-size-draft N",
+      "policy": "extension-passthrough",
+      "summary": "Sets the prompt context for the draft model.",
+      "default": "0, 0 = loaded from model",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_CTX_SIZE_DRAFT"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-devd",
+        "--device-draft"
+      ],
+      "display": "-devd, --device-draft <dev1,dev2,..>",
+      "policy": "extension-passthrough",
+      "summary": "Comma-separated list of devices to use for offloading the draft model (none = don't offload).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [
+        "use --list-devices to see a list of available devices"
+      ],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-ngld",
+        "--gpu-layers-draft",
+        "--n-gpu-layers-draft"
+      ],
+      "display": "-ngld, --gpu-layers-draft, --n-gpu-layers-draft N",
+      "policy": "extension-passthrough",
+      "summary": "Caps draft model layers to store in VRAM, either an exact number, 'auto', or 'all'.",
+      "default": "auto",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_N_GPU_LAYERS_DRAFT"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-md",
+        "--model-draft"
+      ],
+      "display": "-md, --model-draft FNAME",
+      "policy": "extension-passthrough",
+      "summary": "Draft model for speculative decoding.",
+      "default": "unused",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_MODEL_DRAFT"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--spec-replace"
+      ],
+      "display": "--spec-replace TARGET DRAFT",
+      "policy": "extension-passthrough",
+      "summary": "Translate the string in TARGET into DRAFT if the draft model and main model are not compatible.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--spec-type"
+      ],
+      "display": "--spec-type [none\\|ngram-cache\\|ngram-simple\\|ngram-map-k\\|ngram-map-k4v\\|ngram-mod]",
+      "policy": "extension-passthrough",
+      "summary": "Type of speculative decoding to use when no draft model is provided.",
+      "default": "none",
+      "allowed_values": null,
+      "env_vars": [
+        "LLAMA_ARG_SPEC_TYPE"
+      ],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--spec-ngram-size-n"
+      ],
+      "display": "--spec-ngram-size-n N",
+      "policy": "extension-passthrough",
+      "summary": "Ngram size N for ngram-simple/ngram-map speculative decoding, length of lookup n-gram.",
+      "default": "12",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--spec-ngram-size-m"
+      ],
+      "display": "--spec-ngram-size-m N",
+      "policy": "extension-passthrough",
+      "summary": "Ngram size M for ngram-simple/ngram-map speculative decoding, length of draft m-gram.",
+      "default": "48",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--spec-ngram-min-hits"
+      ],
+      "display": "--spec-ngram-min-hits N",
+      "policy": "extension-passthrough",
+      "summary": "Minimum hits for ngram-map speculative decoding.",
+      "default": "1",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "-mv",
+        "--model-vocoder"
+      ],
+      "display": "-mv, --model-vocoder FNAME",
+      "policy": "extension-passthrough",
+      "summary": "Vocoder model for audio generation.",
+      "default": "unused",
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--tts-use-guide-tokens"
+      ],
+      "display": "--tts-use-guide-tokens",
+      "policy": "extension-passthrough",
+      "summary": "Uses guide tokens to improve TTS word recall.",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--embd-gemma-default"
+      ],
+      "display": "--embd-gemma-default",
+      "policy": "extension-passthrough",
+      "summary": "Uses default EmbeddingGemma model (note: can download weights from the internet).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--fim-qwen-1.5b-default"
+      ],
+      "display": "--fim-qwen-1.5b-default",
+      "policy": "extension-passthrough",
+      "summary": "Uses default Qwen 2.5 Coder 1.5B (note: can download weights from the internet).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--fim-qwen-3b-default"
+      ],
+      "display": "--fim-qwen-3b-default",
+      "policy": "extension-passthrough",
+      "summary": "Uses default Qwen 2.5 Coder 3B (note: can download weights from the internet).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--fim-qwen-7b-default"
+      ],
+      "display": "--fim-qwen-7b-default",
+      "policy": "extension-passthrough",
+      "summary": "Uses default Qwen 2.5 Coder 7B (note: can download weights from the internet).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--fim-qwen-7b-spec"
+      ],
+      "display": "--fim-qwen-7b-spec",
+      "policy": "extension-passthrough",
+      "summary": "Uses Qwen 2.5 Coder 7B + 0.5B draft for speculative decoding (note: can download weights from the internet).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--fim-qwen-14b-spec"
+      ],
+      "display": "--fim-qwen-14b-spec",
+      "policy": "extension-passthrough",
+      "summary": "Uses Qwen 2.5 Coder 14B + 0.5B draft for speculative decoding (note: can download weights from the internet).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--fim-qwen-30b-default"
+      ],
+      "display": "--fim-qwen-30b-default",
+      "policy": "extension-passthrough",
+      "summary": "Uses default Qwen 3 Coder 30B A3B Instruct (note: can download weights from the internet).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--gpt-oss-20b-default"
+      ],
+      "display": "--gpt-oss-20b-default",
+      "policy": "extension-passthrough",
+      "summary": "Uses gpt-oss-20b (note: can download weights from the internet).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--gpt-oss-120b-default"
+      ],
+      "display": "--gpt-oss-120b-default",
+      "policy": "extension-passthrough",
+      "summary": "Uses gpt-oss-120b (note: can download weights from the internet).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--vision-gemma-4b-default"
+      ],
+      "display": "--vision-gemma-4b-default",
+      "policy": "extension-passthrough",
+      "summary": "Uses Gemma 3 4B QAT (note: can download weights from the internet).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    },
+    {
+      "section": "Server-specific params",
+      "flags": [
+        "--vision-gemma-12b-default"
+      ],
+      "display": "--vision-gemma-12b-default",
+      "policy": "extension-passthrough",
+      "summary": "Uses Gemma 3 12B QAT (note: can download weights from the internet).",
+      "default": null,
+      "allowed_values": null,
+      "env_vars": [],
+      "notes": [],
+      "security_gated": false
+    }
+  ]
+}

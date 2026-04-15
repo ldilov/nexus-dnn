@@ -20,6 +20,14 @@ runtime:
     pip_dependencies: []
     env_vars: {}
 
+runtime_dependencies:
+  - family: "llama.cpp"
+    version: ">=b4000"
+    acceleration:
+      - "cpu"
+      - "cuda12"
+      - "cuda13"
+
 capabilities:
   - "filesystem.read"
   - "filesystem.write"

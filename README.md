@@ -45,6 +45,8 @@ nexus-dnn provides a developer-grade runtime that treats generative workflows as
 | `nexus-events` | Typed event bus with broadcast and adapter support |
 | `nexus-storage` | Metadata database (SQLite) with migration support |
 | `nexus-run` | Run engine orchestrating workflow execution |
+| `nexus-backend-runtimes` | Host-owned inference backend lifecycle (llama.cpp, TensorRT-LLM): install, validate, spawn, channel allocation. See [crate README](crates/nexus-backend-runtimes/README.md). |
+| `nexus-huggingface` | Host-level Hugging Face capability — search, repo detail, resumable downloads |
 
 ## Quick Start
 
@@ -95,13 +97,16 @@ nexus-dnn/
 | [Data Model](docs/data-model.md) | Entities, relationships, state machines |
 | [Python SDK](docs/python-sdk.md) | Python worker SDK reference |
 
+## Recent Changes
+
+- **Spec 011 — Host Runtime Pool**: Inference runtimes (llama.cpp, TensorRT-LLM) are now managed by the host crate `nexus-backend-runtimes` and shared across every extension that declares a matching `runtime_dependencies` entry. The retired `nexus-local-llm` crate has been deleted; its plumbing lives in the new host crate, its domain logic (model routing, hyperparameter validation, install registry) lives inside `extensions/builtin/local-llm/worker/`. New top-level routes: `GET /api/v1/backends`, `GET /api/v1/backends/{family}/parameters`. Legacy `/api/v1/llm/backends/*` routes carry RFC 8594 `Deprecation` + `Sunset` headers pointing at the new surface.
+
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch from `develop`
-3. Follow the [project constitution](.specify/memory/constitution.md) principles
-4. Ensure `cargo fmt`, `cargo clippy`, and `cargo test` pass
-5. Submit a pull request
+3. Ensure `cargo fmt`, `cargo clippy`, and `cargo test` pass
+4. Submit a pull request
 
 ## License
 

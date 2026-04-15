@@ -416,6 +416,43 @@ export function fetchLoadState(backendId: string): Promise<LoadStateDto> {
   return apiFetch(`/llm/backends/${encodeURIComponent(backendId)}/load-state`);
 }
 
+// Spec 011 US5: host-level parameter catalog for a runtime family.
+// Loosely typed — the catalog evolves on its own cadence and the UI parses
+// progressively, dropping unrecognized fields.
+export interface ParameterCatalogResponse {
+  family: string;
+  snapshot_date: string;
+  upstream_source: string;
+  total_entries: number;
+  entries: Array<Record<string, unknown>>;
+}
+
+export function fetchParameterCatalog(family: string): Promise<ParameterCatalogResponse> {
+  return apiFetch(`/backends/${encodeURIComponent(family)}/parameters`);
+}
+
+// Spec 011 Phase 9: host-level runtime install listing.
+export interface HostRuntimeInstallView {
+  install_id: string;
+  family: string;
+  version: string;
+  accelerator: string;
+  install_root: string;
+  state: string;
+  created_at: string;
+  updated_at: string;
+  dependents: string[];
+}
+
+export interface HostRuntimesResponse {
+  installs: HostRuntimeInstallView[];
+  available_families: string[];
+}
+
+export function fetchRuntimes(): Promise<HostRuntimesResponse> {
+  return apiFetch("/backends");
+}
+
 // Host-level, extension-agnostic HF search/detail.
 
 export function hfSearch(params: {

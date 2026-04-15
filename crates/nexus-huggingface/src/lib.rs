@@ -34,7 +34,7 @@ pub use detail::RepoMetadata;
 pub use download::{DownloadFileSpec, DownloadSpec, DownloadedArtifact, DownloadedFile};
 pub use error::{HfError, HfResult};
 pub use progress::ProgressEvent;
-pub use search::{RepoFile, SearchFilters, SearchPage, SearchReq, SearchResult, HF_API_BASE};
+pub use search::{HF_API_BASE, RepoFile, SearchFilters, SearchPage, SearchReq, SearchResult};
 pub use token::HfToken;
 
 pub type ProgressStream = Pin<Box<dyn Stream<Item = ProgressEvent> + Send>>;
@@ -121,11 +121,11 @@ impl HuggingFaceClient {
             StatusCode::TOO_MANY_REQUESTS => HfError::RateLimited {
                 retry_after_seconds: 30,
             },
-            StatusCode::SERVICE_UNAVAILABLE | StatusCode::BAD_GATEWAY | StatusCode::GATEWAY_TIMEOUT => {
-                HfError::Unreachable {
-                    retry_after_seconds: Some(30),
-                }
-            }
+            StatusCode::SERVICE_UNAVAILABLE
+            | StatusCode::BAD_GATEWAY
+            | StatusCode::GATEWAY_TIMEOUT => HfError::Unreachable {
+                retry_after_seconds: Some(30),
+            },
             other => HfError::InvalidResponse(format!("unexpected status {other}")),
         }
     }
@@ -140,8 +140,7 @@ impl HuggingFaceCapability for HuggingFaceClient {
         if let Some(cached) = self.cache.get(&key).await? {
             if CatalogCacheRepo::is_fresh(&cached, now) {
                 debug!(cache_key = %key, "hf search cache hit");
-                return serde_json::from_str::<SearchPage>(&cached.body)
-                    .map_err(HfError::from);
+                return serde_json::from_str::<SearchPage>(&cached.body).map_err(HfError::from);
             }
         }
 
@@ -370,10 +369,12 @@ fn map_raw_to_search_result(value: serde_json::Value) -> SearchResult {
         .map(|arr| {
             arr.iter()
                 .filter_map(|s| {
-                    s.get("rfilename").and_then(|p| p.as_str()).map(|p| RepoFile {
-                        path: p.to_owned(),
-                        size_bytes: s.get("size").and_then(|b| b.as_u64()),
-                    })
+                    s.get("rfilename")
+                        .and_then(|p| p.as_str())
+                        .map(|p| RepoFile {
+                            path: p.to_owned(),
+                            size_bytes: s.get("size").and_then(|b| b.as_u64()),
+                        })
                 })
                 .collect::<Vec<_>>()
         })

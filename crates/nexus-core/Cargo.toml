@@ -24,7 +24,7 @@ nexus-worker = { path = "../nexus-worker" }
 nexus-scheduler = { path = "../nexus-scheduler" }
 nexus-run = { path = "../nexus-run" }
 nexus-api = { path = "../nexus-api" }
-nexus-local-llm = { path = "../nexus-local-llm" }
+nexus-backend-runtimes = { path = "../nexus-backend-runtimes" }
 nexus-huggingface = { path = "../nexus-huggingface" }
 camino = "1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }

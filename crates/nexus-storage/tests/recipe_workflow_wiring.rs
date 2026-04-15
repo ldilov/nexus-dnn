@@ -6,9 +6,7 @@
 //! recipe that references them (SC-004, FR-004, plus the "nodes are
 //! functional and tied to recipe" sanity check requested at audit time).
 
-use nexus_storage::{
-    Database, ExtensionRecord, RecipeRecord, SqliteDatabase, WorkflowRecord,
-};
+use nexus_storage::{Database, ExtensionRecord, RecipeRecord, SqliteDatabase, WorkflowRecord};
 
 async fn fresh_db() -> SqliteDatabase {
     SqliteDatabase::new("sqlite::memory:").await.unwrap()
@@ -83,10 +81,12 @@ fn workflow_with_two_nodes(id: &str, extension_id: &str) -> WorkflowRecord {
         ),
         nodes: serde_json::to_string(&nodes).unwrap(),
         edges: serde_json::to_string(&edges).unwrap(),
-        stages: Some(serde_json::to_string(&serde_json::json!([
-            { "id": "generate", "label": "Generate" }
-        ]))
-        .unwrap()),
+        stages: Some(
+            serde_json::to_string(&serde_json::json!([
+                { "id": "generate", "label": "Generate" }
+            ]))
+            .unwrap(),
+        ),
         created_at: "2026-04-14T00:00:00Z".into(),
         updated_at: "2026-04-14T00:00:00Z".into(),
         user_edited_at: None,
@@ -127,7 +127,10 @@ async fn recipe_references_workflow_with_attributed_nodes() {
 
     // 2. Recipe.workflow_template_ref resolves to a real workflow row.
     let pointed_to = db.get_workflow(&recipe.workflow_template_ref).await;
-    assert!(pointed_to.is_ok(), "recipe references a non-existent workflow");
+    assert!(
+        pointed_to.is_ok(),
+        "recipe references a non-existent workflow"
+    );
 
     // 3. Workflow nodes round-trip and carry wiring the recipe depends on.
     let nodes: serde_json::Value = serde_json::from_str(&loaded_wf.nodes).unwrap();
@@ -179,7 +182,10 @@ async fn user_edit_preserves_recipe_linkage() {
         Some("nexus.chatllm"),
         "user edit must not drop extension attribution"
     );
-    assert!(after.user_edited_at.is_some(), "user_edited_at must be stamped");
+    assert!(
+        after.user_edited_at.is_some(),
+        "user_edited_at must be stamped"
+    );
 
     // Recipe still points at the workflow — the recipe's existence is
     // decoupled from the specific node set.
@@ -198,7 +204,10 @@ async fn user_edit_preserves_recipe_linkage() {
         created_at: "2026-04-14T00:00:00Z".into(),
     };
     db.insert_recipe(&recipe).await.unwrap();
-    let resolved = db.get_workflow(&recipe.workflow_template_ref).await.unwrap();
+    let resolved = db
+        .get_workflow(&recipe.workflow_template_ref)
+        .await
+        .unwrap();
     assert_eq!(resolved.id, "local_chat_basic");
 }
 

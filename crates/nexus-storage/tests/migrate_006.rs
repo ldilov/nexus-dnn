@@ -55,7 +55,11 @@ async fn migration_006_applies_on_fresh_db() {
     .fetch_all(db.pool())
     .await
     .unwrap();
-    assert_eq!(row.len(), 3, "expected all three attribution columns to exist");
+    assert_eq!(
+        row.len(),
+        3,
+        "expected all three attribution columns to exist"
+    );
 }
 
 #[tokio::test]
@@ -66,7 +70,10 @@ async fn migration_006_creates_extension_index() {
         .fetch_optional(db.pool())
         .await
         .unwrap();
-    assert!(found.is_some(), "expected idx_workflows_extension to be created");
+    assert!(
+        found.is_some(),
+        "expected idx_workflows_extension to be created"
+    );
 }
 
 #[tokio::test]
@@ -80,7 +87,9 @@ async fn migration_006_idempotent_on_rerun() {
 #[tokio::test]
 async fn existing_workflow_rows_default_to_null_attribution() {
     let db = fresh_db().await;
-    db.insert_workflow(&sample_record("legacy_wf")).await.unwrap();
+    db.insert_workflow(&sample_record("legacy_wf"))
+        .await
+        .unwrap();
     let loaded = db.get_workflow("legacy_wf").await.unwrap();
     assert_eq!(loaded.extension_id, None);
     assert_eq!(loaded.extension_version, None);
@@ -118,7 +127,10 @@ async fn stamp_workflow_extension_sets_attribution_without_touching_graph() {
         "first_seen should NOT change across extension upgrades"
     );
 
-    assert_eq!(after_upgrade.nodes, "[]", "nodes untouched by attribution stamp");
+    assert_eq!(
+        after_upgrade.nodes, "[]",
+        "nodes untouched by attribution stamp"
+    );
 }
 
 #[tokio::test]
@@ -134,6 +146,9 @@ async fn user_edit_survives_extension_stamp() {
         .unwrap();
 
     let after = db.get_workflow("wf").await.unwrap();
-    assert_eq!(after.user_edited_at.as_deref(), Some("2026-04-14T00:00:00Z"));
+    assert_eq!(
+        after.user_edited_at.as_deref(),
+        Some("2026-04-14T00:00:00Z")
+    );
     assert_eq!(after.extension_id.as_deref(), Some("nexus.chatllm"));
 }

@@ -22,7 +22,7 @@ nexus-run = { path = "../nexus-run" }
 nexus-scheduler = { path = "../nexus-scheduler" }
 nexus-artifact = { path = "../nexus-artifact" }
 nexus-storage = { path = "../nexus-storage" }
-nexus-local-llm = { path = "../nexus-local-llm" }
+nexus-backend-runtimes = { path = "../nexus-backend-runtimes" }
 nexus-huggingface = { path = "../nexus-huggingface" }
 uuid = { workspace = true }
 chrono = { workspace = true }
@@ -32,3 +32,9 @@ futures-util = "0.3"
 rust-embed = { workspace = true }
 mime_guess = { workspace = true }
 ts-rs = { version = "11", features = ["serde-compat", "chrono-impl", "serde-json-impl"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+http-body-util = "0.1"
+tempfile = "3"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }

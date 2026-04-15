@@ -25,7 +25,7 @@ import {
   type LayoutSummary,
   type Recipe,
 } from "./api/client";
-import * as styles from "./App.css";
+import * as styles from "./app.css";
 
 type BottomTabId = "logs" | "events" | "problems" | "workers";
 
