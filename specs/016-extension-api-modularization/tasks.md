@@ -52,13 +52,13 @@ Per Principle IX. Recommended order: US1 (registry file moves) → US2 (semver s
 
 ## Phase 4: US3 — Scanner DRY (P2)
 
-- [ ] T530a [US3] **Reconcile signatures first**: read `process_extension(path: &Path, host_version: &Version, protocol_version: &Version)` and `process_builtin_extension` current signatures in `registry/scanner.rs`; pick the lowest-common-denominator argument shape (likely `(&Path, &Version, &Version)`) before authoring the helper. Document the chosen `F` shape as a single-line comment above the helper.
-- [ ] T530b [US3] Add `scan_dir_with<F>(dir: &Path, host_version: &Version, protocol_version: &Version, process_fn: F, label: &'static str) -> Result<ScanResult, ExtensionError>` in `registry/scanner.rs` where `F: Fn(&Path, &Version, &Version) -> Result<Option<(ActivatedExtension, Vec<(String, OperatorDefinition)>)>, ExtensionError>` (final shape pinned by T530a).
-- [ ] T531 [US3] Rewrite `scan_extensions_dir` and `scan_builtin_dir` as 10-to-15 LOC delegators passing `process_extension` / `process_builtin_extension` respectively.
+- [X] T530a [US3] **Reconcile signatures first**: read `process_extension(path: &Path, host_version: &Version, protocol_version: &Version)` and `process_builtin_extension` current signatures in `registry/scanner.rs`; pick the lowest-common-denominator argument shape (likely `(&Path, &Version, &Version)`) before authoring the helper. Document the chosen `F` shape as a single-line comment above the helper.
+- [X] T530b [US3] Add `scan_dir_with<F>(dir: &Path, host_version: &Version, protocol_version: &Version, process_fn: F, label: &'static str) -> Result<ScanResult, ExtensionError>` in `registry/scanner.rs` where `F: Fn(&Path, &Version, &Version) -> Result<Option<(ActivatedExtension, Vec<(String, OperatorDefinition)>)>, ExtensionError>` (final shape pinned by T530a).
+- [X] T531 [US3] Rewrite `scan_extensions_dir` and `scan_builtin_dir` as 10-to-15 LOC delegators passing `process_extension` / `process_builtin_extension` respectively.
 
 ### Verification
 
-- [ ] T532 [US3] `cargo test -p nexus-extension --tests` GREEN.
+- [X] T532 [US3] `cargo test -p nexus-extension --tests` GREEN.
 
 ---
 

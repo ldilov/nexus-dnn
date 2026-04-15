@@ -19,66 +19,60 @@ use super::loaders::{
 use super::storage_validation::{validate_storage_contribution, validate_storage_sql_files};
 use super::types::{ActivatedExtension, DiscoveryReport, ExtensionStatus};
 
-#[allow(clippy::type_complexity)]
 pub(super) fn scan_extensions_dir(
     extensions_dir: &Path,
     host_version: &Version,
     protocol_version: &Version,
-) -> Result<
-    (
-        Vec<ActivatedExtension>,
-        Vec<(String, OperatorDefinition)>,
-        DiscoveryReport,
-    ),
-    ExtensionError,
-> {
-    let mut activated_extensions = Vec::new();
-    let mut all_operator_entries = Vec::new();
-    let mut report = DiscoveryReport {
-        activated: Vec::new(),
-        invalid: Vec::new(),
-    };
-
-    let entries = read_extension_dirs(extensions_dir)?;
-
-    for entry_path in entries {
-        match process_extension(&entry_path, host_version, protocol_version) {
-            Ok(ext) => {
-                let ext_id = ext.manifest.extension.id.clone();
-                for op in &ext.operators {
-                    all_operator_entries.push((ext_id.clone(), op.clone()));
-                }
-                info!(extension_id = %ext_id, "activated extension");
-                report.activated.push(ext_id);
-                activated_extensions.push(ext);
-            }
-            Err(e) => {
-                let dir_name = entry_path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| entry_path.display().to_string());
-                warn!(dir = %dir_name, error = %e, "skipping invalid extension");
-                report.invalid.push((dir_name, e.to_string()));
-            }
-        }
-    }
-
-    Ok((activated_extensions, all_operator_entries, report))
+) -> ScanOutput {
+    scan_dir_with(
+        extensions_dir,
+        host_version,
+        protocol_version,
+        process_extension,
+        "activated extension",
+        "skipping invalid extension",
+    )
 }
 
-#[allow(clippy::type_complexity)]
 pub(super) fn scan_builtin_dir(
     builtin_dir: &Path,
     host_version: &Version,
     protocol_version: &Version,
-) -> Result<
+) -> ScanOutput {
+    scan_dir_with(
+        builtin_dir,
+        host_version,
+        protocol_version,
+        process_builtin_extension,
+        "discovered builtin extension",
+        "skipping invalid builtin extension",
+    )
+}
+
+/// Canonical return shape for both scanner entry points.
+#[allow(clippy::type_complexity)]
+type ScanOutput = Result<
     (
         Vec<ActivatedExtension>,
         Vec<(String, OperatorDefinition)>,
         DiscoveryReport,
     ),
     ExtensionError,
-> {
+>;
+
+/// Shared scan loop for `scan_extensions_dir` and `scan_builtin_dir`.
+/// `process_fn` is the only difference between them (spec 016 US3, FR-407).
+fn scan_dir_with<F>(
+    dir: &Path,
+    host_version: &Version,
+    protocol_version: &Version,
+    process_fn: F,
+    ok_message: &'static str,
+    err_message: &'static str,
+) -> ScanOutput
+where
+    F: Fn(&Path, &Version, &Version) -> Result<ActivatedExtension, ExtensionError>,
+{
     let mut extensions = Vec::new();
     let mut all_operator_entries = Vec::new();
     let mut report = DiscoveryReport {
@@ -86,16 +80,16 @@ pub(super) fn scan_builtin_dir(
         invalid: Vec::new(),
     };
 
-    let entries = read_extension_dirs(builtin_dir)?;
+    let entries = read_extension_dirs(dir)?;
 
     for entry_path in entries {
-        match process_builtin_extension(&entry_path, host_version, protocol_version) {
+        match process_fn(&entry_path, host_version, protocol_version) {
             Ok(ext) => {
                 let ext_id = ext.manifest.extension.id.clone();
                 for op in &ext.operators {
                     all_operator_entries.push((ext_id.clone(), op.clone()));
                 }
-                info!(extension_id = %ext_id, "discovered builtin extension");
+                info!(extension_id = %ext_id, "{ok_message}");
                 report.activated.push(ext_id);
                 extensions.push(ext);
             }
@@ -104,7 +98,7 @@ pub(super) fn scan_builtin_dir(
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_else(|| entry_path.display().to_string());
-                warn!(dir = %dir_name, error = %e, "skipping invalid builtin extension");
+                warn!(dir = %dir_name, error = %e, "{err_message}");
                 report.invalid.push((dir_name, e.to_string()));
             }
         }
