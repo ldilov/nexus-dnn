@@ -107,29 +107,38 @@ impl Database for SqliteDatabase {
             sqlx::query(trimmed).execute(&self.pool).await?;
         }
 
+        let migration_008 = include_str!("../../../migrations/008_host_runtime_pool.sql");
+        for statement in migration_008.split(';') {
+            let trimmed = statement.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            sqlx::query(trimmed).execute(&self.pool).await?;
+        }
+
         Ok(())
     }
 
     async fn insert_extension(&self, r: &ExtensionRecord) -> Result<(), StorageError> {
         sqlx::query(include_str!("../queries/extensions/insert.sql"))
-        .bind(&r.id)
-        .bind(&r.name)
-        .bind(&r.version)
-        .bind(&r.description)
-        .bind(&r.publisher)
-        .bind(&r.host_api_compat)
-        .bind(&r.protocol_compat)
-        .bind(&r.runtime_family)
-        .bind(&r.entrypoint)
-        .bind(&r.capabilities)
-        .bind(&r.status)
-        .bind(&r.directory)
-        .bind(&r.installed_at)
-        .bind(r.recipe_count)
-        .bind(r.ui_contribution_count)
-        .bind(&r.validation_errors)
-        .execute(&self.pool)
-        .await?;
+            .bind(&r.id)
+            .bind(&r.name)
+            .bind(&r.version)
+            .bind(&r.description)
+            .bind(&r.publisher)
+            .bind(&r.host_api_compat)
+            .bind(&r.protocol_compat)
+            .bind(&r.runtime_family)
+            .bind(&r.entrypoint)
+            .bind(&r.capabilities)
+            .bind(&r.status)
+            .bind(&r.directory)
+            .bind(&r.installed_at)
+            .bind(r.recipe_count)
+            .bind(r.ui_contribution_count)
+            .bind(&r.validation_errors)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -169,21 +178,21 @@ impl Database for SqliteDatabase {
 
     async fn insert_operator(&self, r: &OperatorRecord) -> Result<(), StorageError> {
         sqlx::query(include_str!("../queries/operators/insert.sql"))
-        .bind(&r.id)
-        .bind(&r.version)
-        .bind(&r.extension_id)
-        .bind(&r.display_name)
-        .bind(&r.description)
-        .bind(&r.category)
-        .bind(&r.inputs)
-        .bind(&r.outputs)
-        .bind(&r.config_schema)
-        .bind(&r.execution_mode)
-        .bind(r.cacheable)
-        .bind(r.resumable)
-        .bind(&r.resource_hints)
-        .execute(&self.pool)
-        .await?;
+            .bind(&r.id)
+            .bind(&r.version)
+            .bind(&r.extension_id)
+            .bind(&r.display_name)
+            .bind(&r.description)
+            .bind(&r.category)
+            .bind(&r.inputs)
+            .bind(&r.outputs)
+            .bind(&r.config_schema)
+            .bind(&r.execution_mode)
+            .bind(r.cacheable)
+            .bind(r.resumable)
+            .bind(&r.resource_hints)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -222,22 +231,22 @@ impl Database for SqliteDatabase {
 
     async fn insert_workflow(&self, r: &WorkflowRecord) -> Result<(), StorageError> {
         sqlx::query(include_str!("../queries/workflows/insert.sql"))
-        .bind(&r.id)
-        .bind(&r.title)
-        .bind(&r.version)
-        .bind(&r.inputs)
-        .bind(&r.outputs)
-        .bind(&r.nodes)
-        .bind(&r.edges)
-        .bind(&r.stages)
-        .bind(&r.created_at)
-        .bind(&r.updated_at)
-        .bind(&r.user_edited_at)
-        .bind(&r.extension_id)
-        .bind(&r.extension_version)
-        .bind(&r.extension_version_first_seen)
-        .execute(&self.pool)
-        .await?;
+            .bind(&r.id)
+            .bind(&r.title)
+            .bind(&r.version)
+            .bind(&r.inputs)
+            .bind(&r.outputs)
+            .bind(&r.nodes)
+            .bind(&r.edges)
+            .bind(&r.stages)
+            .bind(&r.created_at)
+            .bind(&r.updated_at)
+            .bind(&r.user_edited_at)
+            .bind(&r.extension_id)
+            .bind(&r.extension_version)
+            .bind(&r.extension_version_first_seen)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -262,18 +271,18 @@ impl Database for SqliteDatabase {
 
     async fn update_workflow(&self, r: &WorkflowRecord) -> Result<(), StorageError> {
         let result = sqlx::query(include_str!("../queries/workflows/update.sql"))
-        .bind(&r.title)
-        .bind(&r.version)
-        .bind(&r.inputs)
-        .bind(&r.outputs)
-        .bind(&r.nodes)
-        .bind(&r.edges)
-        .bind(&r.stages)
-        .bind(&r.updated_at)
-        .bind(&r.user_edited_at)
-        .bind(&r.id)
-        .execute(&self.pool)
-        .await?;
+            .bind(&r.title)
+            .bind(&r.version)
+            .bind(&r.inputs)
+            .bind(&r.outputs)
+            .bind(&r.nodes)
+            .bind(&r.edges)
+            .bind(&r.stages)
+            .bind(&r.updated_at)
+            .bind(&r.user_edited_at)
+            .bind(&r.id)
+            .execute(&self.pool)
+            .await?;
         if result.rows_affected() == 0 {
             return Err(StorageError::NotFound {
                 entity: "workflow".into(),
@@ -326,15 +335,11 @@ impl Database for SqliteDatabase {
         Ok(())
     }
 
-    async fn get_canvas_state(
-        &self,
-        workflow_id: &str,
-    ) -> Result<Option<String>, StorageError> {
-        let row =
-            sqlx::query("SELECT payload FROM workflow_canvas_state WHERE workflow_id = ?")
-                .bind(workflow_id)
-                .fetch_optional(&self.pool)
-                .await?;
+    async fn get_canvas_state(&self, workflow_id: &str) -> Result<Option<String>, StorageError> {
+        let row = sqlx::query("SELECT payload FROM workflow_canvas_state WHERE workflow_id = ?")
+            .bind(workflow_id)
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(row.map(|r| {
             use sqlx::Row;
             r.get::<String, _>("payload")
@@ -362,19 +367,19 @@ impl Database for SqliteDatabase {
 
     async fn insert_run(&self, r: &RunRecord) -> Result<(), StorageError> {
         sqlx::query(include_str!("../queries/runs/insert.sql"))
-        .bind(&r.id)
-        .bind(&r.workflow_id)
-        .bind(&r.workflow_version)
-        .bind(&r.status)
-        .bind(&r.started_at)
-        .bind(&r.completed_at)
-        .bind(&r.error)
-        .bind(&r.created_at)
-        .bind(&r.run_label)
-        .bind(&r.execution_profile)
-        .bind(&r.predecessor_run_id)
-        .execute(&self.pool)
-        .await?;
+            .bind(&r.id)
+            .bind(&r.workflow_id)
+            .bind(&r.workflow_version)
+            .bind(&r.status)
+            .bind(&r.started_at)
+            .bind(&r.completed_at)
+            .bind(&r.error)
+            .bind(&r.created_at)
+            .bind(&r.run_label)
+            .bind(&r.execution_profile)
+            .bind(&r.predecessor_run_id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -420,16 +425,16 @@ impl Database for SqliteDatabase {
 
     async fn insert_node_execution(&self, r: &NodeExecutionRecord) -> Result<(), StorageError> {
         sqlx::query(include_str!("../queries/node_executions/insert.sql"))
-        .bind(&r.run_id)
-        .bind(&r.node_id)
-        .bind(&r.status)
-        .bind(&r.worker_id)
-        .bind(&r.started_at)
-        .bind(&r.completed_at)
-        .bind(r.duration_ms)
-        .bind(&r.error)
-        .execute(&self.pool)
-        .await?;
+            .bind(&r.run_id)
+            .bind(&r.node_id)
+            .bind(&r.status)
+            .bind(&r.worker_id)
+            .bind(&r.started_at)
+            .bind(&r.completed_at)
+            .bind(r.duration_ms)
+            .bind(&r.error)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -456,14 +461,14 @@ impl Database for SqliteDatabase {
         error: Option<&str>,
     ) -> Result<(), StorageError> {
         let result = sqlx::query(include_str!("../queries/node_executions/update.sql"))
-        .bind(status)
-        .bind(worker_id)
-        .bind(duration_ms)
-        .bind(error)
-        .bind(run_id)
-        .bind(node_id)
-        .execute(&self.pool)
-        .await?;
+            .bind(status)
+            .bind(worker_id)
+            .bind(duration_ms)
+            .bind(error)
+            .bind(run_id)
+            .bind(node_id)
+            .execute(&self.pool)
+            .await?;
         if result.rows_affected() == 0 {
             return Err(StorageError::NotFound {
                 entity: "node_execution".into(),
@@ -475,18 +480,18 @@ impl Database for SqliteDatabase {
 
     async fn insert_artifact(&self, r: &ArtifactRecord) -> Result<(), StorageError> {
         sqlx::query(include_str!("../queries/artifacts/insert.sql"))
-        .bind(&r.id)
-        .bind(&r.artifact_type)
-        .bind(&r.run_id)
-        .bind(&r.node_id)
-        .bind(&r.port_name)
-        .bind(&r.content_hash)
-        .bind(r.size_bytes)
-        .bind(&r.blob_path)
-        .bind(&r.metadata)
-        .bind(&r.created_at)
-        .execute(&self.pool)
-        .await?;
+            .bind(&r.id)
+            .bind(&r.artifact_type)
+            .bind(&r.run_id)
+            .bind(&r.node_id)
+            .bind(&r.port_name)
+            .bind(&r.content_hash)
+            .bind(r.size_bytes)
+            .bind(&r.blob_path)
+            .bind(&r.metadata)
+            .bind(&r.created_at)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -506,11 +511,13 @@ impl Database for SqliteDatabase {
         &self,
         run_id: &str,
     ) -> Result<Vec<ArtifactRecord>, StorageError> {
-        Ok(sqlx::query(include_str!("../queries/artifacts/list_for_run.sql"))
-            .bind(run_id)
-            .map(map_artifact_row)
-            .fetch_all(&self.pool)
-            .await?)
+        Ok(
+            sqlx::query(include_str!("../queries/artifacts/list_for_run.sql"))
+                .bind(run_id)
+                .map(map_artifact_row)
+                .fetch_all(&self.pool)
+                .await?,
+        )
     }
 
     async fn list_artifacts_filtered(
@@ -546,12 +553,12 @@ impl Database for SqliteDatabase {
 
     async fn insert_lineage_edge(&self, r: &LineageEdgeRecord) -> Result<(), StorageError> {
         sqlx::query(include_str!("../queries/lineage/insert.sql"))
-        .bind(&r.output_artifact_id)
-        .bind(&r.input_artifact_id)
-        .bind(&r.run_id)
-        .bind(&r.node_id)
-        .execute(&self.pool)
-        .await?;
+            .bind(&r.output_artifact_id)
+            .bind(&r.input_artifact_id)
+            .bind(&r.run_id)
+            .bind(&r.node_id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -559,30 +566,32 @@ impl Database for SqliteDatabase {
         &self,
         artifact_id: &str,
     ) -> Result<Vec<LineageEdgeRecord>, StorageError> {
-        Ok(sqlx::query(include_str!("../queries/lineage/get_for_artifact.sql"))
-        .bind(artifact_id)
-        .bind(artifact_id)
-        .map(map_lineage_edge_row)
-        .fetch_all(&self.pool)
-        .await?)
+        Ok(
+            sqlx::query(include_str!("../queries/lineage/get_for_artifact.sql"))
+                .bind(artifact_id)
+                .bind(artifact_id)
+                .map(map_lineage_edge_row)
+                .fetch_all(&self.pool)
+                .await?,
+        )
     }
 
     async fn insert_recipe(&self, r: &RecipeRecord) -> Result<(), StorageError> {
         sqlx::query(include_str!("../queries/recipes/insert.sql"))
-        .bind(&r.id)
-        .bind(&r.version)
-        .bind(&r.display_name)
-        .bind(&r.summary)
-        .bind(&r.category)
-        .bind(&r.extension_id)
-        .bind(&r.extension_version)
-        .bind(&r.workflow_template_ref)
-        .bind(&r.thumbnail)
-        .bind(&r.input_summary)
-        .bind(&r.bindings)
-        .bind(&r.created_at)
-        .execute(&self.pool)
-        .await?;
+            .bind(&r.id)
+            .bind(&r.version)
+            .bind(&r.display_name)
+            .bind(&r.summary)
+            .bind(&r.category)
+            .bind(&r.extension_id)
+            .bind(&r.extension_version)
+            .bind(&r.workflow_template_ref)
+            .bind(&r.thumbnail)
+            .bind(&r.input_summary)
+            .bind(&r.bindings)
+            .bind(&r.created_at)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -609,11 +618,13 @@ impl Database for SqliteDatabase {
         &self,
         extension_id: &str,
     ) -> Result<Vec<RecipeRecord>, StorageError> {
-        Ok(sqlx::query(include_str!("../queries/recipes/list_by_extension.sql"))
-            .bind(extension_id)
-            .map(map_recipe_row)
-            .fetch_all(&self.pool)
-            .await?)
+        Ok(
+            sqlx::query(include_str!("../queries/recipes/list_by_extension.sql"))
+                .bind(extension_id)
+                .map(map_recipe_row)
+                .fetch_all(&self.pool)
+                .await?,
+        )
     }
 
     async fn delete_recipes_by_extension(&self, extension_id: &str) -> Result<(), StorageError> {
@@ -626,123 +637,127 @@ impl Database for SqliteDatabase {
 
     async fn insert_ui_contribution(&self, r: &UIContributionRecord) -> Result<(), StorageError> {
         sqlx::query(include_str!("../queries/ui_contributions/insert.sql"))
-        .bind(&r.id)
-        .bind(&r.kind)
-        .bind(&r.extension_id)
-        .bind(&r.display_name)
-        .bind(&r.description)
-        .bind(&r.target)
-        .bind(&r.supported_types)
-        .bind(r.priority)
-        .bind(&r.metadata)
-        .bind(&r.availability)
-        .execute(&self.pool)
-        .await?;
+            .bind(&r.id)
+            .bind(&r.kind)
+            .bind(&r.extension_id)
+            .bind(&r.display_name)
+            .bind(&r.description)
+            .bind(&r.target)
+            .bind(&r.supported_types)
+            .bind(r.priority)
+            .bind(&r.metadata)
+            .bind(&r.availability)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
     async fn list_ui_contributions(&self) -> Result<Vec<UIContributionRecord>, StorageError> {
-        Ok(sqlx::query(include_str!("../queries/ui_contributions/list.sql"))
-            .map(map_ui_contribution_row)
-            .fetch_all(&self.pool)
-            .await?)
-    }
-
-    async fn list_ui_contributions_by_kind(
-        &self,
-        kind: &str,
-    ) -> Result<Vec<UIContributionRecord>, StorageError> {
-        Ok(sqlx::query(include_str!("../queries/ui_contributions/list_by_kind.sql"))
-            .bind(kind)
-            .map(map_ui_contribution_row)
-            .fetch_all(&self.pool)
-            .await?)
-    }
-
-    async fn list_ui_contributions_by_extension(
-        &self,
-        extension_id: &str,
-    ) -> Result<Vec<UIContributionRecord>, StorageError> {
         Ok(
-            sqlx::query(include_str!("../queries/ui_contributions/list_by_extension.sql"))
-                .bind(extension_id)
+            sqlx::query(include_str!("../queries/ui_contributions/list.sql"))
                 .map(map_ui_contribution_row)
                 .fetch_all(&self.pool)
                 .await?,
         )
     }
 
+    async fn list_ui_contributions_by_kind(
+        &self,
+        kind: &str,
+    ) -> Result<Vec<UIContributionRecord>, StorageError> {
+        Ok(
+            sqlx::query(include_str!("../queries/ui_contributions/list_by_kind.sql"))
+                .bind(kind)
+                .map(map_ui_contribution_row)
+                .fetch_all(&self.pool)
+                .await?,
+        )
+    }
+
+    async fn list_ui_contributions_by_extension(
+        &self,
+        extension_id: &str,
+    ) -> Result<Vec<UIContributionRecord>, StorageError> {
+        Ok(sqlx::query(include_str!(
+            "../queries/ui_contributions/list_by_extension.sql"
+        ))
+        .bind(extension_id)
+        .map(map_ui_contribution_row)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
     async fn delete_ui_contributions_by_extension(
         &self,
         extension_id: &str,
     ) -> Result<(), StorageError> {
-        sqlx::query(include_str!("../queries/ui_contributions/delete_by_extension.sql"))
-            .bind(extension_id)
-            .execute(&self.pool)
-            .await?;
-        Ok(())
-    }
-
-    async fn insert_namespace(&self, r: &NamespaceRecord) -> Result<(), StorageError> {
-        sqlx::query(include_str!("../queries/storage/insert_namespace.sql"))
-        .bind(&r.id)
-        .bind(&r.extension_id)
-        .bind(&r.extension_version_first_seen)
-        .bind(&r.namespace_alias)
-        .bind(&r.effective_prefix)
-        .bind(&r.engine)
-        .bind(&r.storage_spec_version)
-        .bind(&r.sql_profile)
-        .bind(&r.status)
-        .bind(&r.uninstall_policy)
-        .bind(&r.created_at)
-        .bind(&r.updated_at)
+        sqlx::query(include_str!(
+            "../queries/ui_contributions/delete_by_extension.sql"
+        ))
+        .bind(extension_id)
         .execute(&self.pool)
         .await?;
         Ok(())
     }
 
+    async fn insert_namespace(&self, r: &NamespaceRecord) -> Result<(), StorageError> {
+        sqlx::query(include_str!("../queries/storage/insert_namespace.sql"))
+            .bind(&r.id)
+            .bind(&r.extension_id)
+            .bind(&r.extension_version_first_seen)
+            .bind(&r.namespace_alias)
+            .bind(&r.effective_prefix)
+            .bind(&r.engine)
+            .bind(&r.storage_spec_version)
+            .bind(&r.sql_profile)
+            .bind(&r.status)
+            .bind(&r.uninstall_policy)
+            .bind(&r.created_at)
+            .bind(&r.updated_at)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     async fn get_namespace(&self, id: &str) -> Result<NamespaceRecord, StorageError> {
         sqlx::query_as::<_, NamespaceRecord>(include_str!("../queries/storage/get_namespace.sql"))
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?
-        .ok_or_else(|| StorageError::NotFound {
-            entity: "namespace".into(),
-            id: id.into(),
-        })
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or_else(|| StorageError::NotFound {
+                entity: "namespace".into(),
+                id: id.into(),
+            })
     }
 
     async fn get_namespace_by_extension(
         &self,
         extension_id: &str,
     ) -> Result<Option<NamespaceRecord>, StorageError> {
-        Ok(sqlx::query_as::<_, NamespaceRecord>(
-            include_str!("../queries/storage/get_namespace_by_extension.sql"),
-        )
+        Ok(sqlx::query_as::<_, NamespaceRecord>(include_str!(
+            "../queries/storage/get_namespace_by_extension.sql"
+        ))
         .bind(extension_id)
         .fetch_optional(&self.pool)
         .await?)
     }
 
     async fn list_namespaces(&self) -> Result<Vec<NamespaceRecord>, StorageError> {
-        Ok(
-            sqlx::query_as::<_, NamespaceRecord>(include_str!(
-                "../queries/storage/list_namespaces.sql"
-            ))
-                .fetch_all(&self.pool)
-                .await?,
-        )
+        Ok(sqlx::query_as::<_, NamespaceRecord>(include_str!(
+            "../queries/storage/list_namespaces.sql"
+        ))
+        .fetch_all(&self.pool)
+        .await?)
     }
 
     async fn update_namespace_status(&self, id: &str, status: &str) -> Result<(), StorageError> {
         let result = sqlx::query(include_str!(
             "../queries/storage/update_namespace_status.sql"
         ))
-            .bind(status)
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
+        .bind(status)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
         if result.rows_affected() == 0 {
             return Err(StorageError::NotFound {
                 entity: "namespace".into(),
@@ -773,19 +788,19 @@ impl Database for SqliteDatabase {
 
     async fn insert_migration_record(&self, r: &MigrationRecord) -> Result<(), StorageError> {
         sqlx::query(include_str!("../queries/storage/insert_migration.sql"))
-        .bind(&r.id)
-        .bind(&r.namespace_id)
-        .bind(&r.extension_id)
-        .bind(&r.extension_version)
-        .bind(&r.migration_id)
-        .bind(&r.path)
-        .bind(&r.raw_checksum_sha256)
-        .bind(&r.expanded_checksum_sha256)
-        .bind(&r.status)
-        .bind(&r.applied_at)
-        .bind(&r.error_json)
-        .execute(&self.pool)
-        .await?;
+            .bind(&r.id)
+            .bind(&r.namespace_id)
+            .bind(&r.extension_id)
+            .bind(&r.extension_version)
+            .bind(&r.migration_id)
+            .bind(&r.path)
+            .bind(&r.raw_checksum_sha256)
+            .bind(&r.expanded_checksum_sha256)
+            .bind(&r.status)
+            .bind(&r.applied_at)
+            .bind(&r.error_json)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -817,16 +832,16 @@ impl Database for SqliteDatabase {
 
     async fn insert_object_record(&self, r: &ObjectRecord) -> Result<(), StorageError> {
         sqlx::query(include_str!("../queries/storage/insert_object.sql"))
-        .bind(&r.id)
-        .bind(&r.namespace_id)
-        .bind(&r.object_name)
-        .bind(&r.object_type)
-        .bind(&r.created_by_migration_id)
-        .bind(&r.sql_hash)
-        .bind(&r.status)
-        .bind(&r.recorded_at)
-        .execute(&self.pool)
-        .await?;
+            .bind(&r.id)
+            .bind(&r.namespace_id)
+            .bind(&r.object_name)
+            .bind(&r.object_type)
+            .bind(&r.created_by_migration_id)
+            .bind(&r.sql_hash)
+            .bind(&r.status)
+            .bind(&r.recorded_at)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -834,18 +849,16 @@ impl Database for SqliteDatabase {
         &self,
         namespace_id: &str,
     ) -> Result<Vec<ObjectRecord>, StorageError> {
-        Ok(sqlx::query_as::<_, ObjectRecord>(include_str!(
-            "../queries/storage/get_objects.sql"
-        ))
-        .bind(namespace_id)
-        .fetch_all(&self.pool)
-        .await?)
+        Ok(
+            sqlx::query_as::<_, ObjectRecord>(include_str!("../queries/storage/get_objects.sql"))
+                .bind(namespace_id)
+                .fetch_all(&self.pool)
+                .await?,
+        )
     }
 
     async fn update_object_status(&self, id: &str, status: &str) -> Result<(), StorageError> {
-        let result = sqlx::query(include_str!(
-            "../queries/storage/update_object_status.sql"
-        ))
+        let result = sqlx::query(include_str!("../queries/storage/update_object_status.sql"))
             .bind(status)
             .bind(id)
             .execute(&self.pool)
@@ -861,16 +874,16 @@ impl Database for SqliteDatabase {
 
     async fn insert_operation(&self, r: &OperationRecord) -> Result<(), StorageError> {
         sqlx::query(include_str!("../queries/storage/insert_operation.sql"))
-        .bind(&r.id)
-        .bind(&r.namespace_id)
-        .bind(&r.operation_type)
-        .bind(&r.status)
-        .bind(&r.plan_json)
-        .bind(&r.result_json)
-        .bind(&r.started_at)
-        .bind(&r.completed_at)
-        .execute(&self.pool)
-        .await?;
+            .bind(&r.id)
+            .bind(&r.namespace_id)
+            .bind(&r.operation_type)
+            .bind(&r.status)
+            .bind(&r.plan_json)
+            .bind(&r.result_json)
+            .bind(&r.started_at)
+            .bind(&r.completed_at)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -882,12 +895,12 @@ impl Database for SqliteDatabase {
         completed_at: Option<&str>,
     ) -> Result<(), StorageError> {
         let result = sqlx::query(include_str!("../queries/storage/update_operation.sql"))
-        .bind(status)
-        .bind(result_json)
-        .bind(completed_at)
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
+            .bind(status)
+            .bind(result_json)
+            .bind(completed_at)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
         if result.rows_affected() == 0 {
             return Err(StorageError::NotFound {
                 entity: "operation".into(),
@@ -899,16 +912,16 @@ impl Database for SqliteDatabase {
 
     async fn insert_archive(&self, r: &ArchiveRecord) -> Result<(), StorageError> {
         sqlx::query(include_str!("../queries/storage/insert_archive.sql"))
-        .bind(&r.id)
-        .bind(&r.namespace_id)
-        .bind(&r.archive_format)
-        .bind(&r.archive_path)
-        .bind(&r.content_hash)
-        .bind(r.table_count)
-        .bind(r.row_count)
-        .bind(&r.created_at)
-        .execute(&self.pool)
-        .await?;
+            .bind(&r.id)
+            .bind(&r.namespace_id)
+            .bind(&r.archive_format)
+            .bind(&r.archive_path)
+            .bind(&r.content_hash)
+            .bind(r.table_count)
+            .bind(r.row_count)
+            .bind(&r.created_at)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -916,12 +929,12 @@ impl Database for SqliteDatabase {
         &self,
         namespace_id: &str,
     ) -> Result<Vec<ArchiveRecord>, StorageError> {
-        Ok(sqlx::query_as::<_, ArchiveRecord>(include_str!(
-            "../queries/storage/get_archives.sql"
-        ))
-        .bind(namespace_id)
-        .fetch_all(&self.pool)
-        .await?)
+        Ok(
+            sqlx::query_as::<_, ArchiveRecord>(include_str!("../queries/storage/get_archives.sql"))
+                .bind(namespace_id)
+                .fetch_all(&self.pool)
+                .await?,
+        )
     }
 }
 

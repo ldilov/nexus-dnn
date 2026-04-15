@@ -7,9 +7,7 @@
 //! must resolve to a workflow whose node graph passes host validation under
 //! a realistic operator registry.
 
-use nexus_extension::{
-    ExecutionSpec, OperatorDefinition, OperatorInfo, PortSpec, ResourceSpec,
-};
+use nexus_extension::{ExecutionSpec, OperatorDefinition, OperatorInfo, PortSpec, ResourceSpec};
 use nexus_workflow::{parse_workflow, validate_workflow};
 
 fn port(name: &str, port_type: &str, required: bool) -> PortSpec {
@@ -131,8 +129,7 @@ fn disconnecting_required_input_breaks_validation() {
 
 #[test]
 fn unknown_operator_reference_fails_validation() {
-    let yaml = SHIPPED_WORKFLOW_YAML
-        .replace("llm.chat.turn@1.0.0", "llm.chat.turn@99.0.0");
+    let yaml = SHIPPED_WORKFLOW_YAML.replace("llm.chat.turn@1.0.0", "llm.chat.turn@99.0.0");
     let workflow = parse_workflow(&yaml).expect("parses");
     let operators = registry();
     let err = validate_workflow(&workflow, &operators)
@@ -147,8 +144,10 @@ fn unknown_operator_reference_fails_validation() {
 #[test]
 fn dangling_edge_to_missing_node_is_rejected() {
     // Rewire chat_turn.prompt to read from a node that doesn't exist.
-    let yaml = SHIPPED_WORKFLOW_YAML
-        .replace(r#"from: "compose_prompt:prompt""#, r#"from: "ghost_node:prompt""#);
+    let yaml = SHIPPED_WORKFLOW_YAML.replace(
+        r#"from: "compose_prompt:prompt""#,
+        r#"from: "ghost_node:prompt""#,
+    );
     let workflow = parse_workflow(&yaml).expect("parses");
     let operators = registry();
     let err = validate_workflow(&workflow, &operators)

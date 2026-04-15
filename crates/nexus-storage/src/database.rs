@@ -41,8 +41,7 @@ pub trait Database: Send + Sync {
     /// Return the opaque JSON blob persisted for this workflow's canvas
     /// (notes, reroutes, pinned positions). `None` means the workflow has
     /// never been edited on the canvas.
-    async fn get_canvas_state(&self, workflow_id: &str)
-        -> Result<Option<String>, StorageError>;
+    async fn get_canvas_state(&self, workflow_id: &str) -> Result<Option<String>, StorageError>;
     /// Replace the canvas state JSON for the workflow. Creates the row if it
     /// does not yet exist.
     async fn set_canvas_state(

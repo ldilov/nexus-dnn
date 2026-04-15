@@ -23,10 +23,7 @@ pub async fn sha256_file(path: &Path) -> Result<String, InstallerError> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-pub async fn verify_checksum(
-    path: &Path,
-    expected: &str,
-) -> Result<(), InstallerError> {
+pub async fn verify_checksum(path: &Path, expected: &str) -> Result<(), InstallerError> {
     let actual = sha256_file(path).await?;
     if actual != expected {
         return Err(InstallerError::ChecksumMismatch {
@@ -50,8 +47,7 @@ mod tests {
         tmp.flush().unwrap();
 
         let hash = sha256_file(tmp.path()).await.unwrap();
-        let expected =
-            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9";
+        let expected = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9";
         assert_eq!(hash, expected);
     }
 
@@ -59,8 +55,7 @@ mod tests {
     async fn sha256_file_empty_file() {
         let tmp = NamedTempFile::new().unwrap();
         let hash = sha256_file(tmp.path()).await.unwrap();
-        let expected =
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+        let expected = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
         assert_eq!(hash, expected);
     }
 

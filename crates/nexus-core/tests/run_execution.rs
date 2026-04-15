@@ -31,6 +31,7 @@ fn make_operator(id: &str, version: &str) -> OperatorDefinition {
         }]),
         config_schema: None,
         resources: None,
+        ui: None,
     }
 }
 

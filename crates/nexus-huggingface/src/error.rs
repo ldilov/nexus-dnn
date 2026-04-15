@@ -8,9 +8,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum HfError {
     #[error("hugging face hub unreachable")]
-    Unreachable {
-        retry_after_seconds: Option<u32>,
-    },
+    Unreachable { retry_after_seconds: Option<u32> },
 
     #[error("hugging face rate limit hit; retry after {retry_after_seconds}s")]
     RateLimited { retry_after_seconds: u32 },

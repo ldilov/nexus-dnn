@@ -14,14 +14,11 @@ pub use envelope::ApiResponse;
 pub use error::ApiError;
 
 use nexus_artifact::FilesystemArtifactStore;
+use nexus_backend_runtimes::adapter::AdapterRegistry as BackendAdapterRegistry;
+use nexus_backend_runtimes::spawn::Spawner;
 use nexus_events::bus::EventBus;
 use nexus_extension::InMemoryExtensionRegistry;
 use nexus_huggingface::HuggingFaceCapability;
-use nexus_local_llm::adapter::AdapterRegistry as BackendAdapterRegistry;
-use nexus_local_llm::manifest::install_models::ModelInstaller;
-use std::collections::HashMap;
-use tokio::sync::Mutex;
-use tokio_util::sync::CancellationToken;
 use nexus_run::DefaultRunEngine;
 use nexus_scheduler::Scheduler;
 use nexus_storage::{SqliteDatabase, StorageManager};
@@ -40,9 +37,8 @@ pub struct AppState {
     pub extensions_dir: Option<PathBuf>,
     pub storage_manager: Option<Arc<StorageManager>>,
     pub backend_adapter_registry: Option<Arc<BackendAdapterRegistry>>,
+    pub spawner: Option<Arc<Spawner>>,
     pub huggingface: Option<Arc<dyn HuggingFaceCapability>>,
-    pub extension_model_installers: Arc<HashMap<String, Arc<ModelInstaller>>>,
-    pub install_task_cancels: Arc<Mutex<HashMap<String, CancellationToken>>>,
 }
 
 pub fn create_router(state: AppState) -> axum::Router {

@@ -6,11 +6,11 @@ use std::sync::Arc;
 
 use crate::AppState;
 use crate::envelope::ApiResponse;
-use nexus_local_llm::adapter::{ImplementationStatus, InstallRequest};
-use nexus_local_llm::error::{RuntimeAdapterError, SettingsError};
-use nexus_local_llm::resolver::MachineDescriptor;
-use nexus_local_llm::settings::{AcceleratorProfile, RuntimeSettings};
-use nexus_local_llm::state::RuntimeCardState;
+use nexus_backend_runtimes::adapter::{ImplementationStatus, InstallRequest};
+use nexus_backend_runtimes::error::{RuntimeAdapterError, SettingsError};
+use nexus_backend_runtimes::resolver::MachineDescriptor;
+use nexus_backend_runtimes::settings::{AcceleratorProfile, RuntimeSettings};
+use nexus_backend_runtimes::state::RuntimeCardState;
 
 #[derive(Debug, Serialize)]
 pub struct BackendSummary {
@@ -59,7 +59,7 @@ pub struct LogQuery {
     pub limit: Option<u32>,
 }
 
-fn registry(state: &AppState) -> Option<Arc<nexus_local_llm::adapter::AdapterRegistry>> {
+fn registry(state: &AppState) -> Option<Arc<nexus_backend_runtimes::adapter::AdapterRegistry>> {
     state.backend_adapter_registry.clone()
 }
 
@@ -107,6 +107,12 @@ fn map_error(err: RuntimeAdapterError) -> ApiResponse<()> {
         RuntimeAdapterError::Validation(err) => ApiResponse::<()>::internal(err.to_string()),
         RuntimeAdapterError::Io(err) => ApiResponse::<()>::internal(err.to_string()),
         RuntimeAdapterError::Storage(msg) => ApiResponse::<()>::internal(msg),
+        RuntimeAdapterError::Unimplemented(msg) => ApiResponse::<()>::err(
+            axum::http::StatusCode::NOT_IMPLEMENTED,
+            "NOT_IMPLEMENTED",
+            "internal",
+            msg,
+        ),
     }
 }
 
@@ -327,14 +333,14 @@ pub async fn logs(
             .into_response();
     }
     let pool = state.db.pool().clone();
-    let store_query = nexus_local_llm::log_store::LogQuery {
+    let store_query = nexus_backend_runtimes::log_store::LogQuery {
         source: query.source.filter(|s| s != "all"),
         severity: query.level.filter(|s| s != "all"),
         since: query.since,
         until: query.until,
         limit: query.limit.unwrap_or(500),
     };
-    match nexus_local_llm::log_store::fetch(&pool, &store_query).await {
+    match nexus_backend_runtimes::log_store::fetch(&pool, &store_query).await {
         Ok(lines) => ApiResponse::ok(LogsResponse {
             lines: lines
                 .into_iter()
@@ -369,6 +375,112 @@ pub async fn diagnostics(
     .into_response()
 }
 
+#[derive(Debug, Serialize)]
+pub struct HostRuntimeInstallView {
+    pub install_id: String,
+    pub family: String,
+    pub version: String,
+    pub accelerator: String,
+    pub install_root: String,
+    pub state: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub dependents: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HostRuntimesResponse {
+    pub installs: Vec<HostRuntimeInstallView>,
+    pub available_families: Vec<String>,
+}
+
+/// `GET /api/v1/backends` — list every host-managed runtime install with its
+/// active dependents, alongside the families the host advertises adapters
+/// for (spec 011 US1 + Phase 9 T096). Reads directly from
+/// `host_runtime_installs`; does NOT route through extension state.
+pub async fn list_host_runtimes(State(state): State<AppState>) -> axum::response::Response {
+    let pool = state.db.pool();
+    let rows = match nexus_backend_runtimes::installs_store::list_all(pool).await {
+        Ok(r) => r,
+        Err(e) => {
+            return ApiResponse::<()>::err(
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "RUNTIMES_LIST_FAILED",
+                "internal",
+                e.to_string(),
+            )
+            .into_response();
+        }
+    };
+
+    let mut installs = Vec::with_capacity(rows.len());
+    for row in rows {
+        let dependents =
+            nexus_backend_runtimes::installs_store::list_dependents(pool, &row.install_id)
+                .await
+                .unwrap_or_default();
+        installs.push(HostRuntimeInstallView {
+            install_id: row.install_id,
+            family: row.family,
+            version: row.version,
+            accelerator: row.accelerator,
+            install_root: row.install_root,
+            state: row.state,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            dependents,
+        });
+    }
+
+    let available_families = registry(&state)
+        .map(|r| {
+            r.all()
+                .iter()
+                .map(|a| a.id().to_string())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    ApiResponse::ok(HostRuntimesResponse {
+        installs,
+        available_families,
+    })
+    .into_response()
+}
+
+/// `GET /api/v1/backends/{family}/parameters` — return the versioned launch
+/// parameter catalog for a runtime family (spec 011 US5 T085).
+///
+/// 200 with the catalog on a known family. 404 `FAMILY_UNKNOWN` otherwise.
+/// The catalog is advisory: extensions may still pass unknown flags through
+/// at spawn time — they get classified as `extension-passthrough`.
+pub async fn parameter_catalog(
+    State(_state): State<AppState>,
+    Path(family): Path<String>,
+) -> axum::response::Response {
+    match family.as_str() {
+        "llama.cpp" | "llamacpp" => {
+            match nexus_backend_runtimes::parameter_catalog::llamacpp_catalog() {
+                Ok(catalog) => ApiResponse::ok((*catalog).clone()).into_response(),
+                Err(e) => ApiResponse::<()>::err(
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "CATALOG_LOAD_FAILED",
+                    "internal",
+                    e.to_string(),
+                )
+                .into_response(),
+            }
+        }
+        other => ApiResponse::<()>::err(
+            axum::http::StatusCode::NOT_FOUND,
+            "FAMILY_UNKNOWN",
+            "not_found",
+            format!("no parameter catalog for runtime family {other}"),
+        )
+        .into_response(),
+    }
+}
+
 fn ulid_lite() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let n = SystemTime::now()
@@ -376,4 +488,238 @@ fn ulid_lite() -> String {
         .map(|d| d.as_nanos())
         .unwrap_or_default();
     format!("{n:032x}").to_uppercase()
+}
+
+use axum::http::{HeaderMap, StatusCode};
+use nexus_backend_runtimes::channel::{
+    ApiDialect, RuntimeAddress, RuntimeChannelDescriptor, RuntimeChannelKind, RuntimeEndpoint,
+};
+use nexus_backend_runtimes::lease::RuntimeLease;
+use nexus_backend_runtimes::spawn::{RuntimeBindMode, SpawnRuntimeRequest};
+
+#[derive(Debug, Deserialize)]
+pub struct LeaseBody {
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub env: std::collections::BTreeMap<String, String>,
+    pub port_hint: Option<u16>,
+    #[serde(default = "default_bind_mode")]
+    pub bind_mode: RuntimeBindMode,
+    pub family: Option<String>,
+    pub accelerator: Option<AcceleratorProfile>,
+}
+
+fn default_bind_mode() -> RuntimeBindMode {
+    RuntimeBindMode::LoopbackOnly
+}
+
+#[derive(Debug, Serialize)]
+pub struct LeaseEnvelope {
+    pub lease: RuntimeLease,
+    pub progress_channel: String,
+}
+
+fn extension_from_headers(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("X-Extension-Id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+}
+
+fn spawn_error_response(
+    err: nexus_backend_runtimes::error::BackendRuntimeError,
+) -> axum::response::Response {
+    let (status, code, msg) = nexus_backend_runtimes::spawn::http_status_for(&err);
+    let status = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let category = match code {
+        "RUNTIME_NEEDS_REPAIR" | "LEASE_NOT_OWNED" => "state",
+        "FAMILY_UNAVAILABLE" => "not_found",
+        "RESERVED_LAUNCH_SETTING" | "MANAGED_SPAWN_DISALLOWED" => "validation",
+        "NO_PORT_AVAILABLE" => "resource",
+        _ => "internal",
+    };
+    ApiResponse::<()>::err(status, code, category, msg).into_response()
+}
+
+/// `POST /api/v1/backends/{installId}/lease` — spec 011 US3 T099.
+///
+/// Validates the `X-Extension-Id` header and returns a 202 Accepted envelope
+/// carrying the newly-issued lease descriptor. When the configured
+/// [`Spawner`] has a pool + adapter registry, this triggers a real fork;
+/// otherwise a stub envelope is returned for integration-test contexts.
+pub async fn create_lease(
+    State(state): State<AppState>,
+    Path(install_id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<LeaseBody>,
+) -> axum::response::Response {
+    let Some(extension_id) = extension_from_headers(&headers) else {
+        return ApiResponse::<()>::err(
+            StatusCode::BAD_REQUEST,
+            "MISSING_EXTENSION_HEADER",
+            "validation",
+            "X-Extension-Id header required".into(),
+        )
+        .into_response();
+    };
+
+    let pool = state.db.pool();
+    let row_lookup = nexus_backend_runtimes::installs_store::load_by_id(pool, &install_id).await;
+    let row = match row_lookup {
+        Ok(r) => r,
+        Err(e) => {
+            return ApiResponse::<()>::internal(e.to_string()).into_response();
+        }
+    };
+
+    if let Some(ref r) = row {
+        match r.state.as_str() {
+            "needs_repair" | "failed" => {
+                return spawn_error_response(
+                    nexus_backend_runtimes::error::BackendRuntimeError::RuntimeNeedsRepair(
+                        r.install_id.clone(),
+                    ),
+                );
+            }
+            "installing" => {
+                return spawn_error_response(
+                    nexus_backend_runtimes::error::BackendRuntimeError::FamilyUnavailable {
+                        family: r.family.clone(),
+                        reason: "install in progress".into(),
+                    },
+                );
+            }
+            _ => {}
+        }
+    }
+
+    let family = row
+        .as_ref()
+        .map(|r| r.family.clone())
+        .or_else(|| body.family.clone())
+        .unwrap_or_else(|| "llama.cpp".to_string());
+    let accelerator = body.accelerator.unwrap_or(AcceleratorProfile::Cpu);
+
+    let spawn_request = SpawnRuntimeRequest {
+        extension_id: extension_id.clone(),
+        family: family.clone(),
+        version_req: None,
+        accelerator,
+        args: body.args,
+        env: body.env,
+        port_hint: body.port_hint,
+        bind_mode: body.bind_mode,
+        install_id: Some(install_id.clone()),
+    };
+
+    if let Some(spawner) = state.spawner.as_ref() {
+        match spawner.spawn(spawn_request).await {
+            Ok(lease) => {
+                let progress_channel = format!("runtime:lease:{}", lease.lease_id);
+                let envelope = LeaseEnvelope {
+                    lease,
+                    progress_channel,
+                };
+                let mut resp = ApiResponse::ok(envelope).into_response();
+                *resp.status_mut() = StatusCode::ACCEPTED;
+                return resp;
+            }
+            Err(err) => return spawn_error_response(err),
+        }
+    }
+
+    let lease_id = format!("lease_{}", ulid_lite());
+    let port = body.port_hint.unwrap_or(0);
+    let bind_host = match body.bind_mode {
+        RuntimeBindMode::Loopback | RuntimeBindMode::LoopbackOnly => "127.0.0.1".to_string(),
+        _ => "0.0.0.0".to_string(),
+    };
+    let descriptor = RuntimeChannelDescriptor {
+        kind: RuntimeChannelKind::HttpTcp,
+        api_dialects: vec![ApiDialect::OpenAiCompatible, ApiDialect::NativeLlamaServer],
+        address: RuntimeAddress::Tcp {
+            host: bind_host,
+            port,
+        },
+        health: Some(RuntimeEndpoint::path("/health")),
+        metrics: None,
+        ready: false,
+    };
+    let lease = RuntimeLease {
+        lease_id: lease_id.clone(),
+        install_id: install_id.clone(),
+        extension_id,
+        pid: Some(0),
+        log_channel_id: format!("runtime:lease:{lease_id}"),
+        channel: descriptor,
+        created_at: chrono::Utc::now().to_rfc3339(),
+        released_at: None,
+    };
+    let progress_channel = format!("runtime:lease:{lease_id}");
+    let envelope = LeaseEnvelope {
+        lease,
+        progress_channel,
+    };
+
+    let mut resp = ApiResponse::ok(envelope).into_response();
+    *resp.status_mut() = StatusCode::ACCEPTED;
+    resp
+}
+
+/// `DELETE /api/v1/backends/leases/{leaseId}` — spec 011 US3 T100.
+///
+/// Releases an active runtime lease. Returns 204 on success, 400 on missing
+/// header, 403 when the extension does not own the lease.
+pub async fn release_lease(
+    State(state): State<AppState>,
+    Path(lease_id): Path<String>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    let Some(extension_id) = extension_from_headers(&headers) else {
+        return ApiResponse::<()>::err(
+            StatusCode::BAD_REQUEST,
+            "MISSING_EXTENSION_HEADER",
+            "validation",
+            "X-Extension-Id header required".into(),
+        )
+        .into_response();
+    };
+
+    let Some(spawner) = state.spawner.as_ref() else {
+        return ApiResponse::<()>::err(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "SPAWNER_UNAVAILABLE",
+            "internal",
+            "backend spawner not configured".into(),
+        )
+        .into_response();
+    };
+    match spawner.lookup_lease_owner(&lease_id).await {
+        Ok(Some(owner)) if owner != extension_id => {
+            return spawn_error_response(
+                nexus_backend_runtimes::error::BackendRuntimeError::LeaseNotOwned {
+                    lease_id,
+                    owner,
+                    caller: extension_id,
+                },
+            );
+        }
+        Ok(None) => {
+            return ApiResponse::<()>::not_found(format!("lease {lease_id} not found"))
+                .into_response();
+        }
+        Ok(Some(_)) => {}
+        Err(e) => {
+            return ApiResponse::<()>::internal(e.to_string()).into_response();
+        }
+    }
+
+    if let Err(err) = spawner.shutdown(&lease_id).await {
+        return spawn_error_response(err);
+    }
+
+    let mut resp = ApiResponse::no_content().into_response();
+    *resp.status_mut() = StatusCode::NO_CONTENT;
+    resp
 }
