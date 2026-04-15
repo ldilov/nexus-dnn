@@ -80,6 +80,7 @@ crates/nexus-backend-runtimes/src/
 - `SpawnMode` introduction is a light net-positive: eliminates two `Option` checks, adds one enum match. No complexity added.
 - `RuntimeFamily` adds ~60 LOC for the enum + helpers but removes ~40 LOC of duplicated match arms across 6 sites.
 - `InstallCtx` is a pure mechanical arg grouping.
+- `SpawnMode` keeps `publisher: SharedPublisher` on the `Spawner` struct (NOT inside `SpawnMode::Real` / `SpawnMode::Stub`) — both modes publish through the same broadcast, so a single owner avoids the dual-publisher confusion flagged by analyze-pass M7. The mode enum carries only the fields that genuinely differ between stub and real (`pool` and `adapters` exist only in `Real`; `port_allocator` exists in both but with the same type, so it lives in both variants for clarity rather than on the struct).
 
 ## Implementation Sequencing
 
