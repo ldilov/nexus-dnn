@@ -1,12 +1,15 @@
 use async_trait::async_trait;
 
-use crate::adapter::{
-    BackendAdapter, BackendCardSummary, ImplementationStatus, InstallRequest,
+use crate::adapter::{BackendAdapter, BackendCardSummary, ImplementationStatus, InstallRequest};
+use crate::channel::{
+    ApiDialect, ChannelBuildCtx, RuntimeAddress, RuntimeChannelDescriptor, RuntimeChannelKind,
 };
 use crate::error::RuntimeAdapterError;
+use crate::launch_spec::LaunchSpec;
 use crate::manifest::install::InstallManifest;
 use crate::resolver::MachineDescriptor;
 use crate::settings::{AcceleratorProfile, RuntimeSettings};
+use crate::spawn::SpawnRuntimeRequest;
 use crate::state::RuntimeCardState;
 use crate::validator::ValidationReport;
 
@@ -87,5 +90,27 @@ impl BackendAdapter for TensorRtLlmStub {
 
     async fn put_settings(&self, _settings: RuntimeSettings) -> Result<(), RuntimeAdapterError> {
         Err(RuntimeAdapterError::BackendUnavailable(self.reason.clone()))
+    }
+
+    fn build_channel(&self, ctx: &ChannelBuildCtx) -> RuntimeChannelDescriptor {
+        RuntimeChannelDescriptor {
+            kind: RuntimeChannelKind::HttpTcp,
+            api_dialects: vec![ApiDialect::OpenAiCompatible],
+            address: RuntimeAddress::Tcp {
+                host: ctx.bind_host.clone(),
+                port: ctx.port,
+            },
+            health: None,
+            metrics: None,
+            ready: false,
+        }
+    }
+
+    async fn launch_spec(
+        &self,
+        _install: &InstallManifest,
+        _request: &SpawnRuntimeRequest,
+    ) -> Result<LaunchSpec, RuntimeAdapterError> {
+        Err(RuntimeAdapterError::Unimplemented(self.reason.clone()))
     }
 }

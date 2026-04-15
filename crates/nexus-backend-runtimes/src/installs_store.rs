@@ -31,6 +31,45 @@ fn storage(e: sqlx::Error) -> BackendRuntimeError {
     BackendRuntimeError::Storage(e.to_string())
 }
 
+/// Look up a single host-owned runtime install by its `install_id` (spec 011
+/// US3). Returns `Ok(None)` when no row matches so callers can map the miss
+/// to a typed error (`FamilyUnavailable { reason: "no install" }`).
+pub async fn load_by_id(
+    pool: &SqlitePool,
+    install_id: &str,
+) -> BackendRuntimeResult<Option<RuntimeInstallRow>> {
+    let row_opt = sqlx::query(
+        "SELECT install_id, family, version, accelerator, install_root, binary_paths, \
+                state, validation_result, last_failure_category, source_url, checksum, \
+                created_at, updated_at \
+         FROM host_runtime_installs \
+         WHERE install_id = $1",
+    )
+    .bind(install_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(storage)?;
+
+    let Some(row) = row_opt else {
+        return Ok(None);
+    };
+    Ok(Some(RuntimeInstallRow {
+        install_id: row.try_get("install_id").map_err(storage)?,
+        family: row.try_get("family").map_err(storage)?,
+        version: row.try_get("version").map_err(storage)?,
+        accelerator: row.try_get("accelerator").map_err(storage)?,
+        install_root: row.try_get("install_root").map_err(storage)?,
+        binary_paths: row.try_get("binary_paths").map_err(storage)?,
+        state: row.try_get("state").map_err(storage)?,
+        validation_result: row.try_get("validation_result").ok(),
+        last_failure_category: row.try_get("last_failure_category").ok(),
+        source_url: row.try_get("source_url").ok(),
+        checksum: row.try_get("checksum").ok(),
+        created_at: row.try_get("created_at").map_err(storage)?,
+        updated_at: row.try_get("updated_at").map_err(storage)?,
+    }))
+}
+
 pub async fn list_all(pool: &SqlitePool) -> BackendRuntimeResult<Vec<RuntimeInstallRow>> {
     let rows = sqlx::query(
         "SELECT install_id, family, version, accelerator, install_root, binary_paths, \
@@ -201,9 +240,7 @@ pub async fn relocate_legacy_binaries(
         if !src.starts_with(legacy_root) {
             continue;
         }
-        let dest = host_runtimes_root
-            .join(&row.family)
-            .join(&row.version);
+        let dest = host_runtimes_root.join(&row.family).join(&row.version);
         if dest.exists() {
             continue;
         }
@@ -236,7 +273,8 @@ pub async fn relocate_legacy_binaries(
             continue;
         }
         let new_root = dest.to_string_lossy().into_owned();
-        let new_binary_paths = rewrite_binary_paths(&row.binary_paths, &row.install_root, &new_root);
+        let new_binary_paths =
+            rewrite_binary_paths(&row.binary_paths, &row.install_root, &new_root);
         sqlx::query(
             "UPDATE host_runtime_installs \
              SET install_root = $1, binary_paths = $2, updated_at = datetime('now') \
@@ -531,19 +569,27 @@ mod tests {
         let rows = list_all(&pool).await.unwrap();
         assert_eq!(rows.len(), 3);
 
-        let by_id: std::collections::HashMap<_, _> =
-            rows.into_iter().map(|r| (r.install_id.clone(), r)).collect();
+        let by_id: std::collections::HashMap<_, _> = rows
+            .into_iter()
+            .map(|r| (r.install_id.clone(), r))
+            .collect();
 
         let r1 = &by_id["legacy-1"];
         assert_eq!(r1.family, "llama.cpp", "backend → family");
         assert_eq!(r1.version, "b4970", "release_id → version");
         assert_eq!(r1.accelerator, "cuda12");
-        assert_eq!(r1.install_root, "/legacy/foo", "install_path → install_root");
+        assert_eq!(
+            r1.install_root, "/legacy/foo",
+            "install_path → install_root"
+        );
         assert_eq!(r1.state, "installed", "ready → installed");
         assert_eq!(r1.checksum.as_deref(), Some("deadbeef"));
         assert!(r1.binary_paths.contains("llama-server"));
 
-        assert_eq!(by_id["legacy-2"].state, "needs_repair", "broken → needs_repair");
+        assert_eq!(
+            by_id["legacy-2"].state, "needs_repair",
+            "broken → needs_repair"
+        );
         assert_eq!(
             by_id["legacy-3"].state, "installed",
             "installed_unvalidated → installed",

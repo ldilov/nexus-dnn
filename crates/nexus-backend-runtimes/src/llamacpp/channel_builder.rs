@@ -20,7 +20,9 @@ pub fn build(ctx: &ChannelBuildCtx) -> RuntimeChannelDescriptor {
             port: ctx.port,
         },
         health: Some(RuntimeEndpoint::path("/health")),
-        metrics: ctx.metrics_enabled.then(|| RuntimeEndpoint::path("/metrics")),
+        metrics: ctx
+            .metrics_enabled
+            .then(|| RuntimeEndpoint::path("/metrics")),
         ready: false,
     }
 }
@@ -38,10 +40,7 @@ mod tests {
         });
         assert!(matches!(desc.kind, RuntimeChannelKind::HttpTcp));
         assert_eq!(desc.api_dialects.len(), 2);
-        assert!(matches!(
-            desc.api_dialects[0],
-            ApiDialect::OpenAiCompatible
-        ));
+        assert!(matches!(desc.api_dialects[0], ApiDialect::OpenAiCompatible));
         assert!(matches!(
             desc.api_dialects[1],
             ApiDialect::NativeLlamaServer

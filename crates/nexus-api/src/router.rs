@@ -126,14 +126,10 @@ pub fn build(state: AppState) -> Router {
             "/workflows/{id}/graph",
             axum::routing::put(workflows::update_workflow_graph),
         )
-        .route(
-            "/workflows/{id}/revert",
-            post(workflows::revert_workflow),
-        )
+        .route("/workflows/{id}/revert", post(workflows::revert_workflow))
         .route(
             "/workflows/{id}/canvas",
-            get(workflows::get_workflow_canvas)
-                .put(workflows::put_workflow_canvas),
+            get(workflows::get_workflow_canvas).put(workflows::put_workflow_canvas),
         )
         .route("/runs", post(runs::create_run).get(runs::list_runs))
         .route("/runs/{id}", get(runs::get_run))
@@ -157,6 +153,11 @@ pub fn build(state: AppState) -> Router {
         .route(
             "/backends/{family}/parameters",
             get(backends::parameter_catalog),
+        )
+        .route("/backends/{installId}/lease", post(backends::create_lease))
+        .route(
+            "/backends/leases/{leaseId}",
+            axum::routing::delete(backends::release_lease),
         )
         .route("/llm/backends", get(backends::list))
         .route("/llm/backends/{backendId}", get(backends::detail))

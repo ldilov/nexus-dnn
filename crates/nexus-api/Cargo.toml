@@ -32,3 +32,9 @@ futures-util = "0.3"
 rust-embed = { workspace = true }
 mime_guess = { workspace = true }
 ts-rs = { version = "11", features = ["serde-compat", "chrono-impl", "serde-json-impl"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+http-body-util = "0.1"
+tempfile = "3"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }

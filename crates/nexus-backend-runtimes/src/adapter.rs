@@ -3,10 +3,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::channel::{ChannelBuildCtx, RuntimeChannelDescriptor};
 use crate::error::RuntimeAdapterError;
+use crate::launch_spec::LaunchSpec;
 use crate::manifest::install::InstallManifest;
 use crate::resolver::MachineDescriptor;
 use crate::settings::{AcceleratorProfile, RuntimeSettings};
+use crate::spawn::SpawnRuntimeRequest;
 use crate::state::RuntimeCardState;
 use crate::validator::ValidationReport;
 
@@ -57,6 +60,18 @@ pub trait BackendAdapter: Send + Sync {
     ) -> Result<InstallManifest, RuntimeAdapterError>;
     async fn get_settings(&self) -> Result<RuntimeSettings, RuntimeAdapterError>;
     async fn put_settings(&self, settings: RuntimeSettings) -> Result<(), RuntimeAdapterError>;
+
+    /// Build the runtime channel descriptor advertised on every lease for
+    /// this family (spec 011 US3 T064). Synchronous and pure over `ctx`.
+    fn build_channel(&self, ctx: &ChannelBuildCtx) -> RuntimeChannelDescriptor;
+
+    /// Resolve the binary path, base args, and base env the spawner should
+    /// fork for this family (spec 011 US3 T064).
+    async fn launch_spec(
+        &self,
+        install: &InstallManifest,
+        request: &SpawnRuntimeRequest,
+    ) -> Result<LaunchSpec, RuntimeAdapterError>;
 }
 
 #[derive(Clone, Default)]
