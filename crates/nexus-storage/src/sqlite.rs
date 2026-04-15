@@ -107,6 +107,15 @@ impl Database for SqliteDatabase {
             sqlx::query(trimmed).execute(&self.pool).await?;
         }
 
+        let migration_008 = include_str!("../../../migrations/008_host_runtime_pool.sql");
+        for statement in migration_008.split(';') {
+            let trimmed = statement.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            sqlx::query(trimmed).execute(&self.pool).await?;
+        }
+
         Ok(())
     }
 

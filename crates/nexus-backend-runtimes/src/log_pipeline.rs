@@ -60,7 +60,7 @@ where
                     message: trimmed.clone(),
                 };
                 tracing::event!(
-                    target: "nexus_local_llm::log",
+                    target: "nexus_backend_runtimes::log",
                     tracing::Level::INFO,
                     namespace = %ctx.namespace,
                     source = %ctx.source,

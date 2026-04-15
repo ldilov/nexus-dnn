@@ -195,27 +195,6 @@ impl NexusApp {
                 nexus_huggingface::HfToken::from_env(),
             ));
 
-        let models_root = app_for_health.config.resolved_data_dir().join("models");
-        std::fs::create_dir_all(&models_root).ok();
-        let trt_allowlist_path = app_for_health
-            .config
-            .builtin_extensions_dir()
-            .join("local-llm/backends/trt-llm/supported_architectures.yaml");
-        let trt_allowlist =
-            nexus_local_llm::manifest::install_models::load_trt_allowlist_from_yaml(
-                &trt_allowlist_path,
-            );
-        let local_llm_installer = Arc::new(
-            nexus_local_llm::manifest::install_models::ModelInstaller::with_trt_allowlist(
-                db.pool().clone(),
-                huggingface.clone(),
-                models_root.join("local-llm"),
-                trt_allowlist,
-            ),
-        );
-        let mut extension_model_installers = std::collections::HashMap::new();
-        extension_model_installers.insert("local-llm".to_owned(), local_llm_installer);
-
         let state = nexus_api::AppState {
             health_status_fn: Arc::new(move || {
                 serde_json::to_value(app_ref.health_status()).unwrap_or_default()
@@ -231,10 +210,6 @@ impl NexusApp {
             storage_manager: Some(storage_manager),
             backend_adapter_registry,
             huggingface: Some(huggingface),
-            extension_model_installers: Arc::new(extension_model_installers),
-            install_task_cancels: Arc::new(tokio::sync::Mutex::new(
-                std::collections::HashMap::new(),
-            )),
         };
 
         let router = nexus_api::create_router(state);
@@ -688,7 +663,7 @@ async fn build_backend_adapter_registry(
     builtin_extensions_dir: &Path,
     pool: sqlx::SqlitePool,
     _event_bus: Arc<dyn EventBus>,
-) -> Option<Arc<nexus_local_llm::adapter::AdapterRegistry>> {
+) -> Option<Arc<nexus_backend_runtimes::adapter::AdapterRegistry>> {
     let version_manifest_path = builtin_extensions_dir
         .join("local-llm")
         .join("backends")
@@ -717,18 +692,18 @@ async fn build_backend_adapter_registry(
         Ok(p) => p,
         Err(_) => return None,
     };
-    let publisher: nexus_local_llm::events::SharedPublisher =
-        Arc::new(nexus_local_llm::events::BroadcastPublisher::new(1024));
-    let adapter = nexus_local_llm::llamacpp::LlamaCppAdapter::new(
+    let publisher: nexus_backend_runtimes::events::SharedPublisher =
+        Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(1024));
+    let adapter = nexus_backend_runtimes::llamacpp::LlamaCppAdapter::new(
         version_manifest_path,
         runtimes_root_utf8,
         pool,
         publisher,
     );
-    let mut registry = nexus_local_llm::adapter::AdapterRegistry::new();
+    let mut registry = nexus_backend_runtimes::adapter::AdapterRegistry::new();
     registry.register(Arc::new(adapter));
     registry.register(Arc::new(
-        nexus_local_llm::tensorrt_llm_stub::TensorRtLlmStub::new(),
+        nexus_backend_runtimes::tensorrt_llm::TensorRtLlmStub::new(),
     ));
     Some(Arc::new(registry))
 }
