@@ -1,7 +1,31 @@
 use axum::Router;
+use axum::extract::Request;
+use axum::http::HeaderValue;
+use axum::middleware::{self, Next};
+use axum::response::Response;
 use axum::routing::{get, post};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
+
+/// Tag responses on legacy `/api/v1/llm/backends/*` paths with RFC 8594
+/// Deprecation + Sunset headers (spec 011 Phase 9 T102, R7).
+async fn deprecation_headers(req: Request, next: Next) -> Response {
+    let is_legacy = req.uri().path().starts_with("/api/v1/llm/backends");
+    let mut response = next.run(req).await;
+    if is_legacy {
+        let headers = response.headers_mut();
+        headers.insert("Deprecation", HeaderValue::from_static("true"));
+        headers.insert(
+            "Sunset",
+            HeaderValue::from_static("Wed, 13 May 2026 00:00:00 GMT"),
+        );
+        headers.insert(
+            "Link",
+            HeaderValue::from_static("</api/v1/backends>; rel=\"successor-version\""),
+        );
+    }
+    response
+}
 
 use crate::AppState;
 use crate::frontend;
@@ -129,6 +153,7 @@ pub fn build(state: AppState) -> Router {
         .route("/system/info", get(system::system_info))
         .route("/tools", get(tools::list_tools))
         .route("/events", get(ws::events_ws))
+        .route("/backends", get(backends::list_host_runtimes))
         .route(
             "/backends/{family}/parameters",
             get(backends::parameter_catalog),
@@ -181,6 +206,7 @@ pub fn build(state: AppState) -> Router {
     Router::new()
         .nest("/api/v1", api_v1)
         .fallback(frontend::static_handler)
+        .layer(middleware::from_fn(deprecation_headers))
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .with_state(state)

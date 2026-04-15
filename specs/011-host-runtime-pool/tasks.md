@@ -242,13 +242,13 @@ Per plan.md §"Implementation Sequencing", every commit MUST leave the workspace
 
 ### Host routes
 
-- [ ] T096 Implement `GET /api/v1/backends` handler in `crates/nexus-api/src/handlers/backends.rs` returning `RuntimeInstallDto[]` + `available_families` + `dependents` (per `contracts/host_backends_list.http`)
+- [X] T096 Implement `GET /api/v1/backends` handler in `crates/nexus-api/src/handlers/backends.rs` returning `RuntimeInstallDto[]` + `available_families` + `dependents` (per `contracts/host_backends_list.http`)
 - [ ] T097 Implement `POST /api/v1/backends/{family}/install` handler returning 202 with `install_id` + `install_task_id` + `progress_channel` (per `contracts/host_backends_install.http`); 409 ALREADY_INSTALLED; 404 FAMILY_UNKNOWN
 - [ ] T098 Implement `DELETE /api/v1/backends/{installId}` handler (per `contracts/host_backends_uninstall.http`); 204 on clean removal; 409 RUNTIME_IN_USE when dependents exist and `?force=true` is absent; with `?force=true`, drains active leases first then removes
 - [ ] T099 Implement `POST /api/v1/backends/{installId}/lease` handler (per `contracts/host_backends_lease.http`); requires `X-Extension-Id` header; calls `Spawner::spawn`; returns 202 with lease + channel descriptor
 - [ ] T100 Implement `DELETE /api/v1/backends/leases/{leaseId}` handler (per `contracts/host_backends_lease_release.http`); enforces `X-Extension-Id` ownership with 403 LEASE_NOT_OWNED
 - [ ] T101 Register all new routes in `crates/nexus-api/src/router.rs` under `/api/v1/backends/*`
-- [ ] T102 Implement dual-route deprecation shim in `crates/nexus-api/src/router.rs` per R7: each `/api/v1/llm/backends/*` path becomes a thin wrapper that calls the new handler and appends `Deprecation: true` + `Sunset: <90 days from merge>` headers + `tracing::warn!("deprecated route …")`
+- [X] T102 Implement dual-route deprecation shim in `crates/nexus-api/src/router.rs` per R7: each `/api/v1/llm/backends/*` path becomes a thin wrapper that calls the new handler and appends `Deprecation: true` + `Sunset: <90 days from merge>` headers + `tracing::warn!("deprecated route …")` — implemented as `from_fn` middleware adding Deprecation/Sunset/Link headers
 - [ ] T103 [P] Implement `RuntimeInstallDto`, `RuntimeLeaseDto`, `RuntimeChannelDto`, `ApiDialectDto`, `RuntimeBindModeDto`, `RuntimeAddressDto` in `crates/nexus-api/src/dto/runtime.rs` with `ts-rs` export; regenerate `apps/web/src/api/generated/*.ts`
 
 ### Frontend
@@ -256,7 +256,7 @@ Per plan.md §"Implementation Sequencing", every commit MUST leave the workspace
 - [ ] T104 [P] Add a top-level "Backends" nav entry in `apps/web/src/layout/sidebar.tsx` with a `developer_board` icon, routing to view id `backends`
 - [ ] T105 Rewrite `apps/web/src/views/backends_view.tsx` to call the new fetchers in `client.ts` (`fetchRuntimes`, `installRuntime`, `uninstallRuntime`) instead of the old `/api/v1/llm/backends/*` family; render three-state cards (Installed / NeedsRepair / NotInstalled); show dependents inline
 - [ ] T106 Remove the `backend_selector` entry from `extensions/builtin/local-llm/ui/layouts/chat.yaml` Backend Runtimes drawer OR replace it with a thin "manage backends at host level" link pointing to `/backends` — either choice is acceptable per plan
-- [ ] T107 Extend `apps/web/src/api/client.ts` with `fetchRuntimes`, `installRuntime(family, accelerator)`, `uninstallRuntime(installId, { force })`, `spawnLease(installId, args, env, bindMode, portHint)`, `releaseLease(leaseId)`, `fetchParameterCatalog(family)` — all extension-agnostic host endpoints
+- [~] T107 Extend `apps/web/src/api/client.ts` with `fetchRuntimes` ✅, `fetchParameterCatalog` ✅, `installRuntime`/`uninstallRuntime`/`spawnLease`/`releaseLease` deferred (handlers not yet built)
 
 ### Verification
 

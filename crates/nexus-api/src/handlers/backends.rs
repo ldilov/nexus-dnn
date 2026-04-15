@@ -369,6 +369,81 @@ pub async fn diagnostics(
     .into_response()
 }
 
+#[derive(Debug, Serialize)]
+pub struct HostRuntimeInstallView {
+    pub install_id: String,
+    pub family: String,
+    pub version: String,
+    pub accelerator: String,
+    pub install_root: String,
+    pub state: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub dependents: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HostRuntimesResponse {
+    pub installs: Vec<HostRuntimeInstallView>,
+    pub available_families: Vec<String>,
+}
+
+/// `GET /api/v1/backends` — list every host-managed runtime install with its
+/// active dependents, alongside the families the host advertises adapters
+/// for (spec 011 US1 + Phase 9 T096). Reads directly from
+/// `host_runtime_installs`; does NOT route through extension state.
+pub async fn list_host_runtimes(State(state): State<AppState>) -> axum::response::Response {
+    let pool = state.db.pool();
+    let rows = match nexus_backend_runtimes::installs_store::list_all(pool).await {
+        Ok(r) => r,
+        Err(e) => {
+            return ApiResponse::<()>::err(
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "RUNTIMES_LIST_FAILED",
+                "internal",
+                e.to_string(),
+            )
+            .into_response();
+        }
+    };
+
+    let mut installs = Vec::with_capacity(rows.len());
+    for row in rows {
+        let dependents = nexus_backend_runtimes::installs_store::list_dependents(
+            pool,
+            &row.install_id,
+        )
+        .await
+        .unwrap_or_default();
+        installs.push(HostRuntimeInstallView {
+            install_id: row.install_id,
+            family: row.family,
+            version: row.version,
+            accelerator: row.accelerator,
+            install_root: row.install_root,
+            state: row.state,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            dependents,
+        });
+    }
+
+    let available_families = registry(&state)
+        .map(|r| {
+            r.all()
+                .iter()
+                .map(|a| a.id().to_string())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    ApiResponse::ok(HostRuntimesResponse {
+        installs,
+        available_families,
+    })
+    .into_response()
+}
+
 /// `GET /api/v1/backends/{family}/parameters` — return the versioned launch
 /// parameter catalog for a runtime family (spec 011 US5 T085).
 ///
