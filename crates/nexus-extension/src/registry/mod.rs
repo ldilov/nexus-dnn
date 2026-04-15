@@ -1,0 +1,322 @@
+//! Extension registry — discovery, activation, and queryable in-memory state.
+//!
+//! Module layout (spec 016 FR-401):
+//! - `types` — public data types + internal `RegistryState`.
+//! - `scanner` — directory scanning + per-extension activation pipeline.
+//! - `loaders` — file loaders (operators, recipes, UI contributions, layouts).
+//! - `storage_validation` — storage contribution + SQL migration validation.
+//! - `version_conflict` — intra-manifest `runtime_dependencies` conflict detection.
+
+mod loaders;
+mod scanner;
+mod storage_validation;
+pub mod types;
+pub mod version_conflict;
+
+use std::path::Path;
+
+use parking_lot::RwLock;
+use semver::Version;
+
+use crate::error::ExtensionError;
+use crate::manifest::OperatorDefinition;
+use crate::operator_index::OperatorIndex;
+use crate::recipe::RecipeFile;
+use crate::ui_contribution::{UIContributionFile, UIContributionKind};
+
+pub use types::{ActivatedExtension, DiscoveryReport, ExtensionStatus, LayoutFile};
+pub use version_conflict::detect_intra_manifest_conflicts;
+
+use scanner::{
+    activate_extension_inner, rebuild_operator_entries, scan_builtin_dir, scan_extensions_dir,
+};
+use types::RegistryState;
+
+#[allow(async_fn_in_trait)]
+pub trait ExtensionRegistry: Send + Sync {
+    async fn discover_and_activate(
+        &self,
+        extensions_dir: &Path,
+        host_version: &Version,
+        protocol_version: &Version,
+    ) -> Result<DiscoveryReport, ExtensionError>;
+
+    fn list_extensions(&self) -> Vec<ActivatedExtension>;
+    fn get_extension(&self, id: &str) -> Option<ActivatedExtension>;
+    fn list_operators(&self) -> Vec<OperatorDefinition>;
+    fn get_operator(&self, id: &str) -> Option<OperatorDefinition>;
+    fn list_recipes(&self) -> Vec<RecipeFile>;
+    fn get_recipe(&self, id: &str) -> Option<RecipeFile>;
+    fn list_ui_contributions(&self) -> Vec<UIContributionFile>;
+    fn list_ui_contributions_by_kind(&self, kind: &UIContributionKind) -> Vec<UIContributionFile>;
+    fn list_layouts(&self) -> Vec<LayoutFile>;
+    fn get_layout(&self, id: &str) -> Option<LayoutFile>;
+}
+
+pub struct InMemoryExtensionRegistry {
+    state: RwLock<RegistryState>,
+}
+
+impl InMemoryExtensionRegistry {
+    pub async fn from_directory(
+        extensions_dir: &Path,
+        host_version: &Version,
+        protocol_version: &Version,
+    ) -> Result<(Self, DiscoveryReport), ExtensionError> {
+        let (activated_extensions, operator_entries, report) =
+            scan_extensions_dir(extensions_dir, host_version, protocol_version)?;
+
+        let operator_index = OperatorIndex::build(operator_entries);
+
+        let registry = Self {
+            state: RwLock::new(RegistryState {
+                extensions: activated_extensions,
+                operator_index,
+            }),
+        };
+
+        Ok((registry, report))
+    }
+
+    pub fn enable_extension(&self, id: &str) -> Result<(), ExtensionError> {
+        let mut state = self.state.write();
+
+        let ext = state
+            .extensions
+            .iter_mut()
+            .find(|e| e.manifest.extension.id == id)
+            .ok_or_else(|| ExtensionError::ExtensionNotFound(id.to_owned()))?;
+
+        if ext.status == ExtensionStatus::Active {
+            return Err(ExtensionError::InvalidStateTransition {
+                extension_id: id.to_owned(),
+                detail: "extension is already active".to_owned(),
+            });
+        }
+
+        ext.status = ExtensionStatus::Active;
+        Ok(())
+    }
+
+    pub fn disable_extension(&self, id: &str) -> Result<(), ExtensionError> {
+        let mut state = self.state.write();
+
+        let ext = state
+            .extensions
+            .iter_mut()
+            .find(|e| e.manifest.extension.id == id)
+            .ok_or_else(|| ExtensionError::ExtensionNotFound(id.to_owned()))?;
+
+        if ext.status == ExtensionStatus::Disabled {
+            return Err(ExtensionError::InvalidStateTransition {
+                extension_id: id.to_owned(),
+                detail: "extension is already disabled".to_owned(),
+            });
+        }
+
+        ext.status = ExtensionStatus::Disabled;
+        Ok(())
+    }
+
+    pub fn scan_builtin_extensions_dir(
+        &self,
+        builtin_dir: &Path,
+        host_version: &Version,
+        protocol_version: &Version,
+    ) -> Result<DiscoveryReport, ExtensionError> {
+        let (builtin_extensions, operator_entries, report) =
+            scan_builtin_dir(builtin_dir, host_version, protocol_version)?;
+
+        let mut state = self.state.write();
+
+        for ext in builtin_extensions {
+            let already_registered = state
+                .extensions
+                .iter()
+                .any(|e| e.manifest.extension.id == ext.manifest.extension.id);
+            if !already_registered {
+                state.extensions.push(ext);
+            }
+        }
+
+        state.operator_index = OperatorIndex::build(
+            rebuild_operator_entries(&state.extensions)
+                .into_iter()
+                .chain(operator_entries)
+                .collect(),
+        );
+
+        Ok(report)
+    }
+
+    pub fn activate_builtin_extension(
+        &self,
+        id: &str,
+        host_version: &Version,
+        protocol_version: &Version,
+    ) -> Result<(), ExtensionError> {
+        let mut state = self.state.write();
+
+        let ext = state
+            .extensions
+            .iter_mut()
+            .find(|e| e.manifest.extension.id == id)
+            .ok_or_else(|| ExtensionError::ExtensionNotFound(id.to_owned()))?;
+
+        if ext.status != ExtensionStatus::AvailableBuiltin {
+            return Err(ExtensionError::InvalidStateTransition {
+                extension_id: id.to_owned(),
+                detail: format!(
+                    "expected available_builtin state, found {}",
+                    ext.status.as_str()
+                ),
+            });
+        }
+
+        ext.status = ExtensionStatus::Activating;
+
+        let ext_dir = ext.directory.clone();
+        let manifest = ext.manifest.clone();
+
+        match activate_extension_inner(&ext_dir, &manifest, host_version, protocol_version) {
+            Ok(activated) => {
+                *ext = activated;
+                Ok(())
+            }
+            Err(e) => {
+                ext.status = ExtensionStatus::Error {
+                    diagnostics: vec![e.to_string()],
+                };
+                Err(e)
+            }
+        }
+    }
+
+    pub fn refresh(
+        &self,
+        extensions_dir: &Path,
+        host_version: &Version,
+        protocol_version: &Version,
+    ) -> Result<DiscoveryReport, ExtensionError> {
+        let (activated_extensions, operator_entries, report) =
+            scan_extensions_dir(extensions_dir, host_version, protocol_version)?;
+
+        let operator_index = OperatorIndex::build(operator_entries);
+
+        let mut state = self.state.write();
+
+        state.extensions = activated_extensions;
+        state.operator_index = operator_index;
+
+        Ok(report)
+    }
+}
+
+impl ExtensionRegistry for InMemoryExtensionRegistry {
+    async fn discover_and_activate(
+        &self,
+        _extensions_dir: &Path,
+        _host_version: &Version,
+        _protocol_version: &Version,
+    ) -> Result<DiscoveryReport, ExtensionError> {
+        // Phase 5 (US4) replaces this with a real `refresh` delegation.
+        let state = self.state.read();
+
+        Ok(DiscoveryReport {
+            activated: state
+                .extensions
+                .iter()
+                .map(|e| e.manifest.extension.id.clone())
+                .collect(),
+            invalid: Vec::new(),
+        })
+    }
+
+    fn list_extensions(&self) -> Vec<ActivatedExtension> {
+        let state = self.state.read();
+        state.extensions.clone()
+    }
+
+    fn get_extension(&self, id: &str) -> Option<ActivatedExtension> {
+        let state = self.state.read();
+        state
+            .extensions
+            .iter()
+            .find(|e| e.manifest.extension.id == id)
+            .cloned()
+    }
+
+    fn list_operators(&self) -> Vec<OperatorDefinition> {
+        let state = self.state.read();
+        state.operator_index.all().to_vec()
+    }
+
+    fn get_operator(&self, id: &str) -> Option<OperatorDefinition> {
+        let state = self.state.read();
+        state.operator_index.by_id(id).cloned()
+    }
+
+    fn list_recipes(&self) -> Vec<RecipeFile> {
+        let state = self.state.read();
+        state
+            .extensions
+            .iter()
+            .filter(|e| e.status.is_active())
+            .flat_map(|e| e.recipes.clone())
+            .collect()
+    }
+
+    fn get_recipe(&self, id: &str) -> Option<RecipeFile> {
+        let state = self.state.read();
+        state
+            .extensions
+            .iter()
+            .filter(|e| e.status.is_active())
+            .flat_map(|e| &e.recipes)
+            .find(|r| r.recipe.id == id)
+            .cloned()
+    }
+
+    fn list_ui_contributions(&self) -> Vec<UIContributionFile> {
+        let state = self.state.read();
+        state
+            .extensions
+            .iter()
+            .filter(|e| e.status.is_active())
+            .flat_map(|e| e.ui_contributions.clone())
+            .collect()
+    }
+
+    fn list_ui_contributions_by_kind(&self, kind: &UIContributionKind) -> Vec<UIContributionFile> {
+        let state = self.state.read();
+        state
+            .extensions
+            .iter()
+            .filter(|e| e.status.is_active())
+            .flat_map(|e| &e.ui_contributions)
+            .filter(|c| &c.kind == kind)
+            .cloned()
+            .collect()
+    }
+
+    fn list_layouts(&self) -> Vec<LayoutFile> {
+        let state = self.state.read();
+        state
+            .extensions
+            .iter()
+            .filter(|e| e.status.is_active())
+            .flat_map(|e| e.layouts.clone())
+            .collect()
+    }
+
+    fn get_layout(&self, id: &str) -> Option<LayoutFile> {
+        let state = self.state.read();
+        state
+            .extensions
+            .iter()
+            .filter(|e| e.status.is_active())
+            .flat_map(|e| &e.layouts)
+            .find(|l| l.id == id)
+            .cloned()
+    }
+}

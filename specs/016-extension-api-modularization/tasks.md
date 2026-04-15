@@ -12,7 +12,7 @@ Per Principle IX. Recommended order: US1 (registry file moves) → US2 (semver s
 
 ## Phase 1: Baseline
 
-- [ ] T501 Capture baseline: `cargo test -p nexus-extension -p nexus-api --tests 2>&1 | tee /tmp/016-baseline.txt`.
+- [X] T501 Capture baseline: `cargo test -p nexus-extension -p nexus-api --tests` → 149 passed / 0 failed across 9 test binaries.
 
 ---
 
