@@ -306,3 +306,71 @@ async fn migrate_from_legacy_idempotent_second_run() {
         "row count stable across re-runs",
     );
 }
+
+// Spec 016 US7 (FR-409 / SC-405) — batched JOIN covering N+1 fix.
+#[tokio::test]
+async fn list_all_with_dependents_batches_in_one_query() {
+    let pool = mem_pool().await;
+    apply_schema(&pool).await;
+    // 5 installs, varying dependents
+    for i in 1..=5u32 {
+        sqlx::query(
+            "INSERT INTO host_runtime_installs \
+             (install_id, family, version, accelerator, install_root, binary_paths, state, \
+              created_at, updated_at) \
+             VALUES ($1,'llama.cpp','b1','cpu','/tmp','[]','installed','t','t')",
+        )
+        .bind(format!("ri_{i}"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    // install ri_1 → ext.a, ext.b ; ri_2 → ext.c ; ri_3..5 → no leases
+    for (install, ext, lid) in [
+        ("ri_1", "ext.a", "rl_1"),
+        ("ri_1", "ext.b", "rl_2"),
+        ("ri_2", "ext.c", "rl_3"),
+    ] {
+        sqlx::query(
+            "INSERT INTO host_runtime_leases \
+             (lease_id, install_id, extension_id, channel_kind, channel_address, \
+              api_dialects, ready, created_at) \
+             VALUES ($1,$2,$3,'http_tcp','{}','[]',1,'t')",
+        )
+        .bind(lid)
+        .bind(install)
+        .bind(ext)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    // Released leases MUST be excluded.
+    sqlx::query(
+        "INSERT INTO host_runtime_leases \
+         (lease_id, install_id, extension_id, channel_kind, channel_address, \
+          api_dialects, ready, created_at, released_at) \
+         VALUES ('rl_dead','ri_1','ext.zombie','http_tcp','{}','[]',1,'t','t')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let out = list_all_with_dependents(&pool).await.unwrap();
+    assert_eq!(out.len(), 5, "one entry per install");
+
+    let by_id: std::collections::BTreeMap<&str, &Vec<String>> = out
+        .iter()
+        .map(|(r, d)| (r.install_id.as_str(), d))
+        .collect();
+    assert!(
+        by_id["ri_1"].contains(&"ext.a".to_string())
+            && by_id["ri_1"].contains(&"ext.b".to_string())
+            && !by_id["ri_1"].contains(&"ext.zombie".to_string()),
+        "ri_1 deps (active only): {:?}",
+        by_id["ri_1"],
+    );
+    assert_eq!(by_id["ri_2"], &vec!["ext.c".to_string()]);
+    assert!(by_id["ri_3"].is_empty());
+    assert!(by_id["ri_4"].is_empty());
+    assert!(by_id["ri_5"].is_empty());
+}

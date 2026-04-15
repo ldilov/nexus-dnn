@@ -9,7 +9,7 @@ Split `nexus-extension/src/registry.rs` (1069 LOC) and `nexus-api/src/handlers/b
 ## Technical Context
 
 **Language/Version**: Rust 2024 edition
-**Primary Dependencies**: `semver` (already a workspace dep), no new crates
+**Primary Dependencies**: `semver` (already a workspace dep) and `regex-lite` (already a dep in `crates/nexus-extension/Cargo.toml`); no new workspace crates
 **Testing**: `nexus-extension` + `nexus-api` suites (green at baseline)
 **Target Platform**: unchanged
 **Project Type**: library + handler refactor

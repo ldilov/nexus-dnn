@@ -138,3 +138,56 @@ fn http_status_maps_each_error_variant() {
     assert_eq!(status, 409);
     assert_eq!(code, "RUNTIME_NEEDS_REPAIR");
 }
+
+/// Spec 016 US8 (FR-412, SC-403) — every variant maps to a non-placeholder
+/// code. If a new `BackendRuntimeError` variant is added without touching
+/// `http_status_for`, the exhaustive match inside that function is a compile
+/// error — this test is the runtime counterpart that enforces sensible codes.
+#[test]
+fn http_status_covers_every_variant() {
+    use std::io;
+    let variants = [
+        BackendRuntimeError::FamilyUnknown("x".into()),
+        BackendRuntimeError::FamilyUnavailable {
+            family: "f".into(),
+            reason: "r".into(),
+        },
+        BackendRuntimeError::InstallNotFound("i".into()),
+        BackendRuntimeError::InstallAlreadyExists {
+            install_id: "i".into(),
+        },
+        BackendRuntimeError::RuntimeNeedsRepair("i".into()),
+        BackendRuntimeError::IllegalTransition {
+            from: "a".into(),
+            to: "b".into(),
+        },
+        BackendRuntimeError::ReservedLaunchSetting {
+            flag: "--port".into(),
+        },
+        BackendRuntimeError::ManagedSpawnDisallowed {
+            flag: "--help".into(),
+        },
+        BackendRuntimeError::HostGovernedDenied {
+            flag: "--host".into(),
+        },
+        BackendRuntimeError::LeaseNotOwned {
+            lease_id: "l".into(),
+            owner: "o".into(),
+            caller: "c".into(),
+        },
+        BackendRuntimeError::DependencyUnmet {
+            family: "f".into(),
+            version_req: None,
+            acceleration: Vec::new(),
+        },
+        BackendRuntimeError::Storage("db".into()),
+        BackendRuntimeError::Io(io::Error::other("boom")),
+        BackendRuntimeError::NoPortAvailable,
+        BackendRuntimeError::Internal("x".into()),
+    ];
+    for v in &variants {
+        let (status, code, _) = http_status_for(v);
+        assert!((100..=599).contains(&status), "bad status for {v:?}");
+        assert_ne!(code, "", "empty code for {v:?}");
+    }
+}
