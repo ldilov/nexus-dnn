@@ -70,3 +70,38 @@ churning every call site.
 ## CI checks
 
 - `bash scripts/verify-spec-011.sh` — asserts the zero-extension-deps invariant.
+
+## Model store
+
+Host-owned model catalog under `models_store/`.
+
+- **`install/`** — `install_model`, `uninstall_model`, in-flight dedup via
+  per-identity mutex map, `list_all_visible` (private-filtered).
+  `InstallModelRequest` carries optional `param_count`, `license_spdx`,
+  `license_url`, `provenance_note`. Tests: `install/tests.rs`.
+- **`blobs.rs`** — content-addressed store at `<root>/blobs/<sha[0:2]>/<sha>`;
+  hardlink with symlink fallback; `gc_blobs` sweeps unreferenced files.
+- **`download.rs`** — SHA-256-streaming downloader with HTTP `Range` resume
+  and a shared `tokio::sync::Semaphore` (default 2 permits).
+- **`leases.rs`** — `acquire_lease` / `release_lease` / `list_active_leases`
+  with device VRAM budget enforcement.
+- **`quantization.rs`** — re-exports `nexus_protocol::Quantization` /
+  `MatchQuality`. Exact > Family > None matching; NVFP4 ≠ MXFP4;
+  case-insensitive parse; unknown tags fall back to `Other(String)`.
+- **`resolver/`** — `check_model_dependencies` (deterministic tie-breaker:
+  exact > family > `created_at DESC`) and side-effect-free `resolve_dry_run`.
+  Uses `param_count` for `min_params` gating.
+- **`provenance.rs`** — `resolve_license` three-tier resolution (user →
+  HF metadata → `UNKNOWN + provenance_note`), `HfProbe` trait for pluggable
+  HF metadata fetching, auto-revision resolution when `allow_unpinned=true`.
+- **`reclaim.rs`** — `run_reclaim_pass` (one-shot) + `spawn_reclaim_ticker`
+  (tokio task) for private-install cleanup when owner extensions disappear.
+- **`verify.rs`** — `verify_install` re-hashes files against the stored
+  manifest; transitions `state` to `'corrupt'` on mismatch.
+- **`errors.rs`** — `ModelStoreError` (not `#[non_exhaustive]` — exhaustive
+  match enforcement on every HTTP mapper).
+
+Migration files: `migrations/009_host_model_store.sql` (schema, FR-501/502),
+`migrations/010_host_model_store_provenance.sql` (`param_count` column).
+Schema DDL lives at the repo `migrations/` level per repo convention; no
+`schema.rs` inside `models_store/`.
