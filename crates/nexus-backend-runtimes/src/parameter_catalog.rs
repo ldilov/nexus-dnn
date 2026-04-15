@@ -114,16 +114,19 @@ pub fn llamacpp_catalog() -> BackendRuntimeResult<Arc<ParameterCatalog>> {
     if let Some(cached) = LLAMACPP_CATALOG.get() {
         return Ok(cached.clone());
     }
-    let loaded = parse_embedded("llamacpp_parameter_catalog.json", "llama.cpp")?;
+    let loaded = parse_embedded(
+        "llamacpp_parameter_catalog.json",
+        crate::family::RuntimeFamily::LLAMA_CPP,
+    )?;
     let arc = Arc::new(loaded);
     let _ = LLAMACPP_CATALOG.set(arc.clone());
     Ok(LLAMACPP_CATALOG.get().cloned().unwrap_or(arc))
 }
 
 pub fn catalog_for(family: &str) -> BackendRuntimeResult<Arc<ParameterCatalog>> {
-    match family {
-        "llama.cpp" => llamacpp_catalog(),
-        other => Err(BackendRuntimeError::FamilyUnknown(other.into())),
+    match crate::family::RuntimeFamily::canonical(family) {
+        Some(crate::family::RuntimeFamily::LlamaCpp) => llamacpp_catalog(),
+        _ => Err(BackendRuntimeError::FamilyUnknown(family.into())),
     }
 }
 

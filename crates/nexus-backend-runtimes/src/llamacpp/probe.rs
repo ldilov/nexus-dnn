@@ -170,12 +170,12 @@ async fn spawn_and_probe(
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let ctx = Arc::new(LogPipelineContext {
-        source: "llama.cpp".into(),
+        source: crate::family::RuntimeFamily::LLAMA_CPP.into(),
         namespace: NAMESPACE_LLAMACPP.into(),
         runtime_id: Some(install.runtime_install_id.clone()),
         deployment_id: None,
         publisher: publisher.clone(),
-        backend: "llama.cpp".into(),
+        backend: crate::family::RuntimeFamily::LLAMA_CPP.into(),
     });
     if let Some(out) = stdout {
         let ctx_clone = ctx.clone();
