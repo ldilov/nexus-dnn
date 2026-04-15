@@ -72,10 +72,13 @@ As a contributor maintaining the intra-manifest conflict detector, I use the wor
 
 **Independent Test**: When called with a non-empty `extensions_dir` that contains a new extension, the function actually discovers and activates it (not returns already-loaded IDs).
 
+**Decision (per analyze-pass H1)**: Branch (a) — perform real discovery via `refresh`. Branch (b) (rename + signature trim) was rejected because it breaks `ExtensionRegistry` trait LSP and cascades through `nexus-core` and `nexus-api` callers. Preserving the trait contract while fixing the behavior is strictly less invasive.
+
 **Acceptance Scenarios**:
 
-1. **Given** an empty registry + a populated `extensions_dir`, **When** `discover_and_activate(dir, host_version, proto_version)` is called, **Then** the registry state reflects the newly scanned extensions.
-2. **OR**, if the behavior was intentional, **Then** the trait method is renamed to `list_activated_ids()` and the three ignored args are removed from the trait signature. (Reviewer and spec author must choose one path during implementation.)
+1. **Given** an empty registry + a populated `extensions_dir`, **When** `discover_and_activate(dir, host_version, proto_version)` is called, **Then** the registry state reflects the newly scanned extensions and the returned `DiscoveryReport` lists them under `activated`.
+2. **Given** a partially-populated registry + a new extension dropped into `extensions_dir`, **When** `discover_and_activate` is re-invoked, **Then** the new extension joins the existing set without removing or duplicating prior entries (idempotent over already-known IDs).
+3. **Given** the trait signature `discover_and_activate(dir, host_version, protocol_version) -> Result<DiscoveryReport, ExtensionError>`, **Then** it remains unchanged after the fix; downstream callers compile without edits.
 
 ### User Story 5 — `handlers/backends.rs` splits into six submodules (Priority: P1)
 
@@ -129,7 +132,7 @@ As a contributor maintaining the intra-manifest conflict detector, I use the wor
 
 - **FR-401**: `registry.rs` MUST be replaced by `registry/mod.rs` + `scanner`, `loaders`, `storage_validation`, `version_conflict`, `types` submodules.
 - **FR-402**: Every submodule MUST be ≤ 350 LOC.
-- **FR-403**: The `VersionInterval` + 5 related free functions MUST be deleted. `detect_intra_manifest_conflicts` MUST use `semver::VersionReq` for semver ranges + a documented `LlamaCppBuildReq` helper for non-semver build numbers.
+- **FR-403**: The `VersionInterval` + 5 related free functions MUST be deleted. `detect_intra_manifest_conflicts` MUST use `semver::VersionReq` for semver ranges + a documented `LlamaCppBuildReq` helper for non-semver build numbers. When BOTH parsers fail on a given dependency string, the function MUST return `ExtensionError::ManifestParse { path, detail }` where `path` is the manifest file path and `detail` includes the offending range string and both parser errors. (The existing `ManifestParse` variant is reused; no new variant is introduced.)
 
 #### backends.rs split
 
@@ -147,8 +150,8 @@ As a contributor maintaining the intra-manifest conflict detector, I use the wor
 
 #### N+1
 
-- **FR-409**: `installs_store::list_all_with_dependents(pool) -> BackendRuntimeResult<Vec<(RuntimeInstallRow, Vec<String>)>>` MUST be added using a single LEFT JOIN query.
-- **FR-410**: `handlers/backends/host_runtimes.rs::list_host_runtimes` MUST use the new batched query.
+- **FR-409**: `installs_store::list_all_with_dependents(pool) -> BackendRuntimeResult<Vec<(RuntimeInstallRow, Vec<String>)>>` MUST be added using a single LEFT JOIN against `host_runtime_leases` (the actual dependents source — current `list_dependents` walks `host_runtime_leases WHERE released_at IS NULL`). Query shape: `SELECT i.*, l.extension_id FROM host_runtime_installs i LEFT JOIN host_runtime_leases l ON l.install_id = i.install_id AND l.released_at IS NULL ORDER BY i.install_id`. Aggregation into `Vec<(RuntimeInstallRow, Vec<String>)>` happens in Rust.
+- **FR-410**: `handlers/backends/host_runtimes.rs::list_host_runtimes` MUST use the new batched query and MUST NOT call `list_dependents` inside a per-install loop.
 
 #### Silenced errors
 

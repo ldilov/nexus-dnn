@@ -22,7 +22,7 @@ Per Principle IX, every commit leaves the workspace green-building. Recommended 
 
 ### Preparation
 
-- [ ] T310 Create `crates/nexus-storage/src/sqlite/` directory; move `sqlite.rs` → `sqlite/mod.rs` as a no-op first step; confirm `cargo check -p nexus-storage` passes.
+- [ ] T310 Create `crates/nexus-storage/src/sqlite/` directory; `git mv crates/nexus-storage/src/sqlite.rs crates/nexus-storage/src/sqlite/mod.rs` (use `git mv` per analyze-pass L1 — preserves blame history); confirm `cargo check -p nexus-storage` passes.
 
 ### Move methods into domain submodules (one commit per submodule within the US1 commit, squashed)
 
@@ -34,6 +34,10 @@ Per Principle IX, every commit leaves the workspace green-building. Recommended 
 - [ ] T316 [P] [US1] Same for `sqlite/content.rs` (recipe + ui_contribution methods).
 - [ ] T317 [P] [US1] Same for `sqlite/namespaces.rs` (namespace + migration_record + object + operation + archive methods).
 
+### Trait delegation (per analyze-pass M5)
+
+- [ ] T317b [US1] In `sqlite/mod.rs`, author the single `impl Database for SqliteDatabase { ... }` trait block whose method bodies are one-line delegates to the inherent `*_inner` methods defined in T311–T317. Verify trait surface unchanged via `cargo check --workspace`.
+
 ### Verification
 
 - [ ] T318 [US1] `cargo test -p nexus-storage` GREEN, count matches baseline; `wc -l crates/nexus-storage/src/sqlite/*.rs` all ≤ 400; clippy clean.
@@ -42,7 +46,16 @@ Per Principle IX, every commit leaves the workspace green-building. Recommended 
 
 ## Phase 3: US5 — `execute_migration_statements` helper (P2, folded into US1 commit)
 
-- [ ] T320 [US5] In `sqlite/migrations.rs`, add `pub(super) async fn execute_migration_statements(pool: &SqlitePool, sql: &str, ignore_duplicate_column: bool) -> Result<(), StorageError>`.
+- [ ] T320 [US5] In `sqlite/migrations.rs`, add `pub(super) async fn execute_migration_statements(pool: &SqlitePool, sql: &str, ignore_duplicate_column: bool) -> Result<(), StorageError>`. Migration → `ignore_duplicate_column` mapping (per analyze-pass M8, derived from the current `sqlite.rs::run_migrations` body):
+  - 001_initial.sql → `false`
+  - 002 → `false`
+  - 003 → `false`
+  - 004 → `false`
+  - 005 → `false`
+  - 006 → `true` (current code swallows duplicate-column on `ALTER TABLE`)
+  - 007 → `true`
+  - 008 → `true`
+  Re-confirm by reading the existing match arms before authoring T321; the mapping above is a checkpoint, not authoritative.
 - [ ] T321 [US5] Rewrite `run_migrations` to call the helper 8 times; verify each include_str!() path unchanged; function body ≤ 40 LOC.
 - [ ] T322 [US5] Verify migrations still apply against a clean SQLite via `cargo test -p nexus-storage`.
 
@@ -60,7 +73,10 @@ Per Principle IX, every commit leaves the workspace green-building. Recommended 
 - [ ] T332 [P] [US2] Create `manager/journal.rs` with `impl StorageManager { async fn journal_start, journal_complete, check_quarantine_threshold }`.
 - [ ] T333 [P] [US2] Create `manager/reservation.rs` with `impl StorageManager { pub async fn reserve_namespace }`.
 - [ ] T334 [P] [US2] Create `manager/apply.rs` with `impl StorageManager { pub async fn apply_plan, validate_dry_run }` (apply_plan split done in Phase 5).
-- [ ] T335 [P] [US2] Create `manager/uninstall/{mod.rs,retain.rs,drop.rs,archive.rs}` with the four uninstall functions.
+- [ ] T335a [P] [US2] Create `manager/uninstall/mod.rs` with `impl StorageManager { pub async fn uninstall_namespace }` (policy-dispatch state machine — exempt from ≤25 LOC per Principle III's state-machine carve-out; flag in PR).
+- [ ] T335b [P] [US2] Create `manager/uninstall/retain.rs` with `impl StorageManager { async fn uninstall_retain }`.
+- [ ] T335c [P] [US2] Create `manager/uninstall/drop.rs` with `impl StorageManager { async fn uninstall_drop }`.
+- [ ] T335d [P] [US2] Create `manager/uninstall/archive.rs` with `impl StorageManager { async fn uninstall_archive_then_drop }` (error-propagation fix lands in Phase 6 / US3).
 - [ ] T336 [P] [US2] Create `manager/verify.rs` with `impl StorageManager { pub async fn verify_namespace }`.
 
 ### Verification

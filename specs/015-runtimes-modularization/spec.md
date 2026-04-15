@@ -66,7 +66,7 @@ As a reader of `Spawner`, I see at type-level whether a given instance spawns st
 
 1. **Given** a stub `Spawner`, **When** `spawn` is called, **Then** dispatch matches `SpawnMode::Stub`.
 2. **Given** a real `Spawner`, **When** `spawn` is called, **Then** dispatch matches `SpawnMode::Real` and forks a child.
-3. **Given** the match on `SpawnMode`, **Then** it is exhaustive — adding a new mode is a compile error at the call site.
+3. **Given** the matches on `SpawnMode` across `spawn`, `shutdown`, and `list_live_leases_for_install`, **Then** all three are exhaustive — adding a new mode variant is a compile error at every site (per FR-305).
 
 ### User Story 4 — `installs_store.rs` splits into lifecycle-stage submodules (Priority: P2)
 
@@ -126,13 +126,13 @@ As an operator, migration failures and HTTP-client construction failures surface
 
 - **FR-301**: `spawn.rs` MUST be replaced by `spawn/mod.rs` + submodules `port`, `stub`, `real`, `supervise`, `host_env`.
 - **FR-302**: Every submodule MUST be ≤ 400 LOC.
-- **FR-303**: `Spawner::spawn` and `Spawner::spawn_real` MUST each be ≤ 25 LOC; extracted helpers (`build_test_lease`, `spawn_supervisor_task`, `validate_install_row`, `fork_child`, `insert_lease_row`) each ≤ 40 LOC.
+- **FR-303**: `Spawner::spawn`, `Spawner::spawn_real`, and every extracted helper (`build_test_lease`, `spawn_supervisor_task`, `validate_install_row`, `fork_child`, `insert_lease_row`) MUST each be ≤ **25 LOC** (Constitution Principle III SHOULD soft limit, applied uniformly per analyze-pass H4). The previous 40-LOC budget for helpers is removed. Documented exceptions: `tokio::select!` state machines and exhaustive `match self.mode` arms — each such exception MUST be flagged in the PR description with a one-line justification per Principle III's state-machine carve-out.
 
 #### SpawnMode
 
-- **FR-304**: `Spawner` MUST carry an explicit `SpawnMode` enum with `Stub { port_allocator }` and `Real { pool, adapters, port_allocator, broadcast }` variants.
-- **FR-305**: `Spawner::spawn` MUST dispatch via `match self.mode`, exhaustively.
-- **FR-306**: `Spawner::new` and `Spawner::with_pool` MUST remain source-compatible constructors.
+- **FR-304**: `Spawner` MUST carry an explicit `SpawnMode` enum with `Stub { port_allocator: Arc<RwLock<PortAllocator>> }` and `Real { pool: SqlitePool, adapters: Arc<AdapterRegistry>, port_allocator: Arc<RwLock<PortAllocator>> }` variants. The `publisher: SharedPublisher` field MUST stay on the `Spawner` struct (not inside `SpawnMode`) because both modes publish events through the same broadcast (per analyze-pass M7 — single ownership avoids dual-publisher confusion).
+- **FR-305**: Every method on `Spawner` that branches on mode MUST use `match self.mode`, exhaustively. Required match sites: `spawn`, `shutdown`, `list_live_leases_for_install`, plus any future method that reads `pool` or `adapters`. Adding a new `SpawnMode` variant MUST produce a compile error at every such site (per analyze-pass M10).
+- **FR-306**: `Spawner::new(publisher)` MUST construct `SpawnMode::Stub` and remain source-compatible. `Spawner::with_pool(pool, adapters, publisher)` MUST construct `SpawnMode::Real` and remain source-compatible.
 
 #### installs_store.rs split
 
@@ -157,7 +157,7 @@ As an operator, migration failures and HTTP-client construction failures surface
 ### Key Entities
 
 - **RuntimeFamily**: enum with `LlamaCpp` (and future variants); `canonical`, `as_str`, `is_alias_of`.
-- **SpawnMode**: enum `Stub { port_allocator: PortAllocator }` | `Real { pool, adapters, port_allocator, broadcast }`.
+- **SpawnMode**: enum `Stub { port_allocator: Arc<RwLock<PortAllocator>> }` | `Real { pool: SqlitePool, adapters: Arc<AdapterRegistry>, port_allocator: Arc<RwLock<PortAllocator>> }`. Publisher stays on `Spawner` per FR-304.
 - **InstallCtx**: struct grouping the 8 `run_inner` args.
 
 ## Success Criteria *(mandatory)*
