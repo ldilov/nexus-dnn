@@ -358,8 +358,10 @@ async fn list_all_with_dependents_batches_in_one_query() {
     let out = list_all_with_dependents(&pool).await.unwrap();
     assert_eq!(out.len(), 5, "one entry per install");
 
-    let by_id: std::collections::BTreeMap<&str, &Vec<String>> =
-        out.iter().map(|(r, d)| (r.install_id.as_str(), d)).collect();
+    let by_id: std::collections::BTreeMap<&str, &Vec<String>> = out
+        .iter()
+        .map(|(r, d)| (r.install_id.as_str(), d))
+        .collect();
     assert!(
         by_id["ri_1"].contains(&"ext.a".to_string())
             && by_id["ri_1"].contains(&"ext.b".to_string())

@@ -116,7 +116,8 @@ fn pair_overlaps(a: &ParsedReq, b: &ParsedReq) -> bool {
         // Mixed semver + llama.cpp build numbers in the same family is a
         // category error in the manifest; treat as non-overlapping so the
         // conflict surfaces with a clear error for the operator to fix.
-        (ParsedReq::Semver(_), ParsedReq::Build(_)) | (ParsedReq::Build(_), ParsedReq::Semver(_)) => false,
+        (ParsedReq::Semver(_), ParsedReq::Build(_))
+        | (ParsedReq::Build(_), ParsedReq::Semver(_)) => false,
     }
 }
 
@@ -266,10 +267,7 @@ mod tests {
 
     #[test]
     fn disjoint_build_ranges_conflict() {
-        let deps = vec![
-            dep("llama.cpp", ">=b5000"),
-            dep("llama.cpp", "<b4500"),
-        ];
+        let deps = vec![dep("llama.cpp", ">=b5000"), dep("llama.cpp", "<b4500")];
         let err = detect_intra_manifest_conflicts("ext.x", &deps).unwrap_err();
         match err {
             ExtensionError::RuntimeDependencyConflict { family, ranges, .. } => {
@@ -283,19 +281,13 @@ mod tests {
 
     #[test]
     fn overlapping_build_ranges_ok() {
-        let deps = vec![
-            dep("llama.cpp", ">=b4000"),
-            dep("llama.cpp", ">=b4970"),
-        ];
+        let deps = vec![dep("llama.cpp", ">=b4000"), dep("llama.cpp", ">=b4970")];
         detect_intra_manifest_conflicts("ext.x", &deps).unwrap();
     }
 
     #[test]
     fn semver_happy_path_ok() {
-        let deps = vec![
-            dep("python", ">=1.0.0"),
-            dep("python", "<2.0.0"),
-        ];
+        let deps = vec![dep("python", ">=1.0.0"), dep("python", "<2.0.0")];
         detect_intra_manifest_conflicts("ext.x", &deps).unwrap();
     }
 
@@ -327,5 +319,4 @@ mod tests {
             other => panic!("expected ManifestParse, got {other:?}"),
         }
     }
-
 }

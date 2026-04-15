@@ -150,10 +150,10 @@ Decision locked per spec.md US4: **branch (a)** — perform real discovery via `
 
 ## Phase 10: Polish
 
-- [ ] T590 [P] Update `crates/nexus-extension/README.md` §"Registry module layout" + §"Conflict detection (semver + llama.cpp build numbers)".
-- [ ] T591 [P] Update `crates/nexus-api/README.md` §"Backends handler submodules".
-- [ ] T592 [P] Update root `README.md` "Recent Changes" to link spec 016.
-- [ ] T593 Final verification: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and SC-401/SC-404/SC-406 grep checks.
+- [X] T590 [P] Update `crates/nexus-extension/README.md` §"Registry module layout" + §"Conflict detection (semver + llama.cpp build numbers)".
+- [X] T591 [P] Update `crates/nexus-api/README.md` §"Backends handler submodules".
+- [X] T592 [P] Update root `README.md` "Recent Changes" to link spec 016.
+- [X] T593 Final verification: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and SC-401/SC-404/SC-406 grep checks.
 
 ---
 
