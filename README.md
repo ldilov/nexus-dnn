@@ -99,6 +99,7 @@ nexus-dnn/
 
 ## Recent Changes
 
+- **Spec 017 — Host-Managed Model Store**: New `nexus-backend-runtimes::models_store` owns a host-wide model catalog parallel to the runtime catalog. Extensions declare typed `model_dependencies` in their manifest (revision-pinned by default). Content-addressed blob store dedups byte-identical files across installs; per-device VRAM leases coordinate loads across extensions; resolver returns matched/missing/unsatisfiable in <100ms P95. Provenance (license SPDX + source revision) is populated on every `ready` row; private-install reclaim sweeps orphaned rows after a configurable grace period. New endpoints: `GET /api/v1/host-models`, `POST /api/v1/host-models/resolve`, `POST /api/v1/host-models/{id}/leases`, `DELETE /api/v1/host-models/leases/{id}`.
 - **Spec 011 — Host Runtime Pool**: Inference runtimes (llama.cpp, TensorRT-LLM) are now managed by the host crate `nexus-backend-runtimes` and shared across every extension that declares a matching `runtime_dependencies` entry. The retired `nexus-local-llm` crate has been deleted; its plumbing lives in the new host crate, its domain logic (model routing, hyperparameter validation, install registry) lives inside `extensions/builtin/local-llm/worker/`. New top-level routes: `GET /api/v1/backends`, `GET /api/v1/backends/{family}/parameters`. Legacy `/api/v1/llm/backends/*` routes carry RFC 8594 `Deprecation` + `Sunset` headers pointing at the new surface.
 
 ## Contributing
