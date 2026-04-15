@@ -153,7 +153,10 @@ impl OperatorDto {
                     .collect()
             })
             .unwrap_or_default();
-        let resource_hints = def.resources.as_ref().and_then(|r| serde_json::to_value(r).ok());
+        let resource_hints = def
+            .resources
+            .as_ref()
+            .and_then(|r| serde_json::to_value(r).ok());
         Self {
             id: def.operator.id.clone(),
             version: def.operator.version.clone(),

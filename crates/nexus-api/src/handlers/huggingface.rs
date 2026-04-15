@@ -100,10 +100,7 @@ fn hf_result_to_dto(r: nexus_huggingface::SearchResult) -> HfSearchResultDto {
     }
 }
 
-pub async fn search(
-    State(state): State<AppState>,
-    Query(query): Query<HfSearchQuery>,
-) -> Response {
+pub async fn search(State(state): State<AppState>, Query(query): Query<HfSearchQuery>) -> Response {
     let Some(cap) = state.huggingface.as_ref() else {
         return ApiResponse::<()>::err(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -137,10 +134,7 @@ pub async fn search(
     }
 }
 
-pub async fn repo_detail(
-    State(state): State<AppState>,
-    Path(repo_id): Path<String>,
-) -> Response {
+pub async fn repo_detail(State(state): State<AppState>, Path(repo_id): Path<String>) -> Response {
     let Some(cap) = state.huggingface.as_ref() else {
         return ApiResponse::<()>::err(
             StatusCode::SERVICE_UNAVAILABLE,

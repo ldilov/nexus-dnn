@@ -35,6 +35,7 @@ fn echo_operator() -> OperatorDefinition {
         }]),
         config_schema: None,
         resources: None,
+        ui: None,
     }
 }
 
@@ -132,6 +133,7 @@ fn make_operator(
         outputs: Some(outputs),
         config_schema: None,
         resources: None,
+        ui: None,
     }
 }
 

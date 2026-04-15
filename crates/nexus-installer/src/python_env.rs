@@ -25,19 +25,14 @@ pub struct EnvResult {
 pub struct PythonEnvProvisioner;
 
 impl PythonEnvProvisioner {
-    pub async fn provision(
-        request: &EnvRequest,
-    ) -> Result<EnvResult, InstallerError> {
-        let python =
-            Self::find_system_python(request.python_version.as_deref())
-                .await?;
+    pub async fn provision(request: &EnvRequest) -> Result<EnvResult, InstallerError> {
+        let python = Self::find_system_python(request.python_version.as_deref()).await?;
 
         create_venv(&python, &request.target_dir).await?;
 
         let pip = Self::venv_pip_path(&request.target_dir);
         let installed =
-            install_dependencies(&pip, &request.pip_dependencies, &request.env_vars)
-                .await?;
+            install_dependencies(&pip, &request.pip_dependencies, &request.env_vars).await?;
 
         Ok(EnvResult {
             env_dir: request.target_dir.clone(),
@@ -53,10 +48,7 @@ impl PythonEnvProvisioner {
             return Ok(false);
         }
 
-        let output = Command::new(&python)
-            .args(["--version"])
-            .output()
-            .await?;
+        let output = Command::new(&python).args(["--version"]).output().await?;
 
         Ok(output.status.success())
     }
@@ -77,9 +69,7 @@ impl PythonEnvProvisioner {
         }
     }
 
-    pub async fn find_system_python(
-        version: Option<&str>,
-    ) -> Result<PathBuf, InstallerError> {
+    pub async fn find_system_python(version: Option<&str>) -> Result<PathBuf, InstallerError> {
         let candidates = system_python_candidates(version);
 
         for candidate in &candidates {
@@ -142,9 +132,7 @@ async fn try_python(
     resolve_python_path(command).await
 }
 
-async fn resolve_python_path(
-    command: &str,
-) -> Result<PathBuf, InstallerError> {
+async fn resolve_python_path(command: &str) -> Result<PathBuf, InstallerError> {
     let which_cmd = if cfg!(windows) { "where" } else { "which" };
 
     let output = Command::new(which_cmd)
@@ -163,10 +151,7 @@ async fn resolve_python_path(
     Ok(PathBuf::from(first_line))
 }
 
-async fn create_venv(
-    python: &Path,
-    target_dir: &Path,
-) -> Result<(), InstallerError> {
+async fn create_venv(python: &Path, target_dir: &Path) -> Result<(), InstallerError> {
     tracing::info!(python = %python.display(), dir = %target_dir.display(), "creating venv");
 
     let output = Command::new(python)

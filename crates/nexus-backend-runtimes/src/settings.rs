@@ -79,7 +79,9 @@ impl RuntimeSettings {
 
     pub fn validate(&self) -> Result<(), SettingsError> {
         if !(1..=1024).contains(&self.threads) {
-            return Err(SettingsError::Invalid("threads out of range [1,1024]".into()));
+            return Err(SettingsError::Invalid(
+                "threads out of range [1,1024]".into(),
+            ));
         }
         if !(1..=1024).contains(&self.threads_batch) {
             return Err(SettingsError::Invalid(
@@ -97,7 +99,9 @@ impl RuntimeSettings {
             ));
         }
         if self.bind_address.trim().is_empty() {
-            return Err(SettingsError::Invalid("bind_address cannot be empty".into()));
+            return Err(SettingsError::Invalid(
+                "bind_address cannot be empty".into(),
+            ));
         }
         match (self.port_mode, self.fixed_port) {
             (PortMode::Auto, None) => {}

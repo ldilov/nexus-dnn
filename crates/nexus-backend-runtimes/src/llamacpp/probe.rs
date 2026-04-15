@@ -29,7 +29,11 @@ pub async fn run_validation(
         return report;
     }
 
-    report.push(pass(2, "dependent_libraries", "version probe covered library load"));
+    report.push(pass(
+        2,
+        "dependent_libraries",
+        "version probe covered library load",
+    ));
     report.push(check_profile_matches(install));
 
     let port = match pick_ephemeral_port() {
@@ -160,7 +164,9 @@ async fn spawn_and_probe(
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
     cmd.kill_on_drop(true);
-    let mut child = cmd.spawn().map_err(|_| FailureCategory::UnexpectedProcessExit)?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|_| FailureCategory::UnexpectedProcessExit)?;
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let ctx = Arc::new(LogPipelineContext {

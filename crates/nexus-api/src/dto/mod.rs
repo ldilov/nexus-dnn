@@ -44,8 +44,7 @@ pub use ui::{LayoutSummaryDto, UIContributionDto};
 pub use workflows::{
     WorkflowDto, WorkflowEdgeDto, WorkflowNodeDto, WorkflowNodeInputDto, WorkflowOutputBindingDto,
     WorkflowPortDto, WorkflowStageDefDto, WorkflowStageDto, WorkflowStatusDto,
-    WorkflowUpdatePayloadDto,
-    WorkflowValidationErrorDto,
+    WorkflowUpdatePayloadDto, WorkflowValidationErrorDto,
 };
 
 #[cfg(test)]

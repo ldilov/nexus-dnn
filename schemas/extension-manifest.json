@@ -82,8 +82,26 @@
           "model.registry.read",
           "workspace.read",
           "workspace.write",
-          "storage.schema_contribute"
+          "storage.schema_contribute",
+          "huggingface.search",
+          "huggingface.install"
         ]
+      }
+    },
+    "runtime_dependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["family"],
+        "properties": {
+          "family": { "type": "string" },
+          "version": { "type": "string" },
+          "acceleration": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": false
       }
     },
     "operators": {

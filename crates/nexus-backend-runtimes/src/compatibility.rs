@@ -32,15 +32,13 @@ pub fn tag_model(path: &Path) -> RequiredBackend {
         let has_engine = std::fs::read_dir(path)
             .ok()
             .map(|entries| {
-                entries
-                    .filter_map(|e| e.ok())
-                    .any(|entry| {
-                        entry
-                            .file_name()
-                            .to_str()
-                            .map(|s| s.ends_with(".engine") || s == "config.json")
-                            .unwrap_or(false)
-                    })
+                entries.filter_map(|e| e.ok()).any(|entry| {
+                    entry
+                        .file_name()
+                        .to_str()
+                        .map(|s| s.ends_with(".engine") || s == "config.json")
+                        .unwrap_or(false)
+                })
             })
             .unwrap_or(false);
         if has_engine {

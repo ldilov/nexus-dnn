@@ -88,7 +88,10 @@ fn every_shipped_workflow_validates_against_its_extensions_operators() {
         }
     }
 
-    assert!(checked > 0, "expected at least one shipped workflow to validate");
+    assert!(
+        checked > 0,
+        "expected at least one shipped workflow to validate"
+    );
 }
 
 #[test]

@@ -22,7 +22,10 @@ fn port_mode_from_wire(raw: &str) -> Result<PortMode, SettingsError> {
     }
 }
 
-pub async fn load(pool: &SqlitePool, backend: &str) -> Result<Option<RuntimeSettings>, RuntimeAdapterError> {
+pub async fn load(
+    pool: &SqlitePool,
+    backend: &str,
+) -> Result<Option<RuntimeSettings>, RuntimeAdapterError> {
     let row = sqlx::query(
         "SELECT runtime_settings_id, backend, install_ref, threads, threads_batch, default_context,
                 parallel_requests, bind_address, port_mode, fixed_port, extra_args_json
@@ -42,11 +45,15 @@ pub async fn load(pool: &SqlitePool, backend: &str) -> Result<Option<RuntimeSett
     let fixed_port_raw: Option<i64> = row.try_get("fixed_port").map_err(storage)?;
     Ok(Some(RuntimeSettings {
         backend: row.try_get::<String, _>("backend").map_err(storage)?,
-        install_ref: row.try_get::<Option<String>, _>("install_ref").map_err(storage)?,
+        install_ref: row
+            .try_get::<Option<String>, _>("install_ref")
+            .map_err(storage)?,
         threads: row.try_get::<i64, _>("threads").map_err(storage)? as u32,
         threads_batch: row.try_get::<i64, _>("threads_batch").map_err(storage)? as u32,
         default_context: row.try_get::<i64, _>("default_context").map_err(storage)? as u32,
-        parallel_requests: row.try_get::<i64, _>("parallel_requests").map_err(storage)? as u32,
+        parallel_requests: row
+            .try_get::<i64, _>("parallel_requests")
+            .map_err(storage)? as u32,
         bind_address: row.try_get::<String, _>("bind_address").map_err(storage)?,
         port_mode: port_mode_from_wire(&port_mode_raw)?,
         fixed_port: fixed_port_raw.map(|p| p as u16),
@@ -54,7 +61,10 @@ pub async fn load(pool: &SqlitePool, backend: &str) -> Result<Option<RuntimeSett
     }))
 }
 
-pub async fn upsert(pool: &SqlitePool, settings: &RuntimeSettings) -> Result<String, RuntimeAdapterError> {
+pub async fn upsert(
+    pool: &SqlitePool,
+    settings: &RuntimeSettings,
+) -> Result<String, RuntimeAdapterError> {
     settings.validate()?;
     let extra_args_json = serde_json::to_string(&settings.extra_args)
         .map_err(|e| RuntimeAdapterError::Storage(format!("serialize extra_args: {e}")))?;

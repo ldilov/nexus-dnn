@@ -258,19 +258,19 @@ impl StorageManager {
                         error_json: None,
                     };
                     sqlx::query(include_str!("../queries/storage/insert_migration.sql"))
-                    .bind(&mig_record.id)
-                    .bind(&mig_record.namespace_id)
-                    .bind(&mig_record.extension_id)
-                    .bind(&mig_record.extension_version)
-                    .bind(&mig_record.migration_id)
-                    .bind(&mig_record.path)
-                    .bind(&mig_record.raw_checksum_sha256)
-                    .bind(&mig_record.expanded_checksum_sha256)
-                    .bind(&mig_record.status)
-                    .bind(&mig_record.applied_at)
-                    .bind(&mig_record.error_json)
-                    .execute(&mut *tx)
-                    .await?;
+                        .bind(&mig_record.id)
+                        .bind(&mig_record.namespace_id)
+                        .bind(&mig_record.extension_id)
+                        .bind(&mig_record.extension_version)
+                        .bind(&mig_record.migration_id)
+                        .bind(&mig_record.path)
+                        .bind(&mig_record.raw_checksum_sha256)
+                        .bind(&mig_record.expanded_checksum_sha256)
+                        .bind(&mig_record.status)
+                        .bind(&mig_record.applied_at)
+                        .bind(&mig_record.error_json)
+                        .execute(&mut *tx)
+                        .await?;
 
                     for obj in &migration.objects {
                         let obj_record = ObjectRecord {
@@ -284,16 +284,16 @@ impl StorageManager {
                             recorded_at: now.clone(),
                         };
                         sqlx::query(include_str!("../queries/storage/insert_object.sql"))
-                        .bind(&obj_record.id)
-                        .bind(&obj_record.namespace_id)
-                        .bind(&obj_record.object_name)
-                        .bind(&obj_record.object_type)
-                        .bind(&obj_record.created_by_migration_id)
-                        .bind(&obj_record.sql_hash)
-                        .bind(&obj_record.status)
-                        .bind(&obj_record.recorded_at)
-                        .execute(&mut *tx)
-                        .await?;
+                            .bind(&obj_record.id)
+                            .bind(&obj_record.namespace_id)
+                            .bind(&obj_record.object_name)
+                            .bind(&obj_record.object_type)
+                            .bind(&obj_record.created_by_migration_id)
+                            .bind(&obj_record.sql_hash)
+                            .bind(&obj_record.status)
+                            .bind(&obj_record.recorded_at)
+                            .execute(&mut *tx)
+                            .await?;
                         objects_count += 1;
                     }
 
@@ -635,12 +635,11 @@ impl StorageManager {
         let ns = self.db.get_namespace(namespace_id).await?;
         let prefix_pattern = format!("{}%", ns.effective_prefix);
 
-        let actual_objects: Vec<(String, String)> = sqlx::query_as(include_str!(
-            "../queries/storage/verify_actual_objects.sql"
-        ))
-        .bind(&prefix_pattern)
-        .fetch_all(self.db.pool())
-        .await?;
+        let actual_objects: Vec<(String, String)> =
+            sqlx::query_as(include_str!("../queries/storage/verify_actual_objects.sql"))
+                .bind(&prefix_pattern)
+                .fetch_all(self.db.pool())
+                .await?;
 
         let recorded_objects = self.db.list_objects_for_namespace(namespace_id).await?;
         let present_objects: Vec<&ObjectRecord> = recorded_objects
