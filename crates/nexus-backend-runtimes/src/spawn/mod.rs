@@ -65,6 +65,9 @@ pub fn validate_spawn_request(
 ///
 /// HTTP-status-friendly view of `BackendRuntimeError` for the API handler
 /// layer (spec 011 US4 T080). Returns `(status_code, error_code, message)`.
+///
+/// Spec 016 US8 (FR-412): exhaustive match — adding a new `BackendRuntimeError`
+/// variant MUST be a compile error until a status mapping is added here.
 pub fn http_status_for(error: &BackendRuntimeError) -> (u16, &'static str, String) {
     match error {
         BackendRuntimeError::ReservedLaunchSetting { flag } => (
@@ -87,22 +90,49 @@ pub fn http_status_for(error: &BackendRuntimeError) -> (u16, &'static str, Strin
             "FAMILY_UNAVAILABLE",
             format!("runtime family {family} unavailable: {reason}"),
         ),
+        BackendRuntimeError::FamilyUnknown(family) => (
+            404,
+            "FAMILY_UNKNOWN",
+            format!("runtime family {family} is not registered"),
+        ),
+        BackendRuntimeError::InstallNotFound(install_id) => (
+            404,
+            "INSTALL_NOT_FOUND",
+            format!("install {install_id} not found"),
+        ),
+        BackendRuntimeError::InstallAlreadyExists { install_id } => (
+            409,
+            "INSTALL_ALREADY_EXISTS",
+            format!("install {install_id} already exists"),
+        ),
         BackendRuntimeError::RuntimeNeedsRepair(install_id) => (
             409,
             "RUNTIME_NEEDS_REPAIR",
             format!("install {install_id} requires repair"),
+        ),
+        BackendRuntimeError::IllegalTransition { from, to } => (
+            409,
+            "ILLEGAL_TRANSITION",
+            format!("illegal state transition {from} -> {to}"),
         ),
         BackendRuntimeError::LeaseNotOwned { lease_id, .. } => (
             403,
             "LEASE_NOT_OWNED",
             format!("lease {lease_id} is owned by another extension"),
         ),
+        BackendRuntimeError::DependencyUnmet { family, .. } => (
+            409,
+            "DEPENDENCY_UNMET",
+            format!("dependency unmet for family {family}"),
+        ),
         BackendRuntimeError::NoPortAvailable => (
             503,
             "NO_PORT_AVAILABLE",
             "ephemeral port range exhausted".to_string(),
         ),
-        _ => (500, "INTERNAL", error.to_string()),
+        BackendRuntimeError::Storage(msg) => (500, "STORAGE_ERROR", msg.clone()),
+        BackendRuntimeError::Io(err) => (500, "IO_ERROR", err.to_string()),
+        BackendRuntimeError::Internal(msg) => (500, "INTERNAL", msg.clone()),
     }
 }
 

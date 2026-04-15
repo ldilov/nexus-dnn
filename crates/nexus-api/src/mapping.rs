@@ -42,7 +42,9 @@ pub async fn persist_recipes_for_extension(
     ext: &ActivatedExtension,
 ) -> Result<(), ApiError> {
     let ext_id = &ext.manifest.extension.id;
-    let _ = state.db.delete_recipes_by_extension(ext_id).await;
+    if let Err(e) = state.db.delete_recipes_by_extension(ext_id).await {
+        tracing::warn!(extension_id = %ext_id, error = %e, "delete_recipes_by_extension failed before re-persist");
+    }
 
     for recipe in &ext.recipes {
         let record = recipe_to_record(recipe, ext);
@@ -60,7 +62,9 @@ pub async fn persist_ui_contributions_for_extension(
     ext: &ActivatedExtension,
 ) -> Result<(), ApiError> {
     let ext_id = &ext.manifest.extension.id;
-    let _ = state.db.delete_ui_contributions_by_extension(ext_id).await;
+    if let Err(e) = state.db.delete_ui_contributions_by_extension(ext_id).await {
+        tracing::warn!(extension_id = %ext_id, error = %e, "delete_ui_contributions_by_extension failed before re-persist");
+    }
 
     for contrib in &ext.ui_contributions {
         let record = ui_contribution_to_record(contrib, ext);
