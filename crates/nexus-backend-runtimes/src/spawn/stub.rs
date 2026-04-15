@@ -1,4 +1,4 @@
-//! Stub-mode (`SpawnMode::Stub`) helpers extracted per spec 015 US2.
+//! Stub-mode (`SpawnMode::Stub`) helpers + `Spawner::spawn_stub` per spec 015 US2.
 
 use std::sync::Arc;
 
@@ -8,10 +8,43 @@ use tokio::task::JoinHandle;
 use crate::channel::{
     ApiDialect, RuntimeAddress, RuntimeChannelDescriptor, RuntimeChannelKind, RuntimeEndpoint,
 };
+use crate::error::BackendRuntimeError;
 use crate::events::{BackendEvent, SharedPublisher};
 use crate::lease::RuntimeLease;
 
-use super::SpawnRuntimeRequest;
+use super::{SpawnRuntimeRequest, Spawner, bind_host_for};
+
+impl Spawner {
+    /// Stub-mode spawn: no child fork; supervisor probes `port_hint` via HTTP.
+    pub(super) async fn spawn_stub(
+        &self,
+        request: SpawnRuntimeRequest,
+    ) -> Result<RuntimeLease, BackendRuntimeError> {
+        let port = request.port_hint.ok_or_else(|| {
+            BackendRuntimeError::Internal("port_hint required in test mode".into())
+        })?;
+        let bind_host = bind_host_for(request.bind_mode);
+        let lease_id = format!("lease_{}", ulid::Ulid::new());
+        let lease = build_test_lease(&request, port, &bind_host, &lease_id);
+        let lease_arc = Arc::new(RwLock::new(lease.clone()));
+        let shutdown = Arc::new(tokio::sync::Notify::new());
+        let handle = self
+            .register_handle(&lease_id, port, &lease_arc, &shutdown)
+            .await;
+        emit_test_started(&self.publisher, &request, &lease_id, port, &bind_host).await;
+        let supervisor = spawn_test_supervisor(
+            self.publisher.clone(),
+            lease_arc,
+            shutdown,
+            lease_id,
+            request.family,
+            bind_host,
+            port,
+        );
+        *handle.supervisor.lock().await = Some(supervisor);
+        Ok(lease)
+    }
+}
 
 pub(super) fn build_test_lease(
     request: &SpawnRuntimeRequest,

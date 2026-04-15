@@ -19,10 +19,6 @@ use crate::channel::RuntimeChannelDescriptor;
 use crate::lease::RuntimeLease;
 use crate::settings::AcceleratorProfile;
 
-use self::host_env::load_host_governed_injections;
-use self::port::PortLease;
-use self::supervise::{SupervisorCtx, supervise_real};
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpawnRuntimeRequest {
     pub extension_id: String,
@@ -125,7 +121,7 @@ use crate::adapter::AdapterRegistry;
 use crate::channel::{
     ApiDialect, ChannelBuildCtx, RuntimeAddress, RuntimeChannelKind, RuntimeEndpoint,
 };
-use crate::events::{BackendEvent, SharedPublisher};
+use crate::events::SharedPublisher;
 use crate::installs_store;
 use crate::manifest::install::{InstallManifest, InstallStatus};
 
@@ -223,45 +219,6 @@ impl Spawner {
         }
     }
 
-    async fn spawn_stub(
-        &self,
-        request: SpawnRuntimeRequest,
-    ) -> Result<RuntimeLease, BackendRuntimeError> {
-        let port = request.port_hint.ok_or_else(|| {
-            BackendRuntimeError::Internal("port_hint required in test mode".into())
-        })?;
-        let bind_host = bind_host_for(request.bind_mode);
-        let lease_id = format!("lease_{}", ulid::Ulid::new());
-        let lease = build_test_lease(&request, port, &bind_host, &lease_id);
-        let lease_arc = Arc::new(RwLock::new(lease.clone()));
-        let shutdown = Arc::new(tokio::sync::Notify::new());
-
-        let handle = Arc::new(LeaseHandle {
-            lease_id: lease_id.clone(),
-            port,
-            supervisor: tokio::sync::Mutex::new(None),
-            lease: lease_arc.clone(),
-            shutdown: shutdown.clone(),
-        });
-        self.leases
-            .lock()
-            .await
-            .insert(lease_id.clone(), handle.clone());
-
-        emit_test_started(&self.publisher, &request, &lease_id, port, &bind_host).await;
-        let supervisor = spawn_test_supervisor(
-            self.publisher.clone(),
-            lease_arc,
-            shutdown,
-            lease_id,
-            request.family.clone(),
-            bind_host,
-            port,
-        );
-        *handle.supervisor.lock().await = Some(supervisor);
-        Ok(lease)
-    }
-
     /// Look up the lease row's owning extension id (spec 011 US3 T100).
     ///
     /// Returns `Ok(None)` when no row exists. Callers compare against the
@@ -352,130 +309,6 @@ impl Spawner {
     /// row, and starts a supervisor task that emits `process.started`,
     /// `channel.ready`, and `process.exited` events while mirroring state
     /// into `host_runtime_leases`.
-    async fn spawn_real(
-        &self,
-        request: SpawnRuntimeRequest,
-    ) -> Result<RuntimeLease, BackendRuntimeError> {
-        let (pool, adapters, port_allocator) = match &self.mode {
-            SpawnMode::Real {
-                pool,
-                adapters,
-                port_allocator,
-            } => (pool, adapters, port_allocator),
-            SpawnMode::Stub { .. } => {
-                return Err(BackendRuntimeError::Internal(
-                    "spawn_real called on stub Spawner".into(),
-                ));
-            }
-        };
-        let row = resolve_install_row(pool, &request).await?;
-        validate_install_row(&row, &request.family)?;
-        let adapter =
-            adapters
-                .get(&row.family)
-                .ok_or_else(|| BackendRuntimeError::FamilyUnavailable {
-                    family: row.family.clone(),
-                    reason: "adapter not registered".into(),
-                })?;
-        let install_manifest = row_to_install_manifest(&row);
-        let catalog = crate::parameter_catalog::catalog_for(&row.family)?;
-        validate_spawn_request(&catalog, &request)?;
-        let port = port_allocator
-            .claim(request.port_hint)
-            .ok_or(BackendRuntimeError::NoPortAvailable)?;
-        let launch = adapter
-            .launch_spec(&install_manifest, &request)
-            .await
-            .map_err(|e| BackendRuntimeError::Internal(format!("launch_spec: {e}")))?;
-        let host_governed_args = load_host_governed_injections(pool, &row.family).await;
-        let host_env = build_host_env(&launch.base_env, &request.env, request.bind_mode, port);
-        let bind_host = bind_host_for(request.bind_mode);
-        let mut child = fork_child(
-            &launch,
-            &host_governed_args,
-            &request,
-            &host_env,
-            port_allocator,
-            port,
-        )?;
-        let pid = child.id();
-        let lease_id = format!("lease_{}", ulid::Ulid::new());
-        let now = chrono::Utc::now().to_rfc3339();
-        let descriptor = build_real_descriptor(&adapter, &bind_host, port);
-        insert_lease_row(
-            pool,
-            &lease_id,
-            &row,
-            &request,
-            pid,
-            port,
-            &descriptor,
-            &now,
-        )
-        .await?;
-        let lease = build_real_lease(&lease_id, &row, &request, pid, &descriptor, &now);
-        let lease_arc = Arc::new(RwLock::new(lease.clone()));
-        let shutdown = Arc::new(tokio::sync::Notify::new());
-        let handle = self
-            .register_handle(&lease_id, port, &lease_arc, &shutdown)
-            .await;
-        self.publish_started(&request, &lease_id, port, pid).await;
-        spawn_stream_drainers(&mut child);
-        let supervisor = tokio::spawn(supervise_real(SupervisorCtx {
-            pool: pool.clone(),
-            publisher: self.publisher.clone(),
-            lease_id: lease_id.clone(),
-            family: request.family.clone(),
-            bind_host,
-            port_lease: PortLease {
-                port,
-                allocator: port_allocator.clone(),
-            },
-            live_leases: self.leases.clone(),
-            lease_arc,
-            child,
-            shutdown,
-        }));
-        *handle.supervisor.lock().await = Some(supervisor);
-        Ok(lease)
-    }
-
-    async fn register_handle(
-        &self,
-        lease_id: &str,
-        port: u16,
-        lease_arc: &Arc<RwLock<RuntimeLease>>,
-        shutdown: &Arc<tokio::sync::Notify>,
-    ) -> Arc<LeaseHandle> {
-        let handle = Arc::new(LeaseHandle {
-            lease_id: lease_id.to_string(),
-            port,
-            supervisor: tokio::sync::Mutex::new(None),
-            lease: lease_arc.clone(),
-            shutdown: shutdown.clone(),
-        });
-        self.leases
-            .lock()
-            .await
-            .insert(lease_id.to_string(), handle.clone());
-        handle
-    }
-
-    async fn publish_started(
-        &self,
-        request: &SpawnRuntimeRequest,
-        lease_id: &str,
-        port: u16,
-        pid: Option<u32>,
-    ) {
-        let evt = BackendEvent::new(
-            "process.started",
-            request.family.clone(),
-            serde_json::json!({ "lease_id": lease_id, "port": port, "pid": pid }),
-        );
-        self.publisher.publish(evt).await;
-    }
-
     /// Builds a channel descriptor for the given request.
     pub fn build_descriptor(ctx: &ChannelBuildCtx) -> RuntimeChannelDescriptor {
         RuntimeChannelDescriptor {
@@ -494,11 +327,6 @@ impl Spawner {
     }
 }
 
-use self::real::{
-    build_real_descriptor, build_real_lease, fork_child, insert_lease_row, resolve_install_row,
-    spawn_stream_drainers, validate_install_row,
-};
-use self::stub::{build_test_lease, emit_test_started, spawn_test_supervisor};
 mod real;
 mod stub;
 
@@ -538,7 +366,7 @@ async fn query_unreleased_leases(pool: &SqlitePool, install_id: &str) -> Vec<Str
     }
 }
 
-fn row_to_install_manifest(row: &installs_store::RuntimeInstallRow) -> InstallManifest {
+pub(super) fn row_to_install_manifest(row: &installs_store::RuntimeInstallRow) -> InstallManifest {
     let binary_path = serde_json::from_str::<Vec<String>>(&row.binary_paths)
         .ok()
         .and_then(|v| v.into_iter().next())
