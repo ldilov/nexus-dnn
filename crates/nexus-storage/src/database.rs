@@ -25,6 +25,32 @@ pub trait Database: Send + Sync {
     async fn list_workflows(&self) -> Result<Vec<WorkflowRecord>, StorageError>;
     async fn update_workflow(&self, record: &WorkflowRecord) -> Result<(), StorageError>;
     async fn delete_workflow(&self, id: &str) -> Result<(), StorageError>;
+    /// Clear the `user_edited_at` stamp so the next boot re-applies the
+    /// shipped extension YAML for this workflow.
+    async fn clear_workflow_user_edit(&self, id: &str) -> Result<(), StorageError>;
+    /// Stamp extension attribution on an existing workflow row without
+    /// rewriting its graph. Used by the boot-time one-shot backfill for rows
+    /// that pre-date migration 006.
+    async fn stamp_workflow_extension(
+        &self,
+        id: &str,
+        extension_id: &str,
+        extension_version: &str,
+        first_seen_at: &str,
+    ) -> Result<(), StorageError>;
+    /// Return the opaque JSON blob persisted for this workflow's canvas
+    /// (notes, reroutes, pinned positions). `None` means the workflow has
+    /// never been edited on the canvas.
+    async fn get_canvas_state(&self, workflow_id: &str)
+        -> Result<Option<String>, StorageError>;
+    /// Replace the canvas state JSON for the workflow. Creates the row if it
+    /// does not yet exist.
+    async fn set_canvas_state(
+        &self,
+        workflow_id: &str,
+        payload: &str,
+        updated_at: &str,
+    ) -> Result<(), StorageError>;
 
     async fn insert_run(&self, record: &RunRecord) -> Result<(), StorageError>;
     async fn get_run(&self, id: &str) -> Result<RunRecord, StorageError>;

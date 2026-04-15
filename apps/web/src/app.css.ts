@@ -32,3 +32,26 @@ export const workflowListFallback = style({
 export const drawerContent = style({
   padding: `${vars.space.insetMd} ${vars.space.insetXl}`,
 });
+
+export const backToCatalog = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  padding: "6px 12px",
+  marginBottom: "14px",
+  borderRadius: "999px",
+  border: `1px solid ${vars.color.outline.variant}`,
+  background: "transparent",
+  color: vars.color.text.secondary,
+  fontFamily: vars.font.code,
+  fontSize: "11px",
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  cursor: "pointer",
+  width: "fit-content",
+  transition: "border-color 160ms ease, color 160ms ease",
+  ":hover": {
+    borderColor: `${vars.color.accent.primary}66`,
+    color: vars.color.text.primary,
+  },
+});

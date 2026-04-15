@@ -2,6 +2,7 @@ pub mod artifacts;
 pub mod backends;
 pub mod extensions;
 pub mod health;
+pub mod huggingface;
 pub mod metrics;
 pub mod recipes;
 pub mod runs;

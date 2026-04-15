@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus-dnn.local/schemas/graph-mutation-commands.schema.json",
+  "title": "MutationCommand",
+  "oneOf": [
+    { "$ref": "#/$defs/AddNode" },
+    { "$ref": "#/$defs/RemoveNode" },
+    { "$ref": "#/$defs/CloneNode" },
+    { "$ref": "#/$defs/ReplaceOperator" },
+    { "$ref": "#/$defs/MoveNodeToStage" },
+    { "$ref": "#/$defs/MoveNodeToSubgraph" },
+    { "$ref": "#/$defs/ConnectPorts" },
+    { "$ref": "#/$defs/DisconnectBinding" },
+    { "$ref": "#/$defs/SetLiteralInput" },
+    { "$ref": "#/$defs/ClearLiteralInput" },
+    { "$ref": "#/$defs/UpdateNodeConfigValue" },
+    { "$ref": "#/$defs/UpdateRuntimeBinding" },
+    { "$ref": "#/$defs/UpdateModelParameter" },
+    { "$ref": "#/$defs/UpdateRequestParameter" },
+    { "$ref": "#/$defs/UpdateParameterMetadata" },
+    { "$ref": "#/$defs/AddWorkflowInput" },
+    { "$ref": "#/$defs/RemoveWorkflowInput" },
+    { "$ref": "#/$defs/AddWorkflowOutput" },
+    { "$ref": "#/$defs/RemoveWorkflowOutput" },
+    { "$ref": "#/$defs/AddStage" },
+    { "$ref": "#/$defs/RemoveStage" },
+    { "$ref": "#/$defs/RenameStage" },
+    { "$ref": "#/$defs/ReorderStage" },
+    { "$ref": "#/$defs/AddSubgraph" },
+    { "$ref": "#/$defs/CollapseSubgraph" },
+    { "$ref": "#/$defs/ExpandSubgraph" },
+    { "$ref": "#/$defs/ReorderRecipeFields" },
+    { "$ref": "#/$defs/RecomputeMappingState" }
+  ],
+  "$defs": {
+    "Base": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": { "kind": { "type": "string" }, "parentVersionId": { "type": "string" } }
+    },
+    "AddNode": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": {
+          "kind": { "const": "AddNode" },
+          "args": {
+            "type": "object",
+            "required": ["node"],
+            "properties": { "node": { "$ref": "./workflow.v2.schema.json#/$defs/NodeInstance" } }
+          }
+        }
+      }]
+    },
+    "RemoveNode": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": {
+          "kind": { "const": "RemoveNode" },
+          "args": {
+            "type": "object",
+            "required": ["nodeId"],
+            "properties": { "nodeId": { "type": "string" } }
+          }
+        }
+      }]
+    },
+    "CloneNode": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": {
+          "kind": { "const": "CloneNode" },
+          "args": {
+            "type": "object",
+            "required": ["sourceNodeId", "newNodeId"],
+            "properties": { "sourceNodeId": { "type": "string" }, "newNodeId": { "type": "string" } }
+          }
+        }
+      }]
+    },
+    "ReplaceOperator": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": {
+          "kind": { "const": "ReplaceOperator" },
+          "args": {
+            "type": "object",
+            "required": ["nodeId", "operatorRef"],
+            "properties": {
+              "nodeId": { "type": "string" },
+              "operatorRef": { "type": "object", "required": ["operatorId", "version"] }
+            }
+          }
+        }
+      }]
+    },
+    "MoveNodeToStage": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "MoveNodeToStage" },
+          "args": { "type": "object", "required": ["nodeId", "stageId"] } }
+      }]
+    },
+    "MoveNodeToSubgraph": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "MoveNodeToSubgraph" },
+          "args": { "type": "object", "required": ["nodeId", "subgraphId"] } }
+      }]
+    },
+    "ConnectPorts": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": {
+          "kind": { "const": "ConnectPorts" },
+          "args": {
+            "type": "object",
+            "required": ["sourceKind", "sourceRef", "sourcePort", "targetNodeId", "targetPort"],
+            "properties": {
+              "sourceKind": { "enum": ["workflow_input", "node_output"] },
+              "sourceRef": { "type": "string" },
+              "sourcePort": { "type": "string" },
+              "targetNodeId": { "type": "string" },
+              "targetPort": { "type": "string" },
+              "conversionOperatorRef": { "type": "object" }
+            }
+          }
+        }
+      }]
+    },
+    "DisconnectBinding": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "DisconnectBinding" },
+          "args": { "type": "object", "required": ["bindingId"] } }
+      }]
+    },
+    "SetLiteralInput": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "SetLiteralInput" },
+          "args": {
+            "type": "object",
+            "required": ["nodeId", "portName", "value"],
+            "properties": { "nodeId": { "type": "string" }, "portName": { "type": "string" }, "value": {} }
+          } }
+      }]
+    },
+    "ClearLiteralInput": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "ClearLiteralInput" },
+          "args": { "type": "object", "required": ["nodeId", "portName"] } }
+      }]
+    },
+    "UpdateNodeConfigValue": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "UpdateNodeConfigValue" },
+          "args": { "type": "object", "required": ["nodeId", "path", "value"] } }
+      }]
+    },
+    "UpdateRuntimeBinding": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "UpdateRuntimeBinding" },
+          "args": { "type": "object", "required": ["nodeId", "binding"] } }
+      }]
+    },
+    "UpdateModelParameter": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "UpdateModelParameter" },
+          "args": { "type": "object", "required": ["nodeId", "name", "value"] } }
+      }]
+    },
+    "UpdateRequestParameter": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "UpdateRequestParameter" },
+          "args": { "type": "object", "required": ["nodeId", "name", "value"] } }
+      }]
+    },
+    "UpdateParameterMetadata": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "UpdateParameterMetadata" },
+          "args": { "type": "object", "required": ["nodeId", "name", "metadata"] } }
+      }]
+    },
+    "AddWorkflowInput": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "AddWorkflowInput" },
+          "args": { "type": "object", "required": ["port"] } }
+      }]
+    },
+    "RemoveWorkflowInput": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "RemoveWorkflowInput" },
+          "args": { "type": "object", "required": ["name"] } }
+      }]
+    },
+    "AddWorkflowOutput": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "AddWorkflowOutput" },
+          "args": { "type": "object", "required": ["name", "from"] } }
+      }]
+    },
+    "RemoveWorkflowOutput": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "RemoveWorkflowOutput" },
+          "args": { "type": "object", "required": ["name"] } }
+      }]
+    },
+    "AddStage": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "AddStage" },
+          "args": { "type": "object", "required": ["stage"] } }
+      }]
+    },
+    "RemoveStage": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "RemoveStage" },
+          "args": { "type": "object", "required": ["stageId"] } }
+      }]
+    },
+    "RenameStage": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "RenameStage" },
+          "args": { "type": "object", "required": ["stageId", "label"] } }
+      }]
+    },
+    "ReorderStage": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "ReorderStage" },
+          "args": { "type": "object", "required": ["stageId", "order"] } }
+      }]
+    },
+    "AddSubgraph": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "AddSubgraph" },
+          "args": { "type": "object", "required": ["subgraph"] } }
+      }]
+    },
+    "CollapseSubgraph": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "CollapseSubgraph" },
+          "args": { "type": "object", "required": ["subgraphId"] } }
+      }]
+    },
+    "ExpandSubgraph": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "ExpandSubgraph" },
+          "args": { "type": "object", "required": ["subgraphId"] } }
+      }]
+    },
+    "ReorderRecipeFields": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "ReorderRecipeFields" },
+          "args": { "type": "object", "required": ["orderedFieldIds"] } }
+      }]
+    },
+    "RecomputeMappingState": {
+      "allOf": [{ "$ref": "#/$defs/Base" }, {
+        "properties": { "kind": { "const": "RecomputeMappingState" },
+          "args": { "type": "object" } }
+      }]
+    }
+  }
+}

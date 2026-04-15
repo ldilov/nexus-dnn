@@ -1,3 +1,4 @@
+use nexus_extension::OperatorDefinition;
 use nexus_storage::{ExtensionRecord, OperatorRecord};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -12,11 +13,34 @@ pub struct ExtensionDto {
     pub publisher: Option<String>,
     pub runtime_family: String,
     pub status: String,
+    pub source: String,
+    /// Absolute on-disk path to the extension's root directory.
+    pub source_path: Option<String>,
     pub capabilities: Vec<String>,
     pub recipe_count: Option<i32>,
     pub ui_contribution_count: Option<i32>,
     pub validation_errors: Vec<String>,
     pub installed_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../apps/web/src/api/generated/")]
+pub struct ExtensionRevealDto {
+    /// True when the host successfully asked the OS to reveal the folder.
+    pub revealed: bool,
+    /// Absolute path to the extension directory.
+    pub path: String,
+    /// Short diagnostic when `revealed` is false (e.g. "path not found").
+    pub message: Option<String>,
+}
+
+fn classify_source(directory: &str) -> &'static str {
+    let normalized = directory.replace('\\', "/");
+    if normalized.contains("/extensions/builtin/") || normalized.contains("extensions/builtin/") {
+        "builtin"
+    } else {
+        "external"
+    }
 }
 
 impl From<&ExtensionRecord> for ExtensionDto {
@@ -29,6 +53,12 @@ impl From<&ExtensionRecord> for ExtensionDto {
             publisher: r.publisher.clone(),
             runtime_family: r.runtime_family.clone(),
             status: r.status.clone(),
+            source: classify_source(&r.directory).to_owned(),
+            source_path: if r.directory.is_empty() {
+                None
+            } else {
+                Some(r.directory.clone())
+            },
             capabilities: parse_json_array(r.capabilities.as_deref()),
             recipe_count: r.recipe_count,
             ui_contribution_count: r.ui_contribution_count,
@@ -64,6 +94,11 @@ pub struct OperatorDto {
     pub resumable: Option<bool>,
     #[ts(type = "unknown | null")]
     pub resource_hints: Option<serde_json::Value>,
+    /// Optional UI hints (icon, accent, widget configs, preview slot). Loosely
+    /// typed so extensions can ship new widget kinds without requiring a host
+    /// update; the frontend parses this into a strict `NodeUiSpec`.
+    #[ts(type = "unknown | null")]
+    pub ui: Option<serde_json::Value>,
 }
 
 impl From<&OperatorRecord> for OperatorDto {
@@ -82,6 +117,58 @@ impl From<&OperatorRecord> for OperatorDto {
             cacheable: r.cacheable.map(|v| v != 0),
             resumable: r.resumable.map(|v| v != 0),
             resource_hints: parse_json_value(r.resource_hints.as_deref()),
+            ui: None,
+        }
+    }
+}
+
+impl OperatorDto {
+    /// Build from an in-memory `OperatorDefinition`. Unlike the
+    /// `OperatorRecord` path this preserves the full `ui:` block that the
+    /// extension YAML declared.
+    pub fn from_definition(def: &OperatorDefinition, extension_id: &str) -> Self {
+        let inputs = def
+            .inputs
+            .as_ref()
+            .map(|ps| {
+                ps.iter()
+                    .map(|p| PortSpecDto {
+                        name: p.name.clone(),
+                        port_type: p.port_type.clone(),
+                        required: p.required,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let outputs = def
+            .outputs
+            .as_ref()
+            .map(|ps| {
+                ps.iter()
+                    .map(|p| PortSpecDto {
+                        name: p.name.clone(),
+                        port_type: p.port_type.clone(),
+                        required: p.required,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let resource_hints = def.resources.as_ref().and_then(|r| serde_json::to_value(r).ok());
+        Self {
+            id: def.operator.id.clone(),
+            version: def.operator.version.clone(),
+            extension_id: extension_id.to_owned(),
+            display_name: def.operator.display_name.clone(),
+            description: def.operator.description.clone(),
+            category: def.operator.category.clone(),
+            inputs,
+            outputs,
+            config_schema: def.config_schema.clone(),
+            execution_mode: def.execution.as_ref().and_then(|e| e.mode.clone()),
+            cacheable: def.execution.as_ref().and_then(|e| e.cacheable),
+            resumable: def.execution.as_ref().and_then(|e| e.resumable),
+            resource_hints,
+            ui: def.ui.clone(),
         }
     }
 }

@@ -43,3 +43,84 @@ export const fieldGroup = style({
   flexDirection: "column",
   gap: vars.space.gapXs,
 });
+
+export const sectionLabel = style({
+  fontFamily: vars.font.code,
+  fontSize: "10px",
+  fontWeight: 700,
+  letterSpacing: "0.18em",
+  textTransform: "uppercase",
+  color: vars.color.accent.primary,
+  marginTop: vars.space.gapSm,
+});
+
+export const description = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
+  color: vars.color.text.secondary,
+  lineHeight: 1.55,
+});
+
+export const chipRow = style({
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "6px",
+});
+
+export const chip = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "4px",
+  padding: "2px 8px",
+  borderRadius: "999px",
+  fontFamily: vars.font.code,
+  fontSize: "10px",
+  fontWeight: 600,
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+  color: vars.color.text.secondary,
+  backgroundColor: vars.color.bg.hover,
+  border: `1px solid ${vars.color.outline.variant}`,
+});
+
+export const portList = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: "4px",
+});
+
+export const portItem = style({
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  padding: "4px 8px",
+  borderRadius: "6px",
+  backgroundColor: "rgba(255,255,255,0.02)",
+  border: `1px solid ${vars.color.outline.variant}`,
+});
+
+export const portDot = style({
+  width: "8px",
+  height: "8px",
+  borderRadius: "999px",
+  flexShrink: 0,
+});
+
+export const portName = style({
+  fontFamily: vars.font.code,
+  fontSize: "11px",
+  color: vars.color.text.primary,
+});
+
+export const portType = style({
+  marginLeft: "auto",
+  fontFamily: vars.font.code,
+  fontSize: "10px",
+  color: vars.color.text.muted,
+});
+
+export const requiredMark = style({
+  color: vars.color.error.base,
+  fontSize: "10px",
+  marginLeft: "2px",
+});

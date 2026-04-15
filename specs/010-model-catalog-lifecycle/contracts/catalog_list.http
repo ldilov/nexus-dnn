@@ -1,0 +1,30 @@
+### Unified catalog list — installed + (optional) HF results
+GET http://localhost:7878/extensions/local-llm/models/catalog?q=&format=&license=&include_hf=false HTTP/1.1
+Accept: application/json
+
+### Response 200
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "ok": true,
+  "data": {
+    "installed": [
+      {
+        "id": "uuid",
+        "repo_id": "TheBloke/Qwen2.5-7B-Instruct-GGUF",
+        "display_name": "Qwen2.5-7B-Instruct (Q4_K_M)",
+        "format": "gguf",
+        "quantization": "Q4_K_M",
+        "size_bytes": 4823947200,
+        "routed_backend": "llamacpp",
+        "routing_signal": "gguf",
+        "state": "ready",
+        "installed_at": "2026-04-15T10:22:11Z"
+      }
+    ],
+    "hf_results": [],
+    "hf_status": "not_requested"
+  },
+  "error": null
+}

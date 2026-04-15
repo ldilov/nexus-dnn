@@ -11,7 +11,7 @@ execution:
   resumable: false
 inputs:
   - name: "query"
-    type: "text/retrieval-query"
+    type: "text/chat-message"
     required: true
   - name: "corpus_id"
     type: "scalar/string"

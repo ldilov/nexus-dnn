@@ -86,5 +86,19 @@ globalStyle("button", {
 });
 
 globalStyle(".material-symbols-outlined", {
+  fontFamily: "'Material Symbols Outlined'",
+  fontWeight: "normal",
+  fontStyle: "normal",
+  fontSize: "24px",
+  lineHeight: 1,
+  letterSpacing: "normal",
+  textTransform: "none",
+  display: "inline-block",
+  whiteSpace: "nowrap",
+  wordWrap: "normal",
+  direction: "ltr",
+  fontFeatureSettings: "'liga'",
+  WebkitFontFeatureSettings: "'liga'",
+  WebkitFontSmoothing: "antialiased",
   fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24",
 });

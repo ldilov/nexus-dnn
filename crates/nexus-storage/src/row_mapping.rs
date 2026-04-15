@@ -57,6 +57,10 @@ pub fn map_workflow_row(row: SqliteRow) -> WorkflowRecord {
         stages: row.get("stages"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
+        user_edited_at: row.try_get("user_edited_at").ok().flatten(),
+        extension_id: row.try_get("extension_id").ok().flatten(),
+        extension_version: row.try_get("extension_version").ok().flatten(),
+        extension_version_first_seen: row.try_get("extension_version_first_seen").ok().flatten(),
     }
 }
 

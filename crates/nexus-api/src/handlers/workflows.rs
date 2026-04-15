@@ -1,14 +1,20 @@
+use axum::Json;
 use axum::extract::{Path, State};
 use chrono::Utc;
 use serde::Serialize;
+use std::collections::HashMap;
 
 use nexus_extension::ExtensionRegistry;
 use nexus_storage::Database;
 use nexus_storage::records::WorkflowRecord;
+use nexus_workflow::{NodeInput, NodeInstance, OutputBinding, Stage, Workflow, WorkflowPort};
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::dto::{ListResponseDto, WorkflowDto};
+use crate::dto::{
+    CanvasStateDto, ListResponseDto, WorkflowDto, WorkflowUpdatePayloadDto,
+    WorkflowValidationErrorDto,
+};
 use crate::envelope::ApiResponse;
 use crate::error::ApiError;
 
@@ -185,6 +191,247 @@ pub async fn delete_workflow(
     Ok(ApiResponse::ok(WorkflowDeleteResponseDto { deleted: id }))
 }
 
+/// `PUT /workflows/:id/graph` — save a user-edited graph. Validates against
+/// the authoritative `nexus_workflow::validate_workflow` before writing, and
+/// stamps `user_edited_at` so boot-time re-persistence leaves the row alone.
+pub async fn update_workflow_graph(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(payload): Json<WorkflowUpdatePayloadDto>,
+) -> Result<ApiResponse<WorkflowDto>, ApiError> {
+    let existing = state
+        .db
+        .get_workflow(&id)
+        .await
+        .map_err(|e| ApiError::NotFound(e.to_string()))?;
+
+    let workflow = payload_to_workflow(&id, &existing, &payload)?;
+
+    let operators = state.extension_registry.list_operators();
+    if let Err(e) = nexus_workflow::validate_workflow(&workflow, &operators) {
+        return Err(ApiError::BadRequest(e.to_string()));
+    }
+
+    let now = Utc::now().to_rfc3339();
+    let mut record = build_workflow_record(&workflow, &now)?;
+    record.created_at = existing.created_at.clone();
+    record.user_edited_at = Some(now);
+    record.extension_id = existing.extension_id.clone();
+    record.extension_version = existing.extension_version.clone();
+    record.extension_version_first_seen = existing.extension_version_first_seen.clone();
+
+    state
+        .db
+        .update_workflow(&record)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let fresh = state
+        .db
+        .get_workflow(&id)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    Ok(ApiResponse::ok(WorkflowDto::from(&fresh)))
+}
+
+/// `POST /workflows/:id/revert` — clear the user-edit stamp so the next boot
+/// reapplies the shipped extension YAML. The current row contents are left
+/// in place until the backend restarts (low-risk, no destructive writes).
+pub async fn revert_workflow(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<ApiResponse<WorkflowDto>, ApiError> {
+    state
+        .db
+        .clear_workflow_user_edit(&id)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let fresh = state
+        .db
+        .get_workflow(&id)
+        .await
+        .map_err(|e| ApiError::NotFound(e.to_string()))?;
+
+    Ok(ApiResponse::ok(WorkflowDto::from(&fresh)))
+}
+
+/// `POST /workflows/validate` — structural validation over a pending draft,
+/// without touching the database. Used by the editor to keep the Save button
+/// in sync with the server's rules.
+pub async fn validate_workflow_payload(
+    State(state): State<AppState>,
+    Json(payload): Json<WorkflowUpdatePayloadDto>,
+) -> Result<ApiResponse<WorkflowValidationResponseDto>, ApiError> {
+    let placeholder = WorkflowRecord {
+        id: "__validate__".to_owned(),
+        title: payload.title.clone(),
+        version: payload.version.clone(),
+        inputs: None,
+        outputs: None,
+        nodes: "[]".into(),
+        edges: "[]".into(),
+        stages: None,
+        created_at: String::new(),
+        updated_at: String::new(),
+        user_edited_at: None,
+        extension_id: None,
+        extension_version: None,
+        extension_version_first_seen: None,
+    };
+    let workflow = match payload_to_workflow("__validate__", &placeholder, &payload) {
+        Ok(w) => w,
+        Err(e) => {
+            return Ok(ApiResponse::ok(WorkflowValidationResponseDto {
+                valid: false,
+                node_count: 0,
+                stage_count: 0,
+                input_count: 0,
+                output_count: 0,
+                errors: vec![e.to_string()],
+                warnings: Vec::new(),
+            }));
+        }
+    };
+
+    let operators = state.extension_registry.list_operators();
+    let mut errors = Vec::new();
+    if let Err(e) = nexus_workflow::validate_workflow(&workflow, &operators) {
+        errors.push(e.to_string());
+    }
+
+    Ok(ApiResponse::ok(WorkflowValidationResponseDto {
+        valid: errors.is_empty(),
+        node_count: workflow.nodes.len(),
+        stage_count: workflow.stages.len(),
+        input_count: workflow.inputs.len(),
+        output_count: workflow.outputs.len(),
+        errors,
+        warnings: Vec::new(),
+    }))
+}
+
+/// Convert the UI payload into the canonical execution model. Preserves
+/// metadata (id, created_at) from the existing row so we don't accidentally
+/// rewrite them.
+fn payload_to_workflow(
+    id: &str,
+    existing: &WorkflowRecord,
+    payload: &WorkflowUpdatePayloadDto,
+) -> Result<Workflow, ApiError> {
+    let inputs: Vec<WorkflowPort> = payload
+        .inputs
+        .iter()
+        .map(|p| WorkflowPort {
+            name: p.name.clone(),
+            port_type: p.port_type.clone(),
+        })
+        .collect();
+
+    let outputs: Vec<OutputBinding> = payload
+        .outputs
+        .iter()
+        .map(|o| OutputBinding {
+            name: o.name.clone(),
+            from: o.from.clone(),
+        })
+        .collect();
+
+    let nodes: Vec<NodeInstance> = payload
+        .nodes
+        .iter()
+        .map(|n| {
+            let mut inputs_map: HashMap<String, NodeInput> = HashMap::new();
+            for (port, dto) in &n.inputs {
+                let serialized =
+                    serde_json::to_value(dto).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+                let parsed: NodeInput = serde_json::from_value(serialized)
+                    .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+                inputs_map.insert(port.clone(), parsed);
+            }
+            Ok::<_, ApiError>(NodeInstance {
+                id: n.id.clone(),
+                operator: n.operator.clone(),
+                stage: n.stage.clone(),
+                inputs: inputs_map,
+                config: n.config.clone(),
+            })
+        })
+        .collect::<Result<_, _>>()?;
+
+    let stages: Vec<Stage> = payload
+        .stages
+        .iter()
+        .map(|s| Stage {
+            id: s.id.clone(),
+            label: s.label.clone(),
+        })
+        .collect();
+
+    Ok(Workflow {
+        id: id.to_owned(),
+        title: payload.title.clone(),
+        version: payload.version.clone(),
+        inputs,
+        outputs,
+        nodes,
+        stages,
+        created_at: existing.created_at.clone(),
+        updated_at: Utc::now().to_rfc3339(),
+    })
+}
+
+#[allow(dead_code)]
+fn _force_export(_: WorkflowValidationErrorDto) {}
+
+/// `GET /workflows/:id/canvas` — returns the persisted canvas-state JSON
+/// (notes, reroutes, node positions). Missing row → empty default.
+pub async fn get_workflow_canvas(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<ApiResponse<CanvasStateDto>, ApiError> {
+    let _ = state
+        .db
+        .get_workflow(&id)
+        .await
+        .map_err(|e| ApiError::NotFound(e.to_string()))?;
+    let raw = state
+        .db
+        .get_canvas_state(&id)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let dto: CanvasStateDto = match raw {
+        Some(payload) => serde_json::from_str(&payload)
+            .map_err(|e| ApiError::Internal(format!("canvas state parse: {e}")))?,
+        None => CanvasStateDto::default(),
+    };
+    Ok(ApiResponse::ok(dto))
+}
+
+/// `PUT /workflows/:id/canvas` — replace the persisted canvas state.
+pub async fn put_workflow_canvas(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(mut payload): Json<CanvasStateDto>,
+) -> Result<ApiResponse<CanvasStateDto>, ApiError> {
+    let _ = state
+        .db
+        .get_workflow(&id)
+        .await
+        .map_err(|e| ApiError::NotFound(e.to_string()))?;
+    let now = Utc::now().to_rfc3339();
+    payload.updated_at = Some(now.clone());
+    let body = serde_json::to_string(&payload)
+        .map_err(|e| ApiError::Internal(format!("serialize canvas state: {e}")))?;
+    state
+        .db
+        .set_canvas_state(&id, &body, &now)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    Ok(ApiResponse::ok(payload))
+}
+
 fn build_workflow_record(
     workflow: &nexus_workflow::Workflow,
     now: &str,
@@ -224,5 +471,9 @@ fn build_workflow_record(
         ),
         created_at: now.to_owned(),
         updated_at: now.to_owned(),
+        user_edited_at: None,
+        extension_id: None,
+        extension_version: None,
+        extension_version_first_seen: None,
     })
 }

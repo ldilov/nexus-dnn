@@ -29,6 +29,8 @@ capabilities:
   - "gpu.compute"
   - "model.registry.read"
   - "storage.schema_contribute"
+  - "huggingface.search"
+  - "huggingface.install"
 
 operators:
   - file: "operators/chat_turn.yaml"

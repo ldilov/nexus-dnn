@@ -1,5 +1,6 @@
-import { type ReactNode, useState, useCallback } from "react";
+import { type ReactNode, useState, useCallback, useEffect } from "react";
 import * as styles from "./backend_styles.css";
+import { fetchLoadState } from "../../api/client";
 
 type BackendStatus = "running" | "installed" | "available" | "installing" | "failed" | "unavailable";
 
@@ -47,6 +48,23 @@ function BackendCard({ backend }: { backend: BackendOption }) {
     const ts = new Date().toLocaleTimeString();
     setLogs((prev) => [...prev.slice(-200), `[${ts}] ${msg}`]);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchLoadState(backend.id)
+      .then((state) => {
+        if (cancelled) return;
+        if (state.ready) {
+          setStatus("installed");
+        }
+      })
+      .catch(() => {
+        // Backend not wired for this id yet; retain the status passed in via props.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [backend.id]);
 
   const handleInstall = useCallback(async () => {
     setStatus("installing");
@@ -142,9 +160,23 @@ function BackendCard({ backend }: { backend: BackendOption }) {
     appendLog("[OK] Backend activated successfully");
     appendLog("Health endpoint: http://127.0.0.1:8080/health");
     appendLog("Chat endpoint: http://127.0.0.1:8080/v1/chat/completions");
-    appendLog("Waiting for model load...");
-    setTimeout(() => appendLog("[OK] Model loaded, ready for inference"), 1500);
-  }, [backend.name, appendLog]);
+
+    try {
+      const state = await fetchLoadState(backend.id);
+      if (!state.ready) {
+        appendLog("[WARN] Backend reports not ready — check diagnostics.");
+        return;
+      }
+      if (state.loaded_model_id) {
+        appendLog(`[OK] Model loaded: ${state.loaded_model_id}`);
+      } else {
+        appendLog("No model loaded — select one from the Models panel.");
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "unknown";
+      appendLog(`[WARN] Could not query load state: ${msg}`);
+    }
+  }, [backend.name, backend.id, appendLog]);
 
   const handleDeactivate = useCallback(() => {
     appendLog(`Deactivating ${backend.name}...`);
@@ -155,7 +187,7 @@ function BackendCard({ backend }: { backend: BackendOption }) {
 
   const isActive = status === "running";
   // Alternate accents per backend id for visual variety (cyan vs pink).
-  const isPinkAccent = backend.id === "llamacpp" || backend.id === "llama.cpp";
+  const isPinkAccent = backend.id === "llama.cpp";
   const cardCls = [
     styles.backendCard,
     isActive ? styles.backendCardActive : "",

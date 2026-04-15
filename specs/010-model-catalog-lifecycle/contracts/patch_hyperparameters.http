@@ -1,0 +1,48 @@
+### Update hyperparameter profile for an installed model
+PATCH http://localhost:7878/extensions/local-llm/models/mi_7c4b2d10/hyperparameters HTTP/1.1
+Content-Type: application/json
+
+{
+  "common": {
+    "temperature": 0.6,
+    "top_p": 0.9,
+    "top_k": 40,
+    "repetition_penalty": 1.08,
+    "max_context_length": 4096
+  },
+  "llamacpp": {
+    "n_gpu_layers": 32,
+    "n_batch": 512,
+    "mlock": false,
+    "mmap": true
+  }
+}
+
+### Response 200
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "ok": true,
+  "data": {
+    "model_install_id": "mi_7c4b2d10",
+    "hyperparameters": { "...": "echoed normalized profile" },
+    "applied_to_running_backend": true
+  },
+  "error": null
+}
+
+### Response 422 — violates model limits
+HTTP/1.1 422 Unprocessable Entity
+Content-Type: application/json
+
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "HYPERPARAMETERS_OUT_OF_RANGE",
+    "message": "max_context_length 32768 exceeds this model's declared max (8192).",
+    "field": "common.max_context_length",
+    "model_limit": 8192
+  }
+}

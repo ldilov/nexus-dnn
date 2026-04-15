@@ -60,6 +60,53 @@ impl Database for SqliteDatabase {
             sqlx::query(trimmed).execute(&self.pool).await?;
         }
 
+        let migration_004 = include_str!("../../../migrations/004_workflow_user_edits.sql");
+        for statement in migration_004.split(';') {
+            let trimmed = statement.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Err(e) = sqlx::query(trimmed).execute(&self.pool).await {
+                let msg = e.to_string();
+                if !msg.contains("duplicate column") {
+                    return Err(e.into());
+                }
+            }
+        }
+
+        let migration_005 = include_str!("../../../migrations/005_workflow_canvas_state.sql");
+        for statement in migration_005.split(';') {
+            let trimmed = statement.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            sqlx::query(trimmed).execute(&self.pool).await?;
+        }
+
+        let migration_006 =
+            include_str!("../../../migrations/006_workflow_extension_attribution.sql");
+        for statement in migration_006.split(';') {
+            let trimmed = statement.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Err(e) = sqlx::query(trimmed).execute(&self.pool).await {
+                let msg = e.to_string();
+                if !msg.contains("duplicate column") {
+                    return Err(e.into());
+                }
+            }
+        }
+
+        let migration_007 = include_str!("../../../migrations/007_host_hf_catalog.sql");
+        for statement in migration_007.split(';') {
+            let trimmed = statement.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            sqlx::query(trimmed).execute(&self.pool).await?;
+        }
+
         Ok(())
     }
 
@@ -185,6 +232,10 @@ impl Database for SqliteDatabase {
         .bind(&r.stages)
         .bind(&r.created_at)
         .bind(&r.updated_at)
+        .bind(&r.user_edited_at)
+        .bind(&r.extension_id)
+        .bind(&r.extension_version)
+        .bind(&r.extension_version_first_seen)
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -219,6 +270,7 @@ impl Database for SqliteDatabase {
         .bind(&r.edges)
         .bind(&r.stages)
         .bind(&r.updated_at)
+        .bind(&r.user_edited_at)
         .bind(&r.id)
         .execute(&self.pool)
         .await?;
@@ -242,6 +294,69 @@ impl Database for SqliteDatabase {
                 id: id.into(),
             });
         }
+        Ok(())
+    }
+
+    async fn clear_workflow_user_edit(&self, id: &str) -> Result<(), StorageError> {
+        sqlx::query("UPDATE workflows SET user_edited_at = NULL WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn stamp_workflow_extension(
+        &self,
+        id: &str,
+        extension_id: &str,
+        extension_version: &str,
+        first_seen_at: &str,
+    ) -> Result<(), StorageError> {
+        sqlx::query(
+            "UPDATE workflows SET extension_id = ?, extension_version = ?, \
+             extension_version_first_seen = COALESCE(extension_version_first_seen, ?) \
+             WHERE id = ?",
+        )
+        .bind(extension_id)
+        .bind(extension_version)
+        .bind(first_seen_at)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn get_canvas_state(
+        &self,
+        workflow_id: &str,
+    ) -> Result<Option<String>, StorageError> {
+        let row =
+            sqlx::query("SELECT payload FROM workflow_canvas_state WHERE workflow_id = ?")
+                .bind(workflow_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.map(|r| {
+            use sqlx::Row;
+            r.get::<String, _>("payload")
+        }))
+    }
+
+    async fn set_canvas_state(
+        &self,
+        workflow_id: &str,
+        payload: &str,
+        updated_at: &str,
+    ) -> Result<(), StorageError> {
+        sqlx::query(
+            "INSERT INTO workflow_canvas_state (workflow_id, payload, updated_at) \
+             VALUES (?, ?, ?) \
+             ON CONFLICT(workflow_id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at",
+        )
+        .bind(workflow_id)
+        .bind(payload)
+        .bind(updated_at)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 

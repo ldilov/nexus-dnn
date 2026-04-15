@@ -27,6 +27,7 @@ import { HistoryList } from "../components/layout/history_list";
 import { BackendSelector } from "../components/layout/backend_selector";
 import type { BackendOption } from "../components/layout/backend_selector";
 import { WorkspaceShell, type ToolbarAction, type DrawerConfig } from "../components/layout/workspace_shell";
+import { ModelsPanel } from "../models/ModelsPanel";
 
 type ComponentRenderer = (node: LayoutNode, children: ReactNode[]) => ReactNode;
 
@@ -333,6 +334,12 @@ const registry: Record<string, ComponentRenderer> = {
         {children}
       </HistoryList>
     );
+  },
+
+  models_panel: (node, _children) => {
+    const props = toProps(node);
+    const extensionId = (props.extension_id as string | undefined) ?? "local-llm";
+    return <ModelsPanel extensionId={extensionId} />;
   },
 
   backend_selector: (node, children) => {

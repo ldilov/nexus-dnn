@@ -1,0 +1,53 @@
+### Load a model into the active backend
+POST http://localhost:7878/extensions/local-llm/models/mi_7c4b2d10/load HTTP/1.1
+Content-Type: application/json
+
+{}
+
+### Response 202
+HTTP/1.1 202 Accepted
+Content-Type: application/json
+
+{
+  "ok": true,
+  "data": {
+    "load_task_id": "ld_4e11a802",
+    "progress_channel": "extension:local-llm:model:progress",
+    "estimated_duration_seconds": 12
+  },
+  "error": null
+}
+
+### Read current load state (truth source — NEVER inferred by client)
+GET http://localhost:7878/extensions/local-llm/backends/be_llamacpp/load-state HTTP/1.1
+Accept: application/json
+
+### Response 200 — model currently loaded
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "ok": true,
+  "data": {
+    "backend_id": "be_llamacpp",
+    "loaded_model_id": "mi_7c4b2d10",
+    "loaded_at": "2026-04-15T10:31:08Z",
+    "ready": true
+  },
+  "error": null
+}
+
+### Response 200 — no model loaded (process ready, but nothing resident)
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "ok": true,
+  "data": {
+    "backend_id": "be_llamacpp",
+    "loaded_model_id": null,
+    "loaded_at": null,
+    "ready": true
+  },
+  "error": null
+}
