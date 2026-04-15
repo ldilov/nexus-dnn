@@ -8,6 +8,48 @@ use std::collections::BTreeMap;
 
 use crate::error::BackendRuntimeError;
 use crate::parameter_catalog::{ParameterCatalog, ParameterPolicy};
+use crate::settings::RuntimeSettings;
+
+/// Outcome of gating a host-governed flag against a [`RuntimeSettings`]
+/// typed opt-in. `Inject` carries the value the host should pass on the
+/// child's argv; `Deny` means no opt-in is set and the flag must be rejected.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HostPolicyDecision {
+    Inject(String),
+    Deny,
+}
+
+/// Host-side policy arbiter for host-governed launch flags.
+pub struct HostPolicy;
+
+impl HostPolicy {
+    /// Map a host-governed flag to its typed host-setting opt-in.
+    pub fn gate_host_governed(flag: &str, settings: &RuntimeSettings) -> HostPolicyDecision {
+        match flag {
+            "--api-key" => match settings.api_key.as_ref() {
+                Some(v) if !v.is_empty() => HostPolicyDecision::Inject(v.clone()),
+                _ => HostPolicyDecision::Deny,
+            },
+            "--ssl-cert-file" => match settings.tls_cert_path.as_ref() {
+                Some(p) => HostPolicyDecision::Inject(p.to_string_lossy().into_owned()),
+                None => HostPolicyDecision::Deny,
+            },
+            "--ssl-key-file" => match settings.tls_key_path.as_ref() {
+                Some(p) => HostPolicyDecision::Inject(p.to_string_lossy().into_owned()),
+                None => HostPolicyDecision::Deny,
+            },
+            "--media-path" => match settings.media_path.as_ref() {
+                Some(p) => HostPolicyDecision::Inject(p.to_string_lossy().into_owned()),
+                None => HostPolicyDecision::Deny,
+            },
+            "--tools" if settings.tools_enabled => HostPolicyDecision::Inject(String::new()),
+            "--webui-mcp-proxy" if settings.mcp_proxy_enabled => {
+                HostPolicyDecision::Inject(String::new())
+            }
+            _ => HostPolicyDecision::Deny,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ValidatedLaunch {
@@ -56,7 +98,8 @@ pub fn validate_args(
                 return Err(BackendRuntimeError::ReservedLaunchSetting { flag: a.clone() });
             }
             ClassifyOutcome::HostGoverned => {
-                return Err(BackendRuntimeError::ReservedLaunchSetting { flag: a.clone() });
+                tracing::warn!(flag = %a, "host_governed_denied");
+                return Err(BackendRuntimeError::HostGovernedDenied { flag: a.clone() });
             }
             ClassifyOutcome::Passthrough | ClassifyOutcome::Unknown => {}
         }
@@ -76,8 +119,12 @@ pub fn validate_env(
             ParameterPolicy::ManagedSpawnDisallowed => {
                 return Err(BackendRuntimeError::ManagedSpawnDisallowed { flag: name.clone() });
             }
-            ParameterPolicy::HostInjected | ParameterPolicy::HostGoverned => {
+            ParameterPolicy::HostInjected => {
                 return Err(BackendRuntimeError::ReservedLaunchSetting { flag: name.clone() });
+            }
+            ParameterPolicy::HostGoverned => {
+                tracing::warn!(flag = %name, "host_governed_denied");
+                return Err(BackendRuntimeError::HostGovernedDenied { flag: name.clone() });
             }
             ParameterPolicy::ExtensionPassthrough => {}
         }
@@ -126,7 +173,7 @@ mod tests {
         let err = validate_args(&catalog, &["--api-key".into(), "secret".into()]).unwrap_err();
         assert!(matches!(
             err,
-            BackendRuntimeError::ReservedLaunchSetting { .. }
+            BackendRuntimeError::HostGovernedDenied { .. }
         ));
     }
 

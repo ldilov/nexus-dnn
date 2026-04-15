@@ -6,7 +6,10 @@ use nexus_events::types::NexusEvent;
 use nexus_extension::storage::plan::{
     AppliedMigrationInfo, MigrationAction, PlanAction, build_plan,
 };
-use nexus_extension::{ActivatedExtension, DiscoveryReport, ExtensionRegistry};
+use nexus_extension::{
+    ActivatedExtension, DiscoveryReport, ExtensionError, ExtensionManifest, ExtensionRegistry,
+    detect_intra_manifest_conflicts,
+};
 use nexus_storage::Database;
 use nexus_storage::storage_manager::MigrationInput;
 
@@ -155,6 +158,12 @@ pub async fn enable_extension(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<ApiResponse<EnableExtensionResponseDto>, ApiError> {
+    if let Some(ext) = state.extension_registry.get_extension(&id) {
+        check_runtime_dependencies(state.db.as_ref(), &ext.manifest)
+            .await
+            .map_err(runtime_dep_error_to_api_error)?;
+    }
+
     state
         .extension_registry
         .enable_extension(&id)
@@ -174,6 +183,103 @@ pub async fn enable_extension(
         id,
         status: "active".to_owned(),
     }))
+}
+
+/// Resolve every `runtime_dependencies` entry in the manifest against
+/// `host_runtime_installs` (spec 012 US2, FR-104/105/106). Intra-manifest
+/// conflicts are detected FIRST via the pure `detect_intra_manifest_conflicts`
+/// helper; unmet dependencies are reported with the available-versions list
+/// so callers can render an actionable panel link.
+pub async fn check_runtime_dependencies(
+    db: &nexus_storage::SqliteDatabase,
+    manifest: &ExtensionManifest,
+) -> Result<(), ExtensionError> {
+    let ext_id = manifest.extension.id.as_str();
+    let deps = &manifest.runtime_dependencies;
+    if deps.is_empty() {
+        return Ok(());
+    }
+    detect_intra_manifest_conflicts(ext_id, deps)?;
+    let pool = db.pool();
+    for dep in deps {
+        let resolved = nexus_backend_runtimes::installs_store::resolve_dependency(
+            pool,
+            dep.family.as_str(),
+            dep.version.as_deref(),
+            &dep.acceleration,
+        )
+        .await
+        .map_err(|e| ExtensionError::Io(std::io::Error::other(e.to_string())))?;
+        if resolved.is_none() {
+            let available = available_versions_for(db, dep.family.as_str()).await;
+            return Err(ExtensionError::RuntimeDependencyUnmet {
+                extension_id: ext_id.to_owned(),
+                family: dep.family.clone(),
+                version_req: dep.version.clone().unwrap_or_else(|| "*".to_owned()),
+                available_versions: available,
+                install_panel_url: "/backends".to_owned(),
+            });
+        }
+    }
+    Ok(())
+}
+
+async fn available_versions_for(db: &nexus_storage::SqliteDatabase, family: &str) -> Vec<String> {
+    match nexus_backend_runtimes::installs_store::list_all(db.pool()).await {
+        Ok(rows) => rows
+            .into_iter()
+            .filter(|r| r.family == family)
+            .map(|r| r.version)
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+fn runtime_dep_error_to_api_error(err: ExtensionError) -> ApiError {
+    match err {
+        ExtensionError::RuntimeDependencyUnmet {
+            extension_id,
+            family,
+            version_req,
+            available_versions,
+            install_panel_url,
+        } => {
+            let message = format!(
+                "extension {extension_id} requires runtime {family} {version_req} but no satisfying install exists"
+            );
+            let details = serde_json::json!({
+                "family": family,
+                "version_req": version_req,
+                "available_versions": available_versions,
+                "hint": format!("install or upgrade via {install_panel_url}"),
+            });
+            ApiError::BadRequestDetailed {
+                code: "RUNTIME_DEPENDENCY_UNMET",
+                message,
+                details,
+            }
+        }
+        ExtensionError::RuntimeDependencyConflict {
+            extension_id,
+            family,
+            ranges,
+        } => {
+            let message = format!(
+                "extension {extension_id} declares conflicting {family} runtime ranges: {}",
+                ranges.join(", "),
+            );
+            let details = serde_json::json!({
+                "family": family,
+                "ranges": ranges,
+            });
+            ApiError::BadRequestDetailed {
+                code: "RUNTIME_DEPENDENCY_CONFLICT",
+                message,
+                details,
+            }
+        }
+        other => ApiError::InvalidState(other.to_string()),
+    }
 }
 
 pub async fn disable_extension(

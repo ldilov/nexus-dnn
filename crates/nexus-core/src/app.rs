@@ -181,6 +181,13 @@ impl NexusApp {
         let app_for_health = Arc::new(self);
         let app_ref = Arc::clone(&app_for_health);
 
+        nexus_backend_runtimes::run_startup_migrations(
+            db.pool(),
+            &app_for_health.config.resolved_data_dir(),
+        )
+        .await
+        .context("startup migrations failed")?;
+
         let backend_adapter_registry = build_backend_adapter_registry(
             &app_for_health.config.resolved_data_dir(),
             &app_for_health.config.builtin_extensions_dir(),
@@ -189,10 +196,13 @@ impl NexusApp {
         )
         .await;
 
+        let backend_event_bus = Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(
+            1024,
+        ));
+
         let spawner = backend_adapter_registry.as_ref().map(|adapters| {
-            let publisher: nexus_backend_runtimes::events::SharedPublisher = Arc::new(
-                nexus_backend_runtimes::events::BroadcastPublisher::new(1024),
-            );
+            let publisher: nexus_backend_runtimes::events::SharedPublisher =
+                backend_event_bus.clone();
             Arc::new(nexus_backend_runtimes::spawn::Spawner::with_pool(
                 publisher,
                 db.pool().clone(),
@@ -222,9 +232,11 @@ impl NexusApp {
             backend_adapter_registry,
             spawner,
             huggingface: Some(huggingface),
+            backend_event_bus,
         };
 
         let router = nexus_api::create_router(state);
+
         let bind_addr = format!("0.0.0.0:{}", app_for_health.config.port);
         let listener = tokio::net::TcpListener::bind(&bind_addr)
             .await

@@ -58,6 +58,12 @@ pub async fn load(
         port_mode: port_mode_from_wire(&port_mode_raw)?,
         fixed_port: fixed_port_raw.map(|p| p as u16),
         extra_args,
+        api_key: None,
+        tls_cert_path: None,
+        tls_key_path: None,
+        media_path: None,
+        tools_enabled: false,
+        mcp_proxy_enabled: false,
     }))
 }
 

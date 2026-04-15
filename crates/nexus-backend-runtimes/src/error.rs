@@ -28,6 +28,9 @@ pub enum BackendRuntimeError {
     #[error("'{flag}' is managed-spawn-disallowed (exits immediately or inspection-only)")]
     ManagedSpawnDisallowed { flag: String },
 
+    #[error("host-governed flag '{flag}' cannot be passed via raw argv/env")]
+    HostGovernedDenied { flag: String },
+
     #[error("lease '{lease_id}' is owned by extension '{owner}', not '{caller}'")]
     LeaseNotOwned {
         lease_id: String,

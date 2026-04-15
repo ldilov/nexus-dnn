@@ -30,8 +30,8 @@ async fn deprecation_headers(req: Request, next: Next) -> Response {
 use crate::AppState;
 use crate::frontend;
 use crate::handlers::{
-    artifacts, backends, extensions, health, huggingface, metrics, recipes, runs,
-    storage_contributions, system, tools, ui_contributions, ui_layouts, workflows,
+    artifacts, backend_events_ws, backends, extensions, health, huggingface, metrics, recipes,
+    runs, storage_contributions, system, tools, ui_contributions, ui_layouts, workflows,
 };
 use crate::ws;
 
@@ -151,10 +151,18 @@ pub fn build(state: AppState) -> Router {
         .route("/events", get(ws::events_ws))
         .route("/backends", get(backends::list_host_runtimes))
         .route(
+            "/backends/events",
+            get(backend_events_ws::backend_events_ws),
+        )
+        .route(
             "/backends/{family}/parameters",
             get(backends::parameter_catalog),
         )
         .route("/backends/{installId}/lease", post(backends::create_lease))
+        .route(
+            "/backends/{installId}",
+            axum::routing::delete(backends::uninstall_runtime),
+        )
         .route(
             "/backends/leases/{leaseId}",
             axum::routing::delete(backends::release_lease),
