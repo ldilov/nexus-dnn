@@ -74,7 +74,7 @@ Per Principle IX. Recommended order: US5 (RuntimeFamily) → US4 (installs_store
 
 ### Implementation
 
-- [ ] T441 [US3] Define `pub enum SpawnMode { Stub { port_allocator: Arc<RwLock<PortAllocator>> }, Real { pool: SqlitePool, adapters: Arc<AdapterRegistry>, port_allocator: Arc<RwLock<PortAllocator>>, broadcast: Arc<BroadcastPublisher> } }` in `spawn/mod.rs`.
+- [ ] T441 [US3] Define `pub enum SpawnMode { Stub { port_allocator: Arc<RwLock<PortAllocator>> }, Real { pool: SqlitePool, adapters: Arc<AdapterRegistry>, port_allocator: Arc<RwLock<PortAllocator>> } }` in `spawn/mod.rs`. The `publisher: SharedPublisher` field stays on `Spawner` (per spec FR-304 / analyze-pass M7), shared across both modes.
 - [ ] T442 [US3] Replace `Spawner` fields `pool: Option<_>`, `adapters: Option<_>`, `port_allocator: Arc<_>` with `mode: SpawnMode`.
 - [ ] T443 [US3] Rewrite `Spawner::new(publisher)` to construct `SpawnMode::Stub`. `Spawner::with_pool(pool, adapters, publisher)` constructs `SpawnMode::Real`.
 - [ ] T444 [US3] Rewrite `Spawner::spawn` body as `match self.mode { Stub => self.spawn_stub(req).await, Real => self.spawn_real(req).await }`.
@@ -106,7 +106,7 @@ Per Principle IX. Recommended order: US5 (RuntimeFamily) → US4 (installs_store
 
 ### Implementation
 
-- [ ] T461 [US6] Create `crates/nexus-backend-runtimes/src/llamacpp/install_ctx.rs` with `pub struct InstallCtx<'a> { pub manifest: &'a VersionManifest, pub machine: &'a MachineDescriptor, pub request: InstallRequest, pub runtimes_root: &'a Utf8PathBuf, pub pool: &'a SqlitePool, pub publisher: SharedPublisher, pub cancel: CancellationToken, pub task_id: String }`.
+- [ ] T461 [US6] Create `crates/nexus-backend-runtimes/src/llamacpp/install_ctx.rs` with `pub struct InstallCtx<'a> { pub manifest: &'a VersionManifest, pub machine: &'a MachineDescriptor, pub request: InstallRequest, pub runtimes_root: &'a Utf8PathBuf, pub pool: &'a SqlitePool, pub publisher: SharedPublisher, pub cancel: CancellationToken, pub task_id: &'a str }`. Use `&'a str` for `task_id` (per analyze-pass L2) — caller already owns the String, no clone needed.
 - [ ] T462 [US6] Change `run_inner<F>` signature to `run_inner<F>(ctx: &InstallCtx<'_>, progress_fn: F)`; update caller in `install_pipeline::run`.
 - [ ] T463 [US6] Remove the `#[allow(clippy::too_many_arguments)]` attribute introduced in spec 013.
 
@@ -120,8 +120,8 @@ Per Principle IX. Recommended order: US5 (RuntimeFamily) → US4 (installs_store
 
 ### Implementation
 
-- [ ] T471 [US7] Replace `reqwest::Client::builder().timeout(...).build().unwrap_or_else(|_| reqwest::Client::new())` in `supervise_real` with `match builder.build() { Ok(c) => c, Err(e) => { tracing::warn!(error = %e, "reqwest client builder failed"); return; } }`.
-- [ ] T472 [US7] Replace the same pattern at the second reqwest builder site (spawn.rs:762 per original review).
+- [ ] T471 [US7] In `spawn/supervise.rs::supervise_real`, replace `reqwest::Client::builder().timeout(...).build().unwrap_or_else(|_| reqwest::Client::new())` with `match builder.build() { Ok(c) => c, Err(e) => { tracing::warn!(error = %e, "reqwest client builder failed"); return; } }`.
+- [ ] T472 [US7] In `spawn/stub.rs::spawn_supervisor_task` (formerly the second `reqwest::Client::builder()` site at the original `spawn.rs:762`, now relocated by the Phase 4 split), apply the same warn-log pattern. Locate by symbol name, not line number, since the file moved during US1.
 - [ ] T473 [US7] In `installs_store/migration.rs::build_binary_paths_json`, return `Result<String, BackendRuntimeError>` with `serde_json::to_string(...).map_err(|e| BackendRuntimeError::Internal(format!("serialize binary_paths: {e}")))?`.
 - [ ] T474 [US7] In `spawn/mod.rs::dedup_preserve_order`, change signature to `fn dedup_preserve_order(items: &[String]) -> Vec<String>` using `BTreeSet<&str>` for the dedup set and `item.clone()` only on first occurrence.
 

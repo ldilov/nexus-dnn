@@ -84,6 +84,20 @@ crates/nexus-storage/src/
 
 None. This is a refactor without added complexity; net line count expected to be flat ± 5%.
 
+## Trait-Impl Delegation Strategy
+
+Per FR-202 / FR-204 — `impl Database for SqliteDatabase` is a Rust trait impl, which the language requires to live in a single block. The split therefore works as follows (per analyze-pass M5):
+
+1. Each domain submodule (`extensions.rs`, `operators.rs`, etc.) hosts an inherent `impl SqliteDatabase { pub(super) async fn insert_extension_inner(...) ... }` block containing the actual SQL + row-mapping logic.
+2. `sqlite/mod.rs` hosts the single `impl Database for SqliteDatabase { ... }` trait block. Each trait method body is exactly one line: `self.insert_extension_inner(...).await`.
+3. The trait impl in `mod.rs` is therefore ~80 LOC (40 methods × ~2 lines each), keeping `mod.rs` itself ≤ 200 LOC alongside the struct definition + module-level docs.
+
+Tasks.md T317b explicitly authors the delegate trait block as a discrete step.
+
+## Cross-Spec Sequencing
+
+Spec 014 is fully self-contained — no dependency on specs 015 or 016. It can land in parallel with spec 015 (file-disjoint). Spec 016 has no hard dependency on 014.
+
 ## Implementation Sequencing
 
 1. **Phase 1 — Safety net**: run `cargo test -p nexus-storage` and capture baseline test count.

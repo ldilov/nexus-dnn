@@ -52,7 +52,8 @@ Per Principle IX. Recommended order: US1 (registry file moves) → US2 (semver s
 
 ## Phase 4: US3 — Scanner DRY (P2)
 
-- [ ] T530 [US3] Add `scan_dir_with<F>(dir: &Path, host_version: &Version, protocol_version: &Version, process_fn: F, label: &'static str) -> Result<ScanResult, ExtensionError>` in `registry/scanner.rs` where `F: Fn(PathBuf, &Version, &Version) -> Result<Option<(ActivatedExtension, Vec<(String, OperatorDefinition)>)>, ExtensionError>`.
+- [ ] T530a [US3] **Reconcile signatures first**: read `process_extension(path: &Path, host_version: &Version, protocol_version: &Version)` and `process_builtin_extension` current signatures in `registry/scanner.rs`; pick the lowest-common-denominator argument shape (likely `(&Path, &Version, &Version)`) before authoring the helper. Document the chosen `F` shape as a single-line comment above the helper.
+- [ ] T530b [US3] Add `scan_dir_with<F>(dir: &Path, host_version: &Version, protocol_version: &Version, process_fn: F, label: &'static str) -> Result<ScanResult, ExtensionError>` in `registry/scanner.rs` where `F: Fn(&Path, &Version, &Version) -> Result<Option<(ActivatedExtension, Vec<(String, OperatorDefinition)>)>, ExtensionError>` (final shape pinned by T530a).
 - [ ] T531 [US3] Rewrite `scan_extensions_dir` and `scan_builtin_dir` as 10-to-15 LOC delegators passing `process_extension` / `process_builtin_extension` respectively.
 
 ### Verification
@@ -63,18 +64,20 @@ Per Principle IX. Recommended order: US1 (registry file moves) → US2 (semver s
 
 ## Phase 5: US4 — `discover_and_activate` POLA fix (P2)
 
+Decision locked per spec.md US4: **branch (a)** — perform real discovery via `refresh`. Trait signature unchanged.
+
 ### Tests (write first — RED)
 
-- [ ] T540 [US4] Integration test `crates/nexus-extension/tests/discover_and_activate_scans_dir.rs`: create empty registry; populate a temp `extensions_dir` with one valid extension; call `discover_and_activate(dir, host_v, proto_v)`; assert the new extension is present in `list_extensions()`.
+- [ ] T540 [P] [US4] Integration test `crates/nexus-extension/tests/discover_and_activate_scans_dir.rs::scans_new_extension`: empty registry + populated temp `extensions_dir` with one valid extension → call `discover_and_activate(dir, host_v, proto_v)` → assert new extension present in `list_extensions()` AND in the returned `DiscoveryReport.activated`.
+- [ ] T541 [P] [US4] Integration test `discover_and_activate_scans_dir.rs::idempotent_re_invocation`: pre-load registry with extension A; drop extension B into `extensions_dir`; re-invoke `discover_and_activate`; assert {A, B} present, no duplicate, no removal.
 
-### Implementation (PR description MUST state chosen branch + reason)
+### Implementation
 
-- [ ] T541 [US4] **Decision point**: choose (a) make `discover_and_activate` a real discover via `refresh`; or (b) rename to `list_activated_ids()` and trim signature. Record the decision in the PR body.
-- [ ] T542 [US4] Apply chosen branch: if (a), body = `self.refresh(extensions_dir, host_version, protocol_version).await?.into_report()`; if (b), update trait definition + all impls + all callers.
+- [ ] T542 [US4] In `registry/mod.rs::ExtensionRegistry for InMemoryExtensionRegistry::discover_and_activate`, replace the current ignore-args body with `let report = self.refresh(extensions_dir, host_version, protocol_version).await?; Ok(report)`. Trait signature preserved per US4 acceptance scenario 3.
 
 ### Verification
 
-- [ ] T543 [US4] New test GREEN for chosen branch; all existing callers still compile.
+- [ ] T543 [US4] Both new tests GREEN; `cargo check -p nexus-core -p nexus-api` passes without edits to callers.
 
 ---
 
@@ -98,9 +101,10 @@ Per Principle IX. Recommended order: US1 (registry file moves) → US2 (semver s
 ## Phase 7: US6 — `create_lease` split (P2)
 
 - [ ] T560 [US6] In `backends/lease.rs`, extract:
-  - `fn validate_install_for_lease(row: Option<&RuntimeInstallRow>) -> Result<&RuntimeInstallRow, Response>` (~20 LOC)
+  - `fn validate_install_for_lease<'a>(row: Option<&'a RuntimeInstallRow>) -> Result<&'a RuntimeInstallRow, ApiError>` (~20 LOC) — returns a typed `ApiError` (existing in `nexus-api::error`); the calling handler maps via `?` + `IntoResponse`. Helper does NOT depend on `axum::Response` (per analyze pass M3).
   - `fn build_spawn_request(extension_id: String, install_id: String, body: LeaseBody) -> SpawnRuntimeRequest` (~15 LOC)
   - `fn stub_lease(install_id: String, extension_id: String, body: LeaseBody) -> LeaseEnvelope` (~25 LOC)
+  - If `nexus-api::error::ApiError` does not exist, sub-task T560a authors a minimal typed-error enum + `IntoResponse` impl in `crates/nexus-api/src/error.rs` before T560 lands.
 - [ ] T561 [US6] Rewrite `create_lease` to orchestrate the three helpers; body ≤ 40 LOC.
 
 ### Verification
@@ -117,7 +121,7 @@ Per Principle IX. Recommended order: US1 (registry file moves) → US2 (semver s
 
 ### Implementation
 
-- [ ] T571 [US7] Add `installs_store::list_all_with_dependents(pool: &SqlitePool) -> BackendRuntimeResult<Vec<(RuntimeInstallRow, Vec<String>)>>` using one LEFT JOIN query against `host_runtime_installs` and the dependents table.
+- [ ] T571 [US7] Add `installs_store::list_all_with_dependents(pool: &SqlitePool) -> BackendRuntimeResult<Vec<(RuntimeInstallRow, Vec<String>)>>` using one LEFT JOIN query against `host_runtime_leases` (the actual dependents source — current `list_dependents` walks `host_runtime_leases WHERE released_at IS NULL`). Reference SQL: `SELECT i.*, l.extension_id FROM host_runtime_installs i LEFT JOIN host_runtime_leases l ON l.install_id = i.install_id AND l.released_at IS NULL ORDER BY i.install_id, l.extension_id`. Aggregate consecutive `(install_row, extension_id)` rows in Rust into `Vec<(RuntimeInstallRow, Vec<String>)>` with deduplication of `extension_id`s per install.
 - [ ] T572 [US7] Rewrite `backends/host_runtimes.rs::list_host_runtimes` to call the batched helper; drop the per-install `list_dependents` call inside the loop.
 
 ### Verification
