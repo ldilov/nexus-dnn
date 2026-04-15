@@ -57,7 +57,7 @@ async fn load_candidates(
 ) -> ModelStoreResult<Vec<CandidateRow>> {
     let rows = sqlx::query(
         "SELECT install_id, family, version, quantization, variant, sha256_root, \
-                source_revision, private_model, owner_extension_id, created_at \
+                source_revision, private_model, owner_extension_id, created_at, param_count \
          FROM host_model_installs \
          WHERE state = 'ready' AND (private_model = 0 OR owner_extension_id = $1)",
     )
@@ -67,7 +67,11 @@ async fn load_candidates(
 
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
-        let raw_q: Option<String> = row.try_get("quantization").ok();
+        let raw_q: Option<String> = row
+            .try_get::<Option<String>, _>("quantization")
+            .ok()
+            .flatten()
+            .filter(|s| !s.is_empty());
         let quantization = raw_q.and_then(|s| s.parse::<Quantization>().ok());
         out.push(CandidateRow {
             install_id: row.try_get("install_id")?,
@@ -77,7 +81,12 @@ async fn load_candidates(
             variant: row.try_get("variant")?,
             sha256_root: row.try_get("sha256_root")?,
             source_revision: row.try_get("source_revision")?,
-            param_count: 0,
+            param_count: row
+                .try_get::<Option<i64>, _>("param_count")
+                .ok()
+                .flatten()
+                .map(|n| n.max(0) as u64)
+                .unwrap_or(0),
             created_at: row.try_get("created_at")?,
         });
     }

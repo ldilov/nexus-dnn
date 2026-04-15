@@ -31,6 +31,12 @@ async fn build_ctx(
             sqlx::query(t).execute(&pool).await.unwrap();
         }
     }
+    for stmt in include_str!("../../../migrations/010_host_model_store_provenance.sql").split(';') {
+        let t = stmt.trim();
+        if !t.is_empty() {
+            sqlx::query(t).execute(&pool).await.unwrap();
+        }
+    }
     (
         ModelStoreCtx::new(
             pool.clone(),
@@ -95,6 +101,10 @@ async fn multi_file_repo_installs_all_files_and_verifies() {
             source_url: Some("hf://meta-llama/llama-3-8b".into()),
             private: false,
             owner_extension_id: None,
+            license_spdx: Some("apache-2.0".into()),
+            license_url: None,
+            provenance_note: None,
+            param_count: None,
             files,
         },
     )
@@ -124,6 +134,10 @@ async fn corrupt_file_post_install_flips_state_to_corrupt() {
             source_url: Some("http://x/f".into()),
             private: false,
             owner_extension_id: None,
+            license_spdx: Some("apache-2.0".into()),
+            license_url: None,
+            provenance_note: None,
+            param_count: None,
             files: vec![PlannedFile {
                 path: "m.bin".into(),
                 sha256: sha(bytes),

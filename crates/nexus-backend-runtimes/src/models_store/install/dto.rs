@@ -24,6 +24,10 @@ pub struct InstallModelRequest {
     pub private: bool,
     pub owner_extension_id: Option<String>,
     pub files: Vec<PlannedFile>,
+    pub param_count: Option<u64>,
+    pub license_spdx: Option<String>,
+    pub license_url: Option<String>,
+    pub provenance_note: Option<String>,
 }
 
 #[derive(Debug, Clone)]

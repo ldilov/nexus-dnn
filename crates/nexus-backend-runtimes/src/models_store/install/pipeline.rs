@@ -73,8 +73,9 @@ pub async fn install_model(
     sqlx::query(
         "INSERT INTO host_model_installs (install_id, family, version, quantization, variant, \
              install_root, files_manifest, sha256_root, source_revision, state, source_kind, \
-             source_url, private_model, owner_extension_id, created_at, updated_at) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'queued',$10,$11,$12,$13,$14,$14)",
+             source_url, license_spdx, license_url, provenance_note, private_model, \
+             owner_extension_id, param_count, created_at, updated_at) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'queued',$10,$11,$12,$13,$14,$15,$16,$17,$18,$18)",
     )
     .bind(&install_id)
     .bind(&req.family)
@@ -87,14 +88,21 @@ pub async fn install_model(
     .bind(&req.source_revision)
     .bind(&req.source_kind)
     .bind(&req.source_url)
+    .bind(&req.license_spdx)
+    .bind(&req.license_url)
+    .bind(&req.provenance_note)
     .bind(req.private as i64)
     .bind(&req.owner_extension_id)
+    .bind(req.param_count.map(|n| n as i64))
     .bind(&now)
     .execute(&ctx.pool)
     .await?;
 
     let fetch_result = run_fetch(ctx, &install_root, &req).await;
-    let new_state = if fetch_result.is_ok() {
+    let license_ok = license_invariant_holds(&req);
+    let new_state = if !license_ok {
+        "failed"
+    } else if fetch_result.is_ok() {
         "ready"
     } else {
         "failed"
@@ -108,11 +116,29 @@ pub async fn install_model(
         .await?;
 
     release_key_lock(&ctx.inflight, &key).await;
+
+    if !license_ok {
+        return Err(ModelStoreError::ManifestInvalid(
+            "license_spdx required on ready state; UNKNOWN requires non-empty provenance_note"
+                .into(),
+        ));
+    }
     fetch_result?;
 
     find_existing(&ctx.pool, &key)
         .await?
         .ok_or_else(|| ModelStoreError::InstallNotFound(install_id.clone()))
+}
+
+fn license_invariant_holds(req: &InstallModelRequest) -> bool {
+    match req.license_spdx.as_deref() {
+        None => false,
+        Some("UNKNOWN") => req
+            .provenance_note
+            .as_deref()
+            .is_some_and(|s| !s.is_empty()),
+        Some(_) => true,
+    }
 }
 
 async fn run_fetch(

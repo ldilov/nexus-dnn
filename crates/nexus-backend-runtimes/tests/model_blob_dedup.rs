@@ -28,6 +28,12 @@ async fn make_ctx(
             sqlx::query(t).execute(&pool).await.unwrap();
         }
     }
+    for stmt in include_str!("../../../migrations/010_host_model_store_provenance.sql").split(';') {
+        let t = stmt.trim();
+        if !t.is_empty() {
+            sqlx::query(t).execute(&pool).await.unwrap();
+        }
+    }
     ModelStoreCtx::new(
         pool,
         tmp.path().join("installs"),
@@ -62,6 +68,10 @@ async fn two_installs_share_tokenizer_blob() {
         source_url: Some("http://x/model-a".into()),
         private: false,
         owner_extension_id: None,
+        license_spdx: Some("apache-2.0".into()),
+        license_url: None,
+        provenance_note: None,
+        param_count: None,
         files: vec![
             PlannedFile {
                 path: "tokenizer.json".into(),
@@ -118,6 +128,10 @@ async fn gc_blobs_reclaims_unreferenced() {
         source_url: Some("http://x/f".into()),
         private: false,
         owner_extension_id: None,
+        license_spdx: Some("apache-2.0".into()),
+        license_url: None,
+        provenance_note: None,
+        param_count: None,
         files: vec![PlannedFile {
             path: "only.bin".into(),
             sha256: sha(bytes),
