@@ -210,9 +210,9 @@ Per plan.md §"Implementation Sequencing", every commit MUST leave the workspace
 ### Implementation
 
 - [ ] T084 [US5] Implement `ParameterCatalogDto` in `crates/nexus-api/src/dto/runtime.rs` with `#[ts(export)]` mirroring the Rust `ParameterCatalog` shape
-- [ ] T085 [US5] Implement `GET /api/v1/backends/:family/parameters` handler in `crates/nexus-api/src/handlers/backends.rs` calling `capability.get_parameter_catalog(family)`; 404 `FAMILY_UNKNOWN` on unknown family
-- [ ] T086 [US5] Regenerate TS DTOs via `cargo test -p nexus-api export_bindings` and commit `apps/web/src/api/generated/ParameterCatalogDto.ts`
-- [ ] T087 [US5] Add `fetchParameterCatalog(family)` to `apps/web/src/api/client.ts`
+- [X] T085 [US5] Implement `GET /api/v1/backends/:family/parameters` handler in `crates/nexus-api/src/handlers/backends.rs` calling `capability.get_parameter_catalog(family)`; 404 `FAMILY_UNKNOWN` on unknown family
+- [ ] T086 [US5] Regenerate TS DTOs via `cargo test -p nexus-api export_bindings` and commit `apps/web/src/api/generated/ParameterCatalogDto.ts` — deferred (loose-typed client surface used in T087)
+- [X] T087 [US5] Add `fetchParameterCatalog(family)` to `apps/web/src/api/client.ts`
 - [ ] T088 [US5] Verify US5: `cargo test -p nexus-backend-runtimes parameter_catalog`, `curl http://localhost:7878/api/v1/backends/llama.cpp/parameters | jq '.data.total_entries'` returns 213, manual quickstart §"US5 — Parameter catalog endpoint"
 
 ---
