@@ -31,8 +31,6 @@ mod migration;
 mod relocation;
 mod resolution;
 
-// Public re-exports (preserve original module surface)
-// Re-export the public surface (originally free functions on installs_store::*)
 pub use migration::migrate_from_legacy;
 pub use relocation::relocate_legacy_binaries;
 pub use resolution::resolve_dependency;
