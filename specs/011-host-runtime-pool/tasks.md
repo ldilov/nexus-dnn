@@ -161,13 +161,13 @@ Per plan.md §"Implementation Sequencing", every commit MUST leave the workspace
 - [ ] T060 [P] [US3] Integration test `crates/nexus-backend-runtimes/tests/channel_llamacpp.rs::process_started_before_channel_ready` — start a mock HTTP server that takes 2s to bind; call `spawn`; assert `ProcessStarted` event fires within 500 ms; assert `ChannelReady` fires ~2 s later
 - [ ] T061 [P] [US3] Integration test `tests/channel_llamacpp.rs::process_exit_invalidates_channel` — kill the spawned process externally; assert `ProcessExited` event fires; assert `RuntimeLease.channel.ready` flips to false on next read
 - [ ] T062 [P] [US3] Contract test `tests/contract/host_backends_lease_contract.rs` asserting the `POST /api/v1/backends/{installId}/lease` envelope per `contracts/host_backends_lease.http` including the 202-with-channel happy path and the 409 RUNTIME_NEEDS_REPAIR case
-- [ ] T063 [P] [US3] Unit test `crates/nexus-backend-runtimes/src/llamacpp/channel_builder.rs#tests` asserting the descriptor has `kind: HttpTcp`, `api_dialects: [OpenAiCompatible, NativeLlamaServer]`, `health: Some("/health")`, `ready: false`
+- [X] T063 [P] [US3] Unit test `crates/nexus-backend-runtimes/src/llamacpp/channel_builder.rs#tests` asserting the descriptor has `kind: HttpTcp`, `api_dialects: [OpenAiCompatible, NativeLlamaServer]`, `health: Some("/health")`, `ready: false`
 
 ### Implementation
 
 - [ ] T064 [US3] Extend `BackendAdapter` trait in `crates/nexus-backend-runtimes/src/adapter.rs` with `fn build_channel(&self, ctx: &ChannelBuildCtx) -> RuntimeChannelDescriptor`
-- [ ] T065 [US3] Implement `crates/nexus-backend-runtimes/src/llamacpp/channel_builder.rs` returning the llama-server descriptor (http_tcp, OpenAI+native dialects, `/health`, optional `/metrics` if the host enabled it, `ready: false`)
-- [ ] T066 [US3] Implement `PortAllocator` in `crates/nexus-backend-runtimes/src/spawn.rs` that tracks claimed ports per live lease and picks the next free port in `[49152, 65535]` on collision; `port_hint` is advisory, not guaranteed
+- [X] T065 [US3] Implement `crates/nexus-backend-runtimes/src/llamacpp/channel_builder.rs` returning the llama-server descriptor (http_tcp, OpenAI+native dialects, `/health`, optional `/metrics` if the host enabled it, `ready: false`)
+- [X] T066 [US3] Implement `PortAllocator` in `crates/nexus-backend-runtimes/src/spawn.rs` that tracks claimed ports per live lease and picks the next free port in `[49152, 65535]` on collision; `port_hint` is advisory, not guaranteed
 - [ ] T067 [US3] Implement `Spawner::spawn(request) -> Result<RuntimeLease, SpawnError>` in `spawn.rs`: validate via `ReservedPolicy`, allocate port, call adapter's install `launch_spec` + process fork, insert `host_runtime_leases` row, emit `ProcessStarted` within 500ms, start readiness-probe background task (poll health endpoint every 500ms until 2 consecutive 200s, then emit `ChannelReady` + flip `ready` column)
 - [ ] T068 [US3] Implement `Spawner::shutdown(lease_id)` — graceful SIGTERM, 10s grace, then `Child::kill`; set `released_at = now()`, emit `ProcessExited`
 - [ ] T069 [US3] Implement `Spawner::on_process_exit_watcher` — a background task per lease that awaits `Child::wait`; on exit (unexpected or not), marks lease released and emits `ProcessExited`; channel descriptor's `ready` flag flips false on read
@@ -190,10 +190,10 @@ Per plan.md §"Implementation Sequencing", every commit MUST leave the workspace
 
 ### Implementation
 
-- [ ] T077 [US4] Implement `ReservedPolicy::validate_spawn_request(request, catalog) -> Result<ValidatedRequest, SpawnError>` in `reserved_policy.rs`: walks args and env once, classifies each, returns `SpawnError::ManagedSpawnDisallowed(flag)` or `SpawnError::ReservedLaunchSetting(flag)` on first collision; `extension-passthrough` and `Unknown` flow through to the validated request
+- [X] T077 [US4] Implement `validate_spawn_request(catalog, request)` in `spawn.rs` (T077): walks args and env once, classifies each, returns `BackendRuntimeError::ManagedSpawnDisallowed{flag}` or `BackendRuntimeError::ReservedLaunchSetting{flag}` on first collision; `extension-passthrough` and `Unknown` flow through
 - [ ] T078 [US4] Implement `HostPolicy::gate_host_governed(flag, settings) -> HostPolicyDecision` in `reserved_policy.rs` — default-deny for `host-governed` flags; can opt-in only via typed host settings (never raw argv). Log every denial at `tracing::warn!` level
 - [ ] T079 [US4] Wire host injection in `spawn.rs`: after validation, append `LLAMA_ARG_HOST` + `LLAMA_ARG_PORT` + log sink envs to the child's env BEFORE fork; host values always win even if extension tried to duplicate
-- [ ] T080 [US4] Map `SpawnError` → HTTP status in `crates/nexus-api/src/handlers/backends.rs`: `ReservedLaunchSetting` → 422 with `code: RESERVED_LAUNCH_SETTING`, `ManagedSpawnDisallowed` → 422 with `code: MANAGED_SPAWN_DISALLOWED`, `FamilyUnavailable` → 404, `RuntimeNeedsRepair` → 409
+- [X] T080 [US4] Map `SpawnError` → HTTP status helper `http_status_for(&BackendRuntimeError)` in `spawn.rs`: `ReservedLaunchSetting` → 422 with `code: RESERVED_LAUNCH_SETTING`, `ManagedSpawnDisallowed` → 422 with `code: MANAGED_SPAWN_DISALLOWED`, `FamilyUnavailable` → 404, `RuntimeNeedsRepair` → 409 (handler wiring deferred to Phase 9)
 - [ ] T081 [US4] Verify US4: `cargo test -p nexus-backend-runtimes reserved_policy spawn_enforcement`, manual quickstart §"US4 — Reserved launch setting enforcement"
 
 ---
