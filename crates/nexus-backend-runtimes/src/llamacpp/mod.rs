@@ -6,21 +6,23 @@ pub mod probe;
 use async_trait::async_trait;
 use camino::Utf8PathBuf;
 use sqlx::SqlitePool;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::adapter::{
-    BackendAdapter, BackendCardSummary, ImplementationStatus, InstallRequest,
-};
+use crate::adapter::{BackendAdapter, BackendCardSummary, ImplementationStatus, InstallRequest};
+use crate::channel::{ChannelBuildCtx, RuntimeChannelDescriptor};
 use crate::error::RuntimeAdapterError;
 use crate::events::{NAMESPACE_LLAMACPP, SharedPublisher};
+use crate::launch_spec::LaunchSpec;
 use crate::manifest::install::{InstallManifest, InstallStatus};
 use crate::manifest::version::VersionManifest;
 use crate::resolver::MachineDescriptor;
 use crate::settings::{AcceleratorProfile, RuntimeSettings};
 use crate::settings_store;
+use crate::spawn::SpawnRuntimeRequest;
 use crate::state::RuntimeCardState;
 use crate::validator::ValidationReport;
 
@@ -49,7 +51,8 @@ impl LlamaCppAdapter {
     }
 
     async fn load_version_manifest(&self) -> Result<VersionManifest, RuntimeAdapterError> {
-        let manifest = crate::manifest::version::load_from_path(&self.version_manifest_path).await?;
+        let manifest =
+            crate::manifest::version::load_from_path(&self.version_manifest_path).await?;
         Ok(manifest)
     }
 }
@@ -92,7 +95,9 @@ impl BackendAdapter for LlamaCppAdapter {
             display_name: self.display_name().into(),
             implementation_status: ImplementationStatus::Available,
             card_state,
-            last_failure_category: install.as_ref().and_then(|i| i.last_failure_category.clone()),
+            last_failure_category: install
+                .as_ref()
+                .and_then(|i| i.last_failure_category.clone()),
             install,
             supported_profiles: machine.supported_profiles(),
             unavailable_reason: None,
@@ -180,5 +185,36 @@ impl BackendAdapter for LlamaCppAdapter {
         );
         self.publisher.publish(event).await;
         Ok(())
+    }
+
+    fn build_channel(&self, ctx: &ChannelBuildCtx) -> RuntimeChannelDescriptor {
+        channel_builder::build(ctx)
+    }
+
+    async fn launch_spec(
+        &self,
+        install: &InstallManifest,
+        _request: &SpawnRuntimeRequest,
+    ) -> Result<LaunchSpec, RuntimeAdapterError> {
+        let binary_name = if cfg!(windows) {
+            "llama-server.exe"
+        } else {
+            "llama-server"
+        };
+        let install_root = PathBuf::from(&install.install_path);
+        let candidate = install_root.join(binary_name);
+        let binary = if candidate.exists() {
+            candidate
+        } else if !install.binary_path.is_empty() {
+            PathBuf::from(&install.binary_path)
+        } else {
+            candidate
+        };
+        Ok(LaunchSpec {
+            binary,
+            base_args: Vec::new(),
+            base_env: BTreeMap::new(),
+            working_dir: None,
+        })
     }
 }

@@ -47,7 +47,7 @@ pub use error::{
     ValidationError,
 };
 pub use events::{BackendEvent, EventPublisher};
-pub use launch_spec::{LaunchSpec, generate as generate_launch_spec};
+pub use launch_spec::{LaunchSpec, LlamaServerLaunchSpec, generate as generate_launch_spec};
 pub use lease::RuntimeLease;
 pub use manifest::install::InstallManifest;
 pub use manifest::version::{ReleaseAsset, VersionManifest};

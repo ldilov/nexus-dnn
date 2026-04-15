@@ -14,10 +14,11 @@ pub use envelope::ApiResponse;
 pub use error::ApiError;
 
 use nexus_artifact::FilesystemArtifactStore;
+use nexus_backend_runtimes::adapter::AdapterRegistry as BackendAdapterRegistry;
+use nexus_backend_runtimes::spawn::Spawner;
 use nexus_events::bus::EventBus;
 use nexus_extension::InMemoryExtensionRegistry;
 use nexus_huggingface::HuggingFaceCapability;
-use nexus_backend_runtimes::adapter::AdapterRegistry as BackendAdapterRegistry;
 use nexus_run::DefaultRunEngine;
 use nexus_scheduler::Scheduler;
 use nexus_storage::{SqliteDatabase, StorageManager};
@@ -36,6 +37,7 @@ pub struct AppState {
     pub extensions_dir: Option<PathBuf>,
     pub storage_manager: Option<Arc<StorageManager>>,
     pub backend_adapter_registry: Option<Arc<BackendAdapterRegistry>>,
+    pub spawner: Option<Arc<Spawner>>,
     pub huggingface: Option<Arc<dyn HuggingFaceCapability>>,
 }
 

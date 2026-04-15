@@ -48,6 +48,9 @@ pub enum BackendRuntimeError {
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error("no ephemeral port available in allocator range")]
+    NoPortAvailable,
+
     #[error("internal: {0}")]
     Internal(String),
 }
@@ -82,6 +85,8 @@ pub enum RuntimeAdapterError {
     Io(#[from] std::io::Error),
     #[error("storage error: {0}")]
     Storage(String),
+    #[error("unimplemented: {0}")]
+    Unimplemented(String),
 }
 
 #[derive(Debug, Error)]

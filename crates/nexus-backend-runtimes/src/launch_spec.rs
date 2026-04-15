@@ -1,14 +1,31 @@
+//! Launch spec types used by the host runtime pool.
+//!
+//! Two shapes coexist here:
+//!
+//! - [`LlamaServerLaunchSpec`] — legacy deterministic llama-server arg builder
+//!   consumed by the settings preview endpoint.
+//! - [`LaunchSpec`] — spec 011 US3 adapter-owned fork payload: resolved binary
+//!   path, base args, base env, and optional working directory. Populated by
+//!   [`crate::adapter::BackendAdapter::launch_spec`] before the spawner merges
+//!   host-managed args and the extension's argv/env.
+
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use crate::settings::{PortMode, RuntimeSettings};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LaunchSpec {
+pub struct LlamaServerLaunchSpec {
     pub binary: String,
     pub args: Vec<String>,
 }
 
-pub fn generate(settings: &RuntimeSettings, effective_port: u16, binary_path: &str) -> LaunchSpec {
+pub fn generate(
+    settings: &RuntimeSettings,
+    effective_port: u16,
+    binary_path: &str,
+) -> LlamaServerLaunchSpec {
     let port_string = match settings.port_mode {
         PortMode::Fixed => settings
             .fixed_port
@@ -32,8 +49,22 @@ pub fn generate(settings: &RuntimeSettings, effective_port: u16, binary_path: &s
     args.push(settings.parallel_requests.to_string());
     args.extend(settings.extra_args.iter().cloned());
 
-    LaunchSpec {
+    LlamaServerLaunchSpec {
         binary: binary_path.to_string(),
         args,
     }
+}
+
+/// Adapter-provided fork payload (spec 011 US3 T064).
+///
+/// The adapter resolves the backend binary and any family-specific base args /
+/// env. The spawner then layers host-managed flags (port, bind host, metrics,
+/// log dir) and the extension's raw argv/env on top, after reserved-policy
+/// validation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaunchSpec {
+    pub binary: PathBuf,
+    pub base_args: Vec<String>,
+    pub base_env: BTreeMap<String, String>,
+    pub working_dir: Option<PathBuf>,
 }

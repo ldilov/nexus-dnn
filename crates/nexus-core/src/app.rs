@@ -189,6 +189,17 @@ impl NexusApp {
         )
         .await;
 
+        let spawner = backend_adapter_registry.as_ref().map(|adapters| {
+            let publisher: nexus_backend_runtimes::events::SharedPublisher = Arc::new(
+                nexus_backend_runtimes::events::BroadcastPublisher::new(1024),
+            );
+            Arc::new(nexus_backend_runtimes::spawn::Spawner::with_pool(
+                publisher,
+                db.pool().clone(),
+                adapters.clone(),
+            ))
+        });
+
         let huggingface: Arc<dyn nexus_huggingface::HuggingFaceCapability> =
             Arc::new(nexus_huggingface::HuggingFaceClient::new(
                 db.pool().clone(),
@@ -209,6 +220,7 @@ impl NexusApp {
             extensions_dir: Some(extensions_dir),
             storage_manager: Some(storage_manager),
             backend_adapter_registry,
+            spawner,
             huggingface: Some(huggingface),
         };
 
@@ -692,8 +704,9 @@ async fn build_backend_adapter_registry(
         Ok(p) => p,
         Err(_) => return None,
     };
-    let publisher: nexus_backend_runtimes::events::SharedPublisher =
-        Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(1024));
+    let publisher: nexus_backend_runtimes::events::SharedPublisher = Arc::new(
+        nexus_backend_runtimes::events::BroadcastPublisher::new(1024),
+    );
     let adapter = nexus_backend_runtimes::llamacpp::LlamaCppAdapter::new(
         version_manifest_path,
         runtimes_root_utf8,
