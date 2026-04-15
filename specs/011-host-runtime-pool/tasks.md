@@ -142,12 +142,12 @@ Per plan.md §"Implementation Sequencing", every commit MUST leave the workspace
 
 ### Implementation
 
-- [ ] T053 [US1] Implement `list_installed(pool) -> Vec<RuntimeInstall>` in `crates/nexus-backend-runtimes/src/installs_store.rs` (reads from `host_runtime_installs`)
-- [ ] T054 [US1] Implement `list_dependents(install_id) -> Vec<ExtensionId>` in the same file by joining `host_runtime_leases` with the enabled-extensions registry; include any extension whose manifest declares a matching runtime_dependency
-- [ ] T055 [US1] Implement `resolve_dependency(dep, pool) -> Result<InstallId>` returning the best-matching install or an error variant `DependencyUnmet { family, version_req, acceleration_options }`
-- [ ] T056 [US1] Extend `crates/nexus-extension/src/manifest.rs::ExtensionManifest` with optional `runtime_dependencies: Vec<RuntimeDependency>` field; `RuntimeDependency { family, version: Option<String>, acceleration: Vec<AcceleratorProfile> }` with `#[serde(default)]` for additive compat (per R5)
+- [X] T053 [US1] Implement `list_installed(pool) -> Vec<RuntimeInstall>` in `crates/nexus-backend-runtimes/src/installs_store.rs` (reads from `host_runtime_installs`) — exists as `list_all`
+- [X] T054 [US1] Implement `list_dependents(install_id) -> Vec<ExtensionId>` in the same file by joining `host_runtime_leases` with the enabled-extensions registry; include any extension whose manifest declares a matching runtime_dependency
+- [X] T055 [US1] Implement `resolve_dependency(dep, pool) -> Result<InstallId>` returning the best-matching install or an error variant `DependencyUnmet { family, version_req, acceleration_options }`
+- [X] T056 [US1] Extend `crates/nexus-extension/src/manifest.rs::ExtensionManifest` with optional `runtime_dependencies: Vec<RuntimeDependency>` field; `RuntimeDependency { family, version: Option<String>, acceleration: Vec<AcceleratorProfile> }` with `#[serde(default)]` for additive compat (per R5)
 - [ ] T057 [US1] Wire dependency resolution into the extension-enable path: before an extension flips to `enabled`, resolve its `runtime_dependencies` and reject with a structured error if any cannot be satisfied
-- [ ] T058 [US1] Declare `runtime_dependencies: [{ family: "llama.cpp", version: ">=b4000", acceleration: ["cpu","cuda12","cuda13"] }]` in `extensions/builtin/local-llm/manifest.yaml`
+- [X] T058 [US1] Declare `runtime_dependencies: [{ family: "llama.cpp", version: ">=b4000", acceleration: ["cpu","cuda12","cuda13"] }]` in `extensions/builtin/local-llm/manifest.yaml`
 - [ ] T059 [US1] Verify US1: `cargo test -p nexus-backend-runtimes multi_consumer dependency_resolution`, manual quickstart §"US1 — Shared install across extensions"
 
 ---

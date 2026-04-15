@@ -170,6 +170,75 @@ pub async fn migrate_from_legacy(pool: &SqlitePool) -> BackendRuntimeResult<u64>
     Ok(inserted)
 }
 
+/// Find the best-matching `installed` runtime row for a dependency declaration
+/// (spec 011 US1). Version matching uses a permissive lexicographic test against
+/// the `version` column; accelerator matching is a membership check when the
+/// dependency pins one or more acceleration profiles.
+///
+/// Returns `Ok(Some(row))` on match, `Ok(None)` when no install satisfies the
+/// requirement.
+pub async fn resolve_dependency(
+    pool: &SqlitePool,
+    family: &str,
+    version_req: Option<&str>,
+    acceleration: &[String],
+) -> BackendRuntimeResult<Option<RuntimeInstallRow>> {
+    let all = list_all(pool).await?;
+    let matched = all.into_iter().find(|row| {
+        row.family == family
+            && row.state == "installed"
+            && version_satisfies(row.version.as_str(), version_req)
+            && (acceleration.is_empty() || acceleration.iter().any(|a| a == &row.accelerator))
+    });
+    Ok(matched)
+}
+
+/// Return the extension ids currently holding (or declaring) a dependency on
+/// the given install. Walks `host_runtime_leases` for live leases; callers
+/// that also need manifest-declared dependents should merge with the registry
+/// view.
+pub async fn list_dependents(
+    pool: &SqlitePool,
+    install_id: &str,
+) -> BackendRuntimeResult<Vec<String>> {
+    let rows = sqlx::query(
+        "SELECT DISTINCT extension_id FROM host_runtime_leases \
+         WHERE install_id = $1 AND released_at IS NULL",
+    )
+    .bind(install_id)
+    .fetch_all(pool)
+    .await
+    .map_err(storage)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(row.try_get::<String, _>("extension_id").map_err(storage)?);
+    }
+    Ok(out)
+}
+
+fn version_satisfies(have: &str, req: Option<&str>) -> bool {
+    let Some(req) = req else {
+        return true;
+    };
+    let req = req.trim();
+    if let Some(rest) = req.strip_prefix(">=") {
+        return have >= rest.trim();
+    }
+    if let Some(rest) = req.strip_prefix(">") {
+        return have > rest.trim();
+    }
+    if let Some(rest) = req.strip_prefix("<=") {
+        return have <= rest.trim();
+    }
+    if let Some(rest) = req.strip_prefix("<") {
+        return have < rest.trim();
+    }
+    if let Some(rest) = req.strip_prefix("=") {
+        return have == rest.trim();
+    }
+    have == req
+}
+
 async fn legacy_table_exists(pool: &SqlitePool) -> BackendRuntimeResult<bool> {
     let row = sqlx::query(
         "SELECT name FROM sqlite_master \
@@ -233,6 +302,73 @@ mod tests {
         .unwrap();
         let affected = hydrate_on_start(&pool).await.unwrap();
         assert_eq!(affected, 1);
+    }
+
+    #[tokio::test]
+    async fn resolve_dependency_matches_family_version_and_accel() {
+        let pool = mem_pool().await;
+        apply_schema(&pool).await;
+        sqlx::query(
+            "INSERT INTO host_runtime_installs \
+             (install_id, family, version, accelerator, install_root, binary_paths, state, \
+              created_at, updated_at) \
+             VALUES \
+             ('ri_a','llama.cpp','b4970','cuda12','/a','[]','installed','t','t'), \
+             ('ri_b','llama.cpp','b3000','cpu','/b','[]','installed','t','t'), \
+             ('ri_c','llama.cpp','b5000','cpu','/c','[]','needs_repair','t','t')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let m = resolve_dependency(
+            &pool,
+            "llama.cpp",
+            Some(">=b4000"),
+            &["cuda12".into(), "cpu".into()],
+        )
+        .await
+        .unwrap();
+        assert_eq!(m.unwrap().install_id, "ri_a");
+
+        let none = resolve_dependency(&pool, "llama.cpp", Some(">=b9999"), &[])
+            .await
+            .unwrap();
+        assert!(none.is_none());
+
+        let not_ready = resolve_dependency(&pool, "llama.cpp", Some(">=b5000"), &["cpu".into()])
+            .await
+            .unwrap();
+        assert!(not_ready.is_none(), "needs_repair rows must not resolve");
+    }
+
+    #[tokio::test]
+    async fn list_dependents_returns_active_lease_holders() {
+        let pool = mem_pool().await;
+        apply_schema(&pool).await;
+        sqlx::query(
+            "INSERT INTO host_runtime_installs \
+             (install_id, family, version, accelerator, install_root, binary_paths, state, \
+              created_at, updated_at) \
+             VALUES ('ri_1','llama.cpp','b1','cpu','/tmp','[]','installed','t','t')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO host_runtime_leases \
+             (lease_id, install_id, extension_id, channel_kind, channel_address, api_dialects, ready, created_at) \
+             VALUES \
+             ('l1','ri_1','ext.a','http_tcp','{}','[]',1,'t'), \
+             ('l2','ri_1','ext.b','http_tcp','{}','[]',1,'t'), \
+             ('l3','ri_1','ext.a','http_tcp','{}','[]',1,'t')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let mut deps = list_dependents(&pool, "ri_1").await.unwrap();
+        deps.sort();
+        assert_eq!(deps, vec!["ext.a".to_string(), "ext.b".to_string()]);
     }
 
     #[tokio::test]

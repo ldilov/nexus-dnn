@@ -18,6 +18,19 @@ pub struct ExtensionManifest {
     pub recipes: Option<Vec<FileRef>>,
     pub ui: Option<UiDeclaration>,
     pub storage: Option<StorageContribution>,
+    #[serde(default)]
+    pub runtime_dependencies: Vec<RuntimeDependency>,
+}
+
+/// A host-managed runtime this extension requires to function. Resolved
+/// against `host_runtime_installs` at enable time (spec 011 US1).
+#[derive(Debug, Clone, Deserialize)]
+pub struct RuntimeDependency {
+    pub family: String,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub acceleration: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
