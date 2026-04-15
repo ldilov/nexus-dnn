@@ -1,0 +1,178 @@
+# Tasks: Extension + API Modularization
+
+**Input**: Design documents from `/specs/016-extension-api-modularization/`
+**Prerequisites**: spec.md, plan.md; recommend landing specs 014 and 015 first (not hard deps)
+**Tests**: existing `nexus-extension` + `nexus-api` suites are the safety net (Principle VI(b)). New tests added for US4 (discover_and_activate), US7 (N+1 via query counter), US8 (exhaustive match, warn log).
+
+## Sequencing invariant
+
+Per Principle IX. Recommended order: US1 (registry file moves) → US2 (semver swap) → US3 (scanner DRY) → US4 (POLA fix) → US5 (backends file moves) → US6 (create_lease split) → US7 (N+1 fix) → US8 (exhaustive + warn log).
+
+---
+
+## Phase 1: Baseline
+
+- [ ] T501 Capture baseline: `cargo test -p nexus-extension -p nexus-api --tests 2>&1 | tee /tmp/016-baseline.txt`.
+
+---
+
+## Phase 2: US1 — `registry.rs` file split (P1)
+
+- [ ] T510 Create `crates/nexus-extension/src/registry/` directory; move `registry.rs` → `registry/mod.rs`.
+- [ ] T511 [P] [US1] Extract `registry/types.rs` (DiscoveryReport, ExtensionStatus + impl, LayoutFile, ActivatedExtension, RegistryState).
+- [ ] T512 [P] [US1] Extract `registry/scanner.rs` (scan_extensions_dir, scan_builtin_dir, read_extension_dirs, process_extension, process_builtin_extension, rebuild_operator_entries, activate_extension_inner).
+- [ ] T513 [P] [US1] Extract `registry/loaders.rs` (load_operators, load_recipes, load_ui_contributions, load_layouts, yaml_to_json_value, yaml_to_json_value_for_operator).
+- [ ] T514 [P] [US1] Extract `registry/storage_validation.rs` (validate_storage_contribution, validate_storage_sql_files).
+- [ ] T515 [P] [US1] Extract `registry/version_conflict.rs` (detect_intra_manifest_conflicts + VersionInterval et al — semver swap happens in Phase 3).
+
+### Verification
+
+- [ ] T516 [US1] `cargo test -p nexus-extension --tests` GREEN; every submodule ≤ 350 LOC.
+
+---
+
+## Phase 3: US2 — `VersionInterval` → `semver::VersionReq` + `LlamaCppBuildReq` (P1)
+
+### Tests (write first — RED)
+
+- [ ] T520 [P] [US2] Unit tests in `version_conflict.rs` for existing conflict cases: `[">=b5000", "<b4500"]` → conflict, `[">=b4000", ">=b4970"]` → no conflict, `[">=1.0.0", "<2.0.0"]` → no conflict (semver-happy path).
+- [ ] T521 [P] [US2] Unit tests for `LlamaCppBuildReq`: parse `>=b4970` / `<b5000` / `=b4970`; `overlaps` / `contains(&str)` helpers.
+
+### Implementation
+
+- [ ] T522 [US2] Add `LlamaCppBuildReq` pub(crate) struct in `version_conflict.rs`: parses `^(>=|<=|=|<|>)?b(\d+)$` with regex-lite (already a dep); stores operator + u64. `fn overlaps(&self, other: &Self) -> bool`.
+- [ ] T523 [US2] Rewrite `detect_intra_manifest_conflicts`: try `semver::VersionReq::parse` first; on parse error, fall back to `LlamaCppBuildReq::parse`; if both fail, return `ExtensionError::InvalidManifest` with a clear message. Overlap check uses `VersionReq::matches(&candidate_versions)` or `LlamaCppBuildReq::overlaps`.
+- [ ] T524 [US2] Delete `VersionInterval`, `intervals_all_overlap`, `pair_overlaps`, `value_in_interval`, `choose_tighter_lower`, `choose_tighter_upper`.
+
+### Verification
+
+- [ ] T525 [US2] All existing + new conflict tests GREEN; grep for `VersionInterval` in `crates/nexus-extension/src/` returns zero hits.
+
+---
+
+## Phase 4: US3 — Scanner DRY (P2)
+
+- [ ] T530 [US3] Add `scan_dir_with<F>(dir: &Path, host_version: &Version, protocol_version: &Version, process_fn: F, label: &'static str) -> Result<ScanResult, ExtensionError>` in `registry/scanner.rs` where `F: Fn(PathBuf, &Version, &Version) -> Result<Option<(ActivatedExtension, Vec<(String, OperatorDefinition)>)>, ExtensionError>`.
+- [ ] T531 [US3] Rewrite `scan_extensions_dir` and `scan_builtin_dir` as 10-to-15 LOC delegators passing `process_extension` / `process_builtin_extension` respectively.
+
+### Verification
+
+- [ ] T532 [US3] `cargo test -p nexus-extension --tests` GREEN.
+
+---
+
+## Phase 5: US4 — `discover_and_activate` POLA fix (P2)
+
+### Tests (write first — RED)
+
+- [ ] T540 [US4] Integration test `crates/nexus-extension/tests/discover_and_activate_scans_dir.rs`: create empty registry; populate a temp `extensions_dir` with one valid extension; call `discover_and_activate(dir, host_v, proto_v)`; assert the new extension is present in `list_extensions()`.
+
+### Implementation (PR description MUST state chosen branch + reason)
+
+- [ ] T541 [US4] **Decision point**: choose (a) make `discover_and_activate` a real discover via `refresh`; or (b) rename to `list_activated_ids()` and trim signature. Record the decision in the PR body.
+- [ ] T542 [US4] Apply chosen branch: if (a), body = `self.refresh(extensions_dir, host_version, protocol_version).await?.into_report()`; if (b), update trait definition + all impls + all callers.
+
+### Verification
+
+- [ ] T543 [US4] New test GREEN for chosen branch; all existing callers still compile.
+
+---
+
+## Phase 6: US5 — `handlers/backends.rs` file split (P1)
+
+- [ ] T550 Create `crates/nexus-api/src/handlers/backends/` directory; move `backends.rs` → `backends/mod.rs`.
+- [ ] T551 [P] [US5] Extract `backends/catalog.rs` (list, detail, BackendSummary, BackendListResponse, BackendSummaryChips).
+- [ ] T552 [P] [US5] Extract `backends/lifecycle.rs` (install, validate, repair, InstallBody, InstallResponse).
+- [ ] T553 [P] [US5] Extract `backends/settings.rs` (get_settings, put_settings).
+- [ ] T554 [P] [US5] Extract `backends/observability.rs` (logs, diagnostics, LogQuery, LogsResponse, DiagnosticsResponse).
+- [ ] T555 [P] [US5] Extract `backends/host_runtimes.rs` (list_host_runtimes, parameter_catalog, HostRuntimeInstallView, HostRuntimesResponse).
+- [ ] T556 [P] [US5] Extract `backends/lease.rs` (create_lease, release_lease, uninstall_runtime + helpers).
+- [ ] T557 [US5] `mod.rs` retains registry, map_error, unwired, impl_status_str, ulid_lite, extension_from_headers + re-exports.
+
+### Verification
+
+- [ ] T558 [US5] `cargo test -p nexus-api --tests` GREEN; every submodule ≤ 300 LOC.
+
+---
+
+## Phase 7: US6 — `create_lease` split (P2)
+
+- [ ] T560 [US6] In `backends/lease.rs`, extract:
+  - `fn validate_install_for_lease(row: Option<&RuntimeInstallRow>) -> Result<&RuntimeInstallRow, Response>` (~20 LOC)
+  - `fn build_spawn_request(extension_id: String, install_id: String, body: LeaseBody) -> SpawnRuntimeRequest` (~15 LOC)
+  - `fn stub_lease(install_id: String, extension_id: String, body: LeaseBody) -> LeaseEnvelope` (~25 LOC)
+- [ ] T561 [US6] Rewrite `create_lease` to orchestrate the three helpers; body ≤ 40 LOC.
+
+### Verification
+
+- [ ] T562 [US6] `cargo test -p nexus-api --test host_backends_lease_contract` GREEN.
+
+---
+
+## Phase 8: US7 — N+1 query fix (P2)
+
+### Tests (write first — RED)
+
+- [ ] T570 [US7] Integration test `crates/nexus-api/tests/list_host_runtimes_query_count.rs`: wrap a test pool with a query counter middleware; seed 5 installs + 3 dependent extensions; call `GET /api/v1/host-runtimes`; assert query count = 2 (one list + one batched dependents).
+
+### Implementation
+
+- [ ] T571 [US7] Add `installs_store::list_all_with_dependents(pool: &SqlitePool) -> BackendRuntimeResult<Vec<(RuntimeInstallRow, Vec<String>)>>` using one LEFT JOIN query against `host_runtime_installs` and the dependents table.
+- [ ] T572 [US7] Rewrite `backends/host_runtimes.rs::list_host_runtimes` to call the batched helper; drop the per-install `list_dependents` call inside the loop.
+
+### Verification
+
+- [ ] T573 [US7] New test GREEN; all existing `host-runtimes` tests still GREEN.
+
+---
+
+## Phase 9: US8 — Exhaustive match + warn log (P2)
+
+### Tests (write first — RED)
+
+- [ ] T580 [P] [US8] Unit test in `spawn/mod.rs` (or wherever `http_status_for` ends up in spec 015's split) asserting every current `BackendRuntimeError` variant maps to a distinct non-500 code where applicable; no `_ =>` wildcard.
+- [ ] T581 [P] [US8] Unit test in `backends/lease.rs::uninstall_runtime` covering the `remove_binary_directory` failure path: use a read-only temp dir or pre-deleted path; assert `tracing::warn!` with `install_id`, `path`, `error` captured via `tracing_test`.
+
+### Implementation
+
+- [ ] T582 [US8] Make `http_status_for` exhaustive: replace `_ => (500, "INTERNAL", error.to_string())` with explicit arms for every current variant. A new variant then requires touching this function.
+- [ ] T583 [US8] In `uninstall_runtime`, replace `let _ = remove_binary_directory(path).await;` with `if let Err(e) = remove_binary_directory(&path).await { tracing::warn!(install_id = %install_id, path = %path.display(), error = %e, "remove_binary_directory failed") }`.
+
+### Verification
+
+- [ ] T584 [US8] Tests GREEN; grep for `let _ =.*\.await` in `crates/nexus-api/src/` returns zero hits outside tests.
+
+---
+
+## Phase 10: Polish
+
+- [ ] T590 [P] Update `crates/nexus-extension/README.md` §"Registry module layout" + §"Conflict detection (semver + llama.cpp build numbers)".
+- [ ] T591 [P] Update `crates/nexus-api/README.md` §"Backends handler submodules".
+- [ ] T592 [P] Update root `README.md` "Recent Changes" to link spec 016.
+- [ ] T593 Final verification: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and SC-401/SC-404/SC-406 grep checks.
+
+---
+
+## Dependencies
+
+```text
+Phase 1 (baseline) ──► Phase 2 (registry moves) ──► Phase 3 (semver swap)
+                                                         │
+                                                         ▼
+                                                   Phase 4 (scanner DRY)
+                                                         │
+                                                         ▼
+                                                   Phase 5 (discover_and_activate)
+                                                         │
+                                                         ▼
+                                                   Phase 6 (backends moves)
+                                                         │
+                                                         ▼
+                                                   Phase 7 (create_lease split) ── Phase 8 (N+1) ── Phase 9 (exhaustive + warn) ──► Phase 10 (polish)
+```
+
+## Task Summary
+
+- **Total tasks**: 38 (T501–T593)
+- **Parallel opportunities**: 13 `[P]` tasks
+- **MVP (P1 only)**: US1 + US2 + US5 = 18 tasks
