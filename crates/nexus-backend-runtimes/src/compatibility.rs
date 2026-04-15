@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::error::RuntimeAdapterError;
+use crate::family::RuntimeFamily;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequiredBackend {
@@ -12,7 +13,7 @@ pub enum RequiredBackend {
 impl RequiredBackend {
     pub fn as_wire(&self) -> &'static str {
         match self {
-            Self::LlamaCpp => "llama.cpp",
+            Self::LlamaCpp => RuntimeFamily::LLAMA_CPP,
             Self::TensorRtLlm => "tensorrt_llm",
             Self::Unknown => "unknown",
         }
@@ -49,11 +50,12 @@ pub fn tag_model(path: &Path) -> RequiredBackend {
 }
 
 pub fn pair_allowed(model: RequiredBackend, backend: &str) -> Result<(), RuntimeAdapterError> {
+    let backend_fam = RuntimeFamily::canonical(backend);
     let ok = matches!(
-        (model, backend),
-        (RequiredBackend::LlamaCpp, "llama.cpp")
-            | (RequiredBackend::TensorRtLlm, "tensorrt_llm")
-            | (RequiredBackend::Unknown, _)
+        (model, backend_fam, backend),
+        (RequiredBackend::LlamaCpp, Some(RuntimeFamily::LlamaCpp), _)
+            | (RequiredBackend::TensorRtLlm, _, "tensorrt_llm")
+            | (RequiredBackend::Unknown, _, _)
     );
     if ok {
         Ok(())

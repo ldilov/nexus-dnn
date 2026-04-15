@@ -1,4 +1,5 @@
 pub mod channel_builder;
+mod install_ctx;
 pub mod install_pipeline;
 pub mod installs_store;
 pub mod probe;
@@ -79,11 +80,11 @@ impl LlamaCppAdapter {
 #[async_trait]
 impl BackendAdapter for LlamaCppAdapter {
     fn id(&self) -> &'static str {
-        "llama.cpp"
+        crate::family::RuntimeFamily::LLAMA_CPP
     }
 
     fn display_name(&self) -> &'static str {
-        "llama.cpp"
+        crate::family::RuntimeFamily::LLAMA_CPP
     }
 
     fn implementation_status(&self) -> ImplementationStatus {
