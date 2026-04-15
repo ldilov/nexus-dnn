@@ -1,9 +1,3 @@
-//! ETag-aware body cache for Hugging Face Hub API responses.
-//!
-//! Backed by the `host_hf_catalog_cache` table defined in migration 007.
-//! Entries carry an expiration timestamp and an optional `ETag` for
-//! `If-None-Match` revalidation.
-
 use chrono::{DateTime, Duration, Utc};
 use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;

@@ -1,5 +1,3 @@
-//! Legacy-table migration extracted per spec 015 US4.
-
 use sqlx::Row;
 use sqlx::SqlitePool;
 
@@ -129,7 +127,6 @@ pub(super) async fn legacy_table_exists(pool: &SqlitePool) -> BackendRuntimeResu
 }
 
 /// Build the JSON-array string stored in `host_runtime_installs.binary_paths`
-/// from a single optional binary path (per spec 015 US7 / FR-312).
 /// Returns `Internal` on serialize failure rather than silently emitting `[]`.
 fn build_binary_paths_json(binary_path: Option<&str>) -> BackendRuntimeResult<String> {
     match binary_path {

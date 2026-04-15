@@ -1,5 +1,3 @@
-//! Uninstall lifecycle dispatcher (retain / drop / archive_then_drop).
-
 use nexus_events::types::NexusEvent;
 
 use crate::database::Database;

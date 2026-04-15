@@ -1,9 +1,3 @@
-//! Spec 012 US1 — startup migration wiring integration tests.
-//!
-//! Validates `run_startup_migrations` chains `migrate_from_legacy`,
-//! `relocate_legacy_binaries`, and `hydrate_on_start` into a single
-//! idempotent pre-bind hook.
-
 use sqlx::SqlitePool;
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -79,7 +73,7 @@ async fn startup_runs_migration_before_bind() {
         .await
         .expect("startup migrations succeed");
 
-    let rows = nexus_backend_runtimes::installs_store::list_all(&pool)
+    let rows = nexus_backend_runtimes::runtime_installs_store::list_all(&pool)
         .await
         .unwrap();
     assert_eq!(
@@ -134,7 +128,7 @@ async fn idempotent_across_restarts() {
     nexus_backend_runtimes::run_startup_migrations(&pool, &data_dir)
         .await
         .expect("first run succeeds");
-    let count_first = nexus_backend_runtimes::installs_store::list_all(&pool)
+    let count_first = nexus_backend_runtimes::runtime_installs_store::list_all(&pool)
         .await
         .unwrap()
         .len();
@@ -142,7 +136,7 @@ async fn idempotent_across_restarts() {
     nexus_backend_runtimes::run_startup_migrations(&pool, &data_dir)
         .await
         .expect("second run succeeds");
-    let count_second = nexus_backend_runtimes::installs_store::list_all(&pool)
+    let count_second = nexus_backend_runtimes::runtime_installs_store::list_all(&pool)
         .await
         .unwrap()
         .len();
@@ -153,7 +147,7 @@ async fn idempotent_across_restarts() {
     nexus_backend_runtimes::run_startup_migrations(&pool, &data_dir)
         .await
         .expect("third run succeeds");
-    let count_third = nexus_backend_runtimes::installs_store::list_all(&pool)
+    let count_third = nexus_backend_runtimes::runtime_installs_store::list_all(&pool)
         .await
         .unwrap()
         .len();

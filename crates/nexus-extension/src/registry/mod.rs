@@ -1,12 +1,3 @@
-//! Extension registry — discovery, activation, and queryable in-memory state.
-//!
-//! Module layout (spec 016 FR-401):
-//! - `types` — public data types + internal `RegistryState`.
-//! - `scanner` — directory scanning + per-extension activation pipeline.
-//! - `loaders` — file loaders (operators, recipes, UI contributions, layouts).
-//! - `storage_validation` — storage contribution + SQL migration validation.
-//! - `version_conflict` — intra-manifest `runtime_dependencies` conflict detection.
-
 mod loaders;
 mod scanner;
 mod storage_validation;
@@ -213,7 +204,6 @@ impl InMemoryExtensionRegistry {
 }
 
 impl ExtensionRegistry for InMemoryExtensionRegistry {
-    /// Spec 016 US4 (FR-408): perform real discovery by delegating to the
     /// synchronous `refresh`. Trait signature remains async to preserve LSP
     /// for `nexus-core` and `nexus-api` callers.
     async fn discover_and_activate(

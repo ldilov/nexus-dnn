@@ -1,9 +1,3 @@
-//! Hugging Face file download request shape.
-//!
-//! The concrete, resumable download driver is in `lib.rs::HuggingFaceClient::download`;
-//! this module owns the request descriptor so consumers can construct it
-//! without depending on the HTTP client.
-
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};

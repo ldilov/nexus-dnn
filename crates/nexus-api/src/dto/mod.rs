@@ -1,16 +1,3 @@
-//! Wire-shape DTOs for every REST endpoint.
-//!
-//! Every migrated handler in `crate::handlers::*` returns one of these structs
-//! wrapped in an [`ApiEnvelope`]. The types are the single source of truth for
-//! the frontend contract — TypeScript type declarations under
-//! `apps/web/src/api/generated/` are emitted by `ts-rs` from the same struct
-//! definitions (see the `export_bindings` test in this module).
-//!
-//! Out of scope for this sweep: `backends` (already typed in-place with
-//! runtime-specific enums) and `storage_contributions` (internal admin API).
-//! They continue to serialize structurally compatible JSON; their frontend
-//! consumers use hand-maintained types in `apps/web/src/backends/` for now.
-
 pub mod artifacts;
 pub mod canvas;
 pub mod envelope;

@@ -1,10 +1,5 @@
-//! Host backend-runtime HTTP handlers.
-//!
-//! Spec 016 (FR-404) splits the former 845-LOC `backends.rs` into six domain
-//! submodules + this `mod.rs` of shared helpers. Public entry points are
-//! re-exported so `router.rs` still addresses them as `backends::<fn>`.
-
 mod catalog;
+mod host_models;
 mod host_runtimes;
 mod lease;
 mod lifecycle;
@@ -13,6 +8,9 @@ mod settings;
 mod uninstall;
 
 pub use catalog::{detail, list};
+pub use host_models::{
+    create_model_lease, list_host_models, release_model_lease, resolve_host_models,
+};
 pub use host_runtimes::{list_host_runtimes, parameter_catalog};
 pub use lease::{create_lease, release_lease};
 pub use lifecycle::{install, repair, validate};

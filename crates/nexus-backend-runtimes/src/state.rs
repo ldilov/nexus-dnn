@@ -1,9 +1,3 @@
-//! Runtime install state enum + transition guard.
-//!
-//! The reconciler policy from spec 010 US1 lands here: `Installed` can only
-//! become `NeedsRepair` through the reconciler trigger; no caller is allowed
-//! to transition `Installed -> NotInstalled` or `Installed -> Installing`.
-
 use serde::{Deserialize, Serialize};
 
 use crate::error::{BackendRuntimeError, BackendRuntimeResult};

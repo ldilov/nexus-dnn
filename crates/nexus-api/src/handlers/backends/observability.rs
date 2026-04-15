@@ -1,5 +1,3 @@
-//! `/llm/backends/{id}/logs` + `/diagnostics`.
-
 use axum::extract::{Path, Query, State};
 use axum::response::IntoResponse;
 use serde::{Deserialize, Serialize};

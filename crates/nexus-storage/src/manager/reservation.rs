@@ -1,5 +1,3 @@
-//! StorageManager `reservation` methods extracted per spec 014.
-
 use nexus_events::types::NexusEvent;
 
 use crate::database::Database;

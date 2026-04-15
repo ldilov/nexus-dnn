@@ -8,13 +8,8 @@ use nexus_backend_runtimes::events::BroadcastPublisher;
 use nexus_backend_runtimes::settings::AcceleratorProfile;
 use nexus_backend_runtimes::spawn::{RuntimeBindMode, SpawnRuntimeRequest};
 
-// RED: Spawner::spawn is not yet implemented (T067).
-//
 // Both tests are marked #[ignore] so `cargo test` does not report failure.
 // The Spawner call bodies are fully commented out so `cargo check --tests`
-// compiles cleanly.  Remove #[ignore] and uncomment the bodies once T067 lands.
-//
-// Event topic contract that T067 must honour:
 //   "process.started"  → emitted as soon as the child process is forked
 //   "channel.ready"    → emitted when the health probe gets 2× consecutive 200s
 //   "process.exited"   → emitted when the child process terminates for any reason
@@ -34,7 +29,6 @@ fn make_request(port: u16) -> SpawnRuntimeRequest {
     }
 }
 
-/// T060 — `ProcessStarted` fires before the health endpoint becomes reachable;
 /// `ChannelReady` fires only after the server begins returning 200 on /health.
 ///
 /// The mock server binds immediately but delays /health responses by ~2 s.
@@ -98,7 +92,6 @@ async fn process_started_before_channel_ready() {
     mock.kill();
 }
 
-/// T061 — Killing the spawned process externally causes `ProcessExited` to be
 /// emitted and flips `RuntimeLease.channel.ready` to `false` on next read.
 #[tokio::test]
 async fn process_exit_invalidates_channel() {
@@ -133,7 +126,6 @@ async fn process_exit_invalidates_channel() {
 }
 
 /// Shared helper: drains the broadcast receiver until `topic` is seen or
-/// `timeout` expires (panics on timeout). Compiled but unused until T067.
 #[allow(dead_code)]
 async fn wait_for_topic(
     rx: &mut tokio::sync::broadcast::Receiver<nexus_backend_runtimes::events::BackendEvent>,

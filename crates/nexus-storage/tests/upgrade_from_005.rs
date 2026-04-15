@@ -1,7 +1,3 @@
-//! Simulates a pre-006 DB snapshot and verifies that applying migration 006
-//! preserves every pre-existing workflow row, every run, and every artifact
-//! lineage edge. SC-007 acceptance test.
-
 use nexus_storage::{Database, SqliteDatabase, WorkflowRecord};
 use sqlx::Row;
 use sqlx::sqlite::SqlitePool;

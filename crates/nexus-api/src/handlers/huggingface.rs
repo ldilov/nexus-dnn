@@ -1,20 +1,3 @@
-//! Generic Hugging Face capability endpoints.
-//!
-//! Two route families:
-//!
-//! * **Host-level, extension-agnostic** — `GET /api/v1/huggingface/search`
-//!   and `GET /api/v1/huggingface/repos/{repo_id}`. Any caller can hit these
-//!   for raw HF search and repository inspection. The response is domain-free.
-//!
-//! * **Extension-scoped domain operations** (`.../huggingface/models/*`) —
-//!   per spec 011 US2, these domain concerns (model registries, backend
-//!   routing, hyperparameters) moved OUT of the host and INTO each
-//!   extension's own worker. The host no longer implements these endpoints;
-//!   callers use the extension's RPC surface (`/api/v1/extensions/{extId}/rpc`)
-//!   with methods like `llm.list_models`, `llm.install_model`,
-//!   `llm.patch_hyperparameters`. The routes below intentionally return 501
-//!   pointing to the RPC surface.
-
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;

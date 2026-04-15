@@ -1,5 +1,3 @@
-//! `GET /api/v1/llm/backends` + `/llm/backends/{id}` — list and detail.
-
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use serde::Serialize;

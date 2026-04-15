@@ -1,5 +1,3 @@
-//! Runtime dependency resolution extracted per spec 015 US4.
-
 use sqlx::SqlitePool;
 
 use super::{RuntimeInstallRow, list_all};

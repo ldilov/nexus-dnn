@@ -1,5 +1,3 @@
-//! `/llm/backends/{id}/settings` — GET/PUT runtime settings.
-
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;

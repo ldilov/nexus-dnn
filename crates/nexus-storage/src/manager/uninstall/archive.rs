@@ -1,5 +1,3 @@
-//! StorageManager `uninstall_archive` methods extracted per spec 014.
-
 use std::path::PathBuf;
 
 use crate::database::Database;

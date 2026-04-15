@@ -1,7 +1,3 @@
-//! Spec 017 US1 — SC-501: migration 009 applies against empty DB and against a pre-017 populated DB.
-//!
-//! Covers T620 (migration) and T621 (unique-index semantics incl. US12.4 revision distinction).
-
 use sqlx::Row;
 use sqlx::SqlitePool;
 use sqlx::sqlite::SqlitePoolOptions;

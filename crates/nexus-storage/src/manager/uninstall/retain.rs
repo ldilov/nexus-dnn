@@ -1,5 +1,3 @@
-//! StorageManager `uninstall_retain` methods extracted per spec 014.
-
 use crate::database::Database;
 use crate::error::StorageError;
 

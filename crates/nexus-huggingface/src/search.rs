@@ -1,9 +1,3 @@
-//! Hugging Face Hub search request/response types and URL construction.
-//!
-//! Concrete network calls are implemented in `lib.rs::HuggingFaceClient`;
-//! this module owns the data shapes and URL-building logic so they are
-//! unit-testable without `reqwest`.
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

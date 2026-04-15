@@ -1,5 +1,3 @@
-//! Hugging Face Hub repository detail response types.
-
 use serde::{Deserialize, Serialize};
 
 use crate::search::RepoFile;

@@ -1,5 +1,3 @@
-//! `/llm/backends/{id}/install|validate|repair` — adapter lifecycle.
-
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;

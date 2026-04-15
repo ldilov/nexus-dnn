@@ -1,8 +1,3 @@
-//! Error type for the Hugging Face capability.
-//!
-//! Variants map one-to-one to user-facing failure modes so consumer extensions
-//! can translate them into HTTP status codes without leaking transport details.
-
 use thiserror::Error;
 
 #[derive(Debug, Error)]

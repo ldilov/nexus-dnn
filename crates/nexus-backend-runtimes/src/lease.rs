@@ -1,10 +1,3 @@
-//! Runtime leases.
-//!
-//! A lease is an extension-scoped claim over a running runtime process.
-//! The host owns the process lifecycle; the extension owns the request
-//! semantics. Leases are persisted to `host_runtime_leases` but always
-//! marked released on host startup (no live process survives a restart).
-
 use serde::{Deserialize, Serialize};
 
 use crate::channel::RuntimeChannelDescriptor;

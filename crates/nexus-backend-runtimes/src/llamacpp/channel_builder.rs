@@ -1,11 +1,3 @@
-//! llama-server channel descriptor builder (spec 011 US3 T065).
-//!
-//! Produces the `RuntimeChannelDescriptor` advertised on every llama-server
-//! lease: HTTP/TCP transport, OpenAI + native llama-server dialects, the
-//! `/health` readiness endpoint, and an optional `/metrics` endpoint when
-//! the host enabled metrics for this lease. `ready` starts `false` and is
-//! flipped by the readiness probe in `Spawner`.
-
 use crate::channel::{
     ApiDialect, ChannelBuildCtx, RuntimeAddress, RuntimeChannelDescriptor, RuntimeChannelKind,
     RuntimeEndpoint,

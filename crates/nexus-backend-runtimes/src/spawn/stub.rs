@@ -1,5 +1,3 @@
-//! Stub-mode (`SpawnMode::Stub`) helpers + `Spawner::spawn_stub` per spec 015 US2.
-
 use std::sync::Arc;
 
 use tokio::sync::RwLock;

@@ -1,9 +1,3 @@
-//! Versioned launch-parameter catalog per runtime family.
-//!
-//! The catalog is advisory, not an allow-list. Flags absent from the catalog
-//! pass through unless they collide with host-owned policy. The catalog's
-//! purpose is UI hints, help copy, and fast classification.
-
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::OnceLock;

@@ -1,9 +1,3 @@
-//! Runtime channel abstraction.
-//!
-//! Every `RuntimeLease` carries a `RuntimeChannelDescriptor` telling the
-//! owning extension how to communicate with the backend process. Transports
-//! beyond HTTP (Unix sockets, stdio JSON-RPC, gRPC) are first-class.
-
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};

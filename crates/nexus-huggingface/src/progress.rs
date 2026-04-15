@@ -1,9 +1,3 @@
-//! Progress events emitted by long-running capability operations.
-//!
-//! The type is transport-agnostic; `Stream<ProgressEvent>` is surfaced by
-//! the capability and re-published by consumer extensions on their own
-//! event buses.
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,9 +1,3 @@
-//! Reserved-flag classifier + 4-tier enforcement.
-//!
-//! Input: raw argv + env from an extension's spawn request.
-//! Output: `Ok(ValidatedArgs)` if every flag passes policy; `Err(SpawnError)`
-//! on the first collision. Unknown flags pass through unchanged.
-
 use std::collections::BTreeMap;
 
 use crate::error::BackendRuntimeError;

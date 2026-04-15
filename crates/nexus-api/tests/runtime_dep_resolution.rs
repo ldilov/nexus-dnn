@@ -1,10 +1,3 @@
-//! Spec 012 US2 (T210–T213): enable-time runtime dependency resolution.
-//!
-//! Verifies that `check_runtime_dependencies` (spec 012 US2) blocks enable on
-//! unsatisfiable dependencies (FR-105), surfaces intra-manifest conflicts
-//! before consulting the resolver (FR-106), and is a no-op when an extension
-//! declares no `runtime_dependencies` (US2 acceptance scenario 3).
-
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -72,6 +65,7 @@ fn make_manifest(id: &str, deps: Vec<RuntimeDependency>) -> ExtensionManifest {
         ui: None,
         storage: None,
         runtime_dependencies: deps,
+        model_dependencies: Vec::new(),
     }
 }
 

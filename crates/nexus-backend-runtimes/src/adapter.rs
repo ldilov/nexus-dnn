@@ -62,11 +62,9 @@ pub trait BackendAdapter: Send + Sync {
     async fn put_settings(&self, settings: RuntimeSettings) -> Result<(), RuntimeAdapterError>;
 
     /// Build the runtime channel descriptor advertised on every lease for
-    /// this family (spec 011 US3 T064). Synchronous and pure over `ctx`.
     fn build_channel(&self, ctx: &ChannelBuildCtx) -> RuntimeChannelDescriptor;
 
     /// Resolve the binary path, base args, and base env the spawner should
-    /// fork for this family (spec 011 US3 T064).
     async fn launch_spec(
         &self,
         install: &InstallManifest,

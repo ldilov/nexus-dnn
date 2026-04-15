@@ -1,9 +1,3 @@
-//! Per-extension file loaders: operators, recipes, UI contributions, layouts,
-//! plus the two YAML-to-JSON adapters used by schema validation.
-//!
-//! These helpers are invoked from `scanner::process_extension` and
-//! `scanner::activate_extension_inner`.
-
 use std::path::Path;
 
 use tracing::warn;

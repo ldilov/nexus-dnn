@@ -1,5 +1,3 @@
-//! `InstallCtx`: groups the `run_inner` arguments per spec 015 US6.
-
 use camino::Utf8PathBuf;
 use sqlx::SqlitePool;
 use tokio_util::sync::CancellationToken;

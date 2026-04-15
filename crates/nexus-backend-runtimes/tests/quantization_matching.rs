@@ -1,21 +1,33 @@
-//! Spec 017 US10a — SC-514: typed Quantization enum, family-aware match, NVFP4 != MXFP4.
-//!
-//! RED skeleton authored in Phase 1. Goes GREEN in Phase 5 (T651).
+use nexus_backend_runtimes::models_store::{MatchQuality, Quantization};
 
 #[test]
-#[ignore = "red: spec-017 phase 5 — Quantization::match_quality Exact > Family > None"]
 fn exact_beats_family_beats_none() {
-    panic!("not yet implemented: Q4_K_M dep, installs {{Q4_K_S, Q4_K_M, Q5_K_M}} -> Q4_K_M wins");
+    let dep = Some(Quantization::Q4_K_M);
+    assert_eq!(
+        Quantization::match_quality(dep.as_ref(), Some(&Quantization::Q4_K_M)),
+        MatchQuality::Exact
+    );
+    assert_eq!(
+        Quantization::match_quality(dep.as_ref(), Some(&Quantization::Q4_K_S)),
+        MatchQuality::Family
+    );
+    assert_eq!(
+        Quantization::match_quality(dep.as_ref(), Some(&Quantization::Q5_K_M)),
+        MatchQuality::None
+    );
 }
 
 #[test]
-#[ignore = "red: spec-017 phase 5 — NVFP4 and MXFP4 are distinct"]
 fn nvfp4_and_mxfp4_do_not_match() {
-    panic!("not yet implemented: Quantization::match_quality(&NVFP4, &MXFP4) == MatchQuality::None");
+    assert_eq!(
+        Quantization::match_quality(Some(&Quantization::NVFP4), Some(&Quantization::MXFP4),),
+        MatchQuality::None
+    );
 }
 
 #[test]
-#[ignore = "red: spec-017 phase 5 — unknown strings deserialize to Other"]
 fn unknown_quantization_round_trips_as_other() {
-    panic!("not yet implemented: 'Q42_FOO' -> Quantization::Other(String)");
+    let q: Quantization = "Q42_FOO".parse().unwrap();
+    assert_eq!(q, Quantization::Other("Q42_FOO".into()));
+    assert_eq!(q.to_string(), "Q42_FOO");
 }

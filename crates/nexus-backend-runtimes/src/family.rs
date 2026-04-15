@@ -1,10 +1,3 @@
-//! Runtime family registry per spec 015 US5.
-//!
-//! Single-Choice principle: one and only one module owns the exhaustive list
-//! of runtime family strings. Production code MUST route every family match
-//! through this module — no raw `"llama.cpp"` / `"llamacpp"` literals outside
-//! here and `#[cfg(test)]` fixtures.
-
 use std::fmt;
 
 /// A canonical runtime family identifier.

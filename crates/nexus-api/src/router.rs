@@ -8,7 +8,6 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 /// Tag responses on legacy `/api/v1/llm/backends/*` paths with RFC 8594
-/// Deprecation + Sunset headers (spec 011 Phase 9 T102, R7).
 async fn deprecation_headers(req: Request, next: Next) -> Response {
     let is_legacy = req.uri().path().starts_with("/api/v1/llm/backends");
     let mut response = next.run(req).await;
@@ -149,6 +148,16 @@ pub fn build(state: AppState) -> Router {
         .route("/system/info", get(system::system_info))
         .route("/tools", get(tools::list_tools))
         .route("/events", get(ws::events_ws))
+        .route("/host-models", get(backends::list_host_models))
+        .route("/host-models/resolve", post(backends::resolve_host_models))
+        .route(
+            "/host-models/{installId}/leases",
+            post(backends::create_model_lease),
+        )
+        .route(
+            "/host-models/leases/{leaseId}",
+            axum::routing::delete(backends::release_model_lease),
+        )
         .route("/backends", get(backends::list_host_runtimes))
         .route(
             "/backends/events",

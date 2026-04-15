@@ -1,10 +1,3 @@
-//! SqliteDatabase + thin trait delegation per spec 014.
-//!
-//! Per-domain SQL implementations live in submodules:
-//! `migrations`, `extensions`, `operators`, `workflows`, `runs`,
-//! `artifacts`, `content`, `namespaces`. The trait impl below
-//! delegates each method to the matching submodule.
-
 mod artifacts;
 mod content;
 mod extensions;
