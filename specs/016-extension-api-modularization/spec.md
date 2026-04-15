@@ -146,7 +146,7 @@ As a contributor maintaining the intra-manifest conflict detector, I use the wor
 
 #### POLA
 
-- **FR-408**: `ExtensionRegistry::discover_and_activate` MUST either (a) perform real discovery when called, OR (b) be renamed and have its signature trimmed to reflect behavior. The choice MUST be captured in the implementation PR description.
+- **FR-408**: `ExtensionRegistry::discover_and_activate` MUST perform real discovery when called, delegating to the existing synchronous `InMemoryExtensionRegistry::refresh(extensions_dir, host_version, protocol_version)`. The async trait signature MUST remain unchanged (LSP preservation for `nexus-core` + `nexus-api` callers). The rename-and-trim alternative is explicitly rejected per US4 decision.
 
 #### N+1
 

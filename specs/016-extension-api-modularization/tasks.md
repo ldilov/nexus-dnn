@@ -40,8 +40,8 @@ Per Principle IX. Recommended order: US1 (registry file moves) → US2 (semver s
 
 ### Implementation
 
-- [ ] T522 [US2] Add `LlamaCppBuildReq` pub(crate) struct in `version_conflict.rs`: parses `^(>=|<=|=|<|>)?b(\d+)$` with regex-lite (already a dep); stores operator + u64. `fn overlaps(&self, other: &Self) -> bool`.
-- [ ] T523 [US2] Rewrite `detect_intra_manifest_conflicts`: try `semver::VersionReq::parse` first; on parse error, fall back to `LlamaCppBuildReq::parse`; if both fail, return `ExtensionError::InvalidManifest` with a clear message. Overlap check uses `VersionReq::matches(&candidate_versions)` or `LlamaCppBuildReq::overlaps`.
+- [ ] T522 [US2] Add `LlamaCppBuildReq` pub(crate) struct in `version_conflict.rs` (≤ 40 LOC per spec US2 edge case): parses `^(>=|<=|=|<|>)?b(\d+)$` with `regex-lite` (already a workspace dep in `nexus-extension/Cargo.toml`); stores `(Op, u64)` where operator-less form means `Op::Eq`. `fn overlaps(&self, other: &Self) -> bool` = classical half-open interval intersection over u64 build numbers; `fn contains(&self, build: u64) -> bool` = direct comparator evaluation.
+- [ ] T523 [US2] Rewrite `detect_intra_manifest_conflicts`: try `semver::VersionReq::parse` first; on parse error, fall back to `LlamaCppBuildReq::parse`; if BOTH parsers fail, return `ExtensionError::ManifestParse { path: <manifest path>, detail: <offending range + both parser errors> }` per FR-403 (variant already exists in `crates/nexus-extension/src/error.rs`). Overlap check uses `VersionReq::matches(&candidate_versions)` or `LlamaCppBuildReq::overlaps`. Candidate set for `VersionReq::matches` = build numbers present in `host_runtime_installs` at evaluation time (deterministic runtime source).
 - [ ] T524 [US2] Delete `VersionInterval`, `intervals_all_overlap`, `pair_overlaps`, `value_in_interval`, `choose_tighter_lower`, `choose_tighter_upper`.
 
 ### Verification
@@ -73,7 +73,7 @@ Decision locked per spec.md US4: **branch (a)** — perform real discovery via `
 
 ### Implementation
 
-- [ ] T542 [US4] In `registry/mod.rs::ExtensionRegistry for InMemoryExtensionRegistry::discover_and_activate`, replace the current ignore-args body with `let report = self.refresh(extensions_dir, host_version, protocol_version).await?; Ok(report)`. Trait signature preserved per US4 acceptance scenario 3.
+- [ ] T542 [US4] In `registry/mod.rs::ExtensionRegistry for InMemoryExtensionRegistry::discover_and_activate` (async trait method), replace the current ignore-args body with `let report = self.refresh(extensions_dir, host_version, protocol_version)?; Ok(report)`. Note: `refresh` is a **synchronous** `pub fn` — no `.await`. If FS scanning becomes a blocking concern inside the async context later, wrap with `tokio::task::spawn_blocking` in a follow-up; not required for this spec. Trait signature preserved per US4 acceptance scenario 3.
 
 ### Verification
 
