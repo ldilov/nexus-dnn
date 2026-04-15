@@ -11,7 +11,7 @@ use crate::channel::{ChannelBuildCtx, RuntimeChannelDescriptor};
 use crate::error::BackendRuntimeError;
 use crate::events::BackendEvent;
 use crate::lease::RuntimeLease;
-use crate::runtime_installs_store as installs_store;
+use crate::runtime_installs_store;
 
 use super::host_env::{build_host_env, load_host_governed_injections};
 use super::port::{PortAllocator, PortLease};
@@ -23,7 +23,7 @@ pub(super) struct RealSpawnPrep {
     pool: SqlitePool,
     port_allocator: Arc<PortAllocator>,
     adapter: Arc<dyn BackendAdapter>,
-    row: installs_store::RuntimeInstallRow,
+    row: runtime_installs_store::RuntimeInstallRow,
     port: u16,
     pid: Option<u32>,
     bind_host: String,
@@ -185,7 +185,13 @@ async fn fetch_row_and_adapter(
     pool: &SqlitePool,
     adapters: &Arc<AdapterRegistry>,
     request: &SpawnRuntimeRequest,
-) -> Result<(installs_store::RuntimeInstallRow, Arc<dyn BackendAdapter>), BackendRuntimeError> {
+) -> Result<
+    (
+        runtime_installs_store::RuntimeInstallRow,
+        Arc<dyn BackendAdapter>,
+    ),
+    BackendRuntimeError,
+> {
     let row = resolve_install_row(pool, request).await?;
     validate_install_row(&row, &request.family)?;
     let adapter =
@@ -222,10 +228,12 @@ pub(super) fn lease_row_args<'a>(
 pub(super) async fn resolve_install_row(
     pool: &SqlitePool,
     request: &SpawnRuntimeRequest,
-) -> Result<installs_store::RuntimeInstallRow, BackendRuntimeError> {
+) -> Result<runtime_installs_store::RuntimeInstallRow, BackendRuntimeError> {
     let row = match request.install_id.as_deref() {
-        Some(id) => installs_store::load_by_id(pool, id).await?,
-        None => installs_store::resolve_dependency(pool, &request.family, None, &[]).await?,
+        Some(id) => runtime_installs_store::load_by_id(pool, id).await?,
+        None => {
+            runtime_installs_store::resolve_dependency(pool, &request.family, None, &[]).await?
+        }
     };
     row.ok_or_else(|| BackendRuntimeError::FamilyUnavailable {
         family: request.family.clone(),
@@ -234,7 +242,7 @@ pub(super) async fn resolve_install_row(
 }
 
 pub(super) fn validate_install_row(
-    row: &installs_store::RuntimeInstallRow,
+    row: &runtime_installs_store::RuntimeInstallRow,
     family: &str,
 ) -> Result<(), BackendRuntimeError> {
     match row.state.as_str() {
@@ -300,7 +308,7 @@ pub(super) fn build_real_descriptor(
 /// Inputs to `insert_lease_row` + `build_real_lease` — groups what was
 pub(super) struct LeaseRowArgs<'a> {
     pub lease_id: &'a str,
-    pub row: &'a installs_store::RuntimeInstallRow,
+    pub row: &'a runtime_installs_store::RuntimeInstallRow,
     pub request: &'a SpawnRuntimeRequest,
     pub pid: Option<u32>,
     pub port: u16,

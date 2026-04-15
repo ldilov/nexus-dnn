@@ -1,8 +1,12 @@
 pub mod error;
 pub mod messages;
+pub mod model_dependency;
+pub mod quantization;
 pub mod stdio;
 pub mod transport;
 
+pub use model_dependency::{ModelDependency, parse_param_count, validate_revision_pinning};
+pub use quantization::{MatchQuality, Quantization};
 pub use stdio::StdioTransport;
 
 use std::fmt;

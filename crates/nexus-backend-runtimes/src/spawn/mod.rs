@@ -142,7 +142,7 @@ use crate::channel::{
 };
 use crate::events::SharedPublisher;
 use crate::manifest::install::{InstallManifest, InstallStatus};
-use crate::runtime_installs_store as installs_store;
+use crate::runtime_installs_store;
 
 /// Live runtime lease handle held in memory while the child is alive.
 pub struct LeaseHandle {
@@ -378,7 +378,9 @@ async fn query_unreleased_leases(pool: &SqlitePool, install_id: &str) -> Vec<Str
     }
 }
 
-pub(super) fn row_to_install_manifest(row: &installs_store::RuntimeInstallRow) -> InstallManifest {
+pub(super) fn row_to_install_manifest(
+    row: &runtime_installs_store::RuntimeInstallRow,
+) -> InstallManifest {
     let binary_path = serde_json::from_str::<Vec<String>>(&row.binary_paths)
         .ok()
         .and_then(|v| v.into_iter().next())

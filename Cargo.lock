@@ -1802,6 +1802,7 @@ dependencies = [
  "flate2",
  "futures-util",
  "jsonschema 0.45.1",
+ "nexus-protocol",
  "reqwest",
  "rstest",
  "rust-embed",
@@ -1937,6 +1938,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
