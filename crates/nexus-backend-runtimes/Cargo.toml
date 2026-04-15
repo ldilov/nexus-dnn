@@ -27,6 +27,7 @@ uuid = { workspace = true }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "json", "chrono"] }
 futures-util = "0.3"
 async-trait = "0.1"
+nexus-protocol = { path = "../nexus-protocol" }
 rust-embed = { workspace = true }
 
 [dev-dependencies]
