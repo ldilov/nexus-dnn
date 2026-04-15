@@ -34,7 +34,9 @@ async fn make_ctx(fetcher: Arc<dyn ModelFetcher>) -> (ModelStoreCtx, TempDir) {
             sqlx::query(t).execute(&pool).await.unwrap();
         }
     }
-    for stmt in include_str!("../../../../../migrations/010_host_model_store_provenance.sql").split(';') {
+    for stmt in
+        include_str!("../../../../../migrations/010_host_model_store_provenance.sql").split(';')
+    {
         let t = stmt.trim();
         if !t.is_empty() {
             sqlx::query(t).execute(&pool).await.unwrap();

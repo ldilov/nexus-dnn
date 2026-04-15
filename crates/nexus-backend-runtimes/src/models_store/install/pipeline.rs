@@ -12,6 +12,7 @@ use super::fetcher::ModelFetcher;
 use crate::models_store::blobs::{self, FileManifestEntry};
 use crate::models_store::download::{self, DownloadSpec};
 use crate::models_store::errors::{ModelStoreError, ModelStoreResult};
+use crate::models_store::provenance::{HfProbe, resolve_license};
 
 #[derive(Clone)]
 pub struct ModelStoreCtx {
@@ -21,6 +22,7 @@ pub struct ModelStoreCtx {
     pub limiter: Arc<Semaphore>,
     pub(super) inflight: InflightMap,
     pub fetcher: Arc<dyn ModelFetcher>,
+    pub hf_probe: Option<Arc<dyn HfProbe>>,
 }
 
 impl ModelStoreCtx {
@@ -38,14 +40,21 @@ impl ModelStoreCtx {
             limiter: download::make_limiter(concurrency),
             inflight: Arc::new(Mutex::new(HashMap::new())),
             fetcher,
+            hf_probe: None,
         }
+    }
+
+    pub fn with_hf_probe(mut self, probe: Arc<dyn HfProbe>) -> Self {
+        self.hf_probe = Some(probe);
+        self
     }
 }
 
 pub async fn install_model(
     ctx: &ModelStoreCtx,
-    req: InstallModelRequest,
+    mut req: InstallModelRequest,
 ) -> ModelStoreResult<InstalledModelDto> {
+    enrich_request_from_hf(ctx, &mut req).await;
     let key = key_of(&req);
     let lock = acquire_key_lock(&ctx.inflight, &key).await;
     let _guard = lock.lock().await;
@@ -128,6 +137,53 @@ pub async fn install_model(
     find_existing(&ctx.pool, &key)
         .await?
         .ok_or_else(|| ModelStoreError::InstallNotFound(install_id.clone()))
+}
+
+async fn enrich_request_from_hf(ctx: &ModelStoreCtx, req: &mut InstallModelRequest) {
+    if req.source_kind != "huggingface" {
+        apply_license_fallback(req);
+        return;
+    }
+    let Some(probe) = ctx.hf_probe.as_ref() else {
+        apply_license_fallback(req);
+        return;
+    };
+    let repo_id = req.source_url.as_deref().unwrap_or("").to_string();
+    let want_revision = if req.source_revision.is_empty() || req.source_revision == "main" {
+        None
+    } else {
+        Some(req.source_revision.clone())
+    };
+    match probe
+        .fetch_metadata(&repo_id, want_revision.as_deref())
+        .await
+    {
+        Ok(meta) => {
+            if req.source_revision.is_empty() || req.source_revision == "main" {
+                tracing::warn!(
+                    repo = %repo_id,
+                    resolved_sha = %meta.revision,
+                    "unpinned HF dep resolved to current SHA",
+                );
+                req.source_revision = meta.revision.clone();
+            }
+            let info = resolve_license(&req.source_kind, req, Some(&meta));
+            req.license_spdx = Some(info.license_spdx);
+            req.license_url = info.license_url;
+            req.provenance_note = info.provenance_note;
+        }
+        Err(e) => {
+            tracing::warn!(repo = %repo_id, error = %e, "HF metadata fetch failed; falling back to UNKNOWN license");
+            apply_license_fallback(req);
+        }
+    }
+}
+
+fn apply_license_fallback(req: &mut InstallModelRequest) {
+    let info = resolve_license(&req.source_kind, req, None);
+    req.license_spdx = Some(info.license_spdx);
+    req.license_url = info.license_url;
+    req.provenance_note = info.provenance_note;
 }
 
 fn license_invariant_holds(req: &InstallModelRequest) -> bool {

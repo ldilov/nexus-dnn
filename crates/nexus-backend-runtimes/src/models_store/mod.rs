@@ -3,6 +3,7 @@ pub mod download;
 pub mod errors;
 pub mod install;
 pub mod leases;
+pub mod provenance;
 pub mod quantization;
 pub mod resolver;
 pub mod verify;
@@ -15,6 +16,7 @@ pub use install::{
     ModelStoreCtx, PlannedFile, install_model, list_all_visible, uninstall_model,
 };
 pub use leases::{ModelLease, acquire_lease, list_active_leases, release_lease};
+pub use provenance::{HfMetadata, HfProbe, LicenseInfo, ZeroHfProbe, resolve_license};
 pub use quantization::{MatchQuality, Quantization};
 pub use resolver::{
     MatchedDep, MissingDep, ModelDependency, ModelResolutionReport, ResolutionContext,

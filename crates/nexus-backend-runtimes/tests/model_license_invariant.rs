@@ -72,14 +72,17 @@ fn req(
 }
 
 #[tokio::test]
-async fn missing_license_rejects_ready_transition() {
+async fn missing_license_falls_back_to_unknown_with_note() {
     let tmp = tempfile::TempDir::new().unwrap();
     let bytes = b"missing-license" as &[u8];
     let ctx = ctx_for(&tmp, bytes).await;
-    let err = install_model(&ctx, req(bytes, None, None))
+    let dto = install_model(&ctx, req(bytes, None, None)).await.unwrap();
+    assert_eq!(dto.state, "ready");
+    let rows = nexus_backend_runtimes::models_store::list_all_visible(&ctx.pool, None)
         .await
-        .unwrap_err();
-    assert!(matches!(err, ModelStoreError::ManifestInvalid(_)));
+        .unwrap();
+    assert_eq!(rows[0].license_spdx.as_deref(), Some("UNKNOWN"));
+    let _ = ModelStoreError::Storage(String::new());
 }
 
 #[tokio::test]
