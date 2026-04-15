@@ -56,7 +56,17 @@ pub async fn uninstall_runtime(
     }
 
     let path = std::path::Path::new(&row.install_root);
-    let _ = nexus_backend_runtimes::installs_store::remove_binary_directory(path).await;
+    // Spec 016 US8 (FR-411): surface I/O failures via structured warn-log instead
+    // of silently discarding. Uninstall continues regardless — the DB delete is
+    // the source of truth for "uninstalled".
+    if let Err(e) = nexus_backend_runtimes::installs_store::remove_binary_directory(path).await {
+        tracing::warn!(
+            install_id = %row.install_id,
+            path = %path.display(),
+            error = %e,
+            "remove_binary_directory failed"
+        );
+    }
     if let Err(e) = nexus_backend_runtimes::installs_store::delete_row(pool, &row.install_id).await
     {
         return ApiResponse::<()>::internal(e.to_string()).into_response();

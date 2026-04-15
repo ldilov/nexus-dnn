@@ -126,10 +126,11 @@ pub async fn remove_binary_directory(install_root: &std::path::Path) -> BackendR
     if !install_root.exists() {
         return Ok(());
     }
-    if let Err(e) = tokio::fs::remove_dir_all(install_root).await {
-        tracing::warn!(error = %e, "remove_binary_directory failed");
-    }
-    Ok(())
+    // Spec 016 US8 (FR-411): surface I/O failures to the caller (which logs
+    // with full context: install_id, path, error). Previously swallowed.
+    tokio::fs::remove_dir_all(install_root)
+        .await
+        .map_err(BackendRuntimeError::Io)
 }
 
 pub async fn delete_row(pool: &SqlitePool, install_id: &str) -> BackendRuntimeResult<()> {

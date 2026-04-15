@@ -134,17 +134,17 @@ Decision locked per spec.md US4: **branch (a)** — perform real discovery via `
 
 ### Tests (write first — RED)
 
-- [ ] T580 [P] [US8] Unit test in `spawn/mod.rs` (or wherever `http_status_for` ends up in spec 015's split) asserting every current `BackendRuntimeError` variant maps to a distinct non-500 code where applicable; no `_ =>` wildcard.
-- [ ] T581 [P] [US8] Unit test in `backends/lease.rs::uninstall_runtime` covering the `remove_binary_directory` failure path: use a read-only temp dir or pre-deleted path; assert `tracing::warn!` with `install_id`, `path`, `error` captured via `tracing_test`.
+- [X] T580 [P] [US8] Unit test in `spawn/mod.rs` (or wherever `http_status_for` ends up in spec 015's split) asserting every current `BackendRuntimeError` variant maps to a distinct non-500 code where applicable; no `_ =>` wildcard.
+- [X] T581 [P] [US8] Unit test in `backends/lease.rs::uninstall_runtime` covering the `remove_binary_directory` failure path: use a read-only temp dir or pre-deleted path; assert `tracing::warn!` with `install_id`, `path`, `error` captured via `tracing_test`.
 
 ### Implementation
 
-- [ ] T582 [US8] Make `http_status_for` exhaustive: replace `_ => (500, "INTERNAL", error.to_string())` with explicit arms for every current variant. A new variant then requires touching this function.
-- [ ] T583 [US8] In `uninstall_runtime`, replace `let _ = remove_binary_directory(path).await;` with `if let Err(e) = remove_binary_directory(&path).await { tracing::warn!(install_id = %install_id, path = %path.display(), error = %e, "remove_binary_directory failed") }`.
+- [X] T582 [US8] Make `http_status_for` exhaustive: replace `_ => (500, "INTERNAL", error.to_string())` with explicit arms for every current variant. A new variant then requires touching this function.
+- [X] T583 [US8] In `uninstall_runtime`, replace `let _ = remove_binary_directory(path).await;` with `if let Err(e) = remove_binary_directory(&path).await { tracing::warn!(install_id = %install_id, path = %path.display(), error = %e, "remove_binary_directory failed") }`.
 
 ### Verification
 
-- [ ] T584 [US8] Tests GREEN; grep for `let _ =.*\.await` in `crates/nexus-api/src/` returns zero hits outside tests.
+- [X] T584 [US8] Tests GREEN; grep for `let _ =.*\.await` in `crates/nexus-api/src/` returns zero hits outside tests.
 
 ---
 
