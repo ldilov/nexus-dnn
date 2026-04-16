@@ -417,7 +417,18 @@ impl DeploymentMappers {
         id: &str,
     ) -> Result<Option<DeploymentRowRaw>, StorageError> {
         let row = sqlx::query(
-            "SELECT id, workspace_id, slug, display_name, description, state, restore_state, is_archived, is_favorite, created_at, updated_at, created_from_surface, current_revision_id, last_run_id, last_successful_run_id, last_failed_run_id, run_count, notes_markdown FROM deployments WHERE id = ?",
+            "SELECT d.id, d.workspace_id, d.slug, d.display_name, d.description, \
+             d.state, d.restore_state, d.is_archived, d.is_favorite, \
+             d.created_at, d.updated_at, d.created_from_surface, \
+             d.current_revision_id, d.last_run_id, d.last_successful_run_id, \
+             d.last_failed_run_id, d.run_count, d.notes_markdown, \
+             sl.source_extension_id AS source_extension_id, \
+             CASE WHEN sl.source_kind = 'user' THEN sl.source_id ELSE NULL END AS source_workflow_id \
+             FROM deployments d \
+             LEFT JOIN deployment_source_links sl \
+               ON sl.deployment_revision_id = d.current_revision_id \
+              AND sl.is_primary_source = 1 \
+             WHERE d.id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -452,8 +463,29 @@ impl DeploymentMappers {
         state: Option<&str>,
         limit: i64,
     ) -> Result<Vec<DeploymentRowRaw>, StorageError> {
+        // Spec 019 FR-050 follow-up (T400) — project the primary source link's
+        // `source_extension_id` + `source_id` (for user-workflow sources)
+        // onto every row so the UI can render a module provenance badge
+        // without an N+1 fetch. The LEFT JOIN is scoped to the deployment's
+        // current revision and the `is_primary_source=1` row; if either side
+        // is NULL (legacy rows predating 018's source-link writes), both
+        // projected columns stay NULL and the frontend falls back to a
+        // generic badge.
         let rows = sqlx::query(
-            "SELECT id, workspace_id, slug, display_name, description, state, restore_state, is_archived, is_favorite, created_at, updated_at, created_from_surface, current_revision_id, last_run_id, last_successful_run_id, last_failed_run_id, run_count, notes_markdown FROM deployments WHERE (?1 IS NULL OR workspace_id IS ?1) AND (?2 IS NULL OR state = ?2) ORDER BY updated_at DESC LIMIT ?3",
+            "SELECT d.id, d.workspace_id, d.slug, d.display_name, d.description, \
+             d.state, d.restore_state, d.is_archived, d.is_favorite, \
+             d.created_at, d.updated_at, d.created_from_surface, \
+             d.current_revision_id, d.last_run_id, d.last_successful_run_id, \
+             d.last_failed_run_id, d.run_count, d.notes_markdown, \
+             sl.source_extension_id AS source_extension_id, \
+             CASE WHEN sl.source_kind = 'user' THEN sl.source_id ELSE NULL END AS source_workflow_id \
+             FROM deployments d \
+             LEFT JOIN deployment_source_links sl \
+               ON sl.deployment_revision_id = d.current_revision_id \
+              AND sl.is_primary_source = 1 \
+             WHERE (?1 IS NULL OR d.workspace_id IS ?1) \
+               AND (?2 IS NULL OR d.state = ?2) \
+             ORDER BY d.updated_at DESC LIMIT ?3",
         )
         .bind(workspace_id)
         .bind(state)
@@ -550,6 +582,14 @@ pub struct DeploymentRowRaw {
     pub last_failed_run_id: Option<String>,
     pub run_count: i64,
     pub notes_markdown: Option<String>,
+    /// Spec 019 T400 — primary source link's `source_extension_id`.
+    /// Populated only for rows whose current revision's primary source
+    /// has `source_kind='recipe'` (i.e., extension-backed deployments).
+    pub source_extension_id: Option<String>,
+    /// Spec 019 T400 — primary source link's `source_id` when the link's
+    /// `source_kind='user'`. Lets the frontend resolve a user-workflow
+    /// module badge without a second round-trip.
+    pub source_workflow_id: Option<String>,
 }
 
 pub struct RevisionRowRaw {
@@ -582,5 +622,7 @@ fn row_to_deployment(r: sqlx::sqlite::SqliteRow) -> DeploymentRowRaw {
         last_failed_run_id: r.try_get("last_failed_run_id").ok(),
         run_count: r.try_get("run_count").unwrap_or_default(),
         notes_markdown: r.try_get("notes_markdown").ok(),
+        source_extension_id: r.try_get("source_extension_id").ok(),
+        source_workflow_id: r.try_get("source_workflow_id").ok(),
     }
 }

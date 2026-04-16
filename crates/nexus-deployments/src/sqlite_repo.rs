@@ -278,6 +278,8 @@ impl DeploymentRepository for SqliteDeploymentRepository {
             last_failed_run_id: raw.last_failed_run_id,
             run_count: raw.run_count,
             notes_markdown: raw.notes_markdown,
+            source_extension_id: raw.source_extension_id,
+            source_workflow_id: raw.source_workflow_id,
         })
     }
 
@@ -332,6 +334,8 @@ impl DeploymentRepository for SqliteDeploymentRepository {
                 last_successful_run_id: raw.last_successful_run_id,
                 last_failed_run_id: raw.last_failed_run_id,
                 run_count: raw.run_count,
+                source_extension_id: raw.source_extension_id,
+                source_workflow_id: raw.source_workflow_id,
                 notes_markdown: raw.notes_markdown,
             })
             .collect())
