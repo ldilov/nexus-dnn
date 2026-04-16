@@ -1,0 +1,23 @@
+[package]
+name = "nexus-deployments"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nexus-storage = { path = "../nexus-storage" }
+nexus-events = { path = "../nexus-events" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+sha2 = "0.10"
+json-canon = "0.1"
+async-trait = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+sha2 = "0.10"

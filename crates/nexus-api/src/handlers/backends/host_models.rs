@@ -3,7 +3,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{Json, response::Response};
 use chrono::Utc;
-use nexus_backend_runtimes::models_store::{
+use nexus_models_store::{
     ModelDependency, ModelStoreError, Quantization, ResolutionContext, ZeroSizeProbe,
     list_all_visible, release_lease, resolve_dry_run,
 };
@@ -147,7 +147,7 @@ pub async fn create_model_lease(
     Json(req): Json<CreateModelLeaseRequest>,
 ) -> Response {
     let budget = req.device_budget_bytes.unwrap_or(u64::MAX);
-    match nexus_backend_runtimes::models_store::acquire_lease(
+    match nexus_models_store::acquire_lease(
         state.db.pool(),
         &install_id,
         &req.extension_id,
