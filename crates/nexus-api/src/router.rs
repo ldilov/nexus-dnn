@@ -29,9 +29,9 @@ async fn deprecation_headers(req: Request, next: Next) -> Response {
 use crate::AppState;
 use crate::frontend;
 use crate::handlers::{
-    artifacts, backend_events_ws, backends, deployments, extensions, health, huggingface, metrics,
-    modules, recipes, runs, storage_contributions, system, tools, ui_contributions, ui_layouts,
-    workflows,
+    artifacts, backend_events_ws, backends, deployments, extensions, extensions_install, health,
+    huggingface, metrics, modules, recipes, runs, storage_contributions, system, tools,
+    ui_contributions, ui_layouts, workflows,
 };
 use crate::ws;
 
@@ -225,6 +225,7 @@ pub fn build(state: AppState) -> Router {
     let api_v1 = api_v1.nest("/deployments", deployments::deployments_router());
     let api_v1 = api_v1.nest("/modules", modules::router());
     let api_v1 = api_v1.nest("/modules", modules::draft_router());
+    let api_v1 = api_v1.nest("/extensions", extensions_install::router());
 
     Router::new()
         .nest("/api/v1", api_v1)

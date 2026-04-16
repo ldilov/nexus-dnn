@@ -16,7 +16,10 @@ pub use icon_resolver::{
     ModuleIconResolver, ResolvedIcon, USER_MODULE_GLYPH, fnv_fallback, is_valid_material_symbol,
     resolve_from_manifest,
 };
-pub use install::{SvgSanitizeError, sanitize_svg};
+pub use install::{
+    ManifestSummary, StagingDir, SvgSanitizeError, ZipInstallError, ZipInstallPipeline,
+    ZipInstallResult, ZipSizeLimits, atomic_rename, sanitize_svg,
+};
 pub use manifest::{
     CompatibilitySpec, EnvironmentSpec, ExecutionSpec, ExtensionInfo, ExtensionManifest, FileRef,
     LayoutRef, ManifestIcon, OperatorDefinition, OperatorInfo, PortSpec, ResourceSpec,
