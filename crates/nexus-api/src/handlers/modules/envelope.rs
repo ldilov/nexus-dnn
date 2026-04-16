@@ -38,6 +38,22 @@ pub struct ModuleSummary {
     pub default_model_binding_ref: Option<String>,
     pub deployments: DeploymentCounts,
     pub compatibility_summary: CompatibilitySummary,
+    /// Extension's `description` / user workflow's summary. Rendered as the
+    /// hero subtitle on the Instance view.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Extension publisher, for the footer attribution card. `None` for
+    /// user modules.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publisher: Option<String>,
+    /// Extension runtime family (`python`, `builtin`, etc.). Rendered as
+    /// a technical metadata chip. `None` for user modules.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_family: Option<String>,
+    /// RFC3339 timestamp of when the extension was installed (or the user
+    /// workflow was first created). Rendered as "installed N ago".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed_at: Option<String>,
 }
 
 #[derive(Serialize, Debug, Clone)]

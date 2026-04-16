@@ -187,13 +187,17 @@ fn build_extension_module(ext: ExtensionRecord, blueprints: Vec<RecipeRef>) -> M
         extension_id: Some(extension_id),
         display_name,
         icon,
-        version: Some(ext.version),
+        version: Some(ext.version.clone()),
         tags: Vec::new(),
         blueprints,
         default_runtime_binding_ref: None,
         default_model_binding_ref: None,
         deployments: DeploymentCounts::default(),
         compatibility_summary: ok_compat(),
+        description: ext.description.clone(),
+        publisher: ext.publisher.clone(),
+        runtime_family: Some(ext.runtime_family.clone()),
+        installed_at: Some(ext.installed_at.clone()),
     }
 }
 
@@ -222,6 +226,10 @@ fn build_user_module(wfl: WorkflowRecord) -> ModuleSummary {
         default_model_binding_ref: None,
         deployments: DeploymentCounts::default(),
         compatibility_summary: ok_compat(),
+        description: None,
+        publisher: None,
+        runtime_family: None,
+        installed_at: Some(wfl.created_at),
     }
 }
 
@@ -241,6 +249,10 @@ fn build_blank_module() -> ModuleSummary {
         default_model_binding_ref: None,
         deployments: DeploymentCounts::default(),
         compatibility_summary: CompatibilitySummary::default(),
+        description: Some("Start from an empty workflow.".into()),
+        publisher: None,
+        runtime_family: None,
+        installed_at: None,
     }
 }
 
