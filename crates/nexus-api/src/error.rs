@@ -40,11 +40,7 @@ pub enum ApiError {
 }
 
 impl ApiError {
-    pub fn structured(
-        status: StatusCode,
-        code: &'static str,
-        message: impl Into<String>,
-    ) -> Self {
+    pub fn structured(status: StatusCode, code: &'static str, message: impl Into<String>) -> Self {
         Self::Structured {
             status,
             code,

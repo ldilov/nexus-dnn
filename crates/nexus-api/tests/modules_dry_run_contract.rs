@@ -55,7 +55,9 @@ async fn build_state() -> AppState {
         backend_adapter_registry: None,
         spawner: None,
         huggingface: None,
-        backend_event_bus: Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(1024)),
+        backend_event_bus: Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(
+            1024,
+        )),
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
     }
 }
@@ -132,7 +134,12 @@ async fn dry_run_no_runs_row_created() {
     assert_eq!(resp.status(), StatusCode::OK);
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert!(body["data"]["plan_id"].as_str().unwrap().starts_with("plan_"));
+    assert!(
+        body["data"]["plan_id"]
+            .as_str()
+            .unwrap()
+            .starts_with("plan_")
+    );
 
     let runs_after = state.db.list_runs().await.unwrap().len();
     assert_eq!(

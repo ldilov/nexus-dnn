@@ -59,7 +59,9 @@ async fn build_state() -> AppState {
         backend_adapter_registry: None,
         spawner: None,
         huggingface: None,
-        backend_event_bus: Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(1024)),
+        backend_event_bus: Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(
+            1024,
+        )),
         draft_materialize_map: DraftMaterializeMap::new(),
     }
 }
@@ -79,8 +81,7 @@ async fn post_materialize(
     let resp = nexus_api::create_router(state).oneshot(req).await.unwrap();
     let status = resp.status();
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
-    let json: serde_json::Value =
-        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
     (status, json)
 }
 
@@ -97,7 +98,10 @@ async fn materialize_happy_201() {
     let (status, body) = post_materialize(state, DRAFT_UUID, happy_body()).await;
     assert_eq!(status, StatusCode::CREATED, "body: {body}");
     let module_id = body["data"]["module_id"].as_str().unwrap();
-    assert!(module_id.starts_with("user:wfl_"), "module_id was {module_id}");
+    assert!(
+        module_id.starts_with("user:wfl_"),
+        "module_id was {module_id}"
+    );
     assert!(body["data"]["deployment_id"].is_string());
     assert!(body["data"]["deployment_revision_id"].is_string());
 }
@@ -110,11 +114,21 @@ async fn materialize_idempotent_same_body() {
     let (status_a, body_a) = post_materialize(state.clone(), DRAFT_UUID, body.clone()).await;
     assert_eq!(status_a, StatusCode::CREATED);
     let module_id_a = body_a["data"]["module_id"].as_str().unwrap().to_string();
-    let dep_id_a = body_a["data"]["deployment_id"].as_str().unwrap().to_string();
-    let rev_id_a = body_a["data"]["deployment_revision_id"].as_str().unwrap().to_string();
+    let dep_id_a = body_a["data"]["deployment_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let rev_id_a = body_a["data"]["deployment_revision_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let (status_b, body_b) = post_materialize(state, DRAFT_UUID, body).await;
-    assert_eq!(status_b, StatusCode::OK, "replay must return 200, got body: {body_b}");
+    assert_eq!(
+        status_b,
+        StatusCode::OK,
+        "replay must return 200, got body: {body_b}"
+    );
     assert_eq!(body_b["data"]["module_id"], module_id_a);
     assert_eq!(body_b["data"]["deployment_id"], dep_id_a);
     assert_eq!(body_b["data"]["deployment_revision_id"], rev_id_a);
@@ -154,7 +168,11 @@ async fn materialize_new_rows_after_ttl_expiry() {
         .await;
 
     let (status, body) = post_materialize(state, DRAFT_UUID, happy_body()).await;
-    assert_eq!(status, StatusCode::CREATED, "expired entry must yield fresh 201, got: {body}");
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "expired entry must yield fresh 201, got: {body}"
+    );
     let new_dep = body["data"]["deployment_id"].as_str().unwrap();
     assert!(
         !new_dep.starts_with("dep_aaaa"),

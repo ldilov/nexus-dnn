@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { Shell } from "./layout/shell";
 import { TopBar, type ViewId } from "./layout/top_bar";
 import { Sidebar, type NavItemId } from "./layout/sidebar";
@@ -9,7 +9,12 @@ import { WorkflowCatalog } from "./catalog/workflow_catalog";
 import { HomeDashboard } from "./catalog/home_dashboard";
 import { ExtensionsGallery } from "./views/extensions_gallery";
 import { DeploymentsView } from "./views/deployments_view";
+import { ModulesView } from "./modules/modules_view";
+import { ModuleDetailView } from "./modules/module_detail_view";
+import { BlueprintView } from "./modules/blueprint_view";
+import { InstanceEditor } from "./instance_editor/instance_editor_shell";
 import { useOperatorSpecs } from "./hooks/use_operator_specs";
+import { useHashRoute, replaceHash } from "./hooks/use_hash_route";
 import { StageView } from "./views/stage_view";
 import { GraphView } from "./views/graph_view";
 import { RunTraceView } from "./views/run_trace_view";
@@ -70,6 +75,53 @@ export function App() {
   const { events } = useEventStream();
   const nodeProgress = latestProgressByNode(events);
   const { metrics, connected } = usePollingMetrics();
+  const [route, navigateHash] = useHashRoute();
+
+  const hashRoute = useMemo(() => {
+    const [first, second, third] = route.segments;
+    if (first === "modules") {
+      if (!second) return { kind: "modules-list" as const };
+      if (second.startsWith("user:draft:")) {
+        return { kind: "instance-draft" as const, uuid: second.slice("user:draft:".length) };
+      }
+      if (third === "blueprint") {
+        return {
+          kind: "blueprint" as const,
+          moduleId: decodeURIComponent(second),
+          recipeId: route.query.get("recipe_id") ?? undefined,
+        };
+      }
+      return { kind: "module-detail" as const, moduleId: decodeURIComponent(second) };
+    }
+    if (first === "deployments" && second) {
+      return { kind: "instance" as const, deploymentId: decodeURIComponent(second) };
+    }
+    // Legacy redirect (FR-004): recipes → modules; workflows/{id} → modules/user:{id}/blueprint
+    if (first === "recipes") {
+      replaceHash("#/modules");
+      return { kind: "modules-list" as const };
+    }
+    if (first === "workflows" && second) {
+      replaceHash(`#/modules/user:${encodeURIComponent(second)}/blueprint`);
+      return { kind: "blueprint" as const, moduleId: `user:${second}` };
+    }
+    return null;
+  }, [route]);
+
+  useEffect(() => {
+    if (!hashRoute) return;
+    if (
+      hashRoute.kind === "modules-list" ||
+      hashRoute.kind === "module-detail" ||
+      hashRoute.kind === "blueprint" ||
+      hashRoute.kind === "instance-draft"
+    ) {
+      setActiveNav("modules");
+    } else if (hashRoute.kind === "instance") {
+      // scan-terminology: allow — sidebar item stays canonical
+      setActiveNav("deployments");
+    }
+  }, [hashRoute]);
 
   const refreshLayouts = useCallback(() => {
     fetchLayouts()
@@ -91,12 +143,16 @@ export function App() {
     refreshLayouts();
   }, [refreshLayouts]);
 
+  // Spec 019 SC-015 — no substring-based icon heuristics. Extensions that
+  // want a non-default icon declare it in their manifest; the server maps
+  // that into LayoutSummary.icon at projection time. Everything else falls
+  // back to the generic `extension` glyph.
   const extensionNavItems = extensionLayouts
     .filter((l) => l.placement === "main")
     .map((l) => ({
       id: `ext:${l.id}` as NavItemId,
       label: l.display_name,
-      icon: l.id.includes("chat") ? "chat" : l.id.includes("model") ? "model_training" : l.id.includes("backend") ? "settings" : "extension",
+      icon: "extension",
     }));
 
   const activeExtensionLayoutId = activeNav.startsWith("ext:")
@@ -148,8 +204,11 @@ export function App() {
     if (id === "workflows") {
       setWorkflowViewMode("catalog");
     }
+    if (id === "modules") {
+      navigateHash("#/modules");
+    }
     setActiveNav(id);
-  }, []);
+  }, [navigateHash]);
 
   const handleOpenRecipe = useCallback((recipe: Recipe) => {
     // Resolve the recipe's extension default layout and navigate to it.
@@ -162,8 +221,75 @@ export function App() {
   }, [extensionLayouts]);
 
   const renderCanvas = () => {
+    // Spec 019 — hash-route-driven views take precedence over sidebar-driven ones.
+    if (hashRoute?.kind === "modules-list") {
+      return (
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <ModulesView onNavigate={navigateHash} />
+          </div>
+        </div>
+      );
+    }
+    if (hashRoute?.kind === "module-detail") {
+      return (
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <ModuleDetailView moduleId={hashRoute.moduleId} onNavigate={navigateHash} />
+          </div>
+        </div>
+      );
+    }
+    if (hashRoute?.kind === "blueprint") {
+      return (
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <BlueprintView
+              moduleId={hashRoute.moduleId}
+              recipeId={hashRoute.recipeId}
+              onNavigate={navigateHash}
+            />
+          </div>
+        </div>
+      );
+    }
+    if (hashRoute?.kind === "instance") {
+      return (
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <InstanceEditor
+              deploymentId={hashRoute.deploymentId}
+              onNavigate={navigateHash}
+            />
+          </div>
+        </div>
+      );
+    }
+    if (hashRoute?.kind === "instance-draft") {
+      return (
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <InstanceEditor
+              draftUuid={hashRoute.uuid}
+              onNavigate={navigateHash}
+            />
+          </div>
+        </div>
+      );
+    }
+
     if (activeExtensionLayoutId) {
       return <ExtensionLayoutView layoutId={activeExtensionLayoutId} />;
+    }
+
+    if (activeNav === "modules") {
+      return (
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <ModulesView onNavigate={navigateHash} />
+          </div>
+        </div>
+      );
     }
 
     if (activeNav === "home") {
@@ -278,7 +404,7 @@ export function App() {
       return (
         <div className={styles.canvasColumn}>
           <div className={styles.canvasContent}>
-            <DeploymentsView />
+            <DeploymentsView onNavigate={navigateHash} />
           </div>
         </div>
       );

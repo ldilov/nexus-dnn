@@ -61,7 +61,9 @@ async fn build_state() -> AppState {
         backend_adapter_registry: None,
         spawner: None,
         huggingface: None,
-        backend_event_bus: Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(1024)),
+        backend_event_bus: Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(
+            1024,
+        )),
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
     }
 }
@@ -128,7 +130,13 @@ fn wfl(id: &str) -> WorkflowRecord {
     }
 }
 
-async fn snapshot(state: &AppState) -> (HashMap<String, String>, HashMap<String, String>, HashMap<String, String>) {
+async fn snapshot(
+    state: &AppState,
+) -> (
+    HashMap<String, String>,
+    HashMap<String, String>,
+    HashMap<String, String>,
+) {
     let exts = state
         .db
         .list_extensions()
@@ -158,7 +166,11 @@ async fn snapshot(state: &AppState) -> (HashMap<String, String>, HashMap<String,
 
 async fn assert_no_mutation(
     state: &AppState,
-    before: &(HashMap<String, String>, HashMap<String, String>, HashMap<String, String>),
+    before: &(
+        HashMap<String, String>,
+        HashMap<String, String>,
+        HashMap<String, String>,
+    ),
     label: &str,
 ) {
     let (after_exts, after_rcps, after_wfls) = snapshot(state).await;
@@ -167,10 +179,7 @@ async fn assert_no_mutation(
         let actual = after_exts
             .get(id)
             .unwrap_or_else(|| panic!("{label}: extension {id} disappeared"));
-        assert_eq!(
-            actual, original,
-            "{label}: extension {id} was mutated"
-        );
+        assert_eq!(actual, original, "{label}: extension {id} was mutated");
     }
     for (id, original) in &before.1 {
         let actual = after_rcps
@@ -188,7 +197,11 @@ async fn assert_no_mutation(
 
 async fn seed(state: &AppState) {
     state.db.insert_extension(&ext("nm-ext")).await.unwrap();
-    state.db.insert_recipe(&rcp("rcp.nm-1", "nm-ext")).await.unwrap();
+    state
+        .db
+        .insert_recipe(&rcp("rcp.nm-1", "nm-ext"))
+        .await
+        .unwrap();
     state
         .db
         .insert_workflow(&wfl("wfl.nm-user-1"))
@@ -223,7 +236,13 @@ async fn get_modules_detail_does_not_mutate() {
     let state = build_state().await;
     seed(&state).await;
     let before = snapshot(&state).await;
-    let _ = call(state.clone(), "GET", "/api/v1/modules/ext:nm-ext", json!(null)).await;
+    let _ = call(
+        state.clone(),
+        "GET",
+        "/api/v1/modules/ext:nm-ext",
+        json!(null),
+    )
+    .await;
     assert_no_mutation(&state, &before, "GET /modules/{id}").await;
 }
 

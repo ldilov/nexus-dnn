@@ -38,7 +38,8 @@ pub struct DraftMaterializeMap {
 
 impl DraftMaterializeMap {
     pub fn new() -> Arc<Self> {
-        let entries: Arc<RwLock<HashMap<String, DraftEntry>>> = Arc::new(RwLock::new(HashMap::new()));
+        let entries: Arc<RwLock<HashMap<String, DraftEntry>>> =
+            Arc::new(RwLock::new(HashMap::new()));
         let entries_for_sweeper = Arc::clone(&entries);
         let sweeper = tokio::spawn(async move {
             loop {

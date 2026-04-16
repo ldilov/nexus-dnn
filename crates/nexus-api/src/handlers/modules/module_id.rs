@@ -3,14 +3,13 @@
 //!
 //! Shape (spec 019 FR-033):
 //!
-//! * `ext:{extension_id}`        — extension-contributed module
-//! * `user:{workflow_id}`        — module backed by a user-authored workflow
-//! * `user:blank`                — synthetic blank-module card (FR-007)
-//! * `user:draft:{uuid-v4}`      — client-minted draft during Blank Module
-//!                                 materialize (FR-BM01); accepted ONLY by the
-//!                                 `/modules/user:draft:{uuid}/materialize`
-//!                                 endpoint — every other module-scoped route
-//!                                 rejects it with `module.draft_id_not_allowed`.
+//! * `ext:{extension_id}` — extension-contributed module
+//! * `user:{workflow_id}` — module backed by a user-authored workflow
+//! * `user:blank` — synthetic blank-module card (FR-007)
+//! * `user:draft:{uuid-v4}` — client-minted draft during Blank Module
+//!   materialize (FR-BM01); accepted ONLY by the
+//!   `/modules/user:draft:{uuid}/materialize` endpoint — every other
+//!   module-scoped route rejects it with `module.draft_id_not_allowed`.
 
 use std::fmt;
 
@@ -107,8 +106,7 @@ impl fmt::Display for ModuleId {
     }
 }
 
-static MODULE_ID_PATTERN: &str =
-    r"^(ext:[A-Za-z0-9_\-.]+|user:[A-Za-z0-9_\-.]+|user:blank|user:draft:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$";
+static MODULE_ID_PATTERN: &str = r"^(ext:[A-Za-z0-9_\-.]+|user:[A-Za-z0-9_\-.]+|user:blank|user:draft:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$";
 
 fn build_regex() -> Regex {
     Regex::new(MODULE_ID_PATTERN).expect("static regex is valid")
@@ -132,8 +130,7 @@ mod tests {
 
     #[test]
     fn parse_user_form() {
-        let id =
-            ModuleId::parse("user:abcdef12-3456-4789-8abc-def012345678").unwrap();
+        let id = ModuleId::parse("user:abcdef12-3456-4789-8abc-def012345678").unwrap();
         assert!(matches!(id.kind(), ModuleIdKind::User { .. }));
     }
 
@@ -188,10 +185,7 @@ mod tests {
 
     #[test]
     fn constructors_roundtrip_parse() {
-        assert_eq!(
-            ModuleId::from_extension("cinema").as_str(),
-            "ext:cinema"
-        );
+        assert_eq!(ModuleId::from_extension("cinema").as_str(), "ext:cinema");
         assert_eq!(
             ModuleId::from_user_workflow("wfl-123").as_str(),
             "user:wfl-123"
