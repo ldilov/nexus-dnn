@@ -8,6 +8,7 @@ import { RecipeCatalog } from "./catalog/recipe_catalog";
 import { WorkflowCatalog } from "./catalog/workflow_catalog";
 import { HomeDashboard } from "./catalog/home_dashboard";
 import { ExtensionsGallery } from "./views/extensions_gallery";
+import { DeploymentsView } from "./views/deployments_view";
 import { useOperatorSpecs } from "./hooks/use_operator_specs";
 import { StageView } from "./views/stage_view";
 import { GraphView } from "./views/graph_view";
@@ -268,6 +269,16 @@ export function App() {
         <div className={styles.canvasColumn}>
           <div className={styles.canvasContent}>
             <ExtensionsGallery onExtensionToggled={refreshLayouts} />
+          </div>
+        </div>
+      );
+    }
+
+    if (activeNav === "deployments") {
+      return (
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <DeploymentsView />
           </div>
         </div>
       );

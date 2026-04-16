@@ -5,6 +5,7 @@ export type NavItemId =
   | "home"
   | "recipes"
   | "workflows"
+  | "deployments"
   | "runs"
   | "artifacts"
   | "extensions"
@@ -28,6 +29,7 @@ const CORE_NAV_ITEMS: readonly NavItem[] = [
   { id: "home", label: "Home", icon: "home" },
   { id: "recipes", label: "Recipes", icon: "description" },
   { id: "workflows", label: "Workflows", icon: "account_tree" },
+  { id: "deployments", label: "Deployments", icon: "rocket_launch" },
   { id: "runs", label: "Runs", icon: "play_arrow" },
   { id: "artifacts", label: "Artifacts", icon: "inventory_2" },
   { id: "extensions", label: "Extensions", icon: "extension" },

@@ -396,6 +396,28 @@ export function fetchMetrics(): Promise<RuntimeMetricsDto> {
   return apiFetch("/metrics");
 }
 
+export type DeploymentSummary = {
+  readonly id: string;
+  readonly slug: string;
+  readonly display_name: string;
+  readonly state: string;
+  readonly restore_state: string;
+  readonly created_from_surface: string;
+  readonly current_revision_id: string | null;
+  readonly last_run_id: string | null;
+  readonly last_successful_run_id: string | null;
+  readonly last_failed_run_id: string | null;
+  readonly run_count: number;
+  readonly is_archived: boolean;
+  readonly is_favorite: boolean;
+  readonly created_at: string;
+  readonly updated_at: string;
+};
+
+export function fetchDeployments(): Promise<DeploymentSummary[]> {
+  return apiFetch<DeploymentSummary[]>("/deployments");
+}
+
 export function fetchLayouts(): Promise<LayoutSummaryDto[]> {
   return apiFetch<ListResponseDto<LayoutSummaryDto>>("/ui/layouts").then(unwrapItems);
 }
