@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { Shell } from "./layout/shell";
 import { TopBar, type ViewId } from "./layout/top_bar";
 import { Sidebar, type NavItemId } from "./layout/sidebar";
@@ -9,7 +9,13 @@ import { WorkflowCatalog } from "./catalog/workflow_catalog";
 import { HomeDashboard } from "./catalog/home_dashboard";
 import { ExtensionsGallery } from "./views/extensions_gallery";
 import { DeploymentsView } from "./views/deployments_view";
+import { ModulesView } from "./modules/modules_view";
+import { BlueprintView } from "./modules/blueprint_view";
+import { InstanceView } from "./modules/instance_view/instance_view";
+import { DraftView } from "./modules/instance_view/draft_view";
+import { sweepStaleDrafts } from "./modules/draft/draft_envelope";
 import { useOperatorSpecs } from "./hooks/use_operator_specs";
+import { useHashRoute, replaceHash } from "./hooks/use_hash_route";
 import { StageView } from "./views/stage_view";
 import { GraphView } from "./views/graph_view";
 import { RunTraceView } from "./views/run_trace_view";
@@ -70,6 +76,69 @@ export function App() {
   const { events } = useEventStream();
   const nodeProgress = latestProgressByNode(events);
   const { metrics, connected } = usePollingMetrics();
+  const [route, navigateHash] = useHashRoute();
+
+  const hashRoute = useMemo(() => {
+    const [first, second, third, fourth] = route.segments;
+    if (first === "modules") {
+      if (!second) return { kind: "modules-list" as const };
+      // Spec 019 refinement: pre-refinement draft URL `/#/modules/user:draft:{uuid}`
+      // redirects to the new namespaced shape `/#/modules/user:blank/draft/{uuid}`.
+      if (second.startsWith("user:draft:")) {
+        const uuid = second.slice("user:draft:".length);
+        replaceHash(`#/modules/user:blank/draft/${uuid}`);
+        return {
+          kind: "draft" as const,
+          sourceModuleId: "user:blank",
+          uuid,
+        };
+      }
+      // New shape (FR-051): `/#/modules/{source_module_id}/draft/{uuid}`.
+      if (third === "draft" && fourth) {
+        return {
+          kind: "draft" as const,
+          sourceModuleId: decodeURIComponent(second),
+          uuid: fourth,
+        };
+      }
+      if (third === "blueprint") {
+        return {
+          kind: "blueprint" as const,
+          moduleId: decodeURIComponent(second),
+          recipeId: route.query.get("recipe_id") ?? undefined,
+        };
+      }
+      return { kind: "module-detail" as const, moduleId: decodeURIComponent(second) };
+    }
+    if (first === "deployments" && second) {
+      return { kind: "instance" as const, deploymentId: decodeURIComponent(second) };
+    }
+    // Legacy redirect (FR-004): recipes → modules; workflows/{id} → modules/user:{id}/blueprint
+    if (first === "recipes") {
+      replaceHash("#/modules");
+      return { kind: "modules-list" as const };
+    }
+    if (first === "workflows" && second) {
+      replaceHash(`#/modules/user:${encodeURIComponent(second)}/blueprint`);
+      return { kind: "blueprint" as const, moduleId: `user:${second}` };
+    }
+    return null;
+  }, [route]);
+
+  useEffect(() => {
+    if (!hashRoute) return;
+    if (
+      hashRoute.kind === "modules-list" ||
+      hashRoute.kind === "module-detail" ||
+      hashRoute.kind === "blueprint" ||
+      hashRoute.kind === "draft"
+    ) {
+      setActiveNav("modules");
+    } else if (hashRoute.kind === "instance") {
+      // scan-terminology: allow — sidebar item stays canonical
+      setActiveNav("deployments");
+    }
+  }, [hashRoute]);
 
   const refreshLayouts = useCallback(() => {
     fetchLayouts()
@@ -89,14 +158,23 @@ export function App() {
       });
 
     refreshLayouts();
+
+    // Spec 019 T408 — evict abandoned drafts older than 7 days on boot so
+    // sessionStorage doesn't accumulate orphans from users who fork and
+    // close the tab without saving.
+    sweepStaleDrafts();
   }, [refreshLayouts]);
 
+  // Spec 019 SC-015 — no substring-based icon heuristics. Extensions that
+  // want a non-default icon declare it in their manifest; the server maps
+  // that into LayoutSummary.icon at projection time. Everything else falls
+  // back to the generic `extension` glyph.
   const extensionNavItems = extensionLayouts
     .filter((l) => l.placement === "main")
     .map((l) => ({
       id: `ext:${l.id}` as NavItemId,
       label: l.display_name,
-      icon: l.id.includes("chat") ? "chat" : l.id.includes("model") ? "model_training" : l.id.includes("backend") ? "settings" : "extension",
+      icon: "extension",
     }));
 
   const activeExtensionLayoutId = activeNav.startsWith("ext:")
@@ -148,8 +226,11 @@ export function App() {
     if (id === "workflows") {
       setWorkflowViewMode("catalog");
     }
+    if (id === "modules") {
+      navigateHash("#/modules");
+    }
     setActiveNav(id);
-  }, []);
+  }, [navigateHash]);
 
   const handleOpenRecipe = useCallback((recipe: Recipe) => {
     // Resolve the recipe's extension default layout and navigate to it.
@@ -162,8 +243,81 @@ export function App() {
   }, [extensionLayouts]);
 
   const renderCanvas = () => {
+    // Spec 019 — hash-route-driven views take precedence over sidebar-driven ones.
+    if (hashRoute?.kind === "modules-list") {
+      return (
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <ModulesView onNavigate={navigateHash} />
+          </div>
+        </div>
+      );
+    }
+    if (hashRoute?.kind === "module-detail") {
+      // Spec 019 refinement: `/#/modules/{id}` renders the Instance view
+      // (4 read-only tabs + 3 CTAs) — the canonical per-module surface.
+      // Old ModuleDetailView (list-of-deployments) is kept in-repo for
+      // reference but no longer routed.
+      return (
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <InstanceView moduleId={hashRoute.moduleId} onNavigate={navigateHash} />
+          </div>
+        </div>
+      );
+    }
+    if (hashRoute?.kind === "blueprint") {
+      return (
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <BlueprintView
+              moduleId={hashRoute.moduleId}
+              recipeId={hashRoute.recipeId}
+              onNavigate={navigateHash}
+            />
+          </div>
+        </div>
+      );
+    }
+    if (hashRoute?.kind === "instance") {
+      // scan-terminology: allow — route segment is `/deployments/{id}`;
+      // the deployment editor from spec 018 lives here, not an instance
+      // editor. For v1 the editor is still pending; this placeholder
+      // routes the user to the flat deployments list scoped to their row.
+      return (
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <DeploymentsView onNavigate={navigateHash} />
+          </div>
+        </div>
+      );
+    }
+    if (hashRoute?.kind === "draft") {
+      return (
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <DraftView
+              sourceModuleId={hashRoute.sourceModuleId}
+              draftUuid={hashRoute.uuid}
+              onNavigate={navigateHash}
+            />
+          </div>
+        </div>
+      );
+    }
+
     if (activeExtensionLayoutId) {
       return <ExtensionLayoutView layoutId={activeExtensionLayoutId} />;
+    }
+
+    if (activeNav === "modules") {
+      return (
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasContent}>
+            <ModulesView onNavigate={navigateHash} />
+          </div>
+        </div>
+      );
     }
 
     if (activeNav === "home") {
@@ -278,7 +432,7 @@ export function App() {
       return (
         <div className={styles.canvasColumn}>
           <div className={styles.canvasContent}>
-            <DeploymentsView />
+            <DeploymentsView onNavigate={navigateHash} />
           </div>
         </div>
       );

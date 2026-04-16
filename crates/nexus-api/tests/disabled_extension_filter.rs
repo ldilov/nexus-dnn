@@ -19,6 +19,11 @@ fn make_ext(id: &str, status: &str) -> ExtensionRecord {
         recipe_count: Some(0),
         ui_contribution_count: Some(0),
         validation_errors: None,
+        primary_recipe_id: None,
+        default_workflow_id: None,
+        icon_kind: None,
+        icon_symbol: None,
+        icon_svg: None,
     }
 }
 

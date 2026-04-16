@@ -117,4 +117,10 @@ pub enum NexusEvent {
         extension_id: String,
         namespace_id: String,
     },
+    /// Spec 019 FR-IE03 / FR-TP01 — emitted on a successful ZIP install. Local
+    /// bus only; no user prompt text or runtime-setting values carried.
+    ModuleInstalled {
+        extension_id: String,
+        module_id: String,
+    },
 }

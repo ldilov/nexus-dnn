@@ -10,9 +10,10 @@ pub use database::Database;
 pub use error::StorageError;
 pub use manager::{IntegrityReport, StorageManager, UninstallReport};
 pub use records::{
-    ArchiveRecord, ArtifactRecord, ExtensionRecord, LineageEdgeRecord, MigrationRecord,
+    ArchiveRecord, ArtifactRecord, ExtensionRecord, IconKind, LineageEdgeRecord, MigrationRecord,
     NamespaceRecord, NodeExecutionRecord, ObjectRecord, OperationRecord, OperatorRecord,
     RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord,
 };
 pub use sqlite::SqliteDatabase;
 pub use sqlite::deployments::{DeploymentMappers, DeploymentRowRaw, RevisionRowRaw};
+pub use sqlite::extensions::{upsert_icon, upsert_primary_refs};

@@ -22,6 +22,11 @@ async fn seed_extension(db: &SqliteDatabase, id: &str, version: &str) {
         recipe_count: Some(1),
         ui_contribution_count: Some(0),
         validation_errors: None,
+        primary_recipe_id: None,
+        default_workflow_id: None,
+        icon_kind: None,
+        icon_symbol: None,
+        icon_svg: None,
     };
     db.insert_extension(&ext).await.unwrap();
 }
