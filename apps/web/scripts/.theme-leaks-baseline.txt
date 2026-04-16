@@ -1,0 +1,57 @@
+# Baseline allowlist for scan-theme-leaks (spec 019 SC-007).
+#
+# Files here carry pre-019 token leaks and are TEMPORARILY excluded from
+# the gate. Any NEW file MUST NOT be added to this list — the tokens in
+# apps/web/src/styles/ are the only authorized source of color / font /
+# motion literals.
+#
+# Plan of record: migrate these files to tokens incrementally; remove each
+# line from this list as its file is refactored. The list MUST shrink
+# over time; it MUST NEVER grow. Pre-commit review rejects additions.
+#
+# Line format: one path relative to apps/web/, leading `#` lines are
+# ignored. Exact match (not glob).
+
+src/app.css.ts
+src/backends/backend_card.css.ts
+src/backends/install_modal.css.ts
+src/backends/settings_panel.css.ts
+src/catalog/home_dashboard.css.ts
+src/catalog/recipe_catalog.css.ts
+src/catalog/workflow_catalog.tsx
+src/components/layout/backend_styles.css.ts
+src/components/layout/chat_panel.tsx
+src/components/layout/layout_styles.css.ts
+src/components/layout/workspace_shell.css.ts
+src/layout/right_inspector.css.ts
+src/layout/sidebar.css.ts
+src/models/ModelsPanel.tsx
+src/nodes/boundary_nodes.css.ts
+src/nodes/boundary_nodes.tsx
+src/nodes/node_ui_spec.ts
+src/nodes/note_node.css.ts
+src/nodes/operator_node.css.ts
+src/nodes/operator_node.tsx
+src/nodes/port_types.ts
+src/nodes/previews/index.tsx
+src/nodes/previews/previews.css.ts
+src/nodes/reroute_node.css.ts
+src/nodes/reroute_node.tsx
+src/nodes/widgets/index.tsx
+src/nodes/widgets/widgets.css.ts
+src/theme/dark.css.ts
+src/tokens/primitives.ts
+src/views/alignment_guides.tsx
+src/views/backends_view.css.ts
+src/views/canvas_context_menu.css.ts
+src/views/deployments_view.css.ts
+src/views/deployments_view.tsx
+src/views/drop_projection.tsx
+src/views/extensions_gallery.css.ts
+src/views/graph_toolbar.css.ts
+src/views/graph_view.css.ts
+src/views/graph_view.tsx
+src/views/operator_palette.css.ts
+src/views/run_trace_view.css.ts
+src/views/stage_view.css.ts
+src/views/stage_view.tsx

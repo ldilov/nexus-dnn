@@ -75,18 +75,18 @@ description: "Task list for 019-extension-modules implementation"
 
 ### Design system tokens (Spectral Graphite)
 
-- [ ] T029 [P] Create `apps/web/src/styles/theme.css.ts` with the full Spectral Graphite palette per `contracts/theme-tokens.md` §2 (primary/secondary/tertiary/acid-green/error + graphite tiers + on-* companions)
-- [ ] T030 [P] Create `apps/web/src/styles/typography.css.ts` with `@font-face` declarations pointing to `/fonts/*.woff2` (self-hosted, no remote src) per `contracts/theme-tokens.md` §7 + tracking tokens
-- [ ] T031 [P] Create `apps/web/src/styles/elevation.css.ts` with `ghostBorder`, `glassPanel`, `primaryDimGlow` utilities per `contracts/theme-tokens.md` §4-5
-- [ ] T032 [P] Create `apps/web/src/styles/motion.css.ts` with duration + easing budgets per `contracts/theme-tokens.md` §6 (cardHoverLift, cardGlow, focusRing, tabCrossfade, sidebarSettle, drawerSlide, optimisticInsert, statusDotPulseCycle, viewingBannerEntrance)
-- [ ] T033 [P] Create `apps/web/src/styles/tokens.css` as CSS custom-property mirror of `theme.css.ts` + motion tokens + `@media (prefers-reduced-motion: reduce)` override collapsing all motion to `0s` per FR-040
+- [X] T029 [P] Create `apps/web/src/styles/theme.css.ts` with the full Spectral Graphite palette per `contracts/theme-tokens.md` §2 (primary/secondary/tertiary/acid-green/error + graphite tiers + on-* companions)
+- [X] T030 [P] Create `apps/web/src/styles/typography.css.ts` with `@font-face` declarations pointing to `/fonts/*.woff2` (self-hosted, no remote src) per `contracts/theme-tokens.md` §7 + tracking tokens
+- [X] T031 [P] Create `apps/web/src/styles/elevation.css.ts` with `ghostBorder`, `glassPanel`, `primaryDimGlow` utilities per `contracts/theme-tokens.md` §4-5
+- [X] T032 [P] Create `apps/web/src/styles/motion.css.ts` with duration + easing budgets per `contracts/theme-tokens.md` §6 (cardHoverLift, cardGlow, focusRing, tabCrossfade, sidebarSettle, drawerSlide, optimisticInsert, statusDotPulseCycle, viewingBannerEntrance)
+- [X] T033 [P] Create `apps/web/src/styles/tokens.css` as CSS custom-property mirror of `theme.css.ts` + motion tokens + `@media (prefers-reduced-motion: reduce)` override collapsing all motion to `0s` per FR-040
 
 ### CI gates
 
-- [ ] T034 [P] Create `apps/web/scripts/scan-theme-leaks.mjs` implementing the grep-based leak detector per `contracts/theme-tokens.md` §8; exit non-zero on any hex/rgb/hsl/oklch/font-family literal outside `apps/web/src/styles/`
-- [ ] T035 [P] Create `apps/web/scripts/scan-terminology.mjs` implementing the "no visible 'Deployment' noun" detector per `contracts/theme-tokens.md` §10; allowed carve-out for the sidebar item label and URL/code identifiers
-- [ ] T036 [P] Create `apps/web/scripts/scan-remote-cdns.mjs` scanning `dist/**/*.{js,css,html}` for `fonts.googleapis.com`, `fonts.gstatic.com`, `lh3.googleusercontent.com`, `cdn.jsdelivr.net`, `cdn.tailwindcss.com`, and any non-`localhost` absolute URL
-- [ ] T037 Wire all three scanners into `apps/web/package.json` scripts (`scan:theme`, `scan:terminology`, `scan:cdn`) + run them as part of `build`
+- [X] T034 [P] Create `apps/web/scripts/scan-theme-leaks.mjs` implementing the grep-based leak detector per `contracts/theme-tokens.md` §8; exit non-zero on any hex/rgb/hsl/oklch/font-family literal outside `apps/web/src/styles/`
+- [X] T035 [P] Create `apps/web/scripts/scan-terminology.mjs` implementing the "no visible 'Deployment' noun" detector per `contracts/theme-tokens.md` §10; allowed carve-out for the sidebar item label and URL/code identifiers
+- [X] T036 [P] Create `apps/web/scripts/scan-remote-cdns.mjs` scanning `dist/**/*.{js,css,html}` for `fonts.googleapis.com`, `fonts.gstatic.com`, `lh3.googleusercontent.com`, `cdn.jsdelivr.net`, `cdn.tailwindcss.com`, and any non-`localhost` absolute URL
+- [X] T037 Wire all three scanners into `apps/web/package.json` scripts (`scan:theme`, `scan:terminology`, `scan:cdn`) + run them as part of `build`
 
 **Checkpoint**: Foundation ready — every user-story phase below can begin in parallel.
 
@@ -100,12 +100,12 @@ description: "Task list for 019-extension-modules implementation"
 
 ### Tests for US6 (written FIRST per Principle VI)
 
-- [ ] T038 [P] [US6] Contract test `crates/nexus-api/tests/modules_contract.rs::list_shape_and_ordering` — asserts response shape + Extension-first-then-User ordering + `display_name ASC` per INV-019-6
-- [ ] T039 [P] [US6] Contract test `crates/nexus-api/tests/modules_contract.rs::list_filters_by_kind_and_q` — `kind=extension|user|all` + `q=` substring filter
-- [ ] T040 [P] [US6] Contract test `crates/nexus-api/tests/modules_contract.rs::blueprints_ordered_primary_first` — `blueprints[]` has `is_primary=true` at index 0 + sort-order fallback when `primary_recipe_id` is NULL
-- [ ] T041 [P] [US6] Contract test `crates/nexus-api/tests/modules_contract.rs::null_icon_renders_fallback` — no-manifest-icon extension returns `ModuleIcon::Fallback` with deterministic glyph
-- [ ] T042 [P] [US6] Contract test `crates/nexus-api/tests/modules_detail_contract.rs::detail_404_on_missing_module`
-- [ ] T043 [P] [US6] Contract test `crates/nexus-api/tests/modules_detail_contract.rs::detail_rejects_draft_id` — `GET /modules/user:draft:{uuid}` → HTTP 400 `module.draft_id_not_allowed`
+- [X] T038 [P] [US6] Contract test `crates/nexus-api/tests/modules_contract.rs::list_shape_and_ordering` — asserts response shape + Extension-first-then-User ordering + `display_name ASC` per INV-019-6
+- [X] T039 [P] [US6] Contract test `crates/nexus-api/tests/modules_contract.rs::list_filters_by_kind_and_q` — `kind=extension|user|all` + `q=` substring filter
+- [X] T040 [P] [US6] Contract test `crates/nexus-api/tests/modules_contract.rs::blueprints_ordered_primary_first` — `blueprints[]` has `is_primary=true` at index 0 + sort-order fallback when `primary_recipe_id` is NULL
+- [X] T041 [P] [US6] Contract test `crates/nexus-api/tests/modules_contract.rs::null_icon_renders_fallback` — no-manifest-icon extension returns `ModuleIcon::Fallback` with deterministic glyph
+- [X] T042 [P] [US6] Contract test `crates/nexus-api/tests/modules_detail_contract.rs::detail_404_on_missing_module`
+- [X] T043 [P] [US6] Contract test `crates/nexus-api/tests/modules_detail_contract.rs::detail_rejects_draft_id` — `GET /modules/user:draft:{uuid}` → HTTP 400 `module.draft_id_not_allowed`
 - [ ] T044 [P] [US6] Contract test `crates/nexus-api/tests/modules_deploy_shortcut.rs::deploy_default_blueprint_201`
 - [ ] T045 [P] [US6] Contract test `crates/nexus-api/tests/modules_deploy_shortcut.rs::deploy_with_recipe_id_override`
 - [ ] T046 [P] [US6] Contract test `crates/nexus-api/tests/modules_deploy_shortcut.rs::deploy_422_on_foreign_recipe_id` — `module.recipe_not_in_module`
@@ -123,17 +123,17 @@ description: "Task list for 019-extension-modules implementation"
 
 ### Implementation for US6
 
-- [ ] T055 [P] [US6] Create DTO types `ModuleSummary`, `ModuleDetail`, `ModuleIcon`, `RecipeRef`, `DeploymentCounts`, `CompatibilitySummary`, `BlueprintProjection`, `DryRunPlan` in `crates/nexus-api/src/handlers/modules/envelope.rs` (all `#[non_exhaustive]`, `#[serde(rename_all = "snake_case")]`)
-- [ ] T056 [P] [US6] Create `DraftMaterializeMap` with `tokio::sync::RwLock<HashMap<Uuid, DraftEntry>>` + 60 s sweeper + 10 min TTL in `crates/nexus-api/src/handlers/modules/draft_map.rs`
-- [ ] T057 [US6] Implement `list` handler in `crates/nexus-api/src/handlers/modules/aggregator.rs` with parallel `tokio::join!` over extensions + workflows + deployment-counts queries; compose `ModuleSummary[]` with FNV fallback for icons; sort per INV-019-6
-- [ ] T058 [US6] Implement `detail` handler in `crates/nexus-api/src/handlers/modules/aggregator.rs` (full `ModuleDetail` projection)
-- [ ] T059 [US6] Implement `blueprint` handler in `crates/nexus-api/src/handlers/modules/aggregator.rs` (`BlueprintProjection` with optional `recipe_id` query param; 422 on foreign recipe_id)
-- [ ] T060 [US6] Implement `create` in `crates/nexus-api/src/handlers/modules/deploy_shortcut.rs` that delegates to `DeploymentSaveService::save` with resolved blueprint + overrides; rejects `user:draft:*` path with 400
-- [ ] T061 [US6] Implement `run` in `crates/nexus-api/src/handlers/modules/dry_run.rs` producing an ephemeral plan (no `runs` row, no artifact)
-- [ ] T062 [US6] Implement `materialize` in `crates/nexus-api/src/handlers/modules/materialize.rs` with single-transaction `workflows` + `DeploymentSaveService::save` + body-hash idempotency per `contracts/draft-materialize.md` §2
-- [ ] T063 [US6] Wire all routes in `crates/nexus-api/src/router.rs` under `/api/v1/modules` and `/api/v1/modules/user:draft:{uuid}/materialize`
-- [ ] T064 [US6] Emit `module.deploy.instance` + `module.blueprint.viewed` + `module.viewed` events (local bus only per FR-TP01) in the respective handlers
-- [ ] T065 [P] [US6] Rust doc-comments on every public trait + DTO explaining invariants (Principle IV — `///` doc-comments only, no inline comments)
+- [X] T055 [P] [US6] Create DTO types `ModuleSummary`, `ModuleDetail`, `ModuleIcon`, `RecipeRef`, `DeploymentCounts`, `CompatibilitySummary`, `BlueprintProjection`, `DryRunPlan` in `crates/nexus-api/src/handlers/modules/envelope.rs` (all `#[non_exhaustive]`, `#[serde(rename_all = "snake_case")]`)
+- [X] T056 [P] [US6] Create `DraftMaterializeMap` with `tokio::sync::RwLock<HashMap<Uuid, DraftEntry>>` + 60 s sweeper + 10 min TTL in `crates/nexus-api/src/handlers/modules/draft_map.rs`
+- [X] T057 [US6] Implement `list` handler in `crates/nexus-api/src/handlers/modules/aggregator.rs` with parallel `tokio::join!` over extensions + workflows + deployment-counts queries; compose `ModuleSummary[]` with FNV fallback for icons; sort per INV-019-6
+- [X] T058 [US6] Implement `detail` handler in `crates/nexus-api/src/handlers/modules/aggregator.rs` (full `ModuleDetail` projection)
+- [X] T059 [US6] Implement `blueprint` handler in `crates/nexus-api/src/handlers/modules/aggregator.rs` (`BlueprintProjection` with optional `recipe_id` query param; 422 on foreign recipe_id)
+- [X] T060 [US6] Implement `create` in `crates/nexus-api/src/handlers/modules/deploy_shortcut.rs` that delegates to `DeploymentSaveService::save` with resolved blueprint + overrides; rejects `user:draft:*` path with 400
+- [X] T061 [US6] Implement `run` in `crates/nexus-api/src/handlers/modules/dry_run.rs` producing an ephemeral plan (no `runs` row, no artifact)
+- [X] T062 [US6] Implement `materialize` in `crates/nexus-api/src/handlers/modules/materialize.rs` with single-transaction `workflows` + `DeploymentSaveService::save` + body-hash idempotency per `contracts/draft-materialize.md` §2
+- [X] T063 [US6] Wire all routes in `crates/nexus-api/src/router.rs` under `/api/v1/modules` and `/api/v1/modules/user:draft:{uuid}/materialize`
+- [X] T064 [US6] Emit `module.deploy.instance` + `module.blueprint.viewed` + `module.viewed` events (local bus only per FR-TP01) in the respective handlers
+- [X] T065 [P] [US6] Rust doc-comments on every public trait + DTO explaining invariants (Principle IV — `///` doc-comments only, no inline comments)
 
 **Checkpoint**: Backend endpoints live + all 17 contract tests green. UI stories can now fetch real data.
 

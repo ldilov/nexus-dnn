@@ -30,7 +30,8 @@ use crate::AppState;
 use crate::frontend;
 use crate::handlers::{
     artifacts, backend_events_ws, backends, deployments, extensions, health, huggingface, metrics,
-    recipes, runs, storage_contributions, system, tools, ui_contributions, ui_layouts, workflows,
+    modules, recipes, runs, storage_contributions, system, tools, ui_contributions, ui_layouts,
+    workflows,
 };
 use crate::ws;
 
@@ -222,6 +223,8 @@ pub fn build(state: AppState) -> Router {
         .allow_headers(Any);
 
     let api_v1 = api_v1.nest("/deployments", deployments::deployments_router());
+    let api_v1 = api_v1.nest("/modules", modules::router());
+    let api_v1 = api_v1.nest("/modules", modules::draft_router());
 
     Router::new()
         .nest("/api/v1", api_v1)
