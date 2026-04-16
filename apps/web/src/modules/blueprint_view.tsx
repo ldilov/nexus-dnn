@@ -763,16 +763,21 @@ function WorkflowDagSvg({ workflow }: DagProps) {
 
   return (
     <svg
-      className={s.graphSvg}
+      xmlns="http://www.w3.org/2000/svg"
       viewBox={`0 0 ${layout.width} ${layout.height}`}
       width={layout.width}
       height={layout.height}
+      preserveAspectRatio="xMinYMin meet"
       role="img"
       aria-label="Workflow DAG"
+      style={{
+        display: "block",
+        maxWidth: "100%",
+      }}
     >
       <defs>
         <marker
-          id="arrow"
+          id="nexus-dag-arrow"
           viewBox="0 0 10 10"
           refX="9"
           refY="5"
@@ -780,18 +785,15 @@ function WorkflowDagSvg({ workflow }: DagProps) {
           markerHeight="7"
           orient="auto-start-reverse"
         >
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-outline)" />
+          <path d="M 0 0 L 10 5 L 0 10 z" className={s.svgArrowFill} />
         </marker>
       </defs>
       {layout.edges.map((e, i) => (
         <path
           key={i}
           d={edgePath(e.x1, e.y1, e.x2, e.y2)}
-          stroke="var(--color-outline)"
-          strokeWidth="1.5"
-          fill="none"
-          markerEnd="url(#arrow)"
-          opacity={0.8}
+          className={s.svgEdge}
+          markerEnd="url(#nexus-dag-arrow)"
         />
       ))}
       {layout.nodes.map((n) => (
@@ -800,28 +802,21 @@ function WorkflowDagSvg({ workflow }: DagProps) {
             width={NODE_WIDTH}
             height={NODE_HEIGHT}
             rx={10}
-            fill="var(--color-surface-container-highest)"
-            stroke={n.isBoundary ? "var(--color-primary)" : "var(--color-outline)"}
-            strokeWidth={n.isBoundary ? 1.5 : 1}
+            className={n.isBoundary ? s.svgNodeBoundary : s.svgNode}
           />
           <text
             x={NODE_WIDTH / 2}
             y={NODE_HEIGHT / 2 - 6}
             textAnchor="middle"
-            fill="var(--color-on-surface)"
-            fontSize="13"
-            fontWeight="700"
-            fontFamily="var(--font-ui)"
+            className={s.svgNodeTitle}
           >
             {truncate(humanize(n.id), 22)}
           </text>
           <text
             x={NODE_WIDTH / 2}
-            y={NODE_HEIGHT / 2 + 12}
+            y={NODE_HEIGHT / 2 + 14}
             textAnchor="middle"
-            fill="var(--color-secondary)"
-            fontSize="10"
-            fontFamily="var(--font-mono)"
+            className={s.svgNodeOp}
           >
             {truncate(n.operator, 26)}
           </text>
