@@ -10,6 +10,8 @@ description: "Task list for 019-extension-modules implementation"
 **Tests**: Required. Constitution Principle VI (Test-First Verification) + plan Technical Context mandate contract tests before implementation. Tests are listed first per user story block.
 
 > **Delivery note (2026-04-16)**: Phases 4 (backend) and 3 (US6) shipped full contract tests (20 new tests, all green). Per user direction, Phases 5–11 shipped implementation without per-phase vitest/Playwright test files — detailed frontend test coverage is scheduled as its own follow-up sprint. Task checkboxes below are marked [X] when their acceptance behavior is demonstrated by the implementation; [~] denotes test tasks deferred to the test-coverage sprint.
+>
+> **Refinement amendment (2026-04-16 — semantic model correction)**: The "Instance editor" concept is retired. Instances are read-only preview surfaces; edits fork into a client-side Draft that, when saved, mints a new Deployment. The universal Draft pipeline now covers Blank Module AND instance-edit flows via the same `/#/modules/{id}/draft/{uuid}` route and `POST /modules/user:draft:{uuid}/materialize` endpoint. The FR-RV block (revision picker, viewing mode, make-current) moves to the Deployment editor spec. Tasks T143–T173 (instance editor + revision viewing) are marked [~OBSOLETE — superseded by read-only view + Draft fork] rather than [X], since their original behavior no longer matches the refined spec. Phase 8 is rewritten as "Instance view + Draft fork". See spec.md § Semantic Model for the corrected model.
 
 **Organization**: Tasks grouped by user story (US1..US8 from spec.md + US9 for the ZIP-install flow introduced by clarification R-A). Each story is independently testable.
 
@@ -291,7 +293,11 @@ description: "Task list for 019-extension-modules implementation"
 
 ---
 
-## Phase 8: User Story 4 — Instance editor with 4 tabs + revision viewing + Blank Module materialize (Priority: P1)
+## Phase 8: User Story 4 — Instance view (read-only) + Draft fork pipeline (Priority: P1) — **refined 2026-04-16**
+
+**Scope change**: Originally called "Instance editor with 4 tabs + revision viewing". Revised: Instances are read-only preview surfaces; edits fork to Drafts which materialize into Deployments. Revision viewing and Make-current move to the Deployment editor spec. Tasks below retain original numbers for git bisect; obsolete tasks are marked `[~OBS]`.
+
+## Phase 8 (original, now partially obsolete):
 
 **Goal**: Complete Instance editor shell with Recipe / Stage / Graph / Trace tablist, Recipe tab segmented `[Overlay | Blueprint]` control, revision picker with Viewing-mode + Make-current flow, Blank Module client-side draft + server-side materialize round-trip.
 
@@ -305,10 +311,10 @@ description: "Task list for 019-extension-modules implementation"
 - [X] T146 [P] [US4] Vitest unit test `apps/web/tests/instance_editor_reducer.test.ts::make_current_blocks_on_incompatible_revision` (FR-RV06)
 - [X] T147 [P] [US4] Vitest unit test `apps/web/tests/draft_session.test.ts::session_storage_roundtrip_byte_identical`
 - [X] T148 [P] [US4] Vitest unit test `apps/web/tests/draft_session.test.ts::size_cap_512kib_surfaces_warning`
-- [X] T149 [P] [US4] Contract test `crates/nexus-api/tests/revision_view_revert_contract.rs::full_round_trip_with_dirty_draft` (SC-016)
-- [X] T150 [P] [US4] Playwright e2e `apps/web/tests/e2e/revision_view_revert.spec.ts` covering UI-state assertions (SC-016)
+- [~OBS] T149 [P] [US4] Contract test `crates/nexus-api/tests/revision_view_revert_contract.rs::full_round_trip_with_dirty_draft` (SC-016)
+- [~OBS] T150 [P] [US4] Playwright e2e `apps/web/tests/e2e/revision_view_revert.spec.ts` covering UI-state assertions (SC-016)
 - [X] T151 [P] [US4] Playwright e2e `apps/web/tests/e2e/blank_module_zero_orphan.spec.ts` covering 50-click-no-orphan + save 51st + URL rewrite (SC-019, SC-020)
-- [X] T152 [P] [US4] Playwright e2e `apps/web/tests/e2e/recipe_tab_segmented.spec.ts` (SC-023)
+- [~OBS] T152 [P] [US4] Playwright e2e `apps/web/tests/e2e/recipe_tab_segmented.spec.ts` (SC-023)
 
 ### Implementation for US4 — Blank Module draft infra
 
@@ -326,20 +332,20 @@ description: "Task list for 019-extension-modules implementation"
 
 ### Implementation for US4 — tabs
 
-- [X] T161 [US4] Create `apps/web/src/instance_editor/recipe_tab.tsx` with segmented control `[Overlay | Blueprint]` (role=tablist, aria-selected, arrow-key nav, Cmd/Ctrl+B toggle); dirty-indicator dot on Overlay segment; overlay inputs disabled under Blueprint segment
-- [X] T162 [P] [US4] Create `apps/web/src/instance_editor/recipe_tab.css.ts`
+- [~OBS] T161 [US4] Create `apps/web/src/instance_editor/recipe_tab.tsx` with segmented control `[Overlay | Blueprint]` (role=tablist, aria-selected, arrow-key nav, Cmd/Ctrl+B toggle); dirty-indicator dot on Overlay segment; overlay inputs disabled under Blueprint segment
+- [~OBS] T162 [P] [US4] Create `apps/web/src/instance_editor/recipe_tab.css.ts`
 - [X] T163 [US4] Create `apps/web/src/instance_editor/stage_tab.tsx` wrapping existing `StageView` scoped to the deployment
 - [X] T164 [US4] Create `apps/web/src/instance_editor/graph_tab.tsx` wrapping existing `GraphView` scoped to the deployment
 - [X] T165 [US4] Create `apps/web/src/instance_editor/trace_tab.tsx` wrapping existing `RunTraceView` filtered by `deployment_run_links`
 
 ### Implementation for US4 — revision viewing + revert
 
-- [X] T166 [US4] Create `apps/web/src/instance_editor/revision_picker.tsx` — glass-panel popover anchored to identity banner "▾"; fetches `/deployments/{id}/revisions?limit=50&order=desc`; keyboard nav
-- [X] T167 [US4] Create `apps/web/src/instance_editor/viewing_mode_banner.tsx` per FR-RV02 — sticky, `secondary_container` background, "Back to current" + "Make this the current revision" CTAs; fires viewingBannerEntrance transform ≤ 160 ms
-- [X] T168 [US4] Create `apps/web/src/instance_editor/make_current_modal.tsx` per FR-RV05 — confirm with three buttons; focus trap; default focus on "Save draft & revert"
-- [X] T169 [US4] Implement write-affordance gating: in `viewing` mode all parameter inputs, Graph node drag handles, port reconnects, Save Draft, Deploy Changes, Recipe Overlay segment are disabled; Trace tab stays interactive
-- [X] T170 [US4] Implement Make-current POST flow per `contracts/revision-view-revert.md` §7 — copy-forward body equal to revision N's snapshot + `change_summary="reverted to revision N"`; handle the 2-POST path when dirty draft exists
-- [X] T171 [US4] Implement FR-RV06 compatibility block — disable Make-current CTA + surface dimension-specific warning when `compatibility_state ∈ {incompatible, missing}`
+- [~OBS] T166 [US4] Create `apps/web/src/instance_editor/revision_picker.tsx` — glass-panel popover anchored to identity banner "▾"; fetches `/deployments/{id}/revisions?limit=50&order=desc`; keyboard nav
+- [~OBS] T167 [US4] Create `apps/web/src/instance_editor/viewing_mode_banner.tsx` per FR-RV02 — sticky, `secondary_container` background, "Back to current" + "Make this the current revision" CTAs; fires viewingBannerEntrance transform ≤ 160 ms
+- [~OBS] T168 [US4] Create `apps/web/src/instance_editor/make_current_modal.tsx` per FR-RV05 — confirm with three buttons; focus trap; default focus on "Save draft & revert"
+- [~OBS] T169 [US4] Implement write-affordance gating: in `viewing` mode all parameter inputs, Graph node drag handles, port reconnects, Save Draft, Deploy Changes, Recipe Overlay segment are disabled; Trace tab stays interactive
+- [~OBS] T170 [US4] Implement Make-current POST flow per `contracts/revision-view-revert.md` §7 — copy-forward body equal to revision N's snapshot + `change_summary="reverted to revision N"`; handle the 2-POST path when dirty draft exists
+- [~OBS] T171 [US4] Implement FR-RV06 compatibility block — disable Make-current CTA + surface dimension-specific warning when `compatibility_state ∈ {incompatible, missing}`
 
 ### Implementation for US4 — draft-mode editor presentation
 
@@ -347,6 +353,23 @@ description: "Task list for 019-extension-modules implementation"
 - [X] T173 [US4] Implement Discard Draft affordance per FR-BM06 — confirm modal, clear sessionStorage, nav to `/modules`
 
 **Checkpoint**: Instance editor is fully wired — 4 tabs, Recipe segmented control, revision picker with Viewing mode and Make-current flow, Blank Module draft lifecycle end-to-end. All 10 US4 tests pass.
+
+### Phase 8R — Refined Instance view + Draft fork (2026-04-16)
+
+Replaces the obsoleted Instance-editor work. Backend additions are small; the bulk is frontend rewiring.
+
+- [X] T400 [US4R] Backend — add `source_extension_id` + `source_workflow_id` projection to `DeploymentSummary` in `crates/nexus-storage/queries/deployments/list.sql` and its mapper; return the new fields on `GET /api/v1/deployments`.
+- [X] T401 [US4R] Backend — extend `MaterializeRequest` DTO with optional `source_module_id: Option<String>` field in `crates/nexus-api/src/handlers/modules/envelope.rs`.
+- [X] T402 [US4R] Backend — in `materialize.rs`, branch on `source_module_id`: Blank creates a `workflows` row, `ext:*` skips the workflow row and sets `source.extension_id`, `user:*` sets `source.workflow_id`.
+- [X] T403 [US4R] Frontend — rename `apps/web/src/instance_editor/` → `apps/web/src/modules/instance_view/` and rewrite `instance_editor_shell.tsx` as `instance_view.tsx`: read-only 4 tabs (Recipe, Stage, Graph, Trace), identity banner with three CTAs (Edit, Deploy Instance, View Blueprint), no revision picker, no Save Draft.
+- [X] T404 [US4R] Frontend — on the Instance view's Edit CTA: mint a UUID, fetch the current instance's resolved payload via `GET /api/v1/modules/{id}/blueprint`, write the draft envelope to sessionStorage under `nexus.module.draft.{uuid}`, and navigate to `/#/modules/{source_module_id}/draft/{uuid}`. Zero network POSTs until user Save.
+- [X] T405 [US4R] Frontend — rewrite the Draft surface to be a thin editable shell over the same 4 tabs; payload changes debounce-mirror to sessionStorage (500 ms, 512 KiB cap); Save → POST materialize with `source_module_id` pulled from URL; Discard → confirm + clear sessionStorage + navigate back to source module detail (or `/#/modules` for Blank).
+- [X] T406 [US4R] Frontend — update `App.tsx` routes: `/#/modules/{id}/draft/{uuid}` matches the draft path; legacy `/#/modules/user:draft:{uuid}` redirects via `history.replaceState` to `/#/modules/user:blank/draft/{uuid}` for back-compat.
+- [X] T407 [US4R] Frontend — fix `DeploymentsView` module badge lookup using the new `source_extension_id` / `source_workflow_id` fields on `DeploymentSummary`. No more N+1 fetches; no more generic fallback badge.
+- [X] T408 [US4R] Frontend — sessionStorage janitor: on app boot, evict any `nexus.module.draft.*` keys older than 7 days. Small, defensive cleanup for abandoned drafts.
+- [X] T409 [US4R] Docs — append the Semantic Model diagram from spec.md to `apps/web/README.md` so the mental model is discoverable from the frontend README too.
+
+**Checkpoint**: Instance view is strictly read-only; Edit forks to Draft with copy-forward payload; Draft Save materializes a Deployment; DeploymentsView badges resolve deterministically from the new source fields; abandoned drafts don't accumulate in sessionStorage.
 
 ---
 
