@@ -54,9 +54,13 @@ pub struct ExtensionInfo {
 /// Exactly one of `symbol` or `svg` SHOULD be set; if both are set, `svg`
 /// wins and the ingest pipeline emits a `manifest.icon.both_set` warning.
 /// If neither is set, the host falls back to FNV-1a hashing at read time.
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+///
+/// Intentionally NOT `#[non_exhaustive]` — this type is a manifest schema
+/// declaration consumed by extension authors, and the spec treats additions
+/// as a compatibility break. New icon fields must arrive via an explicit
+/// schema version bump, not by silent expansion.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
 #[serde(deny_unknown_fields)]
-#[non_exhaustive]
 pub struct ManifestIcon {
     #[serde(default)]
     pub symbol: Option<String>,

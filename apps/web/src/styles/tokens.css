@@ -1,0 +1,78 @@
+:root {
+  --color-primary: #ba9eff;
+  --color-primary-dim: #8455ef;
+  --color-on-primary: #39008c;
+  --color-primary-container: #ae8dff;
+  --color-on-primary-container: #2b006e;
+
+  --color-secondary: #9093ff;
+  --color-secondary-dim: #6063ee;
+  --color-on-secondary: #080079;
+  --color-secondary-container: #2f2ebe;
+  --color-on-secondary-container: #ccccff;
+
+  --color-tertiary: #ff8439;
+  --color-tertiary-dim: #fd761a;
+  --color-on-tertiary: #471a00;
+  --color-tertiary-container: #f77113;
+  --color-on-tertiary-container: #321000;
+
+  --color-acid-green: #22c55e;
+
+  --color-error: #ff6e84;
+  --color-error-dim: #d73357;
+  --color-on-error: #490013;
+  --color-error-container: #a70138;
+  --color-on-error-container: #ffb2b9;
+
+  --color-surface: #0c0e10;
+  --color-surface-container-lowest: #000000;
+  --color-surface-container-low: #111416;
+  --color-surface-container: #171a1c;
+  --color-surface-container-high: #1d2023;
+  --color-surface-container-highest: #232629;
+  --color-surface-variant: #232629;
+  --color-surface-bright: #292c30;
+
+  --color-on-surface: #f0f0f3;
+  --color-on-surface-variant: #aaabae;
+  --color-outline: #747578;
+  --color-outline-variant: #46484a;
+
+  --motion-card-hover-lift: 160ms;
+  --motion-card-glow: 200ms;
+  --motion-focus-ring: 120ms;
+  --motion-tab-crossfade: 200ms;
+  --motion-sidebar-settle: 200ms;
+  --motion-drawer-slide: 240ms;
+  --motion-optimistic-insert: 200ms;
+  --motion-status-dot-pulse-cycle: 1500ms;
+  --motion-viewing-banner-entrance: 160ms;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-card-hover-lift: 0s;
+    --motion-card-glow: 0s;
+    --motion-focus-ring: 0s;
+    --motion-tab-crossfade: 0s;
+    --motion-sidebar-settle: 0s;
+    --motion-drawer-slide: 0s;
+    --motion-optimistic-insert: 0s;
+    --motion-status-dot-pulse-cycle: 999999s;
+    --motion-viewing-banner-entrance: 0s;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

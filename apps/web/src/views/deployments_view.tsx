@@ -28,6 +28,7 @@ export function DeploymentsView() {
     <div className={s.root}>
       <header className={s.header}>
         <div>
+          {/* scan-terminology: allow — canonical page name per FR-T02 glossary */}
           <h1 className={s.title}>Deployments</h1>
           <p className={s.subtitle}>
             Saved working states of workflows and recipes — name, restore, and
@@ -37,6 +38,7 @@ export function DeploymentsView() {
       </header>
 
       {state.kind === "loading" && (
+        // scan-terminology: allow
         <p className={s.subtitle}>Loading deployments…</p>
       )}
 
@@ -51,6 +53,7 @@ export function DeploymentsView() {
           <span className={`material-symbols-outlined ${s.emptyIcon}`}>
             rocket_launch
           </span>
+          {/* scan-terminology: allow */}
           <span className={s.emptyTitle}>No deployments yet</span>
           <p className={s.subtitle}>
             Save a workflow or recipe as a deployment to capture its current
@@ -60,6 +63,7 @@ export function DeploymentsView() {
       )}
 
       {state.kind === "ready" && state.items.length > 0 && (
+        // scan-terminology: allow
         <ul className={s.list} aria-label="Deployments">
           {state.items.map((item) => (
             <li key={item.id} className={s.card}>
