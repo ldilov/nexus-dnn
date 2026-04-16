@@ -30,13 +30,13 @@ description: "Task list for 019-extension-modules implementation"
 
 **Purpose**: Branch creation, dependency installs, vendored assets.
 
-- [ ] T001 Create feature branch `019-extension-modules` from `main` via `git checkout -b 019-extension-modules`
+- [X] T001 Create feature branch `019-extension-modules` from `main` via `git checkout -b 019-extension-modules`
 - [ ] T002 [P] Install frontend dependency `@tanstack/react-virtual` via `pnpm add @tanstack/react-virtual` in `apps/web/`
-- [ ] T003 [P] Install Rust crate `fnv = "1"` and `zip = "2"` (MSRV-compatible) and `quick-xml = "0.36"` in `crates/nexus-extension/Cargo.toml`
-- [ ] T004 [P] Vendor self-hosted font `Inter-VariableFont_opsz,wght.woff2` to `apps/web/public/fonts/inter.woff2` and add SIL OFL-1.1 entry to `apps/web/public/fonts/LICENSES.txt`
-- [ ] T005 [P] Vendor self-hosted font `JetBrainsMono-VariableFont_wght.woff2` to `apps/web/public/fonts/jetbrains-mono.woff2` and add Apache-2.0 entry to `apps/web/public/fonts/LICENSES.txt`
-- [ ] T006 [P] Vendor self-hosted font `MaterialSymbolsOutlined[FILL,GRAD,opsz,wght].woff2` to `apps/web/public/fonts/material-symbols-outlined.woff2` and add Apache-2.0 entry to `apps/web/public/fonts/LICENSES.txt`
-- [ ] T007 [P] Vendor Material Symbols glyph-metadata CSS to `crates/nexus-extension/vendor/material-symbols.css` for compile-time allowlist generation
+- [X] T003 [P] Install Rust crate `fnv = "1"` and `zip = "2"` (MSRV-compatible) and `quick-xml = "0.36"` in `crates/nexus-extension/Cargo.toml`
+- [X] T004 [P] Vendor self-hosted font `Inter-VariableFont_opsz,wght.woff2` to `apps/web/public/fonts/inter.woff2` and add SIL OFL-1.1 entry to `apps/web/public/fonts/LICENSES.txt`
+- [X] T005 [P] Vendor self-hosted font `JetBrainsMono-VariableFont_wght.woff2` to `apps/web/public/fonts/jetbrains-mono.woff2` and add Apache-2.0 entry to `apps/web/public/fonts/LICENSES.txt`
+- [X] T006 [P] Vendor self-hosted font `MaterialSymbolsOutlined[FILL,GRAD,opsz,wght].woff2` to `apps/web/public/fonts/material-symbols-outlined.woff2` and add Apache-2.0 entry to `apps/web/public/fonts/LICENSES.txt`
+- [X] T007 [P] Vendor Material Symbols glyph-metadata CSS to `crates/nexus-extension/vendor/material-symbols.css` for compile-time allowlist generation
 
 ---
 
@@ -48,30 +48,30 @@ description: "Task list for 019-extension-modules implementation"
 
 ### Schema & data layer
 
-- [ ] T008 Create migration file `migrations/012_extensions_primary_refs.sql` per `contracts/migration-012.md` §2 (5 additive nullable columns on `extensions`)
-- [ ] T009 Register migration 012 call in `crates/nexus-storage/src/sqlite/migrations.rs` with `ignore_duplicate_column = true`
-- [ ] T010 Extend `ExtensionRecord` in `crates/nexus-storage/src/records.rs` with `primary_recipe_id: Option<RecipeId>`, `default_workflow_id: Option<WorkflowId>`, `icon_kind: Option<IconKind>`, `icon_symbol: Option<String>`, `icon_svg: Option<String>` + new `IconKind` enum (Symbol | Svg)
-- [ ] T011 [P] Update `crates/nexus-storage/queries/extensions/insert.sql` to include the 5 new columns
-- [ ] T012 [P] Update `crates/nexus-storage/queries/extensions/list.sql` to project the 5 new columns
-- [ ] T013 [P] Update `crates/nexus-storage/queries/extensions/get_by_id.sql` to project the 5 new columns
-- [ ] T014 [P] Create `crates/nexus-storage/queries/extensions/upsert_primary_refs.sql`
-- [ ] T015 [P] Create `crates/nexus-storage/queries/extensions/upsert_icon.sql`
-- [ ] T016 Update `crates/nexus-storage/src/sqlite/extensions.rs` mappers to read/write the 5 new columns + add `upsert_primary_refs` and `upsert_icon` helpers
-- [ ] T017 Unit test `crates/nexus-storage/src/sqlite/tests.rs::migration_012_applies` — `PRAGMA table_info(extensions)` post-migration includes all 5 new columns
-- [ ] T018 [P] Unit test `crates/nexus-storage/src/sqlite/tests.rs::migration_012_idempotent_rerun` — re-running leaves schema identical
-- [ ] T019 [P] Unit test `crates/nexus-storage/src/sqlite/tests.rs::extensions_icon_symbol_roundtrip`
-- [ ] T020 [P] Unit test `crates/nexus-storage/src/sqlite/tests.rs::extensions_icon_svg_roundtrip`
+- [X] T008 Create migration file `migrations/012_extensions_primary_refs.sql` per `contracts/migration-012.md` §2 (5 additive nullable columns on `extensions`)
+- [X] T009 Register migration 012 call in `crates/nexus-storage/src/sqlite/migrations.rs` with `ignore_duplicate_column = true`
+- [X] T010 Extend `ExtensionRecord` in `crates/nexus-storage/src/records.rs` with `primary_recipe_id: Option<RecipeId>`, `default_workflow_id: Option<WorkflowId>`, `icon_kind: Option<IconKind>`, `icon_symbol: Option<String>`, `icon_svg: Option<String>` + new `IconKind` enum (Symbol | Svg)
+- [X] T011 [P] Update `crates/nexus-storage/queries/extensions/insert.sql` to include the 5 new columns
+- [X] T012 [P] Update `crates/nexus-storage/queries/extensions/list.sql` to project the 5 new columns
+- [X] T013 [P] Update `crates/nexus-storage/queries/extensions/get_by_id.sql` to project the 5 new columns
+- [X] T014 [P] Create `crates/nexus-storage/queries/extensions/upsert_primary_refs.sql`
+- [X] T015 [P] Create `crates/nexus-storage/queries/extensions/upsert_icon.sql`
+- [X] T016 Update `crates/nexus-storage/src/sqlite/extensions.rs` mappers to read/write the 5 new columns + add `upsert_primary_refs` and `upsert_icon` helpers
+- [X] T017 Unit test `crates/nexus-storage/src/sqlite/tests.rs::migration_012_applies` — `PRAGMA table_info(extensions)` post-migration includes all 5 new columns
+- [X] T018 [P] Unit test `crates/nexus-storage/src/sqlite/tests.rs::migration_012_idempotent_rerun` — re-running leaves schema identical
+- [X] T019 [P] Unit test `crates/nexus-storage/src/sqlite/tests.rs::extensions_icon_symbol_roundtrip`
+- [X] T020 [P] Unit test `crates/nexus-storage/src/sqlite/tests.rs::extensions_icon_svg_roundtrip`
 
 ### Newtypes & domain types
 
-- [ ] T021 [P] Create `ModuleId` newtype with regex validator in `crates/nexus-api/src/handlers/modules/module_id.rs` (accepts `ext:{id}` | `user:{uuid}` | `user:blank` | `user:draft:{uuid}`)
-- [ ] T022 [P] Unit test `crates/nexus-api/tests/module_id_parse.rs` covering every valid + invalid regex branch
-- [ ] T023 [P] Create `ManifestIcon` struct (`{ symbol?, svg? }`, `#[non_exhaustive]`, `#[serde(deny_unknown_fields, default)]`) in `crates/nexus-extension/src/manifest.rs`
-- [ ] T024 [P] Create `ModuleIconResolver` trait + `FnvFallbackResolver` impl in `crates/nexus-extension/src/icon_resolver.rs` with 16-glyph fallback set per `contracts/module-icon.md` §3
-- [ ] T025 [P] Unit test `crates/nexus-extension/tests/icon_resolver.rs::fnv_stable_across_runs` — same extension_id yields same glyph+hash over 1000 calls
-- [ ] T026 [P] Create `svg_sanitize` allow-list validator using `quick-xml` in `crates/nexus-extension/src/install/svg_sanitize.rs` — allowlist per FR-I03; reject-on-unknown; ≤ 2 KiB pre-parse gate
-- [ ] T027 [P] Build-script `crates/nexus-extension/build.rs` parses `vendor/material-symbols.css` and emits `MATERIAL_SYMBOLS: &[&str]` sorted array to `OUT_DIR/material_symbols_allowlist.rs`
-- [ ] T028 Wire Material Symbols allowlist into `crates/nexus-extension/src/manifest.rs::validate_icon` (binary search check)
+- [X] T021 [P] Create `ModuleId` newtype with regex validator in `crates/nexus-api/src/handlers/modules/module_id.rs` (accepts `ext:{id}` | `user:{uuid}` | `user:blank` | `user:draft:{uuid}`)
+- [X] T022 [P] Unit test `crates/nexus-api/tests/module_id_parse.rs` covering every valid + invalid regex branch
+- [X] T023 [P] Create `ManifestIcon` struct (`{ symbol?, svg? }`, `#[non_exhaustive]`, `#[serde(deny_unknown_fields, default)]`) in `crates/nexus-extension/src/manifest.rs`
+- [X] T024 [P] Create `ModuleIconResolver` trait + `FnvFallbackResolver` impl in `crates/nexus-extension/src/icon_resolver.rs` with 16-glyph fallback set per `contracts/module-icon.md` §3
+- [X] T025 [P] Unit test `crates/nexus-extension/tests/icon_resolver.rs::fnv_stable_across_runs` — same extension_id yields same glyph+hash over 1000 calls
+- [X] T026 [P] Create `svg_sanitize` allow-list validator using `quick-xml` in `crates/nexus-extension/src/install/svg_sanitize.rs` — allowlist per FR-I03; reject-on-unknown; ≤ 2 KiB pre-parse gate
+- [X] T027 [P] Build-script `crates/nexus-extension/build.rs` parses `vendor/material-symbols.css` and emits `MATERIAL_SYMBOLS: &[&str]` sorted array to `OUT_DIR/material_symbols_allowlist.rs`
+- [X] T028 Wire Material Symbols allowlist into `crates/nexus-extension/src/manifest.rs::validate_icon` (binary search check)
 
 ### Design system tokens (Spectral Graphite)
 

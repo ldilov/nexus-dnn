@@ -19,6 +19,39 @@ pub struct ExtensionRecord {
     pub recipe_count: Option<i32>,
     pub ui_contribution_count: Option<i32>,
     pub validation_errors: Option<String>,
+    pub primary_recipe_id: Option<String>,
+    pub default_workflow_id: Option<String>,
+    pub icon_kind: Option<IconKind>,
+    pub icon_symbol: Option<String>,
+    pub icon_svg: Option<String>,
+}
+
+/// Persisted discriminant for the `extensions.icon_kind` column. `None` at the
+/// `ExtensionRecord` level means the host falls back to deterministic FNV-1a
+/// hashing at read time (spec 019 FR-I04).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum IconKind {
+    Symbol,
+    Svg,
+}
+
+impl IconKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            IconKind::Symbol => "symbol",
+            IconKind::Svg => "svg",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw {
+            "symbol" => Some(IconKind::Symbol),
+            "svg" => Some(IconKind::Svg),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

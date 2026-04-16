@@ -46,6 +46,22 @@ pub struct ExtensionInfo {
     pub name: Option<String>,
     pub description: Option<String>,
     pub publisher: Option<String>,
+    #[serde(default)]
+    pub icon: Option<ManifestIcon>,
+}
+
+/// Optional icon declaration in an extension manifest (spec 019 FR-I01).
+/// Exactly one of `symbol` or `svg` SHOULD be set; if both are set, `svg`
+/// wins and the ingest pipeline emits a `manifest.icon.both_set` warning.
+/// If neither is set, the host falls back to FNV-1a hashing at read time.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+#[non_exhaustive]
+pub struct ManifestIcon {
+    #[serde(default)]
+    pub symbol: Option<String>,
+    #[serde(default)]
+    pub svg: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

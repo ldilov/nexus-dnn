@@ -1774,6 +1774,7 @@ dependencies = [
  "nexus-storage",
  "nexus-worker",
  "nexus-workflow",
+ "regex-lite",
  "rust-embed",
  "semver",
  "serde",
@@ -1908,9 +1909,11 @@ dependencies = [
 name = "nexus-extension"
 version = "0.1.0"
 dependencies = [
+ "fnv",
  "jsonschema 0.28.3",
  "nexus-protocol",
  "parking_lot",
+ "quick-xml",
  "referencing 0.28.3",
  "regex-lite",
  "semver",
@@ -1923,6 +1926,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "zip",
 ]
 
 [[package]]
@@ -2455,6 +2459,15 @@ checksum = "3852766467df634d74f0b2d7819bf8dc483a0eb2e3b0f50f756f9cfe8b0d18d8"
 dependencies = [
  "ar_archive_writer",
  "cc",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.36.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7649a7b4df05aed9ea7ec6f628c67c9953a43869b8bc50929569b2999d443fe"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]

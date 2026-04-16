@@ -1,0 +1,33 @@
+Self-hosted fonts shipped with Nexus DNN (local-first per spec 019 FR-TP04).
+
+Every font below is licensed permissively and redistributed unmodified.
+
+---
+
+inter.woff2
+  Source:  https://github.com/rsms/inter  (InterVariable.woff2)
+  License: SIL Open Font License 1.1 (OFL-1.1)
+  Notice:  Copyright (c) 2016 The Inter Project Authors.
+  Full text: https://github.com/rsms/inter/blob/master/LICENSE.txt
+
+jetbrains-mono.woff2
+  Source:  https://github.com/JetBrains/JetBrainsMono  (JetBrainsMono-Regular.woff2)
+  License: Apache License 2.0
+  Notice:  Copyright 2020 The JetBrains Mono Project Authors.
+  Full text: https://github.com/JetBrains/JetBrainsMono/blob/master/OFL.txt
+
+material-symbols-outlined.woff2
+  Source:  https://cdn.jsdelivr.net/npm/@fontsource-variable/material-symbols-outlined
+           (ultimately from https://github.com/google/material-design-icons)
+  License: Apache License 2.0
+  Notice:  Copyright (c) Google. Material Symbols are published under
+           Apache 2.0; the icon glyphs may be used, reproduced, and modified
+           per the license terms.
+  Full text: https://github.com/google/material-design-icons/blob/master/LICENSE
+
+---
+
+These files are loaded exclusively from this directory at runtime. The
+application never reaches out to fonts.googleapis.com, fonts.gstatic.com,
+or any other remote host. See spec 019 FR-TP03 / FR-TP04 / SC-021 for the
+enforcement rules and CI scanners.

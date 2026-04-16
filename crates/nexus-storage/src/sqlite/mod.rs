@@ -1,7 +1,7 @@
 mod artifacts;
 mod content;
 pub mod deployments;
-mod extensions;
+pub mod extensions;
 mod migrations;
 mod namespaces;
 mod operators;
