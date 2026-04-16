@@ -618,6 +618,10 @@ export interface ModuleSummary {
   publisher?: string | null;
   runtime_family?: string | null;
   installed_at?: string | null;
+  // Workflow id backing the module's "Graph" projection on the Blueprint
+  // view. Frontend fetches GET /api/v1/workflows/{id} when rendering the
+  // Workflow tab; null for Blank Module.
+  workflow_id?: string | null;
 }
 
 export interface ModuleListEnvelope {

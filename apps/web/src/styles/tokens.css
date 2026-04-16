@@ -39,6 +39,9 @@
   --color-outline: #747578;
   --color-outline-variant: #46484a;
 
+  --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
   --motion-card-hover-lift: 160ms;
   --motion-card-glow: 200ms;
   --motion-focus-ring: 120ms;

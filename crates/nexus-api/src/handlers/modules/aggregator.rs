@@ -198,6 +198,7 @@ fn build_extension_module(ext: ExtensionRecord, blueprints: Vec<RecipeRef>) -> M
         publisher: ext.publisher.clone(),
         runtime_family: Some(ext.runtime_family.clone()),
         installed_at: Some(ext.installed_at.clone()),
+        workflow_id: ext.default_workflow_id.clone(),
     }
 }
 
@@ -230,6 +231,7 @@ fn build_user_module(wfl: WorkflowRecord) -> ModuleSummary {
         publisher: None,
         runtime_family: None,
         installed_at: Some(wfl.created_at),
+        workflow_id: Some(wfl.id),
     }
 }
 
@@ -253,6 +255,7 @@ fn build_blank_module() -> ModuleSummary {
         publisher: None,
         runtime_family: None,
         installed_at: None,
+        workflow_id: None,
     }
 }
 

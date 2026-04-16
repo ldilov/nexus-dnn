@@ -54,6 +54,13 @@ pub struct ModuleSummary {
     /// workflow was first created). Rendered as "installed N ago".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub installed_at: Option<String>,
+    /// Workflow id that renders as the module's "graph" projection. For
+    /// extension modules this is `ext.default_workflow_id` when set. For
+    /// user modules it is the wrapped workflow id. The Blueprint view
+    /// uses it to fetch the DAG via `GET /api/v1/workflows/{id}` and
+    /// render the Workflow tab.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_id: Option<String>,
 }
 
 #[derive(Serialize, Debug, Clone)]
