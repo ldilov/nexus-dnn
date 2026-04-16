@@ -77,26 +77,22 @@ async fn receive_zip_field(
         .map_err(|e| ApiError::Internal(format!("create upload file: {e}")))?;
 
     let mut got_any = false;
-    while let Some(mut field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| ApiError::structured(
+    while let Some(mut field) = multipart.next_field().await.map_err(|e| {
+        ApiError::structured(
             StatusCode::BAD_REQUEST,
             "install.multipart_invalid",
             format!("multipart parse error: {e}"),
-        ))?
-    {
+        )
+    })? {
         // Accept any field — single-file-upload form, field name is not
         // load-bearing. First field with bytes wins.
-        while let Some(chunk) = field
-            .chunk()
-            .await
-            .map_err(|e| ApiError::structured(
+        while let Some(chunk) = field.chunk().await.map_err(|e| {
+            ApiError::structured(
                 StatusCode::BAD_REQUEST,
                 "install.multipart_invalid",
                 format!("multipart read error: {e}"),
-            ))?
-        {
+            )
+        })? {
             got_any = true;
             file.write_all(&chunk)
                 .await
@@ -122,10 +118,7 @@ async fn receive_zip_field(
     Ok(upload_path)
 }
 
-fn refresh_registry(
-    state: &AppState,
-    extensions_root: &std::path::Path,
-) -> Result<(), ApiError> {
+fn refresh_registry(state: &AppState, extensions_root: &std::path::Path) -> Result<(), ApiError> {
     // Spec 019 pipeline step 11 — make the newly-installed extension visible
     // to the in-process registry. We use the same host/protocol versions the
     // pipeline validator inherits from discover_and_activate; for the

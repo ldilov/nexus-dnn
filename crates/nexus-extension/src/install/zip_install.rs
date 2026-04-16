@@ -78,8 +78,7 @@ impl ZipInstallPipeline {
         // Defence-in-depth: enforce the compressed cap even though the axum
         // body limit is the primary gate. This protects any future non-HTTP
         // caller (CLI, cron) that bypasses the axum layer.
-        let compressed_size = std::fs::metadata(zip_path)?
-            .len();
+        let compressed_size = std::fs::metadata(zip_path)?.len();
         if compressed_size > self.size_limits.max_compressed_bytes {
             return Err(ZipInstallError::SizeLimit {
                 actual: compressed_size,
@@ -160,9 +159,7 @@ fn extract_all<R: Read + std::io::Seek>(
 ) -> Result<(), ZipInstallError> {
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        let enclosed = entry
-            .enclosed_name()
-            .ok_or(ZipInstallError::SlipAttempt)?;
+        let enclosed = entry.enclosed_name().ok_or(ZipInstallError::SlipAttempt)?;
         let target = staged_target(dest_root, &enclosed).ok_or(ZipInstallError::SlipAttempt)?;
         if entry.is_dir() {
             std::fs::create_dir_all(&target)?;
@@ -243,8 +240,7 @@ runtime:
         let path = tmp.join("input.zip");
         let file = File::create(&path).unwrap();
         let mut w = ZipWriter::new(file);
-        let opts = SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Stored);
+        let opts = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
         w.start_file("manifest.yaml", opts).unwrap();
         w.write_all(HAPPY_MANIFEST).unwrap();
         w.start_file("worker/main.py", opts).unwrap();
@@ -265,8 +261,18 @@ runtime:
 
         assert_eq!(result.extension_id, "demo-install");
         assert_eq!(result.module_id, "ext:demo-install");
-        assert!(extensions_root.join("demo-install").join("manifest.yaml").exists());
-        assert!(extensions_root.join("demo-install").join("worker/main.py").exists());
+        assert!(
+            extensions_root
+                .join("demo-install")
+                .join("manifest.yaml")
+                .exists()
+        );
+        assert!(
+            extensions_root
+                .join("demo-install")
+                .join("worker/main.py")
+                .exists()
+        );
     }
 
     #[test]
@@ -296,8 +302,8 @@ runtime:
             max_compressed_bytes: 1,
             ..ZipSizeLimits::default()
         };
-        let pipeline = ZipInstallPipeline::new(extensions_root, staging_root)
-            .with_size_limits(tiny);
+        let pipeline =
+            ZipInstallPipeline::new(extensions_root, staging_root).with_size_limits(tiny);
         let err = pipeline.install_from_file(&zip_path).unwrap_err();
         assert!(matches!(err, ZipInstallError::SizeLimit { .. }));
     }
@@ -313,8 +319,8 @@ runtime:
         {
             let file = File::create(&zip_path).unwrap();
             let mut w = ZipWriter::new(file);
-            let opts = SimpleFileOptions::default()
-                .compression_method(zip::CompressionMethod::Stored);
+            let opts =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
             w.start_file("readme.txt", opts).unwrap();
             w.write_all(b"no manifest here").unwrap();
             w.finish().unwrap();

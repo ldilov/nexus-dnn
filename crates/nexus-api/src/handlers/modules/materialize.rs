@@ -57,14 +57,17 @@ pub async fn materialize(
     }
 
     let body_value = serde_json::to_value(&body).map_err(|e| {
-        ApiError::Internal(format!("could not serialize materialize body for hashing: {e}"))
+        ApiError::Internal(format!(
+            "could not serialize materialize body for hashing: {e}"
+        ))
     })?;
     let body_hash = sha256_jcs(&body_value)
         .map_err(|e| ApiError::Internal(format!("body canonicalization failed: {e}")))?;
 
     if let Some(existing) = state.draft_materialize_map.lookup(&uuid_str).await {
         let now = Instant::now();
-        let within_ttl = now.duration_since(existing.created_at) < state.draft_materialize_map.ttl();
+        let within_ttl =
+            now.duration_since(existing.created_at) < state.draft_materialize_map.ttl();
         if within_ttl {
             if existing.body_hash == body_hash {
                 let response = MaterializeResponse {
@@ -125,10 +128,7 @@ pub async fn materialize(
         body_hash,
         created_at: Instant::now(),
     };
-    state
-        .draft_materialize_map
-        .insert(uuid_str, entry)
-        .await;
+    state.draft_materialize_map.insert(uuid_str, entry).await;
 
     let response = MaterializeResponse {
         module_id: ModuleId::from_user_workflow(&workflow_id),

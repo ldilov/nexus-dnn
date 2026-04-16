@@ -51,9 +51,7 @@ pub fn validate<R: Read + Seek>(
 
         // Step 3 — Zip-Slip first gate: `enclosed_name()` returns None on
         // any entry whose decoded path escapes (absolute, `..`, NUL bytes).
-        let enclosed = file
-            .enclosed_name()
-            .ok_or(ZipInstallError::SlipAttempt)?;
+        let enclosed = file.enclosed_name().ok_or(ZipInstallError::SlipAttempt)?;
 
         // Step 3 — second gate: re-walk components, refuse any `..` /
         // root / prefix. `enclosed_name` already does this for most cases,
@@ -85,8 +83,7 @@ pub fn validate<R: Read + Seek>(
         }
     }
 
-    let manifest_entry_name =
-        manifest_entry_name.ok_or(ZipInstallError::MissingManifest)?;
+    let manifest_entry_name = manifest_entry_name.ok_or(ZipInstallError::MissingManifest)?;
 
     // Step 6 — manifest-peek for executable-path policy. Read ONLY the
     // manifest entry bytes from the central directory and extract the
@@ -115,7 +112,10 @@ fn path_is_safe(path: &Path) -> bool {
 
 fn is_manifest_entry(path: &Path) -> bool {
     let name = path.file_name().and_then(|s| s.to_str());
-    let is_manifest_name = matches!(name, Some("manifest.yaml" | "manifest.yml" | "manifest.toml"));
+    let is_manifest_name = matches!(
+        name,
+        Some("manifest.yaml" | "manifest.yml" | "manifest.toml")
+    );
     if !is_manifest_name {
         return false;
     }
@@ -244,8 +244,8 @@ mod tests {
         let mut buf = Cursor::new(Vec::<u8>::new());
         {
             let mut w = ZipWriter::new(&mut buf);
-            let opts = SimpleFileOptions::default()
-                .compression_method(zip::CompressionMethod::Stored);
+            let opts =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
             for (name, bytes) in entries {
                 w.start_file(*name, opts).unwrap();
                 w.write_all(bytes).unwrap();

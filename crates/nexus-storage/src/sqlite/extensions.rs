@@ -42,12 +42,14 @@ pub async fn upsert_primary_refs(
     primary_recipe_id: Option<&str>,
     default_workflow_id: Option<&str>,
 ) -> Result<(), StorageError> {
-    let result = sqlx::query(include_str!("../../queries/extensions/upsert_primary_refs.sql"))
-        .bind(primary_recipe_id)
-        .bind(default_workflow_id)
-        .bind(id)
-        .execute(pool)
-        .await?;
+    let result = sqlx::query(include_str!(
+        "../../queries/extensions/upsert_primary_refs.sql"
+    ))
+    .bind(primary_recipe_id)
+    .bind(default_workflow_id)
+    .bind(id)
+    .execute(pool)
+    .await?;
     if result.rows_affected() == 0 {
         return Err(StorageError::NotFound {
             entity: "extension".into(),

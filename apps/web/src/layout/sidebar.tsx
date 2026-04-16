@@ -3,6 +3,7 @@ import * as styles from "./sidebar.css";
 
 export type NavItemId =
   | "home"
+  | "modules"
   | "recipes"
   | "workflows"
   | "deployments"
@@ -27,8 +28,8 @@ type UtilityItem = {
 
 const CORE_NAV_ITEMS: readonly NavItem[] = [
   { id: "home", label: "Home", icon: "home" },
-  { id: "recipes", label: "Recipes", icon: "description" },
-  { id: "workflows", label: "Workflows", icon: "account_tree" },
+  { id: "modules", label: "Modules", icon: "apps" },
+  // scan-terminology: allow — canonical sidebar label per FR-T02 glossary
   { id: "deployments", label: "Deployments", icon: "rocket_launch" },
   { id: "runs", label: "Runs", icon: "play_arrow" },
   { id: "artifacts", label: "Artifacts", icon: "inventory_2" },

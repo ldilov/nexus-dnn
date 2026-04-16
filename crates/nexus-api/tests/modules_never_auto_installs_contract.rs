@@ -60,7 +60,9 @@ async fn build_state() -> AppState {
         backend_adapter_registry: None,
         spawner: None,
         huggingface: None,
-        backend_event_bus: Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(1024)),
+        backend_event_bus: Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(
+            1024,
+        )),
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
     }
 }
@@ -120,7 +122,12 @@ async fn install_counts(state: &AppState) -> (i64, i64) {
     (exts, runtimes)
 }
 
-async fn call(state: AppState, method: &str, uri: &str, body: serde_json::Value) -> (StatusCode, serde_json::Value) {
+async fn call(
+    state: AppState,
+    method: &str,
+    uri: &str,
+    body: serde_json::Value,
+) -> (StatusCode, serde_json::Value) {
     let req = Request::builder()
         .method(method)
         .uri(uri)
@@ -130,8 +137,7 @@ async fn call(state: AppState, method: &str, uri: &str, body: serde_json::Value)
     let resp = nexus_api::create_router(state).oneshot(req).await.unwrap();
     let status = resp.status();
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
-    let json: serde_json::Value =
-        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
     (status, json)
 }
 
@@ -139,14 +145,22 @@ async fn call(state: AppState, method: &str, uri: &str, body: serde_json::Value)
 async fn no_module_endpoint_creates_install_rows() {
     let state = build_state().await;
     state.db.insert_extension(&ext("nai-ext")).await.unwrap();
-    state.db.insert_recipe(&rcp("rcp.nai-1", "nai-ext")).await.unwrap();
+    state
+        .db
+        .insert_recipe(&rcp("rcp.nai-1", "nai-ext"))
+        .await
+        .unwrap();
 
     let endpoints: &[(&str, &str, serde_json::Value)] = &[
         ("GET", "/api/v1/modules", json!(null)),
         ("GET", "/api/v1/modules/ext:nai-ext", json!(null)),
         ("GET", "/api/v1/modules/ext:nai-ext/blueprint", json!(null)),
         ("POST", "/api/v1/modules/ext:nai-ext/deployments", json!({})),
-        ("POST", "/api/v1/modules/ext:nai-ext/blueprint/dry-run", json!({})),
+        (
+            "POST",
+            "/api/v1/modules/ext:nai-ext/blueprint/dry-run",
+            json!({}),
+        ),
         (
             "POST",
             "/api/v1/modules/user:draft:abcdef12-3456-4789-8abc-def012345678/materialize",

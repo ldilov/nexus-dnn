@@ -60,6 +60,9 @@ export const vars = createGlobalTheme(":root", {
     inverseSurface: "#f9f9fc",
     inverseOnSurface: "#535558",
     inversePrimary: "#6e3bd7",
+
+    scrim: "rgba(0, 0, 0, 0.6)",
+    shadowElevation: "rgba(0, 0, 0, 0.3)",
   },
   font: {
     ui: `'Inter', system-ui, -apple-system, sans-serif`,

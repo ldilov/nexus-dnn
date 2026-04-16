@@ -13,8 +13,8 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use nexus_deployments::sqlite_repo::SqliteDeploymentRepository;
 use nexus_deployments::service::save::{DeploymentSaveService, SaveRequest, SourceRef};
+use nexus_deployments::sqlite_repo::SqliteDeploymentRepository;
 use nexus_deployments::state::MappingState;
 use nexus_storage::{Database, DeploymentMappers, RecipeRecord};
 use serde_json::json;
@@ -52,9 +52,7 @@ pub async fn create(
         ModuleIdKind::Extension { extension_id } => {
             resolve_extension_blueprint(&state, &extension_id, body.recipe_id.as_deref()).await?
         }
-        ModuleIdKind::User { workflow_id } => {
-            resolve_user_blueprint(&state, &workflow_id).await?
-        }
+        ModuleIdKind::User { workflow_id } => resolve_user_blueprint(&state, &workflow_id).await?,
         ModuleIdKind::Blank => {
             return Err(ApiError::structured(
                 StatusCode::UNPROCESSABLE_ENTITY,

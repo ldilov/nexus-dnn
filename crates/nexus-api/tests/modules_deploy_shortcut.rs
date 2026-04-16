@@ -54,12 +54,19 @@ async fn build_state() -> AppState {
         backend_adapter_registry: None,
         spawner: None,
         huggingface: None,
-        backend_event_bus: Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(1024)),
+        backend_event_bus: Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(
+            1024,
+        )),
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
     }
 }
 
-fn make_extension(id: &str, name: &str, primary_recipe: Option<&str>, status: &str) -> ExtensionRecord {
+fn make_extension(
+    id: &str,
+    name: &str,
+    primary_recipe: Option<&str>,
+    status: &str,
+) -> ExtensionRecord {
     ExtensionRecord {
         id: id.into(),
         name: Some(name.into()),
@@ -102,7 +109,11 @@ fn make_recipe(id: &str, ext_id: &str, display: &str) -> RecipeRecord {
     }
 }
 
-async fn post(state: AppState, uri: &str, body: serde_json::Value) -> (StatusCode, serde_json::Value) {
+async fn post(
+    state: AppState,
+    uri: &str,
+    body: serde_json::Value,
+) -> (StatusCode, serde_json::Value) {
     let req = Request::builder()
         .method("POST")
         .uri(uri)
@@ -112,8 +123,7 @@ async fn post(state: AppState, uri: &str, body: serde_json::Value) -> (StatusCod
     let resp = nexus_api::create_router(state).oneshot(req).await.unwrap();
     let status = resp.status();
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
-    let json: serde_json::Value =
-        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
     (status, json)
 }
 
@@ -143,7 +153,12 @@ async fn deploy_with_recipe_id_override() {
     let state = build_state().await;
     state
         .db
-        .insert_extension(&make_extension("multi", "Multi", Some("rcp.multi-1"), "active"))
+        .insert_extension(&make_extension(
+            "multi",
+            "Multi",
+            Some("rcp.multi-1"),
+            "active",
+        ))
         .await
         .unwrap();
     state
@@ -212,12 +227,21 @@ async fn deploy_409_on_disabled_extension() {
     let state = build_state().await;
     state
         .db
-        .insert_extension(&make_extension("disabled-ext", "Disabled", None, "disabled"))
+        .insert_extension(&make_extension(
+            "disabled-ext",
+            "Disabled",
+            None,
+            "disabled",
+        ))
         .await
         .unwrap();
     state
         .db
-        .insert_recipe(&make_recipe("rcp.disabled-1", "disabled-ext", "Disabled Recipe"))
+        .insert_recipe(&make_recipe(
+            "rcp.disabled-1",
+            "disabled-ext",
+            "Disabled Recipe",
+        ))
         .await
         .unwrap();
 
@@ -255,8 +279,14 @@ async fn multi_instance_distinct_hashes() {
     )
     .await;
     assert_eq!(status_a, StatusCode::CREATED);
-    let hash_a = body_a["data"]["effective_workflow_hash"].as_str().unwrap().to_string();
-    let dep_a = body_a["data"]["deployment_id"].as_str().unwrap().to_string();
+    let hash_a = body_a["data"]["effective_workflow_hash"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let dep_a = body_a["data"]["deployment_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let (status_b, body_b) = post(
         state,
@@ -268,8 +298,14 @@ async fn multi_instance_distinct_hashes() {
     )
     .await;
     assert_eq!(status_b, StatusCode::CREATED);
-    let hash_b = body_b["data"]["effective_workflow_hash"].as_str().unwrap().to_string();
-    let dep_b = body_b["data"]["deployment_id"].as_str().unwrap().to_string();
+    let hash_b = body_b["data"]["effective_workflow_hash"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let dep_b = body_b["data"]["deployment_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     assert_ne!(hash_a, hash_b, "different overrides must hash differently");
     assert_ne!(dep_a, dep_b, "deployments must have distinct ids");

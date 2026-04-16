@@ -60,6 +60,9 @@ const BENIGN_HOSTS = [
   "reactflow.dev",
   "pro.reactflow.dev",
   "react.dev",
+  // Library error-message URLs baked into bundled output. Never fetched.
+  "developer.mozilla.org",
+  "vanilla-extract.style",
 ];
 
 function isBenign(host) {

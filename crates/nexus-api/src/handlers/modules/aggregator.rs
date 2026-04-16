@@ -38,7 +38,7 @@ pub async fn list(
     Query(q): Query<ListQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
     let kind = q.kind.as_deref().unwrap_or("all");
-    let limit = q.limit.unwrap_or(60).min(200).max(1);
+    let limit = q.limit.unwrap_or(60).clamp(1, 200);
     let offset = q.offset.unwrap_or(0);
     let search = q.q.as_deref().map(str::trim).filter(|s| !s.is_empty());
 
@@ -136,18 +136,16 @@ async fn build_summary_for_id(
 ) -> Result<ModuleSummary, ApiError> {
     match module_id.kind() {
         ModuleIdKind::Extension { extension_id } => {
-            let ext = nexus_storage::sqlite::extensions::get_extension(
-                state.db.pool(),
-                &extension_id,
-            )
-            .await
-            .map_err(|_| {
-                ApiError::structured(
-                    StatusCode::NOT_FOUND,
-                    "module.not_found",
-                    "extension not found",
-                )
-            })?;
+            let ext =
+                nexus_storage::sqlite::extensions::get_extension(state.db.pool(), &extension_id)
+                    .await
+                    .map_err(|_| {
+                        ApiError::structured(
+                            StatusCode::NOT_FOUND,
+                            "module.not_found",
+                            "extension not found",
+                        )
+                    })?;
             let recipes = recipes_of_any_kind(state).await?;
             let recipes_by_extension = group_recipes_by_extension(&recipes);
             let blueprints = build_blueprints_for_extension(&ext, &recipes_by_extension);
@@ -302,7 +300,9 @@ fn group_recipes_by_extension(recipes: &[RecipeRecord]) -> HashMap<String, Vec<R
     let mut map: HashMap<String, Vec<RecipeRecord>> = HashMap::new();
     for r in recipes {
         if !r.extension_id.is_empty() {
-            map.entry(r.extension_id.clone()).or_default().push(r.clone());
+            map.entry(r.extension_id.clone())
+                .or_default()
+                .push(r.clone());
         }
     }
     map
@@ -322,12 +322,17 @@ fn matches_search(m: &ModuleSummary, needle_lower: &str) -> bool {
     if m.display_name.to_lowercase().contains(needle_lower) {
         return true;
     }
-    if let Some(ext_id) = &m.extension_id {
-        if ext_id.to_lowercase().contains(needle_lower) {
-            return true;
-        }
+    if let Some(ext_id) = m
+        .extension_id
+        .as_ref()
+        .filter(|id| id.to_lowercase().contains(needle_lower))
+    {
+        let _ = ext_id;
+        return true;
     }
-    m.tags.iter().any(|t| t.to_lowercase().contains(needle_lower))
+    m.tags
+        .iter()
+        .any(|t| t.to_lowercase().contains(needle_lower))
 }
 
 /// Blueprint projection for `GET /api/v1/modules/{id}/blueprint` (FR-015).

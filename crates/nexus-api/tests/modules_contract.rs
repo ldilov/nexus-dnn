@@ -25,9 +25,10 @@ async fn build_state() -> AppState {
     let ext_dir = tempfile::tempdir().unwrap();
     let host_ver = Version::new(1, 0, 0);
     let proto_ver = Version::new(1, 0, 0);
-    let (registry, _) = InMemoryExtensionRegistry::from_directory(ext_dir.path(), &host_ver, &proto_ver)
-        .await
-        .unwrap();
+    let (registry, _) =
+        InMemoryExtensionRegistry::from_directory(ext_dir.path(), &host_ver, &proto_ver)
+            .await
+            .unwrap();
     let artifact_dir = ext_dir.path().join("artifacts");
     std::fs::create_dir_all(&artifact_dir).unwrap();
     let artifact_store = Arc::new(FilesystemArtifactStore::new(artifact_dir));
@@ -53,7 +54,9 @@ async fn build_state() -> AppState {
         backend_adapter_registry: None,
         spawner: None,
         huggingface: None,
-        backend_event_bus: Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(1024)),
+        backend_event_bus: Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(
+            1024,
+        )),
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
     }
 }
@@ -125,8 +128,7 @@ async fn get(state: AppState, uri: &str) -> (StatusCode, serde_json::Value) {
     let resp = nexus_api::create_router(state).oneshot(req).await.unwrap();
     let status = resp.status();
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
-    let json: serde_json::Value =
-        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
     (status, json)
 }
 
@@ -287,5 +289,8 @@ async fn list_excludes_extensions_without_recipes() {
 
     let (_, body) = get(state, "/api/v1/modules").await;
     let modules = body["data"]["modules"].as_array().unwrap();
-    assert!(modules.is_empty(), "extensions with 0 recipes are suppressed");
+    assert!(
+        modules.is_empty(),
+        "extensions with 0 recipes are suppressed"
+    );
 }
