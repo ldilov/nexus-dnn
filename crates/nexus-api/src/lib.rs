@@ -27,6 +27,8 @@ use nexus_scheduler::Scheduler;
 use nexus_storage::{SqliteDatabase, StorageManager};
 use nexus_worker::DefaultWorkerManager;
 
+use handlers::modules::draft_map::DraftMaterializeMap;
+
 #[derive(Clone)]
 pub struct AppState {
     pub health_status_fn: Arc<dyn Fn() -> serde_json::Value + Send + Sync>,
@@ -45,6 +47,9 @@ pub struct AppState {
     /// Broadcast bus for [`nexus_backend_runtimes::events::BackendEvent`] fan-out.
     /// Shared `Arc` with any `Spawner` so WS subscribers see every published event.
     pub backend_event_bus: Arc<BroadcastPublisher>,
+    /// Process-local idempotency cache for blank-module materialize (FR-BM04,
+    /// spec 019 contracts/draft-materialize.md §5).
+    pub draft_materialize_map: Arc<DraftMaterializeMap>,
 }
 
 pub fn create_router(state: AppState) -> axum::Router {

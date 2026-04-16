@@ -204,6 +204,16 @@ pub struct DeploymentRow {
     pub last_failed_run_id: Option<String>,
     pub run_count: i64,
     pub notes_markdown: Option<String>,
+    /// Spec 019 T400 — projected from `deployment_source_links` of the
+    /// current revision when the primary source is extension-backed.
+    /// Lets `DeploymentsView` render a module-provenance badge per row
+    /// without a second round-trip.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_extension_id: Option<String>,
+    /// Spec 019 T400 — projected from `deployment_source_links.source_id`
+    /// when the primary source's `source_kind='user'` (user workflow).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_workflow_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

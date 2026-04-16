@@ -2,11 +2,13 @@ use sqlx::Row;
 use sqlx::sqlite::SqliteRow;
 
 use crate::records::{
-    ArtifactRecord, ExtensionRecord, LineageEdgeRecord, NodeExecutionRecord, OperatorRecord,
-    RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord,
+    ArtifactRecord, ExtensionRecord, IconKind, LineageEdgeRecord, NodeExecutionRecord,
+    OperatorRecord, RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord,
 };
 
 pub fn map_extension_row(row: SqliteRow) -> ExtensionRecord {
+    let icon_kind_raw: Option<String> = row.try_get("icon_kind").ok().flatten();
+    let icon_kind = icon_kind_raw.as_deref().and_then(IconKind::parse);
     ExtensionRecord {
         id: row.get("id"),
         name: row.get("name"),
@@ -24,6 +26,11 @@ pub fn map_extension_row(row: SqliteRow) -> ExtensionRecord {
         recipe_count: row.try_get("recipe_count").ok().flatten(),
         ui_contribution_count: row.try_get("ui_contribution_count").ok().flatten(),
         validation_errors: row.try_get("validation_errors").ok().flatten(),
+        primary_recipe_id: row.try_get("primary_recipe_id").ok().flatten(),
+        default_workflow_id: row.try_get("default_workflow_id").ok().flatten(),
+        icon_kind,
+        icon_symbol: row.try_get("icon_symbol").ok().flatten(),
+        icon_svg: row.try_get("icon_svg").ok().flatten(),
     }
 }
 

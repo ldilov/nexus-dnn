@@ -1,4 +1,6 @@
 pub mod error;
+pub mod icon_resolver;
+pub mod install;
 pub mod manifest;
 pub mod operator_index;
 pub mod recipe;
@@ -9,10 +11,19 @@ pub mod ui_contribution;
 pub mod validation;
 
 pub use error::ExtensionError;
+pub use icon_resolver::{
+    BLANK_MODULE_GLYPH, FALLBACK_GLYPHS, FnvFallbackResolver, IconSource, MATERIAL_SYMBOLS,
+    ModuleIconResolver, ResolvedIcon, USER_MODULE_GLYPH, fnv_fallback, is_valid_material_symbol,
+    resolve_from_manifest,
+};
+pub use install::{
+    ManifestSummary, StagingDir, SvgSanitizeError, ZipInstallError, ZipInstallPipeline,
+    ZipInstallResult, ZipSizeLimits, atomic_rename, sanitize_svg,
+};
 pub use manifest::{
     CompatibilitySpec, EnvironmentSpec, ExecutionSpec, ExtensionInfo, ExtensionManifest, FileRef,
-    LayoutRef, OperatorDefinition, OperatorInfo, PortSpec, ResourceSpec, RuntimeDependency,
-    RuntimeSpec, UiDeclaration, parse_manifest, parse_operator_definition,
+    LayoutRef, ManifestIcon, OperatorDefinition, OperatorInfo, PortSpec, ResourceSpec,
+    RuntimeDependency, RuntimeSpec, UiDeclaration, parse_manifest, parse_operator_definition,
 };
 pub use operator_index::OperatorIndex;
 pub use recipe::{

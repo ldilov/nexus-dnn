@@ -34,6 +34,25 @@ pub fn extension_to_record(ext: &ActivatedExtension) -> ExtensionRecord {
         recipe_count: Some(ext.recipe_count as i32),
         ui_contribution_count: Some(ext.ui_contribution_count as i32),
         validation_errors,
+        primary_recipe_id: None,
+        default_workflow_id: None,
+        icon_kind: match ext.manifest.extension.icon.as_ref() {
+            Some(icon) if icon.svg.is_some() => Some(nexus_storage::IconKind::Svg),
+            Some(icon) if icon.symbol.is_some() => Some(nexus_storage::IconKind::Symbol),
+            _ => None,
+        },
+        icon_symbol: ext
+            .manifest
+            .extension
+            .icon
+            .as_ref()
+            .and_then(|i| i.svg.is_none().then(|| i.symbol.clone()).flatten()),
+        icon_svg: ext
+            .manifest
+            .extension
+            .icon
+            .as_ref()
+            .and_then(|i| i.svg.clone()),
     }
 }
 

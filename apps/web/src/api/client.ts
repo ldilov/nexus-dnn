@@ -412,6 +412,11 @@ export type DeploymentSummary = {
   readonly is_favorite: boolean;
   readonly created_at: string;
   readonly updated_at: string;
+  // Spec 019 T400 — primary source link of the current revision. Lets the
+  // flat deployments list resolve a module-provenance badge per row with
+  // zero extra round-trips. Both NULL on legacy rows predating the join.
+  readonly source_extension_id?: string | null;
+  readonly source_workflow_id?: string | null;
 };
 
 export function fetchDeployments(): Promise<DeploymentSummary[]> {
@@ -564,4 +569,221 @@ export function patchExtensionHyperparameters(
       headers: { "Content-Type": "application/json" },
     },
   );
+}
+
+// =============================================================================
+// Spec 019 — Modules surface + ZIP install
+// =============================================================================
+
+export type ModuleIcon =
+  | { kind: "symbol"; value: string }
+  | { kind: "svg"; value: string }
+  | { kind: "fallback"; value: string; fallback_hash: number };
+
+export interface RecipeRef {
+  recipe_id: string;
+  display_name: string;
+  description: string | null;
+  step_count: number;
+  tags: readonly string[];
+  is_primary: boolean;
+}
+
+export interface DeploymentCounts {
+  total: number;
+  by_state: Record<string, number>;
+  by_restore_state: Record<string, number>;
+}
+
+export interface CompatibilitySummary {
+  overall: string;
+  warning_count: number;
+}
+
+export interface ModuleSummary {
+  module_id: string;
+  source_kind: "extension" | "user" | "blank";
+  extension_id: string | null;
+  display_name: string;
+  icon: ModuleIcon;
+  version: string | null;
+  tags: readonly string[];
+  blueprints: readonly RecipeRef[];
+  default_runtime_binding_ref: string | null;
+  default_model_binding_ref: string | null;
+  deployments: DeploymentCounts;
+  compatibility_summary: CompatibilitySummary;
+  // Spec 019 Instance-view redesign — hero + footer metadata.
+  description?: string | null;
+  publisher?: string | null;
+  runtime_family?: string | null;
+  installed_at?: string | null;
+  // Workflow id backing the module's "Graph" projection on the Blueprint
+  // view. Frontend fetches GET /api/v1/workflows/{id} when rendering the
+  // Workflow tab; null for Blank Module.
+  workflow_id?: string | null;
+}
+
+export interface ModuleListEnvelope {
+  modules: readonly ModuleSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface DeploymentRow {
+  deployment_id: string;
+  display_name: string;
+  state: string;
+  restore_state: string;
+  current_revision_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RunSummary {
+  run_id: string;
+  status: string;
+  created_at: string;
+}
+
+export interface ModuleDetail {
+  summary: ModuleSummary;
+  deployments: readonly DeploymentRow[];
+  recent_runs: readonly RunSummary[];
+}
+
+export interface DeployFromModuleRequest {
+  recipe_id?: string;
+  display_name?: string;
+  runtime_binding_overrides?: unknown;
+  model_binding_overrides?: unknown;
+  parameter_overlays?: unknown;
+  workflow_patch?: unknown;
+}
+
+export interface DeploymentSaveResult {
+  deployment_id: string;
+  revision_id: string;
+  revision_number: number;
+  effective_workflow_hash: string;
+  mapping_state: string;
+}
+
+export interface DryRunPlan {
+  plan_id: string;
+  steps: readonly { index: number; op_code: string; display_name: string }[];
+  warnings: readonly string[];
+  diagnostics: readonly string[];
+}
+
+export interface MaterializeRequest {
+  workflow_payload: unknown;
+  display_name?: string;
+  runtime_binding_overrides?: unknown;
+  model_binding_overrides?: unknown;
+  parameter_overlays?: unknown;
+}
+
+export interface MaterializeResult {
+  module_id: string;
+  deployment_id: string;
+  deployment_revision_id: string;
+}
+
+export interface ManifestSummary {
+  id: string;
+  version: string;
+  name: string | null;
+  description: string | null;
+  publisher: string | null;
+}
+
+export interface ZipInstallResult {
+  extension_id: string;
+  module_id: string;
+  manifest_summary: ManifestSummary;
+  install_diagnostics: readonly string[];
+}
+
+export function fetchModules(params?: {
+  q?: string;
+  kind?: "extension" | "user" | "all";
+  status?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<ModuleListEnvelope> {
+  const query = new URLSearchParams();
+  if (params?.q) query.set("q", params.q);
+  if (params?.kind) query.set("kind", params.kind);
+  if (params?.status) query.set("status", params.status);
+  if (params?.limit !== undefined) query.set("limit", String(params.limit));
+  if (params?.offset !== undefined) query.set("offset", String(params.offset));
+  const qs = query.toString();
+  return apiFetch<ModuleListEnvelope>(`/modules${qs ? `?${qs}` : ""}`);
+}
+
+export function fetchModule(moduleId: string): Promise<ModuleDetail> {
+  return apiFetch<ModuleDetail>(`/modules/${encodeURIComponent(moduleId)}`);
+}
+
+export function fetchBlueprint(
+  moduleId: string,
+  recipeId?: string,
+): Promise<RecipeRef> {
+  const qs = recipeId ? `?recipe_id=${encodeURIComponent(recipeId)}` : "";
+  return apiFetch<RecipeRef>(
+    `/modules/${encodeURIComponent(moduleId)}/blueprint${qs}`,
+  );
+}
+
+export function deployFromModule(
+  moduleId: string,
+  body: DeployFromModuleRequest,
+): Promise<DeploymentSaveResult> {
+  return apiFetch<DeploymentSaveResult>(
+    `/modules/${encodeURIComponent(moduleId)}/deployments`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+}
+
+export function dryRunModuleBlueprint(
+  moduleId: string,
+  body: { recipe_id?: string; parameter_overlays?: unknown; runtime_binding_overrides?: unknown },
+): Promise<DryRunPlan> {
+  return apiFetch<DryRunPlan>(
+    `/modules/${encodeURIComponent(moduleId)}/blueprint/dry-run`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+}
+
+export function materializeDraft(
+  uuid: string,
+  body: MaterializeRequest,
+): Promise<MaterializeResult> {
+  return apiFetch<MaterializeResult>(
+    `/modules/user:draft:${encodeURIComponent(uuid)}/materialize`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+}
+
+export async function installExtensionFromZip(file: File): Promise<ZipInstallResult> {
+  const form = new FormData();
+  form.append("file", file, file.name || "extension.zip");
+  return apiFetch<ZipInstallResult>("/extensions/install-from-zip", {
+    method: "POST",
+    body: form,
+  });
 }

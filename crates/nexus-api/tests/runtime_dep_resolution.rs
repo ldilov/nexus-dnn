@@ -48,6 +48,7 @@ fn make_manifest(id: &str, deps: Vec<RuntimeDependency>) -> ExtensionManifest {
             name: Some(id.into()),
             description: None,
             publisher: None,
+            icon: None,
         },
         compatibility: CompatibilitySpec {
             host_api: "1.0.0".into(),

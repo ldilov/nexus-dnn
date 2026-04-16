@@ -17,6 +17,11 @@ sqlparser = { version = "0.55", features = ["visitor"] }
 sha2 = "0.10"
 regex-lite = "0.1"
 parking_lot = "0.12"
+fnv = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+quick-xml = "0.36"
+uuid = { workspace = true }
+toml = "0.8"
 
 [dev-dependencies]
 tempfile = "3"

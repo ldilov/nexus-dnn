@@ -1,0 +1,222 @@
+//! DTOs for the /api/v1/modules read-aggregate surface (spec 019 FR-027).
+//!
+//! Nothing here is persisted — these types are composed at request time from
+//! `extensions` / `recipes` / `workflows` / `deployments` by the aggregator.
+
+use serde::{Deserialize, Serialize};
+
+use super::ModuleId;
+
+/// Top-level envelope returned by `GET /api/v1/modules`.
+#[derive(Serialize, Debug, Clone)]
+pub struct ModuleListEnvelope {
+    pub modules: Vec<ModuleSummary>,
+    pub total: u32,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleSourceKind {
+    Extension,
+    User,
+    Blank,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct ModuleSummary {
+    pub module_id: ModuleId,
+    pub source_kind: ModuleSourceKind,
+    pub extension_id: Option<String>,
+    pub display_name: String,
+    pub icon: ModuleIcon,
+    pub version: Option<String>,
+    pub tags: Vec<String>,
+    pub blueprints: Vec<RecipeRef>,
+    pub default_runtime_binding_ref: Option<String>,
+    pub default_model_binding_ref: Option<String>,
+    pub deployments: DeploymentCounts,
+    pub compatibility_summary: CompatibilitySummary,
+    /// Extension's `description` / user workflow's summary. Rendered as the
+    /// hero subtitle on the Instance view.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Extension publisher, for the footer attribution card. `None` for
+    /// user modules.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publisher: Option<String>,
+    /// Extension runtime family (`python`, `builtin`, etc.). Rendered as
+    /// a technical metadata chip. `None` for user modules.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_family: Option<String>,
+    /// RFC3339 timestamp of when the extension was installed (or the user
+    /// workflow was first created). Rendered as "installed N ago".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed_at: Option<String>,
+    /// Workflow id that renders as the module's "graph" projection. For
+    /// extension modules this is `ext.default_workflow_id` when set. For
+    /// user modules it is the wrapped workflow id. The Blueprint view
+    /// uses it to fetch the DAG via `GET /api/v1/workflows/{id}` and
+    /// render the Workflow tab.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_id: Option<String>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ModuleIcon {
+    Symbol {
+        value: String,
+    },
+    Svg {
+        value: String,
+    },
+    Fallback {
+        value: &'static str,
+        fallback_hash: u32,
+    },
+}
+
+impl ModuleIcon {
+    pub fn from_resolved(r: nexus_extension::ResolvedIcon) -> Self {
+        match r {
+            nexus_extension::ResolvedIcon::Symbol(v) => ModuleIcon::Symbol { value: v },
+            nexus_extension::ResolvedIcon::Svg(v) => ModuleIcon::Svg { value: v },
+            nexus_extension::ResolvedIcon::Fallback {
+                glyph,
+                fallback_hash,
+            } => ModuleIcon::Fallback {
+                value: glyph,
+                fallback_hash,
+            },
+            _ => ModuleIcon::Symbol {
+                value: "question_mark".into(),
+            },
+        }
+    }
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct RecipeRef {
+    pub recipe_id: String,
+    pub display_name: String,
+    pub description: Option<String>,
+    pub step_count: u32,
+    pub tags: Vec<String>,
+    pub is_primary: bool,
+}
+
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct DeploymentCounts {
+    pub total: u32,
+    pub by_state: std::collections::HashMap<String, u32>,
+    pub by_restore_state: std::collections::HashMap<String, u32>,
+}
+
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct CompatibilitySummary {
+    pub overall: String,
+    pub warning_count: u32,
+}
+
+/// Response body for `GET /api/v1/modules/{module_id}` (FR-030).
+#[derive(Serialize, Debug, Clone)]
+pub struct ModuleDetail {
+    pub summary: ModuleSummary,
+    pub deployments: Vec<DeploymentRow>,
+    pub recent_runs: Vec<RunSummary>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct DeploymentRow {
+    pub deployment_id: String,
+    pub display_name: String,
+    pub state: String,
+    pub restore_state: String,
+    pub current_revision_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct RunSummary {
+    pub run_id: String,
+    pub status: String,
+    pub created_at: String,
+}
+
+/// Request body for `POST /api/v1/modules/{id}/deployments` (FR-028).
+#[derive(Deserialize, Debug, Clone, Default)]
+#[serde(default)]
+pub struct DeployFromModuleRequest {
+    pub recipe_id: Option<String>,
+    pub display_name: Option<String>,
+    pub runtime_binding_overrides: Option<serde_json::Value>,
+    pub model_binding_overrides: Option<serde_json::Value>,
+    pub parameter_overlays: Option<serde_json::Value>,
+    pub workflow_patch: Option<serde_json::Value>,
+}
+
+/// Response body for `POST /api/v1/modules/user:draft:{uuid}/materialize`.
+#[derive(Serialize, Debug, Clone)]
+pub struct MaterializeResponse {
+    pub module_id: ModuleId,
+    pub deployment_id: String,
+    pub deployment_revision_id: String,
+}
+
+/// Request body for `POST /api/v1/modules/user:draft:{uuid}/materialize`.
+///
+/// Spec 019 refinement (2026-04-16): `source_module_id` (optional) carries
+/// the fork source so the handler can branch — Blank Module creates a
+/// `workflows` row; `ext:*` sources set `source.extension_id` and skip the
+/// workflow row; `user:*` sources set `source.workflow_id` without a new
+/// workflow row.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(default)]
+pub struct MaterializeRequest {
+    pub workflow_payload: serde_json::Value,
+    pub display_name: Option<String>,
+    pub source_module_id: Option<String>,
+    pub runtime_binding_overrides: Option<serde_json::Value>,
+    pub model_binding_overrides: Option<serde_json::Value>,
+    pub parameter_overlays: Option<serde_json::Value>,
+}
+
+impl Default for MaterializeRequest {
+    fn default() -> Self {
+        Self {
+            workflow_payload: serde_json::Value::Null,
+            display_name: None,
+            source_module_id: None,
+            runtime_binding_overrides: None,
+            model_binding_overrides: None,
+            parameter_overlays: None,
+        }
+    }
+}
+
+/// Ephemeral plan returned by blueprint dry-run (FR-029).
+#[derive(Serialize, Debug, Clone)]
+pub struct DryRunPlan {
+    pub plan_id: String,
+    pub steps: Vec<DryRunStep>,
+    pub warnings: Vec<String>,
+    pub diagnostics: Vec<String>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct DryRunStep {
+    pub index: u32,
+    pub op_code: String,
+    pub display_name: String,
+}
+
+#[derive(Deserialize, Debug, Clone, Default)]
+#[serde(default)]
+pub struct DryRunRequest {
+    pub recipe_id: Option<String>,
+    pub parameter_overlays: Option<serde_json::Value>,
+    pub runtime_binding_overrides: Option<serde_json::Value>,
+}

@@ -26,6 +26,38 @@ pub enum ApiError {
         message: String,
         details: serde_json::Value,
     },
+
+    /// Generic structured error with an explicit status + code. Used by the
+    /// modules aggregator (spec 019) to surface endpoint-specific codes like
+    /// `module.recipe_not_in_module` (422) and `module.draft_id_not_allowed`
+    /// (400) without expanding the enum variant zoo.
+    #[error("{message}")]
+    Structured {
+        status: StatusCode,
+        code: &'static str,
+        message: String,
+    },
+}
+
+impl ApiError {
+    pub fn structured(status: StatusCode, code: &'static str, message: impl Into<String>) -> Self {
+        Self::Structured {
+            status,
+            code,
+            message: message.into(),
+        }
+    }
+}
+
+impl From<nexus_storage::StorageError> for ApiError {
+    fn from(err: nexus_storage::StorageError) -> Self {
+        match err {
+            nexus_storage::StorageError::NotFound { entity, id } => {
+                ApiError::NotFound(format!("{entity} {id} not found"))
+            }
+            other => ApiError::Internal(other.to_string()),
+        }
+    }
 }
 
 impl ApiError {
@@ -37,6 +69,7 @@ impl ApiError {
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::InvalidState(_) => StatusCode::CONFLICT,
             Self::BadRequestDetailed { .. } => StatusCode::BAD_REQUEST,
+            Self::Structured { status, .. } => *status,
         }
     }
 
@@ -48,6 +81,7 @@ impl ApiError {
             Self::Internal(_) => "INTERNAL_ERROR",
             Self::InvalidState(_) => "INVALID_STATE_TRANSITION",
             Self::BadRequestDetailed { code, .. } => code,
+            Self::Structured { code, .. } => code,
         }
     }
 
@@ -59,6 +93,7 @@ impl ApiError {
             Self::Internal(_) => "internal",
             Self::InvalidState(_) => "conflict",
             Self::BadRequestDetailed { .. } => "validation",
+            Self::Structured { .. } => "validation",
         }
     }
 
@@ -70,6 +105,7 @@ impl ApiError {
             | Self::Internal(msg)
             | Self::InvalidState(msg) => msg.clone(),
             Self::BadRequestDetailed { message, .. } => message.clone(),
+            Self::Structured { message, .. } => message.clone(),
         }
     }
 }

@@ -46,3 +46,34 @@ auto-resolve the current commit SHA at install time and persist it
 
 `parse_manifest` runs `validate_revision_pinning` over every entry as part
 of manifest parse.
+
+## ZIP install (spec 019 FR-IE03)
+
+`ZipInstallPipeline` accepts a staged `.zip` file and publishes the extension
+into `extensions_root/{id}/` after running 12 ordered validation + extraction
+steps (see `specs/019-extension-modules/contracts/zip-install-pipeline.md`).
+
+Caps (all overridable via `with_size_limits`):
+
+- **256 MiB** uncompressed sum across all entries
+- **8192** entry count
+- **64 MiB** compressed size (axum-side gate; pipeline mirrors for defense-in-depth)
+
+Forbidden content (fails the whole install, never strips):
+
+- Zip-Slip attempts (`../`, absolute paths, path NULs) — double-checked with
+  `ZipFile::enclosed_name()` + a component-level walk
+- Missing `manifest.{yaml,yml,toml}` at depth ≤ 2
+- Executable bits on any entry outside the declared entrypoint, `assets/`,
+  or `worker/` prefix
+- SVG icons with `<script>`, `on*` handlers, `<foreignObject>`, `xlink:*`,
+  or bare `href` attributes (see `install::sanitize_svg` for the full
+  allow-list)
+
+All failure paths run the `StagingDir` RAII drop — no leftover directories
+survive a failed install (SC-018).
+
+The axum handler at `POST /api/v1/extensions/install-from-zip` wraps the
+pipeline in `tokio::task::spawn_blocking`, streams multipart uploads to a
+temp file, refreshes the in-memory registry on success, and emits a single
+`ModuleInstalled` event on the local bus (FR-TP01).

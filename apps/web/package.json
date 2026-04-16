@@ -5,13 +5,18 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && pnpm scan:cdn",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "scan:theme": "node scripts/scan-theme-leaks.mjs",
+    "scan:terminology": "node scripts/scan-terminology.mjs",
+    "scan:cdn": "node scripts/scan-remote-cdns.mjs",
+    "scan:all": "pnpm scan:theme && pnpm scan:terminology"
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.0",
+    "@tanstack/react-virtual": "^3.10.0",
     "@vanilla-extract/css": "^1.17.0",
     "@vanilla-extract/recipes": "^0.5.0",
     "@vanilla-extract/sprinkles": "^1.6.0",

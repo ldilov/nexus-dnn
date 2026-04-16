@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   disableExtension,
   enableExtension,
   fetchExtensions,
   type Extension,
 } from "../api/client";
+import { InstallExtensionDrawer } from "../install/install_extension_drawer";
 import * as s from "./extensions_gallery.css";
 
 type ActionState = {
@@ -22,6 +23,7 @@ export function ExtensionsGallery({ onExtensionToggled }: ExtensionsGalleryProps
   const [extensions, setExtensions] = useState<Extension[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [action, setAction] = useState<ActionState>(IDLE);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const refresh = useCallback(() => {
     fetchExtensions()
@@ -86,12 +88,23 @@ export function ExtensionsGallery({ onExtensionToggled }: ExtensionsGalleryProps
         action={action}
         onToggle={setStatus}
         showDelete
-        trailing={<InstallDropZone onInstalled={refresh} />}
+        trailing={
+          <InstallCard onClick={() => setDrawerOpen(true)} />
+        }
       />
 
       {extensions.length === 0 && (
         <div className={s.emptyState}>No extensions loaded</div>
       )}
+
+      <InstallExtensionDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        onInstalled={() => {
+          refresh();
+          onExtensionToggled?.();
+        }}
+      />
     </div>
   );
 }
@@ -300,52 +313,29 @@ function Toggle({ on, disabled, onToggle }: ToggleProps) {
   );
 }
 
-type InstallDropZoneProps = {
-  onInstalled: () => void;
+type InstallCardProps = {
+  onClick: () => void;
 };
 
-function InstallDropZone({ onInstalled: _onInstalled }: InstallDropZoneProps) {
-  const [active, setActive] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const openPicker = useCallback(() => inputRef.current?.click(), []);
-
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setActive(true);
-  }, []);
-
-  const handleDragLeave = useCallback(() => setActive(false), []);
-
-  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setActive(false);
-    // Installer API not yet wired; for now we simply acknowledge the drop.
-    // _onInstalled() will fire once the upload endpoint is available.
-  }, []);
-
+function InstallCard({ onClick }: InstallCardProps) {
   return (
     <div
-      className={`${s.installCard}${active ? ` ${s.installCardActive}` : ""}`}
+      className={s.installCard}
       role="button"
       tabIndex={0}
-      onClick={openPicker}
+      onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          openPicker();
+          onClick();
         }
       }}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
     >
       <div className={s.installIcon} aria-hidden="true">
         +
       </div>
-      <div className={s.installTitle}>Install New Extension</div>
-      <div className={s.installHint}>Drag &amp; drop .nexext file</div>
-      <input ref={inputRef} type="file" accept=".nexext,.zip" />
+      <div className={s.installTitle}>Install new extension</div>
+      <div className={s.installHint}>Open ZIP installer</div>
     </div>
   );
 }
