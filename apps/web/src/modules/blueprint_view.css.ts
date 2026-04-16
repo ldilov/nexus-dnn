@@ -290,13 +290,14 @@ export const stepList = style({
 
 export const step = style({
   display: "grid",
-  gridTemplateColumns: "auto 1fr",
+  gridTemplateColumns: "auto 1fr auto",
   gap: vars.space.lg,
   padding: vars.space.lg,
   background: vars.color.surfaceContainerLow,
   border: `1px solid ${vars.color.outlineVariant}`,
   borderRadius: vars.radius.md,
   transition: `background ${motion.duration.cardGlow}, border-color ${motion.duration.cardGlow}`,
+  alignItems: "start",
   selectors: {
     "&:hover": {
       background: vars.color.surfaceContainer,
@@ -314,12 +315,21 @@ export const stepNumber = style({
   fontWeight: 900,
   fontSize: vars.text.titleS,
   letterSpacing: vars.tracking.tight,
+  minWidth: "2ch",
 });
 
 export const stepBody = style({
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.xs,
+  gap: vars.space.sm,
+  minWidth: 0,
+});
+
+export const stepHeadRow = style({
+  display: "flex",
+  alignItems: "baseline",
+  gap: vars.space.md,
+  flexWrap: "wrap",
 });
 
 export const stepOp = style({
@@ -333,7 +343,80 @@ export const stepOp = style({
 export const stepTitle = style({
   fontSize: vars.text.bodyM,
   color: vars.color.onSurface,
-  fontWeight: 500,
+  fontWeight: 600,
+  fontFamily: vars.font.ui,
+});
+
+export const stepStageChip = style({
+  display: "inline-flex",
+  alignItems: "center",
+  padding: `2px ${vars.space.sm}`,
+  borderRadius: vars.radius.full,
+  background: vars.color.surfaceContainerHigh,
+  color: vars.color.onSurfaceVariant,
+  fontSize: vars.text.labelS,
+  letterSpacing: vars.tracking.wide,
+  textTransform: "uppercase",
+  fontWeight: 700,
+  alignSelf: "start",
+});
+
+export const stepInputs = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.xs,
+  marginTop: vars.space.xs,
+});
+
+export const stepInputsLabel = style({
+  fontSize: vars.text.labelS,
+  letterSpacing: vars.tracking.wide,
+  textTransform: "uppercase",
+  fontWeight: 700,
+  color: vars.color.onSurfaceVariant,
+  opacity: 0.7,
+});
+
+export const stepInputRow = style({
+  display: "grid",
+  gridTemplateColumns: "auto auto 1fr",
+  gap: vars.space.md,
+  alignItems: "baseline",
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.labelM,
+  padding: `${vars.space.xs} 0`,
+});
+
+export const stepInputName = style({
+  color: vars.color.onSurface,
+  fontWeight: 600,
+});
+
+export const stepInputArrow = style({
+  color: vars.color.onSurfaceVariant,
+  opacity: 0.5,
+});
+
+export const stepInputSource = style({
+  color: vars.color.onSurfaceVariant,
+});
+
+export const stepInputSourceExternal = style({
+  color: vars.color.tertiary,
+});
+
+export const stepInputSourceRef = style({
+  color: vars.color.secondary,
+});
+
+export const stepsStageHeader = style({
+  fontSize: vars.text.labelS,
+  letterSpacing: vars.tracking.widest,
+  textTransform: "uppercase",
+  fontWeight: 900,
+  opacity: 0.7,
+  marginBottom: vars.space.sm,
+  color: vars.color.onSurfaceVariant,
   fontFamily: vars.font.ui,
 });
 
@@ -344,14 +427,19 @@ export const graphBox = style({
   border: `1px solid ${vars.color.outlineVariant}`,
   borderRadius: vars.radius.md,
   padding: vars.space.lg,
-  overflow: "auto",
+  overflowX: "auto",
+  overflowY: "hidden",
 });
 
+// The SVG renders at its intrinsic viewBox size — we set width/height
+// inline from `layout.width/height` so the DAG never gets letter-boxed
+// inside a tall container. If the graph is wider than the card, the
+// parent's overflow-x scrolls horizontally, which is the right UX for
+// wide DAGs.
 export const graphSvg = style({
-  width: "100%",
-  height: "auto",
-  minHeight: "400px",
   display: "block",
+  maxWidth: "100%",
+  height: "auto",
 });
 
 export const graphLegend = style({

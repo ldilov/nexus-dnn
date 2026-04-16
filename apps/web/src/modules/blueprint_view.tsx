@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import {
   deployFromModule,
   dryRunModuleBlueprint,
@@ -601,13 +601,7 @@ function RecipeStepList({ workflow }: RecipeStepListProps) {
     return (
       <ol className={s.stepList}>
         {ordered.map((n, idx) => (
-          <li key={n.id} className={s.step}>
-            <span className={s.stepNumber}>{String(idx + 1).padStart(2, "0")}</span>
-            <div className={s.stepBody}>
-              <span className={s.stepOp}>{n.operator}</span>
-              <span className={s.stepTitle}>{humanize(n.id)}</span>
-            </div>
-          </li>
+          <StepRow key={n.id} index={idx + 1} node={n} />
         ))}
       </ol>
     );
@@ -615,73 +609,84 @@ function RecipeStepList({ workflow }: RecipeStepListProps) {
 
   let runningIdx = 0;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
       {stages.map((stage) => (
         <div key={stage.label}>
-          <div
-            style={{
-              fontSize: "0.625rem",
-              letterSpacing: "0.2em",
-              textTransform: "uppercase",
-              fontWeight: 900,
-              opacity: 0.7,
-              marginBottom: "0.5rem",
-            }}
-          >
-            Stage · {stage.label}
-          </div>
+          <div className={s.stepsStageHeader}>Stage · {stage.label}</div>
           <ol className={s.stepList}>
             {stage.steps.map((n) => {
               runningIdx += 1;
-              return (
-                <li key={n.id} className={s.step}>
-                  <span className={s.stepNumber}>
-                    {String(runningIdx).padStart(2, "0")}
-                  </span>
-                  <div className={s.stepBody}>
-                    <span className={s.stepOp}>{n.operator}</span>
-                    <span className={s.stepTitle}>{humanize(n.id)}</span>
-                  </div>
-                </li>
-              );
+              return <StepRow key={n.id} index={runningIdx} node={n} />;
             })}
           </ol>
         </div>
       ))}
       {ungrouped.length > 0 && (
         <div>
-          <div
-            style={{
-              fontSize: "0.625rem",
-              letterSpacing: "0.2em",
-              textTransform: "uppercase",
-              fontWeight: 900,
-              opacity: 0.7,
-              marginBottom: "0.5rem",
-            }}
-          >
-            Unstaged
-          </div>
+          <div className={s.stepsStageHeader}>Unstaged</div>
           <ol className={s.stepList}>
             {ungrouped.map((n) => {
               runningIdx += 1;
-              return (
-                <li key={n.id} className={s.step}>
-                  <span className={s.stepNumber}>
-                    {String(runningIdx).padStart(2, "0")}
-                  </span>
-                  <div className={s.stepBody}>
-                    <span className={s.stepOp}>{n.operator}</span>
-                    <span className={s.stepTitle}>{humanize(n.id)}</span>
-                  </div>
-                </li>
-              );
+              return <StepRow key={n.id} index={runningIdx} node={n} />;
             })}
           </ol>
         </div>
       )}
     </div>
   );
+}
+
+interface StepRowProps {
+  index: number;
+  node: Workflow["nodes"][number];
+}
+
+function StepRow({ index, node }: StepRowProps) {
+  const inputs = Object.entries(node.inputs ?? {});
+  return (
+    <li className={s.step}>
+      <span className={s.stepNumber}>{String(index).padStart(2, "0")}</span>
+      <div className={s.stepBody}>
+        <div className={s.stepHeadRow}>
+          <span className={s.stepTitle}>{humanize(node.id)}</span>
+          <span className={s.stepOp}>{node.operator}</span>
+        </div>
+        {inputs.length > 0 && (
+          <div className={s.stepInputs}>
+            <span className={s.stepInputsLabel}>Inputs</span>
+            {inputs.map(([name, value]) => (
+              <div key={name} className={s.stepInputRow}>
+                <span className={s.stepInputName}>{name}</span>
+                <span className={s.stepInputArrow}>←</span>
+                <span>{renderInputSource(value)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {node.stage && <span className={s.stepStageChip}>{node.stage}</span>}
+    </li>
+  );
+}
+
+function renderInputSource(value: unknown): ReactElement {
+  if (value && typeof value === "object") {
+    const obj = value as { from?: string; value?: unknown };
+    if (typeof obj.from === "string") {
+      const tone = obj.from.startsWith("input:")
+        ? s.stepInputSourceExternal
+        : s.stepInputSourceRef;
+      return <span className={tone}>{obj.from}</span>;
+    }
+    if (obj.value !== undefined) {
+      const str =
+        typeof obj.value === "string"
+          ? JSON.stringify(obj.value)
+          : JSON.stringify(obj.value);
+      return <span className={s.stepInputSource}>{truncate(str, 40)}</span>;
+    }
+  }
+  return <span className={s.stepInputSource}>—</span>;
 }
 
 function topoOrderNodes(workflow: Workflow) {
@@ -760,9 +765,24 @@ function WorkflowDagSvg({ workflow }: DagProps) {
     <svg
       className={s.graphSvg}
       viewBox={`0 0 ${layout.width} ${layout.height}`}
+      width={layout.width}
+      height={layout.height}
       role="img"
       aria-label="Workflow DAG"
     >
+      <defs>
+        <marker
+          id="arrow"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="7"
+          markerHeight="7"
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-outline)" />
+        </marker>
+      </defs>
       {layout.edges.map((e, i) => (
         <path
           key={i}
@@ -771,52 +791,39 @@ function WorkflowDagSvg({ workflow }: DagProps) {
           strokeWidth="1.5"
           fill="none"
           markerEnd="url(#arrow)"
-          opacity={0.7}
+          opacity={0.8}
         />
       ))}
-      <defs>
-        <marker
-          id="arrow"
-          viewBox="0 0 10 10"
-          refX="8"
-          refY="5"
-          markerWidth="6"
-          markerHeight="6"
-          orient="auto-start-reverse"
-        >
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-outline)" />
-        </marker>
-      </defs>
       {layout.nodes.map((n) => (
         <g key={n.id} transform={`translate(${n.x}, ${n.y})`}>
           <rect
             width={NODE_WIDTH}
             height={NODE_HEIGHT}
-            rx={8}
-            fill="var(--color-surface-container-high)"
-            stroke={n.isBoundary ? "var(--color-primary)" : "var(--color-outline-variant)"}
-            strokeWidth="1"
+            rx={10}
+            fill="var(--color-surface-container-highest)"
+            stroke={n.isBoundary ? "var(--color-primary)" : "var(--color-outline)"}
+            strokeWidth={n.isBoundary ? 1.5 : 1}
           />
           <text
             x={NODE_WIDTH / 2}
             y={NODE_HEIGHT / 2 - 6}
             textAnchor="middle"
             fill="var(--color-on-surface)"
-            fontSize="12"
+            fontSize="13"
             fontWeight="700"
-            fontFamily="var(--font-mono)"
+            fontFamily="var(--font-ui)"
           >
-            {truncate(n.id, 18)}
+            {truncate(humanize(n.id), 22)}
           </text>
           <text
             x={NODE_WIDTH / 2}
-            y={NODE_HEIGHT / 2 + 10}
+            y={NODE_HEIGHT / 2 + 12}
             textAnchor="middle"
             fill="var(--color-secondary)"
             fontSize="10"
             fontFamily="var(--font-mono)"
           >
-            {truncate(n.operator, 22)}
+            {truncate(n.operator, 26)}
           </text>
         </g>
       ))}
@@ -824,10 +831,10 @@ function WorkflowDagSvg({ workflow }: DagProps) {
   );
 }
 
-const NODE_WIDTH = 180;
-const NODE_HEIGHT = 52;
-const COL_SPACING = 80;
-const ROW_SPACING = 24;
+const NODE_WIDTH = 220;
+const NODE_HEIGHT = 72;
+const COL_SPACING = 100;
+const ROW_SPACING = 40;
 
 interface LaidOutNode {
   id: string;
