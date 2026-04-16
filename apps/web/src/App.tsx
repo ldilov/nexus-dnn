@@ -10,9 +10,10 @@ import { HomeDashboard } from "./catalog/home_dashboard";
 import { ExtensionsGallery } from "./views/extensions_gallery";
 import { DeploymentsView } from "./views/deployments_view";
 import { ModulesView } from "./modules/modules_view";
-import { ModuleDetailView } from "./modules/module_detail_view";
 import { BlueprintView } from "./modules/blueprint_view";
-import { InstanceEditor } from "./instance_editor/instance_editor_shell";
+import { InstanceView } from "./modules/instance_view/instance_view";
+import { DraftView } from "./modules/instance_view/draft_view";
+import { sweepStaleDrafts } from "./modules/draft/draft_envelope";
 import { useOperatorSpecs } from "./hooks/use_operator_specs";
 import { useHashRoute, replaceHash } from "./hooks/use_hash_route";
 import { StageView } from "./views/stage_view";
@@ -78,11 +79,27 @@ export function App() {
   const [route, navigateHash] = useHashRoute();
 
   const hashRoute = useMemo(() => {
-    const [first, second, third] = route.segments;
+    const [first, second, third, fourth] = route.segments;
     if (first === "modules") {
       if (!second) return { kind: "modules-list" as const };
+      // Spec 019 refinement: pre-refinement draft URL `/#/modules/user:draft:{uuid}`
+      // redirects to the new namespaced shape `/#/modules/user:blank/draft/{uuid}`.
       if (second.startsWith("user:draft:")) {
-        return { kind: "instance-draft" as const, uuid: second.slice("user:draft:".length) };
+        const uuid = second.slice("user:draft:".length);
+        replaceHash(`#/modules/user:blank/draft/${uuid}`);
+        return {
+          kind: "draft" as const,
+          sourceModuleId: "user:blank",
+          uuid,
+        };
+      }
+      // New shape (FR-051): `/#/modules/{source_module_id}/draft/{uuid}`.
+      if (third === "draft" && fourth) {
+        return {
+          kind: "draft" as const,
+          sourceModuleId: decodeURIComponent(second),
+          uuid: fourth,
+        };
       }
       if (third === "blueprint") {
         return {
@@ -114,7 +131,7 @@ export function App() {
       hashRoute.kind === "modules-list" ||
       hashRoute.kind === "module-detail" ||
       hashRoute.kind === "blueprint" ||
-      hashRoute.kind === "instance-draft"
+      hashRoute.kind === "draft"
     ) {
       setActiveNav("modules");
     } else if (hashRoute.kind === "instance") {
@@ -141,6 +158,11 @@ export function App() {
       });
 
     refreshLayouts();
+
+    // Spec 019 T408 — evict abandoned drafts older than 7 days on boot so
+    // sessionStorage doesn't accumulate orphans from users who fork and
+    // close the tab without saving.
+    sweepStaleDrafts();
   }, [refreshLayouts]);
 
   // Spec 019 SC-015 — no substring-based icon heuristics. Extensions that
@@ -232,10 +254,14 @@ export function App() {
       );
     }
     if (hashRoute?.kind === "module-detail") {
+      // Spec 019 refinement: `/#/modules/{id}` renders the Instance view
+      // (4 read-only tabs + 3 CTAs) — the canonical per-module surface.
+      // Old ModuleDetailView (list-of-deployments) is kept in-repo for
+      // reference but no longer routed.
       return (
         <div className={styles.canvasColumn}>
           <div className={styles.canvasContent}>
-            <ModuleDetailView moduleId={hashRoute.moduleId} onNavigate={navigateHash} />
+            <InstanceView moduleId={hashRoute.moduleId} onNavigate={navigateHash} />
           </div>
         </div>
       );
@@ -254,22 +280,24 @@ export function App() {
       );
     }
     if (hashRoute?.kind === "instance") {
+      // scan-terminology: allow — route segment is `/deployments/{id}`;
+      // the deployment editor from spec 018 lives here, not an instance
+      // editor. For v1 the editor is still pending; this placeholder
+      // routes the user to the flat deployments list scoped to their row.
       return (
         <div className={styles.canvasColumn}>
           <div className={styles.canvasContent}>
-            <InstanceEditor
-              deploymentId={hashRoute.deploymentId}
-              onNavigate={navigateHash}
-            />
+            <DeploymentsView onNavigate={navigateHash} />
           </div>
         </div>
       );
     }
-    if (hashRoute?.kind === "instance-draft") {
+    if (hashRoute?.kind === "draft") {
       return (
         <div className={styles.canvasColumn}>
           <div className={styles.canvasContent}>
-            <InstanceEditor
+            <DraftView
+              sourceModuleId={hashRoute.sourceModuleId}
               draftUuid={hashRoute.uuid}
               onNavigate={navigateHash}
             />

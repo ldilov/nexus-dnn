@@ -32,6 +32,24 @@ Tokens:
 - `tokens.css` — CSS custom-property mirror (read by third-party
   components that can't consume the vanilla-extract surface directly)
 
+## Semantic model (spec 019 refinement, 2026-04-16)
+
+```
+Extension (installed)
+   │
+   ▼
+Module = Instance         ← read-only preview surface (4 tabs)
+   ├── Review  ─► /#/modules/{id}                 (read-only)
+   ├── Deploy  ─► POST /modules/{id}/deployments  → /#/deployments/{id}
+   └── Edit    ─► /#/modules/{id}/draft/{uuid}    (client-side draft)
+                 │
+                 └─ Save ─► POST materialize      → /#/deployments/{id}
+
+Deployment                ← editable (spec 018)
+```
+
+**Instances never persist edits.** Any edit forks a client-side Draft; saving the Draft mints a new Deployment. The Draft pipeline is universal — Blank Module, Instance-fork, and (future) Deployment-fork all route through `/#/modules/{source_module_id}/draft/{uuid}`.
+
 ## Modules page (spec 019 US1)
 
 The Modules page (`/#/modules`) replaces the legacy `Recipes` + `Workflows`

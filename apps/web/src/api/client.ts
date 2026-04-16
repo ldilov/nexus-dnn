@@ -412,6 +412,11 @@ export type DeploymentSummary = {
   readonly is_favorite: boolean;
   readonly created_at: string;
   readonly updated_at: string;
+  // Spec 019 T400 — primary source link of the current revision. Lets the
+  // flat deployments list resolve a module-provenance badge per row with
+  // zero extra round-trips. Both NULL on legacy rows predating the join.
+  readonly source_extension_id?: string | null;
+  readonly source_workflow_id?: string | null;
 };
 
 export function fetchDeployments(): Promise<DeploymentSummary[]> {
