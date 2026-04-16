@@ -234,6 +234,7 @@ impl NexusApp {
             spawner,
             huggingface: Some(huggingface),
             backend_event_bus,
+            draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
         };
 
         let router = nexus_api::create_router(state);

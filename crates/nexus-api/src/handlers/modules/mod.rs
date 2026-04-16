@@ -5,6 +5,7 @@
 
 pub mod aggregator;
 pub mod deploy_shortcut;
+pub mod draft_map;
 pub mod dry_run;
 pub mod envelope;
 pub mod materialize;

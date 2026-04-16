@@ -144,7 +144,7 @@ pub struct MaterializeResponse {
 }
 
 /// Request body for `POST /api/v1/modules/user:draft:{uuid}/materialize`.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(default)]
 pub struct MaterializeRequest {
     pub workflow_payload: serde_json::Value,

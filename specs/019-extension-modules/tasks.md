@@ -106,20 +106,20 @@ description: "Task list for 019-extension-modules implementation"
 - [X] T041 [P] [US6] Contract test `crates/nexus-api/tests/modules_contract.rs::null_icon_renders_fallback` — no-manifest-icon extension returns `ModuleIcon::Fallback` with deterministic glyph
 - [X] T042 [P] [US6] Contract test `crates/nexus-api/tests/modules_detail_contract.rs::detail_404_on_missing_module`
 - [X] T043 [P] [US6] Contract test `crates/nexus-api/tests/modules_detail_contract.rs::detail_rejects_draft_id` — `GET /modules/user:draft:{uuid}` → HTTP 400 `module.draft_id_not_allowed`
-- [ ] T044 [P] [US6] Contract test `crates/nexus-api/tests/modules_deploy_shortcut.rs::deploy_default_blueprint_201`
-- [ ] T045 [P] [US6] Contract test `crates/nexus-api/tests/modules_deploy_shortcut.rs::deploy_with_recipe_id_override`
-- [ ] T046 [P] [US6] Contract test `crates/nexus-api/tests/modules_deploy_shortcut.rs::deploy_422_on_foreign_recipe_id` — `module.recipe_not_in_module`
-- [ ] T047 [P] [US6] Contract test `crates/nexus-api/tests/modules_deploy_shortcut.rs::deploy_400_on_draft_id`
-- [ ] T048 [P] [US6] Contract test `crates/nexus-api/tests/modules_deploy_shortcut.rs::deploy_409_on_disabled_extension`
-- [ ] T214 [P] [US6] Contract test `crates/nexus-api/tests/modules_deploy_shortcut.rs::multi_instance_distinct_hashes` — two POSTs to the same `module_id` with different `runtime_binding_overrides` + `model_binding_overrides` produce two deployments with distinct `effective_workflow_hash` values and independent lifecycle state (archive one does not affect the other) (SC-004, spec 018 User Story 4)
-- [ ] T049 [P] [US6] Contract test `crates/nexus-api/tests/modules_materialize_idempotency.rs::materialize_happy_201` (SC-019)
-- [ ] T050 [P] [US6] Contract test `crates/nexus-api/tests/modules_materialize_idempotency.rs::materialize_idempotent_same_body` (SC-020 — 2nd POST → 200, same ids, 0 new rows)
-- [ ] T051 [P] [US6] Contract test `crates/nexus-api/tests/modules_materialize_idempotency.rs::materialize_409_on_body_diff`
-- [ ] T052 [P] [US6] Contract test `crates/nexus-api/tests/modules_materialize_idempotency.rs::materialize_new_rows_after_ttl_expiry`
-- [ ] T053 [P] [US6] Contract test `crates/nexus-api/tests/modules_materialize_idempotency.rs::materialize_400_on_bad_uuid`
-- [ ] T054 [P] [US6] Contract test `crates/nexus-api/tests/modules_dry_run_contract.rs::dry_run_no_runs_row_created`
-- [ ] T215 [P] [US6] Contract test `crates/nexus-api/tests/modules_nomutation_contract.rs` — for each of `GET /modules`, `GET /modules/{id}`, `GET /modules/{id}/blueprint`, `POST /modules/{id}/deployments`, `POST /modules/{id}/blueprint/dry-run`, `POST /modules/user:draft:{uuid}/materialize`: snapshot byte-hashes of all rows in `workflows`, `recipes`, `extensions`, and every non-new `deployments` row before the call; re-hash after; assert zero diff on base-source rows (SC-013, invariant INV-019-1/-2)
-- [ ] T217 [P] [US6] Contract test `crates/nexus-api/tests/modules_never_auto_installs_contract.rs` — for every module-surface endpoint, assert the handler never creates an `extensions` install row, a `runtime_installs` row, a `runtime_settings` row, or spawns an install job; failing fixture case calls the endpoint on an extension whose runtime is absent, verifies the response is a `restore_state=restorable_with_degraded_features` diagnostic instead of a silent install (FR-031, carry-over of spec 018 SI-03)
+- [X] T044 [P] [US6] Contract test `crates/nexus-api/tests/modules_deploy_shortcut.rs::deploy_default_blueprint_201`
+- [X] T045 [P] [US6] Contract test `crates/nexus-api/tests/modules_deploy_shortcut.rs::deploy_with_recipe_id_override`
+- [X] T046 [P] [US6] Contract test `crates/nexus-api/tests/modules_deploy_shortcut.rs::deploy_422_on_foreign_recipe_id` — `module.recipe_not_in_module`
+- [X] T047 [P] [US6] Contract test `crates/nexus-api/tests/modules_deploy_shortcut.rs::deploy_400_on_draft_id`
+- [X] T048 [P] [US6] Contract test `crates/nexus-api/tests/modules_deploy_shortcut.rs::deploy_409_on_disabled_extension`
+- [X] T214 [P] [US6] Contract test `crates/nexus-api/tests/modules_deploy_shortcut.rs::multi_instance_distinct_hashes` — two POSTs to the same `module_id` with different `runtime_binding_overrides` + `model_binding_overrides` produce two deployments with distinct `effective_workflow_hash` values and independent lifecycle state (archive one does not affect the other) (SC-004, spec 018 User Story 4)
+- [X] T049 [P] [US6] Contract test `crates/nexus-api/tests/modules_materialize_idempotency.rs::materialize_happy_201` (SC-019)
+- [X] T050 [P] [US6] Contract test `crates/nexus-api/tests/modules_materialize_idempotency.rs::materialize_idempotent_same_body` (SC-020 — 2nd POST → 200, same ids, 0 new rows)
+- [X] T051 [P] [US6] Contract test `crates/nexus-api/tests/modules_materialize_idempotency.rs::materialize_409_on_body_diff`
+- [X] T052 [P] [US6] Contract test `crates/nexus-api/tests/modules_materialize_idempotency.rs::materialize_new_rows_after_ttl_expiry`
+- [X] T053 [P] [US6] Contract test `crates/nexus-api/tests/modules_materialize_idempotency.rs::materialize_400_on_bad_uuid`
+- [X] T054 [P] [US6] Contract test `crates/nexus-api/tests/modules_dry_run_contract.rs::dry_run_no_runs_row_created`
+- [X] T215 [P] [US6] Contract test `crates/nexus-api/tests/modules_nomutation_contract.rs` — for each of `GET /modules`, `GET /modules/{id}`, `GET /modules/{id}/blueprint`, `POST /modules/{id}/deployments`, `POST /modules/{id}/blueprint/dry-run`, `POST /modules/user:draft:{uuid}/materialize`: snapshot byte-hashes of all rows in `workflows`, `recipes`, `extensions`, and every non-new `deployments` row before the call; re-hash after; assert zero diff on base-source rows (SC-013, invariant INV-019-1/-2)
+- [X] T217 [P] [US6] Contract test `crates/nexus-api/tests/modules_never_auto_installs_contract.rs` — for every module-surface endpoint, assert the handler never creates an `extensions` install row, a `runtime_installs` row, a `runtime_settings` row, or spawns an install job; failing fixture case calls the endpoint on an extension whose runtime is absent, verifies the response is a `restore_state=restorable_with_degraded_features` diagnostic instead of a silent install (FR-031, carry-over of spec 018 SI-03)
 
 ### Implementation for US6
 
