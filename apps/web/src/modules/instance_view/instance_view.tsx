@@ -1,24 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   deployFromModule,
+  dryRunModuleBlueprint,
   fetchBlueprint,
   fetchModule,
+  type DeploymentRow,
   type ModuleDetail,
+  type ModuleSummary,
   type RecipeRef,
 } from "../../api/client";
-import { ModuleIcon } from "../../components/module_icon";
 import { mintDraftUuid } from "../draft/draft_uuid";
 import { writeDraftEnvelope } from "../draft/draft_envelope";
 import * as s from "./instance_view.css";
-
-type TabId = "recipe" | "stage" | "graph" | "trace";
-
-const TABS: readonly { id: TabId; label: string }[] = [
-  { id: "recipe", label: "Recipe" },
-  { id: "stage", label: "Stage" },
-  { id: "graph", label: "Graph" },
-  { id: "trace", label: "Trace" },
-];
 
 interface InstanceViewProps {
   moduleId: string;
@@ -36,9 +29,10 @@ type State =
 
 export function InstanceView({ moduleId, onNavigate }: InstanceViewProps) {
   const [state, setState] = useState<State>({ kind: "loading" });
-  const [activeTab, setActiveTab] = useState<TabId>("recipe");
   const [forking, setForking] = useState(false);
   const [deploying, setDeploying] = useState(false);
+  const [dryRunning, setDryRunning] = useState(false);
+  const [instanceSearch, setInstanceSearch] = useState("");
 
   const load = useCallback(() => {
     setState({ kind: "loading" });
@@ -87,10 +81,23 @@ export function InstanceView({ moduleId, onNavigate }: InstanceViewProps) {
     }
   }, [moduleId, onNavigate, state.kind]);
 
+  const handleDryRun = useCallback(async () => {
+    if (state.kind !== "ready") return;
+    setDryRunning(true);
+    try {
+      await dryRunModuleBlueprint(moduleId, {});
+      // Dry-run result surfaces on the Blueprint view; this CTA just
+      // primes it. For v1 we simply navigate there after the call.
+      onNavigate(`#/modules/${encodeURIComponent(moduleId)}/blueprint`);
+    } catch {
+      // Non-fatal — the Blueprint view will re-run on arrival.
+      onNavigate(`#/modules/${encodeURIComponent(moduleId)}/blueprint`);
+    } finally {
+      setDryRunning(false);
+    }
+  }, [moduleId, onNavigate, state.kind]);
+
   const handleEdit = useCallback(async () => {
-    // Spec 019 FR-050: mint a UUID, fetch the resolved payload, write
-    // to sessionStorage, navigate. Zero network POSTs until the user
-    // explicitly saves the draft.
     if (state.kind !== "ready") return;
     setForking(true);
     try {
@@ -103,10 +110,6 @@ export function InstanceView({ moduleId, onNavigate }: InstanceViewProps) {
           display_name: blueprint.display_name,
           description: blueprint.description,
           step_count: blueprint.step_count,
-          // The blueprint surface does not yet return workflow nodes/edges;
-          // we carry the recipe reference. The real payload assembly happens
-          // when the recipe projector lands; until then the draft inherits
-          // the recipe id and the deployment editor's overlays do the rest.
         };
       }
       const uuid = mintDraftUuid();
@@ -117,31 +120,30 @@ export function InstanceView({ moduleId, onNavigate }: InstanceViewProps) {
         display_name: state.detail.summary.display_name,
         forked_at: new Date().toISOString(),
       });
-      onNavigate(
-        `#/modules/${encodeURIComponent(moduleId)}/draft/${uuid}`,
-      );
+      onNavigate(`#/modules/${encodeURIComponent(moduleId)}/draft/${uuid}`);
     } finally {
       setForking(false);
     }
   }, [moduleId, onNavigate, state]);
 
-  const sourceBadgeLabel = useMemo(() => {
-    if (state.kind !== "ready") return "Module";
-    const src = state.detail.summary.source_kind;
-    if (src === "extension") return state.detail.summary.extension_id ?? "Extension";
-    if (src === "user") return "User Module";
-    return "Blank Module";
-  }, [state]);
+  const filteredInstances = useMemo(() => {
+    if (state.kind !== "ready") return [] as readonly DeploymentRow[];
+    if (!instanceSearch.trim()) return state.detail.deployments;
+    const q = instanceSearch.trim().toLowerCase();
+    return state.detail.deployments.filter(
+      (d) =>
+        d.display_name.toLowerCase().includes(q) ||
+        d.deployment_id.toLowerCase().includes(q) ||
+        d.state.toLowerCase().includes(q),
+    );
+  }, [state, instanceSearch]);
 
   if (state.kind === "loading") {
     return (
       <div className={s.root}>
-        <header className={s.identityBanner}>
-          <button type="button" className={s.backLink} onClick={handleBack}>
-            ← Modules
-          </button>
-          <span className={s.idText}>Loading instance…</span>
-        </header>
+        <div className={s.canvas}>
+          <div className={s.loadingBox}>Loading instance…</div>
+        </div>
       </div>
     );
   }
@@ -149,13 +151,13 @@ export function InstanceView({ moduleId, onNavigate }: InstanceViewProps) {
   if (state.kind === "error") {
     return (
       <div className={s.root}>
-        <header className={s.identityBanner}>
+        <div className={s.canvas}>
           <button type="button" className={s.backLink} onClick={handleBack}>
             ← Modules
           </button>
-        </header>
-        <div className={s.errorBox} role="alert">
-          {state.message}
+          <div className={s.errorBox} role="alert">
+            {state.message}
+          </div>
         </div>
       </div>
     );
@@ -163,175 +165,480 @@ export function InstanceView({ moduleId, onNavigate }: InstanceViewProps) {
 
   const { detail, primaryBlueprint } = state;
   const { summary } = detail;
-  const compatBlocked =
-    summary.compatibility_summary.overall !== "ok" ||
-    summary.compatibility_summary.warning_count > 0;
   const deployBlocked = summary.blueprints.length === 0;
+  const totalDeployments = summary.deployments.total;
+  const activeDeployments = countByState(summary, ["saved", "active"]);
+  const blueprintCount = summary.blueprints.length;
+  const installedAgo = formatRelativeTime(summary.installed_at ?? null);
 
   return (
     <div className={s.root}>
-      <header className={s.identityBanner}>
+      <div className={s.ambientGlowPrimary} aria-hidden="true" />
+      <div className={s.ambientGlowSecondary} aria-hidden="true" />
+
+      <div className={s.canvas}>
         <button type="button" className={s.backLink} onClick={handleBack}>
           ← Modules
         </button>
-        <span className={s.statusDot} aria-hidden="true" />
-        <span className={s.idText}>{summary.module_id}</span>
-        <span className={s.displayName}>{summary.display_name}</span>
-        <span className={s.sourceBadge}>
-          <ModuleIcon icon={summary.icon} size={14} />
-          {sourceBadgeLabel}
-        </span>
-        <div className={s.bannerActions}>
-          <button
-            type="button"
-            className={s.secondaryBtn}
-            onClick={handleEdit}
-            disabled={forking || deployBlocked}
-            title={
-              deployBlocked
-                ? "This module has no blueprints"
-                : "Fork a client-side draft; saves as a new deployment"
-            }
-          >
-            {forking ? "Forking…" : "Edit"}
-          </button>
-          <button
-            type="button"
-            className={s.secondaryBtn}
-            onClick={handleViewBlueprint}
-            disabled={deployBlocked}
-          >
-            View Blueprint
-          </button>
-          <button
-            type="button"
-            className={s.primaryBtn}
-            onClick={handleDeploy}
-            disabled={deploying || deployBlocked}
-          >
-            {deploying ? "Deploying…" : "Deploy Instance"}
-            {/* scan-terminology: allow — CTA */}
-          </button>
-        </div>
-      </header>
 
-      {compatBlocked && (
-        <div className={s.warningBanner} role="status">
-          Compatibility: {summary.compatibility_summary.overall}
-          {summary.compatibility_summary.warning_count > 0
-            ? ` (${summary.compatibility_summary.warning_count} warnings)`
-            : ""}
-        </div>
-      )}
+        {/* ── Hero ─────────────────────────────────────────────────────── */}
+        <header className={s.hero}>
+          <div className={s.heroLeft}>
+            <h1 className={s.heroTitle}>{summary.display_name}</h1>
+            <div className={s.heroMeta}>
+              {summary.version && (
+                <span className={s.buildChip}>build v{summary.version}</span>
+              )}
+              <span className={s.statusRow}>
+                <span
+                  className={
+                    summary.compatibility_summary.overall === "ok"
+                      ? s.statusDotHealthy
+                      : summary.compatibility_summary.warning_count > 0
+                        ? s.statusDotWarning
+                        : s.statusDotIdle
+                  }
+                  aria-hidden="true"
+                />
+                {summary.source_kind === "extension"
+                  ? "Operational extension module"
+                  : summary.source_kind === "user"
+                    ? "User module"
+                    : "Blank module"}
+              </span>
+              {summary.runtime_family && (
+                <span className={s.statusRow}>
+                  <span
+                    className="material-symbols-outlined"
+                    style={{ fontSize: "16px" }}
+                    aria-hidden="true"
+                  >
+                    memory
+                  </span>
+                  {summary.runtime_family}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className={s.heroActions}>
+            <button
+              type="button"
+              className={s.secondaryBtn}
+              onClick={handleDryRun}
+              disabled={dryRunning || deployBlocked}
+            >
+              <span
+                className="material-symbols-outlined"
+                style={{ fontSize: "18px" }}
+                aria-hidden="true"
+              >
+                play_arrow
+              </span>
+              {dryRunning ? "Planning…" : "Dry Run"}
+            </button>
+            <button
+              type="button"
+              className={s.secondaryBtn}
+              onClick={handleViewBlueprint}
+              disabled={deployBlocked}
+            >
+              <span
+                className="material-symbols-outlined"
+                style={{ fontSize: "18px" }}
+                aria-hidden="true"
+              >
+                menu_book
+              </span>
+              View Blueprint
+            </button>
+            <button
+              type="button"
+              className={s.secondaryBtn}
+              onClick={handleEdit}
+              disabled={forking || deployBlocked}
+            >
+              <span
+                className="material-symbols-outlined"
+                style={{ fontSize: "18px" }}
+                aria-hidden="true"
+              >
+                edit
+              </span>
+              {forking ? "Forking…" : "Edit"}
+            </button>
+            <button
+              type="button"
+              className={s.primaryBtn}
+              onClick={handleDeploy}
+              disabled={deploying || deployBlocked}
+            >
+              <span
+                className="material-symbols-outlined"
+                style={{ fontSize: "18px" }}
+                aria-hidden="true"
+              >
+                rocket_launch
+              </span>
+              {/* scan-terminology: allow — canonical CTA per FR-012 */}
+              {deploying ? "Deploying…" : "Deploy Instance"}
+            </button>
+          </div>
+        </header>
 
-      <nav
-        className={s.tabBar}
-        role="tablist"
-        aria-label="Instance view tabs"
-      >
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            className={s.tabBtn}
-            aria-selected={activeTab === tab.id}
-            aria-controls={`panel-${tab.id}`}
-            id={`tab-${tab.id}`}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
-
-      <div
-        className={s.panel}
-        role="tabpanel"
-        id={`panel-${activeTab}`}
-        aria-labelledby={`tab-${activeTab}`}
-        aria-readonly="true"
-      >
-        <div className={s.readOnlyNote}>
-          This is a read-only preview of the module's default configuration.
-          To make changes, click{" "}
-          <strong>Edit</strong> — your edits become a new{" "}
-          {/* scan-terminology: allow */} Deployment when you save.
-        </div>
-
-        {activeTab === "recipe" && primaryBlueprint && (
-          <section>
-            <h3 style={{ fontWeight: 600, marginTop: 0 }}>
-              {primaryBlueprint.display_name}
-            </h3>
-            {primaryBlueprint.description && (
-              <p style={{ opacity: 0.8 }}>{primaryBlueprint.description}</p>
-            )}
-            {primaryBlueprint.step_count > 0 ? (
-              <ol style={{ paddingLeft: 0, listStyle: "none" }}>
-                {Array.from({ length: primaryBlueprint.step_count }, (_, i) => (
-                  <li key={i} className={s.stepRow}>
-                    <span className={s.stepNumber}>
-                      {String(i + 1).padStart(2, "0")}
+        {/* ── Content grid ─────────────────────────────────────────────── */}
+        <div className={s.cardGrid}>
+          {/* 01 / Module Purpose */}
+          <div className={s.cardWide}>
+            <section className={s.card}>
+              <div className={s.cardCornerGlow} aria-hidden="true" />
+              <h3 className={s.sectionNumber}>01 / Module Purpose</h3>
+              <p className={s.aboutLead}>
+                {summary.description ? (
+                  summary.description
+                ) : (
+                  <>
+                    Read-only preview of{" "}
+                    <span className={s.aboutLeadAccent}>
+                      {summary.display_name}
                     </span>
-                    <span>Step {i + 1}</span>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p style={{ opacity: 0.6, fontStyle: "italic" }}>
-                Full recipe projection lands in a follow-up slice — click "View
-                Blueprint" for the detailed recipe view.
+                    .
+                  </>
+                )}
               </p>
-            )}
-          </section>
-        )}
+              <p className={s.aboutSub}>
+                {primaryBlueprint?.description ??
+                  "To make changes, click Edit — your edits become a new deployment when you save."}
+              </p>
 
-        {activeTab === "stage" && (
-          <section>
-            <p style={{ opacity: 0.7 }}>
-              Stage-level preview of the module's default workflow steps
-              (read-only). This is a visualization of what the default{" "}
-              {/* scan-terminology: allow */} Deployment would look like.
-              Integration with the existing StageView component is deferred
-              to a follow-up slice.
-            </p>
-          </section>
-        )}
-
-        {activeTab === "graph" && (
-          <section>
-            <p style={{ opacity: 0.7 }}>
-              Graph-level preview (read-only). Pan + zoom + inspect nodes.
-              No drag, no port reconnect — instances are immutable. Integration
-              with the existing GraphView (readonly mode) lands in a follow-up
-              slice.
-            </p>
-          </section>
-        )}
-
-        {activeTab === "trace" && (
-          <section>
-            <p style={{ opacity: 0.7 }}>
-              Run telemetry across every {/* scan-terminology: allow */} Deployment
-              derived from this module. Backed by the existing RunTraceView
-              filtered by `deployment_run_links`. Integration pending.
-            </p>
-            {detail.recent_runs.length > 0 && (
-              <ul style={{ paddingLeft: 0, listStyle: "none" }}>
-                {detail.recent_runs.map((r) => (
-                  <li key={r.run_id} className={s.stepRow}>
-                    <span className={s.idText}>{r.run_id}</span>
-                    <span>
-                      {r.status} · {r.created_at}
+              <div className={s.metaGrid}>
+                <div className={`${s.metaItem} ${s.metaItemSecondary}`}>
+                  <span className={s.metaLabel}>Blueprints</span>
+                  <span className={s.metaValue}>
+                    {blueprintCount}
+                    <span className={s.metaUnit}>
+                      {blueprintCount === 1 ? "recipe" : "recipes"}
                     </span>
-                  </li>
-                ))}
-              </ul>
+                  </span>
+                </div>
+                <div className={`${s.metaItem} ${s.metaItemTertiary}`}>
+                  <span className={s.metaLabel}>Primary recipe</span>
+                  <span
+                    className={s.metaValue}
+                    style={{ fontSize: "1rem", lineHeight: 1.3 }}
+                  >
+                    {primaryBlueprint?.display_name ?? "—"}
+                  </span>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          {/* 02 / Instance Impact */}
+          <div className={s.cardNarrow}>
+            <section className={s.card}>
+              <h3 className={s.sectionNumber}>02 / Instance Impact</h3>
+              <div className={s.impactCol}>
+                <div className={s.impactRow}>
+                  <div className={s.impactHeader}>
+                    <span className={s.impactLabel}>
+                      {/* scan-terminology: allow */}
+                      Total deployments
+                    </span>
+                    <span className={s.impactValue}>
+                      {totalDeployments}
+                      <span className={s.impactValueUnit}>
+                        {" "}
+                        {totalDeployments === 1 ? "instance" : "instances"}
+                      </span>
+                    </span>
+                  </div>
+                  <div className={s.progressTrack}>
+                    <div
+                      className={s.progressFillSecondary}
+                      style={{
+                        width: `${totalDeployments === 0 ? 0 : Math.min(100, (activeDeployments / Math.max(totalDeployments, 1)) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                  <p className={s.impactCaption}>
+                    {activeDeployments} active · {totalDeployments - activeDeployments} other
+                  </p>
+                </div>
+
+                <div className={s.impactRow}>
+                  <div className={s.impactHeader}>
+                    <span className={s.impactLabel}>Compatibility</span>
+                    <span className={s.impactValue}>
+                      {summary.compatibility_summary.overall}
+                      {summary.compatibility_summary.warning_count > 0 ? (
+                        <span className={s.impactValueUnit}>
+                          {" "}
+                          · {summary.compatibility_summary.warning_count} warnings
+                        </span>
+                      ) : null}
+                    </span>
+                  </div>
+                  <div className={s.progressTrack}>
+                    <div
+                      className={
+                        summary.compatibility_summary.overall === "ok"
+                          ? s.progressFillAcid
+                          : summary.compatibility_summary.warning_count > 0
+                            ? s.progressFillError
+                            : s.progressFillPrimary
+                      }
+                      style={{
+                        width:
+                          summary.compatibility_summary.overall === "ok"
+                            ? "100%"
+                            : summary.compatibility_summary.warning_count > 0
+                              ? "40%"
+                              : "70%",
+                      }}
+                    />
+                  </div>
+                  <p className={s.impactCaption}>
+                    {summary.compatibility_summary.overall === "ok"
+                      ? "All checks passing"
+                      : "See diagnostics on instance rows"}
+                  </p>
+                </div>
+
+                <div className={s.impactRow}>
+                  <div className={s.impactHeader}>
+                    <span className={s.impactLabel}>Recent runs</span>
+                    <span className={s.impactValue}>
+                      {detail.recent_runs.length}
+                      <span className={s.impactValueUnit}> in trace</span>
+                    </span>
+                  </div>
+                  <div className={s.progressTrack}>
+                    <div
+                      className={s.progressFillPrimary}
+                      style={{
+                        width: `${Math.min(100, detail.recent_runs.length * 10)}%`,
+                      }}
+                    />
+                  </div>
+                  <p className={s.impactCaption}>
+                    Latest across every derived deployment
+                  </p>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          {/* Instances table */}
+          <div className={s.instancesSection}>
+            <header className={s.instancesHeader}>
+              <div>
+                <h3 className={s.instancesTitle}>
+                  {/* scan-terminology: allow */}
+                  Instances of this module
+                </h3>
+                <p className={s.instancesSubtitle}>
+                  {totalDeployments === 0
+                    ? "No instances yet — click Deploy Instance to create one."
+                    : `Monitoring ${totalDeployments} ${totalDeployments === 1 ? "instance" : "instances"} derived from this module.`}
+                </p>
+              </div>
+              {detail.deployments.length > 0 && (
+                <div className={s.searchWrap}>
+                  <span
+                    className={`material-symbols-outlined ${s.searchIcon}`}
+                    aria-hidden="true"
+                  >
+                    search
+                  </span>
+                  <input
+                    type="search"
+                    placeholder="Filter instances…"
+                    value={instanceSearch}
+                    onChange={(e) => setInstanceSearch(e.target.value)}
+                    className={s.searchInput}
+                    aria-label="Filter instances"
+                  />
+                </div>
+              )}
+            </header>
+
+            {detail.deployments.length === 0 ? (
+              <div className={s.emptyInstances}>
+                No deployments yet. Deploy the first instance to populate this
+                table.
+              </div>
+            ) : (
+              <div className={s.tableWrap}>
+                <table className={s.table}>
+                  <thead className={s.tableHead}>
+                    <tr>
+                      <th className={s.tableHeadCell}>Instance ID</th>
+                      <th className={s.tableHeadCell}>Display name</th>
+                      <th className={s.tableHeadCell}>State</th>
+                      <th className={s.tableHeadCell}>Restore state</th>
+                      <th className={s.tableHeadCell}>Updated</th>
+                      <th className={s.tableHeadCell} style={{ textAlign: "right" }}>
+                        Operations
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredInstances.map((row) => (
+                      <tr key={row.deployment_id} className={s.tableRow}>
+                        <td className={`${s.tableCell} ${s.tableCellBold}`}>
+                          {shortId(row.deployment_id)}
+                        </td>
+                        <td className={s.tableCell}>{row.display_name}</td>
+                        <td className={s.tableCell}>
+                          <StateChip state={row.state} />
+                        </td>
+                        <td className={s.tableCell}>{row.restore_state}</td>
+                        <td className={s.tableCell}>
+                          {formatRelativeTime(row.updated_at)}
+                        </td>
+                        <td
+                          className={s.tableCell}
+                          style={{ textAlign: "right" }}
+                        >
+                          <div className={s.rowActions}>
+                            <button
+                              type="button"
+                              className={s.rowActionBtn}
+                              aria-label="Open instance editor"
+                              title="Open"
+                              onClick={() =>
+                                onNavigate(
+                                  `#/deployments/${encodeURIComponent(row.deployment_id)}`,
+                                )
+                              }
+                            >
+                              <span
+                                className="material-symbols-outlined"
+                                style={{ fontSize: "18px" }}
+                                aria-hidden="true"
+                              >
+                                open_in_new
+                              </span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-          </section>
-        )}
+          </div>
+        </div>
+
+        {/* ── Footer info strip ────────────────────────────────────────── */}
+        <div className={s.footerGrid}>
+          <div className={`${s.footerCard} ${s.footerCardSecondary}`}>
+            <span
+              className={`material-symbols-outlined ${s.footerIconSecondary}`}
+              aria-hidden="true"
+            >
+              verified_user
+            </span>
+            <div>
+              <p className={s.footerLabel}>Source</p>
+              <p className={s.footerValue}>
+                {summary.publisher
+                  ? `Published by ${summary.publisher}`
+                  : summary.source_kind === "user"
+                    ? "User-authored workflow"
+                    : "Built-in"}
+              </p>
+            </div>
+          </div>
+
+          <div className={`${s.footerCard} ${s.footerCardPrimary}`}>
+            <span
+              className={`material-symbols-outlined ${s.footerIconPrimary}`}
+              aria-hidden="true"
+            >
+              history
+            </span>
+            <div>
+              <p className={s.footerLabel}>Registered</p>
+              <p className={s.footerValue}>
+                {installedAgo ? `Installed ${installedAgo}` : "Unknown"}
+              </p>
+            </div>
+          </div>
+
+          <div className={`${s.footerCard} ${s.footerCardTertiary}`}>
+            <span
+              className={`material-symbols-outlined ${s.footerIconTertiary}`}
+              aria-hidden="true"
+            >
+              fingerprint
+            </span>
+            <div>
+              <p className={s.footerLabel}>Module id</p>
+              <p className={s.footerValue} style={{ fontFamily: "var(--font-mono, monospace)" }}>
+                {summary.module_id}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
+  );
+}
+
+function countByState(summary: ModuleSummary, states: string[]): number {
+  const by = summary.deployments.by_state;
+  let total = 0;
+  for (const s of states) {
+    total += by[s] ?? 0;
+  }
+  return total;
+}
+
+function shortId(id: string): string {
+  if (id.length <= 14) return id;
+  return `${id.slice(0, 6)}…${id.slice(-6)}`;
+}
+
+function formatRelativeTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return iso;
+  const deltaSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (deltaSec < 60) return `${deltaSec}s ago`;
+  if (deltaSec < 3600) return `${Math.floor(deltaSec / 60)}m ago`;
+  if (deltaSec < 86400) return `${Math.floor(deltaSec / 3600)}h ago`;
+  if (deltaSec < 2592000) return `${Math.floor(deltaSec / 86400)}d ago`;
+  return `${Math.floor(deltaSec / 2592000)}mo ago`;
+}
+
+interface StateChipProps {
+  state: string;
+}
+
+function StateChip({ state }: StateChipProps) {
+  const lower = state.toLowerCase();
+  if (lower.includes("active") || lower === "saved") {
+    return (
+      <span className={s.stateChipActive}>
+        <span className={s.stateDotActive} aria-hidden="true" />
+        {state}
+      </span>
+    );
+  }
+  if (lower.includes("fail") || lower.includes("error")) {
+    return (
+      <span className={s.stateChipError}>
+        <span className={s.stateDotError} aria-hidden="true" />
+        {state}
+      </span>
+    );
+  }
+  return (
+    <span className={s.stateChipIdle}>
+      <span className={s.stateDotIdle} aria-hidden="true" />
+      {state}
+    </span>
   );
 }

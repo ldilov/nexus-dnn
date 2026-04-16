@@ -613,6 +613,11 @@ export interface ModuleSummary {
   default_model_binding_ref: string | null;
   deployments: DeploymentCounts;
   compatibility_summary: CompatibilitySummary;
+  // Spec 019 Instance-view redesign — hero + footer metadata.
+  description?: string | null;
+  publisher?: string | null;
+  runtime_family?: string | null;
+  installed_at?: string | null;
 }
 
 export interface ModuleListEnvelope {
