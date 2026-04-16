@@ -1,0 +1,27 @@
+[package]
+name = "nexus-models-store"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nexus-protocol = { path = "../nexus-protocol" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+sha2 = "0.10"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "json", "chrono"] }
+async-trait = "0.1"
+futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+ulid = "1"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
+rstest = "0.23"
+wiremock = "0.6"
+tempfile = "3"
+tracing-test = { version = "0.2", features = ["no-env-filter"] }

@@ -1,5 +1,6 @@
 mod artifacts;
 mod content;
+pub mod deployments;
 mod extensions;
 mod migrations;
 mod namespaces;

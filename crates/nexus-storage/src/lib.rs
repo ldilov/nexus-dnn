@@ -15,3 +15,4 @@ pub use records::{
     RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord,
 };
 pub use sqlite::SqliteDatabase;
+pub use sqlite::deployments::{DeploymentMappers, DeploymentRowRaw, RevisionRowRaw};
