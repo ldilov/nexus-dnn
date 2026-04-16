@@ -101,6 +101,7 @@ async fn build_fixture() -> Fixture {
         spawner: Some(spawner),
         huggingface: None,
         backend_event_bus: backend_bus,
+        draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
     };
 
     Fixture {

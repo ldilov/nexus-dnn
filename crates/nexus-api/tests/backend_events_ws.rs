@@ -60,6 +60,7 @@ async fn build_state_with_bus(bus: Arc<BroadcastPublisher>) -> (AppState, tempfi
         spawner: None,
         huggingface: None,
         backend_event_bus: bus,
+        draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
     };
     (state, ext_dir)
 }

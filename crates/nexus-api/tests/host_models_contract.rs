@@ -61,6 +61,7 @@ async fn build_state() -> AppState {
         backend_event_bus: Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(
             1024,
         )),
+        draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
     }
 }
 
