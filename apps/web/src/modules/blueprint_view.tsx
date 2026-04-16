@@ -62,29 +62,31 @@ export function BlueprintView({
       );
   }, [moduleId, initialRecipeId]);
 
-  // Lazy-load the workflow DAG the first time the user switches to the
-  // Workflow tab. Avoids a round-trip for users who only read the recipe.
+  // Fetch the backing workflow once on mount so both the Recipe tab
+  // (renders nodes as an ordered step list) and the Workflow tab (renders
+  // nodes as a DAG) have the same data. One small round-trip up-front
+  // beats switching tab → spinner → empty placeholder.
   useEffect(() => {
-    if (mode !== "workflow" || workflow || workflowLoading) return;
     if (state.kind !== "ready") return;
     const workflowId = state.detail.summary.workflow_id;
     if (!workflowId) {
-      setWorkflowError("This module has no workflow bound to it yet.");
+      setWorkflowError(
+        "This module has no workflow bound yet — recipes describe the intent but the graph projection is pending.",
+      );
+      setWorkflow(null);
       return;
     }
     setWorkflowLoading(true);
+    setWorkflowError(null);
     fetchWorkflow(workflowId)
-      .then((wf) => {
-        setWorkflow(wf);
-        setWorkflowError(null);
-      })
+      .then((wf) => setWorkflow(wf))
       .catch((err: unknown) =>
         setWorkflowError(
           err instanceof Error ? err.message : "Failed to load workflow",
         ),
       )
       .finally(() => setWorkflowLoading(false));
-  }, [mode, workflow, workflowLoading, state]);
+  }, [state]);
 
   const selectedBlueprint = useMemo<RecipeRef | null>(() => {
     if (state.kind !== "ready") return null;
@@ -358,32 +360,25 @@ export function BlueprintView({
 
             <section className={s.section}>
               <h2 className={s.sectionNumber}>
-                02 / Steps ({selectedBlueprint?.step_count ?? 0})
+                02 / Steps ({workflow ? workflow.nodes.length : (selectedBlueprint?.step_count ?? 0)})
               </h2>
-              {!selectedBlueprint || selectedBlueprint.step_count === 0 ? (
+              {workflowLoading && (
                 <p className={s.overview} style={{ fontStyle: "italic" }}>
-                  This recipe's step-level projection is not wired through the
-                  aggregator yet. Switch to <strong>Workflow graph</strong>{" "}
-                  for the raw DAG, or click <strong>Dry Run</strong> above to
-                  preview the execution plan.
+                  Loading step projection…
                 </p>
-              ) : (
-                <ol className={s.stepList}>
-                  {Array.from(
-                    { length: selectedBlueprint.step_count },
-                    (_, i) => (
-                      <li key={i} className={s.step}>
-                        <span className={s.stepNumber}>
-                          {String(i + 1).padStart(2, "0")}
-                        </span>
-                        <div className={s.stepBody}>
-                          <span className={s.stepOp}>op.step.{i + 1}</span>
-                          <span className={s.stepTitle}>Step {i + 1}</span>
-                        </div>
-                      </li>
-                    ),
-                  )}
-                </ol>
+              )}
+              {!workflowLoading && !workflow && workflowError && (
+                <p className={s.overview} style={{ fontStyle: "italic" }}>
+                  {workflowError}
+                </p>
+              )}
+              {workflow && workflow.nodes.length === 0 && (
+                <p className={s.overview} style={{ fontStyle: "italic" }}>
+                  This workflow has no operator nodes yet.
+                </p>
+              )}
+              {workflow && workflow.nodes.length > 0 && (
+                <RecipeStepList workflow={workflow} />
               )}
             </section>
 
@@ -422,7 +417,7 @@ export function BlueprintView({
             {workflowLoading && (
               <div className={s.loadingBox}>Loading workflow graph…</div>
             )}
-            {workflowError && (
+            {!workflowLoading && !workflow && workflowError && (
               <div className={s.errorBox} role="alert">
                 {workflowError}
               </div>
@@ -558,6 +553,180 @@ export function BlueprintView({
       </div>
     </div>
   );
+}
+
+// ─── Recipe step list (nodes-as-steps projection) ────────────────────────
+
+interface RecipeStepListProps {
+  workflow: Workflow;
+}
+
+/**
+ * Renders the workflow as a friendly numbered step list. Nodes are
+ * ordered topologically (Kahn's algorithm) so step N depends only on
+ * earlier steps. If the workflow declares stages, each stage becomes a
+ * section header and its nodes are rendered as the steps under it.
+ */
+function RecipeStepList({ workflow }: RecipeStepListProps) {
+  const ordered = useMemo(() => topoOrderNodes(workflow), [workflow]);
+
+  const stageMap = new Map<string, { label: string; steps: typeof ordered }>();
+  const ungrouped: typeof ordered = [];
+  for (const node of ordered) {
+    if (node.stage) {
+      const entry = stageMap.get(node.stage) ?? {
+        label: node.stage,
+        steps: [],
+      };
+      entry.steps.push(node);
+      stageMap.set(node.stage, entry);
+    } else {
+      ungrouped.push(node);
+    }
+  }
+
+  // Preserve stage declaration order from the workflow (not discovery order).
+  const stages = workflow.stages
+    .map((st) => stageMap.get(st.id))
+    .filter((e): e is { label: string; steps: typeof ordered } => e !== undefined);
+
+  // Any stages that appeared on nodes but weren't declared — append last.
+  for (const [id, entry] of stageMap) {
+    if (!workflow.stages.some((s) => s.id === id)) {
+      stages.push(entry);
+    }
+  }
+
+  if (stages.length === 0) {
+    return (
+      <ol className={s.stepList}>
+        {ordered.map((n, idx) => (
+          <li key={n.id} className={s.step}>
+            <span className={s.stepNumber}>{String(idx + 1).padStart(2, "0")}</span>
+            <div className={s.stepBody}>
+              <span className={s.stepOp}>{n.operator}</span>
+              <span className={s.stepTitle}>{humanize(n.id)}</span>
+            </div>
+          </li>
+        ))}
+      </ol>
+    );
+  }
+
+  let runningIdx = 0;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      {stages.map((stage) => (
+        <div key={stage.label}>
+          <div
+            style={{
+              fontSize: "0.625rem",
+              letterSpacing: "0.2em",
+              textTransform: "uppercase",
+              fontWeight: 900,
+              opacity: 0.7,
+              marginBottom: "0.5rem",
+            }}
+          >
+            Stage · {stage.label}
+          </div>
+          <ol className={s.stepList}>
+            {stage.steps.map((n) => {
+              runningIdx += 1;
+              return (
+                <li key={n.id} className={s.step}>
+                  <span className={s.stepNumber}>
+                    {String(runningIdx).padStart(2, "0")}
+                  </span>
+                  <div className={s.stepBody}>
+                    <span className={s.stepOp}>{n.operator}</span>
+                    <span className={s.stepTitle}>{humanize(n.id)}</span>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      ))}
+      {ungrouped.length > 0 && (
+        <div>
+          <div
+            style={{
+              fontSize: "0.625rem",
+              letterSpacing: "0.2em",
+              textTransform: "uppercase",
+              fontWeight: 900,
+              opacity: 0.7,
+              marginBottom: "0.5rem",
+            }}
+          >
+            Unstaged
+          </div>
+          <ol className={s.stepList}>
+            {ungrouped.map((n) => {
+              runningIdx += 1;
+              return (
+                <li key={n.id} className={s.step}>
+                  <span className={s.stepNumber}>
+                    {String(runningIdx).padStart(2, "0")}
+                  </span>
+                  <div className={s.stepBody}>
+                    <span className={s.stepOp}>{n.operator}</span>
+                    <span className={s.stepTitle}>{humanize(n.id)}</span>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function topoOrderNodes(workflow: Workflow) {
+  const indeg = new Map<string, number>();
+  const outEdges = new Map<string, string[]>();
+  for (const n of workflow.nodes) {
+    indeg.set(n.id, 0);
+    outEdges.set(n.id, []);
+  }
+  for (const e of workflow.edges) {
+    if (indeg.has(e.target_node)) {
+      indeg.set(e.target_node, (indeg.get(e.target_node) ?? 0) + 1);
+    }
+    if (outEdges.has(e.source_node)) {
+      outEdges.get(e.source_node)!.push(e.target_node);
+    }
+  }
+  const ready: string[] = [];
+  for (const [id, d] of indeg) if (d === 0) ready.push(id);
+  ready.sort();
+  const order: string[] = [];
+  while (ready.length > 0) {
+    const id = ready.shift()!;
+    order.push(id);
+    for (const next of outEdges.get(id) ?? []) {
+      const d = (indeg.get(next) ?? 0) - 1;
+      indeg.set(next, d);
+      if (d === 0) {
+        ready.push(next);
+        ready.sort();
+      }
+    }
+  }
+  const byId = new Map(workflow.nodes.map((n) => [n.id, n]));
+  if (order.length < workflow.nodes.length) {
+    // Cycle or disconnected nodes — fall back to declaration order.
+    return workflow.nodes;
+  }
+  return order.map((id) => byId.get(id)!).filter(Boolean);
+}
+
+function humanize(id: string): string {
+  return id
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 // ─── Tiny DAG renderer ────────────────────────────────────────────────────

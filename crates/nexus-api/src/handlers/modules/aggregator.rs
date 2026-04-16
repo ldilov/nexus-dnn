@@ -50,6 +50,7 @@ pub async fn list(
 
     let recipes_by_extension: HashMap<String, Vec<RecipeRecord>> =
         group_recipes_by_extension(&recipes);
+    let workflow_index = WorkflowIndex::build(&workflows);
 
     let mut modules = Vec::with_capacity(extensions.len() + workflows.len());
 
@@ -58,11 +59,18 @@ pub async fn list(
             if ext.status == "disabled" && q.status.as_deref() == Some("enabled") {
                 continue;
             }
-            let blueprints = build_blueprints_for_extension(&ext, &recipes_by_extension);
+            let blueprints =
+                build_blueprints_for_extension(&ext, &recipes_by_extension, &workflow_index);
             if blueprints.is_empty() {
                 continue;
             }
-            modules.push(build_extension_module(ext, blueprints));
+            let recipes_for_ext = recipes_by_extension
+                .get(&ext.id)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
+            let workflow_id =
+                resolve_primary_workflow_id_impl(&ext, recipes_for_ext, &workflow_index);
+            modules.push(build_extension_module(ext, blueprints, workflow_id));
         }
     }
 
@@ -71,7 +79,8 @@ pub async fn list(
             if wfl.extension_id.is_some() {
                 continue;
             }
-            modules.push(build_user_module(wfl));
+            let step_count = count_workflow_nodes(&wfl);
+            modules.push(build_user_module(wfl, step_count));
         }
     }
 
@@ -147,9 +156,18 @@ async fn build_summary_for_id(
                         )
                     })?;
             let recipes = recipes_of_any_kind(state).await?;
+            let workflows = workflows_of_any_kind(state).await?;
             let recipes_by_extension = group_recipes_by_extension(&recipes);
-            let blueprints = build_blueprints_for_extension(&ext, &recipes_by_extension);
-            Ok(build_extension_module(ext, blueprints))
+            let workflow_index = WorkflowIndex::build(&workflows);
+            let blueprints =
+                build_blueprints_for_extension(&ext, &recipes_by_extension, &workflow_index);
+            let recipes_for_ext = recipes_by_extension
+                .get(&ext.id)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
+            let workflow_id =
+                resolve_primary_workflow_id_impl(&ext, recipes_for_ext, &workflow_index);
+            Ok(build_extension_module(ext, blueprints, workflow_id))
         }
         ModuleIdKind::User { workflow_id } => {
             let wfls = workflows_of_any_kind(state).await?;
@@ -163,7 +181,8 @@ async fn build_summary_for_id(
                         "user workflow not found",
                     )
                 })?;
-            Ok(build_user_module(wfl))
+            let step_count = count_workflow_nodes(&wfl);
+            Ok(build_user_module(wfl, step_count))
         }
         ModuleIdKind::Blank => Ok(build_blank_module()),
         ModuleIdKind::Draft { .. } => Err(ApiError::structured(
@@ -174,7 +193,11 @@ async fn build_summary_for_id(
     }
 }
 
-fn build_extension_module(ext: ExtensionRecord, blueprints: Vec<RecipeRef>) -> ModuleSummary {
+fn build_extension_module(
+    ext: ExtensionRecord,
+    blueprints: Vec<RecipeRef>,
+    resolved_workflow_id: Option<String>,
+) -> ModuleSummary {
     let resolver = FnvFallbackResolver;
     let manifest_icon = icon_from_record(&ext);
     let resolved = resolve_from_manifest(&resolver, manifest_icon.as_ref(), &ext.id);
@@ -198,11 +221,15 @@ fn build_extension_module(ext: ExtensionRecord, blueprints: Vec<RecipeRef>) -> M
         publisher: ext.publisher.clone(),
         runtime_family: Some(ext.runtime_family.clone()),
         installed_at: Some(ext.installed_at.clone()),
-        workflow_id: ext.default_workflow_id.clone(),
+        // Prefer the recipe-resolved workflow id (derived from the primary
+        // recipe's `workflow_template_ref`) over the manually-curated
+        // `ext.default_workflow_id` so frontend "Workflow graph" tab can
+        // render a real DAG even on extensions that predate FR-034.
+        workflow_id: resolved_workflow_id.or_else(|| ext.default_workflow_id.clone()),
     }
 }
 
-fn build_user_module(wfl: WorkflowRecord) -> ModuleSummary {
+fn build_user_module(wfl: WorkflowRecord, step_count: u32) -> ModuleSummary {
     let resolver = FnvFallbackResolver;
     let resolved = resolver.resolve(IconSource::UserModule);
     let icon = ModuleIcon::from_resolved(resolved);
@@ -210,7 +237,7 @@ fn build_user_module(wfl: WorkflowRecord) -> ModuleSummary {
         recipe_id: format!("synthetic:{}", wfl.id),
         display_name: wfl.title.clone(),
         description: None,
-        step_count: 0,
+        step_count,
         tags: Vec::new(),
         is_primary: true,
     };
@@ -283,6 +310,7 @@ fn icon_from_record(ext: &ExtensionRecord) -> Option<ManifestIcon> {
 fn build_blueprints_for_extension(
     ext: &ExtensionRecord,
     recipes_by_extension: &HashMap<String, Vec<RecipeRecord>>,
+    workflow_index: &WorkflowIndex,
 ) -> Vec<RecipeRef> {
     let mut recipes = recipes_by_extension
         .get(&ext.id)
@@ -294,11 +322,15 @@ fn build_blueprints_for_extension(
         .into_iter()
         .map(|r| {
             let is_primary = primary_id.is_some_and(|p| p == r.id);
+            let step_count = workflow_index
+                .resolve(&ext.id, &r.workflow_template_ref)
+                .map(count_workflow_nodes)
+                .unwrap_or(0);
             RecipeRef {
                 recipe_id: r.id,
                 display_name: r.display_name,
                 description: Some(r.summary).filter(|s| !s.is_empty()),
-                step_count: 0,
+                step_count,
                 tags: Vec::new(),
                 is_primary,
             }
@@ -309,6 +341,105 @@ fn build_blueprints_for_extension(
     }
     out.sort_by(|a, b| b.is_primary.cmp(&a.is_primary));
     out
+}
+
+/// Lookup over `workflows` grouped by extension. Used to resolve a
+/// recipe's `workflow_template_ref` (e.g. `"workflows/local_chat.yaml"`)
+/// to the actual `WorkflowRecord` ingested for that extension — the
+/// workflow's `id` comes from the YAML itself, so we match on the file
+/// stem.
+struct WorkflowIndex<'a> {
+    by_extension: HashMap<String, Vec<&'a WorkflowRecord>>,
+}
+
+impl<'a> WorkflowIndex<'a> {
+    fn build(workflows: &'a [WorkflowRecord]) -> Self {
+        let mut by_extension: HashMap<String, Vec<&'a WorkflowRecord>> = HashMap::new();
+        for wfl in workflows {
+            if let Some(ext_id) = &wfl.extension_id {
+                by_extension.entry(ext_id.clone()).or_default().push(wfl);
+            }
+        }
+        Self { by_extension }
+    }
+
+    fn resolve(&self, ext_id: &str, template_ref: &str) -> Option<&WorkflowRecord> {
+        let candidates = self.by_extension.get(ext_id)?;
+        if candidates.is_empty() {
+            return None;
+        }
+        let stem = workflow_ref_stem(template_ref);
+        // Prefer an exact id match; fall back to the only-candidate case
+        // (many extensions ship 1:1 workflow:recipe).
+        candidates
+            .iter()
+            .find(|w| w.id == stem)
+            .or_else(|| candidates.iter().find(|w| w.id.ends_with(stem)))
+            .or_else(|| {
+                if candidates.len() == 1 {
+                    candidates.first()
+                } else {
+                    None
+                }
+            })
+            .copied()
+    }
+}
+
+/// Turn a `workflow_template_ref` like `"workflows/local_chat_basic.yaml"`
+/// into the workflow id stem `"local_chat_basic"`. Handles `.yaml`, `.yml`,
+/// and bare (already-stemmed) refs.
+fn workflow_ref_stem(template_ref: &str) -> &str {
+    let name = template_ref
+        .rsplit('/')
+        .next()
+        .unwrap_or(template_ref)
+        .rsplit('\\')
+        .next()
+        .unwrap_or(template_ref);
+    name.strip_suffix(".yaml")
+        .or_else(|| name.strip_suffix(".yml"))
+        .unwrap_or(name)
+}
+
+/// Count operator nodes on a `WorkflowRecord`. The `nodes` column is a
+/// JSON array of `{id, operator, ...}` objects; a valid parse returns the
+/// array length. A malformed row returns 0 rather than erroring — the
+/// aggregator is read-only and tolerates dirty data with a zero count.
+fn count_workflow_nodes(wfl: &WorkflowRecord) -> u32 {
+    serde_json::from_str::<serde_json::Value>(&wfl.nodes)
+        .ok()
+        .and_then(|v| v.as_array().map(|a| a.len()))
+        .map(|n| u32::try_from(n).unwrap_or(u32::MAX))
+        .unwrap_or(0)
+}
+
+/// Pick the workflow id that backs the module's Workflow tab. Prefer the
+/// primary blueprint's recipe → workflow_template_ref → resolved workflow;
+/// fall back to the extension's manually-set `default_workflow_id`, then
+/// to the first workflow the extension owns.
+fn resolve_primary_workflow_id_impl(
+    ext: &ExtensionRecord,
+    recipes_for_ext: &[RecipeRecord],
+    workflow_index: &WorkflowIndex,
+) -> Option<String> {
+    if let Some(default_wf) = ext.default_workflow_id.clone().filter(|s| !s.is_empty()) {
+        return Some(default_wf);
+    }
+    let primary_recipe = ext
+        .primary_recipe_id
+        .as_ref()
+        .and_then(|pid| recipes_for_ext.iter().find(|r| &r.id == pid))
+        .or_else(|| recipes_for_ext.first());
+    if let Some(r) = primary_recipe {
+        if let Some(wfl) = workflow_index.resolve(&ext.id, &r.workflow_template_ref) {
+            return Some(wfl.id.clone());
+        }
+    }
+    workflow_index
+        .by_extension
+        .get(&ext.id)
+        .and_then(|list| list.first().map(|w| w.id.clone()))
 }
 
 fn group_recipes_by_extension(recipes: &[RecipeRecord]) -> HashMap<String, Vec<RecipeRecord>> {
