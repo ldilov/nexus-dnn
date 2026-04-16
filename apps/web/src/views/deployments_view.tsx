@@ -48,23 +48,35 @@ export function DeploymentsView({ onNavigate }: DeploymentsViewProps = {}) {
     refresh();
   }, [refresh]);
 
-  // Reverse index: map each deployment id to the module whose blueprint
-  // produced it. The server doesn't expose this mapping on the flat
-  // DeploymentSummary row yet, so we fall back to a generic badge for rows
-  // whose provenance we can't resolve.
-  const deploymentModuleLookup = useMemo(() => {
+  // Spec 019 T407 — resolve each deployment row's module by consulting the
+  // new `source_extension_id` / `source_workflow_id` fields projected on
+  // the flat list. Both NULL on legacy rows → generic fallback badge.
+  const moduleByKey = useMemo(() => {
     const map = new Map<string, ModuleSummary>();
-    // Without deployment_id → module_id indexing on ModuleSummary, we leave
-    // the map empty; individual rows will render a generic "Module" badge
-    // as a visual placeholder until the API surfaces source metadata on
-    // the flat deployments list.
+    for (const m of modules) {
+      map.set(m.module_id, m);
+      if (m.extension_id) map.set(`ext:${m.extension_id}`, m);
+    }
     return map;
-  }, []);
+  }, [modules]);
+
+  const resolveModule = useCallback(
+    (d: DeploymentSummary): ModuleSummary | null => {
+      if (d.source_extension_id) {
+        return moduleByKey.get(`ext:${d.source_extension_id}`) ?? null;
+      }
+      if (d.source_workflow_id) {
+        return moduleByKey.get(`user:${d.source_workflow_id}`) ?? null;
+      }
+      return null;
+    },
+    [moduleByKey],
+  );
 
   const items = useMemo(() => {
     if (state.kind !== "ready") return [];
     return state.items.filter((d) => {
-      const linked = deploymentModuleLookup.get(d.id);
+      const linked = resolveModule(d);
       if (filter.userOnly && (!linked || linked.source_kind !== "user")) {
         return false;
       }
@@ -73,7 +85,7 @@ export function DeploymentsView({ onNavigate }: DeploymentsViewProps = {}) {
       }
       return true;
     });
-  }, [state, filter, deploymentModuleLookup]);
+  }, [state, filter, resolveModule]);
 
   const handleOpenModule = useCallback(
     (moduleId: string) => {
@@ -153,7 +165,7 @@ export function DeploymentsView({ onNavigate }: DeploymentsViewProps = {}) {
         // scan-terminology: allow
         <ul className={s.list} aria-label="Deployments">
           {items.map((item) => {
-            const linked = deploymentModuleLookup.get(item.id);
+            const linked = resolveModule(item);
             return (
               <li key={item.id} className={s.card}>
                 <div>
