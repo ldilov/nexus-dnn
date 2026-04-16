@@ -144,11 +144,18 @@ pub struct MaterializeResponse {
 }
 
 /// Request body for `POST /api/v1/modules/user:draft:{uuid}/materialize`.
+///
+/// Spec 019 refinement (2026-04-16): `source_module_id` (optional) carries
+/// the fork source so the handler can branch — Blank Module creates a
+/// `workflows` row; `ext:*` sources set `source.extension_id` and skip the
+/// workflow row; `user:*` sources set `source.workflow_id` without a new
+/// workflow row.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(default)]
 pub struct MaterializeRequest {
     pub workflow_payload: serde_json::Value,
     pub display_name: Option<String>,
+    pub source_module_id: Option<String>,
     pub runtime_binding_overrides: Option<serde_json::Value>,
     pub model_binding_overrides: Option<serde_json::Value>,
     pub parameter_overlays: Option<serde_json::Value>,
@@ -159,6 +166,7 @@ impl Default for MaterializeRequest {
         Self {
             workflow_payload: serde_json::Value::Null,
             display_name: None,
+            source_module_id: None,
             runtime_binding_overrides: None,
             model_binding_overrides: None,
             parameter_overlays: None,
