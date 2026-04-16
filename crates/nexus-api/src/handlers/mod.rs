@@ -7,6 +7,7 @@ pub mod extensions;
 pub mod health;
 pub mod huggingface;
 pub mod metrics;
+pub mod modules;
 pub mod recipes;
 pub mod runs;
 pub mod storage_contributions;

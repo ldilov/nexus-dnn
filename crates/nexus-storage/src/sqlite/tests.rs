@@ -1,4 +1,5 @@
 use super::*;
+use crate::records::IconKind;
 
 async fn setup_db() -> SqliteDatabase {
     SqliteDatabase::new("sqlite::memory:").await.unwrap()
@@ -182,4 +183,133 @@ async fn archive_insert_and_list() {
     assert_eq!(archives[0].archive_format, "jsonl_zip");
     assert_eq!(archives[0].table_count, 3);
     assert_eq!(archives[0].row_count, 42);
+}
+
+fn make_extension(id: &str) -> ExtensionRecord {
+    ExtensionRecord {
+        id: id.into(),
+        name: Some(format!("Test extension {id}")),
+        version: "1.0.0".into(),
+        description: None,
+        publisher: None,
+        host_api_compat: "1.0".into(),
+        protocol_compat: "1.0".into(),
+        runtime_family: "python".into(),
+        entrypoint: "worker.py".into(),
+        capabilities: None,
+        status: "active".into(),
+        directory: "/tmp/ext".into(),
+        installed_at: "2026-04-16T00:00:00Z".into(),
+        recipe_count: Some(1),
+        ui_contribution_count: None,
+        validation_errors: None,
+        primary_recipe_id: None,
+        default_workflow_id: None,
+        icon_kind: None,
+        icon_symbol: None,
+        icon_svg: None,
+    }
+}
+
+#[tokio::test]
+async fn migration_012_applies() {
+    let db = setup_db().await;
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('extensions') ORDER BY cid")
+            .fetch_all(db.pool())
+            .await
+            .unwrap();
+    let names: Vec<String> = columns.into_iter().map(|(n,)| n).collect();
+    for required in [
+        "primary_recipe_id",
+        "default_workflow_id",
+        "icon_kind",
+        "icon_symbol",
+        "icon_svg",
+    ] {
+        assert!(
+            names.iter().any(|n| n == required),
+            "extensions table missing column {required}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn migration_012_idempotent_rerun() {
+    let db = setup_db().await;
+    migrations::run_migrations(db.pool()).await.unwrap();
+    migrations::run_migrations(db.pool()).await.unwrap();
+    db.insert_extension(&make_extension("ext.idem"))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn migration_012_null_on_legacy() {
+    let db = setup_db().await;
+    db.insert_extension(&make_extension("ext.legacy"))
+        .await
+        .unwrap();
+    let fetched = db.get_extension("ext.legacy").await.unwrap();
+    assert_eq!(fetched.primary_recipe_id, None);
+    assert_eq!(fetched.default_workflow_id, None);
+    assert_eq!(fetched.icon_kind, None);
+    assert_eq!(fetched.icon_symbol, None);
+    assert_eq!(fetched.icon_svg, None);
+}
+
+#[tokio::test]
+async fn extensions_icon_symbol_roundtrip() {
+    let db = setup_db().await;
+    db.insert_extension(&make_extension("ext.sym"))
+        .await
+        .unwrap();
+    extensions::upsert_icon(
+        db.pool(),
+        "ext.sym",
+        Some(IconKind::Symbol),
+        Some("movie_filter"),
+        None,
+    )
+    .await
+    .unwrap();
+    let fetched = db.get_extension("ext.sym").await.unwrap();
+    assert_eq!(fetched.icon_kind, Some(IconKind::Symbol));
+    assert_eq!(fetched.icon_symbol.as_deref(), Some("movie_filter"));
+    assert!(fetched.icon_svg.is_none());
+}
+
+#[tokio::test]
+async fn extensions_icon_svg_roundtrip() {
+    let db = setup_db().await;
+    db.insert_extension(&make_extension("ext.svg"))
+        .await
+        .unwrap();
+    let svg = r#"<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>"#;
+    extensions::upsert_icon(db.pool(), "ext.svg", Some(IconKind::Svg), None, Some(svg))
+        .await
+        .unwrap();
+    let fetched = db.get_extension("ext.svg").await.unwrap();
+    assert_eq!(fetched.icon_kind, Some(IconKind::Svg));
+    assert!(fetched.icon_symbol.is_none());
+    assert_eq!(fetched.icon_svg.as_deref(), Some(svg));
+}
+
+#[tokio::test]
+async fn extensions_upsert_primary_refs_roundtrip() {
+    let db = setup_db().await;
+    db.insert_extension(&make_extension("ext.refs"))
+        .await
+        .unwrap();
+    extensions::upsert_primary_refs(
+        db.pool(),
+        "ext.refs",
+        Some("rcp.default"),
+        Some("wfl.default"),
+    )
+    .await
+    .unwrap();
+    let fetched = db.get_extension("ext.refs").await.unwrap();
+    assert_eq!(fetched.primary_recipe_id.as_deref(), Some("rcp.default"));
+    assert_eq!(fetched.default_workflow_id.as_deref(), Some("wfl.default"));
 }

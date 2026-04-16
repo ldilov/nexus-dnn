@@ -28,6 +28,7 @@ nexus-deployments = { path = "../nexus-deployments" }
 nexus-huggingface = { path = "../nexus-huggingface" }
 uuid = { workspace = true }
 chrono = { workspace = true }
+regex-lite = "0.1"
 tokio-stream = "0.1"
 tokio-util = { workspace = true }
 futures-util = "0.3"
