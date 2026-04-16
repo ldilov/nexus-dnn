@@ -14,7 +14,6 @@ pub mod lease;
 pub mod log_pipeline;
 pub mod log_store;
 pub mod manifest;
-pub mod models_store;
 pub mod parameter_catalog;
 pub mod reserved_policy;
 pub mod resolver;

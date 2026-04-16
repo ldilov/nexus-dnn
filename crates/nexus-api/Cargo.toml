@@ -23,6 +23,8 @@ nexus-scheduler = { path = "../nexus-scheduler" }
 nexus-artifact = { path = "../nexus-artifact" }
 nexus-storage = { path = "../nexus-storage" }
 nexus-backend-runtimes = { path = "../nexus-backend-runtimes" }
+nexus-models-store = { path = "../nexus-models-store" }
+nexus-deployments = { path = "../nexus-deployments" }
 nexus-huggingface = { path = "../nexus-huggingface" }
 uuid = { workspace = true }
 chrono = { workspace = true }

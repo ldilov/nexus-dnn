@@ -45,7 +45,10 @@ nexus-dnn provides a developer-grade runtime that treats generative workflows as
 | `nexus-events` | Typed event bus with broadcast and adapter support |
 | `nexus-storage` | Metadata database (SQLite) with migration support |
 | `nexus-run` | Run engine orchestrating workflow execution |
-| `nexus-backend-runtimes` | Host-owned inference backend lifecycle (llama.cpp, TensorRT-LLM): install, validate, spawn, channel allocation. See [crate README](crates/nexus-backend-runtimes/README.md). |
+| `nexus-backend-runtimes` | Host-owned inference backend orchestration (llama.cpp, TensorRT-LLM): runtime-adapter lifecycle, channel allocation, spawn. After spec-018 the models-store, provenance, and deployment domains live in their own crates below. See [crate README](crates/nexus-backend-runtimes/README.md). |
+| `nexus-models-store` | Models store extracted from `nexus-backend-runtimes` (spec 018): install pipeline, blob dedup, lease budget, quantization matching, resolver, verify, layout, reclaim. |
+| `nexus-provenance` | License resolution + Hugging Face metadata probe extracted from `nexus-backend-runtimes` (spec 018). |
+| `nexus-deployments` | Deployments domain (spec 018): named, append-only, reloadable execution-context snapshots over canonical workflows/recipes. Save / load / execute / validate / clone / export / import services. |
 | `nexus-huggingface` | Host-level Hugging Face capability — search, repo detail, resumable downloads |
 
 ## Quick Start
