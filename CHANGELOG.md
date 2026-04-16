@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Refined — Spec 019 semantic model correction (2026-04-16)
+
+- **Instances are read-only**. The "Instance editor" surface is retired and replaced with an "Instance view" that renders the module's default payload across 4 tabs (Recipe, Stage, Graph, Trace) with zero focusable form controls.
+- **Drafts are the universal fork mechanism**. Clicking "Edit" on any Instance view mints a client-side UUID, copies the instance's resolved payload into sessionStorage, and routes to `/#/modules/{source_module_id}/draft/{uuid}`. The existing materialize endpoint handles both Blank Module forks (creates a new `workflows` row) and instance-derived forks (sets `source.extension_id` or `source.workflow_id` directly on the new deployment).
+- **Revision picker + Make-current flow move to the Deployment editor spec**. Instance views have no revisions — revisions belong to Deployments.
+- **Constitution v1.1.2**: Principle VI gains a design-heavy-UI carve-out permitting per-spec deferral of vitest/Playwright frontend test files, with backend contract tests still mandatory. First invocation: spec 019.
+- **New FRs**: FR-050..FR-054 codify the Edit → Draft → materialize pipeline and the read-only enforcement layers.
+- **Retired FRs**: FR-021 (Recipe overlay segmented control), FR-022 (Stage tab editable bindings), FR-025 (Save Draft / Deploy Changes on Instance editor), FR-BM06 (Discard replaced by universal FR-052), FR-RV01..FR-RV06 (move to Deployment editor spec).
+- **Tasks**: 13 previously-checked tasks in Phase 8 marked `[~OBS]` (superseded by the refinement); new Phase 8R adds T400..T409 for the refined work.
+
 ### Added — Spec 019 Extension Modules + Spectral Graphite UI
 
 - `GET /api/v1/modules`, `GET /api/v1/modules/{id}`,
