@@ -4,6 +4,7 @@ pub mod backends;
 pub mod deployments;
 pub mod errors;
 pub mod extensions;
+pub mod extensions_install;
 pub mod health;
 pub mod huggingface;
 pub mod metrics;

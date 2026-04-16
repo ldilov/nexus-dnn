@@ -167,16 +167,16 @@ description: "Task list for 019-extension-modules implementation"
 
 ### Implementation for US9 — backend pipeline
 
-- [ ] T083 [P] [US9] Create `ZipInstallError` enum with all FR-IE05 variants in `crates/nexus-extension/src/install/error.rs` (`thiserror`)
-- [ ] T084 [P] [US9] Create `ZipSizeLimits` struct + defaults (256 MiB uncompressed, 8192 file count, 64 MiB compressed) in `crates/nexus-extension/src/install/limits.rs`
-- [ ] T085 [US9] Create `StagingDir` RAII guard with `Drop` cleanup + `.consume()` on success in `crates/nexus-extension/src/install/stage.rs`
-- [ ] T086 [US9] Create `validate_zip.rs` in `crates/nexus-extension/src/install/validate_zip.rs` implementing steps 2–6 of `contracts/zip-install-pipeline.md` §2: parse central directory, Zip-Slip double-check (`enclosed_name()` + canonicalize prefix), require manifest at depth ≤ 2, size + file-count caps, executable-outside-assets gate with manifest peek
-- [ ] T087 [US9] Create atomic-rename helper in `crates/nexus-extension/src/install/stage.rs::atomic_rename` that returns 409 on pre-existing target
-- [ ] T088 [US9] Create `ZipInstallPipeline` orchestrator in `crates/nexus-extension/src/install/zip_install.rs` wiring all 12 steps per `contracts/zip-install-pipeline.md` §2; runs blocking I/O under `tokio::task::spawn_blocking`
-- [ ] T089 [US9] Create `install/mod.rs` re-exporting public surface; register in `crates/nexus-extension/src/lib.rs`
-- [ ] T090 [US9] Create axum multipart handler in `crates/nexus-api/src/handlers/extensions_install/zip_handler.rs` with per-route `RequestBodyLimitLayer::new(64 << 20)` + streaming upload to staging + calling `ZipInstallPipeline::install`; returns `ZipInstallResult` on 201
-- [ ] T091 [US9] Wire `POST /api/v1/extensions/install-from-zip` route in `crates/nexus-api/src/router.rs`
-- [ ] T092 [US9] Emit `module.installed` event on success (local bus, FR-TP01)
+- [X] T083 [P] [US9] Create `ZipInstallError` enum with all FR-IE05 variants in `crates/nexus-extension/src/install/error.rs` (`thiserror`)
+- [X] T084 [P] [US9] Create `ZipSizeLimits` struct + defaults (256 MiB uncompressed, 8192 file count, 64 MiB compressed) in `crates/nexus-extension/src/install/limits.rs`
+- [X] T085 [US9] Create `StagingDir` RAII guard with `Drop` cleanup + `.consume()` on success in `crates/nexus-extension/src/install/stage.rs`
+- [X] T086 [US9] Create `validate_zip.rs` in `crates/nexus-extension/src/install/validate_zip.rs` implementing steps 2–6 of `contracts/zip-install-pipeline.md` §2: parse central directory, Zip-Slip double-check (`enclosed_name()` + canonicalize prefix), require manifest at depth ≤ 2, size + file-count caps, executable-outside-assets gate with manifest peek
+- [X] T087 [US9] Create atomic-rename helper in `crates/nexus-extension/src/install/stage.rs::atomic_rename` that returns 409 on pre-existing target
+- [X] T088 [US9] Create `ZipInstallPipeline` orchestrator in `crates/nexus-extension/src/install/zip_install.rs` wiring all 12 steps per `contracts/zip-install-pipeline.md` §2; runs blocking I/O under `tokio::task::spawn_blocking`
+- [X] T089 [US9] Create `install/mod.rs` re-exporting public surface; register in `crates/nexus-extension/src/lib.rs`
+- [X] T090 [US9] Create axum multipart handler in `crates/nexus-api/src/handlers/extensions_install/zip_handler.rs` with per-route `RequestBodyLimitLayer::new(64 << 20)` + streaming upload to staging + calling `ZipInstallPipeline::install`; returns `ZipInstallResult` on 201
+- [X] T091 [US9] Wire `POST /api/v1/extensions/install-from-zip` route in `crates/nexus-api/src/router.rs`
+- [X] T092 [US9] Emit `module.installed` event on success (local bus, FR-TP01)
 
 ### Implementation for US9 — frontend drawer
 
