@@ -431,15 +431,45 @@ export const graphBox = style({
   overflowY: "hidden",
 });
 
-// The SVG renders at its intrinsic viewBox size — we set width/height
-// inline from `layout.width/height` so the DAG never gets letter-boxed
-// inside a tall container. If the graph is wider than the card, the
-// parent's overflow-x scrolls horizontally, which is the right UX for
-// wide DAGs.
-export const graphSvg = style({
-  display: "block",
-  maxWidth: "100%",
-  height: "auto",
+// SVG rule blocks — applied via className on SVG elements so vanilla-extract
+// compiles them into the stylesheet rather than leaking literal hex values
+// at the JSX layer. Using CSS-property `fill`/`stroke` (which map directly
+// to SVG's own attributes) rather than `background-color`.
+
+export const svgNode = style({
+  fill: vars.color.surfaceContainerHighest,
+  stroke: vars.color.outline,
+  strokeWidth: 1,
+});
+
+export const svgNodeBoundary = style({
+  fill: vars.color.surfaceContainerHighest,
+  stroke: vars.color.primary,
+  strokeWidth: 1.5,
+});
+
+export const svgNodeTitle = style({
+  fill: vars.color.onSurface,
+  fontSize: "13px",
+  fontWeight: 700,
+  fontFamily: vars.font.ui,
+});
+
+export const svgNodeOp = style({
+  fill: vars.color.secondary,
+  fontSize: "10px",
+  fontFamily: vars.font.mono,
+});
+
+export const svgEdge = style({
+  stroke: vars.color.outline,
+  strokeWidth: 1.5,
+  fill: "none",
+  opacity: 0.8,
+});
+
+export const svgArrowFill = style({
+  fill: vars.color.outline,
 });
 
 export const graphLegend = style({
