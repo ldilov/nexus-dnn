@@ -1,5 +1,10 @@
-import { style } from "@vanilla-extract/css";
+import { keyframes, style } from "@vanilla-extract/css";
 import { vars } from "./theme/contract.css";
+
+const routeEnterKeyframes = keyframes({
+  "0%": { opacity: 0, transform: "translateY(6px)" },
+  "100%": { opacity: 1, transform: "translateY(0)" },
+});
 
 export const canvasColumn = style({
   display: "flex",
@@ -11,6 +16,16 @@ export const canvasContent = style({
   flex: 1,
   overflow: "auto",
   padding: vars.space.insetXl,
+});
+
+export const routeTransitionWrapper = style({
+  height: "100%",
+  animation: `${routeEnterKeyframes} 220ms cubic-bezier(0.4, 0, 0.2, 1) both`,
+  "@media": {
+    "(prefers-reduced-motion: reduce)": {
+      animation: "none",
+    },
+  },
 });
 
 export const extensionCanvas = style({

@@ -17,6 +17,7 @@
     "scan:cdn": "node scripts/scan-remote-cdns.mjs",
     "scan:noop": "node scripts/scan-noop-handlers.mjs",
     "scan:constitution": "node scripts/scan-constitution.mjs",
+    "scan:bundle-size": "node scripts/bundle-size-check.mjs",
     "scan:all": "pnpm scan:theme && pnpm scan:terminology && pnpm scan:noop && pnpm scan:constitution"
   },
   "dependencies": {

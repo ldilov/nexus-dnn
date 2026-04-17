@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import {
   Outlet,
   useLoaderData,
+  useLocation,
   useMatch,
   useNavigate,
   useOutletContext,
@@ -150,6 +151,8 @@ export default function RootLayout() {
   const goToWorkflows = useCallback(() => navigate("/workflows"), [navigate]);
   const goToExtensions = useCallback(() => navigate("/extensions"), [navigate]);
 
+  const location = useLocation();
+
   const isWorkflowsRoute = useMatch("/workflows");
   const showViewTabs = !!isWorkflowsRoute;
   const inspectorVisible = !!isWorkflowsRoute;
@@ -206,7 +209,12 @@ export default function RootLayout() {
       canvas={
         <div className={styles.canvasColumn}>
           <div className={styles.canvasContent}>
-            <Outlet context={outletContext} />
+            <div
+              key={location.pathname}
+              className={styles.routeTransitionWrapper}
+            >
+              <Outlet context={outletContext} />
+            </div>
           </div>
         </div>
       }

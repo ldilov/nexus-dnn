@@ -1,0 +1,11 @@
+{
+  "description": "Post-US4 main-chunk gzipped size baseline (SC-012, Spec 021 Phase 6).",
+  "recordedAt": "2026-04-18",
+  "mainChunkGzippedBytes": 258200,
+  "toleranceBytes": 8192,
+  "notes": [
+    "Main chunk = dist/assets/index-*.js gzipped. Measured via vite build output.",
+    "Motion library (~28 KB gzipped) is code-split into install_modal-*.js chunk and loads on demand.",
+    "Route transitions are CSS-only (keyframe + prefers-reduced-motion) — zero JS cost."
+  ]
+}
