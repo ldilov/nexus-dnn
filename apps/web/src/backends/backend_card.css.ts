@@ -32,10 +32,11 @@ export const header = style({
 
 export const title = style({
   fontFamily: vars.font.headline,
-  fontSize: vars.font.size.bodyLg,
+  fontSize: vars.font.size.heading,
   fontWeight: vars.font.weight.semibold,
   color: vars.color.text.primary,
   lineHeight: 1.2,
+  letterSpacing: "-0.01em",
 });
 
 // State-aware badges — each card_state picks its own pill color.

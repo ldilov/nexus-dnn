@@ -1,59 +1,387 @@
-import { style } from "@vanilla-extract/css";
+import { keyframes, style } from "@vanilla-extract/css";
+
+const fadeIn = keyframes({
+  from: { opacity: 0 },
+  to: { opacity: 1 },
+});
+
+const slideIn = keyframes({
+  from: { opacity: 0, transform: "translateY(8px) scale(0.98)" },
+  to: { opacity: 1, transform: "translateY(0) scale(1)" },
+});
+
+const spin = keyframes({
+  to: { transform: "rotate(360deg)" },
+});
+
+const shimmer = keyframes({
+  "0%": { backgroundPosition: "-200% 0" },
+  "100%": { backgroundPosition: "200% 0" },
+});
+
+const pulseDot = keyframes({
+  "0%, 100%": { opacity: 0.6, transform: "scale(1)" },
+  "50%": { opacity: 1, transform: "scale(1.15)" },
+});
 
 export const backdrop = style({
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,0.55)",
+  background: "rgba(4, 5, 8, 0.72)",
+  backdropFilter: "blur(12px) saturate(140%)",
+  WebkitBackdropFilter: "blur(12px) saturate(140%)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   zIndex: 100,
+  animation: `${fadeIn} 180ms var(--ease-out)`,
+  padding: "24px",
 });
 
 export const dialog = style({
-  width: "min(640px, 95vw)",
-  background: "var(--surface-elevated, #22242b)",
-  borderRadius: "16px",
-  padding: "24px",
+  width: "min(680px, 100%)",
+  background:
+    "linear-gradient(180deg, rgba(29,32,35,0.98) 0%, rgba(17,20,22,0.98) 100%)",
+  borderRadius: "20px",
+  boxShadow:
+    "0 32px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(186,158,255,0.08), inset 0 1px 0 rgba(255,255,255,0.04)",
   display: "flex",
   flexDirection: "column",
+  gap: "20px",
+  padding: "24px 26px 22px",
+  animation: `${slideIn} 220ms var(--ease-out)`,
+  fontFamily: "var(--font-ui)",
+  color: "var(--color-on-surface)",
+});
+
+export const header = style({
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
   gap: "16px",
+});
+
+export const titleBlock = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: "4px",
+});
+
+export const eyebrow = style({
+  fontSize: "11px",
+  letterSpacing: "0.14em",
+  textTransform: "uppercase",
+  color: "var(--color-primary)",
+  fontWeight: 600,
+});
+
+export const title = style({
+  fontSize: "20px",
+  fontWeight: 600,
+  margin: 0,
+  color: "var(--color-on-surface)",
+  letterSpacing: "-0.01em",
+});
+
+export const subtitle = style({
+  fontSize: "13px",
+  color: "var(--color-on-surface-variant)",
+  fontFamily: "var(--font-mono)",
+});
+
+export const closeButton = style({
+  background: "transparent",
+  border: "none",
+  width: "32px",
+  height: "32px",
+  borderRadius: "10px",
+  color: "var(--color-on-surface-variant)",
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: "18px",
+  transition:
+    "background var(--motion-focus-ring) var(--ease-out), color var(--motion-focus-ring) var(--ease-out)",
+  ":hover": {
+    background: "rgba(255,255,255,0.06)",
+    color: "var(--color-on-surface)",
+  },
+  ":focus-visible": {
+    outline: "2px solid var(--color-primary)",
+    outlineOffset: "2px",
+  },
 });
 
 export const phaseList = style({
   display: "flex",
   flexDirection: "column",
-  gap: "6px",
-  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+  gap: 0,
+  fontFamily: "var(--font-mono)",
   fontSize: "13px",
+  position: "relative",
+  padding: "6px 0",
+  selectors: {
+    "&::before": {
+      content: "",
+      position: "absolute",
+      top: "22px",
+      bottom: "22px",
+      left: "11px",
+      width: "1px",
+      background:
+        "linear-gradient(180deg, rgba(186,158,255,0.35), rgba(186,158,255,0.06))",
+    },
+  },
 });
 
 export const phaseItem = style({
-  display: "flex",
-  gap: "8px",
+  display: "grid",
+  gridTemplateColumns: "24px 1fr auto",
+  gap: "12px",
   alignItems: "center",
+  padding: "6px 0",
+  color: "var(--color-on-surface-variant)",
+  transition: "color var(--motion-focus-ring) var(--ease-out)",
+  selectors: {
+    '&[data-state="active"]': {
+      color: "var(--color-on-surface)",
+    },
+    '&[data-state="done"]': {
+      color: "var(--color-on-surface)",
+    },
+    '&[data-state="failed"]': {
+      color: "var(--color-error)",
+    },
+  },
+});
+
+export const phaseIcon = style({
+  width: "22px",
+  height: "22px",
+  borderRadius: "50%",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: "11px",
+  fontWeight: 600,
+  background: "var(--color-surface-container-high)",
+  color: "var(--color-on-surface-variant)",
+  border: "1px solid rgba(255,255,255,0.06)",
+  zIndex: 1,
+  position: "relative",
+  selectors: {
+    [`${phaseItem}[data-state="active"] &`]: {
+      background:
+        "radial-gradient(circle at 30% 30%, var(--color-primary), var(--color-primary-dim))",
+      color: "var(--color-on-primary)",
+      boxShadow: "0 0 0 4px rgba(186,158,255,0.18)",
+      animation: `${pulseDot} 1.4s var(--ease-out) infinite`,
+    },
+    [`${phaseItem}[data-state="done"] &`]: {
+      background: "var(--color-acid-green)",
+      color: "#0c1210",
+      border: "1px solid rgba(34,197,94,0.35)",
+    },
+    [`${phaseItem}[data-state="failed"] &`]: {
+      background: "var(--color-error)",
+      color: "var(--color-on-error)",
+    },
+  },
+});
+
+export const phaseLabel = style({
+  textTransform: "capitalize",
+  letterSpacing: "0.01em",
+});
+
+export const phaseMeta = style({
+  fontSize: "11px",
+  color: "var(--color-on-surface-variant)",
+  fontFamily: "var(--font-mono)",
+  opacity: 0.8,
+});
+
+export const spinner = style({
+  width: "12px",
+  height: "12px",
+  borderRadius: "50%",
+  border: "2px solid rgba(255,255,255,0.25)",
+  borderTopColor: "var(--color-on-primary)",
+  animation: `${spin} 800ms linear infinite`,
+});
+
+export const progressSection = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: "8px",
+  padding: "14px 16px",
+  background: "rgba(0,0,0,0.28)",
+  borderRadius: "12px",
+  border: "1px solid rgba(255,255,255,0.04)",
+});
+
+export const progressHeader = style({
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "baseline",
+  fontSize: "12px",
+  fontFamily: "var(--font-mono)",
+  color: "var(--color-on-surface-variant)",
+});
+
+export const progressHeaderLeft = style({
+  color: "var(--color-on-surface)",
+  fontWeight: 500,
 });
 
 export const progressBar = style({
   width: "100%",
-  height: "6px",
-  background: "var(--surface-inset, #16181d)",
+  height: "8px",
+  background: "rgba(0,0,0,0.5)",
   borderRadius: "999px",
   overflow: "hidden",
+  position: "relative",
+  border: "1px solid rgba(255,255,255,0.04)",
 });
 
 export const progressFill = style({
   height: "100%",
-  background: "var(--accent, #6ea2ff)",
-  transition: "width 120ms linear",
+  background:
+    "linear-gradient(90deg, var(--color-primary-dim) 0%, var(--color-primary) 60%, var(--color-secondary) 100%)",
+  transition: "width 240ms var(--ease-out)",
+  boxShadow: "0 0 12px rgba(186,158,255,0.55)",
+  borderRadius: "999px",
+});
+
+export const progressFillIndeterminate = style({
+  height: "100%",
+  background:
+    "linear-gradient(90deg, transparent 0%, rgba(186,158,255,0.45) 45%, rgba(186,158,255,0.85) 50%, rgba(186,158,255,0.45) 55%, transparent 100%)",
+  backgroundSize: "200% 100%",
+  animation: `${shimmer} 1.6s linear infinite`,
+  width: "100%",
 });
 
 export const logPanel = style({
-  maxHeight: "240px",
+  maxHeight: "220px",
+  minHeight: "96px",
   overflow: "auto",
-  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+  fontFamily: "var(--font-mono)",
   fontSize: "12px",
-  background: "var(--surface-inset, #0f1014)",
-  borderRadius: "8px",
-  padding: "12px",
+  lineHeight: 1.55,
+  background: "rgba(0,0,0,0.42)",
+  border: "1px solid rgba(255,255,255,0.04)",
+  borderRadius: "12px",
+  padding: "12px 14px",
+  color: "var(--color-on-surface-variant)",
+  scrollbarWidth: "thin",
+  scrollbarColor: "rgba(255,255,255,0.12) transparent",
+});
+
+export const logLine = style({
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+  selectors: {
+    "&[data-level=\"error\"]": {
+      color: "var(--color-error)",
+    },
+  },
+});
+
+export const logEmpty = style({
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  color: "var(--color-on-surface-variant)",
+  fontStyle: "italic",
+  opacity: 0.7,
+});
+
+export const logPulse = style({
+  width: "6px",
+  height: "6px",
+  borderRadius: "50%",
+  background: "var(--color-primary)",
+  animation: `${pulseDot} 1.2s var(--ease-out) infinite`,
+});
+
+export const footer = style({
+  display: "flex",
+  gap: "10px",
+  justifyContent: "flex-end",
+  alignItems: "center",
+});
+
+export const elapsed = style({
+  marginRight: "auto",
+  fontFamily: "var(--font-mono)",
+  fontSize: "12px",
+  color: "var(--color-on-surface-variant)",
+});
+
+const buttonBase = style({
+  appearance: "none",
+  border: "none",
+  fontFamily: "var(--font-ui)",
+  fontSize: "13px",
+  fontWeight: 500,
+  padding: "8px 16px",
+  borderRadius: "10px",
+  cursor: "pointer",
+  transition:
+    "background var(--motion-focus-ring) var(--ease-out), transform var(--motion-focus-ring) var(--ease-out)",
+  ":focus-visible": {
+    outline: "2px solid var(--color-primary)",
+    outlineOffset: "2px",
+  },
+});
+
+export const buttonGhost = style([
+  buttonBase,
+  {
+    background: "rgba(255,255,255,0.04)",
+    color: "var(--color-on-surface)",
+    ":hover": {
+      background: "rgba(255,255,255,0.09)",
+    },
+  },
+]);
+
+export const buttonPrimary = style([
+  buttonBase,
+  {
+    background: "var(--color-primary)",
+    color: "var(--color-on-primary)",
+    ":hover": {
+      background: "var(--color-primary-dim)",
+    },
+  },
+]);
+
+export const statusBadge = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  padding: "4px 10px",
+  borderRadius: "999px",
+  fontSize: "11px",
+  fontWeight: 600,
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+  fontFamily: "var(--font-mono)",
+  selectors: {
+    '&[data-status="running"]': {
+      background: "rgba(186,158,255,0.14)",
+      color: "var(--color-primary)",
+    },
+    '&[data-status="completed"]': {
+      background: "rgba(34,197,94,0.15)",
+      color: "var(--color-acid-green)",
+    },
+    '&[data-status="failed"]': {
+      background: "rgba(255,110,132,0.14)",
+      color: "var(--color-error)",
+    },
+  },
 });

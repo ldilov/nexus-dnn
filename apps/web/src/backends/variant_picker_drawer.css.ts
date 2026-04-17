@@ -79,7 +79,7 @@ export const loading = style({
   textAlign: "center",
   color: vars.color.text.muted,
   fontFamily: vars.font.ui,
-  fontSize: vars.space.insetMd,
+  fontSize: vars.font.size.body,
 });
 
 export const errorBanner = style({
@@ -152,7 +152,8 @@ export const rowContent = style({
 
 export const rowLabel = style({
   fontFamily: vars.font.code,
-  fontSize: vars.space.insetMd,
+  fontSize: vars.font.size.bodyLg,
+  fontWeight: vars.font.weight.medium,
   color: vars.color.text.primary,
   letterSpacing: "0.02em",
   overflow: "hidden",
