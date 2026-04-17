@@ -214,14 +214,14 @@ description: "Task list for spec 020 — Backends + Models page polish (Q1 / Q3 
 - [X] T501 [P] Update the root `README.md` to link spec 020 under "Recent specs" and note the new `/models` HF panel.
 - [X] T502 [P] Run `cargo fmt --all` and `cargo clippy --workspace --all-targets -- -D warnings` across the touched crates; fix any newly-introduced warning.
 - [X] T503 [P] Run `cd apps/web && pnpm tsc --noEmit && pnpm eslint .` and fix anything the touched files introduced.
-- [ ] T504 Execute the `quickstart.md` walkthrough end-to-end on a fresh DB; capture SC metrics (SC-Q1-01 under 90 s install; SC-Q3-01 under 1.5 s HF search P95; SC-Q3-02 under 500 ms dedup; SC-Q4-02 under 100 ms live-node validation) into an inline PR comment.
+- [X] T504 Execute the `quickstart.md` walkthrough end-to-end on a fresh DB; capture SC metrics (SC-Q1-01 under 90 s install; SC-Q3-01 under 1.5 s HF search P95; SC-Q3-02 under 500 ms dedup; SC-Q4-02 under 100 ms live-node validation) into an inline PR comment.
 - [X] T505 [P] Use the **code-reviewer** agent on the Rust side (`crates/nexus-api/src/handlers/backends/**`, `crates/nexus-backend-runtimes/src/manifest/variants.rs`) and the **rust-reviewer** agent on the adapter trait change (T110) to confirm no principle violations.
 - [X] T506 [P] Use the **security-reviewer** agent on T211 (host-model install) — it touches the download pipeline + dedup; confirm no path-traversal, no TOCTOU on the SHA check, and that `private_model` access control can't be bypassed by a race between `dedup` and `install`.
 - [X] T507 [P] Use the **code-reviewer** agent on the TypeScript side (`apps/web/src/backends/**`, `apps/web/src/models/hf_search_panel.tsx`, `apps/web/src/views/graph_view.tsx`).
 - [X] T508 Book a follow-up sprint ticket: "Frontend coverage for spec 020 — VariantPickerDrawer + HfSearchPanel + use_draft_nodes unit + Playwright install happy-path". Link it from `spec.md` § Test strategy. This is the Principle VI carve-out's mandatory follow-up.
 - [X] T509 Flip SC-Q1-02 enforcement from the T128 grep into a CI-integrated check (repo-level `pnpm scan:noop` or equivalent) so `noop` handlers can't sneak back into `backends_view.tsx` or `backend_card.tsx`.
 - [X] T510 [P] Sweep `apps/web/src/models/ModelsPanel.tsx` for any reference to the old per-extension HF flow that is now dead once US3 is live. Delete dead code only if no in-tree caller remains (check `component_registry.tsx`). If `local-llm` extension still mounts it, keep but annotate the follow-up delete task instead of touching it in this spec.
-- [ ] T511 Squash any intermediate broken commits on the branch before merge (Principle IX — every `main` merge must pass full `cargo test --workspace`).
+- [X] T511 Squash any intermediate broken commits on the branch before merge (Principle IX — every `main` merge must pass full `cargo test --workspace`).
 
 ---
 
