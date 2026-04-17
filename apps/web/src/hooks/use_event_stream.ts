@@ -1,52 +1,26 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { subscribeEvents, type RunEvent } from "../services/event_streams";
 
-export type RunEvent = {
-  type: string;
-  run_id: string;
-  node_id?: string;
-  status?: string;
-  progress?: number;
-  message?: string;
-  timestamp: string;
-};
-
-const WS_URL = `ws://${window.location.host}/api/v1/events`;
-const RECONNECT_DELAY_MS = 3000;
+export type { RunEvent };
 
 export function useEventStream() {
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [connected, setConnected] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
-
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
-
-    ws.onopen = () => setConnected(true);
-
-    ws.onmessage = (event) => {
-      const parsed = JSON.parse(event.data as string) as RunEvent;
-      setEvents((prev) => [...prev, parsed]);
-    };
-
-    ws.onclose = () => {
-      setConnected(false);
-      reconnectTimerRef.current = setTimeout(connect, RECONNECT_DELAY_MS);
-    };
-
-    ws.onerror = () => ws.close();
-  }, []);
+  const subscriptionRef = useRef<{ close: () => void } | null>(null);
 
   useEffect(() => {
-    connect();
+    subscriptionRef.current = subscribeEvents(
+      (event) => setEvents((prev) => [...prev, event]),
+      {
+        onOpen: () => setConnected(true),
+        onClose: () => setConnected(false),
+      },
+    );
     return () => {
-      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      wsRef.current?.close();
+      subscriptionRef.current?.close();
+      subscriptionRef.current = null;
     };
-  }, [connect]);
+  }, []);
 
   const clearEvents = useCallback(() => setEvents([]), []);
 
