@@ -58,8 +58,12 @@ pub struct SearchPage {
 pub const HF_API_BASE: &str = "https://huggingface.co";
 
 pub fn build_search_url(base: &str, req: &SearchReq) -> String {
+    // `full=true` is required to include `siblings` (file list) in the search
+    // response. Without it every result returns zero files, so the format and
+    // backend-compatibility inference sees nothing and every model is labelled
+    // "Incompatible" in the UI.
     let mut url = format!(
-        "{base}/api/models?search={}&limit={}&sort=downloads&direction=-1",
+        "{base}/api/models?search={}&limit={}&sort=downloads&direction=-1&full=true",
         urlencode(&req.query),
         req.limit
     );
@@ -104,6 +108,10 @@ mod tests {
         let url = build_search_url(HF_API_BASE, &req);
         assert!(url.contains("search=qwen2.5%20instruct"));
         assert!(!url.contains("page="));
+        assert!(
+            url.contains("full=true"),
+            "search URL must request siblings via full=true (got `{url}`)",
+        );
     }
 
     #[test]

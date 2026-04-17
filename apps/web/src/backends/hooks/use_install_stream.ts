@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { InstallStreamEvent } from "../install_modal";
 
-const WS_URL = `ws://${typeof window !== "undefined" ? window.location.host : ""}/api/v1/events`;
+function buildWsUrl(backendId: string): string {
+  if (typeof window === "undefined") return "";
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const family = encodeURIComponent(backendId);
+  return `${proto}//${window.location.host}/api/v1/backends/events?family=${family}`;
+}
 
 interface PendingResolver {
   resolve: (value: IteratorResult<InstallStreamEvent>) => void;
@@ -60,8 +65,8 @@ class InstallEventQueue implements AsyncIterable<InstallStreamEvent> {
   }
 }
 
-function matchesBackend(payload: Record<string, unknown>, backendId: string): boolean {
-  const candidate = payload.backend_id ?? payload.backend ?? payload.family;
+function matchesBackend(record: Record<string, unknown>, backendId: string): boolean {
+  const candidate = record.backend ?? record.family ?? record.backend_id;
   return typeof candidate === "string" && candidate === backendId;
 }
 
@@ -85,7 +90,7 @@ export function useInstallStream(
     if (!backendId) return;
     queueRef.current = new InstallEventQueue();
     const queue = queueRef.current;
-    const ws = new WebSocket(WS_URL);
+    const ws = new WebSocket(buildWsUrl(backendId));
 
     ws.onmessage = (msg) => {
       let parsed: unknown;
@@ -94,24 +99,25 @@ export function useInstallStream(
       } catch {
         return;
       }
-      if (
-        !parsed ||
-        typeof parsed !== "object" ||
-        !("topic" in parsed) ||
-        !("payload" in parsed)
-      ) {
+      if (!parsed || typeof parsed !== "object" || !("topic" in parsed)) {
         return;
       }
-      const record = parsed as { topic: unknown; payload: unknown; emitted_at?: number };
+      const record = parsed as {
+        topic: unknown;
+        payload?: unknown;
+        backend?: unknown;
+        family?: unknown;
+        emitted_at?: number;
+      };
       if (typeof record.topic !== "string") return;
       if (!record.topic.startsWith("llm.backend.install.") && record.topic !== "llm.backend.log") {
         return;
       }
+      if (!matchesBackend(record as Record<string, unknown>, backendId)) return;
       const payload =
         typeof record.payload === "object" && record.payload !== null
           ? (record.payload as Record<string, unknown>)
           : {};
-      if (!matchesBackend(payload, backendId)) return;
       queue.push({
         topic: record.topic,
         payload,
