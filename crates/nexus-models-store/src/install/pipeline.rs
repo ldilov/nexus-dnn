@@ -197,6 +197,37 @@ fn license_invariant_holds(req: &InstallModelRequest) -> bool {
     }
 }
 
+fn safe_join_under(root: &Path, untrusted: &str) -> ModelStoreResult<PathBuf> {
+    if untrusted.is_empty() {
+        return Err(ModelStoreError::ManifestInvalid(
+            "file path is empty".into(),
+        ));
+    }
+    if untrusted.contains('\0') {
+        return Err(ModelStoreError::ManifestInvalid(
+            "file path contains null byte".into(),
+        ));
+    }
+    let candidate = Path::new(untrusted);
+    if candidate.is_absolute() {
+        return Err(ModelStoreError::ManifestInvalid(format!(
+            "file path escapes install root: {untrusted} (absolute path)"
+        )));
+    }
+    for component in candidate.components() {
+        use std::path::Component;
+        match component {
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(ModelStoreError::ManifestInvalid(format!(
+                    "file path escapes install root: {untrusted}"
+                )));
+            }
+            _ => {}
+        }
+    }
+    Ok(root.join(candidate))
+}
+
 async fn run_fetch(
     ctx: &ModelStoreCtx,
     install_root: &Path,
@@ -207,6 +238,7 @@ async fn run_fetch(
     tokio::fs::create_dir_all(&staging).await?;
 
     for f in &req.files {
+        let target = safe_join_under(install_root, &f.path)?;
         let stage_path = staging.join(&f.sha256);
         let spec = DownloadSpec {
             source_url: f.source_url.clone(),
@@ -215,11 +247,58 @@ async fn run_fetch(
             expected_size: Some(f.size_bytes),
         };
         ctx.fetcher.fetch_file(&spec, &ctx.limiter).await?;
-        let target = install_root.join(&f.path);
         blobs::materialize_blob(&f.sha256, &stage_path, &target, &ctx.blobs_root).await?;
     }
     let _ = tokio::fs::remove_dir_all(&staging).await;
     Ok(())
+}
+
+#[cfg(test)]
+mod safe_join_tests {
+    use super::safe_join_under;
+    use std::path::Path;
+
+    #[test]
+    fn rejects_parent_dir_traversal() {
+        let err = safe_join_under(Path::new("/tmp/x"), "../../etc/passwd").unwrap_err();
+        assert!(err.to_string().contains("escapes install root"));
+    }
+
+    #[test]
+    fn rejects_absolute_path() {
+        let err = safe_join_under(Path::new("/tmp/x"), "/etc/passwd").unwrap_err();
+        assert!(err.to_string().contains("escapes install root"));
+    }
+
+    #[test]
+    fn rejects_embedded_parent_dir() {
+        let err = safe_join_under(Path::new("/tmp/x"), "sub/../../escape").unwrap_err();
+        assert!(err.to_string().contains("escapes install root"));
+    }
+
+    #[test]
+    fn rejects_null_byte() {
+        let err = safe_join_under(Path::new("/tmp/x"), "foo\0bar").unwrap_err();
+        assert!(err.to_string().contains("null byte"));
+    }
+
+    #[test]
+    fn rejects_empty_path() {
+        let err = safe_join_under(Path::new("/tmp/x"), "").unwrap_err();
+        assert!(err.to_string().contains("empty"));
+    }
+
+    #[test]
+    fn accepts_nested_relative_path() {
+        let ok = safe_join_under(Path::new("/tmp/x"), "sub/dir/file.gguf").unwrap();
+        assert_eq!(ok, Path::new("/tmp/x/sub/dir/file.gguf"));
+    }
+
+    #[test]
+    fn accepts_simple_filename() {
+        let ok = safe_join_under(Path::new("/tmp/x"), "model.gguf").unwrap();
+        assert_eq!(ok, Path::new("/tmp/x/model.gguf"));
+    }
 }
 
 pub async fn uninstall_model(ctx: &ModelStoreCtx, install_id: &str) -> ModelStoreResult<()> {
