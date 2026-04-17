@@ -80,6 +80,39 @@ pub async fn release_lease(pool: &SqlitePool, lease_id: &str) -> ModelStoreResul
     Ok(())
 }
 
+/// Spec 020 FR-Q3-06 prerequisite — returns `true` iff a row exists in
+/// `host_model_installs` for the given install_id. Used by the dependents
+/// endpoint to produce `404 not_found` for unknown install ids.
+pub async fn install_exists(pool: &SqlitePool, install_id: &str) -> ModelStoreResult<bool> {
+    let row = sqlx::query("SELECT 1 FROM host_model_installs WHERE install_id = $1")
+        .bind(install_id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.is_some())
+}
+
+/// Spec 020 FR-Q3-06 — distinct extensions currently leasing the given
+/// host-model install (`released_at IS NULL`). Returned order is stable
+/// on extension_id for deterministic UI rendering.
+pub async fn list_active_dependents(
+    pool: &SqlitePool,
+    install_id: &str,
+) -> ModelStoreResult<Vec<String>> {
+    let rows = sqlx::query(
+        "SELECT DISTINCT extension_id FROM host_model_leases \
+         WHERE install_id = $1 AND released_at IS NULL \
+         ORDER BY extension_id ASC",
+    )
+    .bind(install_id)
+    .fetch_all(pool)
+    .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(row.try_get::<String, _>("extension_id")?);
+    }
+    Ok(out)
+}
+
 pub async fn list_active_leases(
     pool: &SqlitePool,
     device: &str,

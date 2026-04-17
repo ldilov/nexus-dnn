@@ -7,6 +7,7 @@ use crate::channel::{ChannelBuildCtx, RuntimeChannelDescriptor};
 use crate::error::RuntimeAdapterError;
 use crate::launch_spec::LaunchSpec;
 use crate::manifest::install::InstallManifest;
+use crate::manifest::variants::BackendVariantCatalog;
 use crate::resolver::MachineDescriptor;
 use crate::settings::{AcceleratorProfile, RuntimeSettings};
 use crate::spawn::SpawnRuntimeRequest;
@@ -53,6 +54,15 @@ pub trait BackendAdapter: Send + Sync {
         request: InstallRequest,
         machine: &MachineDescriptor,
     ) -> Result<InstallManifest, RuntimeAdapterError>;
+    async fn list_variants(
+        &self,
+        _machine: &MachineDescriptor,
+    ) -> Result<BackendVariantCatalog, RuntimeAdapterError> {
+        Err(RuntimeAdapterError::CatalogUnavailable(format!(
+            "backend {} does not publish a version catalog",
+            self.id()
+        )))
+    }
     async fn validate(&self) -> Result<ValidationReport, RuntimeAdapterError>;
     async fn repair(
         &self,

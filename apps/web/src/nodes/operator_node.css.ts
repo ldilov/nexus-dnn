@@ -222,6 +222,13 @@ export const chipGpu = style({
   borderColor: "rgba(255, 132, 57, 0.3)",
 });
 
+export const chipDraft = style({
+  color: vars.color.accent.tertiary,
+  backgroundColor: "rgba(255, 132, 57, 0.14)",
+  borderColor: vars.color.accent.tertiary,
+  borderStyle: "dashed",
+});
+
 export const operatorId = style({
   fontFamily: vars.font.code,
   fontSize: "10px",

@@ -54,6 +54,8 @@ export const vars = createThemeContract({
     success: { base: "", text: "" },
     warning: { base: "", text: "" },
     error: { base: "", text: "" },
+    scrim: "",
+    shadowElevation: "",
     outline: {
       base: "",
       variant: "",

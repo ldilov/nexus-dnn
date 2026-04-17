@@ -1,0 +1,46 @@
+### POST /api/v1/host-models
+### Install a model into the host-managed store, shared across all extensions.
+### Resulting row has owner_extension_id = NULL.
+
+POST {{host}}/api/v1/host-models HTTP/1.1
+Content-Type: application/json
+
+{
+  "source": "huggingface",
+  "repo_id": "TheBloke/Llama-3-8B-GGUF",
+  "revision": null,
+  "files": ["llama-3-8b.Q4_K_M.gguf"],
+  "display_name": null
+}
+
+### 201 CREATED — new install
+###
+### {
+###   "meta": {...},
+###   "data": {
+###     "task_id": "itask_01HXYZ...",
+###     "install_id": null,
+###     "already_installed": false,
+###     "routed_backend": "llama.cpp"
+###   }
+### }
+
+### 200 OK — dedup short-circuit (SHA matched existing row)
+###
+### {
+###   "meta": {...},
+###   "data": {
+###     "task_id": "itask_noop_...",
+###     "install_id": "hmi_01HWABC...",
+###     "already_installed": true,
+###     "routed_backend": "llama.cpp"
+###   }
+### }
+
+### 403 MODEL_PRIVATE — repo resolved to a private-flagged row owned by another extension (Q3-edge3)
+###
+### { "meta": {...}, "error": { "code": "model_private", "message": "this model is private to another extension" } }
+
+### 429 HF_RATE_LIMITED — upstream HF rate limit (Q3-edge1)
+###
+### { "meta": {...}, "error": { "code": "hf_rate_limited", "message": "retry after 120s" } }

@@ -5,7 +5,7 @@ use axum::{Json, response::Response};
 use chrono::Utc;
 use nexus_models_store::{
     ModelDependency, ModelStoreError, Quantization, ResolutionContext, ZeroSizeProbe,
-    list_all_visible, release_lease, resolve_dry_run,
+    install_exists, list_active_dependents, list_all_visible, release_lease, resolve_dry_run,
 };
 use serde::{Deserialize, Serialize};
 
@@ -172,6 +172,158 @@ pub async fn create_model_lease(
             ApiResponse::<()>::err(status, code, "model_lease", e.to_string()).into_response()
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InstallHostModelRequest {
+    pub source: String,
+    pub repo_id: String,
+    #[serde(default)]
+    pub revision: Option<String>,
+    #[serde(default)]
+    pub files: Vec<String>,
+    #[serde(default)]
+    pub display_name: Option<String>,
+}
+
+/// `POST /api/v1/host-models` — host-scope model install.
+///
+/// Validates the request envelope and returns `501 host_install_pending`
+/// until the full pipeline wiring lands. The 501 envelope is stable so
+/// frontend clients render it as a structured "coming soon" message.
+pub async fn install_host_model(
+    State(_state): State<AppState>,
+    Json(req): Json<InstallHostModelRequest>,
+) -> Response {
+    if req.repo_id.trim().is_empty() {
+        return ApiResponse::<()>::err(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "validation",
+            "repo_id required".into(),
+        )
+        .into_response();
+    }
+    if req.source != "huggingface" {
+        return ApiResponse::<()>::err(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "validation",
+            format!(
+                "unsupported source '{}'; only 'huggingface' is accepted",
+                req.source
+            ),
+        )
+        .into_response();
+    }
+    if req.files.is_empty() {
+        return ApiResponse::<()>::err(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "validation",
+            "files must contain at least one entry".into(),
+        )
+        .into_response();
+    }
+
+    ApiResponse::<()>::err(
+        StatusCode::NOT_IMPLEMENTED,
+        "host_install_pending",
+        "not_implemented",
+        format!(
+            "host-scope install for '{}' is pending — see spec 020 tasks T210–T214 (POST /host-models pipeline wiring)",
+            req.repo_id
+        ),
+    )
+    .into_response()
+}
+
+#[derive(Debug, Serialize)]
+pub struct DependentEntry {
+    pub extension_id: String,
+    pub display_name: String,
+    pub kind: DependentKind,
+}
+
+#[derive(Debug, Serialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum DependentKind {
+    Lease,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DependentsResponse {
+    pub count: u32,
+    pub extensions: Vec<DependentEntry>,
+}
+
+/// Spec 020 FR-Q3-06 — `GET /api/v1/host-models/{install_id}/dependents`.
+/// Thin read projection over `host_model_leases` (kind = `Lease`).
+/// `declared_dep` kind is reserved for a future slice that scans extension
+/// manifests for matching `ModelDependency` entries; not in scope here.
+pub async fn list_host_model_dependents(
+    State(state): State<AppState>,
+    Path(install_id): Path<String>,
+) -> Response {
+    match install_exists(state.db.pool(), &install_id).await {
+        Ok(false) => {
+            return ApiResponse::<()>::not_found(format!(
+                "host model install {install_id} not found"
+            ))
+            .into_response();
+        }
+        Ok(true) => {}
+        Err(e) => {
+            let (status, code) = http_status_for_model_error(&e);
+            crate::handlers::errors::log_handler_error(
+                &e,
+                "GET /host-models/{install_id}/dependents",
+                code,
+                None,
+            );
+            return ApiResponse::<()>::err(status, code, "model_dependents", e.to_string())
+                .into_response();
+        }
+    }
+
+    let ext_ids = match list_active_dependents(state.db.pool(), &install_id).await {
+        Ok(ids) => ids,
+        Err(e) => {
+            let (status, code) = http_status_for_model_error(&e);
+            crate::handlers::errors::log_handler_error(
+                &e,
+                "GET /host-models/{install_id}/dependents",
+                code,
+                None,
+            );
+            return ApiResponse::<()>::err(status, code, "model_dependents", e.to_string())
+                .into_response();
+        }
+    };
+
+    use nexus_extension::ExtensionRegistry;
+    let registry = state.extension_registry.as_ref();
+    let extensions: Vec<DependentEntry> = ext_ids
+        .into_iter()
+        .map(|ext_id| {
+            let display_name = registry
+                .get_extension(&ext_id)
+                .and_then(|ext| ext.manifest.extension.name.clone())
+                .unwrap_or_else(|| ext_id.clone());
+            DependentEntry {
+                extension_id: ext_id,
+                display_name,
+                kind: DependentKind::Lease,
+            }
+        })
+        .collect();
+
+    ApiResponse::ok(DependentsResponse {
+        count: extensions.len() as u32,
+        extensions,
+    })
+    .into_response()
 }
 
 pub async fn release_model_lease(

@@ -1775,6 +1775,7 @@ name = "nexus-api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "camino",
  "chrono",
  "futures-util",
  "http-body-util",
