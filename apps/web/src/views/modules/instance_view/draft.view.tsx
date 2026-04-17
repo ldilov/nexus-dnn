@@ -7,7 +7,12 @@ import {
   writeDraftEnvelope,
   type DraftEnvelope,
 } from "../draft/draft_envelope";
-import * as s from "./instance_view.css";
+import type { ReactNode } from "react";
+import * as s from "./instance.css";
+
+function Shell({ children }: { children: ReactNode }) {
+  return <div className={s.root}>{children}</div>;
+}
 
 interface DraftViewProps {
   sourceModuleId: string;
@@ -125,17 +130,17 @@ export function DraftView({ sourceModuleId, draftUuid }: DraftViewProps) {
 
   if (state.kind === "loading") {
     return (
-      <div className={s.root}>
+      <Shell>
         <header className={s.identityBanner}>
           <span className={s.idText}>Loading draft…</span>
         </header>
-      </div>
+      </Shell>
     );
   }
 
   if (state.kind === "error") {
     return (
-      <div className={s.root}>
+      <Shell>
         <div className={s.errorBox} role="alert">
           {state.message}
         </div>
@@ -147,14 +152,14 @@ export function DraftView({ sourceModuleId, draftUuid }: DraftViewProps) {
         >
           Back to modules
         </button>
-      </div>
+      </Shell>
     );
   }
 
   const env = state.envelope;
 
   return (
-    <div className={s.root}>
+    <Shell>
       <div className={s.draftBanner} role="status">
         <span>{bannerText}</span>
         <div className={s.bannerActions} style={{ marginLeft: 0 }}>
@@ -224,6 +229,6 @@ export function DraftView({ sourceModuleId, draftUuid }: DraftViewProps) {
           </pre>
         </section>
       </div>
-    </div>
+    </Shell>
   );
 }

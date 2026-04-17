@@ -11,7 +11,12 @@ import {
 import { useModule } from "../../../hooks/use_api";
 import { mintDraftUuid } from "../draft/draft_uuid";
 import { writeDraftEnvelope } from "../draft/draft_envelope";
-import * as s from "./instance_view.css";
+import type { ReactNode } from "react";
+import * as s from "./instance.css";
+
+function Shell({ children }: { children: ReactNode }) {
+  return <div className={s.root}>{children}</div>;
+}
 
 interface InstanceViewProps {
   moduleId: string;
@@ -114,11 +119,11 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
 
   if (isLoading) {
     return (
-      <div className={s.root}>
+      <Shell>
         <div className={s.canvas}>
           <div className={s.loadingBox}>Loading instance…</div>
         </div>
-      </div>
+      </Shell>
     );
   }
 
@@ -130,7 +135,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
           ? "Failed to load instance"
           : "Instance not found";
     return (
-      <div className={s.root}>
+      <Shell>
         <div className={s.canvas}>
           <button type="button" className={s.backLink} onClick={handleBack}>
             ← Modules
@@ -139,7 +144,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
             {message}
           </div>
         </div>
-      </div>
+      </Shell>
     );
   }
 
@@ -151,7 +156,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
   const installedAgo = formatRelativeTime(summary.installed_at ?? null);
 
   return (
-    <div className={s.root}>
+    <Shell>
       <div className={s.ambientGlowPrimary} aria-hidden="true" />
       <div className={s.ambientGlowSecondary} aria-hidden="true" />
 
@@ -562,7 +567,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
           </div>
         </div>
       </div>
-    </div>
+    </Shell>
   );
 }
 
