@@ -75,8 +75,8 @@ description: "Task list for spec 021 — Web App Architecture Refactor"
 ### Service layer scaffold (prerequisite for loaders)
 
 - [X] **T016** [US1] Create `apps/web/src/services/api_client.ts` by moving `apps/web/src/api/client.ts` there and keeping `apps/web/src/api/client.ts` as a one-line re-export (`export * from "../services/api_client"`) for the US1 compatibility window.
-- [ ] **T017** [P] [US1] Create `apps/web/src/services/event_streams.ts` — move the WebSocket URL construction from `apps/web/src/hooks/use_event_stream.ts` and `apps/web/src/backends/hooks/use_install_stream.ts` into typed exports `subscribeEvents` and `subscribeInstallProgress`. The hooks keep their React-specific wrapping but call the service layer for socket construction.
-- [ ] **T018** [P] [US1] Split `services/api_client.ts` into one file per backend domain by carving out function groups: `services/backends.ts`, `services/host_models.ts`, `services/huggingface.ts`, `services/extensions.ts`, `services/runs.ts`, `services/modules.ts`, `services/deployments.ts`, `services/workflows.ts`, `services/layouts.ts`. Each file re-exports the small subset of functions used by its domain; the shared `fetch` envelope stays in `api_client.ts`.
+- [X] **T017** [P] [US1] Create `apps/web/src/services/event_streams.ts` — move the WebSocket URL construction from `apps/web/src/hooks/use_event_stream.ts` and `apps/web/src/backends/hooks/use_install_stream.ts` into typed exports `subscribeEvents` and `subscribeInstallProgress`. The hooks keep their React-specific wrapping but call the service layer for socket construction.
+- [X] **T018** [P] [US1] Split `services/api_client.ts` into one file per backend domain by carving out function groups: `services/backends.ts`, `services/host_models.ts`, `services/huggingface.ts`, `services/extensions.ts`, `services/runs.ts`, `services/modules.ts`, `services/deployments.ts`, `services/workflows.ts`, `services/layouts.ts`. Each file re-exports the small subset of functions used by its domain; the shared `fetch` envelope stays in `api_client.ts`.
 
 ### Router + root layout
 

@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { InstallStreamEvent } from "../install_modal";
-
-function buildWsUrl(backendId: string): string {
-  if (typeof window === "undefined") return "";
-  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const family = encodeURIComponent(backendId);
-  return `${proto}//${window.location.host}/api/v1/backends/events?family=${family}`;
-}
+import {
+  subscribeInstallProgress,
+  type BackendEventRecord,
+} from "../../services/event_streams";
 
 interface PendingResolver {
   resolve: (value: IteratorResult<InstallStreamEvent>) => void;
@@ -65,9 +62,13 @@ class InstallEventQueue implements AsyncIterable<InstallStreamEvent> {
   }
 }
 
-function matchesBackend(record: Record<string, unknown>, backendId: string): boolean {
-  const candidate = record.backend ?? record.family ?? record.backend_id;
+function matchesBackend(record: BackendEventRecord, backendId: string): boolean {
+  const candidate = record.backend ?? record.family;
   return typeof candidate === "string" && candidate === backendId;
+}
+
+function isRelevantTopic(topic: string): boolean {
+  return topic.startsWith("llm.backend.install.") || topic === "llm.backend.log";
 }
 
 class DelegatingIterable implements AsyncIterable<InstallStreamEvent> {
@@ -90,43 +91,19 @@ export function useInstallStream(
     if (!backendId) return;
     queueRef.current = new InstallEventQueue();
     const queue = queueRef.current;
-    const ws = new WebSocket(buildWsUrl(backendId));
-
-    ws.onmessage = (msg) => {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(msg.data as string);
-      } catch {
-        return;
-      }
-      if (!parsed || typeof parsed !== "object" || !("topic" in parsed)) {
-        return;
-      }
-      const record = parsed as {
-        topic: unknown;
-        payload?: unknown;
-        backend?: unknown;
-        family?: unknown;
-        emitted_at?: number;
-      };
-      if (typeof record.topic !== "string") return;
-      if (!record.topic.startsWith("llm.backend.install.") && record.topic !== "llm.backend.log") {
-        return;
-      }
-      if (!matchesBackend(record as Record<string, unknown>, backendId)) return;
-      const payload =
-        typeof record.payload === "object" && record.payload !== null
-          ? (record.payload as Record<string, unknown>)
-          : {};
+    const subscription = subscribeInstallProgress(backendId, (record) => {
+      if (!isRelevantTopic(record.topic)) return;
+      if (!matchesBackend(record, backendId)) return;
       queue.push({
         topic: record.topic,
-        payload,
-        emitted_at: typeof record.emitted_at === "number" ? record.emitted_at : Date.now(),
+        payload: record.payload ?? {},
+        emitted_at:
+          typeof record.emitted_at === "number" ? record.emitted_at : Date.now(),
       });
-    };
+    });
 
     return () => {
-      ws.close();
+      subscription.close();
       queue.close();
     };
   }, [backendId]);
