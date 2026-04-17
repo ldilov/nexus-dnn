@@ -1,4 +1,4 @@
-import type { BackendSummary, CardState } from "./types";
+import type { BackendSummary, CardState } from "../types";
 import * as css from "./backend_card.css";
 
 // Maps each `card_state` onto the right badge variant so the pill color

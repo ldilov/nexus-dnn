@@ -127,7 +127,7 @@ export function useHostModels(
   return useSWR<HostModelsResponse>("host-models", () => fetchHostModels(), config);
 }
 
-import type { BackendListResponse } from "../backends/types";
+import type { BackendListResponse } from "../views/backends/types";
 
 async function fetchHostBackends(): Promise<BackendListResponse> {
   const res = await fetch(`/api/v1/llm/backends`);

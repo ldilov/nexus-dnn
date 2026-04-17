@@ -1,5 +1,5 @@
 import { style } from "@vanilla-extract/css";
-import { vars } from "../theme/contract.css";
+import { vars } from "../../theme/contract.css";
 
 export const page = style({
   display: "flex",

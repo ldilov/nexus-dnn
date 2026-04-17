@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
-import type { InstallStreamEvent } from "../install_modal";
+import type { InstallStreamEvent } from "../components/install_modal";
 import {
   subscribeInstallProgress,
   type BackendEventRecord,
-} from "../../services/event_streams";
+} from "../../../services/event_streams";
 
 interface PendingResolver {
   resolve: (value: IteratorResult<InstallStreamEvent>) => void;

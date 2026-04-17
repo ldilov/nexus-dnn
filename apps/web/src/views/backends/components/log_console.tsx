@@ -200,16 +200,7 @@ export function LogConsole({ lines }: Props) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           aria-label="Search logs"
-          style={{
-            background: "transparent",
-            border: "1px solid var(--vars-outline, transparent)",
-            color: "inherit",
-            fontFamily: "inherit",
-            fontSize: "inherit",
-            padding: "2px 8px",
-            minWidth: "180px",
-          }}
-          className={s.tallyChip}
+          className={`${s.tallyChip} ${s.searchInput}`}
         />
 
         <span className={s.spacer} />

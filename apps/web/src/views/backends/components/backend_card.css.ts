@@ -1,5 +1,5 @@
 import { style, styleVariants } from "@vanilla-extract/css";
-import { vars } from "../theme/contract.css";
+import { vars } from "../../../theme/contract.css";
 
 // Spectral Graphite-aligned BackendCard — drops the pre-theme fallback hex
 // literals (var(--surface-raised, #1c1d22)) that pre-dated the vanilla-extract

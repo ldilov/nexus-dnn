@@ -4,176 +4,6 @@
   "violations": [
     {
       "rule": "SR-004",
-      "file": "App.tsx",
-      "line": 98
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 219
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 220
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 235
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 243
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 251
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 260
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 264
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 274
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 282
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 295
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 303
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 313
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 321
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 327
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 337
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 361
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 364
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 372
-    },
-    {
-      "rule": "SR-003",
-      "file": "App.tsx",
-      "line": 382
-    },
-    {
-      "rule": "SR-009",
-      "file": "App.tsx",
-      "line": 514
-    },
-    {
-      "rule": "SR-009",
-      "file": "App.tsx",
-      "line": 545
-    },
-    {
-      "rule": "SR-009",
-      "file": "App.tsx",
-      "line": 552
-    },
-    {
-      "rule": "SR-004",
-      "file": "backends/backend_detail_drawer.tsx",
-      "line": 45
-    },
-    {
-      "rule": "SR-005",
-      "file": "backends/backend_detail_drawer.tsx",
-      "line": 48
-    },
-    {
-      "rule": "SR-005",
-      "file": "backends/backend_detail_drawer.tsx",
-      "line": 69
-    },
-    {
-      "rule": "SR-005",
-      "file": "backends/backend_detail_drawer.tsx",
-      "line": 108
-    },
-    {
-      "rule": "SR-004",
-      "file": "backends/hooks/use_install_stream.ts",
-      "line": 89
-    },
-    {
-      "rule": "SR-005",
-      "file": "backends/hooks/use_install_stream.ts",
-      "line": 93
-    },
-    {
-      "rule": "SR-004",
-      "file": "backends/hooks/use_model_compatibility.ts",
-      "line": 29
-    },
-    {
-      "rule": "SR-005",
-      "file": "backends/hooks/use_model_compatibility.ts",
-      "line": 34
-    },
-    {
-      "rule": "SR-006",
-      "file": "backends/install_modal.tsx",
-      "line": 1
-    },
-    {
-      "rule": "SR-009",
-      "file": "backends/install_modal.tsx",
-      "line": 166
-    },
-    {
-      "rule": "SR-009",
-      "file": "backends/log_console.tsx",
-      "line": 203
-    },
-    {
-      "rule": "SR-004",
       "file": "catalog/home_dashboard.tsx",
       "line": 30
     },
@@ -438,21 +268,6 @@
       "line": 91
     },
     {
-      "rule": "SR-006",
-      "file": "components/layout/install_modal.tsx",
-      "line": 1
-    },
-    {
-      "rule": "SR-009",
-      "file": "components/layout/install_modal.tsx",
-      "line": 70
-    },
-    {
-      "rule": "SR-009",
-      "file": "components/layout/install_modal.tsx",
-      "line": 96
-    },
-    {
       "rule": "SR-009",
       "file": "components/layout/list_component.tsx",
       "line": 65
@@ -503,11 +318,6 @@
       "line": 134
     },
     {
-      "rule": "SR-005",
-      "file": "hooks/use_event_stream.ts",
-      "line": 25
-    },
-    {
       "rule": "SR-004",
       "file": "hooks/use_operator_specs.ts",
       "line": 17
@@ -526,11 +336,6 @@
       "rule": "SR-009",
       "file": "layout/sidebar.tsx",
       "line": 144
-    },
-    {
-      "rule": "SR-003",
-      "file": "main.tsx",
-      "line": 27
     },
     {
       "rule": "SR-004",
@@ -866,11 +671,6 @@
       "rule": "SR-004",
       "file": "views/artifact_browser.tsx",
       "line": 22
-    },
-    {
-      "rule": "SR-005",
-      "file": "views/backends_view.tsx",
-      "line": 44
     },
     {
       "rule": "SR-006",
