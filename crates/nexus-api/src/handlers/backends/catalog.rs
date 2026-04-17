@@ -4,6 +4,7 @@ use serde::Serialize;
 
 use crate::AppState;
 use crate::envelope::ApiResponse;
+use nexus_backend_runtimes::manifest::variants::BackendVariantCatalog;
 use nexus_backend_runtimes::resolver::MachineDescriptor;
 use nexus_backend_runtimes::state::RuntimeCardState;
 
@@ -79,6 +80,39 @@ pub async fn list(State(state): State<AppState>) -> axum::response::Response {
         summary: chips,
     })
     .into_response()
+}
+
+pub async fn variants(
+    State(state): State<AppState>,
+    Path(backend_id): Path<String>,
+) -> axum::response::Response {
+    let Some(registry) = registry(&state) else {
+        return unwired().into_response();
+    };
+    let Some(adapter) = registry.get(&backend_id) else {
+        return ApiResponse::<()>::not_found(format!("backend {backend_id} not found"))
+            .into_response();
+    };
+    let machine = MachineDescriptor::detect().await;
+    match adapter.list_variants(&machine).await {
+        Ok(catalog) => ApiResponse::ok(BackendVariantsEnvelope::from(catalog)).into_response(),
+        Err(err) => map_error(err).into_response(),
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct BackendVariantsEnvelope {
+    pub variants: Vec<nexus_backend_runtimes::manifest::variants::BackendVariant>,
+    pub recommended_release_id: Option<String>,
+}
+
+impl From<BackendVariantCatalog> for BackendVariantsEnvelope {
+    fn from(c: BackendVariantCatalog) -> Self {
+        Self {
+            variants: c.variants,
+            recommended_release_id: c.recommended_release_id,
+        }
+    }
 }
 
 pub async fn detail(

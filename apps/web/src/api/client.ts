@@ -480,6 +480,52 @@ export function fetchRuntimes(): Promise<HostRuntimesResponse> {
   return apiFetch("/backends");
 }
 
+export type AcceleratorProfile = "cpu" | "cuda12" | "cuda13";
+
+export interface BackendVariant {
+  release_id: string;
+  platform: string;
+  accelerator_profile: AcceleratorProfile;
+  label: string;
+  recommended: boolean;
+  supported: boolean;
+  disabled_reason: string | null;
+  size_bytes: number | null;
+  checksum_sha256: string | null;
+}
+
+export interface BackendVariantsResponse {
+  variants: BackendVariant[];
+  recommended_release_id: string | null;
+}
+
+export function fetchBackendVariants(
+  backendId: string,
+): Promise<BackendVariantsResponse> {
+  return apiFetch<BackendVariantsResponse>(
+    `/llm/backends/${encodeURIComponent(backendId)}/variants`,
+  );
+}
+
+export interface BackendInstallResponse {
+  install_task_id: string;
+  runtime_install_id: string;
+}
+
+export function startBackendInstall(
+  backendId: string,
+  body: { release_id: string; accelerator_profile: AcceleratorProfile },
+): Promise<BackendInstallResponse> {
+  return apiFetch<BackendInstallResponse>(
+    `/llm/backends/${encodeURIComponent(backendId)}/install`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
 // Host-level, extension-agnostic HF search/detail.
 
 export function hfSearch(params: {
@@ -504,6 +550,83 @@ export function hfRepoDetail(repoId: string): Promise<unknown> {
 // Per-extension model lifecycle. `extensionId` must match an extension
 // that registered the huggingface capability at app-assembly time;
 // the host returns 404 otherwise.
+
+// Host-managed model store (spec 017). The canonical source of truth for
+// what's installed on this host, aggregated across every extension that
+// depends on a model.
+export interface HostModelView {
+  readonly install_id: string;
+  readonly family: string;
+  readonly version: string;
+  readonly quantization: string | null;
+  readonly variant: string;
+  readonly install_root: string;
+  readonly sha256_root: string;
+  readonly source_revision: string;
+  readonly state: string;
+  readonly source_kind: string;
+  readonly source_url: string | null;
+  readonly license_spdx: string | null;
+  readonly license_url: string | null;
+  readonly private_model: boolean;
+  readonly owner_extension_id: string | null;
+  readonly created_at: string;
+}
+
+export interface HostModelsResponse {
+  readonly installs: readonly HostModelView[];
+}
+
+export function fetchHostModels(): Promise<HostModelsResponse> {
+  return apiFetch<HostModelsResponse>("/host-models");
+}
+
+export type DependentKind = "lease";
+
+export interface DependentEntry {
+  extension_id: string;
+  display_name: string;
+  kind: DependentKind;
+}
+
+export interface DependentsResponse {
+  count: number;
+  extensions: DependentEntry[];
+}
+
+export function fetchHostModelDependents(
+  installId: string,
+): Promise<DependentsResponse> {
+  return apiFetch<DependentsResponse>(
+    `/host-models/${encodeURIComponent(installId)}/dependents`,
+  );
+}
+
+export interface HostModelInstallRequest {
+  source: "huggingface";
+  repo_id: string;
+  revision?: string | null;
+  files: string[];
+  display_name?: string | null;
+}
+
+export interface HostModelInstallTask {
+  install_id: string;
+  task_id: string;
+  already_installed: boolean;
+  routed_backend: string | null;
+  sha256_root: string;
+}
+
+export function installHostModel(
+  body: HostModelInstallRequest,
+): Promise<HostModelInstallTask> {
+  return apiFetch<HostModelInstallTask>("/host-models", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
 
 export function listExtensionModels(
   extensionId: string,

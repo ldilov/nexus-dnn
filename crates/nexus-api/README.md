@@ -10,6 +10,11 @@ Axum HTTP surface for the host daemon. Route-level handlers live under
 - `POST /api/v1/backends/{installId}/lease` — acquire runtime lease
 - `DELETE /api/v1/backends/leases/{leaseId}` — release runtime lease
 - `DELETE /api/v1/backends/{installId}` — uninstall (with active-lease guard)
+- `GET /api/v1/llm/backends/{backendId}/variants` — spec 020 US1: project the
+  backend's version-manifest releases into `{release_id, platform,
+  accelerator_profile, label, recommended, supported, disabled_reason,
+  size_bytes, checksum_sha256}` rows filtered by `MachineDescriptor::detect()`.
+  Returns `404 catalog_unavailable` when the on-disk yaml is missing.
 
 ## Host-model endpoints (spec 017)
 

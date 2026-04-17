@@ -19,6 +19,7 @@ use crate::error::RuntimeAdapterError;
 use crate::events::{NAMESPACE_LLAMACPP, SharedPublisher};
 use crate::launch_spec::LaunchSpec;
 use crate::manifest::install::{InstallManifest, InstallStatus};
+use crate::manifest::variants::{BackendVariantCatalog, project_variants};
 use crate::manifest::version::VersionManifest;
 use crate::resolver::MachineDescriptor;
 use crate::settings::{AcceleratorProfile, RuntimeSettings};
@@ -93,6 +94,22 @@ impl BackendAdapter for LlamaCppAdapter {
 
     async fn supported_profiles(&self, machine: &MachineDescriptor) -> Vec<AcceleratorProfile> {
         machine.supported_profiles()
+    }
+
+    async fn list_variants(
+        &self,
+        machine: &MachineDescriptor,
+    ) -> Result<BackendVariantCatalog, RuntimeAdapterError> {
+        let manifest = self.load_version_manifest().await.map_err(|e| match e {
+            RuntimeAdapterError::Install(inner) => {
+                RuntimeAdapterError::CatalogUnavailable(inner.to_string())
+            }
+            RuntimeAdapterError::Io(inner) => {
+                RuntimeAdapterError::CatalogUnavailable(inner.to_string())
+            }
+            other => other,
+        })?;
+        Ok(project_variants(&manifest, machine))
     }
 
     async fn current_summary(

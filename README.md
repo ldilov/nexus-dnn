@@ -86,6 +86,17 @@ nexus-dnn/
 └── tests/            # Integration tests
 ```
 
+### Recent specs
+
+- [spec 017 — Host-managed models](specs/017-host-managed-models/) — shared
+  model store with per-extension leasing.
+- [spec 019 — Extension Modules + Spectral Graphite UI](specs/019-extension-modules/)
+  — modules surface, blank-module draft, ZIP install.
+- [spec 020 — Backends + Models page polish](specs/020-backends-and-models-polish/)
+  — Backends install flow (variant picker + InstallModal wiring),
+  `/models` HF search panel, DAG draft-node UX. US1 (Install flow) landed;
+  US2/US3/US4 in-flight.
+
 ## Documentation
 
 | Document | Description |

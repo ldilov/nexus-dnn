@@ -16,9 +16,13 @@ pub use download::{DownloadOutcome, DownloadSpec, download_and_verify, make_limi
 pub use errors::{ModelStoreError, ModelStoreResult};
 pub use install::{
     HostModelRow, HttpFetcher, IdentityKey, InstallModelRequest, InstalledModelDto, ModelFetcher,
-    ModelStoreCtx, PlannedFile, install_model, list_all_visible, uninstall_model,
+    ModelStoreCtx, PlannedFile, StagedFile, StagedInstallOutcome, StagedInstallRequest,
+    find_existing, install_from_staging, install_model, list_all_visible, uninstall_model,
 };
-pub use leases::{ModelLease, acquire_lease, list_active_leases, release_lease};
+pub use leases::{
+    ModelLease, acquire_lease, install_exists, list_active_dependents, list_active_leases,
+    release_lease,
+};
 pub use provenance::{HfMetadata, HfProbe, LicenseInfo, ZeroHfProbe, resolve_license};
 pub use quantization::{MatchQuality, Quantization};
 pub use reclaim::{OwnerPredicate, ReclaimConfig, run_reclaim_pass, spawn_reclaim_ticker};

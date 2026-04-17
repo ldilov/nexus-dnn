@@ -30,6 +30,12 @@ use nexus_worker::DefaultWorkerManager;
 use handlers::modules::draft_map::DraftMaterializeMap;
 
 #[derive(Clone)]
+pub struct HostInstallPaths {
+    pub installs_root: PathBuf,
+    pub blobs_root: PathBuf,
+}
+
+#[derive(Clone)]
 pub struct AppState {
     pub health_status_fn: Arc<dyn Fn() -> serde_json::Value + Send + Sync>,
     pub db: Arc<SqliteDatabase>,
@@ -44,12 +50,9 @@ pub struct AppState {
     pub backend_adapter_registry: Option<Arc<BackendAdapterRegistry>>,
     pub spawner: Option<Arc<Spawner>>,
     pub huggingface: Option<Arc<dyn HuggingFaceCapability>>,
-    /// Broadcast bus for [`nexus_backend_runtimes::events::BackendEvent`] fan-out.
-    /// Shared `Arc` with any `Spawner` so WS subscribers see every published event.
     pub backend_event_bus: Arc<BroadcastPublisher>,
-    /// Process-local idempotency cache for blank-module materialize (FR-BM04,
-    /// spec 019 contracts/draft-materialize.md §5).
     pub draft_materialize_map: Arc<DraftMaterializeMap>,
+    pub host_install_paths: Option<HostInstallPaths>,
 }
 
 pub fn create_router(state: AppState) -> axum::Router {

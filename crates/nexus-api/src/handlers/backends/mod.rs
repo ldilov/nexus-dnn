@@ -3,17 +3,20 @@ mod host_models;
 mod host_runtimes;
 mod lease;
 mod lifecycle;
+mod load_model;
 mod observability;
 mod settings;
 mod uninstall;
 
-pub use catalog::{detail, list};
+pub use catalog::{detail, list, variants};
 pub use host_models::{
-    create_model_lease, list_host_models, release_model_lease, resolve_host_models,
+    create_model_lease, install_host_model, list_host_model_dependents, list_host_models,
+    release_model_lease, resolve_host_models,
 };
 pub use host_runtimes::{list_host_runtimes, parameter_catalog};
 pub use lease::{create_lease, release_lease};
 pub use lifecycle::{install, repair, validate};
+pub use load_model::load_model;
 pub use observability::{diagnostics, logs};
 pub use settings::{get_settings, put_settings};
 pub use uninstall::uninstall_runtime;
@@ -81,6 +84,12 @@ pub(super) fn map_error(err: RuntimeAdapterError) -> ApiResponse<()> {
             axum::http::StatusCode::NOT_IMPLEMENTED,
             "NOT_IMPLEMENTED",
             "internal",
+            msg,
+        ),
+        RuntimeAdapterError::CatalogUnavailable(msg) => ApiResponse::<()>::err(
+            axum::http::StatusCode::NOT_FOUND,
+            "catalog_unavailable",
+            "not_found",
             msg,
         ),
     }
