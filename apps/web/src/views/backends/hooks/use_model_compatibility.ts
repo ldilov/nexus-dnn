@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { listHostBackends } from "../../../services/backends";
 
 export type RequiredBackend = "llama.cpp" | "tensorrt_llm" | "unknown";
 
@@ -31,15 +32,14 @@ export function useModelCompatibility(
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${baseUrl}/api/v1/llm/backends`);
-        if (!res.ok) return;
-        const json = (await res.json()) as { data: BackendsResponse };
-        const match = json.data.backends.find((b) => b.id === requiredBackend);
+        const data = (await listHostBackends(baseUrl)) as BackendsResponse | null;
+        if (!data) return;
+        const match = data.backends.find((b) => b.id === requiredBackend);
         if (!cancelled && match) {
           setInstalled(match.card_state === "ready" || match.card_state === "installed_unvalidated");
         }
       } catch {
-        /* ignore — surface via install CTA */
+        return;
       }
     })();
     return () => {

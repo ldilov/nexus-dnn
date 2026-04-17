@@ -1,4 +1,4 @@
-import type { DiagnosticRecord } from "./types";
+import type { DiagnosticRecord } from "../types";
 
 interface Props {
   diagnostics: DiagnosticRecord[];

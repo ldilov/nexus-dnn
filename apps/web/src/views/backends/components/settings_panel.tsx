@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import type { RuntimeSettings } from "./types";
-import { isManagedFlag } from "./managed_flags";
+import type { RuntimeSettings } from "../types";
+import { isManagedFlag } from "../managed_flags";
 import * as css from "./settings_panel.css";
 
 interface Props {

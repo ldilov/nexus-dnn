@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import type { InstallStreamEvent } from "../../backends/install_modal";
+import type { InstallStreamEvent } from "../../views/backends/components/install_modal";
 
 const WS_URL = `ws://${typeof window !== "undefined" ? window.location.host : ""}/api/v1/events`;
 

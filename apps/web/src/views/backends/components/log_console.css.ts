@@ -1,5 +1,5 @@
 import { style, styleVariants } from "@vanilla-extract/css";
-import { vars } from "../theme/contract.css";
+import { vars } from "../../../theme/contract.css";
 
 // Polished backend log console. Design notes:
 // - Monospace everywhere — log viewers that mix fonts feel wrong.
@@ -208,4 +208,14 @@ export const empty = style({
   fontStyle: "italic",
   fontFamily: vars.font.code,
   fontSize: vars.font.size.bodySm,
+});
+
+export const searchInput = style({
+  background: "transparent",
+  border: `1px solid ${vars.color.outline.variant}`,
+  color: "inherit",
+  fontFamily: "inherit",
+  fontSize: "inherit",
+  padding: "2px 8px",
+  minWidth: "180px",
 });

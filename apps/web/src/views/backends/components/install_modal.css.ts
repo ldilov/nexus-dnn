@@ -359,6 +359,12 @@ export const buttonPrimary = style([
   },
 ]);
 
+export const statusCluster = style({
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+});
+
 export const statusBadge = style({
   display: "inline-flex",
   alignItems: "center",

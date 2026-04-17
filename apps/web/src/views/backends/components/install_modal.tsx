@@ -163,7 +163,7 @@ export function InstallModal({ backendId, onClose, eventsSource }: Props) {
             </h2>
             <span className={css.subtitle}>{statusLabel}</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div className={css.statusCluster}>
             <span
               className={css.statusBadge}
               data-status={

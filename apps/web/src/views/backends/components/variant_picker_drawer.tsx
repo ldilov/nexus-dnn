@@ -7,7 +7,7 @@ import {
   type BackendVariant,
   type BackendVariantsResponse,
   ContractError,
-} from "../api/client";
+} from "../../../api/client";
 import * as s from "./variant_picker_drawer.css";
 
 interface Props {

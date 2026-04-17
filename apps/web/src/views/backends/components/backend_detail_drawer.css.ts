@@ -1,6 +1,6 @@
 import { style, keyframes } from "@vanilla-extract/css";
-import { motion } from "../styles/motion.css";
-import { vars } from "../theme/contract.css";
+import { motion } from "../../../styles/motion.css";
+import { vars } from "../../../theme/contract.css";
 
 const slideIn = keyframes({
   from: { transform: "translateX(24px)", opacity: 0 },

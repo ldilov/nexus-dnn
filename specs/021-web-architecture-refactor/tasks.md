@@ -113,50 +113,50 @@ description: "Task list for spec 021 — Web App Architecture Refactor"
 
 ### Create the screen folder
 
-- [ ] **T030** [US2] Create `apps/web/src/views/backends/` with placeholders: `backends.view.tsx`, `backends.ui.tsx`, `backends.css.ts`, `index.ts`. Create `components/` subfolder.
-- [ ] **T031** [US2] Move `apps/web/src/views/backends_view.tsx` and `apps/web/src/views/backends_view.css.ts` contents into `views/backends/backends.view.tsx` and `backends.css.ts` respectively. Delete the old files.
-- [ ] **T032** [US2] Extract the JSX markup from the old `backends_view.tsx` into `views/backends/backends.ui.tsx` as `BackendsUI` — takes `{ runtimes, installing, onInstall, onOpenDetail, isNavigating }` as props. `.view.tsx` returns exactly `<BackendsUI {...props}/>`.
+- [X] **T030** [US2] Create `apps/web/src/views/backends/` with placeholders: `backends.view.tsx`, `backends.ui.tsx`, `backends.css.ts`, `index.ts`. Create `components/` subfolder.
+- [X] **T031** [US2] Move `apps/web/src/views/backends_view.tsx` and `apps/web/src/views/backends_view.css.ts` contents into `views/backends/backends.view.tsx` and `backends.css.ts` respectively. Delete the old files.
+- [X] **T032** [US2] Extract the JSX markup from the old `backends_view.tsx` into `views/backends/backends.ui.tsx` as `BackendsUI` — takes `{ runtimes, installing, onInstall, onOpenDetail, isNavigating }` as props. `.view.tsx` returns exactly `<BackendsUI {...props}/>`.
 
 ### Move screen-scoped components
 
-- [ ] **T033** [P] [US2] Move `apps/web/src/backends/backend_card.tsx` + `.css.ts` into `views/backends/components/backend_card/`.
-- [ ] **T034** [P] [US2] Move `apps/web/src/backends/variant_picker_drawer.tsx` + `.css.ts` into `views/backends/components/variant_picker_drawer/`.
-- [ ] **T035** [P] [US2] Move `apps/web/src/backends/settings_panel.tsx` + `.css.ts` into `views/backends/components/settings_panel/`.
-- [ ] **T036** [P] [US2] Move `apps/web/src/backends/backend_detail_drawer.tsx` + `.css.ts` into `views/backends/components/backend_detail_drawer/`.
-- [ ] **T037** [P] [US2] Move `apps/web/src/backends/diagnostics_panel.tsx` into `views/backends/components/diagnostics_panel/`.
-- [ ] **T038** [P] [US2] Move `apps/web/src/backends/log_console.css.ts` into `views/backends/components/install_modal/` (since only the install modal uses it post-dedup).
+- [X] **T033** [P] [US2] Move `apps/web/src/backends/backend_card.tsx` + `.css.ts` into `views/backends/components/backend_card/`.
+- [X] **T034** [P] [US2] Move `apps/web/src/backends/variant_picker_drawer.tsx` + `.css.ts` into `views/backends/components/variant_picker_drawer/`.
+- [X] **T035** [P] [US2] Move `apps/web/src/backends/settings_panel.tsx` + `.css.ts` into `views/backends/components/settings_panel/`.
+- [X] **T036** [P] [US2] Move `apps/web/src/backends/backend_detail_drawer.tsx` + `.css.ts` into `views/backends/components/backend_detail_drawer/`.
+- [X] **T037** [P] [US2] Move `apps/web/src/backends/diagnostics_panel.tsx` into `views/backends/components/diagnostics_panel/`.
+- [X] **T038** [P] [US2] Move `apps/web/src/backends/log_console.css.ts` into `views/backends/components/install_modal/` (since only the install modal uses it post-dedup).
 
 ### Dedup InstallModal (per R-8)
 
 - [X] **T039** [US2] Move `apps/web/src/backends/install_modal.tsx` + `install_modal.css.ts` into `views/backends/components/install_modal/install_modal.tsx` + `install_modal.css.ts`.
 - [X] **T040** [US2] Delete `apps/web/src/components/layout/install_modal.tsx`.
 - [X] **T041** [US2] Delete the reference in `apps/web/src/layout/component_registry.tsx` that points at the deleted layout-path install modal. Update any call sites to import the canonical path.
-- [ ] **T042** [US2] Move `apps/web/src/backends/hooks/use_install_stream.ts` into `views/backends/hooks/use_install_stream.ts`. Move `apps/web/src/backends/hooks/use_model_compatibility.ts` likewise.
+- [X] **T042** [US2] Move `apps/web/src/backends/hooks/use_install_stream.ts` into `views/backends/hooks/use_install_stream.ts`. Move `apps/web/src/backends/hooks/use_model_compatibility.ts` likewise.
 
 ### Services for Backends
 
-- [ ] **T043** [US2] Populate `apps/web/src/services/backends.ts` with typed functions: `listBackends`, `getBackend`, `installBackend`, `repairBackend`, `uninstallBackend`, `listBackendVariants`, `createBackendLease`, `getBackendParameters`. All wrap `apiFetch` from `api_client.ts`.
+- [X] **T043** [US2] Populate `apps/web/src/services/backends.ts` with typed functions: `listBackends`, `getBackend`, `installBackend`, `repairBackend`, `uninstallBackend`, `listBackendVariants`, `createBackendLease`, `getBackendParameters`. All wrap `apiFetch` from `api_client.ts`.
 - [ ] **T044** [P] [US2] Populate `apps/web/src/services/host_models.ts` with `listHostModels`, `installHostModel`, `resolveHostModels`, `listHostModelDependents`, `createModelLease`, `releaseModelLease`.
 - [ ] **T045** [P] [US2] Populate `apps/web/src/services/huggingface.ts` with `hfSearch`, `hfRepoDetail`.
 
 ### Wire the loader
 
-- [ ] **T046** [US2] Export `loader` from `views/backends/backends.view.tsx`: calls `listBackends()` from `services/backends.ts`. Wraps `ContractError` → `throw new Response`. Component consumes via `useLoaderData() as Awaited<ReturnType<typeof loader>>`.
-- [ ] **T047** [US2] Update `apps/web/src/routes.ts` to import loader+Component from `views/backends/index.ts`.
+- [X] **T046** [US2] Export `loader` from `views/backends/backends.view.tsx`: calls `listBackends()` from `services/backends.ts`. Wraps `ContractError` → `throw new Response`. Component consumes via `useLoaderData() as Awaited<ReturnType<typeof loader>>`.
+- [X] **T047** [US2] Update `apps/web/src/routes.ts` to import loader+Component from `views/backends/index.ts`.
 
 ### Install-modal shared entry point
 
-- [ ] **T048** [US2] Ensure the install modal keeps behaving exactly as after the Session-Start fix (WebSocket subscribes to `/api/v1/backends/events?family=...`, matches on top-level `backend`, Spectral Graphite styling). No behavior change in this task.
+- [X] **T048** [US2] Ensure the install modal keeps behaving exactly as after the Session-Start fix (WebSocket subscribes to `/api/v1/backends/events?family=...`, matches on top-level `backend`, Spectral Graphite styling). No behavior change in this task.
 
 ### Constitution compliance verification
 
-- [ ] **T049** [US2] `grep -r "install_modal.tsx" apps/web/src` → exactly one match (under `views/backends/components/install_modal/`).
-- [ ] **T050** [US2] `grep -rE "useEffect.*fetch\(|useEffect.*\.then\(" apps/web/src/views/backends` → 0 matches.
-- [ ] **T051** [US2] Manually inspect `views/backends/backends.ui.tsx` — no imports from `src/services/*`, no `useLoaderData`, no `useNavigate`. Run `pnpm scan:constitution` → 0 new violations in backends folder.
+- [X] **T049** [US2] `grep -r "install_modal.tsx" apps/web/src` → exactly one match (under `views/backends/components/install_modal/`).
+- [X] **T050** [US2] `grep -rE "useEffect.*fetch\(|useEffect.*\.then\(" apps/web/src/views/backends` → 0 matches.
+- [X] **T051** [US2] Manually inspect `views/backends/backends.ui.tsx` — no imports from `src/services/*`, no `useLoaderData`, no `useNavigate`. Run `pnpm scan:constitution` → 0 new violations in backends folder.
 
 ### Regression check
 
-- [ ] **T052** [US2] Run `pnpm test:regression`. Any `/backends` screenshot delta > 0.5 % is a bug; either fix or update baseline per [contracts/visual-baseline.contract.md](./contracts/visual-baseline.contract.md) § Update Procedure with side-by-side screenshots in PR.
+- [X] **T052** [US2] Run `pnpm test:regression`. Any `/backends` screenshot delta > 0.5 % is a bug; either fix or update baseline per [contracts/visual-baseline.contract.md](./contracts/visual-baseline.contract.md) § Update Procedure with side-by-side screenshots in PR.
 
 **Checkpoint**: Backends pilot is constitution-compliant. Pattern proven. Reviewers can point US3 PRs at this one as the canonical example.
 

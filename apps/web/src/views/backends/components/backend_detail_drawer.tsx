@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { mutate } from "swr";
 import { LogConsole, type LogLine } from "./log_console";
-import type { BackendSummary, ValidationReport } from "./types";
+import type { BackendSummary, ValidationReport } from "../types";
+import {
+  fetchBackendLogs,
+  uninstallBackend,
+  validateBackend,
+} from "../../../services/backends";
 import * as s from "./backend_detail_drawer.css";
 
 interface Props {
@@ -45,18 +50,16 @@ export function BackendDetailDrawer({
   useEffect(() => {
     let alive = true;
     const ac = new AbortController();
-    fetch(`/api/v1/llm/backends/${encodeURIComponent(backend.id)}/logs`, {
-      signal: ac.signal,
-    })
-      .then((res) => (res.ok ? res.json() : Promise.reject(res.statusText)))
-      .then((body) => {
+    const load = async () => {
+      try {
+        const lines = await fetchBackendLogs(backend.id, ac.signal);
         if (!alive) return;
-        const envelope = body as { data?: { lines?: unknown } };
-        const raw = envelope?.data?.lines;
-        if (!Array.isArray(raw)) return;
-        setLogs(raw as LogLine[]);
-      })
-      .catch(() => {});
+        setLogs(lines as unknown as LogLine[]);
+      } catch {
+        return;
+      }
+    };
+    void load();
     return () => {
       alive = false;
       ac.abort();
@@ -66,22 +69,19 @@ export function BackendDetailDrawer({
   const handleValidate = async () => {
     setValidate({ kind: "running" });
     try {
-      const res = await fetch(
-        `/api/v1/llm/backends/${encodeURIComponent(backend.id)}/validate`,
-        { method: "POST" },
-      );
-      const body = (await res.json()) as {
+      const result = await validateBackend(backend.id);
+      const body = result.body as {
         data?: ValidationReport;
         error?: { message: string };
-      };
-      if (!res.ok) {
+      } | null;
+      if (!result.ok) {
         setValidate({
           kind: "error",
-          message: body.error?.message ?? `HTTP ${res.status}`,
+          message: body?.error?.message ?? `HTTP ${result.status}`,
         });
         return;
       }
-      const report = body.data as ValidationReport;
+      const report = body?.data as ValidationReport;
       setValidate(report.overall_ok ? { kind: "ok", report } : { kind: "fail", report });
       void mutate("host-backends");
       onValidated?.();
@@ -105,16 +105,7 @@ export function BackendDetailDrawer({
     }
     setUninstall("running");
     try {
-      const res = await fetch(
-        `/api/v1/backends/${encodeURIComponent(installId)}`,
-        { method: "DELETE" },
-      );
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as
-          | { error?: { message: string } }
-          | null;
-        throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
-      }
+      await uninstallBackend(installId);
       toast.success(`${backend.display_name} uninstalled.`);
       void mutate("host-backends");
       onClose();
