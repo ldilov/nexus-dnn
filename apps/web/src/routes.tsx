@@ -1,29 +1,27 @@
 import { createHashRouter, redirect, type LoaderFunctionArgs } from "react-router";
 import RootLayout, { loader as rootLoader, RootError } from "./root_layout";
-import HomeRoute from "./views/home_route";
-import RecipesRoute from "./views/recipes_route";
-import WorkflowsRoute from "./views/workflows_route";
-import BackendsRoute from "./views/backends_route";
-import ModelsRoute from "./views/models_route";
+import HomeRoute from "./views/home/home.route";
+import RecipesRoute from "./views/recipes/recipes.route";
+import WorkflowsRoute from "./views/workflows/workflows.route";
+import BackendsRoute from "./views/backends/backends.route";
+import ModelsRoute from "./views/models/models.route";
 import {
   ModulesIndexRoute,
   ModuleInstanceRoute,
   ModuleBlueprintRoute,
   ModuleDraftRoute,
   LegacyDraftRedirectRoute,
-} from "./views/modules_route";
+} from "./views/modules/modules.routes";
 import {
   DeploymentsIndexRoute,
   DeploymentDetailRoute,
-} from "./views/deployments_route";
+} from "./views/deployments/deployments.routes";
 import {
   ExtensionsGalleryRoute,
   ExtensionLayoutRoute,
-} from "./views/extensions_route";
-import {
-  RunsPlaceholderRoute,
-  ArtifactsPlaceholderRoute,
-} from "./views/placeholder_routes";
+} from "./views/extensions/extensions.routes";
+import { RunsPlaceholderRoute } from "./views/runs/runs.route";
+import { ArtifactsPlaceholderRoute } from "./views/artifacts/artifacts.route";
 
 export const router = createHashRouter([
   {
