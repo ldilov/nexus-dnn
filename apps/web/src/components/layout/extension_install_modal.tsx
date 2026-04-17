@@ -67,7 +67,7 @@ export function InstallModal({
             className={styles.modalCloseButton}
             onClick={onClose}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: "inherit" }}>
+            <span className={`material-symbols-outlined ${styles.modalCloseIcon}`}>
               close
             </span>
           </button>
@@ -93,7 +93,7 @@ export function InstallModal({
         </div>
 
         <div className={styles.modalFooter}>
-          <div style={{ flex: 1 }}>
+          <div className={styles.modalFooterSlot}>
             <ProgressTracker
               label={elapsed ? `Elapsed: ${elapsed}` : undefined}
               percent={progress.percent}

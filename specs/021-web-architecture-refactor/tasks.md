@@ -128,9 +128,9 @@ description: "Task list for spec 021 — Web App Architecture Refactor"
 
 ### Dedup InstallModal (per R-8)
 
-- [ ] **T039** [US2] Move `apps/web/src/backends/install_modal.tsx` + `install_modal.css.ts` into `views/backends/components/install_modal/install_modal.tsx` + `install_modal.css.ts`.
-- [ ] **T040** [US2] Delete `apps/web/src/components/layout/install_modal.tsx`.
-- [ ] **T041** [US2] Delete the reference in `apps/web/src/layout/component_registry.tsx` that points at the deleted layout-path install modal. Update any call sites to import the canonical path.
+- [X] **T039** [US2] Move `apps/web/src/backends/install_modal.tsx` + `install_modal.css.ts` into `views/backends/components/install_modal/install_modal.tsx` + `install_modal.css.ts`.
+- [X] **T040** [US2] Delete `apps/web/src/components/layout/install_modal.tsx`.
+- [X] **T041** [US2] Delete the reference in `apps/web/src/layout/component_registry.tsx` that points at the deleted layout-path install modal. Update any call sites to import the canonical path.
 - [ ] **T042** [US2] Move `apps/web/src/backends/hooks/use_install_stream.ts` into `views/backends/hooks/use_install_stream.ts`. Move `apps/web/src/backends/hooks/use_model_compatibility.ts` likewise.
 
 ### Services for Backends
