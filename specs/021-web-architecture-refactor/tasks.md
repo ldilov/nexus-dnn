@@ -215,7 +215,7 @@ Each screen task below MUST (a) create the folder per data-model.md § 2, (b) sp
 
 - [X] **T067** [US3] Run `find apps/web/src/views -maxdepth 1 -name "*.tsx"` → empty result.
 - [X] **T068** [US3] Run `grep -rE "useEffect.*fetch\(|useEffect.*\.then\(" apps/web/src/views` → empty result.
-- [ ] **T069** [US3] Run `pnpm scan:constitution` — every rule SR-001..SR-009 should report 0 violations excluding any remaining baseline entries. Shrink baseline to empty if possible.
+- [X] **T069** [US3] Run `pnpm scan:constitution` — every rule SR-001..SR-009 should report 0 violations excluding any remaining baseline entries. Shrink baseline to empty if possible.
 - [ ] **T070** [US3] Run `pnpm test:regression` across the whole suite. All routes match baseline within 0.5 %.
 - [ ] **T070a** [US3] **SWR retention audit (FR-019)**. Run `grep -rn "useSWR(" apps/web/src/` excluding `apps/web/src/hooks/use_polling_metrics.ts` and `apps/web/src/hooks/use_event_stream.ts`. For each remaining match, either (a) confirm the call is genuinely live-polling (metrics-style periodic re-fetch) and keep it, OR (b) migrate the call to the owning screen's route loader in the same PR. Record the final SWR call-site roster in `apps/web/docs/swr-inventory.md` (one table row per retained call site: file path, polling cadence, rationale). No inline code comments — the markdown file is the documentation surface, per constitution Principle IV.
 

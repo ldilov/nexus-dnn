@@ -15,7 +15,11 @@ import {
 } from "../../api/client";
 import { useModule, useWorkflow } from "../../hooks/use_api";
 import { GraphView } from "../workflows/components/canvas/graph_view";
-import * as s from "./blueprint_view.css";
+import * as s from "./blueprint.css";
+
+function Shell({ children }: { children: ReactElement | ReactElement[] | null | false | (ReactElement | null | false)[] }) {
+  return <div className={s.root}>{children}</div>;
+}
 
 type Mode = "recipe" | "workflow";
 
@@ -117,11 +121,11 @@ export function BlueprintView({
 
   if (isLoading) {
     return (
-      <div className={s.root}>
+      <Shell>
         <div className={s.canvas}>
           <div className={s.loadingBox}>Loading blueprint…</div>
         </div>
-      </div>
+      </Shell>
     );
   }
 
@@ -133,7 +137,7 @@ export function BlueprintView({
           ? "Failed to load blueprint"
           : "Blueprint not found";
     return (
-      <div className={s.root}>
+      <Shell>
         <div className={s.canvas}>
           <button type="button" className={s.backLink} onClick={handleBack}>
             ← Back to module
@@ -142,14 +146,14 @@ export function BlueprintView({
             {message}
           </div>
         </div>
-      </div>
+      </Shell>
     );
   }
   const multi = detail.summary.blueprints.length > 1;
   const hasDeployments = detail.deployments.length > 0;
 
   return (
-    <div className={s.root}>
+    <Shell>
       <div className={s.ambientGlow} aria-hidden="true" />
 
       <div className={s.canvas}>
@@ -509,7 +513,7 @@ export function BlueprintView({
           )}
         </section>
       </div>
-    </div>
+    </Shell>
   );
 }
 
