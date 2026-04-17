@@ -88,6 +88,8 @@ pub enum RuntimeAdapterError {
     Storage(String),
     #[error("unimplemented: {0}")]
     Unimplemented(String),
+    #[error("version catalog unavailable: {0}")]
+    CatalogUnavailable(String),
 }
 
 #[derive(Debug, Error)]

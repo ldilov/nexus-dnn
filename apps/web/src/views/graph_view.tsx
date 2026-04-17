@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -29,6 +29,8 @@ import { useWorkflowEditor } from "../hooks/use_workflow_editor";
 import { useEventStream } from "../hooks/use_event_stream";
 import { useLivePortValues } from "../hooks/use_live_port_values";
 import { useCanvasState } from "../hooks/use_canvas_state";
+import { computePromotions, useDraftNodes } from "../hooks/use_draft_nodes";
+import { toast } from "sonner";
 import {
   OperatorNode,
   operatorNodeHeight,
@@ -336,6 +338,7 @@ function GraphViewInner({
   const editor = useWorkflowEditor(workflow, specs);
   const canvas = useCanvasState(workflow?.id ?? null);
   const operatorList = useMemo(() => Array.from(specs.values()), [specs]);
+  const draftNodes = useDraftNodes(workflow?.id ?? null);
 
   const workflowNodesById = useMemo(() => {
     const map = new Map<string, WorkflowNode>();
@@ -377,6 +380,7 @@ function GraphViewInner({
     const decorated = built.nodes.map((n) => {
       if (n.type !== "operator") return n;
       const data = n.data as unknown as OperatorNodeData;
+      const nodeIsDraft = draftNodes.isDraft(n.id);
       const liveStatus = live.nodeStatus[n.id]?.status;
       const nextStatus =
         liveStatus === "cache_hit"
@@ -395,15 +399,21 @@ function GraphViewInner({
           livePortValues[srcPort] = snapshot.lastValue;
         }
       }
+      const rawErrors = editorErrorsByNode.get(n.id);
+      const filteredErrors = nodeIsDraft
+        ? rawErrors?.filter((msg) => !/required input/i.test(msg))
+        : rawErrors;
       return {
         ...n,
+        className: nodeIsDraft ? styles.nodeDraft : undefined,
         data: {
           ...data,
           status: nextStatus as OperatorNodeData["status"],
           editable,
           onLiteralChange: handleLiteralChange,
-          errors: editorErrorsByNode.get(n.id),
+          errors: filteredErrors,
           livePortValues,
+          isDraft: nodeIsDraft,
         } as unknown as Record<string, unknown>,
       };
     });
@@ -526,10 +536,11 @@ function GraphViewInner({
         inputs: {},
         config: null,
       });
+      draftNodes.markDraft(nodeId);
       if (centerPos) canvas.setNodePosition(nodeId, centerPos);
       setPaletteOpen(false);
     },
-    [editable, editor, canvas, makeUniqueNodeId],
+    [editable, editor, canvas, makeUniqueNodeId, draftNodes],
   );
 
   const handleAddNote = useCallback(
@@ -539,8 +550,25 @@ function GraphViewInner({
     [canvas],
   );
 
+  useEffect(() => {
+    if (!sourceWorkflow) return;
+    const toPromote = computePromotions(sourceWorkflow, specs, draftNodes.draftIds());
+    if (toPromote.length === 0) return;
+    for (const id of toPromote) draftNodes.promote(id);
+  }, [sourceWorkflow, specs, draftNodes]);
+
   const handleSave = useCallback(async () => {
     if (!workflow) return;
+    const stillDraft = Array.from(draftNodes.draftIds());
+    if (stillDraft.length > 0) {
+      toast.error(
+        `${stillDraft.length} node${stillDraft.length === 1 ? "" : "s"} still draft`,
+        {
+          description: `Wire their required inputs or right-click → Mark as live: ${stillDraft.slice(0, 4).join(", ")}${stillDraft.length > 4 ? "…" : ""}`,
+        },
+      );
+      return;
+    }
     const payload = editor.toPayload();
     if (!payload) return;
     setSaving(true);
@@ -550,11 +578,11 @@ function GraphViewInner({
       editor.load(fresh);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error("[graph] save failed", msg);
+      toast.error("Workflow save failed", { description: msg });
     } finally {
       setSaving(false);
     }
-  }, [workflow, editor, onWorkflowSaved]);
+  }, [workflow, editor, onWorkflowSaved, draftNodes]);
 
   const handleRevert = useCallback(() => {
     editor.reset();
@@ -578,6 +606,7 @@ function GraphViewInner({
     [editable, flow],
   );
 
+  const draftCount = draftNodes.draftIds().size;
   const contextItems: ContextMenuItem[] = contextMenu
     ? [
         {
@@ -589,6 +618,19 @@ function GraphViewInner({
           onClick: () => setPaletteOpen(true),
           separatorBefore: true,
         },
+        ...(draftCount > 0
+          ? [
+              {
+                label: `Mark all ${draftCount} draft node${draftCount === 1 ? "" : "s"} live`,
+                onClick: () => {
+                  for (const id of Array.from(draftNodes.draftIds())) {
+                    draftNodes.promote(id);
+                  }
+                },
+                separatorBefore: true,
+              } as ContextMenuItem,
+            ]
+          : []),
       ]
     : [];
 

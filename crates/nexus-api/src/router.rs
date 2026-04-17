@@ -149,8 +149,15 @@ pub fn build(state: AppState) -> Router {
         .route("/system/info", get(system::system_info))
         .route("/tools", get(tools::list_tools))
         .route("/events", get(ws::events_ws))
-        .route("/host-models", get(backends::list_host_models))
+        .route(
+            "/host-models",
+            get(backends::list_host_models).post(backends::install_host_model),
+        )
         .route("/host-models/resolve", post(backends::resolve_host_models))
+        .route(
+            "/host-models/{installId}/dependents",
+            get(backends::list_host_model_dependents),
+        )
         .route(
             "/host-models/{installId}/leases",
             post(backends::create_model_lease),
@@ -168,6 +175,11 @@ pub fn build(state: AppState) -> Router {
             "/backends/{family}/parameters",
             get(backends::parameter_catalog),
         )
+        // Model-first runtime spawn: host picks the right runtime for the
+        // model's family, validates hyperparameters against the catalog,
+        // and passes `--model <path>` on the command line. Single call for
+        // extensions — no need to wire up /lease themselves.
+        .route("/backends/load-model", post(backends::load_model))
         .route("/backends/{installId}/lease", post(backends::create_lease))
         .route(
             "/backends/{installId}",
@@ -179,6 +191,10 @@ pub fn build(state: AppState) -> Router {
         )
         .route("/llm/backends", get(backends::list))
         .route("/llm/backends/{backendId}", get(backends::detail))
+        .route(
+            "/llm/backends/{backendId}/variants",
+            get(backends::variants),
+        )
         .route("/llm/backends/{backendId}/install", post(backends::install))
         .route(
             "/llm/backends/{backendId}/validate",
