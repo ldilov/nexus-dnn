@@ -1,5 +1,5 @@
 import { type CSSProperties } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation } from "react-router";
 import * as styles from "./sidebar.css";
 
 type UtilityItemId = "settings" | "help";

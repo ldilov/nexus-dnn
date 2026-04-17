@@ -1,0 +1,70 @@
+{
+  "version": "1.0.0",
+  "capturedOnSha": "main",
+  "entries": [
+    {
+      "path": "/",
+      "title": "Nexus DNN",
+      "mustContain": ["Recipes", "Workflows", "Extensions"]
+    },
+    {
+      "path": "/recipes",
+      "title": "Recipes",
+      "mustContain": ["Recipes", "Category", "Search"]
+    },
+    {
+      "path": "/workflows",
+      "title": "Workflows",
+      "mustContain": ["Workflows", "Create", "Catalog"]
+    },
+    {
+      "path": "/modules",
+      "title": "Modules",
+      "mustContain": ["Modules", "Blueprint", "Instance"]
+    },
+    {
+      "path": "/modules/user:blank",
+      "title": "Instance",
+      "mustContain": ["Instance", "Module", "blank"],
+      "requiresFixture": true,
+      "fixtureSeed": "module-user-blank.json"
+    },
+    {
+      "path": "/modules/user:blank/blueprint",
+      "title": "Blueprint",
+      "mustContain": ["Blueprint", "Operators", "Run"],
+      "requiresFixture": true,
+      "fixtureSeed": "module-user-blank.json"
+    },
+    {
+      "path": "/deployments",
+      "title": "Deployments",
+      "mustContain": ["Deployments", "Status", "Runtime"]
+    },
+    {
+      "path": "/backends",
+      "title": "Backends",
+      "mustContain": ["Backends", "llama.cpp", "Install"]
+    },
+    {
+      "path": "/models",
+      "title": "Models",
+      "mustContain": ["Host-managed model store", "Search models", "Hugging Face"]
+    },
+    {
+      "path": "/extensions",
+      "title": "Extensions",
+      "mustContain": ["Extensions", "Enable", "Local"]
+    },
+    {
+      "path": "/runs",
+      "title": "Runs",
+      "mustContain": ["Run history", "Nexus", "DNN"]
+    },
+    {
+      "path": "/artifacts",
+      "title": "Artifacts",
+      "mustContain": ["Artifact browser", "Nexus", "DNN"]
+    }
+  ]
+}

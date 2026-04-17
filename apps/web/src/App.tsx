@@ -7,7 +7,7 @@ import {
   useMatch,
   useNavigate,
   useParams,
-} from "react-router-dom";
+} from "react-router";
 import { Shell } from "./layout/shell";
 import { TopBar, type ViewId } from "./layout/top_bar";
 import { Sidebar } from "./layout/sidebar";
