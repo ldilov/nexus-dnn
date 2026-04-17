@@ -71,6 +71,7 @@ async fn build_state() -> AppState {
             1024,
         )),
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
+        host_install_paths: None,
     }
 }
 
@@ -95,7 +96,7 @@ async fn call_install(state: AppState, body: serde_json::Value) -> (StatusCode, 
 }
 
 #[tokio::test]
-async fn returns_501_with_pending_code_for_valid_request() {
+async fn returns_503_when_huggingface_or_paths_missing() {
     let state = build_state().await;
     let (status, json) = call_install(
         state,
@@ -106,14 +107,28 @@ async fn returns_501_with_pending_code_for_valid_request() {
         }),
     )
     .await;
-    assert_eq!(status, StatusCode::NOT_IMPLEMENTED, "body = {json}");
-    assert_eq!(json["error"]["code"].as_str(), Some("host_install_pending"),);
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "body = {json}");
+    let code = json["error"]["code"].as_str().unwrap_or("");
     assert!(
-        json["error"]["message"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("TheBloke/Llama-3-8B-GGUF"),
+        code == "huggingface_unwired" || code == "host_install_unwired",
+        "expected service-unavailable code, got {code}",
     );
+}
+
+#[tokio::test]
+async fn rejects_path_traversal() {
+    let state = build_state().await;
+    let (status, json) = call_install(
+        state,
+        serde_json::json!({
+            "source": "huggingface",
+            "repo_id": "x/y",
+            "files": ["../../etc/passwd"]
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "body = {json}");
+    assert_eq!(json["error"]["code"].as_str(), Some("invalid_request"));
 }
 
 #[tokio::test]

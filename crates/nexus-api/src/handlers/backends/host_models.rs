@@ -3,11 +3,17 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{Json, response::Response};
 use chrono::Utc;
+use nexus_huggingface::{
+    DownloadFileSpec as HfDownloadFileSpec, DownloadSpec as HfDownloadSpec, HfError,
+};
 use nexus_models_store::{
-    ModelDependency, ModelStoreError, Quantization, ResolutionContext, ZeroSizeProbe,
-    install_exists, list_active_dependents, list_all_visible, release_lease, resolve_dry_run,
+    ModelDependency, ModelStoreError, Quantization, ResolutionContext, StagedFile,
+    StagedInstallRequest, ZeroSizeProbe, install_exists, install_from_staging,
+    list_active_dependents, list_all_visible, release_lease, resolve_dry_run,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use tokio_util::sync::CancellationToken;
 
 use crate::AppState;
 use crate::envelope::ApiResponse;
@@ -186,56 +192,322 @@ pub struct InstallHostModelRequest {
     pub display_name: Option<String>,
 }
 
-/// `POST /api/v1/host-models` — host-scope model install.
-///
-/// Validates the request envelope and returns `501 host_install_pending`
-/// until the full pipeline wiring lands. The 501 envelope is stable so
-/// frontend clients render it as a structured "coming soon" message.
+#[derive(Debug, Serialize)]
+pub struct HostInstallResponse {
+    pub install_id: String,
+    pub task_id: String,
+    pub already_installed: bool,
+    pub routed_backend: Option<String>,
+    pub sha256_root: String,
+}
+
 pub async fn install_host_model(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Json(req): Json<InstallHostModelRequest>,
 ) -> Response {
     if req.repo_id.trim().is_empty() {
-        return ApiResponse::<()>::err(
-            StatusCode::BAD_REQUEST,
-            "invalid_request",
-            "validation",
-            "repo_id required".into(),
-        )
-        .into_response();
+        return bad_request("repo_id required");
     }
     if req.source != "huggingface" {
-        return ApiResponse::<()>::err(
-            StatusCode::BAD_REQUEST,
-            "invalid_request",
-            "validation",
-            format!(
-                "unsupported source '{}'; only 'huggingface' is accepted",
-                req.source
-            ),
-        )
-        .into_response();
+        return bad_request(&format!(
+            "unsupported source '{}'; only 'huggingface' is accepted",
+            req.source
+        ));
     }
     if req.files.is_empty() {
-        return ApiResponse::<()>::err(
-            StatusCode::BAD_REQUEST,
-            "invalid_request",
-            "validation",
-            "files must contain at least one entry".into(),
-        )
-        .into_response();
+        return bad_request("files must contain at least one entry");
+    }
+    for f in &req.files {
+        if let Err(msg) = validate_relative_path(f) {
+            return bad_request(&msg);
+        }
     }
 
+    let Some(hf) = state.huggingface.as_ref().cloned() else {
+        return service_unavailable(
+            "huggingface_unwired",
+            "huggingface capability not configured",
+        );
+    };
+    let Some(paths) = state.host_install_paths.clone() else {
+        return service_unavailable(
+            "host_install_unwired",
+            "host-models install paths not configured",
+        );
+    };
+
+    match run_host_install(&state, hf, &paths, req).await {
+        Ok(outcome) => {
+            let body = HostInstallResponse {
+                install_id: outcome.install_id,
+                task_id: outcome.task_id,
+                already_installed: outcome.already_installed,
+                routed_backend: outcome.routed_backend,
+                sha256_root: outcome.sha256_root,
+            };
+            if body.already_installed {
+                ApiResponse::ok(body).into_response()
+            } else {
+                ApiResponse::created(body).into_response()
+            }
+        }
+        Err(err) => host_install_error(err).into_response(),
+    }
+}
+
+fn bad_request(msg: &str) -> Response {
     ApiResponse::<()>::err(
-        StatusCode::NOT_IMPLEMENTED,
-        "host_install_pending",
-        "not_implemented",
-        format!(
-            "host-scope install for '{}' is pending — see spec 020 tasks T210–T214 (POST /host-models pipeline wiring)",
-            req.repo_id
-        ),
+        StatusCode::BAD_REQUEST,
+        "invalid_request",
+        "validation",
+        msg.to_string(),
     )
     .into_response()
+}
+
+fn service_unavailable(code: &'static str, msg: &str) -> Response {
+    ApiResponse::<()>::err(
+        StatusCode::SERVICE_UNAVAILABLE,
+        code,
+        "dependency",
+        msg.to_string(),
+    )
+    .into_response()
+}
+
+fn validate_relative_path(untrusted: &str) -> Result<(), String> {
+    if untrusted.is_empty() {
+        return Err("file path is empty".into());
+    }
+    if untrusted.contains('\0') {
+        return Err("file path contains null byte".into());
+    }
+    let p = std::path::Path::new(untrusted);
+    if p.is_absolute() {
+        return Err(format!("file path escapes install root: {untrusted}"));
+    }
+    for c in p.components() {
+        use std::path::Component;
+        if matches!(c, Component::ParentDir | Component::RootDir | Component::Prefix(_)) {
+            return Err(format!("file path escapes install root: {untrusted}"));
+        }
+    }
+    Ok(())
+}
+
+struct HostInstallOutcome {
+    install_id: String,
+    task_id: String,
+    already_installed: bool,
+    routed_backend: Option<String>,
+    sha256_root: String,
+}
+
+enum HostInstallFailure {
+    Hf(HfError),
+    Model(ModelStoreError),
+    Io(std::io::Error),
+    PrivateModel,
+}
+
+impl From<HfError> for HostInstallFailure {
+    fn from(e: HfError) -> Self {
+        Self::Hf(e)
+    }
+}
+impl From<ModelStoreError> for HostInstallFailure {
+    fn from(e: ModelStoreError) -> Self {
+        if let ModelStoreError::ManifestInvalid(ref msg) = e {
+            if msg.starts_with("model_private") {
+                return Self::PrivateModel;
+            }
+        }
+        Self::Model(e)
+    }
+}
+impl From<std::io::Error> for HostInstallFailure {
+    fn from(e: std::io::Error) -> Self {
+        Self::Io(e)
+    }
+}
+
+fn host_install_error(err: HostInstallFailure) -> ApiResponse<()> {
+    match err {
+        HostInstallFailure::PrivateModel => ApiResponse::<()>::err(
+            StatusCode::FORBIDDEN,
+            "model_private",
+            "state",
+            "this model is private to another extension".into(),
+        ),
+        HostInstallFailure::Hf(HfError::RateLimited {
+            retry_after_seconds,
+        }) => ApiResponse::<()>::err(
+            StatusCode::TOO_MANY_REQUESTS,
+            "hf_rate_limited",
+            "upstream",
+            format!("Hugging Face rate-limited; retry after {retry_after_seconds}s"),
+        ),
+        HostInstallFailure::Hf(HfError::RepoNotFound(repo)) => ApiResponse::<()>::err(
+            StatusCode::NOT_FOUND,
+            "hf_repo_not_found",
+            "not_found",
+            format!("Hugging Face repo not found: {repo}"),
+        ),
+        HostInstallFailure::Hf(HfError::GatedNeedsToken) => ApiResponse::<()>::err(
+            StatusCode::UNAUTHORIZED,
+            "hf_gated",
+            "auth",
+            "Hugging Face repo requires an HF_TOKEN".into(),
+        ),
+        HostInstallFailure::Hf(HfError::Unreachable { .. }) => ApiResponse::<()>::err(
+            StatusCode::BAD_GATEWAY,
+            "hf_unreachable",
+            "upstream",
+            "Hugging Face unreachable".into(),
+        ),
+        HostInstallFailure::Hf(other) => {
+            ApiResponse::<()>::internal(format!("hf error: {other}"))
+        }
+        HostInstallFailure::Model(e) => {
+            let (status, code) = http_status_for_model_error(&e);
+            ApiResponse::<()>::err(status, code, "model_store", e.to_string())
+        }
+        HostInstallFailure::Io(e) => ApiResponse::<()>::internal(e.to_string()),
+    }
+}
+
+async fn run_host_install(
+    state: &AppState,
+    hf: std::sync::Arc<dyn nexus_huggingface::HuggingFaceCapability>,
+    paths: &crate::HostInstallPaths,
+    req: InstallHostModelRequest,
+) -> Result<HostInstallOutcome, HostInstallFailure> {
+    let meta = hf
+        .detail(&req.repo_id, req.revision.as_deref())
+        .await
+        .map_err(|e| match e {
+            HfError::RepoNotFound(_) => HfError::RepoNotFound(req.repo_id.clone()),
+            other => other,
+        })?;
+
+    let staging = tempfile::tempdir().map_err(HostInstallFailure::Io)?;
+    let task_id = format!("hmi_task_{}", super::ulid_lite());
+    let spec = HfDownloadSpec {
+        task_id: task_id.clone(),
+        repo_id: req.repo_id.clone(),
+        revision: meta.revision.clone(),
+        files: req
+            .files
+            .iter()
+            .map(|p| HfDownloadFileSpec {
+                path: p.clone(),
+                expected_sha256: None,
+                size_bytes: meta
+                    .siblings
+                    .iter()
+                    .find(|s| &s.path == p)
+                    .and_then(|s| s.size_bytes),
+            })
+            .collect(),
+        staging_dir: staging.path().to_path_buf(),
+        cancel_token: CancellationToken::new(),
+    };
+    let artifact = hf.download(spec).await?;
+
+    let sha256_root = compute_root_sha(&artifact.files);
+    let family = derive_family(&req.files, &meta);
+    let quantization = derive_quantization(&req.files);
+    let variant = req.display_name.clone().unwrap_or_else(|| "default".into());
+
+    let staged_files: Vec<StagedFile> = artifact
+        .files
+        .iter()
+        .map(|f| StagedFile {
+            path: f.path.clone(),
+            sha256: f.sha256.clone(),
+            size_bytes: f.size_bytes,
+            staging_path: f.local_path.clone(),
+        })
+        .collect();
+
+    let staged_req = StagedInstallRequest {
+        family: family.clone(),
+        version: meta.revision.clone(),
+        quantization,
+        variant,
+        sha256_root: sha256_root.clone(),
+        source_revision: meta.revision.clone(),
+        source_kind: "huggingface".into(),
+        source_url: Some(format!("https://huggingface.co/{}", req.repo_id)),
+        license_spdx: meta.license.clone(),
+        private: false,
+        owner_extension_id: None,
+        files: staged_files,
+    };
+
+    let outcome = install_from_staging(
+        state.db.pool(),
+        &paths.installs_root,
+        &paths.blobs_root,
+        staged_req,
+    )
+    .await?;
+
+    Ok(HostInstallOutcome {
+        install_id: outcome.install.install_id,
+        task_id,
+        already_installed: outcome.already_installed,
+        routed_backend: route_backend_for(&family),
+        sha256_root,
+    })
+}
+
+fn compute_root_sha(files: &[nexus_huggingface::DownloadedFile]) -> String {
+    let mut sorted: Vec<_> = files.iter().collect();
+    sorted.sort_by(|a, b| a.path.cmp(&b.path));
+    let mut hasher = Sha256::new();
+    for f in &sorted {
+        hasher.update(f.path.as_bytes());
+        hasher.update(b"\0");
+        hasher.update(f.sha256.as_bytes());
+        hasher.update(b"\n");
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+fn derive_family(paths: &[String], meta: &nexus_huggingface::RepoMetadata) -> String {
+    let has_gguf = paths.iter().any(|p| p.to_lowercase().ends_with(".gguf"));
+    if has_gguf {
+        return "llama".into();
+    }
+    if let Some(pipeline) = meta.pipeline_tag.as_deref() {
+        return pipeline.to_string();
+    }
+    meta.library_name.clone().unwrap_or_else(|| "unknown".into())
+}
+
+fn derive_quantization(paths: &[String]) -> Option<String> {
+    for p in paths {
+        if let Some(q) = p
+            .rsplit('/')
+            .next()
+            .and_then(|name| name.strip_suffix(".gguf"))
+            .and_then(|stem| stem.rsplit('.').next())
+        {
+            let upper = q.to_uppercase();
+            if upper.starts_with("Q") || upper == "F16" || upper == "F32" || upper == "BF16" {
+                return Some(upper);
+            }
+        }
+    }
+    None
+}
+
+fn route_backend_for(family: &str) -> Option<String> {
+    match family {
+        "llama" | "llama.cpp" => Some("llama.cpp".into()),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Serialize)]

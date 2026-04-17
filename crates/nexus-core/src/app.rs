@@ -217,6 +217,18 @@ impl NexusApp {
                 nexus_huggingface::HfToken::from_env(),
             ));
 
+        let host_install_paths = {
+            let data_dir = app_for_health.config.resolved_data_dir();
+            Some(nexus_api::HostInstallPaths {
+                installs_root: data_dir.join("host-models").join("installs"),
+                blobs_root: data_dir.join("host-models").join("blobs"),
+            })
+        };
+        if let Some(paths) = host_install_paths.as_ref() {
+            tokio::fs::create_dir_all(&paths.installs_root).await.ok();
+            tokio::fs::create_dir_all(&paths.blobs_root).await.ok();
+        }
+
         let state = nexus_api::AppState {
             health_status_fn: Arc::new(move || {
                 serde_json::to_value(app_ref.health_status()).unwrap_or_default()
@@ -236,6 +248,7 @@ impl NexusApp {
             backend_event_bus,
             draft_materialize_map:
                 nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
+            host_install_paths,
         };
 
         let router = nexus_api::create_router(state);

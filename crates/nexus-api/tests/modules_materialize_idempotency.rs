@@ -63,6 +63,7 @@ async fn build_state() -> AppState {
             1024,
         )),
         draft_materialize_map: DraftMaterializeMap::new(),
+        host_install_paths: None,
     }
 }
 
