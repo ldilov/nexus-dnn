@@ -104,3 +104,41 @@ pipeline's `FR-IE05` variants (`zip.slip_attempt`, `zip.size_limit`,
 Every font is served from `/fonts/*.woff2`; no Google Fonts. No third-party
 CDN is referenced in the built bundle — `pnpm build` runs `scan:cdn`
 against `dist/` to keep it that way.
+
+## Regression harness (spec 021)
+
+The frontend refactor tracked in [spec 021](../../specs/021-web-architecture-refactor/spec.md)
+adds three safety nets, all runnable from `apps/web/`:
+
+- `pnpm scan:constitution` — AST scan over `src/` enforcing constitution
+  v1.2.0 Principle XII and Appendix F. Nine rules (SR-001…SR-009); see
+  `specs/021-web-architecture-refactor/contracts/scan-constitution.contract.md`
+  for the full catalog. Pre-existing violations are pinned in
+  `scripts/scan-constitution-baseline.json` and MUST only shrink, never grow.
+- `pnpm test:smoke` — Playwright smoke harness that visits every route
+  enumerated in `tests/smoke/routes.json` and asserts user-visible copy
+  appears within 3 seconds. Fail on missing string = missing UI regression.
+- `pnpm test:visual` — Playwright visual regression at viewports 375 /
+  768 / 1440 with `reducedMotion: 'reduce'` forced. Baselines live under
+  `tests/visual/baselines/`. Capture with
+  `pnpm test:visual --update-snapshots`; diff threshold is 0.5 % per-viewport.
+
+Run all three at once via `pnpm scan:all && pnpm test:regression`. CI runs
+the same gates on every PR touching `apps/web/`.
+
+### Updating a baseline (intentional visual change)
+
+1. Make the visual change on a feature branch.
+2. Run `pnpm test:visual --update-snapshots` locally.
+3. Commit the updated PNGs in a dedicated commit with message
+   `test(visual): update baseline for <route> — <reason>`.
+4. Include a before/after image pair in the PR description.
+5. Reviewer sign-off on the baseline commit is required independent of the
+   functional review.
+
+### Adding a new route
+
+Add one entry to `tests/smoke/routes.json` with `path`, `title`, and at
+least three `mustContain` strings, then capture a baseline for the new
+route at all three viewports. The smoke harness asserts fixture-count ==
+route-count so no route slips through unharnessed.

@@ -1,0 +1,4 @@
+{
+  "note": "Seed fixture for routes that require a valid moduleId. The module slug `user:blank` is the built-in starter module shipped with the app; the route harness navigates to it directly without server mocking.",
+  "moduleId": "user:blank"
+}
