@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from "react-router";
-import { DeploymentsView } from "./deployments_view";
-import { DeploymentDetailPlaceholder } from "./deployment_detail_placeholder";
+import { DeploymentsView } from "./deployments/deployments.view";
+import { DeploymentDetailPlaceholder } from "./deployments/detail/detail.view";
 
 export function DeploymentsIndexRoute() {
   return <DeploymentsView />;

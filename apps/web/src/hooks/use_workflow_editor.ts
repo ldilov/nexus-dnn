@@ -8,7 +8,7 @@ import type { WorkflowEdgeDto } from "../api/generated/WorkflowEdgeDto";
 import type { WorkflowNodeDto } from "../api/generated/WorkflowNodeDto";
 import type { WorkflowStageDefDto } from "../api/generated/WorkflowStageDefDto";
 import type { OperatorSpecMap } from "./use_operator_specs";
-import { arePortsCompatible } from "../views/port_types";
+import { arePortsCompatible } from "../nodes/port_types";
 
 export type WorkflowDraft = {
   id: string;

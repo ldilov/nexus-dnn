@@ -1,10 +1,10 @@
-import { HomeDashboard } from "../catalog/home_dashboard";
+import { Component as Home } from "./home";
 import { useRootOutletContext } from "../root_layout";
 
 export default function HomeRoute() {
   const ctx = useRootOutletContext();
   return (
-    <HomeDashboard
+    <Home
       onOpenRecipe={ctx.onOpenRecipe}
       onGoToRecipes={ctx.onGoToRecipes}
       onGoToWorkflows={ctx.onGoToWorkflows}

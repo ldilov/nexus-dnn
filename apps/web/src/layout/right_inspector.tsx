@@ -6,7 +6,7 @@ import {
 } from "../api/client";
 import type { PortSpecDto } from "../api/generated/PortSpecDto";
 import { Badge } from "../components/badge";
-import { colorForPortType } from "../views/port_types";
+import { colorForPortType } from "../nodes/port_types";
 import * as styles from "./right_inspector.css";
 
 type InspectorProps = {

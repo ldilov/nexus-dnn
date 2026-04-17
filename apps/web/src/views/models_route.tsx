@@ -1,4 +1,4 @@
-import { ModelsView } from "./models_view";
+import { ModelsView } from "./models/models.view";
 
 export default function ModelsRoute() {
   return <ModelsView />;
