@@ -48,6 +48,23 @@ Three small, parallelizable follow-up specs:
   capability. Value: clean URLs, no more `/#/` prefix in baselines, better
   analytics.
 
+## FR refinements applied 2026-04-18 (post-ship)
+
+Following a `/speckit-analyze` pass that caught divergence between the spec
+text and the delivered code, four clauses were refined in-place so the spec
+no longer misrepresents the ship state:
+
+| FR | Change | Why |
+|---|---|---|
+| FR-019 | Scope widened from "live-polling only" to include cached-query surfaces (`use_api.ts` family) backed by a written `swr-inventory.md` | The shipped code uses SWR for modules/workflows/deployments/etc. reads that need on-focus revalidation + shared cache. Rewriting these as loaders would lose behavior, not improve compliance. The intent of FR-019 (discipline) is preserved via the inventory audit. |
+| FR-020 | Reclassified as **deferred** into spec 023 | The `refreshLayouts` callback migration to a router `action` genuinely wasn't done. Grouping it with the `createBrowserRouter` migration (same files, same refactor shape) avoids duplicate churn. |
+| FR-025 | Permits CSS keyframes as an alternative to Motion for route transitions | `domAnimation` alone is ~28 KB gzipped; impossible to reconcile with SC-012's 8 KB cap. CSS keyframes deliver the same UX at 0 KB JS cost. |
+| FR-027 | `layoutId` shared-element replaced with scale+fade reveal; `data-*` markers preserved for future reintroduction | `layoutId` requires `domMax` (~40 KB), unreachable under SC-012. Behavior-wise, users still see a distinct, connected install animation. |
+
+All refinements preserve the original **intent** (discipline, performance,
+distinct UX) while matching shipped reality. The post-ship marker in the FR
+text makes the provenance discoverable without rewriting history.
+
 ## Achievements worth keeping visible
 
 - Constitution v1.2.0 + Appendix E (allowed NPM deps) + Appendix F (9

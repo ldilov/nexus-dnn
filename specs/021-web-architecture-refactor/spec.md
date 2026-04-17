@@ -270,6 +270,18 @@ imports fails the build.
 
 ### Functional Requirements
 
+> **Post-ship refinement note (2026-04-18)**: FR-019, FR-020, FR-025, and
+> FR-027 were refined after spec 021 shipped to align with the delivered
+> implementation. FR-019 widens the permitted SWR scope to include cached
+> query surfaces (with a required `apps/web/docs/swr-inventory.md` audit);
+> FR-020 is explicitly deferred into [spec 023](../023-router-migrations/README.md);
+> FR-025 now permits CSS-keyframe route transitions as an equally-valid
+> alternative to Motion (rationale: SC-012 bundle budget); FR-027 replaces
+> the `layoutId` shared-element with a scale+fade modal reveal for the same
+> reason, with `data-*` markers preserved for a future reintroduction. Each
+> refined clause carries an inline `(refined 2026-04-18)` marker. See
+> [post-mortem.md](./post-mortem.md) for the full rationale.
+
 #### Routing (Principle XII.3)
 
 - **FR-001**: The app MUST declare all routes in a single `src/routes.ts`
@@ -334,11 +346,28 @@ imports fails the build.
   layouts, and sweeps drafts at boot MUST migrate to the root route's `loader`
   function, with `sweepStaleDrafts()` called synchronously before the loader
   resolves.
-- **FR-019**: SWR is permitted only for live-polling surfaces — metrics
-  (`usePollingMetrics`) and event stream (`useEventStream`). All other SWR
-  calls MUST be migrated to route loaders.
-- **FR-020**: Extension-toggle revalidation MUST use a router action on the
-  gallery route; the current `refreshLayouts` callback chain MUST be deleted.
+- **FR-019** *(refined 2026-04-18, post-ship)*: SWR is permitted for two
+  classes of call site:
+  1. **Live-polling surfaces** — metrics (`usePollingMetrics`) and event
+     stream (`useEventStream`).
+  2. **Cached query surfaces** — `useApi`-family hooks under
+     `apps/web/src/hooks/use_api.ts` (modules list/detail, workflow detail,
+     deployments list/detail, layouts, host-models, host-backends) that need
+     on-focus/on-reconnect revalidation, optimistic mutations, and shared
+     cache across multiple components rendering the same resource.
+  The distinction that matters is **direction**: inbound (read with revalidate)
+  uses SWR; outbound (write + refresh) uses a router `action`. A written
+  audit inventory lives at `apps/web/docs/swr-inventory.md`; net-new SWR
+  call sites outside the existing set require an inventory entry in the
+  same PR.
+- **FR-020** *(refined 2026-04-18, post-ship — now DEFERRED)*: Ship-reality
+  status: the `refreshLayouts` callback chain **still exists** in
+  `apps/web/src/root_layout.tsx`. Migrating it to a router `action` on the
+  `/extensions` gallery route is moved out of spec 021 and into the
+  [router-migrations follow-up](../023-router-migrations/README.md) —
+  grouped with the `createBrowserRouter` migration because both require
+  action/loader refactors that touch the same files. Spec 021 closes with
+  this clause **knowingly unsatisfied** and tracked downstream.
 
 #### Styling (Principle XII.5)
 
@@ -355,16 +384,37 @@ imports fails the build.
 
 - **FR-024**: The workspace MUST add `motion` (not `framer-motion`) to
   `apps/web/package.json` dependencies.
-- **FR-025**: Route transitions MUST be implemented via
-  `<AnimatePresence mode="popLayout">` wrapping the router `<Outlet/>`, keyed
-  on `useLocation().pathname`, with motion tokens sourced from
-  `theme/motion.css.ts`.
+- **FR-025** *(refined 2026-04-18, post-ship)*: Route transitions MUST
+  animate the route change with a subtle enter effect (fade + small
+  translate-Y) and MUST collapse to zero duration under
+  `prefers-reduced-motion: reduce`. The implementation MUST satisfy SC-012
+  (≤ 8 KB gzipped main-chunk delta). **Shipped implementation**: pure-CSS
+  `@keyframes` in `apps/web/src/app.css.ts` (`routeEnterKeyframes` applied
+  to `routeTransitionWrapper`, keyed by `useLocation().pathname`) with a
+  `@media (prefers-reduced-motion: reduce)` branch that sets `animation:
+  none`. This satisfies FR-025 at **zero** JS cost; the original Motion
+  (`AnimatePresence` + `m.div`) implementation was evaluated and rejected
+  because `domAnimation`'s minimum footprint (~28 KB gzipped) exceeds the
+  8 KB SC-012 budget even with `LazyMotion`. Motion tokens remain available
+  in `src/theme/motion.ts` for per-surface (non-route) animation.
 - **FR-026**: Every `motion.*` or `m.*` component MUST read
   `useReducedMotion()` and fall back to a zero-duration transition when the
   hook returns `true`.
-- **FR-027**: The backend install modal's open/close animation MUST use
-  Motion's `layoutId` shared-element mechanism to animate between the trigger
-  card's bounds and the modal's centered position.
+- **FR-027** *(refined 2026-04-18, post-ship)*: The backend install modal
+  MUST have a distinct, non-instant open/close animation that feels
+  connected to the install action (not a generic dialog pop). The
+  implementation MUST respect SC-012 (≤ 8 KB gzipped main-chunk delta).
+  **Shipped implementation**: `<m.div>` scale-and-fade reveal
+  (`initial={opacity:0, scale:0.96}` → `animate={opacity:1, scale:1}`)
+  inside `<LazyMotion features={domAnimation}>`, lazy-loaded via
+  `React.lazy` + `<Suspense>` so the Motion sidecar chunk
+  (~28.7 KB gzipped) only ships to users who open the install flow. Motion's
+  `layoutId` shared-element (card-bounds → modal-bounds) was evaluated and
+  rejected because it requires `domMax` features (~40 KB gzipped), which
+  blows the SC-012 budget even lazy-loaded due to downstream effects. The
+  trigger button and modal root retain `data-install-trigger-id` /
+  `data-install-modal-id` attributes so a future spec (when bundle headroom
+  permits) can reintroduce `layoutId` without markup churn.
 - **FR-028**: Below-the-fold motion components MUST use `LazyMotion` + `m`
   instead of the full `motion.*` surface so the initial bundle adds ≤ 6 KB
   gzipped.
