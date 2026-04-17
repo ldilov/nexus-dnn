@@ -80,16 +80,16 @@ description: "Task list for spec 021 — Web App Architecture Refactor"
 
 ### Router + root layout
 
-- [ ] **T019** [US1] Create `apps/web/src/root_layout.tsx` — renders `<Shell topBar sidebar canvas={<Outlet/>} inspector bottomDrawer />`. Consumes `useLoaderData` for the root-loaded data (workflows, layouts, metrics init). Exposes `loader` that: (a) calls `sweepStaleDrafts()`, (b) `Promise.all` of `fetchWorkflows`, `fetchLayouts`. Throws `Response` on failure; renders a root `errorElement`.
-- [ ] **T020** [US1] Create `apps/web/src/routes.ts` exporting `createHashRouter([{ Component: RootLayout, loader: rootLoader, errorElement: <RootError/>, children: [...] }])`. Populate `children` with one entry per existing route (paths unchanged). Legacy redirect routes use `loader: () => redirect(...)` (no Component). Catch-all `*` loader returns `redirect("/")`.
-- [ ] **T021** [US1] For each route, write a stub `index.ts` under its screen folder re-exporting the existing component (even before the screen is split in US2/US3). The router imports from these `index.ts` files, not directly from the view component files, so later migrations don't require router edits.
-- [ ] **T022** [US1] Thin `apps/web/src/main.tsx` — providers (`<SWRConfig>`, `<Toaster>`, theme class) + `<RouterProvider router={router}/>`. Delete the `<HashRouter>` wrapper.
-- [ ] **T023** [US1] Delete `apps/web/src/App.tsx` entirely, OR reduce it to a ≤ 60-line shim that re-exports `RootLayout` from `root_layout.tsx`. No `<Routes>`, no `<Route>`, no `useEffect`, no wrapper components remain.
+- [X] **T019** [US1] Create `apps/web/src/root_layout.tsx` — renders `<Shell topBar sidebar canvas={<Outlet/>} inspector bottomDrawer />`. Consumes `useLoaderData` for the root-loaded data (workflows, layouts, metrics init). Exposes `loader` that: (a) calls `sweepStaleDrafts()`, (b) `Promise.all` of `fetchWorkflows`, `fetchLayouts`. Throws `Response` on failure; renders a root `errorElement`.
+- [X] **T020** [US1] Create `apps/web/src/routes.ts` exporting `createHashRouter([{ Component: RootLayout, loader: rootLoader, errorElement: <RootError/>, children: [...] }])`. Populate `children` with one entry per existing route (paths unchanged). Legacy redirect routes use `loader: () => redirect(...)` (no Component). Catch-all `*` loader returns `redirect("/")`.
+- [X] **T021** [US1] For each route, write a stub `index.ts` under its screen folder re-exporting the existing component (even before the screen is split in US2/US3). The router imports from these `index.ts` files, not directly from the view component files, so later migrations don't require router edits.
+- [X] **T022** [US1] Thin `apps/web/src/main.tsx` — providers (`<SWRConfig>`, `<Toaster>`, theme class) + `<RouterProvider router={router}/>`. Delete the `<HashRouter>` wrapper.
+- [X] **T023** [US1] Delete `apps/web/src/App.tsx` entirely, OR reduce it to a ≤ 60-line shim that re-exports `RootLayout` from `root_layout.tsx`. No `<Routes>`, no `<Route>`, no `useEffect`, no wrapper components remain.
 
 ### Delete the wrapper-component drag
 
-- [ ] **T024** [P] [US1] Delete `InstanceRouteWrapper`, `BlueprintRouteWrapper`, `DraftRouteWrapper`, `DeploymentDetailRouteWrapper`, `ExtensionRouteWrapper`, `LegacyDraftRedirect`, `LegacyWorkflowRedirect`, and `CanvasFrame` helper from the old `App.tsx`. Each screen now calls `useParams()` directly in its `.view.tsx`.
-- [ ] **T025** [P] [US1] For every screen that currently takes its `useParams` in a wrapper, move the `useParams()` call into the screen's top-level component (temporary pre-US3 state). This is a mechanical change — no markup moves.
+- [X] **T024** [P] [US1] Delete `InstanceRouteWrapper`, `BlueprintRouteWrapper`, `DraftRouteWrapper`, `DeploymentDetailRouteWrapper`, `ExtensionRouteWrapper`, `LegacyDraftRedirect`, `LegacyWorkflowRedirect`, and `CanvasFrame` helper from the old `App.tsx`. Each screen now calls `useParams()` directly in its `.view.tsx`.
+- [X] **T025** [P] [US1] For every screen that currently takes its `useParams` in a wrapper, move the `useParams()` call into the screen's top-level component (temporary pre-US3 state). This is a mechanical change — no markup moves.
 
 ### Legacy import migration
 
@@ -97,7 +97,7 @@ description: "Task list for spec 021 — Web App Architecture Refactor"
 
 ### Verification
 
-- [ ] **T027** [US1] Run `pnpm scan:constitution` → new baseline should only include violations that are explicitly deferred to US2/US3 (e.g., `.ui.tsx` split remaining). Compare against `scan-constitution-baseline.json`; ensure new violations count is zero or negative (strictly monotonic shrink).
+- [X] **T027** [US1] Run `pnpm scan:constitution` → new baseline should only include violations that are explicitly deferred to US2/US3 (e.g., `.ui.tsx` split remaining). Compare against `scan-constitution-baseline.json`; ensure new violations count is zero or negative (strictly monotonic shrink).
 - [ ] **T028** [US1] Run `pnpm test:regression`. Expect every route's screenshot to match baseline within 0.5 %. Any diff > 0.5 % is a bug to be fixed before merge (not a baseline update — US1 is structural and visually inert).
 - [ ] **T029** [US1] Verify SC-001 (`wc -l apps/web/src/App.tsx` ≤ 60) and SC-002 (no files matching `*RouteWrapper*`).
 
