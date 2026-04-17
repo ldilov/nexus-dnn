@@ -117,9 +117,13 @@ export function HfSearchPanel({ onInstallRequested }: Props) {
         files,
       });
       if (task.already_installed) {
-        toast.success(`${repoId} already installed — shared across extensions.`);
+        toast.success(`${repoId} already installed`, {
+          description: `Shared across extensions — no new download (install_id ${task.install_id.slice(0, 12)}).`,
+        });
       } else {
-        toast.success(`${repoId} install started: ${task.task_id}`);
+        toast.success(`${repoId} installed`, {
+          description: `${task.routed_backend ?? "host"} · ${task.install_id.slice(0, 12)}`,
+        });
       }
     } catch (err) {
       if (err instanceof ContractError && err.status === 501) {
@@ -229,14 +233,13 @@ export function HfSearchPanel({ onInstallRequested }: Props) {
       )}
 
       <div className={s.followupNote}>
-        <span className={s.followupLabel}>Roadmap</span>
+        <span className={s.followupLabel}>How this works</span>
         <span>
-          Clicking <strong>Install</strong> currently fires a toast. Host-scope
-          install routes through a follow-up slice tracked as tasks T210–T214
-          in{" "}
-          <code>specs/020-backends-and-models-polish/tasks.md</code>. Dedup
-          detection (already-installed repo badge) is live on every result
-          card below.
+          Installs land in the host-managed model store and are shared across
+          every extension that declares a compatible dependency. Dedup is
+          SHA256-rooted — installing a file that's already present returns
+          the existing install without a second download. Async progress
+          streaming for long installs lands in a follow-up slice.
         </span>
       </div>
     </section>

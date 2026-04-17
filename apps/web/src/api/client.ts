@@ -611,10 +611,11 @@ export interface HostModelInstallRequest {
 }
 
 export interface HostModelInstallTask {
-  install_id: string | null;
+  install_id: string;
   task_id: string;
   already_installed: boolean;
   routed_backend: string | null;
+  sha256_root: string;
 }
 
 export function installHostModel(

@@ -35,6 +35,8 @@ futures-util = "0.3"
 rust-embed = { workspace = true }
 mime_guess = { workspace = true }
 ts-rs = { version = "11", features = ["serde-compat", "chrono-impl", "serde-json-impl"] }
+sha2 = "0.10"
+tempfile = "3"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

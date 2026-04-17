@@ -102,6 +102,7 @@ async fn build_fixture() -> Fixture {
         huggingface: None,
         backend_event_bus: backend_bus,
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
+        host_install_paths: None,
     };
 
     Fixture {
