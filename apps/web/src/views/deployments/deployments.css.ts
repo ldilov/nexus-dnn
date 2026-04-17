@@ -111,3 +111,26 @@ export const error = style({
   color: vars.color.error.text,
   fontSize: vars.font.size.bodySm,
 });
+
+export const filterBar = style({
+  display: "flex",
+  gap: "0.75rem",
+  alignItems: "center",
+  flexWrap: "wrap",
+});
+
+export const filterCheckbox = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  cursor: "pointer",
+});
+
+export const cardTitleButton = style({
+  background: "transparent",
+  border: "none",
+  color: "inherit",
+  font: "inherit",
+  cursor: "pointer",
+  padding: 0,
+});

@@ -141,3 +141,7 @@ export const errorBox = style({
   color: vars.color.error.text,
   fontSize: vars.font.size.bodySm,
 });
+
+export const emptyIcon = style({
+  fontSize: "40px",
+});

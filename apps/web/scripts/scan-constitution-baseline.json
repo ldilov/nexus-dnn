@@ -413,89 +413,19 @@
       "line": 22
     },
     {
-      "rule": "SR-007",
-      "file": "views/deployments/deployments.view.tsx",
-      "line": 86
-    },
-    {
-      "rule": "SR-009",
-      "file": "views/deployments/deployments.view.tsx",
-      "line": 96
-    },
-    {
-      "rule": "SR-009",
-      "file": "views/deployments/deployments.view.tsx",
-      "line": 97
-    },
-    {
-      "rule": "SR-007",
-      "file": "views/deployments/deployments.view.tsx",
-      "line": 158
-    },
-    {
-      "rule": "SR-009",
-      "file": "views/deployments/deployments.view.tsx",
-      "line": 163
-    },
-    {
-      "rule": "SR-007",
-      "file": "views/deployments/detail/detail.view.tsx",
-      "line": 97
-    },
-    {
-      "rule": "SR-007",
-      "file": "views/extensions/gallery/gallery.view.tsx",
-      "line": 70
-    },
-    {
-      "rule": "SR-007",
-      "file": "views/extensions/gallery/gallery.view.tsx",
-      "line": 74
-    },
-    {
-      "rule": "SR-004",
-      "file": "views/extensions/layout/layout.view.tsx",
-      "line": 19
-    },
-    {
-      "rule": "SR-007",
-      "file": "views/extensions/layout/layout.view.tsx",
-      "line": 31
-    },
-    {
-      "rule": "SR-007",
-      "file": "views/extensions/layout/layout.view.tsx",
-      "line": 40
-    },
-    {
-      "rule": "SR-007",
-      "file": "views/extensions/layout/layout.view.tsx",
-      "line": 63
-    },
-    {
       "rule": "SR-004",
       "file": "views/home/home.view.tsx",
       "line": 20
     },
     {
+      "rule": "SR-004",
+      "file": "views/models/components/model_card.tsx",
+      "line": 26
+    },
+    {
       "rule": "SR-006",
       "file": "views/models/models.css.ts",
       "line": 1
-    },
-    {
-      "rule": "SR-007",
-      "file": "views/models/models.view.tsx",
-      "line": 37
-    },
-    {
-      "rule": "SR-009",
-      "file": "views/models/models.view.tsx",
-      "line": 68
-    },
-    {
-      "rule": "SR-004",
-      "file": "views/models/models.view.tsx",
-      "line": 108
     },
     {
       "rule": "SR-009",
