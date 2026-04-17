@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:visual": "playwright test --project=visual",
+    "test:visual": "playwright test --project=visual-375 --project=visual-768 --project=visual-1440",
     "test:smoke": "playwright test --project=smoke",
     "test:regression": "pnpm test:smoke && pnpm test:visual",
     "scan:theme": "node scripts/scan-theme-leaks.mjs",

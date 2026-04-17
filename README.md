@@ -96,6 +96,13 @@ nexus-dnn/
   — Backends install flow (variant picker + InstallModal wiring),
   `/models` HF search panel, DAG draft-node UX. US1 (Install flow) landed;
   US2/US3/US4 in-flight.
+- [spec 021 — Web App Architecture Refactor](specs/021-web-architecture-refactor/)
+  — Layered frontend architecture (`views/<name>/*.view.tsx / .ui.tsx / .css.ts`),
+  constitution v1.2.0 Principle XII + Appendices E/F, 9-rule AST scanner,
+  Playwright smoke + visual regression harness across 3 viewports, motion
+  polish via CSS keyframes + lazy-loaded Motion chunk. See
+  [quickstart](specs/021-web-architecture-refactor/quickstart.md) for the
+  contributor walkthrough.
 
 ## Documentation
 
