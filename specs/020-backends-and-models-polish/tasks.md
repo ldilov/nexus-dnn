@@ -33,7 +33,7 @@ description: "Task list for spec 020 — Backends + Models page polish (Q1 / Q3 
 
 **Purpose**: Branch hygiene + generated-code sync so every downstream task compiles.
 
-- [ ] T001 Cut feature branch `020-backends-and-models-polish` from `main` (`git checkout -b 020-backends-and-models-polish`) and confirm the uncommitted session-19 work either landed on `main` or migrates cleanly onto the new branch (`git status` clean before first implementation commit)
+- [X] T001 Cut feature branch `020-backends-and-models-polish` from `main` (`git checkout -b 020-backends-and-models-polish`) and confirm the uncommitted session-19 work either landed on `main` or migrates cleanly onto the new branch (`git status` clean before first implementation commit)
 - [X] T002 [P] Verify workspace builds green on the fresh branch: `cargo check --workspace` and `cd apps/web && pnpm install && pnpm tsc --noEmit`
 - [X] T003 [P] Re-run `.specify/scripts/powershell/update-agent-context.ps1 -AgentType claude` from repo root and confirm `CLAUDE.md` picks up the real stack line (Rust 1.84 + TS 5.x + React 19 + @xyflow/react) without placeholder text
 - [X] T004 [P] Skim `apps/web/src/models/ModelsPanel.tsx` and `apps/web/src/backends/install_modal.tsx` to confirm the pieces we reuse (`HfResultCard`, `InstallStreamEvent`, `AsyncIterable` contract) match what `research.md` §2 assumes; log any drift in `research.md` before writing code
@@ -117,7 +117,7 @@ description: "Task list for spec 020 — Backends + Models page polish (Q1 / Q3 
 ### Implementation — Backend (Q3 host-scope install)
 
 - [X] T210 [US3] Audit `nexus-models-store::install` in `crates/nexus-models-store/src/install/` to confirm (a) the existing install pipeline accepts `owner_extension_id: Option<String>` and (b) `dedup::find_existing_by_key` returns the full row + `private_model` flag. Capture findings in a 5-line note at the top of `host_models.rs`; fix any Option<String> gap here if present.
-- [ ] T211 [US3] Implement `install_host_model` handler in `crates/nexus-api/src/handlers/backends/host_models.rs`. Flow:
+- [X] T211 [US3] Implement `install_host_model` handler in `crates/nexus-api/src/handlers/backends/host_models.rs`. Flow:
   1. Parse `InstallHostModelRequest`.
   2. Resolve HF repo → compute expected SHA via existing resolver.
   3. Call `dedup::find_existing_by_key(sha)`; if hit and `!private_model`, return `HTTP 200 OK` with `ModelInstallTaskDto { already_installed: true, install_id: Some(...), routed_backend, task_id: "itask_noop_..." }`.
@@ -125,7 +125,7 @@ description: "Task list for spec 020 — Backends + Models page polish (Q1 / Q3 
   5. Otherwise kick off install via `nexus-models-store::install::pipeline::start(InstallRequest { owner_extension_id: None, ... })`, return `HTTP 201 CREATED` with the real task id.
   6. Map HF-429 to `HTTP 429 code="hf_rate_limited"` via a new `RuntimeAdapterError::HfRateLimited(u32)` variant (adds to T011 envelope map).
 - [X] T212 [P] [US3] Implement `list_host_model_dependents` handler in `crates/nexus-api/src/handlers/backends/host_models.rs`. Query: JOIN `host_model_leases` on `install_id` (kind="lease") UNION extensions whose manifest declares a compatible model dep (kind="declared_dep"), dedup by `extension_id` preferring `lease`, left-JOIN `extensions` for `display_name`. Return `DependentsResponse`. 404 on unknown install_id.
-- [ ] T213 [US3] Extend `ModelInstallTaskDto` (wherever it lives — likely `crates/nexus-models-store/src/dto.rs` or generated TS bindings) with `already_installed: bool` (default `false`). Update `InstalledSection` / `ModelsPanel.tsx` consumers to read the new field (non-breaking — default `false`).
+- [X] T213 [US3] Extend `ModelInstallTaskDto` (wherever it lives — likely `crates/nexus-models-store/src/dto.rs` or generated TS bindings) with `already_installed: bool` (default `false`). Update `InstalledSection` / `ModelsPanel.tsx` consumers to read the new field (non-breaking — default `false`).
 - [X] T214 [US3] Wire the new routes in `crates/nexus-api/src/router.rs` swapping stubs for real handlers — T200 + T201 go green.
 
 ### Implementation — Frontend (Q3 host-scope HF panel)
@@ -133,7 +133,7 @@ description: "Task list for spec 020 — Backends + Models page polish (Q1 / Q3 
 - [X] T220 [P] [US3] Extract `HfResultCard` from `apps/web/src/models/ModelsPanel.tsx:84-155` into `apps/web/src/models/hf_result_card.tsx` — same props, zero `extensionId` reference. Import from `ModelsPanel.tsx` for backward-compat.
 - [X] T221 [P] [US3] Create `apps/web/src/models/hf_search_panel.css.ts` — search input, filter chips (format / license), result grid (2-col at ≥900px, 1-col below), empty/error states, progress modal reuse. Reuse existing `models_view.css.ts` tokens.
 - [X] T222 [US3] Create `apps/web/src/models/hf_search_panel.tsx` — host-scope panel. Props: none (fully self-contained). State: `query`, `format` (default `"gguf"` via family filter), `license`, debounced 300ms. Calls `hfSearch({ q, format, license, limit: 20, page: 1 })`. Renders `HfResultCard` (from T220) with an `onInstall(repoId, files)` that POSTs to `installHostModel(...)`. On dedup (`response.already_installed`) skip modal + toast "already installed — shared with N extension(s)". On new install, open the existing `InstallModal` wired to a new `useHostModelInstallStream(taskId)` hook (T223). On complete: `mutate("host-models")`. ≤300 LOC.
-- [ ] T223 [US3] Create `apps/web/src/models/hooks/use_host_model_install_stream.ts` that mirrors `use_install_stream` but filters on `topic.startsWith("hf.model.install.") && payload.task_id === taskId`. Stream feeds the `InstallModal` already built in `apps/web/src/backends/install_modal.tsx`.
+- [X] T223 [US3] Create `apps/web/src/models/hooks/use_host_model_install_stream.ts` that mirrors `use_install_stream` but filters on `topic.startsWith("hf.model.install.") && payload.task_id === taskId`. Stream feeds the `InstallModal` already built in `apps/web/src/backends/install_modal.tsx`.
 - [X] T224 [US3] Edit `apps/web/src/views/models_view.tsx` — mount `<HfSearchPanel />` below the installed-models grid under an `<h2>Hugging Face</h2>` heading. Keep existing installed-grid behavior untouched.
 - [X] T225 [P] [US3] Add "Shared by N extension(s)" chip to `ModelCard` inside `models_view.tsx`. Use an `IntersectionObserver`-driven lazy `fetchHostModelDependents(install_id)` call; render skeleton while loading. Cache per-row in component state keyed by `install_id` to avoid refetch on scroll churn.
 - [X] T226 [US3] Q3-edge1 (HF 429): `HfSearchPanel` surfaces the envelope `retry after Xs` via `sonner.error`; input stays editable; previous results stay rendered.
