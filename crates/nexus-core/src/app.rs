@@ -760,6 +760,18 @@ async fn build_backend_adapter_registry(
         pool,
         publisher,
     );
+    let adapter = match nexus_backend_runtimes::manifest::release_scanner::ReleaseScanner::new(
+        nexus_backend_runtimes::manifest::release_scanner::ScannerConfig::llama_cpp_default(),
+    ) {
+        Ok(scanner) => adapter.with_scanner(Arc::new(scanner)),
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                "failed to initialise GitHub release scanner; install picker will fall back to on-disk versions.yaml"
+            );
+            adapter
+        }
+    };
     let mut registry = nexus_backend_runtimes::adapter::AdapterRegistry::new();
     registry.register(Arc::new(adapter));
     registry.register(Arc::new(

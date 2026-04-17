@@ -1,7 +1,7 @@
-import { RecipeCatalog } from "../catalog/recipe_catalog";
+import { Component as Recipes } from "./recipes";
 import { useRootOutletContext } from "../root_layout";
 
 export default function RecipesRoute() {
   const ctx = useRootOutletContext();
-  return <RecipeCatalog onOpenRecipe={ctx.onOpenRecipe} />;
+  return <Recipes onOpenRecipe={ctx.onOpenRecipe} />;
 }

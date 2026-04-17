@@ -4,26 +4,6 @@
   "violations": [
     {
       "rule": "SR-004",
-      "file": "catalog/home_dashboard.tsx",
-      "line": 30
-    },
-    {
-      "rule": "SR-009",
-      "file": "catalog/home_dashboard.tsx",
-      "line": 45
-    },
-    {
-      "rule": "SR-009",
-      "file": "catalog/home_dashboard.tsx",
-      "line": 101
-    },
-    {
-      "rule": "SR-009",
-      "file": "catalog/home_dashboard.tsx",
-      "line": 111
-    },
-    {
-      "rule": "SR-004",
       "file": "catalog/recipe_catalog.tsx",
       "line": 52
     },
@@ -51,51 +31,6 @@
       "rule": "SR-004",
       "file": "catalog/tool_catalog.tsx",
       "line": 20
-    },
-    {
-      "rule": "SR-004",
-      "file": "catalog/workflow_catalog.tsx",
-      "line": 47
-    },
-    {
-      "rule": "SR-009",
-      "file": "catalog/workflow_catalog.tsx",
-      "line": 122
-    },
-    {
-      "rule": "SR-009",
-      "file": "catalog/workflow_catalog.tsx",
-      "line": 127
-    },
-    {
-      "rule": "SR-009",
-      "file": "catalog/workflow_catalog.tsx",
-      "line": 131
-    },
-    {
-      "rule": "SR-009",
-      "file": "catalog/workflow_catalog.tsx",
-      "line": 142
-    },
-    {
-      "rule": "SR-009",
-      "file": "catalog/workflow_catalog.tsx",
-      "line": 171
-    },
-    {
-      "rule": "SR-009",
-      "file": "catalog/workflow_catalog.tsx",
-      "line": 214
-    },
-    {
-      "rule": "SR-009",
-      "file": "catalog/workflow_catalog.tsx",
-      "line": 232
-    },
-    {
-      "rule": "SR-009",
-      "file": "catalog/workflow_catalog.tsx",
-      "line": 250
     },
     {
       "rule": "SR-004",
@@ -358,6 +293,11 @@
       "line": 94
     },
     {
+      "rule": "SR-006",
+      "file": "models/models.css.ts",
+      "line": 1
+    },
+    {
       "rule": "SR-009",
       "file": "models/ModelsPanel.tsx",
       "line": 44
@@ -449,198 +389,8 @@
     },
     {
       "rule": "SR-009",
-      "file": "modules/blueprint_view.tsx",
-      "line": 201
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/blueprint_view.tsx",
-      "line": 216
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/blueprint_view.tsx",
-      "line": 232
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/blueprint_view.tsx",
-      "line": 285
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/blueprint_view.tsx",
-      "line": 308
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/blueprint_view.tsx",
-      "line": 321
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/blueprint_view.tsx",
-      "line": 338
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/blueprint_view.tsx",
-      "line": 343
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/blueprint_view.tsx",
-      "line": 348
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/blueprint_view.tsx",
-      "line": 387
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/blueprint_view.tsx",
-      "line": 401
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/blueprint_view.tsx",
-      "line": 441
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/blueprint_view.tsx",
-      "line": 455
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/blueprint_view.tsx",
-      "line": 483
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/blueprint_view.tsx",
-      "line": 493
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/blueprint_view.tsx",
-      "line": 570
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/instance_view/draft_view.tsx",
-      "line": 145
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/instance_view/draft_view.tsx",
-      "line": 160
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/instance_view/draft_view.tsx",
-      "line": 167
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/instance_view/draft_view.tsx",
-      "line": 202
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/instance_view/draft_view.tsx",
-      "line": 221
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/instance_view/instance_view.tsx",
-      "line": 192
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/instance_view/instance_view.tsx",
-      "line": 211
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/instance_view/instance_view.tsx",
-      "line": 226
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/instance_view/instance_view.tsx",
-      "line": 241
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/instance_view/instance_view.tsx",
-      "line": 256
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/instance_view/instance_view.tsx",
-      "line": 306
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/instance_view/instance_view.tsx",
-      "line": 459
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/instance_view/instance_view.tsx",
-      "line": 480
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/instance_view/instance_view.tsx",
-      "line": 496
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/instance_view/instance_view.tsx",
-      "line": 558
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/module_card.tsx",
-      "line": 83
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/module_card.tsx",
-      "line": 90
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/module_card.tsx",
-      "line": 112
-    },
-    {
-      "rule": "SR-009",
-      "file": "modules/module_card.tsx",
-      "line": 126
-    },
-    {
-      "rule": "SR-006",
-      "file": "nodes/boundary_nodes.tsx",
-      "line": 1
-    },
-    {
-      "rule": "SR-006",
-      "file": "nodes/operator_node.tsx",
-      "line": 1
-    },
-    {
-      "rule": "SR-009",
       "file": "nodes/operator_node.tsx",
       "line": 252
-    },
-    {
-      "rule": "SR-006",
-      "file": "nodes/port_types.ts",
-      "line": 1
     },
     {
       "rule": "SR-009",
@@ -658,74 +408,334 @@
       "line": 33
     },
     {
-      "rule": "SR-009",
-      "file": "views/alignment_guides.tsx",
-      "line": 113
-    },
-    {
-      "rule": "SR-009",
-      "file": "views/alignment_guides.tsx",
-      "line": 129
-    },
-    {
       "rule": "SR-004",
-      "file": "views/artifact_browser.tsx",
+      "file": "views/artifacts/artifact_browser.tsx",
       "line": 22
     },
     {
-      "rule": "SR-006",
-      "file": "views/boundary_nodes.tsx",
-      "line": 1
+      "rule": "SR-007",
+      "file": "views/deployments/deployments.view.tsx",
+      "line": 86
     },
     {
       "rule": "SR-009",
-      "file": "views/deployments_view.tsx",
+      "file": "views/deployments/deployments.view.tsx",
       "line": 96
     },
     {
       "rule": "SR-009",
-      "file": "views/deployments_view.tsx",
+      "file": "views/deployments/deployments.view.tsx",
       "line": 97
     },
     {
+      "rule": "SR-007",
+      "file": "views/deployments/deployments.view.tsx",
+      "line": 158
+    },
+    {
       "rule": "SR-009",
-      "file": "views/deployments_view.tsx",
+      "file": "views/deployments/deployments.view.tsx",
       "line": 163
     },
     {
-      "rule": "SR-009",
-      "file": "views/drop_projection.tsx",
-      "line": 180
+      "rule": "SR-007",
+      "file": "views/deployments/detail/detail.view.tsx",
+      "line": 97
+    },
+    {
+      "rule": "SR-007",
+      "file": "views/extensions/gallery/gallery.view.tsx",
+      "line": 70
+    },
+    {
+      "rule": "SR-007",
+      "file": "views/extensions/gallery/gallery.view.tsx",
+      "line": 74
     },
     {
       "rule": "SR-004",
-      "file": "views/extension_layout_view.tsx",
+      "file": "views/extensions/layout/layout.view.tsx",
       "line": 19
     },
     {
-      "rule": "SR-009",
-      "file": "views/graph_view.tsx",
-      "line": 769
+      "rule": "SR-007",
+      "file": "views/extensions/layout/layout.view.tsx",
+      "line": 31
+    },
+    {
+      "rule": "SR-007",
+      "file": "views/extensions/layout/layout.view.tsx",
+      "line": 40
+    },
+    {
+      "rule": "SR-007",
+      "file": "views/extensions/layout/layout.view.tsx",
+      "line": 63
+    },
+    {
+      "rule": "SR-004",
+      "file": "views/home/home.view.tsx",
+      "line": 20
+    },
+    {
+      "rule": "SR-006",
+      "file": "views/models/models.css.ts",
+      "line": 1
+    },
+    {
+      "rule": "SR-007",
+      "file": "views/models/models.view.tsx",
+      "line": 37
     },
     {
       "rule": "SR-009",
-      "file": "views/models_view.tsx",
+      "file": "views/models/models.view.tsx",
       "line": 68
     },
     {
       "rule": "SR-004",
-      "file": "views/models_view.tsx",
+      "file": "views/models/models.view.tsx",
       "line": 108
     },
     {
-      "rule": "SR-006",
-      "file": "views/operator_node.tsx",
-      "line": 1
+      "rule": "SR-009",
+      "file": "views/modules/blueprint_view.tsx",
+      "line": 201
     },
     {
-      "rule": "SR-006",
-      "file": "views/port_types.ts",
-      "line": 1
+      "rule": "SR-009",
+      "file": "views/modules/blueprint_view.tsx",
+      "line": 216
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/blueprint_view.tsx",
+      "line": 232
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/blueprint_view.tsx",
+      "line": 285
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/blueprint_view.tsx",
+      "line": 308
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/blueprint_view.tsx",
+      "line": 321
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/blueprint_view.tsx",
+      "line": 338
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/blueprint_view.tsx",
+      "line": 343
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/blueprint_view.tsx",
+      "line": 348
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/blueprint_view.tsx",
+      "line": 387
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/blueprint_view.tsx",
+      "line": 401
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/blueprint_view.tsx",
+      "line": 441
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/blueprint_view.tsx",
+      "line": 455
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/blueprint_view.tsx",
+      "line": 483
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/blueprint_view.tsx",
+      "line": 493
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/blueprint_view.tsx",
+      "line": 570
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/instance_view/draft_view.tsx",
+      "line": 145
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/instance_view/draft_view.tsx",
+      "line": 160
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/instance_view/draft_view.tsx",
+      "line": 167
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/instance_view/draft_view.tsx",
+      "line": 202
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/instance_view/draft_view.tsx",
+      "line": 221
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/instance_view/instance_view.tsx",
+      "line": 192
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/instance_view/instance_view.tsx",
+      "line": 211
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/instance_view/instance_view.tsx",
+      "line": 226
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/instance_view/instance_view.tsx",
+      "line": 241
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/instance_view/instance_view.tsx",
+      "line": 256
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/instance_view/instance_view.tsx",
+      "line": 306
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/instance_view/instance_view.tsx",
+      "line": 459
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/instance_view/instance_view.tsx",
+      "line": 480
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/instance_view/instance_view.tsx",
+      "line": 496
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/instance_view/instance_view.tsx",
+      "line": 558
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/module_card.tsx",
+      "line": 83
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/module_card.tsx",
+      "line": 90
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/module_card.tsx",
+      "line": 112
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/modules/module_card.tsx",
+      "line": 126
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/workflows/components/canvas/alignment_guides.tsx",
+      "line": 113
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/workflows/components/canvas/alignment_guides.tsx",
+      "line": 129
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/workflows/components/canvas/drop_projection.tsx",
+      "line": 180
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/workflows/components/canvas/graph_view.tsx",
+      "line": 769
+    },
+    {
+      "rule": "SR-004",
+      "file": "views/workflows/components/workflow_catalog.tsx",
+      "line": 47
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/workflows/components/workflow_catalog.tsx",
+      "line": 122
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/workflows/components/workflow_catalog.tsx",
+      "line": 127
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/workflows/components/workflow_catalog.tsx",
+      "line": 131
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/workflows/components/workflow_catalog.tsx",
+      "line": 142
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/workflows/components/workflow_catalog.tsx",
+      "line": 171
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/workflows/components/workflow_catalog.tsx",
+      "line": 214
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/workflows/components/workflow_catalog.tsx",
+      "line": 232
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/workflows/components/workflow_catalog.tsx",
+      "line": 250
     }
   ]
 }

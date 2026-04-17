@@ -1,6 +1,6 @@
 import { useParams } from "react-router";
-import { ExtensionsGallery } from "./extensions_gallery";
-import { ExtensionLayoutView } from "./extension_layout_view";
+import { ExtensionsGallery } from "./extensions/gallery/gallery.view";
+import { ExtensionLayoutView } from "./extensions/layout/layout.view";
 import { useRootOutletContext } from "../root_layout";
 
 export function ExtensionsGalleryRoute() {

@@ -172,40 +172,40 @@ Each screen task below MUST (a) create the folder per data-model.md § 2, (b) sp
 
 ### Home dashboard
 
-- [ ] **T053** [P] [US3] Migrate `apps/web/src/catalog/home_dashboard.{tsx,css.ts}` → `apps/web/src/views/home/home.{view,ui,css}.ts[x]`. Loader fetches recipe+workflow+extension counts via `services/`.
+- [X] **T053** [P] [US3] Migrate `apps/web/src/catalog/home_dashboard.{tsx,css.ts}` → `apps/web/src/views/home/home.{view,ui,css}.ts[x]`. Loader fetches recipe+workflow+extension counts via `services/`.
 
 ### Recipes
 
-- [ ] **T054** [P] [US3] Migrate `apps/web/src/catalog/recipe_catalog.{tsx,css.ts}` + `catalog_shell.*`, `catalog_controls.*`, `catalog_grouping*` into `apps/web/src/views/recipes/` (shell + controls + grouping become `views/recipes/components/`).
+- [X] **T054** [P] [US3] Migrate `apps/web/src/catalog/recipe_catalog.{tsx,css.ts}` + `catalog_shell.*`, `catalog_controls.*`, `catalog_grouping*` into `apps/web/src/views/recipes/` (shell + controls + grouping become `views/recipes/components/`).
 
 ### Workflows (catalog + editor + canvas)
 
-- [ ] **T055** [US3] Create `apps/web/src/views/workflows/` folder. Migrate `apps/web/src/catalog/workflow_catalog.{tsx,css.ts}` → `views/workflows/components/workflow_catalog/`.
-- [ ] **T056** [US3] Move canvas internals into `views/workflows/components/canvas/`: `apps/web/src/views/{operator_node,operator_palette,boundary_nodes,drop_projection,alignment_guides,canvas_context_menu,graph_toolbar,port_types}.{tsx,css.ts,ts}` (plus the matching CSS files).
-- [ ] **T057** [US3] Create `views/workflows/workflows.view.tsx` wrapping both catalog + editor modes (the `WorkflowsSurface` from old App.tsx migrated here). Loader fetches workflows list.
-- [ ] **T058** [US3] Move `apps/web/src/views/graph_view.{tsx,css.ts}`, `stage_view.{tsx,css.ts}`, `run_trace_view.{tsx,css.ts}` into `views/workflows/components/` (they are editor sub-views).
+- [X] **T055** [US3] Create `apps/web/src/views/workflows/` folder. Migrate `apps/web/src/catalog/workflow_catalog.{tsx,css.ts}` → `views/workflows/components/workflow_catalog/`.
+- [X] **T056** [US3] Move canvas internals into `views/workflows/components/canvas/`: `apps/web/src/views/{operator_node,operator_palette,boundary_nodes,drop_projection,alignment_guides,canvas_context_menu,graph_toolbar,port_types}.{tsx,css.ts,ts}` (plus the matching CSS files).
+- [X] **T057** [US3] Create `views/workflows/workflows.view.tsx` wrapping both catalog + editor modes (the `WorkflowsSurface` from old App.tsx migrated here). Loader fetches workflows list.
+- [X] **T058** [US3] Move `apps/web/src/views/graph_view.{tsx,css.ts}`, `stage_view.{tsx,css.ts}`, `run_trace_view.{tsx,css.ts}` into `views/workflows/components/` (they are editor sub-views).
 
 ### Modules
 
-- [ ] **T059** [P] [US3] Migrate `apps/web/src/modules/` tree into `apps/web/src/views/modules/`. Preserve sub-routes: `modules/blueprint/`, `modules/draft/`, `modules/instance/`. Each gets its own `.view.tsx` + `.ui.tsx` if it's a standalone route; otherwise it's a component under `views/modules/components/`. Loader shape per sub-route.
+- [X] **T059** [P] [US3] Migrate `apps/web/src/modules/` tree into `apps/web/src/views/modules/`. Preserve sub-routes: `modules/blueprint/`, `modules/draft/`, `modules/instance/`. Each gets its own `.view.tsx` + `.ui.tsx` if it's a standalone route; otherwise it's a component under `views/modules/components/`. Loader shape per sub-route.
 
 ### Deployments
 
-- [ ] **T060** [P] [US3] Migrate `apps/web/src/views/deployments_view.{tsx,css.ts}` → `views/deployments/deployments.{view,ui,css}.ts[x]`.
-- [ ] **T061** [P] [US3] Migrate `apps/web/src/views/deployment_detail_placeholder.{tsx,css.ts}` → `views/deployments/detail/detail.{view,ui,css}.ts[x]`. Add loader that reads `:deploymentId` from `useParams` and fetches via `services/deployments.ts`.
+- [X] **T060** [P] [US3] Migrate `apps/web/src/views/deployments_view.{tsx,css.ts}` → `views/deployments/deployments.{view,ui,css}.ts[x]`.
+- [X] **T061** [P] [US3] Migrate `apps/web/src/views/deployment_detail_placeholder.{tsx,css.ts}` → `views/deployments/detail/detail.{view,ui,css}.ts[x]`. Add loader that reads `:deploymentId` from `useParams` and fetches via `services/deployments.ts`.
 
 ### Models
 
-- [ ] **T062** [P] [US3] Migrate `apps/web/src/models/` tree + `apps/web/src/views/models_view.{tsx,css.ts}` into `apps/web/src/views/models/`. `HfSearchPanel`, `InstalledList`, `ModelCard`, `HyperparameterForm`, `InstallProgress`, `CatalogSearch`, `backend_compat_badge` all become `views/models/components/`.
+- [X] **T062** [P] [US3] Migrate `apps/web/src/models/` tree + `apps/web/src/views/models_view.{tsx,css.ts}` into `apps/web/src/views/models/`. `HfSearchPanel`, `InstalledList`, `ModelCard`, `HyperparameterForm`, `InstallProgress`, `CatalogSearch`, `backend_compat_badge` all become `views/models/components/`.
 
 ### Extensions
 
-- [ ] **T063** [P] [US3] Migrate `apps/web/src/views/extensions_gallery.{tsx,css.ts}` → `views/extensions/gallery/gallery.{view,ui,css}.ts[x]`.
-- [ ] **T064** [P] [US3] Migrate `apps/web/src/views/extension_layout_view.{tsx,css.ts}` → `views/extensions/layout/layout.{view,ui,css}.ts[x]`. Preserve the `useExtensionLayout` wiring and the event subscription teardown.
+- [X] **T063** [P] [US3] Migrate `apps/web/src/views/extensions_gallery.{tsx,css.ts}` → `views/extensions/gallery/gallery.{view,ui,css}.ts[x]`.
+- [X] **T064** [P] [US3] Migrate `apps/web/src/views/extension_layout_view.{tsx,css.ts}` → `views/extensions/layout/layout.{view,ui,css}.ts[x]`. Preserve the `useExtensionLayout` wiring and the event subscription teardown.
 
 ### Placeholders (runs, artifacts)
 
-- [ ] **T065** [P] [US3] Create `views/runs/` and `views/artifacts/` minimal screen folders replacing the inline `<p>` placeholders in the old App.tsx. Each has `.view.tsx` (no loader), `.ui.tsx` (simple copy), `.css.ts` (token-based), `index.ts`.
+- [X] **T065** [P] [US3] Create `views/runs/` and `views/artifacts/` minimal screen folders replacing the inline `<p>` placeholders in the old App.tsx. Each has `.view.tsx` (no loader), `.ui.tsx` (simple copy), `.css.ts` (token-based), `index.ts`.
 
 ### Extension-toggle action
 
@@ -213,8 +213,8 @@ Each screen task below MUST (a) create the folder per data-model.md § 2, (b) sp
 
 ### Sweep verification
 
-- [ ] **T067** [US3] Run `find apps/web/src/views -maxdepth 1 -name "*.tsx"` → empty result.
-- [ ] **T068** [US3] Run `grep -rE "useEffect.*fetch\(|useEffect.*\.then\(" apps/web/src/views` → empty result.
+- [X] **T067** [US3] Run `find apps/web/src/views -maxdepth 1 -name "*.tsx"` → empty result.
+- [X] **T068** [US3] Run `grep -rE "useEffect.*fetch\(|useEffect.*\.then\(" apps/web/src/views` → empty result.
 - [ ] **T069** [US3] Run `pnpm scan:constitution` — every rule SR-001..SR-009 should report 0 violations excluding any remaining baseline entries. Shrink baseline to empty if possible.
 - [ ] **T070** [US3] Run `pnpm test:regression` across the whole suite. All routes match baseline within 0.5 %.
 - [ ] **T070a** [US3] **SWR retention audit (FR-019)**. Run `grep -rn "useSWR(" apps/web/src/` excluding `apps/web/src/hooks/use_polling_metrics.ts` and `apps/web/src/hooks/use_event_stream.ts`. For each remaining match, either (a) confirm the call is genuinely live-polling (metrics-style periodic re-fetch) and keep it, OR (b) migrate the call to the owning screen's route loader in the same PR. Record the final SWR call-site roster in `apps/web/docs/swr-inventory.md` (one table row per retained call site: file path, polling cadence, rationale). No inline code comments — the markdown file is the documentation surface, per constitution Principle IV.

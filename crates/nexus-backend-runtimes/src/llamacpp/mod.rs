@@ -19,6 +19,7 @@ use crate::error::RuntimeAdapterError;
 use crate::events::{NAMESPACE_LLAMACPP, SharedPublisher};
 use crate::launch_spec::LaunchSpec;
 use crate::manifest::install::{InstallManifest, InstallStatus};
+use crate::manifest::release_scanner::SharedScanner;
 use crate::manifest::variants::{BackendVariantCatalog, project_variants};
 use crate::manifest::version::VersionManifest;
 use crate::resolver::MachineDescriptor;
@@ -34,6 +35,7 @@ pub struct LlamaCppAdapter {
     pool: SqlitePool,
     publisher: SharedPublisher,
     active_install: Arc<Mutex<Option<CancellationToken>>>,
+    scanner: Option<SharedScanner>,
 }
 
 impl LlamaCppAdapter {
@@ -49,10 +51,27 @@ impl LlamaCppAdapter {
             pool,
             publisher,
             active_install: Arc::new(Mutex::new(None)),
+            scanner: None,
         }
     }
 
+    pub fn with_scanner(mut self, scanner: SharedScanner) -> Self {
+        self.scanner = Some(scanner);
+        self
+    }
+
     async fn load_version_manifest(&self) -> Result<VersionManifest, RuntimeAdapterError> {
+        if let Some(scanner) = &self.scanner {
+            match scanner.fetch_manifest().await {
+                Ok(manifest) => return Ok(manifest),
+                Err(err) => {
+                    tracing::warn!(
+                        error = %err,
+                        "release scanner failed — falling back to on-disk version manifest"
+                    );
+                }
+            }
+        }
         let manifest =
             crate::manifest::version::load_from_path(&self.version_manifest_path).await?;
         Ok(manifest)
