@@ -19,7 +19,7 @@ import { MarkdownView } from "../components/layout/markdown_view";
 import { ProgressTracker } from "../components/layout/progress_tracker";
 import { LogViewer } from "../components/layout/log_viewer";
 import { SetupStepper } from "../components/layout/setup_stepper";
-import { InstallModal } from "../components/layout/install_modal";
+import { InstallModal as ExtensionInstallModal } from "../components/layout/extension_install_modal";
 import { SummaryStrip } from "../components/layout/summary_strip";
 import { RuntimeCard } from "../components/layout/runtime_card";
 import { DiagnosticsView } from "../components/layout/diagnostics_view";
@@ -266,7 +266,7 @@ const registry: Record<string, ComponentRenderer> = {
   install_modal: (node, children) => {
     const props = toProps(node);
     return (
-      <InstallModal
+      <ExtensionInstallModal
         visible={props.visible as boolean | undefined}
         phases={props.phases as { name: string; status: string }[] | undefined}
         logs={props.logs as string[] | undefined}
@@ -274,7 +274,7 @@ const registry: Record<string, ComponentRenderer> = {
         elapsed={props.elapsed as string | undefined}
       >
         {children}
-      </InstallModal>
+      </ExtensionInstallModal>
     );
   },
 

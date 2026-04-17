@@ -17,7 +17,7 @@ export { MarkdownView } from "./markdown_view";
 export { ProgressTracker } from "./progress_tracker";
 export { LogViewer } from "./log_viewer";
 export { SetupStepper } from "./setup_stepper";
-export { InstallModal } from "./install_modal";
+export { InstallModal as ExtensionInstallModal } from "./extension_install_modal";
 export { SummaryStrip } from "./summary_strip";
 export { RuntimeCard } from "./runtime_card";
 export { DiagnosticsView } from "./diagnostics_view";

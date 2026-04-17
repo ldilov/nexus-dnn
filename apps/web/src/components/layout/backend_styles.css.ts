@@ -243,6 +243,14 @@ export const modalProgressInfo = style({
   color: vars.color.text.muted,
 });
 
+export const modalCloseIcon = style({
+  fontSize: "inherit",
+});
+
+export const modalFooterSlot = style({
+  flex: 1,
+});
+
 export const summaryStripContainer = style({
   display: "flex",
   alignItems: "center",
