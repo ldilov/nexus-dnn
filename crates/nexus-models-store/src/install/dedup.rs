@@ -26,7 +26,7 @@ pub(super) async fn release_key_lock(map: &InflightMap, key: &IdentityKey) {
     }
 }
 
-pub(super) async fn find_existing(
+pub async fn find_existing(
     pool: &SqlitePool,
     key: &IdentityKey,
 ) -> ModelStoreResult<Option<InstalledModelDto>> {

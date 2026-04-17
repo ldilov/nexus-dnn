@@ -232,6 +232,14 @@ export const OperatorNode = memo(function OperatorNode({
           <span className={statusDotClass(status)} />
           <span className={styles.title}>{label}</span>
           <span className={styles.badgeRow}>
+            {data.isDraft && (
+              <span
+                className={`${styles.chip} ${styles.chipDraft}`}
+                title="Draft — wire required inputs to promote to live"
+              >
+                DRAFT
+              </span>
+            )}
             {execBadge && <span className={`${styles.chip} ${execBadge.cls}`}>{execBadge.label}</span>}
             {hasGpu && <span className={`${styles.chip} ${styles.chipGpu}`}>GPU</span>}
           </span>

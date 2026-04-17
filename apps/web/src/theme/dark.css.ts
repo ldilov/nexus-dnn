@@ -56,6 +56,8 @@ export const darkTheme = createTheme(vars, {
     success: { base: color.acidGreen, text: "#BBF7D0" },
     warning: { base: color.warning.base, text: color.warning.text },
     error: { base: color.error.base, text: "#FECACA" },
+    scrim: "rgba(0, 0, 0, 0.55)",
+    shadowElevation: "rgba(0, 0, 0, 0.4)",
     outline: {
       base: color.outline.base,
       variant: color.outline.variant,

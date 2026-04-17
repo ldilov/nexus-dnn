@@ -46,6 +46,16 @@ export const graphNodeFailed = style({});
 export const nodeName = style({});
 export const nodeOperator = style({});
 
+export const nodeDraft = style({});
+globalStyle(`.${nodeDraft} .react-flow__handle, .${nodeDraft}`, {
+  opacity: 0.92,
+});
+globalStyle(`.react-flow__node.${nodeDraft} > *:first-child`, {
+  outline: `1.5px dashed ${vars.color.accent.tertiary}`,
+  outlineOffset: "2px",
+  borderRadius: "10px",
+});
+
 globalStyle(".react-flow__controls", {
   boxShadow: "0 8px 24px rgba(0, 0, 0, 0.45)",
   borderRadius: "10px",

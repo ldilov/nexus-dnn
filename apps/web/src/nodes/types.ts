@@ -21,6 +21,7 @@ export type OperatorNodeData = {
   nodeId: string;
   /** Keyed by output port name; last value observed on the event stream. */
   livePortValues?: Record<string, unknown>;
+  isDraft?: boolean;
 };
 
 export type BoundaryPort = {
