@@ -4,6 +4,7 @@ use axum::http::HeaderValue;
 use axum::middleware::{self, Next};
 use axum::response::Response;
 use axum::routing::{get, post};
+use tower_http::compression::CompressionLayer;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 
@@ -266,5 +267,11 @@ pub fn build(state: AppState) -> Router {
                 ),
         )
         .layer(cors)
+        .layer(
+            CompressionLayer::new()
+                .gzip(true)
+                .br(true)
+                .quality(tower_http::CompressionLevel::Fastest),
+        )
         .with_state(state)
 }
