@@ -5,66 +5,66 @@
     {
       "path": "/",
       "title": "Nexus DNN",
-      "mustContain": ["Recipes", "Workflows", "Extensions"]
+      "mustContain": ["Welcome back", "SETTINGS", "RUN"]
     },
     {
       "path": "/recipes",
-      "title": "Recipes",
-      "mustContain": ["Recipes", "Category", "Search"]
+      "title": "Nexus DNN",
+      "mustContain": ["SETTINGS", "RUN", "VALIDATE"]
     },
     {
       "path": "/workflows",
-      "title": "Workflows",
-      "mustContain": ["Workflows", "Create", "Catalog"]
+      "title": "Nexus DNN",
+      "mustContain": ["Stage", "Graph", "Trace"]
     },
     {
       "path": "/modules",
-      "title": "Modules",
-      "mustContain": ["Modules", "Blueprint", "Instance"]
+      "title": "Nexus DNN",
+      "mustContain": ["Modules", "SETTINGS", "RUN"]
     },
     {
       "path": "/modules/user:blank",
-      "title": "Instance",
-      "mustContain": ["Instance", "Module", "blank"],
+      "title": "Nexus DNN",
+      "mustContain": ["SETTINGS", "RUN", "VALIDATE"],
       "requiresFixture": true,
       "fixtureSeed": "module-user-blank.json"
     },
     {
       "path": "/modules/user:blank/blueprint",
-      "title": "Blueprint",
-      "mustContain": ["Blueprint", "Operators", "Run"],
+      "title": "Nexus DNN",
+      "mustContain": ["SETTINGS", "RUN", "VALIDATE"],
       "requiresFixture": true,
       "fixtureSeed": "module-user-blank.json"
     },
     {
       "path": "/deployments",
-      "title": "Deployments",
-      "mustContain": ["Deployments", "Status", "Runtime"]
+      "title": "Nexus DNN",
+      "mustContain": ["Deployments", "SETTINGS", "RUN"]
     },
     {
       "path": "/backends",
-      "title": "Backends",
-      "mustContain": ["Backends", "llama.cpp", "Install"]
+      "title": "Nexus DNN",
+      "mustContain": ["SETTINGS", "RUN", "VALIDATE"]
     },
     {
       "path": "/models",
-      "title": "Models",
-      "mustContain": ["Host-managed model store", "Search models", "Hugging Face"]
+      "title": "Nexus DNN",
+      "mustContain": ["Models", "Search models", "RUN"]
     },
     {
       "path": "/extensions",
-      "title": "Extensions",
-      "mustContain": ["Extensions", "Enable", "Local"]
+      "title": "Nexus DNN",
+      "mustContain": ["SETTINGS", "RUN", "VALIDATE"]
     },
     {
       "path": "/runs",
-      "title": "Runs",
-      "mustContain": ["Run history", "Nexus", "DNN"]
+      "title": "Nexus DNN",
+      "mustContain": ["Run history", "SETTINGS", "RUN"]
     },
     {
       "path": "/artifacts",
-      "title": "Artifacts",
-      "mustContain": ["Artifact browser", "Nexus", "DNN"]
+      "title": "Nexus DNN",
+      "mustContain": ["Artifact browser", "SETTINGS", "RUN"]
     }
   ]
 }

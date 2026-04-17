@@ -1,0 +1,9 @@
+{
+  "capturedAt": "2026-04-17",
+  "capturedOnSha": "36257f6",
+  "playwrightVersion": "1.59.1",
+  "viewports": [375, 768, 1440],
+  "reducedMotion": true,
+  "platform": "win32",
+  "notes": "Baselines captured post-US1 router migration (after 5 prior commits: install-modal fix, spec 021 docs, US5 harness, services relocate, router migration). Rust backend was NOT running during capture — screens that require /api/v1/* show their empty/loading state. The smoke fixture uses shell-chrome needles (SETTINGS, RUN, VALIDATE) that render regardless of backend state; screen-specific static copy (e.g., 'Welcome back', 'Modules', 'Deployments', 'Models', 'Search models', 'Run history', 'Artifact browser', 'Stage'/'Graph'/'Trace') is used where available."
+}

@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const PORT = Number(process.env.WEB_PORT ?? 5173);
-const HOST = process.env.WEB_HOST ?? "127.0.0.1";
+const HOST = process.env.WEB_HOST ?? "localhost";
 const BASE_URL = `http://${HOST}:${PORT}`;
 
 const VIEWPORTS = [
