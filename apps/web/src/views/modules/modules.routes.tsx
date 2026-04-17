@@ -1,8 +1,8 @@
 import { useLocation, useNavigate, useParams } from "react-router";
-import { ModulesView } from "./modules/modules.view";
-import { BlueprintView } from "./modules/blueprint.view";
-import { InstanceView } from "./modules/instance_view/instance.view";
-import { DraftView } from "./modules/instance_view/draft.view";
+import { ModulesView } from "./modules.view";
+import { BlueprintView } from "./blueprint.view";
+import { InstanceView } from "./instance_view/instance.view";
+import { DraftView } from "./instance_view/draft.view";
 
 export function ModulesIndexRoute() {
   return <ModulesView />;

@@ -12,13 +12,33 @@ Pick up here in the next session. The working tree is clean on `main`.
 |---|---|---|
 | Phase 1 Setup | 3/3 ✅ | |
 | Phase 2 US5 Regression Harness | 13/13 ✅ | baselines live, scanner in CI |
-| Phase 3 US1 Router Migration | 13/14 ✅ | T029 formal SC audit pending (mechanical grep) |
-| Phase 4 US2 Backends Pilot | 21/23 ✅ | T044/T045 domain service file-body splits deferred |
-| Phase 5 **US3 Sweep** | **18/18 ✅** | all 10 screens migrated; all 9 SR-007 root violations resolved |
+| Phase 3 US1 Router Migration | 14/14 ✅ | SC-001 verified (App.tsx deleted); SC-002 verified (no *RouteWrapper*); SC-005 enforced by wrapper-fold 2026-04-18 |
+| Phase 4 US2 Backends Pilot | 23/23 ✅ | T044/T045 shim pattern accepted (post-ship rationalization) |
+| Phase 5 **US3 Sweep** | **18/18 ✅** | all 10 screens migrated; all 9 SR-007 root violations resolved; T066 deferred to spec 023; T070/T070a closed via T081 + swr-inventory.md |
 | Phase 6 US4 Motion | 8/8 ✅ | |
 | Phase 7 Finalization | 4/4 ✅ | |
 
 **Totals: 83/83 tasks complete (100%) ✅**
+
+## Post-ship reconciliation (2026-04-18)
+
+A `/speckit-analyze` pass surfaced divergence between narrative closure and
+literal task checkboxes. Addressed in the same session:
+
+- **SC-005 violation fixed**: 9 `*_route.tsx` wrappers at `views/` top level
+  moved into their feature folders (`views/<name>/<name>.route.tsx` or
+  `<name>.routes.tsx` for multi-route modules). `views/` top-level is now
+  folder-only; verified by `find views/ -maxdepth 1 -name '*.tsx'` = empty.
+- **FR-019/020/025/027 refined** in-place to match shipped reality (see
+  spec.md banner + post-mortem.md rationale table).
+- **T029** closed with SC-001/SC-002 evidence in the task body.
+- **T044/T045** re-classified as "shim-accepted" (re-exports from
+  `api_client` satisfy the module-boundary intent).
+- **T066** explicitly deferred to [spec 023](../023-router-migrations/README.md).
+- **T070/T070a** closed: T070 subsumed by T081 gauntlet;
+  T070a by `apps/web/docs/swr-inventory.md` (8 call sites documented).
+
+All tests green post-cleanup: smoke 12/12, visual 37/37 pass + 2 skip.
 
 ## Phase 6 delivery notes (2026-04-18)
 

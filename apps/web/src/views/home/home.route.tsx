@@ -1,5 +1,5 @@
-import { Component as Home } from "./home";
-import { useRootOutletContext } from "../root_layout";
+import { Component as Home } from "./index";
+import { useRootOutletContext } from "../../root_layout";
 
 export default function HomeRoute() {
   const ctx = useRootOutletContext();

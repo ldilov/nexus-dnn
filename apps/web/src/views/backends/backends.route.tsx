@@ -1,4 +1,4 @@
-import { Component as BackendsView } from "./backends";
+import { Component as BackendsView } from "./index";
 
 export default function BackendsRoute() {
   return <BackendsView />;

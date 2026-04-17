@@ -1,12 +1,12 @@
 import { useCallback } from "react";
-import { WorkflowCatalog } from "./workflows/components/workflow_catalog";
-import { StageView } from "./workflows/components/canvas/stage_view";
-import { GraphView } from "./workflows/components/canvas/graph_view";
-import { RunTraceView } from "./workflows/components/canvas/run_trace_view";
-import { useRootOutletContext } from "../root_layout";
-import { fetchWorkflow } from "../services/workflows";
-import * as styles from "../app.css";
-import * as local from "./workflows_route.css";
+import { WorkflowCatalog } from "./components/workflow_catalog";
+import { StageView } from "./components/canvas/stage_view";
+import { GraphView } from "./components/canvas/graph_view";
+import { RunTraceView } from "./components/canvas/run_trace_view";
+import { useRootOutletContext } from "../../root_layout";
+import { fetchWorkflow } from "../../services/workflows";
+import * as styles from "../../app.css";
+import * as local from "./workflows.route.css";
 
 const LAST_WORKFLOW_KEY = "nexus.catalog.workflows.lastOpened";
 
