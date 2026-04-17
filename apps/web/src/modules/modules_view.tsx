@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   deployFromModule,
   fetchModules,
@@ -11,16 +12,13 @@ import * as s from "./modules_view.css";
 
 type KindFilter = "all" | "extension" | "user";
 
-interface ModulesViewProps {
-  onNavigate: (hash: string) => void;
-}
-
 type ViewState =
   | { kind: "loading" }
   | { kind: "ready"; modules: readonly ModuleSummary[]; total: number }
   | { kind: "error"; message: string };
 
-export function ModulesView({ onNavigate }: ModulesViewProps) {
+export function ModulesView() {
+  const navigate = useNavigate();
   const [state, setState] = useState<ViewState>({ kind: "loading" });
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<KindFilter>("all");
@@ -47,17 +45,17 @@ export function ModulesView({ onNavigate }: ModulesViewProps) {
 
   const handleOpenDetail = useCallback(
     (moduleId: string) => {
-      onNavigate(`#/modules/${encodeURIComponent(moduleId)}`);
+      navigate(`/modules/${encodeURIComponent(moduleId)}`);
     },
-    [onNavigate],
+    [navigate],
   );
 
   const handleOpenBlueprint = useCallback(
     (moduleId: string, recipeId?: string) => {
       const qs = recipeId ? `?recipe_id=${encodeURIComponent(recipeId)}` : "";
-      onNavigate(`#/modules/${encodeURIComponent(moduleId)}/blueprint${qs}`);
+      navigate(`/modules/${encodeURIComponent(moduleId)}/blueprint${qs}`);
     },
-    [onNavigate],
+    [navigate],
   );
 
   const handleDeploy = useCallback(
@@ -67,7 +65,7 @@ export function ModulesView({ onNavigate }: ModulesViewProps) {
         const result = await deployFromModule(moduleId, {
           recipe_id: recipeId,
         });
-        onNavigate(`#/deployments/${encodeURIComponent(result.deployment_id)}`);
+        navigate(`/deployments/${encodeURIComponent(result.deployment_id)}`);
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Deploy failed";
@@ -79,13 +77,13 @@ export function ModulesView({ onNavigate }: ModulesViewProps) {
         setDeployingId(null);
       }
     },
-    [onNavigate],
+    [navigate],
   );
 
   const handleBlank = useCallback(() => {
     const uuid = mintDraftUuid();
-    onNavigate(`#/modules/user:draft:${uuid}`);
-  }, [onNavigate]);
+    navigate(`/modules/user:blank/draft/${uuid}`);
+  }, [navigate]);
 
   const { extensionModules, userModules } = useMemo(() => {
     if (state.kind !== "ready") {

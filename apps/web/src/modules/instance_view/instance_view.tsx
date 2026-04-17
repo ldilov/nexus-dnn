@@ -1,144 +1,118 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useActionState, useMemo, useState, useTransition } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import {
   deployFromModule,
   dryRunModuleBlueprint,
   fetchBlueprint,
-  fetchModule,
   type DeploymentRow,
-  type ModuleDetail,
   type ModuleSummary,
-  type RecipeRef,
 } from "../../api/client";
+import { useModule } from "../../hooks/use_api";
 import { mintDraftUuid } from "../draft/draft_uuid";
 import { writeDraftEnvelope } from "../draft/draft_envelope";
 import * as s from "./instance_view.css";
 
 interface InstanceViewProps {
   moduleId: string;
-  onNavigate: (hash: string) => void;
 }
 
-type State =
-  | { kind: "loading" }
-  | {
-      kind: "ready";
-      detail: ModuleDetail;
-      primaryBlueprint: RecipeRef | null;
-    }
-  | { kind: "error"; message: string };
-
-export function InstanceView({ moduleId, onNavigate }: InstanceViewProps) {
-  const [state, setState] = useState<State>({ kind: "loading" });
-  const [forking, setForking] = useState(false);
-  const [deploying, setDeploying] = useState(false);
-  const [dryRunning, setDryRunning] = useState(false);
+export function InstanceView({ moduleId }: InstanceViewProps) {
+  const navigate = useNavigate();
   const [instanceSearch, setInstanceSearch] = useState("");
 
-  const load = useCallback(() => {
-    setState({ kind: "loading" });
-    fetchModule(moduleId)
-      .then((detail) => {
+  const { data: detail, error, isLoading } = useModule(moduleId);
+
+  // React 19 Actions — each async user intent gets a single hook that owns
+  // its pending state + last-error. Replaces three separate
+  // `useState<boolean>` spinners plus manual try/catch.
+  const [, deployAction, deploying] = useActionState(async () => {
+    try {
+      const result = await deployFromModule(moduleId, {});
+      navigate(`/deployments/${encodeURIComponent(result.deployment_id)}`);
+      toast.success("Deployment created");
+      return null;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Deploy failed";
+      toast.error("Deploy failed", { description: message });
+      return message;
+    }
+  }, null);
+
+  const [, dryRunAction, dryRunning] = useActionState(async () => {
+    try {
+      await dryRunModuleBlueprint(moduleId, {});
+    } catch (err: unknown) {
+      // Non-fatal — the Blueprint view re-runs the plan on arrival. Still
+      // surface a toast so the user knows the pre-flight call failed.
+      const message = err instanceof Error ? err.message : "Dry-run failed";
+      toast.error("Dry-run failed", { description: message });
+    }
+    navigate(`/modules/${encodeURIComponent(moduleId)}/blueprint`);
+    return null;
+  }, null);
+
+  const [forking, startForking] = useTransition();
+  const handleEdit = () => {
+    if (!detail) return;
+    startForking(async () => {
+      try {
+        let resolvedPayload: unknown = { nodes: [], edges: [] };
         const primary =
           detail.summary.blueprints.find((b) => b.is_primary) ??
           detail.summary.blueprints[0] ??
           null;
-        setState({ kind: "ready", detail, primaryBlueprint: primary });
-      })
-      .catch((err: unknown) =>
-        setState({
-          kind: "error",
-          message:
-            err instanceof Error ? err.message : "Failed to load instance",
-        }),
-      );
-  }, [moduleId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const handleBack = useCallback(() => {
-    onNavigate("#/modules");
-  }, [onNavigate]);
-
-  const handleViewBlueprint = useCallback(() => {
-    onNavigate(`#/modules/${encodeURIComponent(moduleId)}/blueprint`);
-  }, [onNavigate, moduleId]);
-
-  const handleDeploy = useCallback(async () => {
-    if (state.kind !== "ready") return;
-    setDeploying(true);
-    try {
-      const result = await deployFromModule(moduleId, {});
-      onNavigate(`#/deployments/${encodeURIComponent(result.deployment_id)}`);
-    } catch (err: unknown) {
-      setState({
-        kind: "error",
-        message: err instanceof Error ? err.message : "Deploy failed",
-      });
-    } finally {
-      setDeploying(false);
-    }
-  }, [moduleId, onNavigate, state.kind]);
-
-  const handleDryRun = useCallback(async () => {
-    if (state.kind !== "ready") return;
-    setDryRunning(true);
-    try {
-      await dryRunModuleBlueprint(moduleId, {});
-      // Dry-run result surfaces on the Blueprint view; this CTA just
-      // primes it. For v1 we simply navigate there after the call.
-      onNavigate(`#/modules/${encodeURIComponent(moduleId)}/blueprint`);
-    } catch {
-      // Non-fatal — the Blueprint view will re-run on arrival.
-      onNavigate(`#/modules/${encodeURIComponent(moduleId)}/blueprint`);
-    } finally {
-      setDryRunning(false);
-    }
-  }, [moduleId, onNavigate, state.kind]);
-
-  const handleEdit = useCallback(async () => {
-    if (state.kind !== "ready") return;
-    setForking(true);
-    try {
-      let resolvedPayload: unknown = { nodes: [], edges: [] };
-      const primary = state.primaryBlueprint;
-      if (primary) {
-        const blueprint = await fetchBlueprint(moduleId, primary.recipe_id);
-        resolvedPayload = {
-          recipe_id: blueprint.recipe_id,
-          display_name: blueprint.display_name,
-          description: blueprint.description,
-          step_count: blueprint.step_count,
-        };
+        if (primary) {
+          const blueprint = await fetchBlueprint(moduleId, primary.recipe_id);
+          resolvedPayload = {
+            recipe_id: blueprint.recipe_id,
+            display_name: blueprint.display_name,
+            description: blueprint.description,
+            step_count: blueprint.step_count,
+          };
+        }
+        const uuid = mintDraftUuid();
+        writeDraftEnvelope(uuid, {
+          source_module_id: moduleId,
+          source_display_name: detail.summary.display_name,
+          workflow_payload: resolvedPayload,
+          display_name: detail.summary.display_name,
+          forked_at: new Date().toISOString(),
+        });
+        navigate(`/modules/${encodeURIComponent(moduleId)}/draft/${uuid}`);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Fork failed";
+        toast.error("Could not start draft", { description: message });
       }
-      const uuid = mintDraftUuid();
-      writeDraftEnvelope(uuid, {
-        source_module_id: moduleId,
-        source_display_name: state.detail.summary.display_name,
-        workflow_payload: resolvedPayload,
-        display_name: state.detail.summary.display_name,
-        forked_at: new Date().toISOString(),
-      });
-      onNavigate(`#/modules/${encodeURIComponent(moduleId)}/draft/${uuid}`);
-    } finally {
-      setForking(false);
-    }
-  }, [moduleId, onNavigate, state]);
+    });
+  };
+
+  const primaryBlueprint = useMemo(() => {
+    if (!detail) return null;
+    return (
+      detail.summary.blueprints.find((b) => b.is_primary) ??
+      detail.summary.blueprints[0] ??
+      null
+    );
+  }, [detail]);
 
   const filteredInstances = useMemo(() => {
-    if (state.kind !== "ready") return [] as readonly DeploymentRow[];
-    if (!instanceSearch.trim()) return state.detail.deployments;
+    if (!detail) return [] as readonly DeploymentRow[];
+    if (!instanceSearch.trim()) return detail.deployments;
     const q = instanceSearch.trim().toLowerCase();
-    return state.detail.deployments.filter(
+    return detail.deployments.filter(
       (d) =>
         d.display_name.toLowerCase().includes(q) ||
         d.deployment_id.toLowerCase().includes(q) ||
         d.state.toLowerCase().includes(q),
     );
-  }, [state, instanceSearch]);
+  }, [detail, instanceSearch]);
 
-  if (state.kind === "loading") {
+  const handleBack = () => navigate("/modules");
+  const handleViewBlueprint = () =>
+    navigate(`/modules/${encodeURIComponent(moduleId)}/blueprint`);
+
+  if (isLoading) {
     return (
       <div className={s.root}>
         <div className={s.canvas}>
@@ -148,7 +122,13 @@ export function InstanceView({ moduleId, onNavigate }: InstanceViewProps) {
     );
   }
 
-  if (state.kind === "error") {
+  if (error || !detail) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : error
+          ? "Failed to load instance"
+          : "Instance not found";
     return (
       <div className={s.root}>
         <div className={s.canvas}>
@@ -156,14 +136,13 @@ export function InstanceView({ moduleId, onNavigate }: InstanceViewProps) {
             ← Modules
           </button>
           <div className={s.errorBox} role="alert">
-            {state.message}
+            {message}
           </div>
         </div>
       </div>
     );
   }
 
-  const { detail, primaryBlueprint } = state;
   const { summary } = detail;
   const deployBlocked = summary.blueprints.length === 0;
   const totalDeployments = summary.deployments.total;
@@ -224,7 +203,7 @@ export function InstanceView({ moduleId, onNavigate }: InstanceViewProps) {
             <button
               type="button"
               className={s.secondaryBtn}
-              onClick={handleDryRun}
+              onClick={dryRunAction}
               disabled={dryRunning || deployBlocked}
             >
               <span
@@ -269,7 +248,7 @@ export function InstanceView({ moduleId, onNavigate }: InstanceViewProps) {
             <button
               type="button"
               className={s.primaryBtn}
-              onClick={handleDeploy}
+              onClick={deployAction}
               disabled={deploying || deployBlocked}
             >
               <span
@@ -507,8 +486,8 @@ export function InstanceView({ moduleId, onNavigate }: InstanceViewProps) {
                               aria-label="Open instance editor"
                               title="Open"
                               onClick={() =>
-                                onNavigate(
-                                  `#/deployments/${encodeURIComponent(row.deployment_id)}`,
+                                navigate(
+                                  `/deployments/${encodeURIComponent(row.deployment_id)}`,
                                 )
                               }
                             >

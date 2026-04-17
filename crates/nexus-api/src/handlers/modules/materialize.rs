@@ -158,7 +158,11 @@ async fn materialize_source(
             let module_id = ModuleId::from_extension(&extension_id);
             Ok((MaterializeSource::Extension { extension_id }, module_id))
         }
-        Some(src) if src.starts_with("user:") && !src.starts_with("user:draft:") && src != "user:blank" => {
+        Some(src)
+            if src.starts_with("user:")
+                && !src.starts_with("user:draft:")
+                && src != "user:blank" =>
+        {
             let workflow_id = src.strip_prefix("user:").unwrap_or_default().to_string();
             if workflow_id.is_empty() {
                 return Err(ApiError::structured(

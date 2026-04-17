@@ -108,11 +108,3 @@ pub(super) async fn supervise_real(mut ctx: SupervisorCtx) {
     .await;
     ctx.live_leases.lock().await.remove(&ctx.lease_id);
 }
-
-pub(super) async fn drain_stream<R>(mut reader: R)
-where
-    R: tokio::io::AsyncRead + Unpin + Send + 'static,
-{
-    let mut sink = tokio::io::sink();
-    let _ = tokio::io::copy(&mut reader, &mut sink).await;
-}

@@ -1,14 +1,20 @@
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
+import {
+  useActionState,
+  useMemo,
+  useState,
+  type ReactElement,
+} from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import {
   deployFromModule,
   dryRunModuleBlueprint,
-  fetchModule,
-  fetchWorkflow,
   type DryRunPlan,
-  type ModuleDetail,
   type RecipeRef,
   type Workflow,
 } from "../api/client";
+import { useModule, useWorkflow } from "../hooks/use_api";
+import { GraphView } from "../views/graph_view";
 import * as s from "./blueprint_view.css";
 
 type Mode = "recipe" | "workflow";
@@ -16,138 +22,100 @@ type Mode = "recipe" | "workflow";
 interface BlueprintViewProps {
   moduleId: string;
   recipeId?: string;
-  onNavigate: (hash: string) => void;
 }
-
-type State =
-  | { kind: "loading" }
-  | {
-      kind: "ready";
-      detail: ModuleDetail;
-      selectedRecipeId: string | null;
-    }
-  | { kind: "error"; message: string };
 
 export function BlueprintView({
   moduleId,
   recipeId: initialRecipeId,
-  onNavigate,
 }: BlueprintViewProps) {
-  const [state, setState] = useState<State>({ kind: "loading" });
+  const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>("recipe");
-  const [workflow, setWorkflow] = useState<Workflow | null>(null);
-  const [workflowLoading, setWorkflowLoading] = useState(false);
-  const [workflowError, setWorkflowError] = useState<string | null>(null);
   const [plan, setPlan] = useState<DryRunPlan | null>(null);
-  const [dryRunning, setDryRunning] = useState(false);
-  const [cloning, setCloning] = useState(false);
+  const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(
+    initialRecipeId ?? null,
+  );
 
-  useEffect(() => {
-    setState({ kind: "loading" });
-    fetchModule(moduleId)
-      .then((detail) => {
-        const primary =
-          detail.summary.blueprints.find((b) => b.is_primary) ??
-          detail.summary.blueprints[0];
-        const selectedRecipeId =
-          initialRecipeId ?? primary?.recipe_id ?? null;
-        setState({ kind: "ready", detail, selectedRecipeId });
-      })
-      .catch((err: unknown) =>
-        setState({
-          kind: "error",
-          message:
-            err instanceof Error ? err.message : "Failed to load blueprint",
-        }),
-      );
-  }, [moduleId, initialRecipeId]);
+  const { data: detail, error: moduleError, isLoading } = useModule(moduleId);
 
-  // Fetch the backing workflow once on mount so both the Recipe tab
-  // (renders nodes as an ordered step list) and the Workflow tab (renders
-  // nodes as a DAG) have the same data. One small round-trip up-front
-  // beats switching tab → spinner → empty placeholder.
-  useEffect(() => {
-    if (state.kind !== "ready") return;
-    const workflowId = state.detail.summary.workflow_id;
-    if (!workflowId) {
-      setWorkflowError(
-        "This module has no workflow bound yet — recipes describe the intent but the graph projection is pending.",
-      );
-      setWorkflow(null);
-      return;
-    }
-    setWorkflowLoading(true);
-    setWorkflowError(null);
-    fetchWorkflow(workflowId)
-      .then((wf) => setWorkflow(wf))
-      .catch((err: unknown) =>
-        setWorkflowError(
-          err instanceof Error ? err.message : "Failed to load workflow",
-        ),
-      )
-      .finally(() => setWorkflowLoading(false));
-  }, [state]);
+  const workflowId = detail?.summary.workflow_id ?? null;
+  const { data: workflow, error: workflowFetchError, isLoading: workflowLoading } =
+    useWorkflow(workflowId);
+  const workflowError =
+    !workflowId && detail
+      ? "This module has no workflow bound yet — recipes describe the intent but the graph projection is pending."
+      : workflowFetchError instanceof Error
+        ? workflowFetchError.message
+        : workflowFetchError
+          ? "Failed to load workflow"
+          : null;
+
+  // Derive the active recipe id once detail arrives without racing through
+  // `useEffect` — `use_memo` keeps the computation cheap and deterministic.
+  const effectiveRecipeId = useMemo(() => {
+    if (selectedRecipeId) return selectedRecipeId;
+    if (!detail) return null;
+    const primary =
+      detail.summary.blueprints.find((b) => b.is_primary) ??
+      detail.summary.blueprints[0] ??
+      null;
+    return primary?.recipe_id ?? null;
+  }, [detail, selectedRecipeId]);
 
   const selectedBlueprint = useMemo<RecipeRef | null>(() => {
-    if (state.kind !== "ready") return null;
-    if (!state.selectedRecipeId) return null;
+    if (!detail || !effectiveRecipeId) return null;
     return (
-      state.detail.summary.blueprints.find(
-        (b) => b.recipe_id === state.selectedRecipeId,
+      detail.summary.blueprints.find(
+        (b) => b.recipe_id === effectiveRecipeId,
       ) ?? null
     );
-  }, [state]);
+  }, [detail, effectiveRecipeId]);
 
-  const handleBack = useCallback(() => {
-    onNavigate(`#/modules/${encodeURIComponent(moduleId)}`);
-  }, [onNavigate, moduleId]);
-
-  const handlePick = useCallback((recipeId: string) => {
-    setState((prev) =>
-      prev.kind === "ready" ? { ...prev, selectedRecipeId: recipeId } : prev,
-    );
-    setPlan(null);
-  }, []);
-
-  const handleDryRun = useCallback(async () => {
-    if (state.kind !== "ready") return;
-    setDryRunning(true);
+  // React 19 Actions — Dry-run and Clone each own their pending flag and
+  // surface failures via toast instead of a single shared error banner.
+  const [, dryRunAction, dryRunning] = useActionState(async () => {
     try {
       const result = await dryRunModuleBlueprint(moduleId, {
-        recipe_id: state.selectedRecipeId ?? undefined,
+        recipe_id: effectiveRecipeId ?? undefined,
       });
       setPlan(result);
+      return null;
     } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Dry-run failed";
       setPlan({
         plan_id: "error",
         steps: [],
         warnings: [],
-        diagnostics: [err instanceof Error ? err.message : "Dry-run failed"],
+        diagnostics: [message],
       });
-    } finally {
-      setDryRunning(false);
+      toast.error("Dry-run failed", { description: message });
+      return message;
     }
-  }, [state, moduleId]);
+  }, null);
 
-  const handleClone = useCallback(async () => {
-    if (state.kind !== "ready") return;
-    setCloning(true);
+  const [, cloneAction, cloning] = useActionState(async () => {
     try {
       const result = await deployFromModule(moduleId, {
-        recipe_id: state.selectedRecipeId ?? undefined,
+        recipe_id: effectiveRecipeId ?? undefined,
       });
-      onNavigate(`#/deployments/${encodeURIComponent(result.deployment_id)}`);
+      toast.success("Deployment created");
+      navigate(`/deployments/${encodeURIComponent(result.deployment_id)}`);
+      return null;
     } catch (err: unknown) {
-      setState({
-        kind: "error",
-        message: err instanceof Error ? err.message : "Clone failed",
-      });
-    } finally {
-      setCloning(false);
+      const message = err instanceof Error ? err.message : "Clone failed";
+      toast.error("Clone failed", { description: message });
+      return message;
     }
-  }, [state, moduleId, onNavigate]);
+  }, null);
 
-  if (state.kind === "loading") {
+  const handleBack = () =>
+    navigate(`/modules/${encodeURIComponent(moduleId)}`);
+
+  const handlePick = (recipeId: string) => {
+    setSelectedRecipeId(recipeId);
+    setPlan(null);
+  };
+
+  if (isLoading) {
     return (
       <div className={s.root}>
         <div className={s.canvas}>
@@ -157,7 +125,13 @@ export function BlueprintView({
     );
   }
 
-  if (state.kind === "error") {
+  if (moduleError || !detail) {
+    const message =
+      moduleError instanceof Error
+        ? moduleError.message
+        : moduleError
+          ? "Failed to load blueprint"
+          : "Blueprint not found";
     return (
       <div className={s.root}>
         <div className={s.canvas}>
@@ -165,14 +139,12 @@ export function BlueprintView({
             ← Back to module
           </button>
           <div className={s.errorBox} role="alert">
-            {state.message}
+            {message}
           </div>
         </div>
       </div>
     );
   }
-
-  const { detail, selectedRecipeId } = state;
   const multi = detail.summary.blueprints.length > 1;
   const hasDeployments = detail.deployments.length > 0;
 
@@ -221,8 +193,8 @@ export function BlueprintView({
             <button
               type="button"
               className={s.secondaryBtn}
-              onClick={handleDryRun}
-              disabled={dryRunning || !selectedRecipeId}
+              onClick={dryRunAction}
+              disabled={dryRunning || !effectiveRecipeId}
             >
               <span
                 className="material-symbols-outlined"
@@ -236,8 +208,8 @@ export function BlueprintView({
             <button
               type="button"
               className={s.primaryBtn}
-              onClick={handleClone}
-              disabled={cloning || !selectedRecipeId}
+              onClick={cloneAction}
+              disabled={cloning || !effectiveRecipeId}
             >
               <span
                 className="material-symbols-outlined"
@@ -280,7 +252,7 @@ export function BlueprintView({
                 key={bp.recipe_id}
                 type="button"
                 className={s.pill}
-                aria-pressed={selectedRecipeId === bp.recipe_id}
+                aria-pressed={effectiveRecipeId === bp.recipe_id}
                 onClick={() => handlePick(bp.recipe_id)}
               >
                 {bp.is_primary && (
@@ -425,23 +397,9 @@ export function BlueprintView({
             {workflow && (
               <>
                 <section className={s.section}>
-                  <h2 className={s.sectionNumber}>01 / DAG Preview</h2>
-                  <div className={s.graphBox}>
-                    <WorkflowDagSvg workflow={workflow} />
-                  </div>
-                  <div className={s.graphLegend}>
-                    <span className={s.legendItem}>
-                      <span
-                        className={`${s.legendSwatch} ${s.swatchNode}`}
-                      />
-                      operator node
-                    </span>
-                    <span className={s.legendItem}>
-                      <span
-                        className={`${s.legendSwatch} ${s.swatchBoundary}`}
-                      />
-                      boundary node
-                    </span>
+                  <h2 className={s.sectionNumber}>01 / Graph</h2>
+                  <div className={s.graphBox} style={{ height: "560px", padding: 0 }}>
+                    <GraphView workflow={workflow} nodeProgress={{}} />
                   </div>
                 </section>
 
@@ -539,8 +497,8 @@ export function BlueprintView({
                   type="button"
                   className={s.secondaryBtn}
                   onClick={() =>
-                    onNavigate(
-                      `#/deployments/${encodeURIComponent(d.deployment_id)}`,
+                    navigate(
+                      `/deployments/${encodeURIComponent(d.deployment_id)}`,
                     )
                   }
                 >
@@ -732,206 +690,6 @@ function humanize(id: string): string {
   return id
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-// ─── Tiny DAG renderer ────────────────────────────────────────────────────
-
-interface DagProps {
-  workflow: Workflow;
-}
-
-/**
- * Renders the workflow as a simple left-to-right SVG DAG. Uses a basic
- * topological layering (Kahn's algorithm) to place nodes in columns by
- * depth. Keeps the rendering dependency-free — no dagre, no react-flow —
- * because this surface is read-only, low-density, and doesn't need the
- * full editor.
- */
-function WorkflowDagSvg({ workflow }: DagProps) {
-  const layout = useMemo(() => layoutDag(workflow), [workflow]);
-
-  if (layout.nodes.length === 0) {
-    return (
-      <p
-        className={s.overview}
-        style={{ fontStyle: "italic", textAlign: "center" }}
-      >
-        Empty workflow — no operator nodes declared.
-      </p>
-    );
-  }
-
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox={`0 0 ${layout.width} ${layout.height}`}
-      width={layout.width}
-      height={layout.height}
-      preserveAspectRatio="xMinYMin meet"
-      role="img"
-      aria-label="Workflow DAG"
-      style={{
-        display: "block",
-        maxWidth: "100%",
-      }}
-    >
-      <defs>
-        <marker
-          id="nexus-dag-arrow"
-          viewBox="0 0 10 10"
-          refX="9"
-          refY="5"
-          markerWidth="7"
-          markerHeight="7"
-          orient="auto-start-reverse"
-        >
-          <path d="M 0 0 L 10 5 L 0 10 z" className={s.svgArrowFill} />
-        </marker>
-      </defs>
-      {layout.edges.map((e, i) => (
-        <path
-          key={i}
-          d={edgePath(e.x1, e.y1, e.x2, e.y2)}
-          className={s.svgEdge}
-          markerEnd="url(#nexus-dag-arrow)"
-        />
-      ))}
-      {layout.nodes.map((n) => (
-        <g key={n.id} transform={`translate(${n.x}, ${n.y})`}>
-          <rect
-            width={NODE_WIDTH}
-            height={NODE_HEIGHT}
-            rx={10}
-            className={n.isBoundary ? s.svgNodeBoundary : s.svgNode}
-          />
-          <text
-            x={NODE_WIDTH / 2}
-            y={NODE_HEIGHT / 2 - 6}
-            textAnchor="middle"
-            className={s.svgNodeTitle}
-          >
-            {truncate(humanize(n.id), 22)}
-          </text>
-          <text
-            x={NODE_WIDTH / 2}
-            y={NODE_HEIGHT / 2 + 14}
-            textAnchor="middle"
-            className={s.svgNodeOp}
-          >
-            {truncate(n.operator, 26)}
-          </text>
-        </g>
-      ))}
-    </svg>
-  );
-}
-
-const NODE_WIDTH = 220;
-const NODE_HEIGHT = 72;
-const COL_SPACING = 100;
-const ROW_SPACING = 40;
-
-interface LaidOutNode {
-  id: string;
-  operator: string;
-  x: number;
-  y: number;
-  isBoundary: boolean;
-}
-
-interface LaidOutEdge {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-}
-
-interface DagLayout {
-  nodes: LaidOutNode[];
-  edges: LaidOutEdge[];
-  width: number;
-  height: number;
-}
-
-function layoutDag(workflow: Workflow): DagLayout {
-  const nodes = workflow.nodes;
-  const edges = workflow.edges;
-
-  // Compute depth via Kahn's algorithm (longest-path layering).
-  const depth = new Map<string, number>();
-  for (const n of nodes) depth.set(n.id, 0);
-  for (let iter = 0; iter < nodes.length + 1; iter += 1) {
-    let changed = false;
-    for (const e of edges) {
-      const s = depth.get(e.source_node) ?? 0;
-      const t = depth.get(e.target_node) ?? 0;
-      if (t < s + 1) {
-        depth.set(e.target_node, s + 1);
-        changed = true;
-      }
-    }
-    if (!changed) break;
-  }
-
-  // Group nodes by depth.
-  const columns = new Map<number, string[]>();
-  for (const n of nodes) {
-    const d = depth.get(n.id) ?? 0;
-    if (!columns.has(d)) columns.set(d, []);
-    columns.get(d)!.push(n.id);
-  }
-
-  const sortedDepths = Array.from(columns.keys()).sort((a, b) => a - b);
-  const nodePos = new Map<string, { x: number; y: number }>();
-  const maxCol = sortedDepths.length;
-  let maxRowCount = 0;
-
-  for (let colIdx = 0; colIdx < sortedDepths.length; colIdx += 1) {
-    const d = sortedDepths[colIdx]!;
-    const ids = columns.get(d)!;
-    ids.sort();
-    if (ids.length > maxRowCount) maxRowCount = ids.length;
-    const colX = colIdx * (NODE_WIDTH + COL_SPACING) + 20;
-    for (let rowIdx = 0; rowIdx < ids.length; rowIdx += 1) {
-      const id = ids[rowIdx]!;
-      const y = rowIdx * (NODE_HEIGHT + ROW_SPACING) + 20;
-      nodePos.set(id, { x: colX, y });
-    }
-  }
-
-  const laidNodes: LaidOutNode[] = nodes.map((n) => {
-    const pos = nodePos.get(n.id) ?? { x: 0, y: 0 };
-    const incoming = edges.some((e) => e.target_node === n.id);
-    const outgoing = edges.some((e) => e.source_node === n.id);
-    return {
-      id: n.id,
-      operator: n.operator,
-      x: pos.x,
-      y: pos.y,
-      isBoundary: !incoming || !outgoing,
-    };
-  });
-
-  const laidEdges: LaidOutEdge[] = edges.map((e) => {
-    const src = nodePos.get(e.source_node);
-    const tgt = nodePos.get(e.target_node);
-    return {
-      x1: (src?.x ?? 0) + NODE_WIDTH,
-      y1: (src?.y ?? 0) + NODE_HEIGHT / 2,
-      x2: tgt?.x ?? 0,
-      y2: (tgt?.y ?? 0) + NODE_HEIGHT / 2,
-    };
-  });
-
-  const width = maxCol * (NODE_WIDTH + COL_SPACING) + 40;
-  const height = Math.max(maxRowCount, 1) * (NODE_HEIGHT + ROW_SPACING) + 40;
-
-  return { nodes: laidNodes, edges: laidEdges, width, height };
-}
-
-function edgePath(x1: number, y1: number, x2: number, y2: number): string {
-  const midX = (x1 + x2) / 2;
-  return `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2 - 8} ${y2}`;
 }
 
 function truncate(s: string, max: number): string {

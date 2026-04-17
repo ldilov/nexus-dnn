@@ -1,69 +1,18 @@
 id: "llm.layout.chat"
 displayName: "LLM Chat"
-description: "Interactive chat with local LLM models. Backends and models are managed from this workspace."
+description: "Interactive chat with local LLM models. Backends and models are managed from the host app sidebar."
 icon: "chat"
+
+# Backends and Models used to be declared here as extension-owned toolbar
+# actions + drawers. They now live in the host sidebar (Backends / Models),
+# because the host-managed model store (spec 017) and the backend registry
+# are cross-extension surfaces. The chat layout should focus on the chat.
 
 root:
   type: workspace_shell
   props:
     eyebrow: "LLM Chat · Local Inference"
-    toolbarActions:
-      - id: "open_backends"
-        icon: "developer_board"
-        label: "Backends"
-        drawerId: "backends"
-      - id: "open_models"
-        icon: "model_training"
-        label: "Models"
-        drawerId: "models"
   children:
-    - type: workspace_drawer
-      props:
-        id: "backends"
-        title: "Backend Runtimes"
-        width: 560
-      children:
-        - type: backend_selector
-          id: backend_selection
-          props:
-            title: "Backend Selection"
-            description: "Choose your inference engine. TensorRT provides maximum hardware acceleration for NVIDIA GPUs, while Llama.cpp offers versatile CPU/GPU hybrid offloading."
-            backends:
-              - id: "tensorrt-llm"
-                name: "TensorRT-LLM"
-                version: "v0.17"
-                description: "NVIDIA high-performance deep learning inference optimizer. Best for A100/H100 clusters requiring sub-millisecond latency and high throughput."
-                icon: "memory"
-                status: "available"
-                optimizedFor: "Ampere/Hopper"
-              - id: "llama.cpp"
-                name: "Llama.cpp"
-                version: "vB4970"
-                description: "Portable GGML/GGUF inference engine. Ideal for hybrid deployments, edge devices, and environments with limited VRAM. Supports 4-bit and 8-bit quantization."
-                icon: "terminal"
-                status: "available"
-                accelerationOptions:
-                  - id: "cpu"
-                    label: "CPU only"
-                  - id: "cuda12"
-                    label: "CUDA 12 (NVIDIA GPU)"
-                  - id: "cuda13"
-                    label: "CUDA 13 (NVIDIA GPU)"
-          dataSource:
-            method: "llm.list_runtime_candidates"
-            events: ["backend.state.changed", "backend.install.complete"]
-
-    - type: workspace_drawer
-      props:
-        id: "models"
-        title: "Models"
-        width: 640
-      children:
-        - type: models_panel
-          id: local_llm_models
-          props:
-            extension_id: "local-llm"
-
     - type: split_panel
       props:
         direction: horizontal
@@ -117,15 +66,6 @@ root:
                   archived: false
                   limit: 50
                 events: ["session.state.changed"]
-
-            - type: list
-              id: sidebar_footer
-              props:
-                itemType: nav
-                items:
-                  - id: "documentation"
-                    label: "Documentation"
-                    icon: "menu_book"
 
         - type: stack
           id: main_area
