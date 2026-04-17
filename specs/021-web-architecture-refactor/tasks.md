@@ -54,8 +54,8 @@ description: "Task list for spec 021 — Web App Architecture Refactor"
 
 ### Baseline capture
 
-- [ ] **T012** [US5] Boot `pnpm dev` against current `main` at the SHA that will be the last commit BEFORE US1 lands. Run `pnpm test:visual --update-snapshots`. Commit the resulting `apps/web/tests/visual/baselines/**/*.png` and `metadata.json` in a single commit `test(visual): capture baselines at <sha>`. No other changes in this commit.
-- [ ] **T013** [US5] Verify: run `pnpm test:visual` (without `--update-snapshots`) on the same SHA; expect 0 failures.
+- [X] **T012** [US5] Boot `pnpm dev` against current `main` at the SHA that will be the last commit BEFORE US1 lands. Run `pnpm test:visual --update-snapshots`. Commit the resulting `apps/web/tests/visual/baselines/**/*.png` and `metadata.json` in a single commit `test(visual): capture baselines at <sha>`. No other changes in this commit.
+- [X] **T013** [US5] Verify: run `pnpm test:visual` (without `--update-snapshots`) on the same SHA; expect 0 failures.
 
 ### CI integration
 
@@ -98,7 +98,7 @@ description: "Task list for spec 021 — Web App Architecture Refactor"
 ### Verification
 
 - [X] **T027** [US1] Run `pnpm scan:constitution` → new baseline should only include violations that are explicitly deferred to US2/US3 (e.g., `.ui.tsx` split remaining). Compare against `scan-constitution-baseline.json`; ensure new violations count is zero or negative (strictly monotonic shrink).
-- [ ] **T028** [US1] Run `pnpm test:regression`. Expect every route's screenshot to match baseline within 0.5 %. Any diff > 0.5 % is a bug to be fixed before merge (not a baseline update — US1 is structural and visually inert).
+- [X] **T028** [US1] Run `pnpm test:regression`. Expect every route's screenshot to match baseline within 0.5 %. Any diff > 0.5 % is a bug to be fixed before merge (not a baseline update — US1 is structural and visually inert).
 - [ ] **T029** [US1] Verify SC-001 (`wc -l apps/web/src/App.tsx` ≤ 60) and SC-002 (no files matching `*RouteWrapper*`).
 
 **Checkpoint**: Router is in data mode. Every screen loads via a loader (even if the loader is still a one-liner calling the existing service functions). Wrappers gone. Visual-diff green.
