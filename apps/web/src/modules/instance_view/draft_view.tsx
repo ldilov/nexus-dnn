@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { materializeDraft } from "../../api/client";
 import {
   clearDraftEnvelope,
@@ -11,7 +12,6 @@ import * as s from "./instance_view.css";
 interface DraftViewProps {
   sourceModuleId: string;
   draftUuid: string;
-  onNavigate: (hash: string) => void;
 }
 
 type State =
@@ -19,11 +19,8 @@ type State =
   | { kind: "ready"; envelope: DraftEnvelope }
   | { kind: "error"; message: string };
 
-export function DraftView({
-  sourceModuleId,
-  draftUuid,
-  onNavigate,
-}: DraftViewProps) {
+export function DraftView({ sourceModuleId, draftUuid }: DraftViewProps) {
+  const navigate = useNavigate();
   const [state, setState] = useState<State>({ kind: "loading" });
   const [saving, setSaving] = useState(false);
   const [sizeWarning, setSizeWarning] = useState<string | null>(null);
@@ -94,9 +91,7 @@ export function DraftView({
         >),
       });
       clearDraftEnvelope(draftUuid);
-      onNavigate(
-        `#/deployments/${encodeURIComponent(result.deployment_id)}`,
-      );
+      navigate(`/deployments/${encodeURIComponent(result.deployment_id)}`);
     } catch (err: unknown) {
       setState({
         kind: "error",
@@ -105,7 +100,7 @@ export function DraftView({
     } finally {
       setSaving(false);
     }
-  }, [state, draftUuid, onNavigate]);
+  }, [state, draftUuid, navigate]);
 
   const handleDiscard = useCallback(() => {
     const ok = window.confirm(
@@ -116,11 +111,11 @@ export function DraftView({
     // Spec 019 FR-052 — navigate to fork source. Blank Module → modules list;
     // others → the source module detail.
     if (sourceModuleId === "user:blank") {
-      onNavigate("#/modules");
+      navigate("/modules");
     } else {
-      onNavigate(`#/modules/${encodeURIComponent(sourceModuleId)}`);
+      navigate(`/modules/${encodeURIComponent(sourceModuleId)}`);
     }
-  }, [draftUuid, sourceModuleId, onNavigate]);
+  }, [draftUuid, sourceModuleId, navigate]);
 
   const bannerText = useMemo(() => {
     if (state.kind !== "ready") return "Loading draft…";
@@ -148,7 +143,7 @@ export function DraftView({
           type="button"
           className={s.secondaryBtn}
           style={{ margin: "1rem auto" }}
-          onClick={() => onNavigate("#/modules")}
+          onClick={() => navigate("/modules")}
         >
           Back to modules
         </button>

@@ -8,6 +8,61 @@ fn storage(e: sqlx::Error) -> RuntimeAdapterError {
     RuntimeAdapterError::Storage(e.to_string())
 }
 
+// SQLite surfaces "no such table" as a generic database error rather than a
+// dedicated error kind. Match on the text so the llama.cpp adapter can
+// tolerate a DB where the extension's own migrations haven't run yet.
+fn is_missing_table_error(e: &sqlx::Error) -> bool {
+    let msg = e.to_string();
+    msg.contains("no such table") || msg.contains("ext_local_llm_runtime_installs")
+}
+
+// Idempotent CREATE TABLE — runs before every write so the Install button
+// works on a fresh DB where the extension's own migration hasn't applied
+// yet. Column set mirrors
+// `extensions/builtin/local-llm/storage/migrations/004_runtime_installs_and_settings.sql`.
+// This is a transitional shim: the proper fix is to move writes to
+// `host_runtime_installs` via `runtime_installs_store` (spec 011/012).
+async fn ensure_legacy_tables(pool: &SqlitePool) -> Result<(), RuntimeAdapterError> {
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS ext_local_llm_runtime_installs (
+            runtime_install_id     TEXT PRIMARY KEY,
+            backend                TEXT NOT NULL,
+            release_id             TEXT NOT NULL,
+            platform               TEXT NOT NULL,
+            accelerator_profile    TEXT NOT NULL,
+            source_url             TEXT,
+            checksum_sha256        TEXT,
+            install_path           TEXT NOT NULL,
+            binary_path            TEXT,
+            status                 TEXT NOT NULL,
+            installed_at           INTEGER,
+            validated_at           INTEGER,
+            last_failure_category  TEXT,
+            created_at             INTEGER NOT NULL,
+            updated_at             INTEGER NOT NULL,
+            UNIQUE(backend, release_id, platform, accelerator_profile)
+        )",
+    )
+    .execute(pool)
+    .await
+    .map_err(storage)?;
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS ext_local_llm_backend_state_log (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            install_id    TEXT NOT NULL,
+            from_state    TEXT,
+            to_state      TEXT NOT NULL,
+            trigger       TEXT NOT NULL,
+            detail        TEXT,
+            occurred_at   TEXT NOT NULL
+        )",
+    )
+    .execute(pool)
+    .await
+    .map_err(storage)?;
+    Ok(())
+}
+
 fn now_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
@@ -48,6 +103,7 @@ pub async fn upsert(
     pool: &SqlitePool,
     manifest: &InstallManifest,
 ) -> Result<(), RuntimeAdapterError> {
+    ensure_legacy_tables(pool).await?;
     let now = now_ms();
     sqlx::query(
         "INSERT INTO ext_local_llm_runtime_installs
@@ -94,6 +150,7 @@ pub async fn append_state_log(
     trigger: &str,
     detail: Option<&str>,
 ) -> Result<(), RuntimeAdapterError> {
+    ensure_legacy_tables(pool).await?;
     let occurred_at = chrono::Utc::now().to_rfc3339();
     sqlx::query(
         "INSERT INTO ext_local_llm_backend_state_log \
@@ -118,6 +175,7 @@ pub async fn update_status(
     status: InstallStatus,
     last_failure_category: Option<String>,
 ) -> Result<(), RuntimeAdapterError> {
+    ensure_legacy_tables(pool).await?;
     let now = now_ms();
     let validated_at = if matches!(status, InstallStatus::Ready) {
         Some(now)
@@ -145,7 +203,13 @@ pub async fn load_latest(
     pool: &SqlitePool,
     backend: &str,
 ) -> Result<Option<InstallManifest>, RuntimeAdapterError> {
-    let row = sqlx::query(
+    // The `ext_local_llm_runtime_installs` table is created by the Local Chat
+    // extension's own migrations (spec 007, migration 004_runtime_installs).
+    // On a fresh DB, or when the extension's migrations haven't run yet, the
+    // table doesn't exist — treat that as "nothing installed" rather than a
+    // 500. Spec 011/012's host-runtime-pool refactor is migrating this state
+    // into `host_runtime_installs`; this adapter will follow in a later pass.
+    let result = sqlx::query(
         "SELECT runtime_install_id, backend, release_id, platform, accelerator_profile, source_url,
                 checksum_sha256, install_path, binary_path, status, installed_at, validated_at,
                 last_failure_category
@@ -156,8 +220,12 @@ pub async fn load_latest(
     )
     .bind(backend)
     .fetch_optional(pool)
-    .await
-    .map_err(storage)?;
+    .await;
+    let row = match result {
+        Ok(r) => r,
+        Err(e) if is_missing_table_error(&e) => return Ok(None),
+        Err(e) => return Err(storage(e)),
+    };
     let Some(row) = row else { return Ok(None) };
     let profile_raw: String = row.try_get("accelerator_profile").map_err(storage)?;
     let status_raw: String = row.try_get("status").map_err(storage)?;

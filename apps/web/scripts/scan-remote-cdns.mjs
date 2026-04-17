@@ -63,6 +63,7 @@ const BENIGN_HOSTS = [
   // Library error-message URLs baked into bundled output. Never fetched.
   "developer.mozilla.org",
   "vanilla-extract.style",
+  "reactrouter.com",
 ];
 
 function isBenign(host) {

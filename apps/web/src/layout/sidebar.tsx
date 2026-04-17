@@ -1,23 +1,16 @@
 import { type CSSProperties } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import * as styles from "./sidebar.css";
-
-export type NavItemId =
-  | "home"
-  | "modules"
-  | "recipes"
-  | "workflows"
-  | "deployments"
-  | "runs"
-  | "artifacts"
-  | "extensions"
-  | `ext:${string}`;
 
 type UtilityItemId = "settings" | "help";
 
 type NavItem = {
-  readonly id: NavItemId;
+  readonly path: string;
   readonly label: string;
   readonly icon: string;
+  // Match rule for the active state. "exact" = only when pathname === path,
+  // "prefix" = when pathname starts with path. Defaults to "prefix".
+  readonly match?: "exact" | "prefix";
 };
 
 type UtilityItem = {
@@ -27,13 +20,19 @@ type UtilityItem = {
 };
 
 const CORE_NAV_ITEMS: readonly NavItem[] = [
-  { id: "home", label: "Home", icon: "home" },
-  { id: "modules", label: "Modules", icon: "apps" },
+  { path: "/", label: "Home", icon: "home", match: "exact" },
+  { path: "/modules", label: "Modules", icon: "apps" },
   // scan-terminology: allow — canonical sidebar label per FR-T02 glossary
-  { id: "deployments", label: "Deployments", icon: "rocket_launch" },
-  { id: "runs", label: "Runs", icon: "play_arrow" },
-  { id: "artifacts", label: "Artifacts", icon: "inventory_2" },
-  { id: "extensions", label: "Extensions", icon: "extension" },
+  { path: "/deployments", label: "Deployments", icon: "rocket_launch" },
+  // Backends + Models are host-level surfaces (spec 017 host-managed model
+  // store + backend registry). They used to be declared inside each
+  // extension's layout as drawers; now they live once, here, in the
+  // shell so every extension shares them.
+  { path: "/backends", label: "Backends", icon: "developer_board" },
+  { path: "/models", label: "Models", icon: "model_training" },
+  { path: "/runs", label: "Runs", icon: "play_arrow" },
+  { path: "/artifacts", label: "Artifacts", icon: "inventory_2" },
+  { path: "/extensions", label: "Extensions", icon: "extension", match: "exact" },
 ];
 
 const UTILITY_ITEMS: readonly UtilityItem[] = [
@@ -46,28 +45,31 @@ const FILLED_ICON_STYLE: CSSProperties = {
 };
 
 type ExtensionNavItem = {
-  readonly id: NavItemId;
+  readonly layoutId: string;
   readonly label: string;
   readonly icon: string;
 };
 
 type SidebarProps = {
-  activeItem: NavItemId;
-  onNavigate: (id: NavItemId) => void;
   pinned: boolean;
   onTogglePin: () => void;
   onUtility?: (id: UtilityItemId) => void;
   extensionNavItems?: readonly ExtensionNavItem[];
 };
 
+function isItemActive(pathname: string, item: NavItem): boolean {
+  if (item.match === "exact") return pathname === item.path;
+  if (item.path === "/") return pathname === "/";
+  return pathname === item.path || pathname.startsWith(`${item.path}/`);
+}
+
 export function Sidebar({
-  activeItem,
-  onNavigate,
   pinned,
   onTogglePin,
   onUtility,
   extensionNavItems = [],
 }: SidebarProps) {
+  const { pathname } = useLocation();
   const expanded = pinned;
 
   const containerCls = [styles.container, expanded ? styles.containerExpanded : ""]
@@ -92,6 +94,43 @@ export function Sidebar({
     .filter(Boolean)
     .join(" ");
 
+  const renderNavItem = (item: NavItem) => {
+    const active = isItemActive(pathname, item);
+    return (
+      <NavLink
+        key={item.path}
+        to={item.path}
+        className={styles.navItemRecipe({ active })}
+        title={item.label}
+        aria-label={item.label}
+        aria-current={active ? "page" : undefined}
+      >
+        <span
+          className={`material-symbols-outlined ${styles.navItemIcon}`}
+          style={active ? FILLED_ICON_STYLE : undefined}
+        >
+          {item.icon}
+        </span>
+        <span className={labelCls}>{item.label}</span>
+      </NavLink>
+    );
+  };
+
+  const extensionItems: readonly NavItem[] = extensionNavItems.map((ext) => ({
+    path: `/extensions/${encodeURIComponent(ext.layoutId)}`,
+    label: ext.label,
+    icon: ext.icon,
+    match: "prefix" as const,
+  }));
+
+  // Home first, then extensions, then the rest of the core nav (preserves
+  // the historical ordering before the refactor).
+  const orderedNav: readonly NavItem[] = [
+    CORE_NAV_ITEMS[0]!,
+    ...extensionItems,
+    ...CORE_NAV_ITEMS.slice(1),
+  ];
+
   return (
     <div className={containerCls}>
       <div className={headerCls}>
@@ -107,29 +146,7 @@ export function Sidebar({
           </span>
         </button>
       </div>
-      <div className={styles.navSection}>
-        {[...CORE_NAV_ITEMS.slice(0, 1), ...extensionNavItems, ...CORE_NAV_ITEMS.slice(1)].map((item) => {
-          const isActive = item.id === activeItem;
-          return (
-            <button
-              key={item.id}
-              className={styles.navItemRecipe({ active: isActive })}
-              onClick={() => onNavigate(item.id)}
-              title={item.label}
-              aria-label={item.label}
-              aria-current={isActive ? "page" : undefined}
-            >
-              <span
-                className={`material-symbols-outlined ${styles.navItemIcon}`}
-                style={isActive ? FILLED_ICON_STYLE : undefined}
-              >
-                {item.icon}
-              </span>
-              <span className={labelCls}>{item.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      <div className={styles.navSection}>{orderedNav.map(renderNavItem)}</div>
       <div className={styles.divider} />
       <div className={styles.utilitySection}>
         {UTILITY_ITEMS.map((item) => (

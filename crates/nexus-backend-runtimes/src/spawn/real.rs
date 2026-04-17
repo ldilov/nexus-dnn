@@ -15,8 +15,10 @@ use crate::runtime_installs_store;
 
 use super::host_env::{build_host_env, load_host_governed_injections};
 use super::port::{PortAllocator, PortLease};
-use super::supervise::{SupervisorCtx, drain_stream, supervise_real};
+use super::supervise::{SupervisorCtx, supervise_real};
 use super::{SpawnMode, SpawnRuntimeRequest, Spawner, bind_host_for, row_to_install_manifest};
+use crate::events::SharedPublisher;
+use crate::log_pipeline::{self, LogPipelineContext};
 
 /// All the inputs collected during real-mode spawn prep — held in one struct so
 pub(super) struct RealSpawnPrep {
@@ -122,7 +124,18 @@ impl Spawner {
         lease_arc: Arc<RwLock<RuntimeLease>>,
         shutdown: Arc<tokio::sync::Notify>,
     ) -> JoinHandle<()> {
-        spawn_stream_drainers(&mut prep.child);
+        // Route the runtime child's stdout/stderr into the shared log
+        // pipeline so llama-server's native `[INFO]/[WARN]/[ERROR]` output
+        // reaches the host event bus as `BackendEvent::LogLine` — same
+        // channel the probe phase already uses (spec 011/012). Previously
+        // these streams were drained to `/dev/null` via `drain_stream`,
+        // which is why no runtime-server logs ever surfaced in the UI.
+        spawn_runtime_log_pipes(
+            &mut prep.child,
+            family.clone(),
+            lease_id.clone(),
+            self.publisher.clone(),
+        );
         let ctx = SupervisorCtx {
             pool: prep.pool,
             publisher: self.publisher.clone(),
@@ -357,11 +370,32 @@ pub(super) fn build_real_lease(args: &LeaseRowArgs<'_>) -> RuntimeLease {
     }
 }
 
-pub(super) fn spawn_stream_drainers(child: &mut tokio::process::Child) {
+fn spawn_runtime_log_pipes(
+    child: &mut tokio::process::Child,
+    family: String,
+    lease_id: String,
+    publisher: SharedPublisher,
+) {
+    // Same `LogPipelineContext` shape the probe phase uses. `source` is the
+    // log-console filter bucket the UI groups by; `namespace` separates
+    // stdout vs stderr at the row level for operators debugging which stream
+    // a crash came out of.
+    let build_ctx = |namespace: &str| -> Arc<LogPipelineContext> {
+        Arc::new(LogPipelineContext {
+            source: family.clone(),
+            namespace: namespace.to_string(),
+            runtime_id: Some(lease_id.clone()),
+            deployment_id: None,
+            publisher: publisher.clone(),
+            backend: family.clone(),
+        })
+    };
     if let Some(out) = child.stdout.take() {
-        tokio::spawn(drain_stream(out));
+        let ctx = build_ctx("runtime.stdout");
+        tokio::spawn(async move { log_pipeline::pipe_stream(ctx, out).await });
     }
     if let Some(err) = child.stderr.take() {
-        tokio::spawn(drain_stream(err));
+        let ctx = build_ctx("runtime.stderr");
+        tokio::spawn(async move { log_pipeline::pipe_stream(ctx, err).await });
     }
 }

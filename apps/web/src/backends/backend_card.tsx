@@ -1,6 +1,27 @@
 import type { BackendSummary, CardState } from "./types";
 import * as css from "./backend_card.css";
 
+// Maps each `card_state` onto the right badge variant so the pill color
+// carries status meaning (acid-green ready, warm warn, red error, etc.).
+type BadgeVariant = "neutral" | "ready" | "installing" | "warn" | "error";
+function badgeVariantFor(backend: BackendSummary): BadgeVariant {
+  if (backend.implementation_status === "unavailable") return "neutral";
+  switch (backend.card_state) {
+    case "ready":
+      return "ready";
+    case "installing":
+    case "updating":
+      return "installing";
+    case "installed_unvalidated":
+      return "warn";
+    case "broken":
+      return "error";
+    case "not_installed":
+    case "unsupported":
+      return "neutral";
+  }
+}
+
 interface Props {
   backend: BackendSummary;
   onInstall: (backend: BackendSummary) => void;
@@ -122,42 +143,48 @@ function footerCopy(backend: BackendSummary): string {
 export function BackendCard({ backend, ...handlers }: Props) {
   const binding = bindCtas(backend.card_state, handlers, backend);
   const version = versionLabel(backend);
+  const variant = badgeVariantFor(backend);
+  const description =
+    backend.id === "llama.cpp"
+      ? "GGUF-first local runtime using the upstream llama-server executable."
+      : backend.id === "tensorrt_llm"
+        ? "NVIDIA TensorRT-LLM — native Windows support planned for later slice."
+        : "";
+  const footer = footerCopy(backend);
   return (
     <section className={css.card} data-backend-id={backend.id} data-card-state={backend.card_state}>
       <div className={css.header}>
         <div className={css.title}>{backend.display_name}</div>
-        <span className={css.badge}>{badgeFor(backend)}</span>
+        <span className={css.badge[variant]}>{badgeFor(backend)}</span>
       </div>
       {version && <div className={css.version}>{version}</div>}
-      <div className={css.body}>
-        {backend.id === "llama.cpp"
-          ? "GGUF-first local runtime using the upstream llama-server executable."
-          : backend.id === "tensorrt_llm"
-            ? "NVIDIA TensorRT-LLM — native Windows support planned for later slice."
-            : ""}
-      </div>
-      <div className={css.actions}>
-        {binding.primaryLabel && (
-          <button
-            type="button"
-            disabled={binding.primaryDisabled}
-            onClick={binding.primaryAction ?? undefined}
-            data-testid={`backend-${backend.id}-primary`}
-          >
-            {binding.primaryLabel}
-          </button>
-        )}
-        {binding.secondaryLabel && (
-          <button
-            type="button"
-            onClick={binding.secondaryAction ?? undefined}
-            data-testid={`backend-${backend.id}-secondary`}
-          >
-            {binding.secondaryLabel}
-          </button>
-        )}
-      </div>
-      <div className={css.body}>{footerCopy(backend)}</div>
+      {description && <p className={css.body}>{description}</p>}
+      {(binding.primaryLabel || binding.secondaryLabel) && (
+        <div className={css.actions}>
+          {binding.primaryLabel && (
+            <button
+              type="button"
+              className={css.buttonPrimary}
+              disabled={binding.primaryDisabled}
+              onClick={binding.primaryAction ?? undefined}
+              data-testid={`backend-${backend.id}-primary`}
+            >
+              {binding.primaryLabel}
+            </button>
+          )}
+          {binding.secondaryLabel && (
+            <button
+              type="button"
+              className={css.buttonSecondary}
+              onClick={binding.secondaryAction ?? undefined}
+              data-testid={`backend-${backend.id}-secondary`}
+            >
+              {binding.secondaryLabel}
+            </button>
+          )}
+        </div>
+      )}
+      {footer && <p className={css.footerNote}>{footer}</p>}
     </section>
   );
 }

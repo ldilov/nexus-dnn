@@ -1,52 +1,33 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  fetchDeployments,
-  fetchModules,
   type DeploymentSummary,
   type ModuleSummary,
 } from "../api/client";
+import { useDeploymentsList, useModules } from "../hooks/use_api";
 import { ModuleBadge } from "../modules/module_badge";
 import * as s from "./deployments_view.css";
-
-type LoadState =
-  | { kind: "loading" }
-  | { kind: "ready"; items: readonly DeploymentSummary[] }
-  | { kind: "error"; message: string };
 
 type Filter = {
   userOnly: boolean;
   moduleId: string | null;
 };
 
-interface DeploymentsViewProps {
-  onNavigate?: (hash: string) => void;
-}
-
-export function DeploymentsView({ onNavigate }: DeploymentsViewProps = {}) {
-  const [state, setState] = useState<LoadState>({ kind: "loading" });
-  const [modules, setModules] = useState<readonly ModuleSummary[]>([]);
+export function DeploymentsView() {
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<Filter>({
     userOnly: false,
     moduleId: null,
   });
 
-  const refresh = useCallback(() => {
-    setState({ kind: "loading" });
-    Promise.all([fetchDeployments(), fetchModules({ limit: 200 })])
-      .then(([items, modEnvelope]) => {
-        setState({ kind: "ready", items });
-        setModules(modEnvelope.modules);
-      })
-      .catch((err: unknown) => {
-        const message =
-          err instanceof Error ? err.message : "Failed to load deployments";
-        setState({ kind: "error", message });
-      });
-  }, []);
+  const {
+    data: deployments,
+    error: deploymentsError,
+    isLoading: deploymentsLoading,
+  } = useDeploymentsList();
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  const { data: modulesEnvelope } = useModules({ limit: 200 });
+  const modules = modulesEnvelope?.modules ?? [];
 
   // Spec 019 T407 — resolve each deployment row's module by consulting the
   // new `source_extension_id` / `source_workflow_id` fields projected on
@@ -74,8 +55,8 @@ export function DeploymentsView({ onNavigate }: DeploymentsViewProps = {}) {
   );
 
   const items = useMemo(() => {
-    if (state.kind !== "ready") return [];
-    return state.items.filter((d) => {
+    if (!deployments) return [] as readonly DeploymentSummary[];
+    return deployments.filter((d) => {
       const linked = resolveModule(d);
       if (filter.userOnly && (!linked || linked.source_kind !== "user")) {
         return false;
@@ -85,14 +66,21 @@ export function DeploymentsView({ onNavigate }: DeploymentsViewProps = {}) {
       }
       return true;
     });
-  }, [state, filter, resolveModule]);
+  }, [deployments, filter, resolveModule]);
 
   const handleOpenModule = useCallback(
     (moduleId: string) => {
-      onNavigate?.(`#/modules/${encodeURIComponent(moduleId)}`);
+      navigate(`/modules/${encodeURIComponent(moduleId)}`);
     },
-    [onNavigate],
+    [navigate],
   );
+
+  const errorMessage =
+    deploymentsError instanceof Error
+      ? deploymentsError.message
+      : deploymentsError
+        ? "Failed to load deployments"
+        : null;
 
   return (
     <div className={s.root}>
@@ -136,18 +124,18 @@ export function DeploymentsView({ onNavigate }: DeploymentsViewProps = {}) {
         </div>
       </header>
 
-      {state.kind === "loading" && (
+      {deploymentsLoading && (
         // scan-terminology: allow
         <p className={s.subtitle}>Loading deployments…</p>
       )}
 
-      {state.kind === "error" && (
+      {errorMessage && (
         <div className={s.error} role="alert">
-          {state.message}
+          {errorMessage}
         </div>
       )}
 
-      {state.kind === "ready" && items.length === 0 && (
+      {!deploymentsLoading && !errorMessage && items.length === 0 && (
         <div className={s.empty}>
           <span className={`material-symbols-outlined ${s.emptyIcon}`}>
             rocket_launch
@@ -161,7 +149,7 @@ export function DeploymentsView({ onNavigate }: DeploymentsViewProps = {}) {
         </div>
       )}
 
-      {state.kind === "ready" && items.length > 0 && (
+      {items.length > 0 && (
         // scan-terminology: allow
         <ul className={s.list} aria-label="Deployments">
           {items.map((item) => {
@@ -181,7 +169,7 @@ export function DeploymentsView({ onNavigate }: DeploymentsViewProps = {}) {
                         padding: 0,
                       }}
                       onClick={() =>
-                        onNavigate?.(`#/deployments/${encodeURIComponent(item.id)}`)
+                        navigate(`/deployments/${encodeURIComponent(item.id)}`)
                       }
                     >
                       {item.display_name}
@@ -204,7 +192,7 @@ export function DeploymentsView({ onNavigate }: DeploymentsViewProps = {}) {
                         moduleId="user:blank"
                         displayName="Module"
                         icon={{ kind: "symbol", value: "apps" }}
-                        onOpen={() => onNavigate?.("#/modules")}
+                        onOpen={() => navigate("/modules")}
                       />
                     )}
                   </div>
