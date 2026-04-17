@@ -1,4 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { LazyMotion, domAnimation, m } from "motion/react";
+import { sharedModalTransition } from "../../../theme/motion";
 import * as css from "./install_modal.css";
 
 const PHASES = [
@@ -148,13 +150,22 @@ export function InstallModal({ backendId, onClose, eventsSource }: Props) {
       : null;
 
   return (
+    <LazyMotion features={domAnimation} strict>
     <div
       className={css.backdrop}
       role="dialog"
       aria-modal="true"
       aria-labelledby={`install-title-${backendId}`}
     >
-      <div className={css.dialog} data-testid={`install-modal-${backendId}`}>
+      <m.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.98 }}
+        transition={sharedModalTransition}
+        className={css.dialog}
+        data-testid={`install-modal-${backendId}`}
+        data-install-modal-id={backendId}
+      >
         <header className={css.header}>
           <div className={css.titleBlock}>
             <span className={css.eyebrow}>Backend install</span>
@@ -301,7 +312,8 @@ export function InstallModal({ backendId, onClose, eventsSource }: Props) {
             </button>
           )}
         </footer>
-      </div>
+      </m.div>
     </div>
+    </LazyMotion>
   );
 }

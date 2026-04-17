@@ -1,9 +1,16 @@
+import { Suspense, lazy } from "react";
 import type { BackendSummary, BackendListResponse } from "./types";
 import { BackendCard } from "./components/backend_card";
 import { BackendDetailDrawer } from "./components/backend_detail_drawer";
-import { InstallModal, type InstallStreamEvent } from "./components/install_modal";
+import type { InstallStreamEvent } from "./components/install_modal";
 import { VariantPickerDrawer } from "./components/variant_picker_drawer";
 import * as css from "./backends.css";
+
+const InstallModal = lazy(() =>
+  import("./components/install_modal").then((mod) => ({
+    default: mod.InstallModal,
+  })),
+);
 
 interface PickerDescriptor {
   backend: BackendSummary;
@@ -124,11 +131,13 @@ export function BackendsUI({
       )}
 
       {installing && (
-        <InstallModal
-          backendId={installing.backendId}
-          eventsSource={installEvents}
-          onClose={onCloseInstall}
-        />
+        <Suspense fallback={null}>
+          <InstallModal
+            backendId={installing.backendId}
+            eventsSource={installEvents}
+            onClose={onCloseInstall}
+          />
+        </Suspense>
       )}
     </main>
   );

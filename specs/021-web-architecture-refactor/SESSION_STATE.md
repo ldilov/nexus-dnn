@@ -1,4 +1,4 @@
-# Spec 021 — Session State (2026-04-17 close, US3 complete)
+# Spec 021 — Session State (2026-04-18 close, Phase 6 US4 Motion landed)
 
 Pick up here in the next session. The working tree is clean on `main`.
 
@@ -11,10 +11,17 @@ Pick up here in the next session. The working tree is clean on `main`.
 | Phase 3 US1 Router Migration | 13/14 ✅ | T029 formal SC audit pending (mechanical grep) |
 | Phase 4 US2 Backends Pilot | 21/23 ✅ | T044/T045 domain service file-body splits deferred |
 | Phase 5 **US3 Sweep** | **18/18 ✅** | all 10 screens migrated; all 9 SR-007 root violations resolved |
-| Phase 6 US4 Motion | 0/8 | **unblocked — ready to start** |
+| Phase 6 US4 Motion | 6/8 ✅ | T077 (reduced-motion nav-sequence test) + T078 (manual perf trace) deferred |
 | Phase 7 Finalization | 0/4 | |
 
-**Totals: 74/83 tasks complete (89%)**
+**Totals: 80/83 tasks complete (96%)**
+
+## Phase 6 delivery notes (2026-04-18)
+
+- Route transitions: **CSS-only** keyframe on `routeTransitionWrapper`, keyed by `location.pathname`. Motion was too heavy for routes (+28 KB minimum via `domAnimation`); the CSS path satisfies the same animation spec at **0 KB JS**.
+- Install modal: `React.lazy` + `Suspense` — Motion chunk (28.72 KB gzipped) only loads when the user opens the install flow.
+- `layoutId` shared-element dropped: requires `domMax` features (+40 KB), which is unreachable under SC-012. Replaced with a scale+opacity reveal on the modal dialog root (`initial={opacity:0, scale:0.96}`).
+- Bundle gate: `pnpm scan:bundle-size` reads `dist/assets/index-*.js`, compares gzipped bytes vs `apps/web/bundle-baseline.json` (tolerance 8192 B). Current main chunk: **246.23 KB gzipped** (−5.92 KB vs pre-US4 baseline of 252.85 KB).
 
 ## Commits on `main` (reverse chronological, recent 13)
 

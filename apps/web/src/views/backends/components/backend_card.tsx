@@ -168,6 +168,9 @@ export function BackendCard({ backend, ...handlers }: Props) {
               disabled={binding.primaryDisabled}
               onClick={binding.primaryAction ?? undefined}
               data-testid={`backend-${backend.id}-primary`}
+              data-install-trigger-id={
+                backend.card_state === "not_installed" ? backend.id : undefined
+              }
             >
               {binding.primaryLabel}
             </button>
