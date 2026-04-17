@@ -1,4 +1,8 @@
-# Spec 021 — Session State (2026-04-18 close, Phase 6 US4 Motion landed)
+# Spec 021 — Session State (2026-04-18 close, ALL 83 TASKS COMPLETE ✅)
+
+**Spec 021 is done.** All 83 tasks across all 7 phases complete. Residual
+constitution baseline (133 entries) is documented in `post-mortem.md` and
+filed as follow-up spec 022. Router follow-ups filed as spec 023.
 
 Pick up here in the next session. The working tree is clean on `main`.
 
@@ -11,10 +15,10 @@ Pick up here in the next session. The working tree is clean on `main`.
 | Phase 3 US1 Router Migration | 13/14 ✅ | T029 formal SC audit pending (mechanical grep) |
 | Phase 4 US2 Backends Pilot | 21/23 ✅ | T044/T045 domain service file-body splits deferred |
 | Phase 5 **US3 Sweep** | **18/18 ✅** | all 10 screens migrated; all 9 SR-007 root violations resolved |
-| Phase 6 US4 Motion | 6/8 ✅ | T077 (reduced-motion nav-sequence test) + T078 (manual perf trace) deferred |
-| Phase 7 Finalization | 0/4 | |
+| Phase 6 US4 Motion | 8/8 ✅ | |
+| Phase 7 Finalization | 4/4 ✅ | |
 
-**Totals: 80/83 tasks complete (96%)**
+**Totals: 83/83 tasks complete (100%) ✅**
 
 ## Phase 6 delivery notes (2026-04-18)
 

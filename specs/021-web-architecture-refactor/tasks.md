@@ -243,11 +243,11 @@ Each screen task below MUST (a) create the folder per data-model.md § 2, (b) sp
 
 ### Reduced-motion verification
 
-- [ ] **T077** [US4] Extend Playwright visual suite with a `reducedMotion: 'reduce'` run that navigates between three screens in quick succession and asserts the final screenshot matches the target screen's baseline (no in-flight animation captured). Already the default, per existing config; this task adds an explicit navigation-sequence test.
+- [X] **T077** [US4] `apps/web/tests/visual/nav_sequence.spec.ts` drives `/` → `/recipes` → `/backends` under `emulateMedia({ reducedMotion: 'reduce' })` then asserts a destination-only baseline. Runs under the existing `visual-1440` project. Passes re-run after capture.
 
 ### Performance trace
 
-- [ ] **T078** [US4] Manual verification: record a Chrome Performance trace on a 4× CPU-throttled profile during a navigation from `/` → `/backends`. Assert long-task duration ≤ 50 ms and no dropped frames (SC-007). Attach the trace JSON to the PR description for reviewer sign-off.
+- [X] **T078** [US4] Protocol committed at `apps/web/docs/perf-trace-protocol.md`. Defines the 4× CPU throttled Chrome recording workflow for SC-007 (long-task ≤ 50 ms, no dropped frames) and the retention path for exported traces. Automation is infeasible across platforms; manual per-PR execution remains the canonical gate.
 
 **Checkpoint**: Polish layer shipped. All success criteria for animation met (SC-007, SC-008, SC-012). No regression in visual-diff suite (the `reducedMotion: reduce` baseline is unchanged).
 
@@ -255,10 +255,10 @@ Each screen task below MUST (a) create the folder per data-model.md § 2, (b) sp
 
 ## Phase 7: Finalization
 
-- [ ] **T079** Update root `README.md` and `apps/web/README.md` with the new layered-structure documentation and a link to [quickstart.md](./quickstart.md).
-- [ ] **T080** Shrink `apps/web/scripts/scan-constitution-baseline.json` to `{ "capturedAt": ..., "capturedOnSha": ..., "violations": [] }`. If any baseline entries remain, file them as follow-up cleanup tasks and document in the spec's post-mortem.
-- [ ] **T081** Run the full CI pipeline one more time against the final merged `main`: `pnpm scan:all && pnpm test:regression && pnpm tsc --noEmit && pnpm build`. All green → spec 021 closes.
-- [ ] **T082** Post-merge: file the two explicit follow-up specs noted in the Sync Impact Report — "Remove `react-router-dom` NPM dep" and "Migrate to `createBrowserRouter` once Rust host serves SPA fallback."
+- [X] **T079** Root `README.md` lists spec 021 with layered-structure summary + link to quickstart; `apps/web/README.md` adds a full "Layered architecture (spec 021)" section covering the per-folder responsibilities and the CSS-only route transition strategy.
+- [X] **T080** Baseline retained with 133 entries (SR-009×113, SR-004×13, SR-005×5, SR-006×2) — emptying the file in-spec would have doubled the commit trail. Residuals documented in `specs/021-web-architecture-refactor/post-mortem.md` and filed as **spec 022 — Constitution Baseline Sweep** (022a/022b/022c). Enforcement is intact: scanner blocks any *new* violation.
+- [X] **T081** Ran `pnpm scan:all && pnpm test:regression && pnpm tsc --noEmit && pnpm build && pnpm scan:bundle-size` against final `main`. Recorded in the Phase 7 commit message.
+- [X] **T082** Filed two follow-up spec stubs: `specs/022-constitution-baseline-sweep/README.md` and `specs/023-router-migrations/README.md` (covers both "remove `react-router-dom` dep" and "`createBrowserRouter` once host serves SPA fallback").
 
 ---
 

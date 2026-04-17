@@ -126,6 +126,34 @@ adds three safety nets, all runnable from `apps/web/`:
 Run all three at once via `pnpm scan:all && pnpm test:regression`. CI runs
 the same gates on every PR touching `apps/web/`.
 
+## Layered architecture (spec 021)
+
+Top-level folders under `src/` each serve one concern. **Never** cross-import
+horizontally within the same layer — always go through `services/`.
+
+| Folder | Role |
+|---|---|
+| `api/` | Machine-generated Rust → TS DTO types + thin `api_client.ts` shim |
+| `services/` | **The only I/O boundary.** Nine domain files (backends, runs, layouts, events, …) wrap `api_client` and own SSE streams |
+| `hooks/` | Shared React hooks (`use_api`, `use_event_stream`, `use_polling_metrics`) |
+| `components/` | Cross-view presentational primitives (Tabs, Card, Button, …) |
+| `layout/` | App shell — `Shell`, `TopBar`, `Sidebar`, `RightInspector` |
+| `theme/` | vanilla-extract contract + `motion.ts` tokens |
+| `views/<name>/` | One folder per screen — `.view.tsx` (loader + context), `.ui.tsx` (markup), `.css.ts` (styles), `index.ts`, plus optional `components/` and `hooks/` |
+| `routes.tsx` | `createHashRouter` — single source of routing truth |
+| `root_layout.tsx` | Outlet mounting + app-wide context |
+
+Route transitions are **CSS-only** (`routeEnterKeyframes` in `app.css.ts`,
+keyed by `location.pathname`, collapses to `none` under
+`prefers-reduced-motion: reduce`). Motion (`motion@12`) is lazy-loaded via
+`React.lazy` inside `views/backends/components/install_modal.tsx` so the
+~28 KB sidecar chunk only ships to users who open the install flow. The
+main chunk delta vs pre-Motion baseline is enforced by
+`pnpm scan:bundle-size` against `bundle-baseline.json` (tolerance 8 KB).
+
+See [quickstart.md](../../specs/021-web-architecture-refactor/quickstart.md)
+for the contributor walkthrough.
+
 ### Updating a baseline (intentional visual change)
 
 1. Make the visual change on a feature branch.
