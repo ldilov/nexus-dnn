@@ -141,7 +141,7 @@ export function Sidebar({
           aria-expanded={pinned}
           title={pinned ? "Collapse sidebar" : "Expand sidebar"}
         >
-          <span className="material-symbols-outlined" style={{ fontSize: "22px" }}>
+          <span className={`material-symbols-outlined ${styles.iconXl}`}>
             {pinned ? "menu_open" : "menu"}
           </span>
         </button>

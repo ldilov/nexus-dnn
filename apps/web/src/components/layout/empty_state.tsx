@@ -26,13 +26,7 @@ export function EmptyState({
     <div className={styles.emptyState}>
       {icon && (
         <div className={styles.emptyStateIconBox}>
-          <span
-            className="material-symbols-outlined"
-            style={{
-              fontSize: "inherit",
-              fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24",
-            }}
-          >
+          <span className={`material-symbols-outlined ${styles.iconInheritFilled}`}>
             {icon}
           </span>
         </div>

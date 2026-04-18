@@ -80,14 +80,14 @@ export function ModuleCard({
 
       <div className={s.counts} aria-label="Instance counts">
         <span className={s.countItem}>
-          <span className="material-symbols-outlined" style={{ fontSize: "14px" }} aria-hidden="true">
+          <span className={`material-symbols-outlined ${s.iconSm}`} aria-hidden="true">
             rocket_launch
           </span>
           {module.deployments.total} {/* scan-terminology: allow */}
         </span>
         {multi && (
           <span className={s.countItem}>
-            <span className="material-symbols-outlined" style={{ fontSize: "14px" }} aria-hidden="true">
+            <span className={`material-symbols-outlined ${s.iconSm}`} aria-hidden="true">
               menu_book
             </span>
             {module.blueprints.length} blueprints
@@ -109,7 +109,7 @@ export function ModuleCard({
           View Blueprint
           {multi ? ` (${module.blueprints.length} ▾)` : ""}
         </button>
-        <div style={{ display: "flex", flex: 1, position: "relative" }}>
+        <div className={s.ctaRow}>
           <button
             type="button"
             className={s.primaryBtn}
@@ -122,8 +122,7 @@ export function ModuleCard({
           {multi && (
             <button
               type="button"
-              className={s.primaryBtn}
-              style={{ flex: 0, padding: "0.5rem 0.5rem", borderLeft: "1px solid currentColor", borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
+              className={`${s.primaryBtn} ${s.ctaSplitRight}`}
               aria-label="Pick blueprint"
               aria-haspopup="menu"
               aria-expanded={pickerOpen}

@@ -249,7 +249,7 @@ export const OperatorNode = memo(function OperatorNode({
 
       <div className={styles.body}>
         {inputs.length === 0 && !spec && (
-          <div className={styles.portRow} style={{ color: "var(--color-warning, #F59E0B)" }}>
+          <div className={`${styles.portRow} ${styles.warningColor}`}>
             ⚠ operator spec missing
           </div>
         )}

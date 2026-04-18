@@ -146,8 +146,7 @@ export function DraftView({ sourceModuleId, draftUuid }: DraftViewProps) {
         </div>
         <button
           type="button"
-          className={s.secondaryBtn}
-          style={{ margin: "1rem auto" }}
+          className={`${s.secondaryBtn} ${s.centeredSpinner}`}
           onClick={() => navigate("/modules")}
         >
           Back to modules
@@ -162,14 +161,14 @@ export function DraftView({ sourceModuleId, draftUuid }: DraftViewProps) {
     <Shell>
       <div className={s.draftBanner} role="status">
         <span>{bannerText}</span>
-        <div className={s.bannerActions} style={{ marginLeft: 0 }}>
+        <div className={`${s.bannerActions} ${s.zeroMarginLeft}`}>
           <input
             type="text"
             value={env.display_name}
             placeholder="Untitled Module"
             onChange={(e) => handleRename(e.target.value)}
             aria-label="Draft display name"
-            style={{ padding: "0.25rem 0.5rem", minWidth: 200 }}
+            className={s.inputNarrow}
           />
           <button
             type="button"
@@ -203,8 +202,7 @@ export function DraftView({ sourceModuleId, draftUuid }: DraftViewProps) {
         </span>
         <span className={s.sourceBadge}>
           <span
-            className="material-symbols-outlined"
-            style={{ fontSize: "14px" }}
+            className={`material-symbols-outlined ${s.iconSm}`}
             aria-hidden="true"
           >
             {env.source_module_id === "user:blank" ? "add_box" : "apps"}
@@ -223,7 +221,7 @@ export function DraftView({ sourceModuleId, draftUuid }: DraftViewProps) {
           with full revision tracking (spec 018 territory).
         </div>
         <section>
-          <h3 style={{ fontWeight: 600, marginTop: 0 }}>Forked payload</h3>
+          <h3 className={s.sectionHeader}>Forked payload</h3>
           <pre className={s.payloadPre}>
             {JSON.stringify(env.workflow_payload, null, 2)}
           </pre>

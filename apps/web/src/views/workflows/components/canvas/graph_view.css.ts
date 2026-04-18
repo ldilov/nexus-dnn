@@ -87,3 +87,7 @@ globalStyle(".react-flow__minimap", {
   border: `1px solid ${vars.color.outline.variant}`,
   boxShadow: "0 8px 24px rgba(0, 0, 0, 0.45)",
 });
+
+export const miniMapBg = style({
+  backgroundColor: "rgba(12, 14, 16, 0.85)",
+});

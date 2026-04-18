@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Badge } from "../badge";
 import * as styles from "./backend_styles.css";
+import * as layoutStyles from "./layout_styles.css";
 
 type HistoryEntry = {
   id: string;
@@ -88,7 +89,7 @@ export function HistoryList({ entries = [], children }: HistoryListProps) {
               onClick={() => toggleExpand(entry.id)}
             >
               <div className={styles.historyIcon}>
-                <span className="material-symbols-outlined" style={{ fontSize: "inherit" }}>
+                <span className={`material-symbols-outlined ${layoutStyles.iconInherit}`}>
                   {icon}
                 </span>
               </div>

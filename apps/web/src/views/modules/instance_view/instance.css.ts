@@ -901,3 +901,25 @@ export const alignRight = style({
 export const monoFont = style({
   fontFamily: "var(--font-mono, monospace)",
 });
+
+export const centeredSpinner = style({
+  margin: "1rem auto",
+});
+
+export const zeroMarginLeft = style({
+  marginLeft: 0,
+});
+
+export const inputNarrow = style({
+  padding: "0.25rem 0.5rem",
+  minWidth: 200,
+});
+
+export const iconSm = style({
+  fontSize: "14px",
+});
+
+export const sectionHeader = style({
+  fontWeight: 600,
+  marginTop: 0,
+});

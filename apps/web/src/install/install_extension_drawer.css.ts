@@ -193,3 +193,8 @@ export const secondaryBtn = style({
     },
   },
 });
+
+export const diagList = style({
+  margin: 0,
+  paddingLeft: "1rem",
+});

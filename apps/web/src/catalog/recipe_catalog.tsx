@@ -132,7 +132,7 @@ export function RecipeCatalog({ onOpenRecipe }: RecipeCatalogProps) {
         totalCount={enabled.length}
       />
       {revealNotice ? (
-        <div className={shellStyles.bannerInfo} style={{ marginBottom: "16px" }}>
+        <div className={`${shellStyles.bannerInfo} ${styles.bannerSpaced}`}>
           {revealNotice}
         </div>
       ) : null}
@@ -160,8 +160,7 @@ export function RecipeCatalog({ onOpenRecipe }: RecipeCatalogProps) {
               title="Open extension folder"
             >
               <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "14px" }}
+                className={`material-symbols-outlined ${styles.iconSm}`}
                 aria-hidden="true"
               >
                 folder_open
@@ -193,10 +192,7 @@ function RecipeCard({
     <button type="button" className={styles.card} onClick={onSelect}>
       <div className={styles.topRow}>
         <div className={styles.iconBox}>
-          <span
-            className="material-symbols-outlined"
-            style={{ fontSize: "22px", fontVariationSettings: "'FILL' 1, 'wght' 500" }}
-          >
+          <span className={`material-symbols-outlined ${styles.iconCard}`}>
             {iconFor(recipe)}
           </span>
         </div>
@@ -212,7 +208,7 @@ function RecipeCard({
         </span>
         <span className={styles.openHint}>
           Open
-          <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>
+          <span className={`material-symbols-outlined ${styles.iconSm}`}>
             arrow_forward
           </span>
         </span>

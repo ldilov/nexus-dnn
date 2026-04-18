@@ -431,3 +431,7 @@ globalStyle(".react-flow__edge-path", {
 globalStyle(".react-flow__edge.animated .react-flow__edge-path", {
   strokeDasharray: "6 4",
 });
+
+export const warningColor = style({
+  color: "var(--color-warning, #F59E0B)",
+});

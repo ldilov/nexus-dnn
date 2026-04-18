@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import * as styles from "./workspace_shell.css";
+import * as layoutStyles from "./layout_styles.css";
 
 export type ToolbarAction = {
   id: string;
@@ -71,7 +72,7 @@ export function WorkspaceShell({ eyebrow, toolbarActions, drawers, children }: W
                 onClick={() => setOpenDrawerId(isOpen ? null : action.drawerId)}
               >
                 {action.icon && (
-                  <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>
+                  <span className={`material-symbols-outlined ${layoutStyles.iconMd}`}>
                     {action.icon}
                   </span>
                 )}
@@ -109,7 +110,7 @@ export function WorkspaceShell({ eyebrow, toolbarActions, drawers, children }: W
                   onClick={close}
                   aria-label="Close"
                 >
-                  <span className="material-symbols-outlined" style={{ fontSize: "inherit" }}>
+                  <span className={`material-symbols-outlined ${layoutStyles.iconInherit}`}>
                     close
                   </span>
                 </button>

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import * as styles from "./backend_styles.css";
+import * as layoutStyles from "./layout_styles.css";
 
 type RuntimeField = {
   label: string;
@@ -20,7 +21,7 @@ export function RuntimeCard({
   return (
     <div className={styles.runtimeCardContainer}>
       <div className={styles.runtimeCardHeader}>
-        <span className="material-symbols-outlined" style={{ fontSize: "18px", color: "var(--color-accent-secondary)" }}>
+        <span className={`material-symbols-outlined ${layoutStyles.accentIcon}`}>
           deployed_code
         </span>
         <span className={styles.runtimeCardTitle}>{title}</span>

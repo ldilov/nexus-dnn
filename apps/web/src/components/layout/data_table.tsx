@@ -59,7 +59,7 @@ export function DataTable({ columns = [], rows = [], selectable = false, childre
   };
 
   return (
-    <div style={{ overflow: "auto" }}>
+    <div className={styles.overflowAuto}>
       <table className={styles.dataTable}>
         <thead className={styles.dataTableHead}>
           <tr>

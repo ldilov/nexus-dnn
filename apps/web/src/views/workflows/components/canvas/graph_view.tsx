@@ -766,7 +766,7 @@ function GraphViewInner({
             return "#1d2023";
           }}
           nodeStrokeColor={() => "#ba9eff"}
-          style={{ backgroundColor: "rgba(12, 14, 16, 0.85)" }}
+          className={styles.miniMapBg}
         />
       </ReactFlow>
     </div>
