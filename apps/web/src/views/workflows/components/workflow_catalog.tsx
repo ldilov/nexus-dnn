@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import useSWR from "swr";
 import {
   fetchExtensions,
   fetchWorkflows,
@@ -32,28 +33,32 @@ export interface WorkflowCatalogProps {
 
 const ALL_STATUS_FILTERS: StatusKey[] = ["stable", "modified", "user"];
 
+const EMPTY_WORKFLOWS: WorkflowItem[] = [];
+const EMPTY_EXTENSIONS: Extension[] = [];
+
 export function WorkflowCatalog({
   selectedId,
   onSelect,
   resumeWorkflow,
   onResume,
 }: WorkflowCatalogProps) {
-  const [workflows, setWorkflows] = useState<WorkflowItem[]>([]);
-  const [extensions, setExtensions] = useState<Extension[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [revealNotice, setRevealNotice] = useState<string | null>(null);
   const { state: controls, setState: setControls } = useCatalogState("workflows");
 
-  useEffect(() => {
-    Promise.all([fetchWorkflows(), fetchExtensions()])
-      .then(([wfs, exts]) => {
-        setWorkflows(wfs as WorkflowItem[]);
-        setExtensions(exts);
-      })
-      .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : "Failed to load workflows"),
-      );
-  }, []);
+  const { data: workflows = EMPTY_WORKFLOWS, error: workflowsError } = useSWR<WorkflowItem[]>(
+    "catalog:workflows",
+    () => fetchWorkflows().then((w) => w as WorkflowItem[]),
+  );
+  const { data: extensions = EMPTY_EXTENSIONS, error: extensionsError } = useSWR<Extension[]>(
+    "catalog:extensions",
+    () => fetchExtensions(),
+  );
+  const loadError = workflowsError ?? extensionsError;
+  const error = loadError
+    ? loadError instanceof Error
+      ? loadError.message
+      : "Failed to load workflows"
+    : null;
 
   const extNameById = useMemo(() => {
     const map = new Map<string, string>();

@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import useSWR from "swr";
 import { fetchTools, type Tool } from "../api/client";
 import { Input } from "../components/input";
 import * as styles from "./catalog.css";
+
+const EMPTY_TOOLS: Tool[] = [];
 
 function groupByCategory(tools: Tool[]): Record<string, Tool[]> {
   const groups: Record<string, Tool[]> = {};
@@ -13,17 +16,16 @@ function groupByCategory(tools: Tool[]): Record<string, Tool[]> {
 }
 
 export function ToolCatalog() {
-  const [tools, setTools] = useState<Tool[]>([]);
+  const { data: tools = EMPTY_TOOLS, error: swrError } = useSWR<Tool[]>(
+    "tools",
+    () => fetchTools(),
+  );
+  const error = swrError
+    ? swrError instanceof Error
+      ? swrError.message
+      : "Failed to load tools"
+    : null;
   const [search, setSearch] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchTools()
-      .then(setTools)
-      .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : "Failed to load tools"),
-      );
-  }, []);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
+import useSWR from "swr";
 import { fetchOperators, type OperatorDto } from "../api/client";
 
 export type OperatorSpecMap = ReadonlyMap<string, OperatorDto>;
@@ -10,31 +11,27 @@ export function useOperatorSpecs(): {
   loading: boolean;
   error: string | null;
 } {
-  const [specs, setSpecs] = useState<OperatorSpecMap>(EMPTY);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, error, isLoading } = useSWR<OperatorDto[]>(
+    "operators",
+    () => fetchOperators(),
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchOperators()
-      .then((operators) => {
-        if (cancelled) return;
-        const map = new Map<string, OperatorDto>();
-        for (const op of operators) {
-          map.set(`${op.id}@${op.version}`, op);
-        }
-        setSpecs(map);
-        setLoading(false);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Failed to load operators");
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const specs = useMemo<OperatorSpecMap>(() => {
+    if (!data) return EMPTY;
+    const map = new Map<string, OperatorDto>();
+    for (const op of data) {
+      map.set(`${op.id}@${op.version}`, op);
+    }
+    return map;
+  }, [data]);
 
-  return { specs, loading, error };
+  return {
+    specs,
+    loading: isLoading,
+    error: error
+      ? error instanceof Error
+        ? error.message
+        : "Failed to load operators"
+      : null,
+  };
 }

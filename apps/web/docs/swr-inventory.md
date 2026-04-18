@@ -24,7 +24,7 @@ refresh chains) MUST use a router `loader` / `action` instead.
 
 ## Cached-query surfaces
 
-All cached-query sites live in `apps/web/src/hooks/use_api.ts` (sole entry point).
+### Central `use_api.ts` hooks
 
 | Hook | Cache key | Upstream service | Rationale |
 |---|---|---|---|
@@ -36,6 +36,17 @@ All cached-query sites live in `apps/web/src/hooks/use_api.ts` (sole entry point
 | `useLayouts` | `layouts` | extensions/layouts | Sidebar navigation + extensions gallery both read this; revalidates on extension toggle. |
 | `useHostModels` | `host-models` | host models store | Models page + Blueprint model picker share this cache; SWR dedup prevents double-fetch. |
 | `useHostBackends` | `host-backends` | backends listing | Backends page + install modal + DAG picker all read; SWR de-dup is load-bearing. |
+
+### Ad-hoc call sites (migrated from `useEffect` + fetch during spec 022b, 2026-04-18)
+
+| Call site | Cache key | Fetcher | Rationale |
+|---|---|---|---|
+| `views/home/home.view.tsx` | `home:recipes` / `home:workflows` / `home:extensions` | `fetchRecipes` / `fetchWorkflows` / `fetchExtensions` | Home dashboard loads three independent lists; SWR parallel + cache share with catalog screens. |
+| `views/artifacts/artifact_browser.tsx` | `artifacts:{runId}` (null when no run) | `fetchArtifacts(runId)` | Keyed on `runId`; SWR handles the null-key bail-out when no run is active. |
+| `hooks/use_operator_specs.ts` | `operators` | `fetchOperators` | Global operator registry — one cache shared across every workflow editor, graph view, and node inspector. |
+| `catalog/tool_catalog.tsx` | `tools` | `fetchTools` | Tool list re-rendered across catalog tabs; cache share saves re-fetch. |
+| `catalog/recipe_catalog.tsx` | `catalog:recipes` + `catalog:extensions` | parallel SWR | Catalog surface uses two independent caches; matches home.view keys for de-dup. |
+| `views/workflows/components/workflow_catalog.tsx` | `catalog:workflows` + `catalog:extensions` | parallel SWR | Workflow catalog shares the `catalog:extensions` key with recipe catalog. |
 
 ## Rules of the road
 
