@@ -1,4 +1,5 @@
-import { type ReactNode, useState, useCallback, useEffect } from "react";
+import { type ReactNode, useState, useCallback } from "react";
+import useSWR from "swr";
 import * as styles from "./backend_styles.css";
 import { fetchLoadState } from "../../api/client";
 import { installRuntime, getInstallStatus } from "../../services/local_llm_rpc";
@@ -50,22 +51,14 @@ function BackendCard({ backend }: { backend: BackendOption }) {
     setLogs((prev) => [...prev.slice(-200), `[${ts}] ${msg}`]);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchLoadState(backend.id)
-      .then((state) => {
-        if (cancelled) return;
-        if (state.ready) {
-          setStatus("installed");
-        }
-      })
-      .catch(() => {
-        // Backend not wired for this id yet; retain the status passed in via props.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [backend.id]);
+  const { data: loadState } = useSWR(
+    `backend-load-state:${backend.id}`,
+    () => fetchLoadState(backend.id),
+    { shouldRetryOnError: false },
+  );
+  if (loadState?.ready && status !== "installed") {
+    setStatus("installed");
+  }
 
   const handleInstall = useCallback(async () => {
     setStatus("installing");
