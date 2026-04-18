@@ -91,7 +91,11 @@ const RULES = [
     hint: "Wrap the call in a services/ module and import the wrapper",
     kind: "ast",
     check: (ast, src, relPath) => {
-      if (relPath.startsWith("services/") || relPath.startsWith("api/generated/")) {
+      if (
+        relPath.startsWith("services/") ||
+        relPath.startsWith("api/generated/") ||
+        relPath.startsWith("service-workers/")
+      ) {
         return [];
       }
       return scanRawIO(ast);

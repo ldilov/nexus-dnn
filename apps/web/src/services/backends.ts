@@ -6,6 +6,24 @@ export {
   startBackendInstall,
 } from "./api_client";
 
+import type { BackendListResponse } from "../views/backends/types";
+
+export async function fetchHostBackends(): Promise<BackendListResponse> {
+  const res = await fetch(`/api/v1/llm/backends`);
+  const body = (await res.json().catch(() => null)) as
+    | { data?: BackendListResponse; error?: { code?: string; message?: string } }
+    | null;
+  if (!res.ok) {
+    const serverMsg = body?.error?.message ?? `HTTP ${res.status} ${res.statusText}`;
+    const code = body?.error?.code ? ` (${body.error.code})` : "";
+    throw new Error(`${serverMsg}${code}`);
+  }
+  if (!body?.data) {
+    throw new Error("backends list: malformed response — missing data envelope");
+  }
+  return body.data;
+}
+
 export interface BackendLogLine {
   timestamp?: string;
   level?: string;
