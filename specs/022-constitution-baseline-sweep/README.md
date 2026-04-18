@@ -1,8 +1,8 @@
 # Spec 022 — Constitution Baseline Sweep (follow-up to 021)
 
-**Status:** **mostly done 2026-04-18** — 022c complete, 022a complete, 022b 7/12 complete (5 deferred-complexity residuals remain)
+**Status:** ✅ **DONE 2026-04-18** — all three slices complete; baseline **133 → 0**.
 **Opened:** 2026-04-18 (filed from spec 021 T082 / post-mortem)
-**Progress:** baseline 133 → 5 (all SR-005, SR-006, SR-009 drained; 5 SR-004 residuals remain, all complex-lifecycle cases documented below)
+**Progress:** every SR-004, SR-005, SR-006, SR-009 entry drained; `pnpm scan:constitution` reports `0 baseline-allowed, 0 new`.
 
 ## Goal
 
@@ -22,25 +22,28 @@ extracted into sibling `.css.ts` as a named export. Landed across three
 commits ending in `<commit-hash>`. Visual-regression suite green
 throughout.
 
-### 022b — SR-004 loader pushdown (13 → 5, 7 done)
+### 022b — SR-004 loader pushdown ✅ (13 → 0)
 
-**Partially done 2026-04-18.** 7 simple call sites migrated to SWR
-(matching refined FR-019's cached-query category). Five deferred-
-complexity residuals remain:
+**DONE 2026-04-18.** 12 useEffect-with-I/O sites migrated to SWR, plus
+2 path-level scanner allowlist entries for FR-019's explicit
+live-polling carve-outs:
 
-- `hooks/use_canvas_state.ts:113, 134` — reducer-integrated workflow
-  canvas state; moving to loader requires redesigning how unsaved edits
-  interact with the route transition.
-- `models/hf_search_panel.tsx:48` — debounced paginated HF search;
-  SWR migration needs `useSWRInfinite` + query-key design.
-- `views/modules/components/model_card.tsx:26` — conditional per-card
-  dependents fetch; works but lives inside a render-time effect.
-- `components/layout/backend_selector.tsx:53` — legacy pre-spec-021
-  install flow that the backends redesign will replace; migration is
-  wasted work until that lands.
-
-Tracked as 022b-followup; not urgent since `scan:constitution`
-prevents *new* SR-004 entries.
+- 7 easy sites (home, artifacts, operator_specs, tool_catalog,
+  recipe_catalog, workflow_catalog, plus `hooks/use_polling_metrics.ts`
+  + `hooks/use_event_stream.ts` allowlisted) — landed in commit
+  `cee4fcb`.
+- 5 complex sites landed in the closing commit:
+  - `components/layout/backend_selector.tsx` — `fetchLoadState` behind
+    SWR; read-during-render `setStatus` sync gated by state compare.
+  - `hooks/use_canvas_state.ts` — **hydrate** via SWR keyed on
+    `canvas:{workflowId}`; **persist** via async helper hoisted to
+    module scope (removes `.then` from the effect body).
+  - `models/hf_search_panel.tsx` — debounced-search via SWR keyed on
+    `["hf-search", q, format, license]`; offline state + 429 toast
+    preserved via explicit error branching.
+  - `views/models/components/model_card.tsx` — IntersectionObserver
+    now flips a `visible` boolean; SWR keyed on
+    `visible && model.install_id` so dependents fetch only on scroll-in.
 
 ### 022c — SR-005/006 residual dedup ✅ (7 → 0)
 
@@ -57,9 +60,10 @@ Dead `src/models/models.css.ts` stub deleted, resolving SR-006 dup.
 JSON is committed with `violations: []` and retained only as a record of
 `capturedAt` / `capturedOnSha`.
 
-**Current state 2026-04-18**: 5 SR-004 entries remain; all are
-deliberate deferrals for the reasons above. The spec can close once
-those 5 sites migrate.
+**Achieved 2026-04-18**: `pnpm scan:constitution` → `0 baseline-allowed,
+0 new`. Spec 022 closes. `scan-constitution-baseline.json` retained with
+`violations: []` as a permanent record of the zero-state tripwire — any
+future violation fails CI immediately.
 
 ## Non-goals
 

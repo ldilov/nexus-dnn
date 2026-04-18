@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import useSWR from "swr";
 import { toast } from "sonner";
 import { ContractError, hfSearch, installHostModel } from "../api/client";
 import type { HfSearchResultDto } from "../api/generated/HfSearchResultDto";
@@ -41,60 +42,62 @@ export function HfSearchPanel({ onInstallRequested }: Props) {
   const [query, setQuery] = useState("");
   const [format, setFormat] = useState<string>("");
   const [license, setLicense] = useState<string>("");
-  const [loadState, setLoadState] = useState<LoadState>({ status: "idle" });
 
   const debouncedQuery = useDebounced(query, DEBOUNCE_MS);
+  const q = debouncedQuery.trim();
+  const offline =
+    typeof navigator !== "undefined" && navigator.onLine === false;
 
-  useEffect(() => {
-    const q = debouncedQuery.trim();
-    if (q.length === 0) {
-      setLoadState({ status: "idle" });
-      return;
-    }
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      setLoadState({
+  const swrKey =
+    q.length === 0 || offline
+      ? null
+      : ["hf-search", q, format, license] as const;
+
+  const { data, error, isLoading } = useSWR(
+    swrKey,
+    ([, queryText, fmt, lic]) =>
+      hfSearch({
+        q: queryText,
+        format: fmt || undefined,
+        license: lic || undefined,
+        limit: PAGE_SIZE,
+        page: 1,
+      }),
+    { revalidateOnFocus: false, shouldRetryOnError: false },
+  );
+
+  if (error instanceof ContractError && error.status === 429) {
+    const payload = error.payload as { error?: { message?: string } } | undefined;
+    const retry = payload?.error?.message ?? error.message;
+    toast.error("Hugging Face rate-limited", { description: retry });
+  }
+
+  const loadState: LoadState = (() => {
+    if (offline) {
+      return {
         status: "error",
         message: "Hugging Face unreachable — check your network and try again.",
-      });
-      return;
+      };
     }
-    let cancelled = false;
-    setLoadState({ status: "loading" });
-    hfSearch({
-      q,
-      format: format || undefined,
-      license: license || undefined,
-      limit: PAGE_SIZE,
-      page: 1,
-    })
-      .then((page) => {
-        if (cancelled) return;
-        setLoadState({ status: "ready", results: page.results, query: q });
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        if (err instanceof ContractError && err.status === 429) {
-          const payload = err.payload as { error?: { message?: string } } | undefined;
-          const retry = payload?.error?.message ?? err.message;
-          toast.error("Hugging Face rate-limited", { description: retry });
-          setLoadState((prev) =>
-            prev.status === "ready" ? prev : { status: "error", message: retry },
-          );
-          return;
-        }
-        const isNetworkError =
-          err instanceof TypeError || /NetworkError|Failed to fetch/i.test(String(err));
-        const message = isNetworkError
-          ? "Hugging Face unreachable — check your network and try again."
-          : err instanceof Error
-            ? err.message
-            : "Hugging Face search failed";
-        setLoadState({ status: "error", message });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [debouncedQuery, format, license]);
+    if (q.length === 0) return { status: "idle" };
+    if (isLoading) return { status: "loading" };
+    if (error) {
+      if (error instanceof ContractError && error.status === 429) {
+        const payload = error.payload as { error?: { message?: string } } | undefined;
+        return { status: "error", message: payload?.error?.message ?? error.message };
+      }
+      const isNetworkError =
+        error instanceof TypeError || /NetworkError|Failed to fetch/i.test(String(error));
+      const message = isNetworkError
+        ? "Hugging Face unreachable — check your network and try again."
+        : error instanceof Error
+          ? error.message
+          : "Hugging Face search failed";
+      return { status: "error", message };
+    }
+    if (data) return { status: "ready", results: data.results, query: q };
+    return { status: "idle" };
+  })();
 
   const filteredResults = useMemo(() => {
     if (loadState.status !== "ready") return [];

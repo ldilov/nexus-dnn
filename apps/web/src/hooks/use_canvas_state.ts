@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
+import useSWR from "swr";
 import type { CanvasStateDto } from "../api/client";
 import { fetchWorkflowCanvas, updateWorkflowCanvas } from "../api/client";
 
@@ -104,11 +105,30 @@ function generateId(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+async function persistCanvas(
+  workflowId: string,
+  state: CanvasStateDto,
+  lastSavedRef: { current: string },
+): Promise<void> {
+  try {
+    const saved = await updateWorkflowCanvas(workflowId, state);
+    lastSavedRef.current = JSON.stringify(saved);
+  } catch (err: unknown) {
+    console.warn("[canvas] save failed", err);
+  }
+}
+
 export function useCanvasState(workflowId: string | null): UseCanvasState {
   const [state, dispatch] = useReducer(reducer, EMPTY);
   const loadedRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedRef = useRef<string>("");
+
+  const { data: loaded, error: loadError } = useSWR<CanvasStateDto>(
+    workflowId ? `canvas:${workflowId}` : null,
+    () => fetchWorkflowCanvas(workflowId as string),
+    { revalidateOnFocus: false },
+  );
 
   useEffect(() => {
     if (!workflowId) {
@@ -117,19 +137,18 @@ export function useCanvasState(workflowId: string | null): UseCanvasState {
       lastSavedRef.current = JSON.stringify(EMPTY);
       return;
     }
-    loadedRef.current = false;
-    fetchWorkflowCanvas(workflowId)
-      .then((fresh) => {
-        loadedRef.current = true;
-        lastSavedRef.current = JSON.stringify(fresh);
-        dispatch({ type: "load", state: fresh });
-      })
-      .catch(() => {
-        loadedRef.current = true;
-        lastSavedRef.current = JSON.stringify(EMPTY);
-        dispatch({ type: "load", state: EMPTY });
-      });
-  }, [workflowId]);
+    if (loaded) {
+      loadedRef.current = true;
+      lastSavedRef.current = JSON.stringify(loaded);
+      dispatch({ type: "load", state: loaded });
+      return;
+    }
+    if (loadError) {
+      loadedRef.current = true;
+      lastSavedRef.current = JSON.stringify(EMPTY);
+      dispatch({ type: "load", state: EMPTY });
+    }
+  }, [workflowId, loaded, loadError]);
 
   useEffect(() => {
     if (!workflowId || !loadedRef.current) return;
@@ -137,13 +156,7 @@ export function useCanvasState(workflowId: string | null): UseCanvasState {
     if (serialized === lastSavedRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      updateWorkflowCanvas(workflowId, state)
-        .then((saved) => {
-          lastSavedRef.current = JSON.stringify(saved);
-        })
-        .catch((err: unknown) => {
-          console.warn("[canvas] save failed", err);
-        });
+      void persistCanvas(workflowId, state, lastSavedRef);
     }, 500);
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);

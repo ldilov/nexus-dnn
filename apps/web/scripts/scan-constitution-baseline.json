@@ -1,31 +1,5 @@
 {
   "capturedAt": "2026-04-18",
   "capturedOnSha": "unknown",
-  "violations": [
-    {
-      "rule": "SR-004",
-      "file": "components/layout/backend_selector.tsx",
-      "line": 53
-    },
-    {
-      "rule": "SR-004",
-      "file": "hooks/use_canvas_state.ts",
-      "line": 113
-    },
-    {
-      "rule": "SR-004",
-      "file": "hooks/use_canvas_state.ts",
-      "line": 134
-    },
-    {
-      "rule": "SR-004",
-      "file": "models/hf_search_panel.tsx",
-      "line": 48
-    },
-    {
-      "rule": "SR-004",
-      "file": "views/models/components/model_card.tsx",
-      "line": 26
-    }
-  ]
+  "violations": []
 }

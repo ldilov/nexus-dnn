@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import useSWR from "swr";
 import type { HostModelView } from "../../../api/client";
 import {
   fetchHostModelDependents,
@@ -6,54 +7,40 @@ import {
 } from "../../../api/client";
 import * as s from "../models.css";
 
-interface DependentsCache {
-  loaded: boolean;
-  count: number;
-  extensions: DependentsResponse["extensions"];
-  error?: string;
-}
-
 export function ModelCard({ model }: { model: HostModelView }) {
   const isActive = model.state === "ready" || model.state === "active";
-  const [dependents, setDependents] = useState<DependentsCache>({
-    loaded: false,
-    count: 0,
-    extensions: [],
-  });
   const rootRef = useRef<HTMLElement | null>(null);
-  const hasLoadedRef = useRef(false);
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     const el = rootRef.current;
-    if (!el || hasLoadedRef.current) return;
+    if (!el || visible) return;
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (!entry.isIntersecting || hasLoadedRef.current) continue;
-          hasLoadedRef.current = true;
-          fetchHostModelDependents(model.install_id)
-            .then((res) =>
-              setDependents({
-                loaded: true,
-                count: res.count,
-                extensions: res.extensions,
-              }),
-            )
-            .catch((err: unknown) =>
-              setDependents({
-                loaded: true,
-                count: 0,
-                extensions: [],
-                error: err instanceof Error ? err.message : "fetch failed",
-              }),
-            );
+          if (entry.isIntersecting) {
+            setVisible(true);
+            observer.disconnect();
+            return;
+          }
         }
       },
       { rootMargin: "200px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [model.install_id]);
+  }, [visible]);
+
+  const { data, error } = useSWR<DependentsResponse>(
+    visible ? `model-dependents:${model.install_id}` : null,
+    () => fetchHostModelDependents(model.install_id),
+    { revalidateOnFocus: false, shouldRetryOnError: false },
+  );
+
+  const loaded = Boolean(data || error);
+  const count = data?.count ?? 0;
+  const extensions = data?.extensions ?? [];
+  const errorMessage = error ? (error instanceof Error ? error.message : "fetch failed") : null;
 
   return (
     <article className={s.card} ref={rootRef}>
@@ -105,15 +92,15 @@ export function ModelCard({ model }: { model: HostModelView }) {
           className={s.rowValue}
           data-testid={`model-shared-${model.install_id}`}
           title={
-            dependents.loaded
-              ? dependents.extensions.map((e) => e.display_name).join(", ") || "no extensions"
+            loaded && !errorMessage
+              ? extensions.map((e) => e.display_name).join(", ") || "no extensions"
               : "loading…"
           }
         >
-          {dependents.error
+          {errorMessage
             ? "—"
-            : dependents.loaded
-              ? `${dependents.count} extension${dependents.count === 1 ? "" : "s"}`
+            : loaded
+              ? `${count} extension${count === 1 ? "" : "s"}`
               : "…"}
         </span>
       </div>
