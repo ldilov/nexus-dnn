@@ -1,6 +1,17 @@
 # nexus.local-llm
 
-Builtin extension for local LLM inference: chat, hyperparameter management, model installation, and (via the host) llama.cpp / TensorRT-LLM runtime supervision.
+Builtin extension for local LLM inference: chat, embeddings, RAG, and recipe/workflow orchestration. The extension is a lease consumer against host-owned runtimes (llama.cpp today; extension-private runtimes a later scope).
+
+## Spec 024 — Rust worker port (2026-04)
+
+The Python `ServiceWorker` is superseded by a compiled Rust sidecar at [`crates/nexus-local-llm-worker`](../../../crates/nexus-local-llm-worker/). See [spec 024](../../../specs/024-local-llm-rust-port/) for the full design.
+
+- `runtime.family` in `manifest.yaml` is now `native`; `runtime.entrypoint` points at the compiled worker binary (`bin/nexus-local-llm-worker${exe_suffix}`). Python fields removed.
+- Extension no longer spawns `llama-server`. For host-registered runtimes (llama.cpp), the extension calls `host.runtimes.acquire_lease(...)` and proxies OpenAI-compatible HTTP to `lease.channel.base_url`. The host spawns, supervises, and tears down the runtime child.
+- Chat session, RAG corpus, and migration SQL (migrations `001`–`005`) are preserved unchanged; no user-data migration required.
+- Zero Python runtime in the shipped artifact.
+
+The Python worker tree remains in-tree for one minor release as reference and will be removed by a follow-up commit.
 
 ## Spec 011 changes
 

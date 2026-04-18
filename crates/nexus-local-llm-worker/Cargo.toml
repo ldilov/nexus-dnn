@@ -1,0 +1,34 @@
+[package]
+name = "nexus-local-llm-worker"
+version = "0.1.0"
+edition = "2024"
+description = "Rust sidecar worker for the builtin nexus.local-llm extension"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "nexus_local_llm_worker"
+path = "src/lib.rs"
+
+[[bin]]
+name = "nexus-local-llm-worker"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { workspace = true }
+chrono = { workspace = true }
+anyhow = "1"
+futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
+eventsource-stream = "0.2"
+nexus-protocol = { path = "../nexus-protocol" }
+
+[dev-dependencies]
+tokio = { workspace = true }
+serde_json = { workspace = true }
+tempfile = "3"
