@@ -21,6 +21,7 @@ import { matchesControls, useCatalogState } from "../../../hooks/use_catalog_sta
 import * as sharedStyles from "../../../catalog/catalog.css";
 import * as styles from "../../../catalog/recipe_catalog.css";
 import * as shellStyles from "../../../catalog/catalog_shell.css";
+import * as local from "./workflow_catalog.css";
 
 type WorkflowItem = Workflow & Groupable;
 
@@ -124,16 +125,14 @@ export function WorkflowCatalog({
         totalCount={enabled.length}
       />
       {resumeWorkflow && onResume ? (
-        <div className={shellStyles.bannerInfo} style={{ marginBottom: "16px" }}>
+        <div className={`${shellStyles.bannerInfo} ${local.bannerSpaced}`}>
           <button
             type="button"
             onClick={onResume}
-            className={shellStyles.revealButton}
-            style={{ marginRight: "10px" }}
+            className={`${shellStyles.revealButton} ${local.iconSpaced}`}
           >
             <span
-              className="material-symbols-outlined"
-              style={{ fontSize: "14px" }}
+              className={`material-symbols-outlined ${local.iconSm}`}
               aria-hidden="true"
             >
               arrow_forward
@@ -144,7 +143,7 @@ export function WorkflowCatalog({
         </div>
       ) : null}
       {revealNotice ? (
-        <div className={shellStyles.bannerInfo} style={{ marginBottom: "16px" }}>
+        <div className={`${shellStyles.bannerInfo} ${local.bannerSpaced}`}>
           {revealNotice}
         </div>
       ) : null}
@@ -172,8 +171,7 @@ export function WorkflowCatalog({
               title="Open extension folder"
             >
               <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "14px" }}
+                className={`material-symbols-outlined ${local.iconSm}`}
                 aria-hidden="true"
               >
                 folder_open
@@ -214,10 +212,7 @@ function WorkflowCard({
     <button key={workflow.id} type="button" className={cls} onClick={onSelect}>
       <div className={styles.topRow}>
         <div className={styles.iconBox}>
-          <span
-            className="material-symbols-outlined"
-            style={{ fontSize: "22px", fontVariationSettings: "'FILL' 1, 'wght' 500" }}
-          >
+          <span className={`material-symbols-outlined ${local.iconCard}`}>
             account_tree
           </span>
         </div>
@@ -233,13 +228,7 @@ function WorkflowCard({
       <div className={styles.summary}>{workflow.id}</div>
       {orphan ? (
         <div
-          className={styles.summary}
-          style={{
-            fontSize: "10px",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-            color: "#f59e0b",
-          }}
+          className={`${styles.summary} ${local.warningBadge}`}
           title={`Originally shipped by extension "${orphan.missingExtensionId}" which is no longer installed`}
         >
           ⚠ missing source: {orphan.missingExtensionId}
@@ -252,7 +241,7 @@ function WorkflowCard({
         </span>
         <span className={styles.openHint}>
           {selected ? "Selected" : "Open"}
-          <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>
+          <span className={`material-symbols-outlined ${local.iconSm}`}>
             arrow_forward
           </span>
         </span>

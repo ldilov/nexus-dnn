@@ -1102,3 +1102,22 @@ export const backendFamilyLabel = style({
   textTransform: "uppercase",
   color: vars.color.text.muted,
 });
+
+export const iconHuge = style({
+  fontSize: "26px",
+  fontVariationSettings: "'FILL' 1, 'wght' 500",
+});
+
+export const iconSm = style({
+  fontSize: "14px",
+});
+
+export const iconXs = style({
+  fontSize: "12px",
+});
+
+export const stackColumnTight = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: "4px",
+});

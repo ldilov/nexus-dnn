@@ -605,3 +605,46 @@ export const loadingBox = style({
   color: vars.color.onSurfaceVariant,
   fontStyle: "italic",
 });
+
+export const iconLg = style({
+  fontSize: "18px",
+});
+
+export const iconMd = style({
+  fontSize: "16px",
+});
+
+export const stackLarge = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: "1.5rem",
+});
+
+export const stackMedium = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: "1.25rem",
+});
+
+export const italic = style({
+  fontStyle: "italic",
+});
+
+export const italicSpaced = style({
+  fontStyle: "italic",
+  marginTop: "0.5rem",
+});
+
+export const graphBoxTall = style({
+  height: "560px",
+  padding: 0,
+});
+
+export const centerCell = style({
+  textAlign: "center",
+  width: "40px",
+});
+
+export const bold = style({
+  fontWeight: 600,
+});

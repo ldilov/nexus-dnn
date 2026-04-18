@@ -201,8 +201,7 @@ export function BlueprintView({
               disabled={dryRunning || !effectiveRecipeId}
             >
               <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "18px" }}
+                className={`material-symbols-outlined ${s.iconLg}`}
                 aria-hidden="true"
               >
                 play_arrow
@@ -216,8 +215,7 @@ export function BlueprintView({
               disabled={cloning || !effectiveRecipeId}
             >
               <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "18px" }}
+                className={`material-symbols-outlined ${s.iconLg}`}
                 aria-hidden="true"
               >
                 rocket_launch
@@ -232,8 +230,7 @@ export function BlueprintView({
                 rel="nofollow"
               >
                 <span
-                  className="material-symbols-outlined"
-                  style={{ fontSize: "18px" }}
+                  className={`material-symbols-outlined ${s.iconLg}`}
                   aria-hidden="true"
                 >
                   file_download
@@ -285,8 +282,7 @@ export function BlueprintView({
             onClick={() => setMode("recipe")}
           >
             <span
-              className="material-symbols-outlined"
-              style={{ fontSize: "16px" }}
+              className={`material-symbols-outlined ${s.iconMd}`}
               aria-hidden="true"
             >
               list_alt
@@ -308,8 +304,7 @@ export function BlueprintView({
             }
           >
             <span
-              className="material-symbols-outlined"
-              style={{ fontSize: "16px" }}
+              className={`material-symbols-outlined ${s.iconMd}`}
               aria-hidden="true"
             >
               account_tree
@@ -322,7 +317,7 @@ export function BlueprintView({
           <div
             role="tabpanel"
             id="panel-recipe"
-            style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}
+            className={s.stackLarge}
           >
             {selectedBlueprint && (
               <section className={s.section}>
@@ -339,17 +334,17 @@ export function BlueprintView({
                 02 / Steps ({workflow ? workflow.nodes.length : (selectedBlueprint?.step_count ?? 0)})
               </h2>
               {workflowLoading && (
-                <p className={s.overview} style={{ fontStyle: "italic" }}>
+                <p className={`${s.overview} ${s.italic}`}>
                   Loading step projection…
                 </p>
               )}
               {!workflowLoading && !workflow && workflowError && (
-                <p className={s.overview} style={{ fontStyle: "italic" }}>
+                <p className={`${s.overview} ${s.italic}`}>
                   {workflowError}
                 </p>
               )}
               {workflow && workflow.nodes.length === 0 && (
-                <p className={s.overview} style={{ fontStyle: "italic" }}>
+                <p className={`${s.overview} ${s.italic}`}>
                   This workflow has no operator nodes yet.
                 </p>
               )}
@@ -388,7 +383,7 @@ export function BlueprintView({
           <div
             role="tabpanel"
             id="panel-workflow"
-            style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}
+            className={s.stackLarge}
           >
             {workflowLoading && (
               <div className={s.loadingBox}>Loading workflow graph…</div>
@@ -402,7 +397,7 @@ export function BlueprintView({
               <>
                 <section className={s.section}>
                   <h2 className={s.sectionNumber}>01 / Graph</h2>
-                  <div className={s.graphBox} style={{ height: "560px", padding: 0 }}>
+                  <div className={`${s.graphBox} ${s.graphBoxTall}`}>
                     <GraphView workflow={workflow} nodeProgress={{}} />
                   </div>
                 </section>
@@ -440,10 +435,7 @@ export function BlueprintView({
                   </h2>
                   <div className={s.graphBox}>
                     {workflow.edges.length === 0 ? (
-                      <p
-                        className={s.overview}
-                        style={{ fontStyle: "italic" }}
-                      >
+                      <p className={`${s.overview} ${s.italic}`}>
                         No edges — this is a single-node workflow.
                       </p>
                     ) : (
@@ -454,10 +446,7 @@ export function BlueprintView({
                               <td className={`${s.nodeCell} ${s.nodeCellBold}`}>
                                 {e.source_node}.{e.source_port}
                               </td>
-                              <td
-                                className={s.nodeCell}
-                                style={{ textAlign: "center", width: "40px" }}
-                              >
+                              <td className={`${s.nodeCell} ${s.centerCell}`}>
                                 →
                               </td>
                               <td className={`${s.nodeCell} ${s.nodeCellBold}`}>
@@ -483,8 +472,7 @@ export function BlueprintView({
           </h2>
           {detail.deployments.length === 0 ? (
             <p
-              className={s.overview}
-              style={{ fontStyle: "italic", marginTop: "0.5rem" }}
+              className={`${s.overview} ${s.italicSpaced}`}
             >
               {/* scan-terminology: allow — "Clone to Deployment" is the CTA name per FR-018 */}
               No instances yet. Click <strong>Clone to Deployment</strong> above
@@ -494,7 +482,7 @@ export function BlueprintView({
             detail.deployments.map((d) => (
               <div key={d.deployment_id} className={s.instancesRow}>
                 <div>
-                  <div style={{ fontWeight: 600 }}>{d.display_name}</div>
+                  <div className={s.bold}>{d.display_name}</div>
                   <div className={s.instanceIdText}>{d.deployment_id}</div>
                 </div>
                 <button
@@ -571,7 +559,7 @@ function RecipeStepList({ workflow }: RecipeStepListProps) {
 
   let runningIdx = 0;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+    <div className={s.stackMedium}>
       {stages.map((stage) => (
         <div key={stage.label}>
           <div className={s.stepsStageHeader}>Stage · {stage.label}</div>

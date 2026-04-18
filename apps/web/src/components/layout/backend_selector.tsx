@@ -200,9 +200,9 @@ function BackendCard({ backend }: { backend: BackendOption }) {
         <div className={styles.backendCardTopRow}>
           <div className={styles.backendHeadlineRow}>
             <div className={[styles.backendIconBox, iconBoxCls].join(" ")}>
-              <span className="material-symbols-outlined" style={{ fontSize: "26px", fontVariationSettings: "'FILL' 1, 'wght' 500" }}>{backend.icon}</span>
+              <span className={`material-symbols-outlined ${styles.iconHuge}`}>{backend.icon}</span>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            <div className={styles.stackColumnTight}>
               <span className={styles.backendFamilyLabel}>{familyLabel}</span>
               <span className={styles.backendName}>{backend.name}</span>
             </div>
@@ -228,27 +228,27 @@ function BackendCard({ backend }: { backend: BackendOption }) {
         <div className={styles.backendFooter}>
           {status === "available" && (
             <button type="button" className={styles.backendActivateButton} onClick={handleInstall}>
-              <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>download</span> INSTALL
+              <span className={`material-symbols-outlined ${styles.iconSm}`}>download</span> INSTALL
             </button>
           )}
           {status === "installing" && (
             <button type="button" className={styles.backendInstallingButton} disabled>
-              <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>hourglass_top</span> INSTALLING...
+              <span className={`material-symbols-outlined ${styles.iconSm}`}>hourglass_top</span> INSTALLING...
             </button>
           )}
           {status === "installed" && (
             <button type="button" className={styles.backendActivateButton} onClick={handleActivate}>
-              <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>bolt</span> ACTIVATE
+              <span className={`material-symbols-outlined ${styles.iconSm}`}>bolt</span> ACTIVATE
             </button>
           )}
           {status === "running" && (
             <button type="button" className={styles.backendDeactivateButton} onClick={handleDeactivate}>
-              <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>stop</span> DEACTIVATE
+              <span className={`material-symbols-outlined ${styles.iconSm}`}>stop</span> DEACTIVATE
             </button>
           )}
           {status === "failed" && (
             <button type="button" className={styles.backendActivateButton} onClick={handleInstall}>
-              <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>refresh</span> RETRY INSTALL
+              <span className={`material-symbols-outlined ${styles.iconSm}`}>refresh</span> RETRY INSTALL
             </button>
           )}
           {backend.optimizedFor && <span className={styles.backendOptimizedLabel}>Optimized for {backend.optimizedFor}</span>}
@@ -280,7 +280,7 @@ export function BackendSelector({ backends = [], title, description, children }:
         <div className={styles.backendSelectorHeader}>
           <span className={styles.backendSelectorEyebrow}>
             <span className={styles.backendSelectorEyebrowDot} />
-            <span className="material-symbols-outlined" style={{ fontSize: "12px" }}>hub</span>
+            <span className={`material-symbols-outlined ${styles.iconXs}`}>hub</span>
             Inference Runtime Catalog
           </span>
           {title && <h2 className={styles.backendSelectorTitle}>{title}</h2>}

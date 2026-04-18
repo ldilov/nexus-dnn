@@ -5,6 +5,7 @@ import {
   installExtensionModel,
   listExtensionModels,
 } from "../api/client";
+import * as s from "./models_panel.css";
 import type { CatalogListDto } from "../api/generated/CatalogListDto";
 import type { HfSearchResultDto } from "../api/generated/HfSearchResultDto";
 import type { InstalledModelDto } from "../api/generated/InstalledModelDto";
@@ -41,30 +42,23 @@ function InstalledSection({ items }: { items: InstalledModelDto[] }) {
     return (
       <section>
         <h3>Installed models</h3>
-        <p style={{ opacity: 0.65 }}>No models installed yet. Search below to add one.</p>
+        <p className={s.muted}>No models installed yet. Search below to add one.</p>
       </section>
     );
   }
   return (
     <section>
       <h3>Installed models ({items.length})</h3>
-      <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: "8px" }}>
+      <ul className={s.listReset}>
         {items.map((m) => (
-          <li
-            key={m.id}
-            style={{
-              border: "1px solid rgba(255,255,255,0.1)",
-              padding: "12px",
-              borderRadius: "6px",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
+          <li key={m.id} className={s.card}>
+            <div className={s.cardHeader}>
               <strong>{m.display_name}</strong>
-              <span style={{ fontSize: "12px", opacity: 0.7 }}>
+              <span className={s.metaSmall}>
                 {m.routed_backend ?? "--"} · {m.quantization ?? "--"}
               </span>
             </div>
-            <div style={{ fontSize: "12px", opacity: 0.6 }}>
+            <div className={s.meta}>
               {m.repo_id ?? "local import"} · {formatBytes(m.size_bytes)} ·{" "}
               {m.state}
             </div>
@@ -91,42 +85,22 @@ function HfResultCard({ result, onInstall, installStatus }: HfCardProps) {
   const status = installStatus?.state;
 
   return (
-    <li
-      style={{
-        border: "1px solid rgba(255,255,255,0.1)",
-        padding: "12px",
-        borderRadius: "6px",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+    <li className={s.card}>
+      <div className={s.cardHeaderWithSpacing}>
         <strong>{result.repo_id}</strong>
-        <span style={{ fontSize: "12px", opacity: 0.7 }}>
+        <span className={s.metaSmall}>
           {result.author ?? "--"} · {result.license ?? "no license"}
         </span>
       </div>
-      <div style={{ fontSize: "12px", opacity: 0.6, marginBottom: "8px" }}>
+      <div className={s.metaWithSpacing}>
         {result.downloads_30d ?? 0} downloads · {result.files.length} files ·{" "}
         {result.formats.join(", ") || "unknown format"}
       </div>
-      <div style={{ display: "flex", gap: "6px", marginBottom: "8px", flexWrap: "wrap" }}>
-        <span
-          style={{
-            fontSize: "11px",
-            padding: "2px 6px",
-            borderRadius: "3px",
-            background: canLlama ? "rgba(0,200,100,0.2)" : "rgba(255,255,255,0.06)",
-          }}
-        >
+      <div className={s.badgeRow}>
+        <span className={canLlama ? s.compatBadgeYes : s.compatBadgeNo}>
           llama.cpp: {canLlama ? result.backend_compat.llamacpp.signal ?? "yes" : "no"}
         </span>
-        <span
-          style={{
-            fontSize: "11px",
-            padding: "2px 6px",
-            borderRadius: "3px",
-            background: canTrt ? "rgba(0,200,100,0.2)" : "rgba(255,255,255,0.06)",
-          }}
-        >
+        <span className={canTrt ? s.compatBadgeYes : s.compatBadgeNo}>
           tensorrt-llm: {canTrt ? result.backend_compat.trt_llm.signal ?? "yes" : "no"}
         </span>
       </div>
@@ -146,9 +120,7 @@ function HfResultCard({ result, onInstall, installStatus }: HfCardProps) {
                 : "No compatible backend"}
       </button>
       {status === "error" && installStatus?.state === "error" && (
-        <div style={{ color: "tomato", fontSize: "12px", marginTop: "4px" }}>
-          {installStatus.message}
-        </div>
+        <div className={s.errorLine}>{installStatus.message}</div>
       )}
     </li>
   );
@@ -172,10 +144,10 @@ interface SearchResultsProps {
 function SearchResultsBody({ promise, onInstall, installs }: SearchResultsProps) {
   const data = use(promise);
   if (data.results.length === 0) {
-    return <p style={{ opacity: 0.65 }}>No results.</p>;
+    return <p className={s.muted}>No results.</p>;
   }
   return (
-    <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: "8px" }}>
+    <ul className={s.listReset}>
       {data.results.map((r) => (
         <HfResultCard
           key={r.repo_id}
@@ -267,10 +239,10 @@ export function ModelsPanel({ extensionId }: ModelsPanelProps) {
   void handleCancel;
 
   return (
-    <main style={{ padding: "24px", display: "grid", gap: "24px" }}>
+    <main className={s.panel}>
       <header>
         <h2>Models</h2>
-        <p style={{ opacity: 0.65 }}>
+        <p className={s.muted}>
           Installed models and Hugging Face search. Downloads route automatically: GGUF →
           llama.cpp, TensorRT-LLM engines → tensorrt-llm.
         </p>
@@ -288,14 +260,14 @@ export function ModelsPanel({ extensionId }: ModelsPanelProps) {
             const formData = new FormData(e.currentTarget);
             runSearch(String(formData.get("q") ?? ""));
           }}
-          style={{ display: "flex", gap: "8px", marginBottom: "12px" }}
+          className={s.searchForm}
         >
           <input
             type="text"
             name="q"
             defaultValue={search.query}
             placeholder="Search Hugging Face (e.g. qwen2.5 gguf)"
-            style={{ flex: 1, padding: "6px 8px" }}
+            className={s.searchInput}
           />
           <button type="submit">Search</button>
         </form>
