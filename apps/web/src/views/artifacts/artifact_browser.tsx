@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import useSWR from "swr";
 import { fetchArtifacts, type Artifact } from "../../api/client";
 import * as styles from "./artifact_browser.css";
+
+const EMPTY_ARTIFACTS: Artifact[] = [];
 
 type ArtifactBrowserProps = {
   runId: string | null;
@@ -15,25 +18,23 @@ function displayName(art: Artifact): string {
 }
 
 export function ArtifactBrowser({ runId }: ArtifactBrowserProps) {
-  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [selected, setSelected] = useState<Artifact | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!runId) return;
-    fetchArtifacts(runId)
-      .then(setArtifacts)
-      .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : "Failed to load artifacts"),
-      );
-  }, [runId]);
+  const { data: artifacts = EMPTY_ARTIFACTS, error } = useSWR<Artifact[]>(
+    runId ? `artifacts:${runId}` : null,
+    () => fetchArtifacts(runId as string),
+  );
+  const errorMessage = error
+    ? error instanceof Error
+      ? error.message
+      : "Failed to load artifacts"
+    : null;
 
   if (!runId) {
     return <p className={styles.emptyState}>Run a workflow to see artifacts</p>;
   }
 
-  if (error) {
-    return <p className={styles.emptyState}>{error}</p>;
+  if (errorMessage) {
+    return <p className={styles.emptyState}>{errorMessage}</p>;
   }
 
   return (

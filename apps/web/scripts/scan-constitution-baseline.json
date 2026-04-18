@@ -3,34 +3,24 @@
   "capturedOnSha": "unknown",
   "violations": [
     {
-      "rule": "SR-004",
+      "rule": "SR-009",
       "file": "catalog/recipe_catalog.tsx",
-      "line": 52
+      "line": 135
     },
     {
       "rule": "SR-009",
       "file": "catalog/recipe_catalog.tsx",
-      "line": 130
+      "line": 164
     },
     {
       "rule": "SR-009",
       "file": "catalog/recipe_catalog.tsx",
-      "line": 159
+      "line": 198
     },
     {
       "rule": "SR-009",
       "file": "catalog/recipe_catalog.tsx",
-      "line": 193
-    },
-    {
-      "rule": "SR-009",
-      "file": "catalog/recipe_catalog.tsx",
-      "line": 210
-    },
-    {
-      "rule": "SR-004",
-      "file": "catalog/tool_catalog.tsx",
-      "line": 20
+      "line": 215
     },
     {
       "rule": "SR-004",
@@ -238,16 +228,6 @@
       "line": 134
     },
     {
-      "rule": "SR-004",
-      "file": "hooks/use_operator_specs.ts",
-      "line": 17
-    },
-    {
-      "rule": "SR-004",
-      "file": "hooks/use_polling_metrics.ts",
-      "line": 11
-    },
-    {
       "rule": "SR-009",
       "file": "install/install_extension_drawer.tsx",
       "line": 196
@@ -371,16 +351,6 @@
       "rule": "SR-009",
       "file": "nodes/previews/index.tsx",
       "line": 53
-    },
-    {
-      "rule": "SR-004",
-      "file": "views/artifacts/artifact_browser.tsx",
-      "line": 22
-    },
-    {
-      "rule": "SR-004",
-      "file": "views/home/home.view.tsx",
-      "line": 20
     },
     {
       "rule": "SR-004",
@@ -583,16 +553,6 @@
       "line": 769
     },
     {
-      "rule": "SR-004",
-      "file": "views/workflows/components/workflow_catalog.tsx",
-      "line": 47
-    },
-    {
-      "rule": "SR-009",
-      "file": "views/workflows/components/workflow_catalog.tsx",
-      "line": 122
-    },
-    {
       "rule": "SR-009",
       "file": "views/workflows/components/workflow_catalog.tsx",
       "line": 127
@@ -600,32 +560,37 @@
     {
       "rule": "SR-009",
       "file": "views/workflows/components/workflow_catalog.tsx",
-      "line": 131
+      "line": 132
     },
     {
       "rule": "SR-009",
       "file": "views/workflows/components/workflow_catalog.tsx",
-      "line": 142
+      "line": 136
     },
     {
       "rule": "SR-009",
       "file": "views/workflows/components/workflow_catalog.tsx",
-      "line": 171
+      "line": 147
     },
     {
       "rule": "SR-009",
       "file": "views/workflows/components/workflow_catalog.tsx",
-      "line": 214
+      "line": 176
     },
     {
       "rule": "SR-009",
       "file": "views/workflows/components/workflow_catalog.tsx",
-      "line": 232
+      "line": 219
     },
     {
       "rule": "SR-009",
       "file": "views/workflows/components/workflow_catalog.tsx",
-      "line": 250
+      "line": 237
+    },
+    {
+      "rule": "SR-009",
+      "file": "views/workflows/components/workflow_catalog.tsx",
+      "line": 255
     }
   ]
 }

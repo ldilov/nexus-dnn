@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import useSWR from "swr";
 import type { Extension, Recipe, Workflow } from "../../api/client";
 import { fetchExtensions } from "../../services/extensions";
 import { fetchRecipes } from "../../api/client";
@@ -12,16 +12,23 @@ export interface HomeProps {
   onGoToExtensions?: () => void;
 }
 
-export function Home(props: HomeProps) {
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [workflows, setWorkflows] = useState<Workflow[]>([]);
-  const [extensions, setExtensions] = useState<Extension[]>([]);
+const EMPTY_RECIPES: Recipe[] = [];
+const EMPTY_WORKFLOWS: Workflow[] = [];
+const EMPTY_EXTENSIONS: Extension[] = [];
 
-  useEffect(() => {
-    fetchRecipes().then(setRecipes).catch(() => setRecipes([]));
-    fetchWorkflows().then(setWorkflows).catch(() => setWorkflows([]));
-    fetchExtensions().then(setExtensions).catch(() => setExtensions([]));
-  }, []);
+export function Home(props: HomeProps) {
+  const { data: recipes = EMPTY_RECIPES } = useSWR<Recipe[]>(
+    "home:recipes",
+    () => fetchRecipes(),
+  );
+  const { data: workflows = EMPTY_WORKFLOWS } = useSWR<Workflow[]>(
+    "home:workflows",
+    () => fetchWorkflows(),
+  );
+  const { data: extensions = EMPTY_EXTENSIONS } = useSWR<Extension[]>(
+    "home:extensions",
+    () => fetchExtensions(),
+  );
 
   const activeExtensions = extensions.filter((e) => {
     const s = e.status.toLowerCase();

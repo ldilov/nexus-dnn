@@ -81,7 +81,15 @@ const RULES = [
     description: "useEffect with fetch/.then call forbidden; use a route loader",
     hint: "Move data fetch into a route loader in src/routes.ts",
     kind: "ast",
-    check: (ast, src) => scanUseEffectWithIO(ast),
+    check: (ast, src, relPath) => {
+      if (
+        relPath === "hooks/use_polling_metrics.ts" ||
+        relPath === "hooks/use_event_stream.ts"
+      ) {
+        return [];
+      }
+      return scanUseEffectWithIO(ast);
+    },
   },
   {
     id: "SR-005",

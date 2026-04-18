@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import useSWR from "swr";
 import {
   fetchExtensions,
   fetchRecipes,
@@ -42,23 +43,27 @@ export interface RecipeCatalogProps {
   onOpenRecipe?: (recipe: Recipe) => void;
 }
 
+const EMPTY_RECIPES: RecipeItem[] = [];
+const EMPTY_EXTENSIONS: Extension[] = [];
+
 export function RecipeCatalog({ onOpenRecipe }: RecipeCatalogProps) {
-  const [recipes, setRecipes] = useState<RecipeItem[]>([]);
-  const [extensions, setExtensions] = useState<Extension[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [revealNotice, setRevealNotice] = useState<string | null>(null);
   const { state: controls, setState: setControls } = useCatalogState("recipes");
 
-  useEffect(() => {
-    Promise.all([fetchRecipes(), fetchExtensions()])
-      .then(([recs, exts]) => {
-        setRecipes(recs as RecipeItem[]);
-        setExtensions(exts);
-      })
-      .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : "Failed to load recipes"),
-      );
-  }, []);
+  const { data: recipes = EMPTY_RECIPES, error: recipesError } = useSWR<RecipeItem[]>(
+    "catalog:recipes",
+    () => fetchRecipes().then((r) => r as RecipeItem[]),
+  );
+  const { data: extensions = EMPTY_EXTENSIONS, error: extensionsError } = useSWR<Extension[]>(
+    "catalog:extensions",
+    () => fetchExtensions(),
+  );
+  const loadError = recipesError ?? extensionsError;
+  const error = loadError
+    ? loadError instanceof Error
+      ? loadError.message
+      : "Failed to load recipes"
+    : null;
 
   const extNameById = useMemo(() => {
     const map = new Map<string, string>();
