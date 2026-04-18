@@ -1,4 +1,4 @@
-import { box, chartBox, imageBox, jsonBox } from "./previews.css";
+import { box, chartBox, imageBox, jsonBox, imgFit, svgFit } from "./previews.css";
 
 export type PreviewKind = "log_tail" | "json" | "image" | "chart";
 
@@ -39,7 +39,7 @@ function ImagePreview({ value }: PreviewProps) {
   if (!src) return <div className={jsonBox}>(no image)</div>;
   return (
     <div className={imageBox}>
-      <img src={src} alt="preview" style={{ width: "100%", display: "block" }} />
+      <img src={src} alt="preview" className={imgFit} />
     </div>
   );
 }
@@ -50,7 +50,7 @@ function ChartPreview({ value }: PreviewProps) {
   const max = Math.max(...arr, 1);
   return (
     <div className={chartBox}>
-      <svg viewBox={`0 0 ${arr.length * 6} 60`} style={{ width: "100%", height: "100%" }}>
+      <svg viewBox={`0 0 ${arr.length * 6} 60`} className={svgFit}>
         {arr.map((v, i) => (
           <rect
             key={i}

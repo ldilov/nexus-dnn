@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Tabs } from "../tabs";
+import * as styles from "./layout_styles.css";
 
 type TabConfig = {
   label: string;
@@ -21,11 +22,11 @@ export function TabsLayout({ tabs = [], children }: TabsLayoutProps) {
   const activeIndex = Number(activeId);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+    <div className={styles.scrollColumn}>
       {items.length > 0 && (
         <Tabs items={items} activeId={activeId} onSelect={setActiveId} variant="underline" />
       )}
-      <div style={{ flex: 1, overflow: "auto" }}>
+      <div className={styles.scrollBody}>
         {children[activeIndex] ?? null}
       </div>
     </div>

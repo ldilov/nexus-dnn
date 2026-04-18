@@ -33,7 +33,7 @@ export function FileBrowser({ path = "/", entries = [], children }: FileBrowserP
   return (
     <div className={styles.listContainer}>
       <div className={styles.actionBar}>
-        <span style={{ fontFamily: "var(--font-code)", fontSize: "0.75rem", opacity: 0.7 }}>
+        <span className={styles.codeSmall}>
           {path}
         </span>
       </div>
@@ -53,9 +53,9 @@ export function FileBrowser({ path = "/", entries = [], children }: FileBrowserP
             onClick={() => setSelectedName(entry.name)}
           >
             <span>{icon}</span>
-            <span style={{ flex: 1 }}>{entry.name}</span>
+            <span className={styles.flexOne}>{entry.name}</span>
             {entry.size !== undefined && (
-              <span style={{ fontSize: "0.75rem", opacity: 0.6 }}>{formatSize(entry.size)}</span>
+              <span className={styles.mutedSmall}>{formatSize(entry.size)}</span>
             )}
           </div>
         );

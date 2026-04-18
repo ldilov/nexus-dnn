@@ -172,3 +172,7 @@ export const secondaryContent = style({
 export const secondaryContentVisible = style({
   display: "flex",
 });
+
+export const iconXl = style({
+  fontSize: "22px",
+});

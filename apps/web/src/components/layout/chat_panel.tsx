@@ -76,7 +76,7 @@ function CodeBlock({ code, lang }: { code: string; lang: string }) {
       <div className={styles.chatCodeBlockHeader}>
         <span className={styles.chatCodeBlockLang}>{lang}</span>
         <button className={styles.chatCodeBlockCopy} onClick={handleCopy} type="button">
-          <span className="material-symbols-outlined" style={{ fontSize: "inherit" }}>
+          <span className={`material-symbols-outlined ${styles.iconInherit}`}>
             {copied ? "check" : "content_copy"}
           </span>
         </button>
@@ -202,10 +202,7 @@ export function ChatPanel({
               <div className={styles.chatMessageBody}>
                 <span className={roleCls}>
                   {!isUser && (
-                    <span
-                      className="material-symbols-outlined"
-                      style={{ fontSize: "12px", marginRight: "4px" }}
-                    >
+                    <span className={`material-symbols-outlined ${styles.iconBadge}`}>
                       auto_awesome
                     </span>
                   )}
@@ -216,13 +213,13 @@ export function ChatPanel({
                   {!isUser && (
                     <div className={styles.chatMessageActions}>
                       <button className={styles.chatActionButton} type="button">
-                        <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>
+                        <span className={`material-symbols-outlined ${styles.iconSm}`}>
                           play_arrow
                         </span>
                         Execute Fix
                       </button>
                       <button className={styles.chatActionButton} type="button">
-                        <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>
+                        <span className={`material-symbols-outlined ${styles.iconSm}`}>
                           info
                         </span>
                         View Simulation
@@ -254,7 +251,7 @@ export function ChatPanel({
       <input
         ref={fileInputRef}
         type="file"
-        style={{ display: "none" }}
+        className={styles.hidden}
         onChange={handleFileChange}
       />
 
@@ -266,7 +263,7 @@ export function ChatPanel({
               type="button"
               onClick={() => fileInputRef.current?.click()}
             >
-              <span className="material-symbols-outlined" style={{ fontSize: "inherit" }}>
+              <span className={`material-symbols-outlined ${styles.iconInherit}`}>
                 attach_file
               </span>
             </button>
@@ -274,7 +271,7 @@ export function ChatPanel({
               className={`${styles.chatInputIconButton} ${styles.chatInputIconScreenshot}`}
               type="button"
             >
-              <span className="material-symbols-outlined" style={{ fontSize: "inherit" }}>
+              <span className={`material-symbols-outlined ${styles.iconInherit}`}>
                 screenshot_region
               </span>
             </button>
@@ -282,7 +279,7 @@ export function ChatPanel({
               className={`${styles.chatInputIconButton} ${styles.chatInputIconCode}`}
               type="button"
             >
-              <span className="material-symbols-outlined" style={{ fontSize: "inherit" }}>
+              <span className={`material-symbols-outlined ${styles.iconInherit}`}>
                 code_blocks
               </span>
             </button>
@@ -303,26 +300,19 @@ export function ChatPanel({
             {tokenCount !== undefined && (
               <>
                 <div className={styles.chatInputDivider} />
-                <span
-                  style={{
-                    fontFamily: "var(--font-code)",
-                    fontSize: "9px",
-                    color: "rgba(116, 117, 120, 0.6)",
-                    textTransform: "uppercase",
-                  }}
-                >
+                <span className={styles.tokenCountLabel}>
                   {tokenCount.toLocaleString()} tokens
                 </span>
               </>
             )}
 
-            <span style={{ marginLeft: "auto" }}>
+            <span className={styles.marginLeftAuto}>
               <button
                 className={styles.chatInputIconButton}
                 type="button"
                 onClick={() => setMaximized((prev) => !prev)}
               >
-                <span className="material-symbols-outlined" style={{ fontSize: "inherit" }}>
+                <span className={`material-symbols-outlined ${styles.iconInherit}`}>
                   {maximized ? "close_fullscreen" : "open_in_full"}
                 </span>
               </button>
@@ -340,11 +330,7 @@ export function ChatPanel({
             />
             <button className={styles.chatSendButton} type="button">
               <span
-                className="material-symbols-outlined"
-                style={{
-                  fontSize: "inherit",
-                  fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24",
-                }}
+                className={`material-symbols-outlined ${styles.iconInheritFilled}`}
               >
                 send
               </span>

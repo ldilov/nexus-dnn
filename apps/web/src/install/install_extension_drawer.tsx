@@ -193,7 +193,7 @@ export function InstallExtensionDrawer({
                 module_id = {state.result.module_id}
               </p>
               {state.result.install_diagnostics.length > 0 && (
-                <ul className={s.stateMessage} style={{ margin: 0, paddingLeft: "1rem" }}>
+                <ul className={`${s.stateMessage} ${s.diagList}`}>
                   {state.result.install_diagnostics.map((diag) => (
                     <li key={diag}>{diag}</li>
                   ))}

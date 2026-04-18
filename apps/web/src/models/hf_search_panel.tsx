@@ -303,7 +303,7 @@ function HfResultRow({ result, onInstall }: RowProps) {
         ))}
       </div>
       <div className={s.installRow}>
-        <span className={s.meta} style={{ margin: 0 }}>
+        <span className={`${s.meta} ${s.zeroMargin}`}>
           {defaultFiles[0] ?? "—"}
         </span>
         <button

@@ -146,3 +146,16 @@ export const openHint = style({
   fontWeight: 500,
   color: vars.color.accent.primary,
 });
+
+export const bannerSpaced = style({
+  marginBottom: "16px",
+});
+
+export const iconSm = style({
+  fontSize: "14px",
+});
+
+export const iconCard = style({
+  fontSize: "22px",
+  fontVariationSettings: "'FILL' 1, 'wght' 500",
+});

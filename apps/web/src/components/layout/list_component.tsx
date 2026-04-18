@@ -62,7 +62,7 @@ export function ListComponent({
             <div>
               <div>{item.label}</div>
               {item.description && (
-                <div style={{ fontSize: "0.75rem", opacity: 0.7 }}>{item.description}</div>
+                <div className={styles.descSmall}>{item.description}</div>
               )}
             </div>
           </div>

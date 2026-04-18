@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Button } from "../button";
 import * as styles from "./backend_styles.css";
+import * as layoutStyles from "./layout_styles.css";
 
 type FailureData = {
   category: string;
@@ -60,7 +61,7 @@ export function DiagnosticsView({
             className={styles.diagCopyButton}
             onClick={handleCopy}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: "inherit" }}>
+            <span className={`material-symbols-outlined ${layoutStyles.iconInherit}`}>
               {copied ? "check" : "content_copy"}
             </span>
           </button>

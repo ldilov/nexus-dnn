@@ -63,7 +63,7 @@ function renderFieldValue(value: unknown, format?: string): ReactNode {
 
   if (format === "code") {
     return (
-      <span style={{ fontFamily: "var(--font-code)" }}>{String(value)}</span>
+      <span className={styles.codeFont}>{String(value)}</span>
     );
   }
 
@@ -155,16 +155,16 @@ function ContextSection({ title, refs }: { title: string; refs: ContextRef[] }) 
               {ref.icon}
             </span>
           )}
-          <span style={{ flex: 1 }}>{ref.label}</span>
+          <span className={styles.flexOne}>{ref.label}</span>
           <button className={styles.detailContextClose} type="button">
-            <span className="material-symbols-outlined" style={{ fontSize: "inherit" }}>
+            <span className={`material-symbols-outlined ${styles.iconInherit}`}>
               close
             </span>
           </button>
         </div>
       ))}
       <button className={styles.detailAddRefButton} type="button">
-        <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>add</span>
+        <span className={`material-symbols-outlined ${styles.iconSm}`}>add</span>
         Add Reference
       </button>
     </div>

@@ -29,3 +29,13 @@ export const chartBox = style([
   box,
   { display: "flex", alignItems: "center", justifyContent: "center", height: "60px" },
 ]);
+
+export const imgFit = style({
+  width: "100%",
+  display: "block",
+});
+
+export const svgFit = style({
+  width: "100%",
+  height: "100%",
+});

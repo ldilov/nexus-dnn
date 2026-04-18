@@ -1419,3 +1419,108 @@ export const chatWelcomeDescription = style({
   lineHeight: 1.6,
   margin: 0,
 });
+
+export const iconInherit = style({
+  fontSize: "inherit",
+});
+
+export const iconInheritFilled = style({
+  fontSize: "inherit",
+  fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24",
+});
+
+export const iconSm = style({
+  fontSize: "14px",
+});
+
+export const iconBadge = style({
+  fontSize: "12px",
+  marginRight: "4px",
+});
+
+export const hidden = style({
+  display: "none",
+});
+
+export const marginLeftAuto = style({
+  marginLeft: "auto",
+});
+
+export const tokenCountLabel = style({
+  fontFamily: "var(--font-code)",
+  fontSize: "9px",
+  color: "rgba(116, 117, 120, 0.6)",
+  textTransform: "uppercase",
+});
+
+export const codeFont = style({
+  fontFamily: "var(--font-code)",
+});
+
+export const flexOne = style({
+  flex: 1,
+});
+
+export const iconLg = style({
+  fontSize: "18px",
+});
+
+export const iconMd = style({
+  fontSize: "16px",
+});
+
+export const iconXl = style({
+  fontSize: "22px",
+});
+
+export const overflowAuto = style({
+  overflow: "auto",
+});
+
+export const scrollColumn = style({
+  display: "flex",
+  flexDirection: "column",
+  height: "100%",
+  overflow: "hidden",
+});
+
+export const scrollBody = style({
+  flex: 1,
+  overflow: "auto",
+});
+
+export const codeSmall = style({
+  fontFamily: "var(--font-code)",
+  fontSize: "0.75rem",
+  opacity: 0.7,
+});
+
+export const mutedSmall = style({
+  fontSize: "0.75rem",
+  opacity: 0.6,
+});
+
+export const descSmall = style({
+  fontSize: "0.75rem",
+  opacity: 0.7,
+});
+
+export const centeredHint = style({
+  padding: "16px",
+  textAlign: "center",
+  opacity: 0.5,
+});
+
+export const accentIcon = style({
+  fontSize: "18px",
+  color: "var(--color-accent-secondary)",
+});
+
+export const resetList = style({
+  margin: 0,
+  paddingLeft: "1rem",
+});
+
+export const zeroMargin = style({
+  margin: 0,
+});

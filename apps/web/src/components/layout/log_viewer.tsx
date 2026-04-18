@@ -74,7 +74,7 @@ export function LogViewer({ entries = [], autoScroll = true, children }: LogView
           </div>
         ))}
         {filtered.length === 0 && (
-          <div style={{ padding: "16px", textAlign: "center", opacity: 0.5 }}>
+          <div className={styles.centeredHint}>
             No log entries
           </div>
         )}

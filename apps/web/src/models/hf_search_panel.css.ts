@@ -288,3 +288,7 @@ export const followupLabel = style({
   color: vars.color.accent.tertiary,
   fontWeight: vars.font.weight.semibold,
 });
+
+export const zeroMargin = style({
+  margin: 0,
+});

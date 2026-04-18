@@ -1,5 +1,6 @@
 import { useMemo, type CSSProperties } from "react";
 import { useStore, type Node } from "@xyflow/react";
+import * as styles from "./alignment_guides.css";
 
 export type ProjectedDrop = {
   x: number;
@@ -177,7 +178,7 @@ export function DropProjection({
       <svg
         width="100%"
         height="100%"
-        style={{ position: "absolute", inset: 0, overflow: "visible" }}
+        className={styles.fullSvg}
       >
         <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.zoom})`}>
           {isMoved && (

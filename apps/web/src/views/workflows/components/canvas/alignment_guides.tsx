@@ -1,5 +1,6 @@
 import { useMemo, type CSSProperties } from "react";
 import { useStore, type Node } from "@xyflow/react";
+import * as styles from "./alignment_guides.css";
 
 export type AlignmentGuide = {
   orientation: "horizontal" | "vertical";
@@ -110,7 +111,7 @@ export function AlignmentGuides() {
       <svg
         width="100%"
         height="100%"
-        style={{ position: "absolute", inset: 0, overflow: "visible" }}
+        className={styles.fullSvg}
       >
         <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.zoom})`}>
           {guides.map((g, i) => {
@@ -126,7 +127,7 @@ export function AlignmentGuides() {
                 strokeWidth={1.2 / viewport.zoom}
                 strokeDasharray={`${6 / viewport.zoom} ${4 / viewport.zoom}`}
                 opacity={0.9}
-                style={{ filter: "drop-shadow(0 0 4px rgba(34, 211, 238, 0.6))" }}
+                className={styles.guideLineGlow}
               >
                 <animate
                   attributeName="stroke-dashoffset"

@@ -154,3 +154,21 @@ export const quickPickButton = style({
   borderLeft: `1px solid ${vars.color.primaryDim}`,
   cursor: "pointer",
 });
+
+export const iconSm = style({
+  fontSize: "14px",
+});
+
+export const ctaRow = style({
+  display: "flex",
+  flex: 1,
+  position: "relative",
+});
+
+export const ctaSplitRight = style({
+  flex: 0,
+  padding: "0.5rem 0.5rem",
+  borderLeft: "1px solid currentColor",
+  borderTopLeftRadius: 0,
+  borderBottomLeftRadius: 0,
+});
