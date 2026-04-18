@@ -50,6 +50,7 @@ nexus-dnn provides a developer-grade runtime that treats generative workflows as
 | `nexus-provenance` | License resolution + Hugging Face metadata probe extracted from `nexus-backend-runtimes` (spec 018). |
 | `nexus-deployments` | Deployments domain (spec 018): named, append-only, reloadable execution-context snapshots over canonical workflows/recipes. Save / load / execute / validate / clone / export / import services. |
 | `nexus-huggingface` | Host-level Hugging Face capability — search, repo detail, resumable downloads |
+| `nexus-local-llm-worker` | Builtin local-LLM extension worker (Rust sidecar, [spec 024](specs/024-local-llm-rust-port/)). Consumes host model-store + backend-runtime registries via JSON-RPC; holds `RuntimeLease`s and proxies OpenAI-compatible HTTP to leased `llama-server` children. Zero Python runtime in the extension. |
 
 ## Quick Start
 
@@ -88,6 +89,14 @@ nexus-dnn/
 
 ### Recent specs
 
+- [spec 024 — Local LLM Extension Rust Port](specs/024-local-llm-rust-port/)
+  — Python `local-llm` worker replaced by a compiled Rust sidecar. Extension
+  is now a pure lease consumer against the host's `nexus-backend-runtimes`
+  supervisor; host spawns `llama-server`, extension proxies OpenAI-compatible
+  HTTP through `lease.channel.base_url`. Architectural rule: *spawn ownership
+  follows registration ownership* — host-registered universal runtimes are
+  host-spawned and shareable across extensions via refcounted leases; future
+  extensions may still ship private runtimes and supervise them themselves.
 - [spec 017 — Host-managed models](specs/017-host-managed-models/) — shared
   model store with per-extension leasing.
 - [spec 019 — Extension Modules + Spectral Graphite UI](specs/019-extension-modules/)

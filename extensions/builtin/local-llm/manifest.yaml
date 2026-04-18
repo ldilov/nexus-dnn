@@ -12,12 +12,10 @@ compatibility:
   protocol: ">=0.1.0"
 
 runtime:
-  family: "builtin"
-  entrypoint: "worker/main.py"
+  family: "native"
+  entrypoint: "bin/nexus-local-llm-worker${exe_suffix}"
   environment:
-    python_version: "3.12"
     cuda_version: null
-    pip_dependencies: []
     env_vars: {}
 
 runtime_dependencies:
