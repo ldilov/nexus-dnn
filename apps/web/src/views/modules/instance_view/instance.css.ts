@@ -880,3 +880,24 @@ export const sourceBadge = style({
   fontSize: vars.text.labelS,
   color: vars.color.onSurfaceVariant,
 });
+
+export const iconLg = style({
+  fontSize: "18px",
+});
+
+export const iconMd = style({
+  fontSize: "16px",
+});
+
+export const metaValueLg = style({
+  fontSize: "1rem",
+  lineHeight: 1.3,
+});
+
+export const alignRight = style({
+  textAlign: "right",
+});
+
+export const monoFont = style({
+  fontFamily: "var(--font-mono, monospace)",
+});

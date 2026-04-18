@@ -193,8 +193,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
               {summary.runtime_family && (
                 <span className={s.statusRow}>
                   <span
-                    className="material-symbols-outlined"
-                    style={{ fontSize: "16px" }}
+                    className={`material-symbols-outlined ${s.iconMd}`}
                     aria-hidden="true"
                   >
                     memory
@@ -212,8 +211,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
               disabled={dryRunning || deployBlocked}
             >
               <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "18px" }}
+                className={`material-symbols-outlined ${s.iconLg}`}
                 aria-hidden="true"
               >
                 play_arrow
@@ -227,8 +225,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
               disabled={deployBlocked}
             >
               <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "18px" }}
+                className={`material-symbols-outlined ${s.iconLg}`}
                 aria-hidden="true"
               >
                 menu_book
@@ -242,8 +239,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
               disabled={forking || deployBlocked}
             >
               <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "18px" }}
+                className={`material-symbols-outlined ${s.iconLg}`}
                 aria-hidden="true"
               >
                 edit
@@ -257,8 +253,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
               disabled={deploying || deployBlocked}
             >
               <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "18px" }}
+                className={`material-symbols-outlined ${s.iconLg}`}
                 aria-hidden="true"
               >
                 rocket_launch
@@ -307,8 +302,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
                 <div className={`${s.metaItem} ${s.metaItemTertiary}`}>
                   <span className={s.metaLabel}>Primary recipe</span>
                   <span
-                    className={s.metaValue}
-                    style={{ fontSize: "1rem", lineHeight: 1.3 }}
+                    className={`${s.metaValue} ${s.metaValueLg}`}
                   >
                     {primaryBlueprint?.display_name ?? "—"}
                   </span>
@@ -461,7 +455,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
                       <th className={s.tableHeadCell}>State</th>
                       <th className={s.tableHeadCell}>Restore state</th>
                       <th className={s.tableHeadCell}>Updated</th>
-                      <th className={s.tableHeadCell} style={{ textAlign: "right" }}>
+                      <th className={`${s.tableHeadCell} ${s.alignRight}`}>
                         Operations
                       </th>
                     </tr>
@@ -480,10 +474,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
                         <td className={s.tableCell}>
                           {formatRelativeTime(row.updated_at)}
                         </td>
-                        <td
-                          className={s.tableCell}
-                          style={{ textAlign: "right" }}
-                        >
+                        <td className={`${s.tableCell} ${s.alignRight}`}>
                           <div className={s.rowActions}>
                             <button
                               type="button"
@@ -497,8 +488,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
                               }
                             >
                               <span
-                                className="material-symbols-outlined"
-                                style={{ fontSize: "18px" }}
+                                className={`material-symbols-outlined ${s.iconLg}`}
                                 aria-hidden="true"
                               >
                                 open_in_new
@@ -560,7 +550,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
             </span>
             <div>
               <p className={s.footerLabel}>Module id</p>
-              <p className={s.footerValue} style={{ fontFamily: "var(--font-mono, monospace)" }}>
+              <p className={`${s.footerValue} ${s.monoFont}`}>
                 {summary.module_id}
               </p>
             </div>
