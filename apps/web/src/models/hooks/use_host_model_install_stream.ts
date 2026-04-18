@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { InstallStreamEvent } from "../../views/backends/components/install_modal";
-
-const WS_URL = `ws://${typeof window !== "undefined" ? window.location.host : ""}/api/v1/events`;
+import { openEventsSocket } from "../../services/event_streams";
 
 interface PendingResolver {
   resolve: (value: IteratorResult<InstallStreamEvent>) => void;
@@ -91,7 +90,7 @@ export function useHostModelInstallStream(
     if (!taskId) return;
     queueRef.current = new Queue();
     const queue = queueRef.current;
-    const ws = new WebSocket(WS_URL);
+    const ws = openEventsSocket();
 
     ws.onmessage = (msg) => {
       let parsed: unknown;

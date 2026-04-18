@@ -1,6 +1,7 @@
 import { type ReactNode, useState, useCallback, useEffect } from "react";
 import * as styles from "./backend_styles.css";
 import { fetchLoadState } from "../../api/client";
+import { installRuntime, getInstallStatus } from "../../services/local_llm_rpc";
 
 type BackendStatus = "running" | "installed" | "available" | "installing" | "failed" | "unavailable";
 
@@ -72,20 +73,15 @@ function BackendCard({ backend }: { backend: BackendOption }) {
     appendLog(`Resolving download URL from version manifest...`);
 
     try {
-      const resp = await fetch("/api/v1/extensions/nexus.local-llm/rpc", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          method: "llm.install_runtime",
-          params: { candidate_id: `${backend.id}-${selectedAccel}`, backend_family: backend.id, acceleration: selectedAccel },
-        }),
+      const result = await installRuntime({
+        backendId: backend.id,
+        acceleration: selectedAccel,
       });
 
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data?.data?.task_id) {
-          appendLog(`Install task started: ${data.data.task_id}`);
-          pollInstallStatus(data.data.task_id);
+      if (result.ok) {
+        if (result.taskId) {
+          appendLog(`Install task started: ${result.taskId}`);
+          pollInstallStatus(result.taskId);
         } else {
           appendLog(`[INFO] Install initiated (mock mode)`);
           simulateInstall();
@@ -129,22 +125,16 @@ function BackendCard({ backend }: { backend: BackendOption }) {
     function pollInstallStatus(taskId: string) {
       const interval = setInterval(async () => {
         try {
-          const r = await fetch("/api/v1/extensions/nexus.local-llm/rpc", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ method: "llm.get_install_status", params: { task_id: taskId } }),
-          });
-          const d = await r.json();
-          const st = d?.data?.status;
-          appendLog(`Install progress: ${d?.data?.progress_percent ?? 0}%`);
-          if (st === "completed") {
+          const status = await getInstallStatus(taskId);
+          appendLog(`Install progress: ${status.progressPercent}%`);
+          if (status.status === "completed") {
             clearInterval(interval);
             setStatus("installed");
             appendLog("Installation complete!");
-          } else if (st === "failed") {
+          } else if (status.status === "failed") {
             clearInterval(interval);
             setStatus("failed");
-            appendLog(`Installation failed: ${d?.data?.error ?? "unknown"}`);
+            appendLog(`Installation failed: ${status.error ?? "unknown"}`);
           }
         } catch {
           clearInterval(interval);

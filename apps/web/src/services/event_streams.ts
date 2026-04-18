@@ -49,6 +49,16 @@ function wsHost(): string {
   return window.location.host;
 }
 
+/**
+ * Bare WebSocket factory for callers that need raw message/error/close
+ * callback control (e.g. consumers maintaining their own async-iterator
+ * queue). Centralizes `new WebSocket(...)` so SR-005 stays honored outside
+ * `services/`.
+ */
+export function openEventsSocket(): WebSocket {
+  return new WebSocket(`${wsScheme()}//${wsHost()}/api/v1/events`);
+}
+
 function openReconnectingSocket<T>(
   buildUrl: () => string,
   onMessage: (msg: T) => void,

@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-04-17",
+  "capturedAt": "2026-04-18",
   "capturedOnSha": "unknown",
   "violations": [
     {
@@ -35,27 +35,27 @@
     {
       "rule": "SR-004",
       "file": "components/layout/backend_selector.tsx",
-      "line": 52
-    },
-    {
-      "rule": "SR-005",
-      "file": "components/layout/backend_selector.tsx",
-      "line": 75
-    },
-    {
-      "rule": "SR-005",
-      "file": "components/layout/backend_selector.tsx",
-      "line": 132
+      "line": 53
     },
     {
       "rule": "SR-009",
       "file": "components/layout/backend_selector.tsx",
-      "line": 213
+      "line": 203
     },
     {
       "rule": "SR-009",
       "file": "components/layout/backend_selector.tsx",
-      "line": 215
+      "line": 205
+    },
+    {
+      "rule": "SR-009",
+      "file": "components/layout/backend_selector.tsx",
+      "line": 231
+    },
+    {
+      "rule": "SR-009",
+      "file": "components/layout/backend_selector.tsx",
+      "line": 236
     },
     {
       "rule": "SR-009",
@@ -75,17 +75,7 @@
     {
       "rule": "SR-009",
       "file": "components/layout/backend_selector.tsx",
-      "line": 256
-    },
-    {
-      "rule": "SR-009",
-      "file": "components/layout/backend_selector.tsx",
-      "line": 261
-    },
-    {
-      "rule": "SR-009",
-      "file": "components/layout/backend_selector.tsx",
-      "line": 293
+      "line": 283
     },
     {
       "rule": "SR-009",
@@ -238,11 +228,6 @@
       "line": 112
     },
     {
-      "rule": "SR-005",
-      "file": "hooks/use_api.ts",
-      "line": 133
-    },
-    {
       "rule": "SR-004",
       "file": "hooks/use_canvas_state.ts",
       "line": 113
@@ -281,21 +266,6 @@
       "rule": "SR-009",
       "file": "models/hf_search_panel.tsx",
       "line": 306
-    },
-    {
-      "rule": "SR-004",
-      "file": "models/hooks/use_host_model_install_stream.ts",
-      "line": 90
-    },
-    {
-      "rule": "SR-005",
-      "file": "models/hooks/use_host_model_install_stream.ts",
-      "line": 94
-    },
-    {
-      "rule": "SR-006",
-      "file": "models/models.css.ts",
-      "line": 1
     },
     {
       "rule": "SR-009",
@@ -403,11 +373,6 @@
       "line": 53
     },
     {
-      "rule": "SR-005",
-      "file": "service-workers/install_progress_worker.ts",
-      "line": 33
-    },
-    {
       "rule": "SR-004",
       "file": "views/artifacts/artifact_browser.tsx",
       "line": 22
@@ -421,11 +386,6 @@
       "rule": "SR-004",
       "file": "views/models/components/model_card.tsx",
       "line": 26
-    },
-    {
-      "rule": "SR-006",
-      "file": "views/models/models.css.ts",
-      "line": 1
     },
     {
       "rule": "SR-009",
