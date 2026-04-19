@@ -8,6 +8,7 @@ pub mod extensions_install;
 pub mod health;
 pub mod huggingface;
 pub mod metrics;
+pub mod model_store;
 pub mod modules;
 pub mod recipes;
 pub mod runs;
