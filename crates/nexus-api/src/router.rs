@@ -8,11 +8,15 @@ use tower_http::compression::CompressionLayer;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 
-/// Tag responses on legacy `/api/v1/llm/backends/*` paths with RFC 8594
+/// Tag responses on legacy paths with RFC 8594 Deprecation / Sunset
+/// headers. Currently covers:
+/// - `/api/v1/llm/backends/*` — succeeded by `/api/v1/backends` (spec 011)
+/// - `/api/v1/huggingface/search` — succeeded by `/api/v1/model-store/search` (spec 025)
 async fn deprecation_headers(req: Request, next: Next) -> Response {
-    let is_legacy = req.uri().path().starts_with("/api/v1/llm/backends");
+    let path = req.uri().path().to_owned();
     let mut response = next.run(req).await;
-    if is_legacy {
+
+    if path.starts_with("/api/v1/llm/backends") {
         let headers = response.headers_mut();
         headers.insert("Deprecation", HeaderValue::from_static("true"));
         headers.insert(
@@ -23,12 +27,30 @@ async fn deprecation_headers(req: Request, next: Next) -> Response {
             "Link",
             HeaderValue::from_static("</api/v1/backends>; rel=\"successor-version\""),
         );
+    } else if path == "/api/v1/huggingface/search"
+        || path.starts_with("/api/v1/huggingface/search?")
+        || path.starts_with("/api/v1/huggingface/repos/")
+    {
+        let headers = response.headers_mut();
+        headers.insert("Deprecation", HeaderValue::from_static("true"));
+        headers.insert(
+            "Sunset",
+            HeaderValue::from_static("Sun, 19 Jul 2026 00:00:00 GMT"),
+        );
+        headers.insert(
+            "Link",
+            HeaderValue::from_static(
+                "</api/v1/model-store/search>; rel=\"successor-version\"",
+            ),
+        );
     }
+
     response
 }
 
 use crate::AppState;
 use crate::frontend;
+use crate::handlers;
 use crate::handlers::{
     artifacts, backend_events_ws, backends, deployments, extensions, extensions_install, health,
     huggingface, metrics, modules, recipes, runs, storage_contributions, system, tools,
@@ -232,6 +254,40 @@ pub fn build(state: AppState) -> Router {
         .route(
             "/extensions/{extId}/huggingface/models/{modelId}/hyperparameters",
             axum::routing::patch(huggingface::patch_ext_hyperparameters),
+        )
+        .route(
+            "/model-store/backends",
+            get(handlers::model_store::backends::list_backends),
+        )
+        .route(
+            "/model-store/search",
+            get(handlers::model_store::search::search),
+        )
+        .route(
+            "/model-store/models/{familyId}",
+            get(handlers::model_store::detail::get_family),
+        )
+        .route(
+            "/model-store/downloads",
+            post(handlers::model_store::downloads::create_download),
+        )
+        .route(
+            "/model-store/downloads/{jobId}",
+            get(handlers::model_store::downloads::get_download_status),
+        )
+        .route(
+            "/model-store/downloads/{jobId}/pause",
+            post(handlers::model_store::downloads::pause_download),
+        )
+        .route(
+            "/model-store/downloads/{jobId}/resume",
+            post(handlers::model_store::downloads::resume_download),
+        )
+        .route(
+            "/model-store/settings/hf-token",
+            get(handlers::model_store::settings::get_hf_token_status)
+                .put(handlers::model_store::settings::set_hf_token)
+                .delete(handlers::model_store::settings::clear_hf_token),
         );
 
     let cors = CorsLayer::new()

@@ -22,6 +22,8 @@ use nexus_backend_runtimes::spawn::Spawner;
 use nexus_events::bus::EventBus;
 use nexus_extension::InMemoryExtensionRegistry;
 use nexus_huggingface::HuggingFaceCapability;
+use nexus_models_store::capabilities::CapabilityRegistry;
+use nexus_models_store::downloads::{DownloadOrchestrator, JobStore, TokenStore};
 use nexus_run::DefaultRunEngine;
 use nexus_scheduler::Scheduler;
 use nexus_storage::{SqliteDatabase, StorageManager};
@@ -50,6 +52,10 @@ pub struct AppState {
     pub backend_adapter_registry: Option<Arc<BackendAdapterRegistry>>,
     pub spawner: Option<Arc<Spawner>>,
     pub huggingface: Option<Arc<dyn HuggingFaceCapability>>,
+    pub capability_registry: Option<Arc<CapabilityRegistry>>,
+    pub download_job_store: Option<Arc<JobStore>>,
+    pub download_orchestrator: Option<Arc<DownloadOrchestrator>>,
+    pub hf_token_store: Option<TokenStore>,
     pub backend_event_bus: Arc<BroadcastPublisher>,
     pub draft_materialize_map: Arc<DraftMaterializeMap>,
     pub host_install_paths: Option<HostInstallPaths>,

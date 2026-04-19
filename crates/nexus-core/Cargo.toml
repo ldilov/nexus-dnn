@@ -26,6 +26,8 @@ nexus-run = { path = "../nexus-run" }
 nexus-api = { path = "../nexus-api" }
 nexus-backend-runtimes = { path = "../nexus-backend-runtimes" }
 nexus-huggingface = { path = "../nexus-huggingface" }
+nexus-models-store = { path = "../nexus-models-store" }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 camino = "1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
 serde = { workspace = true }

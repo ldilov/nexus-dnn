@@ -1,0 +1,8 @@
+//! `/api/v1/model-store/*` handlers. The new universal model catalog
+//! surface (spec 025-models-search-refactor).
+
+pub mod backends;
+pub mod detail;
+pub mod downloads;
+pub mod search;
+pub mod settings;
