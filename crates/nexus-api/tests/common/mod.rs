@@ -4,6 +4,10 @@
 //! registered, and a configurable HF stub so each test can inject
 //! exactly the upstream payload it needs.
 
+// Rust considers each tests/*.rs an independent crate, so helpers only
+// used by a subset look dead to the others. Silence the noise.
+#![allow(dead_code)]
+
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;

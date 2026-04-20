@@ -332,10 +332,10 @@ impl DownloadOrchestrator {
         }
 
         let mut headers = HeaderMap::new();
-        if resume_from > 0 {
-            if let Ok(value) = HeaderValue::from_str(&format!("bytes={resume_from}-")) {
-                headers.insert(RANGE, value);
-            }
+        if resume_from > 0
+            && let Ok(value) = HeaderValue::from_str(&format!("bytes={resume_from}-"))
+        {
+            headers.insert(RANGE, value);
         }
 
         let mut req = self.inner.http.get(&target.download_url).headers(headers);
@@ -463,9 +463,7 @@ impl DownloadOrchestrator {
             filename: target.filename.clone(),
             job_id: job.job_id,
             sha256: target.sha256.clone(),
-            size_bytes: target
-                .expected_bytes
-                .or_else(|| Some(target.downloaded_bytes)),
+            size_bytes: target.expected_bytes.or(Some(target.downloaded_bytes)),
         };
         if let Err(e) = self.inner.install_map.record(record).await {
             tracing::warn!(

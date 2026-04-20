@@ -37,18 +37,13 @@ pub struct ModelRepository {
 /// Upstream source provider. `#[non_exhaustive]` so future providers
 /// (civitai, direct URL, etc.) can be added without breaking clients.
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceProvider {
+    #[default]
     Huggingface,
     #[serde(other)]
     Other,
-}
-
-impl Default for SourceProvider {
-    fn default() -> Self {
-        Self::Huggingface
-    }
 }
 
 /// A normalized model family — exactly one per upstream repo in v1.
@@ -83,12 +78,6 @@ pub struct Artifact {
     pub sha256: Option<String>,
     #[serde(default)]
     pub install_state: DownloadState,
-}
-
-impl Default for DownloadState {
-    fn default() -> Self {
-        Self::NotDownloaded
-    }
 }
 
 /// A selectable variant inside a family — a GGUF quantization row, a
@@ -145,18 +134,13 @@ pub struct BackendCapability {
 
 /// Enablement state exposed by a backend adapter.
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BackendStatus {
+    #[default]
     Enabled,
     Experimental,
     Disabled,
-}
-
-impl Default for BackendStatus {
-    fn default() -> Self {
-        Self::Enabled
-    }
 }
 
 #[cfg(test)]

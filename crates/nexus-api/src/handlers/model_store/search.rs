@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 use axum::extract::{RawQuery, State};
 use axum::http::StatusCode;
@@ -11,6 +13,94 @@ use serde::Serialize;
 
 use crate::AppState;
 use crate::envelope::ApiResponse;
+
+/// Per-fingerprint TTL for the in-memory normalized-page cache (research R5).
+/// Keeps back-navigation and filter toggles cheap without letting the cache
+/// drift from HF's evolving index for long.
+const CACHE_TTL: Duration = Duration::from_secs(60);
+
+/// Upper bound on cached fingerprints. The cache is single-process and
+/// opportunistic — overflow evicts the oldest entries rather than allocating
+/// unbounded RAM for a long-running host.
+const CACHE_CAPACITY: usize = 64;
+
+struct CachedFamilies {
+    inserted_at: Instant,
+    families: Vec<ModelFamily>,
+}
+
+static FAMILY_CACHE: LazyLock<Mutex<HashMap<String, CachedFamilies>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Fingerprint the handler inputs that affect the normalized family set.
+/// Pagination is intentionally excluded — one upstream fetch backs every
+/// page of the same query within the TTL window.
+fn fingerprint(params: &SearchQuery) -> String {
+    let mut parts: Vec<String> = vec![
+        format!("q={}", params.q.as_deref().unwrap_or("")),
+        format!("sort={}", params.sort.as_deref().unwrap_or("")),
+        format!("show_unsupported={}", params.show_unsupported.unwrap_or(false)),
+    ];
+    let mut fmts = params.format.clone();
+    fmts.sort();
+    parts.push(format!("format={}", fmts.join(",")));
+    let mut backends = params.backend.clone();
+    backends.sort();
+    parts.push(format!("backend={}", backends.join(",")));
+    let mut mods = params.modality.clone();
+    mods.sort();
+    parts.push(format!("modality={}", mods.join(",")));
+    let mut lics = params.license.clone();
+    lics.sort();
+    parts.push(format!("license={}", lics.join(",")));
+    let mut compats = params.compat.clone();
+    compats.sort();
+    parts.push(format!("compat={}", compats.join(",")));
+    parts.join("|")
+}
+
+fn cache_get(key: &str) -> Option<Vec<ModelFamily>> {
+    let mut guard = FAMILY_CACHE.lock().ok()?;
+    match guard.get(key) {
+        Some(entry) if entry.inserted_at.elapsed() < CACHE_TTL => {
+            Some(entry.families.clone())
+        }
+        Some(_) => {
+            guard.remove(key);
+            None
+        }
+        None => None,
+    }
+}
+
+fn cache_put(key: String, families: Vec<ModelFamily>) {
+    let Ok(mut guard) = FAMILY_CACHE.lock() else {
+        return;
+    };
+    if guard.len() >= CACHE_CAPACITY {
+        if let Some(oldest) = guard
+            .iter()
+            .min_by_key(|(_, v)| v.inserted_at)
+            .map(|(k, _)| k.clone())
+        {
+            guard.remove(&oldest);
+        }
+    }
+    guard.insert(
+        key,
+        CachedFamilies {
+            inserted_at: Instant::now(),
+            families,
+        },
+    );
+}
+
+#[cfg(test)]
+pub(crate) fn clear_cache_for_tests() {
+    if let Ok(mut guard) = FAMILY_CACHE.lock() {
+        guard.clear();
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct SearchQuery {
@@ -173,44 +263,56 @@ pub async fn search(
     let page_size = params.page_size.unwrap_or(30).clamp(10, 50);
     let query = params.q.clone().unwrap_or_default();
 
-    let req = SearchReq {
-        query: query.clone(),
-        filters: SearchFilters {
-            format: params.format.first().cloned(),
-            license: params.license.first().cloned(),
-            max_size_bytes: None,
-        },
-        limit: page_size,
-        page,
-    };
-
-    let upstream = match hf.search(req).await {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::warn!(error = %e, "model-store search upstream failure");
-            return ApiResponse::<()>::err(
-                StatusCode::BAD_GATEWAY,
-                "upstream_unavailable",
-                "upstream",
-                format!("Upstream failed: {e}"),
-            )
-            .into_response();
-        }
-    };
-
     let registry = state.capability_registry.as_ref();
+    let cache_key = fingerprint(&params);
 
-    let mut families: Vec<ModelFamily> = upstream
-        .results
-        .iter()
-        .map(|raw| match registry {
-            Some(reg) => normalize_family(raw, reg),
-            None => {
-                let empty = nexus_models_store::capabilities::CapabilityRegistry::new();
-                normalize_family(raw, &empty)
+    // Cache hit: serve normalized families out of memory (research R5).
+    // Pagination, filters-that-do-not-affect-upstream (compat, show_unsupported),
+    // and sort are applied post-cache so the same fetched set backs every
+    // paginated view for the TTL window.
+    let mut families: Vec<ModelFamily> = if let Some(cached) = cache_get(&cache_key) {
+        cached
+    } else {
+        let req = SearchReq {
+            query: query.clone(),
+            filters: SearchFilters {
+                format: params.format.first().cloned(),
+                license: params.license.first().cloned(),
+                max_size_bytes: None,
+            },
+            limit: page_size,
+            page,
+        };
+
+        let upstream = match hf.search(req).await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(error = %e, "model-store search upstream failure");
+                return ApiResponse::<()>::err(
+                    StatusCode::BAD_GATEWAY,
+                    "upstream_unavailable",
+                    "upstream",
+                    format!("Upstream failed: {e}"),
+                )
+                .into_response();
             }
-        })
-        .collect();
+        };
+
+        let fetched: Vec<ModelFamily> = upstream
+            .results
+            .iter()
+            .map(|raw| match registry {
+                Some(reg) => normalize_family(raw, reg),
+                None => {
+                    let empty = nexus_models_store::capabilities::CapabilityRegistry::new();
+                    normalize_family(raw, &empty)
+                }
+            })
+            .collect();
+
+        cache_put(cache_key, fetched.clone());
+        fetched
+    };
 
     let requested_formats: Vec<Format> =
         params.format.iter().map(|s| parse_format(s)).collect();
@@ -222,20 +324,20 @@ pub async fn search(
         });
     }
 
-    if !params.backend.is_empty() {
-        if let Some(reg) = registry {
-            let compat_formats: Vec<Format> = reg
-                .list()
-                .filter(|cap| params.backend.iter().any(|id| cap.backend_id.as_str() == id))
-                .flat_map(|cap| cap.supported_formats.iter().copied())
-                .collect();
-            if !compat_formats.is_empty() {
-                families.retain(|f| {
-                    f.artifacts
-                        .iter()
-                        .any(|a| compat_formats.contains(&a.format))
-                });
-            }
+    if !params.backend.is_empty()
+        && let Some(reg) = registry
+    {
+        let compat_formats: Vec<Format> = reg
+            .list()
+            .filter(|cap| params.backend.iter().any(|id| cap.backend_id.as_str() == id))
+            .flat_map(|cap| cap.supported_formats.iter().copied())
+            .collect();
+        if !compat_formats.is_empty() {
+            families.retain(|f| {
+                f.artifacts
+                    .iter()
+                    .any(|a| compat_formats.contains(&a.format))
+            });
         }
     }
 
@@ -306,4 +408,62 @@ pub async fn search(
     };
 
     ApiResponse::ok(dto).into_response()
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+
+    fn q(q: &str) -> SearchQuery {
+        SearchQuery {
+            q: Some(q.to_string()),
+            ..SearchQuery::default()
+        }
+    }
+
+    #[test]
+    fn fingerprint_changes_with_query() {
+        assert_ne!(fingerprint(&q("llama")), fingerprint(&q("mistral")));
+    }
+
+    #[test]
+    fn fingerprint_is_stable_for_same_filters_in_different_order() {
+        let mut a = q("llama");
+        a.format = vec!["gguf".into(), "safetensors".into()];
+        a.license = vec!["mit".into(), "apache-2.0".into()];
+        let mut b = q("llama");
+        b.format = vec!["safetensors".into(), "gguf".into()];
+        b.license = vec!["apache-2.0".into(), "mit".into()];
+        assert_eq!(fingerprint(&a), fingerprint(&b));
+    }
+
+    #[test]
+    fn fingerprint_ignores_pagination() {
+        let mut a = q("llama");
+        a.page = Some(1);
+        a.page_size = Some(10);
+        let mut b = q("llama");
+        b.page = Some(5);
+        b.page_size = Some(30);
+        assert_eq!(fingerprint(&a), fingerprint(&b));
+    }
+
+    #[test]
+    fn cache_round_trips_within_ttl() {
+        clear_cache_for_tests();
+        let key = "round_trip_test".to_string();
+        assert!(cache_get(&key).is_none());
+        cache_put(key.clone(), vec![]);
+        assert!(cache_get(&key).is_some());
+    }
+
+    #[test]
+    fn cache_capacity_evicts_oldest() {
+        clear_cache_for_tests();
+        for i in 0..(CACHE_CAPACITY + 5) {
+            cache_put(format!("k-{i}"), vec![]);
+        }
+        let guard = FAMILY_CACHE.lock().unwrap();
+        assert!(guard.len() <= CACHE_CAPACITY);
+    }
 }

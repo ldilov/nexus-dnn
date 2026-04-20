@@ -733,10 +733,8 @@ fn fifty_repo_sweep_never_panics_and_classifies_correctly() {
             .iter()
             .find(|a| a.role == DependencyRole::Primary);
         let got_format = primary.map(|a| a.format).unwrap_or(Format::Unknown);
-        if got_format == fixture.expected_primary_format {
-            correct_format += 1;
-        } else if fixture.expected_primary_format == Format::Unknown
-            && primary.is_none()
+        if got_format == fixture.expected_primary_format
+            || (fixture.expected_primary_format == Format::Unknown && primary.is_none())
         {
             correct_format += 1;
         } else {

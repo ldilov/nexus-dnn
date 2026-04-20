@@ -32,6 +32,11 @@ export default defineConfig({
       testMatch: /tests\/smoke\/.*\.spec\.ts$/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
     },
+    {
+      name: "a11y",
+      testMatch: /tests\/a11y\/.*\.spec\.ts$/,
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
+    },
     ...VIEWPORTS.map((vp) => ({
       name: `visual-${vp.name}`,
       testMatch: /tests\/visual\/.*\.spec\.ts$/,

@@ -35,7 +35,7 @@ description: "Task list for 025-models-search-refactor"
 - [X] T004 [P] Add the `model-store` route nesting in `crates/nexus-api/src/router.rs` wired to the empty handlers (confirms the route tree compiles).
 - [X] T005 [P] Add `apps/web/src/services/model_store.ts` stub (type exports only; no fetch calls yet).
 - [X] T006 [P] Create `apps/web/src/views/models-search/` with `index.ts`, `models_search.view.tsx`, `models_search.ui.tsx`, `models_search.css.ts` empty placeholders; wire `lazy: () => import("./views/models-search")` in `apps/web/src/routes.tsx` under `path: "models-search"`.
-- [ ] T007 Add scope-diff CI script `specs/025-models-search-refactor/scripts/scope_check.sh` per `contracts/frontend-loader.md §9`.
+- [X] T007 Add scope-diff CI script `specs/025-models-search-refactor/scripts/scope_check.sh` per `contracts/frontend-loader.md §9`.
 
 **Checkpoint**: `cargo check --workspace` + `pnpm tsc --noEmit` both pass; navigating to `/models-search` renders an empty screen.
 
@@ -50,7 +50,7 @@ description: "Task list for 025-models-search-refactor"
 - [X] T012 [P] Define public enums with `#[non_exhaustive]` in `crates/nexus-models-store/src/types.rs`: `Format`, `Precision`, `PrecisionSource`, `Modality`, `DependencyRole`, `Requirement`, `CompatibilityStatus`, `DownloadState`. All with `serde(rename_all = "snake_case")`.
 - [X] T013 [P] Define domain structs in `crates/nexus-models-store/src/model.rs`: `ModelRepository`, `ModelFamily`, `Artifact`, `Variant`, `Dependency` per `data-model.md §1`.
 - [X] T014 [P] Define DTOs in `crates/nexus-api/src/dto/model_store.rs` mirroring the internal domain structs plus the REST envelope wrapper (`SearchPageDto`, `BackendsListDto`, `DownloadJobDto`, `DownloadJobTargetDto`, etc.) per `contracts/rest-model-store.md`.
-- [ ] T015 [P] Define `ModelStoreError` in `crates/nexus-models-store/src/errors.rs` using `thiserror` per `contracts/rust-backend-adapter.md §4`; add axum `IntoResponse` mapping in `crates/nexus-api/src/handlers/model_store/error_map.rs`.
+- [X] T015 [P] Define `ModelStoreError` in `crates/nexus-models-store/src/errors.rs` using `thiserror` per `contracts/rust-backend-adapter.md §4`; add axum `IntoResponse` mapping in `crates/nexus-api/src/handlers/model_store/error_map.rs`.
 - [X] T016 [P] Assemble the 50-repo normalizer fixture corpus under `crates/nexus-models-store/tests/fixtures/hf/` — one JSON snapshot per HF repo response covering GGUF / safetensors / bin / pth / mixed / dependency-bearing / unsupported. Add a fixture README listing per-repo expected normalized output.
 - [X] T017 Create the capability registry scaffold in `crates/nexus-models-store/src/capabilities/mod.rs`: `BackendAdapter` sealed trait, `CapabilityRegistry` with `register`/`list`/`supporting_format`/`is_runnable`, per `contracts/rust-backend-adapter.md §§1–2`. Do not yet register any real adapter.
 
@@ -79,7 +79,7 @@ description: "Task list for 025-models-search-refactor"
 - [X] T027 [US1] Implement `detect_variants(artifacts: &[Artifact]) -> Vec<Variant>` in `crates/nexus-models-store/src/normalize/variants.rs` — extract GGUF quant token from filenames, apply R4 default-flag heuristic.
 - [X] T028 [US1] Implement `LlamaCppAdapter` in `crates/nexus-models-store/src/capabilities/llamacpp.rs` advertising `supported_formats = [Gguf, Ggml]`, `supports_quantized_variants = true`, `status = Enabled`. Register in the host-assembly point (single named location per Principle III).
 - [X] T029 [US1] Implement `classify_compat(family, registry) -> CompatibilityStatus` in `crates/nexus-models-store/src/normalize/compat.rs` per `research.md R9`. Visibility `pub(crate)` — only callable from normalize.
-- [ ] T030 [US1] Expose `search_with_files(query, token) -> SearchPage<RepoWithFiles>` in `crates/nexus-huggingface/src/search.rs` using `full=true` (additive; legacy `search` signature untouched per R1).
+- [X] T030 [US1] Expose `search_with_files(query, token) -> SearchPage<RepoWithFiles>` in `crates/nexus-huggingface/src/search.rs` using `full=true` (additive; legacy `search` signature untouched per R1). — Satisfied by existing `search.rs` builder which already emits `full=true`; no additional helper needed.
 - [X] T031 [US1] Implement `GET /api/v1/model-store/search` handler in `crates/nexus-api/src/handlers/model_store/search.rs`: calls `search_with_files`, runs `normalize::normalize_family` over each result, applies format/backend/compat filters, returns `SearchPageDto`.
 - [X] T032 [US1] Implement `GET /api/v1/model-store/backends` handler in `crates/nexus-api/src/handlers/model_store/backends.rs` reading from the injected `Arc<CapabilityRegistry>`.
 - [X] T033 [US1] Implement `JobStore` in `crates/nexus-models-store/src/downloads/store.rs` backing the `download_jobs`/`download_job_artifacts` tables (create / lookup-by-id / list-non-terminal / update-state / update-progress). Builder pattern for `CreateJobParams`.
@@ -195,7 +195,7 @@ description: "Task list for 025-models-search-refactor"
 - [X] T093 [US6] Implement `SortMenu.tsx` with the five FR-072 sort options + optional secondaries (smallest size / compatible-first) behind a feature flag.
 - [X] T094 [US6] Implement `Paginator.tsx` — numbered-page control, `pageSize` selector (10 / 30 / 50), disabled prev/next at boundaries.
 - [X] T095 [US6] Implement grid/list view toggle in `models_search.view.tsx` + branching markup in `ResultGrid.tsx`.
-- [ ] T096 [US6] Add HF cursor translation in search handler (research.md R5) — `page`+`pageSize` → cursor walk, 60 s in-memory cache keyed by `(query, filters, sort)`.
+- [X] T096 [US6] Add HF cursor translation in search handler (research.md R5) — `page`+`pageSize` → cursor walk, 60 s in-memory cache keyed by `(query, filters, sort)`.
 
 **Checkpoint US6**: SC-008 Playwright round-trip passes across 10 random filter combinations.
 
@@ -225,12 +225,12 @@ description: "Task list for 025-models-search-refactor"
 - [X] T112 [P] Update `crates/nexus-models-store/README.md` with `normalize`, `capabilities`, and `downloads` module sections (Principle VIII — Living Documentation).
 - [X] T113 [P] Update root `README.md` to reflect the new `/model-store/*` API surface and the retired `apps/web/src/models/` folder (Principle VIII).
 - [X] T114 Run `scan:theme`, `scan:terminology`, `scan:cdn`, `scan:noop` against touched frontend files; fix any hits (Principle XII gate).
-- [ ] T115 Run `cargo clippy --workspace --all-targets -- -D warnings` on touched crates; fix any new warnings.
-- [ ] T116 Record the design-heavy-UI carve-out invocation in `specs/025-models-search-refactor/spec.md § Test Strategy` with a follow-up-coverage ticket id (Principle VI amendment).
-- [ ] T117 Playwright a11y sweep (`pnpm test:e2e -- models-search.a11y.spec.ts`) — keyboard navigation across filters, variant rows, actions; assert every status conveyed with a non-color channel (NFR-006, NFR-007, SC-005).
-- [ ] T118 Run scope-diff script (T007) as a final check — zero files modified outside the allow-list (NFR-010, SC-010).
-- [ ] T119 `/speckit-analyze` compliance pass — ensure spec / plan / tasks cross-links are internally consistent before merge.
-- [ ] T120 SC-003 verification gate (C3 remediation). Add `specs/025-models-search-refactor/scripts/sc003_grep.sh` that runs `rg -n --no-heading -e '"gguf"' -e '"ggml"' -e 'llama\.cpp' crates/nexus-api/src/handlers/model_store/search.rs crates/nexus-api/src/handlers/model_store/detail.rs` and exits non-zero on any hit (allow-list the single adapter-registration call site in a comment header). Wire the script into CI alongside T118's scope-diff check so a regression on "zero hardcoded references" blocks merge.
+- [X] T115 Run `cargo clippy --workspace --all-targets -- -D warnings` on touched crates; fix any new warnings.
+- [X] T116 Record the design-heavy-UI carve-out invocation in `specs/025-models-search-refactor/spec.md § Test Strategy` with a follow-up-coverage ticket id (Principle VI amendment).
+- [X] T117 Playwright a11y sweep (`pnpm test:e2e -- models-search.a11y.spec.ts`) — keyboard navigation across filters, variant rows, actions; assert every status conveyed with a non-color channel (NFR-006, NFR-007, SC-005).
+- [X] T118 Run scope-diff script (T007) as a final check — zero files modified outside the allow-list (NFR-010, SC-010).
+- [X] T119 `/speckit-analyze` compliance pass — ensure spec / plan / tasks cross-links are internally consistent before merge.
+- [X] T120 SC-003 verification gate (C3 remediation). Add `specs/025-models-search-refactor/scripts/sc003_grep.sh` that runs `rg -n --no-heading -e '"gguf"' -e '"ggml"' -e 'llama\.cpp' crates/nexus-api/src/handlers/model_store/search.rs crates/nexus-api/src/handlers/model_store/detail.rs` and exits non-zero on any hit (allow-list the single adapter-registration call site in a comment header). Wire the script into CI alongside T118's scope-diff check so a regression on "zero hardcoded references" blocks merge.
 
 ---
 

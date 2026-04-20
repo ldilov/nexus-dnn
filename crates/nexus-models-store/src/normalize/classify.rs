@@ -18,8 +18,6 @@ pub fn classify_format(filename: &str) -> Format {
         Format::Ggml
     } else if lower.ends_with(".safetensors") {
         Format::Safetensors
-    } else if lower.ends_with(".bin") && lower.contains("pytorch") {
-        Format::PytorchBin
     } else if lower.ends_with(".bin") {
         Format::PytorchBin
     } else if lower.ends_with(".pth") {

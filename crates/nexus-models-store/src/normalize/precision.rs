@@ -21,10 +21,8 @@ pub fn infer_precision(
     if matches!(format, Format::Gguf | Format::Ggml) {
         return (Precision::Quantized, PrecisionSource::Explicit);
     }
-    if let Some(dtype) = explicit_dtype {
-        if let Some(p) = parse_dtype(dtype) {
-            return (p, PrecisionSource::Explicit);
-        }
+    if let Some(p) = explicit_dtype.and_then(parse_dtype) {
+        return (p, PrecisionSource::Explicit);
     }
     let lower = filename.to_ascii_lowercase();
     if let Some(p) = scan_filename(&lower) {

@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -280,10 +282,10 @@ fn build_targets(
                 let Some(target_id) = &dep.target_artifact_id else {
                     continue;
                 };
-                if let Some(a) = artifact_by_id(family, target_id.as_str()) {
-                    if !out.iter().any(|t| t.artifact_id == a.artifact_id) {
-                        out.push(input_from_artifact(a));
-                    }
+                if let Some(a) = artifact_by_id(family, target_id.as_str())
+                    && !out.iter().any(|t| t.artifact_id == a.artifact_id)
+                {
+                    out.push(input_from_artifact(a));
                 }
             }
             if out.is_empty() {
@@ -415,13 +417,12 @@ pub async fn pause_download(
     let was_active = orchestrator.pause(id).await;
     if !was_active {
         let removed_from_queue = orchestrator.cancel_queued(id).await;
-        if removed_from_queue {
-            if let Err(e) = store
+        if removed_from_queue
+            && let Err(e) = store
                 .update_state(&id, DownloadState::Paused, None)
                 .await
-            {
-                return ApiResponse::<()>::internal(format!("store: {e}")).into_response();
-            }
+        {
+            return ApiResponse::<()>::internal(format!("store: {e}")).into_response();
         }
     }
     match store.get(&id).await {
