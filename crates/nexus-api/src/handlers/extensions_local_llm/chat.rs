@@ -8,6 +8,8 @@ use sqlx::{Row, SqlitePool};
 
 use crate::AppState;
 use crate::envelope::ApiResponse;
+use nexus_backend_runtimes::EventPublisher;
+
 use super::inference::{InferenceError, InferenceRequest};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -469,6 +471,17 @@ pub async fn send_message(
     let binding = match matched {
         Some(r) => r,
         None => {
+            let evt = nexus_backend_runtimes::events::BackendEvent::new(
+                "session.state.changed",
+                "extension.local-llm",
+                serde_json::json!({
+                    "session_id": thread_id,
+                    "cause": "model_unavailable",
+                    "family_id": family,
+                    "variant_id": variant,
+                }),
+            );
+            state.backend_event_bus.publish(evt).await;
             return (
                 StatusCode::GONE,
                 ApiResponse::<()>::bad_request("model_unavailable".to_string()),

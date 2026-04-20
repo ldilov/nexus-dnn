@@ -24,6 +24,49 @@ This spec closes both gaps and demands **mechanical proof** that the
 hyperparameter values the user sees in the sidebar are the exact values
 llama.cpp samples with.
 
+## 2026-04-20 correction — production path pivot
+
+After implementation started, two architectural facts changed how FR-040
+— FR-042 (worker JSON-RPC methods) read:
+
+1. The `local-llm` extension was **Rust-ported in spec 024** before this
+   spec started. `extensions/builtin/local-llm/worker/*.py` is dead
+   legacy; production handlers live in `crates/nexus-local-llm-worker/`.
+2. Chat CRUD, active-model binding, generation-settings persistence, and
+   `send_message` are served by **host REST** in
+   `crates/nexus-api/src/handlers/extensions_local_llm/chat.rs`, not by
+   worker RPC. The worker has stubs for `llm.new_thread` / `llm.list_threads` /
+   `llm.get_active_model` / `llm.set_active_model` / `llm.get_generation_settings`
+   / `llm.set_generation_settings` / `llm.list_downloaded_models` /
+   `llm.open_model_browser` that return a stable `NotImplemented`
+   envelope. The UI calls the REST surface directly.
+
+Mapping from FR text to shipped surface:
+
+| Spec wording | Shipped surface |
+|---|---|
+| FR-040 `llm.new_thread` | `POST /api/v1/extensions/local-llm/chat/threads` |
+| FR-040 `llm.list_threads` | `GET /api/v1/extensions/local-llm/chat/threads` |
+| FR-040 `llm.get_active_model` / `llm.set_active_model` | `GET/PUT /…/threads/{id}/active_model` |
+| FR-040 `llm.get_generation_settings` / `llm.set_generation_settings` | `GET/PUT /…/threads/{id}/generation_settings` |
+| FR-040 `llm.send_message` | `POST /…/threads/{id}/messages` |
+| FR-040 `llm.list_downloaded_models` | Frontend fetches `GET /api/v1/model-store/installed` directly (still satisfies FR-042's "host REST, not host DB" intent) |
+| FR-041 envelope compat | N/A — worker RPC envelope is moot; host REST envelope (`ApiResponse`) is used throughout |
+| FR-042 no direct host-DB reads from worker | Structurally satisfied: worker has no path to the DB at all; host REST is the sole surface |
+
+**FR-021 de-scoped to follow-up**: `messages.params_snapshot` persistence
+requires a `messages` table that does not exist today. The current
+`send_message` handler is stateless (no history write). The UI has no
+history-replay path either, so the snapshot divergence FR-021 guards
+against is architecturally impossible to trigger in this release. When
+message persistence lands in a future spec, `params_snapshot` must be
+added at the same time — the pure mapper `to_sampling_params` already
+makes capturing the snapshot a one-line addition.
+
+**SC-004 becomes vacuous**: worker-side `llm.list_downloaded_models` is
+a stub and performs zero SQL by construction. The intent — "no direct
+DB reads from the extension" — is still honored, just trivially.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Downloaded-only filter on Models Search (Priority: P1)

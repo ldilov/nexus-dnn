@@ -192,6 +192,44 @@ async fn hyperparameters_reach_llamacpp_byte_for_byte() {
 }
 
 #[tokio::test]
+async fn send_message_with_dead_pointer_returns_410() {
+    let harness = harness_with(StubHf::with_results(vec![])).await;
+    let state = harness.state.clone();
+
+    let (status, body) = post_json(
+        state.clone(),
+        "/api/v1/extensions/local-llm/chat/threads",
+        serde_json::json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let thread_id = body["data"]["id"].as_str().unwrap().to_string();
+
+    let bind_status = put_json(
+        state.clone(),
+        &format!(
+            "/api/v1/extensions/local-llm/chat/threads/{thread_id}/active_model"
+        ),
+        serde_json::json!({
+            "family_id": "huggingface:ghost/family",
+            "variant_id": "Q8_0",
+        }),
+    )
+    .await;
+    assert_eq!(bind_status, StatusCode::OK);
+
+    let (send_status, _) = post_json(
+        state,
+        &format!(
+            "/api/v1/extensions/local-llm/chat/threads/{thread_id}/messages"
+        ),
+        serde_json::json!({ "content": "hi" }),
+    )
+    .await;
+    assert_eq!(send_status, StatusCode::GONE);
+}
+
+#[tokio::test]
 async fn send_message_without_active_model_returns_bad_request() {
     let harness = harness_with(StubHf::with_results(vec![])).await;
     let state = harness.state.clone();
