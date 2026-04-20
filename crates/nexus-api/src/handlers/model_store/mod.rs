@@ -5,5 +5,6 @@ pub mod backends;
 pub mod detail;
 pub mod downloads;
 pub mod error_map;
+pub mod installed;
 pub mod search;
 pub mod settings;

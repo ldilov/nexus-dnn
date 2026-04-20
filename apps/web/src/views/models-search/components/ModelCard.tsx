@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import type {
+  DownloadJob,
   DownloadState,
   ModelFamily,
   Variant,
@@ -25,6 +26,7 @@ interface ModelCardProps {
   family: ModelFamily;
   jobStateByVariant: Record<string, DownloadState | undefined>;
   jobIdByVariant: Record<string, string | undefined>;
+  jobByVariant: Record<string, DownloadJob | undefined>;
   onDownload: (family: ModelFamily, target: DownloadKind) => void;
   onPause: (jobId: string) => void;
   onResume: (jobId: string) => void;
@@ -79,15 +81,11 @@ function isAuthRequired(family: ModelFamily): boolean {
   return family.warnings.includes("auth_required");
 }
 
-/**
- * Composable model card. Sections switch on the primary artifact's
- * format and the family's dependencies rather than on a per-model-type
- * branch, honouring FR-094 (componentized sections, reusable).
- */
 export function ModelCard({
   family,
   jobStateByVariant,
   jobIdByVariant,
+  jobByVariant,
   onDownload,
   onPause,
   onResume,
@@ -174,8 +172,10 @@ export function ModelCard({
       {showVariants && !unsupported && !gated && (
         <VariantList
           variants={family.variants}
+          artifacts={family.artifacts}
           jobStateByVariant={jobStateByVariant}
           jobIdByVariant={jobIdByVariant}
+          jobByVariant={jobByVariant}
           onDownload={(v: Variant) =>
             onDownload(family, { kind: "variant", variantId: v.variant_id })
           }

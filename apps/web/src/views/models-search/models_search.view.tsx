@@ -169,6 +169,18 @@ export function ModelsSearchView() {
     [activeJobs, jobVariantMap],
   );
 
+  const jobByVariant = useMemo<Record<string, DownloadJob | undefined>>(
+    () => {
+      const out: Record<string, DownloadJob | undefined> = {};
+      for (const j of Object.values(activeJobs)) {
+        const vid = jobVariantMap[j.job_id];
+        if (vid) out[vid] = j;
+      }
+      return out;
+    },
+    [activeJobs, jobVariantMap],
+  );
+
   const startDownload = useCallback(
     async (family: ModelFamily, target: DownloadKind) => {
       const body = {
@@ -262,6 +274,17 @@ export function ModelsSearchView() {
           showUnsupported: !loaderData.params.showUnsupported,
           page: 1,
         }),
+      onCycleInstalled: () => {
+        const current = loaderData.params.installed;
+        const next: ParsedSearchParams["installed"] =
+          current === "any"
+            ? "installed"
+            : current === "installed"
+              ? "not_installed"
+              : "any";
+        mutateParams({ installed: next, page: 1 });
+      },
+      onClearInstalled: () => mutateParams({ installed: "any", page: 1 }),
       onClearAll: () => {
         setQuery("");
         navigate({ pathname: location.pathname, search: "" }, { replace: false });
@@ -304,6 +327,7 @@ export function ModelsSearchView() {
       degraded={loaderData.backendsDegraded}
       jobStateByVariant={jobStateByVariant}
       jobIdByVariant={jobIdByVariant}
+      jobByVariant={jobByVariant}
       {...handlers}
     />
   );

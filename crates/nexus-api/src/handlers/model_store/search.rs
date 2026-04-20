@@ -14,14 +14,7 @@ use serde::Serialize;
 use crate::AppState;
 use crate::envelope::ApiResponse;
 
-/// Per-fingerprint TTL for the in-memory normalized-page cache (research R5).
-/// Keeps back-navigation and filter toggles cheap without letting the cache
-/// drift from HF's evolving index for long.
 const CACHE_TTL: Duration = Duration::from_secs(60);
-
-/// Upper bound on cached fingerprints. The cache is single-process and
-/// opportunistic — overflow evicts the oldest entries rather than allocating
-/// unbounded RAM for a long-running host.
 const CACHE_CAPACITY: usize = 64;
 
 struct CachedFamilies {
@@ -32,14 +25,12 @@ struct CachedFamilies {
 static FAMILY_CACHE: LazyLock<Mutex<HashMap<String, CachedFamilies>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Fingerprint the handler inputs that affect the normalized family set.
-/// Pagination is intentionally excluded — one upstream fetch backs every
-/// page of the same query within the TTL window.
 fn fingerprint(params: &SearchQuery) -> String {
     let mut parts: Vec<String> = vec![
         format!("q={}", params.q.as_deref().unwrap_or("")),
         format!("sort={}", params.sort.as_deref().unwrap_or("")),
         format!("show_unsupported={}", params.show_unsupported.unwrap_or(false)),
+        format!("installed={}", params.installed.as_deref().unwrap_or("any")),
     ];
     let mut fmts = params.format.clone();
     fmts.sort();
@@ -111,6 +102,7 @@ pub struct SearchQuery {
     pub license: Vec<String>,
     pub compat: Vec<String>,
     pub show_unsupported: Option<bool>,
+    pub installed: Option<String>,
     pub sort: Option<String>,
     pub page: Option<u32>,
     pub page_size: Option<u32>,
@@ -132,6 +124,7 @@ fn parse_query_string(raw: Option<&str>) -> SearchQuery {
             "license" => out.license.push(value),
             "compat" => out.compat.push(value),
             "show_unsupported" => out.show_unsupported = Some(value == "true"),
+            "installed" => out.installed = Some(value),
             "sort" => out.sort = Some(value),
             "page" => out.page = value.parse().ok(),
             "page_size" => out.page_size = value.parse().ok(),
@@ -218,10 +211,6 @@ fn parse_format(token: &str) -> Format {
     }
 }
 
-/// Rank used by `sort=compatible_first` (T074/T093). Lower rank sorts
-/// earlier. The gap between `Compatible` and the non-runnable tiers
-/// is intentional — users asking for this sort almost always want the
-/// runnable set bunched tightly at the top.
 fn compat_rank(status: CompatibilityStatus) -> u8 {
     match status {
         CompatibilityStatus::Compatible => 0,
@@ -243,7 +232,6 @@ fn parse_compat(token: &str) -> Option<CompatibilityStatus> {
     }
 }
 
-/// `GET /api/v1/model-store/search` — normalized universal search.
 pub async fn search(
     State(state): State<AppState>,
     RawQuery(raw): RawQuery,
@@ -266,10 +254,6 @@ pub async fn search(
     let registry = state.capability_registry.as_ref();
     let cache_key = fingerprint(&params);
 
-    // Cache hit: serve normalized families out of memory (research R5).
-    // Pagination, filters-that-do-not-affect-upstream (compat, show_unsupported),
-    // and sort are applied post-cache so the same fetched set backs every
-    // paginated view for the TTL window.
     let mut families: Vec<ModelFamily> = if let Some(cached) = cache_get(&cache_key) {
         cached
     } else {
@@ -366,6 +350,23 @@ pub async fn search(
                 f.compat,
                 CompatibilityStatus::Unsupported | CompatibilityStatus::Unknown
             )
+        });
+    }
+
+    let installed_mode = params.installed.as_deref().unwrap_or("any");
+    if installed_mode != "any"
+        && let Some(install_map) = state.install_map.as_ref()
+    {
+        let rows = install_map.list_all(500).await.unwrap_or_default();
+        let installed_family_ids: std::collections::HashSet<String> =
+            rows.into_iter().map(|r| r.family_id).collect();
+        families.retain(|f| {
+            let is_installed = installed_family_ids.contains(f.family_id.as_str());
+            match installed_mode {
+                "installed" => is_installed,
+                "not_installed" => !is_installed,
+                _ => true,
+            }
         });
     }
 

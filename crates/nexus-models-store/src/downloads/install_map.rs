@@ -140,9 +140,24 @@ impl InstallMap {
         Ok(row.map(parse_row))
     }
 
-    /// List every installed artifact belonging to a family. Cheap
-    /// enough to call on every search-page load for the currently-
-    /// rendered result set.
+    pub async fn list_all(
+        &self,
+        limit: usize,
+    ) -> JobStoreResult<Vec<InstalledArtifactRow>> {
+        let rows = sqlx::query(
+            "SELECT artifact_id, family_id, variant_id, format,
+                    source_provider, source_repo, source_revision,
+                    filename, job_id, sha256, size_bytes, installed_at
+             FROM model_store_installed_artifacts
+             ORDER BY installed_at DESC, artifact_id ASC
+             LIMIT ?1",
+        )
+        .bind(limit as i64)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        Ok(rows.into_iter().map(parse_row).collect())
+    }
+
     pub async fn list_for_family(
         &self,
         family_id: &FamilyId,

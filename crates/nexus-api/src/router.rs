@@ -260,6 +260,10 @@ pub fn build(state: AppState) -> Router {
             get(handlers::model_store::backends::list_backends),
         )
         .route(
+            "/model-store/installed",
+            get(handlers::model_store::installed::get_installed),
+        )
+        .route(
             "/model-store/search",
             get(handlers::model_store::search::search),
         )

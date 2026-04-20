@@ -1,11 +1,3 @@
-//! Shared test harness for `/api/v1/model-store/*` contract tests
-//! (spec 025-models-search-refactor). The harness builds a minimal
-//! `AppState` with an in-memory SQLite database, the `LlamaCppAdapter`
-//! registered, and a configurable HF stub so each test can inject
-//! exactly the upstream payload it needs.
-
-// Rust considers each tests/*.rs an independent crate, so helpers only
-// used by a subset look dead to the others. Silence the noise.
 #![allow(dead_code)]
 
 use std::sync::{Arc, Mutex};
@@ -120,6 +112,7 @@ pub struct TestHarness {
     pub tokens: TokenStore,
     pub job_store: Arc<JobStore>,
     pub orchestrator: Arc<DownloadOrchestrator>,
+    pub install_map: InstallMap,
     _tempdir: tempfile::TempDir,
 }
 
@@ -175,7 +168,7 @@ pub async fn harness_with_extra(
     std::fs::create_dir_all(&sink_root).expect("mkdir downloads");
     let orchestrator = Arc::new(DownloadOrchestrator::new(
         (*job_store).clone(),
-        install_map,
+        install_map.clone(),
         sink_root,
         reqwest::Client::new(),
         tokens.clone(),
@@ -198,6 +191,7 @@ pub async fn harness_with_extra(
         capability_registry: Some(registry),
         download_job_store: Some(job_store.clone()),
         download_orchestrator: Some(orchestrator.clone()),
+        install_map: Some(install_map.clone()),
         hf_token_store: Some(tokens.clone()),
         backend_event_bus: Arc::new(
             nexus_backend_runtimes::events::BroadcastPublisher::new(1024),
@@ -213,6 +207,7 @@ pub async fn harness_with_extra(
         tokens,
         job_store,
         orchestrator,
+        install_map,
         _tempdir: ext_dir,
     }
 }

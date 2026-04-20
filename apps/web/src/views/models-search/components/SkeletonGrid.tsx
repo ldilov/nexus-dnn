@@ -16,11 +16,32 @@ export function SkeletonGrid({ count = 6 }: SkeletonGridProps) {
 
 export function EmptyState({
   showUnsupported,
+  installedMode,
   onToggleShowUnsupported,
+  onClearInstalled,
 }: {
   showUnsupported: boolean;
+  installedMode: "any" | "installed" | "not_installed";
   onToggleShowUnsupported: () => void;
+  onClearInstalled: () => void;
 }) {
+  if (installedMode === "installed") {
+    return (
+      <div className={s.emptyState} role="status">
+        <span className={`material-symbols-outlined ${s.emptyIcon}`} aria-hidden="true">
+          download_done
+        </span>
+        <h3 className={s.emptyTitle}>No downloaded models yet</h3>
+        <p className={s.emptyHint}>
+          Install a model from search to see it here.
+        </p>
+        <button type="button" className={s.emptyAction} onClick={onClearInstalled}>
+          Browse all models
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className={s.emptyState} role="status">
       <span className={`material-symbols-outlined ${s.emptyIcon}`} aria-hidden="true">

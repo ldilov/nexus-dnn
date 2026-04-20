@@ -1,14 +1,3 @@
-//! Axum `IntoResponse` mapping for `ModelStoreError`.
-//!
-//! Handlers under `/api/v1/model-store/*` should return
-//! `Result<T, ModelStoreError>` and rely on this conversion to emit the
-//! REST envelope with the stable snake-case `error.code` plus the HTTP
-//! status defined on the error type (`contracts/rust-backend-adapter.md §4`).
-//!
-//! This centralises the mapping so new variants get a code + status in
-//! exactly one place (the error enum itself), and the envelope shape
-//! stays in lockstep across every handler.
-
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 
@@ -16,9 +5,6 @@ use nexus_models_store::errors::ModelStoreError;
 
 use crate::envelope::ApiResponse;
 
-/// Category label shown in the REST envelope's `error.category` field.
-/// Purely cosmetic — groups related variants so UIs can decide whether to
-/// surface a banner, a toast, or an inline message.
 fn category_for(err: &ModelStoreError) -> &'static str {
     match err {
         ModelStoreError::UpstreamUnavailable(_)
@@ -38,10 +24,6 @@ fn category_for(err: &ModelStoreError) -> &'static str {
     }
 }
 
-/// Convert a `ModelStoreError` into an axum `Response` wrapped in the
-/// standard REST envelope. Falls back to 500 if the enum carries a status
-/// that cannot be represented (shouldn't happen — `status_u16()` always
-/// returns a valid code).
 pub fn into_response(err: ModelStoreError) -> Response {
     let status = StatusCode::from_u16(err.status_u16())
         .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);

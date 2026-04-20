@@ -1,11 +1,18 @@
-import { useRef } from "react";
-import type { Variant, DownloadState } from "../../../services/model_store";
+import { useMemo, useRef } from "react";
+import type {
+  Artifact,
+  DownloadJob,
+  DownloadState,
+  Variant,
+} from "../../../services/model_store";
 import * as s from "./VariantList.css";
 
 interface VariantListProps {
   variants: Variant[];
+  artifacts: Artifact[];
   jobStateByVariant: Record<string, DownloadState | undefined>;
   jobIdByVariant: Record<string, string | undefined>;
+  jobByVariant: Record<string, DownloadJob | undefined>;
   onDownload: (variant: Variant) => void;
   onPause: (jobId: string) => void;
   onResume: (jobId: string) => void;
@@ -45,6 +52,7 @@ interface VariantRowProps {
   variant: Variant;
   size: number | null;
   state: DownloadState;
+  job: DownloadJob | undefined;
   onDownload: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -59,55 +67,52 @@ function stateIcon(state: DownloadState): {
 } {
   switch (state) {
     case "downloaded":
-      return {
-        icon: "check_circle",
-        cls: s.rowActionDone,
-        label: "Installed",
-        intent: "noop",
-      };
+      return { icon: "check_circle", cls: s.rowActionDone, label: "Installed", intent: "noop" };
     case "downloading":
     case "queued":
-      return {
-        icon: "pause_circle",
-        cls: s.spinner,
-        label: "Pause",
-        intent: "pause",
-      };
+      return { icon: "pause_circle", cls: s.spinner, label: "Pause", intent: "pause" };
     case "paused":
-      return {
-        icon: "play_circle",
-        label: "Resume",
-        intent: "resume",
-      };
+      return { icon: "play_circle", label: "Resume", intent: "resume" };
     case "failed":
-      return {
-        icon: "refresh",
-        cls: s.rowActionFailed,
-        label: "Retry",
-        intent: "download",
-      };
+      return { icon: "refresh", cls: s.rowActionFailed, label: "Retry", intent: "download" };
     case "auth_required":
-      return {
-        icon: "lock",
-        cls: s.rowActionFailed,
-        label: "Access gated",
-        intent: "noop",
-      };
+      return { icon: "lock", cls: s.rowActionFailed, label: "Access gated", intent: "noop" };
     case "incompatible":
       return { icon: "block", label: "Incompatible", intent: "noop" };
     default:
-      return {
-        icon: "download_for_offline",
-        label: "Download",
-        intent: "download",
-      };
+      return { icon: "download_for_offline", label: "Download", intent: "download" };
   }
+}
+
+function progressCopy(job: DownloadJob | undefined, state: DownloadState): string | null {
+  if (!job) return null;
+  const total = job.total_bytes ?? null;
+  const done = job.progress_bytes ?? 0;
+  if (state === "queued") return "queued";
+  if (state === "paused") {
+    return total ? `${formatSize(done)} / ${formatSize(total)} · paused` : "paused";
+  }
+  if (state === "downloading") {
+    if (total && total > 0) {
+      const pct = Math.min(100, Math.max(0, Math.round((done / total) * 100)));
+      return `${formatSize(done)} / ${formatSize(total)} · ${pct}%`;
+    }
+    return `${formatSize(done)} downloaded`;
+  }
+  if (state === "failed") return "failed";
+  return null;
+}
+
+function progressPct(job: DownloadJob | undefined): number | null {
+  if (!job || !job.total_bytes || job.total_bytes <= 0) return null;
+  return Math.min(100, Math.max(0, (job.progress_bytes / job.total_bytes) * 100));
 }
 
 function VariantRow({
   variant,
   size,
   state,
+  job,
   onDownload,
   onPause,
   onResume,
@@ -116,6 +121,8 @@ function VariantRow({
   const rowRef = useRef<HTMLDivElement>(null);
   const meta = stateIcon(state);
   const isActionable = meta.intent !== "noop";
+  const progress = progressCopy(job, state);
+  const pct = progressPct(job);
 
   let rowCls = s.row;
   if (variant.is_default) rowCls += ` ${s.rowDefault}`;
@@ -166,10 +173,20 @@ function VariantRow({
       <div className={s.rowLeft}>
         <span className={s.label}>{variant.label}</span>
         <span className={s.size}>{formatSize(size)}</span>
-        {variant.is_default && (
-          <span className={s.recommended}>recommended</span>
-        )}
+        {variant.is_default && <span className={s.recommended}>recommended</span>}
+        {progress && <span className={s.progress}>{progress}</span>}
       </div>
+      {pct !== null && (
+        <div
+          className={s.progressBar}
+          role="progressbar"
+          aria-valuenow={Math.round(pct)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div className={s.progressFill} style={{ width: `${pct}%` }} />
+        </div>
+      )}
       <button
         type="button"
         className={btnCls}
@@ -188,24 +205,26 @@ function VariantRow({
   );
 }
 
-/**
- * Scrollable list of selectable variants (GGUF quantizations,
- * precision tiers). Keyboard-navigable with arrow keys, Enter/Space
- * triggers download on actionable rows. Default variant gets a left
- * accent bar and "recommended" chip.
- */
 export function VariantList({
   variants,
+  artifacts,
   jobStateByVariant,
   jobIdByVariant,
+  jobByVariant,
   onDownload,
   onPause,
   onResume,
   compatHint,
 }: VariantListProps) {
-  if (variants.length === 0) return null;
+  const sizeMap = useMemo(() => {
+    const out: Record<string, number | null> = {};
+    for (const a of artifacts) {
+      out[a.artifact_id] = a.size_bytes;
+    }
+    return out;
+  }, [artifacts]);
 
-  const sizeMap: Record<string, number | null> = {};
+  if (variants.length === 0) return null;
 
   const focusSibling = (currentIdx: number, dir: 1 | -1) => {
     const target = currentIdx + dir;
@@ -222,11 +241,7 @@ export function VariantList({
         <span className={s.sectionTitle}>Quantizations</span>
         {compatHint && <span className={s.sectionHint}>{compatHint}</span>}
       </div>
-      <div
-        className={s.list}
-        role="list"
-        data-variant-list={variants[0]?.variant_id}
-      >
+      <div className={s.list} role="list" data-variant-list={variants[0]?.variant_id}>
         {variants.map((variant, idx) => {
           const jobId = jobIdByVariant[variant.variant_id];
           return (
@@ -234,9 +249,8 @@ export function VariantList({
               key={variant.variant_id}
               variant={variant}
               size={sizeOfVariant(variant, sizeMap)}
-              state={
-                jobStateByVariant[variant.variant_id] ?? variant.install_state
-              }
+              state={jobStateByVariant[variant.variant_id] ?? variant.install_state}
+              job={jobByVariant[variant.variant_id]}
               onDownload={() => onDownload(variant)}
               onPause={() => {
                 if (jobId) onPause(jobId);

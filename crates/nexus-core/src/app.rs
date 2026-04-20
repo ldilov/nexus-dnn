@@ -254,7 +254,7 @@ impl NexusApp {
         let download_orchestrator = Arc::new(
             nexus_models_store::downloads::DownloadOrchestrator::new(
                 (*download_job_store).clone(),
-                install_map,
+                install_map.clone(),
                 download_sink_root,
                 reqwest::Client::new(),
                 hf_token_store.clone(),
@@ -283,6 +283,7 @@ impl NexusApp {
             capability_registry,
             download_job_store: Some(download_job_store),
             download_orchestrator: Some(download_orchestrator),
+            install_map: Some(install_map),
             hf_token_store: Some(hf_token_store),
             backend_event_bus,
             draft_materialize_map:

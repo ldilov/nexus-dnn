@@ -4,7 +4,6 @@ import HomeRoute from "./views/home/home.route";
 import RecipesRoute from "./views/recipes/recipes.route";
 import WorkflowsRoute from "./views/workflows/workflows.route";
 import BackendsRoute from "./views/backends/backends.route";
-import ModelsRoute from "./views/models/models.route";
 import {
   ModulesIndexRoute,
   ModuleInstanceRoute,
@@ -47,7 +46,7 @@ export const router = createHashRouter([
       { path: "deployments", Component: DeploymentsIndexRoute },
       { path: "deployments/:deploymentId", Component: DeploymentDetailRoute },
       { path: "backends", Component: BackendsRoute },
-      { path: "models", Component: ModelsRoute },
+      { path: "models", lazy: () => import("./views/models-search") },
       { path: "models-search", lazy: () => import("./views/models-search") },
       { path: "extensions", Component: ExtensionsGalleryRoute },
       { path: "extensions/:layoutId", Component: ExtensionLayoutRoute },
