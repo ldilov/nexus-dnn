@@ -43,15 +43,20 @@ description: "Task list for 026-llm-chat-wiring-and-downloaded-filter"
 
 **Purpose**: Shared spine — DTOs, newtype surfaces, extension migration, worker method table.
 
-- [ ] T010 Add additive migration `extensions/builtin/local-llm/storage/migrations/002_generation_settings.sql` per data-model.md — three idempotent `ALTER TABLE threads ADD COLUMN` statements.
+> **Correction (2026-04-20)**: the `local-llm` extension was Rust-ported
+> in spec 024 (`crates/nexus-local-llm-worker/`); the original Python
+> `worker/` tree is dead legacy. T010 / T013 / T014 / T015 re-target to
+> the Rust worker; paths updated below.
+
+- [X] T010 Add additive migration `extensions/builtin/local-llm/storage/migrations/007_generation_settings.sql` — three idempotent `ALTER TABLE ext_local_llm_chat_threads ADD COLUMN` statements (`generation_settings TEXT`, `active_model_family_id TEXT`, `active_model_variant_id TEXT`).
 - [X] T011 [P] Add `InstalledArtifactDto` + `InstalledIndexDto` structs in `crates/nexus-api/src/dto/model_store.rs` (or colocated with `installed.rs` if the DTO module does not exist), with `serde(rename_all = "snake_case")` and `#[non_exhaustive]` where applicable.
 - [X] T012 [P] Define `pub async fn list_all(&self) -> JobStoreResult<Vec<InstalledArtifactRow>>` on `InstallMap` in `crates/nexus-models-store/src/downloads/install_map.rs`. Sort: `installed_at DESC, artifact_id ASC`. Hard cap 500 rows.
-- [ ] T013 [P] Add `pydantic` model `GenerationParams` (with defaults per data-model.md) + `ActiveModelBinding` + `DownloadedModel` in `extensions/builtin/local-llm/worker/models/generation.py` (new file).
-- [ ] T014 Register new method namespace in `extensions/builtin/local-llm/worker/methods/__init__.py` — import `chat` sub-module and merge its handler table into the dispatch map. Module `worker/methods/chat.py` created with empty handler stubs returning `NotImplemented` to keep imports green.
-- [ ] T015 [P] Create `extensions/builtin/local-llm/worker/host/model_store.py` — thin async client with one method `installed()` that issues `GET /api/v1/model-store/installed` over the existing `aiohttp` session and returns `InstalledIndexDto`.
+- [X] T013 [P] Add serde structs `GenerationParams` (with `Default` matching data-model.md defaults) + `ActiveModelBinding` + `DownloadedModel` in `crates/nexus-local-llm-worker/src/methods/chat_types.rs` (new file).
+- [X] T014 Create `crates/nexus-local-llm-worker/src/methods/chat.rs` with stub handlers returning `METHOD_NOT_IMPLEMENTED` for `llm.new_thread`, `llm.list_threads`, `llm.get_active_model`, `llm.set_active_model`, `llm.get_generation_settings`, `llm.set_generation_settings`, `llm.list_downloaded_models`, `llm.open_model_browser`. Wire new match arms in `crates/nexus-local-llm-worker/src/dispatch.rs`.
+- [X] T015 [P] Add `InstalledClient` in `crates/nexus-local-llm-worker/src/host_rpc/installed.rs` — wraps `transport.call("host.models.installed", …)`. Host-side handler registration deferred to US3 (we only need the client surface for foundational compile).
 - [X] T016 [P] Add the route entry `GET /api/v1/model-store/installed` in `crates/nexus-api/src/router.rs` wired to `handlers::model_store::installed::get_installed` (handler stub still 501 from T004).
 
-**Checkpoint**: Extension restart runs migration 002 cleanly; `cargo test -p nexus-api` compiles; Python test import succeeds (`pytest --collect-only extensions/builtin/local-llm/tests/`).
+**Checkpoint**: Extension restart runs migration 007 cleanly; `cargo check -p nexus-local-llm-worker` passes; RPC dispatcher answers the new methods with a stable `METHOD_NOT_IMPLEMENTED` error.
 
 ---
 

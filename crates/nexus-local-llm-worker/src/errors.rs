@@ -52,6 +52,9 @@ pub enum WorkerError {
 
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),
+
+    #[error("not implemented: {method}")]
+    NotImplemented { method: String },
 }
 
 impl WorkerError {
@@ -73,7 +76,8 @@ impl WorkerError {
             | WorkerError::LeaseNotFound { .. }
             | WorkerError::HostProtocolError(_)
             | WorkerError::Io(_)
-            | WorkerError::Serde(_) => false,
+            | WorkerError::Serde(_)
+            | WorkerError::NotImplemented { .. } => false,
         }
     }
 
@@ -95,6 +99,7 @@ impl WorkerError {
             WorkerError::HostProtocolError(_) => "HostProtocolError",
             WorkerError::Io(_) => "IoError",
             WorkerError::Serde(_) => "SerdeError",
+            WorkerError::NotImplemented { .. } => "NotImplemented",
         }
     }
 }

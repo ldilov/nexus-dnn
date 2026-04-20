@@ -107,6 +107,61 @@ async fn dispatch_one(
             },
             Err(e) => reply_invalid_params(transport, id, e).await,
         },
+        "llm.new_thread" => match parse::<methods::chat_types::NewThreadRequest>(&req) {
+            Ok(body) => match methods::chat::handle_new_thread(body).await {
+                Ok(resp) => transport.reply_ok(id, resp).await,
+                Err(e) => reply_worker_error(transport, id, e).await,
+            },
+            Err(e) => reply_invalid_params(transport, id, e).await,
+        },
+        "llm.list_threads" => match parse::<methods::chat_types::ListThreadsRequest>(&req) {
+            Ok(body) => match methods::chat::handle_list_threads(body).await {
+                Ok(resp) => transport.reply_ok(id, resp).await,
+                Err(e) => reply_worker_error(transport, id, e).await,
+            },
+            Err(e) => reply_invalid_params(transport, id, e).await,
+        },
+        "llm.get_active_model" => match parse::<methods::chat_types::ThreadSessionRequest>(&req) {
+            Ok(body) => match methods::chat::handle_get_active_model(body).await {
+                Ok(resp) => transport.reply_ok(id, resp).await,
+                Err(e) => reply_worker_error(transport, id, e).await,
+            },
+            Err(e) => reply_invalid_params(transport, id, e).await,
+        },
+        "llm.set_active_model" => match parse::<methods::chat_types::SetActiveModelRequest>(&req)
+        {
+            Ok(body) => match methods::chat::handle_set_active_model(body).await {
+                Ok(resp) => transport.reply_ok(id, resp).await,
+                Err(e) => reply_worker_error(transport, id, e).await,
+            },
+            Err(e) => reply_invalid_params(transport, id, e).await,
+        },
+        "llm.get_generation_settings" => {
+            match parse::<methods::chat_types::ThreadSessionRequest>(&req) {
+                Ok(body) => match methods::chat::handle_get_generation_settings(body).await {
+                    Ok(resp) => transport.reply_ok(id, resp).await,
+                    Err(e) => reply_worker_error(transport, id, e).await,
+                },
+                Err(e) => reply_invalid_params(transport, id, e).await,
+            }
+        }
+        "llm.set_generation_settings" => {
+            match parse::<methods::chat_types::SetGenerationSettingsRequest>(&req) {
+                Ok(body) => match methods::chat::handle_set_generation_settings(body).await {
+                    Ok(resp) => transport.reply_ok(id, resp).await,
+                    Err(e) => reply_worker_error(transport, id, e).await,
+                },
+                Err(e) => reply_invalid_params(transport, id, e).await,
+            }
+        }
+        "llm.list_downloaded_models" => match methods::chat::handle_list_downloaded_models().await {
+            Ok(resp) => transport.reply_ok(id, resp).await,
+            Err(e) => reply_worker_error(transport, id, e).await,
+        },
+        "llm.open_model_browser" => match methods::chat::handle_open_model_browser().await {
+            Ok(resp) => transport.reply_ok(id, resp).await,
+            Err(e) => reply_worker_error(transport, id, e).await,
+        },
         _ => {
             transport
                 .reply_error(id, METHOD_NOT_FOUND, format!("method not found: {method}"))
