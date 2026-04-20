@@ -4,18 +4,19 @@ Handoff for continuing implementation in a future session.
 
 ## Status
 
-- **25 / 65 tasks done** (38 %)
+- **~38 / 65 tasks done** (~58 %)
 - **4 contract tests green** (spec-026 installed endpoint) + 22
   spec-025 contract tests still green · 2 new worker unit tests ·
   172 tests green total
 - **0 CRITICAL, 0 HIGH, 0 MEDIUM findings** against plan.md
 - MVP (US1 Downloaded filter) shipped end-to-end; US2 (New Session +
-  thread list fan-out) shipped on host REST; US3/US4/US5/US6
-  remaining
+  thread list fan-out), US3 (Choose Model picker + sidebar chip) and
+  US5 (per-session param form) shipped on host REST. US4 (proof
+  contract + CallRecorder) and US6 (no-N+1) remaining.
 
 ## Branch
 
-`026-llm-chat-wiring-and-downloaded-filter` — 5 commits ahead of main:
+`026-llm-chat-wiring-and-downloaded-filter` — 8 commits ahead of main:
 
 | Commit | Scope |
 |---|---|
@@ -24,6 +25,9 @@ Handoff for continuing implementation in a future session.
 | `bf03240` | Phase 2 foundational — Rust worker chat RPC surface (stubs) |
 | `816c8ff` | US2 — host REST + ActionBar dispatcher |
 | `31327f2` | T045 — ThreadListComponent + event fan-out |
+| `1c170ba` | US3 — ModelPicker modal + active_model REST client |
+| `b69fc8c` | US3 — sidebar ModelSelectorComponent + yaml wiring |
+| `cbdbaa6` | US5 — GenerationSettingsFormComponent + per-session persistence |
 
 ## What's shipped
 
@@ -60,29 +64,27 @@ Handoff for continuing implementation in a future session.
 | `apps/web/src/layout/action_dispatch.ts` | `dispatchLayoutAction(action)` — maps `llm.new_thread` → POST + toast + fires `local-llm/thread:created` AND `local-llm/session.state.changed` events. `llm.open_model_browser` → CustomEvent for US3 picker. |
 | `apps/web/src/components/layout/action_bar.tsx` | Real onClick handler — was previously a no-op data-attribute. |
 | `apps/web/src/components/layout/thread_list.tsx` | Bespoke ThreadListComponent: own fetch, own event subscription (thread:created + session.state.changed), listbox/option keyboard, auto-selects first thread, emits `local-llm/thread:selected`. |
-| `apps/web/src/layout/component_registry.tsx` | `itemType === "thread"` routes to ThreadListComponent. |
+| `apps/web/src/components/layout/model_picker.tsx` | Global modal overlay mounted in main.tsx; listens for `local-llm/model-picker:open` + `thread:selected`, fetches installed, filters GGUF/GGML, PUTs active_model, empty-state deep-links to `/models?installed=installed&format=gguf`. |
+| `apps/web/src/components/layout/model_selector.tsx` | Sidebar chip — bespoke component with its own fetchActiveModel + event subscription; label becomes `{family}/{variant}` when bound, click opens picker. |
+| `apps/web/src/components/layout/generation_settings_form.tsx` | Right-sidebar form — fetches on thread:selected, PUTs debounced 200ms. NULL threads show DEFAULT_GENERATION_PARAMS client-side matching the Rust `GenerationParams::default`. |
+| `apps/web/src/services/local_llm_chat.ts` | REST client for active_model + generation_settings. |
+| `apps/web/src/layout/component_registry.tsx` | `itemType === "thread"` routes to ThreadListComponent; new `model_selector` + `generation_settings_form` types. |
+| `extensions/builtin/local-llm/ui/layouts/chat.yaml` | Swapped inert `action_bar`/`form` dataSource patterns for `model_selector` + `generation_settings_form` bespoke component types. |
 
-## What's left (40 tasks)
+## What's left (~27 tasks)
 
 ### P1 (must-land before merge)
 
-- **US3 (Choose Model)** — 10 tasks. Picker modal component that listens
-  for `local-llm/model-picker:open` (already fired from
-  `action_dispatch.ts`), fetches `/api/v1/model-store/installed`,
-  filters to GGUF, calls `PUT
-  /api/v1/extensions/local-llm/chat/threads/{id}/active_model`. Sidebar
-  chip wired via `get_active_model` on the active thread.
 - **US4 (Hyperparam proof)** — 11 tasks. `CallRecorder` trait on
   `LlamaCppAdapter`, the gating contract test
   `chat_hyperparameters_reach_llamacpp.rs` (test-first per Principle
   VI), `target/sc-026-proof.json` emitter, CI upload. This is the
-  merge-gate for spec 026 per SC-006.
+  merge-gate for spec 026 per SC-006. Blocker: there is currently no
+  host-side `send_message` handler — that path must be built first for
+  the proof test to have a call site.
 
-### P2/P3
+### P3
 
-- **US5 (param persistence)** — 3 tasks. Already half-done via the
-  `GET/PUT /…/generation_settings` endpoints; need a right-sidebar
-  form component that reads/writes through them on session switch.
 - **US6 (no-N+1)** — 3 tasks. SWR key dedupe verification +
   Playwright network-tab assertion.
 
