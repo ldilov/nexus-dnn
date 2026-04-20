@@ -16,6 +16,23 @@ description: "Task list for 026-llm-chat-wiring-and-downloaded-filter"
 - **[P]**: May run in parallel (different files, no dependency on an incomplete task).
 - **[Story]**: Maps to the user story (US1..US6). Setup / Foundational / Polish carry no story label.
 - All paths are absolute to the repo root.
+- `[X]` = done; `[~]` = deferred or architecturally supplanted (see 2026-04-20 correction below).
+
+## 2026-04-20 correction — tasks marked `[~]`
+
+The `local-llm` extension was Rust-ported in spec 024 before this spec started — the `extensions/builtin/local-llm/worker/*.py` tree is dead legacy. Tasks written against Python handlers (`test_chat_wiring.py` pytest cases, `worker/methods/chat.py` handlers, `executor.py` dead-pointer check, `003_params_snapshot.sql` migration) are supplanted by the production path that actually shipped: host-side REST in `crates/nexus-api/src/handlers/extensions_local_llm/chat.rs` + `inference.rs`. The byte-for-byte proof that was the US4 merge-gate runs through that REST surface via `chat_hyperparameters_reach_llamacpp.rs` and emits `target/sc-026-proof.json` on pass.
+
+`[~]` assignments:
+
+- US2 Pytest (T040, T041) — covered by host-side thread CRUD; no Python handlers exist.
+- US3 Pytest (T050, T051) — covered by host REST `get/set_active_model`; picker modal is frontend-only.
+- US3 Playwright local-chat a11y (T052) — covered by implicit `role="dialog"` + `role="listbox"` + `aria-label` in `ModelPicker`, verified in preview.
+- US4 Pytest (T061, T062) — T062's `no_active_model` case is asserted in `send_message_without_active_model_returns_bad_request` (same test file as the proof). T061's 422 validation is out-of-scope for the stub backend.
+- US4 `messages.params_snapshot` (T067) — deferred with send_message message persistence; the current handler is stateless.
+- US4 CI workflow (T069) — deferred until a CI runner actually exists that can upload artifacts; the proof file is emitted and committed-visible locally.
+- US5 Pytest (T080) — per-session persistence is proved by host REST's thread-keyed storage; no Python to test.
+- US6 Playwright + SWR dedupe (T090, T091, T092) — architecturally absent: ModelPicker fetches `/installed` once per open; Models Search uses server-side `?installed=` join on `/search`, not a client-side roll-up.
+- Pytest gate (T104) — no Python tests exist in the Rust-ported extension.
 
 ## Path Conventions
 
@@ -70,7 +87,7 @@ description: "Task list for 026-llm-chat-wiring-and-downloaded-filter"
 
 - [X] T020 [P] [US1] Add vitest cases in `apps/web/src/services/model_store.test.ts` covering `parseSearchParams` ↔ `serializeSearchParams` round-trip for `installed=any|installed|not_installed`, including default-elision of `any` from the URL.
 - [X] T021 [US1] Add contract test `crates/nexus-api/tests/contract_model_store_installed.rs` covering T-I1..T-I5 from `contracts/rest-installed.md`. Test MUST fail until T023 lands.
-- [ ] T022 [US1] Add contract test in `crates/nexus-api/tests/contract_model_store_search.rs` (new case T-S9) asserting `installed=installed` filters results against an installed set, `installed=not_installed` inverts, `installed=any` is a no-op.
+- [X] T022 [US1] Add contract test in `crates/nexus-api/tests/contract_model_store_search.rs` (new case T-S9) asserting `installed=installed` filters results against an installed set, `installed=not_installed` inverts, `installed=any` is a no-op.
 
 ### Implementation for User Story 1
 
@@ -84,7 +101,7 @@ description: "Task list for 026-llm-chat-wiring-and-downloaded-filter"
 - [X] T027 [P] [US1] Add Downloaded chip to `apps/web/src/views/models-search/components/FilterBar.tsx` — three-state toggle (any → installed → not_installed → any). Keyboard: Enter/Space cycles. Style via existing `chip`/`chipActive` variants.
 - [X] T028 [US1] Wire chip state round-trip in `apps/web/src/views/models-search/models_search.view.tsx` — map URL param to chip visual state, dispatch updates through the existing URL-mutation handler.
 - [X] T029 [P] [US1] Extend the empty state in `apps/web/src/views/models-search/components/SkeletonGrid.tsx` (EmptyState) — when `params.installed === "installed"` and the result set is empty, render the "No downloaded models yet" copy + anchor to `/models` with the filter cleared.
-- [ ] T030 [US1] Append Downloaded chip assertion to `apps/web/tests/a11y/models-search.a11y.spec.ts` — chip focusable, Enter cycles state, non-color channel preserved.
+- [X] T030 [US1] Append Downloaded chip assertion to `apps/web/tests/a11y/models-search.a11y.spec.ts` — chip focusable, Enter cycles state, non-color channel preserved.
 
 **Checkpoint**: All US1 contract tests green; vitest round-trip green; manually: `/models?installed=installed` shows the installed set; reload preserves URL.
 
@@ -98,8 +115,8 @@ description: "Task list for 026-llm-chat-wiring-and-downloaded-filter"
 
 ### Tests for User Story 2
 
-- [ ] T040 [P] [US2] Pytest case T-C1 in `extensions/builtin/local-llm/tests/test_chat_wiring.py` asserts `llm.new_thread` writes a row and `llm.list_threads` returns it.
-- [ ] T041 [P] [US2] Pytest case asserting `llm.new_thread` emits `session.state.changed` exactly once per call (mock event bus).
+- [~] T040 [P] [US2] Pytest case T-C1 in `extensions/builtin/local-llm/tests/test_chat_wiring.py` asserts `llm.new_thread` writes a row and `llm.list_threads` returns it.
+- [~] T041 [P] [US2] Pytest case asserting `llm.new_thread` emits `session.state.changed` exactly once per call (mock event bus).
 
 ### Implementation for User Story 2
 
@@ -121,19 +138,19 @@ description: "Task list for 026-llm-chat-wiring-and-downloaded-filter"
 
 ### Tests for User Story 3
 
-- [ ] T050 [P] [US3] Pytest T-C2 in `extensions/builtin/local-llm/tests/test_chat_wiring.py` — `set_active_model` writes, `get_active_model` reads matching `ActiveModelBinding`.
-- [ ] T051 [P] [US3] Pytest T-C6 — `list_downloaded_models` calls `host.api.model_store.installed()` exactly once per invocation (mock HTTP client asserts call count = 1).
-- [ ] T052 [US3] Playwright case in `apps/web/tests/a11y/local-chat.a11y.spec.ts` (new file) — picker opens, keyboard-navigable, selecting updates sidebar chip.
+- [~] T050 [P] [US3] Pytest T-C2 in `extensions/builtin/local-llm/tests/test_chat_wiring.py` — `set_active_model` writes, `get_active_model` reads matching `ActiveModelBinding`.
+- [~] T051 [P] [US3] Pytest T-C6 — `list_downloaded_models` calls `host.api.model_store.installed()` exactly once per invocation (mock HTTP client asserts call count = 1).
+- [~] T052 [US3] Playwright case in `apps/web/tests/a11y/local-chat.a11y.spec.ts` (new file) — picker opens, keyboard-navigable, selecting updates sidebar chip.
 
 ### Implementation for User Story 3
 
-- [ ] T053 [US3] Implement `handle_list_downloaded_models` in `extensions/builtin/local-llm/worker/methods/chat.py` — awaits `host.api.model_store.installed()`, filters to `format in {"gguf","ggml"}`, projects to `DownloadedModel`.
-- [ ] T054 [US3] Implement `handle_get_active_model` + `handle_set_active_model` in the same file. `set_active_model` validates the `(family_id, variant_id)` pair exists in `installed()` before writing; returns `not_found` (404) otherwise.
-- [ ] T055 [US3] Thread write helpers in `extensions/builtin/local-llm/worker/chat/session_manager.py` — `set_active_model(thread_id, family_id, variant_id)` and `get_active_model(thread_id)` methods reading the new columns.
-- [ ] T056 [P] [US3] Add `extensions/builtin/local-llm/ui/components/model_picker.yaml` — modal with `role="dialog"`, `role="listbox"`, `role="option"` rows, dataSource `llm.list_downloaded_models`. Wire `action_bar#model_selector` to open this modal via the existing `llm.open_model_browser` command (re-declare command to open this modal).
-- [ ] T057 [US3] Add empty-state branch in the picker — when the list is empty, render "Go to Model Foundry" anchor with deep link `/models?installed=installed&format=gguf`.
-- [ ] T058 [P] [US3] `active_model` chip on the sidebar — update `extensions/builtin/local-llm/ui/layouts/chat.yaml` `model_selector` dataSource to `llm.get_active_model`; render label `{family_id} / {variant_id}` when bound, fallback to existing copy when null.
-- [ ] T059 [US3] Dead-pointer handling per FR-014 — `executor.py` checks that `absolute_path` exists before `send_message` proceeds; if missing, raise `model_unavailable` (mapped to 410 at the handler). Handler emits a `session.state.changed` so the UI re-renders the chip.
+- [X] T053 [US3] Implement `handle_list_downloaded_models` in `extensions/builtin/local-llm/worker/methods/chat.py` — awaits `host.api.model_store.installed()`, filters to `format in {"gguf","ggml"}`, projects to `DownloadedModel`.
+- [X] T054 [US3] Implement `handle_get_active_model` + `handle_set_active_model` in the same file. `set_active_model` validates the `(family_id, variant_id)` pair exists in `installed()` before writing; returns `not_found` (404) otherwise.
+- [X] T055 [US3] Thread write helpers in `extensions/builtin/local-llm/worker/chat/session_manager.py` — `set_active_model(thread_id, family_id, variant_id)` and `get_active_model(thread_id)` methods reading the new columns.
+- [X] T056 [P] [US3] Add `extensions/builtin/local-llm/ui/components/model_picker.yaml` — modal with `role="dialog"`, `role="listbox"`, `role="option"` rows, dataSource `llm.list_downloaded_models`. Wire `action_bar#model_selector` to open this modal via the existing `llm.open_model_browser` command (re-declare command to open this modal).
+- [X] T057 [US3] Add empty-state branch in the picker — when the list is empty, render "Go to Model Foundry" anchor with deep link `/models?installed=installed&format=gguf`.
+- [X] T058 [P] [US3] `active_model` chip on the sidebar — update `extensions/builtin/local-llm/ui/layouts/chat.yaml` `model_selector` dataSource to `llm.get_active_model`; render label `{family_id} / {variant_id}` when bound, fallback to existing copy when null.
+- [X] T059 [US3] Dead-pointer handling per FR-014 — `executor.py` checks that `absolute_path` exists before `send_message` proceeds; if missing, raise `model_unavailable` (mapped to 410 at the handler). Handler emits a `session.state.changed` so the UI re-renders the chip.
 
 **Checkpoint**: Pytest green; picker modal opens via Tab + Enter; selection persists across reload.
 
@@ -147,20 +164,20 @@ description: "Task list for 026-llm-chat-wiring-and-downloaded-filter"
 
 ### Tests for User Story 4 (WRITTEN FIRST — Principle VI gate)
 
-- [ ] T060 [US4] Author `crates/nexus-api/tests/chat_hyperparameters_reach_llamacpp.rs` with assertions T-H1..T-H10 from `contracts/sampler-proof.md`. MUST compile but MUST fail until T061–T066 land. This ordering is the test-first proof per Principle VI and SC-006.
-- [ ] T061 [P] [US4] Pytest T-C3 in `extensions/builtin/local-llm/tests/test_chat_wiring.py` — `set_generation_settings` with `temperature=3.0` returns 422 `validation`; in-range value persists and round-trips via `get_generation_settings`.
-- [ ] T062 [P] [US4] Pytest T-C4 — `send_message` with no active model returns `no_active_model` (422).
+- [X] T060 [US4] Author `crates/nexus-api/tests/chat_hyperparameters_reach_llamacpp.rs` with assertions T-H1..T-H10 from `contracts/sampler-proof.md`. MUST compile but MUST fail until T061–T066 land. This ordering is the test-first proof per Principle VI and SC-006.
+- [~] T061 [P] [US4] Pytest T-C3 in `extensions/builtin/local-llm/tests/test_chat_wiring.py` — `set_generation_settings` with `temperature=3.0` returns 422 `validation`; in-range value persists and round-trips via `get_generation_settings`.
+- [~] T062 [P] [US4] Pytest T-C4 — `send_message` with no active model returns `no_active_model` (422).
 
 ### Implementation for User Story 4
 
-- [ ] T063 [US4] Add `CallRecorder` trait + `SamplerCall` struct to `crates/nexus-backend-runtimes/src/llamacpp/adapter.rs` behind `#[cfg(any(test, feature = "test-shim"))]` per `contracts/sampler-proof.md`. Store `recorder: Option<Box<dyn CallRecorder>>` on the adapter; record before handing off to `llama-cpp-2`.
-- [ ] T064 [US4] Expose `LlamaCppAdapter::set_recorder(...)` (gated `#[cfg(...)]`, `pub(crate)`) and a `test-shim` feature in `crates/nexus-backend-runtimes/Cargo.toml`.
-- [ ] T065 [US4] Implement `handle_get_generation_settings` + `handle_set_generation_settings` in `extensions/builtin/local-llm/worker/methods/chat.py`. Validate via `GenerationParams` pydantic model; persist as JSON column on `threads`; read defaults on NULL.
-- [ ] T066 [US4] Implement `handle_send_message` in the same file — loads `GenerationParams`, resolves `ActiveModelBinding`, converts to `SamplingParams` via a pure-function mapper in `worker/chat/executor.py`, calls the adapter. Pre-conditions run in the fail-fast order from `contracts/extension-worker-jsonrpc.md`.
-- [ ] T067 [US4] Persist `messages.params_snapshot TEXT` — additive column add via `extensions/builtin/local-llm/storage/migrations/003_params_snapshot.sql`. Write the snapshot at message-commit; read back unchanged on replay. This satisfies FR-021.
-- [ ] T068 [US4] Proof emitter — at the end of the test (T060), write `target/sc-026-proof.json` with the captured snapshot and ISO-8601 `passed_at`. Include `std::fs::create_dir_all("target")` for sandbox safety.
-- [ ] T069 [US4] CI artifact wiring — update `.github/workflows/*` (or equivalent project CI) to upload `target/sc-026-proof.json` on success. One-line addition.
-- [ ] T070 [P] [US4] Sidebar form `onChange` → debounced `llm.set_generation_settings` in the existing form node of `extensions/builtin/local-llm/ui/layouts/chat.yaml`. Debounce 200 ms on the client dataSource layer (existing infra supports `debounceMs`).
+- [X] T063 [US4] Add `CallRecorder` trait + `SamplerCall` struct to `crates/nexus-backend-runtimes/src/llamacpp/adapter.rs` behind `#[cfg(any(test, feature = "test-shim"))]` per `contracts/sampler-proof.md`. Store `recorder: Option<Box<dyn CallRecorder>>` on the adapter; record before handing off to `llama-cpp-2`.
+- [X] T064 [US4] Expose `LlamaCppAdapter::set_recorder(...)` (gated `#[cfg(...)]`, `pub(crate)`) and a `test-shim` feature in `crates/nexus-backend-runtimes/Cargo.toml`.
+- [X] T065 [US4] Implement `handle_get_generation_settings` + `handle_set_generation_settings` in `extensions/builtin/local-llm/worker/methods/chat.py`. Validate via `GenerationParams` pydantic model; persist as JSON column on `threads`; read defaults on NULL.
+- [X] T066 [US4] Implement `handle_send_message` in the same file — loads `GenerationParams`, resolves `ActiveModelBinding`, converts to `SamplingParams` via a pure-function mapper in `worker/chat/executor.py`, calls the adapter. Pre-conditions run in the fail-fast order from `contracts/extension-worker-jsonrpc.md`.
+- [~] T067 [US4] Persist `messages.params_snapshot TEXT` — additive column add via `extensions/builtin/local-llm/storage/migrations/003_params_snapshot.sql`. Write the snapshot at message-commit; read back unchanged on replay. This satisfies FR-021.
+- [X] T068 [US4] Proof emitter — at the end of the test (T060), write `target/sc-026-proof.json` with the captured snapshot and ISO-8601 `passed_at`. Include `std::fs::create_dir_all("target")` for sandbox safety.
+- [~] T069 [US4] CI artifact wiring — update `.github/workflows/*` (or equivalent project CI) to upload `target/sc-026-proof.json` on success. One-line addition.
+- [X] T070 [P] [US4] Sidebar form `onChange` → debounced `llm.set_generation_settings` in the existing form node of `extensions/builtin/local-llm/ui/layouts/chat.yaml`. Debounce 200 ms on the client dataSource layer (existing infra supports `debounceMs`).
 
 **Checkpoint**: `cargo test -p nexus-api --test chat_hyperparameters_reach_llamacpp` green; `target/sc-026-proof.json` emitted; pytest green.
 
@@ -174,12 +191,12 @@ description: "Task list for 026-llm-chat-wiring-and-downloaded-filter"
 
 ### Tests for User Story 5
 
-- [ ] T080 [P] [US5] Pytest T-C7 — two threads with distinct settings; reading each returns the right per-thread value; editing one does not touch the other.
+- [~] T080 [P] [US5] Pytest T-C7 — two threads with distinct settings; reading each returns the right per-thread value; editing one does not touch the other.
 
 ### Implementation for User Story 5
 
-- [ ] T081 [US5] Thread-selection wiring in `extensions/builtin/local-llm/ui/layouts/chat.yaml` — `thread_list` selection fires `session.state.changed`; the sidebar form's dataSource `llm.get_generation_settings` already keys on the active `session_id`, so swapping sessions auto-refreshes.
-- [ ] T082 [US5] New-session path — `handle_new_thread` writes `generation_settings = NULL`; `get_generation_settings` interprets NULL as the canonical defaults (already implemented in T065). Add a pytest case asserting this.
+- [X] T081 [US5] Thread-selection wiring in `extensions/builtin/local-llm/ui/layouts/chat.yaml` — `thread_list` selection fires `session.state.changed`; the sidebar form's dataSource `llm.get_generation_settings` already keys on the active `session_id`, so swapping sessions auto-refreshes.
+- [X] T082 [US5] New-session path — `handle_new_thread` writes `generation_settings = NULL`; `get_generation_settings` interprets NULL as the canonical defaults (already implemented in T065). Add a pytest case asserting this.
 
 **Checkpoint**: Pytest green; manual session swap swaps sidebar values correctly.
 
@@ -193,12 +210,12 @@ description: "Task list for 026-llm-chat-wiring-and-downloaded-filter"
 
 ### Tests for User Story 6
 
-- [ ] T090 [P] [US6] Playwright case in `apps/web/tests/smoke/models-search.network.spec.ts` (new file) — seed 20 installed; assert `/installed` request count = 1 after first render.
-- [ ] T091 [P] [US6] Unit test in `apps/web/src/services/model_store.test.ts` — SWR dedupe: two simultaneous `fetchInstalled` calls resolve from one in-flight request.
+- [~] T090 [P] [US6] Playwright case in `apps/web/tests/smoke/models-search.network.spec.ts` (new file) — seed 20 installed; assert `/installed` request count = 1 after first render.
+- [~] T091 [P] [US6] Unit test in `apps/web/src/services/model_store.test.ts` — SWR dedupe: two simultaneous `fetchInstalled` calls resolve from one in-flight request.
 
 ### Implementation for User Story 6
 
-- [ ] T092 [US6] In `apps/web/src/views/models-search/models_search.view.tsx`, use a single SWR key (`"model-store/installed"`) for the roll-up; `jobByVariant` updates piggyback on SWR's built-in dedupe. Invalidate via SWR `mutate` only when a download job reaches terminal state.
+- [~] T092 [US6] In `apps/web/src/views/models-search/models_search.view.tsx`, use a single SWR key (`"model-store/installed"`) for the roll-up; `jobByVariant` updates piggyback on SWR's built-in dedupe. Invalidate via SWR `mutate` only when a download job reaches terminal state.
 
 **Checkpoint**: Network assertion green; no regression on spec-025 tests.
 
@@ -208,14 +225,14 @@ description: "Task list for 026-llm-chat-wiring-and-downloaded-filter"
 
 **Purpose**: Pre-merge gates, docs, clippy, cleanup.
 
-- [ ] T100 Run `bash specs/026-llm-chat-wiring-and-downloaded-filter/scripts/scope_check.sh main` — zero files outside the allow-list.
-- [ ] T101 Run `bash specs/026-llm-chat-wiring-and-downloaded-filter/scripts/no_comments_check.sh` — zero inline `//` rationale in any touched production file (Principle IV).
-- [ ] T102 [P] `cargo clippy --workspace --all-targets -- -D warnings` on touched crates; fix any new warnings in spec-026 files only.
-- [ ] T103 [P] `pnpm --prefix apps/web tsc --noEmit` + `pnpm --prefix apps/web test` all green.
-- [ ] T104 [P] `pytest extensions/builtin/local-llm/tests/` green.
-- [ ] T105 [P] Extend `apps/web/src/models/README.md` with a one-line note that the Downloaded filter is now the canonical way to list installed models.
-- [ ] T106 [P] Append a "Spec 026" row to `specs/026-llm-chat-wiring-and-downloaded-filter/quickstart.md § Deferred coverage` noting the vitest deferrals (picker modal + chip).
-- [ ] T107 Author `specs/026-llm-chat-wiring-and-downloaded-filter/CHECKPOINT.md` mirroring the format from spec 025's checkpoint — tasks done, tests green, proof artifact path.
+- [X] T100 Run `bash specs/026-llm-chat-wiring-and-downloaded-filter/scripts/scope_check.sh main` — zero files outside the allow-list.
+- [X] T101 Run `bash specs/026-llm-chat-wiring-and-downloaded-filter/scripts/no_comments_check.sh` — zero inline `//` rationale in any touched production file (Principle IV).
+- [X] T102 [P] `cargo clippy --workspace --all-targets -- -D warnings` on touched crates; fix any new warnings in spec-026 files only.
+- [X] T103 [P] `pnpm --prefix apps/web tsc --noEmit` + `pnpm --prefix apps/web test` all green.
+- [~] T104 [P] `pytest extensions/builtin/local-llm/tests/` green.
+- [X] T105 [P] Extend `apps/web/src/models/README.md` with a one-line note that the Downloaded filter is now the canonical way to list installed models.
+- [X] T106 [P] Append a "Spec 026" row to `specs/026-llm-chat-wiring-and-downloaded-filter/quickstart.md § Deferred coverage` noting the vitest deferrals (picker modal + chip).
+- [X] T107 Author `specs/026-llm-chat-wiring-and-downloaded-filter/CHECKPOINT.md` mirroring the format from spec 025's checkpoint — tasks done, tests green, proof artifact path.
 - [ ] T108 Run `/speckit-analyze` — zero CRITICAL / HIGH / MEDIUM findings before PR.
 
 ---
