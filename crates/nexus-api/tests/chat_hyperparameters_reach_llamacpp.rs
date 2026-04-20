@@ -203,7 +203,10 @@ async fn send_message_with_dead_pointer_returns_410() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    let thread_id = body["data"]["id"].as_str().unwrap().to_string();
+    let thread_id = body["data"]["id"]
+        .as_str()
+        .expect("thread id")
+        .to_string();
 
     let bind_status = put_json(
         state.clone(),
