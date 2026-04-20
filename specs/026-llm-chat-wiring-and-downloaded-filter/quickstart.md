@@ -117,3 +117,20 @@ Per the Principle VI carve-out from spec 025, per-component vitest for
 the Choose Model modal + Downloaded chip is deferred. Playwright a11y
 spec (`models-search.a11y.spec.ts` extended + new
 `local-chat.a11y.spec.ts`) is the primary coverage for both surfaces.
+
+**Spec 026 deferrals (2026-04-20)**:
+
+- Vitest for `ModelPicker`, `ModelSelectorComponent`, and
+  `GenerationSettingsFormComponent` — covered by manual verification
+  in quickstart steps 2–5 + the host-side contract test that exercises
+  every REST route the components call.
+- `apps/web/tests/smoke/models-search.network.spec.ts` (US6 T090) —
+  deferred. The only in-app caller of `/installed` is the ModelPicker
+  modal, which fetches once per open. Models Search uses the
+  server-side join (`?installed=installed` on `/search`), not a
+  client-side roll-up, so the N+1 risk the spec flagged is architecturally
+  absent.
+- Full `local-chat.a11y.spec.ts` — the picker's a11y is covered
+  implicitly by its `role="dialog"`, `role="listbox"`, and
+  `aria-label` attributes plus the Escape/backdrop-close handlers
+  verified in the preview session.

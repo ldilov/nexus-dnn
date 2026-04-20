@@ -4,16 +4,19 @@ Handoff for continuing implementation in a future session.
 
 ## Status
 
-- **~55 / 65 tasks done** (~85 %)
-- **15 contract tests green** (4 installed + 9 search + 2 sampler-proof)
-  · 6 US4 unit tests (SamplingParams mapper byte-for-byte) · 172+ tests
-  green total · `target/sc-026-proof.json` emitted
+- **~60 / 65 tasks done** (~92 %) — polish and deferrals documented
+- **189 nexus-api tests green** (15 spec-026 contract tests, 6 US4
+  unit tests, plus all pre-existing) · `target/sc-026-proof.json`
+  emitted · `pnpm tsc --noEmit` clean · `pnpm vitest run model_store`
+  9/9 green · scope_check + no_comments_check green
 - **0 CRITICAL, 0 HIGH, 0 MEDIUM findings** against plan.md
 - **MERGE-GATE CLOSED**: US4 proof contract passes — hyperparameters
   reach the InferenceBackend byte-for-byte (f32::to_bits() identity).
 - US1 (Downloaded filter), US2 (New Session), US3 (Choose Model picker +
   chip), US4 (send_message + proof), US5 (param persistence) all
-  shipped. US6 (no-N+1) deferred (single in-flight fetcher in practice).
+  shipped. US6 (no-N+1) documented as architecturally absent (ModelPicker
+  fetches `/installed` once per open; Models Search uses the server-side
+  `?installed=` join on `/search`, no client-side roll-up).
 
 ## Branch
 
