@@ -1,10 +1,12 @@
-# Spec 026 — Checkpoint (2026-04-20)
+# Spec 026 — Checkpoint (2026-04-20) — **MERGE-READY**
 
-Handoff for continuing implementation in a future session.
+Final state before PR against `main`.
 
 ## Status
 
-- **50 done / 14 deferred-or-supplanted / 1 open** (T108 `/speckit-analyze` for the user) — 100% of shippable work landed
+- **59 done / 14 deferred-or-supplanted / 1 closed (T108)** — 100% of
+  shippable work landed; `/speckit-analyze` final run reports
+  **0 CRITICAL / 0 HIGH / 0 MEDIUM / 2 LOW** (both optional future-CI polish)
 - **189 nexus-api tests green** (15 spec-026 contract tests, 6 US4
   unit tests, plus all pre-existing) · `target/sc-026-proof.json`
   emitted · `pnpm tsc --noEmit` clean · `pnpm vitest run model_store`
@@ -35,6 +37,12 @@ Handoff for continuing implementation in a future session.
 | `9fa5761` | US4 partial — SamplingParams + pure mapper + 6 byte-for-byte tests |
 | `ec8e29d` | T022 + T030 — T-S9 installed-filter contract + a11y chip spec |
 | `a27a086` | US4 complete — send_message handler + CallRecorder + sc-026-proof.json |
+| `c9a651d` | Backfill AppState.inference + install_map in 13 legacy tests |
+| `cfcfa7f` | T105 + T106 + checkpoint polish |
+| `810c83d` | Mark 50/14/1 task accounting in tasks.md |
+| `08d9c35` | C3 dead-pointer event emit + C1/C2 spec correction |
+| `395feec` | Phase 10 backlog appended (T110–T118) |
+| `267f2a0` | Phase 10 complete — 9 MEDIUM/LOW resolutions |
 
 ## What's shipped
 
@@ -105,13 +113,15 @@ Handoff for continuing implementation in a future session.
 
 - `cargo check -p nexus-api -p nexus-core -p nexus-local-llm-worker` — all clean
 - `cargo test -p nexus-api --test contract_model_store_installed` — 4/4
-- `cargo test -p nexus-api --test contract_model_store_backends --test contract_model_store_search --test contract_model_store_detail --test contract_model_store_downloads` — 22/22
+- `cargo test -p nexus-api --test contract_model_store_backends --test contract_model_store_search --test contract_model_store_detail --test contract_model_store_downloads` — 24/24 (incl. T-S9)
+- `cargo test -p nexus-api --test chat_hyperparameters_reach_llamacpp` — 3/3 (proof + negative + dead-pointer)
+- `cargo test -p nexus-api` (all targets) — 189 passed
 - `cargo test -p nexus-local-llm-worker --lib chat` — 2/2
 - `cargo test -p nexus-models-store --lib` — 84/84
 - `pnpm tsc --noEmit` — clean
 - `pnpm vitest run model_store` — 9/9
-- `bash specs/026-llm-chat-wiring-and-downloaded-filter/scripts/scope_check.sh main` — OK (44 files)
-- `bash specs/026-llm-chat-wiring-and-downloaded-filter/scripts/no_comments_check.sh` — OK
+- `target/sc-026-proof.json` — emitted on every `chat_hyperparameters_reach_llamacpp` run
+- `bash specs/.../scripts/all_gates.sh main` — OK (scope + comments + path-leak in one invocation)
 
 ## Known gaps / decisions documented
 

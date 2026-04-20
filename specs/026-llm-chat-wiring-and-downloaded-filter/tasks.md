@@ -233,7 +233,7 @@ The `local-llm` extension was Rust-ported in spec 024 before this spec started �
 - [X] T105 [P] Extend `apps/web/src/models/README.md` with a one-line note that the Downloaded filter is now the canonical way to list installed models.
 - [X] T106 [P] Append a "Spec 026" row to `specs/026-llm-chat-wiring-and-downloaded-filter/quickstart.md § Deferred coverage` noting the vitest deferrals (picker modal + chip).
 - [X] T107 Author `specs/026-llm-chat-wiring-and-downloaded-filter/CHECKPOINT.md` mirroring the format from spec 025's checkpoint — tasks done, tests green, proof artifact path.
-- [ ] T108 Run `/speckit-analyze` — zero CRITICAL / HIGH / MEDIUM findings before PR.
+- [X] T108 Run `/speckit-analyze` — zero CRITICAL / HIGH / MEDIUM findings before PR. **Closed 2026-04-20**: re-run after Phase 10 reported 0 CRITICAL / 0 HIGH / 0 MEDIUM / 2 LOW (both optional future-CI polish).
 
 ---
 
