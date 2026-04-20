@@ -31,17 +31,8 @@ root:
                 headerSubtitleColor: "accent"
                 compact: true
 
-            - type: action_bar
+            - type: model_selector
               id: model_selector
-              props:
-                actions:
-                  - label: "Choose Model"
-                    icon: "model_training"
-                    action: "llm.open_model_browser"
-                    variant: "secondary"
-                    fullWidth: true
-              dataSource:
-                method: "llm.get_active_model"
 
             - type: action_bar
               id: new_thread_btn
