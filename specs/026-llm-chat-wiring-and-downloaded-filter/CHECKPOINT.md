@@ -4,19 +4,21 @@ Handoff for continuing implementation in a future session.
 
 ## Status
 
-- **~38 / 65 tasks done** (~58 %)
-- **4 contract tests green** (spec-026 installed endpoint) + 22
-  spec-025 contract tests still green · 2 new worker unit tests ·
-  172 tests green total
+- **~46 / 65 tasks done** (~71 %)
+- **13 contract tests green** (4 spec-026 installed + 9 spec-026 search
+  incl. T-S9 installed-filter join) · 6 new US4-partial unit tests
+  (SamplingParams mapper byte-for-byte) · 172+ tests green total
 - **0 CRITICAL, 0 HIGH, 0 MEDIUM findings** against plan.md
 - MVP (US1 Downloaded filter) shipped end-to-end; US2 (New Session +
-  thread list fan-out), US3 (Choose Model picker + sidebar chip) and
-  US5 (per-session param form) shipped on host REST. US4 (proof
-  contract + CallRecorder) and US6 (no-N+1) remaining.
+  thread list fan-out), US3 (Choose Model picker + sidebar chip),
+  US5 (per-session param form) shipped on host REST. US4 partial
+  (mapper + byte-for-byte unit tests) landed; full CallRecorder proof
+  deferred until send_message handler exists. US6 (no-N+1) deferred
+  (single in-flight fetcher in practice).
 
 ## Branch
 
-`026-llm-chat-wiring-and-downloaded-filter` — 8 commits ahead of main:
+`026-llm-chat-wiring-and-downloaded-filter` — 11 commits ahead of main:
 
 | Commit | Scope |
 |---|---|
@@ -28,6 +30,8 @@ Handoff for continuing implementation in a future session.
 | `1c170ba` | US3 — ModelPicker modal + active_model REST client |
 | `b69fc8c` | US3 — sidebar ModelSelectorComponent + yaml wiring |
 | `cbdbaa6` | US5 — GenerationSettingsFormComponent + per-session persistence |
+| `9fa5761` | US4 partial — SamplingParams + pure mapper + 6 byte-for-byte tests |
+| `ec8e29d` | T022 + T030 — T-S9 installed-filter contract + a11y chip spec |
 
 ## What's shipped
 
