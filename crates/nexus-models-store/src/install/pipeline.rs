@@ -253,6 +253,44 @@ async fn run_fetch(
     Ok(())
 }
 
+pub async fn uninstall_model(ctx: &ModelStoreCtx, install_id: &str) -> ModelStoreResult<()> {
+    let row = sqlx::query("SELECT install_root FROM host_model_installs WHERE install_id = $1")
+        .bind(install_id)
+        .fetch_optional(&ctx.pool)
+        .await?;
+    let Some(row) = row else {
+        return Err(ModelStoreError::InstallNotFound(install_id.to_string()));
+    };
+    let install_root: String = row.try_get("install_root")?;
+
+    let leases = sqlx::query(
+        "SELECT DISTINCT extension_id FROM host_model_leases \
+         WHERE install_id = $1 AND released_at IS NULL",
+    )
+    .bind(install_id)
+    .fetch_all(&ctx.pool)
+    .await?;
+    if !leases.is_empty() {
+        let exts = leases
+            .iter()
+            .filter_map(|r| r.try_get::<String, _>("extension_id").ok())
+            .collect();
+        return Err(ModelStoreError::LeasedByExtensions {
+            install_id: install_id.to_string(),
+            extensions: exts,
+        });
+    }
+
+    if !install_root.is_empty() {
+        let _ = tokio::fs::remove_dir_all(&install_root).await;
+    }
+    sqlx::query("DELETE FROM host_model_installs WHERE install_id = $1")
+        .bind(install_id)
+        .execute(&ctx.pool)
+        .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod safe_join_tests {
     use super::safe_join_under;
@@ -299,42 +337,4 @@ mod safe_join_tests {
         let ok = safe_join_under(Path::new("/tmp/x"), "model.gguf").unwrap();
         assert_eq!(ok, Path::new("/tmp/x/model.gguf"));
     }
-}
-
-pub async fn uninstall_model(ctx: &ModelStoreCtx, install_id: &str) -> ModelStoreResult<()> {
-    let row = sqlx::query("SELECT install_root FROM host_model_installs WHERE install_id = $1")
-        .bind(install_id)
-        .fetch_optional(&ctx.pool)
-        .await?;
-    let Some(row) = row else {
-        return Err(ModelStoreError::InstallNotFound(install_id.to_string()));
-    };
-    let install_root: String = row.try_get("install_root")?;
-
-    let leases = sqlx::query(
-        "SELECT DISTINCT extension_id FROM host_model_leases \
-         WHERE install_id = $1 AND released_at IS NULL",
-    )
-    .bind(install_id)
-    .fetch_all(&ctx.pool)
-    .await?;
-    if !leases.is_empty() {
-        let exts = leases
-            .iter()
-            .filter_map(|r| r.try_get::<String, _>("extension_id").ok())
-            .collect();
-        return Err(ModelStoreError::LeasedByExtensions {
-            install_id: install_id.to_string(),
-            extensions: exts,
-        });
-    }
-
-    if !install_root.is_empty() {
-        let _ = tokio::fs::remove_dir_all(&install_root).await;
-    }
-    sqlx::query("DELETE FROM host_model_installs WHERE install_id = $1")
-        .bind(install_id)
-        .execute(&ctx.pool)
-        .await?;
-    Ok(())
 }
