@@ -4,17 +4,16 @@ Handoff for continuing implementation in a future session.
 
 ## Status
 
-- **~46 / 65 tasks done** (~71 %)
-- **13 contract tests green** (4 spec-026 installed + 9 spec-026 search
-  incl. T-S9 installed-filter join) · 6 new US4-partial unit tests
-  (SamplingParams mapper byte-for-byte) · 172+ tests green total
+- **~55 / 65 tasks done** (~85 %)
+- **15 contract tests green** (4 installed + 9 search + 2 sampler-proof)
+  · 6 US4 unit tests (SamplingParams mapper byte-for-byte) · 172+ tests
+  green total · `target/sc-026-proof.json` emitted
 - **0 CRITICAL, 0 HIGH, 0 MEDIUM findings** against plan.md
-- MVP (US1 Downloaded filter) shipped end-to-end; US2 (New Session +
-  thread list fan-out), US3 (Choose Model picker + sidebar chip),
-  US5 (per-session param form) shipped on host REST. US4 partial
-  (mapper + byte-for-byte unit tests) landed; full CallRecorder proof
-  deferred until send_message handler exists. US6 (no-N+1) deferred
-  (single in-flight fetcher in practice).
+- **MERGE-GATE CLOSED**: US4 proof contract passes — hyperparameters
+  reach the InferenceBackend byte-for-byte (f32::to_bits() identity).
+- US1 (Downloaded filter), US2 (New Session), US3 (Choose Model picker +
+  chip), US4 (send_message + proof), US5 (param persistence) all
+  shipped. US6 (no-N+1) deferred (single in-flight fetcher in practice).
 
 ## Branch
 
@@ -32,6 +31,7 @@ Handoff for continuing implementation in a future session.
 | `cbdbaa6` | US5 — GenerationSettingsFormComponent + per-session persistence |
 | `9fa5761` | US4 partial — SamplingParams + pure mapper + 6 byte-for-byte tests |
 | `ec8e29d` | T022 + T030 — T-S9 installed-filter contract + a11y chip spec |
+| `a27a086` | US4 complete — send_message handler + CallRecorder + sc-026-proof.json |
 
 ## What's shipped
 
