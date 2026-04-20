@@ -1857,6 +1857,7 @@ dependencies = [
 name = "nexus-api"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "camino",
  "chrono",
@@ -1877,6 +1878,7 @@ dependencies = [
  "nexus-worker",
  "nexus-workflow",
  "regex-lite",
+ "reqwest",
  "rust-embed",
  "semver",
  "serde",
@@ -1959,12 +1961,14 @@ dependencies = [
  "nexus-events",
  "nexus-extension",
  "nexus-huggingface",
+ "nexus-models-store",
  "nexus-protocol",
  "nexus-run",
  "nexus-scheduler",
  "nexus-storage",
  "nexus-worker",
  "nexus-workflow",
+ "reqwest",
  "semver",
  "serde",
  "serde-saphyr",
@@ -2099,6 +2103,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "futures-util",
+ "nexus-huggingface",
  "nexus-protocol",
  "reqwest",
  "rstest",

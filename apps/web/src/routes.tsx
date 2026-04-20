@@ -48,6 +48,7 @@ export const router = createHashRouter([
       { path: "deployments/:deploymentId", Component: DeploymentDetailRoute },
       { path: "backends", Component: BackendsRoute },
       { path: "models", Component: ModelsRoute },
+      { path: "models-search", lazy: () => import("./views/models-search") },
       { path: "extensions", Component: ExtensionsGalleryRoute },
       { path: "extensions/:layoutId", Component: ExtensionLayoutRoute },
       { path: "runs", Component: RunsPlaceholderRoute },

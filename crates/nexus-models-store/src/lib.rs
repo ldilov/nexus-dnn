@@ -1,14 +1,20 @@
 #![forbid(unsafe_code)]
 
 pub mod blobs;
+pub mod capabilities;
 pub mod download;
+pub mod downloads;
 pub mod errors;
+pub mod ids;
 pub mod install;
 pub mod leases;
+pub mod model;
+pub mod normalize;
 pub mod provenance;
 pub mod quantization;
 pub mod reclaim;
 pub mod resolver;
+pub mod types;
 pub mod verify;
 
 pub use blobs::{FileManifestEntry, GcReport, gc_blobs, materialize_blob};

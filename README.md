@@ -46,7 +46,7 @@ nexus-dnn provides a developer-grade runtime that treats generative workflows as
 | `nexus-storage` | Metadata database (SQLite) with migration support |
 | `nexus-run` | Run engine orchestrating workflow execution |
 | `nexus-backend-runtimes` | Host-owned inference backend orchestration (llama.cpp, TensorRT-LLM): runtime-adapter lifecycle, channel allocation, spawn. After spec-018 the models-store, provenance, and deployment domains live in their own crates below. See [crate README](crates/nexus-backend-runtimes/README.md). |
-| `nexus-models-store` | Models store extracted from `nexus-backend-runtimes` (spec 018): install pipeline, blob dedup, lease budget, quantization matching, resolver, verify, layout, reclaim. |
+| `nexus-models-store` | Models store extracted from `nexus-backend-runtimes` (spec 018): install pipeline, blob dedup, lease budget, quantization matching, resolver, verify, layout, reclaim. **Spec 025** adds the universal model catalog layer: `normalize` (pure-function pipeline from HF → `ModelFamily`), `capabilities` (sealed-trait `BackendAdapter` + `CapabilityRegistry`), `downloads` (2-slot semaphore orchestrator, resumable `Range` transfers, pause/resume, startup rehydration, FR-086 install-mapping). See [crate README](crates/nexus-models-store/README.md). |
 | `nexus-provenance` | License resolution + Hugging Face metadata probe extracted from `nexus-backend-runtimes` (spec 018). |
 | `nexus-deployments` | Deployments domain (spec 018): named, append-only, reloadable execution-context snapshots over canonical workflows/recipes. Save / load / execute / validate / clone / export / import services. |
 | `nexus-huggingface` | Host-level Hugging Face capability — search, repo detail, resumable downloads |
@@ -88,6 +88,21 @@ nexus-dnn/
 ```
 
 ### Recent specs
+
+- [spec 025 — Models Search Refactor](specs/025-models-search-refactor/)
+  — Models Search page becomes a universal, format-aware, backend-aware
+  catalog. Five new artifact formats (`gguf` / `ggml` / `safetensors` /
+  `pytorch-bin` / `pth`), first-class GGUF quantization variants,
+  dependency-bearing bundles (VAE / text encoder / tokenizer),
+  capability-registry-driven backend filter (no hardcoded `llama.cpp`),
+  resumable downloads with a 2-slot semaphore cap, pause / resume,
+  startup rehydration, optional HF token with FR-114 re-queue on change,
+  FR-086 reverse-mapping from installed artifact → upstream identity.
+  New `/api/v1/model-store/{backends,search,models,downloads,settings/hf-token}`
+  surface. Legacy `/api/v1/huggingface/search` stays for one release with
+  deprecation headers. See [spec](specs/025-models-search-refactor/spec.md),
+  [plan](specs/025-models-search-refactor/plan.md), and
+  [tasks](specs/025-models-search-refactor/tasks.md).
 
 - [spec 024 — Local LLM Extension Rust Port](specs/024-local-llm-rust-port/)
   — Python `local-llm` worker replaced by a compiled Rust sidecar. Extension

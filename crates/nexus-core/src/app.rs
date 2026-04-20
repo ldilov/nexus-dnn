@@ -229,6 +229,41 @@ impl NexusApp {
             tokio::fs::create_dir_all(&paths.blobs_root).await.ok();
         }
 
+        let capability_registry = {
+            let mut reg = nexus_models_store::capabilities::CapabilityRegistry::new();
+            reg.register(Arc::new(
+                nexus_models_store::capabilities::LlamaCppAdapter::new(),
+            ));
+            Some(Arc::new(reg))
+        };
+
+        let download_sink_root = host_install_paths
+            .as_ref()
+            .map(|p| p.blobs_root.join("model-store-downloads"))
+            .unwrap_or_else(|| std::path::PathBuf::from("./model-store-downloads"));
+        if let Err(e) = tokio::fs::create_dir_all(&download_sink_root).await {
+            tracing::warn!(error = %e, path = ?download_sink_root, "failed to create download sink root");
+        }
+        let shared_pool = Arc::new(db.pool().clone());
+        let download_job_store = Arc::new(nexus_models_store::downloads::JobStore::new(
+            shared_pool.clone(),
+        ));
+        let install_map = nexus_models_store::downloads::InstallMap::new(shared_pool);
+        let hf_token_store =
+            nexus_models_store::downloads::TokenStore::new(std::env::var("HF_TOKEN").ok());
+        let download_orchestrator = Arc::new(
+            nexus_models_store::downloads::DownloadOrchestrator::new(
+                (*download_job_store).clone(),
+                install_map,
+                download_sink_root,
+                reqwest::Client::new(),
+                hf_token_store.clone(),
+            ),
+        );
+        if let Err(e) = download_orchestrator.recover_startup_state().await {
+            tracing::warn!(error = %e, "download orchestrator startup rehydration failed");
+        }
+
         let state = nexus_api::AppState {
             health_status_fn: Arc::new(move || {
                 serde_json::to_value(app_ref.health_status()).unwrap_or_default()
@@ -245,6 +280,10 @@ impl NexusApp {
             backend_adapter_registry,
             spawner,
             huggingface: Some(huggingface),
+            capability_registry,
+            download_job_store: Some(download_job_store),
+            download_orchestrator: Some(download_orchestrator),
+            hf_token_store: Some(hf_token_store),
             backend_event_bus,
             draft_materialize_map:
                 nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),

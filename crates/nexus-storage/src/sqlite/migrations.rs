@@ -79,6 +79,18 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StorageError> {
         true,
     )
     .await?;
+    execute_migration_statements(
+        pool,
+        include_str!("../../../../migrations/013_model_store_download_jobs.sql"),
+        false,
+    )
+    .await?;
+    execute_migration_statements(
+        pool,
+        include_str!("../../../../migrations/014_model_store_installed_artifacts.sql"),
+        false,
+    )
+    .await?;
     Ok(())
 }
 
