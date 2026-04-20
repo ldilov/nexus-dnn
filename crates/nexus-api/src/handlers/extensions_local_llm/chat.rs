@@ -8,6 +8,7 @@ use sqlx::{Row, SqlitePool};
 
 use crate::AppState;
 use crate::envelope::ApiResponse;
+use super::inference::{InferenceError, InferenceRequest};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SamplingParams {
@@ -101,6 +102,16 @@ pub struct ListThreadsParams {
 pub struct SetActiveModelBody {
     pub family_id: String,
     pub variant_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SendMessageBody {
+    pub content: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SendMessageResponse {
+    pub content: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -405,6 +416,91 @@ pub async fn set_active_model(
         }
         Ok(_) => get_active_model(State(state), Path(thread_id)).await,
         Err(e) => ApiResponse::<()>::internal(format!("update: {e}")).into_response(),
+    }
+}
+
+pub async fn send_message(
+    State(state): State<AppState>,
+    Path(thread_id): Path<String>,
+    Json(body): Json<SendMessageBody>,
+) -> Response {
+    let pool = state.db.pool();
+    if let Err(e) = ensure_schema(pool).await {
+        return ApiResponse::<()>::internal(format!("schema: {e}")).into_response();
+    }
+
+    let row = sqlx::query(
+        "SELECT generation_settings, active_model_family_id, active_model_variant_id
+         FROM ext_local_llm_chat_threads WHERE id = ?1",
+    )
+    .bind(&thread_id)
+    .fetch_optional(pool)
+    .await;
+    let row = match row {
+        Ok(Some(r)) => r,
+        Ok(None) => {
+            return ApiResponse::<()>::not_found(format!("thread: {thread_id}"))
+                .into_response();
+        }
+        Err(e) => return ApiResponse::<()>::internal(format!("select: {e}")).into_response(),
+    };
+
+    let family: Option<String> = row.try_get("active_model_family_id").ok().flatten();
+    let variant: Option<String> = row.try_get("active_model_variant_id").ok().flatten();
+    let (family, variant) = match (family, variant) {
+        (Some(f), Some(v)) => (f, v),
+        _ => {
+            return ApiResponse::<()>::bad_request("no_active_model".to_string())
+                .into_response();
+        }
+    };
+
+    let install_map = match state.install_map.as_ref() {
+        Some(m) => m,
+        None => {
+            return ApiResponse::<()>::internal("install_map unavailable".to_string())
+                .into_response();
+        }
+    };
+    let installed = install_map.list_all(500).await.unwrap_or_default();
+    let matched = installed.into_iter().find(|r| {
+        r.family_id == family && r.variant_id.as_deref() == Some(variant.as_str())
+    });
+    let binding = match matched {
+        Some(r) => r,
+        None => {
+            return (
+                StatusCode::GONE,
+                ApiResponse::<()>::bad_request("model_unavailable".to_string()),
+            )
+                .into_response();
+        }
+    };
+
+    let settings_json: Option<String> = row.try_get("generation_settings").unwrap_or(None);
+    let params = settings_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str::<GenerationParams>(s).ok())
+        .unwrap_or_default();
+
+    let req = InferenceRequest {
+        sampling: to_sampling_params(&params),
+        system_prompt: system_prompt_for_adapter(&params),
+        user_content: body.content,
+        model_path: std::path::PathBuf::from(&binding.filename),
+    };
+
+    match state.inference.generate(req).await {
+        Ok(resp) => ApiResponse::ok(SendMessageResponse { content: resp.content })
+            .into_response(),
+        Err(InferenceError::ModelUnavailable(msg)) => (
+            StatusCode::GONE,
+            ApiResponse::<()>::bad_request(msg),
+        )
+            .into_response(),
+        Err(InferenceError::Backend(msg)) => {
+            ApiResponse::<()>::internal(msg).into_response()
+        }
     }
 }
 

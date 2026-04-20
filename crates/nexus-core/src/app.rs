@@ -289,6 +289,9 @@ impl NexusApp {
             draft_materialize_map:
                 nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
             host_install_paths,
+            inference: Arc::new(
+                nexus_api::handlers::extensions_local_llm::inference::StubInferenceBackend,
+            ),
         };
 
         let router = nexus_api::create_router(state);

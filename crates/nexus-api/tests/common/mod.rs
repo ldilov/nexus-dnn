@@ -199,6 +199,9 @@ pub async fn harness_with_extra(
         draft_materialize_map:
             nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
         host_install_paths: None,
+        inference: Arc::new(
+            nexus_api::handlers::extensions_local_llm::inference::StubInferenceBackend,
+        ),
     };
 
     TestHarness {
