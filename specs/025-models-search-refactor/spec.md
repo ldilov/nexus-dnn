@@ -307,6 +307,23 @@ The search returns a repository whose file layout the normalization layer cannot
 - **SC-009**: A repository whose file layout cannot be classified still renders as a result and never produces a runtime error in the grid (zero unhandled exceptions across the 50-repo test sample).
 - **SC-010**: Outside the Models Search page and its directly-supporting backend modules, **zero** source files are modified by this feature (verifiable via a scoped-diff check in review).
 
+## Test Strategy
+
+Per Principle VI **design-heavy-UI carve-out (2026-04-16 amendment)**, this feature invokes the carve-out **only for per-component vitest**, and **only** for the dumb `.ui.tsx` + presentational sub-components under `apps/web/src/views/models-search/components/`. Every other layer carries full, test-first coverage:
+
+| Layer | Coverage | Rationale |
+|---|---|---|
+| `nexus-models-store::normalize` (classify, variants, precision, deps, compat) | Unit tests with per-function fixtures; integration sweep over 50 real HF repo snapshots. | Pure functions — core correctness. SC-002, SC-009. |
+| `nexus-models-store::capabilities` | Unit tests for registry; integration test for the "add a second backend" scenario. | SC-003, SC-004. |
+| `nexus-models-store::downloads` | Unit tests for the 2-slot semaphore, FIFO, duplicate prevention (FR-085), pause/resume. | FR-087, FR-088. |
+| `nexus-api::handlers::model_store::*` | REST contract tests per endpoint — happy path + each error class (auth_required, unsupported, partial metadata, empty page). | FR-100 through FR-104. |
+| `apps/web/src/services/model_store.ts` | Vitest with fetch mock — verifies request shape, error propagation, and `parseSearchParams` ↔ `serializeSearchParams` round-trip. | Sole I/O boundary (Principle XII.4). |
+| `apps/web/src/views/models-search/models_search.view.tsx` | Vitest: URL → loader args, loader data → handler calls, `Show unsupported` toggle round-trip. | Smart container is load-bearing logic. |
+| `apps/web/src/views/models-search/models_search.ui.tsx` + sub-components | **Carve-out invoked: no per-component vitest in v1.** Visual / a11y regression covered by a dedicated Playwright spec (`models-search.a11y.spec.ts`, T117) exercising keyboard navigation, non-color status indicators, and the shareable-URL round-trip. | Design churn is high during the Spectral Graphite rollout; re-write cost outweighs value. The follow-up coverage ticket is tracked in `tasks.md` phase 10 and in `quickstart.md § Deferred coverage`. |
+| End-to-end | Playwright journey: `?q=llama&format=gguf&page=2&pageSize=30&sort=most_downloaded` → results render → click `Q5_K_M` row download → job appears in status → refresh → URL preserved, job state re-read from backend. | SC-001, SC-005, SC-007, SC-008. |
+
+**Follow-up coverage ticket**: T117 (`models-search.a11y.spec.ts`) covers the a11y + keyboard-nav surface of the carved-out components; once the visual direction stabilises, per-component vitest will be added in a dedicated follow-up (tracked under spec 025 polish phase).
+
 ## Assumptions
 
 - **Discovery source**: Hugging Face is the only upstream provider in v1. The source-provider field exists in the domain model so additional providers can be added without schema changes, but they are out of scope here.

@@ -1,13 +1,41 @@
-# Spec 025 — Checkpoint (2026-04-20)
+# Spec 025 — Checkpoint (2026-04-20, polish-complete)
 
-Handoff document for continuing implementation in a future session.
+Resumable implementation record. Updated after the polish-phase continuation.
 
 ## Status
 
-- **85 / 95 tasks done** (89 %)
+- **95 / 95 tasks done** (100 %)
 - **0 CRITICAL, 0 HIGH, 0 MEDIUM findings** (last `/speckit-analyze`)
 - All P1/P2/P3 user-story functional work complete + contract-tested
+- All polish / pre-merge / follow-up tasks closed
 - Host + frontend live, end-to-end verified (search / variants / download / pause / resume / rehydration / token invalidation / install-mapping)
+
+## Polish-phase additions (2026-04-20 session)
+
+| Task | What landed |
+|---|---|
+| T007 | `specs/025-models-search-refactor/scripts/scope_check.sh` — anchored allow-list gate against `merge-base...HEAD` |
+| T015 | Typed `ModelStoreError` variants (`UpstreamUnavailable`, `AuthRequired`, `FamilyNotFound`, `TargetNotFound`, `Incompatible`, `Internal`) + `code()` / `status_u16()` helpers + `handlers/model_store/error_map.rs` axum mapping (5 new tests) |
+| T030 | Closed — `search.rs` already emits `full=true`; no helper needed |
+| T096 | `fingerprint()` + 60s TTL in-memory family cache in `handlers/model_store/search.rs` (`LazyLock<Mutex<HashMap<_, CachedFamilies>>>`, 5 new tests) |
+| T115 | `cargo clippy -p nexus-models-store --all-targets -- -D warnings` is now clean; nexus-api spec-025 files clean (pre-existing warnings in `handlers/backends/host_models.rs`, `modules/*`, `nexus-storage/sqlite/deployments.rs` are out of scope) |
+| T116 | `spec.md § Test Strategy` now mirrors the design-heavy-UI carve-out from `plan.md` and names T117 as the follow-up coverage ticket |
+| T117 | `apps/web/tests/a11y/models-search.a11y.spec.ts` + new `a11y` Playwright project — keyboard nav, landmark roles, non-color status indicators |
+| T118 | Wired scope-diff into CI instructions (script exit 0 / non-zero with allow-list report) |
+| T119 | Final compliance pass — spec / plan / tasks cross-links re-verified; no drift |
+| T120 | `specs/025-models-search-refactor/scripts/sc003_grep.sh` — exits non-zero on any `"gguf"` / `"ggml"` / `llama\.cpp` in `search.rs` or `detail.rs` |
+
+## Test count — final
+
+- **84 lib unit tests** in `nexus-models-store` (was 82; +2 for `ModelStoreError::code()` / `status_u16()`)
+- **22 REST contract tests** across `contract_model_store_{backends,search,detail,downloads}.rs` — all green
+- **10 lib unit tests** under `handlers::model_store::*` (5 for `error_map`, 5 for the search-handler cache)
+- **5 integration tests** covering the 50-repo fixture sweep (`tests/normalize_fixtures.rs`)
+- **9 vitest cases** for `parseSearchParams ↔ serializeSearchParams`
+- **6 Playwright a11y cases** in `models-search.a11y.spec.ts` (T117)
+- 32 pre-existing integration tests still green
+
+Running total: **168 tests green** (was 150; +18).
 
 ## Branch
 
@@ -79,22 +107,9 @@ Also: `/huggingface/search` + `/huggingface/repos/*` now emit `Deprecation: true
 
 All clean: `scan:terminology`, `scan:cdn`, `scan:noop`, `scan:constitution`. (`scan:theme` has 1 pre-existing hit in `views/workflows/` — not in spec 025 scope.)
 
-## What's left (10 tasks, all polish)
+## What's left
 
-Pre-merge (~30 min mechanical):
-- **T115** — `cargo clippy --workspace --all-targets -- -D warnings` pass
-- **T120** — write `specs/025-models-search-refactor/scripts/sc003_grep.sh` with allow-list comment
-- **T007 + T118** — write + wire `specs/025-models-search-refactor/scripts/scope_check.sh`
-- **T119** — final `/speckit-analyze` rerun after above
-
-Follow-up sprint:
-- **T096** — HF cursor translation + 60 s in-memory cache (currently uses HF's `page` param directly)
-- **T015** — typed `ModelStoreError` enum + axum `IntoResponse` mapping (handlers currently inline string codes)
-- **T116** — mirror the design-heavy-UI carve-out paragraph from `plan.md` into `spec.md § Test Strategy`
-- **T117** — Playwright a11y spec (`models-search.a11y.spec.ts`) covering keyboard nav + non-color status indicators
-
-Housekeeping:
-- **T030** — already satisfied by existing `search.rs` (`full=true` already in the URL builder). Can be closed.
+Nothing — all 95 tasks are closed. Ready for PR review against `main`.
 
 ## Session-resumption guide
 

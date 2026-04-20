@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 /// Recognised artifact container formats. Unknown filenames fall back to
 /// `Unknown` (FR-014) — the system never panics on a surprising extension.
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Format {
     Gguf,
@@ -18,20 +18,15 @@ pub enum Format {
     Safetensors,
     PytorchBin,
     Pth,
+    #[default]
     #[serde(other)]
     Unknown,
-}
-
-impl Default for Format {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 /// Numeric precision reported for an artifact. GGUF artifacts report
 /// `Quantized` (the quantization label lives on the `Variant`).
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Precision {
     Fp32,
@@ -39,39 +34,29 @@ pub enum Precision {
     Bf16,
     Int8,
     Quantized,
+    #[default]
     #[serde(other)]
     Unknown,
-}
-
-impl Default for Precision {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 /// Where the reported [`Precision`] came from — critical for honest UI
 /// copy (FR-032): inferred values must never be rendered as if
 /// authoritative.
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PrecisionSource {
     Explicit,
     Inferred,
+    #[default]
     #[serde(other)]
     Unknown,
-}
-
-impl Default for PrecisionSource {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 /// Coarse-grained model domain — used both for filtering (FR-003) and
 /// for icon selection on the card.
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Modality {
     Llm,
@@ -80,20 +65,15 @@ pub enum Modality {
     Audio,
     Upscaler,
     Embedding,
+    #[default]
     #[serde(other)]
     Other,
-}
-
-impl Default for Modality {
-    fn default() -> Self {
-        Self::Other
-    }
 }
 
 /// The role a concrete artifact plays inside a [`ModelFamily`] — primary
 /// weight, VAE, text encoder, tokenizer, etc. (FR-040).
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DependencyRole {
     Primary,
@@ -103,80 +83,61 @@ pub enum DependencyRole {
     Controlnet,
     Lora,
     Scheduler,
+    #[default]
     #[serde(other)]
     Other,
-}
-
-impl Default for DependencyRole {
-    fn default() -> Self {
-        Self::Other
-    }
 }
 
 /// Whether a declared dependency must be downloaded for the model to
 /// function (FR-041).
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Requirement {
     Required,
+    #[default]
     #[serde(other)]
     Optional,
-}
-
-impl Default for Requirement {
-    fn default() -> Self {
-        Self::Optional
-    }
 }
 
 /// Variant kind — a GGUF quantization, a precision tier, a separate
 /// checkpoint, or anything else (FR-020).
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VariantType {
     Quantization,
     Precision,
     Checkpoint,
+    #[default]
     #[serde(other)]
     Other,
-}
-
-impl Default for VariantType {
-    fn default() -> Self {
-        Self::Other
-    }
 }
 
 /// Final compatibility classification for a family (FR-060). The single
 /// owner of this computation is [`crate::normalize::compat`]; the frontend
 /// only renders the enum.
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CompatibilityStatus {
     Compatible,
     CompatibleWithRequirements,
     DownloadableButNotRunnable,
     Unsupported,
+    #[default]
     #[serde(other)]
     Unknown,
-}
-
-impl Default for CompatibilityStatus {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 /// Download-job state machine (FR-082). `AuthRequired` is the recoverable
 /// state entered when the upstream returns 401/403 — setting the HF
 /// token flips matching jobs back to `Queued` (FR-114).
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DownloadState {
+    #[default]
     NotDownloaded,
     Queued,
     Downloading,
