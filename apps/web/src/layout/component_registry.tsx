@@ -12,6 +12,7 @@ import { MetricsDashboard } from "../components/layout/metrics_dashboard";
 import { LayoutStatusBar } from "../components/layout/status_bar";
 import { ActionBar } from "../components/layout/action_bar";
 import { ListComponent } from "../components/layout/list_component";
+import { ThreadListComponent } from "../components/layout/thread_list";
 import { DetailView } from "../components/layout/detail_view";
 import { EmptyState } from "../components/layout/empty_state";
 import { CodeBlock } from "../components/layout/code_block";
@@ -165,10 +166,18 @@ const registry: Record<string, ComponentRenderer> = {
 
   list: (node, children) => {
     const props = toProps(node);
+    const itemType = props.itemType as string | undefined;
+    if (itemType === "thread") {
+      return (
+        <ThreadListComponent
+          emptyMessage={props.emptyMessage as string | undefined}
+        />
+      );
+    }
     return (
       <ListComponent
         items={props.items as { id: string; label: string; description?: string }[] | undefined}
-        itemType={props.itemType as string | undefined}
+        itemType={itemType}
         emptyMessage={props.emptyMessage as string | undefined}
         selectable={props.selectable as boolean | undefined}
       >
