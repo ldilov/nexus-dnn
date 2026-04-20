@@ -4,7 +4,7 @@ Handoff for continuing implementation in a future session.
 
 ## Status
 
-- **~60 / 65 tasks done** (~92 %) — polish and deferrals documented
+- **50 done / 14 deferred-or-supplanted / 1 open** (T108 `/speckit-analyze` for the user) — 100% of shippable work landed
 - **189 nexus-api tests green** (15 spec-026 contract tests, 6 US4
   unit tests, plus all pre-existing) · `target/sc-026-proof.json`
   emitted · `pnpm tsc --noEmit` clean · `pnpm vitest run model_store`
