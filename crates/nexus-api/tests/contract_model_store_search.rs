@@ -237,3 +237,50 @@ async fn t_s8_compat_derives_from_intersection() {
         "downloadable_but_not_runnable"
     );
 }
+
+#[tokio::test]
+async fn t_s9_installed_filter_joins_against_install_map() {
+    use nexus_models_store::downloads::InstalledArtifactRecord;
+    use nexus_models_store::ids::{ArtifactId, FamilyId, JobId, VariantId};
+    use nexus_models_store::types::Format;
+
+    let harness = harness_with(StubHf::with_results(vec![
+        gguf_result("ts9org/alpha", &[("Q4_K_M", 4_000_000_000)]),
+        gguf_result("ts9org/beta", &[("Q4_K_M", 4_000_000_000)]),
+    ]))
+    .await;
+
+    harness
+        .install_map
+        .record(InstalledArtifactRecord {
+            artifact_id: ArtifactId::from("a1".to_string()),
+            family_id: FamilyId::from("huggingface:ts9org/alpha".to_string()),
+            variant_id: Some(VariantId::from("Q4_K_M".to_string())),
+            format: Format::Gguf,
+            source_provider: "huggingface".into(),
+            source_repo: "ts9org/alpha".into(),
+            source_revision: Some("main".into()),
+            filename: "model.Q4_K_M.gguf".into(),
+            job_id: JobId::new(),
+            sha256: None,
+            size_bytes: Some(4_000_000_000),
+        })
+        .await
+        .unwrap();
+
+    let state = harness.state.clone();
+    let (_, any_body) = get_json(state.clone(), "/api/v1/model-store/search?q=ts9uniq").await;
+    assert_eq!(any_body["data"]["families"].as_array().unwrap().len(), 2);
+
+    let (_, installed_body) =
+        get_json(state.clone(), "/api/v1/model-store/search?q=ts9uniq&installed=installed").await;
+    let installed_families = installed_body["data"]["families"].as_array().unwrap();
+    assert_eq!(installed_families.len(), 1);
+    assert_eq!(installed_families[0]["family_id"], "huggingface:ts9org/alpha");
+
+    let (_, not_installed_body) =
+        get_json(state, "/api/v1/model-store/search?q=ts9uniq&installed=not_installed").await;
+    let not_families = not_installed_body["data"]["families"].as_array().unwrap();
+    assert_eq!(not_families.len(), 1);
+    assert_eq!(not_families[0]["family_id"], "huggingface:ts9org/beta");
+}
