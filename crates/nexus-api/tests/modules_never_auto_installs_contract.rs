@@ -46,6 +46,9 @@ async fn build_state() -> AppState {
         event_bus.clone(),
         scheduler.clone(),
     ));
+    let backend_event_bus =
+        Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(1024));
+
     AppState {
         health_status_fn: Arc::new(|| serde_json::json!({ "status": "ok" })),
         db,
@@ -64,9 +67,8 @@ async fn build_state() -> AppState {
         download_job_store: None,
         download_orchestrator: None,
         hf_token_store: None,
-        backend_event_bus: Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(
-            1024,
-        )),
+        backend_event_publisher: backend_event_bus.clone(),
+        backend_event_bus,
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
         host_install_paths: None,
         install_map: None,

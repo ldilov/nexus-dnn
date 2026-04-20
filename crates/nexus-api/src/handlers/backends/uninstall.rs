@@ -42,7 +42,7 @@ pub async fn uninstall_runtime(
     {
         drain_leases(
             spawner,
-            &state.backend_event_bus,
+            &state.backend_event_publisher,
             &install_id,
             &row.family,
             &live_leases,
@@ -115,12 +115,12 @@ fn block_if_dependents(
 
 async fn drain_leases(
     spawner: &Arc<nexus_backend_runtimes::spawn::Spawner>,
-    bus: &Arc<nexus_backend_runtimes::events::BroadcastPublisher>,
+    bus: &nexus_backend_runtimes::events::SharedPublisher,
     install_id: &str,
     family: &str,
     live_leases: &[String],
 ) {
-    use nexus_backend_runtimes::events::{BackendEvent, EventPublisher};
+    use nexus_backend_runtimes::events::BackendEvent;
     let drains = live_leases
         .iter()
         .map(|lease_id| async move { (lease_id.clone(), spawner.shutdown(lease_id).await) });
