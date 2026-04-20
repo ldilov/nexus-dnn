@@ -14,6 +14,7 @@ import { ActionBar } from "../components/layout/action_bar";
 import { ListComponent } from "../components/layout/list_component";
 import { ThreadListComponent } from "../components/layout/thread_list";
 import { ModelSelectorComponent } from "../components/layout/model_selector";
+import { GenerationSettingsFormComponent } from "../components/layout/generation_settings_form";
 import { DetailView } from "../components/layout/detail_view";
 import { EmptyState } from "../components/layout/empty_state";
 import { CodeBlock } from "../components/layout/code_block";
@@ -155,6 +156,8 @@ const registry: Record<string, ComponentRenderer> = {
   },
 
   model_selector: (_node, _children) => <ModelSelectorComponent />,
+
+  generation_settings_form: (_node, _children) => <GenerationSettingsFormComponent />,
 
   action_bar: (node, children) => {
     const props = toProps(node);
