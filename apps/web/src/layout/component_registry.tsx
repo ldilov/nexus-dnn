@@ -13,6 +13,7 @@ import { LayoutStatusBar } from "../components/layout/status_bar";
 import { ActionBar } from "../components/layout/action_bar";
 import { ListComponent } from "../components/layout/list_component";
 import { ThreadListComponent } from "../components/layout/thread_list";
+import { ModelSelectorComponent } from "../components/layout/model_selector";
 import { DetailView } from "../components/layout/detail_view";
 import { EmptyState } from "../components/layout/empty_state";
 import { CodeBlock } from "../components/layout/code_block";
@@ -152,6 +153,8 @@ const registry: Record<string, ComponentRenderer> = {
       </LayoutStatusBar>
     );
   },
+
+  model_selector: (_node, _children) => <ModelSelectorComponent />,
 
   action_bar: (node, children) => {
     const props = toProps(node);
