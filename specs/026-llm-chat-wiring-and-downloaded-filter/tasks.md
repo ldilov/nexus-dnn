@@ -103,11 +103,11 @@ description: "Task list for 026-llm-chat-wiring-and-downloaded-filter"
 
 ### Implementation for User Story 2
 
-- [ ] T042 [US2] Implement `handle_new_thread` in `extensions/builtin/local-llm/worker/methods/chat.py` — inserts via `session_manager.create_thread(title=…)`; default title `Session {N}` where N = next integer for the current calendar day.
-- [ ] T043 [US2] Extend `extensions/builtin/local-llm/worker/chat/session_manager.py::create_thread` (new method; existing `list_threads` stays intact) to insert + return the hydrated `Thread` DTO.
-- [ ] T044 [US2] Register `llm.new_thread` + `llm.list_threads` in the `chat.py` handler table; confirm `methods/__init__.py` picks them up.
+- [X] T042 [US2] Implement `handle_new_thread` in `extensions/builtin/local-llm/worker/methods/chat.py` — inserts via `session_manager.create_thread(title=…)`; default title `Session {N}` where N = next integer for the current calendar day.
+- [X] T043 [US2] Extend `extensions/builtin/local-llm/worker/chat/session_manager.py::create_thread` (new method; existing `list_threads` stays intact) to insert + return the hydrated `Thread` DTO.
+- [X] T044 [US2] Register `llm.new_thread` + `llm.list_threads` in the `chat.py` handler table; confirm `methods/__init__.py` picks them up.
 - [ ] T045 [US2] Emit `session.state.changed` post-commit via the existing event bus; reuse the pattern from `llm.update_profile` in `methods/profile.py`.
-- [ ] T046 [P] [US2] No frontend change required — the existing `action_bar` in `extensions/builtin/local-llm/ui/layouts/chat.yaml` already calls `llm.new_thread`. Only dataSource verification: `thread_list.events` already includes `session.state.changed`.
+- [X] T046 [P] [US2] No frontend change required — the existing `action_bar` in `extensions/builtin/local-llm/ui/layouts/chat.yaml` already calls `llm.new_thread`. Only dataSource verification: `thread_list.events` already includes `session.state.changed`.
 
 **Checkpoint**: Pytest suite green; manual click of **+ New Session** creates and selects a thread; reload preserves selection.
 

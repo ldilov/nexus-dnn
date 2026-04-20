@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Button } from "../button";
+import { dispatchLayoutAction } from "../../layout/action_dispatch";
 import * as styles from "./layout_styles.css";
 
 type ActionDef = {
@@ -25,6 +26,11 @@ export function ActionBar({ actions = [], children }: ActionBarProps) {
           size="sm"
           disabled={action.disabled}
           data-action={action.action}
+          onClick={() => {
+            if (action.action) {
+              void dispatchLayoutAction(action.action);
+            }
+          }}
         >
           {action.label}
         </Button>

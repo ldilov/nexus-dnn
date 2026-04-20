@@ -5,6 +5,7 @@ pub mod deployments;
 pub mod errors;
 pub mod extensions;
 pub mod extensions_install;
+pub mod extensions_local_llm;
 pub mod health;
 pub mod huggingface;
 pub mod metrics;
