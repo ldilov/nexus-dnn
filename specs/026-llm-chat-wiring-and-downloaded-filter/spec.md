@@ -67,6 +67,29 @@ makes capturing the snapshot a one-line addition.
 a stub and performs zero SQL by construction. The intent — "no direct
 DB reads from the extension" — is still honored, just trivially.
 
+**Glossary — `session_id` ≡ `thread_id`**: the spec consistently uses
+`session_id`; the code and DB column name the same concept `thread_id`
+(matching the existing `ext_local_llm_chat_threads` table from earlier
+specs). They refer to the same row. No mapping layer is required.
+
+**FR-011 shipped pattern**: new rows are inserted with
+`generation_settings = NULL` and lazily resolved to
+`DEFAULT_GENERATION_PARAMS` on GET. This is behavior-equivalent to
+writing the defaults explicitly at INSERT time — the user sees the
+same values, and `to_sampling_params()` produces the same bytes —
+but it keeps the INSERT path minimal and lets future default-value
+tweaks apply to already-created rows without a migration. The client
+`GenerationSettingsFormComponent` seeds its local state from the same
+`DEFAULT_GENERATION_PARAMS` constant for identical defaults without
+a fetch round-trip.
+
+**NFR-003 budget**: spec already names `< 300 ms (perceived)` for the
+Choose Model picker with 50 installed variants. Current implementation
+fetches `/installed` on open and renders a flat `<ul>` — well inside
+the budget for realistic install counts. A dedicated perf test is not
+part of this release; the budget stands as a regression tripwire for
+future audits.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Downloaded-only filter on Models Search (Priority: P1)

@@ -66,9 +66,14 @@ Expected: each slider move fires a debounced
 1. Type "ping" in the composer.
 2. Click Send.
 
-Expected:
-- Response streams up to 16 tokens and stops (max_tokens budget).
-- Message persisted with `params_snapshot` matching what you just set.
+Expected (current release, stub backend):
+- Response returns a single `{ content: "hello" }` payload (deterministic
+  stub from `StubInferenceBackend`).
+- Recorded `SamplerCall` carries every hyperparameter the user set —
+  verified by the `chat_hyperparameters_reach_llamacpp` proof test.
+- Token streaming + `messages.params_snapshot` persistence are
+  deferred to the follow-up spec that wires real llama.cpp inference
+  and a `messages` table.
 
 ## 7. Verify the proof
 
