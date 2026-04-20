@@ -41,7 +41,6 @@ async function newLocalLlmThread(): Promise<void> {
 
 function openModelPicker(): void {
   window.dispatchEvent(new CustomEvent("local-llm/model-picker:open"));
-  toast.message("Choose Model — picker wiring coming in US3");
 }
 
 export async function dispatchLayoutAction(action: string): Promise<void> {
