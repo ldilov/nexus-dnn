@@ -237,6 +237,24 @@ The `local-llm` extension was Rust-ported in spec 024 before this spec started �
 
 ---
 
+## Phase 10: Post-analyze polish (2026-04-20 `/speckit-analyze` follow-ups)
+
+**Purpose**: Address MEDIUM findings surfaced by `/speckit-analyze` on 2026-04-20. All HIGH findings (C1, C2, C3) were resolved in commit `08d9c35`.
+
+- [ ] T110 [A1] Define a concrete budget for NFR-003 in `specs/026-llm-chat-wiring-and-downloaded-filter/spec.md` — replace "reasonable time" with a numeric target (e.g., "ModelPicker list render p95 < 200 ms with 50 installed variants") or explicitly drop NFR-003 as unmeasurable.
+- [ ] T111 [I1] Add a one-line glossary note to `specs/026-llm-chat-wiring-and-downloaded-filter/spec.md` declaring `session_id` (spec wording) and `thread_id` (code + DB column) are the same concept. Prevents terminology drift findings on future audits.
+- [ ] T112 [U1] Amend FR-011 in `specs/026-llm-chat-wiring-and-downloaded-filter/spec.md` to acknowledge the shipped pattern: `generation_settings = NULL` on INSERT, lazily resolved to `DEFAULT_GENERATION_PARAMS` on GET — behavior-equivalent to literal initialization with no divergent code paths.
+- [ ] T113 [C4] [P] Author `apps/web/tests/smoke/local-chat-keyboard-flow.smoke.spec.ts` — Playwright test for SC-007: Tab to `+ New Session`, Enter; Tab to the model-selector chip, Enter; ArrowDown through the picker; Enter to bind. Must guard with `skip()` if `/api/v1/extensions/local-llm/chat/threads` responds with HTML (host not running).
+- [ ] T114 [C5] [P] Author `apps/web/tests/smoke/new-session-persistence.smoke.spec.ts` — Playwright test for SC-003: two clicks on `+ New Session`, assert `[role="listbox"]` has two `[role="option"]` rows; reload; assert both still present. Same host-availability skip guard.
+- [ ] T115 [C6] Add `specs/026-llm-chat-wiring-and-downloaded-filter/scripts/no_path_leak_check.sh` — grep for absolute paths (`/home/`, `/Users/`, `C:\\`, `D:\\`) in any error-response format string under `crates/nexus-api/src/handlers/extensions_local_llm/`. Exits non-zero on any hit. Satisfies NFR-004.
+- [ ] T116 [L1] [P] Update `specs/026-llm-chat-wiring-and-downloaded-filter/quickstart.md` — the "see stream" language is aspirational; current `send_message` returns a single `{content}` response. Either drop the phrase or mark streaming as a future extension.
+- [ ] T117 [L2] Remove or collapse the SC-004 row now that it's vacuous per the 2026-04-20 correction block (worker method is a `NotImplemented` stub that performs zero SQL by construction).
+- [ ] T118 Re-run `/speckit-analyze` and confirm A1, I1, U1, C4, C5, C6, L1, L2 all drop to zero findings.
+
+**Checkpoint**: Phase 10 closes with zero MEDIUM findings. T108 can then close cleanly.
+
+---
+
 ## Dependencies
 
 | Phase | Depends on |
@@ -284,5 +302,6 @@ The `local-llm` extension was Rust-ported in spec 024 before this spec started �
 - Phase 7 US5 (P2): **3 tasks** (T080–T082)
 - Phase 8 US6 (P3): **3 tasks** (T090–T092)
 - Phase 9 Polish: **9 tasks** (T100–T108)
+- Phase 10 Post-analyze polish: **9 tasks** (T110–T118)
 
-**Total: 65 tasks.**
+**Total: 74 tasks** (65 original + 9 post-analyze).
