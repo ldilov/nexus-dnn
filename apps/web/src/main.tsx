@@ -6,6 +6,7 @@ import { Toaster } from "sonner";
 import "./theme/global.css";
 import { darkTheme } from "./theme/dark.css";
 import { router } from "./routes";
+import { ModelPicker } from "./components/layout/model_picker";
 
 const root = document.getElementById("root")!;
 root.classList.add(darkTheme);
@@ -19,6 +20,7 @@ createRoot(root).render(
       }}
     >
       <RouterProvider router={router} />
+      <ModelPicker />
       <Toaster
         theme="dark"
         position="bottom-right"
