@@ -18,6 +18,50 @@ export function fetchActiveModel(
   );
 }
 
+export interface GenerationParams {
+  temperature: number;
+  top_p: number;
+  top_k: number;
+  max_tokens: number;
+  repeat_penalty: number;
+  system_prompt: string;
+}
+
+export const DEFAULT_GENERATION_PARAMS: GenerationParams = {
+  temperature: 0.8,
+  top_p: 0.95,
+  top_k: 40,
+  max_tokens: 4096,
+  repeat_penalty: 1.1,
+  system_prompt: "You are a helpful assistant.",
+};
+
+export function fetchGenerationSettings(
+  threadId: string,
+  signal?: AbortSignal,
+): Promise<GenerationParams> {
+  return apiFetch<GenerationParams>(
+    `/extensions/local-llm/chat/threads/${encodeURIComponent(threadId)}/generation_settings`,
+    { signal },
+  );
+}
+
+export function setGenerationSettings(
+  threadId: string,
+  params: GenerationParams,
+  signal?: AbortSignal,
+): Promise<GenerationParams> {
+  return apiFetch<GenerationParams>(
+    `/extensions/local-llm/chat/threads/${encodeURIComponent(threadId)}/generation_settings`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+      signal,
+    },
+  );
+}
+
 export function setActiveModel(
   threadId: string,
   familyId: string,
