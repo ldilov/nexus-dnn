@@ -279,6 +279,10 @@ pub fn build(state: AppState) -> Router {
                 .put(handlers::extensions_local_llm::chat::set_active_model),
         )
         .route(
+            "/extensions/local-llm/chat/threads/{thread_id}/messages",
+            post(handlers::extensions_local_llm::chat::send_message),
+        )
+        .route(
             "/model-store/search",
             get(handlers::model_store::search::search),
         )
