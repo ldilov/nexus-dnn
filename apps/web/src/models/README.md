@@ -14,3 +14,11 @@ from `apps/web/src/layout/component_registry.tsx` to power the
 
 Do not add new files here — put them under `views/<screen>/components/`
 per Principle XII.
+
+## Listing installed models (spec 026)
+
+The canonical way to answer "what's on disk?" is the Downloaded filter
+chip on `/models` — not this panel. `GET /api/v1/model-store/installed`
+returns the flat roll-up (one row per installed artifact); the search
+endpoint's `installed={installed,not_installed,any}` query param joins
+against that same index.
