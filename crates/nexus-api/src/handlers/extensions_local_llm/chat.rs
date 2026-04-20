@@ -9,6 +9,34 @@ use sqlx::{Row, SqlitePool};
 use crate::AppState;
 use crate::envelope::ApiResponse;
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SamplingParams {
+    pub temperature: f32,
+    pub top_p: f32,
+    pub top_k: u32,
+    pub max_tokens: u32,
+    pub repeat_penalty: f32,
+}
+
+pub fn to_sampling_params(p: &GenerationParams) -> SamplingParams {
+    SamplingParams {
+        temperature: p.temperature,
+        top_p: p.top_p,
+        top_k: p.top_k,
+        max_tokens: p.max_tokens,
+        repeat_penalty: p.repeat_penalty,
+    }
+}
+
+pub fn system_prompt_for_adapter(p: &GenerationParams) -> Option<String> {
+    let trimmed = p.system_prompt.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(p.system_prompt.clone())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenerationParams {
     pub temperature: f32,
@@ -377,5 +405,75 @@ pub async fn set_active_model(
         }
         Ok(_) => get_active_model(State(state), Path(thread_id)).await,
         Err(e) => ApiResponse::<()>::internal(format!("update: {e}")).into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn params() -> GenerationParams {
+        GenerationParams {
+            temperature: 1.7,
+            top_p: 0.9,
+            top_k: 40,
+            max_tokens: 16,
+            repeat_penalty: 1.1,
+            system_prompt: "You are a helpful assistant.".into(),
+        }
+    }
+
+    #[test]
+    fn sampling_params_preserve_all_numerics_byte_for_byte() {
+        let p = params();
+        let s = to_sampling_params(&p);
+        assert_eq!(s.temperature.to_bits(), 1.7f32.to_bits());
+        assert_eq!(s.top_p.to_bits(), 0.9f32.to_bits());
+        assert_eq!(s.top_k, 40);
+        assert_eq!(s.max_tokens, 16);
+        assert_eq!(s.repeat_penalty.to_bits(), 1.1f32.to_bits());
+    }
+
+    #[test]
+    fn mapper_is_pure_no_mutation_of_input() {
+        let p = params();
+        let before = serde_json::to_string(&p).unwrap();
+        let _ = to_sampling_params(&p);
+        let after = serde_json::to_string(&p).unwrap();
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn system_prompt_non_empty_passes_through() {
+        let p = params();
+        assert_eq!(
+            system_prompt_for_adapter(&p).as_deref(),
+            Some("You are a helpful assistant."),
+        );
+    }
+
+    #[test]
+    fn system_prompt_empty_becomes_none() {
+        let mut p = params();
+        p.system_prompt = "".into();
+        assert_eq!(system_prompt_for_adapter(&p), None);
+    }
+
+    #[test]
+    fn system_prompt_whitespace_only_becomes_none() {
+        let mut p = params();
+        p.system_prompt = "   \n\t  ".into();
+        assert_eq!(system_prompt_for_adapter(&p), None);
+    }
+
+    #[test]
+    fn default_params_round_trip_through_mapper() {
+        let p = GenerationParams::default();
+        let s = to_sampling_params(&p);
+        assert_eq!(s.temperature.to_bits(), 0.8f32.to_bits());
+        assert_eq!(s.top_p.to_bits(), 0.95f32.to_bits());
+        assert_eq!(s.top_k, 40);
+        assert_eq!(s.max_tokens, 4096);
+        assert_eq!(s.repeat_penalty.to_bits(), 1.1f32.to_bits());
     }
 }
