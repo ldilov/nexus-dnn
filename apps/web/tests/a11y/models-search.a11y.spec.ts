@@ -64,6 +64,28 @@ test.describe("Models Search — accessibility + keyboard nav", () => {
     }
   });
 
+  test("Downloaded chip cycles state via Enter and preserves non-color label", async ({
+    page,
+  }) => {
+    await gotoModelsSearch(page);
+
+    const chip = page.getByRole("button", { name: /^filter: downloaded/i });
+    await expect(chip).toBeVisible();
+    const initialPressed = await chip.getAttribute("aria-pressed");
+    expect(initialPressed).toBe("false");
+
+    await chip.focus();
+    await page.keyboard.press("Enter");
+    const afterOne = await chip.getAttribute("aria-pressed");
+    expect(afterOne).toBe("true");
+    const labelOne = await chip.getAttribute("aria-label");
+    expect(labelOne).toMatch(/downloaded only/i);
+
+    await page.keyboard.press("Enter");
+    const labelTwo = await chip.getAttribute("aria-label");
+    expect(labelTwo).toMatch(/not downloaded/i);
+  });
+
   test("Tab order reaches filter bar, sort menu, and first variant", async ({
     page,
   }) => {
