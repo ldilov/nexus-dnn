@@ -37,6 +37,8 @@ mime_guess = { workspace = true }
 ts-rs = { version = "11", features = ["serde-compat", "chrono-impl", "serde-json-impl"] }
 sha2 = "0.10"
 tempfile = "3"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
+ulid = "1"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
