@@ -10,6 +10,7 @@ export { MetricsDashboard } from "./metrics_dashboard";
 export { LayoutStatusBar } from "./status_bar";
 export { ActionBar } from "./action_bar";
 export { ListComponent } from "./list_component";
+export { ThreadListComponent } from "./thread_list";
 export { DetailView } from "./detail_view";
 export { EmptyState } from "./empty_state";
 export { CodeBlock } from "./code_block";

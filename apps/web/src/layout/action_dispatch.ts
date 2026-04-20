@@ -27,6 +27,11 @@ async function newLocalLlmThread(): Promise<void> {
       window.dispatchEvent(
         new CustomEvent("local-llm/thread:created", { detail: { id, title } }),
       );
+      window.dispatchEvent(
+        new CustomEvent("local-llm/session.state.changed", {
+          detail: { id, cause: "created" },
+        }),
+      );
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : "request failed";
