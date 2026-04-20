@@ -127,6 +127,8 @@ async fn build_harness(manifest: Option<&str>) -> Harness {
         backend_event_bus: backend_bus,
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
         host_install_paths: None,
+        install_map: None,
+        inference: std::sync::Arc::new(nexus_api::handlers::extensions_local_llm::inference::StubInferenceBackend),
     };
 
     Harness { state, _tmp: tmp }
@@ -184,6 +186,8 @@ async fn unwired_harness() -> Harness {
         backend_event_bus: backend_bus,
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
         host_install_paths: None,
+        install_map: None,
+        inference: std::sync::Arc::new(nexus_api::handlers::extensions_local_llm::inference::StubInferenceBackend),
     };
 
     Harness { state, _tmp: tmp }
