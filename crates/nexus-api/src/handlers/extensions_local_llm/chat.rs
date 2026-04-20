@@ -8,7 +8,6 @@ use sqlx::{Row, SqlitePool};
 
 use crate::AppState;
 use crate::envelope::ApiResponse;
-use nexus_backend_runtimes::EventPublisher;
 
 use super::inference::{InferenceError, InferenceRequest};
 
@@ -481,7 +480,7 @@ pub async fn send_message(
                     "variant_id": variant,
                 }),
             );
-            state.backend_event_bus.publish(evt).await;
+            state.backend_event_publisher.publish(evt).await;
             return (
                 StatusCode::GONE,
                 ApiResponse::<()>::bad_request("model_unavailable".to_string()),

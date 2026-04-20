@@ -17,7 +17,7 @@ pub use error::ApiError;
 
 use nexus_artifact::FilesystemArtifactStore;
 use nexus_backend_runtimes::adapter::AdapterRegistry as BackendAdapterRegistry;
-use nexus_backend_runtimes::events::BroadcastPublisher;
+use nexus_backend_runtimes::events::{BroadcastPublisher, SharedPublisher};
 use nexus_backend_runtimes::spawn::Spawner;
 use nexus_events::bus::EventBus;
 use nexus_extension::InMemoryExtensionRegistry;
@@ -57,6 +57,7 @@ pub struct AppState {
     pub download_orchestrator: Option<Arc<DownloadOrchestrator>>,
     pub install_map: Option<InstallMap>,
     pub hf_token_store: Option<TokenStore>,
+    pub backend_event_publisher: SharedPublisher,
     pub backend_event_bus: Arc<BroadcastPublisher>,
     pub draft_materialize_map: Arc<DraftMaterializeMap>,
     pub host_install_paths: Option<HostInstallPaths>,

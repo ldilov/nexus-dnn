@@ -174,6 +174,9 @@ pub async fn harness_with_extra(
         tokens.clone(),
     ));
 
+    let backend_event_bus =
+        Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(1024));
+
     let state = AppState {
         health_status_fn: Arc::new(|| serde_json::json!({ "status": "ok" })),
         db,
@@ -193,9 +196,8 @@ pub async fn harness_with_extra(
         download_orchestrator: Some(orchestrator.clone()),
         install_map: Some(install_map.clone()),
         hf_token_store: Some(tokens.clone()),
-        backend_event_bus: Arc::new(
-            nexus_backend_runtimes::events::BroadcastPublisher::new(1024),
-        ),
+        backend_event_publisher: backend_event_bus.clone(),
+        backend_event_bus,
         draft_materialize_map:
             nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
         host_install_paths: None,

@@ -285,6 +285,7 @@ impl NexusApp {
             download_orchestrator: Some(download_orchestrator),
             install_map: Some(install_map),
             hf_token_store: Some(hf_token_store),
+            backend_event_publisher: backend_event_bus.clone(),
             backend_event_bus,
             draft_materialize_map:
                 nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
