@@ -1,3 +1,4 @@
+pub mod installed;
 pub mod models;
 pub mod runtimes;
 pub mod settings;
@@ -21,6 +22,7 @@ impl HostClient {
     }
 }
 
+pub use installed::{InstalledArtifact, InstalledClient, InstalledIndex};
 pub use models::{HostModel, ModelMetadata, ModelsClient};
 pub use runtimes::{
     BackendCapabilities, BackendRuntime, LeaseSettingsOverride, RuntimeChannelDescriptor,

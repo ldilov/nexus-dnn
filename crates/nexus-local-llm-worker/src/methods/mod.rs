@@ -1,5 +1,7 @@
 pub mod backend_logs;
 pub mod backend_state;
+pub mod chat;
+pub mod chat_types;
 pub mod pool_inspect;
 
 pub use backend_logs::{LogsTailRequest, LogsTailResponse, handle_logs_tail};
