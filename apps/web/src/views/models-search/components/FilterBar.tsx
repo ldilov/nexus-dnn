@@ -42,15 +42,11 @@ interface FilterBarProps {
   onToggleModality: (m: Modality) => void;
   onToggleCompat: (c: CompatibilityStatus) => void;
   onToggleShowUnsupported: () => void;
+  onCycleInstalled: () => void;
   onClearAll: () => void;
   degraded: boolean;
 }
 
-/**
- * Sticky filter bar. Every control is a real button / toggle switch
- * with `aria-pressed` / `aria-checked` — chips look painted-on but
- * behave semantically correct for screen readers and keyboard users.
- */
 export function FilterBar({
   query,
   params,
@@ -61,6 +57,7 @@ export function FilterBar({
   onToggleModality,
   onToggleCompat,
   onToggleShowUnsupported,
+  onCycleInstalled,
   onClearAll,
   degraded,
 }: FilterBarProps) {
@@ -206,6 +203,34 @@ export function FilterBar({
             />
           </span>
           Show unsupported
+        </button>
+
+        <span className={s.separator} aria-hidden="true" />
+
+        <button
+          type="button"
+          className={
+            params.installed === "installed"
+              ? `${s.chip} ${s.chipActive}`
+              : params.installed === "not_installed"
+                ? `${s.chip} ${s.chipActive}`
+                : s.chip
+          }
+          aria-pressed={params.installed !== "any"}
+          aria-label={
+            params.installed === "installed"
+              ? "Filter: downloaded only"
+              : params.installed === "not_installed"
+                ? "Filter: not downloaded"
+                : "Filter: downloaded (inactive)"
+          }
+          onClick={onCycleInstalled}
+        >
+          {params.installed === "installed"
+            ? "Downloaded"
+            : params.installed === "not_installed"
+              ? "Not downloaded"
+              : "Downloaded"}
         </button>
       </div>
 

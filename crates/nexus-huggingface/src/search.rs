@@ -27,7 +27,9 @@ fn default_page() -> u32 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepoFile {
+    #[serde(alias = "rfilename")]
     pub path: String,
+    #[serde(alias = "size", default)]
     pub size_bytes: Option<u64>,
 }
 
@@ -131,5 +133,21 @@ mod tests {
         assert!(url.contains("filter=license:apache-2.0"));
         assert!(url.contains("page=2"));
         assert!(url.contains("limit=10"));
+    }
+
+    #[test]
+    fn repo_file_deserialises_hf_rfilename_form() {
+        let raw = r#"{"rfilename": "model.safetensors", "size": 12345}"#;
+        let f: RepoFile = serde_json::from_str(raw).unwrap();
+        assert_eq!(f.path, "model.safetensors");
+        assert_eq!(f.size_bytes, Some(12345));
+    }
+
+    #[test]
+    fn repo_file_still_deserialises_canonical_form() {
+        let raw = r#"{"path": "model.gguf", "size_bytes": 99}"#;
+        let f: RepoFile = serde_json::from_str(raw).unwrap();
+        assert_eq!(f.path, "model.gguf");
+        assert_eq!(f.size_bytes, Some(99));
     }
 }

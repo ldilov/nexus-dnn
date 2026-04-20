@@ -355,6 +355,28 @@ export function fetchFamilyDetail(
   );
 }
 
+export interface InstalledArtifact {
+  artifact_id: string;
+  family_id: string;
+  variant_id: string | null;
+  format: string;
+  filename: string;
+  size_bytes: number | null;
+  source_repo: string;
+  source_revision: string | null;
+  installed_at: string;
+}
+
+export interface InstalledIndex {
+  family_ids: string[];
+  installed: InstalledArtifact[];
+  truncated: boolean;
+}
+
+export function fetchInstalled(signal?: AbortSignal): Promise<InstalledIndex> {
+  return apiFetch("/model-store/installed", { signal });
+}
+
 export interface CreateDownloadBody {
   family_id: string;
   target:

@@ -160,3 +160,29 @@ export const rowActionFailed = style({
 export const spinner = style({
   fontSize: "16px",
 });
+
+export const progress = style({
+  fontFamily: vars.font.code,
+  fontSize: "9px",
+  letterSpacing: "0.08em",
+  color: vars.color.accent.secondary,
+  marginLeft: "auto",
+  whiteSpace: "nowrap",
+});
+
+export const progressBar = style({
+  position: "absolute",
+  left: 0,
+  right: 0,
+  bottom: 0,
+  height: "2px",
+  background: "transparent",
+  overflow: "hidden",
+  borderRadius: "0 0 6px 6px",
+});
+
+export const progressFill = style({
+  height: "100%",
+  background: vars.color.accent.primary,
+  transition: `width ${vars.motion.durationNormal} ${vars.motion.easingDefault}`,
+});

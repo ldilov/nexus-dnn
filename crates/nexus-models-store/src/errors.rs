@@ -2,51 +2,26 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
-/// Unified error taxonomy for `nexus-models-store`.
-///
-/// Two coexisting concerns share this enum:
-/// 1. The original installer / lease / provenance pipeline (pre-025).
-/// 2. The spec-025 model-store handler surface
-///    (`contracts/rust-backend-adapter.md §4`) — search, detail, download,
-///    auth. Handlers under `crates/nexus-api/src/handlers/model_store/` map
-///    these variants to the REST envelope's `error.code` (snake_case name)
-///    via `error_map::into_response`.
 #[derive(Debug, Error)]
 pub enum ModelStoreError {
-    // ---------- spec-025 model-store surface ----------
-    /// Upstream provider (Hugging Face in v1) could not be reached. Maps to
-    /// HTTP 502 `upstream_unavailable`.
     #[error("upstream unavailable: {0}")]
     UpstreamUnavailable(String),
 
-    /// The upstream returned 401/403 for a gated repository and the caller
-    /// has not yet supplied a valid token. Maps to HTTP 401 `auth_required`
-    /// so the frontend can trigger the Settings token flow (FR-114).
     #[error("auth required for {repo}")]
     AuthRequired { repo: String },
 
-    /// The requested `family_id` was not found or did not normalize. Maps
-    /// to HTTP 404 `family_not_found`.
     #[error("family not found: {0}")]
     FamilyNotFound(String),
 
-    /// A download request referenced an artifact / variant / dependency
-    /// that does not belong to the resolved family. Maps to HTTP 404
-    /// `target_not_found`.
     #[error("target not found in family")]
     TargetNotFound,
 
-    /// The resolved target is not runnable by any enabled backend (FR-060
-    /// → `unsupported`). Maps to HTTP 422 `incompatible`.
     #[error("incompatible: {0}")]
     Incompatible(String),
 
-    /// Generic internal failure — an invariant broke inside normalization,
-    /// the orchestrator, or an adapter. Maps to HTTP 500 `internal`.
     #[error("internal: {0}")]
     Internal(String),
 
-    // ---------- pre-existing installer surface ----------
     #[error("model install not found: {0}")]
     InstallNotFound(String),
 
@@ -84,9 +59,6 @@ pub enum ModelStoreError {
 }
 
 impl ModelStoreError {
-    /// Snake-case variant name used as the `error.code` field in the REST
-    /// envelope. Stable across refactors — new variants must add a new code,
-    /// never rename an existing one.
     #[must_use]
     pub fn code(&self) -> &'static str {
         match self {
@@ -107,9 +79,6 @@ impl ModelStoreError {
         }
     }
 
-    /// HTTP status that handlers should emit when surfacing this error.
-    /// Kept on the error type so every call site agrees without re-deriving
-    /// the mapping inline.
     #[must_use]
     pub fn status_u16(&self) -> u16 {
         match self {

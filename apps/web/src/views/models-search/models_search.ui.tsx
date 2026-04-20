@@ -1,6 +1,7 @@
 import type {
   BackendCapability,
   CompatibilityStatus,
+  DownloadJob,
   DownloadState,
   Format,
   Modality,
@@ -29,12 +30,15 @@ export interface ModelsSearchUIProps {
   degraded: boolean;
   jobStateByVariant: Record<string, DownloadState | undefined>;
   jobIdByVariant: Record<string, string | undefined>;
+  jobByVariant: Record<string, DownloadJob | undefined>;
   onQueryChange: (q: string) => void;
   onToggleFormat: (fmt: Format) => void;
   onToggleBackend: (id: string) => void;
   onToggleModality: (m: Modality) => void;
   onToggleCompat: (c: CompatibilityStatus) => void;
   onToggleShowUnsupported: () => void;
+  onCycleInstalled: () => void;
+  onClearInstalled: () => void;
   onClearAll: () => void;
   onSortChange: (sort: ParsedSearchParams["sort"]) => void;
   onViewChange: (view: "grid" | "list") => void;
@@ -53,11 +57,6 @@ function totalLabel(total: number | null): string {
   return `${total.toLocaleString()} models`;
 }
 
-/**
- * Presentational root for the Models Search screen. Pure function of
- * props — no hooks that read route state, no fetches. Maps 1:1 to the
- * loader data coming out of `models_search.view.tsx`.
- */
 export function ModelsSearchUI(props: ModelsSearchUIProps) {
   const {
     params,
@@ -69,12 +68,15 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
     degraded,
     jobStateByVariant,
     jobIdByVariant,
+    jobByVariant,
     onQueryChange,
     onToggleFormat,
     onToggleBackend,
     onToggleModality,
     onToggleCompat,
     onToggleShowUnsupported,
+    onCycleInstalled,
+    onClearInstalled,
     onClearAll,
     onSortChange,
     onViewChange,
@@ -115,6 +117,7 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
         onToggleModality={onToggleModality}
         onToggleCompat={onToggleCompat}
         onToggleShowUnsupported={onToggleShowUnsupported}
+        onCycleInstalled={onCycleInstalled}
         onClearAll={onClearAll}
         degraded={degraded}
       />
@@ -168,7 +171,9 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
       {!error && !loading && page.families.length === 0 && (
         <EmptyState
           showUnsupported={params.showUnsupported}
+          installedMode={params.installed}
           onToggleShowUnsupported={onToggleShowUnsupported}
+          onClearInstalled={onClearInstalled}
         />
       )}
 
@@ -181,6 +186,7 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
                 family={family}
                 jobStateByVariant={jobStateByVariant}
                 jobIdByVariant={jobIdByVariant}
+                jobByVariant={jobByVariant}
                 onDownload={onDownload}
                 onPause={onPause}
                 onResume={onResume}

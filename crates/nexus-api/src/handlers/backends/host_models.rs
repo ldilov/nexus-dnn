@@ -636,10 +636,6 @@ pub fn http_status_for_model_error(err: &ModelStoreError) -> (StatusCode, &'stat
         ModelStoreError::ManifestInvalid(_) => (StatusCode::BAD_REQUEST, "MODEL_MANIFEST_INVALID"),
         ModelStoreError::Storage(_) => (StatusCode::INTERNAL_SERVER_ERROR, "STORAGE_ERROR"),
         ModelStoreError::Io(_) => (StatusCode::INTERNAL_SERVER_ERROR, "IO_ERROR"),
-        // Spec-025 model-store variants are not expected on this legacy code
-        // path (extension-manifest installer); fall through to a generic 500
-        // rather than leaking internal names. The universal model-store
-        // handlers use `handlers::model_store::error_map` instead.
         ModelStoreError::UpstreamUnavailable(_) => {
             (StatusCode::BAD_GATEWAY, "UPSTREAM_UNAVAILABLE")
         }

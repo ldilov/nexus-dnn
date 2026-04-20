@@ -360,9 +360,16 @@ fn map_raw_to_search_result(value: serde_json::Value) -> SearchResult {
                 .filter_map(|s| {
                     s.get("rfilename")
                         .and_then(|p| p.as_str())
-                        .map(|p| RepoFile {
-                            path: p.to_owned(),
-                            size_bytes: s.get("size").and_then(|b| b.as_u64()),
+                        .map(|p| {
+                            let direct = s.get("size").and_then(|b| b.as_u64());
+                            let lfs_size = s
+                                .get("lfs")
+                                .and_then(|l| l.get("size"))
+                                .and_then(|b| b.as_u64());
+                            RepoFile {
+                                path: p.to_owned(),
+                                size_bytes: direct.or(lfs_size),
+                            }
                         })
                 })
                 .collect::<Vec<_>>()
