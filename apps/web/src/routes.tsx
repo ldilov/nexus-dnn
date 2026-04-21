@@ -49,6 +49,13 @@ export const router = createHashRouter([
       { path: "models", lazy: () => import("./views/models-search") },
       { path: "models-search", lazy: () => import("./views/models-search") },
       { path: "extensions", Component: ExtensionsGalleryRoute },
+      {
+        path: "extensions/nexus.local-llm/chat/:threadId",
+        lazy: async () => {
+          const mod = await import("./views/extensions/local-llm/chat");
+          return { Component: mod.Component, loader: mod.loader };
+        },
+      },
       { path: "extensions/:layoutId", Component: ExtensionLayoutRoute },
       { path: "runs", Component: RunsPlaceholderRoute },
       { path: "artifacts", Component: ArtifactsPlaceholderRoute },
