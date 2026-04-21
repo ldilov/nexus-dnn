@@ -120,6 +120,27 @@ fn any_obj() -> Value {
     })
 }
 
+/// Curated subset of Material Symbols names commonly used across host and
+/// extension UIs. Used as the `enum` for every `icon` prop so the playground
+/// renders a discoverable dropdown instead of a blind text field.
+fn icon_enum() -> serde_json::Value {
+    json!([
+        "play_arrow", "pause", "stop", "skip_next", "skip_previous",
+        "add", "remove", "close", "check", "check_circle", "cancel",
+        "edit", "delete", "download", "upload", "save", "content_copy",
+        "settings", "tune", "menu", "more_vert", "more_horiz",
+        "home", "dashboard", "folder", "folder_open", "description", "inbox",
+        "search", "filter_list", "sort", "refresh", "sync",
+        "arrow_forward", "arrow_back", "chevron_left", "chevron_right",
+        "expand_more", "expand_less", "open_in_new", "launch",
+        "error", "warning", "info", "help", "bug_report",
+        "account_circle", "person", "group", "lock", "lock_open", "visibility", "visibility_off",
+        "chat", "send", "notifications", "star", "favorite", "bookmark",
+        "code", "terminal", "extension", "model_training", "developer_board", "rocket_launch",
+        "play_circle", "bolt", "hub", "cloud_sync", "history", "schedule"
+    ])
+}
+
 pub fn catalog_entries() -> Vec<ComponentMetadata> {
     vec![
         meta(
@@ -156,7 +177,7 @@ pub fn catalog_entries() -> Vec<ComponentMetadata> {
                         "items": obj(
                             json!({
                                 "label": { "type": "string" },
-                                "icon": { "type": "string" }
+                                "icon": { "type": "string", "enum": icon_enum(), "description": "Optional Material Symbols icon shown in the tab." }
                             }),
                             &["label"],
                         )
@@ -422,7 +443,7 @@ pub fn catalog_entries() -> Vec<ComponentMetadata> {
                         "items": obj(
                             json!({
                                 "label": { "type": "string" },
-                                "icon": { "type": "string", "description": "Material Symbols icon name." },
+                                "icon": { "type": "string", "enum": icon_enum(), "description": "Material Symbols icon." },
                                 "action": { "type": "string", "description": "Action id dispatched on click." },
                                 "variant": { "type": "string", "enum": ["primary", "secondary", "ghost", "danger"], "default": "secondary" }
                             }),
@@ -455,7 +476,7 @@ pub fn catalog_entries() -> Vec<ComponentMetadata> {
                                 "id": { "type": "string", "description": "Stable identifier." },
                                 "label": { "type": "string", "description": "Visible row text." },
                                 "description": { "type": "string", "description": "Optional secondary text." },
-                                "icon": { "type": "string", "description": "Optional icon name." }
+                                "icon": { "type": "string", "enum": icon_enum(), "description": "Optional Material Symbols icon." }
                             }),
                             &["id", "label"],
                         )
@@ -534,7 +555,9 @@ pub fn catalog_entries() -> Vec<ComponentMetadata> {
                 json!({
                     "icon": {
                         "type": "string",
-                        "description": "Material Symbols icon name (e.g. 'inbox')."
+                        "enum": icon_enum(),
+                        "default": "inbox",
+                        "description": "Material Symbols icon name — pick from the dropdown."
                     },
                     "title": {
                         "type": "string",
@@ -927,7 +950,7 @@ pub fn catalog_entries() -> Vec<ComponentMetadata> {
                         "items": obj(
                             json!({
                                 "label": { "type": "string" },
-                                "icon": { "type": "string" },
+                                "icon": { "type": "string", "enum": icon_enum(), "description": "Optional Material Symbols icon for the toolbar button." },
                                 "variant": { "type": "string", "enum": ["primary", "secondary", "ghost"], "default": "secondary" }
                             }),
                             &["label"],
