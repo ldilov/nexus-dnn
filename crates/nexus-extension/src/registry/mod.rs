@@ -1,3 +1,4 @@
+pub mod custom_elements;
 mod loaders;
 mod scanner;
 mod storage_validation;
@@ -42,6 +43,10 @@ pub trait ExtensionRegistry: Send + Sync {
     fn list_ui_contributions_by_kind(&self, kind: &UIContributionKind) -> Vec<UIContributionFile>;
     fn list_layouts(&self) -> Vec<LayoutFile>;
     fn get_layout(&self, id: &str) -> Option<LayoutFile>;
+    fn collect_custom_elements(
+        &self,
+        host_tag_names: &std::collections::HashSet<String>,
+    ) -> Result<Vec<custom_elements::CustomElementRegistration>, ExtensionError>;
 }
 
 pub struct InMemoryExtensionRegistry {
@@ -192,6 +197,20 @@ impl InMemoryExtensionRegistry {
         }
     }
 
+    /// Collect all custom-element registrations published by currently active
+    /// extensions. Validates tag grammar (FR-022), cross-extension uniqueness,
+    /// assets-root containment, and module existence. Host-provided tag names
+    /// are passed in so a host-registered tag cannot be silently overridden;
+    /// in practice host tags use snake_case and can never collide structurally,
+    /// but the check is defense-in-depth.
+    fn collect_custom_elements_impl(
+        &self,
+        host_tag_names: &std::collections::HashSet<String>,
+    ) -> Result<Vec<custom_elements::CustomElementRegistration>, ExtensionError> {
+        let state = self.state.read();
+        custom_elements::collect_from_extensions(host_tag_names, &state.extensions)
+    }
+
     pub fn refresh(
         &self,
         extensions_dir: &Path,
@@ -310,5 +329,12 @@ impl ExtensionRegistry for InMemoryExtensionRegistry {
             .flat_map(|e| &e.layouts)
             .find(|l| l.id == id)
             .cloned()
+    }
+
+    fn collect_custom_elements(
+        &self,
+        host_tag_names: &std::collections::HashSet<String>,
+    ) -> Result<Vec<custom_elements::CustomElementRegistration>, ExtensionError> {
+        self.collect_custom_elements_impl(host_tag_names)
     }
 }
