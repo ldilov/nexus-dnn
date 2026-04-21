@@ -73,6 +73,10 @@ pub fn build(state: AppState) -> Router {
             "/extensions/{id}/ui/{*path}",
             get(extension_ui::serve_extension_asset),
         )
+        .route(
+            "/extensions/{id}/reload",
+            post(extension_ui::reload_extension),
+        )
         .route("/extensions", get(extensions::list_extensions))
         .route("/extensions/{id}", get(extensions::get_extension))
         .route(

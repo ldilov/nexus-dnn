@@ -155,6 +155,54 @@ async fn duplicate_tag_across_extensions_fails_collection() {
 }
 
 #[tokio::test]
+async fn reload_returns_ok_for_installed_extension() {
+    let harness = harness_with_fixtures(Arc::new(StubHf::default()), &[&fixture_path()]).await;
+    let (status, body, _) = call(
+        harness.state,
+        "POST",
+        &format!("/api/v1/extensions/{FIXTURE_ID}/reload"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let json: Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(json["status"], "ok");
+    assert_eq!(json["id"], FIXTURE_ID);
+}
+
+#[tokio::test]
+async fn reload_returns_404_for_unknown_extension() {
+    let harness = harness_with_fixtures(Arc::new(StubHf::default()), &[]).await;
+    let (status, body, _) = call(
+        harness.state,
+        "POST",
+        "/api/v1/extensions/does.not.exist/reload",
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let json: Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(json["code"], "extension_not_found");
+}
+
+#[tokio::test]
+async fn reload_is_idempotent_across_repeated_calls() {
+    let harness = harness_with_fixtures(Arc::new(StubHf::default()), &[&fixture_path()]).await;
+    let app = nexus_api::router::build(harness.state);
+
+    let make_request = || {
+        axum::http::Request::builder()
+            .method("POST")
+            .uri(format!("/api/v1/extensions/{FIXTURE_ID}/reload"))
+            .body(axum::body::Body::empty())
+            .expect("request")
+    };
+
+    let res1 = app.clone().oneshot(make_request()).await.expect("first call");
+    assert_eq!(res1.status(), StatusCode::OK);
+    let res2 = app.oneshot(make_request()).await.expect("second call");
+    assert_eq!(res2.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn tag_absent_from_list_after_uninstall() {
     let harness = harness_with_fixtures(Arc::new(StubHf::default()), &[]).await;
     let (status, body, _) = call(harness.state, "GET", "/api/v1/ui/extension-components").await;
