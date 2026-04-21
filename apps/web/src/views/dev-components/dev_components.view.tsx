@@ -69,26 +69,25 @@ export function Component() {
   const [session, setSession] = useState<SessionState>(() => loadSessionState());
   const [lastCopied, setLastCopied] = useState<"yaml" | "tag" | null>(null);
 
-  const initialName =
-    searchParams.get("component") ??
-    session.selected ??
-    data.components[0]?.name ??
-    null;
+  const deepLinkName = searchParams.get("component");
 
   useEffect(() => {
-    if (initialName && session.selected !== initialName) {
-      setSession((prev) => ({ ...prev, selected: initialName }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialName]);
+    if (!deepLinkName) return;
+    setSession((prev) =>
+      prev.selected === deepLinkName ? prev : { ...prev, selected: deepLinkName },
+    );
+  }, [deepLinkName]);
 
-  const selected = useMemo(
-    () =>
-      data.components.find((c) => c.name === session.selected) ??
-      data.components.find((c) => c.name === initialName) ??
-      null,
-    [data.components, session.selected, initialName],
-  );
+  const selected = useMemo(() => {
+    const byName = (name: string | null) =>
+      name ? data.components.find((c) => c.name === name) ?? null : null;
+    return (
+      byName(session.selected) ??
+      byName(deepLinkName) ??
+      data.components[0] ??
+      null
+    );
+  }, [data.components, session.selected, deepLinkName]);
 
   const descriptors = useMemo(
     () => (selected ? schemaToWidgets(selected.props_schema.schema) : []),
