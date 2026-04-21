@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveSnippets } from "./dev_components.view";
+import { deriveSnippets } from "./snippets";
 import type { ComponentMetadata } from "../../services/ui_catalog";
 
 function meta(overrides: Partial<ComponentMetadata> = {}): ComponentMetadata {
