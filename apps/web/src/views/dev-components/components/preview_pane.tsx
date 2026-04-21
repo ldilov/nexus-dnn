@@ -82,10 +82,29 @@ class RenderBoundary extends Component<
     if (this.state.error) {
       return (
         <div className={styles.error} role="alert">
-          Renderer threw: {this.state.error}
+          <strong>Preview couldn't render with the current prop values.</strong>
+          <br />
+          <span>
+            {humanize(this.state.error)}
+          </span>
+          <br />
+          <span style={{ opacity: 0.7 }}>Try adjusting the props on the right — the array shape or a prop's type likely doesn't match what the component expects.</span>
         </div>
       );
     }
     return this.props.children;
   }
+}
+
+function humanize(msg: string): string {
+  if (/\.map is not a function/.test(msg)) {
+    return "A prop expected an array (for `.map()`) but received a different type. Check any field that renders a list.";
+  }
+  if (/Cannot read propert(y|ies)/.test(msg)) {
+    return "A prop referenced a nested field that isn't present. Verify object-shaped props have the expected keys.";
+  }
+  if (/is not iterable/.test(msg)) {
+    return "A prop needed to be iterable (array/Set/Map) but wasn't.";
+  }
+  return msg;
 }

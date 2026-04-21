@@ -20,6 +20,8 @@ export function FieldWidget(props: WidgetProps) {
       return <BooleanWidget {...props} />;
     case "enum":
       return <EnumWidget {...props} />;
+    case "array":
+      return <ArrayWidget {...props} />;
     default:
       return <RawWidget {...props} />;
   }
@@ -147,6 +149,131 @@ function EnumWidget({ descriptor, value, error, onChange }: WidgetProps) {
       </select>
     </FieldShell>
   );
+}
+
+function ArrayWidget({ descriptor, value, error, onChange }: WidgetProps) {
+  const id = useId();
+  const item = descriptor.itemDescriptor;
+  const rows: unknown[] = Array.isArray(value) ? value : [];
+
+  const updateAt = (idx: number, next: unknown) => {
+    const copy = rows.slice();
+    if (next === undefined) {
+      copy.splice(idx, 1);
+    } else {
+      copy[idx] = next;
+    }
+    onChange(copy.length === 0 ? undefined : copy);
+  };
+
+  const add = () => {
+    onChange([...rows, blankForItem(item)]);
+  };
+
+  return (
+    <FieldShell descriptor={descriptor} error={error} inputId={id}>
+      <div className={styles.arrayRows}>
+        {rows.length === 0 ? (
+          <p className={styles.arrayEmpty}>No rows yet.</p>
+        ) : null}
+        {rows.map((row, idx) => (
+          <div key={idx} className={styles.arrayRow}>
+            <div className={styles.arrayRowHeader}>
+              <span className={styles.arrayRowIndex}>#{idx}</span>
+              <button
+                type="button"
+                className={styles.arrayRowRemove}
+                onClick={() => updateAt(idx, undefined)}
+                aria-label={`Remove row ${idx}`}
+              >
+                remove
+              </button>
+            </div>
+            <ArrayRowBody
+              itemDescriptor={item}
+              value={row}
+              onChange={(next) => updateAt(idx, next)}
+            />
+          </div>
+        ))}
+        <button type="button" className={styles.arrayAdd} onClick={add}>
+          + add row
+        </button>
+      </div>
+    </FieldShell>
+  );
+}
+
+function ArrayRowBody({
+  itemDescriptor,
+  value,
+  onChange,
+}: {
+  itemDescriptor: FieldDescriptor | null;
+  value: unknown;
+  onChange: (next: unknown) => void;
+}) {
+  if (!itemDescriptor) {
+    return (
+      <input
+        className={styles.inputText}
+        type="text"
+        value={typeof value === "string" ? value : serializeRaw(value)}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    );
+  }
+  if (itemDescriptor.kind === "object" && itemDescriptor.objectDescriptors) {
+    const record =
+      value && typeof value === "object" && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : {};
+    return (
+      <div className={styles.arrayObjectFields}>
+        {itemDescriptor.objectDescriptors.map((sub) => (
+          <FieldWidget
+            key={sub.name}
+            descriptor={sub}
+            value={record[sub.name]}
+            error={null}
+            onChange={(next) => {
+              const copy = { ...record };
+              if (next === undefined) delete copy[sub.name];
+              else copy[sub.name] = next;
+              onChange(copy);
+            }}
+          />
+        ))}
+      </div>
+    );
+  }
+  return (
+    <FieldWidget
+      descriptor={{ ...itemDescriptor, name: "value" }}
+      value={value}
+      error={null}
+      onChange={onChange}
+    />
+  );
+}
+
+function blankForItem(item: FieldDescriptor | null): unknown {
+  if (!item) return "";
+  switch (item.kind) {
+    case "string":
+    case "enum":
+      return "";
+    case "number":
+      return 0;
+    case "boolean":
+      return false;
+    case "object":
+      return {};
+    case "array":
+      return [];
+    default:
+      return null;
+  }
 }
 
 function RawWidget({ descriptor, value, error, onChange }: WidgetProps) {

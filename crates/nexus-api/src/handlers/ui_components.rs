@@ -240,17 +240,42 @@ pub fn catalog_entries() -> Vec<ComponentMetadata> {
             "list",
             "List",
             ComponentCategory::Data,
-            "Generic list; set `itemType: thread` to render threads.",
+            "Generic list of items with id + label. Set `itemType: thread` to render the thread-optimized variant.",
             obj(
                 json!({
-                    "itemType": { "type": "string" },
-                    "items": { "type": "array" },
-                    "emptyMessage": { "type": "string" },
-                    "selectable": { "type": "boolean" }
+                    "itemType": {
+                        "type": "string",
+                        "enum": ["default", "thread"],
+                        "default": "default",
+                        "description": "Rendering variant — 'thread' switches to the ThreadList component."
+                    },
+                    "items": {
+                        "type": "array",
+                        "description": "Rows to render. Each item MUST have a unique id and a label.",
+                        "items": obj(
+                            json!({
+                                "id": { "type": "string", "description": "Stable identifier." },
+                                "label": { "type": "string", "description": "Visible row text." },
+                                "description": { "type": "string", "description": "Optional secondary text." },
+                                "icon": { "type": "string", "description": "Optional icon name." }
+                            }),
+                            &["id", "label"],
+                        )
+                    },
+                    "emptyMessage": {
+                        "type": "string",
+                        "default": "No items",
+                        "description": "Shown when `items` is empty."
+                    },
+                    "selectable": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Whether rows respond to clicks."
+                    }
                 }),
                 &[],
             ),
-            "type: list\nprops:\n  items: []\n  emptyMessage: No items yet\n",
+            "type: list\nprops:\n  items:\n    - { id: a, label: First }\n    - { id: b, label: Second }\n  emptyMessage: No items yet\n",
         ),
         meta(
             "model_selector",
@@ -275,36 +300,85 @@ pub fn catalog_entries() -> Vec<ComponentMetadata> {
             "Key/value detail view with typed field formatters.",
             obj(
                 json!({
-                    "fields": { "type": "array" },
-                    "data": { "type": "object", "additionalProperties": true }
+                    "fields": {
+                        "type": "array",
+                        "description": "Field definitions in render order.",
+                        "items": obj(
+                            json!({
+                                "label": { "type": "string", "description": "Visible label." },
+                                "key": { "type": "string", "description": "Key in `data` to read from." },
+                                "format": {
+                                    "type": "string",
+                                    "enum": ["text", "status_badge", "code"],
+                                    "default": "text",
+                                    "description": "How to render the value."
+                                }
+                            }),
+                            &["label", "key"],
+                        )
+                    },
+                    "data": {
+                        "type": "object",
+                        "additionalProperties": true,
+                        "description": "Key/value payload referenced by `fields[].key`."
+                    }
                 }),
                 &[],
             ),
-            "type: detail_view\nprops:\n  fields: []\n",
+            "type: detail_view\nprops:\n  fields:\n    - { label: Name, key: name }\n    - { label: Status, key: status, format: status_badge }\n  data: { name: Alpha, status: running }\n",
         ),
         meta(
             "empty_state",
             "Empty State",
             ComponentCategory::Display,
-            "Placeholder with title, description, and optional call to action.",
+            "Placeholder surface for zero-data states, with title + description + optional CTA.",
             obj(
                 json!({
-                    "title": { "type": "string" },
-                    "description": { "type": "string" }
+                    "icon": {
+                        "type": "string",
+                        "description": "Material Symbols icon name (e.g. 'inbox')."
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Primary message."
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Supporting text below the title."
+                    },
+                    "primaryAction": obj(
+                        json!({
+                            "label": { "type": "string", "description": "Button label." },
+                            "action": { "type": "string", "description": "Action id dispatched on click." }
+                        }),
+                        &["label"],
+                    )
                 }),
                 &[],
             ),
-            "type: empty_state\nprops:\n  title: Nothing here yet\n",
+            "type: empty_state\nprops:\n  title: Nothing here yet\n  description: Create your first item to get started.\n",
         ),
         meta(
             "code_block",
             "Code Block",
             ComponentCategory::Display,
-            "Monospaced block with optional language hint.",
+            "Monospaced code block with syntax-language hint and optional header.",
             obj(
                 json!({
-                    "code": { "type": "string" },
-                    "language": { "type": "string" }
+                    "code": {
+                        "type": "string",
+                        "description": "Source text to display."
+                    },
+                    "language": {
+                        "type": "string",
+                        "enum": ["rust", "typescript", "javascript", "python", "go", "bash", "yaml", "json", "toml", "markdown", "sql", "plain"],
+                        "description": "Syntax highlighting hint."
+                    },
+                    "showHeader": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Whether to show the language label + copy button header."
+                    }
                 }),
                 &["code"],
             ),
@@ -317,19 +391,36 @@ pub fn catalog_entries() -> Vec<ComponentMetadata> {
             "Rendered Markdown with GFM and math extensions.",
             obj(
                 json!({
-                    "source": { "type": "string" }
+                    "content": {
+                        "type": "string",
+                        "description": "Markdown source to render."
+                    }
                 }),
-                &["source"],
+                &[],
             ),
-            "type: markdown_view\nprops:\n  source: \"# Hello\"\n",
+            "type: markdown_view\nprops:\n  content: \"# Hello\\n\\nBody text.\"\n",
         ),
         meta(
             "progress_tracker",
             "Progress Tracker",
             ComponentCategory::Feedback,
-            "Stepped progress indicator.",
-            any_obj(),
-            "type: progress_tracker\nprops: {}\n",
+            "Progress bar with optional byte-count readout and cancel affordance.",
+            obj(
+                json!({
+                    "label": { "type": "string", "description": "Headline above the bar." },
+                    "percent": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100,
+                        "description": "Completion percentage (0-100). If omitted, falls back to bytesLoaded/bytesTotal."
+                    },
+                    "bytesLoaded": { "type": "number", "minimum": 0, "description": "Bytes transferred so far." },
+                    "bytesTotal": { "type": "number", "minimum": 0, "description": "Total bytes expected." },
+                    "showCancel": { "type": "boolean", "default": false, "description": "Render a cancel button." }
+                }),
+                &[],
+            ),
+            "type: progress_tracker\nprops:\n  label: Downloading\n  percent: 42\n  showCancel: true\n",
         ),
         meta(
             "log_viewer",

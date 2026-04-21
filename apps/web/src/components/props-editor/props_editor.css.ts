@@ -94,3 +94,76 @@ export const emptyState = style({
   fontSize: vars.font.size.bodySm,
   fontStyle: "italic",
 });
+
+export const arrayRows = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapSm,
+});
+
+export const arrayEmpty = style({
+  margin: 0,
+  color: vars.color.text.muted,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.caption,
+  fontStyle: "italic",
+});
+
+export const arrayRow = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapXs,
+  padding: vars.space.insetMd,
+  borderRadius: vars.radius.control,
+  background: vars.color.bg.elevated,
+});
+
+export const arrayRowHeader = style({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+});
+
+export const arrayRowIndex = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  color: vars.color.text.muted,
+});
+
+export const arrayRowRemove = style({
+  padding: `0 ${vars.space.insetMd}`,
+  border: "none",
+  background: "transparent",
+  color: vars.color.text.muted,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.caption,
+  cursor: "pointer",
+
+  ":hover": {
+    color: vars.color.error.base,
+  },
+});
+
+export const arrayObjectFields = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapSm,
+});
+
+export const arrayAdd = style({
+  alignSelf: "flex-start",
+  padding: `${vars.space.insetXs} ${vars.space.insetMd}`,
+  borderRadius: vars.radius.control,
+  border: `1px dashed ${vars.color.outline.variant}`,
+  background: "transparent",
+  color: vars.color.accent.primary,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.caption,
+  cursor: "pointer",
+  transition: `border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+
+  ":hover": {
+    borderColor: vars.color.accent.primary,
+    color: vars.color.accent.primaryHover,
+  },
+});
