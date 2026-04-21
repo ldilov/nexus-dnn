@@ -50,11 +50,50 @@ type DetailViewProps = {
   children?: ReactNode;
 };
 
+type BadgeIntent = "neutral" | "info" | "success" | "warning" | "error";
+
+const STATUS_INTENT_MAP: Record<string, BadgeIntent> = {
+  running: "success",
+  ready: "success",
+  online: "success",
+  active: "success",
+  ok: "success",
+  healthy: "success",
+  success: "success",
+  pending: "warning",
+  warning: "warning",
+  degraded: "warning",
+  loading: "warning",
+  paused: "warning",
+  idle: "neutral",
+  offline: "neutral",
+  stopped: "neutral",
+  disabled: "neutral",
+  unknown: "neutral",
+  error: "error",
+  failed: "error",
+  failure: "error",
+  crashed: "error",
+};
+
+function intentForStatus(value: string): BadgeIntent {
+  const normalized = value.trim().toLowerCase();
+  return STATUS_INTENT_MAP[normalized] ?? "info";
+}
+
 function renderFieldValue(value: unknown, format?: string): ReactNode {
   if (value === undefined || value === null) return "--";
 
   if (format === "status_badge") {
-    return <Badge label={String(value)} intent="info" showDot size="sm" />;
+    const label = String(value);
+    return (
+      <Badge
+        label={label}
+        intent={intentForStatus(label)}
+        showDot
+        size="sm"
+      />
+    );
   }
 
   if (format === "model_badge") {
@@ -62,9 +101,7 @@ function renderFieldValue(value: unknown, format?: string): ReactNode {
   }
 
   if (format === "code") {
-    return (
-      <span className={styles.codeFont}>{String(value)}</span>
-    );
+    return <code className={styles.codeInline}>{String(value)}</code>;
   }
 
   return String(value);
