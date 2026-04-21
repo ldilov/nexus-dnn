@@ -1,0 +1,96 @@
+import { style } from "@vanilla-extract/css";
+import { vars } from "../../theme/contract.css";
+
+export const root = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapMd,
+  padding: vars.space.insetLg,
+});
+
+export const field = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.gapXs,
+});
+
+export const fieldLabel = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.gapXs,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
+  color: vars.color.text.primary,
+});
+
+export const fieldName = style({
+  fontWeight: 500,
+  letterSpacing: "0.01em",
+});
+
+export const fieldRequired = style({
+  color: vars.color.accent.primary,
+  fontSize: vars.font.size.caption,
+  lineHeight: 1,
+});
+
+export const fieldDescription = style({
+  margin: 0,
+  color: vars.color.text.muted,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.caption,
+});
+
+export const fieldError = style({
+  margin: 0,
+  color: vars.color.error.base,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.caption,
+});
+
+const controlBase = style({
+  width: "100%",
+  padding: `${vars.space.insetXs} ${vars.space.insetMd}`,
+  borderRadius: vars.radius.control,
+  background: vars.color.bg.elevated,
+  color: vars.color.text.primary,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
+  border: "1px solid transparent",
+  outline: "none",
+  transition: "border-color 150ms ease, background 150ms ease",
+
+  ":focus": {
+    borderColor: vars.color.accent.primary,
+    background: vars.color.bg.hover,
+  },
+});
+
+export const inputText = style([controlBase]);
+export const inputSelect = style([controlBase]);
+export const inputTextarea = style([
+  controlBase,
+  {
+    fontFamily: vars.font.code,
+    resize: "vertical",
+    minHeight: "4.5rem",
+  },
+]);
+
+export const toggle = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.space.gapSm,
+  color: vars.color.text.secondary,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
+  cursor: "pointer",
+});
+
+export const emptyState = style({
+  padding: vars.space.insetLg,
+  color: vars.color.text.muted,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
+  fontStyle: "italic",
+});
