@@ -2,6 +2,7 @@ import { Component, type ReactNode } from "react";
 import type { LayoutNode } from "../../../services/api_client";
 import type { ComponentMetadata } from "../../../services/ui_catalog";
 import { getComponentRenderer } from "../../../layout/component_registry";
+import { buildPreviewNode } from "../preview_demo";
 import * as styles from "./preview_pane.css";
 
 export interface PreviewPaneProps {
@@ -33,13 +34,18 @@ export function PreviewPane({
     );
   }
 
-  const node: LayoutNode = {
-    type: metadata.name,
-    props: propValues,
-  };
+  const { node, children, hint } = buildPreviewNode(metadata, propValues);
+  const renderedChildren = children.map((child, idx) => (
+    <NestedNode key={child.id ?? idx} node={child} />
+  ));
 
   return (
     <div className={styles.root} aria-label={`Preview of ${metadata.name}`}>
+      {hint ? (
+        <div className={styles.info} role="note">
+          <strong>Note:</strong> {hint}
+        </div>
+      ) : null}
       {hasValidationErrors ? (
         <div className={styles.warn} role="status">
           Fix the highlighted fields on the right to render a live preview.
@@ -49,13 +55,26 @@ export function PreviewPane({
         {hasValidationErrors ? (
           <div className={styles.empty}>Preview paused — validation errors.</div>
         ) : (
-          <RenderBoundary>
-            <>{renderer(node, [])}</>
+          <RenderBoundary key={JSON.stringify(node.props ?? {})}>
+            <>{renderer(node, renderedChildren)}</>
           </RenderBoundary>
         )}
       </div>
     </div>
   );
+}
+
+function NestedNode({ node }: { node: LayoutNode }) {
+  const renderer = getComponentRenderer(node.type);
+  if (!renderer) {
+    return (
+      <div className={styles.error}>Unknown demo child: {node.type}</div>
+    );
+  }
+  const children = (node.children ?? []).map((c, i) => (
+    <NestedNode key={c.id ?? i} node={c} />
+  ));
+  return <>{renderer(node, children)}</>;
 }
 
 interface RenderBoundaryState {
@@ -72,23 +91,18 @@ class RenderBoundary extends Component<
     return { error: err instanceof Error ? err.message : String(err) };
   }
 
-  override componentDidUpdate(prevProps: { children: ReactNode }) {
-    if (prevProps.children !== this.props.children && this.state.error) {
-      this.setState({ error: null });
-    }
-  }
-
   override render() {
     if (this.state.error) {
       return (
         <div className={styles.error} role="alert">
           <strong>Preview couldn't render with the current prop values.</strong>
           <br />
-          <span>
-            {humanize(this.state.error)}
-          </span>
+          <span>{humanize(this.state.error)}</span>
           <br />
-          <span style={{ opacity: 0.7 }}>Try adjusting the props on the right — the array shape or a prop's type likely doesn't match what the component expects.</span>
+          <span style={{ opacity: 0.7 }}>
+            Try adjusting the props on the right — the array shape or a prop's
+            type likely doesn't match what the component expects.
+          </span>
         </div>
       );
     }
