@@ -2,7 +2,7 @@ spec_version: "0.1"
 
 extension:
   id: "nexus.local-llm"
-  version: "0.1.0"
+  version: "0.2.0"
   name: "Local LLM Chat & RAG"
   description: "Builtin extension for local LLM inference with managed backends, model management, interactive chat, and RAG"
   publisher: "nexus"
