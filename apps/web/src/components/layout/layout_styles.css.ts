@@ -1457,6 +1457,18 @@ export const codeFont = style({
   fontFamily: "var(--font-code)",
 });
 
+export const codeInline = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  backgroundColor: vars.color.bg.app,
+  color: vars.color.text.primary,
+  padding: `2px ${vars.space.insetXs}`,
+  borderRadius: vars.radius.control,
+  border: `1px solid ${vars.color.outline.variant}`,
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-all",
+});
+
 export const flexOne = style({
   flex: 1,
 });
