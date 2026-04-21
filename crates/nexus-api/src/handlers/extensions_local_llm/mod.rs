@@ -1,2 +1,2 @@
 pub mod chat;
-pub mod inference;
+pub mod load_registry;

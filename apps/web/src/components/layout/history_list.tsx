@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Badge } from "../badge";
+import { Badge } from "../base/badge";
 import * as styles from "./backend_styles.css";
 import * as layoutStyles from "./layout_styles.css";
 

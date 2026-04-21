@@ -5,6 +5,7 @@ mod lease;
 mod lifecycle;
 mod load_model;
 mod observability;
+mod runtime_defaults;
 mod settings;
 mod uninstall;
 
@@ -18,6 +19,7 @@ pub use lease::{create_lease, release_lease};
 pub use lifecycle::{install, repair, validate};
 pub use load_model::load_model;
 pub use observability::{diagnostics, logs};
+pub use runtime_defaults::get_runtime_defaults;
 pub use settings::{get_settings, put_settings};
 pub use uninstall::uninstall_runtime;
 

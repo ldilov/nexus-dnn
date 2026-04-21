@@ -5,8 +5,8 @@ import {
   type WorkflowNode,
 } from "../api/client";
 import type { PortSpecDto } from "../api/generated/PortSpecDto";
-import { Badge } from "../components/badge";
-import { colorForPortType } from "../nodes/port_types";
+import { Badge } from "../components/base/badge";
+import { colorForPortType } from "../components/nodes/port_types";
 import * as styles from "./right_inspector.css";
 
 type InspectorProps = {

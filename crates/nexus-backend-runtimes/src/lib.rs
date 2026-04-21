@@ -2,6 +2,7 @@ pub mod adapter;
 pub mod channel;
 pub mod checksum;
 pub mod compatibility;
+pub mod cpu_cores;
 pub mod detect;
 pub mod diagnostics;
 pub mod download;
@@ -33,6 +34,7 @@ pub use channel::{
     ApiDialect, ChannelBuildCtx, RuntimeAddress, RuntimeChannelDescriptor, RuntimeChannelKind,
     RuntimeEndpoint,
 };
+pub use cpu_cores::{CpuCoreFacts, detect_cpu_cores};
 pub use diagnostics::{DiagnosticRecord, FailureCategory};
 pub use error::{
     BackendRuntimeError, BackendRuntimeResult, InstallError, RuntimeAdapterError, SettingsError,

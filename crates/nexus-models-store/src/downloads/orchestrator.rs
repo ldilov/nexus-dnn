@@ -62,6 +62,10 @@ struct Inner {
 struct DownloadSlot(#[allow(dead_code)] OwnedSemaphorePermit);
 
 impl DownloadOrchestrator {
+    pub fn sink_root(&self) -> &Path {
+        &self.inner.sink_root
+    }
+
     #[must_use]
     pub fn new(
         store: JobStore,
@@ -471,8 +475,34 @@ impl DownloadOrchestrator {
                 error = %e,
                 "install-map record failed (artifact still on disk)"
             );
+            return;
         }
+
+        let install_map = self.inner.install_map.clone();
+        let artifact_id = target.artifact_id.clone();
+        let artifact_path = resolve_artifact_path(&self.inner, job, target);
+        tokio::spawn(async move {
+            let metadata =
+                nexus_model_metadata::extract_any(&artifact_path, artifact_id.as_str());
+            if let Err(e) = install_map
+                .update_extraction_metadata(&artifact_id, &metadata)
+                .await
+            {
+                tracing::warn!(
+                    artifact_id = %artifact_id,
+                    error = %e,
+                    "extraction-metadata update failed"
+                );
+            }
+        });
     }
+}
+
+fn resolve_artifact_path(inner: &Inner, job: &PersistedJob, target: &PersistedTarget) -> PathBuf {
+    inner
+        .sink_root
+        .join(job.job_id.to_string())
+        .join(&target.filename)
 }
 
 fn variant_id_from_job(job: &PersistedJob) -> Option<VariantId> {

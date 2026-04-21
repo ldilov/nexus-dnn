@@ -4,8 +4,7 @@ Rust sidecar worker for the builtin `nexus.local-llm` extension.
 
 ## Status
 
-Scaffolding only. Phase 1 (Setup) + partial Phase 2 (Foundational) complete. See
-[spec 024](../../specs/024-local-llm-rust-port/) for the full plan.
+Scaffolding only — not yet production-ready.
 
 ## What this crate is
 
@@ -31,5 +30,5 @@ themselves; that path is out of scope for this crate.
 
 ## See
 
-- [../../specs/024-local-llm-rust-port/plan.md](../../specs/024-local-llm-rust-port/plan.md)
-- [../../specs/024-local-llm-rust-port/quickstart.md](../../specs/024-local-llm-rust-port/quickstart.md)
+- [`crates/nexus-backend-runtimes/`](../nexus-backend-runtimes/) — the host crate that owns the runtime install + spawn lifecycle.
+- [`crates/nexus-models-store/`](../nexus-models-store/) — the host crate that owns the model catalog and download pipeline.

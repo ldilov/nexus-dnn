@@ -1,5 +1,5 @@
 import { useRef, useEffect, type ReactNode } from "react";
-import { Button } from "../button";
+import { Button } from "../base/button";
 import { ProgressTracker } from "./progress_tracker";
 import * as styles from "./backend_styles.css";
 

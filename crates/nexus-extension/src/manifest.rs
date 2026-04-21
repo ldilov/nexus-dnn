@@ -94,6 +94,27 @@ pub struct EnvironmentSpec {
 pub struct UiDeclaration {
     pub layouts: Option<Vec<LayoutRef>>,
     pub contributions: Option<Vec<FileRef>>,
+    #[serde(default)]
+    pub assets: Option<UiAssetsDir>,
+    #[serde(default)]
+    pub custom_elements: Option<Vec<CustomElementSpec>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UiAssetsDir {
+    pub root: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CustomElementSpec {
+    pub tag: String,
+    pub module: String,
+    #[serde(default = "default_custom_element_entry")]
+    pub entry: String,
+}
+
+fn default_custom_element_entry() -> String {
+    "register".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize)]

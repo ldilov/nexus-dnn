@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Button } from "../button";
+import { Button } from "../base/button";
 import * as styles from "./layout_styles.css";
 
 type ProgressTrackerProps = {
@@ -21,14 +21,19 @@ function formatBytes(bytes: number): string {
 
 export function ProgressTracker({
   label,
-  percent = 0,
+  percent,
   bytesLoaded,
   bytesTotal,
   showCancel = false,
   onCancel,
   children,
 }: ProgressTrackerProps) {
-  const clampedPercent = Math.min(100, Math.max(0, percent));
+  const resolvedPercent =
+    percent ??
+    (bytesTotal !== undefined && bytesTotal > 0 && bytesLoaded !== undefined
+      ? (bytesLoaded / bytesTotal) * 100
+      : 0);
+  const clampedPercent = Math.min(100, Math.max(0, resolvedPercent));
   const bytesLabel = bytesTotal !== undefined && bytesLoaded !== undefined
     ? `${formatBytes(bytesLoaded)} / ${formatBytes(bytesTotal)}`
     : null;

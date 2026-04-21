@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { fetchTools, type Tool } from "../api/client";
-import { Input } from "../components/input";
+import { Input } from "../components/base/input";
 import * as styles from "./catalog.css";
 
 const EMPTY_TOOLS: Tool[] = [];

@@ -307,8 +307,6 @@ The host rejects activation when any of these checks fail:
 
 ## 🔗 Related Documentation
 
-- [📋 Worker Protocol](../specs/001-arch-core-setup/contracts/worker-protocol.md) — JSON-RPC
-  message format between host and worker
-- [🐍 Python SDK](../sdk/python/) — `BaseWorker`, `ExecutionContext`, protocol helpers
-- [📋 Host API Reference](../specs/001-arch-core-setup/contracts/host-api.md) — REST endpoints
-  for extensions, operators, workflows, and runs
+- [Worker Protocol](worker-protocol.md) — JSON-RPC message format between host and worker
+- [Python SDK](python-sdk.md) — `BaseWorker`, `ExecutionContext`, and protocol helpers
+- [API Reference](api-reference.md) — REST endpoints for extensions, operators, workflows, and runs

@@ -64,6 +64,9 @@ const BENIGN_HOSTS = [
   "developer.mozilla.org",
   "vanilla-extract.style",
   "reactrouter.com",
+  // react-markdown / remark / rehype libraries bake source/changelog URLs
+  // into their bundles as metadata. Never fetched; pure string constants.
+  "github.com",
 ];
 
 function isBenign(host) {

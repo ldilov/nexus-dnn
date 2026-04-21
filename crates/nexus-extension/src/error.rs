@@ -49,4 +49,28 @@ pub enum ExtensionError {
         family: String,
         ranges: Vec<String>,
     },
+    #[error(
+        "duplicate custom element tag '{tag}' — already registered by extension '{owner}', cannot re-register for '{extension_id}'"
+    )]
+    DuplicateCustomElementTag {
+        tag: String,
+        owner: String,
+        extension_id: String,
+    },
+    #[error(
+        "invalid custom element tag '{tag}' in extension '{extension_id}': tag must match ^[a-z][a-z0-9]*(-[a-z0-9]+)+$"
+    )]
+    InvalidCustomElementTag { tag: String, extension_id: String },
+    #[error(
+        "custom element module '{module}' declared by extension '{extension_id}' not found under assets root '{root}'"
+    )]
+    CustomElementModuleMissing {
+        module: String,
+        extension_id: String,
+        root: String,
+    },
+    #[error(
+        "invalid ui assets root '{root}' for extension '{extension_id}': must stay inside the extension directory"
+    )]
+    InvalidUiAssetsRoot { root: String, extension_id: String },
 }

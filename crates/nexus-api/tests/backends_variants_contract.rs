@@ -1,7 +1,6 @@
-//! Contract test for spec 020 US1 — `GET /api/v1/llm/backends/{id}/variants`.
+//! Contract test for `GET /api/v1/llm/backends/{id}/variants`.
 //!
-//! Covers the three documented envelope shapes from
-//! `specs/020-backends-and-models-polish/contracts/backends_variants.http`:
+//! Covers the documented envelope shapes:
 //!
 //! * `200 OK` — happy path with a real llama.cpp adapter pointed at a seeded
 //!   version manifest.
@@ -129,7 +128,8 @@ async fn build_harness(manifest: Option<&str>) -> Harness {
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
         host_install_paths: None,
         install_map: None,
-        inference: std::sync::Arc::new(nexus_api::handlers::extensions_local_llm::inference::StubInferenceBackend),
+        model_load_registry:
+            nexus_api::handlers::extensions_local_llm::load_registry::ModelLoadRegistry::new(),
     };
 
     Harness { state, _tmp: tmp }
@@ -189,7 +189,8 @@ async fn unwired_harness() -> Harness {
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
         host_install_paths: None,
         install_map: None,
-        inference: std::sync::Arc::new(nexus_api::handlers::extensions_local_llm::inference::StubInferenceBackend),
+        model_load_registry:
+            nexus_api::handlers::extensions_local_llm::load_registry::ModelLoadRegistry::new(),
     };
 
     Harness { state, _tmp: tmp }

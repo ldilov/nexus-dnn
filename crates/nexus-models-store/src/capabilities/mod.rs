@@ -15,9 +15,6 @@ mod private {
     pub trait Sealed {}
 }
 
-/// Sealed host-internal trait every runtime backend implements. See
-/// [`specs/025-models-search-refactor/contracts/rust-backend-adapter.md`]
-/// for the worked example of adding a second backend.
 pub trait BackendAdapter: private::Sealed + Send + Sync {
     fn id(&self) -> &BackendId;
     fn capability(&self) -> &BackendCapability;

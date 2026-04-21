@@ -232,9 +232,6 @@ curl http://localhost:3000/api/v1/runs/<run-id>
 
 ## 🔗 Related Documentation
 
-- [🔌 Extension Development Guide](extension-guide.md) — creating extensions, operators, and
-  workers
-- [📋 Host API Reference](../specs/001-arch-core-setup/contracts/host-api.md) — REST endpoints
-  for workflows, runs, artifacts, and events
-- [📊 Data Model](../specs/001-arch-core-setup/data-model.md) — entity definitions for
-  Workflow, Node, Edge, Run, and Artifact
+- [Extension Development Guide](extension-guide.md) — creating extensions, operators, and workers
+- [API Reference](api-reference.md) — REST endpoints for workflows, runs, artifacts, and events
+- [Data Model](data-model.md) — entity definitions for Workflow, Node, Edge, Run, and Artifact
