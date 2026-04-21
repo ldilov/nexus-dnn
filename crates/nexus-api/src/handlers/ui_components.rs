@@ -630,16 +630,16 @@ pub fn catalog_entries() -> Vec<ComponentMetadata> {
             "Progress bar with optional byte-count readout and cancel affordance.",
             obj(
                 json!({
-                    "label": { "type": "string", "description": "Headline above the bar." },
+                    "label": { "type": "string", "default": "Downloading model", "description": "Headline above the bar." },
                     "percent": {
                         "type": "number",
                         "minimum": 0,
                         "maximum": 100,
-                        "description": "Completion percentage (0-100). If omitted, falls back to bytesLoaded/bytesTotal."
+                        "description": "Completion percentage (0-100). Clear this field to auto-calculate from bytesLoaded/bytesTotal."
                     },
-                    "bytesLoaded": { "type": "number", "minimum": 0, "description": "Bytes transferred so far." },
-                    "bytesTotal": { "type": "number", "minimum": 0, "description": "Total bytes expected." },
-                    "showCancel": { "type": "boolean", "default": false, "description": "Render a cancel button." }
+                    "bytesLoaded": { "type": "number", "minimum": 0, "default": 62_914_560u64, "description": "Bytes transferred so far. Combined with bytesTotal, drives the bar when `percent` is empty." },
+                    "bytesTotal": { "type": "number", "minimum": 0, "default": 101_187_584u64, "description": "Total bytes expected. Combined with bytesLoaded, drives the bar when `percent` is empty." },
+                    "showCancel": { "type": "boolean", "default": true, "description": "Render a cancel button." }
                 }),
                 &[],
             ),
