@@ -52,16 +52,27 @@ use crate::AppState;
 use crate::frontend;
 use crate::handlers;
 use crate::handlers::{
-    artifacts, backend_events_ws, backends, deployments, extensions, extensions_install, health,
+    artifacts, backend_events_ws, backends, deployments, extension_ui, extensions, extensions_install, health,
     huggingface, metrics, modules, recipes, runs, storage_contributions, system, tools,
-    ui_contributions, ui_layouts, workflows,
+    ui_components, ui_contributions, ui_layouts, workflows,
 };
 use crate::ws;
 
 pub fn build(state: AppState) -> Router {
+    ui_components::validate_catalog(&ui_components::catalog_entries())
+        .expect("UI component catalog failed validation at startup");
     let api_v1 = Router::new()
         .route("/health", get(health::health_check))
         .route("/metrics", get(metrics::get_metrics))
+        .route("/ui/components", get(ui_components::list_ui_components))
+        .route(
+            "/ui/extension-components",
+            get(extension_ui::list_extension_components),
+        )
+        .route(
+            "/extensions/{id}/ui/{*path}",
+            get(extension_ui::serve_extension_asset),
+        )
         .route("/extensions", get(extensions::list_extensions))
         .route("/extensions/{id}", get(extensions::get_extension))
         .route(
@@ -191,6 +202,10 @@ pub fn build(state: AppState) -> Router {
         )
         .route("/backends", get(backends::list_host_runtimes))
         .route(
+            "/backends/runtime-defaults",
+            get(backends::get_runtime_defaults),
+        )
+        .route(
             "/backends/events",
             get(backend_events_ws::backend_events_ws),
         )
@@ -276,7 +291,12 @@ pub fn build(state: AppState) -> Router {
         .route(
             "/extensions/local-llm/chat/threads/{thread_id}/active_model",
             get(handlers::extensions_local_llm::chat::get_active_model)
-                .put(handlers::extensions_local_llm::chat::set_active_model),
+                .put(handlers::extensions_local_llm::chat::set_active_model)
+                .delete(handlers::extensions_local_llm::chat::unload_active_model),
+        )
+        .route(
+            "/extensions/local-llm/chat/threads/{thread_id}/active_model/status",
+            get(handlers::extensions_local_llm::chat::get_active_model_status),
         )
         .route(
             "/extensions/local-llm/chat/threads/{thread_id}/messages",

@@ -159,6 +159,27 @@
             },
             "additionalProperties": false
           }
+        },
+        "assets": {
+          "type": "object",
+          "required": ["root"],
+          "properties": {
+            "root": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "custom_elements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["tag", "module"],
+            "properties": {
+              "tag": { "type": "string", "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)+$" },
+              "module": { "type": "string" },
+              "entry": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": false

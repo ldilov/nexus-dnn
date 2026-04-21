@@ -1,0 +1,24 @@
+spec_version: "0.1"
+extension:
+  id: "nexus.test.custom-element"
+  version: "0.1.0"
+  name: "Custom Element Test Fixture"
+  description: "Fixture used by US3 contract tests — ships a single custom element."
+  publisher: "nexus-test"
+compatibility:
+  host_api: ">=0.1.0, <2.0.0"
+  protocol: ">=0.1.0, <2.0.0"
+  platforms:
+    - "linux-x64"
+    - "windows-x64"
+    - "darwin-arm64"
+runtime:
+  family: "builtin"
+  entrypoint: "noop"
+ui:
+  assets:
+    root: "ui"
+  custom_elements:
+    - tag: "ext-fixture-widget"
+      module: "fixture.js"
+      entry: "register"
