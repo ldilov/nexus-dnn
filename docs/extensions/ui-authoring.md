@@ -374,8 +374,58 @@ children:
 
 ---
 
+## For host maintainers: adding a new catalog component
+
+The catalog at `/api/v1/ui/components` is published from a **manually-maintained** static table in Rust. There is no code generation, no sidecar JSON, no derive macro — by design. This keeps the published contract explicit and reviewable.
+
+### Where the catalog lives
+
+```
+crates/nexus-api/src/handlers/ui_components.rs  ← the table (single source of truth)
+apps/web/src/layout/component_registry.tsx      ← the React renderers
+apps/web/scripts/scan-components.allowlist.json ← the committed name list
+apps/web/scripts/scan-components.mjs            ← drift detector (pnpm scan:components)
+```
+
+### Workflow to add a new component
+
+1. **Implement the React renderer** in `apps/web/src/components/layout/` and register it in `component_registry.tsx` under a new `snake_case` key.
+
+2. **Add the name** to `apps/web/scripts/scan-components.allowlist.json` (sorted).
+
+3. **Add the metadata entry** in `ui_components.rs` inside `catalog_entries()`. Use the `meta(name, display, category, description, schema, example_yaml)` helper with:
+   - `category`: one of `Layout`, `Data`, `Input`, `Display`, `Feedback`, `Shell`, `Domain`.
+   - `schema`: a `serde_json::json!` tree. Prefer the `obj(props, required)` shorthand for object schemas, `any_obj()` only when genuinely unknown (and commit to upgrading it later).
+   - `example_yaml`: a minimal, runnable example. **Every required prop must appear in at least one example** — startup validation rejects the host otherwise.
+
+4. **Choose schema keywords deliberately**:
+   - `type: "string"` + `enum: ["a", "b"]` for closed sets.
+   - `type: "array"` + `items: obj({...})` for structured rows.
+   - `description` on every prop — it surfaces in the playground as help text.
+   - `default` where the renderer has one; the playground pre-fills.
+
+5. **Run the gates**:
+   ```bash
+   cargo test -p nexus-api handlers::ui_components    # schema coverage
+   pnpm -C apps/web scan:components                    # name sync
+   pnpm -C apps/web tsc --noEmit                       # TS still clean
+   ```
+
+6. **Open the playground** at `/dev/components` and confirm the new component renders and its schema-driven form behaves sensibly.
+
+### Why it's manually edited
+
+- **Reviewability**: the catalog is the extension-author-facing contract. Every change lands in one file with a diff a reviewer can understand at a glance.
+- **No magic binding**: the Rust table and TSX registry are decoupled — the renderer can evolve independently, and the scan tool catches drift without runtime coupling.
+- **Explicit failure**: malformed metadata fails `router::build()` at startup, not silently in production.
+
+### Anti-patterns to avoid
+
+- **Skipping `description`**: the prop shows up in the playground but with no help text. Always add a one-line description.
+- **Using `any_obj()` as a permanent choice**: acceptable as a placeholder, but file a follow-up to flesh out the schema. Sparse schemas train users to expect a foot-gun.
+- **Mismatched prop names between TSX renderer and Rust schema**: the scan tool only checks component names, not prop names. If your schema says `source` but the renderer reads `content`, the playground will silently fail to render. Keep them in lock-step by eye.
+
 ## Next steps
 
-- Add a new entry to the host catalog: open a PR editing `crates/nexus-api/src/handlers/ui_components.rs` — the playground picks it up automatically after rebuild.
 - Publish a custom element for others to reuse: document your tag + prop contract in your extension's README; file it under the appropriate category in the broader extension registry.
 - See the [feature spec](../../specs/027-extension-ui-playground/spec.md) for the full non-negotiable contract this guide implements.
