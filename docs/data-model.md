@@ -1,5 +1,7 @@
 # 📊 Data Model
 
+The entities the host tracks, their fields, their relationships, and the valid values for every enum. This doc is the logical model; [Database Schema](database-schema.md) describes how these entities land in SQLite, and the [API Reference](api-reference.md) describes the HTTP shapes.
+
 ---
 
 ## 🏗️ Entity Relationships
@@ -151,12 +153,9 @@ erDiagram
 
 ### Event
 
-| Field  | Type     | Description                                      |
-|:-------|:---------|:-------------------------------------------------|
-| `type` | `String` | Event discriminator (e.g. `node_progress`)       |
-| _..._  | varies   | Additional fields depend on event type           |
+Every event carries a `type` discriminator. The remaining fields depend on the event type — e.g. `node_progress` adds `run_id`, `node_id`, `percent`, `message`.
 
-See [API Reference -- Event Stream](api-reference.md#-event-stream) for the full event type catalog.
+See [API Reference — Event Stream](api-reference.md#-event-stream) for the full event type catalog and per-type field list.
 
 ---
 

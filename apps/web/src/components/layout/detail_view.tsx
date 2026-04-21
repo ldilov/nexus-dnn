@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Badge } from "../badge";
+import { Badge } from "../base/badge";
 import * as styles from "./layout_styles.css";
 
 type FieldDef = {

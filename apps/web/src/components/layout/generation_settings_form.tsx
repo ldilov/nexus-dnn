@@ -5,7 +5,7 @@ import {
   setGenerationSettings,
   type GenerationParams,
 } from "../../services/local_llm_chat";
-import { inputRecipe } from "../input.css";
+import { inputRecipe } from "../base/input.css";
 import * as styles from "./layout_styles.css";
 
 type NumericKey =

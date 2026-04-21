@@ -11,7 +11,7 @@ import { Shell } from "./layout/shell";
 import { TopBar, type ViewId } from "./layout/top_bar";
 import { Sidebar } from "./layout/sidebar";
 import { RightInspector } from "./layout/right_inspector";
-import { Tabs } from "./components/tabs";
+import { Tabs } from "./components/base/tabs";
 import { sweepStaleDrafts } from "./views/modules/draft/draft_envelope";
 import { useOperatorSpecs } from "./hooks/use_operator_specs";
 import { useEventStream } from "./hooks/use_event_stream";

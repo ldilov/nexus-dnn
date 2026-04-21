@@ -27,6 +27,10 @@ CLAUDE.md
 .aider*
 .copilot/
 
+# Internal working docs (kept local, not published)
+specs/
+docs/plans/
+
 # Environment and secrets
 .env
 .env.*

@@ -137,3 +137,50 @@ export function subscribeInstallProgress(
     opts,
   );
 }
+
+export interface SessionStateChanged {
+  sessionId: string;
+  cause: string;
+  familyId?: string;
+  variantId?: string;
+  label?: string;
+  reason?: string;
+  port?: number;
+  emittedAt?: number;
+}
+
+export function subscribeSessionEvents(
+  threadId: string,
+  onEvent: (event: SessionStateChanged) => void,
+  opts?: SubscribeOptions,
+): Subscription {
+  return openReconnectingSocket<BackendEventRecord>(
+    () =>
+      `${wsScheme()}//${wsHost()}/api/v1/backends/events?family=${encodeURIComponent(
+        "extension.local-llm",
+      )}`,
+    (record) => {
+      if (record.topic !== "session.state.changed") return;
+      const payload = record.payload ?? {};
+      const sessionId = typeof payload.session_id === "string"
+        ? payload.session_id
+        : undefined;
+      if (sessionId !== threadId) return;
+      onEvent({
+        sessionId,
+        cause: typeof payload.cause === "string" ? payload.cause : "unknown",
+        familyId: typeof payload.family_id === "string"
+          ? payload.family_id
+          : undefined,
+        variantId: typeof payload.variant_id === "string"
+          ? payload.variant_id
+          : undefined,
+        label: typeof payload.label === "string" ? payload.label : undefined,
+        reason: typeof payload.reason === "string" ? payload.reason : undefined,
+        port: typeof payload.port === "number" ? payload.port : undefined,
+        emittedAt: record.emitted_at,
+      });
+    },
+    opts,
+  );
+}

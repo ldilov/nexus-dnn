@@ -10,6 +10,7 @@ use crate::envelope::ApiResponse;
 const MAX_ROWS: usize = 500;
 
 #[derive(Debug, Clone, Serialize)]
+#[non_exhaustive]
 pub struct InstalledArtifactDto {
     pub artifact_id: String,
     pub family_id: String,
@@ -20,6 +21,12 @@ pub struct InstalledArtifactDto {
     pub source_repo: String,
     pub source_revision: Option<String>,
     pub installed_at: String,
+    pub layer_count: Option<u32>,
+    pub max_context: Option<u32>,
+    pub architecture: Option<String>,
+    pub hidden_size: Option<u32>,
+    pub extraction_status: Option<String>,
+    pub extracted_at: Option<i64>,
 }
 
 impl From<InstalledArtifactRow> for InstalledArtifactDto {
@@ -34,6 +41,12 @@ impl From<InstalledArtifactRow> for InstalledArtifactDto {
             source_repo: row.source_repo,
             source_revision: row.source_revision,
             installed_at: row.installed_at.to_rfc3339(),
+            layer_count: row.layer_count,
+            max_context: row.max_context,
+            architecture: row.architecture,
+            hidden_size: row.hidden_size,
+            extraction_status: row.extraction_status,
+            extracted_at: row.extracted_at,
         }
     }
 }

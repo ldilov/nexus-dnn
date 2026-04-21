@@ -47,11 +47,11 @@ auto-resolve the current commit SHA at install time and persist it
 `parse_manifest` runs `validate_revision_pinning` over every entry as part
 of manifest parse.
 
-## ZIP install (spec 019 FR-IE03)
+## ZIP install
 
 `ZipInstallPipeline` accepts a staged `.zip` file and publishes the extension
 into `extensions_root/{id}/` after running 12 ordered validation + extraction
-steps (see `specs/019-extension-modules/contracts/zip-install-pipeline.md`).
+steps.
 
 Caps (all overridable via `with_size_limits`):
 

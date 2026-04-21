@@ -19,5 +19,3 @@ Non-goals:
 - SQL migrations (live in `nexus-storage`)
 - runtime-adapter orchestration (lives in `nexus-backend-runtimes`)
 - model file operations (live in `nexus-models-store`)
-
-See `specs/018-deployments/` for the authoritative spec, plan, tasks, and contracts.

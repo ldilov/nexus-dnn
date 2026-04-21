@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { OperatorDto } from "../../../../api/client";
-import { colorForPortType } from "../../../../nodes/port_types";
+import { colorForPortType } from "../../../../components/nodes/port_types";
 import * as styles from "./operator_palette.css";
 
 export type OperatorPaletteProps = {

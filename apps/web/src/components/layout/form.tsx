@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { inputRecipe } from "../input.css";
+import { inputRecipe } from "../base/input.css";
 import * as styles from "./layout_styles.css";
 
 type FieldDef = {

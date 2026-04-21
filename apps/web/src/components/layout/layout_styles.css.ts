@@ -12,7 +12,8 @@ export const splitPanelVertical = style({
 });
 
 export const splitPanelChild = style({
-  overflow: "auto",
+  overflowX: "hidden",
+  overflowY: "auto",
   minWidth: 0,
   minHeight: 0,
 });
@@ -22,7 +23,9 @@ export const stack = style({
   flexDirection: "column",
   gap: vars.space.gapSm,
   height: "100%",
-  overflow: "auto",
+  overflowY: "auto",
+  overflowX: "hidden",
+  minWidth: 0,
 });
 
 export const tabsContainer = style({
@@ -240,6 +243,89 @@ export const chatCodeHighlightLine = style({
   marginRight: `-${vars.space.insetMd}`,
   paddingLeft: vars.space.insetMd,
   paddingRight: vars.space.insetMd,
+});
+
+export const chatMarkdown = style({
+  fontSize: vars.font.size.body,
+  lineHeight: 1.6,
+  wordBreak: "break-word",
+});
+
+globalStyle(`${chatMarkdown} > *:first-child`, { marginTop: 0 });
+globalStyle(`${chatMarkdown} > *:last-child`, { marginBottom: 0 });
+globalStyle(`${chatMarkdown} p`, { margin: "0.5em 0" });
+globalStyle(`${chatMarkdown} h1, ${chatMarkdown} h2, ${chatMarkdown} h3, ${chatMarkdown} h4`, {
+  margin: "0.8em 0 0.4em",
+  fontWeight: 600,
+  letterSpacing: "-0.01em",
+  color: vars.color.text.primary,
+});
+globalStyle(`${chatMarkdown} h1`, { fontSize: "1.25em" });
+globalStyle(`${chatMarkdown} h2`, { fontSize: "1.15em" });
+globalStyle(`${chatMarkdown} h3`, { fontSize: "1.05em" });
+globalStyle(`${chatMarkdown} h4`, { fontSize: "1em" });
+globalStyle(`${chatMarkdown} ul, ${chatMarkdown} ol`, {
+  margin: "0.4em 0",
+  paddingLeft: "1.4em",
+});
+globalStyle(`${chatMarkdown} li`, { margin: "0.18em 0" });
+globalStyle(`${chatMarkdown} li > p`, { margin: "0.15em 0" });
+globalStyle(`${chatMarkdown} blockquote`, {
+  margin: "0.6em 0",
+  padding: "0.2em 0.9em",
+  borderLeft: `2.5px solid ${vars.color.accent.primary}66`,
+  color: vars.color.text.muted,
+  background: "rgba(186, 158, 255, 0.04)",
+  borderRadius: "0 6px 6px 0",
+});
+globalStyle(`${chatMarkdown} hr`, {
+  border: "none",
+  borderTop: `1px solid ${vars.color.outline.variant}`,
+  margin: "0.9em 0",
+});
+globalStyle(`${chatMarkdown} a`, {
+  color: vars.color.accent.primary,
+  textDecoration: "none",
+  borderBottom: `1px dotted ${vars.color.accent.primary}`,
+});
+globalStyle(`${chatMarkdown} a:hover`, { borderBottomStyle: "solid" });
+globalStyle(`${chatMarkdown} strong`, {
+  fontWeight: 600,
+  color: vars.color.text.primary,
+});
+globalStyle(`${chatMarkdown} em`, { fontStyle: "italic" });
+globalStyle(`${chatMarkdown} table`, {
+  borderCollapse: "collapse",
+  margin: "0.6em 0",
+  fontSize: "0.95em",
+  display: "block",
+  overflowX: "auto",
+});
+globalStyle(`${chatMarkdown} th, ${chatMarkdown} td`, {
+  border: `1px solid ${vars.color.outline.variant}`,
+  padding: "6px 10px",
+  textAlign: "left",
+});
+globalStyle(`${chatMarkdown} th`, {
+  background: "rgba(255,255,255,0.03)",
+  fontWeight: 600,
+});
+globalStyle(`${chatMarkdown} .katex-display`, {
+  margin: "0.6em 0",
+  overflowX: "auto",
+  overflowY: "hidden",
+  padding: "2px 0",
+});
+globalStyle(`${chatMarkdown} .katex`, { fontSize: "1em" });
+
+export const chatInlineCode = style({
+  fontFamily: vars.font.code,
+  fontSize: "0.9em",
+  padding: "1px 6px",
+  borderRadius: "5px",
+  background: "rgba(186, 158, 255, 0.12)",
+  color: vars.color.accent.secondaryDim,
+  border: `1px solid rgba(186, 158, 255, 0.18)`,
 });
 
 export const chatInputArea = style({
@@ -1268,7 +1354,42 @@ export const chatMessageMeta = style({
   textTransform: "uppercase",
   letterSpacing: "0.05em",
   marginTop: "8px",
-  opacity: 0.4,
+  opacity: 0.5,
+  cursor: "pointer",
+  listStyle: "none",
+  userSelect: "none",
+  transition: "opacity 150ms ease, color 150ms ease",
+  ":hover": {
+    opacity: 1,
+    color: vars.color.accent.primary,
+  },
+  selectors: {
+    "&::-webkit-details-marker": { display: "none" },
+  },
+});
+
+export const chatMessageMetaDetails = style({
+  marginTop: "8px",
+});
+
+export const chatMessageParams = style({
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "10px 14px",
+  marginTop: "6px",
+  padding: "8px 10px",
+  fontFamily: vars.font.code,
+  fontSize: "11px",
+  color: vars.color.text.muted,
+  background: "rgba(186, 158, 255, 0.05)",
+  border: `1px solid ${vars.color.outline.variant}`,
+  borderRadius: "8px",
+  lineHeight: 1.4,
+});
+
+globalStyle(`${chatMessageParams} b`, {
+  color: vars.color.accent.primary,
+  fontWeight: 600,
 });
 
 export const chatMessageActions = style({
@@ -1314,6 +1435,42 @@ export const detailLiveBadge = style({
 const pulseLive = keyframes({
   "0%, 100%": { opacity: 1 },
   "50%": { opacity: 0.4 },
+});
+
+const chatSpin = keyframes({
+  from: { transform: "rotate(0deg)" },
+  to: { transform: "rotate(360deg)" },
+});
+
+const chatBlink = keyframes({
+  "0%, 49%": { opacity: 0.85 },
+  "50%, 100%": { opacity: 0 },
+});
+
+export const chatStreamingSpinner = style({
+  display: "inline-block",
+  animation: `${chatSpin} 900ms linear infinite`,
+  "@media": {
+    "(prefers-reduced-motion: reduce)": {
+      animation: "none",
+    },
+  },
+});
+
+export const chatStreamingCursor = style({
+  display: "inline-block",
+  width: "6px",
+  height: "1em",
+  marginLeft: "3px",
+  verticalAlign: "text-bottom",
+  background: "currentColor",
+  animation: `${chatBlink} 900ms steps(2, start) infinite`,
+  "@media": {
+    "(prefers-reduced-motion: reduce)": {
+      animation: "none",
+      opacity: 0.6,
+    },
+  },
 });
 
 export const detailLiveDot = style({

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Button } from "../button";
+import { Button } from "../base/button";
 import * as styles from "./backend_styles.css";
 import * as layoutStyles from "./layout_styles.css";
 

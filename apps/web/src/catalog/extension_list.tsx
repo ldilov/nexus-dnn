@@ -5,8 +5,8 @@ import {
   disableExtension,
   type Extension,
 } from "../api/client";
-import { StatusBadge, type BadgeStatus } from "../components/status_badge";
-import { Button } from "../components/button";
+import { StatusBadge, type BadgeStatus } from "../components/base/status_badge";
+import { Button } from "../components/base/button";
 import * as styles from "./catalog.css";
 
 function extensionStatusToBadge(status: string): BadgeStatus {

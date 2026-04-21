@@ -53,6 +53,21 @@ pub struct InstalledArtifactRow {
     pub sha256: Option<String>,
     pub size_bytes: Option<u64>,
     pub installed_at: DateTime<Utc>,
+    pub layer_count: Option<u32>,
+    pub max_context: Option<u32>,
+    pub architecture: Option<String>,
+    pub hidden_size: Option<u32>,
+    pub extraction_status: Option<String>,
+    pub extracted_at: Option<i64>,
+}
+
+fn extraction_status_str(status: nexus_model_metadata::ExtractionStatus) -> &'static str {
+    match status {
+        nexus_model_metadata::ExtractionStatus::Ok => "ok",
+        nexus_model_metadata::ExtractionStatus::Partial => "partial",
+        nexus_model_metadata::ExtractionStatus::Failed => "failed",
+        _ => "failed",
+    }
 }
 
 fn format_as_str(f: Format) -> &'static str {
@@ -130,7 +145,9 @@ impl InstallMap {
         let row = sqlx::query(
             "SELECT artifact_id, family_id, variant_id, format,
                     source_provider, source_repo, source_revision,
-                    filename, job_id, sha256, size_bytes, installed_at
+                    filename, job_id, sha256, size_bytes, installed_at,
+                    layer_count, max_context, architecture, hidden_size,
+                    extraction_status, extracted_at
              FROM model_store_installed_artifacts
              WHERE artifact_id = ?1",
         )
@@ -147,7 +164,9 @@ impl InstallMap {
         let rows = sqlx::query(
             "SELECT artifact_id, family_id, variant_id, format,
                     source_provider, source_repo, source_revision,
-                    filename, job_id, sha256, size_bytes, installed_at
+                    filename, job_id, sha256, size_bytes, installed_at,
+                    layer_count, max_context, architecture, hidden_size,
+                    extraction_status, extracted_at
              FROM model_store_installed_artifacts
              ORDER BY installed_at DESC, artifact_id ASC
              LIMIT ?1",
@@ -158,6 +177,36 @@ impl InstallMap {
         Ok(rows.into_iter().map(parse_row).collect())
     }
 
+    /// Backfill the six extraction-metadata columns on an existing
+    /// artifact row. Called fire-and-forget from the orchestrator after
+    /// `record()` commits, so extraction latency never blocks install.
+    pub async fn update_extraction_metadata(
+        &self,
+        artifact_id: &ArtifactId,
+        metadata: &nexus_model_metadata::ExtractedMetadata,
+    ) -> JobStoreResult<()> {
+        sqlx::query(
+            "UPDATE model_store_installed_artifacts
+             SET layer_count = ?1,
+                 max_context = ?2,
+                 architecture = ?3,
+                 hidden_size = ?4,
+                 extraction_status = ?5,
+                 extracted_at = ?6
+             WHERE artifact_id = ?7",
+        )
+        .bind(metadata.layer_count.map(i64::from))
+        .bind(metadata.max_context.map(i64::from))
+        .bind(metadata.architecture.as_deref())
+        .bind(metadata.hidden_size.map(i64::from))
+        .bind(extraction_status_str(metadata.extraction_status))
+        .bind(metadata.extracted_at)
+        .bind(artifact_id.as_str())
+        .execute(self.pool.as_ref())
+        .await?;
+        Ok(())
+    }
+
     pub async fn list_for_family(
         &self,
         family_id: &FamilyId,
@@ -165,7 +214,9 @@ impl InstallMap {
         let rows = sqlx::query(
             "SELECT artifact_id, family_id, variant_id, format,
                     source_provider, source_repo, source_revision,
-                    filename, job_id, sha256, size_bytes, installed_at
+                    filename, job_id, sha256, size_bytes, installed_at,
+                    layer_count, max_context, architecture, hidden_size,
+                    extraction_status, extracted_at
              FROM model_store_installed_artifacts
              WHERE family_id = ?1
              ORDER BY installed_at DESC",
@@ -195,6 +246,18 @@ fn parse_row(r: sqlx::sqlite::SqliteRow) -> InstalledArtifactRow {
         installed_at: DateTime::parse_from_rfc3339(&r.get::<String, _>("installed_at"))
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now()),
+        layer_count: r
+            .get::<Option<i64>, _>("layer_count")
+            .map(|v| v as u32),
+        max_context: r
+            .get::<Option<i64>, _>("max_context")
+            .map(|v| v as u32),
+        architecture: r.get("architecture"),
+        hidden_size: r
+            .get::<Option<i64>, _>("hidden_size")
+            .map(|v| v as u32),
+        extraction_status: r.get("extraction_status"),
+        extracted_at: r.get("extracted_at"),
     }
 }
 
@@ -217,6 +280,17 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        for stmt in include_str!(
+            "../../../../migrations/015_installed_artifact_extraction_metadata.sql"
+        )
+        .split(';')
+        {
+            let trimmed = stmt.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            sqlx::query(trimmed).execute(&pool).await.unwrap();
+        }
         Arc::new(pool)
     }
 
@@ -253,6 +327,12 @@ mod tests {
         assert_eq!(row.format, "gguf");
         assert_eq!(row.source_repo, "acme/model");
         assert_eq!(row.size_bytes, Some(4_900_000_000));
+        assert!(row.layer_count.is_none());
+        assert!(row.max_context.is_none());
+        assert!(row.architecture.is_none());
+        assert!(row.hidden_size.is_none());
+        assert!(row.extraction_status.is_none());
+        assert!(row.extracted_at.is_none());
     }
 
     #[tokio::test]
@@ -290,6 +370,38 @@ mod tests {
         let ids: Vec<&str> = rows.iter().map(|r| r.artifact_id.as_str()).collect();
         assert!(ids.contains(&"hf:a/m#q4"));
         assert!(ids.contains(&"hf:a/m#q5"));
+    }
+
+    #[tokio::test]
+    async fn update_extraction_metadata_round_trips() {
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        map.record(sample("hf:a/m#file", "hf:a/m", Some("hf:a/m@Q4")))
+            .await
+            .unwrap();
+        let mut meta = nexus_model_metadata::ExtractedMetadata::ok(
+            "hf:a/m#file",
+            nexus_model_metadata::ArtifactFormat::Gguf,
+        );
+        meta.layer_count = Some(32);
+        meta.max_context = Some(8192);
+        meta.architecture = Some("llama".to_string());
+        meta.hidden_size = Some(4096);
+        meta.extracted_at = 1_700_000_000_000;
+        map.update_extraction_metadata(&ArtifactId::from("hf:a/m#file"), &meta)
+            .await
+            .unwrap();
+        let row = map
+            .find_by_artifact(&ArtifactId::from("hf:a/m#file"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.layer_count, Some(32));
+        assert_eq!(row.max_context, Some(8192));
+        assert_eq!(row.architecture.as_deref(), Some("llama"));
+        assert_eq!(row.hidden_size, Some(4096));
+        assert_eq!(row.extraction_status.as_deref(), Some("ok"));
+        assert_eq!(row.extracted_at, Some(1_700_000_000_000));
     }
 
     #[tokio::test]
