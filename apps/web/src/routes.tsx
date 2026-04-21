@@ -52,6 +52,7 @@ export const router = createHashRouter([
       { path: "extensions/:layoutId", Component: ExtensionLayoutRoute },
       { path: "runs", Component: RunsPlaceholderRoute },
       { path: "artifacts", Component: ArtifactsPlaceholderRoute },
+      { path: "dev/components", lazy: () => import("./views/dev-components") },
       { path: "*", loader: () => redirect("/") },
     ],
   },

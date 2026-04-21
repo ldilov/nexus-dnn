@@ -47,3 +47,28 @@ export interface ExtensionComponentsEnvelope {
 
 export const CATALOG_SCHEMA_VERSION = "1" as const;
 export const PROPS_SCHEMA_DRAFT = "2020-12" as const;
+
+const CATALOG_ENDPOINT = "/api/v1/ui/components";
+
+export async function fetchCatalog(
+  options?: { signal?: AbortSignal },
+): Promise<CatalogEnvelope> {
+  const res = await fetch(CATALOG_ENDPOINT, {
+    headers: { accept: "application/json" },
+    signal: options?.signal,
+  });
+  if (!res.ok) {
+    throw new Response(`catalog endpoint returned ${res.status}`, {
+      status: res.status,
+      statusText: res.statusText,
+    });
+  }
+  const envelope = (await res.json()) as CatalogEnvelope;
+  if (envelope.schema_version !== CATALOG_SCHEMA_VERSION) {
+    throw new Response(
+      `unsupported catalog schema_version: ${envelope.schema_version}`,
+      { status: 500 },
+    );
+  }
+  return envelope;
+}
