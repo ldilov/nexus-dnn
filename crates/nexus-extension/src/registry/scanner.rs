@@ -116,7 +116,7 @@ fn read_extension_dirs(extensions_dir: &Path) -> Result<Vec<PathBuf>, ExtensionE
     Ok(dirs)
 }
 
-fn process_extension(
+pub(super) fn process_extension(
     ext_dir: &Path,
     host_version: &Version,
     protocol_version: &Version,

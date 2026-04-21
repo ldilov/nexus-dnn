@@ -20,7 +20,8 @@ pub use types::{ActivatedExtension, DiscoveryReport, ExtensionStatus, LayoutFile
 pub use version_conflict::detect_intra_manifest_conflicts;
 
 use scanner::{
-    activate_extension_inner, rebuild_operator_entries, scan_builtin_dir, scan_extensions_dir,
+    activate_extension_inner, process_extension, rebuild_operator_entries, scan_builtin_dir,
+    scan_extensions_dir,
 };
 use types::RegistryState;
 
@@ -47,6 +48,12 @@ pub trait ExtensionRegistry: Send + Sync {
         &self,
         host_tag_names: &std::collections::HashSet<String>,
     ) -> Result<Vec<custom_elements::CustomElementRegistration>, ExtensionError>;
+    fn reload_extension(
+        &self,
+        id: &str,
+        host_version: &Version,
+        protocol_version: &Version,
+    ) -> Result<(), ExtensionError>;
 }
 
 pub struct InMemoryExtensionRegistry {
@@ -197,6 +204,56 @@ impl InMemoryExtensionRegistry {
         }
     }
 
+    /// Re-read a single extension's manifest and replace its registry entry
+    /// atomically. On any failure (missing id, manifest parse, schema
+    /// validation, compatibility mismatch, tag collision) the prior entry is
+    /// kept and the error is returned — no partial state (FR-027).
+    pub fn reload_extension(
+        &self,
+        id: &str,
+        host_version: &Version,
+        protocol_version: &Version,
+    ) -> Result<(), ExtensionError> {
+        let ext_dir = {
+            let state = self.state.read();
+            state
+                .extensions
+                .iter()
+                .find(|e| e.manifest.extension.id == id)
+                .map(|e| e.directory.clone())
+                .ok_or_else(|| ExtensionError::ExtensionNotFound(id.to_owned()))?
+        };
+        let reloaded = process_extension(&ext_dir, host_version, protocol_version)?;
+        if reloaded.manifest.extension.id != id {
+            return Err(ExtensionError::InvalidStateTransition {
+                extension_id: id.to_owned(),
+                detail: format!(
+                    "manifest on disk now declares id '{}', reload refuses to change identity",
+                    reloaded.manifest.extension.id
+                ),
+            });
+        }
+        let mut state = self.state.write();
+        let Some(idx) = state
+            .extensions
+            .iter()
+            .position(|e| e.manifest.extension.id == id)
+        else {
+            return Err(ExtensionError::ExtensionNotFound(id.to_owned()));
+        };
+        let prior = std::mem::replace(&mut state.extensions[idx], reloaded);
+        let host_tags: std::collections::HashSet<String> = std::collections::HashSet::new();
+        if let Err(err) =
+            custom_elements::collect_from_extensions(&host_tags, &state.extensions)
+        {
+            state.extensions[idx] = prior;
+            return Err(err);
+        }
+        state.operator_index =
+            OperatorIndex::build(rebuild_operator_entries(&state.extensions));
+        Ok(())
+    }
+
     /// Collect all custom-element registrations published by currently active
     /// extensions. Validates tag grammar (FR-022), cross-extension uniqueness,
     /// assets-root containment, and module existence. Host-provided tag names
@@ -336,5 +393,14 @@ impl ExtensionRegistry for InMemoryExtensionRegistry {
         host_tag_names: &std::collections::HashSet<String>,
     ) -> Result<Vec<custom_elements::CustomElementRegistration>, ExtensionError> {
         self.collect_custom_elements_impl(host_tag_names)
+    }
+
+    fn reload_extension(
+        &self,
+        id: &str,
+        host_version: &Version,
+        protocol_version: &Version,
+    ) -> Result<(), ExtensionError> {
+        InMemoryExtensionRegistry::reload_extension(self, id, host_version, protocol_version)
     }
 }

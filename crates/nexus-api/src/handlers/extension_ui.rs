@@ -10,6 +10,7 @@ use serde::Serialize;
 use tokio::io::AsyncReadExt;
 
 use nexus_extension::ExtensionRegistry;
+use semver::Version;
 
 use crate::AppState;
 use crate::handlers::ui_components::{
@@ -30,6 +31,43 @@ fn error_response(status: StatusCode, code: &'static str, message: impl Into<Str
         message: message.into(),
     };
     (status, Json(body)).into_response()
+}
+
+pub async fn reload_extension(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Response {
+    let host_version = Version::new(1, 0, 0);
+    let protocol_version = Version::new(1, 0, 0);
+    match state
+        .extension_registry
+        .reload_extension(&id, &host_version, &protocol_version)
+    {
+        Ok(()) => (StatusCode::OK, Json(ReloadSuccess { status: "ok", id })).into_response(),
+        Err(nexus_extension::ExtensionError::ExtensionNotFound(_)) => error_response(
+            StatusCode::NOT_FOUND,
+            "extension_not_found",
+            format!("extension '{id}' is not installed"),
+        ),
+        Err(nexus_extension::ExtensionError::DuplicateCustomElementTag { .. }) => {
+            error_response(
+                StatusCode::CONFLICT,
+                "duplicate_custom_element_tag",
+                format!("reload rejected: '{id}' would collide with a registered tag"),
+            )
+        }
+        Err(err) => error_response(
+            StatusCode::CONFLICT,
+            "reload_failed",
+            format!("reload of '{id}' failed: {err}"),
+        ),
+    }
+}
+
+#[derive(Serialize)]
+struct ReloadSuccess {
+    status: &'static str,
+    id: String,
 }
 
 pub async fn list_extension_components(
