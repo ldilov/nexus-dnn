@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { vars } from "../../theme/contract.css";
 import * as styles from "./layout_styles.css";
 
 type StatusItem = {
@@ -13,10 +14,11 @@ type StatusBarProps = {
   children?: ReactNode;
 };
 
-function statusColor(status?: string): string | undefined {
-  if (status === "warning") return "var(--warning-base)";
-  if (status === "error") return "var(--error-base)";
-  return undefined;
+function statusColor(status?: string): string {
+  if (status === "warning") return vars.color.warning.base;
+  if (status === "error") return vars.color.error.base;
+  if (status === "ok") return vars.color.success.base;
+  return vars.color.text.muted;
 }
 
 export function LayoutStatusBar({ compact = false, items = [], children }: StatusBarProps) {
@@ -30,7 +32,7 @@ export function LayoutStatusBar({ compact = false, items = [], children }: Statu
         <span key={i} className={styles.statusIndicator}>
           <span
             className={styles.statusDot}
-            style={statusColor(item.status) ? { backgroundColor: statusColor(item.status) } : undefined}
+            style={{ backgroundColor: statusColor(item.status) }}
           />
           {item.label}
           {item.value && <span>: {item.value}</span>}
