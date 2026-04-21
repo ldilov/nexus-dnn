@@ -1,5 +1,6 @@
 export type WidgetKind =
   | "string"
+  | "multiline"
   | "number"
   | "boolean"
   | "enum"
@@ -75,7 +76,16 @@ function descriptorFor(
   const type = pickType(prop.type);
   switch (type) {
     case "string":
-      base.kind = "string";
+      if (
+        prop.format === "multiline" ||
+        prop.format === "code" ||
+        prop.format === "markdown" ||
+        prop.format === "textarea"
+      ) {
+        base.kind = "multiline";
+      } else {
+        base.kind = "string";
+      }
       if (typeof prop.minLength === "number") base.min = prop.minLength;
       if (typeof prop.maxLength === "number") base.max = prop.maxLength;
       return base;

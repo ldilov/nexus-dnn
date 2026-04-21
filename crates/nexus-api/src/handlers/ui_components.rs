@@ -565,12 +565,13 @@ pub fn catalog_entries() -> Vec<ComponentMetadata> {
                 json!({
                     "code": {
                         "type": "string",
-                        "description": "Source text to display."
+                        "format": "code",
+                        "description": "Source text to display. Multi-line; syntax highlighting driven by `language`."
                     },
                     "language": {
                         "type": "string",
                         "enum": ["rust", "typescript", "javascript", "python", "go", "bash", "yaml", "json", "toml", "markdown", "sql", "plain"],
-                        "description": "Syntax highlighting hint."
+                        "description": "Syntax highlighting hint (renderer-side support varies)."
                     },
                     "showHeader": {
                         "type": "boolean",
@@ -591,7 +592,8 @@ pub fn catalog_entries() -> Vec<ComponentMetadata> {
                 json!({
                     "content": {
                         "type": "string",
-                        "description": "Markdown source to render."
+                        "format": "markdown",
+                        "description": "Markdown source to render. Multi-line; GFM + math extensions supported."
                     }
                 }),
                 &[],
@@ -685,7 +687,7 @@ pub fn catalog_entries() -> Vec<ComponentMetadata> {
             "Extension install progress modal. Shows phase list, streaming logs, progress bar, and elapsed time.",
             obj(
                 json!({
-                    "visible": { "type": "boolean", "default": true, "description": "Whether the modal is open." },
+                    "visible": { "type": "boolean", "default": false, "description": "Whether the modal is open. Toggle to true to preview — the playground's stage contains the overlay so it won't escape the preview area." },
                     "phases": {
                         "type": "array",
                         "default": [
@@ -815,8 +817,8 @@ pub fn catalog_entries() -> Vec<ComponentMetadata> {
                             "category": "binary_not_found",
                             "message": "llama-server binary is missing",
                             "detail": "Host couldn't locate the llama-server executable at the configured path.",
-                            "command": "/usr/local/bin/llama-server",
-                            "remediation": "Install llama.cpp or set LLAMA_SERVER_PATH to a valid binary.",
+                            "command": "/usr/local/bin/llama-server --model model.gguf",
+                            "remediation": "Install llama.cpp or set LLAMA_SERVER_PATH to a valid binary.\n\nSteps:\n  1. brew install llama.cpp\n  2. export LLAMA_SERVER_PATH=/opt/homebrew/bin/llama-server\n  3. Restart the host.",
                             "binaryPath": "/usr/local/bin/llama-server"
                         }
                     },
