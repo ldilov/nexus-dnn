@@ -359,6 +359,74 @@ pub fn gguf_result(repo_id: &str, quants: &[(&str, u64)]) -> SearchResult {
     }
 }
 
+/// Shape used by spec-028 contract tests (T013) to seed a row in
+/// `model_store_installed_artifacts` that already carries the new
+/// extraction-metadata columns (migration 015). Other contract tests
+/// continue to use [`nexus_models_store::downloads::InstallMap::record`]
+/// which does not touch these nullable columns.
+#[allow(dead_code)]
+pub struct InstalledArtifactFixture {
+    pub artifact_id: String,
+    pub family_id: String,
+    pub format: &'static str,
+    pub layer_count: Option<u32>,
+    pub max_context: Option<u32>,
+    pub architecture: Option<String>,
+    pub hidden_size: Option<u32>,
+    pub extraction_status: Option<&'static str>,
+}
+
+#[allow(dead_code)]
+pub async fn insert_installed_artifact_fixture(
+    pool: &sqlx::SqlitePool,
+    f: &InstalledArtifactFixture,
+) -> Result<(), sqlx::Error> {
+    let now_rfc = chrono::Utc::now().to_rfc3339();
+    let extracted_at: Option<i64> = f
+        .extraction_status
+        .map(|_| chrono::Utc::now().timestamp_millis());
+
+    sqlx::query(
+        "INSERT INTO model_store_installed_artifacts (
+            artifact_id, family_id, variant_id, format,
+            source_provider, source_repo, source_revision,
+            filename, job_id, sha256, size_bytes, installed_at,
+            layer_count, max_context, architecture, hidden_size,
+            extraction_status, extracted_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                   ?13, ?14, ?15, ?16, ?17, ?18)
+         ON CONFLICT(artifact_id) DO UPDATE SET
+            format = excluded.format,
+            layer_count = excluded.layer_count,
+            max_context = excluded.max_context,
+            architecture = excluded.architecture,
+            hidden_size = excluded.hidden_size,
+            extraction_status = excluded.extraction_status,
+            extracted_at = excluded.extracted_at",
+    )
+    .bind(&f.artifact_id)
+    .bind(&f.family_id)
+    .bind(Option::<String>::None)
+    .bind(f.format)
+    .bind("huggingface")
+    .bind(format!("owner/{}", f.family_id))
+    .bind(Some("main"))
+    .bind(format!("{}.bin", f.artifact_id))
+    .bind(nexus_models_store::ids::JobId::new().to_string())
+    .bind(Option::<String>::None)
+    .bind(Option::<i64>::None)
+    .bind(&now_rfc)
+    .bind(f.layer_count.and_then(|v| i64::try_from(v).ok()))
+    .bind(f.max_context.and_then(|v| i64::try_from(v).ok()))
+    .bind(f.architecture.as_deref())
+    .bind(f.hidden_size.and_then(|v| i64::try_from(v).ok()))
+    .bind(f.extraction_status)
+    .bind(extracted_at)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub fn safetensors_result(repo_id: &str) -> SearchResult {
     SearchResult {
         repo_id: repo_id.to_owned(),

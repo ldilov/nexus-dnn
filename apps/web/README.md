@@ -105,15 +105,13 @@ Every font is served from `/fonts/*.woff2`; no Google Fonts. No third-party
 CDN is referenced in the built bundle — `pnpm build` runs `scan:cdn`
 against `dist/` to keep it that way.
 
-## Regression harness (spec 021)
+## Regression harness
 
-The frontend refactor tracked in [spec 021](../../specs/021-web-architecture-refactor/spec.md)
-adds three safety nets, all runnable from `apps/web/`:
+The frontend ships three safety nets, all runnable from `apps/web/`:
 
-- `pnpm scan:constitution` — AST scan over `src/` enforcing constitution
-  v1.2.0 Principle XII and Appendix F. Nine rules (SR-001…SR-009); see
-  `specs/021-web-architecture-refactor/contracts/scan-constitution.contract.md`
-  for the full catalog. Pre-existing violations are pinned in
+- `pnpm scan:constitution` — AST scan over `src/` enforcing the frontend
+  constitution (Principle XII / Appendix F). Nine rules (SR-001…SR-009);
+  pre-existing violations are pinned in
   `scripts/scan-constitution-baseline.json` and MUST only shrink, never grow.
 - `pnpm test:smoke` — Playwright smoke harness that visits every route
   enumerated in `tests/smoke/routes.json` and asserts user-visible copy
@@ -126,7 +124,7 @@ adds three safety nets, all runnable from `apps/web/`:
 Run all three at once via `pnpm scan:all && pnpm test:regression`. CI runs
 the same gates on every PR touching `apps/web/`.
 
-## Layered architecture (spec 021)
+## Layered architecture
 
 Top-level folders under `src/` each serve one concern. **Never** cross-import
 horizontally within the same layer — always go through `services/`.
@@ -150,9 +148,6 @@ keyed by `location.pathname`, collapses to `none` under
 ~28 KB sidecar chunk only ships to users who open the install flow. The
 main chunk delta vs pre-Motion baseline is enforced by
 `pnpm scan:bundle-size` against `bundle-baseline.json` (tolerance 8 KB).
-
-See [quickstart.md](../../specs/021-web-architecture-refactor/quickstart.md)
-for the contributor walkthrough.
 
 ### Updating a baseline (intentional visual change)
 

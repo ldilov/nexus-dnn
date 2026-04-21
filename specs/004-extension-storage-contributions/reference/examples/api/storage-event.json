@@ -1,8 +1,0 @@
-{
-  "type": "extension.storage.migration_applied",
-  "extension_id": "example.chat.llama",
-  "namespace_id": "extns_01",
-  "effective_prefix": "ext_chat_llama_",
-  "migration_id": "001_init",
-  "applied_at": "2026-04-12T12:10:33Z"
-}

@@ -1,9 +1,6 @@
-//! Canonical domain enums. All are `#[non_exhaustive]` (Principle V —
-//! additive enums) so new variants can be added without breaking
-//! downstream extensions that pin an older version.
-//!
-//! Serde uses `snake_case` everywhere so the wire form matches the REST
-//! contract documented under `specs/025-models-search-refactor/contracts/`.
+//! Canonical domain enums. All are `#[non_exhaustive]` so new variants can be
+//! added without breaking downstream extensions that pin an older version.
+//! Serde uses `snake_case` everywhere so the wire form matches the REST API.
 
 use serde::{Deserialize, Serialize};
 

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Tabs } from "../tabs";
+import { Tabs } from "../base/tabs";
 import * as styles from "./layout_styles.css";
 
 type TabConfig = {

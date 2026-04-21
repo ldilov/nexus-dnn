@@ -61,7 +61,8 @@ pub struct AppState {
     pub backend_event_bus: Arc<BroadcastPublisher>,
     pub draft_materialize_map: Arc<DraftMaterializeMap>,
     pub host_install_paths: Option<HostInstallPaths>,
-    pub inference: Arc<dyn handlers::extensions_local_llm::inference::InferenceBackend>,
+    pub model_load_registry:
+        Arc<handlers::extensions_local_llm::load_registry::ModelLoadRegistry>,
 }
 
 pub fn create_router(state: AppState) -> axum::Router {

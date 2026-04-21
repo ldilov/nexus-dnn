@@ -23,7 +23,7 @@ Clone → Build → Start → Verify → Install Extension → Run Workflow → 
 ## 🏗️ Build
 
 ```bash
-git clone <repo-url> nexus-dnn
+git clone https://github.com/your-org/nexus-dnn.git
 cd nexus-dnn
 cargo build --release
 ```
@@ -58,8 +58,10 @@ Expected response:
 
 ```json
 {
-  "status": "healthy",
-  "version": "0.1.0"
+  "status": "ok",
+  "uptime_secs": 3,
+  "extensions_loaded": 0,
+  "workers_active": 0
 }
 ```
 
@@ -113,7 +115,7 @@ curl http://localhost:3000/api/v1/operators
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/workflows \
-  -H "Content-Type: application/yaml" \
+  -H "Content-Type: text/plain" \
   --data-binary @extensions/examples/hello-world/workflows/echo-workflow.yaml
 ```
 
@@ -186,12 +188,13 @@ During a run you will see events such as:
 
 | Document | Description |
 |----------|-------------|
-| [🏗️ Architecture](architecture.md) | System layers, crate map, request flows |
-| [🔧 Configuration](configuration.md) | Environment variables, CLI flags, logging |
-| 📖 Workflow Authoring | _Coming soon_ — YAML workflow format and validation |
-| 🔌 Extension Development | _Coming soon_ — Build custom operators |
-| 📋 API Reference | _Coming soon_ — Full HTTP/WebSocket API |
-| 🐍 Python SDK | _Coming soon_ — Worker SDK for Python extensions |
+| [Architecture](architecture.md) | System layers, crate map, request flows |
+| [Configuration](configuration.md) | Environment variables, CLI flags, logging |
+| [Workflow Authoring](workflow-authoring.md) | YAML workflow format, ports, stages, validation |
+| [Extension Development](extension-guide.md) | Build custom operators, recipes, UI contributions |
+| [Extension UI Guide](extension-ui-guide.md) | Compose host components in YAML for your extension |
+| [API Reference](api-reference.md) | Full HTTP and WebSocket API surface |
+| [Python SDK](python-sdk.md) | Worker SDK for Python extensions |
 
 ---
 

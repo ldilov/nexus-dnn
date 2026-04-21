@@ -9,7 +9,16 @@ use sqlx::{Row, SqlitePool};
 use crate::AppState;
 use crate::envelope::ApiResponse;
 
-use super::inference::{InferenceError, InferenceRequest};
+use super::load_registry::LoadState;
+
+use nexus_backend_runtimes::channel::RuntimeAddress;
+use nexus_backend_runtimes::runtime_installs_store;
+use nexus_backend_runtimes::settings::AcceleratorProfile;
+use nexus_backend_runtimes::spawn::{RuntimeBindMode, SpawnRuntimeRequest};
+
+const LLAMA_CPP_FAMILY: &str = "llama.cpp";
+const LOCAL_LLM_EXTENSION: &str = "extension.local-llm";
+const CHANNEL_READY_TIMEOUT_SECS: u64 = 300;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SamplingParams {
@@ -103,6 +112,59 @@ pub struct ListThreadsParams {
 pub struct SetActiveModelBody {
     pub family_id: String,
     pub variant_id: String,
+    #[serde(default)]
+    pub runtime: Option<RuntimeTuning>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct RuntimeTuning {
+    #[serde(default)]
+    pub n_gpu_layers: Option<u32>,
+    #[serde(default)]
+    pub threads: Option<u32>,
+    #[serde(default)]
+    pub flash_attn: Option<bool>,
+    #[serde(default)]
+    pub ctx_size: Option<u32>,
+    #[serde(default)]
+    pub cache_type_k: Option<String>,
+    #[serde(default)]
+    pub cache_type_v: Option<String>,
+}
+
+fn runtime_to_args(tuning: &RuntimeTuning) -> Vec<String> {
+    let mut args: Vec<String> = Vec::new();
+    if let Some(n) = tuning.n_gpu_layers {
+        args.push("--n-gpu-layers".into());
+        args.push(n.to_string());
+    }
+    if let Some(t) = tuning.threads {
+        args.push("--threads".into());
+        args.push(t.to_string());
+        args.push("--threads-batch".into());
+        args.push(t.to_string());
+    }
+    if let Some(fa) = tuning.flash_attn {
+        args.push("--flash-attn".into());
+        args.push(if fa { "on".into() } else { "off".into() });
+    }
+    if let Some(c) = tuning.ctx_size {
+        args.push("--ctx-size".into());
+        args.push(c.to_string());
+    }
+    if let Some(ref k) = tuning.cache_type_k {
+        if matches!(k.as_str(), "fp16" | "q8_0" | "q4_0") {
+            args.push("--cache-type-k".into());
+            args.push(k.clone());
+        }
+    }
+    if let Some(ref v) = tuning.cache_type_v {
+        if matches!(v.as_str(), "fp16" | "q8_0" | "q4_0") {
+            args.push("--cache-type-v".into());
+            args.push(v.clone());
+        }
+    }
+    args
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,6 +175,38 @@ pub struct SendMessageBody {
 #[derive(Debug, Serialize)]
 pub struct SendMessageResponse {
     pub content: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ActiveModelStatus {
+    #[serde(flatten)]
+    pub state: LoadState,
+}
+
+fn emit_session_state(
+    publisher: &nexus_backend_runtimes::events::SharedPublisher,
+    thread_id: &str,
+    cause: &str,
+    extra: serde_json::Value,
+) {
+    let mut payload = serde_json::json!({
+        "session_id": thread_id,
+        "cause": cause,
+    });
+    if let (Some(obj), serde_json::Value::Object(map)) = (payload.as_object_mut(), extra) {
+        for (k, v) in map {
+            obj.insert(k, v);
+        }
+    }
+    let evt = nexus_backend_runtimes::events::BackendEvent::new(
+        "session.state.changed",
+        "extension.local-llm",
+        payload,
+    );
+    let pub_clone = publisher.clone();
+    tokio::spawn(async move {
+        pub_clone.publish(evt).await;
+    });
 }
 
 #[derive(Debug, Serialize)]
@@ -398,7 +492,7 @@ pub async fn set_active_model(
     }
 
     let now = Utc::now().to_rfc3339();
-    let result = sqlx::query(
+    let update = sqlx::query(
         "UPDATE ext_local_llm_chat_threads
          SET active_model_family_id = ?1,
              active_model_variant_id = ?2,
@@ -411,12 +505,451 @@ pub async fn set_active_model(
     .bind(&thread_id)
     .execute(pool)
     .await;
-    match result {
+    match update {
         Ok(r) if r.rows_affected() == 0 => {
-            ApiResponse::<()>::not_found(format!("thread: {thread_id}")).into_response()
+            return ApiResponse::<()>::not_found(format!("thread: {thread_id}"))
+                .into_response();
         }
-        Ok(_) => get_active_model(State(state), Path(thread_id)).await,
-        Err(e) => ApiResponse::<()>::internal(format!("update: {e}")).into_response(),
+        Err(e) => {
+            return ApiResponse::<()>::internal(format!("update: {e}")).into_response();
+        }
+        Ok(_) => {}
+    }
+
+    let install_map = match state.install_map.as_ref() {
+        Some(m) => m,
+        None => {
+            return ApiResponse::<()>::internal("install_map unavailable".to_string())
+                .into_response();
+        }
+    };
+    let installed = install_map.list_all(500).await.unwrap_or_default();
+    let matched = installed.into_iter().find(|r| {
+        r.family_id == body.family_id
+            && r.variant_id.as_deref() == Some(body.variant_id.as_str())
+    });
+    let record = match matched {
+        Some(r) => r,
+        None => {
+            emit_session_state(
+                &state.backend_event_publisher,
+                &thread_id,
+                "model_unavailable",
+                serde_json::json!({
+                    "family_id": body.family_id,
+                    "variant_id": body.variant_id,
+                }),
+            );
+            return (
+                StatusCode::GONE,
+                ApiResponse::<()>::bad_request("model_unavailable".to_string()),
+            )
+                .into_response();
+        }
+    };
+
+    let orchestrator = match state.download_orchestrator.as_ref() {
+        Some(o) => o,
+        None => {
+            return ApiResponse::<()>::internal(
+                "download_orchestrator unavailable".to_string(),
+            )
+            .into_response();
+        }
+    };
+    let abs_path = orchestrator
+        .sink_root()
+        .join(&record.job_id)
+        .join(&record.filename);
+
+    let runtime_row = match runtime_installs_store::resolve_dependency(
+        pool,
+        LLAMA_CPP_FAMILY,
+        None,
+        &[],
+    )
+    .await
+    {
+        Ok(Some(r)) => r,
+        Ok(None) => {
+            let reason = format!(
+                "no installed {LLAMA_CPP_FAMILY} runtime — install it via Backends first"
+            );
+            emit_session_state(
+                &state.backend_event_publisher,
+                &thread_id,
+                "model_load_failed",
+                serde_json::json!({
+                    "family_id": body.family_id,
+                    "variant_id": body.variant_id,
+                    "reason": reason.clone(),
+                    "remediation": "install_runtime",
+                    "runtime_family": LLAMA_CPP_FAMILY,
+                }),
+            );
+            return (
+                StatusCode::CONFLICT,
+                ApiResponse::<()>::err(
+                    StatusCode::CONFLICT,
+                    "RUNTIME_NOT_INSTALLED",
+                    "state",
+                    reason,
+                ),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            return ApiResponse::<()>::internal(format!("runtime lookup: {e}"))
+                .into_response();
+        }
+    };
+
+    let binding = ActiveModelBinding {
+        family_id: record.family_id.clone(),
+        variant_id: body.variant_id.clone(),
+        artifact_id: record.artifact_id.clone(),
+        absolute_path: abs_path.display().to_string(),
+        label: format!("{} / {}", record.family_id, body.variant_id),
+    };
+
+    state
+        .model_load_registry
+        .set(
+            thread_id.clone(),
+            LoadState::Loading {
+                family_id: body.family_id.clone(),
+                variant_id: body.variant_id.clone(),
+                label: binding.label.clone(),
+            },
+        )
+        .await;
+
+    emit_session_state(
+        &state.backend_event_publisher,
+        &thread_id,
+        "model_loading",
+        serde_json::json!({
+            "family_id": body.family_id,
+            "variant_id": body.variant_id,
+            "label": binding.label,
+        }),
+    );
+
+    let spawner = match state.spawner.as_ref() {
+        Some(s) => s.clone(),
+        None => {
+            let reason = "runtime spawner not wired in this build".to_string();
+            state
+                .model_load_registry
+                .set(
+                    thread_id.clone(),
+                    LoadState::Failed {
+                        family_id: body.family_id.clone(),
+                        variant_id: body.variant_id.clone(),
+                        reason: reason.clone(),
+                    },
+                )
+                .await;
+            emit_session_state(
+                &state.backend_event_publisher,
+                &thread_id,
+                "model_load_failed",
+                serde_json::json!({
+                    "family_id": body.family_id,
+                    "variant_id": body.variant_id,
+                    "reason": reason,
+                }),
+            );
+            return ApiResponse::<()>::internal("spawner unavailable".to_string())
+                .into_response();
+        }
+    };
+
+    let registry = state.model_load_registry.clone();
+    let publisher = state.backend_event_publisher.clone();
+    let bus = state.backend_event_bus.clone();
+    let thread_for_task = thread_id.clone();
+    let binding_for_task = binding.clone();
+    let install_id_for_task = runtime_row.install_id.clone();
+    let model_path_string = abs_path.display().to_string();
+    let runtime_tuning = body.runtime.clone().unwrap_or_default();
+    let accelerator_for_task = if runtime_tuning.n_gpu_layers.unwrap_or(0) > 0
+        && runtime_row.accelerator.starts_with("cuda")
+    {
+        match runtime_row.accelerator.as_str() {
+            "cuda13" => AcceleratorProfile::Cuda13,
+            _ => AcceleratorProfile::Cuda12,
+        }
+    } else {
+        AcceleratorProfile::Cpu
+    };
+
+    tokio::spawn(async move {
+        let mut args: Vec<String> = vec!["--model".to_string(), model_path_string.clone()];
+        args.extend(runtime_to_args(&runtime_tuning));
+        tracing::info!(
+            target: "nexus_api::local_llm",
+            family = %LLAMA_CPP_FAMILY,
+            args = ?args,
+            "spawning llama.cpp with tuned runtime args",
+        );
+        let spawn_req = SpawnRuntimeRequest {
+            extension_id: LOCAL_LLM_EXTENSION.to_string(),
+            family: LLAMA_CPP_FAMILY.to_string(),
+            version_req: None,
+            accelerator: accelerator_for_task,
+            args,
+            env: std::collections::BTreeMap::new(),
+            port_hint: None,
+            bind_mode: RuntimeBindMode::Loopback,
+            install_id: Some(install_id_for_task),
+        };
+        let lease = match spawner.spawn(spawn_req).await {
+            Ok(l) => l,
+            Err(e) => {
+                let reason = format!("spawn failed: {e}");
+                registry
+                    .set(
+                        thread_for_task.clone(),
+                        LoadState::Failed {
+                            family_id: binding_for_task.family_id.clone(),
+                            variant_id: binding_for_task.variant_id.clone(),
+                            reason: reason.clone(),
+                        },
+                    )
+                    .await;
+                emit_session_state(
+                    &publisher,
+                    &thread_for_task,
+                    "model_load_failed",
+                    serde_json::json!({
+                        "family_id": binding_for_task.family_id,
+                        "variant_id": binding_for_task.variant_id,
+                        "reason": reason,
+                    }),
+                );
+                return;
+            }
+        };
+        let port = match &lease.channel.address {
+            RuntimeAddress::Tcp { port, .. } => *port,
+            _ => {
+                let reason = "spawned lease has non-TCP address".to_string();
+                let _ = spawner.shutdown(&lease.lease_id).await;
+                registry
+                    .set(
+                        thread_for_task.clone(),
+                        LoadState::Failed {
+                            family_id: binding_for_task.family_id.clone(),
+                            variant_id: binding_for_task.variant_id.clone(),
+                            reason: reason.clone(),
+                        },
+                    )
+                    .await;
+                emit_session_state(
+                    &publisher,
+                    &thread_for_task,
+                    "model_load_failed",
+                    serde_json::json!({ "reason": reason }),
+                );
+                return;
+            }
+        };
+
+        let mut rx = bus.subscribe();
+        let lease_id = lease.lease_id.clone();
+        let timeout =
+            tokio::time::sleep(std::time::Duration::from_secs(CHANNEL_READY_TIMEOUT_SECS));
+        tokio::pin!(timeout);
+        let outcome: Result<(), String> = loop {
+            tokio::select! {
+                biased;
+                _ = &mut timeout => {
+                    break Err(format!(
+                        "timed out after {CHANNEL_READY_TIMEOUT_SECS}s waiting for llama.cpp /health",
+                    ));
+                }
+                recv = rx.recv() => {
+                    match recv {
+                        Ok(evt) => {
+                            let matches_lease = evt
+                                .payload
+                                .get("lease_id")
+                                .and_then(|v| v.as_str())
+                                == Some(lease_id.as_str());
+                            if !matches_lease { continue; }
+                            match evt.topic.as_str() {
+                                "channel.ready" => break Ok(()),
+                                "process.exited" | "process.crashed" => {
+                                    break Err(format!(
+                                        "runtime exited before ready: {}",
+                                        evt.payload
+                                    ));
+                                }
+                                _ => continue,
+                            }
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                            break Err("event bus closed".to_string());
+                        }
+                    }
+                }
+            }
+        };
+
+        match outcome {
+            Ok(()) => {
+                registry
+                    .set(
+                        thread_for_task.clone(),
+                        LoadState::Ready {
+                            binding: binding_for_task.clone(),
+                            lease_id: Some(lease_id.clone()),
+                            port,
+                        },
+                    )
+                    .await;
+                emit_session_state(
+                    &publisher,
+                    &thread_for_task,
+                    "model_ready",
+                    serde_json::json!({
+                        "family_id": binding_for_task.family_id,
+                        "variant_id": binding_for_task.variant_id,
+                        "label": binding_for_task.label,
+                        "lease_id": lease_id,
+                        "port": port,
+                    }),
+                );
+            }
+            Err(reason) => {
+                let _ = spawner.shutdown(&lease_id).await;
+                registry
+                    .set(
+                        thread_for_task.clone(),
+                        LoadState::Failed {
+                            family_id: binding_for_task.family_id.clone(),
+                            variant_id: binding_for_task.variant_id.clone(),
+                            reason: reason.clone(),
+                        },
+                    )
+                    .await;
+                emit_session_state(
+                    &publisher,
+                    &thread_for_task,
+                    "model_load_failed",
+                    serde_json::json!({
+                        "family_id": binding_for_task.family_id,
+                        "variant_id": binding_for_task.variant_id,
+                        "reason": reason,
+                    }),
+                );
+            }
+        }
+    });
+
+    (
+        StatusCode::ACCEPTED,
+        ApiResponse::ok(ActiveModelStatus {
+            state: LoadState::Loading {
+                family_id: binding.family_id.clone(),
+                variant_id: binding.variant_id.clone(),
+                label: binding.label.clone(),
+            },
+        }),
+    )
+        .into_response()
+}
+
+pub async fn unload_active_model(
+    State(state): State<AppState>,
+    Path(thread_id): Path<String>,
+) -> Response {
+    let pool = state.db.pool();
+    if let Err(e) = ensure_schema(pool).await {
+        return ApiResponse::<()>::internal(format!("schema: {e}")).into_response();
+    }
+
+    let existed = state.model_load_registry.clear(&thread_id).await;
+    if let Some(LoadState::Ready { lease_id, .. }) = &existed {
+        if let (Some(spawner), Some(id)) = (state.spawner.as_ref(), lease_id.clone()) {
+            let spawner = spawner.clone();
+            tokio::spawn(async move {
+                if let Err(e) = spawner.shutdown(&id).await {
+                    tracing::warn!(lease_id = %id, error = %e, "shutdown on unload failed");
+                }
+            });
+        }
+    }
+
+    let now = Utc::now().to_rfc3339();
+    let result = sqlx::query(
+        "UPDATE ext_local_llm_chat_threads
+         SET active_model_family_id = NULL,
+             active_model_variant_id = NULL,
+             updated_at = ?1
+         WHERE id = ?2",
+    )
+    .bind(&now)
+    .bind(&thread_id)
+    .execute(pool)
+    .await;
+    if let Err(e) = result {
+        return ApiResponse::<()>::internal(format!("update: {e}")).into_response();
+    }
+
+    let mut extra = serde_json::json!({});
+    if let Some(prev) = existed {
+        match prev {
+            LoadState::Ready { binding, .. } => {
+                extra = serde_json::json!({
+                    "family_id": binding.family_id,
+                    "variant_id": binding.variant_id,
+                    "label": binding.label,
+                });
+            }
+            LoadState::Loading {
+                family_id,
+                variant_id,
+                label,
+            } => {
+                extra = serde_json::json!({
+                    "family_id": family_id,
+                    "variant_id": variant_id,
+                    "label": label,
+                });
+            }
+            LoadState::Failed {
+                family_id,
+                variant_id,
+                ..
+            } => {
+                extra = serde_json::json!({
+                    "family_id": family_id,
+                    "variant_id": variant_id,
+                });
+            }
+        }
+    }
+
+    emit_session_state(
+        &state.backend_event_publisher,
+        &thread_id,
+        "model_unloaded",
+        extra,
+    );
+
+    ApiResponse::<()>::no_content().into_response()
+}
+
+pub async fn get_active_model_status(
+    State(state): State<AppState>,
+    Path(thread_id): Path<String>,
+) -> Response {
+    match state.model_load_registry.get(&thread_id).await {
+        Some(s) => ApiResponse::ok(ActiveModelStatus { state: s }).into_response(),
+        None => ApiResponse::<Option<ActiveModelStatus>>::ok(None).into_response(),
     }
 }
 
@@ -456,38 +989,61 @@ pub async fn send_message(
         }
     };
 
-    let install_map = match state.install_map.as_ref() {
-        Some(m) => m,
-        None => {
-            return ApiResponse::<()>::internal("install_map unavailable".to_string())
+    let load_state = state.model_load_registry.get(&thread_id).await;
+    let (binding_path, lease_port) = match load_state {
+        Some(LoadState::Ready { binding, port, .. }) => {
+            if binding.family_id != family || binding.variant_id != variant {
+                return (
+                    StatusCode::CONFLICT,
+                    ApiResponse::<()>::err(
+                        StatusCode::CONFLICT,
+                        "MODEL_NOT_READY",
+                        "conflict",
+                        "active model pointer drift — rebind required".to_string(),
+                    ),
+                )
+                    .into_response();
+            }
+            (binding.absolute_path, port)
+        }
+        Some(LoadState::Loading { .. }) => {
+            return (
+                StatusCode::CONFLICT,
+                ApiResponse::<()>::err(
+                    StatusCode::CONFLICT,
+                    "MODEL_NOT_READY",
+                    "conflict",
+                    "model is still loading".to_string(),
+                ),
+            )
                 .into_response();
         }
-    };
-    let installed = install_map.list_all(500).await.unwrap_or_default();
-    let matched = installed.into_iter().find(|r| {
-        r.family_id == family && r.variant_id.as_deref() == Some(variant.as_str())
-    });
-    let binding = match matched {
-        Some(r) => r,
-        None => {
-            let evt = nexus_backend_runtimes::events::BackendEvent::new(
-                "session.state.changed",
-                "extension.local-llm",
-                serde_json::json!({
-                    "session_id": thread_id,
-                    "cause": "model_unavailable",
-                    "family_id": family,
-                    "variant_id": variant,
-                }),
-            );
-            state.backend_event_publisher.publish(evt).await;
+        Some(LoadState::Failed { reason, .. }) => {
             return (
-                StatusCode::GONE,
-                ApiResponse::<()>::bad_request("model_unavailable".to_string()),
+                StatusCode::CONFLICT,
+                ApiResponse::<()>::err(
+                    StatusCode::CONFLICT,
+                    "MODEL_LOAD_FAILED",
+                    "conflict",
+                    reason,
+                ),
+            )
+                .into_response();
+        }
+        None => {
+            return (
+                StatusCode::CONFLICT,
+                ApiResponse::<()>::err(
+                    StatusCode::CONFLICT,
+                    "MODEL_NOT_READY",
+                    "conflict",
+                    "bind a model before sending".to_string(),
+                ),
             )
                 .into_response();
         }
     };
+    let _ = binding_path;
 
     let settings_json: Option<String> = row.try_get("generation_settings").unwrap_or(None);
     let params = settings_json
@@ -495,25 +1051,66 @@ pub async fn send_message(
         .and_then(|s| serde_json::from_str::<GenerationParams>(s).ok())
         .unwrap_or_default();
 
-    let req = InferenceRequest {
-        sampling: to_sampling_params(&params),
-        system_prompt: system_prompt_for_adapter(&params),
-        user_content: body.content,
-        model_path: std::path::PathBuf::from(&binding.filename),
+    let mut messages: Vec<serde_json::Value> = Vec::new();
+    if let Some(sys) = system_prompt_for_adapter(&params) {
+        messages.push(serde_json::json!({ "role": "system", "content": sys }));
+    }
+    messages.push(serde_json::json!({ "role": "user", "content": body.content }));
+
+    let completion_body = serde_json::json!({
+        "messages": messages,
+        "temperature": params.temperature,
+        "top_p": params.top_p,
+        "top_k": params.top_k,
+        "max_tokens": params.max_tokens,
+        "repeat_penalty": params.repeat_penalty,
+        "stream": false,
+    });
+
+    let url = format!("http://127.0.0.1:{lease_port}/v1/chat/completions");
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(600))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return ApiResponse::<()>::internal(format!("http client: {e}")).into_response();
+        }
     };
 
-    match state.inference.generate(req).await {
-        Ok(resp) => ApiResponse::ok(SendMessageResponse { content: resp.content })
-            .into_response(),
-        Err(InferenceError::ModelUnavailable(msg)) => (
-            StatusCode::GONE,
-            ApiResponse::<()>::bad_request(msg),
-        )
-            .into_response(),
-        Err(InferenceError::Backend(msg)) => {
-            ApiResponse::<()>::internal(msg).into_response()
+    let http_resp = match client.post(&url).json(&completion_body).send().await {
+        Ok(r) => r,
+        Err(e) => {
+            return ApiResponse::<()>::internal(format!("llama.cpp request failed: {e}"))
+                .into_response();
         }
+    };
+    let status = http_resp.status();
+    let body_text = http_resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return ApiResponse::<()>::internal(format!(
+            "llama.cpp {status}: {}",
+            body_text.chars().take(512).collect::<String>(),
+        ))
+        .into_response();
     }
+    let parsed: serde_json::Value = match serde_json::from_str(&body_text) {
+        Ok(v) => v,
+        Err(e) => {
+            return ApiResponse::<()>::internal(format!(
+                "llama.cpp response parse: {e}; body: {}",
+                body_text.chars().take(256).collect::<String>(),
+            ))
+            .into_response();
+        }
+    };
+    let content = parsed
+        .pointer("/choices/0/message/content")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    ApiResponse::ok(SendMessageResponse { content }).into_response()
 }
 
 #[cfg(test)]

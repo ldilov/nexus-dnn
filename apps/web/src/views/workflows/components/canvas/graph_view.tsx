@@ -36,16 +36,16 @@ import {
   operatorNodeHeight,
   type NodeStatus,
   type OperatorNodeData,
-} from "../../../../nodes/operator_node";
+} from "../../../../components/nodes/operator_node";
 import {
   BoundaryNode,
   boundaryNodeHeight,
   type BoundaryNodeData,
   type BoundaryPort,
-} from "../../../../nodes/boundary_nodes";
-import { RerouteNode, type RerouteNodeData } from "../../../../nodes/reroute_node";
-import { NoteNode, type NoteNodeData } from "../../../../nodes/note_node";
-import { arePortsCompatible, colorForPortType } from "../../../../nodes/port_types";
+} from "../../../../components/nodes/boundary_nodes";
+import { RerouteNode, type RerouteNodeData } from "../../../../components/nodes/reroute_node";
+import { NoteNode, type NoteNodeData } from "../../../../components/nodes/note_node";
+import { arePortsCompatible, colorForPortType } from "../../../../components/nodes/port_types";
 import { GraphToolbar } from "./graph_toolbar";
 import { OperatorPalette } from "./operator_palette";
 import { CanvasContextMenu, type ContextMenuItem } from "./canvas_context_menu";

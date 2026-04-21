@@ -131,11 +131,12 @@ sequenceDiagram
 
 | Document | Description |
 |----------|-------------|
-| [⚡ Getting Started](getting-started.md) | Build and run your first workflow |
-| [🔧 Configuration](configuration.md) | Environment variables and CLI flags |
-| 📋 API Reference | _Coming soon_ — HTTP/WebSocket endpoint specs |
-| 📋 Worker Protocol | _Coming soon_ — JSON-RPC host-worker contract |
-| 📊 Data Model | _Coming soon_ — Schema reference for all entities |
+| [Getting Started](getting-started.md) | Build and run your first workflow |
+| [Configuration](configuration.md) | Environment variables and CLI flags |
+| [API Reference](api-reference.md) | HTTP and WebSocket endpoint specs |
+| [Worker Protocol](worker-protocol.md) | JSON-RPC host-worker contract |
+| [Data Model](data-model.md) | Logical schema reference for all entities |
+| [Database Schema](database-schema.md) | SQLite tables, columns, and indexes |
 
 ---
 

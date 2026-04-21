@@ -53,7 +53,7 @@ use crate::frontend;
 use crate::handlers;
 use crate::handlers::{
     artifacts, backend_events_ws, backends, deployments, extension_ui, extensions, extensions_install, health,
-    huggingface, metrics, modules, recipes, runs, storage_contributions, system, tools,
+    host, huggingface, metrics, modules, recipes, runs, storage_contributions, system, tools,
     ui_components, ui_contributions, ui_layouts, workflows,
 };
 use crate::ws;
@@ -347,8 +347,16 @@ pub fn build(state: AppState) -> Router {
     let api_v1 = api_v1.nest("/modules", modules::draft_router());
     let api_v1 = api_v1.nest("/extensions", extensions_install::router());
 
+    let api_host = Router::new()
+        .route(
+            "/models/{*rest}",
+            get(host::models_metadata::get_installed_model_metadata),
+        )
+        .route("/cpu/cores", get(host::cpu_cores::get_cpu_cores));
+
     Router::new()
         .nest("/api/v1", api_v1)
+        .nest("/api/host", api_host)
         .fallback(frontend::static_handler)
         .layer(middleware::from_fn(deprecation_headers))
         .layer(

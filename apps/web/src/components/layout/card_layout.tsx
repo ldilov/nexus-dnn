@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Card } from "../card";
+import { Card } from "../base/card";
 import * as styles from "./layout_styles.css";
 
 type CardLayoutProps = {

@@ -62,19 +62,279 @@ export function setGenerationSettings(
   );
 }
 
+export interface RuntimeTuning {
+  n_gpu_layers?: number;
+  threads?: number;
+  flash_attn?: boolean;
+  ctx_size?: number;
+  cache_type_k?: "fp16" | "q8_0" | "q4_0";
+  cache_type_v?: "fp16" | "q8_0" | "q4_0";
+}
+
+export interface RuntimeDefaults {
+  hardware_concurrency: number;
+  threads_default: number;
+  supports_cuda: boolean;
+  platform: "windows" | "macos" | "linux";
+}
+
+export function fetchRuntimeDefaults(
+  signal?: AbortSignal,
+): Promise<RuntimeDefaults> {
+  return apiFetch<RuntimeDefaults>("/backends/runtime-defaults", { signal });
+}
+
+export interface ActiveModelStatusPayload {
+  status: "loading" | "ready" | "failed";
+  family_id?: string;
+  variant_id?: string;
+  label?: string;
+  reason?: string;
+  binding?: ActiveModelBinding;
+  lease_id?: string;
+  port?: number;
+}
+
 export function setActiveModel(
   threadId: string,
   familyId: string,
   variantId: string,
+  runtime?: RuntimeTuning,
   signal?: AbortSignal,
-): Promise<ActiveModelBinding | null> {
-  return apiFetch<ActiveModelBinding | null>(
+): Promise<ActiveModelStatusPayload> {
+  const body: Record<string, unknown> = {
+    family_id: familyId,
+    variant_id: variantId,
+  };
+  if (runtime && Object.keys(runtime).length > 0) {
+    body.runtime = runtime;
+  }
+  return apiFetch<ActiveModelStatusPayload>(
     `/extensions/local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ family_id: familyId, variant_id: variantId }),
+      body: JSON.stringify(body),
       signal,
     },
   );
+}
+
+export function unloadActiveModel(
+  threadId: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  return apiFetch<void>(
+    `/extensions/local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model`,
+    { method: "DELETE", signal },
+  );
+}
+
+export function fetchActiveModelStatus(
+  threadId: string,
+  signal?: AbortSignal,
+): Promise<ActiveModelStatusPayload | null> {
+  return apiFetch<ActiveModelStatusPayload | null>(
+    `/extensions/local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model/status`,
+    { signal },
+  );
+}
+
+export interface StreamStats {
+  latencyMs: number;
+  tokensPerSec?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  params: {
+    temperature: number;
+    top_p: number;
+    top_k: number;
+    max_tokens: number;
+    repeat_penalty: number;
+  };
+}
+
+export interface StreamMessageHandlers {
+  onToken: (delta: string) => void;
+  onDone?: (stats: StreamStats) => void;
+  onError?: (err: Error) => void;
+}
+
+export interface ChatTurn {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+export interface StreamRequest {
+  port: number;
+  messages: ChatTurn[];
+  temperature?: number;
+  top_p?: number;
+  top_k?: number;
+  max_tokens?: number;
+  repeat_penalty?: number;
+}
+
+export function streamMessage(
+  req: StreamRequest,
+  handlers: StreamMessageHandlers,
+): { abort: () => void } {
+  const controller = new AbortController();
+  const url = `http://127.0.0.1:${req.port}/v1/chat/completions`;
+  const body = {
+    messages: req.messages,
+    temperature: req.temperature ?? 0.8,
+    top_p: req.top_p ?? 0.95,
+    top_k: req.top_k ?? 40,
+    max_tokens: req.max_tokens ?? 4096,
+    repeat_penalty: req.repeat_penalty ?? 1.1,
+    stream: true,
+    stream_options: { include_usage: true },
+  };
+
+  console.info("[local-llm] → llama.cpp", {
+    url,
+    temperature: body.temperature,
+    top_p: body.top_p,
+    top_k: body.top_k,
+    max_tokens: body.max_tokens,
+    repeat_penalty: body.repeat_penalty,
+    messages_count: body.messages.length,
+    last_user_chars: req.messages[req.messages.length - 1]?.content?.length ?? 0,
+  });
+
+  const startTs = performance.now();
+  let firstTokenTs: number | null = null;
+  const stats: StreamStats = {
+    latencyMs: 0,
+    params: {
+      temperature: body.temperature,
+      top_p: body.top_p,
+      top_k: body.top_k,
+      max_tokens: body.max_tokens,
+      repeat_penalty: body.repeat_penalty,
+    },
+  };
+
+  let doneFired = false;
+  const fireDone = () => {
+    if (doneFired) return;
+    doneFired = true;
+    const now = performance.now();
+    if (firstTokenTs != null && stats.tokensPerSec == null && stats.completionTokens) {
+      const genSec = Math.max(1, now - firstTokenTs) / 1000;
+      stats.tokensPerSec = stats.completionTokens / genSec;
+    }
+    stats.latencyMs = Math.round(
+      firstTokenTs != null ? firstTokenTs - startTs : now - startTs,
+    );
+    console.info("[local-llm] ← llama.cpp done", stats);
+    handlers.onDone?.(stats);
+  };
+
+  const captureToken = (delta: string) => {
+    if (firstTokenTs == null) firstTokenTs = performance.now();
+    handlers.onToken(delta);
+  };
+
+  const captureUsage = (raw: unknown) => {
+    if (!raw || typeof raw !== "object") return;
+    const obj = raw as Record<string, unknown>;
+    const usage = obj.usage as Record<string, unknown> | undefined;
+    const timings = obj.timings as Record<string, unknown> | undefined;
+    if (usage && typeof usage.completion_tokens === "number") {
+      stats.completionTokens = usage.completion_tokens;
+    }
+    if (usage && typeof usage.prompt_tokens === "number") {
+      stats.promptTokens = usage.prompt_tokens;
+    }
+    if (timings && typeof timings.predicted_per_second === "number") {
+      stats.tokensPerSec = timings.predicted_per_second;
+    }
+  };
+
+  (async () => {
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (e) {
+      if (controller.signal.aborted) return;
+      handlers.onError?.(e instanceof Error ? e : new Error(String(e)));
+      return;
+    }
+
+    if (!res.ok || !res.body) {
+      let msg = `HTTP ${res.status}`;
+      try {
+        const text = await res.text();
+        try {
+          const parsed = JSON.parse(text);
+          msg = parsed?.error?.message ?? text.slice(0, 300) ?? msg;
+        } catch {
+          msg = text.slice(0, 300) || msg;
+        }
+      } catch {
+        // ignore
+      }
+      handlers.onError?.(new Error(msg));
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buf.indexOf("\n\n")) >= 0) {
+          const frame = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          handleFrame(frame, captureToken, captureUsage, fireDone);
+        }
+      }
+      if (buf.trim().length > 0)
+        handleFrame(buf, captureToken, captureUsage, fireDone);
+      fireDone();
+    } catch (e) {
+      if (controller.signal.aborted) return;
+      handlers.onError?.(e instanceof Error ? e : new Error(String(e)));
+    }
+  })();
+
+  return { abort: () => controller.abort() };
+}
+
+function handleFrame(
+  frame: string,
+  onToken: (delta: string) => void,
+  captureUsage: (raw: unknown) => void,
+  fireDone: () => void,
+): void {
+  for (const rawLine of frame.split("\n")) {
+    const line = rawLine.trim();
+    if (!line || !line.startsWith("data:")) continue;
+    const payload = line.slice(5).trim();
+    if (payload === "[DONE]") {
+      fireDone();
+      continue;
+    }
+    try {
+      const json = JSON.parse(payload) as {
+        choices?: Array<{ delta?: { content?: string } }>;
+      };
+      const delta = json.choices?.[0]?.delta?.content;
+      if (delta) onToken(delta);
+      captureUsage(json);
+    } catch {
+      // skip malformed frame
+    }
+  }
 }

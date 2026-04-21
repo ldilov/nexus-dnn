@@ -72,7 +72,8 @@ async fn build_state() -> AppState {
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
         host_install_paths: None,
         install_map: None,
-        inference: std::sync::Arc::new(nexus_api::handlers::extensions_local_llm::inference::StubInferenceBackend),
+        model_load_registry:
+            nexus_api::handlers::extensions_local_llm::load_registry::ModelLoadRegistry::new(),
     }
 }
 

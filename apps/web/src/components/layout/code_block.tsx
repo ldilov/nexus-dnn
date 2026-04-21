@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { HighlighterCore } from "shiki/core";
-import { Button } from "../button";
+import { Button } from "../base/button";
 import * as styles from "./layout_styles.css";
 
 type CodeBlockProps = {
