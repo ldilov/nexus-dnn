@@ -1,5 +1,5 @@
 import type { RunEvent } from "../../../../hooks/use_event_stream";
-import { StatusBadge, type BadgeStatus } from "../../../../components/status_badge";
+import { StatusBadge, type BadgeStatus } from "../../../../components/base/status_badge";
 import * as styles from "./run_trace_view.css";
 
 type RunTraceViewProps = {

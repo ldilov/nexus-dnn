@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { Extension } from "../../../api/client";
-import { InstallExtensionDrawer } from "../../../install/install_extension_drawer";
+import { InstallExtensionDrawer } from "../../../components/install/install_extension_drawer";
 import * as s from "./gallery.css";
 
 export interface GalleryActionState {

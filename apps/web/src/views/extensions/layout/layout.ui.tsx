@@ -1,6 +1,6 @@
 import type { LayoutDefinition } from "../../../api/client";
 import { LayoutRenderer } from "../../../layout/layout_renderer";
-import { Button } from "../../../components/button";
+import { Button } from "../../../components/base/button";
 import * as styles from "./layout.css";
 
 export type LayoutViewState =

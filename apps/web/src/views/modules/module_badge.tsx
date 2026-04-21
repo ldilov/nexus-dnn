@@ -1,5 +1,5 @@
 import type { ModuleIcon as ModuleIconDto } from "../../api/client";
-import { ModuleIcon } from "../../components/module_icon";
+import { ModuleIcon } from "../../components/base/module_icon";
 import { chip } from "./module_badge.css";
 
 interface ModuleBadgeProps {

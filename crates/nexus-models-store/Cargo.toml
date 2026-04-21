@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 nexus-protocol = { path = "../nexus-protocol" }
 nexus-huggingface = { path = "../nexus-huggingface" }
+nexus-model-metadata = { path = "../nexus-model-metadata" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

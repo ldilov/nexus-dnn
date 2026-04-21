@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import type { ModuleSummary } from "../../api/client";
-import { ModuleIcon } from "../../components/module_icon";
+import { ModuleIcon } from "../../components/base/module_icon";
 import { BlueprintQuickPick } from "./blueprint_quick_pick";
 import * as s from "./module_card.css";
 

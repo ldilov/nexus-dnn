@@ -14,7 +14,7 @@ artifact manifests, and data lineage.
 | **Location** | `~/.nexus/db/nexus.db` |
 | **Migration tool** | sqlx (embedded migrations) |
 | **Foreign keys** | Enforced (`PRAGMA foreign_keys = ON`) |
-| **Migrations** | 2 migration files applied sequentially |
+| **Migrations** | Numbered SQL files applied sequentially from `crates/nexus-storage/migrations/` |
 
 ---
 
@@ -99,7 +99,7 @@ Stores metadata for every discovered extension package. One row per extension.
 | `ui_contribution_count` | INTEGER | ✅ | `0` | Number of UI contributions (computed on activation) |
 | `validation_errors` | TEXT | ✅ | -- | JSON array of validation error strings; `NULL` when valid |
 
-> 💡 **Tip:** The `status` column tracks the extension lifecycle state machine: `discovered` -> `validating` -> `valid` -> `active`, with `invalid`, `disabled`, and `quarantined` as additional states. See [Extension Internals](extension-internals.md) for the full state diagram.
+> 💡 **Tip:** The `status` column tracks the extension lifecycle. See the [Data Model — ExtensionStatus enum](data-model.md#extensionstatus) for all valid values and transitions.
 
 ---
 
@@ -162,7 +162,7 @@ execution at a specific version.
 | `id` | TEXT | **PK** | -- | Unique run identifier |
 | `workflow_id` | TEXT | ❌ | -- | FK -> `workflows.id` |
 | `workflow_version` | TEXT | ❌ | -- | Snapshot of workflow version at run creation |
-| `status` | TEXT | ❌ | `'created'` | Run status: `created`, `running`, `completed`, `failed`, `cancelled` |
+| `status` | TEXT | ❌ | `'created'` | Run status. See [Data Model — RunStatus](data-model.md#runstatus) for the full enum and transitions. |
 | `started_at` | TEXT | ✅ | -- | ISO 8601 timestamp when run began executing |
 | `completed_at` | TEXT | ✅ | -- | ISO 8601 timestamp when run finished |
 | `error` | TEXT | ✅ | -- | Error message if run failed |
@@ -173,7 +173,7 @@ execution at a specific version.
 
 **Foreign Key:** `workflow_id` -> `workflows(id)`
 
-> 💡 **Tip:** The `status` column follows a linear progression for successful runs: `created` -> `running` -> `completed`. Failure transitions to `failed`, and user cancellation transitions to `cancelled`.
+> 💡 **Tip:** Successful runs progress `created` → `queued` → `planning` → `running` → `completed`. Failures transition to `failed`; user cancellations transition to `cancelled`.
 
 ---
 
@@ -185,7 +185,7 @@ Tracks per-node execution state within a run. One row per node per run.
 |--------|------|:--------:|---------|-------------|
 | `run_id` | TEXT | **PK** | -- | FK -> `runs.id` |
 | `node_id` | TEXT | **PK** | -- | Node identifier within the workflow |
-| `status` | TEXT | ❌ | `'pending'` | Node status: `pending`, `running`, `completed`, `failed`, `skipped` |
+| `status` | TEXT | ❌ | `'pending'` | Node execution status. See [Data Model — NodeStatus](data-model.md#nodestatus) for the full enum. |
 | `worker_id` | TEXT | ✅ | -- | Identifier of the worker process handling execution |
 | `started_at` | TEXT | ✅ | -- | ISO 8601 timestamp when node began executing |
 | `completed_at` | TEXT | ✅ | -- | ISO 8601 timestamp when node finished |
@@ -195,7 +195,7 @@ Tracks per-node execution state within a run. One row per node per run.
 **Primary Key:** (`run_id`, `node_id`)
 **Foreign Key:** `run_id` -> `runs(id)`
 
-> 💡 **Tip:** Node executions are created with `pending` status when a run starts. The engine updates them to `running` when the operator is dispatched to a worker, then to `completed` or `failed` on result.
+> 💡 **Tip:** Node executions are created with `pending` status when a run starts. The engine transitions them through `scheduled` → `starting` → `running` → `produced_output` (or `cache_hit`, `failed`, `cancelled`). See [NodeStatus](data-model.md#nodestatus) for the full state machine.
 
 ---
 
@@ -313,12 +313,19 @@ All indexes defined across both migrations:
 
 ---
 
-## 🔄 Migration History
+## 🔄 Migrations
 
-| Migration | File | Description |
-|-----------|------|-------------|
-| 001 | `001_initial.sql` | Core tables: `extensions`, `operators`, `workflows`, `runs`, `node_executions`, `artifacts`, `lineage_edges`. Enables WAL mode and foreign keys. |
-| 002 | `002_recipes_contributions.sql` | Adds `recipes` and `ui_contributions` tables. Extends `extensions` with `recipe_count`, `ui_contribution_count`, `validation_errors`. Extends `runs` with `run_label`, `execution_profile`, `predecessor_run_id`. |
+Migrations are numbered SQL files stored at `crates/nexus-storage/migrations/` and applied sequentially at host startup by sqlx. Each migration is additive — no schema is deleted or mutated in place without a new migration file.
+
+To inspect applied migrations on a running host, query the sqlx bookkeeping table:
+
+```sql
+SELECT version, description, installed_on
+FROM _sqlx_migrations
+ORDER BY version;
+```
+
+New migrations ship with the changes that introduce them (spec 012 adds extension primary refs, spec 013 adds download jobs, etc.). The list changes with every release; the `_sqlx_migrations` table is the source of truth for what the running database knows about.
 
 ---
 

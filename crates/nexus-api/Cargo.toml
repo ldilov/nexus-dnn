@@ -39,6 +39,7 @@ sha2 = "0.10"
 tempfile = "3"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
 ulid = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
@@ -48,5 +49,5 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 camino = "1"
 tokio-tungstenite = "0.24"
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 async-trait = "0.1"

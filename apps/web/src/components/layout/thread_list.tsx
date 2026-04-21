@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import * as styles from "./layout_styles.css";
+import * as css from "./thread_list.css";
 
 export interface ThreadRow {
   id: string;
@@ -31,6 +31,30 @@ type ThreadListProps = {
   onSelect?: (id: string) => void;
 };
 
+function relativeTime(iso: string, now = Date.now()): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const diff = Math.max(0, now - t);
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return "now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d`;
+  const wk = Math.floor(day / 7);
+  if (wk < 4) return `${wk}w`;
+  const mo = Math.floor(day / 30);
+  return `${mo}mo`;
+}
+
+function messageCountLabel(n: number): string {
+  if (n === 0) return "empty";
+  if (n === 1) return "1 message";
+  return `${n} messages`;
+}
+
 export function ThreadListComponent({
   emptyMessage = "No conversations yet",
   selectedId: controlledSelectedId,
@@ -39,8 +63,11 @@ export function ThreadListComponent({
   const [threads, setThreads] = useState<ThreadRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(
+    null,
+  );
   const selectedId = controlledSelectedId ?? internalSelectedId;
+  const [, forceNow] = useState(0);
 
   const reload = useCallback((signal?: AbortSignal) => {
     setLoading(true);
@@ -73,9 +100,19 @@ export function ThreadListComponent({
   }, [reload]);
 
   useEffect(() => {
+    const id = setInterval(() => forceNow((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
     const first = threads[0];
     if (!controlledSelectedId && first && !internalSelectedId) {
       setInternalSelectedId(first.id);
+      window.dispatchEvent(
+        new CustomEvent("local-llm/thread:selected", {
+          detail: { id: first.id },
+        }),
+      );
     }
   }, [controlledSelectedId, threads, internalSelectedId]);
 
@@ -89,16 +126,19 @@ export function ThreadListComponent({
 
   if (loading && threads.length === 0) {
     return (
-      <div className={styles.listContainer}>
-        <div className={styles.listItemEmpty}>Loading…</div>
+      <div className={css.container}>
+        <div className={css.loadingRow}>Loading sessions…</div>
       </div>
     );
   }
 
   if (error && threads.length === 0) {
     return (
-      <div className={styles.listContainer}>
-        <div className={styles.listItemEmpty} role="alert">
+      <div className={css.container}>
+        <div className={css.emptyState} role="alert">
+          <span className={`material-symbols-outlined ${css.emptyIcon}`}>
+            error
+          </span>
           {error}
         </div>
       </div>
@@ -107,23 +147,31 @@ export function ThreadListComponent({
 
   if (threads.length === 0) {
     return (
-      <div className={styles.listContainer}>
-        <div className={styles.listItemEmpty}>{emptyMessage}</div>
+      <div className={css.container}>
+        <div className={css.emptyState}>
+          <span className={`material-symbols-outlined ${css.emptyIcon}`}>
+            forum
+          </span>
+          <div>{emptyMessage}</div>
+          <div style={{ opacity: 0.6, fontSize: "11.5px" }}>
+            Start one with <strong>+ New Session</strong>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className={styles.listContainer} role="listbox">
+    <div className={css.container} role="listbox" aria-label="Chat sessions">
+      <div className={css.sectionLabel}>Recent</div>
       {threads.map((t) => {
         const isSelected = selectedId === t.id;
         const cls = isSelected
-          ? `${styles.listItem} ${styles.listItemSelected}`
-          : styles.listItem;
-        const subtitle =
-          t.message_count > 0
-            ? `${t.message_count} ${t.message_count === 1 ? "message" : "messages"}`
-            : "empty";
+          ? `${css.item} ${css.itemSelected}`
+          : css.item;
+        const titleCls = isSelected
+          ? `${css.title} ${css.titleSelected}`
+          : css.title;
         return (
           <div
             key={t.id}
@@ -138,10 +186,19 @@ export function ThreadListComponent({
                 handleSelect(t.id);
               }
             }}
+            title={t.title}
           >
-            <div>
-              <div>{t.title}</div>
-              <div className={styles.descSmall}>{subtitle}</div>
+            <div className={css.rowTop}>
+              {isSelected && (
+                <span className={css.liveDot} aria-hidden />
+              )}
+              <span className={titleCls}>{t.title}</span>
+              <span className={css.timestamp}>
+                {relativeTime(t.updated_at)}
+              </span>
+            </div>
+            <div className={css.rowMeta}>
+              <span>{messageCountLabel(t.message_count)}</span>
             </div>
           </div>
         );

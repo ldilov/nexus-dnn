@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Button } from "../button";
+import { Button } from "../base/button";
 import * as styles from "./layout_styles.css";
 
 type PrimaryAction = {

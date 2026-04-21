@@ -1,5 +1,5 @@
 import type { ModuleSummary } from "../../api/client";
-import { InstallExtensionDrawer } from "../../install/install_extension_drawer";
+import { InstallExtensionDrawer } from "../../components/install/install_extension_drawer";
 import { BlankModuleCard, ModuleCard } from "./module_card";
 import * as s from "./modules.css";
 

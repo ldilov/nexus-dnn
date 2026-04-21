@@ -1,5 +1,5 @@
 import type { Workflow, WorkflowNode } from "../../../../api/client";
-import { StatusBadge, type BadgeStatus } from "../../../../components/status_badge";
+import { StatusBadge, type BadgeStatus } from "../../../../components/base/status_badge";
 import * as styles from "./stage_view.css";
 
 type NodeProgress = { status: string; progress: number };

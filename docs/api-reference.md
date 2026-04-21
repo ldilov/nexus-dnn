@@ -2,7 +2,11 @@
 
 **Base URL**: `http://localhost:3000/api/v1`
 
-All responses use `Content-Type: application/json` unless otherwise noted.
+Every path in this document is relative to the base URL — so `GET /extensions` is really `GET http://localhost:3000/api/v1/extensions`. The port is configurable via `NEXUS_PORT` ([see Configuration](configuration.md)).
+
+**Authentication**: the host binds to `127.0.0.1` by default and has no auth layer — it trusts the local user. If you bind to a non-loopback interface in a shared environment, front the host with a reverse proxy that handles authentication.
+
+**Content type**: responses are `application/json` unless otherwise noted. Fields whose values are JSON-serialized strings (like `inputs`, `outputs`, `config_schema`) are stored that way in the database and returned verbatim; clients parse them as needed.
 
 ---
 

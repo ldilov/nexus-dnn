@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+### Added — Spec 027 Extension UI Catalog, Playground & Loader (2026-04-21)
+
+**New host endpoints**:
+
+- `GET /api/v1/ui/components` — publishes the host component catalog as a versioned envelope (`schema_version: "1"`): every registered UI component with category, JSON-Schema Draft 2020-12 props schema, and at least one runnable example. Startup validation rejects malformed metadata in release builds (FR-005).
+- `GET /api/v1/ui/extension-components` — lists custom-element tags registered by installed extensions (separate surface from the host catalog per spec Assumptions).
+- `GET /api/v1/extensions/{id}/ui/{*path}` — serves static UI assets declared by an installed extension under a scoped path. Path-traversal and symlink-escape rejected at the handler. `Cache-Control: public, max-age=300, must-revalidate` + weak ETag + Content-Length headers.
+- `POST /api/v1/extensions/{id}/reload` — atomically re-reads a single extension's manifest and swaps its registry entry. Other extensions untouched. 200 on success, 404 on unknown id, 409 on validation / tag-collision (FR-027).
+
+**New manifest surface** (additive, `#[serde(default)]`):
+
+- `ui.assets.root` — path inside the extension declaring where UI assets live.
+- `ui.custom_elements[]` — declarations of `{ tag, module, entry }` for custom elements the extension registers. Tag grammar `^[a-z][a-z0-9]*(-[a-z0-9]+)+$`; cross-extension uniqueness enforced at install time.
+
+**Developer playground**:
+
+- `/dev/components` — three-pane developer surface: catalog browser, live preview, schema-driven props editor with copy-to-clipboard YAML and custom-element tag snippets. Pure consumer of `/api/v1/ui/components` — adding a component to the host registry requires no playground-side code changes.
+- `?component=<name>` deep-link support.
+- Session-persisted prop values across navigation within a session.
+- Preview gates on validation errors — invalid props render a "Preview paused" placeholder instead of crashing.
+
+**Frontend custom-element boundary**:
+
+- `ExtensionCustomElement` React component lazily imports the declared module, calls `register()`, mounts `<tag>`. Errors isolated to a labeled placeholder with `data-testid`/`data-reason`/`data-extension-id` for testing.
+- `layout_renderer.tsx` routes any hyphenated tag without a host renderer to `ExtensionCustomElement` — the escape hatch for custom widgets.
+
+**Documentation**: canonical author guide at `docs/extensions/ui-authoring.md` covers decision flow, both authoring paths, playground workflow, manifest contract, attribute coercion, local iteration, uninstall semantics, reference endpoints, two worked examples, and a troubleshooting table.
+
+**Dependencies**: `zod@^3.23.0` added for client-side props-schema validation (justified in spec research.md R1 under Principle I).
+
+**Tests added**: 17 Rust unit + 14 Rust integration (catalog + assets + reload + tag uniqueness) + 35 Vitest (schema mapper + PropsEditor render + custom-element boundary + deriveSnippets YAML escaping + component_registry drift guard). All green.
+
+**Scan tool**: `pnpm scan:components` (new, wired into `scan:all`) asserts drift between `component_registry.tsx`, the committed allowlist, and the Rust catalog's `catalog_entries()` table.
+
 ### Refined — Spec 019 semantic model correction (2026-04-16)
 
 - **Instances are read-only**. The "Instance editor" surface is retired and replaced with an "Instance view" that renders the module's default payload across 4 tabs (Recipe, Stage, Graph, Trace) with zero focusable form controls.
