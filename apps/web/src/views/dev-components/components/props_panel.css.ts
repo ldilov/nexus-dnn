@@ -80,7 +80,7 @@ export const copyButton = style({
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.caption,
   cursor: "pointer",
-  transition: "background 120ms ease, border-color 120ms ease",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
 
   ":hover": {
     borderColor: vars.color.accent.primary,

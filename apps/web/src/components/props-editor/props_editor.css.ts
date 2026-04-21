@@ -58,7 +58,7 @@ const controlBase = style({
   fontSize: vars.font.size.bodySm,
   border: "1px solid transparent",
   outline: "none",
-  transition: "border-color 150ms ease, background 150ms ease",
+  transition: `border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}, background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
 
   ":focus": {
     borderColor: vars.color.accent.primary,

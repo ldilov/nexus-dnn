@@ -168,7 +168,7 @@ export function Component() {
   );
 }
 
-function deriveSnippets(
+export function deriveSnippets(
   selected: ComponentMetadata | null,
   propValues: Record<string, unknown>,
 ): { yaml: string; tag: string | null } {

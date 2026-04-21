@@ -28,7 +28,7 @@ export const heading = style({
 export const devBadge = style({
   padding: `${vars.space.insetXs} ${vars.space.insetMd}`,
   borderRadius: vars.radius.full,
-  background: "rgba(255, 200, 95, 0.12)",
+  background: `${vars.color.warning.base}1f`,
   color: vars.color.warning.text,
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.caption,

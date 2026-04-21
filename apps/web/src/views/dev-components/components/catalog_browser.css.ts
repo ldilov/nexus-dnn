@@ -86,7 +86,7 @@ const itemBase = style({
   fontSize: vars.font.size.bodySm,
   textAlign: "left",
   cursor: "pointer",
-  transition: "background 120ms ease, color 120ms ease",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
 
   ":hover": {
     background: vars.color.bg.hover,

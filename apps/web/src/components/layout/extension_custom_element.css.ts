@@ -15,7 +15,7 @@ export const failure = style({
   gap: vars.space.gapXs,
   padding: vars.space.insetMd,
   borderRadius: vars.radius.control,
-  background: "rgba(255, 95, 95, 0.08)",
+  background: `${vars.color.error.base}14`,
   color: vars.color.error.text,
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.bodySm,
