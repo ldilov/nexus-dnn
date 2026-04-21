@@ -14,6 +14,8 @@ export function FieldWidget(props: WidgetProps) {
   switch (descriptor.kind) {
     case "string":
       return <StringWidget {...props} />;
+    case "multiline":
+      return <MultilineWidget {...props} />;
     case "number":
       return <NumberWidget {...props} />;
     case "boolean":
@@ -73,6 +75,22 @@ function StringWidget({ descriptor, value, error, onChange }: WidgetProps) {
         minLength={descriptor.min ?? undefined}
         maxLength={descriptor.max ?? undefined}
         onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
+      />
+    </FieldShell>
+  );
+}
+
+function MultilineWidget({ descriptor, value, error, onChange }: WidgetProps) {
+  const id = useId();
+  return (
+    <FieldShell descriptor={descriptor} error={error} inputId={id}>
+      <textarea
+        id={id}
+        className={styles.inputTextarea}
+        value={typeof value === "string" ? value : ""}
+        rows={6}
+        spellCheck={false}
+        onChange={(e: ChangeEvent<HTMLTextAreaElement>) => onChange(e.target.value)}
       />
     </FieldShell>
   );

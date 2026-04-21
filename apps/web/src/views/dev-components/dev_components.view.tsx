@@ -133,6 +133,25 @@ export function Component() {
     [selected],
   );
 
+  const handleResetProps = useCallback(() => {
+    if (!selected) return;
+    setSession((prev) => {
+      const { [selected.name]: _removed, ...rest } = prev.propsByName;
+      return { ...prev, propsByName: rest };
+    });
+    setLastCopied(null);
+  }, [selected]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        handleResetProps();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handleResetProps]);
+
   const handleCopy = useCallback(
     (kind: "yaml" | "tag") => {
       const text = kind === "yaml" ? snippets.yaml : snippets.tag ?? "";

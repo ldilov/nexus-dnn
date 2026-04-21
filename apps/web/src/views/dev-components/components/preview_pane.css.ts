@@ -18,6 +18,12 @@ export const stage = style({
   margin: vars.space.insetMd,
   background: vars.color.bg.panel,
   boxShadow: `inset 0 0 0 1px ${vars.color.outline.variant}`,
+  position: "relative",
+  // Creates a containing block for position:fixed descendants so overlays
+  // (install_modal, future modals/popovers) stay bounded inside the stage
+  // instead of taking over the whole playground.
+  transform: "translateZ(0)",
+  contain: "layout paint",
 });
 
 export const empty = style({
