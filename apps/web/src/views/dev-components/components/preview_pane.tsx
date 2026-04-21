@@ -42,14 +42,17 @@ export function PreviewPane({
     <div className={styles.root} aria-label={`Preview of ${metadata.name}`}>
       {hasValidationErrors ? (
         <div className={styles.warn} role="status">
-          Preview is using the last valid values. Fix the highlighted fields to
-          update.
+          Fix the highlighted fields on the right to render a live preview.
         </div>
       ) : null}
       <div className={styles.stage}>
-        <RenderBoundary>
-          <>{renderer(node, [])}</>
-        </RenderBoundary>
+        {hasValidationErrors ? (
+          <div className={styles.empty}>Preview paused — validation errors.</div>
+        ) : (
+          <RenderBoundary>
+            <>{renderer(node, [])}</>
+          </RenderBoundary>
+        )}
       </div>
     </div>
   );

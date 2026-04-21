@@ -184,6 +184,29 @@ async fn reload_returns_404_for_unknown_extension() {
 }
 
 #[tokio::test]
+async fn reload_of_extension_in_duplicate_tag_state_returns_409() {
+    let dup_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("custom-element-dup");
+    let harness =
+        harness_with_fixtures(Arc::new(StubHf::default()), &[&fixture_path(), &dup_path])
+            .await;
+    // Reloading the duplicate extension re-runs validation — the duplicate tag
+    // is already present in the registry, so collect_custom_elements detects
+    // the collision and the handler returns 409 with no state change.
+    let (status, body, _) = call(
+        harness.state,
+        "POST",
+        "/api/v1/extensions/nexus.test.custom-element-dup/reload",
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let json: Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(json["code"], "duplicate_custom_element_tag");
+}
+
+#[tokio::test]
 async fn reload_is_idempotent_across_repeated_calls() {
     let harness = harness_with_fixtures(Arc::new(StubHf::default()), &[&fixture_path()]).await;
     let app = nexus_api::router::build(harness.state);
