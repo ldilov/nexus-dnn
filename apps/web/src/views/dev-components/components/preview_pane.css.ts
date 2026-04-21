@@ -32,6 +32,17 @@ export const empty = style({
   fontStyle: "italic",
 });
 
+export const info = style({
+  margin: `0 ${vars.space.insetMd}`,
+  padding: `${vars.space.insetXs} ${vars.space.insetMd}`,
+  borderRadius: vars.radius.control,
+  background: `${vars.color.accent.primary}14`,
+  color: vars.color.text.secondary,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.caption,
+  lineHeight: 1.4,
+});
+
 export const warn = style({
   margin: `0 ${vars.space.insetMd}`,
   padding: `${vars.space.insetXs} ${vars.space.insetMd}`,
