@@ -17,6 +17,7 @@ type PickerRow = {
   key: string;
   family_id: string;
   variant_id: string;
+  artifact_id: string;
   family_label: string;
   quant: string;
   size_label: string;
@@ -53,6 +54,7 @@ function toRows(installed: InstalledArtifact[]): PickerRow[] {
       key,
       family_id: a.family_id,
       variant_id: variant,
+      artifact_id: a.artifact_id,
       family_label: a.family_id.replace(/^[^/]+\//, ""),
       quant,
       size_label: size ?? "—",
@@ -407,8 +409,9 @@ export function ModelPicker() {
           filtered[focusIdx] &&
           phase.kind === "idle" && (
             <RuntimePanel
-              key={filtered[focusIdx].family_id}
+              key={filtered[focusIdx].artifact_id}
               familyId={filtered[focusIdx].family_id}
+              installId={filtered[focusIdx].artifact_id}
               onChange={(t) => {
                 const row = filtered[focusIdx];
                 if (row) tuningByFamily.current.set(row.family_id, t);
