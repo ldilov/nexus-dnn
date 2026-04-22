@@ -23,6 +23,7 @@ function ext(id: string, status: string): ExtensionDto {
     ui_contribution_count: 0,
     validation_errors: [],
     installed_at: "2026-04-14T00:00:00Z",
+    registry_state: "not_registered",
   };
 }
 

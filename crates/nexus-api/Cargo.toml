@@ -7,7 +7,7 @@ edition = "2024"
 axum = { version = "0.8", features = ["ws", "multipart"] }
 tokio = { workspace = true }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "limit", "trace", "compression-gzip", "compression-br"] }
+tower-http = { version = "0.6", features = ["cors", "limit", "trace", "compression-gzip", "compression-br", "catch-panic"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 semver = { workspace = true }
@@ -51,3 +51,9 @@ tokio-tungstenite = "0.24"
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 async-trait = "0.1"
+nexus-local-llm-chat-history = { path = "../../extensions/builtin/local-llm/rust" }
+
+[[bench]]
+name = "dispatcher_overhead"
+path = "benches/dispatcher_overhead.rs"
+harness = false

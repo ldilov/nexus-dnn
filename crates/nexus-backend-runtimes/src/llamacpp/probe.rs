@@ -6,7 +6,7 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::diagnostics::FailureCategory;
-use crate::events::{NAMESPACE_LLAMACPP, SharedPublisher};
+use crate::events::SharedPublisher;
 use crate::log_pipeline::{self, LogPipelineContext};
 use crate::manifest::install::InstallManifest;
 use crate::validator::{CHECK_IDS, ValidationCheck, ValidationReport};
@@ -14,6 +14,7 @@ use crate::validator::{CHECK_IDS, ValidationCheck, ValidationReport};
 pub async fn run_validation(
     install: &InstallManifest,
     publisher: SharedPublisher,
+    namespace: &str,
 ) -> ValidationReport {
     let mut report = ValidationReport::new(Some(install.runtime_install_id.clone()));
 
@@ -50,7 +51,7 @@ pub async fn run_validation(
         }
     };
 
-    let probe_result = spawn_and_probe(install, port, publisher.clone()).await;
+    let probe_result = spawn_and_probe(install, port, publisher.clone(), namespace).await;
     match probe_result {
         Ok(()) => {
             report.push(pass(4, "health_probe_starts", "probe process started"));
@@ -149,6 +150,7 @@ async fn spawn_and_probe(
     install: &InstallManifest,
     port: u16,
     publisher: SharedPublisher,
+    namespace: &str,
 ) -> Result<(), FailureCategory> {
     let mut cmd = Command::new(&install.binary_path);
     cmd.args([
@@ -171,7 +173,7 @@ async fn spawn_and_probe(
     let stderr = child.stderr.take();
     let ctx = Arc::new(LogPipelineContext {
         source: crate::family::RuntimeFamily::LLAMA_CPP.into(),
-        namespace: NAMESPACE_LLAMACPP.into(),
+        namespace: namespace.to_owned(),
         runtime_id: Some(install.runtime_install_id.clone()),
         deployment_id: None,
         publisher: publisher.clone(),

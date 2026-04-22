@@ -1,10 +1,15 @@
+//! In-memory registry tracking the load state of a model on each chat
+//! thread. Migrated from the host's
+//! `crates/nexus-api/src/handlers/extensions_local_llm/load_registry.rs`
+//! per spec 030 CP2.
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde::Serialize;
 use tokio::sync::RwLock;
 
-use super::chat::ActiveModelBinding;
+use super::handlers::ActiveModelBinding;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]

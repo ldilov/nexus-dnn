@@ -4,6 +4,7 @@ use axum::http::HeaderValue;
 use axum::middleware::{self, Next};
 use axum::response::Response;
 use axum::routing::{get, post};
+use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
@@ -49,6 +50,7 @@ async fn deprecation_headers(req: Request, next: Next) -> Response {
 }
 
 use crate::AppState;
+use crate::extension_router;
 use crate::frontend;
 use crate::handlers;
 use crate::handlers::{
@@ -283,30 +285,6 @@ pub fn build(state: AppState) -> Router {
             get(handlers::model_store::installed::get_installed),
         )
         .route(
-            "/extensions/local-llm/chat/threads",
-            get(handlers::extensions_local_llm::chat::list_threads)
-                .post(handlers::extensions_local_llm::chat::create_thread),
-        )
-        .route(
-            "/extensions/local-llm/chat/threads/{thread_id}/generation_settings",
-            get(handlers::extensions_local_llm::chat::get_generation_settings)
-                .put(handlers::extensions_local_llm::chat::set_generation_settings),
-        )
-        .route(
-            "/extensions/local-llm/chat/threads/{thread_id}/active_model",
-            get(handlers::extensions_local_llm::chat::get_active_model)
-                .put(handlers::extensions_local_llm::chat::set_active_model)
-                .delete(handlers::extensions_local_llm::chat::unload_active_model),
-        )
-        .route(
-            "/extensions/local-llm/chat/threads/{thread_id}/active_model/status",
-            get(handlers::extensions_local_llm::chat::get_active_model_status),
-        )
-        .route(
-            "/extensions/local-llm/chat/threads/{thread_id}/messages",
-            post(handlers::extensions_local_llm::chat::send_message),
-        )
-        .route(
             "/model-store/search",
             get(handlers::model_store::search::search),
         )
@@ -346,6 +324,23 @@ pub fn build(state: AppState) -> Router {
     let api_v1 = api_v1.nest("/modules", modules::router());
     let api_v1 = api_v1.nest("/modules", modules::draft_router());
     let api_v1 = api_v1.nest("/extensions", extensions_install::router());
+    let api_v1 = api_v1
+        .route(
+            "/extensions/{ext_id}/{*rest}",
+            get(extension_router::dispatch)
+                .post(extension_router::dispatch)
+                .put(extension_router::dispatch)
+                .patch(extension_router::dispatch)
+                .delete(extension_router::dispatch),
+        )
+        .route(
+            "/extensions/{ext_id}/",
+            get(extension_router::dispatch_root)
+                .post(extension_router::dispatch_root)
+                .put(extension_router::dispatch_root)
+                .patch(extension_router::dispatch_root)
+                .delete(extension_router::dispatch_root),
+        );
 
     let api_host = Router::new()
         .route(
@@ -358,6 +353,7 @@ pub fn build(state: AppState) -> Router {
         .nest("/api/v1", api_v1)
         .nest("/api/host", api_host)
         .fallback(frontend::static_handler)
+        .layer(CatchPanicLayer::new())
         .layer(middleware::from_fn(deprecation_headers))
         .layer(
             TraceLayer::new_for_http()

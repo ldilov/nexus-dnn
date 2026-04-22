@@ -4,4 +4,20 @@ export type ExtensionDto = { id: string, name: string | null, version: string, d
 /**
  * Absolute on-disk path to the extension's root directory.
  */
-source_path: string | null, capabilities: Array<string>, recipe_count: number | null, ui_contribution_count: number | null, validation_errors: Array<string>, installed_at: string, };
+source_path: string | null, capabilities: Array<string>, recipe_count: number | null, ui_contribution_count: number | null, validation_errors: Array<string>, installed_at: string, 
+/**
+ * Spec 030 / FR-030: live state of the extension's HTTP router in the
+ * host's `ExtensionRouterRegistry`. One of `ok` | `registration_failed`
+ * | `not_registered`. Defaults to `not_registered` when the extension
+ * did not provide an HTTP router.
+ */
+registry_state: string, 
+/**
+ * Spec 030 / FR-031: optional list of route patterns the extension
+ * claims to expose. Absence is non-informative.
+ */
+http_routes?: Array<string>, 
+/**
+ * Spec 030 / FR-030: present iff `registry_state == "registration_failed"`.
+ */
+registration_failure_reason?: string | null, };

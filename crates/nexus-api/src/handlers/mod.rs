@@ -6,7 +6,6 @@ pub mod errors;
 pub mod extensions;
 pub mod extension_ui;
 pub mod extensions_install;
-pub mod extensions_local_llm;
 pub mod health;
 pub mod host;
 pub mod huggingface;

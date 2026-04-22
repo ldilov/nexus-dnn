@@ -54,9 +54,9 @@ fn local_llm_manifest_parses() {
         .expect("manifest should parse without error");
 
     assert_eq!(manifest.extension.id, "nexus.local-llm");
-    assert_eq!(manifest.extension.version, "0.1.0");
+    assert_eq!(manifest.extension.version, "0.2.0");
     assert_eq!(manifest.spec_version, "0.1");
-    assert_eq!(manifest.runtime.family, RuntimeFamily::Builtin);
+    assert_eq!(manifest.runtime.family, RuntimeFamily::Native);
 }
 
 #[test]

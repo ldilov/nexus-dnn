@@ -1,10 +1,15 @@
 #![deny(rust_2018_idioms, unsafe_code)]
 
+pub mod chat;
 pub mod chat_history;
 pub mod error;
 pub mod host_client;
 pub mod ids;
+pub mod register;
 pub mod router;
+
+pub use chat::{ChatHandlerResources, LoadState, ModelLoadRegistry, build_chat_router};
+pub use register::{LocalLlmProviderResources, LocalLlmRouterProvider, EXTENSION_ID};
 
 pub use chat_history::{
     migrations,

@@ -24,13 +24,34 @@ use crate::error::ApiError;
 pub async fn list_extensions(
     State(state): State<AppState>,
 ) -> Result<ApiResponse<ListResponseDto<ExtensionDto>>, ApiError> {
+    use crate::extension_router::Registration;
+
     let extensions = state
         .db
         .list_extensions()
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    let items = extensions.iter().map(ExtensionDto::from).collect();
+    let items = extensions
+        .iter()
+        .map(|r| {
+            let mut dto = ExtensionDto::from(r);
+            match state.extension_router_registry.get(&dto.id) {
+                Some(Registration::Ok { http_routes, .. }) => {
+                    dto.registry_state = "ok".to_owned();
+                    dto.http_routes = http_routes;
+                }
+                Some(Registration::Failed { reason, .. }) => {
+                    dto.registry_state = "registration_failed".to_owned();
+                    dto.registration_failure_reason = Some(reason);
+                }
+                None => {
+                    dto.registry_state = "not_registered".to_owned();
+                }
+            }
+            dto
+        })
+        .collect();
     Ok(ApiResponse::ok(ListResponseDto { items }))
 }
 

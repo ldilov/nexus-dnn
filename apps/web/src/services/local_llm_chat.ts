@@ -13,7 +13,7 @@ export function fetchActiveModel(
   signal?: AbortSignal,
 ): Promise<ActiveModelBinding | null> {
   return apiFetch<ActiveModelBinding | null>(
-    `/extensions/local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model`,
+    `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model`,
     { signal },
   );
 }
@@ -41,7 +41,7 @@ export function fetchGenerationSettings(
   signal?: AbortSignal,
 ): Promise<GenerationParams> {
   return apiFetch<GenerationParams>(
-    `/extensions/local-llm/chat/threads/${encodeURIComponent(threadId)}/generation_settings`,
+    `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/generation_settings`,
     { signal },
   );
 }
@@ -52,7 +52,7 @@ export function setGenerationSettings(
   signal?: AbortSignal,
 ): Promise<GenerationParams> {
   return apiFetch<GenerationParams>(
-    `/extensions/local-llm/chat/threads/${encodeURIComponent(threadId)}/generation_settings`,
+    `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/generation_settings`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -110,7 +110,7 @@ export function setActiveModel(
     body.runtime = runtime;
   }
   return apiFetch<ActiveModelStatusPayload>(
-    `/extensions/local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model`,
+    `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -125,7 +125,7 @@ export function unloadActiveModel(
   signal?: AbortSignal,
 ): Promise<void> {
   return apiFetch<void>(
-    `/extensions/local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model`,
+    `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model`,
     { method: "DELETE", signal },
   );
 }
@@ -135,7 +135,7 @@ export function fetchActiveModelStatus(
   signal?: AbortSignal,
 ): Promise<ActiveModelStatusPayload | null> {
   return apiFetch<ActiveModelStatusPayload | null>(
-    `/extensions/local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model/status`,
+    `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model/status`,
     { signal },
   );
 }

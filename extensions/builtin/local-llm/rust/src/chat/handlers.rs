@@ -1,3 +1,20 @@
+//! Chat handlers migrated from
+//! `crates/nexus-api/src/handlers/extensions_local_llm/chat.rs` per spec
+//! 030 CP2. Replaced `State<AppState>` with `State<Arc<ChatHandlerResources>>`;
+//! all other behaviour preserved byte-for-byte (same SQL, same response
+//! shapes, same llama.cpp spawn flow).
+//!
+//! `#[allow(dead_code)]` is applied at the module level: the
+//! `create_thread`, `list_threads`, and `send_message` handlers are no
+//! longer mounted (spec 029's chat-history router owns those URLs after
+//! CP2 — see the route map in `super::build_chat_router`). The handler
+//! bodies remain to preserve provenance during the migration window;
+//! a follow-up cleanup spec MAY prune them once all consumers are
+//! confirmed to use the spec-029 endpoints.
+#![allow(dead_code)]
+
+use std::sync::Arc;
+
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -6,10 +23,9 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
 
-use crate::AppState;
-use crate::envelope::ApiResponse;
-
+use super::envelope::ApiResponse;
 use super::load_registry::LoadState;
+use super::resources::ChatHandlerResources;
 
 use nexus_backend_runtimes::channel::RuntimeAddress;
 use nexus_backend_runtimes::runtime_installs_store;
@@ -17,7 +33,7 @@ use nexus_backend_runtimes::settings::AcceleratorProfile;
 use nexus_backend_runtimes::spawn::{RuntimeBindMode, SpawnRuntimeRequest};
 
 const LLAMA_CPP_FAMILY: &str = "llama.cpp";
-const LOCAL_LLM_EXTENSION: &str = "extension.local-llm";
+const LOCAL_LLM_EXTENSION: &str = "extension.nexus.local-llm";
 const CHANNEL_READY_TIMEOUT_SECS: u64 = 300;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -200,7 +216,7 @@ fn emit_session_state(
     }
     let evt = nexus_backend_runtimes::events::BackendEvent::new(
         "session.state.changed",
-        "extension.local-llm",
+        LOCAL_LLM_EXTENSION,
         payload,
     );
     let pub_clone = publisher.clone();
@@ -279,10 +295,10 @@ async fn next_session_title(pool: &SqlitePool) -> String {
 }
 
 pub async fn create_thread(
-    State(state): State<AppState>,
+    State(res): State<Arc<ChatHandlerResources>>,
     Json(body): Json<NewThreadBody>,
 ) -> Response {
-    let pool = state.db.pool();
+    let pool = &res.pool;
     if let Err(e) = ensure_schema(pool).await {
         return ApiResponse::<()>::internal(format!("schema: {e}")).into_response();
     }
@@ -324,10 +340,10 @@ pub async fn create_thread(
 }
 
 pub async fn list_threads(
-    State(state): State<AppState>,
+    State(res): State<Arc<ChatHandlerResources>>,
     Query(params): Query<ListThreadsParams>,
 ) -> Response {
-    let pool = state.db.pool();
+    let pool = &res.pool;
     if let Err(e) = ensure_schema(pool).await {
         return ApiResponse::<()>::internal(format!("schema: {e}")).into_response();
     }
@@ -359,10 +375,10 @@ pub async fn list_threads(
 }
 
 pub async fn get_generation_settings(
-    State(state): State<AppState>,
+    State(res): State<Arc<ChatHandlerResources>>,
     Path(thread_id): Path<String>,
 ) -> Response {
-    let pool = state.db.pool();
+    let pool = &res.pool;
     if let Err(e) = ensure_schema(pool).await {
         return ApiResponse::<()>::internal(format!("schema: {e}")).into_response();
     }
@@ -382,18 +398,17 @@ pub async fn get_generation_settings(
                 .unwrap_or_default();
             ApiResponse::ok(params).into_response()
         }
-        Ok(None) => ApiResponse::<()>::not_found(format!("thread: {thread_id}"))
-            .into_response(),
+        Ok(None) => ApiResponse::<()>::not_found(format!("thread: {thread_id}")).into_response(),
         Err(e) => ApiResponse::<()>::internal(format!("select: {e}")).into_response(),
     }
 }
 
 pub async fn set_generation_settings(
-    State(state): State<AppState>,
+    State(res): State<Arc<ChatHandlerResources>>,
     Path(thread_id): Path<String>,
     Json(params): Json<GenerationParams>,
 ) -> Response {
-    let pool = state.db.pool();
+    let pool = &res.pool;
     if let Err(e) = ensure_schema(pool).await {
         return ApiResponse::<()>::internal(format!("schema: {e}")).into_response();
     }
@@ -424,10 +439,10 @@ pub async fn set_generation_settings(
 }
 
 pub async fn get_active_model(
-    State(state): State<AppState>,
+    State(res): State<Arc<ChatHandlerResources>>,
     Path(thread_id): Path<String>,
 ) -> Response {
-    let pool = state.db.pool();
+    let pool = &res.pool;
     if let Err(e) = ensure_schema(pool).await {
         return ApiResponse::<()>::internal(format!("schema: {e}")).into_response();
     }
@@ -445,7 +460,7 @@ pub async fn get_active_model(
             let variant: Option<String> = r.try_get("active_model_variant_id").ok().flatten();
             match (family, variant) {
                 (Some(f), Some(v)) => {
-                    let install_map = match state.install_map.as_ref() {
+                    let install_map = match res.install_map.as_ref() {
                         Some(m) => m,
                         None => {
                             return ApiResponse::<Option<ActiveModelBinding>>::ok(None)
@@ -475,18 +490,17 @@ pub async fn get_active_model(
                 _ => ApiResponse::<Option<ActiveModelBinding>>::ok(None).into_response(),
             }
         }
-        Ok(None) => ApiResponse::<()>::not_found(format!("thread: {thread_id}"))
-            .into_response(),
+        Ok(None) => ApiResponse::<()>::not_found(format!("thread: {thread_id}")).into_response(),
         Err(e) => ApiResponse::<()>::internal(format!("select: {e}")).into_response(),
     }
 }
 
 pub async fn set_active_model(
-    State(state): State<AppState>,
+    State(res): State<Arc<ChatHandlerResources>>,
     Path(thread_id): Path<String>,
     Json(body): Json<SetActiveModelBody>,
 ) -> Response {
-    let pool = state.db.pool();
+    let pool = &res.pool;
     if let Err(e) = ensure_schema(pool).await {
         return ApiResponse::<()>::internal(format!("schema: {e}")).into_response();
     }
@@ -507,8 +521,7 @@ pub async fn set_active_model(
     .await;
     match update {
         Ok(r) if r.rows_affected() == 0 => {
-            return ApiResponse::<()>::not_found(format!("thread: {thread_id}"))
-                .into_response();
+            return ApiResponse::<()>::not_found(format!("thread: {thread_id}")).into_response();
         }
         Err(e) => {
             return ApiResponse::<()>::internal(format!("update: {e}")).into_response();
@@ -516,7 +529,7 @@ pub async fn set_active_model(
         Ok(_) => {}
     }
 
-    let install_map = match state.install_map.as_ref() {
+    let install_map = match res.install_map.as_ref() {
         Some(m) => m,
         None => {
             return ApiResponse::<()>::internal("install_map unavailable".to_string())
@@ -532,7 +545,7 @@ pub async fn set_active_model(
         Some(r) => r,
         None => {
             emit_session_state(
-                &state.backend_event_publisher,
+                &res.backend_event_publisher,
                 &thread_id,
                 "model_unavailable",
                 serde_json::json!({
@@ -548,7 +561,7 @@ pub async fn set_active_model(
         }
     };
 
-    let orchestrator = match state.download_orchestrator.as_ref() {
+    let orchestrator = match res.download_orchestrator.as_ref() {
         Some(o) => o,
         None => {
             return ApiResponse::<()>::internal(
@@ -576,7 +589,7 @@ pub async fn set_active_model(
                 "no installed {LLAMA_CPP_FAMILY} runtime — install it via Backends first"
             );
             emit_session_state(
-                &state.backend_event_publisher,
+                &res.backend_event_publisher,
                 &thread_id,
                 "model_load_failed",
                 serde_json::json!({
@@ -612,8 +625,7 @@ pub async fn set_active_model(
         label: format!("{} / {}", record.family_id, body.variant_id),
     };
 
-    state
-        .model_load_registry
+    res.model_load_registry
         .set(
             thread_id.clone(),
             LoadState::Loading {
@@ -625,7 +637,7 @@ pub async fn set_active_model(
         .await;
 
     emit_session_state(
-        &state.backend_event_publisher,
+        &res.backend_event_publisher,
         &thread_id,
         "model_loading",
         serde_json::json!({
@@ -635,12 +647,11 @@ pub async fn set_active_model(
         }),
     );
 
-    let spawner = match state.spawner.as_ref() {
+    let spawner = match res.spawner.as_ref() {
         Some(s) => s.clone(),
         None => {
             let reason = "runtime spawner not wired in this build".to_string();
-            state
-                .model_load_registry
+            res.model_load_registry
                 .set(
                     thread_id.clone(),
                     LoadState::Failed {
@@ -651,7 +662,7 @@ pub async fn set_active_model(
                 )
                 .await;
             emit_session_state(
-                &state.backend_event_publisher,
+                &res.backend_event_publisher,
                 &thread_id,
                 "model_load_failed",
                 serde_json::json!({
@@ -665,9 +676,9 @@ pub async fn set_active_model(
         }
     };
 
-    let registry = state.model_load_registry.clone();
-    let publisher = state.backend_event_publisher.clone();
-    let bus = state.backend_event_bus.clone();
+    let registry = res.model_load_registry.clone();
+    let publisher = res.backend_event_publisher.clone();
+    let bus = res.backend_event_bus.clone();
     let thread_for_task = thread_id.clone();
     let binding_for_task = binding.clone();
     let install_id_for_task = runtime_row.install_id.clone();
@@ -688,7 +699,7 @@ pub async fn set_active_model(
         let mut args: Vec<String> = vec!["--model".to_string(), model_path_string.clone()];
         args.extend(runtime_to_args(&runtime_tuning));
         tracing::info!(
-            target: "nexus_api::local_llm",
+            target: "nexus_local_llm::chat",
             family = %LLAMA_CPP_FAMILY,
             args = ?args,
             "spawning llama.cpp with tuned runtime args",
@@ -863,17 +874,17 @@ pub async fn set_active_model(
 }
 
 pub async fn unload_active_model(
-    State(state): State<AppState>,
+    State(res): State<Arc<ChatHandlerResources>>,
     Path(thread_id): Path<String>,
 ) -> Response {
-    let pool = state.db.pool();
+    let pool = &res.pool;
     if let Err(e) = ensure_schema(pool).await {
         return ApiResponse::<()>::internal(format!("schema: {e}")).into_response();
     }
 
-    let existed = state.model_load_registry.clear(&thread_id).await;
+    let existed = res.model_load_registry.clear(&thread_id).await;
     if let Some(LoadState::Ready { lease_id, .. }) = &existed {
-        if let (Some(spawner), Some(id)) = (state.spawner.as_ref(), lease_id.clone()) {
+        if let (Some(spawner), Some(id)) = (res.spawner.as_ref(), lease_id.clone()) {
             let spawner = spawner.clone();
             tokio::spawn(async move {
                 if let Err(e) = spawner.shutdown(&id).await {
@@ -934,7 +945,7 @@ pub async fn unload_active_model(
     }
 
     emit_session_state(
-        &state.backend_event_publisher,
+        &res.backend_event_publisher,
         &thread_id,
         "model_unloaded",
         extra,
@@ -944,21 +955,21 @@ pub async fn unload_active_model(
 }
 
 pub async fn get_active_model_status(
-    State(state): State<AppState>,
+    State(res): State<Arc<ChatHandlerResources>>,
     Path(thread_id): Path<String>,
 ) -> Response {
-    match state.model_load_registry.get(&thread_id).await {
+    match res.model_load_registry.get(&thread_id).await {
         Some(s) => ApiResponse::ok(ActiveModelStatus { state: s }).into_response(),
         None => ApiResponse::<Option<ActiveModelStatus>>::ok(None).into_response(),
     }
 }
 
 pub async fn send_message(
-    State(state): State<AppState>,
+    State(res): State<Arc<ChatHandlerResources>>,
     Path(thread_id): Path<String>,
     Json(body): Json<SendMessageBody>,
 ) -> Response {
-    let pool = state.db.pool();
+    let pool = &res.pool;
     if let Err(e) = ensure_schema(pool).await {
         return ApiResponse::<()>::internal(format!("schema: {e}")).into_response();
     }
@@ -973,8 +984,7 @@ pub async fn send_message(
     let row = match row {
         Ok(Some(r)) => r,
         Ok(None) => {
-            return ApiResponse::<()>::not_found(format!("thread: {thread_id}"))
-                .into_response();
+            return ApiResponse::<()>::not_found(format!("thread: {thread_id}")).into_response();
         }
         Err(e) => return ApiResponse::<()>::internal(format!("select: {e}")).into_response(),
     };
@@ -984,12 +994,11 @@ pub async fn send_message(
     let (family, variant) = match (family, variant) {
         (Some(f), Some(v)) => (f, v),
         _ => {
-            return ApiResponse::<()>::bad_request("no_active_model".to_string())
-                .into_response();
+            return ApiResponse::<()>::bad_request("no_active_model".to_string()).into_response();
         }
     };
 
-    let load_state = state.model_load_registry.get(&thread_id).await;
+    let load_state = res.model_load_registry.get(&thread_id).await;
     let (binding_path, lease_port) = match load_state {
         Some(LoadState::Ready { binding, port, .. }) => {
             if binding.family_id != family || binding.variant_id != variant {
