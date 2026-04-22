@@ -12,7 +12,7 @@ pub mod dispatcher;
 pub mod id;
 pub mod registry;
 
-pub use dispatcher::dispatch;
+pub use dispatcher::{dispatch, dispatch_root};
 pub use id::{ExtensionId, IdError};
 pub use registry::{DefaultRegistry, Registration};
 

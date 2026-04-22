@@ -2,9 +2,14 @@
 //!
 //! Confirms that when an extension's handler panics, the host process
 //! survives, the dispatcher returns 500 to the panicking caller, and a
-//! sibling extension continues to serve. This test exercises axum's
-//! built-in panic catching (the dispatcher relies on it; spec.md edge
-//! case says "caught by axum's default panic handler → 500").
+//! sibling extension continues to serve. **Builds the actual production
+//! router via `nexus_api::create_router`** so the test validates real
+//! prod behavior, including the `tower_http::catch_panic::CatchPanicLayer`
+//! that the host mounts in `router.rs`. (Earlier revision built a
+//! standalone test app with the layer applied locally — that version
+//! could pass while production silently lacked the layer.)
+
+mod common;
 
 use std::sync::Arc;
 
@@ -13,20 +18,16 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::routing::get;
 use http_body_util::BodyExt;
-use nexus_api::extension_router::{
-    DefaultRegistry, ExtensionId, ExtensionRouterRegistry, SharedRegistry, dispatch,
-};
+use nexus_api::extension_router::{DefaultRegistry, ExtensionId, ExtensionRouterRegistry};
 use tower::ServiceExt;
-use tower_http::catch_panic::CatchPanicLayer;
 
-fn build_app(registry: SharedRegistry) -> Router {
-    Router::new()
-        .route(
-            "/api/v1/extensions/{ext_id}/{*rest}",
-            get(dispatch),
-        )
-        .layer(CatchPanicLayer::new())
-        .with_state(registry)
+use common::{harness_with, StubHf};
+
+async fn build_prod_app_with(registry: Arc<DefaultRegistry>) -> Router {
+    let h = harness_with(StubHf::with_results(vec![])).await;
+    let mut state = h.state.clone();
+    state.extension_router_registry = registry;
+    nexus_api::create_router(state)
 }
 
 #[tokio::test]
@@ -57,7 +58,7 @@ async fn handler_panic_returns_500_and_does_not_kill_dispatcher() {
         )
         .unwrap();
     registry.seal();
-    let app = build_app(registry);
+    let app = build_prod_app_with(registry).await;
 
     let bad = app
         .clone()
@@ -114,7 +115,7 @@ async fn dispatcher_state_intact_after_extension_panic() {
     registry.seal();
 
     let registry_clone = registry.clone();
-    let app = build_app(registry);
+    let app = build_prod_app_with(registry.clone()).await;
 
     let _ = app
         .clone()

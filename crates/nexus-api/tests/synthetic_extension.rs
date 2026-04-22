@@ -157,50 +157,63 @@ async fn sc_004_swapped_registration_order_still_correct() {
 
 #[tokio::test]
 async fn sc_005_registration_failure_returns_503_sibling_unaffected() {
-    let registry: Arc<DefaultRegistry> = Arc::new(DefaultRegistry::new());
-    registry
-        .register(
-            ExtensionId::parse("alpha").unwrap(),
-            make_synthetic_router("alive"),
-            vec![],
-        )
-        .unwrap();
-    registry
-        .register_failure(
-            ExtensionId::parse("broken-x").unwrap(),
-            "could not connect to deployment api".into(),
-        )
-        .unwrap();
-    registry.seal();
-    let app = build_app(registry);
+    // SC-005: "Measured across 10 startup runs: 100%." Loop the
+    // build-from-scratch + assertion 10× to honour the statistical
+    // claim — each iteration constructs a fresh registry, simulating
+    // an independent host startup.
+    for run in 0..10 {
+        let registry: Arc<DefaultRegistry> = Arc::new(DefaultRegistry::new());
+        registry
+            .register(
+                ExtensionId::parse("alpha").unwrap(),
+                make_synthetic_router("alive"),
+                vec![],
+            )
+            .unwrap();
+        registry
+            .register_failure(
+                ExtensionId::parse("broken-x").unwrap(),
+                "could not connect to deployment api".into(),
+            )
+            .unwrap();
+        registry.seal();
+        let app = build_app(registry);
 
-    let bad = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/extensions/broken-x/anything")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(bad.status(), StatusCode::SERVICE_UNAVAILABLE);
-    let body = body_json(bad).await;
-    assert_eq!(body["error"], "registration_failed");
-    assert_eq!(body["extension_id"], "broken-x");
-    assert_eq!(body["reason"], "could not connect to deployment api");
+        let bad = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/extensions/broken-x/anything")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            bad.status(),
+            StatusCode::SERVICE_UNAVAILABLE,
+            "run {run}: expected 503 for failed-registration extension",
+        );
+        let body = body_json(bad).await;
+        assert_eq!(body["error"], "registration_failed", "run {run}");
+        assert_eq!(body["extension_id"], "broken-x", "run {run}");
+        assert_eq!(
+            body["reason"], "could not connect to deployment api",
+            "run {run}",
+        );
 
-    let good = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/extensions/alpha/ping")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(good.status(), StatusCode::OK);
-    assert_eq!(body_string(good).await, "alive");
+        let good = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/extensions/alpha/ping")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(good.status(), StatusCode::OK, "run {run}: sibling 200");
+        assert_eq!(body_string(good).await, "alive", "run {run}");
+    }
 }
 
 #[tokio::test]
