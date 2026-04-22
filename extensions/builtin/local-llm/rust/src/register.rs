@@ -11,30 +11,48 @@ use axum::Router;
 use nexus_extension::{BuildRouterError, ExtensionContext, ExtensionRouterProvider};
 use sqlx::SqlitePool;
 
+use crate::chat::ChatHandlerResources;
 use crate::chat_history::store_sqlx::ChatHistoryStoreSqlx;
 use crate::chat_history::ChatHistoryStore;
 use crate::host_client::{HostDeploymentsClient, HttpHostDeploymentsClient};
-use crate::router::build_router;
+use crate::router::build_router_with_chat;
 
 pub const EXTENSION_ID: &str = "nexus.local-llm";
 
-/// Resources the LLM provider needs to construct its router. Built once at
-/// host startup and handed to `LocalLlmRouterProvider`.
+/// Resources the LLM provider needs to construct its router. Built once
+/// at host startup and handed to `LocalLlmRouterProvider`.
 #[derive(Clone)]
 pub struct LocalLlmProviderResources {
     pub pool: SqlitePool,
     pub host_client: Arc<dyn HostDeploymentsClient>,
+    pub chat: Arc<ChatHandlerResources>,
 }
 
 impl LocalLlmProviderResources {
-    pub fn new(pool: SqlitePool, host_client: Arc<dyn HostDeploymentsClient>) -> Self {
-        Self { pool, host_client }
+    pub fn new(
+        pool: SqlitePool,
+        host_client: Arc<dyn HostDeploymentsClient>,
+        chat: Arc<ChatHandlerResources>,
+    ) -> Self {
+        Self {
+            pool,
+            host_client,
+            chat,
+        }
     }
 
-    pub fn from_host_base_url(pool: SqlitePool, host_base_url: impl Into<String>) -> Self {
+    pub fn from_host_base_url(
+        pool: SqlitePool,
+        host_base_url: impl Into<String>,
+        chat: Arc<ChatHandlerResources>,
+    ) -> Self {
         let host_client: Arc<dyn HostDeploymentsClient> =
             Arc::new(HttpHostDeploymentsClient::new(host_base_url));
-        Self { pool, host_client }
+        Self {
+            pool,
+            host_client,
+            chat,
+        }
     }
 }
 
@@ -52,6 +70,9 @@ impl LocalLlmRouterProvider {
             "/chat/threads".into(),
             "/chat/threads/{thread_id}".into(),
             "/chat/threads/{thread_id}/messages".into(),
+            "/chat/threads/{thread_id}/generation_settings".into(),
+            "/chat/threads/{thread_id}/active_model".into(),
+            "/chat/threads/{thread_id}/active_model/status".into(),
         ]
     }
 
@@ -63,7 +84,7 @@ impl LocalLlmRouterProvider {
         .await
         .map_err(|e| Box::new(e) as BuildRouterError)?;
         let store_arc: Arc<dyn ChatHistoryStore> = Arc::new(store);
-        Ok(build_router(store_arc))
+        Ok(build_router_with_chat(store_arc, self.resources.chat.clone()))
     }
 }
 
