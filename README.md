@@ -35,12 +35,12 @@ nexus-dnn provides a developer-grade runtime that treats generative workflows as
 | Crate | Purpose |
 |-------|---------|
 | `nexus-core` | Binary entrypoint, application composition, configuration |
-| `nexus-api` | HTTP/WebSocket API server (axum) |
+| `nexus-api` | HTTP/WebSocket API server (axum). **Spec 030** adds the generic extension dispatcher at `/api/v1/extensions/{ext_id}/{*rest}` — every new extension's HTTP surface lands without a single host route edit. See [extension_router](crates/nexus-api/src/extension_router/README.md) and [crate README](crates/nexus-api/README.md). |
 | `nexus-workflow` | Canonical workflow DAG model, validation, mutations |
 | `nexus-scheduler` | Execution planning and node-to-worker scheduling |
 | `nexus-worker` | Worker process supervision and lifecycle management |
 | `nexus-artifact` | Artifact blob storage, manifests, and lineage tracking |
-| `nexus-extension` | Extension discovery, manifest validation, operator indexing |
+| `nexus-extension` | Extension discovery, manifest validation, operator indexing. **Spec 030** adds `ExtensionRouterProvider` — the adapter trait extensions implement to publish HTTP routes via the host's generic dispatcher. See [crate README](crates/nexus-extension/README.md). |
 | `nexus-protocol` | Shared protocol types for host-worker communication |
 | `nexus-events` | Typed event bus with broadcast and adapter support |
 | `nexus-storage` | Metadata database (SQLite) with migration support |
