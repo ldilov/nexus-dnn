@@ -101,6 +101,7 @@ async fn build_harness(manifest: Option<&str>) -> Harness {
         runtimes_root,
         db.pool().clone(),
         backend_bus.clone(),
+        "test.llama.cpp",
     ));
     let mut registry = AdapterRegistry::new();
     registry.register(adapter);

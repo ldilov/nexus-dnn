@@ -103,6 +103,7 @@ async fn install_unavailable_emitted_on_validator_transition() {
         Utf8PathBuf::from("/nonexistent/runtimes"),
         pool.clone(),
         publisher.clone(),
+        "test.llama.cpp",
     );
     let report = adapter.validate().await.expect("validate");
     assert!(

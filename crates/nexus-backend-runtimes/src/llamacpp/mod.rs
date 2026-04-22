@@ -16,7 +16,7 @@ use tokio_util::sync::CancellationToken;
 use crate::adapter::{BackendAdapter, BackendCardSummary, ImplementationStatus, InstallRequest};
 use crate::channel::{ChannelBuildCtx, RuntimeChannelDescriptor};
 use crate::error::RuntimeAdapterError;
-use crate::events::{NAMESPACE_LLAMACPP, SharedPublisher};
+use crate::events::SharedPublisher;
 use crate::launch_spec::LaunchSpec;
 use crate::manifest::install::{InstallManifest, InstallStatus};
 use crate::manifest::release_scanner::SharedScanner;
@@ -34,6 +34,7 @@ pub struct LlamaCppAdapter {
     runtimes_root: Utf8PathBuf,
     pool: SqlitePool,
     publisher: SharedPublisher,
+    namespace: String,
     active_install: Arc<Mutex<Option<CancellationToken>>>,
     scanner: Option<SharedScanner>,
 }
@@ -44,10 +45,12 @@ impl LlamaCppAdapter {
         runtimes_root: Utf8PathBuf,
         pool: SqlitePool,
         publisher: SharedPublisher,
+        namespace: impl Into<String>,
     ) -> Self {
         Self {
             version_manifest_path,
             runtimes_root,
+            namespace: namespace.into(),
             pool,
             publisher,
             active_install: Arc::new(Mutex::new(None)),
@@ -192,7 +195,7 @@ impl BackendAdapter for LlamaCppAdapter {
         let install = installs_store::load_latest(&self.pool, self.id())
             .await?
             .ok_or_else(|| RuntimeAdapterError::InstallNotFound(self.id().into()))?;
-        let report = probe::run_validation(&install, self.publisher.clone()).await;
+        let report = probe::run_validation(&install, self.publisher.clone(), &self.namespace).await;
         let new_status = if report.overall_ok {
             InstallStatus::Ready
         } else {
@@ -246,7 +249,7 @@ impl BackendAdapter for LlamaCppAdapter {
         let event = crate::events::BackendEvent::new(
             "llm.backend.settings.updated",
             self.id(),
-            serde_json::json!({ "namespace": NAMESPACE_LLAMACPP, "backend": self.id() }),
+            serde_json::json!({ "namespace": self.namespace, "backend": self.id() }),
         );
         self.publisher.publish(event).await;
         Ok(())

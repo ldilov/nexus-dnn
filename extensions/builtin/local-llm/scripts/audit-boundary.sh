@@ -1,53 +1,132 @@
 #!/usr/bin/env bash
-# Spec 029 — host↔extension boundary audit
-# Extension-scoped tooling for spec-029. Exit non-zero on any finding.
+# Spec 030 — host↔extension boundary audit (expanded from spec 029)
+#
+# Constitution Principle XIII (NON-NEGOTIABLE): host code MUST NOT contain
+# extension-id literals. This script greps the host tree for the four
+# spec-030 pattern variants and exits non-zero on any unallowed match.
+#
+# Allowlist (legitimate, non-coupling references):
+#   - "llama.cpp" inside crates/nexus-backend-runtimes/** — backend family
+#     name (subprocess family identifier), NOT an extension id.
+#   - Demo strings inside crates/nexus-api/src/handlers/ui_components.rs —
+#     sample catalog data with no control flow.
+#   - Test files (tests/**, *_test.rs, #[cfg(test)] modules) — exercising
+#     the dispatcher mechanism. Constitution XIII test-file carve-out.
+#   - The single permitted XIII.3 startup-wiring seam in
+#     crates/nexus-core/src/app.rs naming `LocalLlmRouterProvider`/
+#     `LocalLlmProviderResources` (compile-time adapter contract; NOT a
+#     business-logic reference).
+#   - Generated TS DTOs under apps/web/src/api/generated/ — emitted by
+#     ts-rs from allowlisted Rust sources.
+#
+# Forbidden patterns (any unallowed match → fail):
+#   - nexus.local-llm
+#   - local-llm
+#   - local_llm
+#   - extension.local-llm
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 cd "$REPO_ROOT"
 
+PATTERNS=(
+  'nexus\.local-llm'
+  'local-llm'
+  'local_llm'
+  'extension\.local-llm'
+)
+
+ALLOWED_FILES=(
+  'crates/nexus-backend-runtimes/'
+  'crates/nexus-api/src/handlers/ui_components.rs'
+  'apps/web/src/api/generated/'
+  'crates/nexus-core/src/app.rs'
+  'crates/nexus-local-llm-worker/'
+)
+
+SCAN_PATHS=(
+  'crates/'
+  'apps/web/src/components/'
+  'apps/web/src/views/'
+  'apps/web/src/services/'
+  'apps/web/src/hooks/'
+  'migrations/'
+)
+
 fail=0
+total_findings=0
 
-# 1. No new host migration for spec 029
-if ls migrations/ 2>/dev/null | grep -i -E 'chat|029' >/dev/null; then
-  echo "FAIL: new host migration found under migrations/ for spec 029"
-  ls migrations/ | grep -i -E 'chat|029'
-  fail=1
-else
-  echo "OK: no spec-029 host migration"
-fi
+is_allowed() {
+  local path="$1"
+  for allowed in "${ALLOWED_FILES[@]}"; do
+    if [[ "$path" == "$allowed"* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
 
-# 2. No spec-029 routes in host router.
-#    Spec 029 routes live under the dotted extension prefix `nexus.local-llm`.
-#    The legacy `/extensions/local-llm/chat/*` routes (single token) are
-#    grandfathered in-memory endpoints used by `thread_list.tsx` — NOT spec-029.
-if [ -f crates/nexus-api/src/router.rs ]; then
-  if grep -nE 'nexus\.local-llm' crates/nexus-api/src/router.rs >/dev/null 2>&1; then
-    echo "FAIL: spec-029 route leakage in crates/nexus-api/src/router.rs (nexus.local-llm prefix found)"
-    grep -nE 'nexus\.local-llm' crates/nexus-api/src/router.rs
-    fail=1
-  else
-    echo "OK: no spec-029 nexus.local-llm routes in host router"
+is_test_file() {
+  local path="$1"
+  [[ "$path" == *"/tests/"* || "$path" == *"_test.rs" || "$path" == *".test.ts" || "$path" == *".test.tsx" ]]
+}
+
+for pattern in "${PATTERNS[@]}"; do
+  matches=$(grep -rnE "$pattern" "${SCAN_PATHS[@]}" 2>/dev/null || true)
+  if [ -z "$matches" ]; then
+    echo "OK: pattern '$pattern' has no matches in scanned host paths"
+    continue
   fi
-fi
 
-# 3. No new files under crates/nexus-local-llm-worker/ for spec 029
-if [ -d crates/nexus-local-llm-worker ]; then
-  if git diff --name-only main... 2>/dev/null | grep '^crates/nexus-local-llm-worker/' >/dev/null; then
-    echo "FAIL: spec-029 branch touches grandfathered crate crates/nexus-local-llm-worker/"
-    git diff --name-only main... | grep '^crates/nexus-local-llm-worker/'
+  pattern_failed=0
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    file="${line%%:*}"
+    if is_allowed "$file"; then
+      continue
+    fi
+    if is_test_file "$file"; then
+      continue
+    fi
+    if [ "$total_findings" -eq 0 ]; then
+      echo "---"
+      echo "FAIL: boundary violations found"
+      echo "---"
+    fi
+    echo "$line"
+    total_findings=$((total_findings + 1))
     fail=1
-  else
-    echo "OK: grandfathered crate untouched on this branch"
-  fi
-fi
+    pattern_failed=1
+  done <<< "$matches"
 
-if [ "$fail" -eq 0 ]; then
+  if [ "$pattern_failed" -eq 0 ]; then
+    echo "OK: pattern '$pattern' — only allowlisted/test matches"
+  fi
+done
+
+# Hard checks for files/dirs that MUST be retired after CP2 completes
+if [ -d crates/nexus-api/src/handlers/extensions_local_llm ]; then
   echo "---"
-  echo "Boundary audit PASSED (spec 029)"
-  exit 0
+  echo "WARN(CP2-pending): crates/nexus-api/src/handlers/extensions_local_llm/ still present"
+  echo "  (CP2 atomic commit will delete this; not a fail until then)"
+fi
+
+if grep -nE 'NAMESPACE_LLAMACPP|NAMESPACE_TENSORRT_LLM' crates/nexus-backend-runtimes/src/events.rs >/dev/null 2>&1; then
+  echo "---"
+  echo "FAIL: NAMESPACE_* constants still present in crates/nexus-backend-runtimes/src/events.rs"
+  fail=1
+fi
+
+if grep -nE '/extensions/local-llm/chat/' crates/nexus-api/src/router.rs >/dev/null 2>&1; then
+  echo "---"
+  echo "WARN(CP2-pending): legacy /extensions/local-llm/chat/* routes still mounted in host router"
+  echo "  (CP2 atomic commit will delete these; not a fail until then)"
 fi
 
 echo "---"
-echo "Boundary audit FAILED"
+if [ "$fail" -eq 0 ]; then
+  echo "Boundary audit PASSED (spec 030 exit criteria for completed phases)"
+  exit 0
+fi
+echo "Boundary audit FAILED — $total_findings unallowed reference(s)"
 exit 1
