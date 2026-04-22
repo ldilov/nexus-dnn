@@ -1,0 +1,103 @@
+# Exclusion list for scripts/audit-runtime-boundary.ps1 (spec 032, R-10).
+#
+# Purpose: the audit script greps host code (crates/ + apps/web/src/ + migrations/)
+# for extension-id fragments. This file declares what is GRANDFATHERED (pre-spec-032
+# debt that we will not touch) vs what future extension-bearing specs have declared.
+#
+# Each future extension-bearing spec (e.g. spec 031 EmotionTTS) appends its own
+# extension id fragments here so the audit tolerates their presence inside their
+# own `extensions/builtin/<id>/` subtree — NOT inside crates/ or apps/web/src/.
+
+# Extension id fragments that predate spec 032 and live inside grandfathered paths.
+# These strings appearing INSIDE grandfathered_paths below is allowed; anywhere else
+# in the host tree is a merge blocker.
+#
+# NOTE: `llama.cpp` / `llamacpp` are NOT in this list — they are the canonical
+# wire forms of `RuntimeFamily::LlamaCpp`, a legitimate host-known runtime
+# family (like `python` after spec 032 lands). Family names are host vocabulary.
+# Extension ids are what we block. Keep the distinction sharp.
+grandfathered_fragments:
+  - "local-llm"
+  - "local_llm"
+
+# Paths whose contents are grandfathered debt per .claude/rules/host-extension-boundary.md.
+# Content inside these paths is NOT audited for extension-id fragments.
+grandfathered_paths:
+  # Whole-crate grandfathered paths (per .claude/rules/host-extension-boundary.md).
+  - "crates/nexus-local-llm-worker/**"
+  - "crates/nexus-backend-runtimes/src/llamacpp/**"
+  - "crates/nexus-api/src/handlers/backends/**"
+  - "crates/nexus-api/src/handlers/extensions_local_llm/**"
+  - "crates/nexus-api/src/handlers/ui_components/**"
+  # Grandfathered host-file hits for local_llm references (audited 2026-04-21 +
+  # confirmed by the rule file's "Pre-existing coupling" list).
+  - "crates/nexus-backend-runtimes/src/log_store.rs"
+  - "crates/nexus-backend-runtimes/src/settings_store.rs"
+  - "crates/nexus-backend-runtimes/src/runtime_installs_store/migration.rs"
+  - "crates/nexus-backend-runtimes/src/runtime_installs_store/tests.rs"
+  - "crates/nexus-backend-runtimes/tests/lifecycle_events.rs"
+  - "crates/nexus-backend-runtimes/tests/migration_startup.rs"
+  - "crates/nexus-core/src/app.rs"
+  - "crates/nexus-core/tests/builtin_extension_discovery.rs"
+  # Pre-existing tests referencing local_llm fixtures (spec 029 lineage).
+  - "crates/nexus-api/tests/cp2_migration_drill.rs"
+  - "crates/nexus-api/tests/quickstart_drill.rs"
+  - "crates/nexus-api/tests/spec_029_live_via_dispatcher.rs"
+  - "crates/nexus-api/tests/spec_029_quickstart_full.rs"
+  # Frontend grandfathered host coupling.
+  - "apps/web/src/components/layout/local_llm_*"
+  - "apps/web/src/components/layout/chat_panel*"
+  - "apps/web/src/components/layout/model_picker*"
+  - "apps/web/src/components/layout/backend_selector*"
+  - "apps/web/src/components/layout/model_selector*"
+  - "apps/web/src/components/layout/generation_settings_form*"
+  - "apps/web/src/components/layout/runtime_panel*"
+  - "apps/web/src/components/layout/thread_list*"
+  - "apps/web/src/services/local_llm_chat.ts"
+  - "apps/web/src/services/local_llm_rpc.ts"
+  - "apps/web/src/services/event_streams.ts"
+  - "apps/web/src/hooks/use_model_load_state.ts"
+  # Remaining grandfathered local-llm references (audited 2026-04-22; all
+  # predate spec 032; none are touched by this spec).
+  - "crates/nexus-api/Cargo.toml"
+  - "crates/nexus-api/README.md"
+  - "crates/nexus-api/src/extension_router/id.rs"
+  - "crates/nexus-api/src/extension_router/README.md"
+  - "crates/nexus-api/src/handlers/ui_components.rs"
+  - "crates/nexus-backend-runtimes/README.md"
+  - "crates/nexus-backend-runtimes/src/lib.rs"
+  - "crates/nexus-core/Cargo.toml"
+  - "apps/web/src/routes.tsx"
+  - "apps/web/src/layout/action_dispatch.ts"
+  - "apps/web/src/layout/component_registry.tsx"
+  - "apps/web/src/models/ModelsPanel.tsx"
+  - "apps/web/src/services/extension_chat.ts"
+  - "apps/web/src/views/dev-components/preview_demo.ts"
+  - "apps/web/src/views/extensions/local-llm/**"
+
+# Extension id fragments registered by future extension-bearing specs.
+# Each entry MUST reference the spec number that introduced it.
+registered_extensions: []
+# Example (to be added by spec 031 when its implementation merges):
+# - fragment: "emotion-tts"
+#   spec: "031"
+#   extension_root: "extensions/builtin/emotion-tts/**"
+# - fragment: "emotion_tts"
+#   spec: "031"
+#   extension_root: "extensions/builtin/emotion-tts/**"
+# - fragment: "indextts"
+#   spec: "031"
+#   extension_root: "extensions/builtin/emotion-tts/**"
+
+# Host tree roots audited for fragment hits.
+audit_roots:
+  - "crates/"
+  - "apps/web/src/"
+  - "migrations/"
+
+# Paths to additionally skip (CI fixtures, spec pack, generated code).
+skip_paths:
+  - "**/target/**"
+  - "**/node_modules/**"
+  - "specs/**"
+  - ".claude/worktrees/**"

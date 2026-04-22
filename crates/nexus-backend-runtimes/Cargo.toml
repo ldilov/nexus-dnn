@@ -22,7 +22,7 @@ tar = "0.4"
 flate2 = "1"
 jsonschema = { version = "0.45", default-features = false }
 camino = "1"
-ulid = "1"
+ulid = { version = "1", features = ["serde"] }
 uuid = { workspace = true }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "json", "chrono"] }
 futures-util = "0.3"

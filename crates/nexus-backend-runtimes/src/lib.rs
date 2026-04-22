@@ -29,6 +29,18 @@ pub mod validator;
 pub mod llamacpp;
 pub mod tensorrt_llm;
 
+/// Generic multi-family backend-runtime subsystem introduced by spec 032.
+/// Runs in parallel with the grandfathered [`llamacpp`] path per Principle XIII.6.
+pub mod generic;
+
+/// Python family handler (spec 032, FR-021). Implements phase hooks for
+/// extensions that declare `family: python`.
+pub mod family_python;
+
+/// Native-binary family placeholder (spec 032). Reserved seam for a future
+/// `RuntimeFamily::Native` variant; no behaviour in v1.
+pub mod family_native;
+
 pub use adapter::{AdapterRegistry, BackendAdapter, ImplementationStatus};
 pub use channel::{
     ApiDialect, ChannelBuildCtx, RuntimeAddress, RuntimeChannelDescriptor, RuntimeChannelKind,
