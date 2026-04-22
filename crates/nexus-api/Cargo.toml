@@ -7,7 +7,7 @@ edition = "2024"
 axum = { version = "0.8", features = ["ws", "multipart"] }
 tokio = { workspace = true }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "limit", "trace", "compression-gzip", "compression-br"] }
+tower-http = { version = "0.6", features = ["cors", "limit", "trace", "compression-gzip", "compression-br", "catch-panic"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 semver = { workspace = true }
