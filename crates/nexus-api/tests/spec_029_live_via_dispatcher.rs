@@ -55,7 +55,19 @@ async fn build_pool() -> SqlitePool {
 async fn build_app_with_llm_provider() -> Router {
     let pool = build_pool().await;
     let host_client: Arc<dyn HostDeploymentsClient> = Arc::new(StubHostClient);
-    let resources = LocalLlmProviderResources::new(pool, host_client);
+    let backend_bus = Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(64));
+    let chat_resources = Arc::new(
+        nexus_local_llm_chat_history::ChatHandlerResources::new(
+            pool.clone(),
+            None,
+            None,
+            None,
+            backend_bus.clone(),
+            backend_bus.clone(),
+            nexus_local_llm_chat_history::ModelLoadRegistry::new(),
+        ),
+    );
+    let resources = LocalLlmProviderResources::new(pool, host_client, chat_resources);
     let provider = LocalLlmRouterProvider::new(resources);
 
     let registry: Arc<DefaultRegistry> = Arc::new(DefaultRegistry::new());

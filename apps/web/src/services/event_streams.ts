@@ -157,7 +157,7 @@ export function subscribeSessionEvents(
   return openReconnectingSocket<BackendEventRecord>(
     () =>
       `${wsScheme()}//${wsHost()}/api/v1/backends/events?family=${encodeURIComponent(
-        "extension.local-llm",
+        "extension.nexus.local-llm",
       )}`,
     (record) => {
       if (record.topic !== "session.state.changed") return;

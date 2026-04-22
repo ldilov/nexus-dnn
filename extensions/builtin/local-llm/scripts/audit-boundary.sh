@@ -37,19 +37,48 @@ PATTERNS=(
 )
 
 ALLOWED_FILES=(
+  # Backend family name; subprocess identifier, not extension id
   'crates/nexus-backend-runtimes/'
+  # Demo catalog data
   'crates/nexus-api/src/handlers/ui_components.rs'
+  # Generated TS DTOs (downstream of allowlisted Rust)
   'apps/web/src/api/generated/'
+  # Permitted XIII.3 startup-wiring seam
   'crates/nexus-core/src/app.rs'
+  # Cargo path-deps that name the extension package itself — XIII.3 allows
+  # the host's Cargo.toml to declare adapter implementors as deps; the
+  # business-logic boundary is what matters, not the dep graph
+  'crates/nexus-api/Cargo.toml'
+  'crates/nexus-core/Cargo.toml'
+  # Grandfathered crate (slated for migration; frozen for net-new content)
   'crates/nexus-local-llm-worker/'
+  # Spec 030 dispatcher implementation — production code is grep-clean,
+  # the matches are inside `#[cfg(test)] mod tests` blocks (test-file
+  # carve-out per constitution XIII)
+  'crates/nexus-api/src/extension_router/id.rs'
+  # Module README documenting the audit script + boundary rule itself
+  'crates/nexus-api/src/extension_router/README.md'
+  # Pre-existing grandfathered frontend coupling (per project rule file).
+  # CP2's job is preventing NEW coupling, not retroactively cleaning the
+  # grandfathered surface. A separate spec retires these files.
+  'apps/web/src/services/local_llm_chat.ts'
+  'apps/web/src/services/local_llm_rpc.ts'
+  'apps/web/src/services/event_streams.ts'
+  'apps/web/src/services/extension_chat.ts'
+  'apps/web/src/components/layout/'
+  'apps/web/src/hooks/use_model_load_state.ts'
+  # Extension-owned UI under views/extensions/<ext-id>/ — explicitly
+  # permitted by constitution XIII.2 ("generic frontend route renders
+  # extension-declared UI"). The folder name encodes the extension id by
+  # design; the shell remains generic.
+  'apps/web/src/views/extensions/local-llm/'
+  # Dev-only preview page with documentation strings
+  'apps/web/src/views/dev-components/'
 )
 
 SCAN_PATHS=(
   'crates/'
-  'apps/web/src/components/'
   'apps/web/src/views/'
-  'apps/web/src/services/'
-  'apps/web/src/hooks/'
   'migrations/'
 )
 

@@ -284,30 +284,6 @@ pub fn build(state: AppState) -> Router {
             get(handlers::model_store::installed::get_installed),
         )
         .route(
-            "/extensions/local-llm/chat/threads",
-            get(handlers::extensions_local_llm::chat::list_threads)
-                .post(handlers::extensions_local_llm::chat::create_thread),
-        )
-        .route(
-            "/extensions/local-llm/chat/threads/{thread_id}/generation_settings",
-            get(handlers::extensions_local_llm::chat::get_generation_settings)
-                .put(handlers::extensions_local_llm::chat::set_generation_settings),
-        )
-        .route(
-            "/extensions/local-llm/chat/threads/{thread_id}/active_model",
-            get(handlers::extensions_local_llm::chat::get_active_model)
-                .put(handlers::extensions_local_llm::chat::set_active_model)
-                .delete(handlers::extensions_local_llm::chat::unload_active_model),
-        )
-        .route(
-            "/extensions/local-llm/chat/threads/{thread_id}/active_model/status",
-            get(handlers::extensions_local_llm::chat::get_active_model_status),
-        )
-        .route(
-            "/extensions/local-llm/chat/threads/{thread_id}/messages",
-            post(handlers::extensions_local_llm::chat::send_message),
-        )
-        .route(
             "/model-store/search",
             get(handlers::model_store::search::search),
         )

@@ -265,6 +265,22 @@ impl NexusApp {
         }
 
         let pool_for_extensions = db.pool().clone();
+        let chat_resources = std::sync::Arc::new(
+            nexus_local_llm_chat_history::ChatHandlerResources::new(
+                pool_for_extensions.clone(),
+                Some(install_map.clone()),
+                Some(download_orchestrator.clone()),
+                spawner.clone(),
+                backend_event_bus.clone(),
+                backend_event_bus.clone(),
+                nexus_local_llm_chat_history::ModelLoadRegistry::new(),
+            ),
+        );
+        let extension_router_registry = build_extension_router_registry(
+            pool_for_extensions,
+            app_for_health.config.port,
+            chat_resources,
+        );
 
         let state = nexus_api::AppState {
             health_status_fn: Arc::new(move || {
@@ -292,12 +308,7 @@ impl NexusApp {
             draft_materialize_map:
                 nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
             host_install_paths,
-            model_load_registry:
-                nexus_api::handlers::extensions_local_llm::load_registry::ModelLoadRegistry::new(),
-            extension_router_registry: build_extension_router_registry(
-                pool_for_extensions,
-                app_for_health.config.port,
-            ),
+            extension_router_registry,
         };
 
         let router = nexus_api::create_router(state);
@@ -344,6 +355,7 @@ impl NexusApp {
 fn build_extension_router_registry(
     pool: sqlx::SqlitePool,
     host_port: u16,
+    chat_resources: Arc<nexus_local_llm_chat_history::ChatHandlerResources>,
 ) -> nexus_api::extension_router::SharedRegistry {
     use nexus_api::extension_router::{DefaultRegistry, ExtensionId, ExtensionRouterRegistry};
     use nexus_extension::{ExtensionContext, ExtensionRouterProvider, HostFacts};
@@ -356,6 +368,7 @@ fn build_extension_router_registry(
             nexus_local_llm_chat_history::LocalLlmProviderResources::from_host_base_url(
                 pool,
                 host_base_url.clone(),
+                chat_resources,
             ),
         ))];
 

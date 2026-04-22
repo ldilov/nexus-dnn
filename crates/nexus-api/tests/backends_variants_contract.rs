@@ -129,8 +129,6 @@ async fn build_harness(manifest: Option<&str>) -> Harness {
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
         host_install_paths: None,
         install_map: None,
-        model_load_registry:
-            nexus_api::handlers::extensions_local_llm::load_registry::ModelLoadRegistry::new(),
         extension_router_registry: {
             use nexus_api::extension_router::ExtensionRouterRegistry as _;
             let r = std::sync::Arc::new(nexus_api::extension_router::DefaultRegistry::new());
@@ -196,8 +194,6 @@ async fn unwired_harness() -> Harness {
         draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
         host_install_paths: None,
         install_map: None,
-        model_load_registry:
-            nexus_api::handlers::extensions_local_llm::load_registry::ModelLoadRegistry::new(),
         extension_router_registry: {
             use nexus_api::extension_router::ExtensionRouterRegistry as _;
             let r = std::sync::Arc::new(nexus_api::extension_router::DefaultRegistry::new());
