@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = ["crates/*", "extensions/builtin/local-llm/rust"]
 default-members = ["crates/nexus-core"]
 
 [workspace.dependencies]

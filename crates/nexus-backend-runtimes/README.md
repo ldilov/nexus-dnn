@@ -4,6 +4,22 @@ Host-owned runtime pool: install/repair/uninstall pipelines, accelerator-aware
 binary selection, validation + reconciler, managed spawn/drain, runtime channel
 descriptors, logs, and versioned parameter catalogs.
 
+## Caller-supplied event namespace (spec 030)
+
+`LlamaCppAdapter::new` takes a `namespace: impl Into<String>` parameter.
+The crate treats the namespace as opaque — it surfaces in
+`LogPipelineContext` and inside event payloads, but the crate itself
+never matches on its value.
+
+Recommended convention for callers (extensions): build the namespace as
+`extension.<extension-id>.<backend-family>`, e.g.
+`"extension.nexus.local-llm.llama.cpp"`. The host enforces nothing.
+
+Constitution Principle XIII (Host ↔ Extension Boundary, NON-NEGOTIABLE)
+forbids hardcoding extension identity into reusable host infrastructure.
+The pre-spec-030 `NAMESPACE_LLAMACPP` / `NAMESPACE_TENSORRT_LLM`
+constants violated this and were deleted in spec 030 CP2.
+
 ## Module layout (post spec 015)
 
 ```

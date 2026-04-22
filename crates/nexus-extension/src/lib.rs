@@ -5,6 +5,7 @@ pub mod manifest;
 pub mod operator_index;
 pub mod recipe;
 pub mod registry;
+pub mod router_hook;
 pub mod storage;
 pub mod tool_projection;
 pub mod ui_contribution;
@@ -36,6 +37,9 @@ pub use registry::{
 pub use storage::contribution::{
     MigrationDeclaration, MigrationFileRef, NamespaceDeclaration, RuntimeAccessDeclaration,
     SqlProfileDeclaration, StorageContribution, UninstallDeclaration,
+};
+pub use router_hook::{
+    BuildRouterError, ExtensionContext, ExtensionRouterProvider, HostFacts,
 };
 pub use tool_projection::{Tool, build_tool_from_operator, build_tool_from_recipe};
 pub use ui_contribution::{

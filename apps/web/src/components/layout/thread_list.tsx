@@ -10,19 +10,41 @@ export interface ThreadRow {
   archived_at: string | null;
 }
 
-interface ThreadListEnvelope {
-  data?: { items?: ThreadRow[] };
+interface ChatThread {
+  thread_id: string;
+  title?: string | null;
+  title_auto?: string | null;
+  title_resolved: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ThreadListPage {
+  threads: ChatThread[];
+  has_more?: boolean;
+  next_before_updated_at?: string | null;
+}
+
+function fromChatThread(t: ChatThread): ThreadRow {
+  return {
+    id: t.thread_id,
+    title: t.title_resolved ?? t.title ?? t.title_auto ?? "New chat",
+    message_count: 0,
+    created_at: t.created_at,
+    updated_at: t.updated_at,
+    archived_at: null,
+  };
 }
 
 async function fetchThreads(signal?: AbortSignal): Promise<ThreadRow[]> {
-  const res = await fetch("/api/v1/extensions/local-llm/chat/threads", {
+  const res = await fetch("/api/v1/extensions/nexus.local-llm/chat/threads", {
     signal,
   });
   if (!res.ok) {
     throw new Error(`${res.status} ${res.statusText}`);
   }
-  const body = (await res.json()) as ThreadListEnvelope;
-  return body.data?.items ?? [];
+  const body = (await res.json()) as ThreadListPage;
+  return (body.threads ?? []).map(fromChatThread);
 }
 
 type ThreadListProps = {
