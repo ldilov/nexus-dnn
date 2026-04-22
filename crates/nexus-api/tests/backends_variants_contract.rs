@@ -130,6 +130,12 @@ async fn build_harness(manifest: Option<&str>) -> Harness {
         install_map: None,
         model_load_registry:
             nexus_api::handlers::extensions_local_llm::load_registry::ModelLoadRegistry::new(),
+        extension_router_registry: {
+            use nexus_api::extension_router::ExtensionRouterRegistry as _;
+            let r = std::sync::Arc::new(nexus_api::extension_router::DefaultRegistry::new());
+            r.seal();
+            r as nexus_api::extension_router::SharedRegistry
+        },
     };
 
     Harness { state, _tmp: tmp }
@@ -191,6 +197,12 @@ async fn unwired_harness() -> Harness {
         install_map: None,
         model_load_registry:
             nexus_api::handlers::extensions_local_llm::load_registry::ModelLoadRegistry::new(),
+        extension_router_registry: {
+            use nexus_api::extension_router::ExtensionRouterRegistry as _;
+            let r = std::sync::Arc::new(nexus_api::extension_router::DefaultRegistry::new());
+            r.seal();
+            r as nexus_api::extension_router::SharedRegistry
+        },
     };
 
     Harness { state, _tmp: tmp }

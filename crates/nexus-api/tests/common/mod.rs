@@ -203,6 +203,14 @@ pub async fn harness_with_extra(
         host_install_paths: None,
         model_load_registry:
             nexus_api::handlers::extensions_local_llm::load_registry::ModelLoadRegistry::new(),
+        extension_router_registry: {
+            use nexus_api::extension_router::ExtensionRouterRegistry as _;
+            let r = std::sync::Arc::new(
+                nexus_api::extension_router::DefaultRegistry::new(),
+            );
+            r.seal();
+            r as nexus_api::extension_router::SharedRegistry
+        },
     };
 
     TestHarness {
@@ -326,6 +334,14 @@ async fn harness_from_ext_dir(hf: Arc<StubHf>, ext_dir: tempfile::TempDir) -> Te
         host_install_paths: None,
         model_load_registry:
             nexus_api::handlers::extensions_local_llm::load_registry::ModelLoadRegistry::new(),
+        extension_router_registry: {
+            use nexus_api::extension_router::ExtensionRouterRegistry as _;
+            let r = std::sync::Arc::new(
+                nexus_api::extension_router::DefaultRegistry::new(),
+            );
+            r.seal();
+            r as nexus_api::extension_router::SharedRegistry
+        },
     };
 
     TestHarness {

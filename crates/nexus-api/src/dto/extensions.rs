@@ -21,6 +21,18 @@ pub struct ExtensionDto {
     pub ui_contribution_count: Option<i32>,
     pub validation_errors: Vec<String>,
     pub installed_at: String,
+    /// Spec 030 / FR-030: live state of the extension's HTTP router in the
+    /// host's `ExtensionRouterRegistry`. One of `ok` | `registration_failed`
+    /// | `not_registered`. Defaults to `not_registered` when the extension
+    /// did not provide an HTTP router.
+    pub registry_state: String,
+    /// Spec 030 / FR-031: optional list of route patterns the extension
+    /// claims to expose. Absence is non-informative.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub http_routes: Vec<String>,
+    /// Spec 030 / FR-030: present iff `registry_state == "registration_failed"`.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub registration_failure_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
@@ -64,6 +76,9 @@ impl From<&ExtensionRecord> for ExtensionDto {
             ui_contribution_count: r.ui_contribution_count,
             validation_errors: parse_json_array(r.validation_errors.as_deref()),
             installed_at: r.installed_at.clone(),
+            registry_state: "not_registered".to_owned(),
+            http_routes: Vec::new(),
+            registration_failure_reason: None,
         }
     }
 }
