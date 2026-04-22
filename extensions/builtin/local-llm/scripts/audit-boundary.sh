@@ -58,6 +58,8 @@ ALLOWED_FILES=(
   'crates/nexus-api/src/extension_router/id.rs'
   # Module README documenting the audit script + boundary rule itself
   'crates/nexus-api/src/extension_router/README.md'
+  # Crate README documenting the dispatcher and pointing at this script
+  'crates/nexus-api/README.md'
   # Pre-existing grandfathered frontend coupling (per project rule file).
   # CP2's job is preventing NEW coupling, not retroactively cleaning the
   # grandfathered surface. A separate spec retires these files.

@@ -3,6 +3,27 @@
 Axum HTTP surface for the host daemon. Route-level handlers live under
 `src/handlers/`; routes are wired in `src/router.rs`.
 
+## Extension dispatcher (spec 030)
+
+The host exposes a single generic route
+`/api/v1/extensions/{ext_id}/{*rest}` that forwards to extension-registered
+routers. Extensions implement
+`nexus_extension::ExtensionRouterProvider`; the host's startup wiring
+constructs each provider, hands it to `DefaultRegistry`, and seals the
+registry before the HTTP listener binds. After sealing, the dispatcher
+looks up the router by `ext_id` and forwards the request unchanged
+(method, headers, query, body byte-for-byte preserved).
+
+Module: [`src/extension_router/`](src/extension_router/README.md). Bench:
+`cargo bench -p nexus-api --bench dispatcher_overhead` validates SC-007
+(p50 added latency ≤ 1 ms; measured 0.001 ms on the reference workload).
+
+The host router contains zero per-extension paths — any host file naming
+a specific extension id is a merge blocker per constitution Principle XIII
+(see `.specify/memory/constitution.md` and
+`.claude/rules/host-extension-boundary.md`). The boundary audit script
+at `extensions/builtin/local-llm/scripts/audit-boundary.sh` is the gate.
+
 ## Host-runtime endpoints (spec 011/012/016)
 
 - `GET /api/v1/backends` — list every `host_runtime_installs` row + dependents

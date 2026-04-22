@@ -2,6 +2,22 @@
 
 Extension manifest parser, registry, and lifecycle for the host.
 
+## HTTP router adapter contract (spec 030)
+
+`router_hook::ExtensionRouterProvider` is the trait extensions implement
+to publish HTTP routes. The host calls `build_router(cx)` once at startup
+and forwards the returned `(Router, Vec<String>)` to
+`nexus_api::extension_router::DefaultRegistry`. The first element becomes
+the live router under `/api/v1/extensions/<ext_id>/*`; the second is an
+optional disclosure surfaced via `/api/v1/extensions` listing
+(FR-031). Constitution Principle XIII (Host ↔ Extension Boundary,
+NON-NEGOTIABLE) governs the contract: extensions MAY consume host APIs;
+the host MUST NOT name specific extensions in its router.
+
+`ExtensionContext` is the deliberately narrow view of host facts the
+provider receives at build time. Fields are additive; future host
+capabilities land here without breaking older extensions.
+
 ## Manifest
 
 Extensions ship `extension.yaml` at their root. Required top-level keys:
