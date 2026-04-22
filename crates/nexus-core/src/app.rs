@@ -264,6 +264,8 @@ impl NexusApp {
             tracing::warn!(error = %e, "download orchestrator startup rehydration failed");
         }
 
+        let pool_for_extensions = db.pool().clone();
+
         let state = nexus_api::AppState {
             health_status_fn: Arc::new(move || {
                 serde_json::to_value(app_ref.health_status()).unwrap_or_default()
@@ -292,6 +294,10 @@ impl NexusApp {
             host_install_paths,
             model_load_registry:
                 nexus_api::handlers::extensions_local_llm::load_registry::ModelLoadRegistry::new(),
+            extension_router_registry: build_extension_router_registry(
+                pool_for_extensions,
+                app_for_health.config.port,
+            ),
         };
 
         let router = nexus_api::create_router(state);
@@ -333,6 +339,70 @@ impl NexusApp {
 
         Ok(())
     }
+}
+
+fn build_extension_router_registry(
+    pool: sqlx::SqlitePool,
+    host_port: u16,
+) -> nexus_api::extension_router::SharedRegistry {
+    use nexus_api::extension_router::{DefaultRegistry, ExtensionId, ExtensionRouterRegistry};
+    use nexus_extension::{ExtensionContext, ExtensionRouterProvider, HostFacts};
+
+    let registry = Arc::new(DefaultRegistry::new());
+    let host_base_url = format!("http://127.0.0.1:{host_port}");
+
+    let providers: Vec<Arc<dyn ExtensionRouterProvider>> =
+        vec![Arc::new(nexus_local_llm_chat_history::LocalLlmRouterProvider::new(
+            nexus_local_llm_chat_history::LocalLlmProviderResources::from_host_base_url(
+                pool,
+                host_base_url.clone(),
+            ),
+        ))];
+
+    for provider in &providers {
+        let id_str = provider.extension_id();
+        let parsed_id = match ExtensionId::parse(id_str) {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::error!(
+                    extension_id = id_str,
+                    error = %e,
+                    "extension id failed validation; skipping",
+                );
+                continue;
+            }
+        };
+        let cx = ExtensionContext::new(id_str, HostFacts::new(&host_base_url));
+        match provider.build_router(&cx) {
+            Ok((router, http_routes)) => {
+                if let Err(e) = registry.register(parsed_id, router, http_routes) {
+                    tracing::error!(
+                        extension_id = id_str,
+                        error = %e,
+                        "extension router registration rejected",
+                    );
+                }
+            }
+            Err(e) => {
+                let reason = e.to_string();
+                tracing::warn!(
+                    extension_id = id_str,
+                    error = %reason,
+                    "extension router build failed; recorded as registration_failed",
+                );
+                if let Err(reg_err) = registry.register_failure(parsed_id, reason) {
+                    tracing::error!(
+                        extension_id = id_str,
+                        error = %reg_err,
+                        "could not record registration failure",
+                    );
+                }
+            }
+        }
+    }
+
+    registry.seal();
+    registry as nexus_api::extension_router::SharedRegistry
 }
 
 async fn persist_discovery_to_db(

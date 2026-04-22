@@ -1,6 +1,7 @@
 pub mod dto;
 pub mod envelope;
 pub mod error;
+pub mod extension_router;
 pub mod frontend;
 pub mod handlers;
 pub mod mapping;
@@ -30,6 +31,9 @@ use nexus_storage::{SqliteDatabase, StorageManager};
 use nexus_worker::DefaultWorkerManager;
 
 use handlers::modules::draft_map::DraftMaterializeMap;
+
+use crate::extension_router::SharedRegistry;
+pub use crate::extension_router::ExtensionRouterRegistry;
 
 #[derive(Clone)]
 pub struct HostInstallPaths {
@@ -63,6 +67,13 @@ pub struct AppState {
     pub host_install_paths: Option<HostInstallPaths>,
     pub model_load_registry:
         Arc<handlers::extensions_local_llm::load_registry::ModelLoadRegistry>,
+    pub extension_router_registry: SharedRegistry,
+}
+
+impl axum::extract::FromRef<AppState> for SharedRegistry {
+    fn from_ref(state: &AppState) -> Self {
+        state.extension_router_registry.clone()
+    }
 }
 
 pub fn create_router(state: AppState) -> axum::Router {

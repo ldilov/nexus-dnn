@@ -51,3 +51,4 @@ tokio-tungstenite = "0.24"
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 async-trait = "0.1"
+nexus-local-llm-chat-history = { path = "../../extensions/builtin/local-llm/rust" }

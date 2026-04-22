@@ -49,6 +49,7 @@ async fn deprecation_headers(req: Request, next: Next) -> Response {
 }
 
 use crate::AppState;
+use crate::extension_router;
 use crate::frontend;
 use crate::handlers;
 use crate::handlers::{
@@ -346,6 +347,14 @@ pub fn build(state: AppState) -> Router {
     let api_v1 = api_v1.nest("/modules", modules::router());
     let api_v1 = api_v1.nest("/modules", modules::draft_router());
     let api_v1 = api_v1.nest("/extensions", extensions_install::router());
+    let api_v1 = api_v1.route(
+        "/extensions/{ext_id}/{*rest}",
+        get(extension_router::dispatch)
+            .post(extension_router::dispatch)
+            .put(extension_router::dispatch)
+            .patch(extension_router::dispatch)
+            .delete(extension_router::dispatch),
+    );
 
     let api_host = Router::new()
         .route(
