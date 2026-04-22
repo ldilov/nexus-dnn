@@ -5,9 +5,6 @@ use tokio::sync::broadcast;
 
 use crate::diagnostics::FailureCategory;
 
-pub const NAMESPACE_LLAMACPP: &str = "extension.local-llm.llama.cpp";
-pub const NAMESPACE_TENSORRT_LLM: &str = "extension.local-llm.tensorrt_llm";
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackendEvent {
     pub event_id: String,

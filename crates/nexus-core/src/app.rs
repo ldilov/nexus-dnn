@@ -872,6 +872,7 @@ async fn build_backend_adapter_registry(
         runtimes_root_utf8,
         pool,
         publisher,
+        "extension.nexus.local-llm.llama.cpp",
     );
     let adapter = match nexus_backend_runtimes::manifest::release_scanner::ReleaseScanner::new(
         nexus_backend_runtimes::manifest::release_scanner::ScannerConfig::llama_cpp_default(),
