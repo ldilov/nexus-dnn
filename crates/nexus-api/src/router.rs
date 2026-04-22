@@ -4,6 +4,7 @@ use axum::http::HeaderValue;
 use axum::middleware::{self, Next};
 use axum::response::Response;
 use axum::routing::{get, post};
+use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
@@ -323,14 +324,23 @@ pub fn build(state: AppState) -> Router {
     let api_v1 = api_v1.nest("/modules", modules::router());
     let api_v1 = api_v1.nest("/modules", modules::draft_router());
     let api_v1 = api_v1.nest("/extensions", extensions_install::router());
-    let api_v1 = api_v1.route(
-        "/extensions/{ext_id}/{*rest}",
-        get(extension_router::dispatch)
-            .post(extension_router::dispatch)
-            .put(extension_router::dispatch)
-            .patch(extension_router::dispatch)
-            .delete(extension_router::dispatch),
-    );
+    let api_v1 = api_v1
+        .route(
+            "/extensions/{ext_id}/{*rest}",
+            get(extension_router::dispatch)
+                .post(extension_router::dispatch)
+                .put(extension_router::dispatch)
+                .patch(extension_router::dispatch)
+                .delete(extension_router::dispatch),
+        )
+        .route(
+            "/extensions/{ext_id}/",
+            get(extension_router::dispatch_root)
+                .post(extension_router::dispatch_root)
+                .put(extension_router::dispatch_root)
+                .patch(extension_router::dispatch_root)
+                .delete(extension_router::dispatch_root),
+        );
 
     let api_host = Router::new()
         .route(
@@ -343,6 +353,7 @@ pub fn build(state: AppState) -> Router {
         .nest("/api/v1", api_v1)
         .nest("/api/host", api_host)
         .fallback(frontend::static_handler)
+        .layer(CatchPanicLayer::new())
         .layer(middleware::from_fn(deprecation_headers))
         .layer(
             TraceLayer::new_for_http()

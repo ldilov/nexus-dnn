@@ -22,6 +22,7 @@ use axum::routing::{get, post};
 use http_body_util::BodyExt;
 use nexus_api::extension_router::{
     DefaultRegistry, ExtensionId, ExtensionRouterRegistry, SharedRegistry, dispatch,
+    dispatch_root,
 };
 use serde_json::Value;
 use tower::ServiceExt;
@@ -31,6 +32,13 @@ fn build_app(registry: SharedRegistry) -> Router {
         .route(
             "/api/v1/extensions/{ext_id}/{*rest}",
             get(dispatch).post(dispatch).put(dispatch).delete(dispatch),
+        )
+        .route(
+            "/api/v1/extensions/{ext_id}/",
+            get(dispatch_root)
+                .post(dispatch_root)
+                .put(dispatch_root)
+                .delete(dispatch_root),
         )
         .with_state(registry)
 }
@@ -221,6 +229,34 @@ async fn fr_013_request_body_passes_through_byte_for_byte() {
     assert_eq!(resp.status(), StatusCode::OK);
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     assert_eq!(std::str::from_utf8(&bytes).unwrap(), payload);
+}
+
+#[tokio::test]
+async fn edge_trailing_slash_forwards_with_empty_subpath() {
+    let registry: Arc<DefaultRegistry> = Arc::new(DefaultRegistry::new());
+    let root_aware = Router::new()
+        .route("/", get(|| async { "root-of-extension" }))
+        .route("/known", get(|| async { "known-subpath" }));
+    registry
+        .register(
+            ExtensionId::parse("contract-ok").unwrap(),
+            root_aware,
+            vec!["/".into(), "/known".into()],
+        )
+        .unwrap();
+    registry.seal();
+    let app = build_app(registry);
+
+    // Spec edge case (line 92): trailing-slash bare URL forwards with
+    // empty sub-path — extension decides whether to 404 or serve a root.
+    let req = Request::builder()
+        .uri("/api/v1/extensions/contract-ok/")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "extension's root route reached");
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(std::str::from_utf8(&bytes).unwrap(), "root-of-extension");
 }
 
 #[tokio::test]

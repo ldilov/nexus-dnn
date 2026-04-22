@@ -21,6 +21,29 @@ pub async fn dispatch(
     State(registry): State<Arc<dyn ExtensionRouterRegistry>>,
     req: Request<Body>,
 ) -> Response {
+    dispatch_inner(ext_id, rest, registry, req).await
+}
+
+/// Bare-trailing-slash dispatcher (`/api/v1/extensions/{ext_id}/`).
+///
+/// axum's wildcard `{*rest}` requires ≥1 character, so the bare URL with
+/// nothing after the trailing slash needs a separate route. Per spec
+/// edge case (line 92): forward to the extension's router with empty
+/// sub-path; the extension decides whether to 404 or serve a root.
+pub async fn dispatch_root(
+    Path(ext_id): Path<String>,
+    State(registry): State<Arc<dyn ExtensionRouterRegistry>>,
+    req: Request<Body>,
+) -> Response {
+    dispatch_inner(ext_id, String::new(), registry, req).await
+}
+
+async fn dispatch_inner(
+    ext_id: String,
+    rest: String,
+    registry: Arc<dyn ExtensionRouterRegistry>,
+    req: Request<Body>,
+) -> Response {
     match registry.get(&ext_id) {
         Some(Registration::Ok { router, .. }) => {
             let rewritten = match rewrite_uri(req.uri(), &rest) {
@@ -38,6 +61,7 @@ pub async fn dispatch(
             };
             let (mut parts, body) = req.into_parts();
             parts.uri = rewritten;
+            isolate_match_context(&mut parts.extensions);
             let forwarded = Request::from_parts(parts, body);
             match router.oneshot(forwarded).await {
                 Ok(resp) => resp.into_response(),
@@ -62,6 +86,17 @@ pub async fn dispatch(
         )
             .into_response(),
     }
+}
+
+/// Strip request extensions that would carry the host router's match
+/// data (path params, MatchedPath) into the forwarded extension router.
+/// Without this, the extension's `Path<T>` extractor sees the host
+/// route's `(ext_id, rest)` accumulated alongside its own params and
+/// 500s with "Wrong number of path arguments." Clearing the extensions
+/// map gives the inner router the same clean context it would see if
+/// the request had arrived directly.
+fn isolate_match_context(extensions: &mut axum::http::Extensions) {
+    extensions.clear();
 }
 
 /// Replace the `/api/v1/extensions/{ext_id}` prefix with `/`, preserving
