@@ -10,6 +10,7 @@ use crate::generic::installs::InstallRecord;
 use crate::generic::settings::RuntimeSettings;
 
 use super::asset::PythonAsset;
+use super::builtin_assets;
 use super::uv_install::UvInvocation;
 use super::{FAMILY, bootstrap, uv_install, validate};
 
@@ -20,6 +21,13 @@ pub struct FamilyPythonHandler {
 
 impl FamilyPythonHandler {
     pub fn new() -> Self {
+        Self {
+            asset: builtin_assets::for_current_target(),
+            uv: UvInvocation::default(),
+        }
+    }
+
+    pub fn without_asset() -> Self {
         Self {
             asset: None,
             uv: UvInvocation::default(),

@@ -37,3 +37,8 @@ rstest = "0.23"
 wiremock = "0.6"
 tempfile = "3"
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
+criterion = { version = "0.5", features = ["async_tokio"] }
+
+[[bench]]
+name = "lease_rpc_bench"
+harness = false

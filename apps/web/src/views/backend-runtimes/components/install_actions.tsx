@@ -21,6 +21,10 @@ interface Props {
 
 type PendingAction = null | "start" | "stop" | "restart" | "uninstall";
 
+function buildLogsHref(runtimeInstallId: string): string {
+  return `#/logs?filter=runtime_install_id:${encodeURIComponent(runtimeInstallId)}`;
+}
+
 const STATUS_CLASSES: Record<string, string> = {
   validated: css.installStatusValidated,
   failed: css.installStatusFailed,
@@ -176,6 +180,14 @@ function InstallRowView({
         >
           {pending === "restart" ? "Restarting…" : "Restart"}
         </button>
+        <a
+          className={css.actionButton}
+          href={buildLogsHref(install.runtime_install_id)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          View Logs
+        </a>
         <button
           type="button"
           className={`${css.actionButton} ${css.actionButtonDanger}`}
