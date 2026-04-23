@@ -1,0 +1,15 @@
+# Spec 032 — backend-runtime descriptor for `test.echo`. Duplicates the
+# manifest entry's structural fields for tooling that consumes per-runtime
+# YAML (e.g. CLI inspection, CI metadata extraction). Authoritative source
+# remains `extensions/builtin/test-echo-runtime/manifest.yaml`.
+
+runtime_id: "test.echo"
+display_name: "Test Echo Runtime"
+family: "python"
+transport: "stdio"
+worker_entrypoint: "worker/src/echo_worker/main.py"
+version_manifest: "versions.yaml"
+capability_tags:
+  - "echo"
+supported_roles:
+  - "test"

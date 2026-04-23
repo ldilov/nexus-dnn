@@ -8,8 +8,6 @@ pub mod mapping;
 pub mod router;
 mod ws;
 
-pub use nexus_backend_runtimes::events::BroadcastPublisher as BackendEventPublisher;
-
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -18,7 +16,7 @@ pub use error::ApiError;
 
 use nexus_artifact::FilesystemArtifactStore;
 use nexus_backend_runtimes::adapter::AdapterRegistry as BackendAdapterRegistry;
-use nexus_backend_runtimes::events::{BroadcastPublisher, SharedPublisher};
+use nexus_backend_runtimes::events::{BackendEventBus, SharedPublisher};
 use nexus_backend_runtimes::spawn::Spawner;
 use nexus_events::bus::EventBus;
 use nexus_extension::InMemoryExtensionRegistry;
@@ -32,8 +30,8 @@ use nexus_worker::DefaultWorkerManager;
 
 use handlers::modules::draft_map::DraftMaterializeMap;
 
-use crate::extension_router::SharedRegistry;
 pub use crate::extension_router::ExtensionRouterRegistry;
+use crate::extension_router::SharedRegistry;
 
 #[derive(Clone)]
 pub struct HostInstallPaths {
@@ -62,11 +60,32 @@ pub struct AppState {
     pub install_map: Option<InstallMap>,
     pub hf_token_store: Option<TokenStore>,
     pub backend_event_publisher: SharedPublisher,
-    pub backend_event_bus: Arc<BroadcastPublisher>,
+    pub backend_event_bus: Arc<BackendEventBus>,
     pub draft_materialize_map: Arc<DraftMaterializeMap>,
     pub host_install_paths: Option<HostInstallPaths>,
     pub extension_router_registry: SharedRegistry,
+    /// Spec 032 — registry of `RuntimeFamilyHandler`s, keyed by
+    /// `RuntimeFamily`. Empty by default; the host bootstrap registers
+    /// concrete handlers (e.g. `FamilyNativeHandler`, `FamilyPythonHandler`).
+    pub family_handlers: nexus_backend_runtimes::generic::family_handler::FamilyHandlerRegistry,
+    /// Spec 032 — global broadcast of `PhaseEvent`s emitted by running
+    /// install pipelines. Capacity `PIPELINE_EVENT_CAPACITY`. Subscribers
+    /// filter by `install_id`. SSE progress endpoint reads from here.
+    pub pipeline_events: Arc<
+        tokio::sync::broadcast::Sender<
+            nexus_backend_runtimes::generic::install_pipeline::PhaseEvent,
+        >,
+    >,
+    /// Spec 032 — in-process registry of live `StdioLease` handles.
+    /// Populated by `POST /install/:id/start`, drained by stop /
+    /// uninstall / extension-deactivate paths.
+    pub lease_manager: Arc<nexus_backend_runtimes::generic::leases::LeaseManager>,
 }
+
+/// Broadcast backlog for pipeline phase events — sized so a fresh
+/// subscriber can catch up on a fully-unrolled 10-phase install (10
+/// `started` + 10 `completed` = 20 events, plus headroom).
+pub const PIPELINE_EVENT_CAPACITY: usize = 1024;
 
 impl axum::extract::FromRef<AppState> for SharedRegistry {
     fn from_ref(state: &AppState) -> Self {

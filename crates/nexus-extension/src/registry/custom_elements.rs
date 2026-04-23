@@ -18,11 +18,16 @@ pub struct CustomElementRegistration {
 
 pub fn is_valid_tag(tag: &str) -> bool {
     let mut segments = tag.split('-');
-    let Some(first) = segments.next() else { return false };
+    let Some(first) = segments.next() else {
+        return false;
+    };
     if first.is_empty() || !first_char_is_lower(first) {
         return false;
     }
-    if !first.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
+    if !first
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+    {
         return false;
     }
     let mut has_second = false;
@@ -31,7 +36,10 @@ pub fn is_valid_tag(tag: &str) -> bool {
         if seg.is_empty() {
             return false;
         }
-        if !seg.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
+        if !seg
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        {
             return false;
         }
     }
@@ -48,18 +56,16 @@ pub fn canonical_assets_root(
     extension_id: &str,
 ) -> Result<PathBuf, ExtensionError> {
     let candidate = extension_dir.join(&assets.root);
-    let canonical_ext = std::fs::canonicalize(extension_dir).map_err(|_| {
-        ExtensionError::InvalidUiAssetsRoot {
+    let canonical_ext =
+        std::fs::canonicalize(extension_dir).map_err(|_| ExtensionError::InvalidUiAssetsRoot {
             root: assets.root.clone(),
             extension_id: extension_id.to_string(),
-        }
-    })?;
-    let canonical_candidate = std::fs::canonicalize(&candidate).map_err(|_| {
-        ExtensionError::InvalidUiAssetsRoot {
+        })?;
+    let canonical_candidate =
+        std::fs::canonicalize(&candidate).map_err(|_| ExtensionError::InvalidUiAssetsRoot {
             root: assets.root.clone(),
             extension_id: extension_id.to_string(),
-        }
-    })?;
+        })?;
     if !canonical_candidate.starts_with(&canonical_ext) {
         return Err(ExtensionError::InvalidUiAssetsRoot {
             root: assets.root.clone(),
@@ -83,12 +89,13 @@ pub fn resolve_spec(
     }
     let assets_root_abs = canonical_assets_root(extension_dir, assets, extension_id)?;
     let module_candidate = assets_root_abs.join(&spec.module);
-    let module_abs =
-        std::fs::canonicalize(&module_candidate).map_err(|_| ExtensionError::CustomElementModuleMissing {
+    let module_abs = std::fs::canonicalize(&module_candidate).map_err(|_| {
+        ExtensionError::CustomElementModuleMissing {
             module: spec.module.clone(),
             extension_id: extension_id.to_string(),
             root: assets.root.clone(),
-        })?;
+        }
+    })?;
     if !module_abs.starts_with(&assets_root_abs) {
         return Err(ExtensionError::CustomElementModuleMissing {
             module: spec.module.clone(),
@@ -121,15 +128,22 @@ pub fn collect_from_extensions(
     let mut seen: HashSet<String> = HashSet::new();
     for ext in extensions {
         let extension_id = ext.manifest.extension.id.clone();
-        let Some(ui) = ext.manifest.ui.as_ref() else { continue };
-        let Some(elements) = ui.custom_elements.as_ref() else { continue };
+        let Some(ui) = ext.manifest.ui.as_ref() else {
+            continue;
+        };
+        let Some(elements) = ui.custom_elements.as_ref() else {
+            continue;
+        };
         if elements.is_empty() {
             continue;
         }
-        let assets = ui.assets.as_ref().ok_or_else(|| ExtensionError::InvalidUiAssetsRoot {
-            root: "<missing>".to_string(),
-            extension_id: extension_id.clone(),
-        })?;
+        let assets = ui
+            .assets
+            .as_ref()
+            .ok_or_else(|| ExtensionError::InvalidUiAssetsRoot {
+                root: "<missing>".to_string(),
+                extension_id: extension_id.clone(),
+            })?;
         for spec in elements {
             if host_tag_names.contains(&spec.tag) {
                 return Err(ExtensionError::DuplicateCustomElementTag {

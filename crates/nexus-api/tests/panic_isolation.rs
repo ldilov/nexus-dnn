@@ -21,7 +21,7 @@ use http_body_util::BodyExt;
 use nexus_api::extension_router::{DefaultRegistry, ExtensionId, ExtensionRouterRegistry};
 use tower::ServiceExt;
 
-use common::{harness_with, StubHf};
+use common::{StubHf, harness_with};
 
 async fn build_prod_app_with(registry: Arc<DefaultRegistry>) -> Router {
     let h = harness_with(StubHf::with_results(vec![])).await;

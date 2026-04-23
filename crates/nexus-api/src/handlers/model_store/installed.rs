@@ -82,8 +82,7 @@ pub async fn get_installed(State(state): State<AppState>) -> Response {
         .map(InstalledArtifactDto::from)
         .collect();
 
-    let mut family_ids: Vec<String> =
-        installed.iter().map(|a| a.family_id.clone()).collect();
+    let mut family_ids: Vec<String> = installed.iter().map(|a| a.family_id.clone()).collect();
     family_ids.sort();
     family_ids.dedup();
 

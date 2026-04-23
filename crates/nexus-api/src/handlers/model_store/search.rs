@@ -29,7 +29,10 @@ fn fingerprint(params: &SearchQuery) -> String {
     let mut parts: Vec<String> = vec![
         format!("q={}", params.q.as_deref().unwrap_or("")),
         format!("sort={}", params.sort.as_deref().unwrap_or("")),
-        format!("show_unsupported={}", params.show_unsupported.unwrap_or(false)),
+        format!(
+            "show_unsupported={}",
+            params.show_unsupported.unwrap_or(false)
+        ),
         format!("installed={}", params.installed.as_deref().unwrap_or("any")),
     ];
     let mut fmts = params.format.clone();
@@ -53,9 +56,7 @@ fn fingerprint(params: &SearchQuery) -> String {
 fn cache_get(key: &str) -> Option<Vec<ModelFamily>> {
     let mut guard = FAMILY_CACHE.lock().ok()?;
     match guard.get(key) {
-        Some(entry) if entry.inserted_at.elapsed() < CACHE_TTL => {
-            Some(entry.families.clone())
-        }
+        Some(entry) if entry.inserted_at.elapsed() < CACHE_TTL => Some(entry.families.clone()),
         Some(_) => {
             guard.remove(key);
             None
@@ -232,10 +233,7 @@ fn parse_compat(token: &str) -> Option<CompatibilityStatus> {
     }
 }
 
-pub async fn search(
-    State(state): State<AppState>,
-    RawQuery(raw): RawQuery,
-) -> Response {
+pub async fn search(State(state): State<AppState>, RawQuery(raw): RawQuery) -> Response {
     let params = parse_query_string(raw.as_deref());
     let Some(hf) = state.huggingface.as_ref() else {
         return ApiResponse::<()>::err(
@@ -298,8 +296,7 @@ pub async fn search(
         fetched
     };
 
-    let requested_formats: Vec<Format> =
-        params.format.iter().map(|s| parse_format(s)).collect();
+    let requested_formats: Vec<Format> = params.format.iter().map(|s| parse_format(s)).collect();
     if !requested_formats.is_empty() {
         families.retain(|f| {
             f.artifacts
@@ -313,7 +310,12 @@ pub async fn search(
     {
         let compat_formats: Vec<Format> = reg
             .list()
-            .filter(|cap| params.backend.iter().any(|id| cap.backend_id.as_str() == id))
+            .filter(|cap| {
+                params
+                    .backend
+                    .iter()
+                    .any(|id| cap.backend_id.as_str() == id)
+            })
             .flat_map(|cap| cap.supported_formats.iter().copied())
             .collect();
         if !compat_formats.is_empty() {
@@ -379,7 +381,9 @@ pub async fn search(
     let mut modalities = HashMap::new();
     for f in &families {
         if let Some(fmt) = primary_format(f) {
-            *formats.entry(format_to_string(fmt).to_string()).or_insert(0) += 1;
+            *formats
+                .entry(format_to_string(fmt).to_string())
+                .or_insert(0) += 1;
         }
         if let Some(lic) = &f.repository.license {
             *licenses.entry(lic.clone()).or_insert(0) += 1;

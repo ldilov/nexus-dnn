@@ -39,11 +39,8 @@ impl TryFrom<&str> for RuntimeId {
             return Err(RuntimeIdError::InvalidFirstChar(first));
         }
         for c in raw.chars() {
-            let ok = c.is_ascii_lowercase()
-                || c.is_ascii_digit()
-                || c == '.'
-                || c == '_'
-                || c == '-';
+            let ok =
+                c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_' || c == '-';
             if !ok {
                 return Err(RuntimeIdError::IllegalChar(c));
             }
@@ -72,7 +69,13 @@ mod tests {
 
     #[test]
     fn accepts_valid_ids() {
-        for good in ["test.echo", "indextts.python", "whisper-cpp", "rag_v2", "abc"] {
+        for good in [
+            "test.echo",
+            "indextts.python",
+            "whisper-cpp",
+            "rag_v2",
+            "abc",
+        ] {
             RuntimeId::try_from(good).unwrap_or_else(|e| panic!("{good} rejected: {e}"));
         }
     }

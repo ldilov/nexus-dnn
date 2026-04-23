@@ -9,7 +9,7 @@ use http_body_util::BodyExt;
 use nexus_models_store::model::BackendStatus;
 use tower::ServiceExt;
 
-use crate::common::{harness_with, harness_with_extra, StubHf};
+use crate::common::{StubHf, harness_with, harness_with_extra};
 
 async fn get_backends_body(state: nexus_api::AppState) -> serde_json::Value {
     let router = nexus_api::create_router(state);
@@ -66,8 +66,11 @@ async fn t_b2_second_backend_appears_without_page_changes() {
 /// frontend can paint a distinguishing label (FR-051).
 #[tokio::test]
 async fn t_b3_experimental_status_is_preserved_in_response() {
-    let harness =
-        harness_with_extra(StubHf::with_results(vec![]), Some(BackendStatus::Experimental)).await;
+    let harness = harness_with_extra(
+        StubHf::with_results(vec![]),
+        Some(BackendStatus::Experimental),
+    )
+    .await;
     let body = get_backends_body(harness.state).await;
     let backends = body["data"]["backends"].as_array().unwrap();
     let diffusers = backends

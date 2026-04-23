@@ -33,10 +33,7 @@ fn error_response(status: StatusCode, code: &'static str, message: impl Into<Str
     (status, Json(body)).into_response()
 }
 
-pub async fn reload_extension(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Response {
+pub async fn reload_extension(State(state): State<AppState>, Path(id): Path<String>) -> Response {
     let host_version = Version::new(1, 0, 0);
     let protocol_version = Version::new(1, 0, 0);
     match state
@@ -49,13 +46,11 @@ pub async fn reload_extension(
             "extension_not_found",
             format!("extension '{id}' is not installed"),
         ),
-        Err(nexus_extension::ExtensionError::DuplicateCustomElementTag { .. }) => {
-            error_response(
-                StatusCode::CONFLICT,
-                "duplicate_custom_element_tag",
-                format!("reload rejected: '{id}' would collide with a registered tag"),
-            )
-        }
+        Err(nexus_extension::ExtensionError::DuplicateCustomElementTag { .. }) => error_response(
+            StatusCode::CONFLICT,
+            "duplicate_custom_element_tag",
+            format!("reload rejected: '{id}' would collide with a registered tag"),
+        ),
         Err(err) => error_response(
             StatusCode::CONFLICT,
             "reload_failed",
@@ -83,10 +78,7 @@ pub async fn list_extension_components(
         .map(|r| ExtensionComponentSummary {
             extension_id: r.extension_id.clone(),
             tag: r.tag,
-            asset_href: format!(
-                "/api/v1/extensions/{}/ui/{}",
-                r.extension_id, r.module
-            ),
+            asset_href: format!("/api/v1/extensions/{}/ui/{}", r.extension_id, r.module),
             entry: r.entry,
         })
         .collect();
@@ -166,7 +158,9 @@ pub async fn serve_extension_asset(
         return error_response(
             StatusCode::BAD_REQUEST,
             "path_escaped_root",
-            format!("asset path '{asset_path}' resolved outside the extension assets root via symlink or traversal"),
+            format!(
+                "asset path '{asset_path}' resolved outside the extension assets root via symlink or traversal"
+            ),
         );
     }
     let metadata = match std::fs::metadata(&canonical) {
@@ -212,12 +206,11 @@ pub async fn serve_extension_asset(
     let mut resp = Response::new(Body::from(bytes));
     resp.headers_mut().insert(
         header::CONTENT_TYPE,
-        HeaderValue::from_str(content_type).unwrap_or(HeaderValue::from_static("application/octet-stream")),
+        HeaderValue::from_str(content_type)
+            .unwrap_or(HeaderValue::from_static("application/octet-stream")),
     );
-    resp.headers_mut().insert(
-        header::CONTENT_LENGTH,
-        HeaderValue::from(content_length),
-    );
+    resp.headers_mut()
+        .insert(header::CONTENT_LENGTH, HeaderValue::from(content_length));
     resp.headers_mut().insert(
         header::CACHE_CONTROL,
         HeaderValue::from_static("public, max-age=300, must-revalidate"),

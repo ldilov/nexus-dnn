@@ -46,8 +46,7 @@ async fn build_state() -> (AppState, tempfile::TempDir) {
         scheduler.clone(),
     ));
 
-    let backend_event_bus =
-        Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(1024));
+    let backend_event_bus = Arc::new(nexus_backend_runtimes::events::BackendEventBus::new(1024));
 
     let state = AppState {
         health_status_fn: Arc::new(|| serde_json::json!({ "status": "ok" })),

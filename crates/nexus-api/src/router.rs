@@ -40,9 +40,7 @@ async fn deprecation_headers(req: Request, next: Next) -> Response {
         );
         headers.insert(
             "Link",
-            HeaderValue::from_static(
-                "</api/v1/model-store/search>; rel=\"successor-version\"",
-            ),
+            HeaderValue::from_static("</api/v1/model-store/search>; rel=\"successor-version\""),
         );
     }
 
@@ -54,9 +52,9 @@ use crate::extension_router;
 use crate::frontend;
 use crate::handlers;
 use crate::handlers::{
-    artifacts, backend_events_ws, backends, deployments, extension_ui, extensions, extensions_install, health,
-    host, huggingface, metrics, modules, recipes, runs, storage_contributions, system, tools,
-    ui_components, ui_contributions, ui_layouts, workflows,
+    artifacts, backend_events_ws, backend_runtimes, backends, deployments, extension_ui,
+    extensions, extensions_install, health, host, huggingface, metrics, modules, recipes, runs,
+    storage_contributions, system, tools, ui_components, ui_contributions, ui_layouts, workflows,
 };
 use crate::ws;
 
@@ -207,6 +205,50 @@ pub fn build(state: AppState) -> Router {
             axum::routing::delete(backends::release_model_lease),
         )
         .route("/backends", get(backends::list_host_runtimes))
+        // spec 032 — generic backend-runtime catalog (additive; coexists
+        // with the legacy `/backends/*` surface)
+        .route("/backend-runtimes", get(backend_runtimes::list::list))
+        .route(
+            "/backend-runtimes/{runtime_id}",
+            get(backend_runtimes::get::get),
+        )
+        .route(
+            "/backend-runtimes/{runtime_id}/install",
+            post(backend_runtimes::install::install),
+        )
+        .route(
+            "/backend-runtime-installs/{install_id}",
+            get(backend_runtimes::installs_get::get)
+                .delete(backend_runtimes::installs_delete::delete),
+        )
+        .route(
+            "/backend-runtime-installs/{install_id}/progress",
+            get(backend_runtimes::installs_progress::progress),
+        )
+        .route(
+            "/backend-runtime-installs/{install_id}/retry",
+            post(backend_runtimes::installs_retry::retry),
+        )
+        .route(
+            "/backend-runtime-installs/{install_id}/start",
+            post(backend_runtimes::installs_start::start),
+        )
+        .route(
+            "/backend-runtime-installs/{install_id}/stop",
+            post(backend_runtimes::installs_stop::stop),
+        )
+        .route(
+            "/backend-runtime-installs/{install_id}/restart",
+            post(backend_runtimes::installs_restart::restart),
+        )
+        .route(
+            "/backend-runtime-leases",
+            get(backend_runtimes::leases_list::list),
+        )
+        .route(
+            "/backend-runtime-leases/{lease_id}",
+            get(backend_runtimes::leases_get::get).delete(backend_runtimes::leases_delete::delete),
+        )
         .route(
             "/backends/runtime-defaults",
             get(backends::get_runtime_defaults),

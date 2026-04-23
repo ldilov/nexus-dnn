@@ -8,7 +8,7 @@ use nexus_models_store::ids::{ArtifactId, FamilyId, JobId, VariantId};
 use nexus_models_store::types::Format;
 use tower::ServiceExt;
 
-use crate::common::{harness_with, StubHf};
+use crate::common::{StubHf, harness_with};
 
 async fn get_installed_body(state: nexus_api::AppState) -> serde_json::Value {
     let router = nexus_api::create_router(state);

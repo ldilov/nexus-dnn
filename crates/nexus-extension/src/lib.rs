@@ -1,3 +1,4 @@
+pub mod backend_runtime_contribution;
 pub mod error;
 pub mod icon_resolver;
 pub mod install;
@@ -34,12 +35,10 @@ pub use registry::{
     ActivatedExtension, DiscoveryReport, ExtensionRegistry, ExtensionStatus,
     InMemoryExtensionRegistry, LayoutFile, detect_intra_manifest_conflicts,
 };
+pub use router_hook::{BuildRouterError, ExtensionContext, ExtensionRouterProvider, HostFacts};
 pub use storage::contribution::{
     MigrationDeclaration, MigrationFileRef, NamespaceDeclaration, RuntimeAccessDeclaration,
     SqlProfileDeclaration, StorageContribution, UninstallDeclaration,
-};
-pub use router_hook::{
-    BuildRouterError, ExtensionContext, ExtensionRouterProvider, HostFacts,
 };
 pub use tool_projection::{Tool, build_tool_from_operator, build_tool_from_recipe};
 pub use ui_contribution::{

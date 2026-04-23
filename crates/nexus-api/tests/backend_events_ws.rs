@@ -4,7 +4,7 @@ use std::time::Duration;
 use futures_util::{SinkExt, StreamExt};
 use nexus_api::AppState;
 use nexus_artifact::FilesystemArtifactStore;
-use nexus_backend_runtimes::events::{BackendEvent, BroadcastPublisher, EventPublisher};
+use nexus_backend_runtimes::events::{BackendEvent, BackendEventBus, EventPublisher};
 use nexus_events::bus::BroadcastEventBus;
 use nexus_extension::InMemoryExtensionRegistry;
 use nexus_run::DefaultRunEngine;
@@ -16,7 +16,7 @@ use tokio::net::TcpListener;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
-async fn build_state_with_bus(bus: Arc<BroadcastPublisher>) -> (AppState, tempfile::TempDir) {
+async fn build_state_with_bus(bus: Arc<BackendEventBus>) -> (AppState, tempfile::TempDir) {
     let db = Arc::new(
         SqliteDatabase::new("sqlite::memory:")
             .await
@@ -78,7 +78,7 @@ async fn build_state_with_bus(bus: Arc<BroadcastPublisher>) -> (AppState, tempfi
     (state, ext_dir)
 }
 
-async fn spawn_test_server(bus: Arc<BroadcastPublisher>) -> (String, tempfile::TempDir) {
+async fn spawn_test_server(bus: Arc<BackendEventBus>) -> (String, tempfile::TempDir) {
     let (state, guard) = build_state_with_bus(bus).await;
     let router = nexus_api::create_router(state);
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
@@ -103,7 +103,7 @@ async fn recv_text_within(
 
 #[tokio::test]
 async fn subscriber_receives_published_event() {
-    let bus = Arc::new(BroadcastPublisher::new(64));
+    let bus = Arc::new(BackendEventBus::new(64));
     let (base, _guard) = spawn_test_server(bus.clone()).await;
 
     let url = format!("{base}/api/v1/backends/events");
@@ -127,7 +127,7 @@ async fn subscriber_receives_published_event() {
 
 #[tokio::test]
 async fn two_subscribers_both_receive() {
-    let bus = Arc::new(BroadcastPublisher::new(64));
+    let bus = Arc::new(BackendEventBus::new(64));
     let (base, _guard) = spawn_test_server(bus.clone()).await;
 
     let url = format!("{base}/api/v1/backends/events");
@@ -153,7 +153,7 @@ async fn two_subscribers_both_receive() {
 
 #[tokio::test]
 async fn family_filter_drops_mismatches() {
-    let bus = Arc::new(BroadcastPublisher::new(64));
+    let bus = Arc::new(BackendEventBus::new(64));
     let (base, _guard) = spawn_test_server(bus.clone()).await;
 
     let url = format!("{base}/api/v1/backends/events?family=llama.cpp");
@@ -169,7 +169,7 @@ async fn family_filter_drops_mismatches() {
 
 #[tokio::test]
 async fn install_id_filter_drops_mismatches() {
-    let bus = Arc::new(BroadcastPublisher::new(64));
+    let bus = Arc::new(BackendEventBus::new(64));
     let (base, _guard) = spawn_test_server(bus.clone()).await;
 
     let url = format!("{base}/api/v1/backends/events?runtime_install_id=ri_a");
@@ -186,7 +186,7 @@ async fn install_id_filter_drops_mismatches() {
 
 #[tokio::test]
 async fn lagged_subscriber_gets_warning_frame() {
-    let bus = Arc::new(BroadcastPublisher::new(4));
+    let bus = Arc::new(BackendEventBus::new(4));
     let (base, _guard) = spawn_test_server(bus.clone()).await;
 
     let url = format!("{base}/api/v1/backends/events");

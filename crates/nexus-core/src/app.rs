@@ -197,9 +197,8 @@ impl NexusApp {
         )
         .await;
 
-        let backend_event_bus = Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(
-            1024,
-        ));
+        let backend_event_bus =
+            Arc::new(nexus_backend_runtimes::events::BackendEventBus::new(1024));
 
         let spawner = backend_adapter_registry.as_ref().map(|adapters| {
             let publisher: nexus_backend_runtimes::events::SharedPublisher =
@@ -251,22 +250,21 @@ impl NexusApp {
         let install_map = nexus_models_store::downloads::InstallMap::new(shared_pool);
         let hf_token_store =
             nexus_models_store::downloads::TokenStore::new(std::env::var("HF_TOKEN").ok());
-        let download_orchestrator = Arc::new(
-            nexus_models_store::downloads::DownloadOrchestrator::new(
+        let download_orchestrator =
+            Arc::new(nexus_models_store::downloads::DownloadOrchestrator::new(
                 (*download_job_store).clone(),
                 install_map.clone(),
                 download_sink_root,
                 reqwest::Client::new(),
                 hf_token_store.clone(),
-            ),
-        );
+            ));
         if let Err(e) = download_orchestrator.recover_startup_state().await {
             tracing::warn!(error = %e, "download orchestrator startup rehydration failed");
         }
 
         let pool_for_extensions = db.pool().clone();
-        let chat_resources = std::sync::Arc::new(
-            nexus_local_llm_chat_history::ChatHandlerResources::new(
+        let chat_resources =
+            std::sync::Arc::new(nexus_local_llm_chat_history::ChatHandlerResources::new(
                 pool_for_extensions.clone(),
                 Some(install_map.clone()),
                 Some(download_orchestrator.clone()),
@@ -274,8 +272,7 @@ impl NexusApp {
                 backend_event_bus.clone(),
                 backend_event_bus.clone(),
                 nexus_local_llm_chat_history::ModelLoadRegistry::new(),
-            ),
-        );
+            ));
         let extension_router_registry = build_extension_router_registry(
             pool_for_extensions,
             app_for_health.config.port,
@@ -309,6 +306,22 @@ impl NexusApp {
                 nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
             host_install_paths,
             extension_router_registry,
+            family_handlers: {
+                let registry =
+                    nexus_backend_runtimes::generic::family_handler::FamilyHandlerRegistry::new();
+                nexus_api::handlers::backend_runtimes::pipeline_runner::register_default_handlers(
+                    &registry,
+                )
+                .await;
+                registry
+            },
+            pipeline_events: {
+                let (tx, _) = tokio::sync::broadcast::channel(nexus_api::PIPELINE_EVENT_CAPACITY);
+                std::sync::Arc::new(tx)
+            },
+            lease_manager: std::sync::Arc::new(
+                nexus_backend_runtimes::generic::leases::LeaseManager::new(),
+            ),
         };
 
         let router = nexus_api::create_router(state);
@@ -363,14 +376,15 @@ fn build_extension_router_registry(
     let registry = Arc::new(DefaultRegistry::new());
     let host_base_url = format!("http://127.0.0.1:{host_port}");
 
-    let providers: Vec<Arc<dyn ExtensionRouterProvider>> =
-        vec![Arc::new(nexus_local_llm_chat_history::LocalLlmRouterProvider::new(
+    let providers: Vec<Arc<dyn ExtensionRouterProvider>> = vec![Arc::new(
+        nexus_local_llm_chat_history::LocalLlmRouterProvider::new(
             nexus_local_llm_chat_history::LocalLlmProviderResources::from_host_base_url(
                 pool,
                 host_base_url.clone(),
                 chat_resources,
             ),
-        ))];
+        ),
+    )];
 
     for provider in &providers {
         let id_str = provider.extension_id();
@@ -877,9 +891,8 @@ async fn build_backend_adapter_registry(
         Ok(p) => p,
         Err(_) => return None,
     };
-    let publisher: nexus_backend_runtimes::events::SharedPublisher = Arc::new(
-        nexus_backend_runtimes::events::BroadcastPublisher::new(1024),
-    );
+    let publisher: nexus_backend_runtimes::events::SharedPublisher =
+        Arc::new(nexus_backend_runtimes::events::BackendEventBus::new(1024));
     let adapter = nexus_backend_runtimes::llamacpp::LlamaCppAdapter::new(
         version_manifest_path,
         runtimes_root_utf8,

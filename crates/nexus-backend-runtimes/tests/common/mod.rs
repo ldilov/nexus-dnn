@@ -109,3 +109,37 @@ impl DelayedHealthServer {
         self.handle.abort();
     }
 }
+
+/// Build an in-memory SQLite pool with only the spec-032 migrations applied.
+///
+/// The generic repo tests don't need the full host schema — just the four
+/// backend-runtime tables. Splits each migration on `;` so SQLite's single
+/// statement executor can consume them.
+#[allow(dead_code)]
+pub async fn make_runtime_pool() -> sqlx::sqlite::SqlitePool {
+    const MIGRATIONS: &[&str] = &[
+        include_str!("../../../../migrations/016_backend_runtime_catalog.sql"),
+        include_str!("../../../../migrations/017_backend_runtime_installs.sql"),
+        include_str!("../../../../migrations/018_backend_runtime_settings.sql"),
+        include_str!("../../../../migrations/019_backend_runtime_leases.sql"),
+    ];
+
+    let pool = sqlx::sqlite::SqlitePool::connect("sqlite::memory:")
+        .await
+        .expect("open in-memory sqlite");
+
+    for sql in MIGRATIONS {
+        for stmt in sql.split(';') {
+            let trimmed = stmt.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            sqlx::query(trimmed)
+                .execute(&pool)
+                .await
+                .unwrap_or_else(|e| panic!("apply migration stmt failed: {e}\nSQL: {trimmed}"));
+        }
+    }
+
+    pool
+}

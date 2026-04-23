@@ -35,9 +35,7 @@ impl HostDeploymentsClient for StubHostClient {
         Ok(None)
     }
 
-    async fn known_deployments(
-        &self,
-    ) -> nexus_local_llm_chat_history::Result<Vec<DeploymentId>> {
+    async fn known_deployments(&self) -> nexus_local_llm_chat_history::Result<Vec<DeploymentId>> {
         Ok(Vec::new())
     }
 }
@@ -55,18 +53,16 @@ async fn build_pool() -> SqlitePool {
 async fn build_app_with_llm_provider() -> Router {
     let pool = build_pool().await;
     let host_client: Arc<dyn HostDeploymentsClient> = Arc::new(StubHostClient);
-    let backend_bus = Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(64));
-    let chat_resources = Arc::new(
-        nexus_local_llm_chat_history::ChatHandlerResources::new(
-            pool.clone(),
-            None,
-            None,
-            None,
-            backend_bus.clone(),
-            backend_bus.clone(),
-            nexus_local_llm_chat_history::ModelLoadRegistry::new(),
-        ),
-    );
+    let backend_bus = Arc::new(nexus_backend_runtimes::events::BackendEventBus::new(64));
+    let chat_resources = Arc::new(nexus_local_llm_chat_history::ChatHandlerResources::new(
+        pool.clone(),
+        None,
+        None,
+        None,
+        backend_bus.clone(),
+        backend_bus.clone(),
+        nexus_local_llm_chat_history::ModelLoadRegistry::new(),
+    ));
     let resources = LocalLlmProviderResources::new(pool, host_client, chat_resources);
     let provider = LocalLlmRouterProvider::new(resources);
 
@@ -135,10 +131,7 @@ async fn host_router_source_does_not_name_local_llm_in_dispatcher_module() {
         ("mod.rs", &mod_rs),
         ("id.rs", &id_rs),
     ] {
-        let prod = src
-            .split("#[cfg(test)]")
-            .next()
-            .unwrap_or(src);
+        let prod = src.split("#[cfg(test)]").next().unwrap_or(src);
         for needle in ["nexus.local-llm", "local-llm", "local_llm"] {
             assert!(
                 !prod.contains(needle),

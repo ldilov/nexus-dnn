@@ -81,11 +81,11 @@ pub trait EventPublisher: Send + Sync {
 }
 
 #[derive(Clone)]
-pub struct BroadcastPublisher {
+pub struct BackendEventBus {
     sender: broadcast::Sender<BackendEvent>,
 }
 
-impl BroadcastPublisher {
+impl BackendEventBus {
     pub fn new(capacity: usize) -> Self {
         let (sender, _) = broadcast::channel(capacity);
         Self { sender }
@@ -97,7 +97,7 @@ impl BroadcastPublisher {
 }
 
 #[async_trait]
-impl EventPublisher for BroadcastPublisher {
+impl EventPublisher for BackendEventBus {
     async fn publish(&self, event: BackendEvent) {
         let _ = self.sender.send(event);
     }

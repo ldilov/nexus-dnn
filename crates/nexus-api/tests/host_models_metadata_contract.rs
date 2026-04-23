@@ -13,7 +13,7 @@ use http_body_util::BodyExt;
 use tower::ServiceExt;
 
 use crate::common::{
-    harness_with, insert_installed_artifact_fixture, InstalledArtifactFixture, StubHf,
+    InstalledArtifactFixture, StubHf, harness_with, insert_installed_artifact_fixture,
 };
 
 async fn get_metadata(

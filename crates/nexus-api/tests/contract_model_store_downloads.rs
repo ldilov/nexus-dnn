@@ -18,7 +18,7 @@ use nexus_huggingface::{RepoFile, SearchResult};
 use nexus_models_store::types::DownloadState;
 use tower::ServiceExt;
 
-use crate::common::{gguf_result, harness_with, StubHf};
+use crate::common::{StubHf, gguf_result, harness_with};
 
 async fn call(
     state: nexus_api::AppState,
@@ -32,7 +32,9 @@ async fn call(
         .uri(uri)
         .header("content-type", "application/json");
     let req = match body {
-        Some(b) => req.body(Body::from(serde_json::to_vec(&b).unwrap())).unwrap(),
+        Some(b) => req
+            .body(Body::from(serde_json::to_vec(&b).unwrap()))
+            .unwrap(),
         None => req.body(Body::empty()).unwrap(),
     };
     let response = router.oneshot(req).await.unwrap();
@@ -96,8 +98,13 @@ async fn t_j1_variant_job_targets_exactly_that_variant() {
     let harness = harness_with(StubHf::with_results(results)).await;
 
     let body = variant_body("huggingface:acme/llama", "huggingface:acme/llama@Q5_K_M");
-    let (status, json) =
-        call(harness.state, "POST", "/api/v1/model-store/downloads", Some(body)).await;
+    let (status, json) = call(
+        harness.state,
+        "POST",
+        "/api/v1/model-store/downloads",
+        Some(body),
+    )
+    .await;
     assert_eq!(status, StatusCode::ACCEPTED);
     let targets = json["data"]["targets"].as_array().unwrap();
     assert_eq!(targets.len(), 1);
@@ -113,15 +120,30 @@ async fn t_j1_variant_job_targets_exactly_that_variant() {
 async fn t_j2_bundle_job_includes_primary_plus_required_deps() {
     let harness = harness_with(StubHf::with_results(vec![sdxl_result()])).await;
     let body = bundle_body("huggingface:stabilityai/sdxl");
-    let (status, json) =
-        call(harness.state, "POST", "/api/v1/model-store/downloads", Some(body)).await;
+    let (status, json) = call(
+        harness.state,
+        "POST",
+        "/api/v1/model-store/downloads",
+        Some(body),
+    )
+    .await;
     assert_eq!(status, StatusCode::ACCEPTED);
     let targets = json["data"]["targets"].as_array().unwrap();
-    assert!(targets.len() >= 2, "primary + vae at minimum, got {}", targets.len());
-    let filenames: Vec<&str> =
-        targets.iter().map(|t| t["filename"].as_str().unwrap()).collect();
+    assert!(
+        targets.len() >= 2,
+        "primary + vae at minimum, got {}",
+        targets.len()
+    );
+    let filenames: Vec<&str> = targets
+        .iter()
+        .map(|t| t["filename"].as_str().unwrap())
+        .collect();
     assert!(filenames.iter().any(|f| f.contains("sd_xl_base")));
-    assert!(filenames.iter().any(|f| f.contains("diffusion_pytorch_model")));
+    assert!(
+        filenames
+            .iter()
+            .any(|f| f.contains("diffusion_pytorch_model"))
+    );
     assert_eq!(json["data"]["include_dependencies"], true);
 }
 
@@ -165,8 +187,13 @@ async fn t_j3b_invalid_include_dependencies_with_variant_rejected() {
         "target": { "kind": "variant", "variant_id": "huggingface:x/y@Q4" },
         "include_dependencies": true,
     });
-    let (status, json) =
-        call(harness.state, "POST", "/api/v1/model-store/downloads", Some(body)).await;
+    let (status, json) = call(
+        harness.state,
+        "POST",
+        "/api/v1/model-store/downloads",
+        Some(body),
+    )
+    .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(json["error"]["code"], "invalid_request");
 }
@@ -181,8 +208,13 @@ async fn t_j3c_bundle_without_include_dependencies_rejected() {
         "target": { "kind": "bundle" },
         "include_dependencies": false,
     });
-    let (status, _json) =
-        call(harness.state, "POST", "/api/v1/model-store/downloads", Some(body)).await;
+    let (status, _json) = call(
+        harness.state,
+        "POST",
+        "/api/v1/model-store/downloads",
+        Some(body),
+    )
+    .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 }
 

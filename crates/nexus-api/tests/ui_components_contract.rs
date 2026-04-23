@@ -64,7 +64,10 @@ async fn catalog_shape() {
         assert!(!examples.is_empty(), "{name}: at least one example");
         for ex in examples {
             assert!(ex["yaml"].as_str().is_some(), "{name}: example.yaml string");
-            assert!(ex["title"].as_str().is_some(), "{name}: example.title string");
+            assert!(
+                ex["title"].as_str().is_some(),
+                "{name}: example.title string"
+            );
         }
     }
 }

@@ -9,12 +9,9 @@ use http_body_util::BodyExt;
 use nexus_huggingface::{RepoFile, SearchResult};
 use tower::ServiceExt;
 
-use crate::common::{gguf_result, harness_with, StubHf};
+use crate::common::{StubHf, gguf_result, harness_with};
 
-async fn get(
-    state: nexus_api::AppState,
-    family_id: &str,
-) -> (StatusCode, serde_json::Value) {
+async fn get(state: nexus_api::AppState, family_id: &str) -> (StatusCode, serde_json::Value) {
     let encoded = urlencoding_encode(family_id);
     let uri = format!("/api/v1/model-store/models/{encoded}");
     let router = nexus_api::create_router(state);
@@ -84,7 +81,11 @@ fn sdxl_result() -> SearchResult {
 async fn t_d1_returns_full_family_detail() {
     let harness = harness_with(StubHf::with_results(vec![gguf_result(
         "acme/llama-3-8b-gguf",
-        &[("Q4_K_M", 4_900_000_000), ("Q5_K_M", 5_700_000_000), ("Q8_0", 8_500_000_000)],
+        &[
+            ("Q4_K_M", 4_900_000_000),
+            ("Q5_K_M", 5_700_000_000),
+            ("Q8_0", 8_500_000_000),
+        ],
     )]))
     .await;
 

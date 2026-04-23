@@ -1,0 +1,25 @@
+# Spec 032 — version manifest for the test.echo runtime.
+#
+# v0_0_1 ships a real echo_worker.zip under ./assets/ — the install
+# pipeline's resolve / download (file://) / verify / extract phases
+# exercise this fixture end-to-end. The same asset is used for every
+# `(platform, accelerator_profile)` since the worker is pure-Python
+# stdlib and platform-independent.
+
+releases:
+  - release_id: "v0_0_1"
+    semver: "0.0.1"
+    notes: "Initial echo worker fixture"
+    targets:
+      - platform: "windows-x64"
+        accelerator_profile: "cpu"
+        asset:
+          url: "file://assets/echo_worker.zip"
+          sha256: "30b9a5ee418004e78261372bf7d6689c72d88f82a79f0425025d2519b704b522"
+          size: 3500
+      - platform: "linux-x64"
+        accelerator_profile: "cpu"
+        asset:
+          url: "file://assets/echo_worker.zip"
+          sha256: "30b9a5ee418004e78261372bf7d6689c72d88f82a79f0425025d2519b704b522"
+          size: 3500
