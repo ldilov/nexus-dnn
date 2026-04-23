@@ -262,3 +262,83 @@ export const stepperElapsed = style({
   fontSize: "11px",
   opacity: 0.7,
 });
+
+export const installRow = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: "6px",
+  padding: "10px",
+  borderRadius: "8px",
+  background: "rgba(255,255,255,0.03)",
+  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+  fontSize: "12px",
+});
+
+export const installRowHeader = style({
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  flexWrap: "wrap",
+});
+
+export const installId = style({
+  color: "var(--text-secondary, #a7adbb)",
+  fontSize: "11px",
+});
+
+export const installStatusBadge = style({
+  display: "inline-block",
+  padding: "1px 8px",
+  borderRadius: "999px",
+  fontSize: "10px",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+});
+
+export const installStatusValidated = style({
+  background: "rgba(80, 200, 120, 0.18)",
+  color: "#79e0a5",
+});
+
+export const installStatusFailed = style({
+  background: "rgba(255, 100, 100, 0.15)",
+  color: "#ff8585",
+});
+
+export const installStatusPending = style({
+  background: "rgba(255, 184, 0, 0.15)",
+  color: "#ffc857",
+});
+
+export const installStatusAbandoned = style({
+  background: "rgba(160, 160, 160, 0.15)",
+  color: "#a7adbb",
+});
+
+export const liveLeaseBadge = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "4px",
+  padding: "1px 8px",
+  borderRadius: "999px",
+  fontSize: "10px",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  background: "rgba(80, 160, 255, 0.15)",
+  color: "#7bb3ff",
+});
+
+export const liveLeaseDot = style({
+  display: "inline-block",
+  width: "6px",
+  height: "6px",
+  borderRadius: "50%",
+  background: "#7bb3ff",
+  boxShadow: "0 0 6px rgba(123,179,255,0.8)",
+});
+
+export const failureNote = style({
+  fontSize: "11px",
+  color: "#ff8585",
+  opacity: 0.8,
+});
