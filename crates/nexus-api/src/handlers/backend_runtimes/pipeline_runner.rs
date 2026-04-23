@@ -67,9 +67,6 @@ pub fn spawn_pipeline(state: AppState, request: PipelineRequest) {
         let outcome = drive(&state, &request).await;
         let duration_ms = started_at.elapsed().as_millis() as u64;
 
-        // T112 / SC-002 — emit a single structured event per pipeline
-        // run so operators can compute the ≥ 95 % success threshold
-        // from tracing logs.
         match &outcome {
             Ok(()) => {
                 tracing::info!(

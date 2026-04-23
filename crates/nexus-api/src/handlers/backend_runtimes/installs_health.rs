@@ -1,22 +1,3 @@
-//! T084 / SC-006 — `GET /api/v1/backend-runtime-installs/:install_id/health`.
-//!
-//! Aggregates health across every live lease bound to an install by
-//! calling each lease's `health` JSON-RPC. The endpoint is primarily
-//! diagnostic; callers that need per-lease detail use
-//! `GET /backend-runtime-leases` with a `runtime_install_id` filter.
-//!
-//! Response shape:
-//! ```json
-//! {
-//!   "install_id": "01HZ…",
-//!   "live_lease_count": 2,
-//!   "aggregate": "healthy" | "degraded" | "no_live_leases",
-//!   "leases": [
-//!     {"lease_id": "…", "state": "ready", "healthy": true, "latency_ms": 4}
-//!   ]
-//! }
-//! ```
-
 use std::str::FromStr;
 use std::time::Instant;
 
@@ -90,14 +71,7 @@ pub async fn get(
         }
     }
 
-    // Snapshot every live lease handle for this install, then probe
-    // each one. We intentionally release the lease-manager lock before
-    // awaiting `send_rpc` so a slow worker doesn't starve sibling
-    // lookups.
-    let handles = state
-        .lease_manager
-        .handles_for_install(&install_id)
-        .await;
+    let handles = state.lease_manager.handles_for_install(&install_id).await;
 
     let mut probes = Vec::with_capacity(handles.len());
     for lease in handles {

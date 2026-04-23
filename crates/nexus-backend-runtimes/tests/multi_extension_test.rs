@@ -1,17 +1,3 @@
-//! T088 + T089 + T091 + T092 — US4 multi-extension coexistence.
-//!
-//! Exercises the happy path (two extensions contribute different
-//! `runtime_id`s — both catalog rows present, concurrent install rows
-//! unique, concurrent acquire on different installs succeed
-//! concurrently) AND the collision path (two extensions contribute the
-//! SAME `runtime_id` — second registration rejected with a structured
-//! error naming both contributors, zero partial rows persisted).
-//!
-//! Lease-level JSON-RPC roundtrip is exercised in `lease_roundtrip_test`
-//! and `lease_acquire_test`. This file focuses on the catalog +
-//! installs-repo contract under concurrent pressure, which is where
-//! multi-extension bugs hide.
-
 mod common;
 
 use std::sync::Arc;
@@ -103,7 +89,6 @@ async fn two_extensions_with_different_runtime_ids_coexist_in_catalog() {
         0xBB,
     );
 
-    // Concurrent upsert — no shared-state races.
     let (ra, rb) = tokio::join!(catalog.upsert(&a), catalog.upsert(&b));
     ra.expect("upsert a");
     rb.expect("upsert b");
@@ -158,15 +143,10 @@ async fn concurrent_install_inserts_for_different_runtimes_succeed() {
     let install_a = sample_install("test.echo", "v0_0_1", "linux-x64", "cpu");
     let install_b = sample_install("test.echo.v2", "v0_0_1", "linux-x64", "cpu");
 
-    // Spawn inserts onto the runtime so they race through the sqlite
-    // connection pool. A naive impl that holds a shared transaction
-    // would deadlock or serialise; the real repo schedules each insert
-    // on its own connection.
     let (ra, rb) = tokio::join!(installs.insert(&install_a), installs.insert(&install_b));
     ra.expect("insert a");
     rb.expect("insert b");
 
-    // Both listable under their owning runtime.
     let rows_a = installs
         .list_by_runtime(&install_a.runtime_id)
         .await
@@ -204,9 +184,6 @@ async fn duplicate_runtime_id_across_extensions_detected_via_checksum() {
         .expect("present");
     assert_eq!(existing.source_extension_id.as_str(), "ext.first");
 
-    // Reject cross-extension collision at the bridge layer. The direct
-    // repo upsert is idempotent, so the bridge's pre-check is what
-    // actually guards the invariant — mirror its logic here.
     let second =
         sample_entry("test.echo", "ext.second", RuntimeFamily::Python, 0xBB);
     let collision_check = if existing.source_extension_id != second.source_extension_id {
@@ -223,7 +200,6 @@ async fn duplicate_runtime_id_across_extensions_detected_via_checksum() {
     assert!(msg.contains("test.echo"), "error names the runtime_id: {msg}");
     assert!(msg.contains("ext.first"), "error names the owner: {msg}");
 
-    // Zero partial rows past the single original upsert.
     let all = catalog.list_all().await.unwrap();
     assert_eq!(all.len(), 1, "no partial row persisted for rejection");
     assert_eq!(all[0].source_extension_id.as_str(), "ext.first");
@@ -286,8 +262,6 @@ async fn concurrent_install_inserts_for_same_triple_collide_exactly_once() {
         .await
         .unwrap();
 
-    // Two distinct install rows with the same logical tuple but
-    // different ulids.
     let a = sample_install("test.echo", "v0_0_1", "linux-x64", "cpu");
     let b = sample_install("test.echo", "v0_0_1", "linux-x64", "cpu");
     assert_ne!(a.runtime_install_id, b.runtime_install_id);
@@ -329,8 +303,6 @@ async fn no_deadlock_under_multi_threaded_runtime() {
         })
         .collect();
 
-    // Watchdog — if any future stalls, the join_all hangs forever; fail
-    // fast instead.
     let joined = futures_util::future::join_all(handles);
     tokio::time::timeout(Duration::from_secs(10), joined)
         .await

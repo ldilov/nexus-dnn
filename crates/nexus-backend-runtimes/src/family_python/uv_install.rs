@@ -1,16 +1,3 @@
-//! T061 — dependency install phase. Shells out to `uv` against the
-//! worker directory staged by the extract phase, running
-//! `uv sync --all-extras` to materialise the worker's declared
-//! dependencies against the embedded interpreter staged by bootstrap.
-//!
-//! Platform policy (upstream guidance): on Windows we omit
-//! `--extra deepspeed` because that extra depends on a toolchain that
-//! doesn't currently ship a Windows wheel. The `deepspeed_extra_on_windows`
-//! knob on [`UvInvocation`] lets a caller override this per-install.
-//!
-//! Failures map to [`PipelineFailureCategory::DependencyInstallFailed`]
-//! with uv's stderr truncated to [`UV_STDERR_TRUNCATE_LIMIT`] bytes.
-
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -24,24 +11,14 @@ use crate::generic::install_ctx::InstallCtx;
 use super::handler::python_exe_in;
 
 const PHASE: &str = "install_deps";
-/// Worker directory relative to the pipeline's `partial_path`.
 pub const WORKER_DIR: &str = "worker";
-/// Upper bound on uv stderr retained in failure details.
 pub const UV_STDERR_TRUNCATE_LIMIT: usize = 2048;
-/// Default `uv` invocation used in production. Tests may build their own.
 pub const DEFAULT_UV_PROGRAM: &str = "uv";
-/// Extra that depends on a toolchain not available on Windows.
 const WINDOWS_EXCLUDED_EXTRA: &str = "deepspeed";
 
-/// Dependency-install knob surface. Constructed per call from
-/// [`FamilyPythonHandler`](super::FamilyPythonHandler) configuration +
-/// host platform facts.
 #[derive(Debug, Clone)]
 pub struct UvInvocation {
-    /// Path (or PATH-lookup name) of the uv binary.
     pub program: PathBuf,
-    /// Whether to attempt `--extra deepspeed` when running on Windows.
-    /// Defaults to `false` per upstream warning.
     pub deepspeed_extra_on_windows: bool,
 }
 
@@ -104,8 +81,6 @@ async fn spawn_uv(
     let mut cmd = Command::new(program);
     cmd.args(args.iter().map(OsStr::new));
     cmd.current_dir(cwd);
-    // Pin uv onto the embedded interpreter so it does not resolve the
-    // host's system python.
     cmd.env("UV_PYTHON", python);
     cmd.env("VIRTUAL_ENV", cwd.join(".venv"));
     cmd.stdin(Stdio::null());
@@ -127,7 +102,6 @@ async fn spawn_uv(
     })
 }
 
-/// Build the argv for `uv sync` based on platform policy.
 pub(crate) fn sync_args(invocation: &UvInvocation) -> Vec<String> {
     let mut args = vec!["sync".to_string(), "--all-extras".to_string()];
     let skip_deepspeed = cfg!(windows) && !invocation.deepspeed_extra_on_windows;
@@ -142,7 +116,6 @@ fn truncate_utf8(bytes: &[u8], limit: usize) -> String {
     if text.len() <= limit {
         return text.into_owned();
     }
-    // Truncate at a char boundary.
     let mut end = limit;
     while !text.is_char_boundary(end) && end > 0 {
         end -= 1;
@@ -202,7 +175,6 @@ mod tests {
         let long = "αβγδε".repeat(1024);
         let out = truncate_utf8(long.as_bytes(), UV_STDERR_TRUNCATE_LIMIT);
         assert!(out.ends_with("…(truncated)"));
-        // Confirm no panic + a non-empty prefix.
         assert!(out.len() > 12);
     }
 

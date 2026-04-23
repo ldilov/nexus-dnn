@@ -1,11 +1,3 @@
-//! `GET /api/v1/backend-runtime-installs` (T087 UI polish).
-//!
-//! Filters: `runtime_id` (required) returns every install row for a
-//! given runtime regardless of terminal state. The UI uses this to
-//! decide which action buttons (Start / Stop / Restart / Uninstall) to
-//! surface per runtime card; operator tooling uses it to inspect
-//! historical failures without needing to grep the DB directly.
-
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;

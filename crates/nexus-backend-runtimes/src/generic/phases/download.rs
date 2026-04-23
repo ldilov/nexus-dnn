@@ -1,10 +1,4 @@
-//! T052 — download phase. Streams the resolved asset to
-//! `{partial_path}/archive.bin`. Supports `file://` (local copy) and
-//! `http(s)://` (streaming GET via reqwest). Retry short-circuit:
-//! if the target file already exists with the expected size + matching
-//! sha256, we skip the network IO entirely (FR-028).
-
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 use tokio::fs;
@@ -15,6 +9,7 @@ use crate::generic::errors::GenericInstallError;
 use crate::generic::install_ctx::InstallCtx;
 
 pub const ARCHIVE_FILENAME: &str = "archive.bin";
+pub const DOWNLOAD_CACHE_SUBDIR: &str = "archives";
 
 pub async fn run(ctx: &mut InstallCtx) -> Result<(), GenericInstallError> {
     let asset = ctx.resolved_asset.clone().ok_or_else(|| {
@@ -32,34 +27,60 @@ pub async fn run(ctx: &mut InstallCtx) -> Result<(), GenericInstallError> {
             format!("create partial dir: {e}"),
         )
     })?;
-    let target = ctx.partial_path.join(ARCHIVE_FILENAME);
+    let partial_target = ctx.partial_path.join(ARCHIVE_FILENAME);
 
-    // Retry short-circuit — same hash, same size, skip the IO.
-    if let Some(existing) = inspect_existing(&target, &asset.sha256).await
+    if let Some(existing) = inspect_existing(&partial_target, &asset.sha256).await
         && existing == asset.size
     {
-        ctx.downloaded_archive = Some(target);
+        ctx.downloaded_archive = Some(partial_target);
         return Ok(());
     }
 
-    if let Some(rest) = asset.url.strip_prefix("file://") {
-        copy_file(PathBuf::from(rest), &target).await?;
-    } else if asset.url.starts_with("http://") || asset.url.starts_with("https://") {
-        download_http(&asset.url, &target).await?;
-    } else {
-        return Err(GenericInstallError::new(
+    let cache_root = ctx.download_cache.join(DOWNLOAD_CACHE_SUBDIR);
+    fs::create_dir_all(&cache_root).await.map_err(|e| {
+        GenericInstallError::new(
             "download",
-            PipelineFailureCategory::InvalidVersionManifest,
-            format!("unsupported url scheme: {}", asset.url),
-        ));
+            PipelineFailureCategory::InvalidDownload,
+            format!("create cache dir: {e}"),
+        )
+    })?;
+    let cache_target = cache_root.join(format!("{}.bin", &asset.sha256));
+
+    let need_fetch = match inspect_existing(&cache_target, &asset.sha256).await {
+        Some(n) if n == asset.size => false,
+        _ => true,
+    };
+
+    if need_fetch {
+        if let Some(rest) = asset.url.strip_prefix("file://") {
+            copy_file(decode_file_url(rest), &cache_target).await?;
+        } else if asset.url.starts_with("http://") || asset.url.starts_with("https://") {
+            download_http(&asset.url, &cache_target).await?;
+        } else {
+            return Err(GenericInstallError::new(
+                "download",
+                PipelineFailureCategory::InvalidVersionManifest,
+                format!("unsupported url scheme: {}", asset.url),
+            ));
+        }
     }
-    ctx.downloaded_archive = Some(target);
+
+    fs::copy(&cache_target, &partial_target).await.map_err(|e| {
+        GenericInstallError::new(
+            "download",
+            PipelineFailureCategory::InvalidDownload,
+            format!(
+                "stage cached archive {} → {}: {e}",
+                cache_target.display(),
+                partial_target.display()
+            ),
+        )
+    })?;
+    ctx.downloaded_archive = Some(partial_target);
     Ok(())
 }
 
-/// If `path` exists, hash it and return its size on a checksum match.
-/// Returns `None` when the file is missing or its hash differs.
-async fn inspect_existing(path: &std::path::Path, expected_sha256: &str) -> Option<u64> {
+async fn inspect_existing(path: &Path, expected_sha256: &str) -> Option<u64> {
     if !path.exists() {
         return None;
     }
@@ -88,7 +109,7 @@ async fn inspect_existing(path: &std::path::Path, expected_sha256: &str) -> Opti
     }
 }
 
-async fn copy_file(src: PathBuf, dst: &std::path::Path) -> Result<(), GenericInstallError> {
+async fn copy_file(src: PathBuf, dst: &Path) -> Result<(), GenericInstallError> {
     fs::copy(&src, dst).await.map_err(|e| {
         GenericInstallError::new(
             "download",
@@ -99,7 +120,7 @@ async fn copy_file(src: PathBuf, dst: &std::path::Path) -> Result<(), GenericIns
     Ok(())
 }
 
-async fn download_http(url: &str, dst: &std::path::Path) -> Result<(), GenericInstallError> {
+async fn download_http(url: &str, dst: &Path) -> Result<(), GenericInstallError> {
     let resp = reqwest::get(url).await.map_err(|e| {
         GenericInstallError::new(
             "download",
@@ -143,6 +164,16 @@ async fn download_http(url: &str, dst: &std::path::Path) -> Result<(), GenericIn
         )
     })?;
     Ok(())
+}
+
+fn decode_file_url(rest: &str) -> PathBuf {
+    if cfg!(windows) && rest.starts_with('/') && rest.len() >= 4 {
+        let bytes = rest.as_bytes();
+        if bytes[2] == b':' || bytes[3] == b':' {
+            return PathBuf::from(&rest[1..]);
+        }
+    }
+    PathBuf::from(rest)
 }
 
 fn hex_lower(bytes: &[u8]) -> String {

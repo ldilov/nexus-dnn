@@ -1,35 +1,3 @@
-//! Host-level configuration loader for the embedded-Python
-//! [`PythonAsset`].
-//!
-//! Operational story: production hosts run on many targets
-//! (Windows-x64, Linux-x64, …) and each wants its own pinned embedded
-//! interpreter. Rather than baking target-keyed URL + SHA pairs into
-//! source (and freezing them at build time), this module reads an
-//! environment-variable group at host boot and synthesises a
-//! [`PythonAsset`] when all required values are present.
-//!
-//! Env vars (unprefixed forms used by the built-in loader):
-//!
-//! | Variable                         | Required | Description |
-//! |----------------------------------|----------|-------------|
-//! | `NEXUS_EMBEDDED_PYTHON_URL`      | yes      | `file://` or `http(s)://` |
-//! | `NEXUS_EMBEDDED_PYTHON_SHA256`   | yes      | 64-char lowercase hex |
-//! | `NEXUS_EMBEDDED_PYTHON_SIZE`     | yes      | bytes, decimal |
-//! | `NEXUS_EMBEDDED_PYTHON_KIND`     | optional | `tar.gz` (default) or `zip` |
-//! | `NEXUS_EMBEDDED_PYTHON_STRIP`    | optional | archive top-level dir to strip; default `python` |
-//! | `NEXUS_EMBEDDED_PYTHON_EXTRACT`  | optional | install-root-relative extract dir; default `python` |
-//!
-//! Missing / malformed required vars → returns `Ok(None)` (not an
-//! error) so development environments without a pinned distribution
-//! boot cleanly. Bad values log at `tracing::warn` so operators notice.
-//!
-//! Callers typically do:
-//!
-//! ```ignore
-//! let asset = PythonAssetConfig::from_env().load().ok().flatten();
-//! register_default_handlers(&registry, asset).await;
-//! ```
-
 use std::env;
 use std::path::PathBuf;
 
@@ -46,8 +14,6 @@ const DEFAULT_KIND: PythonArchiveKind = PythonArchiveKind::TarGz;
 const DEFAULT_STRIP: &str = "python";
 const DEFAULT_EXTRACT: &str = "python";
 
-/// Env-driven asset config. Fields are the raw inputs; [`Self::into_asset`]
-/// validates + constructs a [`PythonAsset`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PythonAssetConfig {
     pub url: Option<String>,
@@ -59,8 +25,6 @@ pub struct PythonAssetConfig {
 }
 
 impl PythonAssetConfig {
-    /// Read every supported env var into a config. Missing vars become
-    /// `None`.
     pub fn from_env() -> Self {
         Self {
             url: env::var(ENV_URL).ok().filter(|s| !s.is_empty()),
@@ -72,10 +36,6 @@ impl PythonAssetConfig {
         }
     }
 
-    /// Returns `None` when no required fields are present (unconfigured
-    /// — fine for dev). Returns `Err` with a human-readable reason when
-    /// partial / malformed config is detected (some required fields set
-    /// but others invalid).
     pub fn load(&self) -> Result<Option<PythonAsset>, String> {
         let any_required = self.url.is_some() || self.sha256.is_some() || self.size.is_some();
         if !any_required {
@@ -219,8 +179,6 @@ mod tests {
 
     #[test]
     fn load_honours_empty_strip_meaning_no_strip() {
-        // An explicit empty STRIP env var means "do not strip any
-        // outer component"; the filter drops it to None.
         let cfg = PythonAssetConfig {
             strip: Some(String::new()),
             ..valid()

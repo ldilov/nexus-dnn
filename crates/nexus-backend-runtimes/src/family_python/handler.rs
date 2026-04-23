@@ -1,16 +1,3 @@
-//! T059 — [`FamilyPythonHandler`] — the [`RuntimeFamilyHandler`]
-//! implementation for `family: python` backend runtimes. Delegates each
-//! pipeline phase hook to the sibling module that owns its concrete
-//! behaviour (`bootstrap`, `uv_install`, `validate`) and exposes a
-//! [`LaunchSpec`] that spawns the embedded interpreter against the
-//! extension's declared worker entrypoint.
-//!
-//! The handler is typically registered at host boot via
-//! [`super::register_default`]; tests that don't want the real
-//! embedded-Python download can construct one with
-//! [`FamilyPythonHandler::with_asset`] + a `file://` asset pointing at a
-//! fixture.
-
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
@@ -26,21 +13,12 @@ use super::asset::PythonAsset;
 use super::uv_install::UvInvocation;
 use super::{FAMILY, bootstrap, uv_install, validate};
 
-/// [`RuntimeFamilyHandler`] for `family: python` runtimes.
-///
-/// Both the embedded-Python asset and the `uv` invocation are injectable
-/// so tests can run against fixtures without requiring a real
-/// python-build-standalone download or a system-wide `uv` install at a
-/// specific path.
 pub struct FamilyPythonHandler {
     asset: Option<PythonAsset>,
     uv: UvInvocation,
 }
 
 impl FamilyPythonHandler {
-    /// Production constructor — no asset override, default `uv` on PATH.
-    /// Production hosts are expected to populate the asset table via
-    /// [`Self::with_asset`] once embedded-Python pins are stamped.
     pub fn new() -> Self {
         Self {
             asset: None,
@@ -48,7 +26,6 @@ impl FamilyPythonHandler {
         }
     }
 
-    /// Override the embedded-Python asset. Typical for tests.
     pub fn with_asset(asset: PythonAsset) -> Self {
         Self {
             asset: Some(asset),
@@ -56,13 +33,11 @@ impl FamilyPythonHandler {
         }
     }
 
-    /// Override the `uv` invocation (binary path + platform knobs).
     pub fn with_uv(mut self, uv: UvInvocation) -> Self {
         self.uv = uv;
         self
     }
 
-    /// Accessor for the currently-configured asset (primarily for tests).
     pub fn asset(&self) -> Option<&PythonAsset> {
         self.asset.as_ref()
     }
@@ -112,10 +87,6 @@ impl RuntimeFamilyHandler for FamilyPythonHandler {
     }
 }
 
-/// Platform-conventional path to the embedded interpreter inside an
-/// install root. Windows: `python/python.exe`; Unix:
-/// `python/bin/python3`. Exposed at module scope so every phase module
-/// resolves the same location.
 pub fn python_exe_in(install_root: &Path) -> PathBuf {
     if cfg!(windows) {
         install_root.join("python").join("python.exe")

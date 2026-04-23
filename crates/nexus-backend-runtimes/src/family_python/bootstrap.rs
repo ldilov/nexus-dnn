@@ -1,15 +1,3 @@
-//! T060 — bootstrap phase. Downloads the embedded Python distribution into
-//! the host-wide tools cache (`{download_cache}/embedded_python/`) and
-//! extracts it under `{partial_path}/python/`.
-//!
-//! Idempotent: a second invocation with an already-staged interpreter is a
-//! no-op (detected via presence of the platform-conventional python
-//! executable). Retry-friendly: the download layer short-circuits on a
-//! SHA-256 hit against the expected checksum.
-//!
-//! `PipelineFailureCategory::PythonBootstrapFailed` is the canonical
-//! failure mode for every error path in this phase (FR-023).
-
 use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
@@ -32,8 +20,6 @@ pub async fn run(
     ctx: &mut InstallCtx,
     asset: Option<&PythonAsset>,
 ) -> Result<(), GenericInstallError> {
-    // Idempotent short-circuit — if the conventional interpreter is
-    // already in place, trust a previous run's work.
     if python_exe_in(&ctx.partial_path).is_file() {
         return Ok(());
     }
@@ -96,7 +82,6 @@ fn cache_filename(asset: &PythonAsset) -> String {
 }
 
 async fn fetch_archive(asset: &PythonAsset, dst: &Path) -> Result<(), GenericInstallError> {
-    // Retry short-circuit on content-hash hit.
     if let Some(existing) = inspect_existing(dst, &asset.sha256).await
         && existing == asset.size
     {
@@ -313,9 +298,6 @@ fn extract_zip(
     Ok(())
 }
 
-/// Strip the given leading component from `path`, returning `None` when
-/// `path` equals the stripped component (drop empty result). When
-/// `strip_component` is None, returns `Some(path.to_path_buf())`.
 fn strip_outer(path: &Path, strip_component: Option<&str>) -> Option<PathBuf> {
     let Some(outer) = strip_component else {
         return Some(path.to_path_buf());
@@ -328,8 +310,6 @@ fn strip_outer(path: &Path, strip_component: Option<&str>) -> Option<PathBuf> {
 }
 
 fn decode_file_url(rest: &str) -> PathBuf {
-    // `file://` URLs on Windows look like `file:///C:/x/y`; strip the
-    // leading slash so PathBuf sees a valid drive-absolute path.
     if cfg!(windows) && rest.starts_with('/') && rest.len() >= 4 {
         let bytes = rest.as_bytes();
         if bytes[2] == b':' || bytes[3] == b':' {
