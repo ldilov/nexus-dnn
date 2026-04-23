@@ -15,6 +15,7 @@ use tokio::sync::broadcast;
 
 use nexus_backend_runtimes::family::RuntimeFamily;
 use nexus_backend_runtimes::family_native::FamilyNativeHandler;
+use nexus_backend_runtimes::family_python::{FamilyPythonHandler, PythonAsset};
 use nexus_backend_runtimes::generic::catalog::CatalogEntry;
 use nexus_backend_runtimes::generic::enums::{InstallStatus, PipelineFailureCategory};
 use nexus_backend_runtimes::generic::errors::GenericInstallError;
@@ -254,16 +255,31 @@ impl PipelineRequest {
     }
 }
 
-/// Helper for host bootstrap: register both family handlers that this
-/// crate currently owns. Called once at startup. The python family
-/// handler lands in a follow-up task (T059-T062) — until then only
-/// native-binary runtimes can execute the pipeline end-to-end, and
-/// python-family installs fail fast at the `resolve` phase with
-/// `RuntimeNotInstalled`.
-pub async fn register_default_handlers(registry: &FamilyHandlerRegistry) {
+/// Helper for host bootstrap: register every family handler the host
+/// currently owns. Called once at startup. Native-binary and Python
+/// runtimes are wired here; a python-family extension whose embedded
+/// Python asset has not been pinned by the host will fail at the
+/// `bootstrap_runtime` phase with `PythonBootstrapFailed`.
+///
+/// `python_asset` is an optional override for the embedded Python
+/// distribution. When `None`, the handler ships without a default —
+/// production hosts should pin a version before shipping; tests inject
+/// a fixture asset.
+pub async fn register_default_handlers(
+    registry: &FamilyHandlerRegistry,
+    python_asset: Option<PythonAsset>,
+) {
     registry
         .register(Arc::new(FamilyNativeHandler::new(RuntimeFamily::LlamaCpp))
             as Arc<dyn RuntimeFamilyHandler>)
+        .await;
+
+    let python = match python_asset {
+        Some(asset) => FamilyPythonHandler::with_asset(asset),
+        None => FamilyPythonHandler::new(),
+    };
+    registry
+        .register(Arc::new(python) as Arc<dyn RuntimeFamilyHandler>)
         .await;
 }
 
