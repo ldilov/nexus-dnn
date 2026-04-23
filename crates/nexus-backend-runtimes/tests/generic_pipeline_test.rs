@@ -88,7 +88,9 @@ fn make_ctx(partial: PathBuf, install: PathBuf, manifest: serde_json::Value) -> 
         accelerator_profile: AcceleratorProfile::try_from("cpu").unwrap(),
         partial_path: partial,
         install_path: install,
-        download_cache: PathBuf::from("/tmp/cache"),
+        download_cache: std::env::temp_dir()
+            .join(format!("generic_pipeline_test_{}", std::process::id()))
+            .join(RuntimeInstallId::new().to_string()),
         release_manifest: manifest,
         extension_root: None,
         resolved_asset: None,
@@ -159,6 +161,76 @@ async fn pipeline_honours_cancellation_at_phase_boundary() {
     let err = run(&mut ctx, handler, sink.clone()).await.unwrap_err();
     assert_eq!(err.phase, "resolve");
     assert_eq!(err.category, PipelineFailureCategory::Cancelled);
+}
+
+/// T050 — cancellation fires from inside a family-handler phase and
+/// the next phase boundary honours the token immediately. Proves the
+/// boundary check isn't only respected at pipeline entry.
+struct CancelInBootstrapHandler {
+    token: CancellationToken,
+}
+
+#[async_trait]
+impl nexus_backend_runtimes::generic::family_handler::RuntimeFamilyHandler for CancelInBootstrapHandler {
+    fn family(&self) -> RuntimeFamily {
+        RuntimeFamily::Python
+    }
+    async fn bootstrap_runtime(
+        &self,
+        _ctx: &mut InstallCtx,
+    ) -> Result<(), nexus_backend_runtimes::generic::errors::GenericInstallError> {
+        self.token.cancel();
+        Ok(())
+    }
+    async fn install_deps(
+        &self,
+        _ctx: &mut InstallCtx,
+    ) -> Result<(), nexus_backend_runtimes::generic::errors::GenericInstallError> {
+        panic!("install_deps MUST NOT run after cancellation at boundary")
+    }
+    async fn validate_env(
+        &self,
+        _ctx: &mut InstallCtx,
+    ) -> Result<(), nexus_backend_runtimes::generic::errors::GenericInstallError> {
+        panic!("validate_env MUST NOT run after cancellation at boundary")
+    }
+    fn spawn_launch_spec(
+        &self,
+        install: &nexus_backend_runtimes::generic::installs::InstallRecord,
+        _settings: &nexus_backend_runtimes::generic::settings::RuntimeSettings,
+    ) -> nexus_backend_runtimes::generic::install_ctx::LaunchSpec {
+        nexus_backend_runtimes::generic::install_ctx::LaunchSpec::new(PathBuf::from(
+            &install.install_path,
+        ))
+    }
+}
+
+#[tokio::test]
+async fn cancellation_mid_pipeline_stops_at_next_phase_boundary() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (asset_path, sha, size) = build_test_zip(tmp.path());
+    let manifest = version_manifest(&asset_path, &sha, size);
+    let partial = tmp.path().join("install.partial");
+    let install = tmp.path().join("install");
+    let mut ctx = make_ctx(partial, install, manifest);
+    let token = ctx.cancellation.clone();
+
+    let handler = Arc::new(CancelInBootstrapHandler { token });
+    let sink = Arc::new(CapturingSink::default());
+
+    let err = run(&mut ctx, handler, sink.clone()).await.unwrap_err();
+    assert_eq!(err.phase, "install_deps");
+    assert_eq!(err.category, PipelineFailureCategory::Cancelled);
+
+    let events = sink.events.lock().unwrap().clone();
+    let phases_that_completed: Vec<_> = events
+        .iter()
+        .filter(|e| matches!(e.state, PhaseState::Completed))
+        .map(|e| e.phase)
+        .collect();
+    assert!(phases_that_completed.contains(&Phase::Resolve));
+    assert!(phases_that_completed.contains(&Phase::BootstrapRuntime));
+    assert!(!phases_that_completed.contains(&Phase::InstallDeps));
 }
 
 #[tokio::test]
