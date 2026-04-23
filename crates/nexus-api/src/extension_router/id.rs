@@ -103,10 +103,15 @@ mod tests {
             ExtensionId::parse("has spaces").unwrap_err(),
             IdError::InvalidFormat(_)
         ));
-        assert!(matches!(
-            ExtensionId::parse("has..dotdot").unwrap_err(),
-            IdError::InvalidFormat(_)
-        ).then_some(()).is_some() || true);
+        assert!(
+            matches!(
+                ExtensionId::parse("has..dotdot").unwrap_err(),
+                IdError::InvalidFormat(_)
+            )
+            .then_some(())
+            .is_some()
+                || true
+        );
     }
 
     #[test]

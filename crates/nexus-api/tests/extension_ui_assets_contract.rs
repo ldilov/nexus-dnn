@@ -36,7 +36,13 @@ async fn call(
         .headers()
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok().map(str::to_string));
-    let bytes = res.into_body().collect().await.expect("body").to_bytes().to_vec();
+    let bytes = res
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes()
+        .to_vec();
     (status, bytes, content_type)
 }
 
@@ -58,7 +64,10 @@ async fn serves_declared_file() {
         "expected JS MIME, got {content_type:?}"
     );
     let text = String::from_utf8(body).expect("asset is utf8");
-    assert!(text.contains("register"), "fixture should export register()");
+    assert!(
+        text.contains("register"),
+        "fixture should export register()"
+    );
 }
 
 #[tokio::test]
@@ -99,7 +108,11 @@ async fn not_found_after_uninstall() {
         &format!("/api/v1/extensions/{FIXTURE_ID}/ui/fixture.js"),
     )
     .await;
-    assert_eq!(status_before, StatusCode::OK, "asset served before uninstall");
+    assert_eq!(
+        status_before,
+        StatusCode::OK,
+        "asset served before uninstall"
+    );
 
     let harness_after = harness_with_fixtures(Arc::new(StubHf::default()), &[]).await;
     let (status_after, body_after, _) = call(
@@ -190,8 +203,7 @@ async fn reload_of_extension_in_duplicate_tag_state_returns_409() {
         .join("fixtures")
         .join("custom-element-dup");
     let harness =
-        harness_with_fixtures(Arc::new(StubHf::default()), &[&fixture_path(), &dup_path])
-            .await;
+        harness_with_fixtures(Arc::new(StubHf::default()), &[&fixture_path(), &dup_path]).await;
     // Reloading the duplicate extension re-runs validation — the duplicate tag
     // is already present in the registry, so collect_custom_elements detects
     // the collision and the handler returns 409 with no state change.
@@ -219,7 +231,11 @@ async fn reload_is_idempotent_across_repeated_calls() {
             .expect("request")
     };
 
-    let res1 = app.clone().oneshot(make_request()).await.expect("first call");
+    let res1 = app
+        .clone()
+        .oneshot(make_request())
+        .await
+        .expect("first call");
     assert_eq!(res1.status(), StatusCode::OK);
     let res2 = app.oneshot(make_request()).await.expect("second call");
     assert_eq!(res2.status(), StatusCode::OK);

@@ -29,9 +29,10 @@ nexus-huggingface = { path = "../nexus-huggingface" }
 uuid = { workspace = true }
 chrono = { workspace = true }
 regex-lite = "0.1"
-tokio-stream = "0.1"
+tokio-stream = { version = "0.1", features = ["sync"] }
 tokio-util = { workspace = true }
 futures-util = "0.3"
+async-trait = "0.1"
 rust-embed = { workspace = true }
 mime_guess = { workspace = true }
 ts-rs = { version = "11", features = ["serde-compat", "chrono-impl", "serde-json-impl"] }

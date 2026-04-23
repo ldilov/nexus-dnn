@@ -5,7 +5,7 @@ use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use nexus_api::AppState;
 use nexus_artifact::FilesystemArtifactStore;
-use nexus_backend_runtimes::events::BroadcastPublisher;
+use nexus_backend_runtimes::events::BackendEventBus;
 use nexus_backend_runtimes::spawn::Spawner;
 use nexus_events::bus::BroadcastEventBus;
 use nexus_extension::InMemoryExtensionRegistry;
@@ -58,7 +58,7 @@ async fn build_fixture() -> Fixture {
         scheduler.clone(),
     ));
 
-    let backend_bus = Arc::new(BroadcastPublisher::new(1024));
+    let backend_bus = Arc::new(BackendEventBus::new(1024));
     let adapters = Arc::new(nexus_backend_runtimes::adapter::AdapterRegistry::new());
     let spawner = Arc::new(Spawner::with_pool(
         backend_bus.clone(),

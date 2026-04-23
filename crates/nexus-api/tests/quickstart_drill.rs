@@ -16,15 +16,13 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
-use nexus_api::extension_router::{
-    DefaultRegistry, ExtensionId, ExtensionRouterRegistry,
-};
+use nexus_api::extension_router::{DefaultRegistry, ExtensionId, ExtensionRouterRegistry};
 use nexus_storage::Database;
 use nexus_storage::records::ExtensionRecord;
 use serde_json::Value;
 use tower::ServiceExt;
 
-use common::{harness_with, StubHf};
+use common::{StubHf, harness_with};
 
 fn nexus_local_llm_record() -> ExtensionRecord {
     ExtensionRecord {
@@ -81,7 +79,11 @@ async fn json_body(resp: axum::response::Response) -> (StatusCode, Value) {
 #[tokio::test]
 async fn quickstart_section_2_dispatcher_smoke() {
     let h = harness_with(StubHf::with_results(vec![])).await;
-    h.state.db.insert_extension(&nexus_local_llm_record()).await.unwrap();
+    h.state
+        .db
+        .insert_extension(&nexus_local_llm_record())
+        .await
+        .unwrap();
 
     let mut state = h.state.clone();
     let registry: Arc<DefaultRegistry> = Arc::new(DefaultRegistry::new());

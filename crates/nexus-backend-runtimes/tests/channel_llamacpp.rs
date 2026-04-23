@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use common::DelayedHealthServer;
-use nexus_backend_runtimes::events::BroadcastPublisher;
+use nexus_backend_runtimes::events::BackendEventBus;
 use nexus_backend_runtimes::settings::AcceleratorProfile;
 use nexus_backend_runtimes::spawn::{RuntimeBindMode, SpawnRuntimeRequest};
 
@@ -43,7 +43,7 @@ async fn process_started_before_channel_ready() {
     let mock = DelayedHealthServer::start_after(health_delay).await;
     let port = mock.port();
 
-    let publisher = BroadcastPublisher::new(64);
+    let publisher = BackendEventBus::new(64);
     let mut rx = publisher.subscribe();
 
     let spawner = nexus_backend_runtimes::spawn::Spawner::new(Arc::new(publisher.clone()));
@@ -100,7 +100,7 @@ async fn process_exit_invalidates_channel() {
     let mock = DelayedHealthServer::start_after(Duration::from_millis(200)).await;
     let port = mock.port();
 
-    let publisher = BroadcastPublisher::new(64);
+    let publisher = BackendEventBus::new(64);
     let mut rx = publisher.subscribe();
 
     let spawner = nexus_backend_runtimes::spawn::Spawner::new(Arc::new(publisher.clone()));

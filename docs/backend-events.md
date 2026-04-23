@@ -8,7 +8,7 @@ The **backend event bus** is how the host tells the outside world what its backe
 
 ```mermaid
 flowchart LR
-    A[backend runtime<br/>install pipeline] -->|publish| B((BroadcastPublisher))
+    A[backend runtime<br/>install pipeline] -->|publish| B((BackendEventBus))
     C[spawn / supervise] -->|publish| B
     D[chat handler<br/>dead-pointer 410] -->|publish| B
     E[uninstall handler<br/>drain_leases] -->|publish| B
@@ -17,7 +17,7 @@ flowchart LR
 ```
 
 - **Emitters** only hold an `EventPublisher` trait object. They don't know there's a channel underneath.
-- **Subscriber** lives in exactly one place: the WebSocket handler. It holds the concrete `BroadcastPublisher` because subscription semantics are channel-specific.
+- **Subscriber** lives in exactly one place: the WebSocket handler. It holds the concrete `BackendEventBus` because subscription semantics are channel-specific.
 - **UI** consumes the stream with a `type` filter in the query string and renders toasts, progress bars, log tails.
 
 ---
@@ -32,7 +32,7 @@ pub struct AppState {
     pub backend_event_publisher: SharedPublisher,     // = Arc<dyn EventPublisher>
 
     // Subscribe surface — concrete. Keeps the broadcast::Receiver factory.
-    pub backend_event_bus: Arc<BroadcastPublisher>,
+    pub backend_event_bus: Arc<BackendEventBus>,
     // ...
 }
 ```
@@ -44,13 +44,13 @@ Why split?
 | Publishing events from a handler | `backend_event_publisher` | Trait-based — tests can inject a `MockEventPublisher` without wiring a real tokio channel. |
 | Subscribing from the WS endpoint | `backend_event_bus` | `.subscribe()` returns `broadcast::Receiver<BackendEvent>`, which is channel-specific and doesn't belong on the trait. |
 
-Both fields are clones of the same `Arc<BroadcastPublisher>`, so emit and subscribe share one channel — no risk of publishing into a dead-end.
+Both fields are clones of the same `Arc<BackendEventBus>`, so emit and subscribe share one channel — no risk of publishing into a dead-end.
 
 ```mermaid
 flowchart TB
-    src[Arc::new&#40;BroadcastPublisher::new&#40;1024&#41;&#41;]
+    src[Arc::new&#40;BackendEventBus::new&#40;1024&#41;&#41;]
     src -->|clone, unsized to dyn| pub_field[AppState.backend_event_publisher<br/>SharedPublisher]
-    src -->|clone, concrete| sub_field[AppState.backend_event_bus<br/>Arc&lt;BroadcastPublisher&gt;]
+    src -->|clone, concrete| sub_field[AppState.backend_event_bus<br/>Arc&lt;BackendEventBus&gt;]
     pub_field --> emit[publish path]
     sub_field --> wssub[.subscribe&#40;&#41; path]
 ```
@@ -99,7 +99,7 @@ Topics are free-form strings; consumers filter by prefix.
 sequenceDiagram
     participant UI as Web UI (SSE/WS)
     participant WS as /api/v1/backends/events
-    participant BUS as BroadcastPublisher
+    participant BUS as BackendEventBus
     participant PIPE as llamacpp::install_pipeline
 
     UI->>WS: WebSocket upgrade
@@ -152,12 +152,12 @@ impl EventPublisher for RecordingPublisher {
 let recorder = Arc::new(RecordingPublisher(Mutex::new(Vec::new())));
 let state = AppState {
     backend_event_publisher: recorder.clone(),  // coerces to SharedPublisher
-    backend_event_bus: Arc::new(BroadcastPublisher::new(1)), // unused here
+    backend_event_bus: Arc::new(BackendEventBus::new(1)), // unused here
     // ...
 };
 ```
 
-Integration tests that exercise the WebSocket must use a real `BroadcastPublisher` for both fields — see `tests/backend_events_ws.rs` for the pattern.
+Integration tests that exercise the WebSocket must use a real `BackendEventBus` for both fields — see `tests/backend_events_ws.rs` for the pattern.
 
 ---
 
@@ -165,7 +165,7 @@ Integration tests that exercise the WebSocket must use a real `BroadcastPublishe
 
 | Thing | File |
 |-------|------|
-| `BackendEvent`, `EventPublisher`, `BroadcastPublisher`, `SharedPublisher` | `crates/nexus-backend-runtimes/src/events.rs` |
+| `BackendEvent`, `EventPublisher`, `BackendEventBus`, `SharedPublisher` | `crates/nexus-backend-runtimes/src/events.rs` |
 | Two `AppState` fields | `crates/nexus-api/src/lib.rs` |
 | Production wiring (one `Arc`, cloned twice) | `crates/nexus-core/src/app.rs` |
 | WebSocket endpoint | `crates/nexus-api/src/handlers/backend_events_ws.rs` |

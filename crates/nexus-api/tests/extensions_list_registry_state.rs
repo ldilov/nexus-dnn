@@ -9,11 +9,11 @@
 
 use std::sync::Arc;
 
+use axum::Router;
+use axum::routing::get;
 use nexus_api::extension_router::{
     DefaultRegistry, ExtensionId, ExtensionRouterRegistry, Registration,
 };
-use axum::Router;
-use axum::routing::get;
 
 fn synthetic() -> Router {
     Router::new().route("/x", get(|| async { "x" }))
@@ -147,4 +147,3 @@ fn dto_serialises_not_registered_omits_optional_fields() {
     assert!(json.get("http_routes").is_none());
     assert!(json.get("registration_failure_reason").is_none());
 }
-

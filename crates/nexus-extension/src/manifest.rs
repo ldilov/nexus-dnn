@@ -27,6 +27,33 @@ pub struct ExtensionManifest {
     pub runtime_dependencies: Vec<RuntimeDependency>,
     #[serde(default)]
     pub model_dependencies: Vec<ModelDependency>,
+    /// Spec 032 — backend runtimes this extension contributes to the host
+    /// catalog. Empty by default for backward compat with existing extensions.
+    #[serde(default)]
+    pub backend_runtimes: Vec<BackendRuntimeContribution>,
+}
+
+/// One row contributed to `backend_runtime_catalog` (spec 032). The host
+/// validates this entry's shape, computes a `ContributionChecksum`, and
+/// upserts on extension activation.
+///
+/// Field types are deliberately plain strings here — domain validation
+/// (regex, family canonical lookup, path-traversal check) lives in
+/// [`super::backend_runtime_contribution`] so this crate stays free of the
+/// `nexus-backend-runtimes` dependency.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct BackendRuntimeContribution {
+    pub runtime_id: String,
+    pub display_name: String,
+    pub family: String,
+    pub transport: String,
+    pub worker_entrypoint: String,
+    pub version_manifest: String,
+    #[serde(default)]
+    pub capability_tags: Vec<String>,
+    #[serde(default)]
+    pub supported_roles: Vec<String>,
 }
 
 /// A host-managed runtime this extension requires to function. Resolved

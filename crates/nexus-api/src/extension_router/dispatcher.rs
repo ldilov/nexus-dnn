@@ -130,7 +130,9 @@ mod tests {
 
     #[test]
     fn rewrites_nested_path_with_query() {
-        let original: Uri = "/api/v1/extensions/alpha/chat/threads?limit=10".parse().unwrap();
+        let original: Uri = "/api/v1/extensions/alpha/chat/threads?limit=10"
+            .parse()
+            .unwrap();
         let out = rewrite_uri(&original, "chat/threads").unwrap();
         assert_eq!(out.path(), "/chat/threads");
         assert_eq!(out.query(), Some("limit=10"));

@@ -62,13 +62,19 @@ pub async fn get_installed_model_metadata(
                  FROM model_store_installed_artifacts \
                  WHERE artifact_id = ?1";
 
-    let row = match sqlx::query(query).bind(&install_id).fetch_optional(pool).await {
+    let row = match sqlx::query(query)
+        .bind(&install_id)
+        .fetch_optional(pool)
+        .await
+    {
         Ok(Some(row)) => row,
         Ok(None) => return not_found(&install_id),
         Err(err) => return internal_error(&install_id, err),
     };
 
-    let raw_format: String = row.try_get("format").unwrap_or_else(|_| FORMAT_UNKNOWN.to_string());
+    let raw_format: String = row
+        .try_get("format")
+        .unwrap_or_else(|_| FORMAT_UNKNOWN.to_string());
     let layer_count = row
         .try_get::<Option<i64>, _>("layer_count")
         .ok()
@@ -79,14 +85,19 @@ pub async fn get_installed_model_metadata(
         .ok()
         .flatten()
         .and_then(|v| u32::try_from(v).ok());
-    let architecture = row.try_get::<Option<String>, _>("architecture").ok().flatten();
+    let architecture = row
+        .try_get::<Option<String>, _>("architecture")
+        .ok()
+        .flatten();
     let hidden_size = row
         .try_get::<Option<i64>, _>("hidden_size")
         .ok()
         .flatten()
         .and_then(|v| u32::try_from(v).ok());
-    let raw_status: Option<String> =
-        row.try_get::<Option<String>, _>("extraction_status").ok().flatten();
+    let raw_status: Option<String> = row
+        .try_get::<Option<String>, _>("extraction_status")
+        .ok()
+        .flatten();
     let raw_extracted_at: Option<i64> =
         row.try_get::<Option<i64>, _>("extracted_at").ok().flatten();
 

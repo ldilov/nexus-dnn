@@ -18,7 +18,7 @@ use nexus_storage::records::ExtensionRecord;
 use serde_json::Value;
 use tower::ServiceExt;
 
-use common::{harness_with, StubHf};
+use common::{StubHf, harness_with};
 
 fn synthetic_router() -> Router {
     Router::new().route("/ping", axum::routing::get(|| async { "pong" }))
@@ -54,14 +54,24 @@ fn record(id: &str) -> ExtensionRecord {
 async fn list_endpoint_surfaces_all_three_registry_states() {
     let h = harness_with(StubHf::with_results(vec![])).await;
 
-    h.state.db.insert_extension(&record("ok-ext")).await.unwrap();
-    h.state.db.insert_extension(&record("failed-ext")).await.unwrap();
-    h.state.db.insert_extension(&record("absent-ext")).await.unwrap();
+    h.state
+        .db
+        .insert_extension(&record("ok-ext"))
+        .await
+        .unwrap();
+    h.state
+        .db
+        .insert_extension(&record("failed-ext"))
+        .await
+        .unwrap();
+    h.state
+        .db
+        .insert_extension(&record("absent-ext"))
+        .await
+        .unwrap();
 
     let mut state = h.state.clone();
-    let registry = std::sync::Arc::new(
-        nexus_api::extension_router::DefaultRegistry::new(),
-    );
+    let registry = std::sync::Arc::new(nexus_api::extension_router::DefaultRegistry::new());
     registry
         .register(
             ExtensionId::parse("ok-ext").unwrap(),

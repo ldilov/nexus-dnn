@@ -42,10 +42,7 @@ fn build_dispatcher_app() -> Router {
     registry.seal();
     let shared: SharedRegistry = registry;
     Router::new()
-        .route(
-            "/api/v1/extensions/{ext_id}/{*rest}",
-            get(dispatch),
-        )
+        .route("/api/v1/extensions/{ext_id}/{*rest}", get(dispatch))
         .with_state(shared)
 }
 

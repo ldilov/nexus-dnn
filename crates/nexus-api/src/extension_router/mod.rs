@@ -48,11 +48,7 @@ pub trait ExtensionRouterRegistry: Send + Sync + 'static {
         http_routes: Vec<String>,
     ) -> Result<(), RegistryError>;
 
-    fn register_failure(
-        &self,
-        id: ExtensionId,
-        reason: String,
-    ) -> Result<(), RegistryError>;
+    fn register_failure(&self, id: ExtensionId, reason: String) -> Result<(), RegistryError>;
 
     fn seal(&self);
 

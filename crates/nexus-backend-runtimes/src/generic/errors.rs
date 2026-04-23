@@ -37,7 +37,9 @@ impl GenericInstallError {
 /// Catalog-layer errors (manifest validation, upsert conflicts).
 #[derive(Debug, Error)]
 pub enum GenericCatalogError {
-    #[error("duplicate runtime_id `{runtime_id}`: contributed by `{existing_extension}` and `{new_extension}`")]
+    #[error(
+        "duplicate runtime_id `{runtime_id}`: contributed by `{existing_extension}` and `{new_extension}`"
+    )]
     DuplicateRuntimeId {
         runtime_id: String,
         existing_extension: String,
@@ -49,4 +51,42 @@ pub enum GenericCatalogError {
     UnknownFamily { raw: String },
     #[error("storage error: {0}")]
     Storage(String),
+    #[error(transparent)]
+    Repo(#[from] GenericRepoError),
+}
+
+/// Storage-layer repository error. Concrete SQLite impls (T016) map
+/// `sqlx::Error` onto these variants; higher layers (catalog service,
+/// install pipeline) wrap these into domain-specific errors
+/// ([`GenericCatalogError`], [`GenericInstallError`]).
+#[derive(Debug, Error)]
+pub enum GenericRepoError {
+    #[error("storage error: {0}")]
+    Storage(String),
+    #[error("row not found")]
+    NotFound,
+    #[error("unique constraint violation: {0}")]
+    UniqueViolation(String),
+    #[error("invalid state transition from `{from}` to `{to}`")]
+    InvalidTransition { from: String, to: String },
+    #[error("serialization error: {0}")]
+    Serialization(String),
+}
+
+impl From<sqlx::Error> for GenericRepoError {
+    fn from(e: sqlx::Error) -> Self {
+        match e {
+            sqlx::Error::RowNotFound => GenericRepoError::NotFound,
+            sqlx::Error::Database(db) if db.is_unique_violation() => {
+                GenericRepoError::UniqueViolation(db.to_string())
+            }
+            other => GenericRepoError::Storage(other.to_string()),
+        }
+    }
+}
+
+impl From<serde_json::Error> for GenericRepoError {
+    fn from(e: serde_json::Error) -> Self {
+        GenericRepoError::Serialization(e.to_string())
+    }
 }

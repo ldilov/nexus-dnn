@@ -72,11 +72,7 @@ impl DownloadJobDto {
             requested_kind: requested_kind_as_str(p.requested_kind).to_owned(),
             include_dependencies: p.include_dependencies,
             state: download_state_as_str(p.state).to_owned(),
-            targets: p
-                .targets
-                .into_iter()
-                .map(target_dto)
-                .collect(),
+            targets: p.targets.into_iter().map(target_dto).collect(),
             warnings: p.warnings,
             progress_bytes: p.progress_bytes,
             total_bytes: p.total_bytes,
@@ -173,10 +169,7 @@ fn extract_repo(family_id: &str) -> Option<(&str, &str)> {
     Some((provider, repo))
 }
 
-async fn resolve_family(
-    state: &AppState,
-    family_id: &str,
-) -> Result<ModelFamily, Response> {
+async fn resolve_family(state: &AppState, family_id: &str) -> Result<ModelFamily, Response> {
     let Some(hf) = state.huggingface.as_ref() else {
         return Err(ApiResponse::<()>::err(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -187,10 +180,7 @@ async fn resolve_family(
         .into_response());
     };
     let Some((_provider, repo_id)) = extract_repo(family_id) else {
-        return Err(ApiResponse::<()>::bad_request(
-            "invalid family_id".into(),
-        )
-        .into_response());
+        return Err(ApiResponse::<()>::bad_request("invalid family_id".into()).into_response());
     };
     let req = SearchReq {
         query: repo_id.to_owned(),
@@ -209,10 +199,9 @@ async fn resolve_family(
         .into_response()
     })?;
     let Some(raw) = page.results.iter().find(|r| r.repo_id == repo_id) else {
-        return Err(ApiResponse::<()>::not_found(format!(
-            "family_not_found: {family_id}"
-        ))
-        .into_response());
+        return Err(
+            ApiResponse::<()>::not_found(format!("family_not_found: {family_id}")).into_response(),
+        );
     };
     let registry = state.capability_registry.as_ref();
     let family = match registry {
@@ -229,7 +218,10 @@ fn artifact_by_id<'a>(
     family: &'a ModelFamily,
     id: &str,
 ) -> Option<&'a nexus_models_store::model::Artifact> {
-    family.artifacts.iter().find(|a| a.artifact_id.as_str() == id)
+    family
+        .artifacts
+        .iter()
+        .find(|a| a.artifact_id.as_str() == id)
 }
 
 fn variant_by_id<'a>(
@@ -270,8 +262,10 @@ fn build_targets(
         }
         DownloadTarget::Bundle => {
             let mut out = Vec::new();
-            if let Some(primary) =
-                family.artifacts.iter().find(|a| a.role == DependencyRole::Primary)
+            if let Some(primary) = family
+                .artifacts
+                .iter()
+                .find(|a| a.role == DependencyRole::Primary)
             {
                 out.push(input_from_artifact(primary));
             }
@@ -386,10 +380,7 @@ pub async fn create_download(
 }
 
 /// `POST /api/v1/model-store/downloads/:job_id/pause` (T086).
-pub async fn pause_download(
-    State(state): State<AppState>,
-    Path(job_id): Path<String>,
-) -> Response {
+pub async fn pause_download(State(state): State<AppState>, Path(job_id): Path<String>) -> Response {
     let Some(store) = state.download_job_store.as_ref() else {
         return ApiResponse::<()>::err(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -409,8 +400,7 @@ pub async fn pause_download(
         .into_response();
     };
     let Ok(uuid) = uuid::Uuid::from_str(&job_id) else {
-        return ApiResponse::<()>::bad_request(format!("invalid job_id: {job_id}"))
-            .into_response();
+        return ApiResponse::<()>::bad_request(format!("invalid job_id: {job_id}")).into_response();
     };
     let id = JobId::from_uuid(uuid);
 
@@ -418,17 +408,16 @@ pub async fn pause_download(
     if !was_active {
         let removed_from_queue = orchestrator.cancel_queued(id).await;
         if removed_from_queue
-            && let Err(e) = store
-                .update_state(&id, DownloadState::Paused, None)
-                .await
+            && let Err(e) = store.update_state(&id, DownloadState::Paused, None).await
         {
             return ApiResponse::<()>::internal(format!("store: {e}")).into_response();
         }
     }
     match store.get(&id).await {
         Ok(Some(job)) => ApiResponse::ok(DownloadJobDto::from_persisted(job)).into_response(),
-        Ok(None) => ApiResponse::<()>::not_found(format!("job_not_found: {job_id}"))
-            .into_response(),
+        Ok(None) => {
+            ApiResponse::<()>::not_found(format!("job_not_found: {job_id}")).into_response()
+        }
         Err(e) => ApiResponse::<()>::internal(format!("store: {e}")).into_response(),
     }
 }
@@ -457,8 +446,7 @@ pub async fn resume_download(
         .into_response();
     };
     let Ok(uuid) = uuid::Uuid::from_str(&job_id) else {
-        return ApiResponse::<()>::bad_request(format!("invalid job_id: {job_id}"))
-            .into_response();
+        return ApiResponse::<()>::bad_request(format!("invalid job_id: {job_id}")).into_response();
     };
     let id = JobId::from_uuid(uuid);
 
@@ -467,8 +455,9 @@ pub async fn resume_download(
     }
     match store.get(&id).await {
         Ok(Some(job)) => ApiResponse::ok(DownloadJobDto::from_persisted(job)).into_response(),
-        Ok(None) => ApiResponse::<()>::not_found(format!("job_not_found: {job_id}"))
-            .into_response(),
+        Ok(None) => {
+            ApiResponse::<()>::not_found(format!("job_not_found: {job_id}")).into_response()
+        }
         Err(e) => ApiResponse::<()>::internal(format!("store: {e}")).into_response(),
     }
 }
@@ -489,14 +478,14 @@ pub async fn get_download_status(
         .into_response();
     };
     let Ok(uuid) = uuid::Uuid::from_str(&job_id) else {
-        return ApiResponse::<()>::bad_request(format!("invalid job_id: {job_id}"))
-            .into_response();
+        return ApiResponse::<()>::bad_request(format!("invalid job_id: {job_id}")).into_response();
     };
     let id = JobId::from_uuid(uuid);
     match store.get(&id).await {
         Ok(Some(job)) => ApiResponse::ok(DownloadJobDto::from_persisted(job)).into_response(),
-        Ok(None) => ApiResponse::<()>::not_found(format!("job_not_found: {job_id}"))
-            .into_response(),
+        Ok(None) => {
+            ApiResponse::<()>::not_found(format!("job_not_found: {job_id}")).into_response()
+        }
         Err(e) => ApiResponse::<()>::internal(format!("store: {e}")).into_response(),
     }
 }

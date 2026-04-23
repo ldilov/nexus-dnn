@@ -16,6 +16,16 @@ pub fn validate_manifest_schema(manifest_value: &serde_json::Value) -> Result<()
     validate_manifest_with_refs(manifest_value)
 }
 
+/// Spec 032 — validate the parsed `backend_runtimes` block. Atomic per
+/// FR-004: any invalid contribution rejects the whole activation.
+pub fn validate_backend_runtimes(manifest: &ExtensionManifest) -> Result<(), ExtensionError> {
+    crate::backend_runtime_contribution::validate_contributions(&manifest.backend_runtimes).map_err(
+        |e| ExtensionError::SchemaValidation {
+            errors: vec![format!("backend_runtimes contribution invalid: {e}")],
+        },
+    )
+}
+
 pub fn validate_operator_schema(operator_value: &serde_json::Value) -> Result<(), ExtensionError> {
     validate_against_schema(operator_value, OPERATOR_SCHEMA)
 }

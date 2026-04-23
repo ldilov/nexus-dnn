@@ -54,7 +54,10 @@ impl StubHf {
 #[async_trait]
 impl HuggingFaceCapability for StubHf {
     async fn search(&self, req: SearchReq) -> HfResult<SearchPage> {
-        self.observed_queries.lock().unwrap().push(req.query.clone());
+        self.observed_queries
+            .lock()
+            .unwrap()
+            .push(req.query.clone());
         if let Some(err) = self.force_error.lock().unwrap().take() {
             return Err(err);
         }
@@ -67,11 +70,7 @@ impl HuggingFaceCapability for StubHf {
         })
     }
 
-    async fn detail(
-        &self,
-        repo_id: &str,
-        revision: Option<&str>,
-    ) -> HfResult<RepoMetadata> {
+    async fn detail(&self, repo_id: &str, revision: Option<&str>) -> HfResult<RepoMetadata> {
         Ok(self.detail.lock().unwrap().clone().unwrap_or(RepoMetadata {
             repo_id: repo_id.to_owned(),
             revision: revision.unwrap_or("main").to_owned(),
@@ -174,8 +173,7 @@ pub async fn harness_with_extra(
         tokens.clone(),
     ));
 
-    let backend_event_bus =
-        Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(1024));
+    let backend_event_bus = Arc::new(nexus_backend_runtimes::events::BackendEventBus::new(1024));
 
     let state = AppState {
         health_status_fn: Arc::new(|| serde_json::json!({ "status": "ok" })),
@@ -198,17 +196,23 @@ pub async fn harness_with_extra(
         hf_token_store: Some(tokens.clone()),
         backend_event_publisher: backend_event_bus.clone(),
         backend_event_bus,
-        draft_materialize_map:
-            nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
+        draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
         host_install_paths: None,
         extension_router_registry: {
             use nexus_api::extension_router::ExtensionRouterRegistry as _;
-            let r = std::sync::Arc::new(
-                nexus_api::extension_router::DefaultRegistry::new(),
-            );
+            let r = std::sync::Arc::new(nexus_api::extension_router::DefaultRegistry::new());
             r.seal();
             r as nexus_api::extension_router::SharedRegistry
         },
+        family_handlers:
+            nexus_backend_runtimes::generic::family_handler::FamilyHandlerRegistry::new(),
+        pipeline_events: {
+            let (tx, _) = tokio::sync::broadcast::channel(nexus_api::PIPELINE_EVENT_CAPACITY);
+            std::sync::Arc::new(tx)
+        },
+        lease_manager: std::sync::Arc::new(
+            nexus_backend_runtimes::generic::leases::LeaseManager::new(),
+        ),
     };
 
     TestHarness {
@@ -303,8 +307,7 @@ async fn harness_from_ext_dir(hf: Arc<StubHf>, ext_dir: tempfile::TempDir) -> Te
         tokens.clone(),
     ));
 
-    let backend_event_bus =
-        Arc::new(nexus_backend_runtimes::events::BroadcastPublisher::new(1024));
+    let backend_event_bus = Arc::new(nexus_backend_runtimes::events::BackendEventBus::new(1024));
 
     let state = AppState {
         health_status_fn: Arc::new(|| serde_json::json!({ "status": "ok" })),
@@ -327,17 +330,23 @@ async fn harness_from_ext_dir(hf: Arc<StubHf>, ext_dir: tempfile::TempDir) -> Te
         hf_token_store: Some(tokens.clone()),
         backend_event_publisher: backend_event_bus.clone(),
         backend_event_bus,
-        draft_materialize_map:
-            nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
+        draft_materialize_map: nexus_api::handlers::modules::draft_map::DraftMaterializeMap::new(),
         host_install_paths: None,
         extension_router_registry: {
             use nexus_api::extension_router::ExtensionRouterRegistry as _;
-            let r = std::sync::Arc::new(
-                nexus_api::extension_router::DefaultRegistry::new(),
-            );
+            let r = std::sync::Arc::new(nexus_api::extension_router::DefaultRegistry::new());
             r.seal();
             r as nexus_api::extension_router::SharedRegistry
         },
+        family_handlers:
+            nexus_backend_runtimes::generic::family_handler::FamilyHandlerRegistry::new(),
+        pipeline_events: {
+            let (tx, _) = tokio::sync::broadcast::channel(nexus_api::PIPELINE_EVENT_CAPACITY);
+            std::sync::Arc::new(tx)
+        },
+        lease_manager: std::sync::Arc::new(
+            nexus_backend_runtimes::generic::leases::LeaseManager::new(),
+        ),
     };
 
     TestHarness {

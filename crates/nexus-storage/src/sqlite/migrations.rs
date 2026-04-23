@@ -97,6 +97,31 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StorageError> {
         true,
     )
     .await?;
+    // spec 032 — backend-runtime catalog + installs + settings + leases
+    execute_migration_statements(
+        pool,
+        include_str!("../../../../migrations/016_backend_runtime_catalog.sql"),
+        false,
+    )
+    .await?;
+    execute_migration_statements(
+        pool,
+        include_str!("../../../../migrations/017_backend_runtime_installs.sql"),
+        false,
+    )
+    .await?;
+    execute_migration_statements(
+        pool,
+        include_str!("../../../../migrations/018_backend_runtime_settings.sql"),
+        false,
+    )
+    .await?;
+    execute_migration_statements(
+        pool,
+        include_str!("../../../../migrations/019_backend_runtime_leases.sql"),
+        false,
+    )
+    .await?;
     Ok(())
 }
 

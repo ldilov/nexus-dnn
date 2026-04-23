@@ -21,8 +21,7 @@ use axum::http::{Request, StatusCode, header};
 use axum::routing::{get, post};
 use http_body_util::BodyExt;
 use nexus_api::extension_router::{
-    DefaultRegistry, ExtensionId, ExtensionRouterRegistry, SharedRegistry, dispatch,
-    dispatch_root,
+    DefaultRegistry, ExtensionId, ExtensionRouterRegistry, SharedRegistry, dispatch, dispatch_root,
 };
 use serde_json::Value;
 use tower::ServiceExt;
@@ -142,10 +141,7 @@ async fn case_3_503_registration_failed_structured_body() {
 #[tokio::test]
 async fn case_4_extension_defined_404_passes_through_unchanged() {
     let registry: Arc<DefaultRegistry> = Arc::new(DefaultRegistry::new());
-    let extension = Router::new().route(
-        "/known",
-        get(|| async { (StatusCode::OK, "ok") }),
-    );
+    let extension = Router::new().route("/known", get(|| async { (StatusCode::OK, "ok") }));
     registry
         .register(
             ExtensionId::parse("contract-ok").unwrap(),
@@ -204,10 +200,7 @@ async fn case_5_extension_defined_405_passes_through_unchanged() {
 #[tokio::test]
 async fn fr_013_request_body_passes_through_byte_for_byte() {
     let registry: Arc<DefaultRegistry> = Arc::new(DefaultRegistry::new());
-    let echo = Router::new().route(
-        "/echo",
-        post(|body: String| async move { body }),
-    );
+    let echo = Router::new().route("/echo", post(|body: String| async move { body }));
     registry
         .register(
             ExtensionId::parse("contract-ok").unwrap(),
@@ -254,7 +247,11 @@ async fn edge_trailing_slash_forwards_with_empty_subpath() {
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "extension's root route reached");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "extension's root route reached"
+    );
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     assert_eq!(std::str::from_utf8(&bytes).unwrap(), "root-of-extension");
 }
@@ -264,9 +261,7 @@ async fn fr_013_query_string_preserved_byte_for_byte() {
     let registry: Arc<DefaultRegistry> = Arc::new(DefaultRegistry::new());
     let echo = Router::new().route(
         "/q",
-        get(|uri: axum::http::Uri| async move {
-            uri.query().unwrap_or("").to_owned()
-        }),
+        get(|uri: axum::http::Uri| async move { uri.query().unwrap_or("").to_owned() }),
     );
     registry
         .register(

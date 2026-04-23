@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use camino::Utf8PathBuf;
 use nexus_backend_runtimes::adapter::BackendAdapter;
-use nexus_backend_runtimes::events::{BackendEvent, BroadcastPublisher};
+use nexus_backend_runtimes::events::{BackendEvent, BackendEventBus};
 use nexus_backend_runtimes::llamacpp::LlamaCppAdapter;
 use nexus_backend_runtimes::llamacpp::installs_store;
 use nexus_backend_runtimes::manifest::install::{InstallManifest, InstallStatus};
@@ -95,7 +95,7 @@ async fn install_unavailable_emitted_on_validator_transition() {
         .await
         .expect("seed install row");
 
-    let publisher = Arc::new(BroadcastPublisher::new(256));
+    let publisher = Arc::new(BackendEventBus::new(256));
     let mut rx = publisher.subscribe();
 
     let adapter = LlamaCppAdapter::new(

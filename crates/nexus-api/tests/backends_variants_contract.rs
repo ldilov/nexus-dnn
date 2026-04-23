@@ -16,7 +16,7 @@ use http_body_util::BodyExt;
 use nexus_api::AppState;
 use nexus_artifact::FilesystemArtifactStore;
 use nexus_backend_runtimes::adapter::AdapterRegistry;
-use nexus_backend_runtimes::events::BroadcastPublisher;
+use nexus_backend_runtimes::events::BackendEventBus;
 use nexus_backend_runtimes::llamacpp::LlamaCppAdapter;
 use nexus_events::bus::BroadcastEventBus;
 use nexus_extension::InMemoryExtensionRegistry;
@@ -93,7 +93,7 @@ async fn build_harness(manifest: Option<&str>) -> Harness {
         scheduler.clone(),
     ));
 
-    let backend_bus = Arc::new(BroadcastPublisher::new(1024));
+    let backend_bus = Arc::new(BackendEventBus::new(1024));
     let runtimes_root =
         camino::Utf8PathBuf::from_path_buf(tmp.path().join("runtimes")).expect("utf8 temp path");
     let adapter = Arc::new(LlamaCppAdapter::new(
@@ -169,7 +169,7 @@ async fn unwired_harness() -> Harness {
         event_bus.clone(),
         scheduler.clone(),
     ));
-    let backend_bus = Arc::new(BroadcastPublisher::new(1024));
+    let backend_bus = Arc::new(BackendEventBus::new(1024));
 
     let state = AppState {
         health_status_fn: Arc::new(|| serde_json::json!({ "status": "ok" })),

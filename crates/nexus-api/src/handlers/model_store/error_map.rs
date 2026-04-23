@@ -7,8 +7,9 @@ use crate::envelope::ApiResponse;
 
 fn category_for(err: &ModelStoreError) -> &'static str {
     match err {
-        ModelStoreError::UpstreamUnavailable(_)
-        | ModelStoreError::SourceUnreachable { .. } => "upstream",
+        ModelStoreError::UpstreamUnavailable(_) | ModelStoreError::SourceUnreachable { .. } => {
+            "upstream"
+        }
         ModelStoreError::AuthRequired { .. } => "auth",
         ModelStoreError::FamilyNotFound(_)
         | ModelStoreError::TargetNotFound
@@ -18,15 +19,15 @@ fn category_for(err: &ModelStoreError) -> &'static str {
         | ModelStoreError::InsufficientResources { .. }
         | ModelStoreError::ManifestInvalid(_) => "validation",
         ModelStoreError::LeasedByExtensions { .. } => "conflict",
-        ModelStoreError::Internal(_)
-        | ModelStoreError::Storage(_)
-        | ModelStoreError::Io(_) => "internal",
+        ModelStoreError::Internal(_) | ModelStoreError::Storage(_) | ModelStoreError::Io(_) => {
+            "internal"
+        }
     }
 }
 
 pub fn into_response(err: ModelStoreError) -> Response {
-    let status = StatusCode::from_u16(err.status_u16())
-        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let status =
+        StatusCode::from_u16(err.status_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     let code = err.code();
     let category = category_for(&err);
     let message = err.to_string();
@@ -40,8 +41,9 @@ mod tests {
 
     #[test]
     fn auth_required_maps_to_401() {
-        let resp =
-            into_response(ModelStoreError::AuthRequired { repo: "meta/x".into() });
+        let resp = into_response(ModelStoreError::AuthRequired {
+            repo: "meta/x".into(),
+        });
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 
@@ -53,8 +55,7 @@ mod tests {
 
     #[test]
     fn upstream_unavailable_maps_to_502() {
-        let resp =
-            into_response(ModelStoreError::UpstreamUnavailable("timeout".into()));
+        let resp = into_response(ModelStoreError::UpstreamUnavailable("timeout".into()));
         assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
     }
 

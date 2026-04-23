@@ -71,11 +71,7 @@ impl ExtensionRouterRegistry for DefaultRegistry {
         Ok(())
     }
 
-    fn register_failure(
-        &self,
-        id: ExtensionId,
-        reason: String,
-    ) -> Result<(), RegistryError> {
+    fn register_failure(&self, id: ExtensionId, reason: String) -> Result<(), RegistryError> {
         if self.sealed.load(Ordering::Acquire) {
             return Err(RegistryError::Sealed);
         }

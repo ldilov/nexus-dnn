@@ -243,14 +243,11 @@ impl InMemoryExtensionRegistry {
         };
         let prior = std::mem::replace(&mut state.extensions[idx], reloaded);
         let host_tags: std::collections::HashSet<String> = std::collections::HashSet::new();
-        if let Err(err) =
-            custom_elements::collect_from_extensions(&host_tags, &state.extensions)
-        {
+        if let Err(err) = custom_elements::collect_from_extensions(&host_tags, &state.extensions) {
             state.extensions[idx] = prior;
             return Err(err);
         }
-        state.operator_index =
-            OperatorIndex::build(rebuild_operator_entries(&state.extensions));
+        state.operator_index = OperatorIndex::build(rebuild_operator_entries(&state.extensions));
         Ok(())
     }
 

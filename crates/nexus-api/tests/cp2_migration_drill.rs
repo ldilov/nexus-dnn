@@ -19,13 +19,11 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
-use nexus_api::extension_router::{
-    DefaultRegistry, ExtensionId, ExtensionRouterRegistry,
-};
+use nexus_api::extension_router::{DefaultRegistry, ExtensionId, ExtensionRouterRegistry};
 use serde_json::Value;
 use tower::ServiceExt;
 
-use common::{harness_with, StubHf};
+use common::{StubHf, harness_with};
 
 fn nexus_local_llm_router() -> Router {
     Router::new().route(
@@ -126,8 +124,8 @@ async fn cp2_router_source_contains_no_local_llm_routes() {
 
 #[tokio::test]
 async fn cp2_handler_directory_is_deleted() {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("src/handlers/extensions_local_llm");
+    let dir =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/handlers/extensions_local_llm");
     assert!(
         !dir.exists(),
         "crates/nexus-api/src/handlers/extensions_local_llm/ MUST be deleted in CP2; found {}",

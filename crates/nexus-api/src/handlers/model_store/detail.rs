@@ -20,10 +20,7 @@ fn split_family_id(id: &str) -> Option<(&str, &str)> {
 /// resolves the repo via the HF search endpoint (re-using the stub
 /// in tests) and runs the standard normalize pipeline so the caller
 /// gets the same schema `/search` emits per-row.
-pub async fn get_family(
-    State(state): State<AppState>,
-    Path(family_id): Path<String>,
-) -> Response {
+pub async fn get_family(State(state): State<AppState>, Path(family_id): Path<String>) -> Response {
     let Some(hf) = state.huggingface.as_ref() else {
         return ApiResponse::<()>::err(
             StatusCode::SERVICE_UNAVAILABLE,

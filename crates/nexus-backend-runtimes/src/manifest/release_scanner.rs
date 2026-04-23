@@ -147,8 +147,8 @@ impl ReleaseScanner {
             });
         }
         let bytes = resp.bytes().await?;
-        let api_releases: Vec<ApiRelease> = serde_json::from_slice(&bytes)
-            .map_err(|e| ScannerError::Decode(e.to_string()))?;
+        let api_releases: Vec<ApiRelease> =
+            serde_json::from_slice(&bytes).map_err(|e| ScannerError::Decode(e.to_string()))?;
         project_manifest(&api_releases).ok_or(ScannerError::NoUsableReleases)
     }
 }
@@ -398,10 +398,7 @@ mod tests {
 
     #[test]
     fn rejects_vulkan() {
-        assert_eq!(
-            parse_asset_name("llama-b8827-bin-win-vulkan-x64.zip"),
-            None
-        );
+        assert_eq!(parse_asset_name("llama-b8827-bin-win-vulkan-x64.zip"), None);
     }
 
     #[test]
@@ -419,10 +416,7 @@ mod tests {
 
     #[test]
     fn rejects_arm64() {
-        assert_eq!(
-            parse_asset_name("llama-b8827-bin-win-cpu-arm64.zip"),
-            None
-        );
+        assert_eq!(parse_asset_name("llama-b8827-bin-win-cpu-arm64.zip"), None);
         assert_eq!(
             parse_asset_name("llama-b8827-bin-ubuntu-arm64.tar.gz"),
             None
@@ -431,14 +425,8 @@ mod tests {
 
     #[test]
     fn rejects_macos() {
-        assert_eq!(
-            parse_asset_name("llama-b8827-bin-macos-x64.tar.gz"),
-            None
-        );
-        assert_eq!(
-            parse_asset_name("llama-b8827-bin-macos-arm64.tar.gz"),
-            None
-        );
+        assert_eq!(parse_asset_name("llama-b8827-bin-macos-x64.tar.gz"), None);
+        assert_eq!(parse_asset_name("llama-b8827-bin-macos-arm64.tar.gz"), None);
     }
 
     #[test]

@@ -42,9 +42,7 @@ async fn detect_cuda_runtime(state: &AppState) -> bool {
     let pool = state.db.pool();
     match nexus_backend_runtimes::runtime_installs_store::list_all(pool).await {
         Ok(rows) => rows.iter().any(|r| {
-            r.state == "installed"
-                && r.family == "llama.cpp"
-                && r.accelerator.starts_with("cuda")
+            r.state == "installed" && r.family == "llama.cpp" && r.accelerator.starts_with("cuda")
         }),
         Err(_) => false,
     }

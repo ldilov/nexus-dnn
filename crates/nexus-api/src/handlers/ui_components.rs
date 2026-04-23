@@ -63,17 +63,13 @@ pub const PROPS_SCHEMA_DRAFT: &str = "2020-12";
 
 #[derive(Debug, thiserror::Error)]
 pub enum CatalogValidationError {
-    #[error(
-        "component '{name}' declares required prop '{prop}' but no example covers it"
-    )]
+    #[error("component '{name}' declares required prop '{prop}' but no example covers it")]
     RequiredPropNotCovered { name: String, prop: String },
     #[error("component '{name}' has zero examples (minimum 1)")]
     NoExamples { name: String },
     #[error("component '{name}' name does not match [a-z][a-z0-9_]*")]
     InvalidName { name: String },
-    #[error(
-        "component '{name}' top-level schema type must be 'object', got {got}"
-    )]
+    #[error("component '{name}' top-level schema type must be 'object', got {got}")]
     NonObjectSchema { name: String, got: String },
 }
 
@@ -125,19 +121,77 @@ fn any_obj() -> Value {
 /// renders a discoverable dropdown instead of a blind text field.
 fn icon_enum() -> serde_json::Value {
     json!([
-        "play_arrow", "pause", "stop", "skip_next", "skip_previous",
-        "add", "remove", "close", "check", "check_circle", "cancel",
-        "edit", "delete", "download", "upload", "save", "content_copy",
-        "settings", "tune", "menu", "more_vert", "more_horiz",
-        "home", "dashboard", "folder", "folder_open", "description", "inbox",
-        "search", "filter_list", "sort", "refresh", "sync",
-        "arrow_forward", "arrow_back", "chevron_left", "chevron_right",
-        "expand_more", "expand_less", "open_in_new", "launch",
-        "error", "warning", "info", "help", "bug_report",
-        "account_circle", "person", "group", "lock", "lock_open", "visibility", "visibility_off",
-        "chat", "send", "notifications", "star", "favorite", "bookmark",
-        "code", "terminal", "extension", "model_training", "developer_board", "rocket_launch",
-        "play_circle", "bolt", "hub", "cloud_sync", "history", "schedule"
+        "play_arrow",
+        "pause",
+        "stop",
+        "skip_next",
+        "skip_previous",
+        "add",
+        "remove",
+        "close",
+        "check",
+        "check_circle",
+        "cancel",
+        "edit",
+        "delete",
+        "download",
+        "upload",
+        "save",
+        "content_copy",
+        "settings",
+        "tune",
+        "menu",
+        "more_vert",
+        "more_horiz",
+        "home",
+        "dashboard",
+        "folder",
+        "folder_open",
+        "description",
+        "inbox",
+        "search",
+        "filter_list",
+        "sort",
+        "refresh",
+        "sync",
+        "arrow_forward",
+        "arrow_back",
+        "chevron_left",
+        "chevron_right",
+        "expand_more",
+        "expand_less",
+        "open_in_new",
+        "launch",
+        "error",
+        "warning",
+        "info",
+        "help",
+        "bug_report",
+        "account_circle",
+        "person",
+        "group",
+        "lock",
+        "lock_open",
+        "visibility",
+        "visibility_off",
+        "chat",
+        "send",
+        "notifications",
+        "star",
+        "favorite",
+        "bookmark",
+        "code",
+        "terminal",
+        "extension",
+        "model_training",
+        "developer_board",
+        "rocket_launch",
+        "play_circle",
+        "bolt",
+        "hub",
+        "cloud_sync",
+        "history",
+        "schedule"
     ])
 }
 
@@ -991,9 +1045,7 @@ pub fn catalog_entries_empty() -> Vec<ComponentMetadata> {
     Vec::new()
 }
 
-pub fn validate_catalog(
-    entries: &[ComponentMetadata],
-) -> Result<(), CatalogValidationError> {
+pub fn validate_catalog(entries: &[ComponentMetadata]) -> Result<(), CatalogValidationError> {
     for entry in entries {
         if !is_valid_name(&entry.name) {
             return Err(CatalogValidationError::InvalidName {
@@ -1025,7 +1077,9 @@ pub fn validate_catalog(
             .cloned()
             .unwrap_or_default();
         for prop in required {
-            let Some(prop_name) = prop.as_str() else { continue };
+            let Some(prop_name) = prop.as_str() else {
+                continue;
+            };
             let covered = entry
                 .examples
                 .iter()
@@ -1043,7 +1097,9 @@ pub fn validate_catalog(
 
 fn is_valid_name(name: &str) -> bool {
     let mut chars = name.chars();
-    let Some(first) = chars.next() else { return false };
+    let Some(first) = chars.next() else {
+        return false;
+    };
     if !first.is_ascii_lowercase() {
         return false;
     }
@@ -1097,10 +1153,7 @@ mod tests {
             "Needs Thing",
             ComponentCategory::Input,
             "",
-            obj(
-                json!({ "thing": { "type": "string" } }),
-                &["thing"],
-            ),
+            obj(json!({ "thing": { "type": "string" } }), &["thing"]),
             "type: needs_thing\nprops: {}\n",
         );
         let err = validate_catalog(&[entry]).unwrap_err();

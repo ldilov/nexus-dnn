@@ -11,7 +11,7 @@ use http_body_util::BodyExt;
 use serde::Deserialize;
 use tower::ServiceExt;
 
-use crate::common::{harness_with, StubHf};
+use crate::common::{StubHf, harness_with};
 
 #[derive(Debug, Deserialize)]
 struct CpuCoreFacts {
@@ -38,8 +38,7 @@ async fn get_cpu_cores(state: nexus_api::AppState) -> (StatusCode, serde_json::V
         .await
         .expect("collect body")
         .to_bytes();
-    let json: serde_json::Value =
-        serde_json::from_slice(&bytes).expect("valid json response");
+    let json: serde_json::Value = serde_json::from_slice(&bytes).expect("valid json response");
     (status, json)
 }
 

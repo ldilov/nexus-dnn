@@ -9,7 +9,7 @@ use http_body_util::BodyExt;
 use nexus_huggingface::{RepoFile, SearchResult};
 use tower::ServiceExt;
 
-use crate::common::{gguf_result, harness_with, safetensors_result, StubHf};
+use crate::common::{StubHf, gguf_result, harness_with, safetensors_result};
 
 async fn get_json(state: nexus_api::AppState, uri: &str) -> (StatusCode, serde_json::Value) {
     let router = nexus_api::create_router(state);
@@ -27,9 +27,10 @@ async fn get_json(state: nexus_api::AppState, uri: &str) -> (StatusCode, serde_j
 /// Each family carries the canonical `huggingface:<repo>` id prefix.
 #[tokio::test]
 async fn t_s1_freetext_search_returns_normalized_families() {
-    let harness = harness_with(StubHf::with_results(vec![
-        gguf_result("test/llama-8b-gguf", &[("Q4_K_M", 4_900_000_000)]),
-    ]))
+    let harness = harness_with(StubHf::with_results(vec![gguf_result(
+        "test/llama-8b-gguf",
+        &[("Q4_K_M", 4_900_000_000)],
+    )]))
     .await;
     let (status, body) = get_json(harness.state, "/api/v1/model-store/search?q=llama").await;
     assert_eq!(status, StatusCode::OK);
@@ -83,8 +84,7 @@ async fn t_s3_show_unsupported_false_filters_out_unsupported() {
         unknown,
     ]))
     .await;
-    let (status, body) =
-        get_json(harness.state, "/api/v1/model-store/search?q=test").await;
+    let (status, body) = get_json(harness.state, "/api/v1/model-store/search?q=test").await;
     assert_eq!(status, StatusCode::OK);
     let families = body["data"]["families"].as_array().unwrap();
     assert_eq!(families.len(), 1);
@@ -133,9 +133,11 @@ async fn t_s5_pagination_page_two_disjoint_from_page_one() {
         gguf_result("t/b", &[("Q4_K_M", 1)]),
     ]))
     .await;
-    let (_, p1) =
-        get_json(harness.state.clone(), "/api/v1/model-store/search?q=t&page=1&page_size=10")
-            .await;
+    let (_, p1) = get_json(
+        harness.state.clone(),
+        "/api/v1/model-store/search?q=t&page=1&page_size=10",
+    )
+    .await;
     let p1_ids: Vec<&str> = p1["data"]["families"]
         .as_array()
         .unwrap()
@@ -202,11 +204,14 @@ async fn t_s7_malformed_upstream_row_does_not_crash_handler() {
         gguf_result("good/gguf", &[("Q4_K_M", 1)]),
     ]))
     .await;
-    let (status, body) =
-        get_json(harness.state, "/api/v1/model-store/search?q=any").await;
+    let (status, body) = get_json(harness.state, "/api/v1/model-store/search?q=any").await;
     assert_eq!(status, StatusCode::OK);
     let families = body["data"]["families"].as_array().unwrap();
-    assert!(families.iter().any(|f| f["family_id"] == "huggingface:good/gguf"));
+    assert!(
+        families
+            .iter()
+            .any(|f| f["family_id"] == "huggingface:good/gguf")
+    );
 }
 
 /// T-S8 — compat classification (FR-060/FR-061). GGUF family with
@@ -272,14 +277,23 @@ async fn t_s9_installed_filter_joins_against_install_map() {
     let (_, any_body) = get_json(state.clone(), "/api/v1/model-store/search?q=ts9uniq").await;
     assert_eq!(any_body["data"]["families"].as_array().unwrap().len(), 2);
 
-    let (_, installed_body) =
-        get_json(state.clone(), "/api/v1/model-store/search?q=ts9uniq&installed=installed").await;
+    let (_, installed_body) = get_json(
+        state.clone(),
+        "/api/v1/model-store/search?q=ts9uniq&installed=installed",
+    )
+    .await;
     let installed_families = installed_body["data"]["families"].as_array().unwrap();
     assert_eq!(installed_families.len(), 1);
-    assert_eq!(installed_families[0]["family_id"], "huggingface:ts9org/alpha");
+    assert_eq!(
+        installed_families[0]["family_id"],
+        "huggingface:ts9org/alpha"
+    );
 
-    let (_, not_installed_body) =
-        get_json(state, "/api/v1/model-store/search?q=ts9uniq&installed=not_installed").await;
+    let (_, not_installed_body) = get_json(
+        state,
+        "/api/v1/model-store/search?q=ts9uniq&installed=not_installed",
+    )
+    .await;
     let not_families = not_installed_body["data"]["families"].as_array().unwrap();
     assert_eq!(not_families.len(), 1);
     assert_eq!(not_families[0]["family_id"], "huggingface:ts9org/beta");

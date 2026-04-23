@@ -288,7 +288,10 @@ fn validate_relative_path(untrusted: &str) -> Result<(), String> {
     }
     for c in p.components() {
         use std::path::Component;
-        if matches!(c, Component::ParentDir | Component::RootDir | Component::Prefix(_)) {
+        if matches!(
+            c,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        ) {
             return Err(format!("file path escapes install root: {untrusted}"));
         }
     }
@@ -365,9 +368,7 @@ fn host_install_error(err: HostInstallFailure) -> ApiResponse<()> {
             "upstream",
             "Hugging Face unreachable".into(),
         ),
-        HostInstallFailure::Hf(other) => {
-            ApiResponse::<()>::internal(format!("hf error: {other}"))
-        }
+        HostInstallFailure::Hf(other) => ApiResponse::<()>::internal(format!("hf error: {other}")),
         HostInstallFailure::Model(e) => {
             let (status, code) = http_status_for_model_error(&e);
             ApiResponse::<()>::err(status, code, "model_store", e.to_string())
@@ -483,7 +484,9 @@ fn derive_family(paths: &[String], meta: &nexus_huggingface::RepoMetadata) -> St
     if let Some(pipeline) = meta.pipeline_tag.as_deref() {
         return pipeline.to_string();
     }
-    meta.library_name.clone().unwrap_or_else(|| "unknown".into())
+    meta.library_name
+        .clone()
+        .unwrap_or_else(|| "unknown".into())
 }
 
 fn derive_quantization(paths: &[String]) -> Option<String> {

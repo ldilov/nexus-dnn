@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use nexus_backend_runtimes::events::{BroadcastPublisher, SharedPublisher};
+use nexus_backend_runtimes::events::{BackendEventBus, SharedPublisher};
 use nexus_backend_runtimes::spawn::Spawner;
 use nexus_models_store::downloads::{DownloadOrchestrator, InstallMap};
 use sqlx::SqlitePool;
@@ -27,7 +27,7 @@ pub struct ChatHandlerResources {
     pub download_orchestrator: Option<Arc<DownloadOrchestrator>>,
     pub spawner: Option<Arc<Spawner>>,
     pub backend_event_publisher: SharedPublisher,
-    pub backend_event_bus: Arc<BroadcastPublisher>,
+    pub backend_event_bus: Arc<BackendEventBus>,
     pub model_load_registry: Arc<ModelLoadRegistry>,
 }
 
@@ -38,7 +38,7 @@ impl ChatHandlerResources {
         download_orchestrator: Option<Arc<DownloadOrchestrator>>,
         spawner: Option<Arc<Spawner>>,
         backend_event_publisher: SharedPublisher,
-        backend_event_bus: Arc<BroadcastPublisher>,
+        backend_event_bus: Arc<BackendEventBus>,
         model_load_registry: Arc<ModelLoadRegistry>,
     ) -> Self {
         Self {

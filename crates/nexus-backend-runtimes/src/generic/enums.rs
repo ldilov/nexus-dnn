@@ -159,6 +159,36 @@ pub enum PipelineFailureCategory {
 }
 
 impl PipelineFailureCategory {
+    /// Parse the stable wire form back into the enum. Inverse of [`to_wire`].
+    /// Unknown variants return `Err(raw.to_string())` so callers can decide
+    /// whether to treat as fatal (strict mode) or coerce into `Custom`.
+    pub fn from_wire(raw: &str) -> Result<Self, String> {
+        Ok(match raw {
+            "python_bootstrap_failed" => Self::PythonBootstrapFailed,
+            "dependency_install_failed" => Self::DependencyInstallFailed,
+            "cuda_profile_mismatch" => Self::CudaProfileMismatch,
+            "worker_start_failed" => Self::WorkerStartFailed,
+            "handshake_failed" => Self::HandshakeFailed,
+            "model_missing" => Self::ModelMissing,
+            "model_load_failed" => Self::ModelLoadFailed,
+            "runtime_health_failed" => Self::RuntimeHealthFailed,
+            "runtime_not_installed" => Self::RuntimeNotInstalled,
+            "source_extension_unavailable" => Self::SourceExtensionUnavailable,
+            "source_extension_missing" => Self::SourceExtensionMissing,
+            "invalid_version_manifest" => Self::InvalidVersionManifest,
+            "invalid_download" => Self::InvalidDownload,
+            "install_path_collision" => Self::InstallPathCollision,
+            "cancelled" => Self::Cancelled,
+            other => {
+                if let Some(rest) = other.strip_prefix("custom:") {
+                    Self::Custom(rest.to_string())
+                } else {
+                    return Err(other.to_string());
+                }
+            }
+        })
+    }
+
     /// Stable wire form used in DB + JSON. `Custom(s)` emits `custom:<s>`.
     pub fn to_wire(&self) -> String {
         match self {
