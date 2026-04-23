@@ -24,6 +24,43 @@ a specific extension id is a merge blocker per constitution Principle XIII
 `.claude/rules/host-extension-boundary.md`). The boundary audit script
 at `extensions/builtin/local-llm/scripts/audit-boundary.sh` is the gate.
 
+## Generic backend-runtime endpoints (spec 032)
+
+Additive surface alongside the legacy `/api/v1/backends/*` routes (which
+stay on the grandfathered llama.cpp code path per Principle XIII.6).
+
+Catalog:
+- `GET /api/v1/backend-runtimes` — list catalog rows; filters
+  `runtime_family`, `source_extension_id`, `implementation_status`.
+- `GET /api/v1/backend-runtimes/{runtime_id}` — single catalog row.
+
+Install lifecycle:
+- `POST /api/v1/backend-runtimes/{runtime_id}/install` — 202 + install id.
+- `GET /api/v1/backend-runtime-installs` — list installs (filter by
+  `runtime_id`).
+- `GET /api/v1/backend-runtime-installs/{install_id}` — one install row.
+- `DELETE /api/v1/backend-runtime-installs/{install_id}` — uninstall;
+  409 when live leases exist.
+- `GET /api/v1/backend-runtime-installs/{install_id}/progress` — SSE
+  stream of `PhaseEvent` frames.
+- `GET /api/v1/backend-runtime-installs/{install_id}/health` —
+  aggregate health across live leases.
+- `POST /api/v1/backend-runtime-installs/{install_id}/retry` — retry a
+  failed install.
+- `POST /api/v1/backend-runtime-installs/{install_id}/start` — acquire
+  a lease.
+- `POST /api/v1/backend-runtime-installs/{install_id}/stop` — drain
+  every live lease.
+- `POST /api/v1/backend-runtime-installs/{install_id}/restart` — stop
+  + start in a single call.
+
+Leases:
+- `GET /api/v1/backend-runtime-leases` — list leases; filters
+  `runtime_install_id`, `owner_kind`, `state`, `live_only`.
+- `GET /api/v1/backend-runtime-leases/{lease_id}` — single lease row.
+- `DELETE /api/v1/backend-runtime-leases/{lease_id}` — release a
+  lease.
+
 ## Host-runtime endpoints (spec 011/012/016)
 
 - `GET /api/v1/backends` — list every `host_runtime_installs` row + dependents

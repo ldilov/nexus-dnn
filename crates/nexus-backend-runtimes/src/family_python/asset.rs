@@ -1,28 +1,13 @@
-//! Embedded-Python asset metadata — the URL, checksum, and archive layout
-//! used by [`super::bootstrap`] to stage a portable interpreter under the
-//! pipeline's `partial_path`.
-//!
-//! Production assets are sourced from
-//! [`python-build-standalone`](https://github.com/astral-sh/python-build-standalone).
-//! v1 ships with an empty default table — callers register the pinned
-//! `(target, release) → PythonAsset` mapping at host boot so the pinning
-//! lives in configuration, not code. Tests construct [`PythonAsset`]
-//! directly and pass it via [`super::FamilyPythonHandler::with_asset`].
-
 use std::path::PathBuf;
 
-/// Archive format of an embedded-Python asset.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum PythonArchiveKind {
-    /// `install_only` tarballs from python-build-standalone.
     TarGz,
-    /// Windows embeddable distribution zip.
     Zip,
 }
 
 impl PythonArchiveKind {
-    /// Infer the archive kind from a URL's file extension.
     pub fn infer(url: &str) -> Option<Self> {
         let lower = url.to_ascii_lowercase();
         if lower.ends_with(".tar.gz") || lower.ends_with(".tgz") {
@@ -35,14 +20,6 @@ impl PythonArchiveKind {
     }
 }
 
-/// Canonical description of an embedded-Python distribution binary.
-///
-/// `extract_dir` is where the archive should be unpacked relative to the
-/// install's partial path. Conventionally `python`, giving
-/// `{partial}/python/`. `archive_root_component` is the top-level directory
-/// name inside the archive — python-build-standalone tarballs nest
-/// everything under `python/`, so the handler strips that one level to
-/// avoid `{partial}/python/python/...`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PythonAsset {
     pub url: String,
@@ -54,8 +31,6 @@ pub struct PythonAsset {
 }
 
 impl PythonAsset {
-    /// Helper for the common python-build-standalone `install_only.tar.gz`
-    /// shape: extract into `python/`, strip the outer `python/` component.
     pub fn pbs_install_only(url: impl Into<String>, sha256: impl Into<String>, size: u64) -> Self {
         Self {
             url: url.into(),
@@ -68,8 +43,6 @@ impl PythonAsset {
     }
 }
 
-/// Compile-time target triple this build was produced for (OS + arch).
-/// Matches the keying convention used by the asset table.
 pub fn current_target_triple() -> &'static str {
     if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
         "x86_64-pc-windows-msvc"

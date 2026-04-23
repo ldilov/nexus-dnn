@@ -87,6 +87,37 @@ churning every call site.
 
 - `bash scripts/verify-spec-011.sh` — asserts the zero-extension-deps invariant.
 
+## Generic multi-family pipeline (spec 032)
+
+Sibling to the grandfathered `llamacpp/` tree, `generic/` implements the
+10-phase install pipeline (`resolve → download → verify → extract →
+bootstrap_runtime → install_deps → validate_env → detect_models →
+persist → complete`) that drives any `RuntimeFamily` contributed by an
+extension. Family-specific hooks (`bootstrap_runtime`, `install_deps`,
+`validate_env`) dispatch to a `RuntimeFamilyHandler` registered in
+`FamilyHandlerRegistry` at host boot.
+
+- `generic/install_pipeline.rs` — orchestrator, phase ordering,
+  cancellation, `PhaseEvent` emission.
+- `generic/phases/` — family-agnostic phases. `download.rs` caches
+  archives under `{download_cache}/archives/<sha256>.bin` and
+  short-circuits on hash hit (retry-friendly; re-install-friendly).
+- `generic/catalog/`, `installs/`, `settings/`, `leases/` — SQLite
+  repos for the four host-owned tables introduced by migrations
+  016–019.
+- `generic/leases/` — `StdioLease` (NDJSON over stdio, 8 MB line cap)
+  + `Matchmaker` + `NotificationFanout` + `LeaseManager` (in-process
+  live-lease registry).
+- `family_python/` — embedded-Python family handler. Env-driven asset
+  config (`NEXUS_EMBEDDED_PYTHON_URL` / `_SHA256` / `_SIZE`); see
+  `embedded-python.env.example`.
+- `family_native/` — no-op handler for pre-built native-binary
+  runtimes.
+
+Boundary audit (`scripts/audit-runtime-boundary.ps1`) enforces zero
+extension-id literals in the generic subtree — see `Principle XIII`
+in `.specify/memory/constitution.md`.
+
 ## Model store
 
 Host-owned model catalog under `models_store/`.
