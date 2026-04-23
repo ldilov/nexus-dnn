@@ -311,6 +311,7 @@ impl NexusApp {
                     nexus_backend_runtimes::generic::family_handler::FamilyHandlerRegistry::new();
                 nexus_api::handlers::backend_runtimes::pipeline_runner::register_default_handlers(
                     &registry,
+                    None,
                 )
                 .await;
                 registry
