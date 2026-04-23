@@ -743,11 +743,130 @@ async fn t080_deactivate_contributions_with_drain_releases_leases_and_flips_stat
     assert_eq!(entry.implementation_status.as_str(), "unavailable");
 }
 
-/// T087c / SC-007 — when an extension deactivates mid-lease, the
-/// in-memory drain completes within the 500 ms p95 budget. We don't
-/// have a live `send_rpc` to block on here (test-echo's echo roundtrips
-/// in microseconds), but the drain itself is the fixed-cost work SC-007
-/// bounds, so we measure its wall clock.
+#[tokio::test]
+async fn health_returns_400_on_invalid_install_id() {
+    let h = lifecycle_harness().await;
+    let resp = h
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/backend-runtime-installs/not-a-ulid/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap(),
+    )
+    .unwrap();
+    assert_eq!(body["error"]["code"], "invalid_install_id");
+}
+
+#[tokio::test]
+async fn health_returns_404_when_install_missing() {
+    let h = lifecycle_harness().await;
+    let bogus = RuntimeInstallId::new();
+    let resp = h
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/v1/backend-runtime-installs/{bogus}/health"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn health_returns_no_live_leases_when_none_held() {
+    let h = lifecycle_harness().await;
+    let resp = h
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/v1/backend-runtime-installs/{}/health",
+                    h.install_id
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap(),
+    )
+    .unwrap();
+    assert_eq!(body["data"]["live_lease_count"], 0);
+    assert_eq!(body["data"]["aggregate"], "no_live_leases");
+    assert_eq!(body["data"]["leases"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn health_reports_healthy_after_start_when_echo_worker_responds() {
+    let h = lifecycle_harness().await;
+
+    h.router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/backend-runtime-installs/{}/start",
+                    h.install_id
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(h.state.lease_manager.live_count().await, 1);
+
+    let resp = h
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/v1/backend-runtime-installs/{}/health",
+                    h.install_id
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap(),
+    )
+    .unwrap();
+    assert_eq!(body["data"]["live_lease_count"], 1);
+    assert_eq!(body["data"]["aggregate"], "healthy");
+    let leases = body["data"]["leases"].as_array().unwrap();
+    assert_eq!(leases.len(), 1);
+    assert_eq!(leases[0]["healthy"], true);
+    assert!(leases[0]["latency_ms"].as_u64().is_some());
+
+    h.state
+        .lease_manager
+        .release_all_for_install(&h.install_id)
+        .await
+        .unwrap();
+}
+
 #[tokio::test]
 async fn drain_completes_within_sc_007_budget() {
     let h = lifecycle_harness().await;
