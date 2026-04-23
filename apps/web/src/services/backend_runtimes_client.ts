@@ -277,6 +277,7 @@ export interface PhaseEvent {
   elapsed_ms: number;
   failure_category: string | null;
   failure_detail: string | null;
+  payload?: { cached?: boolean } | null;
 }
 
 export const PHASE_ORDER: Array<PhaseEvent["phase"]> = [

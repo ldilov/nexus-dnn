@@ -116,6 +116,18 @@ impl PhaseEvent {
         }
     }
 
+    pub fn completed_cached(install_id: RuntimeInstallId, phase: Phase, elapsed_ms: u64) -> Self {
+        Self {
+            install_id,
+            phase,
+            state: PhaseState::Completed,
+            elapsed_ms,
+            failure_category: None,
+            failure_detail: None,
+            payload: serde_json::json!({ "cached": true }),
+        }
+    }
+
     pub fn failed(
         install_id: RuntimeInstallId,
         phase: Phase,
@@ -153,6 +165,7 @@ pub async fn run(
 ) -> Result<(), GenericInstallError> {
     for phase in Phase::ORDER {
         check_cancelled(ctx, *phase)?;
+        ctx.phase_cached = false;
         let start = Instant::now();
         sink.emit(PhaseEvent::started(ctx.install_id, *phase)).await;
 
@@ -172,8 +185,12 @@ pub async fn run(
         let elapsed = start.elapsed().as_millis() as u64;
         match outcome {
             Ok(()) => {
-                sink.emit(PhaseEvent::completed(ctx.install_id, *phase, elapsed))
-                    .await;
+                let event = if ctx.phase_cached {
+                    PhaseEvent::completed_cached(ctx.install_id, *phase, elapsed)
+                } else {
+                    PhaseEvent::completed(ctx.install_id, *phase, elapsed)
+                };
+                sink.emit(event).await;
             }
             Err(err) => {
                 sink.emit(PhaseEvent::failed(ctx.install_id, *phase, elapsed, &err))
@@ -219,6 +236,12 @@ async fn persist_phase(_ctx: &mut InstallCtx) -> Result<(), GenericInstallError>
 async fn complete_phase(ctx: &mut InstallCtx) -> Result<(), GenericInstallError> {
     if ctx.partial_path == ctx.install_path {
         return Ok(());
+    }
+    let sentinel = ctx
+        .partial_path
+        .join(crate::generic::phases::extract::EXTRACT_SENTINEL);
+    if sentinel.exists() {
+        let _ = tokio::fs::remove_file(&sentinel).await;
     }
     if !ctx.partial_path.exists() {
         return Err(GenericInstallError::new(

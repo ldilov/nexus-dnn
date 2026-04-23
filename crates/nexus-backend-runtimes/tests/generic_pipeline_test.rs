@@ -99,6 +99,7 @@ fn make_ctx(partial: PathBuf, install: PathBuf, manifest: serde_json::Value) -> 
         entrypoint_path: Some(PathBuf::from("python")),
         event_publisher: publisher(),
         cancellation: CancellationToken::new(),
+        phase_cached: false,
     }
 }
 
@@ -231,6 +232,53 @@ async fn cancellation_mid_pipeline_stops_at_next_phase_boundary() {
     assert!(phases_that_completed.contains(&Phase::Resolve));
     assert!(phases_that_completed.contains(&Phase::BootstrapRuntime));
     assert!(!phases_that_completed.contains(&Phase::InstallDeps));
+}
+
+/// T096/T097 — second pipeline run against a pre-populated partial
+/// dir marks download + extract as cached on their completed events.
+#[tokio::test]
+async fn cached_phases_stamp_payload_on_second_run() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (asset_path, sha, size) = build_test_zip(tmp.path());
+    let manifest = version_manifest(&asset_path, &sha, size);
+    let partial = tmp.path().join("install.partial");
+    let install_first = tmp.path().join("install_first");
+    let install_second = tmp.path().join("install_second");
+
+    let handler = Arc::new(FamilyNativeHandler::new(RuntimeFamily::Python));
+    let sink1 = Arc::new(CapturingSink::default());
+    let mut ctx1 = make_ctx(partial.clone(), install_first.clone(), manifest.clone());
+    run(&mut ctx1, handler.clone(), sink1.clone()).await.unwrap();
+
+    let partial2 = tmp.path().join("install_second.partial");
+    std::fs::create_dir_all(&partial2).unwrap();
+    std::fs::copy(
+        install_first.join("archive.bin"),
+        partial2.join("archive.bin"),
+    )
+    .unwrap();
+    std::fs::write(
+        partial2.join(nexus_backend_runtimes::generic::phases::extract::EXTRACT_SENTINEL),
+        &sha,
+    )
+    .unwrap();
+
+    let sink2 = Arc::new(CapturingSink::default());
+    let mut ctx2 = make_ctx(partial2, install_second, manifest);
+    ctx2.download_cache = ctx1.download_cache.clone();
+    run(&mut ctx2, handler, sink2.clone()).await.unwrap();
+
+    let events = sink2.events.lock().unwrap().clone();
+    let download_completed = events
+        .iter()
+        .find(|e| e.phase == Phase::Download && e.state == PhaseState::Completed)
+        .expect("download completed event");
+    let extract_completed = events
+        .iter()
+        .find(|e| e.phase == Phase::Extract && e.state == PhaseState::Completed)
+        .expect("extract completed event");
+    assert_eq!(download_completed.payload, serde_json::json!({ "cached": true }));
+    assert_eq!(extract_completed.payload, serde_json::json!({ "cached": true }));
 }
 
 #[tokio::test]

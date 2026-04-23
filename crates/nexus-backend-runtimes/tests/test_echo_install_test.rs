@@ -78,6 +78,7 @@ async fn test_echo_runtime_installs_end_to_end() {
         entrypoint_path: Some(PathBuf::from("python")),
         event_publisher: publisher,
         cancellation: CancellationToken::new(),
+        phase_cached: false,
     };
 
     let handler = Arc::new(FamilyNativeHandler::new(RuntimeFamily::Python));

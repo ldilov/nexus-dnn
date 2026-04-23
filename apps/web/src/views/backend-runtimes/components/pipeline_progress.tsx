@@ -15,6 +15,7 @@ interface PhaseRow {
   state: PhaseState;
   elapsed_ms: number;
   failure_detail?: string;
+  cached?: boolean;
 }
 
 /**
@@ -35,6 +36,7 @@ export function PipelineProgress({ installId, onTerminal, onClose }: Props) {
   useEffect(() => {
     const cleanup = subscribeInstallProgress(installId, {
       onPhase: (evt: PhaseEvent) => {
+        const cached = Boolean(evt.payload?.cached);
         setRows((prev) => ({
           ...prev,
           [evt.phase]: {
@@ -46,6 +48,7 @@ export function PipelineProgress({ installId, onTerminal, onClose }: Props) {
                   : "failed",
             elapsed_ms: evt.elapsed_ms,
             failure_detail: evt.failure_detail ?? undefined,
+            cached,
           },
         }));
       },
@@ -96,6 +99,11 @@ export function PipelineProgress({ installId, onTerminal, onClose }: Props) {
                   {row.state === "running" && "◐"}
                   {row.state === "completed" && "●"}
                   {row.state === "failed" && "✕"} {phase}
+                  {row.cached && (
+                    <span className={css.cachedChip} aria-label="short-circuited via cache">
+                      cache
+                    </span>
+                  )}
                 </span>
                 <span className={css.stepperElapsed}>
                   {row.elapsed_ms > 0 ? `${row.elapsed_ms}ms` : ""}

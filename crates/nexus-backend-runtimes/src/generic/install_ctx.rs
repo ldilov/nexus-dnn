@@ -50,6 +50,13 @@ pub struct InstallCtx {
     /// the family handler knows exactly which executable to record.
     pub entrypoint_path: Option<PathBuf>,
 
+    /// Per-phase "this phase short-circuited a cached artifact" flag. A
+    /// phase sets this to `true` when it skipped its work because a
+    /// prior run's output was already present and still valid. The
+    /// orchestrator reads + clears it at the phase boundary and stamps
+    /// `PhaseEvent.payload.cached = true` for the UI.
+    pub phase_cached: bool,
+
     /// Backend-events publisher handle used to emit `PhaseEvent::*`.
     pub event_publisher: SharedPublisher,
     /// Cooperative cancellation token — phases check at boundaries and

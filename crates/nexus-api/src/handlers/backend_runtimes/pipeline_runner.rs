@@ -202,6 +202,7 @@ async fn drive(state: &AppState, request: &PipelineRequest) -> Result<(), Generi
         entrypoint_path: Some(PathBuf::from(&request.worker_entrypoint_path)),
         event_publisher: state.backend_event_publisher.clone(),
         cancellation: CancellationToken::new(),
+        phase_cached: false,
     };
 
     run(&mut ctx, handler, sink).await?;
