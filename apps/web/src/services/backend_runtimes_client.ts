@@ -159,6 +159,50 @@ export async function getInstall(installId: string): Promise<InstallRow> {
   return unwrap<InstallRow>(res);
 }
 
+export async function listInstalls(runtimeId: string): Promise<InstallRow[]> {
+  const res = await fetch(
+    `/api/v1/backend-runtime-installs?runtime_id=${encodeURIComponent(runtimeId)}`,
+  );
+  const data = await unwrap<{ installs: InstallRow[] }>(res);
+  return data.installs;
+}
+
+export interface LeaseRow {
+  lease_id: string;
+  runtime_install_id: string;
+  owner_kind: string;
+  owner_ref: string;
+  transport: string;
+  pid: number | null;
+  state:
+    | "starting"
+    | "ready"
+    | "busy"
+    | "stopping"
+    | "failed"
+    | "released"
+    | string;
+  crash_recovered: boolean;
+  last_failure_category: string | null;
+  acquired_at: number;
+  released_at: number | null;
+}
+
+export async function listLeases(params: {
+  runtime_install_id?: string;
+  live_only?: boolean;
+}): Promise<LeaseRow[]> {
+  const qs = new URLSearchParams();
+  if (params.runtime_install_id)
+    qs.set("runtime_install_id", params.runtime_install_id);
+  if (params.live_only !== undefined)
+    qs.set("live_only", params.live_only ? "true" : "false");
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  const res = await fetch(`/api/v1/backend-runtime-leases${suffix}`);
+  const data = await unwrap<{ leases: LeaseRow[] }>(res);
+  return data.leases;
+}
+
 export async function retryInstall(
   installId: string,
 ): Promise<{ runtime_install_id: string; resumed_from_phase: string }> {

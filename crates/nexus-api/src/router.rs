@@ -217,6 +217,10 @@ pub fn build(state: AppState) -> Router {
             post(backend_runtimes::install::install),
         )
         .route(
+            "/backend-runtime-installs",
+            get(backend_runtimes::installs_list::list),
+        )
+        .route(
             "/backend-runtime-installs/{install_id}",
             get(backend_runtimes::installs_get::get)
                 .delete(backend_runtimes::installs_delete::delete),

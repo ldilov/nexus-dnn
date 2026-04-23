@@ -671,6 +671,119 @@ async fn retry_only_permitted_on_failed_status() {
     assert_eq!(after.status, InstallStatus::Pending);
 }
 
+// -----------------------------------------------------------------------------
+// T087 — GET /backend-runtime-installs list endpoint
+// -----------------------------------------------------------------------------
+
+#[tokio::test]
+async fn installs_list_returns_400_when_runtime_id_is_missing() {
+    let h = harness().await;
+    let resp = h
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/backend-runtime-installs")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_to_json(resp.into_body()).await;
+    assert_eq!(body["error"]["code"], "missing_runtime_id");
+}
+
+#[tokio::test]
+async fn installs_list_returns_empty_for_runtime_with_no_installs() {
+    let h = harness().await;
+    seed_runtime(&h, "test.echo").await;
+
+    let resp = h
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/backend-runtime-installs?runtime_id=test.echo")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_to_json(resp.into_body()).await;
+    let installs = body["data"]["installs"].as_array().unwrap();
+    assert!(installs.is_empty());
+}
+
+#[tokio::test]
+async fn installs_list_returns_rows_in_order_after_install_post() {
+    let h = harness().await;
+    seed_runtime(&h, "test.echo").await;
+
+    let req_body = serde_json::json!({
+        "release_id": "v0_1_0",
+        "platform": "windows-x64",
+        "accelerator_profile": "cpu"
+    });
+    let resp = h
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/backend-runtimes/test.echo/install")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::ACCEPTED);
+
+    let list_resp = h
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/backend-runtime-installs?runtime_id=test.echo")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list_resp.status(), StatusCode::OK);
+    let body = body_to_json(list_resp.into_body()).await;
+    let installs = body["data"]["installs"].as_array().unwrap();
+    assert_eq!(installs.len(), 1);
+    assert_eq!(installs[0]["runtime_id"], "test.echo");
+    assert_eq!(installs[0]["release_id"], "v0_1_0");
+    assert_eq!(installs[0]["platform"], "windows-x64");
+}
+
+#[tokio::test]
+async fn installs_list_rejects_invalid_runtime_id() {
+    let h = harness().await;
+    let resp = h
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/backend-runtime-installs?runtime_id=INVALID%21")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_to_json(resp.into_body()).await;
+    assert_eq!(body["error"]["code"], "invalid_runtime_id");
+}
+
 #[tokio::test]
 async fn abandon_cascade_marks_catalog_and_installs() {
     let h = harness().await;

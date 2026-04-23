@@ -1,5 +1,6 @@
 import type { CatalogEntry, ImplementationStatus } from "../../../services/backend_runtimes_client";
 import * as css from "../backend_runtimes.css";
+import { InstallActions } from "./install_actions";
 
 const STATUS_CLASSES: Record<ImplementationStatus, string> = {
   available: css.statusAvailable,
@@ -49,6 +50,8 @@ export function RuntimeCard({ runtime, onInstall }: Props) {
           ))}
         </div>
       )}
+
+      <InstallActions runtimeId={runtime.runtime_id} />
 
       {onInstall && runtime.implementation_status === "available" && (
         <div className={css.actionsRow}>
