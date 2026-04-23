@@ -1,0 +1,40 @@
+{
+  "_note": "Expected shape of smoke-proof.json emitted by scripts/smoke-spec-032.ps1. Values below are illustrative — a real run stamps UTC timestamps + actual durations. Commit the real artifact at specs/032-backend-runtime-catalog/smoke-proof.json after running on a clean Windows host with the test-echo-runtime extension activated.",
+  "spec": "032",
+  "started_at": "2026-04-23T00:00:00.000Z",
+  "host_base_url": "http://127.0.0.1:3000",
+  "runtime_id": "test.echo",
+  "phases": [
+    { "name": "catalog_probe", "duration_ms": 42 },
+    { "name": "install_post", "duration_ms": 88 },
+    { "name": "install_poll", "duration_ms": 4210 },
+    { "name": "lease_start", "duration_ms": 310 },
+    { "name": "lease_stop", "duration_ms": 95 }
+  ],
+  "install": {
+    "install_id": "01HZXXXXXXXXXXXXXXXXXXXXXX",
+    "pipeline_status": "running",
+    "post_duration_ms": 88,
+    "status": "validated",
+    "validated_at": 1714000000,
+    "poll_duration_ms": 4210
+  },
+  "lease": {
+    "lease_id": "01HZYYYYYYYYYYYYYYYYYYYYYY",
+    "state": "ready",
+    "pid": 12345,
+    "start_ms": 310,
+    "draining_leases": 1,
+    "stop_ms": 95
+  },
+  "cleanup": {
+    "uninstall_status": 204,
+    "duration_ms": 18
+  },
+  "boundary_audit": {
+    "exit_code": 0,
+    "tail": "BOUNDARY AUDIT PASSED — no extension-id literals found in host tree."
+  },
+  "terminal": "passed",
+  "duration_ms": 4763
+}
