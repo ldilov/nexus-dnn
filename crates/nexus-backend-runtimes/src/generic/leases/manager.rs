@@ -106,6 +106,23 @@ impl LeaseManager {
         Ok(total)
     }
 
+    /// Snapshot every live lease handle bound to the given install.
+    /// Returned clones are independent of the manager's internal lock —
+    /// callers may await against each lease without holding registry
+    /// state. Used by the `GET /install/:id/health` endpoint (T084).
+    pub async fn handles_for_install(
+        &self,
+        install_id: &RuntimeInstallId,
+    ) -> Vec<Arc<StdioLease>> {
+        self.entries
+            .lock()
+            .await
+            .values()
+            .filter(|e| e.install_id == *install_id)
+            .map(|e| e.lease.clone())
+            .collect()
+    }
+
     /// Non-authoritative live count — useful for deciding whether a
     /// `DELETE /install/:id` uninstall should 409.
     pub async fn live_count_for_install(&self, install_id: &RuntimeInstallId) -> usize {

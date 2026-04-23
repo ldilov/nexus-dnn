@@ -1,0 +1,22 @@
+# Spec 032 — version manifest for `test.echo.v2` (US4 fixture).
+# Reuses v1's echo_worker.zip since the archive structure is identical;
+# only the post-extract worker code differs (the extension subproject
+# under ./worker/).
+
+releases:
+  - release_id: "v0_0_1"
+    semver: "0.0.1"
+    notes: "Initial v2 echo worker fixture"
+    targets:
+      - platform: "windows-x64"
+        accelerator_profile: "cpu"
+        asset:
+          url: "file://assets/echo_worker.zip"
+          sha256: "30b9a5ee418004e78261372bf7d6689c72d88f82a79f0425025d2519b704b522"
+          size: 3500
+      - platform: "linux-x64"
+        accelerator_profile: "cpu"
+        asset:
+          url: "file://assets/echo_worker.zip"
+          sha256: "30b9a5ee418004e78261372bf7d6689c72d88f82a79f0425025d2519b704b522"
+          size: 3500

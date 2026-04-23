@@ -230,6 +230,10 @@ pub fn build(state: AppState) -> Router {
             get(backend_runtimes::installs_progress::progress),
         )
         .route(
+            "/backend-runtime-installs/{install_id}/health",
+            get(backend_runtimes::installs_health::get),
+        )
+        .route(
             "/backend-runtime-installs/{install_id}/retry",
             post(backend_runtimes::installs_retry::retry),
         )

@@ -13,6 +13,7 @@ pub mod get;
 pub mod install;
 pub mod installs_delete;
 pub mod installs_get;
+pub mod installs_health;
 pub mod installs_list;
 pub mod installs_progress;
 pub mod installs_restart;
