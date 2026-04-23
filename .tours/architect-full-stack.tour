@@ -1,0 +1,141 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "nexus-dnn — Full-Stack Architecture Tour",
+  "description": "End-to-end walkthrough of the nexus-dnn host runtime + React UI for software engineers onboarding to the codebase. Follows a real request path: host boot → extension registers a backend runtime via manifest → UI triggers install → 10-phase pipeline → lease acquired → JSON-RPC over stdio. Grounded in spec 032 (generic backend-runtime catalog), which is the system's widest-surface-area feature.",
+  "ref": "main",
+  "steps": [
+    {
+      "directory": "crates",
+      "title": "1. Workspace layout",
+      "description": "SITUATION: A Rust Cargo workspace with ~19 crates + a React frontend under apps/web/. MECHANISM: nexus-core is the binary entrypoint; everything else is a library crate. nexus-api owns the HTTP surface; nexus-backend-runtimes owns runtime installs + leases; nexus-extension owns manifest contracts + the registry; nexus-storage owns SQLite + migrations. IMPLICATION: When you change a file, start here — its crate tells you the boundary. GOTCHA: crates/nexus-local-llm-worker is grandfathered debt (see .claude/rules/host-extension-boundary.md); net-new extension-specific code goes under extensions/builtin/<ext-id>/, NOT under crates/."
+    },
+    {
+      "file": "crates/nexus-core/src/main.rs",
+      "line": 12,
+      "title": "2. Binary entrypoint",
+      "description": "SITUATION: The process starts here. MECHANISM: tokio runtime spins up; main() builds an App from config and calls App::run(). IMPLICATION: Any boot-time behaviour change (logging, config parsing, panic handlers) lands in main.rs or the App::new() it calls. GOTCHA: Don't add business logic here — the App struct (app.rs) is where wiring goes."
+    },
+    {
+      "file": "crates/nexus-core/src/app.rs",
+      "line": 79,
+      "title": "3. App::run — the wiring point",
+      "description": "SITUATION: The composition root. MECHANISM: Opens the SQLite pool, runs migrations, constructs every service (download orchestrator, backend-event bus, extension registry, family-handler registry, lease manager, pipeline-event broadcast, etc.) and folds them into an AppState. IMPLICATION: Adding a new host-wide resource means adding a field to AppState and populating it here. GOTCHA: The family_handlers block reads NEXUS_EMBEDDED_PYTHON_* env vars via PythonAssetConfig::from_env() — that's the env-driven asset loader, not a hardcoded default."
+    },
+    {
+      "file": "crates/nexus-storage/src/sqlite/migrations.rs",
+      "line": 12,
+      "title": "4. Storage migrations",
+      "description": "SITUATION: All schema changes are append-only SQL files under migrations/ applied here at boot. MECHANISM: run_migrations() walks files in numeric order. Spec 032 added 016–019 for the generic backend-runtime tables (catalog, installs, settings, leases). IMPLICATION: New features that need persistence add a migration NNN_*.sql with the next sequential number and row-level schema per data-model.md of the owning spec. GOTCHA: extension-owned tables MUST use the `ext_<slug>__<name>` prefix and live in the extension's own migration folder, not the host's root migrations/."
+    },
+    {
+      "directory": "crates/nexus-extension/src",
+      "title": "5. Extension contract boundary",
+      "description": "SITUATION: This crate defines how an extension declares itself to the host. MECHANISM: ExtensionManifest (manifest.rs) is the typed YAML contract; BackendRuntimeContribution, UiContribution, etc. are the payload types. IMPLICATION: If the host needs a new kind of extension capability, the contract type is added here + a validator under validation.rs or a sibling module. GOTCHA: This crate MUST NOT depend on nexus-backend-runtimes — the bridge between them lives in nexus-api to preserve Principle XIII.6 (see .claude/rules/host-extension-boundary.md)."
+    },
+    {
+      "file": "crates/nexus-extension/src/manifest.rs",
+      "line": 46,
+      "title": "6. BackendRuntimeContribution",
+      "description": "SITUATION: The exact YAML shape an extension uses to contribute a backend runtime. MECHANISM: Runtime id + display name + family (`python` | `llama.cpp`) + transport + worker entrypoint + version manifest path + capability tags + supported roles. IMPLICATION: Adding a new optional field is additive and backwards-compatible; changing a required field is a breaking spec change. GOTCHA: `family` is a plain String here — the canonical RuntimeFamily enum lookup happens in the host-side bridge, not the extension crate."
+    },
+    {
+      "file": "crates/nexus-api/src/handlers/backend_runtimes/registration.rs",
+      "line": 113,
+      "title": "7. Registration bridge (extension → catalog)",
+      "description": "SITUATION: The single seam where the extension contract meets the host's runtime catalog. MECHANISM: register_contributions() takes the manifest's contributions, canonicalises the family string into a RuntimeFamily enum, computes a SHA-256 ContributionChecksum for drift detection, and upserts a CatalogEntry per contribution. Cross-extension duplicate runtime_id is rejected here with both contributors named. IMPLICATION: Any new validation that depends on both the extension shape AND the host's runtime domain types goes here — nowhere else in the codebase sees both sides. GOTCHA: deactivate_contributions_with_drain() at line 174 is the mid-lease drain cascade that closes SC-007 (≤ 500 ms)."
+    },
+    {
+      "file": "crates/nexus-backend-runtimes/src/generic/install_pipeline.rs",
+      "selection": {
+        "start": { "line": 27, "character": 0 },
+        "end": { "line": 55, "character": 0 }
+      },
+      "title": "8. The 10-phase pipeline enum",
+      "description": "SITUATION: The canonical phase order for every backend-runtime install. MECHANISM: Phase enum with `ORDER: &'static [Phase]` lists all ten phases in execution order: resolve → download → verify → extract → bootstrap_runtime → install_deps → validate_env → detect_models → persist → complete. IMPLICATION: The enum is the source of truth — contracts/http/backend_runtime_installs.yaml must mirror it. Frontend PHASE_ORDER in backend_runtimes_client.ts also mirrors this. GOTCHA: The three family-specific phases (bootstrap_runtime, install_deps, validate_env) dispatch to the RuntimeFamilyHandler; the seven others are family-agnostic."
+    },
+    {
+      "file": "crates/nexus-backend-runtimes/src/generic/install_pipeline.rs",
+      "line": 161,
+      "title": "9. Pipeline orchestrator",
+      "description": "SITUATION: The `run()` function that drives the 10 phases end-to-end. MECHANISM: For each phase it checks cancellation, clears ctx.phase_cached, emits a Started event, invokes the phase body (either an internal fn or a handler method), then emits Completed / CompletedCached / Failed. IMPLICATION: Cancellation is honoured at every phase boundary — tests cancellation_mid_pipeline_stops_at_next_phase_boundary in tests/generic_pipeline_test.rs prove it. GOTCHA: The completed_cached variant stamps `payload.cached: true` so the UI can render a 'cache' chip when a phase short-circuits."
+    },
+    {
+      "file": "crates/nexus-backend-runtimes/src/generic/family_handler.rs",
+      "line": 29,
+      "title": "10. RuntimeFamilyHandler trait",
+      "description": "SITUATION: The seam where family-specific logic plugs into the family-agnostic pipeline. MECHANISM: Four methods — family(), bootstrap_runtime(), install_deps(), validate_env() — plus spawn_launch_spec() that returns a LaunchSpec consumed by the lease subsystem. IMPLICATION: Adding a new family (e.g. `vllm`) means implementing this trait + adding a variant to RuntimeFamily::canonical. No pipeline changes. GOTCHA: The registry at FamilyHandlerRegistry is populated at host boot in app.rs; missing a handler → pipeline fails at bootstrap_runtime with `runtime_not_installed`."
+    },
+    {
+      "directory": "crates/nexus-backend-runtimes/src/family_python",
+      "title": "11. Family implementation — Python",
+      "description": "SITUATION: The reference family handler. MECHANISM: handler.rs is the trait impl; bootstrap.rs downloads + extracts an embedded-Python tarball under {partial_path}/python/; uv_install.rs shells out to `uv sync --all-extras` pinned via UV_PYTHON; validate.rs runs `python -c 'import sys; print(sys.version)'` and absolutises the entrypoint; config.rs loads PythonAssetConfig from env vars; builtin_assets.rs is the (currently empty) target-triple-keyed fallback registry. IMPLICATION: Use this as the template for future family handlers. GOTCHA: `family_native/` is a no-op handler for pre-built binaries — read it to understand the minimum viable family impl."
+    },
+    {
+      "file": "crates/nexus-backend-runtimes/src/generic/leases/trait_def.rs",
+      "line": 34,
+      "title": "12. BackendRuntimeLease trait",
+      "description": "SITUATION: The public surface extensions use to talk to their worker process. MECHANISM: Four methods — id(), state(), send_rpc(), subscribe_notifications(), release(). Extensions consume as `Arc<dyn BackendRuntimeLease>`; no concrete type leaks across the boundary. IMPLICATION: Transport is swappable (v1 is stdio, future specs may add named-pipe or tcp). GOTCHA: send_rpc has NO built-in timeout — callers wrap with with_timeout() when they care. Handshake is the one exception (60 s host-wide constant)."
+    },
+    {
+      "file": "crates/nexus-backend-runtimes/src/generic/leases/stdio_lease.rs",
+      "line": 73,
+      "title": "13. StdioLease — the v1 transport",
+      "description": "SITUATION: The stdio-backed lease implementation. MECHANISM: Spawns tokio::process::Command with kill_on_drop(true); wires a writer task (owns ChildStdin), a reader task (parses NDJSON frames, dispatches responses to Matchmaker + notifications to NotificationFanout), and a stderr-forwarder task (emits tracing::info! per line). IMPLICATION: Request/response interleaving is safe because Matchmaker allocates atomic u64 ids + installs a oneshot receiver per in-flight call. GOTCHA: 8 MB per-line cap (FR-043/SC-009) is enforced in framer.rs before any stdin write — extensions pass large payloads by artifact ref, never inline."
+    },
+    {
+      "file": "crates/nexus-backend-runtimes/src/generic/leases/acquire.rs",
+      "line": 44,
+      "title": "14. acquire_lease — end-to-end",
+      "description": "SITUATION: The function that takes a validated install and hands back a live Arc<dyn BackendRuntimeLease>. MECHANISM: Verifies install status == Validated, looks up the family handler, builds a LaunchSpec via handler.spawn_launch_spec(), inserts a lease row in `starting`, spawns StdioLease, runs do_handshake() (handshake.rs line 37), flips the lease row to `ready` + stamps the PID. IMPLICATION: Handshake failure releases the subprocess and records a HandshakeFailed category. GOTCHA: Live handles live in LeaseManager (manager.rs line 27) — a process-local HashMap separate from the SQLite leases table (which is for audit + crash recovery)."
+    },
+    {
+      "file": "crates/nexus-api/src/handlers/backend_runtimes/pipeline_runner.rs",
+      "line": 59,
+      "title": "15. spawn_pipeline — HTTP handler ↔ orchestrator",
+      "description": "SITUATION: Where POST /install hands off to the pipeline. MECHANISM: tokio::spawns a detached task that calls drive() (the orchestrator wrapper that builds InstallCtx, runs the pipeline, records terminal outcome to the installs repo). Emits a structured `spec_032::install_outcome` tracing event for SC-002 telemetry. IMPLICATION: The HTTP 202 returns IMMEDIATELY — clients poll via GET /install/:id or subscribe to the SSE /progress stream. GOTCHA: register_default_handlers at line 289 is the seam the host uses to populate the FamilyHandlerRegistry at boot — it takes an Option<PythonAsset> from app.rs."
+    },
+    {
+      "file": "crates/nexus-api/src/router.rs",
+      "line": 210,
+      "title": "16. HTTP surface",
+      "description": "SITUATION: Axum router mounting every /api/v1/* route. MECHANISM: Routes grouped by domain: host-runtimes, host-models, backend-runtimes (spec 032 additive surface), extensions (generic dispatcher from spec 030), modules, workflows, etc. IMPLICATION: Adding a new endpoint = new module under src/handlers/<domain>/ + one line here. GOTCHA: /api/v1/extensions/:ext_id/* is the generic dispatcher — extensions ship their own routers that mount under this prefix, so the host router never contains per-extension paths (Principle XIII)."
+    },
+    {
+      "file": "apps/web/src/routes.tsx",
+      "line": 50,
+      "title": "17. Frontend — React Router data mode",
+      "description": "SITUATION: The SPA's route table. MECHANISM: createBrowserRouter with data-mode routes; views live under src/views/<feature>/ with a .view.tsx (smart loader) and .ui.tsx (presentational). /backend-runtimes points at BackendRuntimesView. IMPLICATION: Every new page adds a line here and a views/<slug>/ folder. GOTCHA: Hash-mode is used in dev preview (#/backend-runtimes) due to the hosting shell; absolute navigation goes through window.location.hash, not pushState."
+    },
+    {
+      "file": "apps/web/src/views/backend-runtimes/backend_runtimes.view.tsx",
+      "line": 25,
+      "title": "18. View smart-loader pattern",
+      "description": "SITUATION: A representative example of the smart/dumb split used across every page. MECHANISM: The View owns SWR data fetching, error/loading states, and an install-flow state machine (idle → picking → running). The UI component renders props only; InstallModal + PipelineProgress are composed here when flow.phase advances. IMPLICATION: Copy this shape for any new runtime-adjacent page — the tight coupling to InstallActions/PipelineProgress is intentional. GOTCHA: SWR's refreshInterval is 10s for catalog polling; install-row polling in InstallActions is 5s and leases is 4s — tuned to stay beneath the SSE push channel's own cadence."
+    },
+    {
+      "file": "apps/web/src/services/backend_runtimes_client.ts",
+      "line": 301,
+      "title": "19. Service layer — typed HTTP + SSE",
+      "description": "SITUATION: The sole place where the frontend talks to /api/v1/backend-runtimes*. MECHANISM: unwrap() peels the ApiResponse envelope; listInstalls/listLeases/startInstall/startLease/etc. are typed wrappers; subscribeInstallProgress is a native EventSource consumer that dispatches `phase` + `done` events. IMPLICATION: Adding a new endpoint = add a function here, then reach for it from views via SWR keys. GOTCHA: PhaseEvent.payload?.cached is what the pipeline_progress stepper reads to render the `cache` chip — backend stamps it via PhaseEvent::completed_cached."
+    },
+    {
+      "directory": "extensions/builtin",
+      "title": "20. Where extensions actually live",
+      "description": "SITUATION: Every builtin extension is a self-contained folder here. MECHANISM: test-echo-runtime (python fixture), test-echo-runtime-2 (multi-extension US4 fixture), test-echo-native (family-native T110 fixture), local-llm (the grandfathered LLM extension). Each has manifest.yaml + backends/ + worker/. IMPLICATION: Adding a new extension = new folder here + manifest.yaml pointing at its own worker + optional Rust subproject. GOTCHA: NEVER put extension-specific strings in crates/nexus-*/ — scripts/audit-runtime-boundary.ps1 fails the build if you do (Principle XIII). The one exception is grandfathered paths listed in scripts/boundary-exclusions.yaml."
+    },
+    {
+      "directory": "specs",
+      "title": "21. Spec-driven workflow",
+      "description": "SITUATION: Every non-trivial feature has a numbered spec folder. MECHANISM: spec.md (FRs + SCs + user stories), plan.md (architecture), research.md (decisions), data-model.md (schema), contracts/ (OpenAPI + manifest shapes), tasks.md (actionable T001…T_N), quickstart.md, SESSION_CHECKPOINT.md (operator handoff), security-review.md. IMPLICATION: BEFORE making a non-trivial change, read the relevant spec folder top-to-bottom — the spec is the contract, the code is the implementation. GOTCHA: The specs/ folder is globally gitignored per project convention; checkpoints + tasks files are local-only. The constitutional guardrails live in .specify/memory/constitution.md (tracked)."
+    },
+    {
+      "directory": "scripts",
+      "title": "22. Boundary audit + smoke harness",
+      "description": "SITUATION: Project-level tooling. MECHANISM: audit-runtime-boundary.ps1 greps every host-tree file for extension-id literals (exits non-zero on match; CI-wired via .github/workflows/boundary-audit.yml); boundary-exclusions.{yaml,md} is the policy surface for grandfathered paths; smoke-spec-032.ps1 is the operator harness that drives install → start → stop → uninstall against a live host and emits smoke-proof.json. IMPLICATION: A PR that adds a new extension-specific string in host code is a merge blocker — edit the design, not the exclusion list. GOTCHA: `llama.cpp` / `llamacpp` are RuntimeFamily canonical names, NOT extension ids — those pass the audit."
+    },
+    {
+      "title": "23. Next steps",
+      "description": "You now have the shape: HTTP → orchestrator → family handler → subprocess lease, with the extension contract bridging via registration. Next moves for future agents: (1) read the spec folder of whatever feature you're touching first — don't assume the code is the source of truth for intent. (2) run `cargo test -p nexus-backend-runtimes` + `powershell -File scripts/audit-runtime-boundary.ps1` after every change — these two gates catch 90% of regressions. (3) `.claude/rules/host-extension-boundary.md` is your per-file do/don't matrix; `.specify/memory/constitution.md` is the governing charter. (4) Memory lives at `C:/Users/lazar/.claude/projects/D--Workspace-repos-nexus-dnn/memory/` — `project_spec_032_progress.md` is the most recent state snapshot."
+    }
+  ]
+}
