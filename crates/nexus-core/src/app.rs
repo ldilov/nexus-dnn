@@ -309,9 +309,31 @@ impl NexusApp {
             family_handlers: {
                 let registry =
                     nexus_backend_runtimes::generic::family_handler::FamilyHandlerRegistry::new();
+                let python_asset = match nexus_backend_runtimes::family_python::PythonAssetConfig::from_env().load() {
+                    Ok(Some(asset)) => {
+                        tracing::info!(
+                            url = %asset.url,
+                            kind = ?asset.kind,
+                            "embedded-Python asset configured from env"
+                        );
+                        Some(asset)
+                    }
+                    Ok(None) => {
+                        tracing::debug!(
+                            "no embedded-Python asset configured; python-family \
+                             installs will fail at bootstrap until NEXUS_EMBEDDED_PYTHON_* \
+                             env vars are set"
+                        );
+                        None
+                    }
+                    Err(reason) => {
+                        tracing::warn!(%reason, "invalid NEXUS_EMBEDDED_PYTHON_* env config — ignoring");
+                        None
+                    }
+                };
                 nexus_api::handlers::backend_runtimes::pipeline_runner::register_default_handlers(
                     &registry,
-                    None,
+                    python_asset,
                 )
                 .await;
                 registry
