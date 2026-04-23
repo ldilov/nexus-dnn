@@ -1,0 +1,29 @@
+spec_version: "0.1"
+
+extension:
+  id: "test-echo-native"
+  version: "0.0.1"
+  name: "Test Echo Runtime (native)"
+  description: "Synthetic extension for spec-032 T110. Contributes `test.echo.native` — a family=native runtime fixture used to exercise the generic pipeline's family-agnostic phases without paying the embedded-Python bootstrap cost. CI-only fixture; never shipped to users."
+  publisher: "nexus"
+
+compatibility:
+  host_api: ">=0.1.0"
+  protocol: ">=0.1.0"
+
+runtime:
+  family: "native"
+  entrypoint: "noop"
+
+backend_runtimes:
+  - runtime_id: "test.echo.native"
+    display_name: "Test Echo Runtime (native)"
+    family: "llama.cpp"
+    transport: "stdio"
+    worker_entrypoint: "worker/echo_worker"
+    version_manifest: "backends/echo/versions.yaml"
+    capability_tags:
+      - "echo"
+      - "native"
+    supported_roles:
+      - "test"

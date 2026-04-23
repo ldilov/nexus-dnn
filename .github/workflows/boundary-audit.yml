@@ -1,0 +1,38 @@
+name: boundary-audit
+
+on:
+  pull_request:
+    paths:
+      - "crates/nexus-**"
+      - "apps/web/src/**"
+      - "migrations/**"
+      - "scripts/audit-runtime-boundary.ps1"
+      - "scripts/boundary-exclusions.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/nexus-**"
+      - "apps/web/src/**"
+      - "migrations/**"
+      - "scripts/audit-runtime-boundary.ps1"
+      - "scripts/boundary-exclusions.yaml"
+
+jobs:
+  audit:
+    name: Host ↔ extension boundary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PowerShell
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y powershell
+
+      - name: Run scripts/audit-runtime-boundary.ps1
+        run: |
+          pwsh -ExecutionPolicy Bypass -File scripts/audit-runtime-boundary.ps1
+
+      - name: Run local-llm boundary audit
+        run: |
+          bash extensions/builtin/local-llm/scripts/audit-boundary.sh

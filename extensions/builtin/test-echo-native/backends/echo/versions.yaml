@@ -1,0 +1,17 @@
+releases:
+  - release_id: "v0_0_1"
+    semver: "0.0.1"
+    notes: "Initial native echo fixture — same archive as test-echo-runtime since both exercise the same family-agnostic phases"
+    targets:
+      - platform: "windows-x64"
+        accelerator_profile: "cpu"
+        asset:
+          url: "file://assets/echo_worker.zip"
+          sha256: "30b9a5ee418004e78261372bf7d6689c72d88f82a79f0425025d2519b704b522"
+          size: 3500
+      - platform: "linux-x64"
+        accelerator_profile: "cpu"
+        asset:
+          url: "file://assets/echo_worker.zip"
+          sha256: "30b9a5ee418004e78261372bf7d6689c72d88f82a79f0425025d2519b704b522"
+          size: 3500

@@ -32,23 +32,30 @@ pnpm -F apps/web run scan:cdn
 ### 3. Boundary audit (constitution Principle XIII, NON-NEGOTIABLE)
 
 The host MUST NOT contain extension-specific identifiers, types,
-endpoints, tables, or business logic. The audit script gates this:
+endpoints, tables, or business logic. Two audit scripts gate this:
 
 ```bash
 bash extensions/builtin/local-llm/scripts/audit-boundary.sh
+powershell -ExecutionPolicy Bypass -File scripts/audit-runtime-boundary.ps1
 ```
 
-Exit code 0 (PASS) is required. The script greps the host scan paths
-(`crates/`, `apps/web/src/views/`, `migrations/`) for extension-id
-literals and reports any unallowed match. The allowlist inside the
-script documents every legitimate exception (backend-family names, the
-permitted XIII.3 startup-wiring seam, generated DTOs, the test-file
-carve-out, and the explicitly-grandfathered frontend coupling listed in
-the project rule file).
+Exit code 0 (PASS) is required from both. The first script greps the
+host scan paths for `local-llm`-shaped literals; the second (added in
+spec 032) enforces the broader "no extension-id literals in any host
+file under `crates/nexus-*/` or `apps/web/src/`" invariant with an
+explicit exclusion file at `scripts/boundary-exclusions.yaml`.
 
-When a new extension lands, it MUST add its own
-`extensions/builtin/<ext-id>/scripts/audit-boundary.sh` (or extend the
-existing script's pattern set) and wire it to CI per Principle XIII.7.
+When a new extension-contributing spec lands that needs a new
+exclusion, follow the policy documented at
+[`scripts/boundary-exclusions.md`](scripts/boundary-exclusions.md). New
+extension-specific literals in net-new host code are always a merge
+blocker — refactor the design instead.
+
+**CI gate**: every PR that touches `crates/nexus-*/`, `apps/web/src/`,
+`migrations/`, or `scripts/audit-runtime-boundary.ps1` itself MUST run
+both audit scripts. The GitHub Actions workflow under
+`.github/workflows/boundary-audit.yml` (owned by spec 032 T101) blocks
+the merge button on a non-zero exit.
 
 ### 4. Conventional commit prefix
 

@@ -1,5 +1,6 @@
 pub mod asset;
 pub mod bootstrap;
+pub mod builtin_assets;
 pub mod config;
 pub mod handler;
 pub mod uv_install;
