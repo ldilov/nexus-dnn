@@ -33,6 +33,7 @@ pub async fn run(ctx: &mut InstallCtx) -> Result<(), GenericInstallError> {
         && existing == asset.size
     {
         ctx.downloaded_archive = Some(partial_target);
+        ctx.phase_cached = true;
         return Ok(());
     }
 
@@ -77,6 +78,9 @@ pub async fn run(ctx: &mut InstallCtx) -> Result<(), GenericInstallError> {
         )
     })?;
     ctx.downloaded_archive = Some(partial_target);
+    if !need_fetch {
+        ctx.phase_cached = true;
+    }
     Ok(())
 }
 

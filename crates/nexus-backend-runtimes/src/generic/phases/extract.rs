@@ -7,11 +7,15 @@
 
 use std::fs::File;
 use std::io::BufReader;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use tokio::fs as async_fs;
 
 use crate::generic::enums::PipelineFailureCategory;
 use crate::generic::errors::GenericInstallError;
 use crate::generic::install_ctx::InstallCtx;
+
+pub const EXTRACT_SENTINEL: &str = ".extract-complete";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ArchiveKind {
@@ -35,6 +39,13 @@ pub async fn run(ctx: &mut InstallCtx) -> Result<(), GenericInstallError> {
             "no resolved asset",
         )
     })?;
+
+    let sentinel_path = ctx.partial_path.join(EXTRACT_SENTINEL);
+    if sentinel_matches(&sentinel_path, &asset.sha256).await {
+        ctx.phase_cached = true;
+        return Ok(());
+    }
+
     let kind = detect_kind(&asset.url).ok_or_else(|| {
         GenericInstallError::new(
             "extract",
@@ -54,7 +65,24 @@ pub async fn run(ctx: &mut InstallCtx) -> Result<(), GenericInstallError> {
                 format!("extract task panicked: {e}"),
             )
         })??;
+
+    async_fs::write(&sentinel_path, asset.sha256.as_bytes())
+        .await
+        .map_err(|e| {
+            GenericInstallError::new(
+                "extract",
+                PipelineFailureCategory::InvalidDownload,
+                format!("write extract sentinel {}: {e}", sentinel_path.display()),
+            )
+        })?;
     Ok(())
+}
+
+async fn sentinel_matches(path: &Path, expected_sha256: &str) -> bool {
+    match async_fs::read_to_string(path).await {
+        Ok(stored) => stored.trim() == expected_sha256,
+        Err(_) => false,
+    }
 }
 
 fn detect_kind(url: &str) -> Option<ArchiveKind> {

@@ -68,6 +68,7 @@ async fn native_family_install_runs_all_family_agnostic_phases() {
         entrypoint_path: Some(PathBuf::from("worker/echo_worker")),
         event_publisher: publisher,
         cancellation: CancellationToken::new(),
+        phase_cached: false,
     };
 
     let handler = Arc::new(FamilyNativeHandler::new(RuntimeFamily::LlamaCpp));

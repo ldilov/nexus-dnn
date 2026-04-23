@@ -70,6 +70,7 @@ fn ctx(partial: &Path, install: &Path, cache: &Path, asset: ResolvedAsset) -> In
         entrypoint_path: None,
         event_publisher: publisher(),
         cancellation: CancellationToken::new(),
+        phase_cached: false,
     }
 }
 

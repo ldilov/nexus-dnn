@@ -99,6 +99,7 @@ fn fixture_ctx(partial: &Path, install: &Path, cache: &Path) -> InstallCtx {
         entrypoint_path: None,
         event_publisher: publisher(),
         cancellation: CancellationToken::new(),
+        phase_cached: false,
     }
 }
 

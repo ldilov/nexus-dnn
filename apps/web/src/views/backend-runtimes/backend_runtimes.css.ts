@@ -263,6 +263,19 @@ export const stepperElapsed = style({
   opacity: 0.7,
 });
 
+export const cachedChip = style({
+  display: "inline-block",
+  marginLeft: "8px",
+  padding: "1px 7px",
+  borderRadius: "999px",
+  fontSize: "10px",
+  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  background: "rgba(160, 130, 255, 0.18)",
+  color: "#b39bff",
+});
+
 export const installRow = style({
   display: "flex",
   flexDirection: "column",
