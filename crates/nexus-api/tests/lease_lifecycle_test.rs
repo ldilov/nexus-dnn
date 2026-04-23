@@ -743,6 +743,50 @@ async fn t080_deactivate_contributions_with_drain_releases_leases_and_flips_stat
     assert_eq!(entry.implementation_status.as_str(), "unavailable");
 }
 
+/// T087c / SC-007 — when an extension deactivates mid-lease, the
+/// in-memory drain completes within the 500 ms p95 budget. We don't
+/// have a live `send_rpc` to block on here (test-echo's echo roundtrips
+/// in microseconds), but the drain itself is the fixed-cost work SC-007
+/// bounds, so we measure its wall clock.
+#[tokio::test]
+async fn drain_completes_within_sc_007_budget() {
+    let h = lifecycle_harness().await;
+
+    h.router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/backend-runtime-installs/{}/start",
+                    h.install_id
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(h.state.lease_manager.live_count().await, 1);
+
+    let catalog = SqliteCatalogRepo::new(h.pool.clone());
+    let installs = SqliteInstallsRepo::new(h.pool.clone());
+    let ext = SourceExtensionId::from("test-echo-runtime");
+
+    let start = std::time::Instant::now();
+    let drained =
+        deactivate_contributions_with_drain(&catalog, &installs, &h.state.lease_manager, &ext)
+            .await
+            .unwrap();
+    let elapsed = start.elapsed();
+
+    assert_eq!(drained, 1);
+    assert!(
+        elapsed <= Duration::from_millis(500),
+        "SC-007 drain budget exceeded: {elapsed:?} > 500 ms"
+    );
+    assert_eq!(h.state.lease_manager.live_count().await, 0);
+}
+
 #[allow(dead_code)]
 fn _keep_duration_import() -> Duration {
     Duration::from_secs(0)

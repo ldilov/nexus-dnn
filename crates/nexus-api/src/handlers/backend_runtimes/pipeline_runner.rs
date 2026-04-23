@@ -59,31 +59,54 @@ impl PhaseEventSink for BroadcastSink {
 pub fn spawn_pipeline(state: AppState, request: PipelineRequest) {
     tokio::spawn(async move {
         let install_id = request.install_id;
+        let runtime_id = request.runtime_id.clone();
+        let family = request.runtime_family.as_str();
         let installs = SqliteInstallsRepo::new(state.db.pool().clone());
+        let started_at = std::time::Instant::now();
 
         let outcome = drive(&state, &request).await;
+        let duration_ms = started_at.elapsed().as_millis() as u64;
 
-        match outcome {
+        // T112 / SC-002 — emit a single structured event per pipeline
+        // run so operators can compute the ≥ 95 % success threshold
+        // from tracing logs.
+        match &outcome {
             Ok(()) => {
-                // The orchestrator's `Complete` phase already performed
-                // the atomic rename. Record success + the validated
-                // artifact_hash / entrypoint_path from the ctx snapshot
-                // which `drive` wrote back via its own update path.
-                //
-                // `drive` records success itself on the way out; nothing
-                // to do here.
+                tracing::info!(
+                    target: "spec_032::install_outcome",
+                    install_id = %install_id,
+                    runtime_id = %runtime_id,
+                    runtime_family = %family,
+                    outcome = "success",
+                    duration_ms,
+                    "install pipeline succeeded",
+                );
             }
             Err(e) => {
-                if let Err(repo_err) = installs
-                    .record_failure(&install_id, e.category.clone(), &e.detail)
-                    .await
-                {
-                    tracing::warn!(
-                        install_id = %install_id,
-                        error = %repo_err,
-                        "failed to record pipeline failure — install row may be inconsistent",
-                    );
-                }
+                tracing::info!(
+                    target: "spec_032::install_outcome",
+                    install_id = %install_id,
+                    runtime_id = %runtime_id,
+                    runtime_family = %family,
+                    outcome = "failure",
+                    phase = %e.phase,
+                    failure_category = %e.category.to_wire(),
+                    duration_ms,
+                    "install pipeline failed",
+                );
+            }
+        }
+
+        if let Err(e) = outcome {
+            if let Err(repo_err) = installs
+                .record_failure(&install_id, e.category.clone(), &e.detail)
+                .await
+            {
+                tracing::warn!(
+                    install_id = %install_id,
+                    error = %repo_err,
+                    "failed to record pipeline failure — install row may be inconsistent",
+                );
             }
         }
     });
