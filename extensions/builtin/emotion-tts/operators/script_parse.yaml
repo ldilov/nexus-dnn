@@ -1,0 +1,16 @@
+id: "emotiontts.script.parse@1.0.0"
+display_name: "Script Parse"
+description: "Parse a dialogue script into per-utterance tokens, character attribution, and inline overrides."
+inputs:
+  - name: script
+    type: string
+    required: true
+  - name: mode
+    type: enum
+    values: [dialogue, raw_text, advanced_tagged]
+    default: dialogue
+outputs:
+  - name: utterances
+    type: array
+  - name: report
+    type: object

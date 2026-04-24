@@ -1,0 +1,16 @@
+id: "emotiontts.export.bundle@1.0.0"
+display_name: "Export Bundle"
+description: "ZIP of per-segment audio + manifest.json + utterances.csv + optional preview_mix.{ext}. Carries partial-run provenance."
+inputs:
+  - name: manifest
+    type: object
+    required: true
+  - name: segment_files
+    type: array
+    required: true
+  - name: include_preview_mix
+    type: boolean
+    default: true
+outputs:
+  - name: zip_abs
+    type: string

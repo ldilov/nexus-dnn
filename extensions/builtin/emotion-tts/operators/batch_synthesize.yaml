@@ -1,0 +1,12 @@
+id: "emotiontts.batch.synthesize@1.0.0"
+display_name: "Batch Synthesize"
+description: "Drive IndexTTS-2 per-segment synthesis over a lease-acquired backend runtime."
+inputs:
+  - name: segments
+    type: array
+    required: true
+  - name: optimisations
+    type: object
+outputs:
+  - name: segments
+    type: array
