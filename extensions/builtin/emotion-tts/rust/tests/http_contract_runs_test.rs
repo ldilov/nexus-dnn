@@ -49,6 +49,12 @@ async fn seed_deployment(repos: &Repos) -> DeploymentId {
             default_generation_overrides_json: "{}".into(),
             most_recent_run_id: None,
             partial_run_id: None,
+            reference_preprocess_enabled: true,
+            oas_enabled: true,
+            compile_gpt_enabled: false,
+            model_family: "indextts-2".into(),
+            oas_threshold_learned: None,
+            oas_samples_seen: 0,
             created_at: now,
             updated_at: now,
         })

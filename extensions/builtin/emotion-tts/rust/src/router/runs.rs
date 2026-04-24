@@ -37,7 +37,15 @@ pub fn router(state: RunsState) -> Router {
         .route("/deployments/:deployment_id/runs/:run_id/cancel", post(cancel_run))
         .route("/deployments/:deployment_id/runs/:run_id/resume", post(resume_run))
         .route("/deployments/:deployment_id/runs/test-line", post(test_line))
+        .route("/runs/:run_id/diagnostics", get(diagnostics_stub))
         .with_state(state)
+}
+
+/// Spec 034 / T063 stub — real handler reads alignment diagnostics from the
+/// run manifest and returns them in the shape contracts/http/diagnostics.yaml
+/// prescribes. Ships with US2.
+async fn diagnostics_stub() -> StatusCode {
+    StatusCode::NOT_IMPLEMENTED
 }
 
 #[derive(Debug, Deserialize)]
