@@ -9,6 +9,8 @@
 pub mod backend_client;
 pub mod domain;
 pub mod host_contract;
+pub mod operators;
+pub mod queue;
 pub mod router;
 pub mod storage;
 
@@ -17,6 +19,8 @@ use std::sync::Arc;
 use axum::Router;
 
 use crate::host_contract::HostStoragePool;
+use crate::queue::RuntimeQueue;
+use crate::storage::Repos;
 
 /// Handle returned by [`register`] — consumed by the host loader.
 ///
@@ -46,11 +50,23 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration { version: 8, name: "export_history",     sql: include_str!("../../storage/migrations/008_export_history.sql") },
 ];
 
+pub const EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// Entry point called by the host loader.
-pub fn register(pool: Arc<dyn HostStoragePool>) -> ExtensionHandle {
-    let router = router::build_router(pool);
-    ExtensionHandle {
+pub async fn register(pool: Arc<dyn HostStoragePool>) -> crate::domain::Result<ExtensionHandle> {
+    let repos = crate::storage::build_repos(pool).await?;
+    let queue = Arc::new(RuntimeQueue::new());
+    let router = router::build_router(repos, queue, EXTENSION_VERSION);
+    Ok(ExtensionHandle {
         migrations: MIGRATIONS,
         router,
-    }
+    })
+}
+
+pub fn build_router_with(
+    repos: Repos,
+    queue: Arc<RuntimeQueue>,
+    extension_version: impl Into<String>,
+) -> Router {
+    router::build_router(repos, queue, extension_version)
 }
