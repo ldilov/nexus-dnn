@@ -1,0 +1,108 @@
+openapi: 3.1.0
+info:
+  title: EmotionTTS — Voice-Asset Preprocessing
+  version: 0.1.0
+
+paths:
+  /voice-assets/{voice_asset_id}:
+    parameters:
+      - in: path
+        name: voice_asset_id
+        required: true
+        schema: { type: string }
+    get:
+      description: Extended GET — existing spec-031 voice-asset shape plus preprocessing fields.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VoiceAssetWithPreprocessing" }
+
+    patch:
+      description: Toggle per-voice-asset preprocessing. NULL means "inherit deployment setting".
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                preprocessOverride:
+                  oneOf:
+                    - type: boolean
+                    - type: "null"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VoiceAssetWithPreprocessing" }
+
+  /voice-assets/{voice_asset_id}/preprocess:
+    parameters:
+      - in: path
+        name: voice_asset_id
+        required: true
+        schema: { type: string }
+    post:
+      description: |
+        Re-run the preprocessing pipeline on the original artifact. Idempotent —
+        if the pipeline version is unchanged, returns 200 with the existing
+        preprocessed artifact. Otherwise replaces it.
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, report]
+                properties:
+                  status:
+                    type: string
+                    enum: [reprocessed, unchanged]
+                  report: { $ref: "#/components/schemas/PreprocessingReport" }
+
+components:
+  schemas:
+    VoiceAssetWithPreprocessing:
+      type: object
+      required: [voiceAssetId, audioArtifactRef, preprocessingEffective]
+      properties:
+        voiceAssetId:             { type: string }
+        audioArtifactRef:         { type: string }
+        preprocessedArtifactRef:  { type: string, nullable: true }
+        preprocessOverride:
+          oneOf:
+            - type: boolean
+            - type: "null"
+          description: "NULL = inherit deployment toggle"
+        preprocessingEffective:   { type: boolean, description: "resolved value after inherit" }
+        preprocessingReport:      { $ref: "#/components/schemas/PreprocessingReport" }
+
+    PreprocessingReport:
+      type: object
+      required: [pipelineVersion, stages, succeeded]
+      properties:
+        pipelineVersion: { type: string }
+        succeeded:       { type: boolean }
+        warnings:        { type: array, items: { type: string } }
+        stages:
+          type: array
+          items:
+            type: object
+            required: [stage, status]
+            properties:
+              stage:
+                type: string
+                enum: [decode, mono, denoise, vad_trim, loudness, peak_limit, truncate]
+              status:
+                type: string
+                enum: [ok, skipped, failed]
+              reason:      { type: string, nullable: true }
+              durationMs:  { type: integer, nullable: true }
+              engine:      { type: string, nullable: true }
+              lufsBefore:  { type: number, nullable: true }
+              lufsAfter:   { type: number, nullable: true }
+              trimmedMsLeading:  { type: integer, nullable: true }
+              trimmedMsTrailing: { type: integer, nullable: true }
+              durationBeforeMs:  { type: integer, nullable: true }
+              durationAfterMs:   { type: integer, nullable: true }
