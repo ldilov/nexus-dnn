@@ -147,9 +147,7 @@ async fn patch_impl(state: &PresetsState, id: &str, body: PatchBody) -> Result<V
         row.vector_json = serde_json::to_string(&v).expect("vector serialises");
     }
     row.updated_at = Utc::now().timestamp();
-
-    state.repos.presets.delete(&row.preset_id).await?;
-    state.repos.presets.insert(&row).await?;
+    state.repos.presets.update(&row).await?;
     Ok(row)
 }
 
