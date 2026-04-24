@@ -125,7 +125,7 @@ async fn get_impl(state: &DeploymentsState, id: &str) -> Result<DeploymentRow> {
 #[serde(rename_all = "camelCase")]
 struct PatchDeploymentBody {
     display_name: Option<String>,
-    backend_runtime_preference: Option<String>,
+    backend_runtime_preference: Option<Option<String>>,
     default_output_format: Option<String>,
     default_speed_factor: Option<f64>,
     default_generation_overrides: Option<Value>,
@@ -162,7 +162,7 @@ async fn patch_impl(
         row.display_name = name;
     }
     if let Some(pref) = body.backend_runtime_preference {
-        row.backend_runtime_preference = Some(pref);
+        row.backend_runtime_preference = pref;
     }
     if let Some(fmt) = body.default_output_format {
         if !matches!(fmt.as_str(), "wav" | "mp3" | "flac") {

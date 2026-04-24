@@ -17,7 +17,7 @@ import {
 } from "../../services/mappings_client";
 import { ExtensionApiError } from "../../services/http";
 import { testLine } from "../../services/runs_client";
-import type { EmotionMode, OutputFormat } from "../../services/types";
+import type { OutputFormat, PersistedEmotionMode } from "../../services/types";
 import type { VoiceAsset } from "../../services/voice_assets_client";
 import {
   listVoiceAssets,
@@ -31,7 +31,7 @@ interface LoaderData {
   voiceAssets: VoiceAsset[];
 }
 
-const EMOTION_MODES: EmotionMode[] = ["none", "audio_ref", "vector_preset", "qwen_template"];
+const EMOTION_MODES: PersistedEmotionMode[] = ["none", "audio_ref", "vector_preset", "qwen_template"];
 
 export function MappingEditorView(): JSX.Element {
   const { deployment, mappings: initialMappings, voiceAssets: initialVoices } =
@@ -92,10 +92,14 @@ export function MappingEditorView(): JSX.Element {
   const persistSelected = useCallback(
     async (patch: Partial<CharacterMapping>) => {
       if (!selected) return;
+      const snapshot = selected;
       try {
         const next = await patchMapping(selected.mappingId, patch);
         setMappings((prev) => prev.map((m) => (m.mappingId === next.mappingId ? next : m)));
       } catch (err) {
+        setMappings((prev) =>
+          prev.map((m) => (m.mappingId === snapshot.mappingId ? snapshot : m)),
+        );
         setError(extract(err));
       }
     },
@@ -348,7 +352,7 @@ interface MappingDetailProps {
   onNameChange: (name: string) => void;
   onNameBlur: (name: string) => void;
   onSpeakerChange: (id: string) => void;
-  onModeChange: (mode: EmotionMode) => void;
+  onModeChange: (mode: PersistedEmotionMode) => void;
   onQwenChange: (tmpl: string) => void;
   onQwenBlur: (tmpl: string) => void;
   onSpeedChange: (speed: number) => void;
@@ -430,7 +434,7 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
             <select
               className={css.input}
               value={mapping.defaultEmotionMode}
-              onChange={(e) => props.onModeChange(e.currentTarget.value as EmotionMode)}
+              onChange={(e) => props.onModeChange(e.currentTarget.value as PersistedEmotionMode)}
             >
               {EMOTION_MODES.map((m) => (
                 <option key={m} value={m}>
@@ -461,13 +465,11 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
                 onChange={(e) => props.onEmotionVoiceChange(e.currentTarget.value)}
               >
                 <option value="">— none —</option>
-                {voiceAssets
-                  .filter((v) => v.kind !== "speaker" || true)
-                  .map((v) => (
-                    <option key={v.voiceAssetId} value={v.voiceAssetId}>
-                      {v.displayName} · {v.kind}
-                    </option>
-                  ))}
+                {voiceAssets.map((v) => (
+                  <option key={v.voiceAssetId} value={v.voiceAssetId}>
+                    {v.displayName} · {v.kind}
+                  </option>
+                ))}
               </select>
             </label>
           )}
@@ -718,13 +720,12 @@ function initialOf(name: string): string {
   return ch ? ch.toUpperCase() : "?";
 }
 
-function emotionModeLabel(mode: EmotionMode): string {
+function emotionModeLabel(mode: PersistedEmotionMode): string {
   switch (mode) {
     case "none":
       return "None";
     case "audio_ref":
       return "Audio reference";
-    case "emotion_vector":
     case "vector_preset":
       return "Vector preset";
     case "qwen_template":

@@ -39,10 +39,11 @@ def register_phase4_handlers(
     async def handshake(params: Any) -> dict[str, Any]:
         client_version = params.get("protocol_version") if isinstance(params, dict) else None
         if client_version and client_version != DEFAULT_HANDSHAKE_PROTOCOL:
-            raise HandshakeProtocolMismatch(
+            mismatch = HandshakeProtocolMismatch(
                 expected=DEFAULT_HANDSHAKE_PROTOCOL,
                 received=str(client_version),
             )
+            raise _RpcErrorProxy(mismatch.rpc_error()) from mismatch
         return {
             "protocol_version": DEFAULT_HANDSHAKE_PROTOCOL,
             "worker_version": __version__,
@@ -90,7 +91,7 @@ def register_phase4_handlers(
         try:
             return orchestrate_load(
                 adapter_ensure=adapter.ensure_model,
-                emit=worker._emit_sync,
+                emit=worker.emit,
                 include_qwen=include_qwen,
             )
         except ModelLoadFailedError as exc:
@@ -130,14 +131,29 @@ def register_phase4_handlers(
         worker.register(Methods.SYNTHESIZE, synthesize)
 
 
+HANDSHAKE_PROTOCOL_MISMATCH_CODE = -32004
+
+
 class HandshakeProtocolMismatch(Exception):
     def __init__(self, *, expected: str, received: str) -> None:
         super().__init__(f"expected protocol {expected}, got {received}")
         self.expected = expected
         self.received = received
 
+    def rpc_error(self) -> dict[str, Any]:
+        return {
+            "code": HANDSHAKE_PROTOCOL_MISMATCH_CODE,
+            "message": str(self),
+            "data": {"expected": self.expected, "received": self.received},
+        }
+
 
 class _RpcErrorProxy(Exception):
+    """Raised by handlers to emit a specific JSON-RPC error envelope with
+    code + message + data. ``main.py::Worker._dispatch_line`` detects
+    ``exc.rpc_error`` attribute and surfaces it verbatim.
+    """
+
     def __init__(self, rpc_error: dict[str, Any]) -> None:
         super().__init__(rpc_error.get("message", "rpc error"))
         self.rpc_error = rpc_error
