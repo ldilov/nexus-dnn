@@ -11,6 +11,7 @@ pub mod filenames;
 pub mod ids;
 pub mod manifest;
 pub mod parser;
+pub mod reference_selection;
 
 pub use errors::{EmotionTtsError, Result};
 pub use ids::{
