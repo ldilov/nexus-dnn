@@ -10,6 +10,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
+use crate::backend_client::LeaseProvider;
 use crate::domain::{DeploymentId, EmotionTtsError, Result, VoiceAssetId};
 use crate::host_contract::HostArtifactStore;
 use crate::storage::repo_traits::VoiceAssetRow;
@@ -25,13 +26,22 @@ pub const UPLOAD_BODY_LIMIT_BYTES: usize = 64 * 1024 * 1024;
 pub struct VoiceAssetsState {
     pub repos: Repos,
     pub artifact_store: Arc<dyn HostArtifactStore>,
+    /// Spec 034 US1 — needed by the `/preprocess` handler. `None` when the
+    /// host boots without a lease factory (e.g. in CI contract tests that
+    /// supply their own mock).
+    pub lease_provider: Option<Arc<LeaseProvider>>,
 }
 
 #[must_use]
-pub fn router(repos: Repos, artifact_store: Arc<dyn HostArtifactStore>) -> Router {
+pub fn router(
+    repos: Repos,
+    artifact_store: Arc<dyn HostArtifactStore>,
+    lease_provider: Option<Arc<LeaseProvider>>,
+) -> Router {
     let state = Arc::new(VoiceAssetsState {
         repos,
         artifact_store,
+        lease_provider,
     });
     Router::new()
         .route(
@@ -41,14 +51,100 @@ pub fn router(repos: Repos, artifact_store: Arc<dyn HostArtifactStore>) -> Route
                 .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT_BYTES)),
         )
         .route("/:voice_asset_id", get(fetch).delete(deactivate))
-        .route("/:voice_asset_id/preprocess", post(preprocess_stub))
+        .route("/:voice_asset_id/preprocess", post(preprocess))
         .route("/probe", post(probe))
         .with_state(state)
 }
 
-/// Spec 034 / T038 stub — real handler wires voice.preprocess RPC in US1.
-async fn preprocess_stub() -> StatusCode {
-    StatusCode::NOT_IMPLEMENTED
+async fn preprocess(
+    State(state): State<Arc<VoiceAssetsState>>,
+    Path(id): Path<String>,
+) -> Response {
+    match preprocess_impl(&state, &id).await {
+        Ok((status, body)) => (status, Json(body)).into_response(),
+        Err(err) => err.into_response(),
+    }
+}
+
+async fn preprocess_impl(
+    state: &VoiceAssetsState,
+    raw_id: &str,
+) -> Result<(StatusCode, Value)> {
+    let asset_id = VoiceAssetId::try_from(raw_id)?;
+
+    let row = state
+        .repos
+        .voice_assets
+        .get(&asset_id)
+        .await?
+        .ok_or_else(|| EmotionTtsError::not_found(format!("voice asset {asset_id}")))?;
+
+    if let Some(existing_json) = &row.preprocessing_report_json {
+        if let Ok(existing) =
+            serde_json::from_str::<crate::backend_client::params::PreprocessingReport>(existing_json)
+        {
+            if existing.pipeline_version
+                == crate::backend_client::params::PreprocessingReport::default_pipeline_version()
+            {
+                return Ok((
+                    StatusCode::OK,
+                    json!({
+                        "status": "unchanged",
+                        "report": existing,
+                    }),
+                ));
+            }
+        }
+    }
+
+    let provider = state.lease_provider.clone().ok_or_else(|| {
+        EmotionTtsError::RuntimeUnavailable("lease provider not configured".into())
+    })?;
+
+    let client = provider.spawn_if_needed().await?;
+    let source_abs = state
+        .artifact_store
+        .resolve_path(&row.audio_artifact_ref)
+        .await?;
+
+    let tmp_dir = std::env::temp_dir();
+    let out_path = tmp_dir.join(format!("emotion_tts_preprocessed_{}.wav", asset_id));
+    let out_abs = out_path
+        .to_str()
+        .ok_or_else(|| EmotionTtsError::internal("non-utf8 temp path".to_string()))?
+        .to_string();
+
+    let request_id = format!("preprocess-{asset_id}-{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
+    let result = client
+        .voice_preprocess(&request_id, &source_abs, &out_abs)
+        .await?;
+
+    let bytes = tokio::fs::read(&out_path)
+        .await
+        .map_err(|e| EmotionTtsError::internal(format!("read preprocessed output: {e}")))?;
+    let _ = tokio::fs::remove_file(&out_path).await;
+
+    let display = format!("{}__preprocessed.wav", row.display_name);
+    let put = state
+        .artifact_store
+        .store(bytes, &display, Some("audio/wav"))
+        .await?;
+
+    let report_json = serde_json::to_string(&result.report)
+        .map_err(|e| EmotionTtsError::internal(format!("serialise report: {e}")))?;
+    state
+        .repos
+        .voice_assets
+        .set_preprocessed(&asset_id, Some(&put.artifact_ref), Some(&report_json))
+        .await?;
+
+    Ok((
+        StatusCode::ACCEPTED,
+        json!({
+            "status": "reprocessed",
+            "report": result.report,
+        }),
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -105,9 +201,36 @@ async fn deactivate(
 
 async fn upload(State(state): State<Arc<VoiceAssetsState>>, multipart: Multipart) -> Response {
     match upload_impl(&state, multipart).await {
-        Ok(row) => (StatusCode::CREATED, Json(voice_asset_json(&row))).into_response(),
+        Ok(row) => {
+            // Spec 034 FR-200: preprocessing defaults to ON for new uploads.
+            // Fire-and-forget — the upload response returns immediately and the
+            // row's preprocessed_artifact_ref is populated when the worker
+            // finishes. A failure here must NOT fail the upload.
+            spawn_background_preprocess(state.clone(), row.voice_asset_id.clone());
+            (StatusCode::CREATED, Json(voice_asset_json(&row))).into_response()
+        }
         Err(err) => err.into_response(),
     }
+}
+
+fn spawn_background_preprocess(state: Arc<VoiceAssetsState>, asset_id: VoiceAssetId) {
+    if state.lease_provider.is_none() {
+        // No runtime configured — leave preprocessed_artifact_ref NULL. The
+        // user can manually POST /preprocess later once a runtime is attached.
+        return;
+    }
+    tokio::spawn(async move {
+        match preprocess_impl(&state, asset_id.as_str()).await {
+            Ok(_) => {}
+            Err(err) => {
+                tracing::warn!(
+                    voice_asset = %asset_id,
+                    error = %err,
+                    "background voice-asset preprocessing failed (upload succeeded anyway)",
+                );
+            }
+        }
+    });
 }
 
 async fn upload_impl(
@@ -302,6 +425,10 @@ fn warning_flags(duration_ms: i64) -> Value {
 }
 
 fn voice_asset_json(row: &VoiceAssetRow) -> Value {
+    let report: Option<Value> = row
+        .preprocessing_report_json
+        .as_deref()
+        .and_then(|raw| serde_json::from_str(raw).ok());
     json!({
         "voiceAssetId": row.voice_asset_id.as_str(),
         "deploymentId": row.deployment_id.as_str(),
@@ -314,6 +441,8 @@ fn voice_asset_json(row: &VoiceAssetRow) -> Value {
         "durationMs": row.duration_ms,
         "sourceType": row.source_type,
         "isActive": row.is_active,
+        "preprocessedArtifactRef": row.preprocessed_artifact_ref,
+        "preprocessingReport": report,
         "createdAt": row.created_at,
         "updatedAt": row.updated_at,
     })

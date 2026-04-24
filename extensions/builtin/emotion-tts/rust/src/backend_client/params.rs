@@ -36,6 +36,16 @@ pub struct PreprocessingReport {
     pub warnings: Vec<String>,
 }
 
+impl PreprocessingReport {
+    /// Mirrors `ref_audio_report.DEFAULT_PIPELINE_VERSION` in the Python
+    /// worker. If the two drift the contract test in
+    /// `tests/rpc_additions_contract_test.rs` will flag it.
+    #[must_use]
+    pub const fn default_pipeline_version() -> &'static str {
+        "1"
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub struct PreprocessingStage {
