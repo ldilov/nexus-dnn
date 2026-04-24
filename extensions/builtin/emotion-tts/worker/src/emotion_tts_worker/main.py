@@ -89,6 +89,17 @@ class Worker:
             await self._emit(error_response(request_id, ErrorCodes.VALIDATION_FAILED, str(exc)))
             return
         except Exception as exc:
+            rpc_payload = getattr(exc, "rpc_error", None)
+            if isinstance(rpc_payload, dict) and "code" in rpc_payload:
+                await self._emit(
+                    error_response(
+                        request_id,
+                        int(rpc_payload["code"]),
+                        str(rpc_payload.get("message", str(exc))),
+                        rpc_payload.get("data"),
+                    )
+                )
+                return
             self.logger.error("handler.exception", method=method, error=str(exc))
             await self._emit(error_response(request_id, ErrorCodes.INTERNAL_ERROR, str(exc)))
             return
@@ -103,11 +114,21 @@ class Worker:
                 sys.stdout.write(line + "\n")
                 sys.stdout.flush()
 
-    def _emit_sync(self, payload: dict[str, Any]) -> None:
+    def emit(self, payload: dict[str, Any]) -> None:
+        """Public synchronous NDJSON emitter; safe to call from any thread.
+
+        Holds the same ``threading.Lock`` as :meth:`_emit` so interleaving
+        with the async dispatch stays frame-atomic. Use this from handlers
+        that push notifications from inside blocking code (e.g.
+        ``model.load.progress`` during a 20 s torch load).
+        """
         line = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         with self._stdout_sync_lock:
             sys.stdout.write(line + "\n")
             sys.stdout.flush()
+
+    def _emit_sync(self, payload: dict[str, Any]) -> None:
+        self.emit(payload)
 
     def _register_intrinsic(self) -> None:
         async def handshake(_: Any) -> dict[str, Any]:

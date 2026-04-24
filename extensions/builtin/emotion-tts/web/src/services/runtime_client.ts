@@ -20,15 +20,15 @@ export interface RuntimeHealth {
 }
 
 export interface HandshakeInfo {
-  protocol_version: string;
-  worker_version: string;
-  runtime_id: string;
-  python_version: string;
-  torch_version: string;
-  cuda_available: boolean;
+  protocolVersion: string;
+  workerVersion: string;
+  runtimeId: string;
+  pythonVersion: string;
+  torchVersion: string;
+  cudaAvailable: boolean;
   device: string;
-  model_family_id: string;
-  model_present: boolean;
+  modelFamilyId: string;
+  modelPresent: boolean;
   capabilities: string[];
 }
 

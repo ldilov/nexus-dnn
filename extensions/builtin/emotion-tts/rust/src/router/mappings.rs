@@ -171,6 +171,7 @@ struct PatchMappingBody {
     speaker_voice_asset_id: Option<String>,
     default_emotion_mode: Option<String>,
     default_emotion_voice_asset_id: Option<Option<String>>,
+    default_vector_preset_id: Option<Option<String>>,
     default_qwen_template: Option<Option<String>>,
     default_speed_factor: Option<Option<f64>>,
     notes: Option<Option<String>>,
@@ -239,6 +240,12 @@ async fn patch_impl(
         row.default_emotion_voice_asset_id = emo
             .as_deref()
             .map(VoiceAssetId::try_from)
+            .transpose()?;
+    }
+    if let Some(preset) = body.default_vector_preset_id {
+        row.default_vector_preset_id = preset
+            .as_deref()
+            .map(PresetId::try_from)
             .transpose()?;
     }
     if let Some(tmpl) = body.default_qwen_template {

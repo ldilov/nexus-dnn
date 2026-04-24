@@ -4,6 +4,7 @@ export type SeedStrategy = "fixed" | "increment_per_line" | "random_per_line";
 export type CachePolicy = "use_cache" | "force_regenerate" | "read_only_cache";
 export type SpeedMode = "preserve_pitch" | "disabled";
 export type EmotionMode = "none" | "audio_ref" | "emotion_vector" | "qwen_template";
+export type PersistedEmotionMode = "none" | "audio_ref" | "vector_preset" | "qwen_template";
 export type EmotionSource = "inline" | "mapping" | "global" | "none";
 export type RunStatus = "queued" | "running" | "completed" | "failed" | "cancelled" | "partial";
 export type UtteranceStatus = "queued" | "running" | "completed" | "failed" | "cancelled";

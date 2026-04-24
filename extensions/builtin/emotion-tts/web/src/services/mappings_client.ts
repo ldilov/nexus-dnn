@@ -1,12 +1,12 @@
 import { apiFetch } from "./http";
-import type { EmotionMode } from "./types";
+import type { PersistedEmotionMode } from "./types";
 
 export interface CharacterMapping {
   mappingId: string;
   deploymentId: string;
   characterName: string;
   speakerVoiceAssetId: string;
-  defaultEmotionMode: EmotionMode;
+  defaultEmotionMode: PersistedEmotionMode;
   defaultEmotionVoiceAssetId?: string | null;
   defaultVectorPresetId?: string | null;
   defaultQwenTemplate?: string | null;

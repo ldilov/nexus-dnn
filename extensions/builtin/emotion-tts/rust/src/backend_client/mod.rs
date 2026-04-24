@@ -93,7 +93,7 @@ impl LeaseProvider {
     pub async fn spawn_if_needed(&self) -> Result<BackendClient> {
         let mut slot = self.state.lock().await;
         if let Some(existing) = &slot.client {
-            if !matches!(existing.lease().state(), LeaseState::Released | LeaseState::Failed) {
+            if is_serviceable(existing.lease().state()) {
                 return Ok(existing.clone());
             }
         }
@@ -123,4 +123,12 @@ impl LeaseProvider {
         self.stop().await?;
         self.spawn_if_needed().await
     }
+}
+
+/// A lease is serviceable iff a caller can still send RPCs through it
+/// without hitting an immediate `InvalidState`. `Stopping`/`Failed`/
+/// `Released` are dead ends and force a fresh spawn.
+#[must_use]
+const fn is_serviceable(state: LeaseState) -> bool {
+    matches!(state, LeaseState::Starting | LeaseState::Ready | LeaseState::Busy)
 }
