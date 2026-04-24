@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .cancellation import GLOBAL_TOKEN, CancelToken
+from .speaker_cache import SpeakerCache, SpeakerCacheKey
 
 
 VECTOR_KEYS = ("happy", "angry", "sad", "afraid", "disgusted", "melancholic", "surprised", "calm")
@@ -73,13 +74,27 @@ class SegmentOutcome:
 
 
 class IndexTtsAdapter:
-    def __init__(self, settings: AdapterSettings) -> None:
+    def __init__(
+        self,
+        settings: AdapterSettings,
+        *,
+        model_family: str = "indextts-2",
+        runtime_version: str = "0.1.0",
+    ) -> None:
         self._settings = settings
         self._lock = threading.Lock()
         self._model = None
         self._qwen_ready = False
         self._speaker_cache_path = Path(self._settings.model_dir_abs).parent / "cache" / "speaker_embeddings"
         self._speaker_cache_path.mkdir(parents=True, exist_ok=True)
+        self._model_family = model_family
+        self._runtime_version = runtime_version
+        # Spec 034 US3 — byte-budgeted LRU over computed speaker-conditioning
+        # embeddings. Budget comes from AdapterSettings so the Rust shim can
+        # tune it via the EMOTION_TTS_SPEAKER_CACHE_MB env var (T075).
+        self._speaker_cache: SpeakerCache[Any] = SpeakerCache(
+            budget_mb=self._settings.speaker_cache_mb,
+        )
 
     def ensure_model(self, on_stage: Callable[[str], None] | None = None) -> None:
         if self._model is not None:
@@ -210,6 +225,58 @@ class IndexTtsAdapter:
     @staticmethod
     def speaker_cache_key(path: str) -> str:
         return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+    # ------------------------------------------------------------------
+    # Spec 034 US3 — public surface for the speaker-prefix cache. Real
+    # cut-in between "load reference" and the GPT sampling loop requires
+    # upstream `IndexTTS2.infer()` to accept a pre-computed conditioning
+    # tensor. Until that ships we expose a typed lookup helper that a
+    # wrapper (or a future patched upstream fork) can call; the cache
+    # bookkeeping + stats notification are already live.
+    # ------------------------------------------------------------------
+
+    def speaker_cache_entry_key(self, ref_path: str) -> SpeakerCacheKey:
+        return SpeakerCacheKey(
+            content_hash=self.speaker_cache_key(ref_path),
+            model_family=self._model_family,
+            runtime_version=self._runtime_version,
+        )
+
+    def lookup_speaker_embedding(self, ref_path: str) -> Any | None:
+        return self._speaker_cache.get(self.speaker_cache_entry_key(ref_path))
+
+    def store_speaker_embedding(
+        self,
+        ref_path: str,
+        embedding: Any,
+        size_bytes: int,
+    ) -> None:
+        self._speaker_cache.put(
+            self.speaker_cache_entry_key(ref_path),
+            embedding,
+            size_bytes,
+        )
+
+    def speaker_cache_snapshot(self) -> dict[str, Any]:
+        """Return a dict suitable for emitting as a ``cache_stats`` notification."""
+
+        return dict(self._speaker_cache.snapshot_stats())
+
+    def clear_speaker_cache_family(self, model_family: str) -> int:
+        """Drop every speaker-cache entry belonging to ``model_family``.
+
+        Called from the ``family.switch`` RPC handler (spec 034 T106) to
+        honour FR-223 restart-semantics invalidation on family change.
+        """
+
+        return self._speaker_cache.clear_family(model_family)
+
+    def set_active_model_family(self, model_family: str) -> None:
+        """Mutate the adapter's active family. Subsequent ``store_/lookup_``
+        calls will key on the new family. The old family's entries stay in
+        the cache until the caller invokes ``clear_speaker_cache_family``."""
+
+        self._model_family = model_family
 
     def unload(self) -> int:
         with self._lock:

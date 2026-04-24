@@ -140,6 +140,28 @@ pub struct SpeakerCacheHint {
     pub budget_mb: i64,
 }
 
+impl SpeakerCacheHint {
+    /// Build a default hint sized to the deployment's `AdapterSettings`
+    /// (spec 034 T075). Future dispatcher code calls this once per batch
+    /// so `synthesize.batch` always carries an explicit cache budget
+    /// instead of relying on the worker's startup default.
+    #[must_use]
+    pub const fn from_budget_mb(budget_mb: i64) -> Self {
+        Self {
+            enabled: true,
+            budget_mb,
+        }
+    }
+
+    #[must_use]
+    pub const fn disabled() -> Self {
+        Self {
+            enabled: false,
+            budget_mb: 0,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Notification payload typing (spec 034 subset — the dispatcher still carries
 // the raw serde_json::Value; these types document the shape for consumers

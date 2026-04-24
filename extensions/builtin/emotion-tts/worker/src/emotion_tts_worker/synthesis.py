@@ -43,6 +43,14 @@ def parse_segment(raw: dict[str, Any]) -> SynthesisSegment:
 
 def build_settings(params: dict[str, Any], model_dir_abs: str) -> AdapterSettings:
     opts = params.get("optimizations") or {}
+    hint = params.get("speaker_cache_hint") or {}
+
+    layer_range_raw = opts.get("oas_layer_range")
+    if layer_range_raw is None:
+        oas_layer_range = (10, 14)
+    else:
+        oas_layer_range = (int(layer_range_raw[0]), int(layer_range_raw[1]))
+
     return AdapterSettings(
         model_dir_abs=model_dir_abs,
         use_fp16=bool(opts.get("use_fp16", True)),
@@ -52,6 +60,17 @@ def build_settings(params: dict[str, Any], model_dir_abs: str) -> AdapterSetting
         use_torch_compile=bool(opts.get("use_torch_compile", False)),
         low_vram=bool(opts.get("low_vram", False)),
         gpt_batch_size=int(opts.get("gpt_batch_size", 2)),
+        # Spec 034 additions — accepted via ``optimizations`` on the params
+        # dict so the Rust `synthesize.batch` caller can override them per
+        # batch. ``speaker_cache_hint`` is the T021 contract field — the
+        # hint.budget_mb wins over opts.speaker_cache_mb when both are
+        # present, matching R-34-05 "hint is the per-batch override".
+        speaker_cache_mb=int(hint.get("budget_mb", opts.get("speaker_cache_mb", 200))),
+        compile_pad_to_multiple_of=int(opts.get("compile_pad_to_multiple_of", 64)),
+        oas_layer_range=oas_layer_range,
+        oas_literature_threshold=float(opts.get("oas_literature_threshold", 0.45)),
+        oas_max_png_per_run=int(opts.get("oas_max_png_per_run", 50)),
+        max_text_tokens_per_segment=int(opts.get("max_text_tokens_per_segment", 400)),
     )
 
 
