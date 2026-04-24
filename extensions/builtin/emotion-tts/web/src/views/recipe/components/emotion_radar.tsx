@@ -1,4 +1,4 @@
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 
 const AXIS_LABELS = [
   "happy",
@@ -18,6 +18,7 @@ interface Props {
 }
 
 export function EmotionRadar({ vector, pulseKey, size = 220 }: Props): JSX.Element {
+  const reduceMotion = useReducedMotion();
   const cx = size / 2;
   const cy = size / 2;
   const r = size / 2 - 28;
@@ -64,10 +65,10 @@ export function EmotionRadar({ vector, pulseKey, size = 220 }: Props): JSX.Eleme
         fillOpacity={0.32}
         stroke="currentColor"
         strokeWidth={1.5}
-        initial={pulseKey !== undefined ? { scale: 0.92, opacity: 0.2 } : false}
+        initial={reduceMotion || pulseKey === undefined ? false : { scale: 0.92, opacity: 0.2 }}
         animate={{ scale: 1, opacity: 1 }}
         style={{ transformOrigin: `${cx}px ${cy}px` }}
-        transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+        transition={reduceMotion ? { duration: 0 } : { duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
       />
       {outerPoints.map((p, i) => (
         <text

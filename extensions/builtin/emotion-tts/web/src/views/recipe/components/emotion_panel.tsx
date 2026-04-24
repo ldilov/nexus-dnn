@@ -26,9 +26,9 @@ const OVERRIDE_DOCS = `Per-line overrides (inside the [Char|…] tag):
   [Bob|emotion_vector:happy=0.7,surprised=0.2]  text…
   [Alice|qwen:Friendly teen voice]              text…
   [Carol:happy_sarah]                           text…   (legacy compat ref)
-  [Dan|emotion_alpha:0.4]                       text…   (blend strength)
 
-Precedence (highest wins): inline → legacy compat ref → mapping default → global panel.`;
+Precedence (highest wins): inline → legacy compat ref → mapping default → global panel.
+Global alpha applies to every line unless a mapping overrides it.`;
 
 interface Props {
   value: GlobalEmotion;
@@ -82,7 +82,9 @@ export function EmotionPanel({ value, onChange, deploymentId }: Props): JSX.Elem
 
   const setVector = (next: EmotionVector): void => {
     onChange({ ...value, mode: "emotion_vector", vector: next });
-    setSelectedPresetId("");
+    if (selectedPreset && !vectorsEqual(selectedPreset.vector, next)) {
+      setSelectedPresetId("");
+    }
   };
 
   const setAlpha = (next: number): void => {
@@ -288,6 +290,13 @@ function normaliseVector(input: GlobalEmotion["vector"]): EmotionVector {
 function clamp01(x: number): number {
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
+}
+
+function vectorsEqual(a: EmotionVector, b: EmotionVector): boolean {
+  for (let i = 0; i < 8; i += 1) {
+    if (Math.abs(a[i] - b[i]) > 1e-6) return false;
+  }
+  return true;
 }
 
 function sortByRecent(list: VectorPreset[]): VectorPreset[] {

@@ -187,6 +187,7 @@ pub trait PresetsRepo: Send + Sync {
     async fn insert(&self, row: &VectorPresetRow) -> RepoResult<()>;
     async fn get(&self, id: &PresetId) -> RepoResult<Option<VectorPresetRow>>;
     async fn list_by_deployment(&self, dep: &DeploymentId) -> RepoResult<Vec<VectorPresetRow>>;
+    async fn update(&self, row: &VectorPresetRow) -> RepoResult<()>;
     async fn delete(&self, id: &PresetId) -> RepoResult<()>;
 }
 

@@ -72,6 +72,28 @@ impl PresetsRepo for SqlitePresetsRepo {
         rows.iter().map(map_row).collect()
     }
 
+    async fn update(&self, row: &VectorPresetRow) -> RepoResult<()> {
+        let result = sqlx::query(
+            "UPDATE ext_emotion_tts__vector_presets \
+             SET preset_name = ?, vector_json = ?, updated_at = ? \
+             WHERE preset_id = ?",
+        )
+        .bind(&row.preset_name)
+        .bind(&row.vector_json)
+        .bind(row.updated_at)
+        .bind(row.preset_id.as_str())
+        .execute(&self.pool)
+        .await
+        .map_err(to_err)?;
+        if result.rows_affected() == 0 {
+            return Err(EmotionTtsError::not_found(format!(
+                "preset {}",
+                row.preset_id
+            )));
+        }
+        Ok(())
+    }
+
     async fn delete(&self, id: &PresetId) -> RepoResult<()> {
         sqlx::query("DELETE FROM ext_emotion_tts__vector_presets WHERE preset_id = ?")
             .bind(id.as_str())
