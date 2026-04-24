@@ -58,6 +58,26 @@ impl BackendClient {
         serde_json::from_value::<R>(response)
             .map_err(|err| EmotionTtsError::internal(format!("decode response for {method}: {err}")))
     }
+
+    /// Spec 034 / US1 (T037) — typed wrapper for `voice.preprocess`.
+    ///
+    /// Runs the reference-audio preprocessing chain on the file at
+    /// `source_artifact_abs`, writing the result to `output_artifact_abs`.
+    /// Errors map to domain errors per the `-32010 / -32011` contract.
+    pub async fn voice_preprocess(
+        &self,
+        request_id: impl Into<String>,
+        source_artifact_abs: impl Into<String>,
+        output_artifact_abs: impl Into<String>,
+    ) -> Result<params::VoicePreprocessResult> {
+        let params = params::VoicePreprocessParams {
+            request_id: request_id.into(),
+            source_artifact_abs: source_artifact_abs.into(),
+            output_artifact_abs: output_artifact_abs.into(),
+            pipeline_version: params::PreprocessingReport::default_pipeline_version().to_string(),
+        };
+        self.call(rpc::methods::VOICE_PREPROCESS, &params).await
+    }
 }
 
 /// Factory contract the host implements to mint new leases on demand.
