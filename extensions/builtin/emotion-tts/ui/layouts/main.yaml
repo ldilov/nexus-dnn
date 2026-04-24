@@ -1,0 +1,7 @@
+id: "emotion-tts.layout.main"
+displayName: "EmotionTTS"
+description: "Dialogue-driven TTS with 8-axis emotion control, per-character voice mappings, and content-hash cached synthesis."
+icon: "graphic_eq"
+
+root:
+  type: emotion-tts-app

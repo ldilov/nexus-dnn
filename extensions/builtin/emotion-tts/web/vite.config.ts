@@ -10,6 +10,7 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     sourcemap: true,
+    cssCodeSplit: false,
     lib: {
       entry: resolve(__dirname, "src/main.tsx"),
       name: "EmotionTtsExtension",
@@ -17,9 +18,11 @@ export default defineConfig({
       formats: ["es"],
     },
     rollupOptions: {
-      external: ["react", "react-dom", "react-router", "motion/react"],
       output: {
-        assetFileNames: "assets/[name]-[hash][extname]",
+        assetFileNames: (info) => {
+          if (info.name && info.name.endsWith(".css")) return "emotion-tts.css";
+          return "assets/[name]-[hash][extname]";
+        },
       },
     },
   },

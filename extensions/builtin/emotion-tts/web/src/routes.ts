@@ -1,4 +1,4 @@
-import { createBrowserRouter, redirect, type LoaderFunctionArgs } from "react-router";
+import { redirect, type LoaderFunctionArgs, type RouteObject } from "react-router";
 import { listDeployments, getDeployment } from "./services/deployments_client";
 import { listMappings } from "./services/mappings_client";
 import { getRun, listRuns } from "./services/runs_client";
@@ -11,8 +11,8 @@ import { RuntimeQueueView } from "./views/runtime_queue/runtime_queue.view";
 import { NewMappingView } from "./views/mapping_editor/new_mapping.view";
 import { MappingEditorView } from "./views/mapping_editor/mapping_editor.view";
 
-export const router = createBrowserRouter(
-  [
+export function buildRoutes(): RouteObject[] {
+  return [
     {
       path: "/",
       loader: async () => {
@@ -81,9 +81,8 @@ export const router = createBrowserRouter(
       path: "/runtime/queue",
       Component: RuntimeQueueView,
     },
-  ],
-  { basename: "/extensions/nexus.audio.emotiontts" },
-);
+  ];
+}
 
 function requireParam(params: Record<string, string | undefined>, key: string): string {
   const value = params[key];

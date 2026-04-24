@@ -50,6 +50,13 @@ recipes:
 workflows:
   directory: "workflows"
 
-web:
-  bundle: "web/dist/emotion-tts.js"
-  mount: "/extensions/nexus.audio.emotiontts"
+ui:
+  assets:
+    root: "web/dist"
+  custom_elements:
+    - tag: "emotion-tts-app"
+      module: "emotion-tts.js"
+      entry: "register"
+  layouts:
+    - file: "ui/layouts/main.yaml"
+      default: true
