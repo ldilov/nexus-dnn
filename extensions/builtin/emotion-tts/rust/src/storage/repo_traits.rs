@@ -20,8 +20,34 @@ pub struct DeploymentRow {
     pub most_recent_run_id: Option<RunId>,
     #[serde(default)]
     pub partial_run_id: Option<RunId>,
+    #[serde(default = "default_reference_preprocess_enabled")]
+    pub reference_preprocess_enabled: bool,
+    #[serde(default = "default_oas_enabled")]
+    pub oas_enabled: bool,
+    #[serde(default)]
+    pub compile_gpt_enabled: bool,
+    #[serde(default = "default_model_family")]
+    pub model_family: String,
+    #[serde(default)]
+    pub oas_threshold_learned: Option<f64>,
+    #[serde(default)]
+    pub oas_samples_seen: i64,
     pub created_at: i64,
     pub updated_at: i64,
+}
+
+pub const DEFAULT_MODEL_FAMILY: &str = "indextts-2";
+
+fn default_reference_preprocess_enabled() -> bool {
+    true
+}
+
+fn default_oas_enabled() -> bool {
+    true
+}
+
+fn default_model_family() -> String {
+    DEFAULT_MODEL_FAMILY.to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +64,10 @@ pub struct VoiceAssetRow {
     pub source_type: String,
     pub notes: Option<String>,
     pub is_active: bool,
+    #[serde(default)]
+    pub preprocessed_artifact_ref: Option<String>,
+    #[serde(default)]
+    pub preprocessing_report_json: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }

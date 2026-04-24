@@ -10,6 +10,7 @@
 //! * [`notifications`] — broadcast fan-out over the lease notification stream.
 
 pub mod notifications;
+pub mod params;
 pub mod rpc;
 
 use std::sync::Arc;

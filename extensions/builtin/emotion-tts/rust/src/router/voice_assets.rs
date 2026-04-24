@@ -41,8 +41,14 @@ pub fn router(repos: Repos, artifact_store: Arc<dyn HostArtifactStore>) -> Route
                 .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT_BYTES)),
         )
         .route("/:voice_asset_id", get(fetch).delete(deactivate))
+        .route("/:voice_asset_id/preprocess", post(preprocess_stub))
         .route("/probe", post(probe))
         .with_state(state)
+}
+
+/// Spec 034 / T038 stub — real handler wires voice.preprocess RPC in US1.
+async fn preprocess_stub() -> StatusCode {
+    StatusCode::NOT_IMPLEMENTED
 }
 
 #[derive(Debug, Deserialize)]
@@ -183,6 +189,8 @@ async fn upload_impl(
         source_type: "upload".into(),
         notes: None,
         is_active: true,
+        preprocessed_artifact_ref: None,
+        preprocessing_report_json: None,
         created_at: now,
         updated_at: now,
     };

@@ -2,7 +2,11 @@ use async_trait::async_trait;
 use sqlx::{Row, SqlitePool};
 
 use crate::domain::{DeploymentId, RunId};
-use crate::storage::repo_traits::{DeploymentRow, DeploymentsRepo, RepoResult};
+use crate::storage::repo_traits::{
+    DeploymentRow, DeploymentsRepo, RepoResult, DEFAULT_MODEL_FAMILY,
+};
+
+pub const DEFAULT_OAS_LITERATURE_THRESHOLD: f64 = 0.45;
 
 pub struct SqliteDeploymentsRepo {
     pool: SqlitePool,
@@ -19,6 +23,12 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<DeploymentRow> {
     let id_s: String = row.try_get("deployment_id").map_err(sqlx_to_err)?;
     let most_recent: Option<String> = row.try_get("most_recent_run_id").map_err(sqlx_to_err)?;
     let partial_run: Option<String> = row.try_get("partial_run_id").map_err(sqlx_to_err)?;
+
+    let ref_pp_raw: Option<i64> = row.try_get("reference_preprocess_enabled").map_err(sqlx_to_err)?;
+    let oas_raw: Option<i64> = row.try_get("oas_enabled").map_err(sqlx_to_err)?;
+    let compile_raw: Option<i64> = row.try_get("compile_gpt_enabled").map_err(sqlx_to_err)?;
+    let model_family: Option<String> = row.try_get("model_family").map_err(sqlx_to_err)?;
+
     Ok(DeploymentRow {
         deployment_id: DeploymentId::try_from(id_s.as_str())?,
         host_extension_instance_ref: row.try_get("host_extension_instance_ref").map_err(sqlx_to_err)?,
@@ -29,6 +39,12 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<DeploymentRow> {
         default_generation_overrides_json: row.try_get("default_generation_overrides_json").map_err(sqlx_to_err)?,
         most_recent_run_id: most_recent.map(|s| RunId::try_from(s.as_str())).transpose()?,
         partial_run_id: partial_run.map(|s| RunId::try_from(s.as_str())).transpose()?,
+        reference_preprocess_enabled: ref_pp_raw.map_or(true, |v| v != 0),
+        oas_enabled: oas_raw.map_or(true, |v| v != 0),
+        compile_gpt_enabled: compile_raw.map_or(false, |v| v != 0),
+        model_family: model_family.unwrap_or_else(|| DEFAULT_MODEL_FAMILY.to_string()),
+        oas_threshold_learned: row.try_get("oas_threshold_learned").map_err(sqlx_to_err)?,
+        oas_samples_seen: row.try_get("oas_samples_seen").map_err(sqlx_to_err)?,
         created_at: row.try_get("created_at").map_err(sqlx_to_err)?,
         updated_at: row.try_get("updated_at").map_err(sqlx_to_err)?,
     })
