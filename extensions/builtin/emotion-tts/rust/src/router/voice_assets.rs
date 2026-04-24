@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::extract::{Multipart, Path, Query, State};
+use axum::extract::{DefaultBodyLimit, Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
@@ -19,6 +19,7 @@ pub const MIN_DURATION_MS: i64 = 100;
 pub const MAX_DURATION_MS: i64 = 5 * 60 * 1000;
 pub const LONG_DURATION_WARN_MS: i64 = 30 * 1000;
 pub const VERY_LONG_DURATION_WARN_MS: i64 = 60 * 1000;
+pub const UPLOAD_BODY_LIMIT_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct VoiceAssetsState {
@@ -28,14 +29,20 @@ pub struct VoiceAssetsState {
 
 #[must_use]
 pub fn router(repos: Repos, artifact_store: Arc<dyn HostArtifactStore>) -> Router {
+    let state = Arc::new(VoiceAssetsState {
+        repos,
+        artifact_store,
+    });
     Router::new()
-        .route("/", post(upload).get(list))
+        .route(
+            "/",
+            post(upload)
+                .get(list)
+                .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT_BYTES)),
+        )
         .route("/:voice_asset_id", get(fetch).delete(deactivate))
         .route("/probe", post(probe))
-        .with_state(Arc::new(VoiceAssetsState {
-            repos,
-            artifact_store,
-        }))
+        .with_state(state)
 }
 
 #[derive(Debug, Deserialize)]
@@ -157,6 +164,11 @@ async fn upload_impl(
         .store(bytes, &display_name, audio_mime.as_deref())
         .await?;
 
+    let probe = match state.artifact_store.resolve_path(&put.artifact_ref).await {
+        Ok(path) => ffprobe_run(&path).await.ok(),
+        Err(_) => None,
+    };
+
     let now = Utc::now().timestamp();
     let row = VoiceAssetRow {
         voice_asset_id: VoiceAssetId::new(),
@@ -166,8 +178,8 @@ async fn upload_impl(
         audio_artifact_ref: put.artifact_ref,
         content_sha256,
         reference_text,
-        sample_rate: None,
-        duration_ms: None,
+        sample_rate: probe.as_ref().and_then(|p| p.sample_rate),
+        duration_ms: probe.as_ref().map(|p| p.duration_ms),
         source_type: "upload".into(),
         notes: None,
         is_active: true,
@@ -191,21 +203,14 @@ async fn probe(
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ProbeBody {
-    artifact_ref: Option<String>,
-    absolute_path: Option<String>,
+    artifact_ref: String,
 }
 
 async fn probe_impl(state: &VoiceAssetsState, body: ProbeBody) -> Result<Value> {
-    let path = if let Some(abs) = body.absolute_path {
-        abs
-    } else if let Some(reference) = body.artifact_ref {
-        state.artifact_store.resolve_path(&reference).await?
-    } else {
-        return Err(EmotionTtsError::validation(
-            "either absolutePath or artifactRef is required",
-        ));
-    };
-
+    if body.artifact_ref.trim().is_empty() {
+        return Err(EmotionTtsError::validation("artifactRef is required"));
+    }
+    let path = state.artifact_store.resolve_path(&body.artifact_ref).await?;
     let probe = ffprobe_run(&path).await?;
     Ok(json!({
         "durationMs": probe.duration_ms,

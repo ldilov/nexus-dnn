@@ -75,12 +75,14 @@ class IndexTtsAdapter:
         self._speaker_cache_path = Path(self._settings.model_dir_abs).parent / "cache" / "speaker_embeddings"
         self._speaker_cache_path.mkdir(parents=True, exist_ok=True)
 
-    def ensure_model(self) -> None:
+    def ensure_model(self, on_stage: Callable[[str], None] | None = None) -> None:
         if self._model is not None:
             return
         with self._lock:
             if self._model is not None:
                 return
+            if on_stage is not None:
+                on_stage("loading_gpt")
             from indextts.infer_v2 import IndexTTS2
 
             cfg_path = self._settings.cfg_path or str(Path(self._settings.model_dir_abs) / "config.yaml")
@@ -94,6 +96,8 @@ class IndexTtsAdapter:
                 use_accel=self._settings.use_accel,
                 use_torch_compile=self._settings.use_torch_compile,
             )
+            if on_stage is not None:
+                on_stage("loading_s2mel")
 
     def _ensure_qwen(self) -> None:
         if self._qwen_ready:
@@ -106,12 +110,12 @@ class IndexTtsAdapter:
         request_id: str,
         token: CancelToken | None = None,
     ) -> SegmentOutcome:
-        self.ensure_model()
         if segment.emotion_mode == "qwen_template":
             self._ensure_qwen()
 
         token = token or GLOBAL_TOKEN
         token.check()
+        self.ensure_model()
 
         kwargs = self._build_infer_kwargs(segment)
 

@@ -138,26 +138,48 @@ def emit_load_progress(emit: Notifier, stage: str, pct: float, detail: str | Non
     emit(notification("model.load.progress", payload))
 
 
+STAGE_PCT: dict[str, float] = {
+    "checking": 0.05,
+    "loading_gpt": 0.2,
+    "loading_s2mel": 0.55,
+    "loading_qwen": 0.85,
+    "ready": 1.0,
+}
+
+
 def orchestrate_load(
-    adapter_ensure: Callable[[], None],
+    adapter_ensure: Callable[[Callable[[str], None]], None],
     emit: Notifier,
     *,
     include_qwen: bool,
 ) -> dict[str, Any]:
+    """Drive a model load, emitting a progress notification immediately before
+    each chunk of work the adapter performs.
+
+    The adapter calls ``on_stage(name)`` at the start of each stage; this
+    orchestrator forwards to the notifier with the canonical percentage.
+    ``loading_qwen`` is suppressed when ``include_qwen=False`` so the bar
+    doesn't lie about a step that never runs.
+    """
     start = time.time()
-    emit_load_progress(emit, "checking", 0.05)
-    emit_load_progress(emit, "loading_gpt", 0.2)
-    emit_load_progress(emit, "loading_s2mel", 0.55)
-    if include_qwen:
-        emit_load_progress(emit, "loading_qwen", 0.85)
+    emit_load_progress(emit, "checking", STAGE_PCT["checking"])
+
+    def on_stage(stage: str) -> None:
+        if stage == "loading_qwen" and not include_qwen:
+            return
+        pct = STAGE_PCT.get(stage, 0.0)
+        emit_load_progress(emit, stage, pct)
 
     try:
-        adapter_ensure()
+        adapter_ensure(on_stage)
     except Exception as exc:
         raise ModelLoadFailedError(str(exc)) from exc
 
+    if include_qwen:
+        emit_load_progress(emit, "loading_qwen", STAGE_PCT["loading_qwen"])
+
     elapsed = time.time() - start
-    emit_load_progress(emit, "ready", 1.0)
+    emit_load_progress(emit, "ready", STAGE_PCT["ready"])
     return {"loaded": True, "load_seconds": round(elapsed, 2)}
 
 
