@@ -70,12 +70,23 @@ export function RunDetailView(): JSX.Element {
       )}
 
       <h2>Utterances</h2>
+      {(() => {
+        const completed = run.utterances.filter((u) => u.status === "completed").length;
+        const cached = run.utterances.filter((u) => u.cacheHit).length;
+        const ratio = completed > 0 ? Math.round((cached / completed) * 100) : 0;
+        return (
+          <p>
+            {cached}/{completed} completed segments served from cache ({ratio}%)
+          </p>
+        );
+      })()}
       <ul>
         {run.utterances.map((u) => (
           <li key={u.utteranceId}>
             #{u.globalIndex.toString().padStart(3, "0")} [{u.characterDisplay}] {u.text} —{" "}
             {u.status}
             {u.durationMs ? ` (${u.durationMs} ms)` : ""}
+            {u.cacheHit ? " · cached" : ""}
           </li>
         ))}
       </ul>
