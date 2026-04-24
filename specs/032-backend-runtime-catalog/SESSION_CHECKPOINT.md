@@ -1,9 +1,20 @@
 # Session Checkpoint — Spec 032 Implementation
 
-**Last updated**: 2026-04-24 (session 15 — code-complete apart from external-cost data)
-**Branch**: `main`
-**Last commit**: `f1835ca feat(spec-032): T096 + T097 extract short-circuit + cached phase chip`
-**Status**: **120 of 122 tasks `[X]` + 2 `[~]` + 0 `[ ]`** in tasks.md. All code + test work finished. `main` is **11 commits ahead of origin**.
+**Last updated**: 2026-04-24 (session 16 — tour landed + pushed to origin)
+**Branch**: `main` (in sync with `origin/main`)
+**Last commit**: `ef843f6 docs: CodeTour architect-full-stack walkthrough`
+**Status**: **120 of 122 tasks `[X]` + 2 `[~]` + 0 `[ ]`** in tasks.md. All code + test work finished. Full-stack CodeTour authored for future agent onboarding.
+
+---
+
+## Start here (new agent onboarding)
+
+Before touching any file, open the **full-stack code tour** and walk it end-to-end:
+
+- **[.tours/architect-full-stack.tour](../../.tours/architect-full-stack.tour)** — 23-step guided walkthrough anchored to real file + line ranges. Covers binary entrypoint → `App::run` wiring → extension contract bridge → 10-phase install pipeline → family handlers → lease subsystem → HTTP surface → React Router data-mode views → typed service layer + SSE. Every step uses the SMIG shape (Situation / Mechanism / Implication / Gotcha).
+- [.tours/README.md](../../.tours/README.md) indexes the tour set + points at the other canonical docs (constitution, boundary rule, spec folders, agent memory).
+
+After the tour, consult the per-spec artefacts in this folder for the "why" of every architectural decision.
 
 ---
 
@@ -14,9 +25,26 @@ Spec 032 is code-complete. Two `[~]` (in-progress) items remain; both are extern
 1. **T111 — stamp real python-build-standalone SHA-256 pins.** Architecture landed in `family_python::builtin_assets::REGISTRY` (empty const slice) + fallback in `FamilyPythonHandler::new()`. Human needs to (a) pick a python-build-standalone release, (b) download the `install_only.tar.gz` for Windows-x64 + Linux-x64, (c) verify sha256 against upstream `SHA256SUMS`, (d) commit the `(target_triple, url, sha256, size)` rows.
 2. **T108 — real `smoke-proof.json`.** Harness at `scripts/smoke-spec-032.ps1` is ready; operator runs it against a clean Windows host with the test-echo-runtime extension activated and commits the output as `specs/032-backend-runtime-catalog/smoke-proof.json`.
 
-Also external-cost (not spec-blocking): `pnpm install` + `pnpm test:smoke` + `pnpm test:a11y` against a live host, and `git push` to origin (11 commits pending).
+Also external-cost (not spec-blocking): `pnpm install` + `pnpm test:smoke` + `pnpm test:a11y` against a live host.
 
-Everything authorable from `/speckit.tasks` through `/speckit.implement` is done.
+Everything authorable from `/speckit.tasks` through `/speckit.implement` is done. `origin/main` is in sync.
+
+---
+
+## What landed session 16 (2026-04-24)
+
+### Full-stack CodeTour for future agents (ef843f6)
+
+- **`.tours/architect-full-stack.tour`** — 23-step tour with verified anchors. Narrative arc: (1) workspace layout → (2-4) binary entry → App::run → migrations → (5-7) extension contract → `BackendRuntimeContribution` → registration bridge → (8-9) 10-phase pipeline enum + orchestrator → (10-11) `RuntimeFamilyHandler` trait + `family_python` reference impl → (12-14) `BackendRuntimeLease` trait + `StdioLease` + `acquire_lease` end-to-end → (15-16) HTTP handler handoff + router mounts → (17-19) React Router data mode + view smart-loader + typed service layer with SSE → (20-22) extensions directory + spec-driven workflow + boundary audit → (23) next-steps handoff.
+- **`.tours/README.md`** — entry-point doc indexing the tour set and pointing at the other canonical references (constitution, boundary rule, spec folders, agent memory path).
+
+### Verification of system state
+
+- Pushed `main` → `origin/main` (already in sync as of this checkpoint).
+- `git status --short` clean.
+- `cargo check --workspace` clean.
+- Boundary audit PASSED (zero extension-id literals in host tree).
+- Spec 031 (EmotionTTS) confirmed NOT present in `extensions/builtin/` — only its planning folder `specs/031-emotiontts-extension/` exists. Spec 031 is unblocked and resumable whenever.
 
 ---
 
