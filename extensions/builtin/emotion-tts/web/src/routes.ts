@@ -1,0 +1,77 @@
+import { createBrowserRouter, redirect, type LoaderFunctionArgs } from "react-router";
+import { listDeployments, getDeployment } from "./services/deployments_client";
+import { listMappings } from "./services/mappings_client";
+import { getRun, listRuns } from "./services/runs_client";
+import { DeploymentsIndexView } from "./views/deployments/deployments_index.view";
+import { RecipeView } from "./views/recipe/recipe.view";
+import { RunDetailView } from "./views/run_detail/run_detail.view";
+import { RuntimeQueueView } from "./views/runtime_queue/runtime_queue.view";
+import { NewMappingView } from "./views/mapping_editor/new_mapping.view";
+
+export const router = createBrowserRouter(
+  [
+    {
+      path: "/",
+      loader: async () => {
+        const { deployments } = await listDeployments();
+        return { deployments };
+      },
+      Component: DeploymentsIndexView,
+    },
+    {
+      path: "/:deploymentId",
+      loader: async ({ params }: LoaderFunctionArgs) => {
+        const id = requireParam(params, "deploymentId");
+        return redirect(`/${id}/recipe`);
+      },
+    },
+    {
+      path: "/:deploymentId/recipe",
+      loader: async ({ params }: LoaderFunctionArgs) => {
+        const id = requireParam(params, "deploymentId");
+        const [deployment, { mappings }, { runs }] = await Promise.all([
+          getDeployment(id),
+          listMappings(id),
+          listRuns(id, { limit: 10 }),
+        ]);
+        return { deployment, mappings, runs };
+      },
+      Component: RecipeView,
+    },
+    {
+      path: "/:deploymentId/runs/:runId",
+      loader: async ({ params }: LoaderFunctionArgs) => {
+        const dep = requireParam(params, "deploymentId");
+        const runId = requireParam(params, "runId");
+        const run = await getRun(dep, runId);
+        return { run };
+      },
+      Component: RunDetailView,
+    },
+    {
+      path: "/:deploymentId/mappings/new",
+      loader: ({ params, request }: LoaderFunctionArgs) => {
+        const dep = requireParam(params, "deploymentId");
+        const url = new URL(request.url);
+        return {
+          deploymentId: dep,
+          prefillCharacterName: url.searchParams.get("character") ?? "",
+        };
+      },
+      Component: NewMappingView,
+    },
+    {
+      path: "/runtime/queue",
+      Component: RuntimeQueueView,
+    },
+  ],
+  { basename: "/extensions/nexus.audio.emotiontts" },
+);
+
+function requireParam(params: Record<string, string | undefined>, key: string): string {
+  const value = params[key];
+  if (!value) {
+    throw new Response(`Missing path parameter: ${key}`, { status: 400 });
+  }
+  return value;
+}
