@@ -21,6 +21,9 @@ pub enum ProgressEvent {
     Warning(serde_json::Value),
     Log(serde_json::Value),
     ModelLoadProgress(serde_json::Value),
+    // Spec 034 additions
+    Diagnostic(serde_json::Value),
+    PreprocessWarning(serde_json::Value),
     #[serde(other)]
     Unknown,
 }
@@ -35,6 +38,8 @@ impl From<NotificationEnvelope> for ProgressEvent {
             "warning" => Self::Warning(env.params),
             "log" => Self::Log(env.params),
             "model.load.progress" => Self::ModelLoadProgress(env.params),
+            "diagnostic" => Self::Diagnostic(env.params),
+            "preprocess_warning" => Self::PreprocessWarning(env.params),
             _ => Self::Unknown,
         }
     }

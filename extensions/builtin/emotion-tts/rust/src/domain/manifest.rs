@@ -29,6 +29,54 @@ pub struct ManifestEntry {
     pub duration_ms: Option<i64>,
     pub filename: Option<String>,
     pub failure_category: Option<String>,
+    /// Spec 034 / FR-203: which reference variant was fed to the engine for
+    /// this segment. `None` on historic manifests + when US1 is disabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_variant: Option<ReferenceVariant>,
+    /// Spec 034 / US2: per-segment alignment diagnostics (FR-210..214).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alignment: Option<AlignmentDiagnostics>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReferenceVariant {
+    Preprocessed,
+    Original,
+}
+
+/// Per-segment alignment diagnostics emitted by the OAS observability layer
+/// (spec 034, R-34-02 / R-34-03). All fields except `alignment_score` are
+/// optional so historic manifests and unflagged segments stay lean.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AlignmentDiagnostics {
+    pub alignment_score: f64,
+    #[serde(default)]
+    pub alignment_flag: bool,
+    pub threshold_used: f64,
+    pub threshold_source: ThresholdSource,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub per_head_scores: Vec<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attention_map_artifact_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThresholdSource {
+    LiteratureDefault,
+    RollingMad,
+}
+
+/// Spec-034 aggregate alignment summary attached to the top-level manifest
+/// when OAS is active (FR-214).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AlignmentSummary {
+    pub min: f64,
+    pub median: f64,
+    pub p95: f64,
+    pub flagged_count: i64,
+    pub total_count: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -48,6 +96,26 @@ pub struct Manifest {
     pub utterance_failed: i64,
     pub utterance_cancelled: i64,
     pub created_at: i64,
+    /// Spec 034 / FR-243 — family active for this run. `None` only on pre-034
+    /// historic manifests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_family: Option<String>,
+    /// Spec 034 / FR-252 — deployment-level toggle state at run start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_preprocess_active: Option<bool>,
+    /// Spec 034 — whether the compile path ran to completion (after fallback).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compile_active: Option<bool>,
+    /// Spec 034 — whether attention capture was enabled for this run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oas_active: Option<bool>,
+    /// Spec 034 — aggregate alignment stats. Present iff `oas_active == Some(true)`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alignment_summary: Option<AlignmentSummary>,
+    /// Spec 034 — points at the voice-asset-level report if US1 ran on any
+    /// reference used by this run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preprocessing_report_ref: Option<String>,
     pub entries: Vec<ManifestEntry>,
 }
 
@@ -92,6 +160,12 @@ pub fn build_manifest(
         utterance_failed,
         utterance_cancelled,
         created_at,
+        model_family: None,
+        reference_preprocess_active: None,
+        compile_active: None,
+        oas_active: None,
+        alignment_summary: None,
+        preprocessing_report_ref: None,
         entries,
     }
 }
@@ -167,6 +241,8 @@ mod tests {
             duration_ms: Some(1000),
             filename: Some(format!("{idx:03}_Bob_{idx:03}.mp3")),
             failure_category: None,
+            reference_variant: None,
+            alignment: None,
         }
     }
 

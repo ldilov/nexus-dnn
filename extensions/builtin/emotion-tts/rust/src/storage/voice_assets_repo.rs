@@ -36,6 +36,8 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<VoiceAssetRow> {
         source_type: row.try_get("source_type").map_err(to_err)?,
         notes: row.try_get("notes").map_err(to_err)?,
         is_active: is_active != 0,
+        preprocessed_artifact_ref: row.try_get("preprocessed_artifact_ref").map_err(to_err)?,
+        preprocessing_report_json: row.try_get("preprocessing_report_json").map_err(to_err)?,
         created_at: row.try_get("created_at").map_err(to_err)?,
         updated_at: row.try_get("updated_at").map_err(to_err)?,
     })

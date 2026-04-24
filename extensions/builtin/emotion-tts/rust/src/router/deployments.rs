@@ -95,6 +95,12 @@ async fn create_impl(
         default_generation_overrides_json: "{}".into(),
         most_recent_run_id: None,
         partial_run_id: None,
+        reference_preprocess_enabled: true,
+        oas_enabled: true,
+        compile_gpt_enabled: false,
+        model_family: crate::storage::repo_traits::DEFAULT_MODEL_FAMILY.to_string(),
+        oas_threshold_learned: None,
+        oas_samples_seen: 0,
         created_at: now,
         updated_at: now,
     };

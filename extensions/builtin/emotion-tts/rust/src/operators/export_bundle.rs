@@ -166,6 +166,8 @@ mod tests {
             duration_ms: Some(1000),
             filename: Some("001_Bob_001.mp3".into()),
             failure_category: None,
+            reference_variant: None,
+            alignment: None,
         }
     }
 
