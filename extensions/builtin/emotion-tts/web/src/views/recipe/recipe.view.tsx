@@ -3,6 +3,7 @@ import { useLoaderData } from "react-router";
 import type { Deployment } from "../../services/deployments_client";
 import type { CharacterMapping } from "../../services/mappings_client";
 import type {
+  CachePolicy,
   CreateRunRequest,
   GlobalEmotion,
   OutputFormat,
@@ -37,6 +38,7 @@ export function RecipeView(): JSX.Element {
     emotionAlpha: 1.0,
   });
   const [generation, setGeneration] = useState<Record<string, unknown>>({});
+  const [cachePolicy, setCachePolicy] = useState<CachePolicy>("use_cache");
 
   const createPayload: CreateRunRequest = useMemo(
     () => ({
@@ -45,8 +47,9 @@ export function RecipeView(): JSX.Element {
       speedFactor,
       globalEmotion,
       generation,
+      cachePolicy,
     }),
-    [script, outputFormat, speedFactor, globalEmotion, generation],
+    [script, outputFormat, speedFactor, globalEmotion, generation, cachePolicy],
   );
 
   const mappingsByLower = useMemo(() => {
@@ -85,6 +88,8 @@ export function RecipeView(): JSX.Element {
           onOutputFormatChange={setOutputFormat}
           speedFactor={speedFactor}
           onSpeedFactorChange={setSpeedFactor}
+          cachePolicy={cachePolicy}
+          onCachePolicyChange={setCachePolicy}
           generation={generation}
           onGenerationChange={setGeneration}
         />

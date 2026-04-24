@@ -4,6 +4,7 @@
 //! Business logic that needs I/O lives in `operators/` or `router/`.
 
 pub mod cache_key;
+pub mod cache_planner;
 pub mod emotion;
 pub mod errors;
 pub mod filenames;

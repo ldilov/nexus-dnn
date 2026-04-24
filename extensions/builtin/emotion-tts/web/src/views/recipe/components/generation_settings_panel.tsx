@@ -1,4 +1,4 @@
-import type { OutputFormat } from "../../../services/types";
+import type { CachePolicy, OutputFormat } from "../../../services/types";
 import * as css from "../recipe.css";
 
 interface Props {
@@ -6,21 +6,45 @@ interface Props {
   onOutputFormatChange: (next: OutputFormat) => void;
   speedFactor: number;
   onSpeedFactorChange: (next: number) => void;
+  cachePolicy: CachePolicy;
+  onCachePolicyChange: (next: CachePolicy) => void;
   generation: Record<string, unknown>;
   onGenerationChange: (next: Record<string, unknown>) => void;
 }
+
+const CACHE_POLICIES: readonly { id: CachePolicy; label: string; help: string }[] = [
+  {
+    id: "use_cache",
+    label: "Use cache",
+    help: "Read hits, write misses. Fastest on re-runs.",
+  },
+  {
+    id: "force_regenerate",
+    label: "Force regenerate",
+    help: "Always synthesize; still writes to cache.",
+  },
+  {
+    id: "read_only_cache",
+    label: "Read-only cache",
+    help: "Read hits, synthesize misses without writing back.",
+  },
+];
 
 export function GenerationSettingsPanel({
   outputFormat,
   onOutputFormatChange,
   speedFactor,
   onSpeedFactorChange,
+  cachePolicy,
+  onCachePolicyChange,
   generation,
   onGenerationChange,
 }: Props): JSX.Element {
   const update = (key: string, value: unknown): void => {
     onGenerationChange({ ...generation, [key]: value });
   };
+
+  const activePolicy = CACHE_POLICIES.find((p) => p.id === cachePolicy) ?? CACHE_POLICIES[0]!;
 
   return (
     <div>
@@ -44,6 +68,29 @@ export function GenerationSettingsPanel({
         />
         <output>{speedFactor.toFixed(2)}×</output>
       </label>
+      <div
+        className={css.controlRow}
+        role="radiogroup"
+        aria-label="Cache policy"
+      >
+        <span className={css.label}>Cache</span>
+        {CACHE_POLICIES.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            role="radio"
+            aria-checked={cachePolicy === p.id}
+            className={cachePolicy === p.id ? css.primaryButton : css.secondaryButton}
+            onClick={() => onCachePolicyChange(p.id)}
+            title={p.help}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <p className={css.label} aria-live="polite">
+        {activePolicy.help}
+      </p>
       <label className={css.controlRow}>
         <span className={css.label}>Temperature</span>
         <input

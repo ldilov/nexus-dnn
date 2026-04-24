@@ -336,16 +336,16 @@ Do not start Phase 1 below until a PR merging the prerequisite spec to `main` ex
 
 ### Tests for User Story 7
 
-- [ ] T116 [P] [US7] Unit test `cache_key_stability_test.rs` proving the hash is stable across equivalent inputs (map ordering, float precision) and changes on intended inputs (model version bump, seed change, speed change).
-- [ ] T117 [P] [US7] Integration test `cache_hit_end_to_end_test.rs` running the same script twice — second run reports 4/4 hits and does not call the backend.
-- [ ] T118 [P] [US7] Integration test `cache_evict_test.rs` filling the cache past budget and asserting LRU eviction by `last_hit_at ASC`.
+- [X] T116 [P] [US7] Cache-key stability covered by 10 inline tests in `domain/cache_key.rs` (deterministic, text/seed/speed/model-version/emotion-mode sensitivity, gen_params sort-independence, hex validation). Dedicated file deferred — the inline coverage is denser.
+- [ ] T117 [P] [US7] Integration test `cache_hit_end_to_end_test.rs` running the same script twice — second run reports 4/4 hits and does not call the backend. **Deferred** to T128 smoke since this requires a warm runtime; the unit-level invariants are covered by T116 + T118 + `cache_planner` tests.
+- [X] T118 [P] [US7] Integration test `cache_evict_test.rs` — 6 tests: total_size_bytes sums all, evict_lru removes oldest by last_hit_at, record_hit refreshes + increments, recently-hit survives eviction, zero-target is no-op, INSERT conflict refreshes last_hit_at.
 
 ### Implementation
 
-- [ ] T119 [P] [US7] Implement cache repo operations: `get(content_hash)`, `insert(row)`, `touch(content_hash)` (update `hit_count` + `last_hit_at`), `evict_to_fit(max_bytes)`.
-- [ ] T120 [US7] Wire cache lookup into the batch-synthesize operator (T050): before emitting a segment to the backend, check cache; on hit, short-circuit to the cached artifact and emit a `segment_completed` notification with `cache_hit: true` without backend round-trip.
-- [ ] T121 [P] [US7] Implement LRU eviction background task (tokio-interval 5 min) checking `size_bytes` total vs configured budget.
-- [ ] T122 [P] [US7] Add cache-policy UI toggle in generation settings: `use_cache | force_regenerate | read_only_cache`. Per-segment `cache_hit` shown in the run's per-line table.
+- [X] T119 [P] [US7] Cache repo already ships `get`, `insert` (ON CONFLICT refreshes last_hit_at), `record_hit`, `total_size_bytes`, `evict_lru(target_bytes)` (shipped pre-Phase-8 by T067). Covered by T118.
+- [ ] T120 [US7] Cache planner shipped as `domain/cache_planner.rs` — pure function `plan(cache, policy, candidates) -> CachePlan { hits, misses }` with `CachePolicy::{UseCache, ForceRegenerate, ReadOnlyCache}` + `reads_cache()` / `writes_cache()` helpers. **Wiring into the dispatcher is deferred** until the run-executor lands (external to Phase 3 scope); the planner is the pure unit that will be called from there.
+- [X] T121 [P] [US7] `cache_evictor.rs` — `evict_once(cache, budget)` returns the victim hashes; `spawn(cache, config, shutdown)` runs a tokio-interval loop (default 5 min) with `MissedTickBehavior::Skip` and CancellationToken for graceful shutdown. 3 tests: no-op under budget, asks-to-free-overage over budget, propagates repo errors. Default budget 10 GB per FR-114.
+- [X] T122 [P] [US7] `generation_settings_panel.tsx` gains a cache-policy radio group (`use_cache | force_regenerate | read_only_cache`) with per-option help text + aria-live policy description. Wired through recipe view state; `CreateRunRequest` now carries `cachePolicy`. Run-detail view surfaces `cached/completed` ratio + per-utterance "cached" tag (FR-137-adjacent).
 
 **Checkpoint**: US7 complete. Re-runs are fast; cache self-manages.
 
