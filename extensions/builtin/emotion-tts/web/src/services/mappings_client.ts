@@ -8,27 +8,87 @@ export interface CharacterMapping {
   speakerVoiceAssetId: string;
   defaultEmotionMode: EmotionMode;
   defaultEmotionVoiceAssetId?: string | null;
+  defaultVectorPresetId?: string | null;
   defaultQwenTemplate?: string | null;
   defaultSpeedFactor?: number | null;
   isActive: boolean;
+  notes?: string | null;
   createdAt: number;
   updatedAt: number;
 }
 
-export async function listMappings(deploymentId: string): Promise<{ mappings: CharacterMapping[] }> {
-  return apiFetch(`/deployments/${deploymentId}/mappings`);
+export interface MappingBundle {
+  version: string;
+  deploymentId: string;
+  mappings: CharacterMapping[];
+}
+
+export type ImportConflictStrategy = "error" | "skip" | "replace";
+
+export interface ImportResult {
+  created: string[];
+  skipped: string[];
+  replaced: string[];
+}
+
+export async function listMappings(
+  deploymentId: string,
+): Promise<{ mappings: CharacterMapping[] }> {
+  return apiFetch(`/mappings?deploymentId=${encodeURIComponent(deploymentId)}`);
 }
 
 export async function createMapping(
   deploymentId: string,
+  body: Partial<CharacterMapping> & {
+    characterName: string;
+    speakerVoiceAssetId: string;
+  },
+): Promise<CharacterMapping> {
+  return apiFetch("/mappings", {
+    method: "POST",
+    body: JSON.stringify({ ...body, deploymentId }),
+  });
+}
+
+export async function patchMapping(
+  mappingId: string,
   body: Partial<CharacterMapping>,
 ): Promise<CharacterMapping> {
-  return apiFetch(`/deployments/${deploymentId}/mappings`, {
-    method: "POST",
+  return apiFetch(`/mappings/${mappingId}`, {
+    method: "PATCH",
     body: JSON.stringify(body),
   });
 }
 
-export async function deactivateMapping(deploymentId: string, mappingId: string): Promise<void> {
-  await apiFetch(`/deployments/${deploymentId}/mappings/${mappingId}`, { method: "DELETE" });
+export async function deactivateMapping(
+  _deploymentId: string,
+  mappingId: string,
+): Promise<void> {
+  await apiFetch(`/mappings/${mappingId}`, { method: "DELETE" });
+}
+
+export async function duplicateMapping(
+  mappingId: string,
+  targetDeploymentId: string,
+  overrideCharacterName?: string,
+): Promise<CharacterMapping> {
+  return apiFetch(`/mappings/${mappingId}/duplicate`, {
+    method: "POST",
+    body: JSON.stringify({ targetDeploymentId, overrideCharacterName }),
+  });
+}
+
+export async function exportMappings(deploymentId: string): Promise<MappingBundle> {
+  return apiFetch(`/mappings/export?deploymentId=${encodeURIComponent(deploymentId)}`);
+}
+
+export async function importMappings(
+  targetDeploymentId: string,
+  mappings: CharacterMapping[],
+  conflictStrategy: ImportConflictStrategy = "error",
+): Promise<ImportResult> {
+  return apiFetch("/mappings/import", {
+    method: "POST",
+    body: JSON.stringify({ targetDeploymentId, mappings, conflictStrategy }),
+  });
 }
