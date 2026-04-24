@@ -243,7 +243,7 @@ Do not start Phase 1 below until a PR merging the prerequisite spec to `main` ex
 - [X] T099 [P] [US3] Implement **Test this line** action in the mapping editor that fires `POST runs/test-line` for the selected mapping with a standard sample sentence.
 - [X] T100 [US3] Implement JSON import/export UI hooks. The "import from voice folder" feature (source doc §6.10) is **deferred** per Assumptions — only JSON bundle import ships in v1.
 
-**Checkpoint**: US1 + US2 + US3 form the P1 trio. Extension is production-useful.
+**Checkpoint**: US1 + US2 + US3 form the P1 trio. Extension is production-useful once Phase 7.5 (partial export + auto-resume, FR-142/143/144 — locked by Clarifications Q5) also lands.
 
 ---
 
@@ -290,7 +290,41 @@ Do not start Phase 1 below until a PR merging the prerequisite spec to `main` ex
 - [X] T114 [P] [US6] Add "customised — edit via graph" banner logic in `views/recipe/recipe.ui.tsx` (links to the host workflow canvas via `/#/workflows`).
 - [ ] T115 [US6] Graph inspector buttons from each recipe section (FR "Nice to have" in spec §5) — **deferred**: spec marks this explicitly optional behind a v1+ flag; ship when persistence + graph editing lands.
 
-**Checkpoint**: US6 complete. Advanced users can inspect and edit the graph.
+### Workflow persistence (closes FR-106 gap C2 from /speckit-analyze)
+
+- [ ] T114a [US6] Persist the workflow document per deployment. New migration `009_workflows.sql` adds `ext_emotion_tts__workflows (deployment_id TEXT PRIMARY KEY, document_json TEXT NOT NULL, customised INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)`. Rust: `WorkflowsRepo` trait + `SqliteWorkflowsRepo` under `rust/src/storage/workflows_repo.rs`.
+- [ ] T114b [US6] Extend router: replace `GET /workflow/default` with `GET /workflow?deploymentId=…` (returns stored doc or seeds from `default_workflow()` on first access); add `PUT /workflow` that recomputes `customised` deterministically via `compute_customised` before persisting. Satisfies FR-106 "MUST preserve the flag when saved".
+- [ ] T114c [US6] Contract test `http_contract_workflows_test.rs` covering: first-GET seeds the curated doc with `customised=false`; PUT of a doc with an extra node stores it and returns `customised=true`; subsequent GET round-trips the same `customised` flag; swapping a curated operator id back flips `customised` back to `false`.
+- [ ] T114d [US6] Frontend: `workflows_client.ts` gains `getWorkflow(deploymentId)` + `putWorkflow(deploymentId, doc)`; recipe loader calls `getWorkflow(id)`. The host workflow canvas reaches the same PUT endpoint via the published HTTP contract — no React/host-crate imports from the extension (Extension Decoupling). If the canvas cannot call extension HTTP directly, open a host issue for a generic `workflow-document-contribute` hook; do not bypass the boundary.
+
+**Checkpoint**: US6 complete. Recipe ↔ DAG binding persists across sessions; the host's workflow canvas edits the same document via extension-owned HTTP.
+
+---
+
+## Phase 7.5: User Story Prime — Partial Export & Auto-Resume (Priority: P1)
+
+**Goal**: An interrupted batch (Stop Backend, per-batch Cancel while running) produces a usable ZIP flagged `partial: true`, and a one-click **Resume** brings the run back to fully-completed using cache hits on segments that already finished. This closes gap C1 from `/speckit-analyze` — Clarifications Q5 (2026-04-22) locked FR-142/143/144 as P1 guarantees but the P1 story-phase ordering put them nowhere.
+
+**Independent Test**: Acceptance of Clarifications Q5 + FR-142/143/144 end-to-end:
+1. Kick off a 6-segment batch, Stop Backend after segment 3.
+2. Assert the exported ZIP has 3 audio files, `manifest.json` carries `partial: true`, segments 4–6 rows have `status: "cancelled"` with failure reason and no audio file.
+3. From the deployment, click **Resume** — a new run is created with `original_run_id` set; segments 1–3 report `cache_hit: true` with `source_run_id` pointing at the interrupted run; segments 4–6 synthesise fresh.
+
+### Tests
+
+- [ ] T120a [P] [US-prime] Rust integration test `partial_export_test.rs`: cancel a 6-segment batch after segment 3; assert ZIP contents, `manifest.partial: true`, per-segment `status` (FR-142).
+- [ ] T120b [P] [US-prime] Rust integration test `run_resume_test.rs`: after a cancel, the deployment row records the original `script_snapshot` + settings; `POST /runs/{id}/resume` creates a new run with `original_run_id` set and per-segment `source_run_id` propagated through cache hits (FR-143).
+- [ ] T120c [P] [US-prime] Contract test for `POST /runs/{id}/resume`: happy path + idempotency (resuming an already-successful run is a no-op 409 with clear `conflict` category).
+
+### Implementation
+
+- [ ] T120d [US-prime] Extend `operators/export_bundle.rs` to honour `partial: true` serialisation of segment rows with `status ∈ {completed, cancelled, failed}`; audio files only for completed. Extend `domain/manifest.rs::build` to emit the `partial` top-level flag.
+- [ ] T120e [US-prime] Extend `runs_repo` + `deployments_repo` to preserve the original script + frozen settings on the deployment when a run transitions to `cancelled` or `failed`. Add `deployments.partial_run_id` column (nullable) via migration `010_deployments_partial_run_id.sql`.
+- [ ] T120f [US-prime] Implement `router/runs.rs::POST /runs/{id}/resume`: returns a new run with `original_run_id = id`, re-parses the preserved script, reuses the frozen settings; per-segment resolution reuses cache hits to populate `source_run_id` from the interrupted run's audio artifacts.
+- [ ] T120g [US-prime] Frontend: `history_panel.tsx` shows `partial — resumable` pill + one-click **Resume** button on interrupted rows (FR-144). Calls `POST /runs/{id}/resume` and navigates to the new run's live view.
+- [ ] T120h [US-prime] Frontend: surface **Rerun failed lines** button on the run-detail view (FR-133). Calls the same resume endpoint filtered to `status in (failed, cancelled)` only.
+
+**Checkpoint**: Partial export + auto-resume complete. The Q5 clarification guarantee is user-visible end-to-end.
 
 ---
 
@@ -322,6 +356,8 @@ Do not start Phase 1 below until a PR merging the prerequisite spec to `main` ex
 - [ ] T123 [P] Update root `README.md` with a "Extensions" bullet pointing at spec 031 and EmotionTTS.
 - [ ] T124 [P] Write `extensions/builtin/emotion-tts/rust/README.md` covering module layout, trait surface, how to run tests locally.
 - [ ] T125 [P] Write `extensions/builtin/emotion-tts/worker/README.md` covering the RPC protocol from the Python side, how to stub `IndexTTS2` for CPU-only CI, how to attach a debugger to the subprocess.
+- [ ] T125a Build and commit the extension web bundle. Run `pnpm --filter @nexus/emotion-tts-web build` (produces `web/dist/emotion-tts.js` + `web/dist/emotion-tts.css`) and commit both. Rationale (closes gap C4 from /speckit-analyze): manifest `ui.custom_elements.module` points at `emotion-tts.js`; host `crates/nexus-extension/src/registry/custom_elements.rs::resolve_spec` validates `module_abs.is_file()` at activation — the extension cannot load without the built bundle. Long-term fix: host dev-mode resolver that falls back to `vite dev` (file a separate host chore; until it lands, the committed bundle is the only contract any extension can rely on).
+- [ ] T125b Wire `pnpm --filter @nexus/emotion-tts-web build` into CI pre-merge (extend the workflow from T126) so the committed bundle is always in sync with source. Diff of `web/dist/*` across PRs is acceptable — treat it as a generated artifact, not a review target.
 - [ ] T126 Run the boundary audit as a CI gate: add `.github/workflows/boundary-audit.yml` (or equivalent) invoking `audit-boundary.ps1` on every PR touching `extensions/builtin/emotion-tts/**` or host crates.
 - [ ] T127 [P] Add performance benchmarks in `extensions/builtin/emotion-tts/rust/benches/` measuring: cache lookup latency, queue enqueue/dequeue, NDJSON frame parsing. Targets from plan.md §Performance Goals.
 - [ ] T128 Run the Playwright smoke test (T071) against a real warm runtime on a developer machine; record a run-log artifact at `specs/031-emotiontts-extension/smoke-proof.json` (similar to spec-026's `sc-026-proof.json` precedent).
