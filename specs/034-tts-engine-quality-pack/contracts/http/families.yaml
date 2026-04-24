@@ -1,0 +1,83 @@
+openapi: 3.1.0
+info:
+  title: EmotionTTS — Model Family Registry
+  version: 0.1.0
+
+paths:
+  /families:
+    get:
+      description: |
+        List every model family declared under recipes/families/, each with a
+        reconciled status against the host model-store.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [families]
+                properties:
+                  families:
+                    type: array
+                    items: { $ref: "#/components/schemas/ModelFamily" }
+
+  /families/{family_id}:
+    parameters:
+      - in: path
+        name: family_id
+        required: true
+        schema: { type: string }
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModelFamily" }
+        "404":
+          description: family_id not found in the registry
+
+  /families/{family_id}/install-hint:
+    parameters:
+      - in: path
+        name: family_id
+        required: true
+        schema: { type: string }
+    get:
+      description: |
+        Returns the host model-store family reference a UI install button
+        should drive. The extension never installs directly — it points at the
+        host's generic model-store API.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [modelFamilyRef, hostEndpoint]
+                properties:
+                  modelFamilyRef: { type: string }
+                  hostEndpoint:   { type: string, description: "host-side path like /api/v1/model-store/families/{ref}/download" }
+
+components:
+  schemas:
+    ModelFamily:
+      type: object
+      required:
+        - familyId
+        - displayName
+        - modelFamilyRef
+        - engineVersionConstraint
+        - supportedLanguages
+        - status
+      properties:
+        familyId:               { type: string }
+        displayName:            { type: string }
+        modelFamilyRef:         { type: string }
+        engineVersionConstraint: { type: string }
+        supportedLanguages:     { type: array, items: { type: string } }
+        expectedArtifacts:      { type: array, items: { type: string } }
+        status:
+          type: string
+          enum: [available, not_installed, partial, incompatible]
+        statusDetail:           { type: string, nullable: true }
+        defaultGeneration:      { type: object, additionalProperties: true }
