@@ -224,7 +224,7 @@ async fn create_run_impl(
     };
     state.repos.runs.insert(&row).await?;
 
-    let queued = state
+    state
         .queue
         .enqueue(run_id.clone(), deployment_id, RunClass::Batch)
         .await;
@@ -233,7 +233,6 @@ async fn create_run_impl(
         .position_of(&run_id)
         .await
         .unwrap_or(-1);
-    let _ = queued;
 
     Ok(json!({
         "runId": run_id.as_str(),
@@ -241,8 +240,24 @@ async fn create_run_impl(
         "preflight": {
             "unresolvedCharacters": map_out.unresolved_characters,
             "predictedFilenames": predicted_filenames,
+            "parserWarnings": parse.report.warnings.iter().map(warning_json).collect::<Vec<_>>(),
         }
     }))
+}
+
+fn warning_json(w: &crate::domain::parser::ParseWarning) -> Value {
+    use crate::domain::parser::ParseWarningKind;
+    let kind = match w.kind {
+        ParseWarningKind::UnknownOverrideKey => "unknown_override_key",
+        ParseWarningKind::MalformedTag => "malformed_tag",
+        ParseWarningKind::EmptyCharacterName => "empty_character_name",
+        ParseWarningKind::EmptyTextAfterTag => "empty_text_after_tag",
+    };
+    json!({
+        "lineNumber": w.line_number,
+        "kind": kind,
+        "detail": w.detail,
+    })
 }
 
 pub async fn get_run(

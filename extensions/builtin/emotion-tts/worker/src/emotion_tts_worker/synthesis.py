@@ -90,7 +90,7 @@ class SynthesisService:
     ) -> dict[str, Any]:
         self._token.bind(request_id)
         outcomes: list[SegmentOutcome] = []
-        batch_status = "completed"
+        saw_cancel = False
 
         try:
             for seg in segments:
@@ -98,21 +98,22 @@ class SynthesisService:
                     outcomes.append(
                         SegmentOutcome(segment_id=seg.segment_id, status="cancelled")
                     )
-                    batch_status = "cancelled"
+                    saw_cancel = True
                     continue
 
                 self._emit_started(params, seg)
                 outcome = self._adapter.synthesise(seg, request_id, self._token)
                 outcomes.append(outcome)
                 if outcome.status == "failed":
-                    batch_status = "failed" if batch_status == "completed" else batch_status
                     self._emit_failed(params, seg, outcome)
                 else:
                     self._emit_completed(params, seg, outcome)
         except CancelledError:
-            batch_status = "cancelled"
+            saw_cancel = True
         finally:
             self._token.clear()
+
+        batch_status = derive_batch_status(outcomes, saw_cancel)
 
         return {
             "request_id": request_id,
@@ -171,6 +172,35 @@ class SynthesisService:
                 },
             )
         )
+
+
+def derive_batch_status(outcomes: list[SegmentOutcome], saw_cancel: bool) -> str:
+    """Mirror the Rust manifest.partial rule per FR-142..144.
+
+    * any cancelled segment or external cancel signal → ``partial`` (with
+      survivors) or ``cancelled`` (nothing completed).
+    * every segment failed → ``failed``.
+    * every segment completed → ``completed``.
+    * mixed completed + failed → ``partial``.
+    """
+
+    if not outcomes:
+        return "cancelled" if saw_cancel else "failed"
+
+    total = len(outcomes)
+    completed = sum(1 for o in outcomes if o.status == "completed")
+    failed = sum(1 for o in outcomes if o.status == "failed")
+    cancelled = sum(1 for o in outcomes if o.status == "cancelled")
+
+    if completed == total:
+        return "completed"
+    if failed == total:
+        return "failed"
+    if cancelled == total:
+        return "cancelled"
+    if saw_cancel and completed == 0:
+        return "cancelled"
+    return "partial"
 
 
 def outcome_to_wire(o: SegmentOutcome) -> dict[str, Any]:

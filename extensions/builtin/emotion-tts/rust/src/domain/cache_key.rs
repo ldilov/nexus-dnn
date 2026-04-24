@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::domain::emotion::{EmotionMode, EmotionPayload};
+use crate::domain::emotion::EmotionPayload;
 use crate::domain::{ContentHash, EmotionTtsError, Result};
 
 pub const FORMAT_VERSION: &str = "v1";
@@ -107,8 +107,6 @@ fn canonical_gen_params(params: &BTreeMap<String, String>) -> String {
         .collect::<Vec<_>>()
         .join("|")
 }
-
-impl EmotionMode {}
 
 #[cfg(test)]
 mod tests {

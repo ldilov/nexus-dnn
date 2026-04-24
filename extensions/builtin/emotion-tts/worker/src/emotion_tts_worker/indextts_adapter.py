@@ -74,9 +74,10 @@ class IndexTtsAdapter:
         self._qwen_ready = False
         self._speaker_cache_path = Path(self._settings.model_dir_abs).parent / "cache" / "speaker_embeddings"
         self._speaker_cache_path.mkdir(parents=True, exist_ok=True)
-        self._in_memory_cache: dict[str, Any] = {}
 
     def ensure_model(self) -> None:
+        if self._model is not None:
+            return
         with self._lock:
             if self._model is not None:
                 return
@@ -116,17 +117,26 @@ class IndexTtsAdapter:
 
         started = time.time()
         try:
+            infer_kwargs = dict(kwargs)
+            if hasattr(self._model, "set_cancel_callback"):
+                self._model.set_cancel_callback(token.as_on_step())
+            elif "on_step" in getattr(self._model.infer, "__code__", type("", (), {})()).co_varnames:
+                infer_kwargs["on_step"] = token.as_on_step()
+
             self._model.infer(
                 spk_audio_prompt=segment.speaker_audio_abs,
                 text=segment.text,
                 output_path=segment.output_target_abs,
-                **kwargs,
+                **infer_kwargs,
             )
         except Exception as exc:
+            from .cancellation import CancelledError
+
+            category = "cancelled" if isinstance(exc, CancelledError) else "synthesis_failed"
             return SegmentOutcome(
                 segment_id=segment.segment_id,
-                status="failed",
-                failure_category="synthesis_failed",
+                status="cancelled" if category == "cancelled" else "failed",
+                failure_category=category,
                 failure_detail=str(exc),
             )
 
@@ -172,4 +182,3 @@ class IndexTtsAdapter:
     def unload(self) -> None:
         with self._lock:
             self._model = None
-            self._in_memory_cache.clear()

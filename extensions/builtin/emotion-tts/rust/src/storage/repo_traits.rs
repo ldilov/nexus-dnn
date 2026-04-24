@@ -196,6 +196,17 @@ pub trait RunsRepo: Send + Sync {
     async fn get(&self, id: &RunId) -> RepoResult<Option<RunRow>>;
     async fn list_by_deployment(&self, dep: &DeploymentId, limit: i64) -> RepoResult<Vec<RunRow>>;
     async fn update_status(&self, id: &RunId, status: &str, finished_at: Option<i64>) -> RepoResult<()>;
+    /// Update status only if the current status is one of `from_any`.
+    ///
+    /// Returns `true` if a row matched and was updated; `false` if the row was
+    /// already in a terminal state (race-safe cancel path, I-3).
+    async fn update_status_guarded(
+        &self,
+        id: &RunId,
+        status: &str,
+        finished_at: Option<i64>,
+        from_any: &[&str],
+    ) -> RepoResult<bool>;
     async fn set_started(&self, id: &RunId, at: i64) -> RepoResult<()>;
 }
 

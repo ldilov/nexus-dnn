@@ -124,6 +124,32 @@ impl RunsRepo for SqliteRunsRepo {
         Ok(())
     }
 
+    async fn update_status_guarded(
+        &self,
+        id: &RunId,
+        status: &str,
+        finished_at: Option<i64>,
+        from_any: &[&str],
+    ) -> RepoResult<bool> {
+        if from_any.is_empty() {
+            return Ok(false);
+        }
+        let placeholders = vec!["?"; from_any.len()].join(",");
+        let sql = format!(
+            "UPDATE ext_emotion_tts__runs SET status = ?, finished_at = ? \
+             WHERE run_id = ? AND status IN ({placeholders})"
+        );
+        let mut query = sqlx::query(&sql)
+            .bind(status)
+            .bind(finished_at)
+            .bind(id.as_str());
+        for s in from_any {
+            query = query.bind(*s);
+        }
+        let result = query.execute(&self.pool).await.map_err(to_err)?;
+        Ok(result.rows_affected() > 0)
+    }
+
     async fn set_started(&self, id: &RunId, at: i64) -> RepoResult<()> {
         sqlx::query(
             "UPDATE ext_emotion_tts__runs SET status = 'running', started_at = ? WHERE run_id = ?",

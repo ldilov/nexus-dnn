@@ -131,6 +131,30 @@ async fn post_run_returns_202_with_preflight_payload() {
 }
 
 #[tokio::test]
+async fn preflight_surfaces_parser_warnings() {
+    let (router, repos) = router_with_repos().await;
+    let dep = seed_deployment(&repos).await;
+    seed_mapping(&repos, &dep, "Bob").await;
+
+    let body = json!({
+        "script": "[Bob|unknown_key:5] hi",
+        "outputFormat": "mp3",
+    });
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/deployments/{}/runs", dep.as_str()))
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap();
+    let resp = router.oneshot(req).await.unwrap();
+    let (status, body) = parse_body(resp).await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let warnings = body["preflight"]["parserWarnings"].as_array().unwrap();
+    assert_eq!(warnings.len(), 1);
+    assert_eq!(warnings[0]["kind"].as_str().unwrap(), "unknown_override_key");
+}
+
+#[tokio::test]
 async fn post_run_conflicts_on_unresolved_characters() {
     let (router, repos) = router_with_repos().await;
     let dep = seed_deployment(&repos).await;
