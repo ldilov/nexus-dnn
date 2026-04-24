@@ -48,7 +48,10 @@ pub fn build_router(
         .merge(families::router());
 
     if let Some(store) = artifact_store {
-        router = router.nest("/voice-assets", voice_assets::router(repos, store));
+        router = router.nest(
+            "/voice-assets",
+            voice_assets::router(repos, store, provider.clone()),
+        );
     } else {
         router = router.nest("/voice-assets", voice_assets_stub());
     }
