@@ -203,6 +203,15 @@ pub trait VoiceAssetsRepo: Send + Sync {
     async fn get(&self, id: &VoiceAssetId) -> RepoResult<Option<VoiceAssetRow>>;
     async fn list_by_deployment(&self, dep: &DeploymentId) -> RepoResult<Vec<VoiceAssetRow>>;
     async fn deactivate(&self, id: &VoiceAssetId) -> RepoResult<()>;
+    /// Spec 034 US1 / T038 — persist the preprocessing outcome against an
+    /// existing voice-asset row. Passing `None` clears the fields (used when
+    /// the user re-uploads and we invalidate any stale preprocessed artifact).
+    async fn set_preprocessed(
+        &self,
+        id: &VoiceAssetId,
+        preprocessed_artifact_ref: Option<&str>,
+        preprocessing_report_json: Option<&str>,
+    ) -> RepoResult<()>;
 }
 
 #[async_trait]
