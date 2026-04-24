@@ -1,0 +1,41 @@
+# Model-family descriptor (spec 034 US5, R-34-06).
+#
+# Declarative metadata about a supported IndexTTS model family. The
+# extension's FamilyRegistry loads every *.yaml in this directory at
+# activation time and reconciles each against the host model-store's
+# GET /api/v1/model-store/families/:ref/status — so the host owns the
+# weight bytes and the extension just tracks coordination metadata.
+#
+# Adding a new family is a YAML-only change (Principle V — Ecosystem
+# First; no Rust release needed).
+
+family_id: "indextts-2"
+display_name: "IndexTTS-2 (upstream)"
+model_family_ref: "IndexTeam/IndexTTS-2"
+engine_version_constraint: ">=0.1.0, <0.2.0"
+supported_languages:
+  - "zh"
+  - "en"
+expected_artifacts:
+  - "config.yaml"
+  - "gpt.pth"
+  - "s2mel.pth"
+  - "bpe.model"
+  - "qwen0.6bemo4-merge/model.safetensors"
+  - "qwen0.6bemo4-merge/config.json"
+  - "qwen0.6bemo4-merge/tokenizer.json"
+  - "qwen0.6bemo4-merge/tokenizer_config.json"
+  - "qwen0.6bemo4-merge/special_tokens_map.json"
+  - "qwen0.6bemo4-merge/generation_config.json"
+  - "qwen0.6bemo4-merge/vocab.json"
+  - "qwen0.6bemo4-merge/merges.txt"
+  - "qwen0.6bemo4-merge/added_tokens.json"
+  - "wav2vec2bert_stats.pt"
+  - "bigvgan_generator.pth"
+  - "bigvgan_discriminator.pth"
+default_generation:
+  temperature: 0.8
+  top_p: 0.8
+  # Canonical name — mirrors AdapterSettings.max_text_tokens_per_segment
+  # and domain/cache_key::model_family (spec 034 I5 resolution).
+  max_text_tokens_per_segment: 400

@@ -59,6 +59,31 @@ impl BackendClient {
             .map_err(|err| EmotionTtsError::internal(format!("decode response for {method}: {err}")))
     }
 
+    /// Spec 034 / US5 (T104) — typed wrapper for `family.list`.
+    /// Dispatcher (T120 backlog) calls this once per reconciliation tick
+    /// to find out which family the worker currently has loaded.
+    pub async fn family_list(&self) -> Result<params::FamilyListResult> {
+        self.call(
+            rpc::methods::FAMILY_LIST,
+            &serde_json::Map::<String, serde_json::Value>::new(),
+        )
+        .await
+    }
+
+    /// Spec 034 / US5 (T104) — typed wrapper for `family.switch`. Instructs
+    /// the worker to unload the active weights and load ``family_id``.
+    /// Errors map per contracts/rpc §family.switch (-32012 not_installed,
+    /// -32013 incompatible).
+    pub async fn family_switch(
+        &self,
+        family_id: impl Into<String>,
+    ) -> Result<params::FamilySwitchResult> {
+        let params = params::FamilySwitchParams {
+            family_id: family_id.into(),
+        };
+        self.call(rpc::methods::FAMILY_SWITCH, &params).await
+    }
+
     /// Spec 034 / US1 (T037) — typed wrapper for `voice.preprocess`.
     ///
     /// Runs the reference-audio preprocessing chain on the file at
