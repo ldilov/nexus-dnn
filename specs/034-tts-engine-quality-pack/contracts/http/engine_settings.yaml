@@ -1,0 +1,88 @@
+openapi: 3.1.0
+info:
+  title: EmotionTTS — Deployment Engine Settings
+  version: 0.1.0
+
+paths:
+  /deployments/{deployment_id}/engine-settings:
+    parameters:
+      - in: path
+        name: deployment_id
+        required: true
+        schema: { type: string }
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EngineSettings" }
+        "404":
+          description: deployment not found
+    patch:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EngineSettingsPatch" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EngineSettings" }
+        "400":
+          description: validation error (unknown family, invalid toggle)
+
+  /deployments/{deployment_id}/oas-threshold:
+    parameters:
+      - in: path
+        name: deployment_id
+        required: true
+        schema: { type: string }
+    patch:
+      description: Worker-originated update of the learned OAS threshold after a batch.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [thresholdLearned, samplesSeen]
+              properties:
+                thresholdLearned: { type: number, minimum: 0.0, maximum: 1.0 }
+                samplesSeen:      { type: integer, minimum: 0 }
+      responses:
+        "204": { description: threshold updated }
+
+components:
+  schemas:
+    EngineSettings:
+      type: object
+      required:
+        - deploymentId
+        - referencePreprocessEnabled
+        - oasEnabled
+        - compileGptEnabled
+        - modelFamily
+        - oasThresholdUsed
+        - oasThresholdSource
+      properties:
+        deploymentId:                { type: string }
+        referencePreprocessEnabled:  { type: boolean }
+        oasEnabled:                  { type: boolean }
+        compileGptEnabled:           { type: boolean }
+        compileAvailable:            { type: boolean, description: "cached result of the capability probe; NULL if never probed" }
+        lastCompileFailureReason:    { type: string, nullable: true }
+        modelFamily:                 { type: string }
+        oasThresholdUsed:            { type: number, minimum: 0.0, maximum: 1.0 }
+        oasThresholdSource:
+          type: string
+          enum: [literature_default, rolling_mad]
+        oasSamplesSeen:              { type: integer, minimum: 0 }
+
+    EngineSettingsPatch:
+      type: object
+      properties:
+        referencePreprocessEnabled:  { type: boolean }
+        oasEnabled:                  { type: boolean }
+        compileGptEnabled:           { type: boolean }
+        modelFamily:                 { type: string, description: "must match a registered family_id" }

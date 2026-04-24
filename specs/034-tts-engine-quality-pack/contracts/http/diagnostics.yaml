@@ -1,0 +1,83 @@
+openapi: 3.1.0
+info:
+  title: EmotionTTS — Run Diagnostics
+  version: 0.1.0
+
+paths:
+  /runs/{run_id}/diagnostics:
+    parameters:
+      - in: path
+        name: run_id
+        required: true
+        schema: { type: string }
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RunDiagnostics" }
+        "404":
+          description: run not found OR OAS was disabled for this run
+
+  /runs/{run_id}/diagnostics/segments/{global_index}/attention-map:
+    parameters:
+      - in: path
+        name: run_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: global_index
+        required: true
+        schema: { type: integer, minimum: 1 }
+    get:
+      description: |
+        Resolves the attention-map PNG artifact for a flagged segment.
+        Returns a redirect to the host artifact store, NOT the PNG bytes
+        directly — the extension never re-hosts artifacts.
+      responses:
+        "302":
+          description: redirect to host artifact URL
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+        "404":
+          description: segment not flagged or PNG not generated
+
+components:
+  schemas:
+    RunDiagnostics:
+      type: object
+      required:
+        - runId
+        - oasActive
+        - modelFamily
+        - compileActive
+      properties:
+        runId:         { type: string }
+        oasActive:     { type: boolean }
+        compileActive: { type: boolean }
+        modelFamily:   { type: string }
+        preprocessingReportRef: { type: string, nullable: true }
+        alignmentSummary:
+          type: object
+          nullable: true
+          required: [min, median, p95, flaggedCount, totalCount]
+          properties:
+            min:          { type: number }
+            median:       { type: number }
+            p95:          { type: number }
+            flaggedCount: { type: integer }
+            totalCount:   { type: integer }
+        flaggedSegments:
+          type: array
+          items:
+            type: object
+            required: [globalIndex, alignmentScore, thresholdUsed]
+            properties:
+              globalIndex:               { type: integer }
+              alignmentScore:            { type: number }
+              thresholdUsed:             { type: number }
+              thresholdSource:
+                type: string
+                enum: [literature_default, rolling_mad]
+              attentionMapArtifactRef:   { type: string, nullable: true }
