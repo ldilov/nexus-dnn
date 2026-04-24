@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLoaderData, useNavigate } from "react-router";
 import { createMapping } from "../../services/mappings_client";
-import type { EmotionMode } from "../../services/types";
+import type { PersistedEmotionMode } from "../../services/types";
 
 interface LoaderData {
   deploymentId: string;
@@ -13,7 +13,7 @@ export function NewMappingView(): JSX.Element {
   const navigate = useNavigate();
   const [characterName, setCharacterName] = useState(prefillCharacterName);
   const [speakerVoiceAssetId, setSpeakerVoiceAssetId] = useState("");
-  const [mode, setMode] = useState<EmotionMode>("none");
+  const [mode, setMode] = useState<PersistedEmotionMode>("none");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement | null>(null);
@@ -64,7 +64,7 @@ export function NewMappingView(): JSX.Element {
         </label>
         <label>
           Emotion mode
-          <select value={mode} onChange={(e) => setMode(e.currentTarget.value as EmotionMode)}>
+          <select value={mode} onChange={(e) => setMode(e.currentTarget.value as PersistedEmotionMode)}>
             <option value="none">None</option>
             <option value="audio_ref">Audio ref</option>
             <option value="vector_preset">Vector preset</option>

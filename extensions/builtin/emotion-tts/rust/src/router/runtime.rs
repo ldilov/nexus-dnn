@@ -94,7 +94,7 @@ async fn handshake_impl(state: &RuntimeState) -> Result<Value> {
         .current()
         .await
         .ok_or_else(|| EmotionTtsError::RuntimeUnavailable("runtime not started".into()))?;
-    client
+    let raw: Value = client
         .call(
             methods::HANDSHAKE,
             &json!({
@@ -103,7 +103,23 @@ async fn handshake_impl(state: &RuntimeState) -> Result<Value> {
                 "client_version": env!("CARGO_PKG_VERSION"),
             }),
         )
-        .await
+        .await?;
+    Ok(normalize_handshake(&raw))
+}
+
+fn normalize_handshake(raw: &Value) -> Value {
+    json!({
+        "protocolVersion": raw.get("protocol_version").cloned().unwrap_or(Value::Null),
+        "workerVersion": raw.get("worker_version").cloned().unwrap_or(Value::Null),
+        "runtimeId": raw.get("runtime_id").cloned().unwrap_or(Value::Null),
+        "pythonVersion": raw.get("python_version").cloned().unwrap_or(Value::Null),
+        "torchVersion": raw.get("torch_version").cloned().unwrap_or(Value::Null),
+        "cudaAvailable": raw.get("cuda_available").cloned().unwrap_or(Value::Bool(false)),
+        "device": raw.get("device").cloned().unwrap_or(Value::Null),
+        "modelFamilyId": raw.get("model_family_id").cloned().unwrap_or(Value::Null),
+        "modelPresent": raw.get("model_present").cloned().unwrap_or(Value::Bool(false)),
+        "capabilities": raw.get("capabilities").cloned().unwrap_or_else(|| json!([])),
+    })
 }
 
 async fn start(State(state): State<RuntimeState>) -> Response {
