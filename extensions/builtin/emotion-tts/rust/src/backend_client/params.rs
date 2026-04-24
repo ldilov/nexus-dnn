@@ -133,6 +133,27 @@ pub struct SynthesizeBatchSpec034Extensions {
     pub speaker_cache_hint: Option<SpeakerCacheHint>,
 }
 
+impl SynthesizeBatchSpec034Extensions {
+    /// Build the extensions for a batch from the deployment row's toggle
+    /// state (spec 034 T086). Future dispatcher code calls this once per
+    /// batch so the worker's active settings always agree with what the
+    /// UI has configured on the deployment.
+    #[must_use]
+    pub fn from_deployment(
+        model_family: impl Into<String>,
+        oas_enabled: bool,
+        compile_gpt_enabled: bool,
+        speaker_cache_budget_mb: i64,
+    ) -> Self {
+        Self {
+            model_family: Some(model_family.into()),
+            enable_attention_capture: Some(oas_enabled),
+            enable_compile: Some(compile_gpt_enabled),
+            speaker_cache_hint: Some(SpeakerCacheHint::from_budget_mb(speaker_cache_budget_mb)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub struct SpeakerCacheHint {

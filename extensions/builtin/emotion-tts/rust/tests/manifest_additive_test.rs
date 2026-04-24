@@ -172,6 +172,59 @@ fn reference_variant_serialises_snake_case() {
 }
 
 #[test]
+fn record_compile_active_stamps_field() {
+    let mut m = build_manifest(
+        "run_04", "dep_01", "0.1.0", "mp3", 1.0, "preserve_pitch",
+        None, None, None, 0, vec![minimal_entry()],
+    );
+    assert!(m.compile_active.is_none());
+    m.record_compile_active(true);
+    assert_eq!(m.compile_active, Some(true));
+    m.record_compile_active(false);
+    assert_eq!(m.compile_active, Some(false));
+}
+
+#[test]
+fn record_oas_active_includes_summary_when_active() {
+    let mut m = build_manifest(
+        "run_05", "dep_01", "0.1.0", "mp3", 1.0, "preserve_pitch",
+        None, None, None, 0, vec![minimal_entry()],
+    );
+    let summary = AlignmentSummary {
+        min: 0.3, median: 0.6, p95: 0.8, flagged_count: 2, total_count: 20,
+    };
+    m.record_oas_active(true, Some(summary.clone()));
+    assert_eq!(m.oas_active, Some(true));
+    assert_eq!(m.alignment_summary, Some(summary));
+}
+
+#[test]
+fn record_oas_inactive_does_not_set_summary() {
+    let mut m = build_manifest(
+        "run_06", "dep_01", "0.1.0", "mp3", 1.0, "preserve_pitch",
+        None, None, None, 0, vec![minimal_entry()],
+    );
+    let summary = AlignmentSummary {
+        min: 0.3, median: 0.6, p95: 0.8, flagged_count: 0, total_count: 0,
+    };
+    m.record_oas_active(false, Some(summary));
+    assert_eq!(m.oas_active, Some(false));
+    assert!(m.alignment_summary.is_none());
+}
+
+#[test]
+fn record_model_family_and_preprocess_active_stamp_fields() {
+    let mut m = build_manifest(
+        "run_07", "dep_01", "0.1.0", "mp3", 1.0, "preserve_pitch",
+        None, None, None, 0, vec![minimal_entry()],
+    );
+    m.record_model_family("indextts-2-5");
+    m.record_reference_preprocess_active(true);
+    assert_eq!(m.model_family.as_deref(), Some("indextts-2-5"));
+    assert_eq!(m.reference_preprocess_active, Some(true));
+}
+
+#[test]
 fn manifest_top_level_skips_none_spec_034_fields() {
     let m = build_manifest(
         "run_03",
