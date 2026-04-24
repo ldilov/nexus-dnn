@@ -74,20 +74,27 @@ grandfathered_paths:
   - "apps/web/src/services/extension_chat.ts"
   - "apps/web/src/views/dev-components/preview_demo.ts"
   - "apps/web/src/views/extensions/local-llm/**"
+  # Spec 032 runtime-id regex test fixture uses "indextts.python" as a
+  # positive example for RuntimeId::try_from. Spec 031 (EmotionTTS) registers
+  # `indextts` in registered_extensions below; this path grandfathers the
+  # single pre-existing reference inside the spec-032 test.
+  - "crates/nexus-backend-runtimes/src/generic/ids/runtime_id.rs"
 
 # Extension id fragments registered by future extension-bearing specs.
 # Each entry MUST reference the spec number that introduced it.
-registered_extensions: []
-# Example (to be added by spec 031 when its implementation merges):
-# - fragment: "emotion-tts"
-#   spec: "031"
-#   extension_root: "extensions/builtin/emotion-tts/**"
-# - fragment: "emotion_tts"
-#   spec: "031"
-#   extension_root: "extensions/builtin/emotion-tts/**"
-# - fragment: "indextts"
-#   spec: "031"
-#   extension_root: "extensions/builtin/emotion-tts/**"
+registered_extensions:
+  - fragment: "emotion-tts"
+    spec: "031"
+    extension_root: "extensions/builtin/emotion-tts/**"
+  - fragment: "emotion_tts"
+    spec: "031"
+    extension_root: "extensions/builtin/emotion-tts/**"
+  - fragment: "nexus.audio.emotiontts"
+    spec: "031"
+    extension_root: "extensions/builtin/emotion-tts/**"
+  - fragment: "indextts"
+    spec: "031"
+    extension_root: "extensions/builtin/emotion-tts/**"
 
 # Host tree roots audited for fragment hits.
 audit_roots:

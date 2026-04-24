@@ -1,0 +1,55 @@
+spec_version: "0.1"
+
+extension:
+  id: "nexus.audio.emotiontts"
+  version: "0.1.0"
+  name: "EmotionTTS"
+  description: "Dialogue/script-based emotional TTS via IndexTTS-2 running in a host-managed Python subprocess. 8-axis emotion control + Qwen text emotion + audio-ref; deployment-scoped character mappings; global content-hash synthesis cache with 10 GB LRU; partial-ZIP + auto-resume."
+  publisher: "nexus"
+
+compatibility:
+  host_api: ">=0.1.0"
+  protocol: ">=0.1.0"
+
+capabilities:
+  - "filesystem.read"
+  - "filesystem.write"
+  - "process.spawn"
+  - "gpu.compute"
+  - "storage.schema_contribute"
+
+storage:
+  namespace: "emotion_tts"
+  migrations: "storage/migrations"
+
+runtime:
+  family: "native"
+  entrypoint: "noop"
+
+backend_runtimes:
+  - runtime_id: "indextts.python"
+    display_name: "IndexTTS-2 (Python)"
+    family: "python"
+    transport: "stdio"
+    worker_entrypoint: "worker/src/emotion_tts_worker/main.py"
+    version_manifest: "backends/indextts/versions.yaml"
+    capability_tags:
+      - "tts"
+      - "emotional-tts"
+      - "dialogue"
+      - "voice-cloning"
+    supported_roles:
+      - "tts.synthesize"
+
+operators:
+  directory: "operators"
+
+recipes:
+  directory: "recipes"
+
+workflows:
+  directory: "workflows"
+
+web:
+  bundle: "web/dist/emotion-tts.js"
+  mount: "/extensions/nexus.audio.emotiontts"
