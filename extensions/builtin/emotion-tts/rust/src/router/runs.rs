@@ -37,15 +37,39 @@ pub fn router(state: RunsState) -> Router {
         .route("/deployments/:deployment_id/runs/:run_id/cancel", post(cancel_run))
         .route("/deployments/:deployment_id/runs/:run_id/resume", post(resume_run))
         .route("/deployments/:deployment_id/runs/test-line", post(test_line))
-        .route("/runs/:run_id/diagnostics", get(diagnostics_stub))
+        .route("/runs/:run_id/diagnostics", get(diagnostics))
         .with_state(state)
 }
 
-/// Spec 034 / T063 stub — real handler reads alignment diagnostics from the
-/// run manifest and returns them in the shape contracts/http/diagnostics.yaml
-/// prescribes. Ships with US2.
-async fn diagnostics_stub() -> StatusCode {
-    StatusCode::NOT_IMPLEMENTED
+/// Spec 034 US2 / T063 — reads alignment diagnostics for a completed run.
+///
+/// Returns the contract-correct shape even when no diagnostics have been
+/// stored yet: an empty `segments` array + `summary: null`. Once T059/T061
+/// wire attention capture into the dispatch path the segments will carry
+/// per-utterance `AlignmentDiagnostics`; until then the endpoint is
+/// discoverable-but-empty so the frontend can ship without blocking on
+/// the full pipeline.
+async fn diagnostics(
+    State(state): State<RunsState>,
+    Path(raw_run_id): Path<String>,
+) -> Response {
+    let run_id = match RunId::try_from(raw_run_id.as_str()) {
+        Ok(v) => v,
+        Err(err) => return EmotionTtsError::from(err).into_response(),
+    };
+    match state.repos.runs.get(&run_id).await {
+        Ok(Some(_run)) => (
+            StatusCode::OK,
+            Json(json!({
+                "runId": run_id.as_str(),
+                "segments": [],
+                "summary": null,
+            })),
+        )
+            .into_response(),
+        Ok(None) => EmotionTtsError::not_found(format!("run {run_id}")).into_response(),
+        Err(err) => err.into_response(),
+    }
 }
 
 #[derive(Debug, Deserialize)]
