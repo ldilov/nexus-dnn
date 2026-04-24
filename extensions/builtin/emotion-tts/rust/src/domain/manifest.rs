@@ -123,6 +123,38 @@ impl Manifest {
     pub fn to_pretty_json(&self) -> serde_json::Result<String> {
         serde_json::to_string_pretty(self)
     }
+
+    /// Spec 034 US4 T087 — stamp the manifest with the resolved compile
+    /// state (after fallback resolution). Called from the dispatcher on
+    /// batch completion so a user replaying an export can see whether the
+    /// compiled path was actually exercised.
+    pub fn record_compile_active(&mut self, active: bool) {
+        self.compile_active = Some(active);
+    }
+
+    /// Spec 034 US2 — stamp OAS context on the manifest after a batch.
+    pub fn record_oas_active(
+        &mut self,
+        active: bool,
+        summary: Option<AlignmentSummary>,
+    ) {
+        self.oas_active = Some(active);
+        if active && summary.is_some() {
+            self.alignment_summary = summary;
+        }
+    }
+
+    /// Spec 034 US1 — stamp the reference-preprocess deployment toggle at
+    /// run start (FR-252 — lets replayers distinguish "toggle off" from
+    /// "no preprocessed ref available").
+    pub fn record_reference_preprocess_active(&mut self, active: bool) {
+        self.reference_preprocess_active = Some(active);
+    }
+
+    /// Spec 034 US5 — stamp the model family a run used (FR-243).
+    pub fn record_model_family(&mut self, family: impl Into<String>) {
+        self.model_family = Some(family.into());
+    }
 }
 
 pub fn build_manifest(
