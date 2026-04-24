@@ -1,3 +1,5 @@
+[workspace]
+
 [package]
 name = "emotion-tts-extension"
 version = "0.1.0"
