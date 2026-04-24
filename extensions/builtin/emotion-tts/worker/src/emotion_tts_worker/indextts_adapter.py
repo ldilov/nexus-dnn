@@ -39,6 +39,11 @@ class AdapterSettings:
     low_vram: bool = False
     speaker_cache_mb: int = 200
     gpt_batch_size: int = 2
+    compile_pad_to_multiple_of: int = 64
+    oas_layer_range: tuple[int, int] = (10, 14)
+    oas_literature_threshold: float = 0.45
+    oas_max_png_per_run: int = 50
+    max_text_tokens_per_segment: int = 400
 
 
 @dataclass
