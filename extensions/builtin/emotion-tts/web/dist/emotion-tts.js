@@ -34232,8 +34232,8 @@ async function EU(i, o, c, d, m) {
     throw new Error(`upload failed: ${b.status}`);
   return await b.json();
 }
-async function TU() {
-  return ea("/workflow/default");
+async function TU(i) {
+  return ea(`/workflow?deploymentId=${encodeURIComponent(i)}`);
 }
 var AU = "_93p6291", RU = "_93p6292", DU = "_93p6293", xU = "_93p6294", MU = "_93p6295", CU = "_93p6296", OU = "_93p6297", wU = "_93p6298", _U = "_93p6299", zU = "_93p629a", UU = "_93p629b", NU = "_93p629c", jU = "_93p629d", LU = "_93p629e";
 function HU() {
@@ -41133,7 +41133,7 @@ function QL() {
           tx(o),
           nx(o),
           yU(o, { limit: 10 }),
-          TU()
+          TU(o)
         ]);
         return { deployment: c, mappings: d, runs: m, workflow: y };
       },

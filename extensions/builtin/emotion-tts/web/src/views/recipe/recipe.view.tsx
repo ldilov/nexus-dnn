@@ -8,7 +8,7 @@ import type {
   OutputFormat,
   RunSummary,
 } from "../../services/types";
-import type { DefaultWorkflowResponse } from "../../services/workflows_client";
+import type { WorkflowResponse } from "../../services/workflows_client";
 import { DeploymentHeader } from "./components/deployment_header";
 import { EmotionPanel } from "./components/emotion_panel";
 import { GenerationSettingsPanel } from "./components/generation_settings_panel";
@@ -21,7 +21,7 @@ interface LoaderData {
   deployment: Deployment;
   mappings: CharacterMapping[];
   runs: RunSummary[];
-  workflow: DefaultWorkflowResponse;
+  workflow: WorkflowResponse;
 }
 
 export function RecipeView(): JSX.Element {

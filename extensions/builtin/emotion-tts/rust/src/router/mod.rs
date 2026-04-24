@@ -41,7 +41,7 @@ pub fn build_router(
         .nest("/mappings", mappings::router(repos.clone()))
         .nest("/presets", presets::router(repos.clone()))
         .nest("/exports", exports::router())
-        .nest("/workflow", workflows::router());
+        .nest("/workflow", workflows::router(repos.clone()));
 
     if let Some(store) = artifact_store {
         router = router.nest("/voice-assets", voice_assets::router(repos, store));

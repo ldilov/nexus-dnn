@@ -49,6 +49,7 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration { version: 6, name: "utterances",         sql: include_str!("../../storage/migrations/006_utterances.sql") },
     Migration { version: 7, name: "synthesis_cache",    sql: include_str!("../../storage/migrations/007_synthesis_cache.sql") },
     Migration { version: 8, name: "export_history",     sql: include_str!("../../storage/migrations/008_export_history.sql") },
+    Migration { version: 9, name: "workflows",           sql: include_str!("../../storage/migrations/009_workflows.sql") },
 ];
 
 pub const EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION");
