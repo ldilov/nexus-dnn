@@ -1,0 +1,31 @@
+releases:
+  - release_id: "v0_1_0"
+    semver: "0.1.0"
+    notes: "Initial release — IndexTTS-2 baseline + 8-axis emotion + Qwen text emotion."
+    targets:
+      - platform: "windows-x64"
+        accelerator_profile: "cuda13_1"
+        asset:
+          url: "file://assets/indextts-windows-x64-cuda13_1.zip"
+          sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+          size: 0
+        notes: "CUDA 12.8+ required; peak VRAM ~8 GB at fp16, ~4.5 GB with low_vram=on."
+      - platform: "windows-x64"
+        accelerator_profile: "cpu"
+        asset:
+          url: "file://assets/indextts-windows-x64-cpu.zip"
+          sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+          size: 0
+        notes: "CPU fallback; ~15× realtime on typical 5-line dialogue."
+      - platform: "linux-x64"
+        accelerator_profile: "cuda13_1"
+        asset:
+          url: "file://assets/indextts-linux-x64-cuda13_1.tar.gz"
+          sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+          size: 0
+      - platform: "linux-x64"
+        accelerator_profile: "cpu"
+        asset:
+          url: "file://assets/indextts-linux-x64-cpu.tar.gz"
+          sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+          size: 0

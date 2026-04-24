@@ -32,6 +32,12 @@ pub mod error_codes {
     pub const CANCELLED: i32 = -33002;
     pub const VALIDATION_FAILED: i32 = -33010;
     pub const SYNTHESIS_FAILED: i32 = -33020;
+
+    pub const MODEL_MISSING_V1: i32 = -32000;
+    pub const CUDA_OOM: i32 = -32001;
+    pub const CANCELLED_V1: i32 = -32002;
+    pub const MODEL_LOAD_FAILED: i32 = -32003;
+    pub const HANDSHAKE_PROTOCOL_MISMATCH: i32 = -32004;
 }
 
 #[must_use]
@@ -52,8 +58,19 @@ pub fn lease_error_to_domain(err: LeaseError) -> EmotionTtsError {
                 EmotionTtsError::validation(message)
             }
             error_codes::RUNTIME_UNAVAILABLE => EmotionTtsError::RuntimeUnavailable(message),
-            error_codes::MODEL_MISSING => EmotionTtsError::ModelMissing(message),
-            error_codes::CANCELLED => EmotionTtsError::Cancelled,
+            error_codes::MODEL_MISSING | error_codes::MODEL_MISSING_V1 => {
+                EmotionTtsError::ModelMissing(message)
+            }
+            error_codes::MODEL_LOAD_FAILED => {
+                EmotionTtsError::internal(format!("model_load_failed: {message}"))
+            }
+            error_codes::HANDSHAKE_PROTOCOL_MISMATCH => {
+                EmotionTtsError::RuntimeUnavailable(format!("handshake protocol mismatch: {message}"))
+            }
+            error_codes::CUDA_OOM => {
+                EmotionTtsError::internal(format!("cuda_oom: {message}"))
+            }
+            error_codes::CANCELLED | error_codes::CANCELLED_V1 => EmotionTtsError::Cancelled,
             error_codes::SYNTHESIS_FAILED => EmotionTtsError::internal(format!("synthesis failed: {message}")),
             _ => EmotionTtsError::Rpc { code, message },
         },

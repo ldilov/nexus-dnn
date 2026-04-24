@@ -53,10 +53,14 @@ pub const MIGRATIONS: &[Migration] = &[
 pub const EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Entry point called by the host loader.
-pub async fn register(pool: Arc<dyn HostStoragePool>) -> crate::domain::Result<ExtensionHandle> {
+pub async fn register(
+    pool: Arc<dyn HostStoragePool>,
+    lease_factory: Option<Arc<dyn crate::backend_client::LeaseFactory>>,
+) -> crate::domain::Result<ExtensionHandle> {
     let repos = crate::storage::build_repos(pool).await?;
     let queue = Arc::new(RuntimeQueue::new());
-    let router = router::build_router(repos, queue, EXTENSION_VERSION);
+    let provider = lease_factory.map(|f| Arc::new(crate::backend_client::LeaseProvider::new(f)));
+    let router = router::build_router(repos, queue, EXTENSION_VERSION, provider);
     Ok(ExtensionHandle {
         migrations: MIGRATIONS,
         router,
@@ -68,5 +72,5 @@ pub fn build_router_with(
     queue: Arc<RuntimeQueue>,
     extension_version: impl Into<String>,
 ) -> Router {
-    router::build_router(repos, queue, extension_version)
+    router::build_router(repos, queue, extension_version, None)
 }

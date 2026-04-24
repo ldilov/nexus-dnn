@@ -1,0 +1,73 @@
+runtime_id: "indextts.python"
+display_name: "IndexTTS-2 (Python)"
+family: "python"
+transport: "stdio"
+worker_entrypoint: "worker/src/emotion_tts_worker/main.py"
+version_manifest: "versions.yaml"
+
+capability_tags:
+  - "tts"
+  - "emotional-tts"
+  - "dialogue"
+  - "voice-cloning"
+  - "tts.emotion.audio_ref"
+  - "tts.emotion.vector"
+  - "tts.emotion.text_qwen"
+  - "audio.export.wav"
+  - "audio.export.mp3"
+  - "audio.export.flac"
+
+supported_roles:
+  - "tts.synthesize"
+
+runtime_settings:
+  low_vram:
+    type: "enum"
+    values: ["auto", "on", "off"]
+    default: "auto"
+    description: "R-12 O-1: cycle gpt/s2mel/Qwen between GPU and CPU to cut peak VRAM 8GB→4.5GB; auto infers from torch.cuda.get_device_properties."
+  gpt_batch_size:
+    type: "integer"
+    min: 1
+    max: 4
+    default: 2
+    description: "R-12 O-3: same-speaker same-emotion micro-batch size for the GPT sampling loop. 1.7-2.5× speedup at size 2-4; memory-bound at higher."
+  torch_compile:
+    type: "boolean"
+    default: false
+    description: "R-12 O-4 (opt-in): 15% steady-state speedup after 20-40s first-call warmup. Off by default; pairs well with stay-warm lifecycle."
+  speaker_cache_mb:
+    type: "integer"
+    min: 0
+    max: 2048
+    default: 200
+    description: "R-12 O-5: persistent on-disk speaker-embedding cache budget; 0 disables. Cuts cold test-line latency 2.5s→1.2s."
+
+failure_categories:
+  - id: "python_bootstrap_failed"
+    stage: "bootstrap_python"
+    user_message: "Could not prepare embedded Python runtime."
+  - id: "dependency_install_failed"
+    stage: "install_deps"
+    user_message: "uv sync failed; see install log for the package."
+  - id: "cuda_profile_mismatch"
+    stage: "validate_env"
+    user_message: "Selected a CUDA profile but no compatible CUDA device was found. Offer CPU fallback."
+  - id: "ffmpeg_missing"
+    stage: "validate_env"
+    user_message: "ffmpeg not found on PATH or in the install bundle."
+  - id: "worker_start_failed"
+    stage: "lease_acquire"
+    user_message: "Worker subprocess failed to launch."
+  - id: "handshake_failed"
+    stage: "lease_acquire"
+    user_message: "Worker did not complete handshake within 60 seconds."
+  - id: "model_missing"
+    stage: "runtime_runtime"
+    user_message: "IndexTTS-2 model weights not present on disk — download from the model store."
+  - id: "model_load_failed"
+    stage: "runtime_runtime"
+    user_message: "IndexTTS-2 weights are present but failed to load."
+  - id: "runtime_health_failed"
+    stage: "runtime_runtime"
+    user_message: "Runtime health check failed."
