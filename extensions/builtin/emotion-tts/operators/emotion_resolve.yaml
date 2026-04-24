@@ -1,15 +1,20 @@
-id: "emotiontts.emotion.resolve@1.0.0"
-display_name: "Emotion Resolve"
-description: "Resolve per-utterance emotion using the 5-level precedence (inline explicit > inline compat > mapping > global > none)."
+spec_version: '0.1'
+operator:
+  id: emotiontts.emotion.resolve
+  version: 1.0.0
+  display_name: Emotion Resolve
+  description: Resolve per-utterance emotion using the 5-level precedence (inline
+    explicit > inline compat > mapping > global > none).
 inputs:
-  - name: resolved_utterances
-    type: array
-    required: true
-  - name: mappings
-    type: array
-    required: true
-  - name: global
-    type: object
+- name: resolved_utterances
+  type: array
+  required: true
+- name: mappings
+  type: array
+  required: true
+- name: global
+  type: object
+  required: false
 outputs:
-  - name: plans
-    type: array
+- name: plans
+  type: array
