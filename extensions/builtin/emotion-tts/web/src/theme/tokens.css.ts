@@ -2,32 +2,32 @@ import { createGlobalTheme, globalStyle } from "@vanilla-extract/css";
 
 export const vars = createGlobalTheme(":root", {
   color: {
-    surface: "#0c0e10",
-    surfaceMuted: "#111416",
-    surfaceRaised: "#171a1c",
-    surfaceHigh: "#1d2023",
-    surfaceHighest: "#232629",
+    surface: "var(--color-surface, #0c0e10)",
+    surfaceMuted: "var(--color-surface-container-low, #111416)",
+    surfaceRaised: "var(--color-surface-container, #171a1c)",
+    surfaceHigh: "var(--color-surface-container-high, #1d2023)",
+    surfaceHighest: "var(--color-surface-container-highest, #232629)",
     surfaceGlass: "rgba(29, 32, 35, 0.72)",
-    text: "#f0f0f3",
-    textMuted: "#aaabae",
-    textFaint: "#747578",
-    accent: "#ba9eff",
-    accentDim: "#8455ef",
-    accentMuted: "#8455ef",
-    accentOn: "#2b006e",
+    text: "var(--color-on-surface, #f0f0f3)",
+    textMuted: "var(--color-on-surface-variant, #aaabae)",
+    textFaint: "var(--color-outline, #747578)",
+    accent: "var(--color-primary, #ba9eff)",
+    accentDim: "var(--color-primary-dim, #8455ef)",
+    accentMuted: "var(--color-primary-dim, #8455ef)",
+    accentOn: "var(--color-on-primary, #2b006e)",
     accentGlow: "0 0 16px rgba(132, 85, 239, 0.45)",
-    secondary: "#9093ff",
-    tertiary: "#ff8439",
-    danger: "#ff6e84",
-    success: "#22c55e",
-    warning: "#ff8439",
-    borderGhost: "rgba(70, 72, 74, 0.45)",
-    borderSubtle: "rgba(70, 72, 74, 0.25)",
+    secondary: "var(--color-secondary, #9093ff)",
+    tertiary: "var(--color-tertiary, #ff8439)",
+    danger: "var(--color-error, #ff6e84)",
+    success: "var(--color-acid-green, #22c55e)",
+    warning: "var(--color-tertiary, #ff8439)",
+    borderGhost: "color-mix(in oklab, var(--color-outline-variant, #46484a) 85%, transparent)",
+    borderSubtle: "color-mix(in oklab, var(--color-outline-variant, #46484a) 50%, transparent)",
   },
   font: {
-    display: `"Inter Display", "Inter", system-ui, -apple-system, sans-serif`,
-    body: `"Inter", system-ui, -apple-system, sans-serif`,
-    mono: `"JetBrains Mono", ui-monospace, monospace`,
+    display: `var(--font-ui, "Inter", system-ui, -apple-system, sans-serif)`,
+    body: `var(--font-ui, "Inter", system-ui, -apple-system, sans-serif)`,
+    mono: `var(--font-mono, "JetBrains Mono", ui-monospace, monospace)`,
   },
   text: {
     micro: "0.6875rem",
@@ -62,64 +62,26 @@ export const vars = createGlobalTheme(":root", {
     glow: "0 0 24px rgba(132, 85, 239, 0.28)",
   },
   motion: {
-    fast: "160ms cubic-bezier(0.2, 0, 0, 1)",
-    normal: "240ms cubic-bezier(0.16, 1, 0.3, 1)",
+    fast: "var(--motion-card-hover-lift, 160ms) cubic-bezier(0.2, 0, 0, 1)",
+    normal: "var(--motion-drawer-slide, 240ms) cubic-bezier(0.16, 1, 0.3, 1)",
     slow: "360ms cubic-bezier(0.16, 1, 0.3, 1)",
   },
 });
 
-globalStyle(":root", {
-  colorScheme: "dark",
-  background: vars.color.surface,
-  color: vars.color.text,
-});
-
-globalStyle("body", {
-  margin: 0,
+globalStyle("emotion-tts-app", {
+  display: "block",
+  minHeight: "100%",
   background: vars.color.surface,
   color: vars.color.text,
   fontFamily: vars.font.body,
   fontSize: vars.text.body,
   lineHeight: 1.5,
-  WebkitFontSmoothing: "antialiased",
-  MozOsxFontSmoothing: "grayscale",
 });
 
-globalStyle("*, *::before, *::after", {
+globalStyle("emotion-tts-app *, emotion-tts-app *::before, emotion-tts-app *::after", {
   boxSizing: "border-box",
 });
 
-globalStyle("code, pre", {
+globalStyle("emotion-tts-app code, emotion-tts-app pre", {
   fontFamily: vars.font.mono,
-});
-
-globalStyle("a", {
-  color: vars.color.accent,
-  textDecoration: "none",
-});
-
-globalStyle("a:hover", {
-  textDecoration: "underline",
-  textDecorationColor: vars.color.accentDim,
-});
-
-globalStyle("::selection", {
-  background: vars.color.accentDim,
-  color: vars.color.text,
-});
-
-globalStyle("::-webkit-scrollbar", {
-  width: "10px",
-  height: "10px",
-});
-globalStyle("::-webkit-scrollbar-track", {
-  background: vars.color.surface,
-});
-globalStyle("::-webkit-scrollbar-thumb", {
-  background: vars.color.surfaceHighest,
-  borderRadius: "999px",
-  border: `2px solid ${vars.color.surface}`,
-});
-globalStyle("::-webkit-scrollbar-thumb:hover", {
-  background: vars.color.accentDim,
 });
