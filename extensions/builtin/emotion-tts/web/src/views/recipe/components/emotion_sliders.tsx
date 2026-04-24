@@ -39,12 +39,12 @@ export function EmotionSliders({ vector, onChange, disabled = false }: Props): J
             min={0}
             max={1}
             step={0.01}
-            value={vector[idx]}
+            value={vector[idx] ?? 0}
             disabled={disabled}
             onChange={(e) => setAxis(idx, Number(e.currentTarget.value))}
             aria-valuemin={0}
             aria-valuemax={1}
-            aria-valuenow={vector[idx]}
+            aria-valuenow={vector[idx] ?? 0}
             className={css.slider}
           />
           <input
@@ -52,7 +52,7 @@ export function EmotionSliders({ vector, onChange, disabled = false }: Props): J
             min={0}
             max={1}
             step={0.01}
-            value={Number(vector[idx].toFixed(2))}
+            value={Number((vector[idx] ?? 0).toFixed(2))}
             disabled={disabled}
             onChange={(e) => setAxis(idx, Number(e.currentTarget.value))}
             className={css.sliderNumber}
