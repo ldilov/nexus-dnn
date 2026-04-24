@@ -10,21 +10,30 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::domain::{DeploymentId, EmotionTtsError, Result};
+use crate::families::FamilyRegistry;
 use crate::storage::repo_traits::DeploymentRow;
 use crate::storage::Repos;
 
 #[derive(Clone)]
 pub struct DeploymentsState {
     pub repos: Repos,
+    pub family_registry: Arc<FamilyRegistry>,
 }
 
 #[must_use]
 pub fn router(repos: Repos) -> Router {
+    router_with_families(repos, Arc::new(FamilyRegistry::new(Vec::new())))
+}
+
+/// Variant that accepts a loaded `FamilyRegistry` so T103 can validate
+/// `model_family` on deployment create against known descriptors.
+#[must_use]
+pub fn router_with_families(repos: Repos, family_registry: Arc<FamilyRegistry>) -> Router {
     Router::new()
         .route("/", get(list_deployments).post(create_deployment))
         .route("/:deployment_id", get(get_deployment).patch(patch_deployment).delete(delete_deployment))
         .route("/:deployment_id/resume", post(resume))
-        .with_state(Arc::new(DeploymentsState { repos }))
+        .with_state(Arc::new(DeploymentsState { repos, family_registry }))
 }
 
 async fn list_deployments(State(state): State<Arc<DeploymentsState>>) -> Response {
@@ -49,6 +58,10 @@ struct CreateDeploymentBody {
     default_output_format: String,
     #[serde(default = "default_speed")]
     default_speed_factor: f64,
+    /// Spec 034 US5 T103 — optional on create. `None` falls back to the
+    /// registry's default family id.
+    #[serde(default)]
+    model_family: Option<String>,
 }
 
 fn default_format() -> String {
@@ -82,6 +95,21 @@ async fn create_impl(
         return Err(EmotionTtsError::validation("defaultSpeedFactor must be 0.5..=2.0"));
     }
 
+    // Spec 034 US5 T103 — validate model_family against the registry.
+    // Empty registry (early boot) accepts whatever the caller asked for,
+    // with `DEFAULT_MODEL_FAMILY` as the default; a loaded registry rejects
+    // unknown ids with 400.
+    let model_family = body
+        .model_family
+        .unwrap_or_else(|| crate::storage::repo_traits::DEFAULT_MODEL_FAMILY.to_string());
+    if !state.family_registry.descriptors().is_empty()
+        && !state.family_registry.contains(&model_family)
+    {
+        return Err(EmotionTtsError::validation(format!(
+            "modelFamily '{model_family}' not in registry"
+        )));
+    }
+
     let now = Utc::now().timestamp();
     let row = DeploymentRow {
         deployment_id: DeploymentId::new(),
@@ -98,7 +126,7 @@ async fn create_impl(
         reference_preprocess_enabled: true,
         oas_enabled: true,
         compile_gpt_enabled: false,
-        model_family: crate::storage::repo_traits::DEFAULT_MODEL_FAMILY.to_string(),
+        model_family,
         oas_threshold_learned: None,
         oas_samples_seen: 0,
         created_at: now,

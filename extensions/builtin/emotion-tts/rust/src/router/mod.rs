@@ -21,6 +21,7 @@ use std::sync::Arc;
 use axum::Router;
 
 use crate::backend_client::LeaseProvider;
+use crate::families::FamilyRegistry;
 use crate::host_contract::HostArtifactStore;
 use crate::queue::SharedQueue;
 use crate::storage::Repos;
@@ -32,6 +33,30 @@ pub fn build_router(
     provider: Option<Arc<LeaseProvider>>,
     artifact_store: Option<Arc<dyn HostArtifactStore>>,
 ) -> Router {
+    build_router_with_families(
+        repos,
+        queue,
+        extension_version,
+        provider,
+        artifact_store,
+        Arc::new(FamilyRegistry::new(Vec::new())),
+        families::default_reconciler(),
+    )
+}
+
+/// Full variant for call sites (lifecycle, tests) that want to supply
+/// the loaded `FamilyRegistry` + reconciler (spec 034 US5). The simpler
+/// `build_router` defaults to an empty registry — useful in early boot
+/// before YAML is loaded.
+pub fn build_router_with_families(
+    repos: Repos,
+    queue: SharedQueue,
+    extension_version: impl Into<String>,
+    provider: Option<Arc<LeaseProvider>>,
+    artifact_store: Option<Arc<dyn HostArtifactStore>>,
+    family_registry: Arc<FamilyRegistry>,
+    reconciler: families::BoxReconciler,
+) -> Router {
     let runs_state = runs::RunsState {
         repos: repos.clone(),
         queue: queue.clone(),
@@ -39,13 +64,19 @@ pub fn build_router(
     };
     let mut router = Router::new()
         .merge(runs::router(runs_state))
-        .nest("/deployments", deployments::router(repos.clone()))
+        .nest(
+            "/deployments",
+            deployments::router_with_families(repos.clone(), family_registry.clone()),
+        )
         .nest("/mappings", mappings::router(repos.clone()))
         .nest("/presets", presets::router(repos.clone()))
         .nest("/exports", exports::router())
         .nest("/workflow", workflows::router(repos.clone()))
         .merge(engine_settings::router(repos.clone()))
-        .merge(families::router());
+        .merge(families::router(families::FamiliesState {
+            registry: family_registry,
+            reconciler,
+        }));
 
     if let Some(store) = artifact_store {
         router = router.nest(
