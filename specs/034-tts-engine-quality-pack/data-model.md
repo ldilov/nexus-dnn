@@ -147,6 +147,7 @@ Top-level manifest gains:
 | Field | Type | Semantics |
 |---|---|---|
 | `model_family` | string | Family id active for this run. |
+| `reference_preprocess_active` | bool | Deployment-level toggle state at run start (FR-252). |
 | `preprocessing_report_ref` | `Option<ArtifactRef>` | Points at the voice-asset-level report if references were preprocessed for any utterance in this run. |
 | `compile_active` | bool | Whether the compile path was used (after fallback resolution). |
 | `oas_active` | bool | Whether attention capture was enabled. |

@@ -150,7 +150,7 @@ IndexTTS 2.5 weights drop on HuggingFace. The user enters the model-store, selec
 **Cross-cutting**
 
 - **FR-250**: None of the five improvements MUST introduce a host code change. All new code lives under `extensions/builtin/emotion-tts/**`. The boundary-audit script MUST continue to return zero host references.
-- **FR-251**: Every new toggle surface MUST be reachable from the deployment recipe UI; no improvement MAY be hidden behind environment variables or config files the user cannot see.
+- **FR-251**: Every new toggle surface MUST be reachable from the deployment recipe UI; no improvement MAY be hidden behind environment variables or config files the user cannot see. *Clarification: "recipe UI" includes the deployment's Engine Settings panel (spec 034 T109), which is the canonical surface for engine-level toggles; per-segment toggles remain in the mapping editor.*
 - **FR-252**: Every new toggle MUST be recorded in the run manifest so a user replaying an export can see which code paths were active.
 - **FR-253**: Every new observability artifact (attention-map PNG, alignment score, preprocessing report) MUST travel through the host artifact store — no sidecar on-disk files outside the artifact system.
 
@@ -167,7 +167,7 @@ IndexTTS 2.5 weights drop on HuggingFace. The user enters the model-store, selec
 
 ### Measurable Outcomes
 
-- **SC-200**: On a curated "hard reference" evaluation set of 20 noisy clips, preprocessing increases blind-pair listener preference for speaker similarity from baseline to ≥ 70 % (measured by a 10-panellist listening test — spec 031 SC-001 precedent for qualitative panels).
+- **SC-200**: On a curated "hard reference" evaluation set of 20 noisy clips, preprocessing increases blind-pair listener preference for speaker similarity from baseline to ≥ 70 % (measured by a 10-panellist listening test — spec 031 SC-001 precedent for qualitative panels). **Manual verification — out of CI scope; tracked as a release-gate ritual, not a code task.**
 - **SC-201**: On the same curated set, preprocessed references produce a ≥ 15 % relative reduction in measured speaker-similarity cosine-distance (using a standard pretrained speaker encoder, computed offline).
 - **SC-202**: The OAS observability module flags ≥ 4 of 5 intentionally-corrupted segments in a 25-segment benchmark while producing ≤ 1 false positive — i.e., precision ≥ 80 % at recall ≥ 80 %.
 - **SC-203**: Attention-map PNG generation cost is ≤ 80 ms of CPU per flagged segment at p95 on a curated benchmark host (Ryzen 5800X class), measured offline.

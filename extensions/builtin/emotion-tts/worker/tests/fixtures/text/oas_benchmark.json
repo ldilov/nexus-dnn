@@ -1,0 +1,68 @@
+{
+  "schema_version": "1",
+  "description": "OAS precision/recall benchmark corpus — 25 labelled text segments. 5 are intentionally corrupted to exercise the alignment-score flagging path; 20 are clean conversational lines that should NOT be flagged. Used by T067 E2E (SC-202: precision >= 80% at recall >= 80%) and T057 threshold tests.",
+  "targets": {
+    "corrupted_count": 5,
+    "clean_count": 20,
+    "min_recall": 0.8,
+    "min_precision": 0.8
+  },
+  "segments": [
+    {
+      "id": "corrupt-01",
+      "text": "The quick brown fox jumps over the",
+      "label": "corrupted",
+      "failure_mode": "truncated_text",
+      "notes": "Mid-phrase cut; the decoder should stretch or repeat the final frames, producing a low alignment score."
+    },
+    {
+      "id": "corrupt-02",
+      "text": "I went to the store the store the store the store the store.",
+      "label": "corrupted",
+      "failure_mode": "repeated_phrase",
+      "notes": "Stuck-loop pattern; attention typically collapses onto a narrow text window."
+    },
+    {
+      "id": "corrupt-03",
+      "text": "ʃə θɹu ðə bɔl ɪnˈtu ðə ɡɑɹˌdɛn",
+      "label": "corrupted",
+      "failure_mode": "garbage_ipa",
+      "notes": "Raw IPA tokens the tokenizer does not recognise; attention tends to smear across the whole text range."
+    },
+    {
+      "id": "corrupt-04",
+      "text": "She walked to the kitchen and poured herself a glass of wa",
+      "label": "corrupted",
+      "failure_mode": "dropped_phoneme",
+      "notes": "Word cut mid-syllable; decoder often hallucinates a plausible ending."
+    },
+    {
+      "id": "corrupt-05",
+      "text": "Aaaaaaaaaaaaaaaaaaaaaaa.",
+      "label": "corrupted",
+      "failure_mode": "stretched_vowel",
+      "notes": "Single vowel repeated; attention should lock onto one text position and stall."
+    },
+
+    { "id": "clean-01", "text": "Let's grab coffee before the meeting starts.", "label": "clean" },
+    { "id": "clean-02", "text": "The weather has been surprisingly mild this week.", "label": "clean" },
+    { "id": "clean-03", "text": "Could you forward me the spreadsheet when you get a moment?", "label": "clean" },
+    { "id": "clean-04", "text": "I finished the report last night and sent it to the team.", "label": "clean" },
+    { "id": "clean-05", "text": "We should leave a bit early to beat the traffic.", "label": "clean" },
+    { "id": "clean-06", "text": "That restaurant on the corner has really good soup.", "label": "clean" },
+    { "id": "clean-07", "text": "I'm thinking of taking the train instead of driving.", "label": "clean" },
+    { "id": "clean-08", "text": "The kids are playing outside; they'll be hungry soon.", "label": "clean" },
+    { "id": "clean-09", "text": "Remind me to call the dentist tomorrow morning.", "label": "clean" },
+    { "id": "clean-10", "text": "I picked up the groceries on my way home.", "label": "clean" },
+    { "id": "clean-11", "text": "That book you lent me was absolutely fascinating.", "label": "clean" },
+    { "id": "clean-12", "text": "She said she'd join us later at the park.", "label": "clean" },
+    { "id": "clean-13", "text": "The printer is out of toner again, can you believe it?", "label": "clean" },
+    { "id": "clean-14", "text": "We got stuck in a surprise downpour this afternoon.", "label": "clean" },
+    { "id": "clean-15", "text": "I think the cat knocked over the plant in the hallway.", "label": "clean" },
+    { "id": "clean-16", "text": "My flight lands around seven, give or take delays.", "label": "clean" },
+    { "id": "clean-17", "text": "Let's try the new bakery that opened up near the library.", "label": "clean" },
+    { "id": "clean-18", "text": "The presentation went better than I expected.", "label": "clean" },
+    { "id": "clean-19", "text": "I need to replace the batteries in the smoke detector.", "label": "clean" },
+    { "id": "clean-20", "text": "Dinner's almost ready; could you set the table?", "label": "clean" }
+  ]
+}

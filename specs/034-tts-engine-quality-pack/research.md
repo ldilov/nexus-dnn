@@ -61,7 +61,7 @@ Upstream research context lives in the deep-research agent report (agent id `a37
 
 **Alternatives considered**: (a) Check `torch.cuda.is_available()` only — insufficient, Triton is a separate layer. (b) Ship our own Triton build — out of scope; upstream wheel availability is the actual fix. (c) Fall back to `torch.jit.trace` — unstable on models with control flow.
 
-**Static KV cache shape**: Pre-allocate a KV buffer for `max_text_tokens_per_segment` (currently 400 in recipe defaults). Pad input to `pad_to_multiple_of=64` (standard for Triton kernel cost curves). Recompilation fires only when the input exceeds the last allocation; on the fifth distinct length, most dialogue batches will have converged.
+**Static KV cache shape**: Pre-allocate a KV buffer for `max_text_tokens_per_segment` (currently 400 in recipe defaults — the family descriptor under R-34-06 declares the same key, keeping the static KV sizing consistent with the recipe). Pad input to `pad_to_multiple_of=64` (standard for Triton kernel cost curves). Recompilation fires only when the input exceeds the last allocation; on the fifth distinct length, most dialogue batches will have converged.
 
 ---
 
@@ -101,7 +101,7 @@ expected_artifacts:
 default_generation:
   temperature: 0.8
   top_p: 0.8
-  max_mel_tokens: 400
+  max_text_tokens_per_segment: 400   # canonical name, matches R-34-04 + AdapterSettings
 ```
 
 At extension activation, `FamilyRegistry` loads every YAML in `recipes/families/`, reconciles against the host's `GET /api/v1/model-store/families/:ref/status`, and marks each descriptor as `available | not_installed | partial`. The registry is **read-only at runtime** — editing requires a manifest refresh (spec 030 reload hook).
