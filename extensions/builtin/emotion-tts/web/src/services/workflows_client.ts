@@ -36,11 +36,33 @@ export interface WorkflowDocument {
   customised: boolean;
 }
 
+export interface WorkflowResponse {
+  templateId: string;
+  deploymentId: string;
+  workflow: WorkflowDocument;
+  mappableFields: RecipeField[];
+  unmappableFields: RecipeField[];
+}
+
 export interface DefaultWorkflowResponse {
   templateId: string;
   workflow: WorkflowDocument;
   mappableFields: RecipeField[];
   unmappableFields: RecipeField[];
+}
+
+export async function getWorkflow(deploymentId: string): Promise<WorkflowResponse> {
+  return apiFetch(`/workflow?deploymentId=${encodeURIComponent(deploymentId)}`);
+}
+
+export async function putWorkflow(
+  deploymentId: string,
+  workflow: WorkflowDocument,
+): Promise<WorkflowResponse> {
+  return apiFetch("/workflow", {
+    method: "PUT",
+    body: JSON.stringify({ deploymentId, workflow }),
+  });
 }
 
 export async function getDefaultWorkflow(): Promise<DefaultWorkflowResponse> {

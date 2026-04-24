@@ -3,7 +3,7 @@ import { listDeployments, getDeployment } from "./services/deployments_client";
 import { listMappings } from "./services/mappings_client";
 import { getRun, listRuns } from "./services/runs_client";
 import { listVoiceAssets } from "./services/voice_assets_client";
-import { getDefaultWorkflow } from "./services/workflows_client";
+import { getWorkflow } from "./services/workflows_client";
 import { DeploymentsIndexView } from "./views/deployments/deployments_index.view";
 import { RecipeView } from "./views/recipe/recipe.view";
 import { RunDetailView } from "./views/run_detail/run_detail.view";
@@ -36,7 +36,7 @@ export function buildRoutes(): RouteObject[] {
           getDeployment(id),
           listMappings(id),
           listRuns(id, { limit: 10 }),
-          getDefaultWorkflow(),
+          getWorkflow(id),
         ]);
         return { deployment, mappings, runs, workflow };
       },

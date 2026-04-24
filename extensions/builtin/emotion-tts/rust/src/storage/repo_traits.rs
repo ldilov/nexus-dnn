@@ -235,6 +235,21 @@ pub trait SynthesisCacheRepo: Send + Sync {
     async fn evict_lru(&self, target_bytes: i64) -> RepoResult<Vec<ContentHash>>;
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkflowRow {
+    pub deployment_id: DeploymentId,
+    pub document_json: String,
+    pub customised: bool,
+    pub updated_at: i64,
+}
+
+#[async_trait]
+pub trait WorkflowsRepo: Send + Sync {
+    async fn get(&self, dep: &DeploymentId) -> RepoResult<Option<WorkflowRow>>;
+    async fn upsert(&self, row: &WorkflowRow) -> RepoResult<()>;
+    async fn delete(&self, dep: &DeploymentId) -> RepoResult<()>;
+}
+
 #[async_trait]
 pub trait ExportHistoryRepo: Send + Sync {
     async fn insert(&self, row: &ExportHistoryRow) -> RepoResult<()>;

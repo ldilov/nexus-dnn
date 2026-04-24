@@ -28,6 +28,7 @@ pub const CURATED_EDGES: &[(&str, &str)] = &[
 ];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Node {
     pub id: String,
     pub operator_id: String,
@@ -42,6 +43,7 @@ pub struct Edge {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkflowDocument {
     pub template_id: String,
     pub nodes: Vec<Node>,
