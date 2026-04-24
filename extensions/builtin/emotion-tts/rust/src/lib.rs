@@ -9,6 +9,7 @@
 pub mod backend_client;
 pub mod cache_evictor;
 pub mod domain;
+pub mod families;
 pub mod host_contract;
 pub mod operators;
 pub mod queue;
