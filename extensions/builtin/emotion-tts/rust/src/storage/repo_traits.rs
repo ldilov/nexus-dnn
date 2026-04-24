@@ -195,6 +195,26 @@ pub trait DeploymentsRepo: Send + Sync {
     async fn delete(&self, id: &DeploymentId) -> RepoResult<()>;
     async fn set_most_recent_run(&self, id: &DeploymentId, run_id: &RunId) -> RepoResult<()>;
     async fn set_partial_run(&self, id: &DeploymentId, run_id: Option<&RunId>) -> RepoResult<()>;
+    /// Spec 034 US2 / T062 — persist the rolling-MAD threshold after a batch.
+    /// Also updates `oas_samples_seen` so the threshold-regime decision sees
+    /// the new total. `threshold_learned == None` resets to cold-start (used
+    /// when the user clears calibration from the UI).
+    async fn set_oas_threshold(
+        &self,
+        id: &DeploymentId,
+        threshold_learned: Option<f64>,
+        samples_seen: i64,
+    ) -> RepoResult<()>;
+    /// Spec 034 US2 / T062 — PATCH /engine-settings writes toggle bits.
+    /// Any field passed as `None` is left unchanged.
+    async fn patch_engine_settings(
+        &self,
+        id: &DeploymentId,
+        reference_preprocess_enabled: Option<bool>,
+        oas_enabled: Option<bool>,
+        compile_gpt_enabled: Option<bool>,
+        model_family: Option<&str>,
+    ) -> RepoResult<()>;
 }
 
 #[async_trait]

@@ -44,7 +44,7 @@ pub fn build_router(
         .nest("/presets", presets::router(repos.clone()))
         .nest("/exports", exports::router())
         .nest("/workflow", workflows::router(repos.clone()))
-        .merge(engine_settings::router())
+        .merge(engine_settings::router(repos.clone()))
         .merge(families::router());
 
     if let Some(store) = artifact_store {
