@@ -1,70 +1,79 @@
-id: "emotional_dialogue_batch_recipe"
-version: "1.0.0"
-workflow: "emotional_dialogue_batch@1.0.0"
-display_name: "EmotionTTS — Dialogue Batch"
-description: "Paste a multi-character script, pick voices + emotion, click Generate — ZIP drops with per-line audio + manifest."
-
+spec_version: '0.1'
+recipe:
+  id: emotional_dialogue_batch_recipe
+  version: 1.0.0
+  display_name: "EmotionTTS \u2014 Dialogue Batch"
+  summary: "Paste a multi-character script, pick voices + emotion, click Generate\
+    \ \u2014 ZIP drops with per-line audio + manifest."
+  category: tts.dialogue
+workflow: emotional_dialogue_batch@1.0.0
 fields:
-  - id: script
-    type: multiline_text
-    label: "Dialogue script"
-    placeholder: "[Bob] Hey there\n[Alice] Hello\n..."
-    bind: "run.script"
+- id: script
+  type: multiline_text
+  label: Dialogue script
+  placeholder: '[Bob] Hey there
 
-  - id: parser_mode
-    type: enum
-    label: "Parser mode"
-    values: [dialogue, raw_text, advanced_tagged]
-    default: dialogue
-    bind: "run.parser_mode"
+    [Alice] Hello
 
-  - id: output_format
-    type: enum
-    label: "Output format"
-    values: [wav, mp3, flac]
-    default: mp3
-    bind: "run.output_format"
-
-  - id: speed_factor
-    type: slider
-    label: "Speed"
-    min: 0.5
+    ...'
+  bind: run.script
+- id: parser_mode
+  type: enum
+  label: Parser mode
+  values:
+  - dialogue
+  - raw_text
+  - advanced_tagged
+  default: dialogue
+  bind: run.parser_mode
+- id: output_format
+  type: enum
+  label: Output format
+  values:
+  - wav
+  - mp3
+  - flac
+  default: mp3
+  bind: run.output_format
+- id: speed_factor
+  type: slider
+  label: Speed
+  min: 0.5
+  max: 2.0
+  step: 0.05
+  default: 1.0
+  bind: run.speed_factor
+- id: global_emotion
+  type: emotion_panel
+  label: Global emotion
+  bind: run.global_emotion
+- id: generation_overrides
+  type: form_group
+  label: Generation settings
+  bind: run.generation
+  fields:
+  - id: temperature
+    type: number
+    min: 0.0
     max: 2.0
-    step: 0.05
-    default: 1.0
-    bind: "run.speed_factor"
-
-  - id: global_emotion
-    type: emotion_panel
-    label: "Global emotion"
-    bind: "run.global_emotion"
-
-  - id: generation_overrides
-    type: form_group
-    label: "Generation settings"
-    bind: "run.generation"
-    fields:
-      - id: temperature
-        type: number
-        min: 0.0
-        max: 2.0
-        default: 0.8
-      - id: top_p
-        type: number
-        min: 0.0
-        max: 1.0
-        default: 0.8
-      - id: top_k
-        type: integer
-        default: 30
-      - id: num_beams
-        type: integer
-        default: 3
-
+    default: 0.8
+  - id: top_p
+    type: number
+    min: 0.0
+    max: 1.0
+    default: 0.8
+  - id: top_k
+    type: integer
+    default: 30
+  - id: num_beams
+    type: integer
+    default: 3
 actions:
-  - id: generate
-    label: "Generate + Export ZIP"
-    workflow_invoke: { kind: "batch" }
-  - id: test_line
-    label: "Test selected line"
-    workflow_invoke: { kind: "test_line" }
+- id: generate
+  label: Generate + Export ZIP
+  workflow_invoke:
+    kind: batch
+- id: test_line
+  label: Test selected line
+  workflow_invoke:
+    kind: test_line
