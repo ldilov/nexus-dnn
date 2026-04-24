@@ -44,6 +44,22 @@ export async function cancelRun(
   return apiFetch(`/deployments/${deploymentId}/runs/${runId}/cancel`, { method: "POST" });
 }
 
+export interface ResumeRunResponse {
+  runId: string;
+  originalRunId: string;
+  queuePosition: number;
+}
+
+export async function resumeRun(
+  deploymentId: string,
+  runId: string,
+): Promise<ResumeRunResponse> {
+  return apiFetch(`/deployments/${deploymentId}/runs/${runId}/resume`, {
+    method: "POST",
+    body: "{}",
+  });
+}
+
 export async function testLine(
   deploymentId: string,
   body: TestLineRequest,
