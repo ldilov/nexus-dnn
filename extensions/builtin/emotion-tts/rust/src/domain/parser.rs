@@ -378,6 +378,33 @@ mod tests {
     }
 
     #[test]
+    fn inline_emotion_vector_override_preserved_verbatim() {
+        let plan = parse_script(
+            "[Bob|emotion_vector:happy=0.7,surprised=0.2] Hi",
+            ParserMode::Dialogue,
+        );
+        let u = &plan.utterances[0];
+        assert_eq!(
+            u.inline_overrides.get("emotion_vector"),
+            Some(&"happy=0.7,surprised=0.2".to_string())
+        );
+        assert!(plan.report.warnings.is_empty());
+    }
+
+    #[test]
+    fn inline_qwen_template_override_preserved() {
+        let plan = parse_script(
+            "[Alice|qwen:Friendly teen voice] hello world",
+            ParserMode::Dialogue,
+        );
+        let u = &plan.utterances[0];
+        assert_eq!(
+            u.inline_overrides.get("qwen"),
+            Some(&"Friendly teen voice".to_string())
+        );
+    }
+
+    #[test]
     fn multi_line_dialogue_report_counts() {
         let plan = parse_script(
             "[Bob] one\n[Alice] two\nuntagged three\n",

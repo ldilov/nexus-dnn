@@ -68,7 +68,13 @@ export function RecipeView(): JSX.Element {
           deploymentId={deployment.deploymentId}
         />
       }
-      emotionPanel={<EmotionPanel value={globalEmotion} onChange={setGlobalEmotion} />}
+      emotionPanel={
+        <EmotionPanel
+          value={globalEmotion}
+          onChange={setGlobalEmotion}
+          deploymentId={deployment.deploymentId}
+        />
+      }
       settingsPanel={
         <GenerationSettingsPanel
           outputFormat={outputFormat}
