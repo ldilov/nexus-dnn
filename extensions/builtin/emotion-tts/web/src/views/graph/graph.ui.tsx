@@ -54,14 +54,11 @@ export function GraphUi({ document, backHref, title }: Props): JSX.Element {
 
       <div className={css.legend}>
         <span>
-          <span
-            className={css.legendSwatch}
-            style={{ background: "oklch(62% 0.22 265 / 0.18)" }}
-          />
+          <span className={`${css.legendSwatch} ${css.legendSwatchCurated}`} />
           curated node
         </span>
         <span>
-          <span className={css.legendSwatch} style={{ background: "var(--surface)" }} />
+          <span className={`${css.legendSwatch} ${css.legendSwatchCustom}`} />
           custom node
         </span>
         <span>Read-only in v1 — edit via the recipe panel.</span>

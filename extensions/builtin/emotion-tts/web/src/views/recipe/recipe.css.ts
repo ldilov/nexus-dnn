@@ -3,13 +3,19 @@ import { vars } from "../../theme/tokens.css";
 
 export const shell = style({
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1.2fr) minmax(320px, 0.8fr)",
+  gridTemplateColumns: "minmax(0, 1.3fr) minmax(340px, 0.7fr)",
   gap: vars.space.lg,
   padding: vars.space.lg,
   minHeight: "100vh",
   background: vars.color.surface,
+  backgroundImage: `radial-gradient(900px 520px at 88% -10%, color-mix(in oklab, ${vars.color.accent} 14%, transparent), transparent 62%), radial-gradient(680px 480px at -10% 110%, color-mix(in oklab, ${vars.color.secondary} 8%, transparent), transparent 60%)`,
   color: vars.color.text,
   fontFamily: vars.font.body,
+  "@media": {
+    "(max-width: 960px)": {
+      gridTemplateColumns: "1fr",
+    },
+  },
 });
 
 export const leftColumn = style({
@@ -26,60 +32,94 @@ export const rightColumn = style({
   position: "sticky",
   top: vars.space.md,
   alignSelf: "flex-start",
+  "@media": {
+    "(max-width: 960px)": {
+      position: "static",
+    },
+  },
 });
 
 export const panel = style({
   background: vars.color.surfaceRaised,
-  borderRadius: vars.radius.md,
-  boxShadow: vars.shadow.subtle,
-  padding: vars.space.md,
+  borderRadius: vars.radius.lg,
+  padding: `${vars.space.md} ${vars.space.lg}`,
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.sm,
+  gap: vars.space.md,
+  boxShadow: vars.shadow.subtle,
 });
 
 export const panelTitle = style({
   fontFamily: vars.font.display,
   fontSize: vars.text.subhead,
   fontWeight: 600,
+  letterSpacing: vars.tracking.display,
   margin: 0,
+  paddingBottom: vars.space.xs,
+  color: vars.color.text,
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.sm,
+  "::before": {
+    content: '""',
+    width: "6px",
+    height: "6px",
+    borderRadius: vars.radius.pill,
+    background: vars.color.accent,
+    boxShadow: vars.color.accentGlow,
+    display: "inline-block",
+  },
 });
 
 export const deploymentHeader = style({
   display: "flex",
-  alignItems: "baseline",
+  alignItems: "center",
   justifyContent: "space-between",
   gap: vars.space.md,
+  flexWrap: "wrap",
   padding: `${vars.space.md} ${vars.space.lg}`,
   background: vars.color.surfaceMuted,
-  borderRadius: vars.radius.md,
+  borderRadius: vars.radius.lg,
   gridColumn: "1 / -1",
 });
 
 export const deploymentTitle = style({
   fontFamily: vars.font.display,
   fontSize: vars.text.head,
+  letterSpacing: vars.tracking.display,
   margin: 0,
 });
 
 export const scriptTextarea = style({
   width: "100%",
-  minHeight: "320px",
+  minHeight: "360px",
   fontFamily: vars.font.mono,
   fontSize: vars.text.body,
-  padding: vars.space.sm,
-  borderRadius: vars.radius.sm,
-  border: `1px solid ${vars.color.borderSubtle}`,
-  background: vars.color.surface,
+  lineHeight: 1.55,
+  padding: vars.space.md,
+  borderRadius: vars.radius.md,
+  border: "none",
+  outline: "none",
+  background: vars.color.surfaceMuted,
   color: vars.color.text,
   resize: "vertical",
+  transition: `box-shadow ${vars.motion.fast}`,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
+  ":focus": {
+    boxShadow: `inset 0 0 0 1px ${vars.color.accent}, ${vars.shadow.glow}`,
+  },
+  "::placeholder": {
+    color: vars.color.textFaint,
+    fontFamily: vars.font.mono,
+  },
 });
 
 export const label = style({
   fontSize: vars.text.caption,
   color: vars.color.textMuted,
   textTransform: "uppercase",
-  letterSpacing: "0.05em",
+  letterSpacing: vars.tracking.label,
+  fontWeight: 600,
 });
 
 export const controlRow = style({
@@ -95,52 +135,87 @@ export const button = style({
   border: "none",
   fontFamily: vars.font.body,
   fontWeight: 600,
+  fontSize: vars.text.body,
   cursor: "pointer",
-  transition: `transform ${vars.motion.fast}, background ${vars.motion.fast}`,
-  ":hover": { transform: "translateY(-1px)" },
-  ":active": { transform: "translateY(0)" },
-  ":disabled": { cursor: "not-allowed", opacity: 0.5 },
+  transition: `background ${vars.motion.fast}, box-shadow ${vars.motion.fast}, transform ${vars.motion.fast}`,
+  ":active": { transform: "translateY(1px)" },
+  ":disabled": { cursor: "not-allowed", opacity: 0.45 },
 });
 
 export const primaryButton = style([
   button,
   {
     background: vars.color.accent,
-    color: vars.color.surfaceRaised,
+    color: vars.color.accentOn,
+    boxShadow: `0 0 0 1px ${vars.color.accent}`,
+    ":hover": {
+      background: vars.color.accent,
+      boxShadow: `0 0 0 1px ${vars.color.accent}, ${vars.color.accentGlow}`,
+    },
   },
 ]);
 
 export const secondaryButton = style([
   button,
   {
-    background: vars.color.surfaceMuted,
-    color: vars.color.text,
-    border: `1px solid ${vars.color.borderSubtle}`,
+    background: "transparent",
+    color: vars.color.accent,
+    boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
+    ":hover": {
+      background: vars.color.surfaceHigh,
+      boxShadow: `inset 0 0 0 1px ${vars.color.accent}`,
+    },
   },
 ]);
 
 export const dangerButton = style([
   button,
   {
-    background: vars.color.danger,
-    color: vars.color.surfaceRaised,
+    background: "transparent",
+    color: vars.color.danger,
+    boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.danger} 45%, transparent)`,
+    ":hover": {
+      background: `color-mix(in oklab, ${vars.color.danger} 12%, transparent)`,
+    },
   },
 ]);
 
 export const warningBanner = style({
-  padding: vars.space.sm,
-  borderRadius: vars.radius.sm,
-  background: `oklch(from ${vars.color.warning} l c h / 0.14)`,
+  padding: `${vars.space.sm} ${vars.space.md}`,
+  borderRadius: vars.radius.md,
+  background: `color-mix(in oklab, ${vars.color.warning} 14%, ${vars.color.surfaceRaised})`,
   color: vars.color.text,
   fontSize: vars.text.body,
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.sm,
+  "::before": {
+    content: '""',
+    width: "6px",
+    height: "6px",
+    borderRadius: vars.radius.pill,
+    background: vars.color.warning,
+    flex: "0 0 auto",
+  },
 });
 
 export const dangerBanner = style({
-  padding: vars.space.sm,
-  borderRadius: vars.radius.sm,
-  background: `oklch(from ${vars.color.danger} l c h / 0.12)`,
-  color: vars.color.danger,
+  padding: `${vars.space.sm} ${vars.space.md}`,
+  borderRadius: vars.radius.md,
+  background: `color-mix(in oklab, ${vars.color.danger} 14%, ${vars.color.surfaceRaised})`,
+  color: vars.color.text,
   fontSize: vars.text.body,
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.sm,
+  "::before": {
+    content: '""',
+    width: "6px",
+    height: "6px",
+    borderRadius: vars.radius.pill,
+    background: vars.color.danger,
+    flex: "0 0 auto",
+  },
 });
 
 export const filenameList = style({
@@ -148,43 +223,62 @@ export const filenameList = style({
   fontSize: vars.text.caption,
   color: vars.color.textMuted,
   listStyle: "none",
-  padding: 0,
+  padding: `${vars.space.sm} ${vars.space.md}`,
   margin: 0,
   display: "flex",
   flexDirection: "column",
   gap: "2px",
+  background: vars.color.surfaceMuted,
+  borderRadius: vars.radius.sm,
+  maxHeight: "180px",
+  overflowY: "auto",
 });
 
 export const progressTable = style({
   width: "100%",
-  borderCollapse: "collapse",
-  fontFamily: vars.font.mono,
+  borderCollapse: "separate",
+  borderSpacing: 0,
+  fontFamily: vars.font.body,
   fontSize: vars.text.caption,
 });
 
 export const progressRow = style({
-  borderBottom: `1px solid ${vars.color.borderSubtle}`,
+  transition: `background ${vars.motion.fast}`,
+  ":hover": { background: vars.color.surfaceMuted },
 });
 
 export const progressCell = style({
-  padding: `${vars.space.xs} ${vars.space.sm}`,
+  padding: `${vars.space.sm} ${vars.space.sm}`,
   textAlign: "left",
   verticalAlign: "middle",
+  borderBottom: `1px solid ${vars.color.borderSubtle}`,
 });
 
 export const statusPill = style({
-  display: "inline-block",
-  padding: `2px 8px`,
-  borderRadius: "999px",
-  fontSize: "0.7rem",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  padding: `2px 10px 2px 8px`,
+  borderRadius: vars.radius.pill,
+  fontSize: vars.text.micro,
   fontWeight: 600,
   textTransform: "uppercase",
+  letterSpacing: vars.tracking.label,
+  background: vars.color.surfaceHigh,
+  color: vars.color.textMuted,
+  "::before": {
+    content: '""',
+    width: "6px",
+    height: "6px",
+    borderRadius: vars.radius.pill,
+    background: "currentColor",
+    display: "inline-block",
+  },
 });
 
 export const statusPillCompleted = style([
   statusPill,
   {
-    background: `oklch(from ${vars.color.success} l c h / 0.2)`,
     color: vars.color.success,
   },
 ]);
@@ -192,7 +286,6 @@ export const statusPillCompleted = style([
 export const statusPillRunning = style([
   statusPill,
   {
-    background: `oklch(from ${vars.color.accent} l c h / 0.2)`,
     color: vars.color.accent,
   },
 ]);
@@ -200,7 +293,6 @@ export const statusPillRunning = style([
 export const statusPillFailed = style([
   statusPill,
   {
-    background: `oklch(from ${vars.color.danger} l c h / 0.2)`,
     color: vars.color.danger,
   },
 ]);

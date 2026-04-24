@@ -127,7 +127,7 @@ export const characterInitial = style({
   width: "32px",
   height: "32px",
   borderRadius: "50%",
-  background: `oklch(from ${vars.color.accent} l c h / 0.2)`,
+  background: `color-mix(in oklab, ${vars.color.accent} 22%, transparent)`,
   color: vars.color.accent,
   display: "inline-flex",
   alignItems: "center",
@@ -250,7 +250,7 @@ export const input = style({
     "&:focus": {
       outline: "none",
       borderColor: vars.color.accent,
-      boxShadow: `0 0 0 3px oklch(from ${vars.color.accent} l c h / 0.18)`,
+      boxShadow: `0 0 0 3px color-mix(in oklab, ${vars.color.accent} 20%, transparent)`,
     },
   },
 });
@@ -286,9 +286,9 @@ export const dropzoneActive = style([
   {
     borderColor: vars.color.accent,
     borderStyle: "solid",
-    background: `oklch(from ${vars.color.accent} l c h / 0.08)`,
+    background: `color-mix(in oklab, ${vars.color.accent} 10%, transparent)`,
     transform: "scale(1.01)",
-    boxShadow: `0 0 0 4px oklch(from ${vars.color.accent} l c h / 0.12)`,
+    boxShadow: `0 0 0 4px color-mix(in oklab, ${vars.color.accent} 14%, transparent)`,
   },
 ]);
 
@@ -393,10 +393,10 @@ export const dangerButton = style([
   {
     background: "transparent",
     color: vars.color.danger,
-    border: `1px solid oklch(from ${vars.color.danger} l c h / 0.4)`,
+    border: `1px solid color-mix(in oklab, ${vars.color.danger} 45%, transparent)`,
     selectors: {
       "&:hover:not(:disabled)": {
-        background: `oklch(from ${vars.color.danger} l c h / 0.12)`,
+        background: `color-mix(in oklab, ${vars.color.danger} 14%, transparent)`,
       },
     },
   },
@@ -404,17 +404,17 @@ export const dangerButton = style([
 
 export const errorBanner = style({
   padding: `${vars.space.sm} ${vars.space.md}`,
-  borderRadius: vars.radius.sm,
-  background: `oklch(from ${vars.color.danger} l c h / 0.1)`,
-  color: vars.color.danger,
+  borderRadius: vars.radius.md,
+  background: `color-mix(in oklab, ${vars.color.danger} 14%, ${vars.color.surfaceRaised})`,
+  color: vars.color.text,
   fontSize: vars.text.body,
 });
 
 export const toast = style({
   padding: `${vars.space.sm} ${vars.space.md}`,
-  borderRadius: vars.radius.sm,
-  background: `oklch(from ${vars.color.success} l c h / 0.14)`,
-  color: vars.color.success,
+  borderRadius: vars.radius.md,
+  background: `color-mix(in oklab, ${vars.color.success} 18%, ${vars.color.surfaceRaised})`,
+  color: vars.color.text,
   fontSize: vars.text.body,
 });
 
