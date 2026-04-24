@@ -2,10 +2,17 @@ spec_version: "0.1"
 
 extension:
   id: "nexus.audio.emotiontts"
-  version: "0.1.0"
+  version: "0.2.0"
   name: "EmotionTTS"
-  description: "Dialogue/script-based emotional TTS via IndexTTS-2 running in a host-managed Python subprocess. 8-axis emotion control + Qwen text emotion + audio-ref; deployment-scoped character mappings; global content-hash synthesis cache with 10 GB LRU; partial-ZIP + auto-resume."
+  description: "Dialogue/script-based emotional TTS via IndexTTS-2 running in a host-managed Python subprocess. 8-axis emotion control + Qwen text emotion + audio-ref; deployment-scoped character mappings; global content-hash synthesis cache with 10 GB LRU; partial-ZIP + auto-resume. Spec 034 engine quality pack: reference-audio preprocessing, alignment-score observability, speaker-prefix cache, opt-in torch.compile, dual model-family."
   publisher: "nexus"
+
+engine_features:
+  - reference_preprocess
+  - oas
+  - speaker_cache
+  - compile_gpt
+  - dual_family
 
 compatibility:
   host_api: ">=0.1.0"

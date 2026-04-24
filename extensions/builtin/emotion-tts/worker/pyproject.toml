@@ -15,10 +15,15 @@ dependencies = [
   "pydantic>=2.8",
   "ffmpeg-python>=0.2",
   "soundfile>=0.12",
+  "pyloudnorm>=0.1.1",
+  "silero-vad>=5.1",
+  "matplotlib>=3.8",
+  "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
 deepspeed = ["deepspeed>=0.15"]
+denoise = ["rnnoise-wheels>=0.1"]
 dev = [
   "pytest>=8",
   "pytest-asyncio>=0.23",
