@@ -38,7 +38,7 @@ pub fn build_router(
         .merge(runs::router(runs_state))
         .nest("/deployments", deployments::router(repos.clone()))
         .nest("/mappings", mappings::router(repos.clone()))
-        .nest("/presets", presets::router())
+        .nest("/presets", presets::router(repos.clone()))
         .nest("/exports", exports::router());
 
     if let Some(store) = artifact_store {
