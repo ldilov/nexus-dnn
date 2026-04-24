@@ -98,9 +98,8 @@ def register_phase4_handlers(
             raise _RpcErrorProxy(exc.rpc_error()) from exc
 
     async def unload_model(_: Any) -> dict[str, Any]:
-        if adapter is not None:
-            adapter.unload()
-        return handle_unload_model()
+        freed_mb = adapter.unload() if adapter is not None else 0
+        return handle_unload_model(vram_freed_mb=freed_mb)
 
     async def cancel(params: Any) -> dict[str, Any]:
         request_id = str(params.get("request_id", "")) if isinstance(params, dict) else ""
@@ -109,10 +108,10 @@ def register_phase4_handlers(
         cancelled = GLOBAL_TOKEN.cancel(request_id)
         return {"request_id": request_id, "cancel_acked": cancelled}
 
-    worker.register(Methods.HANDSHAKE, handshake)
-    worker.register(Methods.HEALTH, health)
-    worker.register("ensure_model", ensure_model)
-    worker.register("load_model", load_model)
+    worker.register(Methods.HANDSHAKE, handshake, replace=True)
+    worker.register(Methods.HEALTH, health, replace=True)
+    worker.register(Methods.MODEL_LOAD, load_model)
+    worker.register("model.ensure", ensure_model)
     worker.register(Methods.MODEL_UNLOAD, unload_model)
     worker.register(Methods.CANCEL, cancel)
 
