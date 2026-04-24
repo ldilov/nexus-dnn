@@ -22,6 +22,28 @@ pub trait HostStoragePool: Send + Sync {
     async fn acquire(&self) -> Result<sqlx::SqlitePool, HostContractError>;
 }
 
+/// Host-provided artifact store — extensions hand bytes in, receive a
+/// stable reference string (`artifact://…`) the host resolves to an
+/// absolute path at synthesis time.
+#[async_trait]
+pub trait HostArtifactStore: Send + Sync {
+    async fn store(
+        &self,
+        bytes: Vec<u8>,
+        display_name: &str,
+        mime_hint: Option<&str>,
+    ) -> Result<ArtifactPut, HostContractError>;
+
+    async fn resolve_path(&self, artifact_ref: &str) -> Result<String, HostContractError>;
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ArtifactPut {
+    pub artifact_ref: String,
+    pub content_sha256: String,
+    pub size_bytes: u64,
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum LeaseState {
     Starting,
@@ -73,6 +95,8 @@ pub enum HostContractError {
     Storage(String),
     #[error("lease unavailable: {0}")]
     Lease(String),
+    #[error("artifact store error: {0}")]
+    Artifact(String),
 }
 
 impl From<HostContractError> for crate::domain::EmotionTtsError {

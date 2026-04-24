@@ -2,11 +2,13 @@ import { createBrowserRouter, redirect, type LoaderFunctionArgs } from "react-ro
 import { listDeployments, getDeployment } from "./services/deployments_client";
 import { listMappings } from "./services/mappings_client";
 import { getRun, listRuns } from "./services/runs_client";
+import { listVoiceAssets } from "./services/voice_assets_client";
 import { DeploymentsIndexView } from "./views/deployments/deployments_index.view";
 import { RecipeView } from "./views/recipe/recipe.view";
 import { RunDetailView } from "./views/run_detail/run_detail.view";
 import { RuntimeQueueView } from "./views/runtime_queue/runtime_queue.view";
 import { NewMappingView } from "./views/mapping_editor/new_mapping.view";
+import { MappingEditorView } from "./views/mapping_editor/mapping_editor.view";
 
 export const router = createBrowserRouter(
   [
@@ -47,6 +49,19 @@ export const router = createBrowserRouter(
         return { run };
       },
       Component: RunDetailView,
+    },
+    {
+      path: "/:deploymentId/mappings",
+      loader: async ({ params }: LoaderFunctionArgs) => {
+        const id = requireParam(params, "deploymentId");
+        const [deployment, { mappings }, { voiceAssets }] = await Promise.all([
+          getDeployment(id),
+          listMappings(id),
+          listVoiceAssets(id),
+        ]);
+        return { deployment, mappings, voiceAssets };
+      },
+      Component: MappingEditorView,
     },
     {
       path: "/:deploymentId/mappings/new",
