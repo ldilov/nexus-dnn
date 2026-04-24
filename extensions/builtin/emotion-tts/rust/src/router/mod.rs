@@ -12,6 +12,7 @@ pub mod presets;
 pub mod runs;
 pub mod runtime;
 pub mod voice_assets;
+pub mod workflows;
 
 use std::sync::Arc;
 
@@ -39,7 +40,8 @@ pub fn build_router(
         .nest("/deployments", deployments::router(repos.clone()))
         .nest("/mappings", mappings::router(repos.clone()))
         .nest("/presets", presets::router(repos.clone()))
-        .nest("/exports", exports::router());
+        .nest("/exports", exports::router())
+        .nest("/workflow", workflows::router());
 
     if let Some(store) = artifact_store {
         router = router.nest("/voice-assets", voice_assets::router(repos, store));

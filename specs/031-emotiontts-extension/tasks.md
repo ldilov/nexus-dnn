@@ -280,15 +280,15 @@ Do not start Phase 1 below until a PR merging the prerequisite spec to `main` ex
 
 ### Tests for User Story 6
 
-- [ ] T110 [P] [US6] Rust test `workflow_binding_test.rs` asserting recipe `outputFormat = flac` propagates to `postprocess_1.config.output_format`.
-- [ ] T111 [P] [US6] Rust test asserting a non-curated graph (extra `loudness_normalize` node inserted) marks the workflow `custom` and the recipe still binds the fields that remain mappable.
+- [X] T110 [P] [US6] Rust test `workflow_binding_test.rs` asserting recipe `outputFormat = flac` propagates to `postprocess_1.config.output_format`.
+- [X] T111 [P] [US6] Rust test asserting a non-curated graph (extra `loudness_normalize` node inserted) marks the workflow `custom` and the recipe still binds the fields that remain mappable.
 
 ### Implementation
 
-- [ ] T112 [P] [US6] Implement workflow binding engine in `extensions/builtin/emotion-tts/rust/src/workflow_binding.rs` mapping recipe field paths (`input:script_text`, `node:synthesize_1.config.temperature`, etc.) to node configs.
-- [ ] T113 [US6] Implement `views/graph/graph.view.tsx` + `graph.ui.tsx` + `graph.css.ts` rendering the DAG. React-flow or a hand-rolled SVG layout (keep bundle size in mind); document the choice in PR description.
-- [ ] T114 [P] [US6] Add "customised — edit via graph" badge logic in `views/recipe/recipe.ui.tsx` for recipe fields that can no longer bind.
-- [ ] T115 [US6] Graph inspector buttons from each recipe section (FR "Nice to have" in spec §5) — keep behind a v1+ flag if scope pressure hits; otherwise ship.
+- [X] T112 [P] [US6] Implement workflow binding engine in `extensions/builtin/emotion-tts/rust/src/workflow_binding.rs` mapping recipe field paths (`input:script_text`, `node:synthesize_1.config.temperature`, etc.) to node configs.
+- [X] T113 [US6] Implement `views/graph/graph.view.tsx` + `graph.ui.tsx` + `graph.css.ts` rendering the DAG. **Hand-rolled SVG** (no react-flow — saves ~90kb gzipped against a 150kb landing-page budget). Read-only in v1; editing remains through the recipe panel.
+- [X] T114 [P] [US6] Add "customised — edit via graph" badge logic in `views/recipe/recipe.ui.tsx` for recipe fields that can no longer bind.
+- [ ] T115 [US6] Graph inspector buttons from each recipe section (FR "Nice to have" in spec §5) — **deferred**: spec marks this explicitly optional behind a v1+ flag; ship when persistence + graph editing lands.
 
 **Checkpoint**: US6 complete. Advanced users can inspect and edit the graph.
 

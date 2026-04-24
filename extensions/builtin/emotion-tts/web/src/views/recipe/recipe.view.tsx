@@ -8,6 +8,7 @@ import type {
   OutputFormat,
   RunSummary,
 } from "../../services/types";
+import type { DefaultWorkflowResponse } from "../../services/workflows_client";
 import { DeploymentHeader } from "./components/deployment_header";
 import { EmotionPanel } from "./components/emotion_panel";
 import { GenerationSettingsPanel } from "./components/generation_settings_panel";
@@ -20,10 +21,11 @@ interface LoaderData {
   deployment: Deployment;
   mappings: CharacterMapping[];
   runs: RunSummary[];
+  workflow: DefaultWorkflowResponse;
 }
 
 export function RecipeView(): JSX.Element {
-  const { deployment, mappings, runs } = useLoaderData() as LoaderData;
+  const { deployment, mappings, runs, workflow } = useLoaderData() as LoaderData;
 
   const [script, setScript] = useState("");
   const [outputFormat, setOutputFormat] = useState<OutputFormat>(
@@ -58,6 +60,8 @@ export function RecipeView(): JSX.Element {
   return (
     <RecipeUi
       deployment={deployment}
+      workflowCustomised={workflow.workflow.customised}
+      unmappableFields={workflow.unmappableFields}
       header={<DeploymentHeader deployment={deployment} />}
       scriptEditor={
         <ScriptEditor
