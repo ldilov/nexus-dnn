@@ -123,6 +123,66 @@ def test_cancel_token_clear_resets() -> None:
     assert not t.is_cancelled()
 
 
+def test_derive_batch_status_all_completed() -> None:
+    from emotion_tts_worker.indextts_adapter import SegmentOutcome
+    from emotion_tts_worker.synthesis import derive_batch_status
+
+    outcomes = [
+        SegmentOutcome(segment_id="a", status="completed"),
+        SegmentOutcome(segment_id="b", status="completed"),
+    ]
+    assert derive_batch_status(outcomes, saw_cancel=False) == "completed"
+
+
+def test_derive_batch_status_mixed_maps_partial() -> None:
+    from emotion_tts_worker.indextts_adapter import SegmentOutcome
+    from emotion_tts_worker.synthesis import derive_batch_status
+
+    outcomes = [
+        SegmentOutcome(segment_id="a", status="completed"),
+        SegmentOutcome(segment_id="b", status="failed"),
+    ]
+    assert derive_batch_status(outcomes, saw_cancel=False) == "partial"
+
+
+def test_derive_batch_status_first_fails_second_completes_is_partial_not_failed() -> None:
+    from emotion_tts_worker.indextts_adapter import SegmentOutcome
+    from emotion_tts_worker.synthesis import derive_batch_status
+
+    outcomes = [
+        SegmentOutcome(segment_id="a", status="failed"),
+        SegmentOutcome(segment_id="b", status="completed"),
+    ]
+    assert derive_batch_status(outcomes, saw_cancel=False) == "partial"
+
+
+def test_derive_batch_status_all_failed() -> None:
+    from emotion_tts_worker.indextts_adapter import SegmentOutcome
+    from emotion_tts_worker.synthesis import derive_batch_status
+
+    outcomes = [SegmentOutcome(segment_id="a", status="failed")]
+    assert derive_batch_status(outcomes, saw_cancel=False) == "failed"
+
+
+def test_derive_batch_status_cancel_with_no_completions_is_cancelled() -> None:
+    from emotion_tts_worker.indextts_adapter import SegmentOutcome
+    from emotion_tts_worker.synthesis import derive_batch_status
+
+    outcomes = [SegmentOutcome(segment_id="a", status="cancelled")]
+    assert derive_batch_status(outcomes, saw_cancel=True) == "cancelled"
+
+
+def test_derive_batch_status_cancel_after_some_completions_is_partial() -> None:
+    from emotion_tts_worker.indextts_adapter import SegmentOutcome
+    from emotion_tts_worker.synthesis import derive_batch_status
+
+    outcomes = [
+        SegmentOutcome(segment_id="a", status="completed"),
+        SegmentOutcome(segment_id="b", status="cancelled"),
+    ]
+    assert derive_batch_status(outcomes, saw_cancel=True) == "partial"
+
+
 def test_cancel_token_raises_on_check() -> None:
     from emotion_tts_worker.cancellation import CancelledError
 

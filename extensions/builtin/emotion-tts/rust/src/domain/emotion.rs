@@ -24,9 +24,10 @@ pub const VECTOR_KEYS: [&str; 8] = [
     "calm",
 ];
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EmotionMode {
+    #[default]
     None,
     AudioRef,
     EmotionVector,
@@ -109,12 +110,6 @@ pub struct MappingDefaults {
     pub vector: Option<[f64; 8]>,
     pub qwen_template: Option<String>,
     pub alpha: Option<f64>,
-}
-
-impl Default for EmotionMode {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
