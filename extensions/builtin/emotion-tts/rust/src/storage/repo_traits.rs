@@ -18,6 +18,8 @@ pub struct DeploymentRow {
     pub default_speed_factor: f64,
     pub default_generation_overrides_json: String,
     pub most_recent_run_id: Option<RunId>,
+    #[serde(default)]
+    pub partial_run_id: Option<RunId>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -162,6 +164,7 @@ pub trait DeploymentsRepo: Send + Sync {
     async fn update(&self, row: &DeploymentRow) -> RepoResult<()>;
     async fn delete(&self, id: &DeploymentId) -> RepoResult<()>;
     async fn set_most_recent_run(&self, id: &DeploymentId, run_id: &RunId) -> RepoResult<()>;
+    async fn set_partial_run(&self, id: &DeploymentId, run_id: Option<&RunId>) -> RepoResult<()>;
 }
 
 #[async_trait]

@@ -1,12 +1,40 @@
-import { useLoaderData } from "react-router";
-import type { Run } from "../../services/types";
+import { useState } from "react";
+import { useLoaderData, useNavigate } from "react-router";
+import { ExtensionApiError } from "../../services/http";
+import { resumeRun } from "../../services/runs_client";
+import type { Run, RunStatus } from "../../services/types";
 
 interface LoaderData {
   run: Run;
 }
 
+const RESUMABLE: readonly RunStatus[] = ["cancelled", "failed", "partial"];
+
 export function RunDetailView(): JSX.Element {
   const { run } = useLoaderData() as LoaderData;
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const failedCount = run.utterances.filter(
+    (u) => u.status === "failed" || u.status === "cancelled",
+  ).length;
+  const canResume = RESUMABLE.includes(run.status) && run.kind === "batch";
+
+  const onRerun = async (): Promise<void> => {
+    if (!run.deploymentId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { runId } = await resumeRun(run.deploymentId, run.runId);
+      navigate(`/${run.deploymentId}/runs/${runId}`);
+    } catch (err: unknown) {
+      setError(describeError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <main>
       <h1>Run {run.runId}</h1>
@@ -20,6 +48,27 @@ export function RunDetailView(): JSX.Element {
         <dt>Speed</dt>
         <dd>{run.speedFactor}×</dd>
       </dl>
+
+      {canResume && (
+        <section>
+          {failedCount > 0 ? (
+            <p>
+              {failedCount} line{failedCount === 1 ? "" : "s"} did not complete.
+            </p>
+          ) : (
+            <p>This run was interrupted before it completed.</p>
+          )}
+          <button type="button" disabled={busy} onClick={() => void onRerun()}>
+            {busy
+              ? "Resuming…"
+              : failedCount > 0
+                ? "Rerun failed lines"
+                : "Resume run"}
+          </button>
+          {error && <p role="alert">{error}</p>}
+        </section>
+      )}
+
       <h2>Utterances</h2>
       <ul>
         {run.utterances.map((u) => (
@@ -37,4 +86,10 @@ export function RunDetailView(): JSX.Element {
       )}
     </main>
   );
+}
+
+function describeError(err: unknown): string {
+  if (err instanceof ExtensionApiError) return `${err.category}: ${err.message}`;
+  if (err instanceof Error) return err.message;
+  return "Unexpected error";
 }

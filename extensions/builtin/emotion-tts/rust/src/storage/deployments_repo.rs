@@ -18,6 +18,7 @@ impl SqliteDeploymentsRepo {
 fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<DeploymentRow> {
     let id_s: String = row.try_get("deployment_id").map_err(sqlx_to_err)?;
     let most_recent: Option<String> = row.try_get("most_recent_run_id").map_err(sqlx_to_err)?;
+    let partial_run: Option<String> = row.try_get("partial_run_id").map_err(sqlx_to_err)?;
     Ok(DeploymentRow {
         deployment_id: DeploymentId::try_from(id_s.as_str())?,
         host_extension_instance_ref: row.try_get("host_extension_instance_ref").map_err(sqlx_to_err)?,
@@ -27,6 +28,7 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<DeploymentRow> {
         default_speed_factor: row.try_get("default_speed_factor").map_err(sqlx_to_err)?,
         default_generation_overrides_json: row.try_get("default_generation_overrides_json").map_err(sqlx_to_err)?,
         most_recent_run_id: most_recent.map(|s| RunId::try_from(s.as_str())).transpose()?,
+        partial_run_id: partial_run.map(|s| RunId::try_from(s.as_str())).transpose()?,
         created_at: row.try_get("created_at").map_err(sqlx_to_err)?,
         updated_at: row.try_get("updated_at").map_err(sqlx_to_err)?,
     })
@@ -116,6 +118,18 @@ impl DeploymentsRepo for SqliteDeploymentsRepo {
             "UPDATE ext_emotion_tts__deployments SET most_recent_run_id = ?, updated_at = strftime('%s', 'now') WHERE deployment_id = ?",
         )
         .bind(run_id.as_str())
+        .bind(id.as_str())
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_to_err)?;
+        Ok(())
+    }
+
+    async fn set_partial_run(&self, id: &DeploymentId, run_id: Option<&RunId>) -> RepoResult<()> {
+        sqlx::query(
+            "UPDATE ext_emotion_tts__deployments SET partial_run_id = ?, updated_at = strftime('%s', 'now') WHERE deployment_id = ?",
+        )
+        .bind(run_id.map(RunId::as_str))
         .bind(id.as_str())
         .execute(&self.pool)
         .await

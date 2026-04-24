@@ -35,6 +35,7 @@ pub fn router(state: RunsState) -> Router {
         .route("/deployments/:deployment_id/runs", get(list_runs).post(create_run))
         .route("/deployments/:deployment_id/runs/:run_id", get(get_run))
         .route("/deployments/:deployment_id/runs/:run_id/cancel", post(cancel_run))
+        .route("/deployments/:deployment_id/runs/:run_id/resume", post(resume_run))
         .route("/deployments/:deployment_id/runs/test-line", post(test_line))
         .with_state(state)
 }
@@ -299,7 +300,7 @@ pub async fn cancel_run(
 }
 
 async fn cancel_run_impl(state: &RunsState, deployment_id: &str, run_id: &str) -> Result<Value> {
-    let _ = DeploymentId::try_from(deployment_id)?;
+    let dep = DeploymentId::try_from(deployment_id)?;
     let run_id = RunId::try_from(run_id)?;
     let row = state
         .repos
@@ -320,7 +321,97 @@ async fn cancel_run_impl(state: &RunsState, deployment_id: &str, run_id: &str) -
         .runs
         .update_status(&run_id, "cancelled", Some(Utc::now().timestamp()))
         .await?;
+    if row.kind == "batch" {
+        state.repos.deployments.set_partial_run(&dep, Some(&run_id)).await?;
+    }
     Ok(json!({ "status": status }))
+}
+
+pub async fn resume_run(
+    State(state): State<RunsState>,
+    Path((deployment_id, run_id)): Path<(String, String)>,
+) -> Response {
+    match resume_run_impl(&state, &deployment_id, &run_id).await {
+        Ok(body) => (StatusCode::ACCEPTED, Json(body)).into_response(),
+        Err(err) => err.into_response(),
+    }
+}
+
+async fn resume_run_impl(state: &RunsState, deployment_id: &str, run_id: &str) -> Result<Value> {
+    let dep = DeploymentId::try_from(deployment_id)?;
+    let original_id = RunId::try_from(run_id)?;
+    let original = state
+        .repos
+        .runs
+        .get(&original_id)
+        .await?
+        .ok_or_else(|| EmotionTtsError::not_found(format!("run {original_id}")))?;
+
+    if original.deployment_id != dep {
+        return Err(EmotionTtsError::not_found(format!(
+            "run {original_id} does not belong to deployment {deployment_id}"
+        )));
+    }
+    if original.kind != "batch" {
+        return Err(EmotionTtsError::Conflict(format!(
+            "only batch runs can be resumed (this run kind = {})",
+            original.kind
+        )));
+    }
+    if original.status == "completed" {
+        return Err(EmotionTtsError::Conflict(
+            "run already completed — nothing to resume".into(),
+        ));
+    }
+    if !matches!(original.status.as_str(), "cancelled" | "failed" | "partial") {
+        return Err(EmotionTtsError::Conflict(format!(
+            "run is still {} — cancel it first",
+            original.status
+        )));
+    }
+
+    let resume_id = RunId::new();
+    let now = Utc::now().timestamp();
+    let resumed = RunRow {
+        run_id: resume_id.clone(),
+        deployment_id: dep.clone(),
+        kind: "batch".into(),
+        status: "queued".into(),
+        script_snapshot: original.script_snapshot.clone(),
+        parser_mode: original.parser_mode.clone(),
+        generation_settings_json: original.generation_settings_json.clone(),
+        global_emotion_snapshot_json: original.global_emotion_snapshot_json.clone(),
+        output_format: original.output_format.clone(),
+        speed_factor: original.speed_factor,
+        speed_mode: original.speed_mode.clone(),
+        cache_policy: original.cache_policy.clone(),
+        seed_strategy: original.seed_strategy.clone(),
+        base_seed: original.base_seed,
+        original_run_id: Some(original.original_run_id.clone().unwrap_or(original_id.clone())),
+        runtime_install_id: original.runtime_install_id.clone(),
+        runtime_version: None,
+        model_version: None,
+        extension_version: state.extension_version.clone(),
+        queued_at: now,
+        started_at: None,
+        finished_at: None,
+        error_category: None,
+        error_detail: None,
+    };
+    state.repos.runs.insert(&resumed).await?;
+    state
+        .queue
+        .enqueue(resume_id.clone(), dep.as_str().to_string(), RunClass::Batch)
+        .await;
+    let position = state.queue.position_of(&resume_id).await.unwrap_or(-1);
+
+    state.repos.deployments.set_partial_run(&dep, None).await?;
+
+    Ok(json!({
+        "runId": resume_id.as_str(),
+        "originalRunId": original_id.as_str(),
+        "queuePosition": position,
+    }))
 }
 
 #[derive(Debug, Deserialize)]

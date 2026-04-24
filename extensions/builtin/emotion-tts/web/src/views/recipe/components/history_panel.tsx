@@ -1,5 +1,8 @@
-import { Link } from "react-router";
-import type { RunSummary } from "../../../services/types";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router";
+import { ExtensionApiError } from "../../../services/http";
+import { resumeRun } from "../../../services/runs_client";
+import type { RunStatus, RunSummary } from "../../../services/types";
 import * as css from "../recipe.css";
 
 interface Props {
@@ -7,19 +10,71 @@ interface Props {
   deploymentId: string;
 }
 
+const RESUMABLE_STATUSES: readonly RunStatus[] = ["cancelled", "failed", "partial"];
+
 export function HistoryPanel({ runs, deploymentId }: Props): JSX.Element {
+  const navigate = useNavigate();
+  const [busyRunId, setBusyRunId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   if (runs.length === 0) {
     return <p className={css.label}>No runs yet.</p>;
   }
+
+  const onResume = async (runId: string): Promise<void> => {
+    setBusyRunId(runId);
+    setError(null);
+    try {
+      const { runId: resumedId } = await resumeRun(deploymentId, runId);
+      navigate(`/${deploymentId}/runs/${resumedId}`);
+    } catch (err: unknown) {
+      setError(describeError(err));
+    } finally {
+      setBusyRunId(null);
+    }
+  };
+
   return (
-    <ul className={css.filenameList}>
-      {runs.map((r) => (
-        <li key={r.runId}>
-          <Link to={`/${deploymentId}/runs/${r.runId}`}>
-            {r.kind} · {r.status} · {new Date(r.queuedAt * 1000).toLocaleString()}
-          </Link>
-        </li>
-      ))}
-    </ul>
+    <>
+      {error && <p className={css.dangerBanner}>{error}</p>}
+      <ul className={css.filenameList}>
+        {runs.map((r) => {
+          const resumable = RESUMABLE_STATUSES.includes(r.status) && r.kind === "batch";
+          return (
+            <li key={r.runId}>
+              <Link to={`/${deploymentId}/runs/${r.runId}`}>
+                {r.kind} · {r.status} · {new Date(r.queuedAt * 1000).toLocaleString()}
+              </Link>
+              {resumable && (
+                <>
+                  {" "}
+                  <span className={statusPillFor(r.status)}>partial — resumable</span>
+                  {" "}
+                  <button
+                    type="button"
+                    className={css.secondaryButton}
+                    disabled={busyRunId === r.runId}
+                    onClick={() => void onResume(r.runId)}
+                  >
+                    {busyRunId === r.runId ? "Resuming…" : "Resume"}
+                  </button>
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </>
   );
+}
+
+function statusPillFor(status: RunStatus): string {
+  if (status === "failed") return css.statusPillFailed;
+  return css.statusPillRunning;
+}
+
+function describeError(err: unknown): string {
+  if (err instanceof ExtensionApiError) return `${err.category}: ${err.message}`;
+  if (err instanceof Error) return err.message;
+  return "Unexpected error";
 }

@@ -69,6 +69,7 @@ async fn seed_deployment(repos: &Repos) -> DeploymentId {
             default_speed_factor: 1.0,
             default_generation_overrides_json: "{}".into(),
             most_recent_run_id: None,
+            partial_run_id: None,
             created_at: now,
             updated_at: now,
         })

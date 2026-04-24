@@ -94,6 +94,7 @@ async fn create_impl(
         default_speed_factor: body.default_speed_factor,
         default_generation_overrides_json: "{}".into(),
         most_recent_run_id: None,
+        partial_run_id: None,
         created_at: now,
         updated_at: now,
     };
@@ -239,6 +240,7 @@ fn deployment_json(row: &DeploymentRow) -> Value {
         "defaultSpeedFactor": row.default_speed_factor,
         "defaultGenerationOverridesJson": row.default_generation_overrides_json,
         "mostRecentRunId": row.most_recent_run_id.as_ref().map(|r| r.as_str()),
+        "partialRunId": row.partial_run_id.as_ref().map(|r| r.as_str()),
         "createdAt": row.created_at,
         "updatedAt": row.updated_at,
     })
