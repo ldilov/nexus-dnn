@@ -5,7 +5,6 @@ import { getRun, listRuns } from "./services/runs_client";
 import { listVoiceAssets } from "./services/voice_assets_client";
 import { getDefaultWorkflow } from "./services/workflows_client";
 import { DeploymentsIndexView } from "./views/deployments/deployments_index.view";
-import { GraphView } from "./views/graph/graph.view";
 import { RecipeView } from "./views/recipe/recipe.view";
 import { RunDetailView } from "./views/run_detail/run_detail.view";
 import { RuntimeQueueView } from "./views/runtime_queue/runtime_queue.view";
@@ -77,15 +76,6 @@ export const router = createBrowserRouter(
         };
       },
       Component: NewMappingView,
-    },
-    {
-      path: "/:deploymentId/graph",
-      loader: async ({ params }: LoaderFunctionArgs) => {
-        const deploymentId = requireParam(params, "deploymentId");
-        const workflow = await getDefaultWorkflow();
-        return { deploymentId, workflow };
-      },
-      Component: GraphView,
     },
     {
       path: "/runtime/queue",

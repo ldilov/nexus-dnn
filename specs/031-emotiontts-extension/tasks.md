@@ -286,8 +286,8 @@ Do not start Phase 1 below until a PR merging the prerequisite spec to `main` ex
 ### Implementation
 
 - [X] T112 [P] [US6] Implement workflow binding engine in `extensions/builtin/emotion-tts/rust/src/workflow_binding.rs` mapping recipe field paths (`input:script_text`, `node:synthesize_1.config.temperature`, etc.) to node configs.
-- [X] T113 [US6] Implement `views/graph/graph.view.tsx` + `graph.ui.tsx` + `graph.css.ts` rendering the DAG. **Hand-rolled SVG** (no react-flow — saves ~90kb gzipped against a 150kb landing-page budget). Read-only in v1; editing remains through the recipe panel.
-- [X] T114 [P] [US6] Add "customised — edit via graph" badge logic in `views/recipe/recipe.ui.tsx` for recipe fields that can no longer bind.
+- [X] T113 [US6] Graph rendering is **host-side** — the host already owns the generic DAG canvas at `apps/web/src/views/workflows/components/canvas/` and the node system at `apps/web/src/components/nodes/` (operator_node, boundary_nodes, reroute_node, widgets). Per Principle XIII, extensions MUST NOT duplicate the canvas. The extension contributes (a) the workflow-binding engine + `GET /workflow/default` HTTP surface, and (b) a recipe-side CTA that navigates the parent shell to `#/workflows`. No extension-local graph view is shipped. A hand-rolled SVG prototype was landed and then removed once this decision was made.
+- [X] T114 [P] [US6] Add "customised — edit via graph" banner logic in `views/recipe/recipe.ui.tsx` (links to the host workflow canvas via `/#/workflows`).
 - [ ] T115 [US6] Graph inspector buttons from each recipe section (FR "Nice to have" in spec §5) — **deferred**: spec marks this explicitly optional behind a v1+ flag; ship when persistence + graph editing lands.
 
 **Checkpoint**: US6 complete. Advanced users can inspect and edit the graph.

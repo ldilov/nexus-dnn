@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { Link } from "react-router";
 import * as css from "./recipe.css";
 import type { Deployment } from "../../services/deployments_client";
 import type { RecipeField } from "../../services/workflows_client";
@@ -32,7 +31,9 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
           {unmappable.length === 0
             ? "Every recipe field still binds, but the graph topology diverges from the curated template."
             : `These fields are now managed in the graph: ${unmappable.join(", ")}.`}{" "}
-          <Link to={`/${props.deployment.deploymentId}/graph`}>Open graph →</Link>
+          <a href="/#/workflows" target="_top">
+            Open workflow canvas →
+          </a>
         </section>
       )}
       <div className={css.leftColumn}>
