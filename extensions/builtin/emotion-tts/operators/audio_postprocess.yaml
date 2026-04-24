@@ -1,16 +1,21 @@
-id: "emotiontts.audio.postprocess@1.0.0"
-display_name: "Audio Postprocess"
-description: "Apply ffmpeg atempo (pitch-preserving speed) + format encode (wav/mp3/flac) per segment."
+spec_version: '0.1'
+operator:
+  id: emotiontts.audio.postprocess
+  version: 1.0.0
+  display_name: Audio Postprocess
+  description: Apply ffmpeg atempo (pitch-preserving speed) + format encode (wav/mp3/flac)
+    per segment.
 inputs:
-  - name: input_wav_abs
-    type: string
-    required: true
-  - name: output_format
-    type: enum
-    values: [wav, mp3, flac]
-  - name: speed_factor
-    type: number
-    default: 1.0
+- name: input_wav_abs
+  type: string
+  required: true
+- name: output_format
+  type: enum
+  required: false
+- name: speed_factor
+  type: number
+  required: false
+  default: 1.0
 outputs:
-  - name: output_abs
-    type: string
+- name: output_abs
+  type: string
