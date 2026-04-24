@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import threading
 from typing import Any, Awaitable, Callable
 
 from . import __version__
@@ -26,6 +27,7 @@ class Worker:
         self._handlers: dict[str, Handler] = {}
         self._shutdown = asyncio.Event()
         self._stdout_lock = asyncio.Lock()
+        self._stdout_sync_lock = threading.Lock()
         self.logger = WorkerLogger(self._emit_sync)
         self._register_intrinsic()
 
@@ -97,13 +99,15 @@ class Worker:
     async def _emit(self, payload: dict[str, Any]) -> None:
         line = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         async with self._stdout_lock:
-            sys.stdout.write(line + "\n")
-            sys.stdout.flush()
+            with self._stdout_sync_lock:
+                sys.stdout.write(line + "\n")
+                sys.stdout.flush()
 
     def _emit_sync(self, payload: dict[str, Any]) -> None:
         line = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-        sys.stdout.write(line + "\n")
-        sys.stdout.flush()
+        with self._stdout_sync_lock:
+            sys.stdout.write(line + "\n")
+            sys.stdout.flush()
 
     def _register_intrinsic(self) -> None:
         async def handshake(_: Any) -> dict[str, Any]:

@@ -21,6 +21,13 @@ fn boundary_audit_reports_clean() {
     let ps1 = root.join("extensions/builtin/emotion-tts/scripts/audit-boundary.ps1");
     let sh = root.join("extensions/builtin/emotion-tts/scripts/audit-boundary.sh");
 
+    let expected = if cfg!(windows) { &ps1 } else { &sh };
+    assert!(
+        expected.exists(),
+        "boundary audit script not found at {}; someone likely moved or renamed the per-extension audit",
+        expected.display()
+    );
+
     let (program, args): (&str, Vec<String>) = if cfg!(windows) {
         ("powershell", vec![
             "-NoProfile".into(),

@@ -51,8 +51,5 @@ async fn unknown_method_maps_to_internal() {
 #[tokio::test]
 async fn release_flips_state() {
     let mock = MockBackendRuntimeLease::new();
-    assert!(matches!(
-        mock.release().await,
-        Ok(()) | Err(LeaseError::Transport(_))
-    ));
+    assert!(matches!(mock.release().await, Ok(())));
 }
