@@ -152,4 +152,52 @@ impl DeploymentsRepo for SqliteDeploymentsRepo {
         .map_err(sqlx_to_err)?;
         Ok(())
     }
+
+    async fn set_oas_threshold(
+        &self,
+        id: &DeploymentId,
+        threshold_learned: Option<f64>,
+        samples_seen: i64,
+    ) -> RepoResult<()> {
+        sqlx::query(
+            "UPDATE ext_emotion_tts__deployments \
+             SET oas_threshold_learned = ?, oas_samples_seen = ?, updated_at = strftime('%s', 'now') \
+             WHERE deployment_id = ?",
+        )
+        .bind(threshold_learned)
+        .bind(samples_seen)
+        .bind(id.as_str())
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_to_err)?;
+        Ok(())
+    }
+
+    async fn patch_engine_settings(
+        &self,
+        id: &DeploymentId,
+        reference_preprocess_enabled: Option<bool>,
+        oas_enabled: Option<bool>,
+        compile_gpt_enabled: Option<bool>,
+        model_family: Option<&str>,
+    ) -> RepoResult<()> {
+        sqlx::query(
+            "UPDATE ext_emotion_tts__deployments \
+             SET reference_preprocess_enabled = COALESCE(?, reference_preprocess_enabled), \
+                 oas_enabled = COALESCE(?, oas_enabled), \
+                 compile_gpt_enabled = COALESCE(?, compile_gpt_enabled), \
+                 model_family = COALESCE(?, model_family), \
+                 updated_at = strftime('%s', 'now') \
+             WHERE deployment_id = ?",
+        )
+        .bind(reference_preprocess_enabled.map(i64::from))
+        .bind(oas_enabled.map(i64::from))
+        .bind(compile_gpt_enabled.map(i64::from))
+        .bind(model_family)
+        .bind(id.as_str())
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_to_err)?;
+        Ok(())
+    }
 }
