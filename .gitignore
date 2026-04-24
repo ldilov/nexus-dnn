@@ -45,6 +45,14 @@ dist/
 .next/
 .turbo/
 
+# Extension web bundles are contract artefacts — the host validates the
+# module file exists at activation time, so the built bundle ships with
+# the repo. Source maps and intermediate caches stay ignored.
+!extensions/builtin/*/web/dist/
+!extensions/builtin/*/web/dist/**
+extensions/builtin/*/web/dist/*.map
+extensions/builtin/*/web/.vite/
+
 # Python (extension workers)
 __pycache__/
 *.pyc

@@ -11,8 +11,8 @@ worker/htmlcov/
 worker/.coverage
 
 web/node_modules/
-web/dist/
 web/.vite/
+web/dist/*.map
 
 backends/indextts/assets/*.zip
 backends/indextts/assets/*.tar.gz

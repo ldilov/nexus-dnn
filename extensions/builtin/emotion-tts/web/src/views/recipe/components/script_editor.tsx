@@ -107,10 +107,10 @@ function analyseScript(
     let character = "Narrator";
     let text = trimmed;
     if (match && match.groups) {
-      const body = match.groups.body.trim();
-      const rest = match.groups.rest.trim();
-      const [head] = body.split("|");
-      const [name] = head.split(":");
+      const body = (match.groups["body"] ?? "").trim();
+      const rest = (match.groups["rest"] ?? "").trim();
+      const head = body.split("|")[0] ?? "";
+      const name = head.split(":")[0] ?? "";
       character = name.trim() || "Narrator";
       text = rest;
     }

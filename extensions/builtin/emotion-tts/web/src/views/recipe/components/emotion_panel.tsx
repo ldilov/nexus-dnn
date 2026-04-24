@@ -294,7 +294,9 @@ function clamp01(x: number): number {
 
 function vectorsEqual(a: EmotionVector, b: EmotionVector): boolean {
   for (let i = 0; i < 8; i += 1) {
-    if (Math.abs(a[i] - b[i]) > 1e-6) return false;
+    const ai = a[i] ?? 0;
+    const bi = b[i] ?? 0;
+    if (Math.abs(ai - bi) > 1e-6) return false;
   }
   return true;
 }
