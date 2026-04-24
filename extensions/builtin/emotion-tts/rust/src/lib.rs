@@ -56,11 +56,12 @@ pub const EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub async fn register(
     pool: Arc<dyn HostStoragePool>,
     lease_factory: Option<Arc<dyn crate::backend_client::LeaseFactory>>,
+    artifact_store: Option<Arc<dyn crate::host_contract::HostArtifactStore>>,
 ) -> crate::domain::Result<ExtensionHandle> {
     let repos = crate::storage::build_repos(pool).await?;
     let queue = Arc::new(RuntimeQueue::new());
     let provider = lease_factory.map(|f| Arc::new(crate::backend_client::LeaseProvider::new(f)));
-    let router = router::build_router(repos, queue, EXTENSION_VERSION, provider);
+    let router = router::build_router(repos, queue, EXTENSION_VERSION, provider, artifact_store);
     Ok(ExtensionHandle {
         migrations: MIGRATIONS,
         router,
@@ -72,5 +73,14 @@ pub fn build_router_with(
     queue: Arc<RuntimeQueue>,
     extension_version: impl Into<String>,
 ) -> Router {
-    router::build_router(repos, queue, extension_version, None)
+    router::build_router(repos, queue, extension_version, None, None)
+}
+
+pub fn build_router_with_artifact_store(
+    repos: Repos,
+    queue: Arc<RuntimeQueue>,
+    extension_version: impl Into<String>,
+    artifact_store: Arc<dyn crate::host_contract::HostArtifactStore>,
+) -> Router {
+    router::build_router(repos, queue, extension_version, None, Some(artifact_store))
 }
