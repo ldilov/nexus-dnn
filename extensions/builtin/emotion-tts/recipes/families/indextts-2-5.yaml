@@ -1,0 +1,26 @@
+# Model-family descriptor for IndexTTS-2.5 (spec 034 US5 T100).
+#
+# SPECULATIVE — upstream release not yet available at spec time. The
+# registry resolves this against the host model-store; the reconciled
+# status is `not_installed` until weights drop on HuggingFace. Update
+# `expected_artifacts` on release.
+
+family_id: "indextts-2-5"
+display_name: "IndexTTS-2.5 (upstream, not yet released)"
+model_family_ref: "IndexTeam/IndexTTS-2.5"
+engine_version_constraint: ">=0.2.0, <0.3.0"
+supported_languages:
+  - "zh"
+  - "en"
+  - "ja"
+  - "es"
+expected_artifacts:
+  # Best-guess from upstream README; revisit on release.
+  - "config.yaml"
+  - "gpt.pth"
+  - "s2mel.pth"
+  - "bpe.model"
+default_generation:
+  temperature: 0.8
+  top_p: 0.8
+  max_text_tokens_per_segment: 400
