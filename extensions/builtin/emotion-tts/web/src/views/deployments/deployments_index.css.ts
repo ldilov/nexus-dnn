@@ -140,8 +140,47 @@ export const chevron = style({
 
 export const empty = style({
   padding: `${vars.space.xl} ${vars.space.lg}`,
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: vars.space.sm,
   textAlign: "center",
   color: vars.color.textMuted,
   fontSize: vars.text.body,
   lineHeight: 1.6,
+  borderRadius: vars.radius.md,
+  background: `linear-gradient(135deg, color-mix(in oklab, ${vars.color.accent} 6%, ${vars.color.surfaceMuted}), ${vars.color.surfaceMuted})`,
+});
+
+export const emptyGlyph = style({
+  fontFamily: vars.font.display,
+  fontSize: "2.75rem",
+  lineHeight: 1,
+  color: vars.color.accent,
+  textShadow: vars.color.accentGlow,
+  letterSpacing: vars.tracking.display,
+});
+
+export const emptyTitle = style({
+  fontFamily: vars.font.display,
+  fontSize: vars.text.subhead,
+  fontWeight: 600,
+  color: vars.color.text,
+  margin: 0,
+});
+
+export const emptyBody = style({
+  fontSize: vars.text.body,
+  color: vars.color.textMuted,
+  margin: 0,
+  maxWidth: "48ch",
+});
+
+export const emptyHint = style({
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  color: vars.color.textFaint,
+  textTransform: "uppercase",
+  letterSpacing: vars.tracking.label,
+  marginTop: vars.space.xs,
 });

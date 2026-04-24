@@ -60,6 +60,7 @@ export const vars = createGlobalTheme(":root", {
     subtle: "0 1px 2px rgba(0, 0, 0, 0.3)",
     raised: "0 12px 32px rgba(0, 0, 0, 0.4)",
     glow: "0 0 24px rgba(132, 85, 239, 0.28)",
+    focusRing: "0 0 0 2px rgba(132, 85, 239, 0.55)",
   },
   motion: {
     fast: "var(--motion-card-hover-lift, 160ms) cubic-bezier(0.2, 0, 0, 1)",
@@ -84,4 +85,33 @@ globalStyle("emotion-tts-app *, emotion-tts-app *::before, emotion-tts-app *::af
 
 globalStyle("emotion-tts-app code, emotion-tts-app pre", {
   fontFamily: vars.font.mono,
+});
+
+// Accessibility: keyboard-only focus ring honours the Spectral Graphite
+// no-borders aesthetic by using a spectral glow instead of a flat outline.
+globalStyle(
+  [
+    "emotion-tts-app button:focus-visible",
+    "emotion-tts-app a:focus-visible",
+    "emotion-tts-app input:focus-visible",
+    "emotion-tts-app textarea:focus-visible",
+    "emotion-tts-app select:focus-visible",
+    "emotion-tts-app [tabindex]:focus-visible",
+  ].join(", "),
+  {
+    outline: "none",
+    boxShadow: `${vars.shadow.focusRing}, ${vars.shadow.glow}`,
+  },
+);
+
+// Respect prefers-reduced-motion — strip animations to near-instant so the
+// editorial cascades don't become a barrier.
+globalStyle("emotion-tts-app *", {
+  "@media": {
+    "(prefers-reduced-motion: reduce)": {
+      animationDuration: "0.01ms",
+      animationIterationCount: 1,
+      transitionDuration: "0.01ms",
+    },
+  },
 });
