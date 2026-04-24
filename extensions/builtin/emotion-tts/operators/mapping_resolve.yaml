@@ -1,15 +1,19 @@
-id: "emotiontts.mapping.resolve@1.0.0"
-display_name: "Mapping Resolve"
-description: "Resolve character names in a parsed script to voice-asset mappings; surface unresolved characters for pre-flight."
+spec_version: '0.1'
+operator:
+  id: emotiontts.mapping.resolve
+  version: 1.0.0
+  display_name: Mapping Resolve
+  description: Resolve character names in a parsed script to voice-asset mappings;
+    surface unresolved characters for pre-flight.
 inputs:
-  - name: utterances
-    type: array
-    required: true
-  - name: mappings
-    type: array
-    required: true
+- name: utterances
+  type: array
+  required: true
+- name: mappings
+  type: array
+  required: true
 outputs:
-  - name: resolved
-    type: array
-  - name: unresolved_characters
-    type: array
+- name: resolved
+  type: array
+- name: unresolved_characters
+  type: array

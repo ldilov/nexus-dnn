@@ -7,16 +7,24 @@ extension:
   description: "Dialogue/script-based emotional TTS via IndexTTS-2 running in a host-managed Python subprocess. 8-axis emotion control + Qwen text emotion + audio-ref; deployment-scoped character mappings; global content-hash synthesis cache with 10 GB LRU; partial-ZIP + auto-resume. Spec 034 engine quality pack: reference-audio preprocessing, alignment-score observability, speaker-prefix cache, opt-in torch.compile, dual model-family."
   publisher: "nexus"
 
-engine_features:
-  - reference_preprocess
-  - oas
-  - speaker_cache
-  - compile_gpt
-  - dual_family
-
 compatibility:
   host_api: ">=0.1.0"
   protocol: ">=0.1.0"
+
+runtime:
+  family: "native"
+  entrypoint: "bin/nexus-emotion-tts-worker${exe_suffix}"
+  environment:
+    cuda_version: null
+    env_vars: {}
+
+runtime_dependencies:
+  - family: "indextts"
+    version: ">=0.1.0"
+    acceleration:
+      - "cpu"
+      - "cuda12"
+      - "cuda13"
 
 capabilities:
   - "filesystem.read"
@@ -25,45 +33,61 @@ capabilities:
   - "gpu.compute"
   - "storage.schema_contribute"
 
-storage:
-  namespace: "emotion_tts"
-  migrations: "storage/migrations"
-
-runtime:
-  family: "native"
-  entrypoint: "noop"
-
-backend_runtimes:
-  - runtime_id: "indextts.python"
-    display_name: "IndexTTS-2 (Python)"
-    family: "python"
-    transport: "stdio"
-    worker_entrypoint: "worker/src/emotion_tts_worker/main.py"
-    version_manifest: "backends/indextts/versions.yaml"
-    capability_tags:
-      - "tts"
-      - "emotional-tts"
-      - "dialogue"
-      - "voice-cloning"
-    supported_roles:
-      - "tts.synthesize"
-
 operators:
-  directory: "operators"
+  - file: "operators/audio_postprocess.yaml"
+  - file: "operators/audio_preview_mix.yaml"
+  - file: "operators/batch_synthesize.yaml"
+  - file: "operators/emotion_resolve.yaml"
+  - file: "operators/export_bundle.yaml"
+  - file: "operators/mapping_resolve.yaml"
+  - file: "operators/script_parse.yaml"
 
 recipes:
-  directory: "recipes"
-
-workflows:
-  directory: "workflows"
+  - file: "recipes/emotional_dialogue_batch.yaml"
 
 ui:
+  layouts:
+    - file: "ui/layouts/main.yaml"
+      default: true
   assets:
     root: "web/dist"
   custom_elements:
     - tag: "emotion-tts-app"
       module: "emotion-tts.js"
       entry: "register"
-  layouts:
-    - file: "ui/layouts/main.yaml"
-      default: true
+
+storage:
+  spec_version: "0.1"
+  engine: "sqlite"
+  namespace:
+    alias: "emotion_tts"
+    prefix_mode: "host_derived"
+  migrations:
+    strategy: "sql_file_list"
+    files:
+      - id: "001_deployments"
+        path: "storage/migrations/001_deployments.sql"
+      - id: "002_voice_assets"
+        path: "storage/migrations/002_voice_assets.sql"
+      - id: "003_character_mappings"
+        path: "storage/migrations/003_character_mappings.sql"
+      - id: "004_vector_presets"
+        path: "storage/migrations/004_vector_presets.sql"
+      - id: "005_runs"
+        path: "storage/migrations/005_runs.sql"
+      - id: "006_utterances"
+        path: "storage/migrations/006_utterances.sql"
+      - id: "007_synthesis_cache"
+        path: "storage/migrations/007_synthesis_cache.sql"
+      - id: "008_export_history"
+        path: "storage/migrations/008_export_history.sql"
+      - id: "009_workflows"
+        path: "storage/migrations/009_workflows.sql"
+      - id: "010_deployments_partial_run_id"
+        path: "storage/migrations/010_deployments_partial_run_id.sql"
+      - id: "011_deployment_engine_settings"
+        path: "storage/migrations/011_deployment_engine_settings.sql"
+      - id: "012_voice_assets_preprocess"
+        path: "storage/migrations/012_voice_assets_preprocess.sql"
+  sql_profile:
+    profile: "nexus_sqlite_v1"

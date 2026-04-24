@@ -1,16 +1,21 @@
-id: "emotiontts.audio.preview_mix@1.0.0"
-display_name: "Preview Mix"
-description: "Concatenate per-segment audio with a configurable gap between entries into a single preview file."
+spec_version: '0.1'
+operator:
+  id: emotiontts.audio.preview_mix
+  version: 1.0.0
+  display_name: Preview Mix
+  description: Concatenate per-segment audio with a configurable gap between entries
+    into a single preview file.
 inputs:
-  - name: segment_paths_abs
-    type: array
-    required: true
-  - name: gap_ms
-    type: integer
-    default: 250
-  - name: output_format
-    type: enum
-    values: [wav, mp3, flac]
+- name: segment_paths_abs
+  type: array
+  required: true
+- name: gap_ms
+  type: integer
+  required: false
+  default: 250
+- name: output_format
+  type: enum
+  required: false
 outputs:
-  - name: output_abs
-    type: string
+- name: output_abs
+  type: string
