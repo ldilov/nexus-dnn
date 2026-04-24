@@ -11,6 +11,7 @@ import time
 from typing import Any, Callable
 
 from .cancellation import CancelToken, CancelledError, GLOBAL_TOKEN
+from .gpt_compile import CompileSettings, CompiledGpt, compile_gpt_stage
 from .indextts_adapter import (
     AdapterSettings,
     IndexTtsAdapter,
@@ -84,6 +85,13 @@ class SynthesisService:
         self._adapter = adapter
         self._emitter = emitter
         self._token = token or GLOBAL_TOKEN
+        # Spec 034 US4 — per-subprocess compile state. Once `torch.compile`
+        # fails for a given session we do NOT retry on subsequent batches
+        # (avoids the "compile thrash on every user click" antipattern
+        # called out in R-34-04). Reset only on subprocess restart.
+        self._compile_handle: CompiledGpt | None = None
+        self._compile_attempted: bool = False
+        self._compile_session_failed_reason: str | None = None
 
     def handle_synthesize(self, params: dict[str, Any]) -> dict[str, Any]:
         request_id = str(params["request_id"])
@@ -110,6 +118,9 @@ class SynthesisService:
         self._token.bind(request_id)
         outcomes: list[SegmentOutcome] = []
         saw_cancel = False
+
+        enable_compile = bool(params.get("enable_compile", False))
+        compile_active = self._apply_compile_toggle(request_id, enable_compile)
 
         try:
             for seg in segments:
@@ -139,7 +150,68 @@ class SynthesisService:
             "status": batch_status,
             "segments": [outcome_to_wire(o) for o in outcomes],
             "priority": priority,
+            # Spec 034 FR-234 — manifest writer (T087) consumes this field.
+            "compile_active": compile_active,
         }
+
+    def _apply_compile_toggle(self, request_id: str, enable: bool) -> bool:
+        """Idempotently resolve the compile state for this batch.
+
+        Returns the actual ``compile_active`` flag after fallback resolution.
+        """
+
+        if not enable:
+            # Toggle off → don't flip session state; next batch can re-enable.
+            return False
+        if self._compile_session_failed_reason is not None:
+            # A prior compile failed in this session — R-34-04 says we must
+            # NOT retry automatically. User can flip the toggle off/on or
+            # restart the runtime to try again.
+            return False
+        if self._compile_handle is not None and self._compile_handle.session_available():
+            # Already compiled for this session — subsequent batches ride
+            # the amortised path for free.
+            return True
+        if self._compile_attempted:
+            return False
+
+        # Fresh compile attempt. The adapter's model may not be loaded yet —
+        # ensure it is (with stage emission) so we're wrapping real weights.
+        self._compile_attempted = True
+        try:
+            self._adapter.ensure_model()
+        except Exception as err:
+            self._compile_session_failed_reason = (
+                f"model load failed before compile: {type(err).__name__}: {err}"
+            )
+            return False
+
+        gpt_module = getattr(self._adapter._model, "gpt", None)  # noqa: SLF001
+        if gpt_module is None:
+            self._compile_session_failed_reason = (
+                "adapter._model.gpt not exposed by upstream; cannot compile"
+            )
+            return False
+
+        settings = CompileSettings(
+            enabled=True,
+            pad_to_multiple_of=self._adapter._settings.compile_pad_to_multiple_of,  # noqa: SLF001
+            max_text_tokens_per_segment=self._adapter._settings.max_text_tokens_per_segment,  # noqa: SLF001
+        )
+        handle = compile_gpt_stage(
+            gpt_module,
+            settings,
+            emitter=self._emit_compile_progress,
+            request_id=request_id,
+        )
+        self._compile_handle = handle
+        if not handle.session_available():
+            self._compile_session_failed_reason = handle.last_failure() or "unknown"
+            return False
+        return True
+
+    def _emit_compile_progress(self, stage: str, payload: dict[str, Any]) -> None:
+        self._emitter(notification("progress", payload))
 
     def _emit_started(self, params: dict[str, Any], seg: SynthesisSegment) -> None:
         self._emitter(
