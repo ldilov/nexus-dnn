@@ -8,21 +8,26 @@ export const shell = style({
   padding: vars.space.lg,
   minHeight: "100vh",
   background: vars.color.surface,
+  backgroundImage: `radial-gradient(900px 520px at 50% -10%, color-mix(in oklab, ${vars.color.accent} 10%, transparent), transparent 65%)`,
   color: vars.color.text,
   fontFamily: vars.font.body,
 });
 
 export const header = style({
   display: "flex",
-  alignItems: "baseline",
+  alignItems: "center",
   justifyContent: "space-between",
   gap: vars.space.md,
   flexWrap: "wrap",
+  padding: `${vars.space.md} ${vars.space.lg}`,
+  background: vars.color.surfaceMuted,
+  borderRadius: vars.radius.lg,
 });
 
 export const title = style({
   fontFamily: vars.font.display,
   fontSize: vars.text.head,
+  letterSpacing: vars.tracking.display,
   margin: 0,
 });
 
@@ -30,26 +35,38 @@ export const subtitle = style({
   fontSize: vars.text.caption,
   color: vars.color.textMuted,
   margin: 0,
+  marginTop: "4px",
+  fontFamily: vars.font.mono,
 });
 
 export const badge = style({
   display: "inline-flex",
   alignItems: "center",
   gap: vars.space.xs,
-  padding: `${vars.space.xs} ${vars.space.sm}`,
-  borderRadius: vars.radius.sm,
-  background: `oklch(from ${vars.color.warning} l c h / 0.16)`,
+  padding: `${vars.space.xs} ${vars.space.md}`,
+  borderRadius: vars.radius.pill,
+  background: `color-mix(in oklab, ${vars.color.warning} 18%, ${vars.color.surfaceRaised})`,
   color: vars.color.text,
-  fontSize: vars.text.caption,
+  fontSize: vars.text.micro,
   fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: vars.tracking.label,
+  "::before": {
+    content: '""',
+    width: "6px",
+    height: "6px",
+    borderRadius: vars.radius.pill,
+    background: vars.color.warning,
+    display: "inline-block",
+  },
 });
 
 export const canvas = style({
   background: vars.color.surfaceRaised,
-  borderRadius: vars.radius.md,
-  boxShadow: vars.shadow.subtle,
+  borderRadius: vars.radius.lg,
   padding: vars.space.lg,
   overflow: "auto",
+  boxShadow: vars.shadow.raised,
 });
 
 export const svgRoot = style({
@@ -61,14 +78,15 @@ export const svgRoot = style({
 });
 
 export const nodeCard = style({
-  fill: vars.color.surface,
-  stroke: vars.color.borderSubtle,
+  fill: vars.color.surfaceMuted,
+  stroke: vars.color.borderGhost,
   strokeWidth: 1,
 });
 
 export const nodeCardCurated = style({
-  fill: `oklch(from ${vars.color.accent} l c h / 0.08)`,
-  stroke: `oklch(from ${vars.color.accent} l c h / 0.35)`,
+  fill: `color-mix(in oklab, ${vars.color.accent} 12%, ${vars.color.surfaceMuted})`,
+  stroke: `color-mix(in oklab, ${vars.color.accent} 55%, transparent)`,
+  strokeWidth: 1,
 });
 
 export const nodeTitle = style({
@@ -76,6 +94,7 @@ export const nodeTitle = style({
   fontSize: "14px",
   fontWeight: 600,
   fill: vars.color.text,
+  letterSpacing: vars.tracking.display,
 });
 
 export const nodeOperator = style({
@@ -85,30 +104,33 @@ export const nodeOperator = style({
 });
 
 export const edgeLine = style({
-  stroke: vars.color.textMuted,
-  strokeOpacity: 0.45,
+  stroke: vars.color.textFaint,
+  strokeOpacity: 0.5,
   strokeWidth: 1.5,
   fill: "none",
 });
 
 export const backLink = style({
-  padding: `${vars.space.xs} ${vars.space.sm}`,
+  padding: `${vars.space.xs} ${vars.space.md}`,
   borderRadius: vars.radius.sm,
-  border: `1px solid ${vars.color.borderSubtle}`,
-  background: vars.color.surfaceRaised,
-  color: vars.color.text,
+  background: "transparent",
+  color: vars.color.accent,
   fontFamily: vars.font.body,
   fontSize: vars.text.body,
+  fontWeight: 600,
   textDecoration: "none",
-  ":hover": { background: vars.color.surfaceMuted },
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
+  transition: `background ${vars.motion.fast}`,
+  ":hover": { background: vars.color.surfaceHigh },
 });
 
 export const legend = style({
   display: "flex",
-  gap: vars.space.md,
+  gap: vars.space.lg,
   flexWrap: "wrap",
   fontSize: vars.text.caption,
   color: vars.color.textMuted,
+  padding: `${vars.space.sm} ${vars.space.md}`,
 });
 
 export const legendSwatch = style({
@@ -120,6 +142,15 @@ export const legendSwatch = style({
   verticalAlign: "middle",
 });
 
+export const legendSwatchCurated = style({
+  background: `color-mix(in oklab, ${vars.color.accent} 55%, ${vars.color.surfaceMuted})`,
+});
+
+export const legendSwatchCustom = style({
+  background: vars.color.surfaceMuted,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
+});
+
 export const nodeConfigBlock = style({
   fontFamily: vars.font.mono,
   fontSize: "10px",
@@ -128,8 +159,8 @@ export const nodeConfigBlock = style({
 
 export const error = style({
   padding: vars.space.md,
-  borderRadius: vars.radius.sm,
-  background: `oklch(from ${vars.color.danger} l c h / 0.12)`,
+  borderRadius: vars.radius.md,
+  background: `color-mix(in oklab, ${vars.color.danger} 14%, ${vars.color.surfaceRaised})`,
   color: vars.color.text,
   fontSize: vars.text.body,
 });
