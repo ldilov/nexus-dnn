@@ -42,16 +42,15 @@ pub struct Repos {
 impl Repos {
     #[must_use]
     pub fn from_pool(pool: SqlitePool) -> Self {
-        let p = pool;
         Self {
-            deployments: Arc::new(deployments_repo::SqliteDeploymentsRepo::new(p.clone())),
-            voice_assets: Arc::new(voice_assets_repo::SqliteVoiceAssetsRepo::new(p.clone())),
-            mappings: Arc::new(mappings_repo::SqliteMappingsRepo::new(p.clone())),
-            presets: Arc::new(presets_repo::SqlitePresetsRepo::new(p.clone())),
-            runs: Arc::new(runs_repo::SqliteRunsRepo::new(p.clone())),
-            utterances: Arc::new(utterances_repo::SqliteUtterancesRepo::new(p.clone())),
-            cache: Arc::new(synthesis_cache_repo::SqliteSynthesisCacheRepo::new(p.clone())),
-            exports: Arc::new(export_history_repo::SqliteExportHistoryRepo::new(p)),
+            deployments: Arc::new(deployments_repo::SqliteDeploymentsRepo::new(pool.clone())),
+            voice_assets: Arc::new(voice_assets_repo::SqliteVoiceAssetsRepo::new(pool.clone())),
+            mappings: Arc::new(mappings_repo::SqliteMappingsRepo::new(pool.clone())),
+            presets: Arc::new(presets_repo::SqlitePresetsRepo::new(pool.clone())),
+            runs: Arc::new(runs_repo::SqliteRunsRepo::new(pool.clone())),
+            utterances: Arc::new(utterances_repo::SqliteUtterancesRepo::new(pool.clone())),
+            cache: Arc::new(synthesis_cache_repo::SqliteSynthesisCacheRepo::new(pool.clone())),
+            exports: Arc::new(export_history_repo::SqliteExportHistoryRepo::new(pool)),
         }
     }
 }

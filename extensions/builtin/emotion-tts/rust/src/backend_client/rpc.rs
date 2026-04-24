@@ -38,13 +38,23 @@ pub mod error_codes {
 pub fn lease_error_to_domain(err: LeaseError) -> EmotionTtsError {
     match err {
         LeaseError::Rpc { code, message } => match code {
-            error_codes::METHOD_NOT_FOUND => EmotionTtsError::Internal(format!("method not found: {message}")),
+            error_codes::PARSE_ERROR => {
+                EmotionTtsError::internal(format!("worker framing error: {message}"))
+            }
+            error_codes::INVALID_REQUEST => {
+                EmotionTtsError::internal(format!("malformed rpc envelope: {message}"))
+            }
+            error_codes::METHOD_NOT_FOUND => {
+                EmotionTtsError::internal(format!("worker does not implement method: {message}"))
+            }
+            error_codes::INTERNAL_ERROR => EmotionTtsError::internal(message),
             error_codes::VALIDATION_FAILED | error_codes::INVALID_PARAMS => {
                 EmotionTtsError::validation(message)
             }
             error_codes::RUNTIME_UNAVAILABLE => EmotionTtsError::RuntimeUnavailable(message),
             error_codes::MODEL_MISSING => EmotionTtsError::ModelMissing(message),
             error_codes::CANCELLED => EmotionTtsError::Cancelled,
+            error_codes::SYNTHESIS_FAILED => EmotionTtsError::internal(format!("synthesis failed: {message}")),
             _ => EmotionTtsError::Rpc { code, message },
         },
         LeaseError::Timeout => EmotionTtsError::Timeout { op: "send_rpc".into() },
@@ -101,5 +111,33 @@ mod tests {
             message: "x".into(),
         });
         assert!(matches!(mapped, EmotionTtsError::Rpc { code: -99999, .. }));
+    }
+
+    #[test]
+    fn parse_error_maps_to_internal() {
+        let mapped = lease_error_to_domain(LeaseError::Rpc {
+            code: error_codes::PARSE_ERROR,
+            message: "bad json".into(),
+        });
+        assert!(matches!(mapped, EmotionTtsError::Internal(_)));
+        assert_eq!(mapped.status_code(), 500);
+    }
+
+    #[test]
+    fn invalid_request_maps_to_internal() {
+        let mapped = lease_error_to_domain(LeaseError::Rpc {
+            code: error_codes::INVALID_REQUEST,
+            message: "missing jsonrpc".into(),
+        });
+        assert!(matches!(mapped, EmotionTtsError::Internal(_)));
+    }
+
+    #[test]
+    fn synthesis_failed_maps_to_internal() {
+        let mapped = lease_error_to_domain(LeaseError::Rpc {
+            code: error_codes::SYNTHESIS_FAILED,
+            message: "nan in mel".into(),
+        });
+        assert!(matches!(mapped, EmotionTtsError::Internal(_)));
     }
 }

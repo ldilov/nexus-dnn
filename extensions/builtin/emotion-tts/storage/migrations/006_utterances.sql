@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS ext_emotion_tts__utterances (
     resolved_emotion_payload_json       TEXT,
     resolved_seed                       INTEGER,
     resolved_generation_json            TEXT,
-    content_hash                        TEXT,
+    content_hash                        TEXT
+                                             CHECK (content_hash IS NULL OR length(content_hash) = 64),
     status                              TEXT NOT NULL DEFAULT 'queued'
                                              CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
     source_run_id                       TEXT,
