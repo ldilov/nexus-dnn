@@ -12,13 +12,15 @@ use sha2::{Digest, Sha256};
 use crate::domain::emotion::EmotionPayload;
 use crate::domain::{ContentHash, EmotionTtsError, Result};
 
-pub const FORMAT_VERSION: &str = "v1";
+pub const FORMAT_VERSION: &str = "v2";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CacheKeyInput {
     pub extension_version: String,
     pub runtime_version: String,
     pub model_version: String,
+    #[serde(default = "default_model_family")]
+    pub model_family: String,
     pub text: String,
     pub speaker_ref_sha256: String,
     pub emotion: EmotionPayload,
@@ -29,6 +31,10 @@ pub struct CacheKeyInput {
     pub output_format: String,
 }
 
+fn default_model_family() -> String {
+    "indextts-2".to_string()
+}
+
 #[must_use]
 pub fn build_canonical_string(input: &CacheKeyInput) -> String {
     let emotion = canonical_emotion(&input.emotion);
@@ -36,7 +42,7 @@ pub fn build_canonical_string(input: &CacheKeyInput) -> String {
     let speed = format!("{:.6}", input.speed_factor);
 
     format!(
-        "{version}:{ext}:{runtime}:{model}:\n\
+        "{version}:{ext}:{runtime}:{model}:{family}:\n\
          text_utf8={text}\n\
          speaker_ref={speaker}\n\
          emotion_mode={emode}\n\
@@ -50,6 +56,7 @@ pub fn build_canonical_string(input: &CacheKeyInput) -> String {
         ext = input.extension_version,
         runtime = input.runtime_version,
         model = input.model_version,
+        family = input.model_family,
         text = input.text,
         speaker = input.speaker_ref_sha256,
         emode = input.emotion.mode().as_str(),
@@ -117,6 +124,7 @@ mod tests {
             extension_version: "0.1.0".into(),
             runtime_version: "0.1.0".into(),
             model_version: "indextts-2-20250908".into(),
+            model_family: "indextts-2".into(),
             text: "Hello there".into(),
             speaker_ref_sha256: "a".repeat(64),
             emotion: EmotionPayload::None,
@@ -220,6 +228,18 @@ mod tests {
     #[test]
     fn canonical_string_has_version_prefix() {
         let s = build_canonical_string(&sample_input());
-        assert!(s.starts_with("v1:"));
+        assert!(s.starts_with("v2:"));
+    }
+
+    #[test]
+    fn different_model_family_changes_hash() {
+        let a = build(&sample_input()).unwrap();
+        let mut i = sample_input();
+        i.model_family = "indextts-2-5".into();
+        let b = build(&i).unwrap();
+        assert_ne!(
+            a, b,
+            "FR-242: cache key MUST include model_family so cross-family hits are impossible",
+        );
     }
 }

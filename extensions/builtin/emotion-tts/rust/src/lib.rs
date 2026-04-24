@@ -52,6 +52,8 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration { version: 8, name: "export_history",     sql: include_str!("../../storage/migrations/008_export_history.sql") },
     Migration { version: 9, name: "workflows",           sql: include_str!("../../storage/migrations/009_workflows.sql") },
     Migration { version: 10, name: "deployments_partial_run_id", sql: include_str!("../../storage/migrations/010_deployments_partial_run_id.sql") },
+    Migration { version: 11, name: "deployment_engine_settings", sql: include_str!("../../storage/migrations/011_deployment_engine_settings.sql") },
+    Migration { version: 12, name: "voice_assets_preprocess",    sql: include_str!("../../storage/migrations/012_voice_assets_preprocess.sql") },
 ];
 
 pub const EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION");

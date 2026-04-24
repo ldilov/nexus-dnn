@@ -5,7 +5,9 @@
 //! their owning user story lands.
 
 pub mod deployments;
+pub mod engine_settings;
 pub mod exports;
+pub mod families;
 pub mod mappings;
 pub mod middleware;
 pub mod presets;
@@ -41,7 +43,9 @@ pub fn build_router(
         .nest("/mappings", mappings::router(repos.clone()))
         .nest("/presets", presets::router(repos.clone()))
         .nest("/exports", exports::router())
-        .nest("/workflow", workflows::router(repos.clone()));
+        .nest("/workflow", workflows::router(repos.clone()))
+        .merge(engine_settings::router())
+        .merge(families::router());
 
     if let Some(store) = artifact_store {
         router = router.nest("/voice-assets", voice_assets::router(repos, store));

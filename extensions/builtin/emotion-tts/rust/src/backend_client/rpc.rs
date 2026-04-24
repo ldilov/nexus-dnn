@@ -18,6 +18,12 @@ pub mod methods {
     pub const SYNTHESIZE_BATCH: &str = "synthesize.batch";
     pub const VOICE_PROBE: &str = "voice.probe";
     pub const CANCEL: &str = "cancel";
+
+    // Spec 034 additions
+    pub const VOICE_PREPROCESS: &str = "voice.preprocess";
+    pub const CAPABILITY_PROBE: &str = "capability.probe";
+    pub const FAMILY_LIST: &str = "family.list";
+    pub const FAMILY_SWITCH: &str = "family.switch";
 }
 
 pub mod error_codes {
@@ -38,6 +44,12 @@ pub mod error_codes {
     pub const CANCELLED_V1: i32 = -32002;
     pub const MODEL_LOAD_FAILED: i32 = -32003;
     pub const HANDSHAKE_PROTOCOL_MISMATCH: i32 = -32004;
+
+    // Spec 034 additions — mapped into domain errors by `lease_error_to_domain`.
+    pub const PREPROCESS_INPUT_REJECTED: i32 = -32010;
+    pub const PREPROCESS_PARTIAL: i32 = -32011;
+    pub const FAMILY_NOT_INSTALLED: i32 = -32012;
+    pub const FAMILY_INCOMPATIBLE: i32 = -32013;
 }
 
 #[must_use]
@@ -72,6 +84,16 @@ pub fn lease_error_to_domain(err: LeaseError) -> EmotionTtsError {
             }
             error_codes::CANCELLED | error_codes::CANCELLED_V1 => EmotionTtsError::Cancelled,
             error_codes::SYNTHESIS_FAILED => EmotionTtsError::internal(format!("synthesis failed: {message}")),
+            error_codes::PREPROCESS_INPUT_REJECTED => {
+                EmotionTtsError::validation(format!("preprocess input rejected: {message}"))
+            }
+            error_codes::PREPROCESS_PARTIAL => EmotionTtsError::Rpc { code, message },
+            error_codes::FAMILY_NOT_INSTALLED => {
+                EmotionTtsError::ModelMissing(format!("family not installed: {message}"))
+            }
+            error_codes::FAMILY_INCOMPATIBLE => {
+                EmotionTtsError::validation(format!("family incompatible: {message}"))
+            }
             _ => EmotionTtsError::Rpc { code, message },
         },
         LeaseError::Timeout => EmotionTtsError::Timeout { op: "send_rpc".into() },
