@@ -27,9 +27,17 @@ export function DeploymentsIndexView(): JSX.Element {
       <section className={css.panel}>
         <h2 className={css.sectionLabel}>Deployments</h2>
         {deployments.length === 0 ? (
-          <p className={css.empty}>
-            No deployments yet. Create one from the host shell to begin.
-          </p>
+          <div className={css.empty}>
+            <span className={css.emptyGlyph} aria-hidden="true">
+              ◈
+            </span>
+            <p className={css.emptyTitle}>No deployments yet</p>
+            <p className={css.emptyBody}>
+              A deployment is a named character-cast that binds voices, presets, and the
+              runtime settings for a script. Create your first one from the host shell.
+            </p>
+            <p className={css.emptyHint}>Host shell → Extensions → EmotionTTS → New</p>
+          </div>
         ) : (
           <ul className={css.list}>
             {deployments.map((d) => (
