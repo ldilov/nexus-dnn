@@ -183,5 +183,5 @@ def orchestrate_load(
     return {"loaded": True, "load_seconds": round(elapsed, 2)}
 
 
-def handle_unload_model() -> dict[str, Any]:
-    return {"unloaded": True, "vram_freed_mb": 0}
+def handle_unload_model(vram_freed_mb: int = 0) -> dict[str, Any]:
+    return {"unloaded": True, "vram_freed_mb": int(vram_freed_mb)}

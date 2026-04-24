@@ -31,15 +31,15 @@ class Worker:
         self.logger = WorkerLogger(self._emit_sync)
         self._register_intrinsic()
 
-    def register(self, method: str, handler: Handler) -> None:
-        if method in self._handlers:
+    def register(self, method: str, handler: Handler, *, replace: bool = False) -> None:
+        if method in self._handlers and not replace:
             raise ValueError(f"duplicate handler for {method}")
         self._handlers[method] = handler
 
     async def run(self) -> int:
         self.logger.info("worker.start", version=__version__)
         loop = asyncio.get_running_loop()
-        reader = asyncio.StreamReader()
+        reader = asyncio.StreamReader(limit=64 * 1024 * 1024)
         protocol = asyncio.StreamReaderProtocol(reader)
         await loop.connect_read_pipe(lambda: protocol, sys.stdin)
 

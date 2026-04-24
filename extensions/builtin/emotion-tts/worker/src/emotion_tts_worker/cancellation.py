@@ -1,9 +1,13 @@
 """Cooperative cancellation (R-04).
 
-A shared ``threading.Event`` threaded into IndexTTS2's sampling loop via the
-``on_step`` hook. The worker thread polls the event between tokens and
-raises ``CancelledError`` at the next boundary, which propagates out of
-``IndexTTS2.infer()`` as a return-early signal.
+A shared ``threading.Event`` polled between segments by the synthesis
+service. If IndexTTS2 exposes ``set_cancel_callback`` or an ``on_step`` hook
+on ``infer()``, the adapter threads the same event into upstream sampling —
+when that hook fires, a cancelled check raises ``CancelledError`` at the
+next token boundary. On upstream builds that expose neither hook the cancel
+is honoured only *between* segments, not mid-utterance; the active segment
+runs to completion before the next one is skipped. Mid-segment preemption
+is NOT part of the v1 contract (FR-020).
 """
 
 from __future__ import annotations

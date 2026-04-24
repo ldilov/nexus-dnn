@@ -11,6 +11,7 @@ worker can evolve without re-learning the upstream surface. Handles:
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import json
 import threading
@@ -99,10 +100,32 @@ class IndexTtsAdapter:
             if on_stage is not None:
                 on_stage("loading_s2mel")
 
-    def _ensure_qwen(self) -> None:
+    def _ensure_qwen(self, on_stage: Callable[[str], None] | None = None) -> None:
         if self._qwen_ready:
             return
-        self._qwen_ready = True
+        with self._lock:
+            if self._qwen_ready:
+                return
+            if on_stage is not None:
+                on_stage("loading_qwen")
+            self._force_qwen_load()
+            self._qwen_ready = True
+
+    def _force_qwen_load(self) -> None:
+        if self._model is None:
+            return
+        for attr in ("load_qwen_emotion", "load_emo_text_model", "_ensure_qwen"):
+            fn = getattr(self._model, attr, None)
+            if callable(fn):
+                fn()
+                return
+        qwen = getattr(self._model, "qwen_emotion", None) or getattr(self._model, "emo_text_model", None)
+        if qwen is not None and hasattr(qwen, "to"):
+            device = self._settings.device or "cuda"
+            try:
+                qwen.to(device)
+            except Exception:
+                pass
 
     def synthesise(
         self,
@@ -124,7 +147,7 @@ class IndexTtsAdapter:
             infer_kwargs = dict(kwargs)
             if hasattr(self._model, "set_cancel_callback"):
                 self._model.set_cancel_callback(token.as_on_step())
-            elif "on_step" in getattr(self._model.infer, "__code__", type("", (), {})()).co_varnames:
+            elif _accepts_on_step(self._model.infer):
                 infer_kwargs["on_step"] = token.as_on_step()
 
             self._model.infer(
@@ -183,6 +206,43 @@ class IndexTtsAdapter:
     def speaker_cache_key(path: str) -> str:
         return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
-    def unload(self) -> None:
+    def unload(self) -> int:
         with self._lock:
+            before = _cuda_allocated_bytes(self._settings.device)
             self._model = None
+            self._qwen_ready = False
+            gc.collect()
+            _cuda_empty_cache()
+            after = _cuda_allocated_bytes(self._settings.device)
+            freed = max(before - after, 0)
+            return freed // (1024 * 1024)
+
+
+def _accepts_on_step(callable_obj: Any) -> bool:
+    code = getattr(callable_obj, "__code__", None)
+    if code is None:
+        return False
+    varnames = getattr(code, "co_varnames", ())
+    return "on_step" in varnames
+
+
+def _cuda_empty_cache() -> None:
+    try:
+        import torch
+    except ImportError:
+        return
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+def _cuda_allocated_bytes(device: str | None) -> int:
+    try:
+        import torch
+    except ImportError:
+        return 0
+    if not torch.cuda.is_available():
+        return 0
+    try:
+        return int(torch.cuda.memory_allocated(device))
+    except Exception:
+        return 0
