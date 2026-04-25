@@ -2,5 +2,5 @@
 
 #![allow(dead_code)]
 
-pub mod test_echo;
 pub mod harness;
+pub mod test_echo;

@@ -19,9 +19,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::Value;
 
-use nexus_extension_deps::{
-    DepError, ProbeResult, StepArtifact, StepContext, StepHandler,
-};
+use nexus_extension_deps::{DepError, ProbeResult, StepArtifact, StepContext, StepHandler};
 
 #[derive(Deserialize)]
 struct TestEchoSpec {
@@ -80,26 +78,17 @@ impl StepHandler for TestEchoHandler {
         Ok(())
     }
 
-    async fn probe(
-        &self,
-        _ctx: &StepContext<'_>,
-        _spec: &Value,
-    ) -> Result<ProbeResult, DepError> {
+    async fn probe(&self, _ctx: &StepContext<'_>, _spec: &Value) -> Result<ProbeResult, DepError> {
         Ok(ProbeResult::NotSatisfied)
     }
 
-    async fn run(
-        &self,
-        _ctx: &StepContext<'_>,
-        spec: &Value,
-    ) -> Result<StepArtifact, DepError> {
-        let parsed: TestEchoSpec = serde_json::from_value(spec.clone()).map_err(|e| {
-            DepError::InvalidSpec {
+    async fn run(&self, _ctx: &StepContext<'_>, spec: &Value) -> Result<StepArtifact, DepError> {
+        let parsed: TestEchoSpec =
+            serde_json::from_value(spec.clone()).map_err(|e| DepError::InvalidSpec {
                 step_id: String::new(),
                 field: "spec".into(),
                 reason: e.to_string(),
-            }
-        })?;
+            })?;
         // TestEchoHandler doesn't have a step_id at this point — `run` only sees
         // the spec. The runner re-tags step_id in emitted events. For the
         // invocation log, derive a placeholder.

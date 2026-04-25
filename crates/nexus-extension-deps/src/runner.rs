@@ -28,10 +28,7 @@ impl InstallRunner {
 
     /// Walk the plan sequentially. Returns the final per-step status map plus the
     /// overall outcome.
-    pub async fn run_install(
-        &self,
-        ctx: &mut RunnerContext<'_>,
-    ) -> InstallReport {
+    pub async fn run_install(&self, ctx: &mut RunnerContext<'_>) -> InstallReport {
         let mut statuses: HashMap<String, StepStatus> = HashMap::new();
         let mut artifacts: HashMap<String, StepArtifact> = HashMap::new();
 
@@ -43,13 +40,7 @@ impl InstallRunner {
                 continue;
             }
 
-            let outcome = run_one_step(
-                step,
-                &self.registry,
-                ctx,
-                &artifacts,
-            )
-            .await;
+            let outcome = run_one_step(step, &self.registry, ctx, &artifacts).await;
             apply_outcome(step, outcome, &mut statuses, &mut artifacts);
 
             // Halt on first failure. Subsequent steps stay pending.
@@ -64,13 +55,14 @@ impl InstallRunner {
             .iter()
             .all(|s| statuses.get(&s.id).is_some_and(|st| st.is_satisfied()));
 
-        if all_satisfied {
-            ctx.progress_sink.emit(ProgressEvent::InstallCompleted {
-                extension_id: ctx.extension_id.to_owned(),
-                install_run_id: ctx.install_run_id,
-                completed_at: Utc::now(),
-            });
-        }
+        // Always emit a terminal event so subscribers can clear their "active"
+        // state. The success/failure outcome is conveyed by the per-step events
+        // already emitted (and reflected in subsequent /dependencies probe).
+        ctx.progress_sink.emit(ProgressEvent::InstallCompleted {
+            extension_id: ctx.extension_id.to_owned(),
+            install_run_id: ctx.install_run_id,
+            completed_at: Utc::now(),
+        });
 
         InstallReport {
             statuses,
@@ -174,6 +166,16 @@ async fn run_one_step(
     };
 
     // Probe first.
+    let emit_probe_failure = |error: StepError| {
+        ctx.progress_sink.emit(ProgressEvent::StepFailed {
+            extension_id: ctx.extension_id.to_owned(),
+            install_run_id: ctx.install_run_id,
+            step_id: step.id.clone(),
+            failed_at: Utc::now(),
+            error: error.clone(),
+        });
+        StepOutcome::Failed { error }
+    };
     match handler.probe(&step_ctx, &step.spec).await {
         Ok(ProbeResult::Satisfied { .. }) => {
             debug!(step_id = %step.id, "probe satisfied — skipping run");
@@ -182,17 +184,13 @@ async fn run_one_step(
             };
         }
         Ok(ProbeResult::Unsupported { reason }) => {
-            return StepOutcome::Failed {
-                error: StepError::new("unsupported_platform", reason),
-            };
+            return emit_probe_failure(StepError::new("unsupported_platform", reason));
         }
         Ok(ProbeResult::NotSatisfied) => {
             // fall through
         }
         Err(e) => {
-            return StepOutcome::Failed {
-                error: dep_error_to_step_error(e),
-            };
+            return emit_probe_failure(dep_error_to_step_error(e));
         }
     }
 
@@ -399,11 +397,7 @@ mod tests {
         ) -> Result<Option<PathBuf>, DepError> {
             Ok(None)
         }
-        async fn start_download(
-            &self,
-            _f: &str,
-            _a: Option<&str>,
-        ) -> Result<String, DepError> {
+        async fn start_download(&self, _f: &str, _a: Option<&str>) -> Result<String, DepError> {
             unreachable!()
         }
         async fn poll_job(&self, _id: &str) -> Result<ModelDownloadProgress, DepError> {
@@ -612,10 +606,7 @@ mod tests {
                 MockOutcome::Run(RunKind::Ok),
             ],
         )));
-        registry.register(Box::new(MockHandler::new(
-            "beta",
-            vec![],
-        )));
+        registry.register(Box::new(MockHandler::new("beta", vec![])));
 
         let runner = build_runner(
             vec![
@@ -638,7 +629,9 @@ mod tests {
         let sink: Arc<dyn ProgressSink> = Arc::new(CapturingSink::default());
         let tmp = tempfile::tempdir().unwrap();
         let mut rctx = build_runner_ctx(&sink, tmp.path());
-        let result = runner.run_single_step("a", &mut rctx, &HashMap::new()).await;
+        let result = runner
+            .run_single_step("a", &mut rctx, &HashMap::new())
+            .await;
         assert!(matches!(result, StepStatus::Ok { .. }));
         // 'b' was never invoked — its outcome stack is empty so any call would panic.
     }

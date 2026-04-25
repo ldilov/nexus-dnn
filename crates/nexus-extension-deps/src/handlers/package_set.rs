@@ -98,11 +98,7 @@ impl StepHandler for PackageSetHandler {
         Ok(())
     }
 
-    async fn probe(
-        &self,
-        ctx: &StepContext<'_>,
-        spec: &Value,
-    ) -> Result<ProbeResult, DepError> {
+    async fn probe(&self, ctx: &StepContext<'_>, spec: &Value) -> Result<ProbeResult, DepError> {
         let parsed = parse(spec)?;
         let marker = marker_path(ctx);
         let venv = venv_dir(ctx);
@@ -133,11 +129,7 @@ impl StepHandler for PackageSetHandler {
         })
     }
 
-    async fn run(
-        &self,
-        ctx: &StepContext<'_>,
-        spec: &Value,
-    ) -> Result<StepArtifact, DepError> {
+    async fn run(&self, ctx: &StepContext<'_>, spec: &Value) -> Result<StepArtifact, DepError> {
         let parsed = parse(spec)?;
         let manifest_full = ctx.extension_dir.join(&parsed.manifest_path);
         if !manifest_full.exists() {

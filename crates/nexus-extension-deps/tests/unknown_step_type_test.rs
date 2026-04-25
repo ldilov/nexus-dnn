@@ -37,7 +37,10 @@ fn unknown_step_type_in_otherwise_valid_plan_fails_parse() {
     let err = parse_dependencies_block("ext", block, &registry).expect_err("must reject");
     match err {
         DepError::UnknownStepType { step_type } => {
-            assert_eq!(step_type, "conda_env", "structured error names the bad type");
+            assert_eq!(
+                step_type, "conda_env",
+                "structured error names the bad type"
+            );
         }
         other => panic!("expected UnknownStepType, got {other:?}"),
     }

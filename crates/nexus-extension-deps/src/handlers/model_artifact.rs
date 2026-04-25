@@ -48,10 +48,7 @@ fn parse(spec: &Value) -> Result<ModelArtifactSpec, DepError> {
 /// Resolve the requested accelerator profile from the spec's `acceleration_match`
 /// directive against upstream artifacts. Sentinel form is
 /// `matches_runtime_step:<step_id>` — read that step's `metadata.resolved_profile`.
-fn resolve_accelerator(
-    parsed: &ModelArtifactSpec,
-    ctx: &StepContext<'_>,
-) -> Option<String> {
+fn resolve_accelerator(parsed: &ModelArtifactSpec, ctx: &StepContext<'_>) -> Option<String> {
     let directive = parsed.acceleration_match.as_deref()?;
     if let Some(step_id) = directive.strip_prefix("matches_runtime_step:") {
         let upstream = ctx.upstream_artifacts.get(step_id)?;
@@ -78,11 +75,7 @@ impl StepHandler for ModelArtifactHandler {
         Ok(())
     }
 
-    async fn probe(
-        &self,
-        ctx: &StepContext<'_>,
-        spec: &Value,
-    ) -> Result<ProbeResult, DepError> {
+    async fn probe(&self, ctx: &StepContext<'_>, spec: &Value) -> Result<ProbeResult, DepError> {
         let parsed = parse(spec)?;
         let accelerator = resolve_accelerator(&parsed, ctx);
         let installed = ctx
@@ -106,11 +99,7 @@ impl StepHandler for ModelArtifactHandler {
         }
     }
 
-    async fn run(
-        &self,
-        ctx: &StepContext<'_>,
-        spec: &Value,
-    ) -> Result<StepArtifact, DepError> {
+    async fn run(&self, ctx: &StepContext<'_>, spec: &Value) -> Result<StepArtifact, DepError> {
         let parsed = parse(spec)?;
         let accelerator = resolve_accelerator(&parsed, ctx);
         let job_id = ctx

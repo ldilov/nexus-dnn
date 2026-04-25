@@ -22,19 +22,11 @@ pub trait StepHandler: Send + Sync + 'static {
 
     /// Cheap idempotent check: is this step already satisfied? Target <100ms p95.
     /// MUST NOT make network calls or run subprocesses.
-    async fn probe(
-        &self,
-        ctx: &StepContext<'_>,
-        spec: &Value,
-    ) -> Result<ProbeResult, DepError>;
+    async fn probe(&self, ctx: &StepContext<'_>, spec: &Value) -> Result<ProbeResult, DepError>;
 
     /// Execute the install. Idempotent. Streams progress via `ctx.progress_sink`.
     /// MUST observe `ctx.cancellation_token` at every I/O boundary.
-    async fn run(
-        &self,
-        ctx: &StepContext<'_>,
-        spec: &Value,
-    ) -> Result<StepArtifact, DepError>;
+    async fn run(&self, ctx: &StepContext<'_>, spec: &Value) -> Result<StepArtifact, DepError>;
 }
 
 #[derive(Debug, Clone)]
@@ -70,21 +62,28 @@ impl HandlerRegistry {
         self.handlers.keys().copied()
     }
 
-    pub fn validate_step(&self, step_id: &str, step_type: &str, spec: &Value) -> Result<(), DepError> {
-        let handler =
-            self.get(step_type)
-                .ok_or_else(|| DepError::UnknownStepType {
-                    step_type: step_type.to_owned(),
-                })?;
+    pub fn validate_step(
+        &self,
+        step_id: &str,
+        step_type: &str,
+        spec: &Value,
+    ) -> Result<(), DepError> {
+        let handler = self
+            .get(step_type)
+            .ok_or_else(|| DepError::UnknownStepType {
+                step_type: step_type.to_owned(),
+            })?;
         handler.validate(spec).map_err(|e| match e {
             // Re-tag handler errors with the step id when the handler didn't include it.
-            DepError::InvalidSpec { step_id: id, field, reason } if id.is_empty() => {
-                DepError::InvalidSpec {
-                    step_id: step_id.to_owned(),
-                    field,
-                    reason,
-                }
-            }
+            DepError::InvalidSpec {
+                step_id: id,
+                field,
+                reason,
+            } if id.is_empty() => DepError::InvalidSpec {
+                step_id: step_id.to_owned(),
+                field,
+                reason,
+            },
             other => other,
         })
     }
@@ -94,10 +93,18 @@ impl Default for HandlerRegistry {
     fn default() -> Self {
         let mut registry = Self::new();
         registry.register(Box::new(crate::handlers::runtime::RuntimeHandler::new()));
-        registry.register(Box::new(crate::handlers::system_binary::SystemBinaryHandler::new()));
-        registry.register(Box::new(crate::handlers::package_set::PackageSetHandler::new()));
-        registry.register(Box::new(crate::handlers::model_artifact::ModelArtifactHandler::new()));
-        registry.register(Box::new(crate::handlers::validation::ValidationHandler::new()));
+        registry.register(Box::new(
+            crate::handlers::system_binary::SystemBinaryHandler::new(),
+        ));
+        registry.register(Box::new(
+            crate::handlers::package_set::PackageSetHandler::new(),
+        ));
+        registry.register(Box::new(
+            crate::handlers::model_artifact::ModelArtifactHandler::new(),
+        ));
+        registry.register(Box::new(
+            crate::handlers::validation::ValidationHandler::new(),
+        ));
         registry
     }
 }
