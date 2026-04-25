@@ -279,6 +279,12 @@ impl NexusApp {
             chat_resources,
         );
 
+        // Spec 035 — clone the handles the dep adapters need before they get
+        // moved into the AppState fields below.
+        let db_for_dep = db.clone();
+        let install_map_for_dep = install_map.clone();
+        let download_orchestrator_for_dep = download_orchestrator.clone();
+
         let state = nexus_api::AppState {
             health_status_fn: Arc::new(move || {
                 serde_json::to_value(app_ref.health_status()).unwrap_or_default()
@@ -309,28 +315,31 @@ impl NexusApp {
             family_handlers: {
                 let registry =
                     nexus_backend_runtimes::generic::family_handler::FamilyHandlerRegistry::new();
-                let python_asset = match nexus_backend_runtimes::family_python::PythonAssetConfig::from_env().load() {
-                    Ok(Some(asset)) => {
-                        tracing::info!(
-                            url = %asset.url,
-                            kind = ?asset.kind,
-                            "embedded-Python asset configured from env"
-                        );
-                        Some(asset)
-                    }
-                    Ok(None) => {
-                        tracing::debug!(
-                            "no embedded-Python asset configured; python-family \
+                let python_asset =
+                    match nexus_backend_runtimes::family_python::PythonAssetConfig::from_env()
+                        .load()
+                    {
+                        Ok(Some(asset)) => {
+                            tracing::info!(
+                                url = %asset.url,
+                                kind = ?asset.kind,
+                                "embedded-Python asset configured from env"
+                            );
+                            Some(asset)
+                        }
+                        Ok(None) => {
+                            tracing::debug!(
+                                "no embedded-Python asset configured; python-family \
                              installs will fail at bootstrap until NEXUS_EMBEDDED_PYTHON_* \
                              env vars are set"
-                        );
-                        None
-                    }
-                    Err(reason) => {
-                        tracing::warn!(%reason, "invalid NEXUS_EMBEDDED_PYTHON_* env config — ignoring");
-                        None
-                    }
-                };
+                            );
+                            None
+                        }
+                        Err(reason) => {
+                            tracing::warn!(%reason, "invalid NEXUS_EMBEDDED_PYTHON_* env config — ignoring");
+                            None
+                        }
+                    };
                 nexus_api::handlers::backend_runtimes::pipeline_runner::register_default_handlers(
                     &registry,
                     python_asset,
@@ -346,17 +355,20 @@ impl NexusApp {
                 nexus_backend_runtimes::generic::leases::LeaseManager::new(),
             ),
             // Spec 035 — generic extension dependency installer wiring. Real
-            // delegating adapters land in follow-up commits; for now the registry
-            // + fetch primitive + stub trait impls give the host a complete dep
-            // surface so the gallery's "Setup required" badge surfaces and the
-            // dep panel renders against real probe results.
+            // probe adapters delegate to host_runtime_installs (runtime) and
+            // model_store_installed_artifacts (model_artifact); the action
+            // path (full pipeline install / download-job creation) still
+            // routes through the existing Backends + Models Search UIs.
             dep_handler_registry: Some(nexus_api::dep_bootstrap::default_dep_handler_registry()),
             dep_install_state: std::sync::Arc::new(Default::default()),
             dep_runtime_bootstrapper: Some(std::sync::Arc::new(
-                nexus_api::dep_bootstrap::StubRuntimeBootstrapper,
+                nexus_api::dep_bootstrap::RealRuntimeBootstrapper::new(db_for_dep.pool().clone()),
             )),
             dep_model_store: Some(std::sync::Arc::new(
-                nexus_api::dep_bootstrap::StubModelStoreClient,
+                nexus_api::dep_bootstrap::RealModelStoreClient::new(
+                    install_map_for_dep,
+                    download_orchestrator_for_dep,
+                ),
             )),
             dep_worker_handshake: Some(std::sync::Arc::new(
                 nexus_api::dep_bootstrap::StubWorkerHandshake,

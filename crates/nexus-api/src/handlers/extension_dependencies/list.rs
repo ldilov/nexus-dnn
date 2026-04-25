@@ -19,7 +19,7 @@ use crate::dto::extension_dependencies::{
 use crate::envelope::ApiResponse;
 use crate::error::ApiError;
 
-use super::common::{install_plan_for, runner_context_inputs, EventBusProgressSink};
+use super::common::{EventBusProgressSink, install_plan_for, runner_context_inputs};
 
 pub async fn list_dependencies(
     State(state): State<AppState>,
@@ -39,9 +39,9 @@ pub async fn list_dependencies(
 
     let inputs = runner_context_inputs(&state)?;
     let extension_data_dir = inputs.host_data_dir.join("extensions").join(&extension_id);
-    tokio::fs::create_dir_all(&extension_data_dir).await.map_err(|e| {
-        ApiError::Internal(format!("failed to ensure extension data dir: {e}"))
-    })?;
+    tokio::fs::create_dir_all(&extension_data_dir)
+        .await
+        .map_err(|e| ApiError::Internal(format!("failed to ensure extension data dir: {e}")))?;
 
     let extension = state
         .extension_registry

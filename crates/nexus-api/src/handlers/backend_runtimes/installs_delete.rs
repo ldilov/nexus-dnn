@@ -12,9 +12,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 
 use nexus_backend_runtimes::generic::ids::RuntimeInstallId;
-use nexus_backend_runtimes::generic::installs::{
-    BackendRuntimeInstallsRepo, SqliteInstallsRepo,
-};
+use nexus_backend_runtimes::generic::installs::{BackendRuntimeInstallsRepo, SqliteInstallsRepo};
 
 use crate::AppState;
 use crate::envelope::ApiResponse;
@@ -48,9 +46,7 @@ pub async fn delete(
             StatusCode::CONFLICT,
             "install_has_live_leases",
             "conflict",
-            format!(
-                "install has {live_count} live lease(s); POST /stop before DELETE"
-            ),
+            format!("install has {live_count} live lease(s); POST /stop before DELETE"),
         )
         .into_response();
     }
