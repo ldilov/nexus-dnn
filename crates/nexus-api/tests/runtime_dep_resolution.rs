@@ -67,6 +67,8 @@ fn make_manifest(id: &str, deps: Vec<RuntimeDependency>) -> ExtensionManifest {
         storage: None,
         runtime_dependencies: deps,
         model_dependencies: Vec::new(),
+        dependencies: None,
+        backend_runtimes: Vec::new(),
     }
 }
 
