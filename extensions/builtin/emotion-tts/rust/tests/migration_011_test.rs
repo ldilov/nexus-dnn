@@ -63,7 +63,9 @@ async fn migration_011_creates_partial_index_on_model_family() {
     .collect();
 
     assert!(
-        indexes.iter().any(|n| n == "idx_deployments_model_family"),
+        indexes
+            .iter()
+            .any(|n| n == "ext_emotion_tts_idx_deployments_model_family"),
         "partial index missing; actual indexes: {indexes:?}",
     );
 }

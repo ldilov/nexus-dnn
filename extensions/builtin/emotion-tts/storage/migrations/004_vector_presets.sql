@@ -8,5 +8,5 @@ CREATE TABLE IF NOT EXISTS ext_emotion_tts__vector_presets (
     UNIQUE (deployment_id, preset_name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_vector_presets_deployment
+CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_vector_presets_deployment
     ON ext_emotion_tts__vector_presets (deployment_id);
