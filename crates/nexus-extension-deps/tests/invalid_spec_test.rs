@@ -28,7 +28,11 @@ fn malformed_spec_for_known_handler_blocks_plan_parse() {
     };
     let err = parse_dependencies_block("ext", block, &registry).expect_err("must reject");
     match err {
-        DepError::InvalidSpec { step_id, field, reason } => {
+        DepError::InvalidSpec {
+            step_id,
+            field,
+            reason,
+        } => {
             // The runner re-tags step_id when the handler leaves it empty,
             // so the user-facing error names the offending step.
             assert_eq!(step_id, "echo");
@@ -57,7 +61,11 @@ fn empty_string_field_blocked_with_specific_field_name() {
     };
     let err = parse_dependencies_block("ext", block, &registry).expect_err("must reject");
     match err {
-        DepError::InvalidSpec { step_id, field, reason } => {
+        DepError::InvalidSpec {
+            step_id,
+            field,
+            reason,
+        } => {
             assert_eq!(step_id, "blank");
             assert_eq!(field, "message");
             assert!(reason.contains("non-empty"), "reason: {reason}");

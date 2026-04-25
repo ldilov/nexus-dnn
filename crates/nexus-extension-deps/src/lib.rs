@@ -22,6 +22,6 @@ pub use handler::{HandlerRegistry, ProbeResult, StepHandler};
 pub use plan::{DependenciesBlock, InstallPlan, Step, parse_dependencies_block};
 pub use runner::{InstallReport, InstallRunner, RunnerContext};
 pub use types::{
-    ArchiveFormat, ExtensionInstallState, PlatformTuple, ProgressEvent, ProgressSink,
-    StepArtifact, StepError, StepStatus,
+    ArchiveFormat, ExtensionInstallState, PlatformTuple, ProgressEvent, ProgressSink, StepArtifact,
+    StepError, StepStatus,
 };

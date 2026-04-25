@@ -9,8 +9,7 @@ mod common;
 use std::sync::Arc;
 
 use nexus_extension_deps::{
-    DependenciesBlock, HandlerRegistry, InstallRunner, Step, StepStatus,
-    parse_dependencies_block,
+    DependenciesBlock, HandlerRegistry, InstallRunner, Step, StepStatus, parse_dependencies_block,
 };
 
 use crate::common::harness::{HarnessHandles, build_runner_ctx};
@@ -30,8 +29,7 @@ async fn custom_handler_registers_and_runs_through_runner() {
             spec: serde_json::json!({ "message": "hello, dep installer" }),
         }],
     };
-    let plan =
-        parse_dependencies_block("test.ext", block, &registry).expect("plan parses");
+    let plan = parse_dependencies_block("test.ext", block, &registry).expect("plan parses");
     assert_eq!(plan.steps.len(), 1);
     assert_eq!(plan.steps[0].id, "echo_one");
 
@@ -43,8 +41,15 @@ async fn custom_handler_registers_and_runs_through_runner() {
     let report = runner.run_install(&mut ctx).await;
     assert!(report.all_satisfied, "all steps should succeed");
     assert!(matches!(report.statuses["echo_one"], StepStatus::Ok { .. }));
-    assert_eq!(handler.invocation_count(), 1, "handler invoked exactly once");
-    assert_eq!(handler.last_message().as_deref(), Some("hello, dep installer"));
+    assert_eq!(
+        handler.invocation_count(),
+        1,
+        "handler invoked exactly once"
+    );
+    assert_eq!(
+        handler.last_message().as_deref(),
+        Some("hello, dep installer")
+    );
 
     // SSE events: step_started, step_completed, install_completed
     let events = handles.sink.events.lock().expect("lock");
