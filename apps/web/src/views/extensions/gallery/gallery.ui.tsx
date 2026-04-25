@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router";
 import type { Extension } from "../../../api/client";
 import { InstallExtensionDrawer } from "../../../components/install/install_extension_drawer";
 import * as s from "./gallery.css";
@@ -19,6 +20,8 @@ export interface ExtensionsGalleryUIProps {
   onOpenDrawer: () => void;
   onCloseDrawer: () => void;
   onInstalled: () => void;
+  /** Spec 035 — extension ids that need user-driven dep installs. */
+  setupRequired?: Record<string, boolean>;
 }
 
 export function ExtensionsGalleryUI({
@@ -32,6 +35,7 @@ export function ExtensionsGalleryUI({
   onOpenDrawer,
   onCloseDrawer,
   onInstalled,
+  setupRequired,
 }: ExtensionsGalleryUIProps) {
   if (errorMessage) {
     return <div className={s.errorState}>{errorMessage}</div>;
@@ -45,6 +49,7 @@ export function ExtensionsGalleryUI({
         action={action}
         onToggle={onToggle}
         showDelete={false}
+        setupRequired={setupRequired}
       />
       <ExtensionSection
         label="External Extensions"
@@ -54,6 +59,7 @@ export function ExtensionsGalleryUI({
         onToggle={onToggle}
         showDelete
         trailing={<InstallCard onClick={onOpenDrawer} />}
+        setupRequired={setupRequired}
       />
       {totalCount === 0 && (
         <div className={s.emptyState}>No extensions loaded</div>
@@ -75,6 +81,7 @@ interface ExtensionSectionProps {
   onToggle: (id: string, enable: boolean) => void;
   showDelete: boolean;
   trailing?: ReactNode;
+  setupRequired?: Record<string, boolean>;
 }
 
 function ExtensionSection({
@@ -85,6 +92,7 @@ function ExtensionSection({
   onToggle,
   showDelete,
   trailing,
+  setupRequired,
 }: ExtensionSectionProps) {
   return (
     <section className={s.section}>
@@ -100,6 +108,7 @@ function ExtensionSection({
             busy={action.loading && action.targetId === ext.id}
             onToggle={onToggle}
             showDelete={showDelete}
+            needsSetup={Boolean(setupRequired?.[ext.id])}
           />
         ))}
         {trailing}
@@ -113,9 +122,10 @@ interface ExtensionCardProps {
   busy: boolean;
   onToggle: (id: string, enable: boolean) => void;
   showDelete: boolean;
+  needsSetup?: boolean;
 }
 
-function ExtensionCard({ extension, busy, onToggle, showDelete }: ExtensionCardProps) {
+function ExtensionCard({ extension, busy, onToggle, showDelete, needsSetup }: ExtensionCardProps) {
   const active = extension.status === "active";
   const invalid = extension.status === "invalid";
   const displayName = extension.name ?? extension.id;
@@ -141,6 +151,12 @@ function ExtensionCard({ extension, busy, onToggle, showDelete }: ExtensionCardP
               {extension.source === "builtin" ? "Core" : "External"}
             </span>
             <StatusPill status={extension.status} />
+            {needsSetup && (
+              <span className={s.setupBadge} aria-label="Dependency setup required">
+                <span className={s.setupBadgePulse} aria-hidden="true" />
+                Setup required
+              </span>
+            )}
           </div>
           <span className={s.meta}>
             v{extension.version}
@@ -181,11 +197,20 @@ function ExtensionCard({ extension, busy, onToggle, showDelete }: ExtensionCardP
             </IconButton>
           )}
         </div>
-        <Toggle
-          on={active}
-          disabled={busy || invalid}
-          onToggle={(next) => onToggle(extension.id, next)}
-        />
+        {needsSetup ? (
+          <Link
+            className={s.setupCta}
+            to={`/extensions/${encodeURIComponent(extension.id)}/settings?tab=dependencies`}
+          >
+            Set up
+          </Link>
+        ) : (
+          <Toggle
+            on={active}
+            disabled={busy || invalid}
+            onToggle={(next) => onToggle(extension.id, next)}
+          />
+        )}
       </div>
     </article>
   );

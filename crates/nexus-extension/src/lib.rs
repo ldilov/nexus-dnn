@@ -26,6 +26,7 @@ pub use manifest::{
     CompatibilitySpec, EnvironmentSpec, ExecutionSpec, ExtensionInfo, ExtensionManifest, FileRef,
     LayoutRef, ManifestIcon, OperatorDefinition, OperatorInfo, PortSpec, ResourceSpec,
     RuntimeDependency, RuntimeSpec, UiDeclaration, parse_manifest, parse_operator_definition,
+    resolve_dependencies_block,
 };
 pub use operator_index::OperatorIndex;
 pub use recipe::{

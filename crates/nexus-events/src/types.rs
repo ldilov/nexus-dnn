@@ -123,4 +123,47 @@ pub enum NexusEvent {
         extension_id: String,
         module_id: String,
     },
+    /// Spec 035 — install step started.
+    ExtensionInstallStepStarted {
+        extension_id: String,
+        install_run_id: String,
+        step_id: String,
+        step_type: String,
+        started_at: String,
+    },
+    /// Spec 035 — install step progress (download bytes, package counts, etc.).
+    ExtensionInstallStepProgress {
+        extension_id: String,
+        install_run_id: String,
+        step_id: String,
+        phase: String,
+        current_bytes: u64,
+        total_bytes: u64,
+        message: String,
+    },
+    /// Spec 035 — install step completed successfully.
+    ExtensionInstallStepCompleted {
+        extension_id: String,
+        install_run_id: String,
+        step_id: String,
+        completed_at: String,
+        summary: String,
+        bytes_placed: u64,
+    },
+    /// Spec 035 — install step failed (categorised).
+    ExtensionInstallStepFailed {
+        extension_id: String,
+        install_run_id: String,
+        step_id: String,
+        failed_at: String,
+        category: String,
+        message: String,
+        hint: Option<String>,
+    },
+    /// Spec 035 — overall install run finished (terminal step succeeded).
+    ExtensionInstallCompleted {
+        extension_id: String,
+        install_run_id: String,
+        completed_at: String,
+    },
 }
