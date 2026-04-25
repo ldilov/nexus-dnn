@@ -104,6 +104,75 @@
         "additionalProperties": false
       }
     },
+    "model_dependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["family", "version"],
+        "properties": {
+          "family": { "type": "string" },
+          "version": { "type": "string" },
+          "revision": { "type": ["string", "null"] },
+          "allow_unpinned": { "type": "boolean" },
+          "min_params": { "type": ["string", "integer", "null"] },
+          "quantization": { "type": ["string", "null"] },
+          "variant": { "type": ["string", "null"] },
+          "required": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "required": ["steps"],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "type"],
+            "properties": {
+              "id": { "type": "string" },
+              "type": { "type": "string" },
+              "requires": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "spec": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "backend_runtimes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["runtime_id", "display_name", "family", "transport", "worker_entrypoint", "version_manifest"],
+        "properties": {
+          "runtime_id": { "type": "string" },
+          "display_name": { "type": "string" },
+          "family": { "type": "string" },
+          "transport": { "type": "string" },
+          "worker_entrypoint": { "type": "string" },
+          "version_manifest": { "type": "string" },
+          "capability_tags": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "supported_roles": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "operators": {
       "type": "array",
       "items": {
