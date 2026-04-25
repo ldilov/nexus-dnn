@@ -102,7 +102,12 @@ fn extract_run_id(event: &nexus_events::types::NexusEvent) -> Option<&str> {
         | StorageIntegrityDriftDetected { .. }
         | StorageUninstallStarted { .. }
         | StorageUninstallCompleted { .. }
-        | ModuleInstalled { .. } => None,
+        | ModuleInstalled { .. }
+        | ExtensionInstallStepStarted { .. }
+        | ExtensionInstallStepProgress { .. }
+        | ExtensionInstallStepCompleted { .. }
+        | ExtensionInstallStepFailed { .. }
+        | ExtensionInstallCompleted { .. } => None,
     }
 }
 
@@ -137,5 +142,10 @@ fn extract_event_type(event: &nexus_events::types::NexusEvent) -> &'static str {
         StorageUninstallStarted { .. } => "storage_uninstall_started",
         StorageUninstallCompleted { .. } => "storage_uninstall_completed",
         ModuleInstalled { .. } => "module_installed",
+        ExtensionInstallStepStarted { .. } => "extension_install_step_started",
+        ExtensionInstallStepProgress { .. } => "extension_install_step_progress",
+        ExtensionInstallStepCompleted { .. } => "extension_install_step_completed",
+        ExtensionInstallStepFailed { .. } => "extension_install_step_failed",
+        ExtensionInstallCompleted { .. } => "extension_install_completed",
     }
 }

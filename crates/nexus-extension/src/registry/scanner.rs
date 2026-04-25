@@ -161,6 +161,7 @@ pub(super) fn process_extension(
         validation_errors,
         status,
         directory: ext_dir.to_path_buf(),
+        install_plan: None,
     })
 }
 
@@ -188,6 +189,7 @@ fn process_builtin_extension(
         validation_errors: Vec::new(),
         status: ExtensionStatus::AvailableBuiltin,
         directory: ext_dir.to_path_buf(),
+        install_plan: None,
     })
 }
 
@@ -237,6 +239,7 @@ pub(super) fn activate_extension_inner(
         validation_errors,
         status,
         directory: ext_dir.to_path_buf(),
+        install_plan: None,
     })
 }
 

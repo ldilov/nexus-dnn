@@ -1,0 +1,205 @@
+//! `system_binary` step handler — extension declares per-platform sources, host
+//! provides the generic [`crate::fetch::fetch_artifact`] primitive.
+//!
+//! Each successful install lands at
+//! `<host_data>/extensions/<ext-id>/runtime/binaries/<id>/<sha256-prefix>/`
+//! (content-addressed; reinstalls are atomic).
+
+use std::path::PathBuf;
+
+use async_trait::async_trait;
+use serde::Deserialize;
+use serde_json::Value;
+
+use crate::context::StepContext;
+use crate::error::DepError;
+use crate::fetch::FetchRequest;
+use crate::handler::{ProbeResult, StepHandler};
+use crate::types::{ArchiveFormat, PlatformTuple, StepArtifact};
+
+#[derive(Debug, Deserialize)]
+struct SystemBinarySpec {
+    id: String,
+    #[serde(default)]
+    version: Option<String>,
+    sources: Vec<SourceEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SourceEntry {
+    platform: String,
+    url: String,
+    sha256: String,
+    #[serde(default)]
+    size: Option<u64>,
+    #[serde(default)]
+    archive: Option<String>,
+}
+
+pub struct SystemBinaryHandler;
+
+impl SystemBinaryHandler {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for SystemBinaryHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn parse(spec: &Value) -> Result<SystemBinarySpec, DepError> {
+    serde_json::from_value(spec.clone()).map_err(|e| DepError::InvalidSpec {
+        step_id: String::new(),
+        field: "spec".to_owned(),
+        reason: e.to_string(),
+    })
+}
+
+fn select_source<'a>(
+    parsed: &'a SystemBinarySpec,
+    host: &PlatformTuple,
+) -> Option<&'a SourceEntry> {
+    let want = host.as_canonical();
+    parsed.sources.iter().find(|s| s.platform == want)
+}
+
+fn target_dir(ctx: &StepContext<'_>, id: &str, sha256: &str) -> PathBuf {
+    let prefix = sha256.get(..8).unwrap_or(sha256);
+    ctx.extension_data_dir
+        .join("runtime")
+        .join("binaries")
+        .join(id)
+        .join(prefix)
+}
+
+#[async_trait]
+impl StepHandler for SystemBinaryHandler {
+    fn step_type(&self) -> &'static str {
+        "system_binary"
+    }
+
+    fn validate(&self, spec: &Value) -> Result<(), DepError> {
+        let parsed = parse(spec)?;
+        if parsed.id.trim().is_empty() {
+            return Err(DepError::invalid_spec("", "id", "empty"));
+        }
+        if parsed.sources.is_empty() {
+            return Err(DepError::invalid_spec(
+                "",
+                "sources",
+                "at least one source required",
+            ));
+        }
+        for src in &parsed.sources {
+            if src.url.trim().is_empty() {
+                return Err(DepError::invalid_spec(
+                    "",
+                    "sources[].url",
+                    "empty",
+                ));
+            }
+            if src.sha256.len() != 64 {
+                return Err(DepError::invalid_spec(
+                    "",
+                    "sources[].sha256",
+                    "must be 64-char hex sha256",
+                ));
+            }
+            if let Some(archive) = src.archive.as_deref()
+                && ArchiveFormat::parse(archive).is_none()
+            {
+                return Err(DepError::invalid_spec(
+                    "",
+                    "sources[].archive",
+                    format!("unsupported archive format: {archive}"),
+                ));
+            }
+            if PlatformTuple::parse(&src.platform).is_none() {
+                return Err(DepError::invalid_spec(
+                    "",
+                    "sources[].platform",
+                    format!("not a canonical platform tuple: {}", src.platform),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    async fn probe(
+        &self,
+        ctx: &StepContext<'_>,
+        spec: &Value,
+    ) -> Result<ProbeResult, DepError> {
+        let parsed = parse(spec)?;
+        let host = PlatformTuple::host();
+        let Some(source) = select_source(&parsed, &host) else {
+            return Ok(ProbeResult::Unsupported {
+                reason: format!("no source declared for {}", host.as_canonical()),
+            });
+        };
+        let dir = target_dir(ctx, &parsed.id, &source.sha256);
+        if dir.exists() && tokio::fs::read_dir(&dir).await.is_ok() {
+            // Content-addressed dir exists. Treat as satisfied. Bytes already verified
+            // when first placed.
+            return Ok(ProbeResult::Satisfied {
+                artifact: StepArtifact {
+                    path: Some(dir),
+                    bytes_placed: source.size.unwrap_or(0),
+                    summary: format!(
+                        "{} {} ({})",
+                        parsed.id,
+                        parsed.version.as_deref().unwrap_or("any"),
+                        host.as_canonical(),
+                    ),
+                    metadata: Value::Null,
+                },
+            });
+        }
+        Ok(ProbeResult::NotSatisfied)
+    }
+
+    async fn run(
+        &self,
+        ctx: &StepContext<'_>,
+        spec: &Value,
+    ) -> Result<StepArtifact, DepError> {
+        let parsed = parse(spec)?;
+        let host = PlatformTuple::host();
+        let Some(source) = select_source(&parsed, &host) else {
+            return Err(DepError::UnsupportedPlatform {
+                platform: host.as_canonical(),
+            });
+        };
+        let dir = target_dir(ctx, &parsed.id, &source.sha256);
+        let archive = source
+            .archive
+            .as_deref()
+            .map(|s| ArchiveFormat::parse(s).unwrap_or(ArchiveFormat::None))
+            .unwrap_or(ArchiveFormat::None);
+
+        let mut req = FetchRequest::new(&source.url, &source.sha256, &dir);
+        req.size = source.size;
+        req.archive = archive;
+        req.progress = Some(ctx.progress_sink.clone());
+        req.cancellation = Some(ctx.cancellation_token.clone());
+        req.progress_run_id = Some(ctx.install_run_id);
+        req.progress_extension_id = Some(ctx.extension_id.to_owned());
+
+        let placed = (ctx.fetch_artifact)(req).await?;
+
+        Ok(StepArtifact {
+            path: Some(placed),
+            bytes_placed: source.size.unwrap_or(0),
+            summary: format!(
+                "{} {} ({})",
+                parsed.id,
+                parsed.version.as_deref().unwrap_or("any"),
+                host.as_canonical(),
+            ),
+            metadata: Value::Null,
+        })
+    }
+}
