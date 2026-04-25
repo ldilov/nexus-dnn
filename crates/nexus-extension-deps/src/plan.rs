@@ -181,7 +181,8 @@ mod tests {
     #[test]
     fn empty_dependencies_block_parses() {
         let registry = HandlerRegistry::new();
-        let plan = parse_dependencies_block("ext-a", DependenciesBlock::default(), &registry).unwrap();
+        let plan =
+            parse_dependencies_block("ext-a", DependenciesBlock::default(), &registry).unwrap();
         assert!(plan.is_empty());
     }
 

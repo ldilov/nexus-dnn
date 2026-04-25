@@ -11,9 +11,8 @@ use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
 use nexus_extension_deps::{
-    DepError, HandshakeError, ModelDownloadProgress, ModelStoreClient, ProgressEvent,
-    ProgressSink, RuntimeBootstrapResult, RuntimeBootstrapper, RunnerContext, StepArtifact,
-    WorkerHandshake,
+    DepError, HandshakeError, ModelDownloadProgress, ModelStoreClient, ProgressEvent, ProgressSink,
+    RunnerContext, RuntimeBootstrapResult, RuntimeBootstrapper, StepArtifact, WorkerHandshake,
     fetch::{FetchArtifact, FetchRequest, fetch_artifact},
 };
 
@@ -39,11 +38,7 @@ impl ModelStoreClient for StubModelStore {
     ) -> Result<Option<PathBuf>, DepError> {
         Ok(None)
     }
-    async fn start_download(
-        &self,
-        _f: &str,
-        _a: Option<&str>,
-    ) -> Result<String, DepError> {
+    async fn start_download(&self, _f: &str, _a: Option<&str>) -> Result<String, DepError> {
         unreachable!("stub model store called");
     }
     async fn poll_job(&self, _id: &str) -> Result<ModelDownloadProgress, DepError> {

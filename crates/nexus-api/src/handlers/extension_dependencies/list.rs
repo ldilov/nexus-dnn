@@ -71,8 +71,40 @@ pub async fn list_dependencies(
         install_run_id: Uuid::nil(),
     };
 
+    // Snapshot any in-memory runner state for this extension. Probe is the source of
+    // truth for satisfaction, but a step that probes `NotSatisfied` while the runner
+    // recorded a `Failed` status from a prior install attempt MUST surface as
+    // `failed` so the user sees why the install halted (without this overlay, the
+    // step appears `pending` forever and the failure is silent).
+    let runner_state: HashMap<String, StepStatus> = state
+        .dep_install_state
+        .get(&extension_id)
+        .map(|entry| {
+            let arc = entry.value().clone();
+            drop(entry);
+            arc
+        })
+        .map(|arc| {
+            let guard = arc.try_lock();
+            guard.map(|g| g.steps.clone()).unwrap_or_default()
+        })
+        .unwrap_or_default();
+
     for step in &plan.steps {
-        let dto = probe_step(&inputs.registry, &runner_ctx, step, &upstream).await;
+        let mut dto = probe_step(&inputs.registry, &runner_ctx, step, &upstream).await;
+        // Overlay: probe says NotSatisfied but the runner recorded a terminal state
+        // for this step. Use that state so the user can see the failure.
+        if matches!(dto.status, StepStatusKind::Pending) {
+            if let Some(StepStatus::Failed { error, .. }) = runner_state.get(&step.id) {
+                dto.status = StepStatusKind::Failed;
+                dto.last_error = Some(StepErrorDto {
+                    category: error.category.clone(),
+                    message: error.message.clone(),
+                    hint: error.hint.clone(),
+                    log_excerpt: None,
+                });
+            }
+        }
         if !dto.satisfied {
             all_satisfied = false;
             total_remaining = total_remaining.saturating_add(dto.estimated_remaining_bytes);

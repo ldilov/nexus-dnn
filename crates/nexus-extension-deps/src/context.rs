@@ -29,10 +29,7 @@ pub trait ModelStoreClient: Send + Sync {
 
     /// Poll a previously-started job for current progress. Returns `Ok(None)` if the
     /// job is still running with the reported progress; `Ok(Some(path))` on success.
-    async fn poll_job(
-        &self,
-        job_id: &str,
-    ) -> Result<ModelDownloadProgress, crate::DepError>;
+    async fn poll_job(&self, job_id: &str) -> Result<ModelDownloadProgress, crate::DepError>;
 }
 
 #[derive(Debug, Clone)]

@@ -95,11 +95,7 @@ impl StepHandler for SystemBinaryHandler {
         }
         for src in &parsed.sources {
             if src.url.trim().is_empty() {
-                return Err(DepError::invalid_spec(
-                    "",
-                    "sources[].url",
-                    "empty",
-                ));
+                return Err(DepError::invalid_spec("", "sources[].url", "empty"));
             }
             if src.sha256.len() != 64 {
                 return Err(DepError::invalid_spec(
@@ -128,11 +124,7 @@ impl StepHandler for SystemBinaryHandler {
         Ok(())
     }
 
-    async fn probe(
-        &self,
-        ctx: &StepContext<'_>,
-        spec: &Value,
-    ) -> Result<ProbeResult, DepError> {
+    async fn probe(&self, ctx: &StepContext<'_>, spec: &Value) -> Result<ProbeResult, DepError> {
         let parsed = parse(spec)?;
         let host = PlatformTuple::host();
         let Some(source) = select_source(&parsed, &host) else {
@@ -161,11 +153,7 @@ impl StepHandler for SystemBinaryHandler {
         Ok(ProbeResult::NotSatisfied)
     }
 
-    async fn run(
-        &self,
-        ctx: &StepContext<'_>,
-        spec: &Value,
-    ) -> Result<StepArtifact, DepError> {
+    async fn run(&self, ctx: &StepContext<'_>, spec: &Value) -> Result<StepArtifact, DepError> {
         let parsed = parse(spec)?;
         let host = PlatformTuple::host();
         let Some(source) = select_source(&parsed, &host) else {

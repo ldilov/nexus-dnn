@@ -71,11 +71,7 @@ impl ModelStoreClient for AlwaysInstalledModelStore {
     ) -> Result<Option<PathBuf>, DepError> {
         Ok(Some(PathBuf::from("/.../models/test/1.0")))
     }
-    async fn start_download(
-        &self,
-        _f: &str,
-        _a: Option<&str>,
-    ) -> Result<String, DepError> {
+    async fn start_download(&self, _f: &str, _a: Option<&str>) -> Result<String, DepError> {
         unreachable!()
     }
     async fn poll_job(&self, _id: &str) -> Result<ModelDownloadProgress, DepError> {
@@ -239,10 +235,7 @@ async fn probe_p95_under_100ms_across_5_step_plan() {
             assert!(outcome.is_ok());
             // validation handler always returns NotSatisfied; others return Satisfied
             if step.id != "validate" {
-                assert!(matches!(
-                    outcome.unwrap(),
-                    ProbeResult::Satisfied { .. }
-                ));
+                assert!(matches!(outcome.unwrap(), ProbeResult::Satisfied { .. }));
             }
         }
         samples.push(start.elapsed().as_micros());

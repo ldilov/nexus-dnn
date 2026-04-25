@@ -13,9 +13,9 @@ use tempfile::TempDir;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use nexus_extension_deps::fetch::{fetch_artifact, FetchRequest};
-use nexus_extension_deps::types::ArchiveFormat;
 use nexus_extension_deps::DepError;
+use nexus_extension_deps::fetch::{FetchRequest, fetch_artifact};
+use nexus_extension_deps::types::ArchiveFormat;
 
 fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
@@ -98,8 +98,7 @@ async fn restarts_from_byte_zero_after_previous_mismatch() {
     let payload = b"second-attempt-payload".to_vec();
     let expected = sha256_hex(&payload);
 
-    let mismatch_template =
-        ResponseTemplate::new(200).set_body_bytes(payload.clone());
+    let mismatch_template = ResponseTemplate::new(200).set_body_bytes(payload.clone());
     Mock::given(method("GET"))
         .and(path("/blob.bin"))
         .respond_with(mismatch_template)
@@ -250,7 +249,12 @@ async fn resumes_via_range_header_when_partial_exists() {
                 .insert_header("content-length", tail.len().to_string())
                 .insert_header(
                     "content-range",
-                    format!("bytes {}-{}/{}", prefix_len, payload.len() - 1, payload.len()),
+                    format!(
+                        "bytes {}-{}/{}",
+                        prefix_len,
+                        payload.len() - 1,
+                        payload.len()
+                    ),
                 ),
         )
         .mount(&server)
@@ -287,8 +291,8 @@ fn build_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let mut buf = std::io::Cursor::new(Vec::new());
     {
         let mut zw = zip::ZipWriter::new(&mut buf);
-        let opts: zip::write::SimpleFileOptions =
-            zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        let opts: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
         for (name, content) in entries {
             zw.start_file(*name, opts).unwrap();
             zw.write_all(content).unwrap();
