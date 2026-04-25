@@ -12,5 +12,5 @@ CREATE TABLE IF NOT EXISTS ext_emotion_tts__synthesis_cache (
     last_hit_at          INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_cache_last_hit
+CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_cache_last_hit
     ON ext_emotion_tts__synthesis_cache (last_hit_at ASC);

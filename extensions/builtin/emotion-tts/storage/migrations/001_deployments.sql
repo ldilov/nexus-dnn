@@ -13,8 +13,8 @@ CREATE TABLE IF NOT EXISTS ext_emotion_tts__deployments (
     updated_at                         INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_deployments_name
+CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_deployments_name
     ON ext_emotion_tts__deployments (display_name);
 
-CREATE INDEX IF NOT EXISTS idx_deployments_updated
+CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_deployments_updated
     ON ext_emotion_tts__deployments (updated_at DESC);
