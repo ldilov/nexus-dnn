@@ -20,7 +20,7 @@ use crate::dto::extension_dependencies::InstallStartedResponseDto;
 use crate::envelope::ApiResponse;
 use crate::error::ApiError;
 
-use super::common::{install_plan_for, runner_context_inputs, EventBusProgressSink};
+use super::common::{EventBusProgressSink, install_plan_for, runner_context_inputs};
 
 pub async fn retry_step(
     State(state): State<AppState>,
@@ -66,7 +66,9 @@ pub async fn retry_step(
                 cancellation_token: cancel_token.clone(),
                 steps: HashMap::new(),
             }));
-            state.dep_install_state.insert(extension_id.clone(), fresh.clone());
+            state
+                .dep_install_state
+                .insert(extension_id.clone(), fresh.clone());
             fresh
         }
     };
