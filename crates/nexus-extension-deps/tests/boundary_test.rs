@@ -93,7 +93,11 @@ fn spec_value_is_opaque_outside_handler_modules() {
         };
         for needle in FORBIDDEN_SHAPES {
             if body.contains(needle) {
-                violations.push(format!("{}: pattern '{}' (spec must be opaque outside handlers)", path.display(), needle));
+                violations.push(format!(
+                    "{}: pattern '{}' (spec must be opaque outside handlers)",
+                    path.display(),
+                    needle
+                ));
             }
         }
     }

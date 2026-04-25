@@ -97,7 +97,10 @@ pub async fn fetch_artifact(req: FetchRequest) -> Result<PathBuf, DepError> {
 
     // Per research D-10: a previous sha256 mismatch invalidates the partial bytes.
     if meta.sha256_mismatch_at.is_some() {
-        debug!("previous sha256 mismatch recorded — discarding {:?}", partial_path);
+        debug!(
+            "previous sha256 mismatch recorded — discarding {:?}",
+            partial_path
+        );
         let _ = fs::remove_file(&partial_path).await;
         let _ = fs::remove_file(&meta_path).await;
         meta = PartialMeta::default();
@@ -115,9 +118,7 @@ pub async fn fetch_artifact(req: FetchRequest) -> Result<PathBuf, DepError> {
         Err(_) => 0,
     };
 
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(DepError::Http)?;
+    let client = reqwest::Client::builder().build().map_err(DepError::Http)?;
 
     let mut request = client.get(&url);
     if resume_offset > 0 {
@@ -134,8 +135,7 @@ pub async fn fetch_artifact(req: FetchRequest) -> Result<PathBuf, DepError> {
         )));
     }
 
-    let server_supports_range =
-        status == reqwest::StatusCode::PARTIAL_CONTENT && resume_offset > 0;
+    let server_supports_range = status == reqwest::StatusCode::PARTIAL_CONTENT && resume_offset > 0;
     if resume_offset > 0 && !server_supports_range {
         // Server ignored our Range header. Discard the partial and start over.
         warn!("server ignored Range request — restarting download from byte 0");

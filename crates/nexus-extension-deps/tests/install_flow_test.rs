@@ -366,10 +366,22 @@ async fn full_install_flow_succeeds_and_is_idempotent() {
         install_run_id: Uuid::nil(),
     };
     let report2 = runner2.run_install(&mut ctx2).await;
-    assert!(report2.all_satisfied, "second run: all 3 satisfied via Skipped");
-    assert!(matches!(report2.statuses["python"], StepStatus::Skipped { .. }));
-    assert!(matches!(report2.statuses["ffmpeg"], StepStatus::Skipped { .. }));
-    assert!(matches!(report2.statuses["models"], StepStatus::Skipped { .. }));
+    assert!(
+        report2.all_satisfied,
+        "second run: all 3 satisfied via Skipped"
+    );
+    assert!(matches!(
+        report2.statuses["python"],
+        StepStatus::Skipped { .. }
+    ));
+    assert!(matches!(
+        report2.statuses["ffmpeg"],
+        StepStatus::Skipped { .. }
+    ));
+    assert!(matches!(
+        report2.statuses["models"],
+        StepStatus::Skipped { .. }
+    ));
 
     // No additional bootstrap / download / handshake calls.
     assert_eq!(runtime.bootstrap_calls.load(Ordering::SeqCst), 1);

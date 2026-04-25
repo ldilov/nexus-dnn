@@ -63,27 +63,16 @@ impl StepHandler for ValidationHandler {
             return Err(DepError::invalid_spec(
                 "",
                 "kind",
-                format!(
-                    "v1 only supports 'worker_handshake'; got '{}'",
-                    parsed.kind
-                ),
+                format!("v1 only supports 'worker_handshake'; got '{}'", parsed.kind),
             ));
         }
         if parsed.timeout_seconds == 0 {
-            return Err(DepError::invalid_spec(
-                "",
-                "timeout_seconds",
-                "must be > 0",
-            ));
+            return Err(DepError::invalid_spec("", "timeout_seconds", "must be > 0"));
         }
         Ok(())
     }
 
-    async fn probe(
-        &self,
-        _ctx: &StepContext<'_>,
-        _spec: &Value,
-    ) -> Result<ProbeResult, DepError> {
+    async fn probe(&self, _ctx: &StepContext<'_>, _spec: &Value) -> Result<ProbeResult, DepError> {
         // Validation is a terminal smoke-test. We never declare it satisfied without
         // running it — it's the explicit "did everything come up" check, and its
         // result is meaningful only at install time. probe() always returns
@@ -91,11 +80,7 @@ impl StepHandler for ValidationHandler {
         Ok(ProbeResult::NotSatisfied)
     }
 
-    async fn run(
-        &self,
-        ctx: &StepContext<'_>,
-        spec: &Value,
-    ) -> Result<StepArtifact, DepError> {
+    async fn run(&self, ctx: &StepContext<'_>, spec: &Value) -> Result<StepArtifact, DepError> {
         let parsed = parse(spec)?;
         let timeout = Duration::from_secs(parsed.timeout_seconds);
 

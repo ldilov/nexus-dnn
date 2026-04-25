@@ -93,11 +93,7 @@ impl StepHandler for RuntimeHandler {
         Ok(())
     }
 
-    async fn probe(
-        &self,
-        ctx: &StepContext<'_>,
-        spec: &Value,
-    ) -> Result<ProbeResult, DepError> {
+    async fn probe(&self, ctx: &StepContext<'_>, spec: &Value) -> Result<ProbeResult, DepError> {
         let parsed = parse(spec)?;
         let target_dir = runtime_dir(ctx, &parsed.family);
         match ctx
