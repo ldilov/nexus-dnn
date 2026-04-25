@@ -373,3 +373,60 @@ export const errorState = style({
 globalStyle(`.${installCard} input[type="file"]`, {
   display: "none",
 });
+
+// Spec 035 — "Setup required" badge + CTA on the extension card.
+export const setupBadge = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  fontFamily: vars.font.ui,
+  fontSize: "10px",
+  fontWeight: vars.font.weight.bold,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  padding: `2px ${vars.space.insetSm}`,
+  borderRadius: vars.radius.full,
+  background: vars.color.accent.tertiary,
+  color: vars.color.onColor.tertiary,
+});
+
+export const setupBadgeDot = keyframes({
+  "0%": { transform: "scale(1)", opacity: 1 },
+  "50%": { transform: "scale(1.6)", opacity: 0.6 },
+  "100%": { transform: "scale(1)", opacity: 1 },
+});
+
+export const setupBadgePulse = style({
+  width: "6px",
+  height: "6px",
+  borderRadius: vars.radius.full,
+  background: vars.color.onColor.tertiary,
+  animation: `${setupBadgeDot} 1.6s ease-in-out infinite`,
+});
+
+export const setupCta = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
+  fontWeight: vars.font.weight.semibold,
+  color: vars.color.accent.primary,
+  background: vars.color.accent.secondaryContainer,
+  border: "none",
+  cursor: "pointer",
+  padding: `8px ${vars.space.insetLg}`,
+  borderRadius: vars.radius.control,
+  textDecoration: "none",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, transform ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  selectors: {
+    "&:hover": {
+      background: vars.color.accent.primary,
+      color: vars.color.onColor.primary,
+    },
+    "&:focus-visible": {
+      outline: `2px solid ${vars.color.accent.primary}`,
+      outlineOffset: "2px",
+    },
+  },
+});

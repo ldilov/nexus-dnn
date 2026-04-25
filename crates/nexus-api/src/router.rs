@@ -52,9 +52,10 @@ use crate::extension_router;
 use crate::frontend;
 use crate::handlers;
 use crate::handlers::{
-    artifacts, backend_events_ws, backend_runtimes, backends, deployments, extension_ui,
-    extensions, extensions_install, health, host, huggingface, metrics, modules, recipes, runs,
-    storage_contributions, system, tools, ui_components, ui_contributions, ui_layouts, workflows,
+    artifacts, backend_events_ws, backend_runtimes, backends, deployments, extension_dependencies,
+    extension_ui, extensions, extensions_install, health, host, huggingface, metrics, modules,
+    recipes, runs, storage_contributions, system, tools, ui_components, ui_contributions,
+    ui_layouts, workflows,
 };
 use crate::ws;
 
@@ -84,6 +85,22 @@ pub fn build(state: AppState) -> Router {
             post(extensions::reveal_extension_folder),
         )
         .route("/extensions/refresh", post(extensions::refresh_extensions))
+        .route(
+            "/extensions/{id}/dependencies",
+            get(extension_dependencies::list_dependencies),
+        )
+        .route(
+            "/extensions/{id}/install",
+            post(extension_dependencies::start_install),
+        )
+        .route(
+            "/extensions/{id}/install/steps/{step_id}/retry",
+            post(extension_dependencies::retry_step),
+        )
+        .route(
+            "/extensions/{id}/install/cancel",
+            post(extension_dependencies::cancel_install),
+        )
         .route(
             "/extensions/{id}/enable",
             post(extensions::enable_extension),

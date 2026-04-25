@@ -345,6 +345,24 @@ impl NexusApp {
             lease_manager: std::sync::Arc::new(
                 nexus_backend_runtimes::generic::leases::LeaseManager::new(),
             ),
+            // Spec 035 — generic extension dependency installer wiring. Real
+            // delegating adapters land in follow-up commits; for now the registry
+            // + fetch primitive + stub trait impls give the host a complete dep
+            // surface so the gallery's "Setup required" badge surfaces and the
+            // dep panel renders against real probe results.
+            dep_handler_registry: Some(nexus_api::dep_bootstrap::default_dep_handler_registry()),
+            dep_install_state: std::sync::Arc::new(Default::default()),
+            dep_runtime_bootstrapper: Some(std::sync::Arc::new(
+                nexus_api::dep_bootstrap::StubRuntimeBootstrapper,
+            )),
+            dep_model_store: Some(std::sync::Arc::new(
+                nexus_api::dep_bootstrap::StubModelStoreClient,
+            )),
+            dep_worker_handshake: Some(std::sync::Arc::new(
+                nexus_api::dep_bootstrap::StubWorkerHandshake,
+            )),
+            dep_fetch_artifact: Some(nexus_api::dep_bootstrap::default_fetch_artifact()),
+            dep_host_data_dir: Some(app_for_health.config.resolved_data_dir()),
         };
 
         let router = nexus_api::create_router(state);
