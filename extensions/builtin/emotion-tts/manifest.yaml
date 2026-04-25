@@ -26,6 +26,66 @@ runtime_dependencies:
       - "cuda12"
       - "cuda13"
 
+# Spec 035 — generic dependency installer plan. Host walks this graph; the
+# legacy `runtime_dependencies` block above is auto-translated into a synthetic
+# `runtime`-typed step on extensions that don't ship the explicit form yet.
+dependencies:
+  steps:
+    - id: python
+      type: runtime
+      spec:
+        family: python
+        version: ">=3.11,<3.13"
+        accelerator_profiles: [cpu, cuda12, cuda13]
+
+    - id: pkgs
+      type: package_set
+      requires: [python]
+      spec:
+        manager: uv
+        manifest_path: "worker/pyproject.toml"
+        lock_path: "worker/uv.lock"
+        target: extension_local
+
+    - id: ffmpeg
+      type: system_binary
+      spec:
+        id: ffmpeg
+        version: ">=4.0"
+        # Real URLs + sha256 land in T079. Placeholder zero-hashes here keep the
+        # graph parse-valid; install will surface a categorised sha256_mismatch
+        # until a maintainer populates real release pins.
+        sources:
+          - platform: windows-x64
+            url: "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip"
+            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            size: 0
+            archive: zip
+          - platform: linux-x64
+            url: "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz"
+            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            size: 0
+            archive: tar.xz
+          - platform: darwin-arm64
+            url: "https://evermeet.cx/ffmpeg/getrelease/zip"
+            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            size: 0
+            archive: zip
+
+    - id: models
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "indextts/2.0"
+        acceleration_match: "matches_runtime_step:python"
+
+    - id: validate
+      type: validation
+      requires: [python, pkgs, ffmpeg, models]
+      spec:
+        kind: worker_handshake
+        timeout_seconds: 60
+
 capabilities:
   - "filesystem.read"
   - "filesystem.write"

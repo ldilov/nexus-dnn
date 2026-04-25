@@ -58,6 +58,13 @@ export const router = createHashRouter([
           return { Component: mod.Component, loader: mod.loader };
         },
       },
+      {
+        path: "extensions/:id/settings",
+        lazy: async () => {
+          const mod = await import("./views/extension-settings/extension_settings.routes");
+          return { Component: mod.ExtensionSettingsRoute };
+        },
+      },
       { path: "extensions/:layoutId", Component: ExtensionLayoutRoute },
       { path: "runs", Component: RunsPlaceholderRoute },
       { path: "artifacts", Component: ArtifactsPlaceholderRoute },

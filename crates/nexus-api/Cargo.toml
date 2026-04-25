@@ -16,6 +16,8 @@ tracing = { workspace = true }
 nexus-protocol = { path = "../nexus-protocol" }
 nexus-events = { path = "../nexus-events" }
 nexus-extension = { path = "../nexus-extension" }
+nexus-extension-deps = { path = "../nexus-extension-deps" }
+dashmap = "6"
 nexus-workflow = { path = "../nexus-workflow" }
 nexus-worker = { path = "../nexus-worker" }
 nexus-run = { path = "../nexus-run" }

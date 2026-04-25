@@ -1,0 +1,31 @@
+[package]
+name = "nexus-extension-deps"
+version = "0.1.0"
+edition = "2024"
+description = "Generic extension dependency installer — typed step graph, handler trait, fetch primitive, install runner."
+
+[dependencies]
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+async-trait = "0.1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = "0.9"
+thiserror = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+sha2 = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
+flate2 = "1"
+tar = "0.4"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+xz2 = "0.1"
+bzip2 = "0.4"
+dashmap = "6"
+futures-util = "0.3"
+
+[dev-dependencies]
+tempfile = "3"
+wiremock = "0.6"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
