@@ -108,14 +108,11 @@ pub fn install_plan_for(
     state: &AppState,
     extension_id: &str,
 ) -> Result<Option<InstallPlan>, ApiError> {
-    let registry = state
-        .dep_handler_registry
-        .as_ref()
-        .ok_or_else(|| {
-            ApiError::Internal(
-                "extension dependency installer is not wired into this host process".into(),
-            )
-        })?;
+    let registry = state.dep_handler_registry.as_ref().ok_or_else(|| {
+        ApiError::Internal(
+            "extension dependency installer is not wired into this host process".into(),
+        )
+    })?;
 
     let mut activated = state
         .extension_registry
@@ -131,26 +128,28 @@ pub fn install_plan_for(
 
 /// Build a `RunnerContext` referencing the wired-up host services. Returns
 /// `Internal` if any required service is missing.
-pub fn runner_context_inputs(
-    state: &AppState,
-) -> Result<RunnerInputs, ApiError> {
+pub fn runner_context_inputs(state: &AppState) -> Result<RunnerInputs, ApiError> {
     Ok(RunnerInputs {
-        registry: state.dep_handler_registry.clone().ok_or_else(|| {
-            ApiError::Internal("dep handler registry not wired".into())
-        })?,
-        runtime_bootstrapper: state.dep_runtime_bootstrapper.clone().ok_or_else(|| {
-            ApiError::Internal("runtime bootstrapper not wired".into())
-        })?,
+        registry: state
+            .dep_handler_registry
+            .clone()
+            .ok_or_else(|| ApiError::Internal("dep handler registry not wired".into()))?,
+        runtime_bootstrapper: state
+            .dep_runtime_bootstrapper
+            .clone()
+            .ok_or_else(|| ApiError::Internal("runtime bootstrapper not wired".into()))?,
         model_store: state
             .dep_model_store
             .clone()
             .ok_or_else(|| ApiError::Internal("model store not wired".into()))?,
-        worker_handshake: state.dep_worker_handshake.clone().ok_or_else(|| {
-            ApiError::Internal("worker handshake not wired".into())
-        })?,
-        fetch_artifact: state.dep_fetch_artifact.clone().ok_or_else(|| {
-            ApiError::Internal("fetch_artifact primitive not wired".into())
-        })?,
+        worker_handshake: state
+            .dep_worker_handshake
+            .clone()
+            .ok_or_else(|| ApiError::Internal("worker handshake not wired".into()))?,
+        fetch_artifact: state
+            .dep_fetch_artifact
+            .clone()
+            .ok_or_else(|| ApiError::Internal("fetch_artifact primitive not wired".into()))?,
         host_data_dir: state
             .dep_host_data_dir
             .clone()

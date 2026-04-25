@@ -1,7 +1,7 @@
 //! Spec 035 — generic extension dependency installer HTTP API.
 
-mod common;
 pub mod cancel;
+mod common;
 pub mod install;
 pub mod list;
 pub mod retry;

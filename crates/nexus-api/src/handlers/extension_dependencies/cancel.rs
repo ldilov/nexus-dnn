@@ -13,12 +13,9 @@ pub async fn cancel_install(
     State(state): State<AppState>,
     Path(extension_id): Path<String>,
 ) -> Result<ApiResponse<()>, ApiError> {
-    let entry = state
-        .dep_install_state
-        .get(&extension_id)
-        .ok_or_else(|| ApiError::InvalidState(format!(
-            "no install run is active for {extension_id}"
-        )))?;
+    let entry = state.dep_install_state.get(&extension_id).ok_or_else(|| {
+        ApiError::InvalidState(format!("no install run is active for {extension_id}"))
+    })?;
     let guard = entry.lock().await;
     if guard.install_run_id.is_none() {
         return Err(ApiError::InvalidState(format!(
