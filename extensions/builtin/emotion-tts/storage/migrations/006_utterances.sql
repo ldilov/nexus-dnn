@@ -32,11 +32,11 @@ CREATE TABLE IF NOT EXISTS ext_emotion_tts__utterances (
     UNIQUE (run_id, global_index)
 );
 
-CREATE INDEX IF NOT EXISTS idx_utterances_run
+CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_utterances_run
     ON ext_emotion_tts__utterances (run_id, global_index);
 
-CREATE INDEX IF NOT EXISTS idx_utterances_status
+CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_utterances_status
     ON ext_emotion_tts__utterances (status);
 
-CREATE INDEX IF NOT EXISTS idx_utterances_content_hash
+CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_utterances_content_hash
     ON ext_emotion_tts__utterances (content_hash);

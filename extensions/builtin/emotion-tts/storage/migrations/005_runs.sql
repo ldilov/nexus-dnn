@@ -30,11 +30,11 @@ CREATE TABLE IF NOT EXISTS ext_emotion_tts__runs (
     error_detail                    TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_runs_deployment_queued
+CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_runs_deployment_queued
     ON ext_emotion_tts__runs (deployment_id, queued_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_runs_status
+CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_runs_status
     ON ext_emotion_tts__runs (status);
 
-CREATE INDEX IF NOT EXISTS idx_runs_original
+CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_runs_original
     ON ext_emotion_tts__runs (original_run_id);
