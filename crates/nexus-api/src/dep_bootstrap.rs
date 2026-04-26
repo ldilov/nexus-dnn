@@ -26,8 +26,15 @@ use nexus_extension_deps::{
     RuntimeBootstrapResult, RuntimeBootstrapper, StepArtifact, WorkerHandshake,
     fetch::{FetchArtifact, FetchRequest, fetch_artifact},
 };
-use nexus_models_store::downloads::{DownloadOrchestrator, InstallMap};
-use nexus_models_store::ids::FamilyId;
+use nexus_huggingface::{HuggingFaceCapability, SearchFilters, SearchReq};
+use nexus_models_store::capabilities::CapabilityRegistry;
+use nexus_models_store::downloads::{
+    CreateJobParams, DownloadOrchestrator, InstallMap, JobStore, JobTargetInput, RequestedKind,
+};
+use nexus_models_store::ids::{FamilyId, JobId};
+use nexus_models_store::model::{Artifact, ModelFamily};
+use nexus_models_store::normalize::normalize_family;
+use nexus_models_store::types::{DependencyRole, DownloadState};
 
 /// Build the default registry — registers all five built-in handlers.
 pub fn default_dep_handler_registry() -> Arc<HandlerRegistry> {
@@ -368,22 +375,152 @@ fn host_platform_label() -> &'static str {
     }
 }
 
-/// Real `ModelStoreClient` — `is_family_installed` queries
-/// `model_store_installed_artifacts` via `InstallMap::list_for_family`.
-/// `start_download` / `poll_job` return categorised errors directing the user
-/// to the Models Search page (creating a download job needs variant + URL
-/// selection that lives in that UI).
+/// Real `ModelStoreClient` driving the full host model-store pipeline:
+/// probe queries `model_store_installed_artifacts`, `start_download`
+/// resolves the family via the HuggingFace adapter and enqueues a real
+/// download job, and `poll_job` reads back persisted job state. The
+/// dep installer drives the entire model-acquisition flow — no detour
+/// through the Models Search UI required.
 pub struct RealModelStoreClient {
     install_map: InstallMap,
     orchestrator: Arc<DownloadOrchestrator>,
+    huggingface: Option<Arc<dyn HuggingFaceCapability>>,
+    capability_registry: Option<Arc<CapabilityRegistry>>,
+    download_job_store: Option<Arc<JobStore>>,
 }
 
 impl RealModelStoreClient {
-    pub fn new(install_map: InstallMap, orchestrator: Arc<DownloadOrchestrator>) -> Self {
+    pub fn new(
+        install_map: InstallMap,
+        orchestrator: Arc<DownloadOrchestrator>,
+        huggingface: Option<Arc<dyn HuggingFaceCapability>>,
+        capability_registry: Option<Arc<CapabilityRegistry>>,
+        download_job_store: Option<Arc<JobStore>>,
+    ) -> Self {
         Self {
             install_map,
             orchestrator,
+            huggingface,
+            capability_registry,
+            download_job_store,
         }
+    }
+
+    fn extract_repo(family_id: &str) -> Option<&str> {
+        family_id.split_once(':').map(|(_, r)| r)
+    }
+
+    async fn resolve_family(&self, family_id: &str) -> Result<ModelFamily, DepError> {
+        let hf = self.huggingface.as_ref().ok_or_else(|| {
+            DepError::Backend(
+                "huggingface client not configured — cannot resolve model family".into(),
+            )
+        })?;
+        let repo_id = Self::extract_repo(family_id).ok_or_else(|| {
+            DepError::invalid_spec("", "family_id", "expected '<provider>:<repo>' form")
+        })?;
+        let req = SearchReq {
+            query: repo_id.to_owned(),
+            filters: SearchFilters::default(),
+            limit: 10,
+            page: 1,
+        };
+        let page = hf
+            .search(req)
+            .await
+            .map_err(|e| DepError::Backend(format!("huggingface search: {e}")))?;
+        let raw = page
+            .results
+            .iter()
+            .find(|r| r.repo_id == repo_id)
+            .ok_or_else(|| {
+                DepError::Backend(format!("model family not found upstream: {family_id}"))
+            })?;
+        let family = match self.capability_registry.as_ref() {
+            Some(reg) => normalize_family(raw, reg.as_ref()),
+            None => {
+                let empty = CapabilityRegistry::new();
+                normalize_family(raw, &empty)
+            }
+        };
+        Ok(family)
+    }
+}
+
+/// Build the `JobTargetInput` list for the dep installer's auto-pick:
+/// 1. Default variant (if marked `is_default`)
+/// 2. First listed variant
+/// 3. Bundle of the primary artifact + required dependencies
+fn auto_pick_targets(
+    family: &ModelFamily,
+) -> Result<(Vec<JobTargetInput>, RequestedKind), DepError> {
+    let artifact_by_id = |id: &str| family.artifacts.iter().find(|a| a.artifact_id.as_str() == id);
+
+    let preferred_variant = family
+        .variants
+        .iter()
+        .find(|v| v.is_default)
+        .or_else(|| family.variants.first());
+
+    if let Some(variant) = preferred_variant {
+        let mut out = Vec::with_capacity(variant.artifact_ids.len());
+        for aid in &variant.artifact_ids {
+            let a = artifact_by_id(aid.as_str()).ok_or_else(|| {
+                DepError::Backend(format!(
+                    "variant {} references missing artifact {aid}",
+                    variant.variant_id
+                ))
+            })?;
+            out.push(input_from_artifact(a));
+        }
+        if out.is_empty() {
+            return Err(DepError::Backend(format!(
+                "variant {} has no artifacts",
+                variant.variant_id
+            )));
+        }
+        return Ok((out, RequestedKind::Variant));
+    }
+
+    let mut out = Vec::new();
+    if let Some(primary) = family
+        .artifacts
+        .iter()
+        .find(|a| a.role == DependencyRole::Primary)
+    {
+        out.push(input_from_artifact(primary));
+    }
+    for dep in &family.dependencies {
+        if dep.requirement != nexus_models_store::types::Requirement::Required {
+            continue;
+        }
+        let Some(target_id) = &dep.target_artifact_id else {
+            continue;
+        };
+        if let Some(a) = artifact_by_id(target_id.as_str())
+            && !out.iter().any(|t| t.artifact_id == a.artifact_id)
+        {
+            out.push(input_from_artifact(a));
+        }
+    }
+    if out.is_empty() {
+        return Err(DepError::Backend(
+            "no variants and no primary+dependency bundle could be assembled — \
+             family is not auto-installable; pick a target via Models Search"
+                .into(),
+        ));
+    }
+    Ok((out, RequestedKind::Bundle))
+}
+
+fn input_from_artifact(a: &Artifact) -> JobTargetInput {
+    JobTargetInput {
+        artifact_id: a.artifact_id.clone(),
+        filename: a.filename.clone(),
+        role: a.role,
+        download_url: a.download_url.clone(),
+        expected_bytes: a.size_bytes,
+        sha256: a.sha256.clone(),
     }
 }
 
@@ -419,21 +556,130 @@ impl ModelStoreClient for RealModelStoreClient {
         family_id: &str,
         _accelerator: Option<&str>,
     ) -> Result<String, DepError> {
-        Err(DepError::Backend(format!(
-            "model family '{family_id}' is not installed; download it from the Models \
-             Search page. The dep installer probes the host's install map but does not \
-             create download jobs directly (variant + URL selection happens in the \
-             Models Search UI)."
-        )))
+        let store = self.download_job_store.as_ref().ok_or_else(|| {
+            DepError::Backend("download job store not initialised".into())
+        })?;
+
+        // Resolve the family, auto-pick a target (default variant > first
+        // variant > primary+deps bundle), and enqueue a real job. The
+        // accelerator hint is unused for now — variant selection follows the
+        // family's `is_default` flag. Once spec-025 stamps the accelerator
+        // profile onto variant ids, we can filter here.
+        let family = self.resolve_family(family_id).await?;
+        let (targets, kind) = auto_pick_targets(&family)?;
+
+        let source_repo = Self::extract_repo(family_id)
+            .map(|r| r.to_owned())
+            .unwrap_or_default();
+        let params = CreateJobParams::builder(
+            FamilyId::from(family_id.to_owned()),
+            "huggingface",
+            source_repo,
+            kind,
+        )
+        .targets(targets)
+        .build();
+
+        let job = match store.create(params).await {
+            Ok(job) => job,
+            Err(nexus_models_store::downloads::JobStoreError::Duplicate(existing)) => {
+                self.orchestrator.enqueue(existing).await;
+                return Ok(existing.to_string());
+            }
+            Err(e) => return Err(DepError::Backend(format!("job_store.create: {e}"))),
+        };
+
+        let job_id = job.job_id;
+        self.orchestrator.enqueue(job_id).await;
+        tracing::info!(
+            target: "spec_035::model_store",
+            family_id,
+            job_id = %job_id,
+            "model_store: download job created and enqueued"
+        );
+        Ok(job_id.to_string())
     }
 
-    async fn poll_job(&self, _job_id: &str) -> Result<ModelDownloadProgress, DepError> {
-        Ok(ModelDownloadProgress::Failed {
-            category: "delegation_unavailable".into(),
-            message: "model store delegation does not yet poll jobs from the dep \
-                      installer; track download progress on the Models Search page"
-                .into(),
-        })
+    async fn poll_job(&self, job_id: &str) -> Result<ModelDownloadProgress, DepError> {
+        let store = self.download_job_store.as_ref().ok_or_else(|| {
+            DepError::Backend("download job store not initialised".into())
+        })?;
+        let uuid = uuid::Uuid::parse_str(job_id)
+            .map_err(|e| DepError::Backend(format!("invalid job_id '{job_id}': {e}")))?;
+        let id = JobId::from_uuid(uuid);
+
+        let Some(job) = store
+            .get(&id)
+            .await
+            .map_err(|e| DepError::Backend(format!("job_store.get: {e}")))?
+        else {
+            return Ok(ModelDownloadProgress::Failed {
+                category: "job_not_found".into(),
+                message: format!("download job {job_id} disappeared from the store"),
+            });
+        };
+
+        let summary_message = job
+            .targets
+            .first()
+            .map(|t| t.filename.clone())
+            .unwrap_or_else(|| job.family_id.as_str().to_owned());
+
+        match job.state {
+            DownloadState::Queued | DownloadState::Downloading | DownloadState::Paused => {
+                Ok(ModelDownloadProgress::InProgress {
+                    current_bytes: job.progress_bytes,
+                    // total_bytes=0 signals "unknown total" downstream — the UI
+                    // renders an indeterminate bar in that case.
+                    total_bytes: job.total_bytes.unwrap_or(0),
+                    message: summary_message,
+                })
+            }
+            DownloadState::Downloaded => {
+                // Per-job sink directory contains the downloaded artifact(s).
+                // Downstream steps (validation/worker handshake) and the
+                // probe path (`is_family_installed`) expect this layout.
+                let path = self
+                    .orchestrator
+                    .sink_root()
+                    .join(job.job_id.to_string());
+                Ok(ModelDownloadProgress::Completed {
+                    path,
+                    bytes_placed: job.progress_bytes,
+                })
+            }
+            DownloadState::Failed => Ok(ModelDownloadProgress::Failed {
+                category: "download_failed".into(),
+                message: job
+                    .error_reason
+                    .unwrap_or_else(|| "download failed without diagnostic".into()),
+            }),
+            DownloadState::AuthRequired => Ok(ModelDownloadProgress::Failed {
+                category: "auth_required".into(),
+                message: "model repository requires authentication; configure HF token \
+                          and retry"
+                    .into(),
+            }),
+            DownloadState::Incompatible => Ok(ModelDownloadProgress::Failed {
+                category: "incompatible".into(),
+                message: "model artifacts are incompatible with this host's accelerators"
+                    .into(),
+            }),
+            DownloadState::NotDownloaded => Ok(ModelDownloadProgress::InProgress {
+                current_bytes: 0,
+                total_bytes: job.total_bytes.unwrap_or(0),
+                message: "queued".into(),
+            }),
+            // `DownloadState` is `#[non_exhaustive]`. Treat any future variant
+            // as a transient in-progress state to keep the handler safe under
+            // upstream evolution; the orchestrator will eventually flip the
+            // job to a known terminal state.
+            _ => Ok(ModelDownloadProgress::InProgress {
+                current_bytes: job.progress_bytes,
+                total_bytes: job.total_bytes.unwrap_or(0),
+                message: format!("{:?}", job.state),
+            }),
+        }
     }
 }
 
@@ -484,11 +730,20 @@ impl DefaultDepBootstrap {
         pool: SqlitePool,
         install_map: InstallMap,
         orchestrator: Arc<DownloadOrchestrator>,
+        huggingface: Option<Arc<dyn HuggingFaceCapability>>,
+        capability_registry: Option<Arc<CapabilityRegistry>>,
+        download_job_store: Option<Arc<JobStore>>,
     ) -> Self {
         Self {
             handler_registry: default_dep_handler_registry(),
             runtime_bootstrapper: Arc::new(RealRuntimeBootstrapper::new(pool)),
-            model_store: Arc::new(RealModelStoreClient::new(install_map, orchestrator)),
+            model_store: Arc::new(RealModelStoreClient::new(
+                install_map,
+                orchestrator,
+                huggingface,
+                capability_registry,
+                download_job_store,
+            )),
             worker_handshake: Arc::new(StubWorkerHandshake),
             fetch_artifact: default_fetch_artifact(),
             host_data_dir,
