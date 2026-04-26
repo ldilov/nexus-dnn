@@ -263,8 +263,8 @@ impl StepHandler for PackageSetHandler {
 
         // Always surface uv's output — silent failures are the worst kind of
         // user-facing bug. Truncate to keep error messages bounded.
-        let stdout = truncate_utf8(&stdout_bytes, 1024);
-        let stderr = truncate_utf8(&stderr_bytes, 2048);
+        let stdout = truncate_utf8(&stdout_bytes, 4096);
+        let stderr = truncate_utf8(&stderr_bytes, 16384);
         if !status.success() {
             tracing::error!(
                 target: "spec_035::package_set",
