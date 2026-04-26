@@ -191,7 +191,26 @@ pub enum ProgressEvent {
         extension_id: String,
         install_run_id: uuid::Uuid,
         completed_at: DateTime<Utc>,
+        outcome: InstallOutcome,
     },
+}
+
+/// Terminal outcome of an install run, carried by [`ProgressEvent::InstallCompleted`].
+/// Subscribers that only need to clear an "active" flag can ignore this; subscribers
+/// that want a one-shot success/failure signal without reconciling per-step events
+/// can read it directly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallOutcome {
+    /// Every step ended in `Ok` or `Skipped` — the dep gate is now green.
+    Success,
+    /// At least one step ended in `Failed` (and the runner halted there). Downstream
+    /// steps will be visible as `Pending` in the next `GET /dependencies` snapshot.
+    Failed,
+    /// The runner observed `CancellationToken::is_cancelled()` and halted
+    /// cooperatively. The in-flight step is recorded as failed with category
+    /// `cancelled`; downstream steps stay `Pending`.
+    Cancelled,
 }
 
 /// Caller-supplied sink for handler progress reports. Default impl forwards to the
