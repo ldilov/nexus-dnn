@@ -76,7 +76,13 @@ dependencies:
       type: model_artifact
       requires: [python]
       spec:
-        family_id: "indextts/2.0"
+        # Real HuggingFace repo for IndexTTS-2. The repo is self-contained
+        # at v1.5.0+ — gpt.pth, s2mel.pth, bpe.model, config.yaml, the
+        # qwen0.6bemo4-merge subfolder, etc. all live here. The dep
+        # installer downloads every file in the repo (snapshot-style)
+        # because IndexTTS needs configs at runtime that the model store's
+        # default normalizer would otherwise drop as "Unknown" format.
+        family_id: "huggingface:IndexTeam/IndexTTS-2"
         acceleration_match: "matches_runtime_step:python"
 
     - id: validate
