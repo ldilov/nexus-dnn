@@ -148,12 +148,42 @@ async fn get_deployment(
 
 async fn get_impl(state: &DeploymentsState, id: &str) -> Result<DeploymentRow> {
     let id = DeploymentId::try_from(id)?;
-    state
-        .repos
-        .deployments
-        .get(&id)
-        .await?
-        .ok_or_else(|| EmotionTtsError::not_found(format!("deployment {id}")))
+    if let Some(row) = state.repos.deployments.get(&id).await? {
+        return Ok(row);
+    }
+    // Auto-seed: the host creates a deployment row in its own DB and
+    // navigates the user to the extension UI without ever calling the
+    // extension's create_deployment endpoint. The extension's local DB
+    // therefore has no row when the recipe view's loader fires its first
+    // GET — the user sees `ExtensionApiError: Not Found` and the recipe
+    // page renders an error boundary. Mirror the pattern from
+    // `workflows.rs::load_or_seed`: when a GET arrives for a deployment
+    // we don't know yet, persist a minimal default row keyed by the
+    // host-supplied id and return it. The extension treats the host's
+    // deployment id as authoritative; subsequent edits go through PATCH.
+    let now = Utc::now().timestamp();
+    let default_family_id = crate::storage::repo_traits::DEFAULT_MODEL_FAMILY.to_owned();
+    let seeded = DeploymentRow {
+        deployment_id: id.clone(),
+        host_extension_instance_ref: id.as_str().to_owned(),
+        display_name: id.as_str().to_owned(),
+        backend_runtime_preference: None,
+        default_output_format: default_format(),
+        default_speed_factor: default_speed(),
+        default_generation_overrides_json: "{}".to_owned(),
+        most_recent_run_id: None,
+        partial_run_id: None,
+        reference_preprocess_enabled: true,
+        oas_enabled: true,
+        compile_gpt_enabled: false,
+        model_family: default_family_id,
+        oas_threshold_learned: None,
+        oas_samples_seen: 0,
+        created_at: now,
+        updated_at: now,
+    };
+    state.repos.deployments.insert(&seeded).await?;
+    Ok(seeded)
 }
 
 #[derive(Debug, Deserialize)]

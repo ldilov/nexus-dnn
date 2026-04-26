@@ -433,7 +433,7 @@ impl RealModelStoreClient {
                 "",
                 "family_id",
                 "expected '<provider>:<repo>' form (e.g. \
-                 'huggingface:IndexTeam/IndexTTS-2')",
+                 'huggingface:Owner/Repo')",
             )
         })?;
         let req = SearchReq {
@@ -517,12 +517,12 @@ impl ModelStoreClient for RealModelStoreClient {
             DepError::Backend("download job store not initialised".into())
         })?;
 
-        // Snapshot-download the entire repo. Multi-file ML families
-        // (IndexTTS-2, RVC, LDM, etc.) keep configs + tokenizers + weights
-        // alongside the model checkpoints; the normalizer's format-based
-        // filter drops the configs and the model fails to load at runtime.
-        // Side-step normalize_family entirely for dep-installer-driven
-        // installs.
+        // Snapshot-download the entire repo. Multi-file ML families keep
+        // configs, tokenizers, and additional weights alongside the
+        // primary checkpoint; the normalizer's format-based filter drops
+        // unknown-format files (configs, plain text, etc.) and the model
+        // fails to load at runtime. Side-step normalize_family entirely
+        // for dep-installer-driven installs.
         let targets = self.snapshot_targets_from_huggingface(family_id).await?;
 
         let source_repo = Self::extract_repo(family_id)
