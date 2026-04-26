@@ -76,15 +76,60 @@ impl RuntimeBootstrapper for RealRuntimeBootstrapper {
         family: &str,
         version: Option<&str>,
         accelerator_profiles: &[String],
-        _target_dir: &std::path::Path,
+        target_dir: &std::path::Path,
     ) -> Result<Option<RuntimeBootstrapResult>, DepError> {
         // Reject runtime families the host catalog does not recognise — keeps
         // probe results faithful to spec-032's canonical set instead of
         // returning false negatives for typos.
-        if RuntimeFamily::canonical(family).is_none() {
+        let Some(canonical_family) = RuntimeFamily::canonical(family) else {
+            tracing::debug!(
+                target: "spec_035::probe",
+                family,
+                "probe: unknown runtime family — returning None"
+            );
             return Ok(None);
+        };
+
+        // FR-033: the disk layout is the source of truth for probe(). Check the
+        // filesystem at the dep-installer's per-extension target_dir FIRST so an
+        // install completed via bootstrap_python (which doesn't insert into the
+        // legacy `host_runtime_installs` table) is correctly recognised as
+        // satisfied on the next /dependencies poll. Fall back to the DB query
+        // for the legacy "user installed Python via the Backends page" path.
+        if let RuntimeFamily::Python = canonical_family {
+            let interpreter = nexus_backend_runtimes::family_python::python_exe_in(target_dir);
+            tracing::debug!(
+                target: "spec_035::probe",
+                family,
+                target_dir = %target_dir.display(),
+                interpreter = %interpreter.display(),
+                "probe: checking python interpreter on disk"
+            );
+            if interpreter.is_file() {
+                let bytes_placed = tokio::fs::metadata(&interpreter)
+                    .await
+                    .map(|m| m.len())
+                    .unwrap_or(0);
+                tracing::info!(
+                    target: "spec_035::probe",
+                    family,
+                    interpreter = %interpreter.display(),
+                    bytes_placed,
+                    "probe: filesystem hit — runtime satisfied"
+                );
+                return Ok(Some(RuntimeBootstrapResult {
+                    install_dir: target_dir.to_path_buf(),
+                    resolved_version:
+                        nexus_backend_runtimes::family_python::builtin_assets::python_version()
+                            .to_owned(),
+                    resolved_profile: accelerator_profiles.iter().find(|p| !p.is_empty()).cloned(),
+                    bytes_placed,
+                }));
+            }
         }
 
+        // Filesystem miss — fall back to the legacy host_runtime_installs row
+        // (Backends-page install path).
         let row = runtime_installs_store::resolve_dependency(
             &self.pool,
             family,
@@ -93,6 +138,23 @@ impl RuntimeBootstrapper for RealRuntimeBootstrapper {
         )
         .await
         .map_err(|e| DepError::Backend(format!("resolve_dependency: {e}")))?;
+
+        match &row {
+            Some(r) => tracing::info!(
+                target: "spec_035::probe",
+                family,
+                install_root = %r.install_root,
+                version = %r.version,
+                accelerator = %r.accelerator,
+                "probe: DB hit — runtime satisfied via host_runtime_installs"
+            ),
+            None => tracing::debug!(
+                target: "spec_035::probe",
+                family,
+                version = ?version,
+                "probe: filesystem miss + DB miss — runtime not satisfied"
+            ),
+        }
 
         Ok(row.map(|r| RuntimeBootstrapResult {
             install_dir: PathBuf::from(r.install_root),
@@ -136,7 +198,7 @@ impl RealRuntimeBootstrapper {
     /// a meaningful pointer instead of a silent failure.
     async fn bootstrap_python(
         &self,
-        _version: Option<&str>,
+        version: Option<&str>,
         accelerator_profiles: &[String],
         target_dir: &std::path::Path,
         cancellation: CancellationToken,
@@ -148,7 +210,20 @@ impl RealRuntimeBootstrapper {
         };
         use nexus_backend_runtimes::generic::install_ctx::InstallCtx;
 
+        let started = std::time::Instant::now();
+        tracing::info!(
+            target: "spec_035::bootstrap_python",
+            target_dir = %target_dir.display(),
+            version = ?version,
+            accelerator_profiles = ?accelerator_profiles,
+            "bootstrap_python: enter"
+        );
+
         let asset = self.python_asset.as_ref().ok_or_else(|| {
+            tracing::warn!(
+                target: "spec_035::bootstrap_python",
+                "no PythonAsset configured — failing with categorised pointer"
+            );
             DepError::Backend(
                 "embedded python asset not configured on this host (set \
                  NEXUS_EMBEDDED_PYTHON_URL/SHA256/SIZE/KIND or pin a release in \
@@ -157,6 +232,25 @@ impl RealRuntimeBootstrapper {
                     .to_owned(),
             )
         })?;
+        tracing::info!(
+            target: "spec_035::bootstrap_python",
+            url = %asset.url,
+            sha256_prefix = %asset.sha256.chars().take(12).collect::<String>(),
+            kind = ?asset.kind,
+            extract_dir = %asset.extract_dir.display(),
+            "bootstrap_python: asset resolved"
+        );
+
+        let interpreter_pre = python_exe_in(target_dir);
+        if interpreter_pre.is_file() {
+            tracing::info!(
+                target: "spec_035::bootstrap_python",
+                interpreter = %interpreter_pre.display(),
+                "bootstrap_python: interpreter already present pre-call — \
+                 family_python::bootstrap::run will short-circuit (this is \
+                 expected idempotent behaviour but may mask a prior partial install)"
+            );
+        }
 
         tokio::fs::create_dir_all(target_dir).await.map_err(|e| {
             DepError::Backend(format!("create target_dir {}: {e}", target_dir.display()))
@@ -165,6 +259,12 @@ impl RealRuntimeBootstrapper {
         tokio::fs::create_dir_all(&cache)
             .await
             .map_err(|e| DepError::Backend(format!("create cache dir {}: {e}", cache.display())))?;
+        tracing::debug!(
+            target: "spec_035::bootstrap_python",
+            target_dir = %target_dir.display(),
+            cache = %cache.display(),
+            "bootstrap_python: dirs ensured"
+        );
 
         let publisher: SharedPublisher = Arc::new(BackendEventBus::new(64));
         let platform = PlatformId::try_from(host_platform_label())
@@ -199,15 +299,47 @@ impl RealRuntimeBootstrapper {
             phase_cached: false,
         };
 
+        tracing::info!(
+            target: "spec_035::bootstrap_python",
+            "bootstrap_python: invoking family_python::bootstrap::run \
+             (download + sha256 verify + archive extract)"
+        );
         py_bootstrap::run(&mut ctx, Some(asset))
             .await
-            .map_err(|e| DepError::Backend(format!("python bootstrap: {e}")))?;
+            .map_err(|e| {
+                tracing::error!(
+                    target: "spec_035::bootstrap_python",
+                    phase = %e.phase,
+                    category = %e.category.to_wire(),
+                    detail = %e.detail,
+                    "bootstrap_python: family_python::run failed"
+                );
+                DepError::Backend(format!("python bootstrap: {e}"))
+            })?;
 
         let interpreter = python_exe_in(target_dir);
+        let exists = interpreter.is_file();
         let bytes_placed = tokio::fs::metadata(&interpreter)
             .await
             .map(|m| m.len())
             .unwrap_or(0);
+        tracing::info!(
+            target: "spec_035::bootstrap_python",
+            interpreter = %interpreter.display(),
+            exists,
+            bytes_placed,
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "bootstrap_python: complete"
+        );
+
+        if !exists {
+            return Err(DepError::Backend(format!(
+                "python bootstrap reported success but interpreter not found at {} \
+                 (this means family_python::bootstrap::run short-circuited or the \
+                 archive's expected layout doesn't match python_exe_in's lookup)",
+                interpreter.display()
+            )));
+        }
 
         Ok(RuntimeBootstrapResult {
             install_dir: target_dir.to_path_buf(),
@@ -591,6 +723,48 @@ mod tests {
             python_exe.is_file(),
             "expected python interpreter at {} after bootstrap",
             python_exe.display()
+        );
+    }
+
+    /// Per FR-033 — disk layout is the source of truth for `probe()`. After a
+    /// successful `bootstrap_python` (which extracts to `target_dir/python/...`
+    /// but does NOT insert into `host_runtime_installs`), the next probe
+    /// against the same `target_dir` MUST return `Satisfied` so the UI can
+    /// flip the step from `pending` to `ok` without a host restart.
+    #[tokio::test]
+    async fn runtime_probe_returns_satisfied_after_bootstrap_via_filesystem() {
+        let pool = fresh_pool_with_runtime_installs().await;
+        let tmp = tempfile::tempdir().expect("tmp");
+        let fixture_dir = tmp.path().join("fixtures");
+        let (archive_path, sha256, size) = build_python_archive_fixture(&fixture_dir);
+        let asset = PythonAsset::pbs_install_only(file_url(&archive_path), &sha256, size);
+        let target_dir = tmp.path().join("install");
+
+        let bootstrapper = RealRuntimeBootstrapper::with_python_asset(pool, Some(asset));
+        bootstrapper
+            .bootstrap(
+                "python",
+                Some(">=3.11"),
+                &["cpu".into()],
+                &target_dir,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("bootstrap ok");
+
+        // The legacy DB row is intentionally NOT inserted by bootstrap_python.
+        // Probe must still flip Satisfied via filesystem inspection of
+        // target_dir, otherwise the UI will spin in PENDING forever.
+        let probed = bootstrapper
+            .probe("python", Some(">=3.11"), &["cpu".into()], &target_dir)
+            .await
+            .expect("probe ok");
+        let probed = probed.expect("expected filesystem hit after bootstrap");
+        assert_eq!(probed.install_dir, target_dir);
+        assert!(
+            probed.bytes_placed > 0,
+            "expected bytes_placed > 0, got {}",
+            probed.bytes_placed
         );
     }
 

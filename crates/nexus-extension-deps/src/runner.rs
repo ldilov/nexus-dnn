@@ -164,13 +164,28 @@ async fn run_one_step(
     ctx: &mut RunnerContext<'_>,
     upstream_artifacts: &HashMap<String, StepArtifact>,
 ) -> StepOutcome {
+    let started = std::time::Instant::now();
+    info!(
+        target: "spec_035::runner",
+        extension_id = %ctx.extension_id,
+        step_id = %step.id,
+        step_type = %step.step_type,
+        requires = ?step.requires,
+        "step: enter"
+    );
+
     let Some(handler) = registry.get(&step.step_type) else {
-        return StepOutcome::Failed {
-            error: StepError::new(
-                "unknown_step_type",
-                format!("no handler registered for type '{}'", step.step_type),
-            ),
-        };
+        let error = StepError::new(
+            "unknown_step_type",
+            format!("no handler registered for type '{}'", step.step_type),
+        );
+        tracing::error!(
+            target: "spec_035::runner",
+            step_id = %step.id,
+            step_type = %step.step_type,
+            "step: no handler registered — failing"
+        );
+        return StepOutcome::Failed { error };
     };
 
     let step_ctx = StepContext {
@@ -199,20 +214,48 @@ async fn run_one_step(
         });
         StepOutcome::Failed { error }
     };
-    match handler.probe(&step_ctx, &step.spec).await {
+    let probe_started = std::time::Instant::now();
+    let probe_result = handler.probe(&step_ctx, &step.spec).await;
+    let probe_ms = probe_started.elapsed().as_millis() as u64;
+    match probe_result {
         Ok(ProbeResult::Satisfied { .. }) => {
+            info!(
+                target: "spec_035::runner",
+                step_id = %step.id,
+                probe_ms,
+                "step: probe satisfied — skipping run (no install needed)"
+            );
             debug!(step_id = %step.id, "probe satisfied — skipping run");
             return StepOutcome::Skipped {
                 reason: "already satisfied".to_owned(),
             };
         }
         Ok(ProbeResult::Unsupported { reason }) => {
+            tracing::warn!(
+                target: "spec_035::runner",
+                step_id = %step.id,
+                probe_ms,
+                %reason,
+                "step: probe reported unsupported platform — failing"
+            );
             return emit_probe_failure(StepError::new("unsupported_platform", reason));
         }
         Ok(ProbeResult::NotSatisfied) => {
-            // fall through
+            info!(
+                target: "spec_035::runner",
+                step_id = %step.id,
+                probe_ms,
+                "step: probe NotSatisfied — proceeding to run"
+            );
         }
         Err(e) => {
+            tracing::error!(
+                target: "spec_035::runner",
+                step_id = %step.id,
+                probe_ms,
+                error = %e,
+                "step: probe errored — failing"
+            );
             return emit_probe_failure(dep_error_to_step_error(e));
         }
     }
@@ -225,9 +268,20 @@ async fn run_one_step(
         started_at: Utc::now(),
     });
 
-    match handler.run(&step_ctx, &step.spec).await {
+    let run_started = std::time::Instant::now();
+    let run_result = handler.run(&step_ctx, &step.spec).await;
+    let run_ms = run_started.elapsed().as_millis() as u64;
+    match run_result {
         Ok(artifact) => {
-            info!(step_id = %step.id, "step completed");
+            info!(
+                target: "spec_035::runner",
+                step_id = %step.id,
+                run_ms,
+                total_ms = started.elapsed().as_millis() as u64,
+                summary = %artifact.summary,
+                bytes_placed = artifact.bytes_placed,
+                "step: run completed Ok"
+            );
             ctx.progress_sink.emit(ProgressEvent::StepCompleted {
                 extension_id: ctx.extension_id.to_owned(),
                 install_run_id: ctx.install_run_id,
@@ -239,6 +293,14 @@ async fn run_one_step(
         }
         Err(e) => {
             let step_error = dep_error_to_step_error(e);
+            tracing::error!(
+                target: "spec_035::runner",
+                step_id = %step.id,
+                run_ms,
+                category = %step_error.category,
+                message = %step_error.message,
+                "step: run failed"
+            );
             ctx.progress_sink.emit(ProgressEvent::StepFailed {
                 extension_id: ctx.extension_id.to_owned(),
                 install_run_id: ctx.install_run_id,

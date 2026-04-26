@@ -22,11 +22,43 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn initialize_tracing(default_level: &str) {
-    let env_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level));
+    // RUST_LOG wins when set. Otherwise build a sensible default that:
+    //   - keeps host crates at the configured level (info/debug/...)
+    //   - elevates spec-035 install-flow targets to DEBUG so we never lose the
+    //     download / extract / probe trail
+    //   - silences noisy third-party HTTP/TLS/WS layers that otherwise drown
+    //     out the install logs at DEBUG level
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        let directives = [
+            default_level,
+            // Spec 035 dep installer — always verbose
+            "spec_035=debug",
+            "spec_035::probe=debug",
+            "spec_035::bootstrap_python=debug",
+            "nexus_extension_deps=debug",
+            "nexus_extension_deps::runner=debug",
+            "nexus_extension_deps::handlers=debug",
+            // Our own HTTP handlers — keep at info
+            "nexus_api::handlers::extension_dependencies=debug",
+            // Silence the third-party HTTP/TLS/WS noise. These default to
+            // emitting per-request DEBUG spam that drowns the install trail.
+            "hyper=info",
+            "hyper_util=info",
+            "h2=info",
+            "reqwest=info",
+            "rustls=info",
+            "tokio_util=info",
+            "tower_http=info",
+            "tungstenite=info",
+            "tokio_tungstenite=info",
+            "axum::rejection=info",
+            "want=info",
+        ];
+        EnvFilter::new(directives.join(","))
+    });
 
     tracing_subscriber::registry()
-        .with(fmt::layer())
+        .with(fmt::layer().with_target(true).with_thread_ids(false))
         .with(env_filter)
         .init();
 }
