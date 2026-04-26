@@ -48,11 +48,24 @@ pub fn default_fetch_artifact() -> Arc<FetchArtifact> {
 /// surface).
 pub struct RealRuntimeBootstrapper {
     pool: SqlitePool,
+    python_asset: Option<nexus_backend_runtimes::family_python::PythonAsset>,
 }
 
 impl RealRuntimeBootstrapper {
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        Self::with_python_asset(pool, None)
+    }
+
+    /// Build a bootstrapper that knows how to install an embedded Python from
+    /// the given asset. Hosts that have no pinned asset (REGISTRY empty + no
+    /// `NEXUS_EMBEDDED_PYTHON_*` env override) pass `None`; the python-family
+    /// `bootstrap` then falls back to the categorised "go to Backends page"
+    /// error so the user gets a meaningful pointer.
+    pub fn with_python_asset(
+        pool: SqlitePool,
+        python_asset: Option<nexus_backend_runtimes::family_python::PythonAsset>,
+    ) -> Self {
+        Self { pool, python_asset }
     }
 }
 
@@ -240,8 +253,56 @@ impl DefaultDepBootstrap {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+    use nexus_backend_runtimes::family_python::{PythonAsset, python_exe_in};
+    use sha2::{Digest, Sha256};
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use std::fs;
+    use std::path::Path;
     use std::str::FromStr;
+
+    /// Build a minimal `python/{bin/python3 | python.exe}` tar.gz fixture so
+    /// `family_python::bootstrap::run` succeeds offline. Returns
+    /// (archive_path, sha256_hex, size_bytes).
+    fn build_python_archive_fixture(archive_dir: &Path) -> (std::path::PathBuf, String, u64) {
+        fs::create_dir_all(archive_dir).expect("mkdir archive dir");
+        let archive_path = archive_dir.join("cpython-fixture.tar.gz");
+        let file = fs::File::create(&archive_path).expect("create archive");
+        let enc = GzEncoder::new(file, Compression::fast());
+        let mut tar = tar::Builder::new(enc);
+
+        let entry = if cfg!(windows) {
+            "python/python.exe"
+        } else {
+            "python/bin/python3"
+        };
+        let payload = b"#!stub\n";
+        let mut header = tar::Header::new_gnu();
+        header.set_size(payload.len() as u64);
+        header.set_mode(0o755);
+        header.set_cksum();
+        tar.append_data(&mut header, entry, &payload[..])
+            .expect("append entry");
+        let enc = tar.into_inner().expect("finish tar");
+        enc.finish().expect("finish gz");
+
+        let bytes = fs::read(&archive_path).expect("read archive");
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes);
+        let sha = format!("{:x}", hasher.finalize());
+        let size = bytes.len() as u64;
+        (archive_path, sha, size)
+    }
+
+    fn file_url(path: &Path) -> String {
+        let display = path.display().to_string().replace('\\', "/");
+        if cfg!(windows) {
+            format!("file:///{display}")
+        } else {
+            format!("file://{display}")
+        }
+    }
 
     async fn fresh_pool_with_runtime_installs() -> SqlitePool {
         let opts = SqliteConnectOptions::from_str("sqlite::memory:").unwrap();
@@ -379,6 +440,67 @@ mod tests {
 
         let msg = err.to_string();
         assert!(msg.contains("Backends page"), "msg = {msg}");
+        assert!(msg.contains("python"), "msg = {msg}");
+    }
+
+    /// RED test for the runtime auto-install path. With a real `PythonAsset`
+    /// configured, `bootstrap("python", ...)` MUST extract the asset into
+    /// `target_dir` and return a `RuntimeBootstrapResult` describing the
+    /// install — not a categorised "go to Backends page" error. Without this,
+    /// the dep installer's user flow has a dead end (Python step fails →
+    /// Backends page has no compatible Python option → user is stuck).
+    #[tokio::test]
+    async fn runtime_bootstrap_python_extracts_asset_and_returns_install_dir() {
+        let pool = fresh_pool_with_runtime_installs().await;
+        let tmp = tempfile::tempdir().expect("tmp");
+        let fixture_dir = tmp.path().join("fixtures");
+        let (archive_path, sha256, size) = build_python_archive_fixture(&fixture_dir);
+        let asset = PythonAsset::pbs_install_only(file_url(&archive_path), &sha256, size);
+        let target_dir = tmp.path().join("install");
+
+        let bootstrapper = RealRuntimeBootstrapper::with_python_asset(pool, Some(asset));
+        let result = bootstrapper
+            .bootstrap(
+                "python",
+                Some(">=3.11"),
+                &["cpu".into()],
+                &target_dir,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("bootstrap should succeed when asset is configured");
+
+        assert_eq!(result.install_dir, target_dir);
+        assert!(result.bytes_placed > 0, "expected bytes_placed > 0");
+        let python_exe = python_exe_in(&target_dir);
+        assert!(
+            python_exe.is_file(),
+            "expected python interpreter at {} after bootstrap",
+            python_exe.display()
+        );
+    }
+
+    /// Regression: when no `PythonAsset` is configured (REGISTRY empty + no
+    /// env override) the existing categorised error MUST still fire so the
+    /// user gets a meaningful pointer rather than a silent panic.
+    #[tokio::test]
+    async fn runtime_bootstrap_python_without_asset_keeps_categorised_error() {
+        let pool = fresh_pool_with_runtime_installs().await;
+        let tmp = tempfile::tempdir().expect("tmp");
+        let target_dir = tmp.path().join("install");
+
+        let bootstrapper = RealRuntimeBootstrapper::with_python_asset(pool, None);
+        let err = bootstrapper
+            .bootstrap(
+                "python",
+                None,
+                &[],
+                &target_dir,
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
         assert!(msg.contains("python"), "msg = {msg}");
     }
 
