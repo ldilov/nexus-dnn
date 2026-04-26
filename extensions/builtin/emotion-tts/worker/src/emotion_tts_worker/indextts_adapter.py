@@ -104,6 +104,9 @@ class IndexTtsAdapter:
                 return
             if on_stage is not None:
                 on_stage("loading_gpt")
+            from ._indextts_compat import patch_indextts_text_normalizer
+
+            patch_indextts_text_normalizer()
             from indextts.infer_v2 import IndexTTS2
 
             cfg_path = self._settings.cfg_path or str(Path(self._settings.model_dir_abs) / "config.yaml")
