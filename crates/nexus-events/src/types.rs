@@ -160,10 +160,13 @@ pub enum NexusEvent {
         message: String,
         hint: Option<String>,
     },
-    /// Spec 035 — overall install run finished (terminal step succeeded).
+    /// Spec 035 — overall install run finished. Fires exactly once per install
+    /// regardless of outcome (subscribers rely on this to clear "active" state).
+    /// `outcome` is the one-shot summary: `success`, `failed`, or `cancelled`.
     ExtensionInstallCompleted {
         extension_id: String,
         install_run_id: String,
         completed_at: String,
+        outcome: String,
     },
 }
