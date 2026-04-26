@@ -31,9 +31,7 @@ use nexus_models_store::capabilities::CapabilityRegistry;
 use nexus_models_store::downloads::{
     CreateJobParams, DownloadOrchestrator, InstallMap, JobStore, JobTargetInput, RequestedKind,
 };
-use nexus_models_store::ids::{FamilyId, JobId};
-use nexus_models_store::model::{Artifact, ModelFamily};
-use nexus_models_store::normalize::normalize_family;
+use nexus_models_store::ids::{ArtifactId, FamilyId, JobId};
 use nexus_models_store::types::{DependencyRole, DownloadState};
 
 /// Build the default registry — registers all five built-in handlers.
@@ -385,6 +383,10 @@ pub struct RealModelStoreClient {
     install_map: InstallMap,
     orchestrator: Arc<DownloadOrchestrator>,
     huggingface: Option<Arc<dyn HuggingFaceCapability>>,
+    /// Reserved for accelerator-aware variant selection once spec-025
+    /// stamps accelerator profiles onto variant ids. The current
+    /// snapshot-download path bypasses normalize_family + capabilities.
+    #[allow(dead_code)]
     capability_registry: Option<Arc<CapabilityRegistry>>,
     download_job_store: Option<Arc<JobStore>>,
 }
@@ -410,14 +412,29 @@ impl RealModelStoreClient {
         family_id.split_once(':').map(|(_, r)| r)
     }
 
-    async fn resolve_family(&self, family_id: &str) -> Result<ModelFamily, DepError> {
+    /// Build a snapshot-style file list for `family_id`. Queries HuggingFace
+    /// directly and bypasses `normalize_family` because runtime configs
+    /// (`config.yaml`, `*.json`) and tokenizer subfolders are essential for
+    /// inference but the normalizer drops them as "Unknown" format. The
+    /// dep installer needs every file the upstream repo exposes, in the
+    /// same layout — the same approach `unified_downloader` takes in
+    /// diodiogod/TTS-Audio-Suite.
+    async fn snapshot_targets_from_huggingface(
+        &self,
+        family_id: &str,
+    ) -> Result<Vec<JobTargetInput>, DepError> {
         let hf = self.huggingface.as_ref().ok_or_else(|| {
             DepError::Backend(
-                "huggingface client not configured — cannot resolve model family".into(),
+                "huggingface client not configured — cannot enumerate repo files".into(),
             )
         })?;
         let repo_id = Self::extract_repo(family_id).ok_or_else(|| {
-            DepError::invalid_spec("", "family_id", "expected '<provider>:<repo>' form")
+            DepError::invalid_spec(
+                "",
+                "family_id",
+                "expected '<provider>:<repo>' form (e.g. \
+                 'huggingface:IndexTeam/IndexTTS-2')",
+            )
         })?;
         let req = SearchReq {
             query: repo_id.to_owned(),
@@ -436,91 +453,31 @@ impl RealModelStoreClient {
             .ok_or_else(|| {
                 DepError::Backend(format!("model family not found upstream: {family_id}"))
             })?;
-        let family = match self.capability_registry.as_ref() {
-            Some(reg) => normalize_family(raw, reg.as_ref()),
-            None => {
-                let empty = CapabilityRegistry::new();
-                normalize_family(raw, &empty)
-            }
-        };
-        Ok(family)
-    }
-}
 
-/// Build the `JobTargetInput` list for the dep installer's auto-pick:
-/// 1. Default variant (if marked `is_default`)
-/// 2. First listed variant
-/// 3. Bundle of the primary artifact + required dependencies
-fn auto_pick_targets(
-    family: &ModelFamily,
-) -> Result<(Vec<JobTargetInput>, RequestedKind), DepError> {
-    let artifact_by_id = |id: &str| family.artifacts.iter().find(|a| a.artifact_id.as_str() == id);
+        let targets: Vec<JobTargetInput> = raw
+            .files
+            .iter()
+            .filter(|f| !f.path.is_empty())
+            .map(|f| JobTargetInput {
+                artifact_id: ArtifactId::from(format!("{family_id}#{}", f.path)),
+                filename: f.path.clone(),
+                role: DependencyRole::Primary,
+                download_url: format!(
+                    "https://huggingface.co/{repo_id}/resolve/main/{}",
+                    f.path
+                ),
+                expected_bytes: f.size_bytes,
+                sha256: None,
+            })
+            .collect();
 
-    let preferred_variant = family
-        .variants
-        .iter()
-        .find(|v| v.is_default)
-        .or_else(|| family.variants.first());
-
-    if let Some(variant) = preferred_variant {
-        let mut out = Vec::with_capacity(variant.artifact_ids.len());
-        for aid in &variant.artifact_ids {
-            let a = artifact_by_id(aid.as_str()).ok_or_else(|| {
-                DepError::Backend(format!(
-                    "variant {} references missing artifact {aid}",
-                    variant.variant_id
-                ))
-            })?;
-            out.push(input_from_artifact(a));
-        }
-        if out.is_empty() {
+        if targets.is_empty() {
             return Err(DepError::Backend(format!(
-                "variant {} has no artifacts",
-                variant.variant_id
+                "repo {family_id} reports no downloadable files"
             )));
         }
-        return Ok((out, RequestedKind::Variant));
-    }
 
-    let mut out = Vec::new();
-    if let Some(primary) = family
-        .artifacts
-        .iter()
-        .find(|a| a.role == DependencyRole::Primary)
-    {
-        out.push(input_from_artifact(primary));
-    }
-    for dep in &family.dependencies {
-        if dep.requirement != nexus_models_store::types::Requirement::Required {
-            continue;
-        }
-        let Some(target_id) = &dep.target_artifact_id else {
-            continue;
-        };
-        if let Some(a) = artifact_by_id(target_id.as_str())
-            && !out.iter().any(|t| t.artifact_id == a.artifact_id)
-        {
-            out.push(input_from_artifact(a));
-        }
-    }
-    if out.is_empty() {
-        return Err(DepError::Backend(
-            "no variants and no primary+dependency bundle could be assembled — \
-             family is not auto-installable; pick a target via Models Search"
-                .into(),
-        ));
-    }
-    Ok((out, RequestedKind::Bundle))
-}
-
-fn input_from_artifact(a: &Artifact) -> JobTargetInput {
-    JobTargetInput {
-        artifact_id: a.artifact_id.clone(),
-        filename: a.filename.clone(),
-        role: a.role,
-        download_url: a.download_url.clone(),
-        expected_bytes: a.size_bytes,
-        sha256: a.sha256.clone(),
+        Ok(targets)
     }
 }
 
@@ -560,13 +517,13 @@ impl ModelStoreClient for RealModelStoreClient {
             DepError::Backend("download job store not initialised".into())
         })?;
 
-        // Resolve the family, auto-pick a target (default variant > first
-        // variant > primary+deps bundle), and enqueue a real job. The
-        // accelerator hint is unused for now — variant selection follows the
-        // family's `is_default` flag. Once spec-025 stamps the accelerator
-        // profile onto variant ids, we can filter here.
-        let family = self.resolve_family(family_id).await?;
-        let (targets, kind) = auto_pick_targets(&family)?;
+        // Snapshot-download the entire repo. Multi-file ML families
+        // (IndexTTS-2, RVC, LDM, etc.) keep configs + tokenizers + weights
+        // alongside the model checkpoints; the normalizer's format-based
+        // filter drops the configs and the model fails to load at runtime.
+        // Side-step normalize_family entirely for dep-installer-driven
+        // installs.
+        let targets = self.snapshot_targets_from_huggingface(family_id).await?;
 
         let source_repo = Self::extract_repo(family_id)
             .map(|r| r.to_owned())
@@ -575,7 +532,7 @@ impl ModelStoreClient for RealModelStoreClient {
             FamilyId::from(family_id.to_owned()),
             "huggingface",
             source_repo,
-            kind,
+            RequestedKind::Bundle,
         )
         .targets(targets)
         .build();
