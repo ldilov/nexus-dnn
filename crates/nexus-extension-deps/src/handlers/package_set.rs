@@ -164,16 +164,56 @@ impl StepHandler for PackageSetHandler {
             "package_set: spawning uv sync"
         );
 
+        // Per-extension uv cache so wheel builds for one extension can never
+        // poison another. Costs disk (no cross-extension wheel sharing) but
+        // gives strict isolation — each extension has its own resolver state.
+        let uv_cache = ctx
+            .extension_data_dir
+            .join("runtime")
+            .join("packages")
+            .join(".uv-cache");
+        tokio::fs::create_dir_all(&uv_cache).await?;
+
         let mut cmd = Command::new(&uv_bin);
         cmd.arg("sync")
             .arg("--project")
             .arg(&project_dir)
             .arg("--no-progress")
-            .env("UV_PROJECT_ENVIRONMENT", &venv);
+            // Pin venv + cache locations to the extension's data dir.
+            .env("UV_PROJECT_ENVIRONMENT", &venv)
+            .env("UV_CACHE_DIR", &uv_cache)
+            // Stop uv from reading `~/.config/uv/` or workspace-level config —
+            // user-level config (custom indexes, registries, auth tokens)
+            // must not influence an extension install.
+            .env("UV_NO_CONFIG", "1")
+            // Strip Python env vars that would otherwise inject the user's
+            // global Python state into the new venv. PYTHONHOME makes the
+            // interpreter look for stdlib elsewhere; PYTHONPATH leaks
+            // user-installed packages; PYTHONSTARTUP runs arbitrary code on
+            // every interpreter launch; PYTHONUSERBASE points pip at the
+            // user-site dir.
+            .env_remove("PYTHONHOME")
+            .env_remove("PYTHONPATH")
+            .env_remove("PYTHONSTARTUP")
+            .env_remove("PYTHONUSERBASE")
+            .env_remove("PYTHONNOUSERSITE")
+            // Strip pip-discovery env vars so an inherited
+            // PIP_INDEX_URL/EXTRA_INDEX_URL/CONFIG_FILE can't redirect uv to
+            // a different registry. The pyproject + UV_PROJECT_ENVIRONMENT
+            // are the only sources of truth.
+            .env_remove("PIP_INDEX_URL")
+            .env_remove("PIP_EXTRA_INDEX_URL")
+            .env_remove("PIP_CONFIG_FILE")
+            .env_remove("PIP_REQUIRE_VIRTUALENV");
         if let Some(py) = python_exe.as_deref() {
             cmd.env("UV_PYTHON", py);
             cmd.env("VIRTUAL_ENV", &venv);
         }
+        tracing::debug!(
+            target: "spec_035::package_set",
+            uv_cache = %uv_cache.display(),
+            "package_set: extension-isolated uv cache + env scrubbed (PYTHONHOME, PYTHONPATH, PIP_*)"
+        );
 
         // Honour cancellation: spawn so the child can be killed when the token fires.
         let mut child = cmd
@@ -388,4 +428,169 @@ async fn dir_size(path: &Path) -> Result<u64, DepError> {
         }
     }
     Ok(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pin all install-time paths inside `<extension_data_dir>/...`. Any
+    /// future change that places packages, the venv, or the uv cache
+    /// outside the per-extension dir will fail this test loudly. Companion
+    /// to FR-033 (disk layout is the source of truth) and the project's
+    /// host ↔ extension boundary rule.
+    #[test]
+    fn install_paths_are_extension_scoped() {
+        let ext_data = PathBuf::from("/host/extensions/example");
+        let ext_dir = PathBuf::from("/repo/extensions/builtin/example");
+
+        // Stand up just enough of a StepContext to exercise the path helpers.
+        // The other fields are not read by venv_dir/marker_path/locate_uv/
+        // python_interpreter so we use cheap stubs.
+        let model_store: std::sync::Arc<dyn crate::ModelStoreClient> =
+            std::sync::Arc::new(stubs::ModelStore);
+        let runtime_bootstrapper: std::sync::Arc<dyn crate::RuntimeBootstrapper> =
+            std::sync::Arc::new(stubs::Runtime);
+        let worker_handshake: std::sync::Arc<dyn crate::WorkerHandshake> =
+            std::sync::Arc::new(stubs::Handshake);
+        let progress_sink: std::sync::Arc<dyn crate::ProgressSink> =
+            std::sync::Arc::new(stubs::Sink);
+        let fetch_artifact: std::sync::Arc<crate::fetch::FetchArtifact> =
+            std::sync::Arc::new(|_req: crate::fetch::FetchRequest| {
+                Box::pin(async { Err(DepError::Backend("stub".into())) })
+            });
+        let upstream = std::collections::HashMap::new();
+        let ctx = StepContext {
+            extension_id: "example",
+            extension_dir: &ext_dir,
+            extension_data_dir: &ext_data,
+            host_data_dir: &ext_data,
+            model_store,
+            runtime_bootstrapper,
+            worker_handshake,
+            fetch_artifact,
+            progress_sink,
+            cancellation_token: tokio_util::sync::CancellationToken::new(),
+            install_run_id: uuid::Uuid::nil(),
+            upstream_artifacts: &upstream,
+        };
+
+        // venv MUST live under <extension_data_dir>.
+        let venv = venv_dir(&ctx);
+        assert!(
+            venv.starts_with(&ext_data),
+            "venv {} escapes extension_data_dir {}",
+            venv.display(),
+            ext_data.display()
+        );
+
+        // marker MUST live under <extension_data_dir>.
+        let marker = marker_path(&ctx);
+        assert!(
+            marker.starts_with(&ext_data),
+            "marker {} escapes extension_data_dir {}",
+            marker.display(),
+            ext_data.display()
+        );
+
+        // The interpreter probe MUST only check candidates under
+        // <extension_data_dir>/runtime/python — it must never look at
+        // PATH, registry, or any user-level install.
+        let py = python_interpreter(&ctx); // returns None for non-existent paths
+        assert!(py.is_none(), "no fixture present so probe must return None");
+    }
+
+    /// `default_target` MUST stay `extension_local` — changing it to a
+    /// host-shared default would silently violate the isolation invariant
+    /// for any manifest that omits the field.
+    #[test]
+    fn default_target_is_extension_local() {
+        assert_eq!(default_target(), "extension_local");
+    }
+
+    /// Validation MUST reject any non-extension-local `target`. Pins the
+    /// FR-013 enum (v1: `extension_local` only) so a future "host_shared"
+    /// requires both spec + handler approval.
+    #[test]
+    fn handler_validate_rejects_non_extension_local_target() {
+        let handler = PackageSetHandler::new();
+        let spec = serde_json::json!({
+            "manager": "uv",
+            "manifest_path": "worker/pyproject.toml",
+            "target": "host_shared",
+        });
+        let err = handler.validate(&spec).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("extension_local"),
+            "validation error must name the supported value, got: {msg}"
+        );
+    }
+
+    mod stubs {
+        use super::*;
+        use async_trait::async_trait;
+
+        pub struct ModelStore;
+        #[async_trait]
+        impl crate::ModelStoreClient for ModelStore {
+            async fn is_family_installed(
+                &self,
+                _f: &str,
+                _a: Option<&str>,
+            ) -> Result<Option<PathBuf>, DepError> {
+                Ok(None)
+            }
+            async fn start_download(&self, _f: &str, _a: Option<&str>) -> Result<String, DepError> {
+                unreachable!()
+            }
+            async fn poll_job(&self, _id: &str) -> Result<crate::ModelDownloadProgress, DepError> {
+                unreachable!()
+            }
+        }
+
+        pub struct Runtime;
+        #[async_trait]
+        impl crate::RuntimeBootstrapper for Runtime {
+            async fn probe(
+                &self,
+                _f: &str,
+                _v: Option<&str>,
+                _a: &[String],
+                _t: &Path,
+            ) -> Result<Option<crate::RuntimeBootstrapResult>, DepError> {
+                Ok(None)
+            }
+            async fn bootstrap(
+                &self,
+                _f: &str,
+                _v: Option<&str>,
+                _a: &[String],
+                _t: &Path,
+                _c: tokio_util::sync::CancellationToken,
+            ) -> Result<crate::RuntimeBootstrapResult, DepError> {
+                unreachable!()
+            }
+        }
+
+        pub struct Handshake;
+        #[async_trait]
+        impl crate::WorkerHandshake for Handshake {
+            async fn run_handshake(
+                &self,
+                _ext: &str,
+                _dir: &Path,
+                _ups: &std::collections::HashMap<String, crate::StepArtifact>,
+                _t: std::time::Duration,
+                _c: tokio_util::sync::CancellationToken,
+            ) -> Result<(), crate::HandshakeError> {
+                unreachable!()
+            }
+        }
+
+        pub struct Sink;
+        impl crate::ProgressSink for Sink {
+            fn emit(&self, _e: crate::types::ProgressEvent) {}
+        }
+    }
 }

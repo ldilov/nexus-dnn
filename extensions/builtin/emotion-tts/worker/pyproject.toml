@@ -33,7 +33,10 @@ dependencies = [
 
 [project.optional-dependencies]
 deepspeed = ["deepspeed>=0.15"]
-denoise = ["rnnoise-wheels>=0.1"]
+# `denoise` extra removed — `rnnoise-wheels` is not published on PyPI and
+# uv's lockfile-consistency check rejects unresolvable extras even when not
+# activated. Re-introduce when a working denoise package is identified
+# (either as a PyPI dist or via [tool.uv.sources] git pin).
 dev = [
   "pytest>=8",
   "pytest-asyncio>=0.23",
