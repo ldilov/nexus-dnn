@@ -7,10 +7,20 @@ readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
 
 dependencies = [
-  "index-tts",
+  # IndexTTS is NOT published on PyPI — uv resolves it via the git source
+  # declared under [tool.uv.sources].indextts (note: no hyphen — the upstream
+  # package name in setup.py is "indextts").
+  "indextts",
+  # >=2.4 satisfies upstream's indextts torch>=2.1.2 constraint while letting
+  # us pull modern wheels via the [tool.uv.index] pytorch-cu128 mapping below.
   "torch>=2.4",
   "torchaudio>=2.4",
-  "transformers>=4.45",
+  # Upstream indextts pins transformers==4.36.2 exactly. The prior >=4.45
+  # declaration here was unsatisfiable against that pin; loose range below
+  # accepts the pinned version while staying flexible.
+  "transformers>=4.36,<4.50",
+  # Upstream pins tokenizers==0.15.0 exactly; loose range satisfies it.
+  "tokenizers>=0.15,<0.21",
   "numpy>=1.26",
   "pydantic>=2.8",
   "ffmpeg-python>=0.2",
@@ -48,6 +58,11 @@ managed = true
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }
 torchaudio = { index = "pytorch-cu128" }
+# indextts is not on PyPI — pin to the v1.5.0 release tag from upstream.
+# Bump the tag here when refreshing the IndexTTS version. Note: the upstream
+# setup.py at v1.5.0 self-reports "version=0.1.4" (their tag/version field
+# disagree); the resolved package is whatever the tag points at.
+indextts = { git = "https://github.com/index-tts/index-tts", tag = "v1.5.0" }
 
 [[tool.uv.index]]
 name = "pytorch-cu128"
