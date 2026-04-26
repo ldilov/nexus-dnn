@@ -4,12 +4,17 @@
 //! operator layer + queue. The router's job is request shaping, preflight,
 //! and mapping domain errors into the JSON envelope.
 
+use std::convert::Infallible;
+use std::time::Duration;
+
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
 use axum::Router;
 use chrono::Utc;
+use futures::stream::Stream;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -36,9 +41,113 @@ pub fn router(state: RunsState) -> Router {
         .route("/deployments/:deployment_id/runs/:run_id", get(get_run))
         .route("/deployments/:deployment_id/runs/:run_id/cancel", post(cancel_run))
         .route("/deployments/:deployment_id/runs/:run_id/resume", post(resume_run))
+        .route(
+            "/deployments/:deployment_id/runs/:run_id/progress",
+            get(run_progress),
+        )
         .route("/deployments/:deployment_id/runs/test-line", post(test_line))
         .route("/runs/:run_id/diagnostics", get(diagnostics))
         .with_state(state)
+}
+
+/// SSE progress channel for a single run.
+///
+/// Frontend's `subscribeRunProgress` opens this stream after a successful
+/// `POST /runs` and listens for per-segment events. The current
+/// implementation is a polling shim: every 2 seconds we re-read the run
+/// row + emit it as one `data:` frame, terminating the stream when the
+/// run reaches a terminal status (`completed`/`failed`/`cancelled`/
+/// `partial`). When the queue + worker pipeline get wired through
+/// `NotificationFanout`, the polling loop can be replaced with a
+/// `broadcast::Receiver<ProgressEvent>` filtered by `run_id` — the
+/// connection contract on the client side stays identical.
+async fn run_progress(
+    State(state): State<RunsState>,
+    Path((raw_deployment_id, raw_run_id)): Path<(String, String)>,
+) -> Response {
+    let deployment_id = match DeploymentId::try_from(raw_deployment_id.as_str()) {
+        Ok(v) => v,
+        Err(err) => return EmotionTtsError::from(err).into_response(),
+    };
+    let run_id = match RunId::try_from(raw_run_id.as_str()) {
+        Ok(v) => v,
+        Err(err) => return EmotionTtsError::from(err).into_response(),
+    };
+    // Validate the run exists before opening the stream — otherwise the
+    // browser would treat a bare 404 as a transient SSE failure and
+    // retry every 3s forever.
+    match state.repos.runs.get(&run_id).await {
+        Ok(Some(row)) if row.deployment_id == deployment_id => {}
+        Ok(Some(_)) => {
+            return EmotionTtsError::not_found(format!(
+                "run {run_id} does not belong to deployment {deployment_id}"
+            ))
+            .into_response();
+        }
+        Ok(None) => {
+            return EmotionTtsError::not_found(format!("run {run_id}")).into_response();
+        }
+        Err(err) => return err.into_response(),
+    }
+
+    let stream = run_progress_stream(state.clone(), run_id);
+    Sse::new(stream)
+        .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+        .into_response()
+}
+
+fn run_progress_stream(
+    state: RunsState,
+    run_id: RunId,
+) -> impl Stream<Item = std::result::Result<Event, Infallible>> {
+    async_stream::stream! {
+        let mut tick = tokio::time::interval(Duration::from_secs(2));
+        // First tick fires immediately so the client gets initial state
+        // without waiting 2s.
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            tick.tick().await;
+            match state.repos.runs.get(&run_id).await {
+                Ok(Some(row)) => {
+                    let payload = run_summary_json(&row);
+                    let frame = Event::default()
+                        .event("run_state")
+                        .data(payload.to_string());
+                    yield Ok(frame);
+                    if matches!(
+                        row.status.as_str(),
+                        "completed" | "failed" | "cancelled" | "partial"
+                    ) {
+                        let terminal = Event::default()
+                            .event("run_terminal")
+                            .data(payload.to_string());
+                        yield Ok(terminal);
+                        break;
+                    }
+                }
+                Ok(None) => {
+                    // Run row vanished mid-stream — emit a synthetic
+                    // failure frame and close.
+                    let body = json!({
+                        "runId": run_id.as_str(),
+                        "status": "failed",
+                        "error": "run row disappeared",
+                    });
+                    yield Ok(Event::default().event("run_terminal").data(body.to_string()));
+                    break;
+                }
+                Err(err) => {
+                    let body = json!({
+                        "runId": run_id.as_str(),
+                        "status": "failed",
+                        "error": err.to_string(),
+                    });
+                    yield Ok(Event::default().event("run_terminal").data(body.to_string()));
+                    break;
+                }
+            }
+        }
+    }
 }
 
 /// Spec 034 US2 / T063 — reads alignment diagnostics for a completed run.
