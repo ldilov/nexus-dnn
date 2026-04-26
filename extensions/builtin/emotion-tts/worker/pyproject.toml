@@ -29,6 +29,12 @@ dependencies = [
   "silero-vad>=5.1",
   "matplotlib>=3.8",
   "pyyaml>=6.0",
+  # Pure-Python text normalizer used cross-platform. IndexTTS's upstream
+  # `wetextprocessing` transitive (via tn → pynini) does not build on
+  # Windows because pynini's sdist passes GCC-only flags to MSVC. We swap
+  # to `wetext` (kaldifst-based, has Windows wheels) and monkey-patch
+  # IndexTTS's TextNormalizer.load() to use the Darwin path globally.
+  "wetext>=0.1.2",
 ]
 
 [project.optional-dependencies]
@@ -57,6 +63,13 @@ packages = ["src/emotion_tts_worker"]
 
 [tool.uv]
 managed = true
+# Drop `wetextprocessing` (pulled in by indextts) from the resolution graph
+# entirely. It transitively requires pynini, which has no Windows wheels and
+# whose sdist will not build with MSVC. We replace its functionality with
+# `wetext` (declared above) and a runtime monkey-patch in the worker. The
+# `python_version < '0'` marker is always false, so this override removes
+# wetextprocessing wherever it would otherwise be required.
+override-dependencies = ["wetextprocessing ; python_version < '0'"]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }
