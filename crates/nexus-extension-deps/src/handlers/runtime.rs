@@ -134,5 +134,52 @@ impl StepHandler for RuntimeHandler {
 }
 
 fn runtime_dir(ctx: &StepContext<'_>, family: &str) -> std::path::PathBuf {
-    ctx.extension_data_dir.join("runtime").join(family)
+    runtime_dir_for(ctx.extension_data_dir, family)
+}
+
+/// Pure form of [`runtime_dir`] — does not require a full `StepContext`. The
+/// only thing this layout decision depends on is the extension's data dir and
+/// the family name; carving the helper out keeps the isolation invariant
+/// testable without standing up trait stubs.
+pub(crate) fn runtime_dir_for(
+    extension_data_dir: &std::path::Path,
+    family: &str,
+) -> std::path::PathBuf {
+    extension_data_dir.join("runtime").join(family)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pin: runtime installs land under the per-extension data dir, never
+    /// in a shared/global location. Companion to FR-033 + the host-extension
+    /// boundary rule. Catches refactors that accidentally reach for
+    /// `host_data_dir` or a system path.
+    #[test]
+    fn runtime_dir_is_extension_scoped() {
+        let ext_data = std::path::Path::new("/host/extensions/example");
+        let dir = runtime_dir_for(ext_data, "python");
+        assert!(
+            dir.starts_with(ext_data),
+            "runtime dir {} escapes extension_data_dir {}",
+            dir.display(),
+            ext_data.display()
+        );
+        // Plus: the family name segment is the deepest component, so two
+        // families on the same extension never collide.
+        assert!(dir.ends_with("python"));
+    }
+
+    /// A different family lands in a different leaf, never overlapping.
+    #[test]
+    fn runtime_dirs_for_different_families_do_not_alias() {
+        let ext_data = std::path::Path::new("/host/extensions/example");
+        let py = runtime_dir_for(ext_data, "python");
+        let llama = runtime_dir_for(ext_data, "llama.cpp");
+        assert_ne!(py, llama);
+        // Neither is a parent of the other.
+        assert!(!py.starts_with(&llama));
+        assert!(!llama.starts_with(&py));
+    }
 }

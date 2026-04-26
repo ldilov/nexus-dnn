@@ -67,8 +67,19 @@ fn select_source<'a>(
 }
 
 fn target_dir(ctx: &StepContext<'_>, id: &str, sha256: &str) -> PathBuf {
+    target_dir_for(ctx.extension_data_dir, id, sha256)
+}
+
+/// Pure form of [`target_dir`] — content-addressed binary install path under
+/// the per-extension data dir. Carved out so the extension-scope invariant
+/// is testable without a full `StepContext`.
+pub(crate) fn target_dir_for(
+    extension_data_dir: &std::path::Path,
+    id: &str,
+    sha256: &str,
+) -> PathBuf {
     let prefix = sha256.get(..8).unwrap_or(sha256);
-    ctx.extension_data_dir
+    extension_data_dir
         .join("runtime")
         .join("binaries")
         .join(id)
@@ -189,5 +200,49 @@ impl StepHandler for SystemBinaryHandler {
             ),
             metadata: Value::Null,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pin: every system binary lands under the per-extension data dir.
+    /// Two extensions installing ffmpeg get two separate copies (content-
+    /// addressed by sha256 prefix so reinstall is atomic) — never a shared
+    /// `/usr/local/bin` style write.
+    #[test]
+    fn target_dir_is_extension_scoped_and_content_addressed() {
+        let ext_data = std::path::Path::new("/host/extensions/example");
+        let sha = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
+        let dir = target_dir_for(ext_data, "ffmpeg", sha);
+        assert!(
+            dir.starts_with(ext_data),
+            "system_binary target {} escapes extension_data_dir {}",
+            dir.display(),
+            ext_data.display()
+        );
+        // Sha-prefix is the content-address; deeper than the binary id so
+        // a hash bump produces a sibling dir, not an overwrite.
+        assert!(dir.ends_with("deadbeef"));
+    }
+
+    /// Two extensions installing the same binary id (with the same sha)
+    /// land in two distinct dirs — the per-extension scope wins over any
+    /// cross-extension dedupe.
+    #[test]
+    fn target_dirs_for_two_extensions_do_not_alias() {
+        let sha = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
+        let a = target_dir_for(std::path::Path::new("/host/extensions/a"), "ffmpeg", sha);
+        let b = target_dir_for(std::path::Path::new("/host/extensions/b"), "ffmpeg", sha);
+        assert_ne!(a, b);
+    }
+
+    /// A short sha (or non-hex) still lands inside the per-extension dir —
+    /// the content-address prefix fallback never escapes.
+    #[test]
+    fn target_dir_handles_short_sha_safely() {
+        let dir = target_dir_for(std::path::Path::new("/host/x"), "id", "abc");
+        assert!(dir.starts_with("/host/x"));
     }
 }
