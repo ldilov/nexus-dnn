@@ -332,6 +332,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn runtime_probe_returns_none_when_version_predicate_excludes_installed_row() {
+        // A row exists for python 3.10.x but the manifest asks for >=3.11. The
+        // resolver MUST reject the row and return None — otherwise the dep gate
+        // would flip green for an incompatible runtime.
+        let pool = fresh_pool_with_runtime_installs().await;
+        sqlx::query(
+            "INSERT INTO host_runtime_installs (install_id, family, version, accelerator, install_root, state, created_at, updated_at) \
+             VALUES ('id-py310', 'python', '3.10.14', 'cpu', '/opt/runtimes/py310', 'installed', '2026-04-25T00:00:00Z', '2026-04-25T00:00:00Z')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let bootstrapper = RealRuntimeBootstrapper::new(pool);
+
+        let result = bootstrapper
+            .probe(
+                "python",
+                Some(">=3.11"),
+                &["cpu".into()],
+                std::path::Path::new("/tmp"),
+            )
+            .await
+            .unwrap();
+        assert!(
+            result.is_none(),
+            "version predicate '>=3.11' must reject installed 3.10.14 row, got: {result:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn runtime_bootstrap_returns_categorised_error_pointing_at_backends_ui() {
         let pool = fresh_pool_with_runtime_installs().await;
         let bootstrapper = RealRuntimeBootstrapper::new(pool);

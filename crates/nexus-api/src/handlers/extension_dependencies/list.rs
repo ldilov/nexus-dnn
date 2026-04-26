@@ -38,10 +38,11 @@ pub async fn list_dependencies(
     };
 
     let inputs = runner_context_inputs(&state)?;
+    // Compute the path but do NOT create it here. Probe handlers must tolerate a
+    // missing directory (a missing dir IS the "not satisfied" signal). The dir is
+    // created lazily by `start_install` on the install path; doing it on every
+    // `GET /dependencies` would be a wasteful filesystem touch on a hot read path.
     let extension_data_dir = inputs.host_data_dir.join("extensions").join(&extension_id);
-    tokio::fs::create_dir_all(&extension_data_dir)
-        .await
-        .map_err(|e| ApiError::Internal(format!("failed to ensure extension data dir: {e}")))?;
 
     let extension = state
         .extension_registry
