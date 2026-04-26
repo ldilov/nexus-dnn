@@ -31,6 +31,19 @@ impl InstallRunner {
     /// Walk the plan sequentially. Returns the final per-step status map plus the
     /// overall outcome.
     pub async fn run_install(&self, ctx: &mut RunnerContext<'_>) -> InstallReport {
+        let started = std::time::Instant::now();
+        let step_ids: Vec<&str> = self.plan.steps.iter().map(|s| s.id.as_str()).collect();
+        info!(
+            target: "spec_035::runner",
+            extension_id = %ctx.extension_id,
+            install_run_id = %ctx.install_run_id,
+            extension_dir = %ctx.extension_dir.display(),
+            extension_data_dir = %ctx.extension_data_dir.display(),
+            host_data_dir = %ctx.host_data_dir.display(),
+            step_count = self.plan.steps.len(),
+            steps = ?step_ids,
+            "install: run started — walking plan in topo order"
+        );
         let mut statuses: HashMap<String, StepStatus> = HashMap::new();
         let mut artifacts: HashMap<String, StepArtifact> = HashMap::new();
 
@@ -38,6 +51,12 @@ impl InstallRunner {
             // Skip if any upstream-required step failed. Downstream steps stay
             // pending so the user can see exactly what's blocked.
             if !upstream_satisfied(step, &statuses) {
+                tracing::warn!(
+                    target: "spec_035::runner",
+                    step_id = %step.id,
+                    requires = ?step.requires,
+                    "install: skipping step — upstream requirement(s) not satisfied"
+                );
                 statuses.insert(step.id.clone(), StepStatus::Pending);
                 continue;
             }
@@ -47,6 +66,11 @@ impl InstallRunner {
 
             // Halt on first failure. Subsequent steps stay pending.
             if matches!(statuses.get(&step.id), Some(StepStatus::Failed { .. })) {
+                tracing::error!(
+                    target: "spec_035::runner",
+                    step_id = %step.id,
+                    "install: HALTING run on first failure — downstream steps stay pending"
+                );
                 break;
             }
         }
@@ -80,6 +104,49 @@ impl InstallRunner {
         // state. The per-step events emitted earlier convey per-step success/failure;
         // `outcome` here is the one-shot summary so subscribers that don't reconcile
         // per-step events still get an authoritative answer.
+        let total_ms = started.elapsed().as_millis() as u64;
+        let final_summary: Vec<(&str, &'static str)> = self
+            .plan
+            .steps
+            .iter()
+            .map(|s| {
+                let kind = match statuses.get(&s.id) {
+                    Some(StepStatus::Ok { .. }) => "ok",
+                    Some(StepStatus::Skipped { .. }) => "skipped",
+                    Some(StepStatus::Failed { .. }) => "failed",
+                    Some(StepStatus::Pending) => "pending",
+                    Some(StepStatus::Running { .. }) => "running",
+                    None => "unreached",
+                };
+                (s.id.as_str(), kind)
+            })
+            .collect();
+        match outcome {
+            InstallOutcome::Success => info!(
+                target: "spec_035::runner",
+                extension_id = %ctx.extension_id,
+                install_run_id = %ctx.install_run_id,
+                total_ms,
+                summary = ?final_summary,
+                "install: run COMPLETE — all_satisfied=true"
+            ),
+            InstallOutcome::Failed => tracing::error!(
+                target: "spec_035::runner",
+                extension_id = %ctx.extension_id,
+                install_run_id = %ctx.install_run_id,
+                total_ms,
+                summary = ?final_summary,
+                "install: run FAILED — see step:run failed entries above for category + stderr"
+            ),
+            InstallOutcome::Cancelled => tracing::warn!(
+                target: "spec_035::runner",
+                extension_id = %ctx.extension_id,
+                install_run_id = %ctx.install_run_id,
+                total_ms,
+                summary = ?final_summary,
+                "install: run CANCELLED"
+            ),
+        }
         ctx.progress_sink.emit(ProgressEvent::InstallCompleted {
             extension_id: ctx.extension_id.to_owned(),
             install_run_id: ctx.install_run_id,
