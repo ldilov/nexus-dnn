@@ -285,6 +285,53 @@ impl NexusApp {
         let install_map_for_dep = install_map.clone();
         let download_orchestrator_for_dep = download_orchestrator.clone();
 
+        // Resolve the embedded-Python asset once: env-var override wins, then
+        // the spec-032 REGISTRY pin for the host's target triple. The same
+        // asset feeds BOTH the legacy backend pipeline (FamilyPythonHandler in
+        // family_handlers) AND the spec-035 dep installer's RealRuntimeBootstrapper.
+        let resolved_python_asset =
+            match nexus_backend_runtimes::family_python::PythonAssetConfig::from_env().load() {
+                Ok(Some(asset)) => {
+                    tracing::info!(
+                        url = %asset.url,
+                        kind = ?asset.kind,
+                        source = "env",
+                        "embedded-Python asset configured"
+                    );
+                    Some(asset)
+                }
+                Ok(None) => {
+                    match nexus_backend_runtimes::family_python::builtin_assets::for_current_target(
+                    ) {
+                        Some(asset) => {
+                            tracing::info!(
+                                url = %asset.url,
+                                kind = ?asset.kind,
+                                source = "registry",
+                                release_tag = nexus_backend_runtimes::family_python::builtin_assets::release_tag(),
+                                python_version = nexus_backend_runtimes::family_python::builtin_assets::python_version(),
+                                "embedded-Python asset resolved from REGISTRY"
+                            );
+                            Some(asset)
+                        }
+                        None => {
+                            tracing::debug!(
+                                "no embedded-Python asset for this host target; python-family \
+                         installs will fail until NEXUS_EMBEDDED_PYTHON_* env vars are set \
+                         or the target triple is added to REGISTRY"
+                            );
+                            None
+                        }
+                    }
+                }
+                Err(reason) => {
+                    tracing::warn!(%reason, "invalid NEXUS_EMBEDDED_PYTHON_* env config — falling back to REGISTRY");
+                    nexus_backend_runtimes::family_python::builtin_assets::for_current_target()
+                }
+            };
+        let python_asset_for_family_handlers = resolved_python_asset.clone();
+        let python_asset_for_dep_bootstrapper = resolved_python_asset;
+
         let state = nexus_api::AppState {
             health_status_fn: Arc::new(move || {
                 serde_json::to_value(app_ref.health_status()).unwrap_or_default()
@@ -315,34 +362,9 @@ impl NexusApp {
             family_handlers: {
                 let registry =
                     nexus_backend_runtimes::generic::family_handler::FamilyHandlerRegistry::new();
-                let python_asset =
-                    match nexus_backend_runtimes::family_python::PythonAssetConfig::from_env()
-                        .load()
-                    {
-                        Ok(Some(asset)) => {
-                            tracing::info!(
-                                url = %asset.url,
-                                kind = ?asset.kind,
-                                "embedded-Python asset configured from env"
-                            );
-                            Some(asset)
-                        }
-                        Ok(None) => {
-                            tracing::debug!(
-                                "no embedded-Python asset configured; python-family \
-                             installs will fail at bootstrap until NEXUS_EMBEDDED_PYTHON_* \
-                             env vars are set"
-                            );
-                            None
-                        }
-                        Err(reason) => {
-                            tracing::warn!(%reason, "invalid NEXUS_EMBEDDED_PYTHON_* env config — ignoring");
-                            None
-                        }
-                    };
                 nexus_api::handlers::backend_runtimes::pipeline_runner::register_default_handlers(
                     &registry,
-                    python_asset,
+                    python_asset_for_family_handlers,
                 )
                 .await;
                 registry
@@ -362,7 +384,10 @@ impl NexusApp {
             dep_handler_registry: Some(nexus_api::dep_bootstrap::default_dep_handler_registry()),
             dep_install_state: std::sync::Arc::new(Default::default()),
             dep_runtime_bootstrapper: Some(std::sync::Arc::new(
-                nexus_api::dep_bootstrap::RealRuntimeBootstrapper::new(db_for_dep.pool().clone()),
+                nexus_api::dep_bootstrap::RealRuntimeBootstrapper::with_python_asset(
+                    db_for_dep.pool().clone(),
+                    python_asset_for_dep_bootstrapper,
+                ),
             )),
             dep_model_store: Some(std::sync::Arc::new(
                 nexus_api::dep_bootstrap::RealModelStoreClient::new(
