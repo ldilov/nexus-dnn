@@ -14,7 +14,9 @@ use crate::context::StepContext;
 use crate::error::DepError;
 use crate::handler::{HandlerRegistry, ProbeResult};
 use crate::plan::{InstallPlan, Step};
-use crate::types::{ProgressEvent, ProgressSink, StepArtifact, StepError, StepStatus};
+use crate::types::{
+    InstallOutcome, ProgressEvent, ProgressSink, StepArtifact, StepError, StepStatus,
+};
 
 pub struct InstallRunner {
     pub plan: InstallPlan,
@@ -55,13 +57,34 @@ impl InstallRunner {
             .iter()
             .all(|s| statuses.get(&s.id).is_some_and(|st| st.is_satisfied()));
 
-        // Always emit a terminal event so subscribers can clear their "active"
-        // state. The success/failure outcome is conveyed by the per-step events
-        // already emitted (and reflected in subsequent /dependencies probe).
+        // Halted-run note: when a step Failed and the runner broke out of the loop,
+        // subsequent steps were never reached and have NO entry in `statuses`. Per
+        // FR-040 the next `GET /dependencies` will probe each step fresh — the
+        // unreached ones return `NotSatisfied` which renders as `pending`. This is
+        // intentional: the user sees `step1 = failed` (overlaid from runner-state),
+        // `step2..N = pending`. There is no "blocked-by-upstream" status because the
+        // probe is what decides satisfaction, not the runner's halt point.
+
+        // Resolve the terminal outcome: cancellation wins over plain failure (so the
+        // UI can show a distinct "cancelled" message), success requires every step
+        // to be `Ok` or `Skipped`, anything else is a categorised failure.
+        let outcome = if ctx.cancellation_token.is_cancelled() {
+            InstallOutcome::Cancelled
+        } else if all_satisfied {
+            InstallOutcome::Success
+        } else {
+            InstallOutcome::Failed
+        };
+
+        // Always emit the terminal event so subscribers can clear their "active"
+        // state. The per-step events emitted earlier convey per-step success/failure;
+        // `outcome` here is the one-shot summary so subscribers that don't reconcile
+        // per-step events still get an authoritative answer.
         ctx.progress_sink.emit(ProgressEvent::InstallCompleted {
             extension_id: ctx.extension_id.to_owned(),
             install_run_id: ctx.install_run_id,
             completed_at: Utc::now(),
+            outcome,
         });
 
         InstallReport {

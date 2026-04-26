@@ -9,7 +9,7 @@ use std::sync::Arc;
 use nexus_events::bus::EventBus;
 use nexus_events::types::NexusEvent;
 use nexus_extension::ExtensionRegistry;
-use nexus_extension_deps::{InstallPlan, ProgressEvent, ProgressSink};
+use nexus_extension_deps::{InstallOutcome, InstallPlan, ProgressEvent, ProgressSink};
 
 use crate::AppState;
 use crate::error::ApiError;
@@ -92,13 +92,26 @@ impl ProgressSink for EventBusProgressSink {
                 extension_id,
                 install_run_id,
                 completed_at,
+                outcome,
             } => NexusEvent::ExtensionInstallCompleted {
                 extension_id,
                 install_run_id: install_run_id.to_string(),
                 completed_at: completed_at.to_rfc3339(),
+                outcome: install_outcome_wire(outcome).to_owned(),
             },
         };
         self.bus.publish(nexus_event);
+    }
+}
+
+/// Snake-case wire form for the terminal outcome — kept colocated with the
+/// `ProgressEvent::InstallCompleted -> NexusEvent::ExtensionInstallCompleted`
+/// translation so any new variant is impossible to forget.
+fn install_outcome_wire(outcome: InstallOutcome) -> &'static str {
+    match outcome {
+        InstallOutcome::Success => "success",
+        InstallOutcome::Failed => "failed",
+        InstallOutcome::Cancelled => "cancelled",
     }
 }
 
