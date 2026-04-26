@@ -6,7 +6,7 @@ recipe:
   summary: "Paste a multi-character script, pick voices + emotion, click Generate\
     \ \u2014 ZIP drops with per-line audio + manifest."
   category: tts.dialogue
-workflow: emotional_dialogue_batch@1.0.0
+workflow_template: "workflows/emotional_dialogue_batch.yaml"
 fields:
 - id: script
   type: multiline_text
