@@ -108,17 +108,131 @@ impl RuntimeBootstrapper for RealRuntimeBootstrapper {
     async fn bootstrap(
         &self,
         family: &str,
-        _version: Option<&str>,
-        _accelerator_profiles: &[String],
-        _target_dir: &std::path::Path,
-        _cancellation: CancellationToken,
+        version: Option<&str>,
+        accelerator_profiles: &[String],
+        target_dir: &std::path::Path,
+        cancellation: CancellationToken,
     ) -> Result<RuntimeBootstrapResult, DepError> {
-        Err(DepError::Backend(format!(
-            "runtime '{family}' is not installed; install it from the Backends page. \
-             The dep installer probes the host's runtime store but does not run the \
-             full install pipeline (version manifest + accelerator selection happens \
-             in the Backends UI)."
-        )))
+        match RuntimeFamily::canonical(family) {
+            Some(RuntimeFamily::Python) => {
+                self.bootstrap_python(version, accelerator_profiles, target_dir, cancellation)
+                    .await
+            }
+            _ => Err(DepError::Backend(format!(
+                "runtime '{family}' is not installed; install it from the Backends page. \
+                 The dep installer probes the host's runtime store but does not run the \
+                 full install pipeline for this family yet."
+            ))),
+        }
+    }
+}
+
+impl RealRuntimeBootstrapper {
+    /// Drive `family_python::bootstrap::run` against `target_dir` using the
+    /// pinned `PythonAsset`. The asset is a host-owned input — the dep installer
+    /// is delegating to spec-032's family handler, not duplicating its logic.
+    /// When no asset is configured (REGISTRY empty + no env override) we fall
+    /// through to the categorised "go to Backends page" error so the user gets
+    /// a meaningful pointer instead of a silent failure.
+    async fn bootstrap_python(
+        &self,
+        _version: Option<&str>,
+        accelerator_profiles: &[String],
+        target_dir: &std::path::Path,
+        cancellation: CancellationToken,
+    ) -> Result<RuntimeBootstrapResult, DepError> {
+        use nexus_backend_runtimes::events::{BackendEventBus, SharedPublisher};
+        use nexus_backend_runtimes::family_python::{bootstrap as py_bootstrap, python_exe_in};
+        use nexus_backend_runtimes::generic::ids::{
+            AcceleratorProfile, PlatformId, ReleaseId, RuntimeId, RuntimeInstallId,
+        };
+        use nexus_backend_runtimes::generic::install_ctx::InstallCtx;
+
+        let asset = self.python_asset.as_ref().ok_or_else(|| {
+            DepError::Backend(
+                "embedded python asset not configured on this host (set \
+                 NEXUS_EMBEDDED_PYTHON_URL/SHA256/SIZE/KIND or pin a release in \
+                 family_python::builtin_assets::REGISTRY); install it from the Backends \
+                 page if a different runtime install pipeline is preferred."
+                    .to_owned(),
+            )
+        })?;
+
+        tokio::fs::create_dir_all(target_dir).await.map_err(|e| {
+            DepError::Backend(format!("create target_dir {}: {e}", target_dir.display()))
+        })?;
+        let cache = target_dir.join(".cache");
+        tokio::fs::create_dir_all(&cache)
+            .await
+            .map_err(|e| DepError::Backend(format!("create cache dir {}: {e}", cache.display())))?;
+
+        let publisher: SharedPublisher = Arc::new(BackendEventBus::new(64));
+        let platform = PlatformId::try_from(host_platform_label())
+            .map_err(|e| DepError::Backend(format!("host platform unsupported: {e}")))?;
+        let accelerator_label = accelerator_profiles
+            .iter()
+            .find(|p| !p.is_empty())
+            .map(|s| s.as_str())
+            .unwrap_or("cpu");
+        let accelerator = AcceleratorProfile::try_from(accelerator_label)
+            .map_err(|e| DepError::Backend(format!("invalid accelerator profile: {e}")))?;
+
+        let mut ctx = InstallCtx {
+            install_id: RuntimeInstallId::new(),
+            runtime_id: RuntimeId::try_from("nexus.dep.python")
+                .map_err(|e| DepError::Backend(format!("synthetic runtime id: {e}")))?,
+            release_id: ReleaseId::try_from("dep_installer")
+                .map_err(|e| DepError::Backend(format!("synthetic release id: {e}")))?,
+            platform,
+            accelerator_profile: accelerator,
+            partial_path: target_dir.to_path_buf(),
+            install_path: target_dir.to_path_buf(),
+            download_cache: cache,
+            release_manifest: serde_json::Value::Null,
+            extension_root: None,
+            resolved_asset: None,
+            downloaded_archive: None,
+            artifact_hash: None,
+            entrypoint_path: None,
+            event_publisher: publisher,
+            cancellation,
+            phase_cached: false,
+        };
+
+        py_bootstrap::run(&mut ctx, Some(asset))
+            .await
+            .map_err(|e| DepError::Backend(format!("python bootstrap: {e}")))?;
+
+        let interpreter = python_exe_in(target_dir);
+        let bytes_placed = tokio::fs::metadata(&interpreter)
+            .await
+            .map(|m| m.len())
+            .unwrap_or(0);
+
+        Ok(RuntimeBootstrapResult {
+            install_dir: target_dir.to_path_buf(),
+            resolved_version:
+                nexus_backend_runtimes::family_python::builtin_assets::python_version().to_owned(),
+            resolved_profile: Some(accelerator_label.to_owned()),
+            bytes_placed,
+        })
+    }
+}
+
+/// Map cfg-detected host to the spec-032 `PlatformId` wire form.
+fn host_platform_label() -> &'static str {
+    if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        "windows-x64"
+    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+        "linux-x64"
+    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+        "linux-arm64"
+    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+        "darwin-x64"
+    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        "darwin-arm64"
+    } else {
+        "unknown"
     }
 }
 
@@ -491,13 +605,7 @@ mod tests {
 
         let bootstrapper = RealRuntimeBootstrapper::with_python_asset(pool, None);
         let err = bootstrapper
-            .bootstrap(
-                "python",
-                None,
-                &[],
-                &target_dir,
-                CancellationToken::new(),
-            )
+            .bootstrap("python", None, &[], &target_dir, CancellationToken::new())
             .await
             .unwrap_err();
         let msg = err.to_string();
