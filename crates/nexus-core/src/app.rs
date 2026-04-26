@@ -284,6 +284,9 @@ impl NexusApp {
         let db_for_dep = db.clone();
         let install_map_for_dep = install_map.clone();
         let download_orchestrator_for_dep = download_orchestrator.clone();
+        let huggingface_for_dep = huggingface.clone();
+        let capability_registry_for_dep = capability_registry.clone();
+        let download_job_store_for_dep = download_job_store.clone();
 
         // Resolve the embedded-Python asset once: env-var override wins, then
         // the spec-032 REGISTRY pin for the host's target triple. The same
@@ -393,6 +396,9 @@ impl NexusApp {
                 nexus_api::dep_bootstrap::RealModelStoreClient::new(
                     install_map_for_dep,
                     download_orchestrator_for_dep,
+                    Some(huggingface_for_dep),
+                    capability_registry_for_dep,
+                    Some(download_job_store_for_dep),
                 ),
             )),
             dep_worker_handshake: Some(std::sync::Arc::new(
