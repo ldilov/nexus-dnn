@@ -76,19 +76,17 @@ pub async fn list_dependencies(
     // recorded a `Failed` status from a prior install attempt MUST surface as
     // `failed` so the user sees why the install halted (without this overlay, the
     // step appears `pending` forever and the failure is silent).
-    let runner_state: HashMap<String, StepStatus> = state
+    // Clone the Arc out under the DashMap shard lock and drop the shard guard
+    // before awaiting on the per-extension Mutex — holding both is unnecessary
+    // and would block other extensions' state lookups.
+    let runner_state_arc = state
         .dep_install_state
         .get(&extension_id)
-        .map(|entry| {
-            let arc = entry.value().clone();
-            drop(entry);
-            arc
-        })
-        .map(|arc| {
-            let guard = arc.try_lock();
-            guard.map(|g| g.steps.clone()).unwrap_or_default()
-        })
-        .unwrap_or_default();
+        .map(|entry| entry.value().clone());
+    let runner_state: HashMap<String, StepStatus> = match runner_state_arc {
+        Some(arc) => arc.lock().await.steps.clone(),
+        None => HashMap::new(),
+    };
 
     for step in &plan.steps {
         let mut dto = probe_step(&inputs.registry, &runner_ctx, step, &upstream).await;
