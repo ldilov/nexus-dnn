@@ -141,29 +141,73 @@ impl StepHandler for PackageSetHandler {
         let venv = venv_dir(ctx);
         tokio::fs::create_dir_all(venv.parent().expect("parent")).await?;
 
-        // Locate `uv`. The runtime handler installs uv into the Python install dir;
-        // we look there first, then fall back to PATH.
-        let uv_bin = locate_uv(ctx)?;
+        // Locate `uv` on disk (Python runtime first, then PATH fallback).
+        let uv_bin = locate_uv(ctx);
+        let python_exe = python_interpreter(ctx);
 
-        // `uv sync` installs from the manifest into a venv. Prefer
-        // `--project <ext-dir>` to anchor the workspace and `UV_PROJECT_ENVIRONMENT`
-        // to point to our externally-managed venv.
+        // `uv sync` installs from the manifest into a venv. Setting UV_PYTHON to
+        // the embedded interpreter prevents uv from searching PATH and picking
+        // up a different system Python. UV_PROJECT_ENVIRONMENT pins the venv
+        // location to our extension-local packages dir.
         let project_dir = manifest_full
             .parent()
             .unwrap_or(ctx.extension_dir)
             .to_path_buf();
+
+        tracing::info!(
+            target: "spec_035::package_set",
+            manager = %parsed.manager,
+            uv_bin = %uv_bin.display(),
+            python_exe = %python_exe.as_deref().map(|p| p.display().to_string()).unwrap_or_else(|| "(none)".into()),
+            project_dir = %project_dir.display(),
+            venv = %venv.display(),
+            "package_set: spawning uv sync"
+        );
+
         let mut cmd = Command::new(&uv_bin);
         cmd.arg("sync")
             .arg("--project")
             .arg(&project_dir)
             .arg("--no-progress")
             .env("UV_PROJECT_ENVIRONMENT", &venv);
+        if let Some(py) = python_exe.as_deref() {
+            cmd.env("UV_PYTHON", py);
+            cmd.env("VIRTUAL_ENV", &venv);
+        }
 
         // Honour cancellation: spawn so the child can be killed when the token fires.
         let mut child = cmd
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
-            .spawn()?;
+            .spawn()
+            .map_err(|e| {
+                let kind = e.kind();
+                let hint = if matches!(kind, std::io::ErrorKind::NotFound) {
+                    " — uv binary not found at the candidate paths or on PATH. \
+                     Install uv (https://docs.astral.sh/uv/getting-started/installation/) \
+                     or set the runtime to bundle it."
+                } else {
+                    ""
+                };
+                DepError::Backend(format!("spawn `{}` failed: {e}{hint}", uv_bin.display()))
+            })?;
+
+        // Drain stdout/stderr concurrently with wait() so the child's pipe
+        // buffers never fill up (which would deadlock it). Take the handles
+        // out of the Child so we can keep `child` borrowable for kill/wait.
+        use tokio::io::AsyncReadExt;
+        let mut stdout_pipe = child.stdout.take().expect("stdout piped");
+        let mut stderr_pipe = child.stderr.take().expect("stderr piped");
+        let stdout_task = tokio::spawn(async move {
+            let mut buf = Vec::new();
+            let _ = stdout_pipe.read_to_end(&mut buf).await;
+            buf
+        });
+        let stderr_task = tokio::spawn(async move {
+            let mut buf = Vec::new();
+            let _ = stderr_pipe.read_to_end(&mut buf).await;
+            buf
+        });
 
         let cancel = ctx.cancellation_token.clone();
         let status = tokio::select! {
@@ -173,8 +217,54 @@ impl StepHandler for PackageSetHandler {
             }
             res = child.wait() => res?,
         };
+
+        let stdout_bytes = stdout_task.await.unwrap_or_default();
+        let stderr_bytes = stderr_task.await.unwrap_or_default();
+
+        // Always surface uv's output — silent failures are the worst kind of
+        // user-facing bug. Truncate to keep error messages bounded.
+        let stdout = truncate_utf8(&stdout_bytes, 1024);
+        let stderr = truncate_utf8(&stderr_bytes, 2048);
         if !status.success() {
-            return Err(DepError::Backend(format!("uv sync exited with {status}")));
+            tracing::error!(
+                target: "spec_035::package_set",
+                exit_status = ?status,
+                exit_code = status.code(),
+                uv_bin = %uv_bin.display(),
+                project_dir = %project_dir.display(),
+                venv = %venv.display(),
+                python_exe = %python_exe.as_deref().map(|p| p.display().to_string()).unwrap_or_else(|| "(none)".into()),
+                stdout_bytes = stdout_bytes.len(),
+                stderr_bytes = stderr_bytes.len(),
+                stdout = %stdout,
+                stderr = %stderr,
+                "package_set: uv sync FAILED"
+            );
+            return Err(DepError::Backend(format!(
+                "uv sync exited with {} (exit_code={:?}) — stderr: {stderr} — stdout: {stdout}",
+                status,
+                status.code()
+            )));
+        }
+        tracing::info!(
+            target: "spec_035::package_set",
+            stdout_bytes = stdout_bytes.len(),
+            stderr_bytes = stderr_bytes.len(),
+            "package_set: uv sync OK"
+        );
+        if !stdout.trim().is_empty() {
+            tracing::debug!(
+                target: "spec_035::package_set",
+                stdout = %stdout,
+                "package_set: uv stdout"
+            );
+        }
+        if !stderr.trim().is_empty() {
+            tracing::debug!(
+                target: "spec_035::package_set",
+                stderr = %stderr,
+                "package_set: uv stderr (warnings)"
+            );
         }
 
         // Stamp the marker file with the manifest sha256 so probe() can detect drift.
@@ -201,8 +291,45 @@ impl StepHandler for PackageSetHandler {
     }
 }
 
-fn locate_uv(ctx: &StepContext<'_>) -> Result<PathBuf, DepError> {
-    // Scripts/uv.exe (Windows) or bin/uv (POSIX) inside the python runtime install.
+/// Truncate raw bytes to `limit` chars (respecting UTF-8 boundaries) for
+/// inclusion in user-facing error messages and logs.
+fn truncate_utf8(bytes: &[u8], limit: usize) -> String {
+    let text = String::from_utf8_lossy(bytes);
+    if text.len() <= limit {
+        return text.into_owned();
+    }
+    let mut end = limit;
+    while !text.is_char_boundary(end) && end > 0 {
+        end -= 1;
+    }
+    format!("{}…(truncated)", &text[..end])
+}
+
+/// Resolve the embedded Python interpreter path so we can pin uv to it via
+/// UV_PYTHON. Returns None if the interpreter is missing — the caller falls
+/// back to letting uv search PATH (and surfacing whatever uv reports).
+fn python_interpreter(ctx: &StepContext<'_>) -> Option<PathBuf> {
+    let py_runtime = ctx.extension_data_dir.join("runtime").join("python");
+    let candidates = if cfg!(windows) {
+        vec![
+            py_runtime.join("python").join("python.exe"),
+            py_runtime.join("python.exe"),
+        ]
+    } else {
+        vec![
+            py_runtime.join("python").join("bin").join("python3"),
+            py_runtime.join("bin").join("python3"),
+        ]
+    };
+    candidates.into_iter().find(|p| p.is_file())
+}
+
+/// Resolve the path to the `uv` binary. Prefers an embedded uv co-located with
+/// the Python runtime install (Scripts/uv.exe on Windows, bin/uv on POSIX);
+/// falls back to bare `uv` for PATH lookup. Never errors — the caller surfaces
+/// "spawn failed" when uv is genuinely missing so the user gets a clear
+/// pointer rather than a failure here.
+fn locate_uv(ctx: &StepContext<'_>) -> PathBuf {
     let py_runtime = ctx.extension_data_dir.join("runtime").join("python");
     let candidates = if cfg!(windows) {
         vec![
@@ -215,13 +342,21 @@ fn locate_uv(ctx: &StepContext<'_>) -> Result<PathBuf, DepError> {
             py_runtime.join("python").join("bin").join("uv"),
         ]
     };
-    for c in &candidates {
+    for c in candidates {
         if c.exists() {
-            return Ok(c.clone());
+            tracing::debug!(
+                target: "spec_035::package_set",
+                uv = %c.display(),
+                "package_set: located embedded uv"
+            );
+            return c;
         }
     }
-    // Fallback to PATH lookup.
-    Ok(PathBuf::from("uv"))
+    tracing::debug!(
+        target: "spec_035::package_set",
+        "package_set: no embedded uv found — falling back to PATH lookup"
+    );
+    PathBuf::from("uv")
 }
 
 async fn file_sha256(path: &Path) -> Result<String, DepError> {
