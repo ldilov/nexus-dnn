@@ -10,9 +10,8 @@ export interface ExtensionLayoutViewProps {
   /**
    * Optional deployment context. When set, the bundle's root custom
    * element receives `deployment-id="<id>"` so it can route to its
-   * per-deployment views (e.g. emotion-tts's RecipeView at
-   * `/<id>/recipe`) instead of falling back to the deployments-index
-   * landing page.
+   * per-deployment views (e.g. `/<id>/recipe`) instead of falling
+   * back to its index landing page.
    */
   deploymentId?: string;
 }
