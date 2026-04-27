@@ -9,8 +9,6 @@
 //! Shape matches `contracts/http/engine_settings.yaml`. The PATCH endpoints
 //! leave any field the caller omits unchanged (column COALESCE in the repo).
 
-use std::sync::Arc;
-
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
