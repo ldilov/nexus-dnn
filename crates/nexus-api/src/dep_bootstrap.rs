@@ -708,7 +708,15 @@ impl WorkerHandshake for RealWorkerHandshake {
             .join("packages")
             .join(".venv");
 
-        let python_exe = match find_python_interpreter(upstream_artifacts) {
+        // Resolve the BASE interpreter only as a sanity check that the
+        // runtime step actually placed Python on disk. The handshake
+        // invokes Python through the venv's own python (set further
+        // below) so the editable `emotion_tts_worker` package — and
+        // every other dep uv installed into the venv — is on
+        // sys.path. Spawning the base interpreter directly would
+        // produce `No module named emotion_tts_worker` because the
+        // base interpreter doesn't see venv site-packages.
+        let _base_python = match find_python_interpreter(upstream_artifacts) {
             Some(p) => p,
             None => {
                 let candidate =
@@ -772,25 +780,45 @@ impl WorkerHandshake for RealWorkerHandshake {
             }
         };
 
+        // Resolve the venv's bin/Scripts dir + the venv-owned python.
+        // uv-managed venvs always ship a Scripts/python.exe (windows) or
+        // bin/python (unix) launcher that's pre-configured to use the
+        // venv's site-packages. Spawning this is the *only* way to make
+        // the editable `<package>` install (and every transitive dep)
+        // visible to `python -m`. Falling back to the base interpreter
+        // would produce `No module named <package>`.
+        let venv_bin = if cfg!(windows) {
+            venv_dir.join("Scripts")
+        } else {
+            venv_dir.join("bin")
+        };
+        let venv_python = if cfg!(windows) {
+            venv_bin.join("python.exe")
+        } else {
+            venv_bin.join("python")
+        };
+        if !venv_python.is_file() {
+            return Err(HandshakeError {
+                category: "venv_python_missing".into(),
+                message: format!(
+                    "expected venv python at {} but the file does not exist; \
+                     venv may be corrupt — re-run the package_set step",
+                    venv_python.display()
+                ),
+            });
+        }
+
         tracing::info!(
             target: "spec_035::handshake",
             extension_id,
-            python_exe = %python_exe.display(),
+            venv_python = %venv_python.display(),
             venv_dir = %venv_dir.display(),
             module_name,
             timeout_secs = timeout.as_secs(),
             "handshake: spawning worker"
         );
 
-        // Resolve the venv's bin/Scripts dir for PATH precedence so any
-        // `import`-time tooling that shells out finds the right binaries.
-        let venv_bin = if cfg!(windows) {
-            venv_dir.join("Scripts")
-        } else {
-            venv_dir.join("bin")
-        };
-
-        let mut cmd = tokio::process::Command::new(&python_exe);
+        let mut cmd = tokio::process::Command::new(&venv_python);
         cmd.arg("-u") // unbuffered stdio so handshake response arrives promptly
             .arg("-m")
             .arg(&module_name)
@@ -818,7 +846,7 @@ impl WorkerHandshake for RealWorkerHandshake {
 
         let mut child = cmd.spawn().map_err(|err| HandshakeError {
             category: "worker_spawn_failed".into(),
-            message: format!("failed to spawn '{}' -m {module_name}: {err}", python_exe.display()),
+            message: format!("failed to spawn '{}' -m {module_name}: {err}", venv_python.display()),
         })?;
 
         let mut stdin = child.stdin.take().expect("stdin piped");
