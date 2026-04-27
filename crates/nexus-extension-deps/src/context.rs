@@ -88,10 +88,17 @@ pub struct RuntimeBootstrapResult {
 pub trait WorkerHandshake: Send + Sync {
     /// Spawn the extension's worker, run the handshake within `timeout`, and return
     /// success or a categorised failure.
+    ///
+    /// `extension_data_dir` is the per-extension host-data directory
+    /// (e.g. `<host_data_dir>/extensions/<extension_id>`) — implementations
+    /// can use it as a convention-based fallback when `upstream_artifacts`
+    /// is missing the runtime/venv (e.g. on a host built before the
+    /// runner's probe-skip artifact-propagation fix landed).
     async fn run_handshake(
         &self,
         extension_id: &str,
         extension_dir: &std::path::Path,
+        extension_data_dir: &std::path::Path,
         upstream_artifacts: &HashMap<String, StepArtifact>,
         timeout: std::time::Duration,
         cancellation: tokio_util::sync::CancellationToken,

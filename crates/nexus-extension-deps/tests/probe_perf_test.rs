@@ -86,6 +86,7 @@ impl WorkerHandshake for StubHandshake {
         &self,
         _ext: &str,
         _dir: &Path,
+        _data: &Path,
         _ups: &HashMap<String, StepArtifact>,
         _t: Duration,
         _c: CancellationToken,
