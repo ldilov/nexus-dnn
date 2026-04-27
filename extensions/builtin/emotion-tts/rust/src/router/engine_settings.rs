@@ -26,11 +26,11 @@ use crate::storage::Repos;
 pub fn router(repos: Repos) -> Router {
     Router::new()
         .route(
-            "/deployments/:deployment_id/engine-settings",
+            "/deployments/{deployment_id}/engine-settings",
             get(fetch).patch(patch_settings),
         )
         .route(
-            "/deployments/:deployment_id/oas-threshold",
+            "/deployments/{deployment_id}/oas-threshold",
             patch(patch_oas_threshold),
         )
         .with_state(repos)

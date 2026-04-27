@@ -37,16 +37,16 @@ pub struct RunsState {
 #[must_use]
 pub fn router(state: RunsState) -> Router {
     Router::new()
-        .route("/deployments/:deployment_id/runs", get(list_runs).post(create_run))
-        .route("/deployments/:deployment_id/runs/:run_id", get(get_run))
-        .route("/deployments/:deployment_id/runs/:run_id/cancel", post(cancel_run))
-        .route("/deployments/:deployment_id/runs/:run_id/resume", post(resume_run))
+        .route("/deployments/{deployment_id}/runs", get(list_runs).post(create_run))
+        .route("/deployments/{deployment_id}/runs/{run_id}", get(get_run))
+        .route("/deployments/{deployment_id}/runs/{run_id}/cancel", post(cancel_run))
+        .route("/deployments/{deployment_id}/runs/{run_id}/resume", post(resume_run))
         .route(
-            "/deployments/:deployment_id/runs/:run_id/progress",
+            "/deployments/{deployment_id}/runs/{run_id}/progress",
             get(run_progress),
         )
-        .route("/deployments/:deployment_id/runs/test-line", post(test_line))
-        .route("/runs/:run_id/diagnostics", get(diagnostics))
+        .route("/deployments/{deployment_id}/runs/test-line", post(test_line))
+        .route("/runs/{run_id}/diagnostics", get(diagnostics))
         .with_state(state)
 }
 

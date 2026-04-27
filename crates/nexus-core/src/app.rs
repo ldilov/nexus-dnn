@@ -460,15 +460,22 @@ fn build_extension_router_registry(
     let registry = Arc::new(DefaultRegistry::new());
     let host_base_url = format!("http://127.0.0.1:{host_port}");
 
-    let providers: Vec<Arc<dyn ExtensionRouterProvider>> = vec![Arc::new(
-        nexus_local_llm_chat_history::LocalLlmRouterProvider::new(
-            nexus_local_llm_chat_history::LocalLlmProviderResources::from_host_base_url(
-                pool,
-                host_base_url.clone(),
-                chat_resources,
+    let providers: Vec<Arc<dyn ExtensionRouterProvider>> = vec![
+        Arc::new(
+            nexus_local_llm_chat_history::LocalLlmRouterProvider::new(
+                nexus_local_llm_chat_history::LocalLlmProviderResources::from_host_base_url(
+                    pool.clone(),
+                    host_base_url.clone(),
+                    chat_resources,
+                ),
             ),
         ),
-    )];
+        Arc::new(
+            emotion_tts_extension::EmotionTtsRouterProvider::new(
+                emotion_tts_extension::EmotionTtsProviderResources::new(pool),
+            ),
+        ),
+    ];
 
     for provider in &providers {
         let id_str = provider.extension_id();
