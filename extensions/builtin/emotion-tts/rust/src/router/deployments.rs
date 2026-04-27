@@ -31,8 +31,8 @@ pub fn router(repos: Repos) -> Router {
 pub fn router_with_families(repos: Repos, family_registry: Arc<FamilyRegistry>) -> Router {
     Router::new()
         .route("/", get(list_deployments).post(create_deployment))
-        .route("/:deployment_id", get(get_deployment).patch(patch_deployment).delete(delete_deployment))
-        .route("/:deployment_id/resume", post(resume))
+        .route("/{deployment_id}", get(get_deployment).patch(patch_deployment).delete(delete_deployment))
+        .route("/{deployment_id}/resume", post(resume))
         .with_state(Arc::new(DeploymentsState { repos, family_registry }))
 }
 

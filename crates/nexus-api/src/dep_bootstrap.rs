@@ -656,9 +656,9 @@ impl ModelStoreClient for RealModelStoreClient {
 /// Conventions (kept extension-id-agnostic):
 /// * The worker's package config lives at `<extension_dir>/worker/pyproject.toml`.
 /// * `[project.scripts]`'s first entry is `<dist>=<module>:<func>`; the
-///   importable package root is the dotted prefix before `:` (i.e. for
-///   `emotion-tts-worker = "emotion_tts_worker.main:main"` we run
-///   `python -m emotion_tts_worker`). The package must ship a
+///   importable package root is the dotted prefix before `:` (e.g.
+///   `<my-worker> = "<my_worker_pkg>.main:main"` invokes
+///   `python -m <my_worker_pkg>`). The package must ship a
 ///   `__main__.py` so `-m` is invokable.
 /// * The Python interpreter is found by walking every upstream artifact's
 ///   `path` and trying `python_exe_in()`. The venv is found by walking
@@ -711,11 +711,11 @@ impl WorkerHandshake for RealWorkerHandshake {
         // Resolve the BASE interpreter only as a sanity check that the
         // runtime step actually placed Python on disk. The handshake
         // invokes Python through the venv's own python (set further
-        // below) so the editable `emotion_tts_worker` package — and
+        // below) so the extension's editable worker package — and
         // every other dep uv installed into the venv — is on
         // sys.path. Spawning the base interpreter directly would
-        // produce `No module named emotion_tts_worker` because the
-        // base interpreter doesn't see venv site-packages.
+        // produce `No module named <package>` because the base
+        // interpreter doesn't see venv site-packages.
         let _base_python = match find_python_interpreter(upstream_artifacts) {
             Some(p) => p,
             None => {
@@ -1087,8 +1087,7 @@ fn find_venv_root(
 /// Read `[project.scripts]` from the worker's pyproject.toml and return
 /// the importable package root of the first script entry.
 ///
-/// `emotion-tts-worker = "emotion_tts_worker.main:main"` →
-/// returns `"emotion_tts_worker"`.
+/// `<dist-name> = "<package>.main:main"` → returns `"<package>"`.
 fn read_worker_module_from_pyproject(path: &std::path::Path) -> Result<String, String> {
     let body = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let parsed: toml::Value = toml::from_str(&body).map_err(|e| e.to_string())?;

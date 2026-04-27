@@ -22,7 +22,7 @@ pub struct PresetsState {
 pub fn router(repos: Repos) -> Router {
     Router::new()
         .route("/", get(list).post(create))
-        .route("/:preset_id", get(fetch).patch(patch_preset).delete(delete_preset))
+        .route("/{preset_id}", get(fetch).patch(patch_preset).delete(delete_preset))
         .with_state(Arc::new(PresetsState { repos }))
 }
 

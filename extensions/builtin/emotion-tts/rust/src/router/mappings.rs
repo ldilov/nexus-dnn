@@ -24,8 +24,8 @@ pub fn router(repos: Repos) -> Router {
         .route("/", get(list).post(create))
         .route("/import", post(import))
         .route("/export", get(export))
-        .route("/:mapping_id", get(fetch).patch(patch_mapping).delete(delete_mapping))
-        .route("/:mapping_id/duplicate", post(duplicate))
+        .route("/{mapping_id}", get(fetch).patch(patch_mapping).delete(delete_mapping))
+        .route("/{mapping_id}/duplicate", post(duplicate))
         .with_state(Arc::new(MappingsState { repos }))
 }
 
