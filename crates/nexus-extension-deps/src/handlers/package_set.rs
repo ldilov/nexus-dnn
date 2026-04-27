@@ -580,6 +580,7 @@ mod tests {
                 &self,
                 _ext: &str,
                 _dir: &Path,
+                _data: &Path,
                 _ups: &std::collections::HashMap<String, crate::StepArtifact>,
                 _t: std::time::Duration,
                 _c: tokio_util::sync::CancellationToken,

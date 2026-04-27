@@ -89,6 +89,7 @@ impl StepHandler for ValidationHandler {
             .run_handshake(
                 ctx.extension_id,
                 ctx.extension_dir,
+                ctx.extension_data_dir,
                 ctx.upstream_artifacts,
                 timeout,
                 ctx.cancellation_token.clone(),
