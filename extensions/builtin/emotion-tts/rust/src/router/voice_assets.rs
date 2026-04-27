@@ -50,8 +50,8 @@ pub fn router(
                 .get(list)
                 .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT_BYTES)),
         )
-        .route("/:voice_asset_id", get(fetch).delete(deactivate))
-        .route("/:voice_asset_id/preprocess", post(preprocess))
+        .route("/{voice_asset_id}", get(fetch).delete(deactivate))
+        .route("/{voice_asset_id}/preprocess", post(preprocess))
         .route("/probe", post(probe))
         .with_state(state)
 }

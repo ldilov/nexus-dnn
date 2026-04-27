@@ -42,7 +42,13 @@ $hostBackendRuntimesView = Join-Path $RepoRoot 'apps/web/src/views/backend-runti
 # the rule, not a leak.
 $grandfatheredFixtures = @(
     (Join-Path $RepoRoot 'crates/nexus-backend-runtimes/src/generic/ids/runtime_id.rs'),
-    (Join-Path $RepoRoot 'crates/nexus-extension-deps/tests/boundary_test.rs')
+    (Join-Path $RepoRoot 'crates/nexus-extension-deps/tests/boundary_test.rs'),
+    # Spec 030 router-mount wiring. Cargo deps + the providers vec
+    # in `app.rs` MUST name the extension by id — that's how the
+    # host's HTTP router learns about the extension's routes.
+    # Same grandfathered pattern as `nexus-local-llm-chat-history`.
+    (Join-Path $RepoRoot 'crates/nexus-core/Cargo.toml'),
+    (Join-Path $RepoRoot 'crates/nexus-core/src/app.rs')
 )
 
 $violations = @()
