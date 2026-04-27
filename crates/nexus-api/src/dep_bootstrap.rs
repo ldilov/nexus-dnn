@@ -967,59 +967,92 @@ async fn run_handshake_protocol(
         });
     }
 
+    // The worker is allowed to emit JSON-RPC *notifications* (frames with
+    // `method` but no `id`) at any point — log lines, progress events,
+    // etc. Skip those and keep reading until we either:
+    //   * see a *response* (frame with our request id + result/error)
+    //   * the stream closes (worker died)
+    //   * hit the line cap (worker is misbehaving / never replying)
     let mut reader = BufReader::new(stdout);
-    let mut response_line = String::new();
-    match reader.read_line(&mut response_line).await {
-        Ok(0) => {
-            let stderr_text = stderr_handle.await.unwrap_or_default();
-            return Err(HandshakeError {
-                category: "worker_exited".into(),
-                message: format!(
-                    "worker stdout closed before handshake response; stderr: {stderr_text}"
-                ),
-            });
+    const MAX_NOTIFICATIONS_BEFORE_RESPONSE: usize = 64;
+    for attempt in 0..=MAX_NOTIFICATIONS_BEFORE_RESPONSE {
+        let mut line = String::new();
+        match reader.read_line(&mut line).await {
+            Ok(0) => {
+                let stderr_text = stderr_handle.await.unwrap_or_default();
+                return Err(HandshakeError {
+                    category: "worker_exited".into(),
+                    message: format!(
+                        "worker stdout closed before handshake response; stderr: {stderr_text}"
+                    ),
+                });
+            }
+            Err(err) => {
+                let stderr_text = stderr_handle.await.unwrap_or_default();
+                return Err(HandshakeError {
+                    category: "stdout_read_failed".into(),
+                    message: format!(
+                        "failed to read handshake response: {err}; worker stderr: {stderr_text}"
+                    ),
+                });
+            }
+            Ok(_) => {}
         }
-        Err(err) => {
-            let stderr_text = stderr_handle.await.unwrap_or_default();
-            return Err(HandshakeError {
-                category: "stdout_read_failed".into(),
-                message: format!(
-                    "failed to read handshake response: {err}; worker stderr: {stderr_text}"
-                ),
-            });
-        }
-        Ok(_) => {}
-    }
 
-    let parsed: serde_json::Value = match serde_json::from_str(response_line.trim()) {
-        Ok(v) => v,
-        Err(err) => {
-            let stderr_text = stderr_handle.await.unwrap_or_default();
+        let parsed: serde_json::Value = match serde_json::from_str(line.trim()) {
+            Ok(v) => v,
+            Err(err) => {
+                let stderr_text = stderr_handle.await.unwrap_or_default();
+                return Err(HandshakeError {
+                    category: "handshake_protocol_error".into(),
+                    message: format!(
+                        "worker frame was not valid JSON: {err}; \
+                         raw frame: {line:?}; stderr: {stderr_text}"
+                    ),
+                });
+            }
+        };
+
+        // Notification (method without id) — log and keep reading.
+        if parsed.get("id").is_none() && parsed.get("method").is_some() {
+            tracing::debug!(
+                target: "spec_035::handshake",
+                frame = %parsed,
+                attempt,
+                "handshake: skipping notification while waiting for response"
+            );
+            continue;
+        }
+
+        // Anything else with our handshake id (or no id) is a candidate
+        // response. Validate shape.
+        if let Some(error_obj) = parsed.get("error") {
             return Err(HandshakeError {
-                category: "handshake_protocol_error".into(),
-                message: format!(
-                    "worker handshake response was not valid JSON: {err}; \
-                     raw response: {response_line:?}; stderr: {stderr_text}"
-                ),
+                category: "handshake_rejected".into(),
+                message: format!("worker returned JSON-RPC error: {error_obj}"),
             });
         }
-    };
+        if parsed.get("result").is_some() {
+            return Ok(());
+        }
 
-    if parsed.get("error").is_some() {
-        return Err(HandshakeError {
-            category: "handshake_rejected".into(),
-            message: format!("worker returned JSON-RPC error: {parsed}"),
-        });
-    }
-    if parsed.get("result").is_none() {
+        // Frame had neither method+no-id (notification) nor result/error
+        // (response). Treat as malformed.
         return Err(HandshakeError {
             category: "handshake_protocol_error".into(),
             message: format!(
-                "worker handshake response had neither result nor error: {parsed}"
+                "worker frame is neither notification nor response: {parsed}"
             ),
         });
     }
-    Ok(())
+
+    Err(HandshakeError {
+        category: "handshake_timeout".into(),
+        message: format!(
+            "worker emitted {MAX_NOTIFICATIONS_BEFORE_RESPONSE} notifications without ever \
+             sending a handshake response — protocol deadlock"
+        ),
+    })
 }
 
 fn find_python_interpreter(
