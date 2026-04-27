@@ -39,16 +39,38 @@ class Worker:
     async def run(self) -> int:
         self.logger.info("worker.start", version=__version__)
         loop = asyncio.get_running_loop()
-        reader = asyncio.StreamReader(limit=64 * 1024 * 1024)
-        protocol = asyncio.StreamReaderProtocol(reader)
-        await loop.connect_read_pipe(lambda: protocol, sys.stdin)
+
+        # Cross-platform stdin bridge. asyncio.connect_read_pipe(sys.stdin)
+        # is unreliable on Windows — the call returns successfully but
+        # readline() never fires for piped stdin under
+        # WindowsProactorEventLoopPolicy. The bug surfaces as a host
+        # `handshake_timeout` even though the worker is alive.
+        # A daemon thread doing blocking sys.stdin.buffer.readline() and
+        # forwarding lines via call_soon_threadsafe works on every
+        # platform Python supports.
+        line_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+
+        def _stdin_pump() -> None:
+            try:
+                stream = sys.stdin.buffer
+                while True:
+                    chunk = stream.readline()
+                    loop.call_soon_threadsafe(line_queue.put_nowait, chunk)
+                    if not chunk:
+                        break
+            except Exception:  # noqa: BLE001 — last-resort: signal EOF
+                loop.call_soon_threadsafe(line_queue.put_nowait, None)
+
+        threading.Thread(target=_stdin_pump, daemon=True, name="emotion_tts_worker.stdin").start()
 
         while not self._shutdown.is_set():
             try:
-                line = await reader.readline()
+                line = await line_queue.get()
             except (asyncio.CancelledError, KeyboardInterrupt):
                 break
             if not line:
+                # Empty bytes (EOF on parent close) or None (pump errored)
+                # — either way we're done.
                 break
             await self._dispatch_line(line)
 
