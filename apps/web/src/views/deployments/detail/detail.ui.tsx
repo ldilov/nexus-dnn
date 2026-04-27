@@ -93,7 +93,10 @@ export function DeploymentDetailUI({
         >
           {extensionLayout ? (
             <div className={s.chatFrame}>
-              <ExtensionLayoutView layoutId={extensionLayout.id} />
+              <ExtensionLayoutView
+                layoutId={extensionLayout.id}
+                deploymentId={deploymentId}
+              />
             </div>
           ) : (
             <div className={s.fallbackNote}>
