@@ -605,6 +605,7 @@ mod tests {
             &self,
             _ext: &str,
             _dir: &std::path::Path,
+            _data: &std::path::Path,
             _ups: &HashMap<String, StepArtifact>,
             _t: std::time::Duration,
             _c: tokio_util::sync::CancellationToken,
