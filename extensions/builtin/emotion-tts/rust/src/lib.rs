@@ -13,9 +13,12 @@ pub mod families;
 pub mod host_contract;
 pub mod operators;
 pub mod queue;
+pub mod register;
 pub mod router;
 pub mod storage;
 pub mod workflow_binding;
+
+pub use register::{EmotionTtsProviderResources, EmotionTtsRouterProvider, EXTENSION_ID};
 
 use std::sync::Arc;
 

@@ -39,7 +39,7 @@ pub struct ExportsState {
 #[must_use]
 pub fn router(repos: Repos, artifact_store: Option<Arc<dyn HostArtifactStore>>) -> Router {
     Router::new()
-        .route("/:export_id/download", get(download_export))
+        .route("/{export_id}/download", get(download_export))
         .with_state(ExportsState {
             repos,
             artifact_store,

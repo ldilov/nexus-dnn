@@ -28,6 +28,7 @@ nexus-backend-runtimes = { path = "../nexus-backend-runtimes" }
 nexus-huggingface = { path = "../nexus-huggingface" }
 nexus-models-store = { path = "../nexus-models-store" }
 nexus-local-llm-chat-history = { path = "../../extensions/builtin/local-llm/rust" }
+emotion-tts-extension = { path = "../../extensions/builtin/emotion-tts/rust" }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 camino = "1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
