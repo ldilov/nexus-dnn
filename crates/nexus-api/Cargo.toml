@@ -43,6 +43,7 @@ tempfile = "3"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
 ulid = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+toml = "0.8"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
