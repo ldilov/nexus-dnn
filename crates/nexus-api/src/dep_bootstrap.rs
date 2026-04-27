@@ -103,7 +103,9 @@ impl RuntimeBootstrapper for RealRuntimeBootstrapper {
         // for the legacy "user installed Python via the Backends page" path.
         if let RuntimeFamily::Python = canonical_family {
             let interpreter = nexus_backend_runtimes::family_python::python_exe_in(target_dir);
-            tracing::debug!(
+            // TRACE because this fires on every probe iteration; debug-level
+            // tracing is reserved for "filesystem hit/miss" outcomes.
+            tracing::trace!(
                 target: "spec_035::probe",
                 family,
                 target_dir = %target_dir.display(),
@@ -115,7 +117,13 @@ impl RuntimeBootstrapper for RealRuntimeBootstrapper {
                     .await
                     .map(|m| m.len())
                     .unwrap_or(0);
-                tracing::info!(
+                // DEBUG, not INFO — the runner re-probes satisfied steps in
+                // a tight loop while waiting for downstream steps, so an
+                // INFO line per probe spams the terminal once any
+                // long-running step (`package_set`, `model_artifact`) is
+                // active. The first transition None→Satisfied is logged at
+                // INFO from the bootstrap path; routine re-probes stay quiet.
+                tracing::debug!(
                     target: "spec_035::probe",
                     family,
                     interpreter = %interpreter.display(),
@@ -640,14 +648,359 @@ impl ModelStoreClient for RealModelStoreClient {
     }
 }
 
-/// `WorkerHandshake` stub — returns a categorised error. A real
-/// implementation needs to spawn the extension's worker (runtime entrypoint
-/// resolved against an upstream `runtime` step's `install_dir`) and run
-/// `do_handshake` against it. That orchestration does not exist as a
-/// standalone helper today — `acquire_lease` requires a `RuntimeInstallId`
-/// looked up from `host_runtime_installs`, but extension-worker handshake
-/// runs against the **extension's** binary, not the runtime's install row.
-/// Carve-out tracked alongside spec-035 follow-ups.
+/// Real `WorkerHandshake` — spawns the extension's Python worker via the
+/// embedded interpreter from the upstream `runtime` step, sends a
+/// JSON-RPC `handshake` request over stdio NDJSON, and waits for a
+/// successful response within the validation step's timeout.
+///
+/// Conventions (kept extension-id-agnostic):
+/// * The worker's package config lives at `<extension_dir>/worker/pyproject.toml`.
+/// * `[project.scripts]`'s first entry is `<dist>=<module>:<func>`; the
+///   importable package root is the dotted prefix before `:` (i.e. for
+///   `emotion-tts-worker = "emotion_tts_worker.main:main"` we run
+///   `python -m emotion_tts_worker`). The package must ship a
+///   `__main__.py` so `-m` is invokable.
+/// * The Python interpreter is found by walking every upstream artifact's
+///   `path` and trying `python_exe_in()`. The venv is found by walking
+///   for any artifact whose path contains `pyvenv.cfg`. Both are required.
+pub struct RealWorkerHandshake;
+
+#[async_trait]
+impl WorkerHandshake for RealWorkerHandshake {
+    async fn run_handshake(
+        &self,
+        extension_id: &str,
+        extension_dir: &std::path::Path,
+        upstream_artifacts: &std::collections::HashMap<String, StepArtifact>,
+        timeout: std::time::Duration,
+        cancellation: CancellationToken,
+    ) -> Result<(), HandshakeError> {
+        let python_exe = match find_python_interpreter(upstream_artifacts) {
+            Some(p) => p,
+            None => {
+                return Err(HandshakeError {
+                    category: "interpreter_not_found".into(),
+                    message: "no upstream artifact contains a Python interpreter \
+                              — expected a `runtime`-typed step earlier in the \
+                              dependency graph"
+                        .into(),
+                });
+            }
+        };
+        let venv_dir = match find_venv_root(upstream_artifacts) {
+            Some(p) => p,
+            None => {
+                return Err(HandshakeError {
+                    category: "venv_not_found".into(),
+                    message: "no upstream artifact contains a `pyvenv.cfg` — \
+                              expected a `package_set`-typed step earlier in \
+                              the dependency graph"
+                        .into(),
+                });
+            }
+        };
+        let worker_dir = extension_dir.join("worker");
+        let pyproject_path = worker_dir.join("pyproject.toml");
+        let module_name = match read_worker_module_from_pyproject(&pyproject_path) {
+            Ok(m) => m,
+            Err(err) => {
+                return Err(HandshakeError {
+                    category: "manifest_unreadable".into(),
+                    message: format!(
+                        "could not derive worker module from {}: {err}",
+                        pyproject_path.display()
+                    ),
+                });
+            }
+        };
+
+        tracing::info!(
+            target: "spec_035::handshake",
+            extension_id,
+            python_exe = %python_exe.display(),
+            venv_dir = %venv_dir.display(),
+            module_name,
+            timeout_secs = timeout.as_secs(),
+            "handshake: spawning worker"
+        );
+
+        // Resolve the venv's bin/Scripts dir for PATH precedence so any
+        // `import`-time tooling that shells out finds the right binaries.
+        let venv_bin = if cfg!(windows) {
+            venv_dir.join("Scripts")
+        } else {
+            venv_dir.join("bin")
+        };
+
+        let mut cmd = tokio::process::Command::new(&python_exe);
+        cmd.arg("-u") // unbuffered stdio so handshake response arrives promptly
+            .arg("-m")
+            .arg(&module_name)
+            .current_dir(&worker_dir)
+            .env("VIRTUAL_ENV", &venv_dir)
+            // Strip ambient PYTHON* env so the user's global Python state
+            // can't leak into the spawned worker.
+            .env_remove("PYTHONHOME")
+            .env_remove("PYTHONPATH")
+            .env_remove("PYTHONSTARTUP")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        // Prepend venv bin to PATH so spawned subprocesses (ffmpeg, etc.)
+        // resolve to the right binaries.
+        if let Ok(existing_path) = std::env::var("PATH") {
+            let new_path = if cfg!(windows) {
+                format!("{};{}", venv_bin.display(), existing_path)
+            } else {
+                format!("{}:{}", venv_bin.display(), existing_path)
+            };
+            cmd.env("PATH", new_path);
+        }
+
+        let mut child = cmd.spawn().map_err(|err| HandshakeError {
+            category: "worker_spawn_failed".into(),
+            message: format!("failed to spawn '{}' -m {module_name}: {err}", python_exe.display()),
+        })?;
+
+        let mut stdin = child.stdin.take().expect("stdin piped");
+        let stdout = child.stdout.take().expect("stdout piped");
+        let stderr = child.stderr.take().expect("stderr piped");
+
+        // Run the handshake under both the configured timeout and the
+        // shared cancellation token. On either, kill the child cleanly.
+        let outcome = tokio::select! {
+            biased;
+            _ = cancellation.cancelled() => {
+                let _ = child.kill().await;
+                return Err(HandshakeError {
+                    category: "cancelled".into(),
+                    message: "handshake cancelled by client".into(),
+                });
+            }
+            res = tokio::time::timeout(
+                timeout,
+                run_handshake_protocol(&mut stdin, stdout, stderr),
+            ) => res,
+        };
+
+        match outcome {
+            Ok(Ok(())) => {
+                // Send shutdown so the worker exits cleanly. Best-effort —
+                // if the pipe is broken we just kill below.
+                use tokio::io::AsyncWriteExt;
+                let _ = stdin
+                    .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"shutdown\",\"params\":null}\n")
+                    .await;
+                drop(stdin);
+                let _ = tokio::time::timeout(
+                    std::time::Duration::from_secs(2),
+                    child.wait(),
+                )
+                .await;
+                let _ = child.kill().await;
+                tracing::info!(
+                    target: "spec_035::handshake",
+                    extension_id,
+                    "handshake: success"
+                );
+                Ok(())
+            }
+            Ok(Err(err)) => {
+                let _ = child.kill().await;
+                Err(err)
+            }
+            Err(_elapsed) => {
+                let _ = child.kill().await;
+                Err(HandshakeError {
+                    category: "handshake_timeout".into(),
+                    message: format!(
+                        "worker handshake did not complete within {}s",
+                        timeout.as_secs()
+                    ),
+                })
+            }
+        }
+    }
+}
+
+async fn run_handshake_protocol(
+    stdin: &mut tokio::process::ChildStdin,
+    stdout: tokio::process::ChildStdout,
+    stderr: tokio::process::ChildStderr,
+) -> Result<(), HandshakeError> {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    // Drain stderr in the background so the worker doesn't block on a
+    // full pipe. Captured stderr is included in error messages on
+    // protocol failures.
+    let stderr_handle = tokio::spawn(async move {
+        let mut buf = String::new();
+        let mut reader = BufReader::new(stderr);
+        // Cap captured stderr at 8 KiB so a chatty worker doesn't pin
+        // memory; we only need the first error message anyway.
+        let mut tmp = String::new();
+        while buf.len() < 8192 {
+            tmp.clear();
+            match reader.read_line(&mut tmp).await {
+                Ok(0) => break,
+                Ok(_) => buf.push_str(&tmp),
+                Err(_) => break,
+            }
+        }
+        buf
+    });
+
+    let request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "handshake",
+        "params": {
+            "client": "nexus-host",
+            "protocolVersion": "1.0",
+        }
+    });
+    let line = format!("{request}\n");
+    if let Err(err) = stdin.write_all(line.as_bytes()).await {
+        let stderr_text = stderr_handle.await.unwrap_or_default();
+        return Err(HandshakeError {
+            category: "stdin_write_failed".into(),
+            message: format!(
+                "failed to write handshake request to worker stdin: {err}; \
+                 worker stderr: {stderr_text}"
+            ),
+        });
+    }
+    if let Err(err) = stdin.flush().await {
+        let stderr_text = stderr_handle.await.unwrap_or_default();
+        return Err(HandshakeError {
+            category: "stdin_flush_failed".into(),
+            message: format!(
+                "failed to flush handshake request: {err}; worker stderr: {stderr_text}"
+            ),
+        });
+    }
+
+    let mut reader = BufReader::new(stdout);
+    let mut response_line = String::new();
+    match reader.read_line(&mut response_line).await {
+        Ok(0) => {
+            let stderr_text = stderr_handle.await.unwrap_or_default();
+            return Err(HandshakeError {
+                category: "worker_exited".into(),
+                message: format!(
+                    "worker stdout closed before handshake response; stderr: {stderr_text}"
+                ),
+            });
+        }
+        Err(err) => {
+            let stderr_text = stderr_handle.await.unwrap_or_default();
+            return Err(HandshakeError {
+                category: "stdout_read_failed".into(),
+                message: format!(
+                    "failed to read handshake response: {err}; worker stderr: {stderr_text}"
+                ),
+            });
+        }
+        Ok(_) => {}
+    }
+
+    let parsed: serde_json::Value = match serde_json::from_str(response_line.trim()) {
+        Ok(v) => v,
+        Err(err) => {
+            let stderr_text = stderr_handle.await.unwrap_or_default();
+            return Err(HandshakeError {
+                category: "handshake_protocol_error".into(),
+                message: format!(
+                    "worker handshake response was not valid JSON: {err}; \
+                     raw response: {response_line:?}; stderr: {stderr_text}"
+                ),
+            });
+        }
+    };
+
+    if parsed.get("error").is_some() {
+        return Err(HandshakeError {
+            category: "handshake_rejected".into(),
+            message: format!("worker returned JSON-RPC error: {parsed}"),
+        });
+    }
+    if parsed.get("result").is_none() {
+        return Err(HandshakeError {
+            category: "handshake_protocol_error".into(),
+            message: format!(
+                "worker handshake response had neither result nor error: {parsed}"
+            ),
+        });
+    }
+    Ok(())
+}
+
+fn find_python_interpreter(
+    upstream: &std::collections::HashMap<String, StepArtifact>,
+) -> Option<PathBuf> {
+    for artifact in upstream.values() {
+        let Some(path) = artifact.path.as_ref() else {
+            continue;
+        };
+        let candidate = nexus_backend_runtimes::family_python::python_exe_in(path);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn find_venv_root(
+    upstream: &std::collections::HashMap<String, StepArtifact>,
+) -> Option<PathBuf> {
+    for artifact in upstream.values() {
+        let Some(path) = artifact.path.as_ref() else {
+            continue;
+        };
+        if path.join("pyvenv.cfg").is_file() {
+            return Some(path.clone());
+        }
+    }
+    None
+}
+
+/// Read `[project.scripts]` from the worker's pyproject.toml and return
+/// the importable package root of the first script entry.
+///
+/// `emotion-tts-worker = "emotion_tts_worker.main:main"` →
+/// returns `"emotion_tts_worker"`.
+fn read_worker_module_from_pyproject(path: &std::path::Path) -> Result<String, String> {
+    let body = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let parsed: toml::Value = toml::from_str(&body).map_err(|e| e.to_string())?;
+    let scripts = parsed
+        .get("project")
+        .and_then(|p| p.get("scripts"))
+        .and_then(|s| s.as_table())
+        .ok_or_else(|| "missing [project.scripts] table".to_owned())?;
+    let (_dist_name, target) = scripts
+        .iter()
+        .next()
+        .ok_or_else(|| "[project.scripts] is empty".to_owned())?;
+    let target_str = target
+        .as_str()
+        .ok_or_else(|| "[project.scripts] first entry is not a string".to_owned())?;
+    let module_path = target_str
+        .split(':')
+        .next()
+        .ok_or_else(|| format!("script target '{target_str}' has no module"))?;
+    let package_root = module_path
+        .split('.')
+        .next()
+        .ok_or_else(|| format!("script target '{target_str}' has empty module path"))?;
+    if package_root.is_empty() {
+        return Err(format!("script target '{target_str}' resolves to empty package"));
+    }
+    Ok(package_root.to_owned())
+}
+
+/// Stub kept for tests that exercise the validation handler against a
+/// mock — never used in production wiring.
 pub struct StubWorkerHandshake;
 
 #[async_trait]
@@ -701,7 +1054,7 @@ impl DefaultDepBootstrap {
                 capability_registry,
                 download_job_store,
             )),
-            worker_handshake: Arc::new(StubWorkerHandshake),
+            worker_handshake: Arc::new(RealWorkerHandshake),
             fetch_artifact: default_fetch_artifact(),
             host_data_dir,
         }
