@@ -671,32 +671,90 @@ impl WorkerHandshake for RealWorkerHandshake {
         &self,
         extension_id: &str,
         extension_dir: &std::path::Path,
+        extension_data_dir: &std::path::Path,
         upstream_artifacts: &std::collections::HashMap<String, StepArtifact>,
         timeout: std::time::Duration,
         cancellation: CancellationToken,
     ) -> Result<(), HandshakeError> {
+        // Log every upstream artifact's id + path so when the handshake
+        // can't find what it needs, the next bug report shows exactly
+        // what was on the table at validation time.
+        let upstream_summary: Vec<String> = upstream_artifacts
+            .iter()
+            .map(|(id, art)| {
+                format!(
+                    "{id}=>{}",
+                    art.path.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "<no path>".into())
+                )
+            })
+            .collect();
+        tracing::info!(
+            target: "spec_035::handshake",
+            extension_id,
+            extension_dir = %extension_dir.display(),
+            extension_data_dir = %extension_data_dir.display(),
+            upstream_count = upstream_artifacts.len(),
+            upstream = ?upstream_summary,
+            "handshake: resolving runtime + venv from upstream artifacts"
+        );
+
+        // Convention paths the runtime + package_set handlers write to.
+        // Used as a fallback when upstream_artifacts is missing the
+        // python or venv entry — happens on hosts built before the
+        // runner's probe-skip-with-artifact propagation fix landed.
+        let runtime_convention = extension_data_dir.join("runtime").join("python");
+        let venv_convention = extension_data_dir
+            .join("runtime")
+            .join("packages")
+            .join(".venv");
+
         let python_exe = match find_python_interpreter(upstream_artifacts) {
             Some(p) => p,
             None => {
-                return Err(HandshakeError {
-                    category: "interpreter_not_found".into(),
-                    message: "no upstream artifact contains a Python interpreter \
-                              — expected a `runtime`-typed step earlier in the \
-                              dependency graph"
-                        .into(),
-                });
+                let candidate =
+                    nexus_backend_runtimes::family_python::python_exe_in(&runtime_convention);
+                if candidate.is_file() {
+                    tracing::warn!(
+                        target: "spec_035::handshake",
+                        extension_id,
+                        candidate = %candidate.display(),
+                        "handshake: upstream artifacts missing python — falling back to convention path \
+                         (rebuild + restart host to pick up the runner's probe-skip-with-artifact fix)"
+                    );
+                    candidate
+                } else {
+                    return Err(HandshakeError {
+                        category: "interpreter_not_found".into(),
+                        message: format!(
+                            "no upstream artifact contains a Python interpreter and the convention \
+                             fallback {} does not exist; upstream artifacts: {upstream_summary:?}",
+                            candidate.display()
+                        ),
+                    });
+                }
             }
         };
         let venv_dir = match find_venv_root(upstream_artifacts) {
             Some(p) => p,
             None => {
-                return Err(HandshakeError {
-                    category: "venv_not_found".into(),
-                    message: "no upstream artifact contains a `pyvenv.cfg` — \
-                              expected a `package_set`-typed step earlier in \
-                              the dependency graph"
-                        .into(),
-                });
+                if venv_convention.join("pyvenv.cfg").is_file() {
+                    tracing::warn!(
+                        target: "spec_035::handshake",
+                        extension_id,
+                        candidate = %venv_convention.display(),
+                        "handshake: upstream artifacts missing venv — falling back to convention path"
+                    );
+                    venv_convention
+                } else {
+                    return Err(HandshakeError {
+                        category: "venv_not_found".into(),
+                        message: format!(
+                            "no upstream artifact contains a `pyvenv.cfg` and the convention \
+                             fallback {} does not exist; upstream artifacts: {upstream_summary:?}",
+                            venv_convention.display()
+                        ),
+                    });
+                }
             }
         };
         let worker_dir = extension_dir.join("worker");
@@ -1009,6 +1067,7 @@ impl WorkerHandshake for StubWorkerHandshake {
         &self,
         _extension_id: &str,
         _extension_dir: &std::path::Path,
+        _extension_data_dir: &std::path::Path,
         _upstream_artifacts: &std::collections::HashMap<String, StepArtifact>,
         _timeout: std::time::Duration,
         _cancellation: CancellationToken,
@@ -1358,6 +1417,7 @@ mod tests {
             .run_handshake(
                 "ext.example",
                 std::path::Path::new("/tmp"),
+                std::path::Path::new("/tmp/data"),
                 &std::collections::HashMap::new(),
                 std::time::Duration::from_secs(1),
                 CancellationToken::new(),
