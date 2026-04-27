@@ -91,17 +91,41 @@ pub async fn list_dependencies(
 
     for step in &plan.steps {
         let mut dto = probe_step(&inputs.registry, &runner_ctx, step, &upstream).await;
-        // Overlay: probe says NotSatisfied but the runner recorded a terminal state
-        // for this step. Use that state so the user can see the failure.
+        // Overlay: probe says NotSatisfied but the runner recorded a terminal
+        // state for this step. The validation step's probe always returns
+        // NotSatisfied by design (it's a terminal smoke test that re-runs
+        // every install), so without the success overlay a successful
+        // install leaves the UI showing PENDING forever.
         if matches!(dto.status, StepStatusKind::Pending) {
-            if let Some(StepStatus::Failed { error, .. }) = runner_state.get(&step.id) {
-                dto.status = StepStatusKind::Failed;
-                dto.last_error = Some(StepErrorDto {
-                    category: error.category.clone(),
-                    message: error.message.clone(),
-                    hint: error.hint.clone(),
-                    log_excerpt: None,
-                });
+            match runner_state.get(&step.id) {
+                Some(StepStatus::Failed { error, .. }) => {
+                    dto.status = StepStatusKind::Failed;
+                    dto.last_error = Some(StepErrorDto {
+                        category: error.category.clone(),
+                        message: error.message.clone(),
+                        hint: error.hint.clone(),
+                        log_excerpt: None,
+                    });
+                }
+                Some(StepStatus::Ok { artifact, .. }) => {
+                    dto.status = StepStatusKind::Ok;
+                    dto.satisfied = true;
+                    dto.artifact = Some(StepArtifactDto {
+                        path: artifact
+                            .path
+                            .as_ref()
+                            .map(|p| p.display().to_string()),
+                        bytes_placed: artifact.bytes_placed,
+                        summary: artifact.summary.clone(),
+                    });
+                    dto.estimated_remaining_bytes = 0;
+                }
+                Some(StepStatus::Skipped { .. }) => {
+                    dto.status = StepStatusKind::Skipped;
+                    dto.satisfied = true;
+                    dto.estimated_remaining_bytes = 0;
+                }
+                _ => {}
             }
         }
         if !dto.satisfied {
