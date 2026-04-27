@@ -140,17 +140,54 @@ async fn get_deployment(
     State(state): State<Arc<DeploymentsState>>,
     Path(id): Path<String>,
 ) -> Response {
+    tracing::info!(
+        target: "emotion_tts::deployments",
+        deployment_id = %id,
+        "GET /deployments/:id — handler entered"
+    );
     match get_impl(&state, &id).await {
-        Ok(row) => (StatusCode::OK, Json(deployment_json(&row))).into_response(),
-        Err(err) => err.into_response(),
+        Ok(row) => {
+            tracing::info!(
+                target: "emotion_tts::deployments",
+                deployment_id = %id,
+                "GET /deployments/:id — 200 OK"
+            );
+            (StatusCode::OK, Json(deployment_json(&row))).into_response()
+        }
+        Err(err) => {
+            tracing::warn!(
+                target: "emotion_tts::deployments",
+                deployment_id = %id,
+                category = err.category(),
+                message = %err,
+                "GET /deployments/:id — error response"
+            );
+            err.into_response()
+        }
     }
 }
 
 async fn get_impl(state: &DeploymentsState, id: &str) -> Result<DeploymentRow> {
-    let id = DeploymentId::try_from(id)?;
+    let id = match DeploymentId::try_from(id) {
+        Ok(v) => v,
+        Err(err) => {
+            tracing::warn!(
+                target: "emotion_tts::deployments",
+                raw_id = %id,
+                error = %err,
+                "deployment id parse failed (not a ULID) — host likely passed a UUID or other format"
+            );
+            return Err(err.into());
+        }
+    };
     if let Some(row) = state.repos.deployments.get(&id).await? {
         return Ok(row);
     }
+    tracing::info!(
+        target: "emotion_tts::deployments",
+        deployment_id = %id,
+        "deployment row absent — auto-seeding default"
+    );
     // Auto-seed: the host creates a deployment row in its own DB and
     // navigates the user to the extension UI without ever calling the
     // extension's create_deployment endpoint. The extension's local DB
