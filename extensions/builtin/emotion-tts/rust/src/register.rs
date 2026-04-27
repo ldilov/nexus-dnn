@@ -16,7 +16,7 @@ use sqlx::SqlitePool;
 
 use crate::queue::RuntimeQueue;
 use crate::storage::Repos;
-use crate::{EXTENSION_VERSION, build_router_with};
+use crate::{EXTENSION_VERSION, MIGRATIONS, build_router_with};
 
 pub const EXTENSION_ID: &str = "nexus.audio.emotiontts";
 
@@ -88,7 +88,57 @@ impl EmotionTtsRouterProvider {
         ]
     }
 
-    fn build_router_inner(&self) -> Router {
+    async fn build_router_inner_async(&self) -> Result<Router, BuildRouterError> {
+        // Apply emotion-tts's own migrations idempotently. The host's
+        // generic `StorageManager::apply_plan` requires pre-built
+        // `MigrationInput` records with checksums + namespace ids; for
+        // this provider's lifecycle we side-step that and run the SQL
+        // directly. Each migration is `IF NOT EXISTS`-guarded so it's
+        // safe across restarts.
+        let pool = &self.resources.pool;
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS ext_emotion_tts__schema_versions (\
+                 version INTEGER PRIMARY KEY,\
+                 name TEXT NOT NULL,\
+                 applied_at TEXT NOT NULL\
+             )",
+        )
+        .execute(pool)
+        .await
+        .map_err(|e| Box::new(e) as BuildRouterError)?;
+
+        for migration in MIGRATIONS {
+            let already: Option<i64> = sqlx::query_scalar(
+                "SELECT version FROM ext_emotion_tts__schema_versions WHERE version = ?",
+            )
+            .bind(migration.version as i64)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| Box::new(e) as BuildRouterError)?;
+            if already.is_some() {
+                continue;
+            }
+            sqlx::raw_sql(migration.sql)
+                .execute(pool)
+                .await
+                .map_err(|e| {
+                    let detail = format!(
+                        "emotion-tts migration v{} ({}) failed: {e}",
+                        migration.version, migration.name
+                    );
+                    Box::<dyn std::error::Error + Send + Sync>::from(detail) as BuildRouterError
+                })?;
+            sqlx::query(
+                "INSERT INTO ext_emotion_tts__schema_versions (version, name, applied_at) \
+                 VALUES (?, ?, datetime('now'))",
+            )
+            .bind(migration.version as i64)
+            .bind(migration.name)
+            .execute(pool)
+            .await
+            .map_err(|e| Box::new(e) as BuildRouterError)?;
+        }
+
         let repos = Repos::from_pool(self.resources.pool.clone());
         let queue = Arc::new(RuntimeQueue::new());
         // For now the artifact_store + lease_provider are not threaded
@@ -96,8 +146,16 @@ impl EmotionTtsRouterProvider {
         // `not_configured` envelope (added in the recent review pass)
         // and the runtime/lease surface stays mounted but unused. Both
         // can be wired later without breaking the route mount.
-        build_router_with(repos, queue, EXTENSION_VERSION)
+        Ok(build_router_with(repos, queue, EXTENSION_VERSION))
     }
+}
+
+fn block_on<F, T>(fut: F) -> T
+where
+    F: std::future::Future<Output = T>,
+{
+    let handle = tokio::runtime::Handle::current();
+    tokio::task::block_in_place(|| handle.block_on(fut))
 }
 
 impl ExtensionRouterProvider for EmotionTtsRouterProvider {
@@ -109,6 +167,7 @@ impl ExtensionRouterProvider for EmotionTtsRouterProvider {
         &self,
         _cx: &ExtensionContext<'_>,
     ) -> Result<(Router, Vec<String>), BuildRouterError> {
-        Ok((self.build_router_inner(), Self::http_routes()))
+        let router = block_on(self.build_router_inner_async())?;
+        Ok((router, Self::http_routes()))
     }
 }
