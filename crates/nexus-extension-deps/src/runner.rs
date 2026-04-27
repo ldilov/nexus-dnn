@@ -176,7 +176,7 @@ impl InstallRunner {
         };
         let outcome = run_one_step(step, &self.registry, ctx, upstream_artifacts).await;
         match outcome {
-            StepOutcome::Skipped { reason } => StepStatus::Skipped { reason },
+            StepOutcome::Skipped { reason, .. } => StepStatus::Skipped { reason },
             StepOutcome::Ok { artifact } => StepStatus::Ok {
                 artifact,
                 completed_at: Utc::now(),
@@ -212,9 +212,21 @@ pub struct InstallReport {
 }
 
 enum StepOutcome {
-    Skipped { reason: String },
-    Ok { artifact: StepArtifact },
-    Failed { error: StepError },
+    /// `Skipped` carries the probe-resolved artifact so downstream steps
+    /// can read paths/metadata from already-installed prerequisites.
+    /// Without this, a satisfied `runtime` step that gets skipped on a
+    /// re-install would leave its python interpreter invisible to a
+    /// downstream `validation` step (which then can't find what to spawn).
+    Skipped {
+        reason: String,
+        artifact: Option<StepArtifact>,
+    },
+    Ok {
+        artifact: StepArtifact,
+    },
+    Failed {
+        error: StepError,
+    },
 }
 
 fn upstream_satisfied(step: &Step, statuses: &HashMap<String, StepStatus>) -> bool {
@@ -285,16 +297,18 @@ async fn run_one_step(
     let probe_result = handler.probe(&step_ctx, &step.spec).await;
     let probe_ms = probe_started.elapsed().as_millis() as u64;
     match probe_result {
-        Ok(ProbeResult::Satisfied { .. }) => {
+        Ok(ProbeResult::Satisfied { artifact }) => {
             info!(
                 target: "spec_035::runner",
                 step_id = %step.id,
                 probe_ms,
+                artifact_path = ?artifact.path,
                 "step: probe satisfied — skipping run (no install needed)"
             );
             debug!(step_id = %step.id, "probe satisfied — skipping run");
             return StepOutcome::Skipped {
                 reason: "already satisfied".to_owned(),
+                artifact: Some(artifact),
             };
         }
         Ok(ProbeResult::Unsupported { reason }) => {
@@ -387,7 +401,10 @@ fn apply_outcome(
     artifacts: &mut HashMap<String, StepArtifact>,
 ) {
     match outcome {
-        StepOutcome::Skipped { reason } => {
+        StepOutcome::Skipped { reason, artifact } => {
+            if let Some(a) = artifact {
+                artifacts.insert(step.id.clone(), a);
+            }
             statuses.insert(step.id.clone(), StepStatus::Skipped { reason });
         }
         StepOutcome::Ok { artifact } => {
