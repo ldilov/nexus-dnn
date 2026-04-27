@@ -61,6 +61,14 @@ pub struct ModuleSummary {
     /// render the Workflow tab.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow_id: Option<String>,
+    /// Extension lifecycle status — `"active"`, `"disabled"`, `"error"`,
+    /// etc. (mirrors the `extensions.status` column). The Blueprint view
+    /// gates the Recipe + Workflow Graph tabs on `"active"` so a user
+    /// who hits a disabled/errored module sees the failure state
+    /// instead of a half-rendered surface that would 404 on every
+    /// extension API call. `None` for user modules.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension_status: Option<String>,
 }
 
 #[derive(Serialize, Debug, Clone)]
