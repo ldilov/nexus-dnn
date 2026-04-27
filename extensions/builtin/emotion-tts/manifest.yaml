@@ -18,17 +18,15 @@ runtime:
     cuda_version: null
     env_vars: {}
 
-runtime_dependencies:
-  - family: "indextts"
-    version: ">=0.1.0"
-    acceleration:
-      - "cpu"
-      - "cuda12"
-      - "cuda13"
-
-# Spec 035 — generic dependency installer plan. Host walks this graph; the
-# legacy `runtime_dependencies` block above is auto-translated into a synthetic
-# `runtime`-typed step on extensions that don't ship the explicit form yet.
+# Spec 035 — generic dependency installer plan. Host walks this graph;
+# every prerequisite is declared as an explicit step. The legacy
+# `runtime_dependencies` block is intentionally absent — its
+# `family: "indextts"` constraint required a row in
+# `host_runtime_installs` that spec 035 doesn't write (we install
+# Python via the `python` step + the indextts wheel via `pkgs`).
+# Keeping the legacy block here would block extension activation
+# with a `RUNTIME_DEPENDENCY_UNMET` error even when the spec 035
+# graph is fully satisfied.
 dependencies:
   steps:
     - id: python
