@@ -9,8 +9,8 @@ type LayoutRendererProps = {
    * Attributes injected onto the layout's ROOT custom element only.
    * Used by the deployment-detail page to pass `deployment-id` so the
    * mounted extension bundle can route to its per-deployment views
-   * (e.g. emotion-tts's RecipeView at `/<id>/recipe`) instead of
-   * falling back to the deployments-index landing page.
+   * (e.g. `/<id>/recipe`) instead of falling back to its index
+   * landing page.
    */
   rootAttrs?: Record<string, string>;
 };
