@@ -402,7 +402,7 @@ impl NexusApp {
                 ),
             )),
             dep_worker_handshake: Some(std::sync::Arc::new(
-                nexus_api::dep_bootstrap::StubWorkerHandshake,
+                nexus_api::dep_bootstrap::RealWorkerHandshake,
             )),
             dep_fetch_artifact: Some(nexus_api::dep_bootstrap::default_fetch_artifact()),
             dep_host_data_dir: Some(app_for_health.config.resolved_data_dir()),
