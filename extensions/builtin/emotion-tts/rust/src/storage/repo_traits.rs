@@ -291,6 +291,7 @@ pub trait UtterancesRepo: Send + Sync {
 #[async_trait]
 pub trait SynthesisCacheRepo: Send + Sync {
     async fn get(&self, hash: &ContentHash) -> RepoResult<Option<SynthesisCacheRow>>;
+    async fn lookup_many(&self, hashes: &[ContentHash]) -> RepoResult<Vec<Option<SynthesisCacheRow>>>;
     async fn insert(&self, row: &SynthesisCacheRow) -> RepoResult<()>;
     async fn record_hit(&self, hash: &ContentHash, at: i64) -> RepoResult<()>;
     async fn total_size_bytes(&self) -> RepoResult<i64>;
