@@ -6,6 +6,7 @@
 
 pub mod repo_traits;
 
+pub mod audit_log_repo;
 pub mod deployments_repo;
 pub mod export_history_repo;
 pub mod mappings_repo;
@@ -16,6 +17,7 @@ pub mod utterances_repo;
 pub mod voice_assets_repo;
 pub mod workflows_repo;
 
+pub use audit_log_repo::{AuditEntry, AuditLogRepo, TargetKind};
 pub use repo_traits::{
     DeploymentsRepo, ExportHistoryRepo, MappingsRepo, PresetsRepo, RunsRepo, SynthesisCacheRepo,
     UtterancesRepo, VoiceAssetsRepo, WorkflowsRepo,
@@ -39,6 +41,7 @@ pub struct Repos {
     pub cache: Arc<dyn SynthesisCacheRepo>,
     pub exports: Arc<dyn ExportHistoryRepo>,
     pub workflows: Arc<dyn WorkflowsRepo>,
+    pub audio_edit_log: Arc<dyn AuditLogRepo>,
 }
 
 impl Repos {
@@ -53,7 +56,8 @@ impl Repos {
             utterances: Arc::new(utterances_repo::SqliteUtterancesRepo::new(pool.clone())),
             cache: Arc::new(synthesis_cache_repo::SqliteSynthesisCacheRepo::new(pool.clone())),
             exports: Arc::new(export_history_repo::SqliteExportHistoryRepo::new(pool.clone())),
-            workflows: Arc::new(workflows_repo::SqliteWorkflowsRepo::new(pool)),
+            workflows: Arc::new(workflows_repo::SqliteWorkflowsRepo::new(pool.clone())),
+            audio_edit_log: Arc::new(audit_log_repo::SqliteAuditLogRepo::new(pool)),
         }
     }
 }

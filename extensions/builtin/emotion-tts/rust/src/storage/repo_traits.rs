@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::domain::{
-    ContentHash, DeploymentId, EmotionTtsError, ExportId, MappingId, PresetId, RunId, UtteranceId,
-    VoiceAssetId,
+    ContentHash, DeploymentId, EditChain, EmotionTtsError, ExportId, MappingId, PresetId, RunId,
+    UtteranceId, VoiceAssetId,
 };
 
 pub type RepoResult<T> = Result<T, EmotionTtsError>;
@@ -70,6 +70,8 @@ pub struct VoiceAssetRow {
     pub preprocessed_artifact_ref: Option<String>,
     #[serde(default)]
     pub preprocessing_report_json: Option<String>,
+    #[serde(default)]
+    pub edit_chain_json: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -159,6 +161,10 @@ pub struct UtteranceRow {
     pub finished_at: Option<i64>,
     pub failure_category: Option<String>,
     pub failure_detail: Option<String>,
+    #[serde(default)]
+    pub edit_chain_json: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -241,6 +247,16 @@ pub trait VoiceAssetsRepo: Send + Sync {
         preprocessed_artifact_ref: Option<&str>,
         preprocessing_report_json: Option<&str>,
     ) -> RepoResult<()>;
+    /// Spec 036 — load the persisted edit chain for a voice asset.
+    /// Returns `None` when the column is `NULL` (no chain → use source audio).
+    async fn read_edit_chain(&self, asset_id: &VoiceAssetId) -> RepoResult<Option<EditChain>>;
+    /// Spec 036 — write or clear the edit chain for a voice asset.
+    /// Passing `None` writes `NULL` (chain cleared).
+    async fn write_edit_chain(
+        &self,
+        asset_id: &VoiceAssetId,
+        chain: Option<&EditChain>,
+    ) -> RepoResult<()>;
 }
 
 #[async_trait]
@@ -297,6 +313,16 @@ pub trait UtterancesRepo: Send + Sync {
         audio_ref: &str,
         cache_hit: bool,
         duration_ms: Option<i64>,
+    ) -> RepoResult<()>;
+    /// Spec 036 — load the persisted edit chain for an utterance.
+    /// Returns `None` when the column is `NULL` (no chain → use source segment).
+    async fn read_edit_chain(&self, utterance_id: &UtteranceId) -> RepoResult<Option<EditChain>>;
+    /// Spec 036 — write or clear the edit chain for an utterance.
+    /// Passing `None` writes `NULL` (chain cleared).
+    async fn write_edit_chain(
+        &self,
+        utterance_id: &UtteranceId,
+        chain: Option<&EditChain>,
     ) -> RepoResult<()>;
 }
 

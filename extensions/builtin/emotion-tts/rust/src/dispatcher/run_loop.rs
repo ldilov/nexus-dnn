@@ -263,6 +263,8 @@ async fn dispatch_inner(
                     finished_at: Some(Utc::now().timestamp()),
                     failure_category: None,
                     failure_detail: None,
+                    edit_chain_json: None,
+                    updated_at: None,
                 }
             } else {
                 UtteranceRow {
@@ -292,6 +294,8 @@ async fn dispatch_inner(
                     finished_at: None,
                     failure_category: None,
                     failure_detail: None,
+                    edit_chain_json: None,
+                    updated_at: None,
                 }
             }
         })

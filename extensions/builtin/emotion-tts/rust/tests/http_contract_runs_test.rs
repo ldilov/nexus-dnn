@@ -511,6 +511,8 @@ async fn sse_replays_completed_utterances_on_subscribe() {
                 finished_at: Some(now),
                 failure_category: None,
                 failure_detail: None,
+                edit_chain_json: None,
+                updated_at: None,
             },
             UtteranceRow {
                 utterance_id: utt2_id.clone(),
@@ -539,6 +541,8 @@ async fn sse_replays_completed_utterances_on_subscribe() {
                 finished_at: Some(now),
                 failure_category: Some("synthesis_failed".into()),
                 failure_detail: Some("test failure".into()),
+                edit_chain_json: None,
+                updated_at: None,
             },
         ])
         .await

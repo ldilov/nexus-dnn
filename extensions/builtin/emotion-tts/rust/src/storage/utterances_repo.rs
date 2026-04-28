@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use sqlx::{Row, SqlitePool};
 
-use crate::domain::{EmotionTtsError, MappingId, RunId, UtteranceId, VoiceAssetId};
+use crate::domain::{EditChain, EmotionTtsError, MappingId, RunId, UtteranceId, VoiceAssetId};
 use crate::storage::repo_traits::{RepoResult, UtteranceRow, UtterancesRepo};
 
 pub struct SqliteUtterancesRepo {
@@ -55,6 +55,8 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<UtteranceRow> {
         finished_at: row.try_get("finished_at").map_err(to_err)?,
         failure_category: row.try_get("failure_category").map_err(to_err)?,
         failure_detail: row.try_get("failure_detail").map_err(to_err)?,
+        edit_chain_json: row.try_get("edit_chain_json").map_err(to_err)?,
+        updated_at: row.try_get("updated_at").map_err(to_err)?,
     })
 }
 
@@ -69,8 +71,8 @@ impl UtterancesRepo for SqliteUtterancesRepo {
                   text, source_line_number, inline_overrides_json, legacy_emotion_ref, resolved_mapping_id, \
                   resolved_speaker_voice_asset_id, resolved_emotion_mode, resolved_emotion_payload_json, \
                   resolved_seed, resolved_generation_json, content_hash, status, source_run_id, \
-                  audio_artifact_ref, cache_hit, duration_ms, started_at, finished_at, failure_category, failure_detail) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  audio_artifact_ref, cache_hit, duration_ms, started_at, finished_at, failure_category, failure_detail, edit_chain_json) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(row.utterance_id.as_str())
             .bind(row.run_id.as_str())
@@ -98,6 +100,7 @@ impl UtterancesRepo for SqliteUtterancesRepo {
             .bind(row.finished_at)
             .bind(&row.failure_category)
             .bind(&row.failure_detail)
+            .bind(&row.edit_chain_json)
             .execute(&mut *tx)
             .await
             .map_err(to_err)?;
@@ -153,6 +156,47 @@ impl UtterancesRepo for SqliteUtterancesRepo {
         .bind(i64::from(cache_hit))
         .bind(duration_ms)
         .bind(id.as_str())
+        .execute(&self.pool)
+        .await
+        .map_err(to_err)?;
+        Ok(())
+    }
+
+    async fn read_edit_chain(
+        &self,
+        utterance_id: &UtteranceId,
+    ) -> RepoResult<Option<EditChain>> {
+        let row = sqlx::query(
+            "SELECT edit_chain_json FROM ext_emotion_tts__utterances WHERE utterance_id = ?",
+        )
+        .bind(utterance_id.as_str())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(to_err)?;
+        let Some(row) = row else { return Ok(None) };
+        let raw: Option<String> = row.try_get("edit_chain_json").map_err(to_err)?;
+        match raw {
+            None => Ok(None),
+            Some(json) => Ok(Some(serde_json::from_str(&json).map_err(EmotionTtsError::from)?)),
+        }
+    }
+
+    async fn write_edit_chain(
+        &self,
+        utterance_id: &UtteranceId,
+        chain: Option<&EditChain>,
+    ) -> RepoResult<()> {
+        let serialized = match chain {
+            None => None,
+            Some(c) => Some(serde_json::to_string(c).map_err(EmotionTtsError::from)?),
+        };
+        sqlx::query(
+            "UPDATE ext_emotion_tts__utterances \
+             SET edit_chain_json = ?, updated_at = strftime('%s', 'now') \
+             WHERE utterance_id = ?",
+        )
+        .bind(serialized)
+        .bind(utterance_id.as_str())
         .execute(&self.pool)
         .await
         .map_err(to_err)?;
