@@ -8,6 +8,80 @@ use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
+use tracing::Instrument;
+
+/// Header used to surface the per-request correlation id back to the
+/// caller. Echoes any `x-request-id` header the client supplied (so
+/// upstream proxies/clients keep their own id), or a freshly minted
+/// ULID when absent.
+const REQUEST_ID_HEADER: &str = "x-request-id";
+
+/// Per-request correlation middleware. Generates (or echoes) a ULID,
+/// wraps every downstream handler invocation in a `tracing` span
+/// carrying `request_id` + `method` + `path` fields, and stamps the
+/// id back into the response as `x-request-id`.
+///
+/// Every log line emitted by ANY handler — host or extension — during
+/// this request inherits the span's fields, so post-mortem grep is
+/// `grep request_id=01KQXXX` and the entire request's story shows up,
+/// including downstream RPC spans (see
+/// `nexus_backend_runtimes::generic::leases::stdio_lease`).
+async fn request_id_middleware(mut req: Request, next: Next) -> Response {
+    let request_id = req
+        .headers()
+        .get(REQUEST_ID_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string)
+        .unwrap_or_else(|| ulid::Ulid::new().to_string());
+
+    // Make the id observable to handlers that want to read it without
+    // depending on the tracing span.
+    if let Ok(value) = HeaderValue::from_str(&request_id) {
+        req.headers_mut().insert(REQUEST_ID_HEADER, value);
+    }
+
+    let method = req.method().clone();
+    let path = req.uri().path().to_string();
+    let span = tracing::info_span!(
+        "http_request",
+        request_id = %request_id,
+        method = %method,
+        path = %path,
+    );
+
+    let started = std::time::Instant::now();
+    tracing::info!(target: "nexus_api::request", "started");
+    let mut response = async move { next.run(req).await }.instrument(span.clone()).await;
+    let elapsed_ms = started.elapsed().as_millis() as u64;
+
+    // Stamp the id onto the response for client-side correlation.
+    if let Ok(value) = HeaderValue::from_str(&request_id) {
+        response.headers_mut().insert(REQUEST_ID_HEADER, value);
+    }
+
+    let _enter = span.enter();
+    let status = response.status();
+    if status.is_server_error() {
+        tracing::error!(target: "nexus_api::request",
+            status = %status.as_u16(),
+            elapsed_ms,
+            "completed (5xx)"
+        );
+    } else if status.is_client_error() {
+        tracing::warn!(target: "nexus_api::request",
+            status = %status.as_u16(),
+            elapsed_ms,
+            "completed (4xx)"
+        );
+    } else {
+        tracing::info!(target: "nexus_api::request",
+            status = %status.as_u16(),
+            elapsed_ms,
+            "completed"
+        );
+    }
+    response
+}
 
 /// Tag responses on legacy paths with RFC 8594 Deprecation / Sunset
 /// headers. Currently covers:
@@ -421,6 +495,10 @@ pub fn build(state: AppState) -> Router {
         .nest("/api/host", api_host)
         .fallback(frontend::static_handler)
         .layer(CatchPanicLayer::new())
+        // request_id MUST be the outermost user-visible layer so the
+        // span is active for everything inside it (including
+        // deprecation_headers, CORS, compression, and the handler).
+        .layer(middleware::from_fn(request_id_middleware))
         .layer(middleware::from_fn(deprecation_headers))
         .layer(
             TraceLayer::new_for_http()
