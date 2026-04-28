@@ -187,7 +187,10 @@ async fn create_mapping_then_list_and_get() {
         .oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri(format!("/mappings/{mapping_id}"))
+                .uri(format!(
+                    "/mappings/{mapping_id}?deploymentId={}",
+                    dep.as_str()
+                ))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -227,7 +230,10 @@ async fn patch_mapping_respects_uniqueness_on_rename() {
         .oneshot(
             Request::builder()
                 .method(Method::PATCH)
-                .uri(format!("/mappings/{alice_id}"))
+                .uri(format!(
+                    "/mappings/{alice_id}?deploymentId={}",
+                    dep.as_str()
+                ))
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(&patch_body).unwrap()))
                 .unwrap(),
@@ -307,7 +313,10 @@ async fn soft_delete_marks_is_active_false_and_hides_from_list() {
         .oneshot(
             Request::builder()
                 .method(Method::DELETE)
-                .uri(format!("/mappings/{mapping_id}"))
+                .uri(format!(
+                    "/mappings/{mapping_id}?deploymentId={}",
+                    dep.as_str()
+                ))
                 .body(Body::empty())
                 .unwrap(),
         )
