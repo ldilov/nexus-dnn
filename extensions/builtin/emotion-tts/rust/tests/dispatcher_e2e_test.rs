@@ -2069,3 +2069,294 @@ async fn mapping_vector_preset_default_applied_to_cache_key() {
         "utterance must reference the pre-seeded cached audio file"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Test: inline emotion_vector override applied to cache key
+// ---------------------------------------------------------------------------
+//
+// Pins the contract that script-level inline overrides flow through
+// `domain::emotion::resolve()` with the precedence chain
+// `inline > mapping > global > none` (Task 3).
+//
+// Setup:
+//   - mapping with `default_emotion_mode="none"` (so the mapping branch
+//     would yield no emotion if the inline override were ignored)
+//   - run with `global_emotion_snapshot_json=None` (no global emotion)
+//   - script tagged with an inline `emotion_vector` override —
+//     `[Narrator|emotion_vector:happy=0.9,calm=0.1] Hi.`
+//   - a SynthesisCacheRow whose content_hash is computed using the
+//     EXPECTED `EmotionPayload::EmotionVector { vector, alpha: 1.0 }`
+//
+// If prepare() correctly consumes inline_overrides through `resolve()`,
+// the per-utterance cache_input.emotion will match the seeded row and
+// the utterance will land with cache_hit=true.
+//
+// If prepare() regresses to passing `InlineOverrides::default()`, the
+// hash will not match (mapping=none → global=none → EmotionPayload::None)
+// and the assertion will fail.
+//
+// Also asserts that the regression hash (with EmotionPayload::None) is
+// distinct from the expected hash so the test cannot pass by accident.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn inline_emotion_vector_override_applied_to_cache_key() {
+    let pool = fresh_pool().await;
+    let repos = Repos::from_pool(pool);
+
+    let dep = DeploymentId::try_from("dep_test_inline_vec").unwrap();
+    let now = Utc::now().timestamp();
+
+    repos
+        .deployments
+        .insert(&DeploymentRow {
+            deployment_id: dep.clone(),
+            host_extension_instance_ref: "host:test".into(),
+            display_name: "Inline Vector Override Test".into(),
+            backend_runtime_preference: None,
+            default_output_format: "wav".into(),
+            default_speed_factor: 1.0,
+            default_generation_overrides_json: "{}".into(),
+            most_recent_run_id: None,
+            partial_run_id: None,
+            reference_preprocess_enabled: true,
+            oas_enabled: false,
+            compile_gpt_enabled: false,
+            model_family: "indextts-2".into(),
+            oas_threshold_learned: None,
+            oas_samples_seen: 0,
+            default_voice_asset_id: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    let voice_sha256 = "8".repeat(64);
+    let voice_id = VoiceAssetId::new();
+    repos
+        .voice_assets
+        .insert(&VoiceAssetRow {
+            voice_asset_id: voice_id.clone(),
+            deployment_id: dep.clone(),
+            display_name: "Narrator".into(),
+            kind: "speaker".into(),
+            audio_artifact_ref: "/tmp/fake_voice_inline_vec.wav".into(),
+            content_sha256: voice_sha256.clone(),
+            reference_text: None,
+            sample_rate: Some(24000),
+            duration_ms: Some(5000),
+            source_type: "upload".into(),
+            notes: None,
+            is_active: true,
+            preprocessed_artifact_ref: None,
+            preprocessing_report_json: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    // Mapping with default_emotion_mode="none" — so without the inline
+    // override, prepare() would resolve to EmotionPayload::None.
+    repos
+        .mappings
+        .insert(&CharacterMappingRow {
+            mapping_id: MappingId::new(),
+            deployment_id: dep.clone(),
+            character_name: "Narrator".into(),
+            character_name_lower: "narrator".into(),
+            speaker_voice_asset_id: voice_id.clone(),
+            default_emotion_mode: "none".into(),
+            default_emotion_voice_asset_id: None,
+            default_vector_preset_id: None,
+            default_qwen_template: None,
+            default_speed_factor: None,
+            default_generation_overrides_json: "{}".into(),
+            is_active: true,
+            notes: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    // Tagged script with inline emotion_vector override. Tag grammar:
+    //   `[CHAR (|KEY:VALUE)*] TEXT`
+    // VECTOR_KEYS order is [happy, angry, sad, afraid, disgusted,
+    // melancholic, surprised, calm], so happy=0.9,calm=0.1 → [0.9, 0, 0,
+    // 0, 0, 0, 0, 0.1].
+    let script = "[Narrator|emotion_vector:happy=0.9,calm=0.1] Hello world.";
+    let run_id = RunId::new();
+    repos
+        .runs
+        .insert(&RunRow {
+            run_id: run_id.clone(),
+            deployment_id: dep.clone(),
+            kind: "batch".into(),
+            status: "queued".into(),
+            script_snapshot: script.into(),
+            parser_mode: "dialogue".into(),
+            generation_settings_json: "{}".into(),
+            global_emotion_snapshot_json: None,
+            output_format: "wav".into(),
+            speed_factor: 1.0,
+            speed_mode: "preserve_pitch".into(),
+            cache_policy: "use_cache".into(),
+            seed_strategy: "fixed".into(),
+            base_seed: 42,
+            original_run_id: None,
+            runtime_install_id: None,
+            runtime_version: None,
+            model_version: None,
+            extension_version: "0.0.0-test".into(),
+            queued_at: now,
+            started_at: None,
+            finished_at: None,
+            error_category: None,
+            error_detail: None,
+        })
+        .await
+        .unwrap();
+
+    let inline_vector: [f64; 8] = [0.9, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1];
+
+    // Prepare() strips the tag from the utterance text, so the cache key
+    // text is just the trailing payload — `Hello world.` (parser tests
+    // confirm this contract).
+    let expected_cache_input = CacheKeyInput {
+        extension_version: "0.0.0-test".into(),
+        runtime_version: emotion_tts_extension::backend_client::FALLBACK_RUNTIME_VERSION.into(),
+        model_version: emotion_tts_extension::backend_client::FALLBACK_MODEL_VERSION.into(),
+        model_family: emotion_tts_extension::backend_client::FALLBACK_MODEL_FAMILY.into(),
+        text: "Hello world.".into(),
+        speaker_ref_sha256: voice_sha256.clone(),
+        emotion: EmotionPayload::EmotionVector {
+            vector: inline_vector,
+            alpha: 1.0,
+        },
+        generation_params: BTreeMap::new(),
+        seed: 42,
+        speed_factor: 1.0,
+        speed_mode: "preserve_pitch".into(),
+        output_format: "wav".into(),
+    };
+    let expected_hash = build_cache_key(&expected_cache_input)
+        .expect("expected cache key must build for valid inputs");
+
+    // Regression hash: same key, but with EmotionPayload::None — what
+    // would land if `InlineOverrides::default()` were still passed.
+    let regression_input = CacheKeyInput {
+        emotion: EmotionPayload::None,
+        ..expected_cache_input.clone()
+    };
+    let regression_hash = build_cache_key(&regression_input)
+        .expect("regression cache key must build for valid inputs");
+    assert_ne!(
+        expected_hash.as_str(),
+        regression_hash.as_str(),
+        "test setup invariant: inline-applied hash MUST differ from no-emotion hash"
+    );
+
+    repos
+        .cache
+        .insert(&SynthesisCacheRow {
+            content_hash: expected_hash.clone(),
+            audio_artifact_ref: "/tmp/cached_inline_vec_seg.wav".into(),
+            extension_version: "0.0.0-test".into(),
+            runtime_version: emotion_tts_extension::backend_client::FALLBACK_RUNTIME_VERSION.into(),
+            model_version: emotion_tts_extension::backend_client::FALLBACK_MODEL_VERSION.into(),
+            size_bytes: 100,
+            hit_count: 0,
+            created_at: now,
+            last_hit_at: now,
+        })
+        .await
+        .unwrap();
+
+    let call_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = call_count.clone();
+    let (lease, _notif_tx) = ChannelLease::new(move |method, _params| {
+        if method == "synthesize.batch" {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+        Ok(json!({"request_id": "x", "status": "ok", "segments": []}))
+    });
+
+    let queue = Arc::new(RuntimeQueue::new());
+    let registry = Arc::new(RunChannelRegistry::new());
+    let provider = Arc::new(LeaseProvider::new(Arc::new(StaticLeaseFactory(
+        lease as SharedLease,
+    ))));
+
+    let _handle = spawn_dispatcher(
+        queue.clone(),
+        repos.clone(),
+        provider,
+        registry.clone(),
+        None,
+        "0.0.0-test",
+        std::env::temp_dir().join(emotion_tts_extension::FALLBACK_RUNS_DIR),
+    );
+
+    queue
+        .enqueue(run_id.clone(), dep.as_str(), RunClass::Batch)
+        .await;
+
+    let mut rx = None;
+    for _ in 0..100 {
+        if let Some(r) = registry.subscribe(run_id.as_str()).await {
+            rx = Some(r);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let mut rx = rx.expect("dispatcher should register run channel within 2s");
+
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            match rx.recv().await {
+                Ok(ev) => {
+                    if matches!(ev, RunEvent::RunTerminal { .. }) {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    })
+    .await
+    .expect("dispatcher should reach RunTerminal within 10s");
+
+    assert_eq!(
+        call_count.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "synthesize.batch must not be called: the cache row matches only \
+         when the inline emotion_vector override flows into the cache key"
+    );
+
+    let utts = repos
+        .utterances
+        .list_by_run(&run_id)
+        .await
+        .expect("utterance query must not fail");
+    assert_eq!(utts.len(), 1, "expected exactly one utterance row");
+    let utt = &utts[0];
+    assert!(
+        utt.cache_hit,
+        "utterance must be a cache hit — proves prepare() consumed the \
+         inline emotion_vector override through domain::emotion::resolve()"
+    );
+    assert_eq!(
+        utt.content_hash.as_deref(),
+        Some(expected_hash.as_str()),
+        "utterance content_hash must equal the hash built with the \
+         inline emotion vector (vs. EmotionPayload::None regression hash {})",
+        regression_hash.as_str()
+    );
+    assert_eq!(
+        utt.audio_artifact_ref.as_deref(),
+        Some("/tmp/cached_inline_vec_seg.wav"),
+        "utterance must reference the pre-seeded cached audio file"
+    );
+}
