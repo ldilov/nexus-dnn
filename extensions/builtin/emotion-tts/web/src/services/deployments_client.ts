@@ -8,6 +8,7 @@ export interface Deployment {
   defaultOutputFormat: string;
   defaultSpeedFactor: number;
   defaultGenerationOverridesJson: string;
+  defaultVoiceAssetId?: string | null;
   mostRecentRunId?: string | null;
   partialRunId?: string | null;
   createdAt: number;
@@ -20,4 +21,14 @@ export async function listDeployments(): Promise<{ deployments: Deployment[] }> 
 
 export async function getDeployment(id: string): Promise<Deployment> {
   return apiFetch(`/deployments/${id}`);
+}
+
+export async function setDefaultVoice(
+  deploymentId: string,
+  voiceAssetId: string | null,
+): Promise<void> {
+  return apiFetch(`/deployments/${deploymentId}/default-voice`, {
+    method: "PATCH",
+    body: JSON.stringify({ voiceAssetId }),
+  });
 }
