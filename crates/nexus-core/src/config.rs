@@ -20,6 +20,14 @@ pub struct NexusConfig {
 
     #[arg(long, env = "NEXUS_LOG_LEVEL", default_value = DEFAULT_LOG_LEVEL)]
     pub log_level: String,
+
+    /// Install `console-subscriber` so `tokio-console` can attach. Requires
+    /// the `console` Cargo feature compiled in AND `RUSTFLAGS="--cfg
+    /// tokio_unstable"` at build time. When enabled, the compact terminal
+    /// formatter and the rotating file appender are bypassed — the
+    /// console subscriber owns the global tracing dispatch by itself.
+    #[arg(long, env = "NEXUS_DEBUG_ASYNC", default_value_t = false)]
+    pub debug_async: bool,
 }
 
 impl NexusConfig {
