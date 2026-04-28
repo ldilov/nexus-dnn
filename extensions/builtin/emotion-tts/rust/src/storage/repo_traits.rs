@@ -279,7 +279,10 @@ pub trait RunsRepo: Send + Sync {
         finished_at: Option<i64>,
         from_any: &[&str],
     ) -> RepoResult<bool>;
-    async fn set_started(&self, id: &RunId, at: i64) -> RepoResult<()>;
+    /// Transition queued → running, returning `true` iff the row was queued at
+    /// the time of the call. Closes the race where a cancel arriving between
+    /// utterance insertion and dispatcher start would be silently overwritten.
+    async fn set_started_guarded(&self, id: &RunId, at: i64) -> RepoResult<bool>;
 }
 
 #[async_trait]
