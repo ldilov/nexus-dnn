@@ -27,6 +27,44 @@ from .speaker_cache import SpeakerCache, SpeakerCacheKey
 VECTOR_KEYS = ("happy", "angry", "sad", "afraid", "disgusted", "melancholic", "surprised", "calm")
 
 
+def _resolve_use_cuda_kernel(requested: bool | None) -> bool:
+    """Decide whether to attempt BigVGAN's custom CUDA kernel JIT build.
+
+    The kernel is a `torch.utils.cpp_extension.load(...)` call that compiles
+    `anti_alias_activation_cuda.cu` on first import. The compile needs:
+
+      * `ninja` on PATH (covered by `__main__._ensure_ninja_on_path`).
+      * `nvcc` (CUDA Toolkit) on PATH — separate from PyTorch's bundled
+        runtime CUDA libs. Many GPU-Python users have torch+CUDA without
+        Toolkit installed.
+      * A working host C++ compiler (MSVC `cl.exe` on Windows, `g++` on
+        Linux) at a version torch's build helper accepts.
+
+    When ANY of those is missing, BigVGAN's load() raises and is caught
+    one frame up, which prints the familiar two-liner:
+
+        >> Failed to load custom CUDA kernel for BigVGAN. Falling back to torch.
+        RuntimeError("Error building extension 'anti_alias_activation_cuda'")
+
+    Synthesis still works — the vocoder runs on the slower torch-only
+    path. The error is just noise.
+
+    Resolution:
+      * `requested=True/False` → respect the explicit setting (user opt-in
+        or opt-out via the `optimizations.use_cuda_kernel` field).
+      * `requested=None` (default) → auto-detect: skip the JIT (return
+        False) when `nvcc` is not on PATH, attempt it (return True) when
+        it is. We never return None back to IndexTTS2 — leaving the kernel
+        attempt to IndexTTS2's own auto-detect would re-introduce the
+        noisy fallback for users without Toolkit.
+    """
+    import shutil
+
+    if requested is not None:
+        return requested
+    return shutil.which("nvcc") is not None
+
+
 @dataclass
 class AdapterSettings:
     model_dir_abs: str
@@ -160,19 +198,25 @@ class IndexTtsAdapter:
             _ckpt("imported indextts.infer_v2.IndexTTS2 — about to construct")
 
             cfg_path = self._settings.cfg_path or str(Path(self._settings.model_dir_abs) / "config.yaml")
+            resolved_use_cuda_kernel = _resolve_use_cuda_kernel(self._settings.use_cuda_kernel)
             _ckpt(f"cfg_path={cfg_path!r}, model_dir={self._settings.model_dir_abs!r}, "
                   f"device={self._settings.device!r}, use_fp16={self._settings.use_fp16}, "
-                  f"use_cuda_kernel={self._settings.use_cuda_kernel}, "
+                  f"use_cuda_kernel={resolved_use_cuda_kernel} "
+                  f"(requested={self._settings.use_cuda_kernel}), "
                   f"use_deepspeed={self._settings.use_deepspeed}, "
                   f"use_accel={self._settings.use_accel}, "
                   f"use_torch_compile={self._settings.use_torch_compile}")
+            if self._settings.use_cuda_kernel is None and not resolved_use_cuda_kernel:
+                _ckpt("BigVGAN custom CUDA kernel SKIPPED — nvcc not on PATH "
+                      "(install CUDA Toolkit to enable the faster vocoder path; "
+                      "synthesis still works on torch fallback).")
             _ckpt("calling IndexTTS2(...) — heavy work begins here")
             self._model = IndexTTS2(
                 cfg_path=cfg_path,
                 model_dir=self._settings.model_dir_abs,
                 use_fp16=self._settings.use_fp16,
                 device=self._settings.device,
-                use_cuda_kernel=self._settings.use_cuda_kernel,
+                use_cuda_kernel=resolved_use_cuda_kernel,
                 use_deepspeed=self._settings.use_deepspeed,
                 use_accel=self._settings.use_accel,
                 use_torch_compile=self._settings.use_torch_compile,
