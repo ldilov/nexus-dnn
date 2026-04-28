@@ -707,7 +707,7 @@ All paths below are relative to `/api/v1/extensions/nexus.audio.emotiontts/`.
 | GET    | `mappings/{mapping_id}`               | Q: `deploymentId` (required)                                                                                              | Get one. Returns `404` (not `403`) when the row belongs to a different deployment, so existence is opaque across deployment boundaries. |
 | PATCH  | `mappings/{mapping_id}`               | Q: `deploymentId` (required); body: partial of create body                                                                | Update. Same cross-deployment 404 rule as GET. |
 | DELETE | `mappings/{mapping_id}`               | Q: `deploymentId` (required)                                                                                              | Soft-delete (deactivate). Returns `204`. Same cross-deployment 404 rule as GET. |
-| POST   | `mappings/{mapping_id}/duplicate`     | `{ targetDeploymentId, overrideCharacterName? }`                                                                          | Clone. |
+| POST   | `mappings/{mapping_id}/duplicate?deploymentId=…`     | `{ targetDeploymentId, overrideCharacterName? }`                                                                          | Clone. The `deploymentId` query is the **source** deployment that must own the mapping; cross-deployment requests get a `404` (audit-mandated 404-not-403 to prevent existence probing). |
 
 Validation: character names case-insensitively unique per deployment (FR-071); `defaultSpeedFactor ∈ [0.5, 2.0]`.
 
@@ -731,7 +731,7 @@ Vector must be exactly 8 elements, each in `[0.0, 1.0]`. Preset names ≤ 120 ch
 | GET    | `voice-assets/`                                   | Q: `deploymentId`                                                                                            | List for deployment. |
 | GET    | `voice-assets/{voice_asset_id}`                   | Q: `deploymentId` (required)                                                                                  | Get one. Returns `404` (not `403`) when the row belongs to a different deployment, so existence is opaque across deployment boundaries. |
 | DELETE | `voice-assets/{voice_asset_id}`                   | Q: `deploymentId` (required)                                                                                  | Soft-delete. Same cross-deployment 404 rule as GET. |
-| POST   | `voice-assets/{voice_asset_id}/preprocess`        | —                                                                                                             | Re-trigger preprocessing. `200 unchanged` if pipeline up-to-date, `202 reprocessed` otherwise. |
+| POST   | `voice-assets/{voice_asset_id}/preprocess?deploymentId=…`        | —                                                                                                             | Re-trigger preprocessing. `200 unchanged` if pipeline up-to-date, `202 reprocessed` otherwise. `deploymentId` must match the asset's owning deployment; cross-deployment requests get `404`. |
 | POST   | `voice-assets/probe`                              | `{ artifactRef }`                                                                                            | Probe a stored audio artifact (ffprobe). Returns `{ durationMs, sampleRate, channels, warnings: [too_short|too_long|long|very_long] }`. |
 
 Validation: duration `100ms ≤ d ≤ 5min`; warnings emitted at `> 30s` and `> 60s`.

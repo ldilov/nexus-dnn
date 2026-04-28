@@ -75,11 +75,13 @@ export async function deactivateMapping(
 }
 
 export async function duplicateMapping(
+  sourceDeploymentId: string,
   mappingId: string,
   targetDeploymentId: string,
   overrideCharacterName?: string,
 ): Promise<CharacterMapping> {
-  return apiFetch(`/mappings/${mappingId}/duplicate`, {
+  const query = new URLSearchParams({ deploymentId: sourceDeploymentId });
+  return apiFetch(`/mappings/${mappingId}/duplicate?${query.toString()}`, {
     method: "POST",
     body: JSON.stringify({ targetDeploymentId, overrideCharacterName }),
   });
