@@ -73,7 +73,26 @@ pub async fn register(
     let repos = crate::storage::build_repos(pool).await?;
     let queue = Arc::new(RuntimeQueue::new());
     let provider = lease_factory.map(|f| Arc::new(crate::backend_client::LeaseProvider::new(f)));
-    let router = router::build_router(repos, queue, EXTENSION_VERSION, provider, artifact_store);
+    let run_channels = Arc::new(crate::dispatcher::RunChannelRegistry::new());
+    if let Some(p) = provider.clone() {
+        let _dispatcher = crate::dispatcher::spawn_dispatcher(
+            queue.clone(),
+            repos.clone(),
+            p,
+            run_channels.clone(),
+            EXTENSION_VERSION,
+        );
+    }
+    let router = router::build_router_with_families(
+        repos,
+        queue,
+        EXTENSION_VERSION,
+        provider,
+        artifact_store,
+        run_channels,
+        Arc::new(crate::families::FamilyRegistry::new(Vec::new())),
+        crate::router::families::default_reconciler(),
+    );
     Ok(ExtensionHandle {
         migrations: MIGRATIONS,
         router,
