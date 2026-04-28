@@ -72,6 +72,22 @@ The user has applied trim → normalize → speed-1.1× to a voice asset. They w
 
 ---
 
+### User Story 5 — Audit trail per asset (Priority: P3)
+
+A team lead wants to know who edited the "Narrator" voice asset and when. They open the asset's audit panel and see a chronological list: "2026-04-29 14:02 — applied trim + normalize (2 ops)", "2026-04-30 09:11 — added speed 1.05× (3 ops)", "2026-04-30 09:14 — removed speed (2 ops)". Each entry shows what changed, when, and (in a future auth-aware version) who. Clearing the edit chain does NOT delete the audit history.
+
+**Why this priority**: Compliance and recovery use cases. If an edit broke a recording, the audit answers "what was done?" — even after the chain is cleared. P3 because: identity is a placeholder until auth lands, and there is no edit storm risk pre-auth.
+
+**Independent Test**: Apply two edits, clear the chain, verify the audit panel still shows both entries and the chain-clear entry. Read each entry's chain digest and confirm it matches a hash of the chain JSON at that point in time.
+
+**Acceptance Scenarios**:
+
+1. **Given** a voice asset that has been edited 3 times, **When** the user opens the audit panel, **Then** all 3 entries are listed in reverse chronological order with timestamp, operation count, and a chain-digest column.
+2. **Given** an edited asset whose chain is then cleared, **When** the user re-opens the audit panel, **Then** the clear is recorded as its own entry (`operation_count = 0`) and prior entries are still present.
+3. **Given** the audit panel for an asset that has never been edited, **When** the user opens it, **Then** the panel is empty (zero entries) — no false "created" event is synthesized.
+
+---
+
 ### Edge Cases
 
 - **Empty edit chain after removing all operations**: The asset reverts to the original source audio. The derived `audio_artifact_ref` may equal the source, or be regenerated as a no-op copy — handler decides.
@@ -82,6 +98,9 @@ The user has applied trim → normalize → speed-1.1× to a voice asset. They w
 - **Preview during another long-running operation**: The runtime's lease serializes; preview joins the queue. UI shows a "queued — N seconds" indicator. Cancel button discards the preview request.
 - **Edit chain JSON exceeds a reasonable size (e.g. >100 ops)**: Cap the chain length at 32 ops with a clear validation error. Prevents infinite history growth from accidental loops.
 - **Two browser tabs editing the same asset concurrently**: Last write wins. Clear "stale" indicator if the persisted edit chain has changed since the editor loaded.
+- **No-op edit (chain unchanged from current persisted state)**: Apply skips the worker round-trip and returns the existing derived artifact unchanged. No audit entry is recorded — only state-changing applies are logged.
+- **Source audio is a compressed format (mp3, opus) but the trim boundary lands mid-frame**: The system MUST still produce sample-accurate output (FR-026); the implementation may need to decode → edit → re-encode rather than container-level cut.
+- **Audit trail entry references a deleted voice asset**: Audit entries persist independently. Querying audit for a deleted asset still returns historical entries; the asset row may be soft-deleted but the audit log remains for forensic value.
 
 ## Requirements *(mandatory)*
 
@@ -103,10 +122,13 @@ The user has applied trim → normalize → speed-1.1× to a voice asset. They w
   - **Fade in / fade out** — linear gain ramp at the head or tail with a duration in milliseconds.
   - **Mute region** — silence a `[start_ms, end_ms]` interval inside the audio (for removing breaths/spikes).
 - **FR-005**: Each edit operation MUST be a typed, declarative record (mode + parameters), serializable to JSON, with no executable code stored.
+- **FR-005a**: Each operation MUST carry a stable identifier that survives chain reordering. This lets the UI's Remove button reference an operation by id (not by position), and lets the audit log point at a specific operation across edits. Identifier format MUST be opaque to the host — only the extension introspects the chain.
+- **FR-005b**: The chain MUST be ordered: replay applies operations left-to-right. A reorder is itself a chain edit and produces a new chain digest.
 - **FR-006**: A voice asset MUST carry a declarative **edit chain** — an ordered list of operations applied to a source artifact. The chain MUST be:
   - Stored in the existing `ext_emotion_tts__voice_assets` table as a new nullable column (extension-only migration; no host schema change).
   - Reversible: removing operations from the chain rebuilds the derived audio from the source by replaying the remaining operations.
   - Capped at a maximum length (default 32 operations) to prevent runaway growth.
+- **FR-006a**: The chain MUST produce a deterministic digest (a content hash over the canonical JSON serialization) used by both the synthesis cache key (FR-017) and the audit log (FR-032). Two chains with the same operations in the same order MUST yield the same digest; any reorder, addition, or removal MUST yield a different digest.
 - **FR-007**: A per-utterance edit MUST be stored as a chain on the `ext_emotion_tts__utterances` row, similarly nullable. The source for an utterance edit is the originally-synthesized segment audio, preserved.
 - **FR-008**: The original (pre-edit) source artifact MUST always be preserved. Edits are derived; the source is never overwritten.
 
@@ -130,7 +152,27 @@ The user has applied trim → normalize → speed-1.1× to a voice asset. They w
 - **FR-018**: The dispatcher's `prepare()` step MUST resolve the edit chain when threading voice paths to the worker. The worker receives an absolute path to the **derived** audio (post-edit), not the source.
 - **FR-019**: When an edit is applied, the system MUST emit an `extension.emotiontts.audio.edited` event on the host event bus carrying `voice_asset_id` (or `utterance_id`), `operation_count`, and the derived artifact reference. Subscribers can invalidate caches or refresh UI state.
 
-#### UI surface
+#### Audio fidelity (worker pipeline output)
+
+- **FR-026**: Trim, crop, fade, and mute operations MUST be sample-accurate within 1 ms of the requested boundary, regardless of input audio format. For compressed input (mp3, opus, m4a) where boundaries fall mid-frame, the implementation MUST decode → edit → re-encode rather than perform container-level cuts. Verified by FR-026's verification path in SC-010.
+- **FR-027**: The pitch-preserving speed operation MUST preserve perceived pitch within ±5 cents (5/100 of a semitone) of the source. Naïve resampling, which shifts pitch with rate, is explicitly disallowed.
+- **FR-028**: Sample rate is preserved from source to derived. The system MUST NOT resample as a side effect of any edit operation. (Format conversion to a uniform export wrapper happens later in the export pipeline, outside this feature's scope.)
+
+#### Audit trail
+
+- **FR-029**: When any edit is successfully applied, cleared, or has an operation removed, the system MUST persist an audit entry with:
+  - target id (`voice_asset_id` or `utterance_id`),
+  - target kind (`voice_asset` | `utterance`),
+  - chain digest **before** the change,
+  - chain digest **after** the change,
+  - operation count after the change,
+  - timestamp (millisecond precision, UTC),
+  - actor identity (placeholder string `system` until host auth is wired; the column MUST exist now to avoid a future migration).
+- **FR-030**: Audit entries MUST persist independently of the chain itself. Clearing a chain (FR-014) MUST NOT delete prior audit entries; the clear is logged as its own entry with `operation_count = 0`.
+- **FR-031**: Audit entries MUST be queryable by target id (a `GET` endpoint paired with the editor UI's history panel). The endpoint MUST follow the cross-deployment guard (FR-016) — 404 on cross-deployment access.
+- **FR-032**: A new extension-owned table `ext_emotion_tts__audio_edit_log` MUST hold audit entries. The table MUST live entirely within the extension's storage namespace — no host migrations, no host queries against it. The table is seeded by a single new additive migration.
+
+#### UI surface — waveform & precision controls
 
 - **FR-020**: The mapping editor's voice asset sidebar MUST gain an editor panel with: a waveform, draggable trim handles, controls for each operation (toggle for normalize, slider for speed, sliders for fade durations, click-and-drag for mute regions), and three buttons: **Preview**, **Apply**, **Reset**.
 - **FR-021**: The run detail view MUST gain an inline edit affordance per segment with the same operation set scoped to that one segment.
@@ -138,14 +180,22 @@ The user has applied trim → normalize → speed-1.1× to a voice asset. They w
 - **FR-023**: Apply, Preview, and Reset MUST be visually distinct. Apply is the only destructive (state-mutating) action; Reset reverts unsaved UI state but does not modify persisted audio.
 - **FR-024**: The UI MUST display the source duration, the post-edit duration, and (when normalize is active) the measured loudness in LUFS.
 - **FR-025**: Validation errors from the worker MUST surface as actionable inline messages in the editor (not as a generic toast). Example: "Trim window 4.0s–3.9s is invalid — end must be after start."
+- **FR-033**: The waveform display MUST allow drag operations with at least **100 ms** position accuracy at the default zoom and **10 ms** position accuracy at the maximum zoom level. Both axes (start handle, end handle) MUST be independently draggable.
+- **FR-034**: The waveform display MUST show real-time numeric timing as handles are dragged (e.g. `0:04.200 — 0:52.000`). The display MUST update at least 30 times per second during drag so the user gets continuous feedback.
+- **FR-035**: The display MUST support keyboard fine-adjustment: arrow keys nudge the focused handle by ±10 ms; Shift+arrow by ±100 ms; Ctrl+arrow by ±1 ms. This gives precision the mouse cannot reach without zoom.
+- **FR-036**: The waveform MUST visually indicate edited regions: trimmed portions dim or are hidden; muted regions show a flat horizontal bar; fade-in/out regions show a triangular gradient overlay. The user can see the edit at a glance without reading the chain panel.
+- **FR-037**: The waveform component MUST be playback-aware: clicking a position seeks the in-browser preview player to that timestamp. A vertical playhead cursor MUST follow current playback position when previewing.
+- **FR-038**: The waveform component selection (peaks.js, custom canvas, or a Spectral-Graphite primitive extension) is an implementation detail not prescribed here. Whichever library or custom code is chosen MUST satisfy FR-033 through FR-037 — that is the testable contract.
 
 ### Key Entities
 
-- **Edit operation**: A typed record describing one transformation (mode + parameters). Modes: `trim`, `crop`, `normalize`, `speed`, `fade_in`, `fade_out`, `mute`. Parameters depend on the mode (e.g. trim has `start_ms`, `end_ms`; speed has `factor`; normalize has `target_lufs`).
-- **Edit chain**: An ordered list of edit operations, applied left-to-right to a source. Stored as JSON on the parent row (voice asset or utterance). Reversible — removing operations rebuilds derived audio.
+- **Edit operation**: A typed record describing one transformation (mode + parameters + stable id). Modes: `trim`, `crop`, `normalize`, `speed`, `fade_in`, `fade_out`, `mute`. Parameters depend on the mode (trim → `start_ms`/`end_ms`; speed → `factor`; normalize → `target_lufs`; fade_in/out → `duration_ms`; mute → `start_ms`/`end_ms`). The stable id (FR-005a) lets the UI and audit log reference an operation across reorders.
+- **Edit chain**: An ordered list of edit operations, applied left-to-right to a source. Stored as JSON in a nullable `edit_chain_json` column on the parent row (`ext_emotion_tts__voice_assets` for voice assets, `ext_emotion_tts__utterances` for run output). Reversible — removing operations rebuilds derived audio.
+- **Chain digest**: A deterministic hash over the canonical JSON serialization of the chain (FR-006a). Used by both the synthesis cache key and the audit log to refer to the chain at a point in time.
 - **Source artifact**: The unmodified original audio. For voice assets, the file uploaded by the user. For utterances, the segment audio produced by synthesis. Preserved across all edits.
 - **Derived artifact**: The audio file resulting from applying an edit chain to its source. Updated whenever the chain changes. Stored in the host artifact store with a fresh content hash.
 - **Edit report**: A diagnostic record returned by the worker per edit operation: duration, input/output sample rate, measured LUFS (if normalize), warnings (e.g. "trim leaves 95 ms remaining — close to minimum"). Persisted alongside the chain or returned in the API response.
+- **Audit entry**: A row in `ext_emotion_tts__audio_edit_log` capturing one chain change. Fields: target id, target kind, chain digest before, chain digest after, operation count, timestamp, actor (FR-029). Append-only; not deleted when chains are cleared.
 
 ## Success Criteria *(mandatory)*
 
@@ -159,6 +209,9 @@ The user has applied trim → normalize → speed-1.1× to a voice asset. They w
 - **SC-006**: Per-utterance edit on a 200-line batch saves at least 95% of wall-clock vs. a full re-synthesis (since only one segment is rebuilt locally — the worker is not invoked for the LLM path, only for the audio-edit pipeline).
 - **SC-007**: An edited voice asset's derived audio matches a manually-edited reference (same operations applied via standalone ffmpeg/soundfile invocation) within a tolerance acceptable for human listening (e.g. cross-correlation ≥ 0.99 on the overlapping window).
 - **SC-008**: 100% of new endpoints emit a `404` (not `403`) on cross-deployment access — verified by an HTTP contract test analogous to `http_contract_cross_deployment_test.rs` already in the extension test suite.
+- **SC-009**: Sample-accurate trim boundary tolerance verified by a test: given a source of known duration with a 1-kHz sine tone starting at exactly 1.000s, a trim with `start_ms=1000` produces output whose first non-silent sample is within 1 ms of t=0 in the trimmed audio. Repeated for mp3, wav, and opus inputs.
+- **SC-010**: After applying any chain change, the audit log query for the target returns the expected number of entries with chain digests matching what the chain history should produce. Verified by a sequence test: apply 3 edits, clear, query log → 4 entries (3 applies + 1 clear), each with the correct before/after digests.
+- **SC-011**: Waveform handle drag accuracy verified by an interaction test: a synthetic mouse drag from pixel X to pixel Y on a 1000-pixel-wide waveform representing a 60-second audio file produces a `start_ms` value within 100 ms of the expected boundary. Keyboard arrow press produces an exact 10 ms delta.
 
 ## Assumptions
 
@@ -168,7 +221,10 @@ The user has applied trim → normalize → speed-1.1× to a voice asset. They w
 - **Declarative edit chain over imperative file overwrite**: Imperative would require explicit history tracking; declarative gives free undo and audit. Cost of re-materializing the derived audio on every chain change is acceptable for assets up to ~5 minutes.
 - **Pitch-preserving speed change**: Speed operations use ffmpeg's `atempo` filter (chained for ranges outside `[0.5×, 2.0×]` if we ever expand the range) — same approach as the existing run-level `speedFactor` with `speedMode: preserve_pitch`. Naïve resampling speed (which changes pitch) is explicitly out of scope.
 - **Worker stays single-threaded for audio edits**: Edits go through the same `LeaseProvider` lease as synthesis. No parallel edit channel. If contention becomes a UX issue, add a queue indicator before adding a parallel runtime.
-- **No host-level audit log change**: Per the established host-extension boundary, the audio-edit audit trail (who edited what, when) lives in extension-owned storage (the chain itself plus an optional `ext_emotion_tts__audio_edit_log` table). The host's audit pipeline doesn't change.
+- **No host-level audit log change**: Per the established host-extension boundary, the audio-edit audit trail (who edited what, when) lives in the extension-owned `ext_emotion_tts__audio_edit_log` table (FR-032). The host's audit pipeline doesn't change.
+- **Actor identity is `system` until auth is wired**: The audit log captures an `actor` column now so a future auth migration is data-only (populate the column with real identities going forward). No retroactive backfill is attempted.
+- **Sample-accurate trim implies decode-edit-re-encode for compressed sources**: Container-level cuts on mp3/opus boundaries don't land on sample boundaries; ffmpeg is invoked with `-c:a` set to a target codec (PCM for in-flight processing, source codec on output if the user opted to preserve format) so frame boundaries don't constrain trim accuracy. Performance impact: edits on 5-minute compressed files take ~2s instead of ~50ms (container-cut). Acceptable per SC-002.
+- **Edit chain JSON is opaque to the host**: The host never inspects or queries `edit_chain_json` content. Schema evolution (adding new operation modes, parameter renames) happens entirely inside the extension. The host's storage namespace contract guarantees the column is preserved; what's inside it is the extension's business.
 - **Frontend uses existing component vocabulary**: The mapping editor already has Spectral-Graphite waveform + dropzone primitives (Phase 5 work). New editor controls reuse those primitives' visual language. No new design-system additions.
 - **Synthesis cache is the only invalidation surface that matters**: When an edit changes a voice asset, the existing synthesis cache key change is sufficient to prevent stale audio. No separate "edit was applied" cache flag.
 - **Web Audio API for in-browser preview playback**: Standard, no new dependencies. Preview audio is fetched via the new `edit/preview` endpoint as raw bytes and decoded client-side.
