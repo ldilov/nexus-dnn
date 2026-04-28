@@ -83,8 +83,12 @@ async fn preprocess_impl(
         .voice_assets
         .get(&asset_id)
         .await?
-        .filter(|r| r.deployment_id.as_str() == claimed_deployment_id)
         .ok_or_else(|| EmotionTtsError::not_found(format!("voice asset {asset_id}")))?;
+    guard::assert_deployment_match(
+        row.deployment_id.as_str(),
+        claimed_deployment_id,
+        || format!("voice asset {asset_id}"),
+    )?;
 
     if let Some(existing_json) = &row.preprocessing_report_json {
         if let Ok(existing) =
@@ -160,15 +164,7 @@ struct ListQuery {
     deployment_id: String,
 }
 
-/// Query extractor used by every shared-id endpoint to prove the caller is
-/// asking about the deployment that actually owns the row. The handler
-/// returns 404 (NOT 403) when the row's `deployment_id` differs — keeps
-/// row existence opaque across deployment boundaries.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ScopedQuery {
-    deployment_id: String,
-}
+use crate::router::guard::{self, ScopedQuery};
 
 async fn list(
     State(state): State<Arc<VoiceAssetsState>>,
@@ -198,11 +194,13 @@ async fn fetch(
     };
     match state.repos.voice_assets.get(&id).await {
         Ok(Some(row)) => {
-            // Cross-deployment isolation: the caller must claim the deployment
-            // that owns this voice asset. Mismatch → 404 (NOT 403) to avoid
-            // leaking the existence of rows owned by other deployments.
-            if row.deployment_id.as_str() != query.deployment_id {
-                return EmotionTtsError::not_found(format!("voice asset {id}")).into_response();
+            // Cross-deployment isolation. 404-not-403 contract; see `guard`.
+            if let Err(err) = guard::assert_deployment_match(
+                row.deployment_id.as_str(),
+                &query.deployment_id,
+                || format!("voice asset {id}"),
+            ) {
+                return err.into_response();
             }
             (StatusCode::OK, Json(voice_asset_json(&row))).into_response()
         }
@@ -223,8 +221,12 @@ async fn deactivate(
     // Read-then-validate-then-mutate. Same 404-on-mismatch contract as `fetch`.
     match state.repos.voice_assets.get(&id).await {
         Ok(Some(row)) => {
-            if row.deployment_id.as_str() != query.deployment_id {
-                return EmotionTtsError::not_found(format!("voice asset {id}")).into_response();
+            if let Err(err) = guard::assert_deployment_match(
+                row.deployment_id.as_str(),
+                &query.deployment_id,
+                || format!("voice asset {id}"),
+            ) {
+                return err.into_response();
             }
         }
         Ok(None) => {
