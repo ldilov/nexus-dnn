@@ -30,7 +30,19 @@ pub(crate) async fn process_one(
 ) {
     let run_id = qrun.run_id.clone();
     let run_id_str = run_id.as_str().to_string();
+    let deployment_id_str = qrun.deployment_id.clone();
     let (tx, _guard) = registry.register(run_id_str.clone()).await;
+    let started = std::time::Instant::now();
+
+    // Lifecycle: run dispatched. Pairs with the lifecycle="terminal"
+    // event below so a `grep run_id=... lifecycle=` shows the full arc.
+    tracing::info!(
+        target: "emotion_tts::dispatch",
+        run_id = %run_id_str,
+        deployment_id = %deployment_id_str,
+        lifecycle = "dispatched",
+        "run dispatched"
+    );
 
     let result = dispatch_inner(
         &qrun,
@@ -48,7 +60,8 @@ pub(crate) async fn process_one(
         Err(err) => {
             tracing::error!(
                 target: "emotion_tts::dispatch",
-                run_id = run_id_str,
+                run_id = %run_id_str,
+                deployment_id = %deployment_id_str,
                 error = %err,
                 "dispatch failed"
             );
@@ -60,6 +73,40 @@ pub(crate) async fn process_one(
         .runs
         .update_status(&run_id, &terminal_status, Some(Utc::now().timestamp()))
         .await;
+
+    // Lifecycle: terminal. Emit at INFO with elapsed_ms so wall-clock
+    // run latency is queryable from the log without a separate metric.
+    // Failed/cancelled runs upgrade the level so they stand out.
+    let elapsed_ms = started.elapsed().as_millis() as u64;
+    match terminal_status.as_str() {
+        "failed" => tracing::error!(
+            target: "emotion_tts::dispatch",
+            run_id = %run_id_str,
+            deployment_id = %deployment_id_str,
+            lifecycle = "terminal",
+            terminal_status = %terminal_status,
+            elapsed_ms,
+            "run terminal"
+        ),
+        "cancelled" | "partial" => tracing::warn!(
+            target: "emotion_tts::dispatch",
+            run_id = %run_id_str,
+            deployment_id = %deployment_id_str,
+            lifecycle = "terminal",
+            terminal_status = %terminal_status,
+            elapsed_ms,
+            "run terminal"
+        ),
+        _ => tracing::info!(
+            target: "emotion_tts::dispatch",
+            run_id = %run_id_str,
+            deployment_id = %deployment_id_str,
+            lifecycle = "terminal",
+            terminal_status = %terminal_status,
+            elapsed_ms,
+            "run terminal"
+        ),
+    }
 
     let _ = tx.send(RunEvent::RunTerminal {
         run_id: run_id_str,
@@ -306,9 +353,41 @@ async fn dispatch_inner(
         return Ok("cancelled".to_string());
     }
 
+    // Lifecycle: queued → running succeeded. Distinct INFO event so a
+    // grep can separate "dispatched-but-blocked-on-lease" from
+    // "dispatched-and-running" — useful when investigating cold-start
+    // latency, since the next line spawns the worker which can take
+    // minutes on a fresh venv.
+    tracing::info!(
+        target: "emotion_tts::dispatch",
+        run_id = %run_id.as_str(),
+        deployment_id = %qrun.deployment_id,
+        lifecycle = "started",
+        utterance_count = prepared.utterances.len(),
+        cache_hits = hit_by_hash.len(),
+        "run started"
+    );
+
     // Acquire the lease (spawns the worker if needed; takes minutes on cold start).
+    let lease_started = std::time::Instant::now();
     let client = lease_provider.spawn_if_needed().await?;
     let mut notifications = client.lease().subscribe_notifications().await;
+    let lease_elapsed_ms = lease_started.elapsed().as_millis() as u64;
+    if lease_elapsed_ms > 60_000 {
+        tracing::warn!(
+            target: "emotion_tts::dispatch",
+            run_id = %run_id.as_str(),
+            elapsed_ms = lease_elapsed_ms,
+            "lease acquisition exceeded 60s — likely cold-start"
+        );
+    } else if lease_elapsed_ms > 1_000 {
+        tracing::info!(
+            target: "emotion_tts::dispatch",
+            run_id = %run_id.as_str(),
+            elapsed_ms = lease_elapsed_ms,
+            "lease acquired"
+        );
+    }
 
     // Filter the batch payload to miss segments only — cache hits have
     // already been inserted as `completed` and don't need synthesis.
