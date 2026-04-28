@@ -174,11 +174,15 @@ pub(crate) async fn prepare(
         // skip the mapping branch and fall through to the global setting.
         let mapping_defaults = mapping_opt.map(|m| build_mapping_defaults(m, cfg, &preset_vectors));
 
-        // No inline overrides at this layer (script-level inline overrides
-        // are parsed elsewhere and not yet plumbed through prepare()). An
-        // empty `InlineOverrides::default()` lets the resolver evaluate
-        // mapping → global → none in order.
-        let inline = InlineOverrides::default();
+        // Per-utterance inline overrides parsed from the script (Task 3).
+        // The parser populates `ParsedUtterance.inline_overrides` from tag
+        // syntax like `[Bob|emotion_vector:happy=0.7|emotion_alpha:0.9]`.
+        // `emotion_audio_ref` values are voice asset ids that need to be
+        // resolved to absolute filesystem paths the same way the global
+        // audio_ref is resolved by `parse_global_emotion`. The original
+        // map is left untouched; only the value passed to
+        // `InlineOverrides::from_map` is normalised.
+        let inline = build_inline_overrides(&r.utterance.inline_overrides, cfg);
         let utterance_emotion = resolve_emotion(
             &inline,
             None,
@@ -426,4 +430,33 @@ fn build_mapping_defaults(
         },
         _ => MappingDefaults::default(),
     }
+}
+
+/// Build `InlineOverrides` from the per-utterance map produced by the
+/// script parser, resolving `emotion_audio_ref` values through the voice
+/// path resolver — mirrors what `parse_global_emotion` does for the
+/// run-level global emotion so the worker always sees an absolute
+/// filesystem path rather than a host artifact reference.
+///
+/// The original `raw` map is not mutated. When the resolver misses an
+/// `emotion_audio_ref` id, the raw value is preserved so the worker
+/// surfaces a clear "file not found" rather than the override silently
+/// dropping out.
+///
+/// All other override keys (`emotion_vector`, `qwen`, `emotion_alpha`,
+/// and any future additions) are forwarded verbatim — `from_map` parses
+/// the values it understands and ignores the rest.
+fn build_inline_overrides(
+    raw: &BTreeMap<String, String>,
+    cfg: &PrepareConfig,
+) -> InlineOverrides {
+    if raw.is_empty() {
+        return InlineOverrides::default();
+    }
+    let mut normalised: BTreeMap<String, String> = raw.clone();
+    if let Some(ref_id) = raw.get("emotion_audio_ref") {
+        let resolved = (cfg.voice_path_resolver)(ref_id).unwrap_or_else(|| ref_id.clone());
+        normalised.insert("emotion_audio_ref".to_string(), resolved);
+    }
+    InlineOverrides::from_map(&normalised)
 }
