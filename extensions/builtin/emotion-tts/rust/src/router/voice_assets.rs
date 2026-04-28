@@ -59,8 +59,9 @@ pub fn router(
 async fn preprocess(
     State(state): State<Arc<VoiceAssetsState>>,
     Path(id): Path<String>,
+    Query(query): Query<ScopedQuery>,
 ) -> Response {
-    match preprocess_impl(&state, &id).await {
+    match preprocess_impl(&state, &id, &query.deployment_id).await {
         Ok((status, body)) => (status, Json(body)).into_response(),
         Err(err) => err.into_response(),
     }
@@ -69,14 +70,20 @@ async fn preprocess(
 async fn preprocess_impl(
     state: &VoiceAssetsState,
     raw_id: &str,
+    claimed_deployment_id: &str,
 ) -> Result<(StatusCode, Value)> {
     let asset_id = VoiceAssetId::try_from(raw_id)?;
 
+    // Cross-deployment isolation: the voice asset must belong to the
+    // caller's claimed deployment. Returns 404 on mismatch — same shape
+    // as a real not-found so cross-deployment scans cannot probe
+    // existence (audit FR-isolation-2).
     let row = state
         .repos
         .voice_assets
         .get(&asset_id)
         .await?
+        .filter(|r| r.deployment_id.as_str() == claimed_deployment_id)
         .ok_or_else(|| EmotionTtsError::not_found(format!("voice asset {asset_id}")))?;
 
     if let Some(existing_json) = &row.preprocessing_report_json {
@@ -238,21 +245,29 @@ async fn upload(State(state): State<Arc<VoiceAssetsState>>, multipart: Multipart
             // Fire-and-forget — the upload response returns immediately and the
             // row's preprocessed_artifact_ref is populated when the worker
             // finishes. A failure here must NOT fail the upload.
-            spawn_background_preprocess(state.clone(), row.voice_asset_id.clone());
+            spawn_background_preprocess(
+                state.clone(),
+                row.voice_asset_id.clone(),
+                row.deployment_id.as_str().to_string(),
+            );
             (StatusCode::CREATED, Json(voice_asset_json(&row))).into_response()
         }
         Err(err) => err.into_response(),
     }
 }
 
-fn spawn_background_preprocess(state: Arc<VoiceAssetsState>, asset_id: VoiceAssetId) {
+fn spawn_background_preprocess(
+    state: Arc<VoiceAssetsState>,
+    asset_id: VoiceAssetId,
+    deployment_id: String,
+) {
     if state.lease_provider.is_none() {
         // No runtime configured — leave preprocessed_artifact_ref NULL. The
         // user can manually POST /preprocess later once a runtime is attached.
         return;
     }
     tokio::spawn(async move {
-        match preprocess_impl(&state, asset_id.as_str()).await {
+        match preprocess_impl(&state, asset_id.as_str(), &deployment_id).await {
             Ok(_) => {}
             Err(err) => {
                 tracing::warn!(

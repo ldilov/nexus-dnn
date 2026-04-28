@@ -860,10 +860,19 @@ paths:
     post:
       tags: [EmotionTTS]
       operationId: emotionttsDuplicateMapping
+      summary: Clone a mapping into another deployment.
+      description: |
+        `deploymentId` query parameter is the **source** deployment — the
+        mapping must belong to it. Returns 404 (not 403) on cross-deployment
+        access so existence cannot be probed.
+      parameters:
+        - { in: query, name: deploymentId, required: true, schema: { type: string }, description: 'Source deployment that owns the mapping being duplicated.' }
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsDuplicateMappingBody' } } }
-      responses: { '201': { description: Cloned., content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsCharacterMappingRow' } } } } }
+      responses:
+        '201': { description: Cloned., content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsCharacterMappingRow' } } } }
+        '404': { description: Source mapping not found, or it belongs to a different deployment. }
 
   /api/v1/extensions/nexus.audio.emotiontts/presets/:
     get:
@@ -941,9 +950,16 @@ paths:
     post:
       tags: [EmotionTTS]
       operationId: emotionttsPreprocessVoiceAsset
+      summary: Re-trigger reference-audio preprocessing for a voice asset.
+      description: |
+        `deploymentId` query parameter must match the asset's owning deployment.
+        Returns 404 (not 403) on cross-deployment access.
+      parameters:
+        - { in: query, name: deploymentId, required: true, schema: { type: string } }
       responses:
         '200': { description: Already up-to-date. }
         '202': { description: Reprocessed. }
+        '404': { description: Voice asset not found, or it belongs to a different deployment. }
   /api/v1/extensions/nexus.audio.emotiontts/voice-assets/probe:
     post:
       tags: [EmotionTTS]
