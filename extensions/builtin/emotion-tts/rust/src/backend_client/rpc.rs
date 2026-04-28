@@ -24,6 +24,10 @@ pub mod methods {
     pub const CAPABILITY_PROBE: &str = "capability.probe";
     pub const FAMILY_LIST: &str = "family.list";
     pub const FAMILY_SWITCH: &str = "family.switch";
+
+    // Spec 036 additions — declarative audio-edit chain pipeline.
+    pub const AUDIO_EDIT: &str = "audio.edit";
+    pub const AUDIO_EDIT_PREVIEW: &str = "audio.edit.preview";
 }
 
 pub mod error_codes {
