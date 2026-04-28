@@ -49,6 +49,11 @@ impl NexusApp {
             data_dir = %self.config.resolved_data_dir().display(),
             "data directory initialized"
         );
+        // Self-diagnostic banner: gather environment facts
+        // (ffmpeg/nvcc on PATH, free disk, db size, etc.) so any
+        // "why is X broken?" debug session has the answers in the log
+        // without needing to re-run anything.
+        crate::diagnostic::run_and_log(&self.config);
         Ok(())
     }
 
