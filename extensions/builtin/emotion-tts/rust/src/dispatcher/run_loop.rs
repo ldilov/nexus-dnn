@@ -262,11 +262,19 @@ async fn dispatch_inner(
         }
     }
 
-    // TODO(spec-035 follow-up): replace with `set_started_guarded` that
-    // only transitions queued → running. Today this can race with a
-    // cancel arriving between insert_many and set_started, overwriting
-    // the cancelled status back to running.
-    repos.runs.set_started(run_id, Utc::now().timestamp()).await?;
+    // Race-safe queued → running transition. If a cancel arrived between
+    // `insert_many` (above) and this call, the row is already in
+    // `cancelled` status and the guarded UPDATE matches zero rows; we bail
+    // out before the long lease-acquisition step. `process_one` (the
+    // caller) will write the terminal `cancelled` status and emit
+    // `RunTerminal` based on the returned status string.
+    let started = repos
+        .runs
+        .set_started_guarded(run_id, Utc::now().timestamp())
+        .await?;
+    if !started {
+        return Ok("cancelled".to_string());
+    }
 
     // Acquire the lease (spawns the worker if needed; takes minutes on cold start).
     let client = lease_provider.spawn_if_needed().await?;
