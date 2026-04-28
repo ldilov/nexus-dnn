@@ -938,13 +938,22 @@ fn log_discovery_summary(registry: &InMemoryExtensionRegistry) {
     let layouts = registry.list_layouts();
     let ui_contributions = registry.list_ui_contributions();
 
-    use crate::log_format::BANNER_TARGET;
+    use std::io::IsTerminal;
+
+    use crate::log_format::{paint, PaintColor, BANNER_TARGET};
 
     // The banner target opts out of the standard timestamp/icon/level/
     // target prefix (see crates/nexus-core/src/log_format.rs). Each line
     // is emitted verbatim so the column alignment and section dividers
-    // hold visually. File output gets the same lines without any ANSI
-    // (the formatter's `use_ansi=false` for the file appender layer).
+    // hold visually.
+    //
+    // We compute `use_ansi` once here and feed it into `paint(...)` so
+    // status tokens render colored on a TTY but as plain text in the
+    // file-appender output. Note that the file appender's formatter ALSO
+    // strips any leftover ANSI from BANNER_TARGET messages defensively,
+    // so even if `use_ansi` is mis-detected the on-disk log stays clean.
+    let use_ansi = std::io::stdout().is_terminal()
+        && std::env::var_os("NO_COLOR").is_none();
 
     let rule_thick = "─".repeat(60);
     let rule_thin = "·".repeat(60);
@@ -973,10 +982,16 @@ fn log_discovery_summary(registry: &InMemoryExtensionRegistry) {
                 .name
                 .as_deref()
                 .unwrap_or(&ext.manifest.extension.id);
-            let glyph = if status == "active" { "●" } else { "✗" };
+            let (glyph, status_color) = match status {
+                "active" => ("●", PaintColor::Green),
+                "error" => ("✗", PaintColor::Red),
+                _ => ("◌", PaintColor::DimGrey),
+            };
+            let glyph_painted = paint(use_ansi, status_color, glyph);
+            let status_painted = paint(use_ansi, status_color, &format!("[{status}]"));
             tracing::info!(
                 target: BANNER_TARGET,
-                "      {glyph}  {name:<name_width$}  v{ver}  [{status}]",
+                "      {glyph_painted}  {name:<name_width$}  v{ver}  {status_painted}",
                 ver = ext.manifest.extension.version,
             );
         }
