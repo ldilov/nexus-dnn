@@ -80,8 +80,8 @@ impl HandshakeInfo {
 /// Sentinels used when no handshake has been observed yet. They MUST NOT
 /// collide with any real `worker_version` / `model_family_id` strings.
 pub const FALLBACK_RUNTIME_VERSION: &str = "unknown-runtime";
-pub const FALLBACK_MODEL_VERSION: &str = "unknown-model";
-pub const FALLBACK_MODEL_FAMILY: &str = "unknown-model";
+pub const FALLBACK_MODEL_VERSION: &str = "unknown-model-version";
+pub const FALLBACK_MODEL_FAMILY: &str = "unknown-model-family";
 
 #[derive(Clone)]
 pub struct BackendClient {
