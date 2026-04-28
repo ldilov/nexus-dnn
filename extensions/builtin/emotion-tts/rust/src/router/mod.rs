@@ -39,6 +39,7 @@ pub fn build_router(
         extension_version,
         provider,
         artifact_store,
+        Arc::new(crate::dispatcher::RunChannelRegistry::new()),
         Arc::new(FamilyRegistry::new(Vec::new())),
         families::default_reconciler(),
     )
@@ -54,6 +55,7 @@ pub fn build_router_with_families(
     extension_version: impl Into<String>,
     provider: Option<Arc<LeaseProvider>>,
     artifact_store: Option<Arc<dyn HostArtifactStore>>,
+    run_channels: Arc<crate::dispatcher::RunChannelRegistry>,
     family_registry: Arc<FamilyRegistry>,
     reconciler: families::BoxReconciler,
 ) -> Router {
@@ -61,6 +63,7 @@ pub fn build_router_with_families(
         repos: repos.clone(),
         queue: queue.clone(),
         extension_version: extension_version.into(),
+        run_channels,
     };
     let mut router = Router::new()
         .merge(runs::router(runs_state))
