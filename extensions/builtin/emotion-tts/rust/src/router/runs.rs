@@ -147,6 +147,50 @@ fn run_progress_stream(
             yield Ok(Event::default().event("run_terminal").data(payload.to_string()));
             return;
         };
+        // Late-subscribe replay: emit segment_started + segment_completed/
+        // segment_failed events for every utterance row that already has a
+        // non-`queued` status. Lets a refreshed page rebuild the progress
+        // table without waiting for the next live event. Live frames that
+        // arrive between this replay and the rx.recv() loop below MAY
+        // duplicate replayed frames — the frontend keys segments by
+        // global_index so duplicates are idempotent.
+        if let Ok(rows) = state.repos.utterances.list_by_run(&run_id).await {
+            for row in rows {
+                match row.status.as_str() {
+                    "running" => {
+                        let p = serde_json::json!({
+                            "type": "segment_started",
+                            "run_id": run_id.as_str(),
+                            "utterance_id": row.utterance_id.as_str(),
+                            "global_index": row.global_index,
+                        });
+                        yield Ok(Event::default().event("segment_started").data(p.to_string()));
+                    }
+                    "completed" => {
+                        let p = serde_json::json!({
+                            "type": "segment_completed",
+                            "run_id": run_id.as_str(),
+                            "utterance_id": row.utterance_id.as_str(),
+                            "global_index": row.global_index,
+                            "duration_ms": row.duration_ms.unwrap_or(0),
+                        });
+                        yield Ok(Event::default().event("segment_completed").data(p.to_string()));
+                    }
+                    "failed" => {
+                        let p = serde_json::json!({
+                            "type": "segment_failed",
+                            "run_id": run_id.as_str(),
+                            "utterance_id": row.utterance_id.as_str(),
+                            "global_index": row.global_index,
+                            "failure_category": row.failure_category.unwrap_or_else(|| "unknown".into()),
+                            "failure_detail": row.failure_detail,
+                        });
+                        yield Ok(Event::default().event("segment_failed").data(p.to_string()));
+                    }
+                    _ => {}
+                }
+            }
+        }
         loop {
             match rx.recv().await {
                 Ok(event) => {
