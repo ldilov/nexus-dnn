@@ -22,6 +22,11 @@ pub(crate) struct Prepared {
     pub deployment_id: DeploymentId,
     pub batch_input: BatchInput,
     pub utterances: Vec<UtterancePlan>,
+    /// Set when this run is a resume — points at the original (partial)
+    /// run whose completed utterances we want to attribute as
+    /// `source_run_id` on the new utterance rows. Lets the UI trace
+    /// reused audio back to where it was first synthesized.
+    pub source_run_id: Option<crate::domain::RunId>,
 }
 
 pub(crate) struct UtterancePlan {
@@ -180,10 +185,12 @@ pub(crate) async fn prepare(
         optimisations: BatchOptimisations::default(),
     };
 
+    let source_run_id = run.original_run_id.clone();
     Ok(Prepared {
         run,
         deployment_id: dep,
         batch_input,
         utterances: plans,
+        source_run_id,
     })
 }
