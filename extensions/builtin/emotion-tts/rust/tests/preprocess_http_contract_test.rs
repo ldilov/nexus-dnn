@@ -257,7 +257,7 @@ async fn post_preprocess_returns_202_with_report_on_first_run() {
         .oneshot(
             Request::builder()
                 .method(Method::POST)
-                .uri(format!("/voice-assets/{}/preprocess", asset))
+                .uri(format!("/voice-assets/{}/preprocess?deploymentId={}", asset, dep.as_str()))
                 .header("content-type", "application/json")
                 .body(Body::empty())
                 .unwrap(),
@@ -296,7 +296,7 @@ async fn post_preprocess_returns_200_unchanged_on_second_call() {
         .oneshot(
             Request::builder()
                 .method(Method::POST)
-                .uri(format!("/voice-assets/{}/preprocess", asset))
+                .uri(format!("/voice-assets/{}/preprocess?deploymentId={}", asset, dep.as_str()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -317,7 +317,7 @@ async fn post_preprocess_returns_200_unchanged_on_second_call() {
         .oneshot(
             Request::builder()
                 .method(Method::POST)
-                .uri(format!("/voice-assets/{}/preprocess", asset))
+                .uri(format!("/voice-assets/{}/preprocess?deploymentId={}", asset, dep.as_str()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -338,11 +338,16 @@ async fn post_preprocess_missing_asset_returns_404() {
     let router = build_test_router(repos, store, successful_preprocess_handler()).await;
 
     let fake_id = VoiceAssetId::new();
+    // The "missing asset" test seeds a deployment internally so the
+    // required deploymentId query param has a valid value. Even with a
+    // valid deployment, the asset id is bogus → 404 (the same shape
+    // cross-deployment access produces, by design).
+    let dep = seed_deployment(&Repos::from_pool(fresh_pool().await)).await;
     let response = router
         .oneshot(
             Request::builder()
                 .method(Method::POST)
-                .uri(format!("/voice-assets/{}/preprocess", fake_id))
+                .uri(format!("/voice-assets/{}/preprocess?deploymentId={}", fake_id, dep.as_str()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -372,7 +377,7 @@ async fn post_preprocess_maps_rpc_input_rejected_to_400() {
         .oneshot(
             Request::builder()
                 .method(Method::POST)
-                .uri(format!("/voice-assets/{}/preprocess", asset))
+                .uri(format!("/voice-assets/{}/preprocess?deploymentId={}", asset, dep.as_str()))
                 .body(Body::empty())
                 .unwrap(),
         )
