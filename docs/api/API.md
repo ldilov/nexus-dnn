@@ -704,9 +704,9 @@ All paths below are relative to `/api/v1/extensions/nexus.audio.emotiontts/`.
 | POST   | `mappings/`                           | `{ deploymentId, characterName, speakerVoiceAssetId, defaultEmotionMode?, defaultEmotionVoiceAssetId?, defaultVectorPresetId?, defaultQwenTemplate?, defaultSpeedFactor?, notes? }` | Create. |
 | POST   | `mappings/import`                     | `{ targetDeploymentId, mappings: [...], conflictStrategy: error | skip | replace }`                                       | Bulk import. Returns `{created, skipped, replaced}`. |
 | GET    | `mappings/export`                     | Q: `deploymentId`                                                                                                         | Export `{ version: "1", deploymentId, mappings: [...] }`. |
-| GET    | `mappings/{mapping_id}`               | —                                                                                                                         | Get one. |
-| PATCH  | `mappings/{mapping_id}`               | partial of create body                                                                                                    | Update. |
-| DELETE | `mappings/{mapping_id}`               | —                                                                                                                         | Soft-delete (deactivate). Returns `204`. |
+| GET    | `mappings/{mapping_id}`               | Q: `deploymentId` (required)                                                                                              | Get one. Returns `404` (not `403`) when the row belongs to a different deployment, so existence is opaque across deployment boundaries. |
+| PATCH  | `mappings/{mapping_id}`               | Q: `deploymentId` (required); body: partial of create body                                                                | Update. Same cross-deployment 404 rule as GET. |
+| DELETE | `mappings/{mapping_id}`               | Q: `deploymentId` (required)                                                                                              | Soft-delete (deactivate). Returns `204`. Same cross-deployment 404 rule as GET. |
 | POST   | `mappings/{mapping_id}/duplicate`     | `{ targetDeploymentId, overrideCharacterName? }`                                                                          | Clone. |
 
 Validation: character names case-insensitively unique per deployment (FR-071); `defaultSpeedFactor ∈ [0.5, 2.0]`.
@@ -717,9 +717,9 @@ Validation: character names case-insensitively unique per deployment (FR-071); `
 | ------ | --------------------------------- | ------------------------------------------- | ----------- |
 | GET    | `presets/`                        | Q: `deploymentId`                           | List presets. |
 | POST   | `presets/`                        | `{ deploymentId, presetName, vector: [f64; 8] }` | Create. |
-| GET    | `presets/{preset_id}`             | —                                           | Get one. |
-| PATCH  | `presets/{preset_id}`             | `{ presetName?, vector? }`                  | Update. |
-| DELETE | `presets/{preset_id}`             | —                                           | Delete. |
+| GET    | `presets/{preset_id}`             | Q: `deploymentId` (required)                | Get one. Returns `404` (not `403`) when the row belongs to a different deployment, so existence is opaque across deployment boundaries. |
+| PATCH  | `presets/{preset_id}`             | Q: `deploymentId` (required); body: `{ presetName?, vector? }` | Update. Same cross-deployment 404 rule as GET. |
+| DELETE | `presets/{preset_id}`             | Q: `deploymentId` (required)                | Delete. Same cross-deployment 404 rule as GET. |
 
 Vector must be exactly 8 elements, each in `[0.0, 1.0]`. Preset names ≤ 120 chars, non-empty.
 
@@ -729,8 +729,8 @@ Vector must be exactly 8 elements, each in `[0.0, 1.0]`. Preset names ≤ 120 ch
 | ------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ----------- |
 | POST   | `voice-assets/`                                   | `multipart/form-data`: `deploymentId`, `displayName`, `kind` (`speaker|emotion|mixed`), `referenceText`, `audio` | Upload + ffprobe + async preprocess. 64 MiB body limit. |
 | GET    | `voice-assets/`                                   | Q: `deploymentId`                                                                                            | List for deployment. |
-| GET    | `voice-assets/{voice_asset_id}`                   | —                                                                                                             | Get one. |
-| DELETE | `voice-assets/{voice_asset_id}`                   | —                                                                                                             | Soft-delete. |
+| GET    | `voice-assets/{voice_asset_id}`                   | Q: `deploymentId` (required)                                                                                  | Get one. Returns `404` (not `403`) when the row belongs to a different deployment, so existence is opaque across deployment boundaries. |
+| DELETE | `voice-assets/{voice_asset_id}`                   | Q: `deploymentId` (required)                                                                                  | Soft-delete. Same cross-deployment 404 rule as GET. |
 | POST   | `voice-assets/{voice_asset_id}/preprocess`        | —                                                                                                             | Re-trigger preprocessing. `200 unchanged` if pipeline up-to-date, `202 reprocessed` otherwise. |
 | POST   | `voice-assets/probe`                              | `{ artifactRef }`                                                                                            | Probe a stored audio artifact (ffprobe). Returns `{ durationMs, sampleRate, channels, warnings: [too_short|too_long|long|very_long] }`. |
 

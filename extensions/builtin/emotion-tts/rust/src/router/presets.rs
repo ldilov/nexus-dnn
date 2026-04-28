@@ -32,6 +32,36 @@ struct ListQuery {
     deployment_id: String,
 }
 
+/// Query extractor for shared-id endpoints (GET/PATCH/DELETE on
+/// `/presets/{preset_id}`). The handler enforces that the row's
+/// `deployment_id` matches the caller's claim and returns 404 (NOT 403)
+/// on mismatch — keeps preset existence opaque across deployments.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ScopedQuery {
+    deployment_id: String,
+}
+
+/// Shared-id row fetch with cross-deployment isolation. Returns the row
+/// only when its `deployment_id` matches the caller's claim; on mismatch
+/// returns the same `NotFound` error a real lookup miss would produce.
+async fn assert_belongs_to_deployment(
+    state: &PresetsState,
+    id: &PresetId,
+    claimed_deployment_id: &str,
+) -> Result<VectorPresetRow> {
+    let row = state
+        .repos
+        .presets
+        .get(id)
+        .await?
+        .ok_or_else(|| EmotionTtsError::not_found(format!("preset {id}")))?;
+    if row.deployment_id.as_str() != claimed_deployment_id {
+        return Err(EmotionTtsError::not_found(format!("preset {id}")));
+    }
+    Ok(row)
+}
+
 async fn list(State(state): State<Arc<PresetsState>>, Query(q): Query<ListQuery>) -> Response {
     let dep = match DeploymentId::try_from(q.deployment_id.as_str()) {
         Ok(v) => v,
@@ -85,21 +115,24 @@ async fn create_impl(state: &PresetsState, body: CreateBody) -> Result<VectorPre
     Ok(row)
 }
 
-async fn fetch(State(state): State<Arc<PresetsState>>, Path(id): Path<String>) -> Response {
-    match fetch_impl(&state, &id).await {
+async fn fetch(
+    State(state): State<Arc<PresetsState>>,
+    Path(id): Path<String>,
+    Query(query): Query<ScopedQuery>,
+) -> Response {
+    match fetch_impl(&state, &id, &query.deployment_id).await {
         Ok(row) => (StatusCode::OK, Json(preset_json(&row))).into_response(),
         Err(err) => err.into_response(),
     }
 }
 
-async fn fetch_impl(state: &PresetsState, id: &str) -> Result<VectorPresetRow> {
+async fn fetch_impl(
+    state: &PresetsState,
+    id: &str,
+    claimed_deployment_id: &str,
+) -> Result<VectorPresetRow> {
     let id = PresetId::try_from(id)?;
-    state
-        .repos
-        .presets
-        .get(&id)
-        .await?
-        .ok_or_else(|| EmotionTtsError::not_found(format!("preset {id}")))
+    assert_belongs_to_deployment(state, &id, claimed_deployment_id).await
 }
 
 #[derive(Debug, Deserialize)]
@@ -112,22 +145,23 @@ struct PatchBody {
 async fn patch_preset(
     State(state): State<Arc<PresetsState>>,
     Path(id): Path<String>,
+    Query(query): Query<ScopedQuery>,
     Json(body): Json<PatchBody>,
 ) -> Response {
-    match patch_impl(&state, &id, body).await {
+    match patch_impl(&state, &id, &query.deployment_id, body).await {
         Ok(row) => (StatusCode::OK, Json(preset_json(&row))).into_response(),
         Err(err) => err.into_response(),
     }
 }
 
-async fn patch_impl(state: &PresetsState, id: &str, body: PatchBody) -> Result<VectorPresetRow> {
+async fn patch_impl(
+    state: &PresetsState,
+    id: &str,
+    claimed_deployment_id: &str,
+    body: PatchBody,
+) -> Result<VectorPresetRow> {
     let pid = PresetId::try_from(id)?;
-    let mut row = state
-        .repos
-        .presets
-        .get(&pid)
-        .await?
-        .ok_or_else(|| EmotionTtsError::not_found(format!("preset {pid}")))?;
+    let mut row = assert_belongs_to_deployment(state, &pid, claimed_deployment_id).await?;
 
     if let Some(name) = body.preset_name {
         let trimmed = validate_name(&name)?;
@@ -154,11 +188,15 @@ async fn patch_impl(state: &PresetsState, id: &str, body: PatchBody) -> Result<V
 async fn delete_preset(
     State(state): State<Arc<PresetsState>>,
     Path(id): Path<String>,
+    Query(query): Query<ScopedQuery>,
 ) -> Response {
     let pid = match PresetId::try_from(id.as_str()) {
         Ok(v) => v,
         Err(err) => return EmotionTtsError::from(err).into_response(),
     };
+    if let Err(err) = assert_belongs_to_deployment(&state, &pid, &query.deployment_id).await {
+        return err.into_response();
+    }
     match state.repos.presets.delete(&pid).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => err.into_response(),
