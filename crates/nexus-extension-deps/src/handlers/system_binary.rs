@@ -23,6 +23,17 @@ struct SystemBinarySpec {
     #[serde(default)]
     version: Option<String>,
     sources: Vec<SourceEntry>,
+    /// When true, `probe()` first looks for `id` on the host's `PATH` and
+    /// declares the step satisfied if found. Falls back to the bundled
+    /// content-addressed install when no system binary exists. Off by
+    /// default — extensions that genuinely need the pinned bundled artifact
+    /// (security, version-locking) keep the original strict behavior.
+    ///
+    /// Used today by the EmotionTTS `ffmpeg` step where the upstream URLs
+    /// are `latest` releases that can't be sha256-pinned, and the operator
+    /// is content with whatever ffmpeg the user already has.
+    #[serde(default)]
+    allow_system_path: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,6 +79,37 @@ fn select_source<'a>(
 
 fn target_dir(ctx: &StepContext<'_>, id: &str, sha256: &str) -> PathBuf {
     target_dir_for(ctx.extension_data_dir, id, sha256)
+}
+
+/// Resolve `id` against the host's `PATH` env var. Returns the absolute path
+/// to the first matching executable, or `None` if not found. Cross-platform:
+/// on Windows we also try common executable suffixes (`.exe`, `.cmd`, `.bat`).
+fn locate_on_path(id: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    let candidates: Vec<String> = if cfg!(windows) {
+        // Already-suffixed names skip the suffix loop.
+        if id.contains('.') {
+            vec![id.to_owned()]
+        } else {
+            vec![
+                format!("{id}.exe"),
+                format!("{id}.cmd"),
+                format!("{id}.bat"),
+                id.to_owned(),
+            ]
+        }
+    } else {
+        vec![id.to_owned()]
+    };
+    for dir in std::env::split_paths(&path) {
+        for name in &candidates {
+            let candidate = dir.join(name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
 }
 
 /// Pure form of [`target_dir`] — content-addressed binary install path under
@@ -143,6 +185,28 @@ impl StepHandler for SystemBinaryHandler {
                 reason: format!("no source declared for {}", host.as_canonical()),
             });
         };
+
+        // Opt-in: resolve via system PATH first. If found, the step is
+        // satisfied without touching the network. Useful for ubiquitous
+        // utilities (ffmpeg, git) where the user's existing install is
+        // canonical and the manifest's URLs are moving targets.
+        if parsed.allow_system_path
+            && let Some(found) = locate_on_path(&parsed.id)
+        {
+            return Ok(ProbeResult::Satisfied {
+                artifact: StepArtifact {
+                    path: Some(found),
+                    bytes_placed: 0,
+                    summary: format!(
+                        "{} {} (system path)",
+                        parsed.id,
+                        parsed.version.as_deref().unwrap_or("any"),
+                    ),
+                    metadata: Value::Null,
+                },
+            });
+        }
+
         let dir = target_dir(ctx, &parsed.id, &source.sha256);
         if dir.exists() && tokio::fs::read_dir(&dir).await.is_ok() {
             // Content-addressed dir exists. Treat as satisfied. Bytes already verified
@@ -172,6 +236,37 @@ impl StepHandler for SystemBinaryHandler {
                 platform: host.as_canonical(),
             });
         };
+
+        // PATH-fallback also runs in `run()`, not just `probe()`. The
+        // runner skips `probe()` entirely under force-reinstall (`force=true`),
+        // so without this duplicate check a forced reinstall would attempt
+        // to re-download and re-verify a binary the user already has on
+        // PATH — failing with sha256_mismatch when the manifest carries
+        // soft-fallback URLs (e.g. ffmpeg "latest" releases that can't be
+        // pinned). Force-reinstall on a system-owned binary is a no-op by
+        // design; this handler doesn't own /usr/local/bin/ffmpeg.
+        if parsed.allow_system_path
+            && let Some(found) = locate_on_path(&parsed.id)
+        {
+            tracing::info!(
+                target: "spec_035::probe",
+                id = %parsed.id,
+                path = %found.display(),
+                "system_binary: PATH hit during run() — skipping bundled download \
+                 (system-owned binary, not handler-managed)"
+            );
+            return Ok(StepArtifact {
+                path: Some(found),
+                bytes_placed: 0,
+                summary: format!(
+                    "{} {} (system path)",
+                    parsed.id,
+                    parsed.version.as_deref().unwrap_or("any"),
+                ),
+                metadata: Value::Null,
+            });
+        }
+
         let dir = target_dir(ctx, &parsed.id, &source.sha256);
         let archive = source
             .archive

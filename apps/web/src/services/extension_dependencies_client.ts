@@ -30,9 +30,11 @@ export async function fetchDependencies(
 
 export async function startInstall(
   extensionId: string,
+  options?: { force?: boolean },
 ): Promise<InstallStartedResponse> {
+  const query = options?.force ? "?force=true" : "";
   const raw = await apiFetch<unknown>(
-    `/extensions/${encodeURIComponent(extensionId)}/install`,
+    `/extensions/${encodeURIComponent(extensionId)}/install${query}`,
     { method: "POST" },
   );
   return installStartedResponseSchema.parse(raw);

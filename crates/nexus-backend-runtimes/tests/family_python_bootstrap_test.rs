@@ -209,9 +209,8 @@ async fn validate_absolutises_relative_entrypoint_against_install_path() {
 
     // Stage a fake interpreter that actually runs the version probe.
     // This exercises the real `probe_interpreter` code path.
-    let system_python = locate_system_python().expect(
-        "system python3 needed for validate probe — skip this test in minimal CI envs",
-    );
+    let system_python = locate_system_python()
+        .expect("system python3 needed for validate probe — skip this test in minimal CI envs");
     let python = python_exe_in(&partial);
     fs::create_dir_all(python.parent().unwrap()).unwrap();
     copy_executable(&system_python, &python).expect("copy system python");
@@ -251,9 +250,10 @@ fn locate_system_python() -> Option<PathBuf> {
         vec!["python3", "python"]
     };
     for name in candidates {
-        if let Ok(output) = std::process::Command::new(if cfg!(windows) { "where" } else { "which" })
-            .arg(name)
-            .output()
+        if let Ok(output) =
+            std::process::Command::new(if cfg!(windows) { "where" } else { "which" })
+                .arg(name)
+                .output()
             && output.status.success()
         {
             let stdout = String::from_utf8_lossy(&output.stdout);

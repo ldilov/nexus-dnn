@@ -186,6 +186,7 @@ async fn probe_p95_under_100ms_across_5_step_plan() {
         progress_sink: progress_sink.clone(),
         cancellation_token: CancellationToken::new(),
         install_run_id: Uuid::nil(),
+        force: false,
     };
 
     let upstream: HashMap<String, StepArtifact> = HashMap::new();

@@ -66,17 +66,19 @@ pub async fn run(ctx: &mut InstallCtx) -> Result<(), GenericInstallError> {
         }
     }
 
-    fs::copy(&cache_target, &partial_target).await.map_err(|e| {
-        GenericInstallError::new(
-            "download",
-            PipelineFailureCategory::InvalidDownload,
-            format!(
-                "stage cached archive {} → {}: {e}",
-                cache_target.display(),
-                partial_target.display()
-            ),
-        )
-    })?;
+    fs::copy(&cache_target, &partial_target)
+        .await
+        .map_err(|e| {
+            GenericInstallError::new(
+                "download",
+                PipelineFailureCategory::InvalidDownload,
+                format!(
+                    "stage cached archive {} → {}: {e}",
+                    cache_target.display(),
+                    partial_target.display()
+                ),
+            )
+        })?;
     ctx.downloaded_archive = Some(partial_target);
     if !need_fetch {
         ctx.phase_cached = true;

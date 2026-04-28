@@ -87,6 +87,39 @@ export const cancelButton = style({
   },
 });
 
+/**
+ * Secondary "Reinstall everything" CTA. Outlined / ghost styling so it sits
+ * next to the primary install button without competing for attention — the
+ * primary remains the green-path action; reinstall is the recovery action.
+ */
+export const reinstallButton = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
+  fontWeight: vars.font.weight.semibold,
+  color: vars.color.text.primary,
+  background: "transparent",
+  border: `1px solid ${vars.color.bg.bright}`,
+  cursor: "pointer",
+  padding: `9px ${vars.space.insetLg}`,
+  borderRadius: vars.radius.control,
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  selectors: {
+    "&:hover:not(:disabled)": {
+      background: vars.color.bg.elevated,
+      borderColor: vars.color.accent.primary,
+    },
+    "&:disabled": {
+      color: vars.color.text.muted,
+      borderColor: vars.color.bg.elevated,
+      cursor: "not-allowed",
+    },
+    "&:focus-visible": {
+      outline: `2px solid ${vars.color.accent.primary}`,
+      outlineOffset: "2px",
+    },
+  },
+});
+
 export const stepList = style({
   display: "flex",
   flexDirection: "column",
