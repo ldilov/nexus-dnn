@@ -84,6 +84,12 @@ pub async fn register(
     if let Some(p) = provider.clone() {
         // Discard the JoinHandle — dropping it does not abort the task per
         // tokio::spawn semantics; the dispatcher runs for the process lifetime.
+        // This entry point predates `host_data_dir` plumbing — fall back to
+        // `temp_dir()` so existing callers (tests, embedders without a data
+        // dir wired in) keep working. Real host-managed runs go through
+        // `EmotionTtsRouterProvider::build_router_inner_async`, which uses
+        // the host data dir when available.
+        let output_root_base = std::env::temp_dir().join("nexus-emotion-tts-runs");
         drop(crate::dispatcher::spawn_dispatcher(
             queue.clone(),
             repos.clone(),
@@ -91,6 +97,7 @@ pub async fn register(
             run_channels.clone(),
             artifact_store.clone(),
             EXTENSION_VERSION,
+            output_root_base,
         ));
         drop(crate::dispatcher::spawn_idle_watcher(p));
     }

@@ -236,6 +236,21 @@ impl EmotionTtsRouterProvider {
         // Discard the JoinHandle — dropping it does not abort the task per
         // tokio::spawn semantics; the dispatcher runs for the process lifetime.
         let artifact_store_for_dispatcher = self.resources.artifact_store.clone();
+        // Persist run outputs under the host data dir when one is wired
+        // (`<host_data_dir>/extensions/<id>/runs`) so they survive reboots
+        // and aren't pruned by the OS's `%TEMP%` cleanup. Fall back to
+        // `temp_dir()/nexus-emotion-tts-runs` when the host hasn't supplied
+        // a data dir — preserves prior behavior for the StubLeaseFactory
+        // path and tests that don't set `host_data_dir`.
+        let output_root_base = self.resources.host_data_dir.clone().map_or_else(
+            || std::env::temp_dir().join("nexus-emotion-tts-runs"),
+            |host_data_dir| {
+                host_data_dir
+                    .join("extensions")
+                    .join(EXTENSION_ID)
+                    .join("runs")
+            },
+        );
         drop(crate::dispatcher::spawn_dispatcher(
             queue.clone(),
             repos.clone(),
@@ -243,6 +258,7 @@ impl EmotionTtsRouterProvider {
             run_channels.clone(),
             artifact_store_for_dispatcher,
             EXTENSION_VERSION,
+            output_root_base,
         ));
         drop(crate::dispatcher::spawn_idle_watcher(provider.clone()));
         let artifact_store = self.resources.artifact_store.clone();

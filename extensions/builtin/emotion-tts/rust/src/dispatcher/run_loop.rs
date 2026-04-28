@@ -1,6 +1,7 @@
 //! Single-run handler — pulled out so it can be tested independently
 //! and so the outer loop can panic-isolate each iteration.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -25,14 +26,22 @@ pub(crate) async fn process_one(
     registry: Arc<RunChannelRegistry>,
     artifact_store: Option<Arc<dyn HostArtifactStore>>,
     extension_version: String,
+    output_root_base: PathBuf,
 ) {
     let run_id = qrun.run_id.clone();
     let run_id_str = run_id.as_str().to_string();
     let (tx, _guard) = registry.register(run_id_str.clone()).await;
 
-    let result =
-        dispatch_inner(&qrun, &repos, &lease_provider, &tx, artifact_store, &extension_version)
-            .await;
+    let result = dispatch_inner(
+        &qrun,
+        &repos,
+        &lease_provider,
+        &tx,
+        artifact_store,
+        &extension_version,
+        &output_root_base,
+    )
+    .await;
 
     let terminal_status = match result {
         Ok(status) => status,
@@ -65,14 +74,15 @@ async fn dispatch_inner(
     tx: &crate::dispatcher::RunEventSender,
     artifact_store: Option<Arc<dyn HostArtifactStore>>,
     extension_version: &str,
+    output_root_base: &Path,
 ) -> crate::domain::Result<String> {
     let run_id = &qrun.run_id;
 
-    // Output dir: temp_dir/nexus-emotion-tts-runs/<deployment_id>/<run_id>/.
-    // This is intentionally simple for v1 — a future task can move it
-    // under the host's data dir once the dispatcher has access to it.
-    let output_root = std::env::temp_dir()
-        .join("nexus-emotion-tts-runs")
+    // Output dir: <base>/<deployment_id>/<run_id>/. The base is supplied
+    // by the caller — typically `<host_data_dir>/extensions/<id>/runs`
+    // when the host has wired in a data dir, or `temp_dir()/...` for
+    // tests and minimal-config hosts (StubLeaseFactory path).
+    let output_root = output_root_base
         .join(qrun.deployment_id.clone())
         .join(run_id.as_str());
 
