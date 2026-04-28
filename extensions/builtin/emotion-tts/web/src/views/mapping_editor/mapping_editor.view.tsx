@@ -16,7 +16,7 @@ import {
   patchMapping,
 } from "../../services/mappings_client";
 import { ExtensionApiError } from "../../services/http";
-import { testLine } from "../../services/runs_client";
+import { getRun, testLine } from "../../services/runs_client";
 import type { OutputFormat, PersistedEmotionMode } from "../../services/types";
 import type { VoiceAsset } from "../../services/voice_assets_client";
 import {
@@ -185,17 +185,18 @@ export function MappingEditorView(): JSX.Element {
   );
 
   const runTestLine = useCallback(
-    async (text: string, format: OutputFormat) => {
-      if (!selected) return;
+    async (text: string, format: OutputFormat): Promise<{ runId: string } | null> => {
+      if (!selected) return null;
       const line = text.trim() || `[${selected.characterName}] This is a test of the voice.`;
       try {
         const res = await testLine(deployment.deploymentId, {
           line,
           outputFormat: format,
         });
-        setToast(`Test-line queued • run ${res.runId.slice(0, 12)}… • ETA ${Math.round(res.etaSeconds)}s`);
+        return { runId: res.runId };
       } catch (err) {
         setError(extract(err));
+        return null;
       }
     },
     [deployment.deploymentId, selected],
@@ -288,6 +289,7 @@ export function MappingEditorView(): JSX.Element {
           />
         ) : (
           <MappingDetail
+            deploymentId={deployment.deploymentId}
             mapping={selected}
             voiceAssets={voiceAssets}
             onNameChange={(name) => {
@@ -401,6 +403,7 @@ function EmptyDetail({ voiceCount, onUploadVoice }: EmptyDetailProps): JSX.Eleme
 }
 
 interface MappingDetailProps {
+  deploymentId: string;
   mapping: CharacterMapping;
   voiceAssets: VoiceAsset[];
   onNameChange: (name: string) => void;
@@ -418,8 +421,10 @@ interface MappingDetailProps {
     displayName: string,
     kind: VoiceAsset["kind"],
   ) => Promise<VoiceAsset | null>;
-  onTestLine: (text: string, format: OutputFormat) => void;
+  onTestLine: (text: string, format: OutputFormat) => Promise<{ runId: string } | null>;
 }
+
+type TestLineStatus = "idle" | "running" | "done" | "error";
 
 function MappingDetail(props: MappingDetailProps): JSX.Element {
   const { mapping, voiceAssets } = props;
@@ -428,6 +433,41 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
     voiceAssets.find((v) => v.voiceAssetId === mapping.defaultEmotionVoiceAssetId) ?? null;
   const [testText, setTestText] = useState("");
   const [testFormat, setTestFormat] = useState<OutputFormat>("mp3");
+  const [testStatus, setTestStatus] = useState<TestLineStatus>("idle");
+  const [testError, setTestError] = useState<string | null>(null);
+
+  const handleTestLine = useCallback(async () => {
+    setTestStatus("running");
+    setTestError(null);
+    const result = await props.onTestLine(testText, testFormat);
+    if (!result) {
+      setTestStatus("error");
+      setTestError("Failed to enqueue test-line run.");
+      return;
+    }
+    const { runId } = result;
+    for (let i = 0; i < 60; i += 1) {
+      await new Promise<void>((r) => setTimeout(r, 500));
+      try {
+        const run = await getRun(props.deploymentId, runId);
+        if (run.status === "completed") {
+          setTestStatus("done");
+          return;
+        }
+        if (run.status === "failed" || run.status === "cancelled") {
+          setTestStatus("error");
+          setTestError(`Run ${run.status}.`);
+          return;
+        }
+      } catch (err) {
+        setTestStatus("error");
+        setTestError(err instanceof Error ? err.message : "unknown error");
+        return;
+      }
+    }
+    setTestStatus("error");
+    setTestError("test-line timed out after 30s");
+  }, [props.onTestLine, props.deploymentId, testText, testFormat]);
 
   return (
     <>
@@ -451,12 +491,14 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
           value={testText}
           onChange={(e) => setTestText(e.currentTarget.value)}
           aria-label="Test-line text"
+          disabled={testStatus === "running"}
         />
         <select
           className={css.input}
           value={testFormat}
           onChange={(e) => setTestFormat(e.currentTarget.value as OutputFormat)}
           aria-label="Test-line output format"
+          disabled={testStatus === "running"}
         >
           <option value="mp3">mp3</option>
           <option value="wav">wav</option>
@@ -465,10 +507,21 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
         <button
           type="button"
           className={css.primaryButton}
-          onClick={() => props.onTestLine(testText, testFormat)}
+          onClick={() => void handleTestLine()}
+          disabled={testStatus === "running"}
         >
-          Test this line
+          {testStatus === "running" ? "Synthesising…" : "Test this line"}
         </button>
+        {testStatus === "done" && (
+          <span style={{ marginLeft: 12, color: "var(--color-success, #4caf50)" }}>
+            Synthesised — see host logs for the output file path.
+          </span>
+        )}
+        {testStatus === "error" && testError && (
+          <span style={{ marginLeft: 12, color: "var(--color-error, crimson)" }}>
+            {testError}
+          </span>
+        )}
       </div>
 
       <div className={css.detailBody}>
