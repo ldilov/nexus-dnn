@@ -1,5 +1,6 @@
 mod app;
 mod config;
+mod diagnostic;
 mod log_format;
 
 use std::io::IsTerminal;
