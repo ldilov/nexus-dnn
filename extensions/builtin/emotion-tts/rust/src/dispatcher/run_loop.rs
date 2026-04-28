@@ -92,7 +92,31 @@ async fn dispatch_inner(
     let mut voice_sha256s: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for row in voice_rows {
         let key = row.voice_asset_id.as_str().to_string();
-        voice_paths.insert(key.clone(), row.audio_artifact_ref);
+        // The voice_assets row's audio_artifact_ref is a host-internal
+        // artifact reference (e.g., "blobs/1f/1f84...") — NOT an absolute
+        // filesystem path. The worker needs an absolute path it can open.
+        // Resolve through the host's artifact store when available; fall
+        // back to the raw ref so tests that pre-populate absolute paths
+        // continue to work.
+        let resolved_path = if let Some(store) = artifact_store.as_ref() {
+            match store.resolve_path(&row.audio_artifact_ref).await {
+                Ok(abs) => abs,
+                Err(err) => {
+                    tracing::warn!(
+                        target: "emotion_tts::dispatch",
+                        voice_asset_id = key.as_str(),
+                        artifact_ref = %row.audio_artifact_ref,
+                        error = %err,
+                        "artifact store could not resolve voice path; \
+                         falling back to raw ref (worker will likely fail)"
+                    );
+                    row.audio_artifact_ref.clone()
+                }
+            }
+        } else {
+            row.audio_artifact_ref.clone()
+        };
+        voice_paths.insert(key.clone(), resolved_path);
         voice_sha256s.insert(key, row.content_sha256);
     }
 
