@@ -121,6 +121,7 @@ impl EmotionTtsRouterProvider {
             // Deployments
             "/deployments".into(),
             "/deployments/{deployment_id}".into(),
+            "/deployments/{deployment_id}/default-voice".into(),
             "/deployments/{deployment_id}/resume".into(),
             "/deployments/{deployment_id}/engine-settings".into(),
             "/deployments/{deployment_id}/oas-threshold".into(),

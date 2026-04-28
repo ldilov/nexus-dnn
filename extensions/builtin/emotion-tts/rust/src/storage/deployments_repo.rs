@@ -206,4 +206,22 @@ impl DeploymentsRepo for SqliteDeploymentsRepo {
         .map_err(sqlx_to_err)?;
         Ok(())
     }
+
+    async fn set_default_voice(
+        &self,
+        dep: &DeploymentId,
+        voice: Option<&VoiceAssetId>,
+    ) -> RepoResult<()> {
+        sqlx::query(
+            "UPDATE ext_emotion_tts__deployments \
+             SET default_voice_asset_id = ?, updated_at = strftime('%s', 'now') \
+             WHERE deployment_id = ?",
+        )
+        .bind(voice.map(VoiceAssetId::as_str))
+        .bind(dep.as_str())
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_to_err)?;
+        Ok(())
+    }
 }
