@@ -53,6 +53,12 @@ const RESET: &str = "\x1b[0m";
 const DIM_GREY: &str = "\x1b[2;90m";
 const CYAN: &str = "\x1b[36m";
 
+/// Reserved target for events that should render WITHOUT the standard
+/// timestamp/icon/level/target prefix. Used by the startup banner so
+/// box-drawing characters and indented columns aren't broken up by
+/// per-line metadata. Emit with `tracing::info!(target: BANNER_TARGET, ...)`.
+pub const BANNER_TARGET: &str = "nexus_dnn::banner";
+
 impl<S, N> FormatEvent<S, N> for PrettyFormat
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
@@ -64,11 +70,21 @@ where
         mut writer: Writer<'_>,
         event: &Event<'_>,
     ) -> fmt::Result {
+        let meta = event.metadata();
+
+        // Banner target opts out of the standard prefix. The message is
+        // emitted verbatim so the caller has full control over visual
+        // layout (alignment, indents, box-drawing, ASCII-only or colored
+        // depending on what they want).
+        if meta.target() == BANNER_TARGET {
+            ctx.format_fields(writer.by_ref(), event)?;
+            return writeln!(writer);
+        }
+
         // 1. Timestamp — local time, millisecond precision.
         write!(writer, "{} ", chrono::Local::now().format("%H:%M:%S%.3f"))?;
 
         // 2. Icon + level word, colored by severity.
-        let meta = event.metadata();
         let (icon, level_color) = level_glyph_and_color(*meta.level());
         if self.use_ansi {
             write!(writer, "{level_color}{icon} {:<5}{RESET} ", meta.level().as_str())?;
