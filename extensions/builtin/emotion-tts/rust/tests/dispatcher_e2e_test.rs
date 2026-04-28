@@ -322,6 +322,7 @@ async fn dispatcher_emits_segment_events_and_runs_to_completion() {
         repos.clone(),
         provider,
         registry.clone(),
+        None,
         "0.0.0-test",
     );
 

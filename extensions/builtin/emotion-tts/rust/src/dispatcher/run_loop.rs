@@ -11,7 +11,7 @@ use crate::backend_client::LeaseProvider;
 use crate::dispatcher::prepare::{prepare, PrepareConfig};
 use crate::dispatcher::{RunChannelRegistry, RunEvent};
 use crate::domain::EmotionTtsError;
-use crate::host_contract::NotificationEnvelope;
+use crate::host_contract::{HostArtifactStore, NotificationEnvelope};
 use crate::operators::batch_synthesize::{BatchSynthesizeOperator, Output as BatchOutput};
 use crate::operators::Operator;
 use crate::queue::QueuedRun;
@@ -23,13 +23,16 @@ pub(crate) async fn process_one(
     repos: Repos,
     lease_provider: Arc<LeaseProvider>,
     registry: Arc<RunChannelRegistry>,
-    _extension_version: String,
+    artifact_store: Option<Arc<dyn HostArtifactStore>>,
+    extension_version: String,
 ) {
     let run_id = qrun.run_id.clone();
     let run_id_str = run_id.as_str().to_string();
     let (tx, _guard) = registry.register(run_id_str.clone()).await;
 
-    let result = dispatch_inner(&qrun, &repos, &lease_provider, &tx).await;
+    let result =
+        dispatch_inner(&qrun, &repos, &lease_provider, &tx, artifact_store, &extension_version)
+            .await;
 
     let terminal_status = match result {
         Ok(status) => status,
@@ -60,6 +63,8 @@ async fn dispatch_inner(
     repos: &Repos,
     lease_provider: &Arc<LeaseProvider>,
     tx: &crate::dispatcher::RunEventSender,
+    artifact_store: Option<Arc<dyn HostArtifactStore>>,
+    extension_version: &str,
 ) -> crate::domain::Result<String> {
     let run_id = &qrun.run_id;
 
@@ -252,6 +257,37 @@ async fn dispatch_inner(
     } else {
         "partial"
     };
+
+    if (status == "completed" || status == "partial") && artifact_store.is_some() {
+        let store = artifact_store.clone().unwrap();
+        match crate::dispatcher::export::write_export_zip(
+            repos,
+            run_id,
+            &prepared.utterances,
+            extension_version,
+            store,
+        )
+        .await
+        {
+            Ok(export_id) => {
+                tracing::info!(
+                    target: "emotion_tts::dispatch",
+                    run_id = run_id.as_str(),
+                    export_id = export_id.as_str(),
+                    "export ZIP written"
+                );
+            }
+            Err(err) => {
+                tracing::warn!(
+                    target: "emotion_tts::dispatch",
+                    run_id = run_id.as_str(),
+                    error = %err,
+                    "export ZIP build failed — audio files still on disk"
+                );
+            }
+        }
+    }
+
     Ok(status.to_string())
 }
 
