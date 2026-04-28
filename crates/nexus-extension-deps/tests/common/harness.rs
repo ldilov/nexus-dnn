@@ -139,5 +139,6 @@ pub fn build_runner_ctx<'a>(
         progress_sink: handles.progress_sink.clone(),
         cancellation_token: CancellationToken::new(),
         install_run_id: uuid::Uuid::nil(),
+        force: false,
     }
 }

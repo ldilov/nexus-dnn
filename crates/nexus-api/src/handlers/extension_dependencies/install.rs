@@ -4,8 +4,9 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use chrono::Utc;
+use serde::Deserialize;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -19,9 +20,20 @@ use crate::error::ApiError;
 
 use super::common::{EventBusProgressSink, install_plan_for, runner_context_inputs};
 
+#[derive(Debug, Default, Deserialize)]
+pub struct StartInstallQuery {
+    /// `?force=true` skips probe-says-satisfied and re-runs every step from
+    /// scratch. Wired to the "Reinstall everything" CTA in the Dependencies
+    /// tab so the user can recover from a partially-broken install without
+    /// retrying each row by hand.
+    #[serde(default)]
+    pub force: bool,
+}
+
 pub async fn start_install(
     State(state): State<AppState>,
     Path(extension_id): Path<String>,
+    Query(query): Query<StartInstallQuery>,
 ) -> Result<ApiResponse<InstallStartedResponseDto>, ApiError> {
     // Reject if a run is already active for this extension.
     if let Some(existing) = state.dep_install_state.get(&extension_id) {
@@ -89,6 +101,7 @@ pub async fn start_install(
             progress_sink,
             cancellation_token: cancel_token,
             install_run_id,
+            force: query.force,
         };
         let report = runner.run_install(&mut runner_ctx).await;
 

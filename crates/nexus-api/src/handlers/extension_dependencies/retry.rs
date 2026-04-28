@@ -126,6 +126,10 @@ pub async fn retry_step(
             progress_sink,
             cancellation_token: cancel_token,
             install_run_id,
+            // Per-row Retry/Reinstall is an explicit user action — they want
+            // the step to actually re-run, not be short-circuited by a probe
+            // that says "already installed".
+            force: true,
         };
         let result = runner
             .run_single_step(&step_id, &mut runner_ctx, &upstream_artifacts)

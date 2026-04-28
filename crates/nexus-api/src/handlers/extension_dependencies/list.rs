@@ -70,6 +70,7 @@ pub async fn list_dependencies(
         progress_sink: progress_sink.clone(),
         cancellation_token: tokio_util::sync::CancellationToken::new(),
         install_run_id: Uuid::nil(),
+        force: false,
     };
 
     // Snapshot any in-memory runner state for this extension. Probe is the source of

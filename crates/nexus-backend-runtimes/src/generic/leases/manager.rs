@@ -110,10 +110,7 @@ impl LeaseManager {
     /// Returned clones are independent of the manager's internal lock —
     /// callers may await against each lease without holding registry
     /// state. Used by the `GET /install/:id/health` endpoint (T084).
-    pub async fn handles_for_install(
-        &self,
-        install_id: &RuntimeInstallId,
-    ) -> Vec<Arc<StdioLease>> {
+    pub async fn handles_for_install(&self, install_id: &RuntimeInstallId) -> Vec<Arc<StdioLease>> {
         self.entries
             .lock()
             .await

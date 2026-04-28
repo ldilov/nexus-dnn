@@ -22,6 +22,19 @@ Handler = Callable[[dict[str, Any] | list[Any] | None], Awaitable[Any]]
 ProtocolVersion = "1.0"
 
 
+def _jsonrpc_stdout() -> Any:
+    """Return the stdout stream the host's JSON-RPC framer expects.
+
+    `__main__.py` swaps `sys.stdout` to point at stderr so rogue `print()`
+    statements from torch / transformers / huggingface_hub / scipy / etc.
+    can't corrupt the wire protocol. The original stdout is stashed as
+    `sys.__nexus_jsonrpc_stdout__` before the swap. Fall back to
+    `sys.stdout` if the stash isn't present (e.g. importing this module
+    standalone from a test).
+    """
+    return getattr(sys, "__nexus_jsonrpc_stdout__", sys.stdout)
+
+
 class Worker:
     def __init__(self) -> None:
         self._handlers: dict[str, Handler] = {}
@@ -133,8 +146,9 @@ class Worker:
         line = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         async with self._stdout_lock:
             with self._stdout_sync_lock:
-                sys.stdout.write(line + "\n")
-                sys.stdout.flush()
+                _stdout = _jsonrpc_stdout()
+                _stdout.write(line + "\n")
+                _stdout.flush()
 
     def emit(self, payload: dict[str, Any]) -> None:
         """Public synchronous NDJSON emitter; safe to call from any thread.
@@ -146,8 +160,9 @@ class Worker:
         """
         line = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         with self._stdout_sync_lock:
-            sys.stdout.write(line + "\n")
-            sys.stdout.flush()
+            _stdout = _jsonrpc_stdout()
+            _stdout.write(line + "\n")
+            _stdout.flush()
 
     def _emit_sync(self, payload: dict[str, Any]) -> None:
         self.emit(payload)

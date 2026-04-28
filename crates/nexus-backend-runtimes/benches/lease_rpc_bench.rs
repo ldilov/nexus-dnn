@@ -19,7 +19,11 @@ fn workspace_root() -> PathBuf {
 }
 
 fn python_executable() -> PathBuf {
-    if cfg!(windows) { PathBuf::from("python") } else { PathBuf::from("python3") }
+    if cfg!(windows) {
+        PathBuf::from("python")
+    } else {
+        PathBuf::from("python3")
+    }
 }
 
 fn echo_main_py() -> PathBuf {
@@ -51,9 +55,7 @@ fn bench_echo_rpc(c: &mut Criterion) {
         let lease = StdioLease::spawn(spec, RuntimeLeaseId::new())
             .await
             .expect("spawn lease");
-        do_handshake(lease.as_ref())
-            .await
-            .expect("handshake");
+        do_handshake(lease.as_ref()).await.expect("handshake");
         lease
     });
 

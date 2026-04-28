@@ -15,7 +15,7 @@ import {
   startInstall,
 } from "../../../services/extension_dependencies_client";
 import { shortenSize } from "../step_type_presentation";
-import { useInstallProgress } from "../use_install_progress";
+import { useInstallProgress, type InstallCompletedDetail } from "../use_install_progress";
 import { StepRow } from "../components/step_row";
 import * as s from "./dependencies.tab.css";
 
@@ -28,7 +28,32 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
   const { data, error, isLoading, mutate } = useSWR(swrKey, () =>
     fetchDependencies(extensionId),
   );
-  const progress = useInstallProgress(extensionId, swrKey);
+
+  const handleCompleted = useCallback(
+    (detail: InstallCompletedDetail) => {
+      if (detail.outcome === "success") {
+        toast.success("Install complete", { description: extensionId });
+      } else if (detail.outcome === "cancelled") {
+        toast("Install cancelled", { description: extensionId });
+      } else {
+        const failed = detail.failedStep;
+        toast.error(
+          failed ? `Install failed at "${failed.stepId}"` : "Install failed",
+          {
+            description: failed
+              ? `${failed.category}: ${failed.message}`
+              : extensionId,
+            duration: 10_000,
+          },
+        );
+      }
+    },
+    [extensionId],
+  );
+
+  const progress = useInstallProgress(extensionId, swrKey, {
+    onCompleted: handleCompleted,
+  });
   const [busy, setBusy] = useState(false);
 
   const handleInstallAll = useCallback(async () => {
@@ -39,6 +64,25 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
       void mutate();
     } catch (err: unknown) {
       toast.error("Failed to start install", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setBusy(false);
+    }
+  }, [extensionId, mutate]);
+
+  const handleReinstallAll = useCallback(async () => {
+    const ok = window.confirm(
+      "Reinstall every dependency from scratch?\n\nThis re-runs every step, including downloads — it can take a while and re-fetches model artifacts even if they're already on disk.",
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await startInstall(extensionId, { force: true });
+      toast.success("Reinstall started", { description: extensionId });
+      void mutate();
+    } catch (err: unknown) {
+      toast.error("Failed to start reinstall", {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
@@ -133,14 +177,25 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
               Cancel
             </button>
           ) : (
-            <button
-              type="button"
-              className={s.installButton}
-              onClick={handleInstallAll}
-              disabled={busy || data.all_satisfied}
-            >
-              {data.all_satisfied ? "All set" : "Install all"}
-            </button>
+            <>
+              <button
+                type="button"
+                className={s.reinstallButton}
+                onClick={handleReinstallAll}
+                disabled={busy}
+                title="Re-run every step from scratch, ignoring already-installed state"
+              >
+                Reinstall everything
+              </button>
+              <button
+                type="button"
+                className={s.installButton}
+                onClick={handleInstallAll}
+                disabled={busy || data.all_satisfied}
+              >
+                {data.all_satisfied ? "All set" : "Install all"}
+              </button>
+            </>
           )}
         </div>
       </header>

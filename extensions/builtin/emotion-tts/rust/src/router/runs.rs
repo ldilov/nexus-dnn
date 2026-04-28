@@ -327,9 +327,20 @@ async fn create_run_impl(
         .collect();
 
     if !map_out.unresolved_characters.is_empty() {
+        let names = map_out
+            .unresolved_characters
+            .iter()
+            .map(|n| format!("\"{n}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let count = map_out.unresolved_characters.len();
         return Err(EmotionTtsError::Conflict(format!(
-            "unresolved characters: {:?}",
-            map_out.unresolved_characters
+            "{count} unmapped {} ({names}) — open the Mappings editor and map {} to a voice asset before running, \
+             or remove {} from the script. Lines without a [Character] prefix default to \"Narrator\", which also \
+             needs a mapping.",
+            if count == 1 { "character" } else { "characters" },
+            if count == 1 { "it" } else { "them" },
+            if count == 1 { "the line" } else { "those lines" },
         )));
     }
 
