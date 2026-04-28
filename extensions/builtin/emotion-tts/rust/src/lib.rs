@@ -88,6 +88,7 @@ pub async fn register(
             repos.clone(),
             p,
             run_channels.clone(),
+            artifact_store.clone(),
             EXTENSION_VERSION,
         ));
     }

@@ -2,6 +2,7 @@
 
 pub mod channels;
 pub mod events;
+pub(crate) mod export;
 pub(crate) mod prepare;
 pub(crate) mod run_loop;
 
@@ -13,6 +14,7 @@ use std::sync::Arc;
 use tokio::task::JoinHandle;
 
 use crate::backend_client::LeaseProvider;
+use crate::host_contract::HostArtifactStore;
 use crate::queue::SharedQueue;
 use crate::storage::Repos;
 
@@ -25,6 +27,7 @@ pub fn spawn_dispatcher(
     repos: Repos,
     lease_provider: Arc<LeaseProvider>,
     registry: Arc<RunChannelRegistry>,
+    artifact_store: Option<Arc<dyn HostArtifactStore>>,
     extension_version: impl Into<String>,
 ) -> JoinHandle<()> {
     let extension_version = extension_version.into();
@@ -44,11 +47,13 @@ pub fn spawn_dispatcher(
             let repos_c = repos.clone();
             let lease_c = lease_provider.clone();
             let registry_c = registry.clone();
+            let store_c = artifact_store.clone();
             let version_c = extension_version.clone();
             // Isolate each run in its own task so a panic does not kill
             // the dispatcher.
             let join = tokio::spawn(async move {
-                run_loop::process_one(qrun, repos_c, lease_c, registry_c, version_c).await;
+                run_loop::process_one(qrun, repos_c, lease_c, registry_c, store_c, version_c)
+                    .await;
             });
             if let Err(err) = join.await {
                 tracing::error!(
