@@ -30,8 +30,12 @@ pub fn spawn_dispatcher(
     tokio::spawn(async move {
         loop {
             let Some(qrun) = queue.pop_next().await else {
-                // pop_next never returns None today (it always blocks on
-                // notify), but be defensive: sleep briefly and retry.
+                // `RuntimeQueue::pop_next` returns `None` when the queue
+                // is empty and nothing is in flight. The 50ms sleep is
+                // the latency floor between enqueue and dispatch — a
+                // future cleanup can convert pop_next into a blocking
+                // call (await the inner Notify directly) to drop the
+                // sleep entirely.
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 continue;
             };

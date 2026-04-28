@@ -14,9 +14,8 @@ pub(crate) async fn process_one(
     _repos: Repos,
     _lease_provider: Arc<LeaseProvider>,
     registry: Arc<RunChannelRegistry>,
-    extension_version: String,
+    _extension_version: String,
 ) {
-    let _ = extension_version;
     let run_id_str = qrun.run_id.as_str().to_string();
     let (tx, _guard) = registry.register(run_id_str.clone()).await;
     // Placeholder: emit a single failed run_terminal so SSE doesn't
