@@ -231,13 +231,24 @@ impl EmotionTtsRouterProvider {
             _ => Arc::new(StubLeaseFactory),
         };
         let provider = Arc::new(LeaseProvider::new(lease_factory));
+        let run_channels = Arc::new(crate::dispatcher::RunChannelRegistry::new());
+        let _dispatcher = crate::dispatcher::spawn_dispatcher(
+            queue.clone(),
+            repos.clone(),
+            provider.clone(),
+            run_channels.clone(),
+            EXTENSION_VERSION,
+        );
         let artifact_store = self.resources.artifact_store.clone();
-        Ok(crate::router::build_router(
+        Ok(crate::router::build_router_with_families(
             repos,
             queue,
             EXTENSION_VERSION,
             Some(provider),
             artifact_store,
+            run_channels,
+            Arc::new(crate::families::FamilyRegistry::new(Vec::new())),
+            crate::router::families::default_reconciler(),
         ))
     }
 }
