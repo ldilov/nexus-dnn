@@ -351,12 +351,19 @@ async fn dispatch_inner(
 
     let _output = rpc_result?;
 
+    // Test-line runs are single-segment fast-lane previews — they MUST
+    // NOT pollute the cache (the user is iterating on a line, each run
+    // is throwaway) and MUST NOT produce an export ZIP (no batch to
+    // bundle). Both side-effects are gated below.
+    let is_test_line = prepared.run.kind == "test_line";
+
     // Insert new cache rows for completed miss segments so future runs
     // with the same hash can be served from cache. Duplicate inserts
     // (e.g., two concurrent runs synthesising the same segment) are
     // expected; log at debug and move on.
     let now = Utc::now().timestamp();
     let utts_after = repos.utterances.list_by_run(run_id).await?;
+    if !is_test_line {
     for u in &utts_after {
         if u.cache_hit {
             continue;
@@ -393,6 +400,7 @@ async fn dispatch_inner(
             );
         }
     }
+    }
 
     // Recompute terminal status from utterance rows — the most reliable
     // source given that not every notification is guaranteed to arrive.
@@ -414,7 +422,7 @@ async fn dispatch_inner(
         "partial"
     };
 
-    if (status == "completed" || status == "partial") && artifact_store.is_some() {
+    if !is_test_line && (status == "completed" || status == "partial") && artifact_store.is_some() {
         let store = artifact_store.clone().unwrap();
         match crate::dispatcher::export::write_export_zip(
             repos,
