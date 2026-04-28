@@ -83,21 +83,30 @@ async fn dispatch_inner(
     let dep_id = crate::domain::DeploymentId::try_from(qrun.deployment_id.as_str())
         .map_err(|e| EmotionTtsError::internal(format!("invalid deployment id: {e}")))?;
     let voice_rows = repos.voice_assets.list_by_deployment(&dep_id).await?;
-    let voice_paths: std::collections::HashMap<String, String> = voice_rows
-        .into_iter()
-        .map(|row| (row.voice_asset_id.as_str().to_string(), row.audio_artifact_ref))
-        .collect();
+    let mut voice_paths: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut voice_sha256s: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for row in voice_rows {
+        let key = row.voice_asset_id.as_str().to_string();
+        voice_paths.insert(key.clone(), row.audio_artifact_ref);
+        voice_sha256s.insert(key, row.content_sha256);
+    }
 
     let voice_resolver: Arc<dyn Fn(&str) -> Option<String> + Send + Sync> =
         Arc::new(move |voice_asset_id: &str| -> Option<String> {
             voice_paths.get(voice_asset_id).cloned()
         });
 
+    let voice_sha256_resolver: Arc<dyn Fn(&str) -> Option<String> + Send + Sync> =
+        Arc::new(move |voice_asset_id: &str| -> Option<String> {
+            voice_sha256s.get(voice_asset_id).cloned()
+        });
+
     let cfg = PrepareConfig {
         output_root,
         voice_path_resolver: voice_resolver,
+        voice_sha256_resolver,
     };
-    let prepared = prepare(repos, run_id, &cfg).await?;
+    let prepared = prepare(repos, run_id, &cfg, extension_version).await?;
 
     // Insert all utterance rows up-front in `queued` state so the
     // `segment_started` notifications have something to update.

@@ -3,8 +3,10 @@
 //! resolve voice asset paths, build the `SynthesisSegment` list the
 //! `BatchSynthesizeOperator` expects.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use crate::domain::cache_key::{build as build_cache_key, CacheKeyInput};
 use crate::domain::emotion::EmotionPayload;
 use crate::domain::filenames::build_filename;
 use crate::domain::parser::{parse_script, ParserMode};
@@ -30,6 +32,8 @@ pub(crate) struct UtterancePlan {
     pub character_index: i64,
     pub text: String,
     pub output_target_abs: String,
+    pub content_hash: Option<crate::domain::ContentHash>,
+    pub speaker_voice_asset_id: crate::domain::VoiceAssetId,
 }
 
 #[derive(Clone)]
@@ -41,12 +45,16 @@ pub(crate) struct PrepareConfig {
     /// already an absolute path written by the artifact store; passing
     /// it through unchanged is correct.
     pub voice_path_resolver: std::sync::Arc<dyn Fn(&str) -> Option<String> + Send + Sync>,
+    /// Resolves a `VoiceAssetId` to the `content_sha256` of the voice asset.
+    /// Used as `speaker_ref_sha256` in the cache key computation.
+    pub voice_sha256_resolver: std::sync::Arc<dyn Fn(&str) -> Option<String> + Send + Sync>,
 }
 
 pub(crate) async fn prepare(
     repos: &Repos,
     run_id: &RunId,
     cfg: &PrepareConfig,
+    extension_version: &str,
 ) -> Result<Prepared> {
     let run = repos
         .runs
@@ -108,6 +116,25 @@ pub(crate) async fn prepare(
                 ))
             })?;
 
+        let content_hash = (cfg.voice_sha256_resolver)(mapping.speaker_voice_asset_id.as_str())
+            .and_then(|sha256| {
+                let cache_input = CacheKeyInput {
+                    extension_version: extension_version.to_string(),
+                    runtime_version: "0.0.0".to_string(), // TODO: thread real runtime_version once available
+                    model_version: "indextts-2".to_string(),
+                    model_family: "indextts-2".to_string(),
+                    text: r.utterance.text.clone(),
+                    speaker_ref_sha256: sha256,
+                    emotion: EmotionPayload::None,
+                    generation_params: BTreeMap::new(),
+                    seed: run.base_seed,
+                    speed_factor: run.speed_factor,
+                    speed_mode: run.speed_mode.clone(),
+                    output_format: run.output_format.clone(),
+                };
+                build_cache_key(&cache_input).ok()
+            });
+
         let global_index = (idx + 1) as i64;
         let filename_info = build_filename(
             global_index,
@@ -127,6 +154,8 @@ pub(crate) async fn prepare(
             character_index: r.character_index,
             text: r.utterance.text.clone(),
             output_target_abs: output_target_abs.clone(),
+            content_hash,
+            speaker_voice_asset_id: mapping.speaker_voice_asset_id.clone(),
         });
 
         segments.push(SynthesisSegment {
