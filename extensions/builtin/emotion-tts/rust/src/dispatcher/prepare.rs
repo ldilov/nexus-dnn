@@ -71,6 +71,14 @@ pub(crate) async fn prepare(
         .ok_or_else(|| EmotionTtsError::not_found(format!("run {run_id}")))?;
     let dep = run.deployment_id.clone();
 
+    // Parse the global emotion snapshot once. Falls back to None on
+    // missing field / malformed JSON / unknown mode. Audio-ref payloads
+    // get their ref_id resolved through the voice path resolver below
+    // so the worker receives an absolute filesystem path, not a host
+    // artifact reference.
+    let global_emotion =
+        parse_global_emotion(run.global_emotion_snapshot_json.as_deref(), cfg);
+
     let parser_mode = match run.parser_mode.as_str() {
         "raw_text" => ParserMode::RawText,
         "advanced_tagged" => ParserMode::AdvancedTagged,
@@ -142,7 +150,7 @@ pub(crate) async fn prepare(
                     model_family: "indextts-2".to_string(),
                     text: r.utterance.text.clone(),
                     speaker_ref_sha256: sha256,
-                    emotion: EmotionPayload::None,
+                    emotion: global_emotion.clone(),
                     generation_params: BTreeMap::new(),
                     seed: run.base_seed,
                     speed_factor: run.speed_factor,
@@ -205,4 +213,87 @@ pub(crate) async fn prepare(
         utterances: plans,
         source_run_id,
     })
+}
+
+/// Convert the run row's `global_emotion_snapshot_json` (whatever the
+/// frontend sent) into a typed `EmotionPayload`. Tolerates both
+/// camelCase and snake_case keys because `CreateRunBody.global_emotion`
+/// is `serde_json::Value` (no rename, just passthrough). For audio_ref
+/// mode the ref is resolved through the host artifact store so the
+/// worker receives an absolute filesystem path.
+///
+/// Falls back to `EmotionPayload::None` when:
+/// - The snapshot is None or fails to parse as JSON.
+/// - `mode` is missing, "none", or unrecognized.
+/// - The mode-specific payload field is missing.
+/// - For audio_ref: the ref doesn't resolve via the path resolver.
+fn parse_global_emotion(json_str: Option<&str>, cfg: &PrepareConfig) -> EmotionPayload {
+    let Some(s) = json_str else {
+        return EmotionPayload::None;
+    };
+    let Ok(v): std::result::Result<serde_json::Value, _> = serde_json::from_str(s) else {
+        return EmotionPayload::None;
+    };
+    let mode = v.get("mode").and_then(|m| m.as_str()).unwrap_or("none");
+    // Frontend sends `emotionAlpha`; older payloads / Rust GlobalEmotion
+    // use `alpha`. Try both.
+    let alpha = v
+        .get("emotionAlpha")
+        .and_then(serde_json::Value::as_f64)
+        .or_else(|| v.get("alpha").and_then(serde_json::Value::as_f64))
+        .unwrap_or(1.0);
+
+    match mode {
+        "audio_ref" => {
+            let ref_id = v
+                .get("audioRefId")
+                .and_then(|r| r.as_str())
+                .or_else(|| v.get("audio_ref_id").and_then(|r| r.as_str()))
+                .map(str::to_string);
+            let Some(raw_ref) = ref_id else {
+                return EmotionPayload::None;
+            };
+            // Resolve through the voice path resolver so the worker sees
+            // an absolute path. Fall back to the raw ref if resolution
+            // misses (worker will then fail with a clear "file not
+            // found" error rather than silently mis-rendering).
+            let resolved = (cfg.voice_path_resolver)(&raw_ref).unwrap_or(raw_ref);
+            EmotionPayload::AudioRef {
+                ref_id: resolved,
+                alpha,
+            }
+        }
+        "emotion_vector" => {
+            let arr = v.get("vector").and_then(|a| a.as_array());
+            let Some(arr) = arr else {
+                return EmotionPayload::None;
+            };
+            if arr.len() != 8 {
+                return EmotionPayload::None;
+            }
+            let mut out = [0.0f64; 8];
+            for (i, n) in arr.iter().enumerate() {
+                let Some(f) = n.as_f64() else {
+                    return EmotionPayload::None;
+                };
+                out[i] = f.clamp(0.0, 1.0);
+            }
+            EmotionPayload::EmotionVector {
+                vector: out,
+                alpha,
+            }
+        }
+        "qwen_template" => {
+            let template = v
+                .get("qwenTemplate")
+                .and_then(|t| t.as_str())
+                .or_else(|| v.get("qwen_template").and_then(|t| t.as_str()))
+                .map(str::to_string);
+            let Some(template) = template else {
+                return EmotionPayload::None;
+            };
+            EmotionPayload::QwenTemplate { template, alpha }
+        }
+        _ => EmotionPayload::None,
+    }
 }
