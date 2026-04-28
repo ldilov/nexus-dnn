@@ -3,6 +3,8 @@ mod fixtures;
 use std::sync::Arc;
 use std::time::Duration;
 
+use fixtures::fake_artifact_store::FakeArtifactStore;
+
 use async_trait::async_trait;
 use chrono::Utc;
 use emotion_tts_extension::backend_client::{LeaseFactory, LeaseProvider};
@@ -393,6 +395,255 @@ async fn dispatcher_emits_segment_events_and_runs_to_completion() {
     );
 
     // Assert: DB run row reflects "completed".
+    let final_row = repos
+        .runs
+        .get(&run_id)
+        .await
+        .unwrap()
+        .expect("run row must exist");
+    assert_eq!(
+        final_row.status, "completed",
+        "DB run row status should be 'completed', got {:?}",
+        final_row.status
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: dispatcher writes ExportHistoryRow when artifact store is wired
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn dispatcher_writes_export_history_on_completed_run() {
+    let pool = fresh_pool().await;
+    let repos = Repos::from_pool(pool);
+
+    let dep = DeploymentId::try_from("dep_test_export").unwrap();
+    let now = Utc::now().timestamp();
+
+    repos
+        .deployments
+        .insert(&DeploymentRow {
+            deployment_id: dep.clone(),
+            host_extension_instance_ref: "host:test".into(),
+            display_name: "Export Test Deployment".into(),
+            backend_runtime_preference: None,
+            default_output_format: "wav".into(),
+            default_speed_factor: 1.0,
+            default_generation_overrides_json: "{}".into(),
+            most_recent_run_id: None,
+            partial_run_id: None,
+            reference_preprocess_enabled: true,
+            oas_enabled: false,
+            compile_gpt_enabled: false,
+            model_family: "indextts-2".into(),
+            oas_threshold_learned: None,
+            oas_samples_seen: 0,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    let voice_id = VoiceAssetId::new();
+    repos
+        .voice_assets
+        .insert(&VoiceAssetRow {
+            voice_asset_id: voice_id.clone(),
+            deployment_id: dep.clone(),
+            display_name: "Narrator".into(),
+            kind: "speaker".into(),
+            audio_artifact_ref: "/tmp/fake_voice_export.wav".into(),
+            content_sha256: "b".repeat(64),
+            reference_text: None,
+            sample_rate: Some(24000),
+            duration_ms: Some(5000),
+            source_type: "upload".into(),
+            notes: None,
+            is_active: true,
+            preprocessed_artifact_ref: None,
+            preprocessing_report_json: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    repos
+        .mappings
+        .insert(&CharacterMappingRow {
+            mapping_id: MappingId::new(),
+            deployment_id: dep.clone(),
+            character_name: "Narrator".into(),
+            character_name_lower: "narrator".into(),
+            speaker_voice_asset_id: voice_id.clone(),
+            default_emotion_mode: "none".into(),
+            default_emotion_voice_asset_id: None,
+            default_vector_preset_id: None,
+            default_qwen_template: None,
+            default_speed_factor: None,
+            default_generation_overrides_json: "{}".into(),
+            is_active: true,
+            notes: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    let run_id = RunId::new();
+    repos
+        .runs
+        .insert(&RunRow {
+            run_id: run_id.clone(),
+            deployment_id: dep.clone(),
+            kind: "batch".into(),
+            status: "queued".into(),
+            script_snapshot: "Narrator: Hello world.".into(),
+            parser_mode: "dialogue".into(),
+            generation_settings_json: "{}".into(),
+            global_emotion_snapshot_json: None,
+            output_format: "wav".into(),
+            speed_factor: 1.0,
+            speed_mode: "preserve_pitch".into(),
+            cache_policy: "force_regenerate".into(),
+            seed_strategy: "fixed".into(),
+            base_seed: 42,
+            original_run_id: None,
+            runtime_install_id: None,
+            runtime_version: None,
+            model_version: None,
+            extension_version: "0.0.0-test".into(),
+            queued_at: now,
+            started_at: None,
+            finished_at: None,
+            error_category: None,
+            error_detail: None,
+        })
+        .await
+        .unwrap();
+
+    // Write a real WAV stub to a temp file so build_zip_bytes can read it.
+    let wav_dir = std::env::temp_dir().join("nexus-emotion-tts-test-export");
+    std::fs::create_dir_all(&wav_dir).unwrap();
+    let wav_path = wav_dir.join("seg_000.wav");
+    std::fs::write(&wav_path, b"RIFF\0\0\0\0WAVEfmt ").unwrap();
+    let wav_path_str = wav_path.to_string_lossy().into_owned();
+
+    let wav_path_for_notifier = wav_path_str.clone();
+    let (lease, notif_tx) = ChannelLease::new(move |method, _params| {
+        if method != "synthesize.batch" {
+            return Err(LeaseError::Rpc {
+                code: -32601,
+                message: format!("method not found: {method}"),
+            });
+        }
+        Ok(json!({"request_id": "x", "status": "ok", "segments": []}))
+    });
+
+    let notif_tx_clone = notif_tx.clone();
+    let run_id_notif = run_id.as_str().to_string();
+    let repos_for_notifier = repos.clone();
+    let run_id_for_notifier = run_id.clone();
+    tokio::spawn(async move {
+        let segment_id = loop {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            let rows = repos_for_notifier
+                .utterances
+                .list_by_run(&run_id_for_notifier)
+                .await
+                .unwrap_or_default();
+            if let Some(row) = rows.first() {
+                break row.utterance_id.as_str().to_string();
+            }
+        };
+
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let _ = notif_tx_clone.send(NotificationEnvelope {
+            method: "segment_started".into(),
+            params: json!({
+                "segmentId": segment_id,
+                "runId": run_id_notif,
+            }),
+        });
+
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let _ = notif_tx_clone.send(NotificationEnvelope {
+            method: "segment_completed".into(),
+            params: json!({
+                "segmentId": segment_id,
+                "runId": run_id_notif,
+                "durationMs": 1234,
+                "outputPathAbs": wav_path_for_notifier,
+            }),
+        });
+    });
+
+    let queue = Arc::new(RuntimeQueue::new());
+    let registry = Arc::new(RunChannelRegistry::new());
+    let provider = Arc::new(LeaseProvider::new(Arc::new(StaticLeaseFactory(
+        lease as SharedLease,
+    ))));
+
+    let artifact_store: Arc<dyn emotion_tts_extension::host_contract::HostArtifactStore> =
+        Arc::new(FakeArtifactStore::new());
+
+    let _handle = spawn_dispatcher(
+        queue.clone(),
+        repos.clone(),
+        provider,
+        registry.clone(),
+        Some(artifact_store),
+        "0.0.0-test",
+    );
+
+    queue
+        .enqueue(run_id.clone(), dep.as_str(), RunClass::Batch)
+        .await;
+
+    let mut rx = None;
+    for _ in 0..100 {
+        if let Some(r) = registry.subscribe(run_id.as_str()).await {
+            rx = Some(r);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let mut rx = rx.expect("dispatcher should register run channel within 2s");
+
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            match rx.recv().await {
+                Ok(ev) => {
+                    if matches!(ev, RunEvent::RunTerminal { .. }) {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    })
+    .await
+    .expect("dispatcher should reach RunTerminal within 10s");
+
+    // Give the export write a moment to complete — it runs after the terminal
+    // event is emitted but in the same task as dispatch_inner.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Assert: an ExportHistoryRow was inserted for this run.
+    let export_row = repos
+        .exports
+        .get_latest_for_run(&run_id)
+        .await
+        .expect("repo query must not fail")
+        .expect("ExportHistoryRow must exist for a completed run with artifact store wired");
+
+    assert_eq!(
+        export_row.run_id.as_ref().map(|id| id.as_str()),
+        Some(run_id.as_str()),
+        "export row must reference the correct run"
+    );
+
+    // Smoke-check: the DB run row also reflects "completed".
     let final_row = repos
         .runs
         .get(&run_id)
