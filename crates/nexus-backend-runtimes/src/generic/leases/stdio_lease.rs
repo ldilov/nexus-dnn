@@ -339,7 +339,12 @@ async fn reader_loop(
 async fn stderr_forwarder(stderr: tokio::process::ChildStderr, lease_id: RuntimeLeaseId) {
     let mut lines = BufReader::new(stderr).lines();
     while let Ok(Some(line)) = lines.next_line().await {
-        tracing::info!(lease_id = %lease_id, "worker stderr: {line}");
+        // Use a short, dedicated target so the host's compact log formatter
+        // renders `INFO worker.stderr: <line>` instead of the verbose
+        // `nexus_backend_runtimes::generic::leases::stdio_lease` module path.
+        // Drop the "worker stderr:" literal prefix — the target name already
+        // signals provenance, so the bare line is what the user sees.
+        tracing::info!(target: "worker.stderr", lease_id = %lease_id, "{line}");
     }
 }
 
