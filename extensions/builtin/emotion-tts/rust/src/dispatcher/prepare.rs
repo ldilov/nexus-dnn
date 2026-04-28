@@ -3,19 +3,21 @@
 //! resolve voice asset paths, build the `SynthesisSegment` list the
 //! `BatchSynthesizeOperator` expects.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 use crate::backend_client::HandshakeInfo;
 use crate::domain::cache_key::{build as build_cache_key, CacheKeyInput};
-use crate::domain::emotion::EmotionPayload;
+use crate::domain::emotion::{
+    resolve as resolve_emotion, EmotionMode, GlobalEmotion, InlineOverrides, MappingDefaults,
+};
 use crate::domain::filenames::build_filename;
 use crate::domain::parser::{parse_script, ParserMode};
 use crate::domain::{DeploymentId, EmotionTtsError, Result, RunId};
 use crate::operators::batch_synthesize::{BatchOptimisations, Input as BatchInput, SynthesisSegment};
 use crate::operators::mapping_resolve::{Input as MapInput, MappingResolveOperator};
 use crate::operators::Operator;
-use crate::storage::repo_traits::RunRow;
+use crate::storage::repo_traits::{CharacterMappingRow, RunRow};
 use crate::storage::Repos;
 
 pub(crate) struct Prepared {
@@ -79,13 +81,29 @@ pub(crate) async fn prepare(
         .ok_or_else(|| EmotionTtsError::not_found(format!("run {run_id}")))?;
     let dep = run.deployment_id.clone();
 
-    // Parse the global emotion snapshot once. Falls back to None on
-    // missing field / malformed JSON / unknown mode. Audio-ref payloads
-    // get their ref_id resolved through the voice path resolver below
-    // so the worker receives an absolute filesystem path, not a host
-    // artifact reference.
+    // Parse the global emotion snapshot once into the typed `GlobalEmotion`
+    // struct expected by `domain::emotion::resolve`. Falls back to a
+    // mode=None default on missing field / malformed JSON / unknown mode.
+    // Audio-ref payloads get their ref_id resolved through the voice path
+    // resolver below so the worker receives an absolute filesystem path,
+    // not a host artifact reference.
     let global_emotion =
         parse_global_emotion(run.global_emotion_snapshot_json.as_deref(), cfg);
+
+    // Pre-fetch all vector presets for this deployment once. Per-character
+    // mappings reference presets by id when their default emotion mode is
+    // `vector_preset`; resolving each one on-the-fly would require an
+    // async DB hit per utterance, so we eagerly index them by id and parse
+    // the stored JSON `[f64; 8]` array up front.
+    let presets = repos.presets.list_by_deployment(&dep).await?;
+    let preset_vectors: HashMap<String, [f64; 8]> = presets
+        .iter()
+        .filter_map(|p| {
+            serde_json::from_str::<[f64; 8]>(&p.vector_json)
+                .ok()
+                .map(|v| (p.preset_id.as_str().to_string(), v))
+        })
+        .collect();
 
     let parser_mode = match run.parser_mode.as_str() {
         "raw_text" => ParserMode::RawText,
@@ -149,6 +167,26 @@ pub(crate) async fn prepare(
                 ))
             })?;
 
+        // Build per-character mapping defaults so the precedence chain in
+        // `domain::emotion::resolve` can consult them. Audio-ref ids are
+        // resolved through the voice path resolver — if resolution misses,
+        // `MappingDefaults.audio_ref_id` is left None and `resolve()` will
+        // skip the mapping branch and fall through to the global setting.
+        let mapping_defaults = mapping_opt.map(|m| build_mapping_defaults(m, cfg, &preset_vectors));
+
+        // No inline overrides at this layer (script-level inline overrides
+        // are parsed elsewhere and not yet plumbed through prepare()). An
+        // empty `InlineOverrides::default()` lets the resolver evaluate
+        // mapping → global → none in order.
+        let inline = InlineOverrides::default();
+        let utterance_emotion = resolve_emotion(
+            &inline,
+            None,
+            mapping_defaults.as_ref(),
+            &global_emotion,
+        )
+        .payload;
+
         let content_hash = (cfg.voice_sha256_resolver)(speaker_voice_id.as_str())
             .and_then(|sha256| {
                 let cache_input = CacheKeyInput {
@@ -179,7 +217,7 @@ pub(crate) async fn prepare(
                         .to_string(),
                     text: r.utterance.text.clone(),
                     speaker_ref_sha256: sha256,
-                    emotion: global_emotion.clone(),
+                    emotion: utterance_emotion.clone(),
                     generation_params: BTreeMap::new(),
                     seed: run.base_seed,
                     speed_factor: run.speed_factor,
@@ -220,7 +258,7 @@ pub(crate) async fn prepare(
             character_index: r.character_index,
             text: r.utterance.text.clone(),
             speaker_audio_ref_abs: speaker_path,
-            emotion: global_emotion.clone(),
+            emotion: utterance_emotion,
             generation: serde_json::json!({}),
             output_target_abs,
         });
@@ -245,23 +283,25 @@ pub(crate) async fn prepare(
 }
 
 /// Convert the run row's `global_emotion_snapshot_json` (whatever the
-/// frontend sent) into a typed `EmotionPayload`. Tolerates both
+/// frontend sent) into a typed `GlobalEmotion`. Tolerates both
 /// camelCase and snake_case keys because `CreateRunBody.global_emotion`
 /// is `serde_json::Value` (no rename, just passthrough). For audio_ref
 /// mode the ref is resolved through the host artifact store so the
 /// worker receives an absolute filesystem path.
 ///
-/// Falls back to `EmotionPayload::None` when:
+/// Falls back to `GlobalEmotion::default()` (mode=None) when:
 /// - The snapshot is None or fails to parse as JSON.
 /// - `mode` is missing, "none", or unrecognized.
-/// - The mode-specific payload field is missing.
-/// - For audio_ref: the ref doesn't resolve via the path resolver.
-fn parse_global_emotion(json_str: Option<&str>, cfg: &PrepareConfig) -> EmotionPayload {
+/// - The mode-specific payload field is missing or malformed.
+/// - For audio_ref: the ref doesn't resolve via the path resolver — in
+///   that case the raw ref string is kept (worker will surface a clear
+///   "file not found" error rather than silently mis-rendering).
+fn parse_global_emotion(json_str: Option<&str>, cfg: &PrepareConfig) -> GlobalEmotion {
     let Some(s) = json_str else {
-        return EmotionPayload::None;
+        return GlobalEmotion::default();
     };
     let Ok(v): std::result::Result<serde_json::Value, _> = serde_json::from_str(s) else {
-        return EmotionPayload::None;
+        return GlobalEmotion::default();
     };
     let mode = v.get("mode").and_then(|m| m.as_str()).unwrap_or("none");
     // Frontend sends `emotionAlpha`; older payloads / Rust GlobalEmotion
@@ -269,8 +309,7 @@ fn parse_global_emotion(json_str: Option<&str>, cfg: &PrepareConfig) -> EmotionP
     let alpha = v
         .get("emotionAlpha")
         .and_then(serde_json::Value::as_f64)
-        .or_else(|| v.get("alpha").and_then(serde_json::Value::as_f64))
-        .unwrap_or(1.0);
+        .or_else(|| v.get("alpha").and_then(serde_json::Value::as_f64));
 
     match mode {
         "audio_ref" => {
@@ -280,36 +319,35 @@ fn parse_global_emotion(json_str: Option<&str>, cfg: &PrepareConfig) -> EmotionP
                 .or_else(|| v.get("audio_ref_id").and_then(|r| r.as_str()))
                 .map(str::to_string);
             let Some(raw_ref) = ref_id else {
-                return EmotionPayload::None;
+                return GlobalEmotion::default();
             };
-            // Resolve through the voice path resolver so the worker sees
-            // an absolute path. Fall back to the raw ref if resolution
-            // misses (worker will then fail with a clear "file not
-            // found" error rather than silently mis-rendering).
             let resolved = (cfg.voice_path_resolver)(&raw_ref).unwrap_or(raw_ref);
-            EmotionPayload::AudioRef {
-                ref_id: resolved,
+            GlobalEmotion {
+                mode: EmotionMode::AudioRef,
+                audio_ref_id: Some(resolved),
                 alpha,
+                ..Default::default()
             }
         }
         "emotion_vector" => {
-            let arr = v.get("vector").and_then(|a| a.as_array());
-            let Some(arr) = arr else {
-                return EmotionPayload::None;
+            let Some(arr) = v.get("vector").and_then(|a| a.as_array()) else {
+                return GlobalEmotion::default();
             };
             if arr.len() != 8 {
-                return EmotionPayload::None;
+                return GlobalEmotion::default();
             }
             let mut out = [0.0f64; 8];
             for (i, n) in arr.iter().enumerate() {
                 let Some(f) = n.as_f64() else {
-                    return EmotionPayload::None;
+                    return GlobalEmotion::default();
                 };
                 out[i] = f.clamp(0.0, 1.0);
             }
-            EmotionPayload::EmotionVector {
-                vector: out,
+            GlobalEmotion {
+                mode: EmotionMode::EmotionVector,
+                vector: Some(out),
                 alpha,
+                ..Default::default()
             }
         }
         "qwen_template" => {
@@ -319,10 +357,73 @@ fn parse_global_emotion(json_str: Option<&str>, cfg: &PrepareConfig) -> EmotionP
                 .or_else(|| v.get("qwen_template").and_then(|t| t.as_str()))
                 .map(str::to_string);
             let Some(template) = template else {
-                return EmotionPayload::None;
+                return GlobalEmotion::default();
             };
-            EmotionPayload::QwenTemplate { template, alpha }
+            GlobalEmotion {
+                mode: EmotionMode::QwenTemplate,
+                qwen_template: Some(template),
+                alpha,
+                ..Default::default()
+            }
         }
-        _ => EmotionPayload::None,
+        _ => GlobalEmotion::default(),
+    }
+}
+
+/// Translate a `CharacterMappingRow` into the typed `MappingDefaults`
+/// that `domain::emotion::resolve` consumes.
+///
+/// - `audio_ref` mode: the stored `default_emotion_voice_asset_id` is run
+///   through the voice path resolver so the worker receives an absolute
+///   path. When resolution misses, `audio_ref_id` is left None and
+///   `resolve()` will skip the mapping branch entirely (precedence falls
+///   through to global / none).
+/// - `vector_preset` mode: the stored preset id is looked up in the
+///   pre-fetched `preset_vectors` map (single DB hit per run rather than
+///   one per utterance). A miss leaves `vector` as None and the resolver
+///   skips this mapping branch.
+/// - `qwen_template` mode: the template string is taken verbatim from
+///   the row.
+/// - Unknown / "none" modes produce a `MappingDefaults` with mode=None,
+///   which the resolver treats as "no mapping override available".
+///
+/// `alpha` is intentionally left None — there is no per-mapping alpha
+/// column. Inline overrides supply alpha (Task 3, not yet shipped); when
+/// neither inline nor mapping provide it, `resolve_mapping` defaults to
+/// 1.0.
+fn build_mapping_defaults(
+    row: &CharacterMappingRow,
+    cfg: &PrepareConfig,
+    preset_vectors: &HashMap<String, [f64; 8]>,
+) -> MappingDefaults {
+    match row.default_emotion_mode.as_str() {
+        "audio_ref" => {
+            let audio_ref_id = row
+                .default_emotion_voice_asset_id
+                .as_ref()
+                .and_then(|id| (cfg.voice_path_resolver)(id.as_str()));
+            MappingDefaults {
+                mode: EmotionMode::AudioRef,
+                audio_ref_id,
+                ..Default::default()
+            }
+        }
+        "vector_preset" => {
+            let vector = row
+                .default_vector_preset_id
+                .as_ref()
+                .and_then(|id| preset_vectors.get(id.as_str()).copied());
+            MappingDefaults {
+                mode: EmotionMode::EmotionVector,
+                vector,
+                ..Default::default()
+            }
+        }
+        "qwen_template" => MappingDefaults {
+            mode: EmotionMode::QwenTemplate,
+            qwen_template: row.default_qwen_template.clone(),
+            ..Default::default()
+        },
+        _ => MappingDefaults::default(),
     }
 }

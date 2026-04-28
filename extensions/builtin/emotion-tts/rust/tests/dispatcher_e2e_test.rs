@@ -12,14 +12,14 @@ use emotion_tts_extension::backend_client::{LeaseFactory, LeaseProvider};
 use emotion_tts_extension::dispatcher::{spawn_dispatcher, RunChannelRegistry, RunEvent};
 use emotion_tts_extension::domain::cache_key::{build as build_cache_key, CacheKeyInput};
 use emotion_tts_extension::domain::emotion::EmotionPayload;
-use emotion_tts_extension::domain::{DeploymentId, MappingId, RunId, VoiceAssetId};
+use emotion_tts_extension::domain::{DeploymentId, MappingId, PresetId, RunId, VoiceAssetId};
 use emotion_tts_extension::host_contract::{
     BackendRuntimeLease, LeaseError, LeaseState, NotificationEnvelope, NotificationStream,
     SharedLease,
 };
 use emotion_tts_extension::queue::{RunClass, RuntimeQueue};
 use emotion_tts_extension::storage::repo_traits::{
-    CharacterMappingRow, DeploymentRow, RunRow, SynthesisCacheRow, VoiceAssetRow,
+    CharacterMappingRow, DeploymentRow, RunRow, SynthesisCacheRow, VectorPresetRow, VoiceAssetRow,
 };
 use emotion_tts_extension::storage::Repos;
 use emotion_tts_extension::{domain::RuntimeLeaseId, MIGRATIONS};
@@ -1765,5 +1765,307 @@ async fn test_line_skips_cache_and_export() {
         final_row.status, "completed",
         "test_line run must still reach 'completed', got {:?}",
         final_row.status
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: per-character mapping vector_preset default flows into the cache key
+// ---------------------------------------------------------------------------
+//
+// Backlog Task 2 — `domain::emotion::resolve()` precedence:
+//   inline > legacy_ref > mapping > global > none
+//
+// Seeds:
+//   - a vector preset with a known [f64; 8]
+//   - a character mapping for "Narrator" with default_emotion_mode="vector_preset"
+//     pointing at that preset
+//   - a SynthesisCacheRow whose content_hash is computed using the EXPECTED
+//     emotion payload — `EmotionPayload::EmotionVector { vector, alpha: 1.0 }`
+//
+// If prepare() correctly applies the mapping default through `resolve()`,
+// the per-utterance cache_input.emotion will match the seeded row and the
+// utterance will land with cache_hit=true.
+//
+// If prepare() regresses to using a global EmotionPayload::None, the hash
+// will not match the seeded row and the test will fail (cache_hit=false).
+//
+// This pins the contract that mapping defaults are resolved per-utterance
+// rather than ignored in favor of the run-level global emotion.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn mapping_vector_preset_default_applied_to_cache_key() {
+    let pool = fresh_pool().await;
+    let repos = Repos::from_pool(pool);
+
+    let dep = DeploymentId::try_from("dep_test_vec_preset").unwrap();
+    let now = Utc::now().timestamp();
+
+    repos
+        .deployments
+        .insert(&DeploymentRow {
+            deployment_id: dep.clone(),
+            host_extension_instance_ref: "host:test".into(),
+            display_name: "Vector Preset Mapping Default Test".into(),
+            backend_runtime_preference: None,
+            default_output_format: "wav".into(),
+            default_speed_factor: 1.0,
+            default_generation_overrides_json: "{}".into(),
+            most_recent_run_id: None,
+            partial_run_id: None,
+            reference_preprocess_enabled: true,
+            oas_enabled: false,
+            compile_gpt_enabled: false,
+            model_family: "indextts-2".into(),
+            oas_threshold_learned: None,
+            oas_samples_seen: 0,
+            default_voice_asset_id: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    // Distinct sha256 from all other tests in this file.
+    let voice_sha256 = "9".repeat(64);
+    let voice_id = VoiceAssetId::new();
+    repos
+        .voice_assets
+        .insert(&VoiceAssetRow {
+            voice_asset_id: voice_id.clone(),
+            deployment_id: dep.clone(),
+            display_name: "Narrator".into(),
+            kind: "speaker".into(),
+            audio_artifact_ref: "/tmp/fake_voice_vec_preset.wav".into(),
+            content_sha256: voice_sha256.clone(),
+            reference_text: None,
+            sample_rate: Some(24000),
+            duration_ms: Some(5000),
+            source_type: "upload".into(),
+            notes: None,
+            is_active: true,
+            preprocessed_artifact_ref: None,
+            preprocessing_report_json: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    // Seed the vector preset with a known 8-tuple. The order matches
+    // VECTOR_KEYS = [happy, angry, sad, afraid, disgusted, melancholic,
+    // surprised, calm] but the emotion resolver does not validate order —
+    // it just round-trips the array.
+    let preset_id = PresetId::new();
+    let vector: [f64; 8] = [0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2, 0.1];
+    let vector_json = serde_json::to_string(&vector).unwrap();
+    repos
+        .presets
+        .insert(&VectorPresetRow {
+            preset_id: preset_id.clone(),
+            deployment_id: dep.clone(),
+            preset_name: "happy_calm".into(),
+            vector_json,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    // Mapping with vector_preset default — the unit under test.
+    repos
+        .mappings
+        .insert(&CharacterMappingRow {
+            mapping_id: MappingId::new(),
+            deployment_id: dep.clone(),
+            character_name: "Narrator".into(),
+            character_name_lower: "narrator".into(),
+            speaker_voice_asset_id: voice_id.clone(),
+            default_emotion_mode: "vector_preset".into(),
+            default_emotion_voice_asset_id: None,
+            default_vector_preset_id: Some(preset_id.clone()),
+            default_qwen_template: None,
+            default_speed_factor: None,
+            default_generation_overrides_json: "{}".into(),
+            is_active: true,
+            notes: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    // Run with cache_policy="use_cache" so the cache lookup path runs.
+    let run_id = RunId::new();
+    repos
+        .runs
+        .insert(&RunRow {
+            run_id: run_id.clone(),
+            deployment_id: dep.clone(),
+            kind: "batch".into(),
+            status: "queued".into(),
+            script_snapshot: "Narrator: Hello world.".into(),
+            parser_mode: "dialogue".into(),
+            generation_settings_json: "{}".into(),
+            global_emotion_snapshot_json: None,
+            output_format: "wav".into(),
+            speed_factor: 1.0,
+            speed_mode: "preserve_pitch".into(),
+            cache_policy: "use_cache".into(),
+            seed_strategy: "fixed".into(),
+            base_seed: 42,
+            original_run_id: None,
+            runtime_install_id: None,
+            runtime_version: None,
+            model_version: None,
+            extension_version: "0.0.0-test".into(),
+            queued_at: now,
+            started_at: None,
+            finished_at: None,
+            error_category: None,
+            error_detail: None,
+        })
+        .await
+        .unwrap();
+
+    // Build the cache key prepare() is expected to produce. The emotion
+    // payload reflects the mapping default — vector preset with alpha=1.0
+    // (no inline alpha, no mapping alpha column → resolver default).
+    let expected_cache_input = CacheKeyInput {
+        extension_version: "0.0.0-test".into(),
+        runtime_version: emotion_tts_extension::backend_client::FALLBACK_RUNTIME_VERSION.into(),
+        model_version: emotion_tts_extension::backend_client::FALLBACK_MODEL_VERSION.into(),
+        model_family: emotion_tts_extension::backend_client::FALLBACK_MODEL_FAMILY.into(),
+        text: "Narrator: Hello world.".into(),
+        speaker_ref_sha256: voice_sha256.clone(),
+        emotion: EmotionPayload::EmotionVector {
+            vector,
+            alpha: 1.0,
+        },
+        generation_params: BTreeMap::new(),
+        seed: 42,
+        speed_factor: 1.0,
+        speed_mode: "preserve_pitch".into(),
+        output_format: "wav".into(),
+    };
+    let expected_hash = build_cache_key(&expected_cache_input)
+        .expect("expected cache key must build for valid inputs");
+
+    // Sanity: the same hash with EmotionPayload::None must differ — this
+    // is what would land if the regression returned (mapping ignored).
+    let regression_input = CacheKeyInput {
+        emotion: EmotionPayload::None,
+        ..expected_cache_input.clone()
+    };
+    let regression_hash = build_cache_key(&regression_input)
+        .expect("regression cache key must build for valid inputs");
+    assert_ne!(
+        expected_hash.as_str(),
+        regression_hash.as_str(),
+        "test setup invariant: mapping-applied hash MUST differ from no-emotion hash"
+    );
+
+    repos
+        .cache
+        .insert(&SynthesisCacheRow {
+            content_hash: expected_hash.clone(),
+            audio_artifact_ref: "/tmp/cached_vec_preset_seg.wav".into(),
+            extension_version: "0.0.0-test".into(),
+            runtime_version: emotion_tts_extension::backend_client::FALLBACK_RUNTIME_VERSION.into(),
+            model_version: emotion_tts_extension::backend_client::FALLBACK_MODEL_VERSION.into(),
+            size_bytes: 100,
+            hit_count: 0,
+            created_at: now,
+            last_hit_at: now,
+        })
+        .await
+        .unwrap();
+
+    let call_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = call_count.clone();
+    let (lease, _notif_tx) = ChannelLease::new(move |method, _params| {
+        if method == "synthesize.batch" {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+        Ok(json!({"request_id": "x", "status": "ok", "segments": []}))
+    });
+
+    let queue = Arc::new(RuntimeQueue::new());
+    let registry = Arc::new(RunChannelRegistry::new());
+    let provider = Arc::new(LeaseProvider::new(Arc::new(StaticLeaseFactory(
+        lease as SharedLease,
+    ))));
+
+    let _handle = spawn_dispatcher(
+        queue.clone(),
+        repos.clone(),
+        provider,
+        registry.clone(),
+        None,
+        "0.0.0-test",
+        std::env::temp_dir().join(emotion_tts_extension::FALLBACK_RUNS_DIR),
+    );
+
+    queue
+        .enqueue(run_id.clone(), dep.as_str(), RunClass::Batch)
+        .await;
+
+    let mut rx = None;
+    for _ in 0..100 {
+        if let Some(r) = registry.subscribe(run_id.as_str()).await {
+            rx = Some(r);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let mut rx = rx.expect("dispatcher should register run channel within 2s");
+
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            match rx.recv().await {
+                Ok(ev) => {
+                    if matches!(ev, RunEvent::RunTerminal { .. }) {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    })
+    .await
+    .expect("dispatcher should reach RunTerminal within 10s");
+
+    // Worker must NOT be invoked — the seeded cache row only matches when
+    // prepare() correctly applied the mapping vector preset default.
+    assert_eq!(
+        call_count.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "synthesize.batch must not be called: the cache row matches only \
+         when the per-character vector_preset default flows into the cache key"
+    );
+
+    let utts = repos
+        .utterances
+        .list_by_run(&run_id)
+        .await
+        .expect("utterance query must not fail");
+    assert_eq!(utts.len(), 1, "expected exactly one utterance row");
+    let utt = &utts[0];
+    assert!(
+        utt.cache_hit,
+        "utterance must be a cache hit — proves prepare() applied the \
+         mapping vector_preset default through domain::emotion::resolve()"
+    );
+    assert_eq!(
+        utt.content_hash.as_deref(),
+        Some(expected_hash.as_str()),
+        "utterance content_hash must equal the hash built with the \
+         mapping's vector emotion (vs. EmotionPayload::None regression hash {})",
+        regression_hash.as_str()
+    );
+    assert_eq!(
+        utt.audio_artifact_ref.as_deref(),
+        Some("/tmp/cached_vec_preset_seg.wav"),
+        "utterance must reference the pre-seeded cached audio file"
     );
 }
