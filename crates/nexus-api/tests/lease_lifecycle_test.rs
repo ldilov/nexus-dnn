@@ -528,10 +528,7 @@ async fn uninstall_returns_204_on_clean_install() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!(
-                    "/api/v1/backend-runtime-installs/{}",
-                    h.install_id
-                ))
+                .uri(format!("/api/v1/backend-runtime-installs/{}", h.install_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -572,10 +569,7 @@ async fn uninstall_returns_409_when_lease_is_live() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!(
-                    "/api/v1/backend-runtime-installs/{}",
-                    h.install_id
-                ))
+                .uri(format!("/api/v1/backend-runtime-installs/{}", h.install_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -760,7 +754,9 @@ async fn health_returns_400_on_invalid_install_id() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap(),
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
     )
     .unwrap();
     assert_eq!(body["error"]["code"], "invalid_install_id");
@@ -805,7 +801,9 @@ async fn health_returns_no_live_leases_when_none_held() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap(),
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
     )
     .unwrap();
     assert_eq!(body["data"]["live_lease_count"], 0);
@@ -850,7 +848,9 @@ async fn health_reports_healthy_after_start_when_echo_worker_responds() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap(),
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
     )
     .unwrap();
     assert_eq!(body["data"]["live_lease_count"], 1);

@@ -1,67 +1,144 @@
-id: "emotional_dialogue_batch"
-version: "1.0.0"
-display_name: "Emotional Dialogue Batch"
-description: "Default DAG wiring the seven EmotionTTS operators into a recipe-equivalent run."
+specVersion: "0.1"
+workflow:
+  id: "emotional_dialogue_batch"
+  version: "1.0.0"
+  title: "Emotional Dialogue Batch"
 
-nodes:
-  - id: script_parse
-    operator: "emotiontts.script.parse@1.0.0"
-    input:
-      script: "${run.script}"
-      mode: "${run.parser_mode}"
+  inputs:
+    - name: "script"
+      type: "string"
+    - name: "parser_mode"
+      type: "enum"
+    - name: "output_format"
+      type: "enum"
+    - name: "speed_factor"
+      type: "number"
+    - name: "global_emotion"
+      type: "object"
+    - name: "optimisations"
+      type: "object"
+    - name: "mappings"
+      type: "array"
+    - name: "manifest"
+      type: "object"
 
-  - id: mapping_resolve
-    operator: "emotiontts.mapping.resolve@1.0.0"
-    input:
-      utterances: "${script_parse.utterances}"
-      mappings: "${deployment.mappings}"
+  stages:
+    - id: "parse"
+      label: "Parse Script"
+    - id: "resolve"
+      label: "Resolve Voices and Emotions"
+    - id: "synthesize"
+      label: "Synthesize"
+    - id: "postprocess"
+      label: "Post-process Audio"
+    - id: "export"
+      label: "Export Bundle"
 
-  - id: emotion_resolve
-    operator: "emotiontts.emotion.resolve@1.0.0"
-    input:
-      resolved_utterances: "${mapping_resolve.resolved}"
-      mappings: "${deployment.mappings}"
-      global: "${run.global_emotion}"
+  nodes:
+    - id: "script_parse"
+      operator: "emotiontts.script.parse@1.0.0"
+      stage: "parse"
+      inputs:
+        script:
+          from: "input:script"
+        mode:
+          from: "input:parser_mode"
+      config: {}
 
-  - id: batch_synthesize
-    operator: "emotiontts.batch.synthesize@1.0.0"
-    input:
-      segments: "${emotion_resolve.plans}"
+    - id: "mapping_resolve"
+      operator: "emotiontts.mapping.resolve@1.0.0"
+      stage: "resolve"
+      inputs:
+        utterances:
+          from: "script_parse:utterances"
+        mappings:
+          from: "input:mappings"
+      config: {}
 
-  - id: audio_postprocess
-    operator: "emotiontts.audio.postprocess@1.0.0"
-    for_each: "${batch_synthesize.segments}"
-    input:
-      input_wav_abs: "${item.output_path_abs}"
-      output_format: "${run.output_format}"
-      speed_factor: "${run.speed_factor}"
+    - id: "emotion_resolve"
+      operator: "emotiontts.emotion.resolve@1.0.0"
+      stage: "resolve"
+      inputs:
+        resolved_utterances:
+          from: "mapping_resolve:resolved"
+        mappings:
+          from: "input:mappings"
+        global:
+          from: "input:global_emotion"
+      config: {}
 
-  - id: audio_preview_mix
-    operator: "emotiontts.audio.preview_mix@1.0.0"
-    input:
-      segment_paths_abs: "${audio_postprocess.output_abs[]}"
-      gap_ms: 250
-      output_format: "${run.output_format}"
+    - id: "batch_synthesize"
+      operator: "emotiontts.batch.synthesize@1.0.0"
+      stage: "synthesize"
+      inputs:
+        segments:
+          from: "emotion_resolve:plans"
+        optimisations:
+          from: "input:optimisations"
+      config: {}
 
-  - id: export_bundle
-    operator: "emotiontts.export.bundle@1.0.0"
-    input:
-      manifest: "${run.manifest}"
-      segment_files: "${audio_postprocess.output_abs[]}"
-      include_preview_mix: true
+    - id: "audio_postprocess"
+      operator: "emotiontts.audio.postprocess@1.0.0"
+      stage: "postprocess"
+      inputs:
+        segments:
+          from: "batch_synthesize:segments"
+        output_format:
+          from: "input:output_format"
+        speed_factor:
+          from: "input:speed_factor"
+      config: {}
 
-edges:
-  - from: script_parse
-    to: mapping_resolve
-  - from: mapping_resolve
-    to: emotion_resolve
-  - from: emotion_resolve
-    to: batch_synthesize
-  - from: batch_synthesize
-    to: audio_postprocess
-  - from: audio_postprocess
-    to: audio_preview_mix
-  - from: audio_postprocess
-    to: export_bundle
-  - from: audio_preview_mix
-    to: export_bundle
+    - id: "audio_preview_mix"
+      operator: "emotiontts.audio.preview_mix@1.0.0"
+      stage: "postprocess"
+      inputs:
+        segment_paths_abs:
+          from: "audio_postprocess:output_paths"
+        output_format:
+          from: "input:output_format"
+        gap_ms:
+          value: 250
+      config: {}
+
+    - id: "export_bundle"
+      operator: "emotiontts.export.bundle@1.0.0"
+      stage: "export"
+      inputs:
+        manifest:
+          from: "input:manifest"
+        segment_files:
+          from: "audio_postprocess:output_paths"
+        include_preview_mix:
+          value: true
+      config: {}
+
+  edges:
+    - sourceNode: "script_parse"
+      sourcePort: "utterances"
+      targetNode: "mapping_resolve"
+      targetPort: "utterances"
+    - sourceNode: "mapping_resolve"
+      sourcePort: "resolved"
+      targetNode: "emotion_resolve"
+      targetPort: "resolved_utterances"
+    - sourceNode: "emotion_resolve"
+      sourcePort: "plans"
+      targetNode: "batch_synthesize"
+      targetPort: "segments"
+    - sourceNode: "batch_synthesize"
+      sourcePort: "segments"
+      targetNode: "audio_postprocess"
+      targetPort: "segments"
+    - sourceNode: "audio_postprocess"
+      sourcePort: "output_paths"
+      targetNode: "audio_preview_mix"
+      targetPort: "segment_paths_abs"
+    - sourceNode: "audio_postprocess"
+      sourcePort: "output_paths"
+      targetNode: "export_bundle"
+      targetPort: "segment_files"
+
+  outputs:
+    - name: "bundle"
+      from: "export_bundle:zip_abs"

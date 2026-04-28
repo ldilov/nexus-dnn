@@ -4,12 +4,18 @@
 //! operator layer + queue. The router's job is request shaping, preflight,
 //! and mapping domain errors into the JSON envelope.
 
+use std::convert::Infallible;
+use std::sync::Arc;
+use std::time::Duration;
+
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
 use axum::Router;
 use chrono::Utc;
+use futures::stream::Stream;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -27,18 +33,184 @@ pub struct RunsState {
     pub repos: Repos,
     pub queue: SharedQueue,
     pub extension_version: String,
+    pub run_channels: Arc<crate::dispatcher::RunChannelRegistry>,
 }
 
 #[must_use]
 pub fn router(state: RunsState) -> Router {
     Router::new()
-        .route("/deployments/:deployment_id/runs", get(list_runs).post(create_run))
-        .route("/deployments/:deployment_id/runs/:run_id", get(get_run))
-        .route("/deployments/:deployment_id/runs/:run_id/cancel", post(cancel_run))
-        .route("/deployments/:deployment_id/runs/:run_id/resume", post(resume_run))
-        .route("/deployments/:deployment_id/runs/test-line", post(test_line))
-        .route("/runs/:run_id/diagnostics", get(diagnostics))
+        .route("/deployments/{deployment_id}/runs", get(list_runs).post(create_run))
+        .route("/deployments/{deployment_id}/runs/{run_id}", get(get_run))
+        .route("/deployments/{deployment_id}/runs/{run_id}/cancel", post(cancel_run))
+        .route("/deployments/{deployment_id}/runs/{run_id}/resume", post(resume_run))
+        .route(
+            "/deployments/{deployment_id}/runs/{run_id}/progress",
+            get(run_progress),
+        )
+        .route("/deployments/{deployment_id}/runs/test-line", post(test_line))
+        .route("/runs/{run_id}/diagnostics", get(diagnostics))
         .with_state(state)
+}
+
+/// SSE progress channel for a single run.
+///
+/// Frontend's `subscribeRunProgress` opens this stream after a successful
+/// `POST /runs` and listens for per-segment events. The handler subscribes
+/// to the per-run `RunChannelRegistry` channel registered by the
+/// dispatcher and forwards `RunEvent::SegmentStarted`,
+/// `SegmentCompleted`, `SegmentFailed`, and `RunTerminal` straight to the
+/// client. If the dispatcher takes a while to register the channel
+/// (cold-lease boot can be several minutes for the first run), the
+/// handler retries every 100 ms and falls back to polling the run row
+/// for an early terminal state. See `run_progress_stream` for details.
+async fn run_progress(
+    State(state): State<RunsState>,
+    Path((raw_deployment_id, raw_run_id)): Path<(String, String)>,
+) -> Response {
+    let deployment_id = match DeploymentId::try_from(raw_deployment_id.as_str()) {
+        Ok(v) => v,
+        Err(err) => return EmotionTtsError::from(err).into_response(),
+    };
+    let run_id = match RunId::try_from(raw_run_id.as_str()) {
+        Ok(v) => v,
+        Err(err) => return EmotionTtsError::from(err).into_response(),
+    };
+    // Validate the run exists before opening the stream — otherwise the
+    // browser would treat a bare 404 as a transient SSE failure and
+    // retry every 3s forever.
+    match state.repos.runs.get(&run_id).await {
+        Ok(Some(row)) if row.deployment_id == deployment_id => {}
+        Ok(Some(_)) => {
+            return EmotionTtsError::not_found(format!(
+                "run {run_id} does not belong to deployment {deployment_id}"
+            ))
+            .into_response();
+        }
+        Ok(None) => {
+            return EmotionTtsError::not_found(format!("run {run_id}")).into_response();
+        }
+        Err(err) => return err.into_response(),
+    }
+
+    let stream = run_progress_stream(state.clone(), run_id);
+    Sse::new(stream)
+        .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+        .into_response()
+}
+
+fn run_progress_stream(
+    state: RunsState,
+    run_id: RunId,
+) -> impl Stream<Item = std::result::Result<Event, Infallible>> {
+    async_stream::stream! {
+        // Try to find the per-run channel. If the dispatcher has not yet
+        // popped this run, we briefly retry — there's a small window
+        // between `enqueue` (in create_run) and `register` (in the
+        // dispatcher loop) where the channel does not exist yet.
+        // Retry budget: 3000 iterations × 100 ms = 5 minutes. The cold-boot
+        // lease (Python venv + first VRAM model load) can legitimately take
+        // several minutes; bailing out earlier would leave the user with a
+        // phantom "failed" message while the run continued in the background.
+        // The async_stream future is cancelled when the SSE connection drops,
+        // so a long loop does not waste resources for disconnected clients.
+        // DB-poll fast-path runs every 5th iteration (~1 Hz) — enough to
+        // catch a dispatcher that finished before we subscribed without
+        // saturating SQLite while concurrent installs are running.
+        let mut maybe_rx = None;
+        for i in 0..3000_u32 {
+            if let Some(rx) = state.run_channels.subscribe(run_id.as_str()).await {
+                maybe_rx = Some(rx);
+                break;
+            }
+            if i % 5 == 0 {
+                if let Ok(Some(row)) = state.repos.runs.get(&run_id).await {
+                    if matches!(row.status.as_str(), "completed" | "failed" | "cancelled" | "partial") {
+                        let payload = serde_json::json!({
+                            "type": "run_terminal",
+                            "run_id": run_id.as_str(),
+                            "status": row.status,
+                        });
+                        yield Ok(Event::default().event("run_terminal").data(payload.to_string()));
+                        return;
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        let Some(mut rx) = maybe_rx else {
+            let payload = serde_json::json!({
+                "type": "run_terminal",
+                "run_id": run_id.as_str(),
+                "status": "failed",
+                "error": "dispatcher did not pick up run within 5 minutes",
+            });
+            yield Ok(Event::default().event("run_terminal").data(payload.to_string()));
+            return;
+        };
+        // Late-subscribe replay: emit segment_started + segment_completed/
+        // segment_failed events for every utterance row that already has a
+        // non-`queued` status. Lets a refreshed page rebuild the progress
+        // table without waiting for the next live event. Live frames that
+        // arrive between this replay and the rx.recv() loop below MAY
+        // duplicate replayed frames — the frontend keys segments by
+        // global_index so duplicates are idempotent.
+        if let Ok(rows) = state.repos.utterances.list_by_run(&run_id).await {
+            for row in rows {
+                match row.status.as_str() {
+                    "running" => {
+                        let p = serde_json::json!({
+                            "type": "segment_started",
+                            "run_id": run_id.as_str(),
+                            "utterance_id": row.utterance_id.as_str(),
+                            "global_index": row.global_index,
+                        });
+                        yield Ok(Event::default().event("segment_started").data(p.to_string()));
+                    }
+                    "completed" => {
+                        let p = serde_json::json!({
+                            "type": "segment_completed",
+                            "run_id": run_id.as_str(),
+                            "utterance_id": row.utterance_id.as_str(),
+                            "global_index": row.global_index,
+                            "duration_ms": row.duration_ms.unwrap_or(0),
+                        });
+                        yield Ok(Event::default().event("segment_completed").data(p.to_string()));
+                    }
+                    "failed" => {
+                        let p = serde_json::json!({
+                            "type": "segment_failed",
+                            "run_id": run_id.as_str(),
+                            "utterance_id": row.utterance_id.as_str(),
+                            "global_index": row.global_index,
+                            "failure_category": row.failure_category.unwrap_or_else(|| "unknown".into()),
+                            "failure_detail": row.failure_detail,
+                        });
+                        yield Ok(Event::default().event("segment_failed").data(p.to_string()));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        loop {
+            match rx.recv().await {
+                Ok(event) => {
+                    let name = event.sse_event_name();
+                    let data = serde_json::to_string(&event)
+                        .unwrap_or_else(|_| "{}".to_string());
+                    yield Ok(Event::default().event(name).data(data));
+                    if matches!(event, crate::dispatcher::RunEvent::RunTerminal { .. }) {
+                        return;
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                    // Slow subscriber — drop the lagged frames and keep going.
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    return;
+                }
+            }
+        }
+    }
 }
 
 /// Spec 034 US2 / T063 — reads alignment diagnostics for a completed run.
@@ -218,9 +390,20 @@ async fn create_run_impl(
         .collect();
 
     if !map_out.unresolved_characters.is_empty() {
+        let names = map_out
+            .unresolved_characters
+            .iter()
+            .map(|n| format!("\"{n}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let count = map_out.unresolved_characters.len();
         return Err(EmotionTtsError::Conflict(format!(
-            "unresolved characters: {:?}",
-            map_out.unresolved_characters
+            "{count} unmapped {} ({names}) — open the Mappings editor and map {} to a voice asset before running, \
+             or remove {} from the script. Lines without a [Character] prefix default to \"Narrator\", which also \
+             needs a mapping.",
+            if count == 1 { "character" } else { "characters" },
+            if count == 1 { "it" } else { "them" },
+            if count == 1 { "the line" } else { "those lines" },
         )));
     }
 
@@ -318,7 +501,22 @@ async fn get_run_impl(state: &RunsState, deployment_id: &str, run_id: &str) -> R
         .list_by_run(&run_id)
         .await
         .unwrap_or_default();
-    Ok(run_detail_json(&row, &utterances))
+    let mut body = run_detail_json(&row, &utterances);
+    let export = state
+        .repos
+        .exports
+        .get_latest_for_run(&run_id)
+        .await
+        .unwrap_or(None);
+    if let Some(e) = export {
+        if let Some(obj) = body.as_object_mut() {
+            obj.insert(
+                "exportArtifactRef".into(),
+                Value::String(e.export_id.as_str().to_string()),
+            );
+        }
+    }
+    Ok(body)
 }
 
 pub async fn cancel_run(

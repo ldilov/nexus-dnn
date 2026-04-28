@@ -745,6 +745,12 @@ export interface ModuleSummary {
   // view. Frontend fetches GET /api/v1/workflows/{id} when rendering the
   // Workflow tab; null for Blank Module.
   workflow_id?: string | null;
+  // Extension lifecycle status — `"active"`, `"disabled"`, `"error"`, etc.
+  // The Blueprint view gates Recipe + Workflow Graph tabs on `"active"`
+  // so a user landing on a disabled/errored module sees the failure
+  // state instead of a half-rendered surface that 404s on every
+  // extension API call. Null for user/blank modules.
+  extension_status?: string | null;
 }
 
 export interface ModuleListEnvelope {

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router";
 import type { Extension } from "../../../api/client";
 import { InstallExtensionDrawer } from "../../../components/install/install_extension_drawer";
 import * as s from "./gallery.css";
@@ -19,6 +20,8 @@ export interface ExtensionsGalleryUIProps {
   onOpenDrawer: () => void;
   onCloseDrawer: () => void;
   onInstalled: () => void;
+  /** Spec 035 — extension ids that need user-driven dep installs. */
+  setupRequired?: Record<string, boolean>;
 }
 
 export function ExtensionsGalleryUI({
@@ -32,6 +35,7 @@ export function ExtensionsGalleryUI({
   onOpenDrawer,
   onCloseDrawer,
   onInstalled,
+  setupRequired,
 }: ExtensionsGalleryUIProps) {
   if (errorMessage) {
     return <div className={s.errorState}>{errorMessage}</div>;
@@ -45,6 +49,7 @@ export function ExtensionsGalleryUI({
         action={action}
         onToggle={onToggle}
         showDelete={false}
+        setupRequired={setupRequired}
       />
       <ExtensionSection
         label="External Extensions"
@@ -54,6 +59,7 @@ export function ExtensionsGalleryUI({
         onToggle={onToggle}
         showDelete
         trailing={<InstallCard onClick={onOpenDrawer} />}
+        setupRequired={setupRequired}
       />
       {totalCount === 0 && (
         <div className={s.emptyState}>No extensions loaded</div>
@@ -75,6 +81,7 @@ interface ExtensionSectionProps {
   onToggle: (id: string, enable: boolean) => void;
   showDelete: boolean;
   trailing?: ReactNode;
+  setupRequired?: Record<string, boolean>;
 }
 
 function ExtensionSection({
@@ -85,6 +92,7 @@ function ExtensionSection({
   onToggle,
   showDelete,
   trailing,
+  setupRequired,
 }: ExtensionSectionProps) {
   return (
     <section className={s.section}>
@@ -100,6 +108,7 @@ function ExtensionSection({
             busy={action.loading && action.targetId === ext.id}
             onToggle={onToggle}
             showDelete={showDelete}
+            needsSetup={Boolean(setupRequired?.[ext.id])}
           />
         ))}
         {trailing}
@@ -113,9 +122,10 @@ interface ExtensionCardProps {
   busy: boolean;
   onToggle: (id: string, enable: boolean) => void;
   showDelete: boolean;
+  needsSetup?: boolean;
 }
 
-function ExtensionCard({ extension, busy, onToggle, showDelete }: ExtensionCardProps) {
+function ExtensionCard({ extension, busy, onToggle, showDelete, needsSetup }: ExtensionCardProps) {
   const active = extension.status === "active";
   const invalid = extension.status === "invalid";
   const displayName = extension.name ?? extension.id;
@@ -136,11 +146,23 @@ function ExtensionCard({ extension, busy, onToggle, showDelete }: ExtensionCardP
         </div>
         <div className={s.headText}>
           <div className={s.titleRow}>
-            <span className={s.title}>{displayName}</span>
+            <Link
+              className={s.titleLink}
+              to={`/extensions/${encodeURIComponent(extension.id)}/settings`}
+              title="Open extension settings"
+            >
+              {displayName}
+            </Link>
             <span className={s.sourceChip}>
               {extension.source === "builtin" ? "Core" : "External"}
             </span>
             <StatusPill status={extension.status} />
+            {needsSetup && (
+              <span className={s.setupBadge} aria-label="Dependency setup required">
+                <span className={s.setupBadgePulse} aria-hidden="true" />
+                Setup required
+              </span>
+            )}
           </div>
           <span className={s.meta}>
             v{extension.version}
@@ -172,6 +194,14 @@ function ExtensionCard({ extension, busy, onToggle, showDelete }: ExtensionCardP
 
       <div className={s.footer}>
         <div className={s.footerActions}>
+          <Link
+            className={s.iconButtonLink}
+            to={`/extensions/${encodeURIComponent(extension.id)}/settings`}
+            aria-label="Extension settings"
+            title="Settings — Overview, Dependencies, Reinstall"
+          >
+            <SettingsIcon />
+          </Link>
           <IconButton label="Open extension folder" onClick={() => undefined}>
             <FolderIcon />
           </IconButton>
@@ -181,11 +211,20 @@ function ExtensionCard({ extension, busy, onToggle, showDelete }: ExtensionCardP
             </IconButton>
           )}
         </div>
-        <Toggle
-          on={active}
-          disabled={busy || invalid}
-          onToggle={(next) => onToggle(extension.id, next)}
-        />
+        {needsSetup ? (
+          <Link
+            className={s.setupCta}
+            to={`/extensions/${encodeURIComponent(extension.id)}/settings?tab=dependencies`}
+          >
+            Set up
+          </Link>
+        ) : (
+          <Toggle
+            on={active}
+            disabled={busy || invalid}
+            onToggle={(next) => onToggle(extension.id, next)}
+          />
+        )}
       </div>
     </article>
   );
@@ -281,6 +320,25 @@ function InstallCard({ onClick }: { onClick: () => void }) {
       <div className={s.installTitle}>Install new extension</div>
       <div className={s.installHint}>Open ZIP installer</div>
     </div>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
   );
 }
 

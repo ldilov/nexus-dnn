@@ -35,9 +35,22 @@ export interface CreateRunRequest {
   includeCsvIndex?: boolean;
 }
 
+export type ParserWarningKind =
+  | "unknown_override_key"
+  | "malformed_tag"
+  | "empty_character_name"
+  | "empty_text_after_tag";
+
+export interface ParserWarning {
+  lineNumber: number;
+  kind: ParserWarningKind;
+  detail: string;
+}
+
 export interface Preflight {
   unresolvedCharacters: string[];
   predictedFilenames: string[];
+  parserWarnings: ParserWarning[];
 }
 
 export interface CreateRunResponse {
@@ -64,9 +77,10 @@ export interface RunSummary {
   kind: RunKind;
   status: RunStatus;
   originalRunId?: string | null;
-  utteranceTotal?: number | null;
-  utteranceCompleted?: number | null;
-  utteranceFailed?: number | null;
+  // Utterance counts are NOT emitted by run_summary_json today. Re-add
+  // these fields the day the backend starts tracking + serialising them
+  // (`runs.rs::run_summary_json`). Until then their presence here was a
+  // type-safety lie that would render as `NaN%` progress in any view.
   queuedAt: number;
   startedAt?: number | null;
   finishedAt?: number | null;

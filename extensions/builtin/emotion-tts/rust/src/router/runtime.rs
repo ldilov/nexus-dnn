@@ -104,6 +104,14 @@ async fn handshake_impl(state: &RuntimeState) -> Result<Value> {
             }),
         )
         .await?;
+    // Side-effect: keep `LeaseProvider`'s cached handshake fresh so the
+    // dispatcher's cache key always reflects the latest worker version
+    // and loaded family. Failure to deserialize is non-fatal — the wire
+    // shape returned to the caller is still the camelCase JSON below.
+    if let Ok(parsed) = serde_json::from_value::<crate::backend_client::HandshakeInfo>(raw.clone())
+    {
+        state.provider.set_cached_handshake(parsed).await;
+    }
     Ok(normalize_handshake(&raw))
 }
 

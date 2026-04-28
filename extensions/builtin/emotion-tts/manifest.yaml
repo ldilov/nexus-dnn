@@ -18,13 +18,88 @@ runtime:
     cuda_version: null
     env_vars: {}
 
-runtime_dependencies:
-  - family: "indextts"
-    version: ">=0.1.0"
-    acceleration:
-      - "cpu"
-      - "cuda12"
-      - "cuda13"
+# Spec 035 — generic dependency installer plan. Host walks this graph;
+# every prerequisite is declared as an explicit step. The legacy
+# `runtime_dependencies` block is intentionally absent — its
+# `family: "indextts"` constraint required a row in
+# `host_runtime_installs` that spec 035 doesn't write (we install
+# Python via the `python` step + the indextts wheel via `pkgs`).
+# Keeping the legacy block here would block extension activation
+# with a `RUNTIME_DEPENDENCY_UNMET` error even when the spec 035
+# graph is fully satisfied.
+dependencies:
+  steps:
+    - id: python
+      type: runtime
+      spec:
+        family: python
+        version: ">=3.11,<3.13"
+        # PyTorch publishes wheel indices for cu118/cu121/cu124/cu128. There
+        # is no `cu13x` wheel index today; if/when upstream ships CUDA 13,
+        # add `cuda13` back. Until then, advertising `cuda13` lets the dep
+        # installer match it on a CUDA 13 host and then fail to find a
+        # torch wheel — better to fall back to cuda12 (cu128 covers 12.x).
+        accelerator_profiles: [cpu, cuda12]
+
+    - id: pkgs
+      type: package_set
+      requires: [python]
+      spec:
+        manager: uv
+        manifest_path: "worker/pyproject.toml"
+        lock_path: "worker/uv.lock"
+        target: extension_local
+
+    - id: ffmpeg
+      type: system_binary
+      spec:
+        id: ffmpeg
+        version: ">=4.0"
+        # Prefer a system-installed ffmpeg when one is on PATH — this is the
+        # common case on dev machines and avoids re-downloading a 100+ MB build
+        # for every fresh install. Falls back to the bundled URL when no
+        # system ffmpeg exists. The bundled URLs below point at "latest"
+        # releases that can't be sha256-pinned; they're a soft fallback only.
+        allow_system_path: true
+        # Placeholder zero-hashes keep the graph parse-valid; the bundled
+        # download path will only fire (and fail loudly) if PATH-resolution
+        # missed and a maintainer hasn't yet pinned real release URLs.
+        sources:
+          - platform: windows-x64
+            url: "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip"
+            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            size: 0
+            archive: zip
+          - platform: linux-x64
+            url: "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz"
+            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            size: 0
+            archive: tar.xz
+          - platform: darwin-arm64
+            url: "https://evermeet.cx/ffmpeg/getrelease/zip"
+            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            size: 0
+            archive: zip
+
+    - id: models
+      type: model_artifact
+      requires: [python]
+      spec:
+        # Real HuggingFace repo for IndexTTS-2. The repo is self-contained
+        # at v1.5.0+ — gpt.pth, s2mel.pth, bpe.model, config.yaml, the
+        # qwen0.6bemo4-merge subfolder, etc. all live here. The dep
+        # installer downloads every file in the repo (snapshot-style)
+        # because IndexTTS needs configs at runtime that the model store's
+        # default normalizer would otherwise drop as "Unknown" format.
+        family_id: "huggingface:IndexTeam/IndexTTS-2"
+        acceleration_match: "matches_runtime_step:python"
+
+    - id: validate
+      type: validation
+      requires: [python, pkgs, ffmpeg, models]
+      spec:
+        kind: worker_handshake
+        timeout_seconds: 60
 
 capabilities:
   - "filesystem.read"

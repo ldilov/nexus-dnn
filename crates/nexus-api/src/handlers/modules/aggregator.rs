@@ -204,6 +204,7 @@ fn build_extension_module(
     let icon = ModuleIcon::from_resolved(resolved);
     let display_name = ext.name.clone().unwrap_or_else(|| ext.id.clone());
     let extension_id = ext.id.clone();
+    let status = ext.status.clone();
     ModuleSummary {
         module_id: ModuleId::from_extension(&extension_id),
         source_kind: ModuleSourceKind::Extension,
@@ -226,6 +227,7 @@ fn build_extension_module(
         // `ext.default_workflow_id` so frontend "Workflow graph" tab can
         // render a real DAG even on extensions that predate FR-034.
         workflow_id: resolved_workflow_id.or_else(|| ext.default_workflow_id.clone()),
+        extension_status: Some(status),
     }
 }
 
@@ -259,6 +261,7 @@ fn build_user_module(wfl: WorkflowRecord, step_count: u32) -> ModuleSummary {
         runtime_family: None,
         installed_at: Some(wfl.created_at),
         workflow_id: Some(wfl.id),
+        extension_status: None,
     }
 }
 
@@ -283,6 +286,7 @@ fn build_blank_module() -> ModuleSummary {
         runtime_family: None,
         installed_at: None,
         workflow_id: None,
+        extension_status: None,
     }
 }
 

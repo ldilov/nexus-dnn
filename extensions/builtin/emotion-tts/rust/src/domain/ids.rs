@@ -8,8 +8,41 @@ use thiserror::Error;
 pub enum IdError {
     #[error("expected ULID (26 chars, Crockford base32), got {0:?}")]
     NotUlid(String),
+    #[error("invalid id: {0}")]
+    InvalidId(String),
     #[error("expected 64-char lowercase hex SHA-256, got {0:?}")]
     NotSha256(String),
+}
+
+/// Validate an external (host-supplied) id string. The extension's
+/// own ids are ULIDs (`Self::new()` mints `ulid::Ulid::new()`), but
+/// `try_from` is called with strings the host owns — deployment ids
+/// today come in as `dep_<uuidv7>` (e.g. spec 019/021's host-side
+/// identifier scheme). Rejecting them as "not a ULID" forces the host
+/// id format to match the extension's, which is the wrong direction:
+/// extensions are downstream of host id decisions.
+///
+/// Accept any non-empty, length-bounded ASCII id with the safe
+/// alphanumeric + `-`/`_` alphabet. This catches obvious garbage
+/// (path traversal, control chars, empty strings) while letting
+/// every legitimate id format through (ULID, UUID, prefixed UUID,
+/// short slugs).
+fn validate_external_id(value: &str) -> std::result::Result<(), IdError> {
+    if value.is_empty() || value.len() > 128 {
+        return Err(IdError::InvalidId(format!(
+            "id must be 1..=128 chars, got {} chars",
+            value.len()
+        )));
+    }
+    if !value
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(IdError::InvalidId(format!(
+            "id must be ASCII alphanumeric + `-`/`_`, got {value:?}"
+        )));
+    }
+    Ok(())
 }
 
 macro_rules! ulid_newtype {
@@ -55,7 +88,7 @@ macro_rules! ulid_newtype {
         impl TryFrom<&str> for $name {
             type Error = IdError;
             fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
-                ulid::Ulid::from_str(value).map_err(|_| IdError::NotUlid(value.to_string()))?;
+                validate_external_id(value)?;
                 Ok(Self(value.to_string()))
             }
         }
@@ -63,7 +96,7 @@ macro_rules! ulid_newtype {
         impl TryFrom<String> for $name {
             type Error = IdError;
             fn try_from(value: String) -> std::result::Result<Self, Self::Error> {
-                ulid::Ulid::from_str(&value).map_err(|_| IdError::NotUlid(value.clone()))?;
+                validate_external_id(&value)?;
                 Ok(Self(value))
             }
         }
@@ -131,10 +164,34 @@ mod tests {
     }
 
     #[test]
-    fn rejects_non_ulid() {
+    fn accepts_host_supplied_prefixed_uuid() {
+        // Spec 019/021 host-side identifier shape — extensions accept
+        // host ids verbatim instead of forcing ULID re-derivation.
+        let id = "dep_019dcdeb-1e58-7be1-b9c4-ba0ad68f6636";
+        assert!(DeploymentId::try_from(id).is_ok());
+    }
+
+    #[test]
+    fn accepts_plain_ulid() {
+        let ulid = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+        assert!(DeploymentId::try_from(ulid).is_ok());
+    }
+
+    #[test]
+    fn rejects_garbage_id() {
         assert!(matches!(
-            DeploymentId::try_from("not-a-ulid"),
-            Err(IdError::NotUlid(_))
+            DeploymentId::try_from(""),
+            Err(IdError::InvalidId(_))
+        ));
+        assert!(matches!(
+            DeploymentId::try_from("../etc/passwd"),
+            Err(IdError::InvalidId(_))
+        ));
+        // Length cap (>128 chars) — block log-spam / DoS via ids
+        let long = "a".repeat(200);
+        assert!(matches!(
+            DeploymentId::try_from(long.as_str()),
+            Err(IdError::InvalidId(_))
         ));
     }
 

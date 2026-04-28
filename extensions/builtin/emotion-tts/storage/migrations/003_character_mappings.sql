@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS ext_emotion_tts__character_mappings (
     UNIQUE (deployment_id, character_name_lower)
 );
 
-CREATE INDEX IF NOT EXISTS idx_character_mappings_deployment
+CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_character_mappings_deployment
     ON ext_emotion_tts__character_mappings (deployment_id);
 
-CREATE INDEX IF NOT EXISTS idx_character_mappings_speaker
+CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_character_mappings_speaker
     ON ext_emotion_tts__character_mappings (speaker_voice_asset_id);

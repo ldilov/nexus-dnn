@@ -5,6 +5,7 @@ import {
   fetchExtensions,
   type Extension,
 } from "../../../api/client";
+import { fetchDependencies } from "../../../services/extension_dependencies_client";
 import {
   ExtensionsGalleryUI,
   type GalleryActionState,
@@ -23,6 +24,7 @@ export function ExtensionsGallery({
   const [error, setError] = useState<string | null>(null);
   const [action, setAction] = useState<GalleryActionState>(IDLE);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [setupRequired, setSetupRequired] = useState<Record<string, boolean>>({});
 
   const refresh = useCallback(() => {
     fetchExtensions()
@@ -38,6 +40,37 @@ export function ExtensionsGallery({
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Fan out dependency probes per extension. Best-effort: a failure on any one
+  // extension just leaves it out of the setupRequired map (gallery falls back
+  // to "no badge").
+  useEffect(() => {
+    let cancelled = false;
+    if (extensions.length === 0) {
+      setSetupRequired({});
+      return () => {
+        cancelled = true;
+      };
+    }
+    Promise.all(
+      extensions.map(async (ext) => {
+        try {
+          const resp = await fetchDependencies(ext.id);
+          return [ext.id, !resp.all_satisfied] as const;
+        } catch {
+          return [ext.id, false] as const;
+        }
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      const next: Record<string, boolean> = {};
+      for (const [id, needsSetup] of results) next[id] = needsSetup;
+      setSetupRequired(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [extensions]);
 
   const setStatus = useCallback(
     (id: string, enable: boolean) => {
@@ -80,6 +113,7 @@ export function ExtensionsGallery({
         refresh();
         onExtensionToggled?.();
       }}
+      setupRequired={setupRequired}
     />
   );
 }

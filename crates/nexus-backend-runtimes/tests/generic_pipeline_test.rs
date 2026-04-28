@@ -172,7 +172,9 @@ struct CancelInBootstrapHandler {
 }
 
 #[async_trait]
-impl nexus_backend_runtimes::generic::family_handler::RuntimeFamilyHandler for CancelInBootstrapHandler {
+impl nexus_backend_runtimes::generic::family_handler::RuntimeFamilyHandler
+    for CancelInBootstrapHandler
+{
     fn family(&self) -> RuntimeFamily {
         RuntimeFamily::Python
     }
@@ -248,7 +250,9 @@ async fn cached_phases_stamp_payload_on_second_run() {
     let handler = Arc::new(FamilyNativeHandler::new(RuntimeFamily::Python));
     let sink1 = Arc::new(CapturingSink::default());
     let mut ctx1 = make_ctx(partial.clone(), install_first.clone(), manifest.clone());
-    run(&mut ctx1, handler.clone(), sink1.clone()).await.unwrap();
+    run(&mut ctx1, handler.clone(), sink1.clone())
+        .await
+        .unwrap();
 
     let partial2 = tmp.path().join("install_second.partial");
     std::fs::create_dir_all(&partial2).unwrap();
@@ -277,8 +281,14 @@ async fn cached_phases_stamp_payload_on_second_run() {
         .iter()
         .find(|e| e.phase == Phase::Extract && e.state == PhaseState::Completed)
         .expect("extract completed event");
-    assert_eq!(download_completed.payload, serde_json::json!({ "cached": true }));
-    assert_eq!(extract_completed.payload, serde_json::json!({ "cached": true }));
+    assert_eq!(
+        download_completed.payload,
+        serde_json::json!({ "cached": true })
+    );
+    assert_eq!(
+        extract_completed.payload,
+        serde_json::json!({ "cached": true })
+    );
 }
 
 #[tokio::test]

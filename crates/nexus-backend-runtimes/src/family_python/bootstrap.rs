@@ -157,7 +157,11 @@ async fn inspect_existing(path: &Path, expected_sha256: &str) -> Option<u64> {
         }
     }
     let hex = hex_lower(&hasher.finalize());
-    if hex == expected_sha256 { Some(size) } else { None }
+    if hex == expected_sha256 {
+        Some(size)
+    } else {
+        None
+    }
 }
 
 async fn verify_checksum(

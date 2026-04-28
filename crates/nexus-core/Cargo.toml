@@ -25,9 +25,12 @@ nexus-scheduler = { path = "../nexus-scheduler" }
 nexus-run = { path = "../nexus-run" }
 nexus-api = { path = "../nexus-api" }
 nexus-backend-runtimes = { path = "../nexus-backend-runtimes" }
+nexus-extension-deps = { path = "../nexus-extension-deps" }
+async-trait = "0.1"
 nexus-huggingface = { path = "../nexus-huggingface" }
 nexus-models-store = { path = "../nexus-models-store" }
 nexus-local-llm-chat-history = { path = "../../extensions/builtin/local-llm/rust" }
+emotion-tts-extension = { path = "../../extensions/builtin/emotion-tts/rust" }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 camino = "1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }

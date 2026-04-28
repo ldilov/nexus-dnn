@@ -4,10 +4,11 @@ operator:
   version: 1.0.0
   display_name: Audio Postprocess
   description: Apply ffmpeg atempo (pitch-preserving speed) + format encode (wav/mp3/flac)
-    per segment.
+    per segment. Operator internally fans out across each input path; the workflow
+    sees the operator as array-in / array-out.
 inputs:
-- name: input_wav_abs
-  type: string
+- name: segments
+  type: array
   required: true
 - name: output_format
   type: enum
@@ -17,5 +18,5 @@ inputs:
   required: false
   default: 1.0
 outputs:
-- name: output_abs
-  type: string
+- name: output_paths
+  type: array

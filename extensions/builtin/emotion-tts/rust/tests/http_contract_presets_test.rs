@@ -76,6 +76,7 @@ async fn seed_deployment(repos: &Repos, name: &str) -> DeploymentId {
             model_family: "indextts-2".into(),
             oas_threshold_learned: None,
             oas_samples_seen: 0,
+            default_voice_asset_id: None,
             created_at: now,
             updated_at: now,
         })
@@ -150,7 +151,10 @@ async fn create_list_get_round_trip() {
         .oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri(format!("/presets/{preset_id}"))
+                .uri(format!(
+                    "/presets/{preset_id}?deploymentId={}",
+                    dep.as_str()
+                ))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -225,7 +229,10 @@ async fn patch_rename_and_replace_vector() {
         .oneshot(
             Request::builder()
                 .method(Method::PATCH)
-                .uri(format!("/presets/{preset_id}"))
+                .uri(format!(
+                    "/presets/{preset_id}?deploymentId={}",
+                    dep.as_str()
+                ))
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(&patch).unwrap()))
                 .unwrap(),
@@ -252,7 +259,10 @@ async fn patch_rename_respects_uniqueness() {
         .oneshot(
             Request::builder()
                 .method(Method::PATCH)
-                .uri(format!("/presets/{calm_id}"))
+                .uri(format!(
+                    "/presets/{calm_id}?deploymentId={}",
+                    dep.as_str()
+                ))
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(&patch).unwrap()))
                 .unwrap(),
@@ -274,7 +284,10 @@ async fn delete_removes_preset() {
         .oneshot(
             Request::builder()
                 .method(Method::DELETE)
-                .uri(format!("/presets/{preset_id}"))
+                .uri(format!(
+                    "/presets/{preset_id}?deploymentId={}",
+                    dep.as_str()
+                ))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -286,7 +299,10 @@ async fn delete_removes_preset() {
         .oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri(format!("/presets/{preset_id}"))
+                .uri(format!(
+                    "/presets/{preset_id}?deploymentId={}",
+                    dep.as_str()
+                ))
                 .body(Body::empty())
                 .unwrap(),
         )

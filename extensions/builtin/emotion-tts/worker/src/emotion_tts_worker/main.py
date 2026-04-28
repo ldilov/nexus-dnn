@@ -22,6 +22,19 @@ Handler = Callable[[dict[str, Any] | list[Any] | None], Awaitable[Any]]
 ProtocolVersion = "1.0"
 
 
+def _jsonrpc_stdout() -> Any:
+    """Return the stdout stream the host's JSON-RPC framer expects.
+
+    `__main__.py` swaps `sys.stdout` to point at stderr so rogue `print()`
+    statements from torch / transformers / huggingface_hub / scipy / etc.
+    can't corrupt the wire protocol. The original stdout is stashed as
+    `sys.__nexus_jsonrpc_stdout__` before the swap. Fall back to
+    `sys.stdout` if the stash isn't present (e.g. importing this module
+    standalone from a test).
+    """
+    return getattr(sys, "__nexus_jsonrpc_stdout__", sys.stdout)
+
+
 class Worker:
     def __init__(self) -> None:
         self._handlers: dict[str, Handler] = {}
@@ -39,16 +52,38 @@ class Worker:
     async def run(self) -> int:
         self.logger.info("worker.start", version=__version__)
         loop = asyncio.get_running_loop()
-        reader = asyncio.StreamReader(limit=64 * 1024 * 1024)
-        protocol = asyncio.StreamReaderProtocol(reader)
-        await loop.connect_read_pipe(lambda: protocol, sys.stdin)
+
+        # Cross-platform stdin bridge. asyncio.connect_read_pipe(sys.stdin)
+        # is unreliable on Windows — the call returns successfully but
+        # readline() never fires for piped stdin under
+        # WindowsProactorEventLoopPolicy. The bug surfaces as a host
+        # `handshake_timeout` even though the worker is alive.
+        # A daemon thread doing blocking sys.stdin.buffer.readline() and
+        # forwarding lines via call_soon_threadsafe works on every
+        # platform Python supports.
+        line_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+
+        def _stdin_pump() -> None:
+            try:
+                stream = sys.stdin.buffer
+                while True:
+                    chunk = stream.readline()
+                    loop.call_soon_threadsafe(line_queue.put_nowait, chunk)
+                    if not chunk:
+                        break
+            except Exception:  # noqa: BLE001 — last-resort: signal EOF
+                loop.call_soon_threadsafe(line_queue.put_nowait, None)
+
+        threading.Thread(target=_stdin_pump, daemon=True, name="emotion_tts_worker.stdin").start()
 
         while not self._shutdown.is_set():
             try:
-                line = await reader.readline()
+                line = await line_queue.get()
             except (asyncio.CancelledError, KeyboardInterrupt):
                 break
             if not line:
+                # Empty bytes (EOF on parent close) or None (pump errored)
+                # — either way we're done.
                 break
             await self._dispatch_line(line)
 
@@ -111,8 +146,9 @@ class Worker:
         line = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         async with self._stdout_lock:
             with self._stdout_sync_lock:
-                sys.stdout.write(line + "\n")
-                sys.stdout.flush()
+                _stdout = _jsonrpc_stdout()
+                _stdout.write(line + "\n")
+                _stdout.flush()
 
     def emit(self, payload: dict[str, Any]) -> None:
         """Public synchronous NDJSON emitter; safe to call from any thread.
@@ -124,8 +160,9 @@ class Worker:
         """
         line = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         with self._stdout_sync_lock:
-            sys.stdout.write(line + "\n")
-            sys.stdout.flush()
+            _stdout = _jsonrpc_stdout()
+            _stdout.write(line + "\n")
+            _stdout.flush()
 
     def _emit_sync(self, payload: dict[str, Any]) -> None:
         self.emit(payload)
