@@ -28,21 +28,54 @@ sys.__nexus_jsonrpc_stdout__ = _JSONRPC_STDOUT  # type: ignore[attr-defined]
 # in-depth: also set on the host launch spec.
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
-# Put the venv's CLI bindir on PATH so child processes spawned by torch
-# can find venv-installed binaries — most importantly `ninja`, which
-# `torch.utils.cpp_extension.verify_ninja_availability()` resolves via
-# `subprocess.run(['ninja', '--version'])`. Without this, BigVGAN's
-# custom CUDA kernel JIT fails over to the slower torch-only vocoder
-# path even when `ninja` is in the venv (Windows: `<venv>/Scripts`,
-# POSIX: `<venv>/bin`).
+# Make `ninja` findable by torch.utils.cpp_extension's
+# `verify_ninja_availability()`, which does
+# `subprocess.run(['ninja', '--version'])` against the OS PATH. The
+# `ninja` PyPI package vendors the binary inside its own package dir
+# and exposes `ninja.BIN_DIR` pointing at it; that's the most reliable
+# way to surface the binary regardless of venv style (uv, venv, conda).
 #
-# `os.path.dirname(sys.executable)` is exactly that bindir whenever the
-# worker is launched via the venv's `python.exe` — which is how the
-# host's lease factory always launches it. Prepending makes the venv's
-# binaries take precedence over any system-installed shadow.
-_venv_bindir = os.path.dirname(sys.executable)
-if _venv_bindir and _venv_bindir not in os.environ.get("PATH", "").split(os.pathsep):
-    os.environ["PATH"] = _venv_bindir + os.pathsep + os.environ.get("PATH", "")
+# Falls back to `<sys.executable parent>` (Windows: `Scripts/`, POSIX:
+# `bin/`) when the package isn't importable yet — covers the case
+# where ninja is installed via `pip install --target` or other
+# unusual layouts. Prepending so the venv's ninja takes precedence
+# over any older system-wide one.
+#
+# Without this, BigVGAN's vocoder JIT logs:
+#     `RuntimeError('Ninja is required to load C++ extensions ...')`
+# even with `ninja>=1.11` declared in `pyproject.toml`.
+def _ensure_ninja_on_path() -> str | None:
+    candidates: list[str] = []
+    try:
+        import ninja as _ninja  # type: ignore[import-untyped]
+        bin_dir = getattr(_ninja, "BIN_DIR", None)
+        if bin_dir:
+            candidates.append(bin_dir)
+    except ImportError:
+        pass
+    # Fallback: venv bindir from sys.executable.
+    venv_bindir = os.path.dirname(sys.executable)
+    if venv_bindir:
+        candidates.append(venv_bindir)
+    path_parts = os.environ.get("PATH", "").split(os.pathsep)
+    for candidate in candidates:
+        if candidate and candidate not in path_parts:
+            os.environ["PATH"] = candidate + os.pathsep + os.environ.get("PATH", "")
+            path_parts = os.environ["PATH"].split(os.pathsep)
+    # Diagnostic so future runs can verify the fix landed.
+    ninja_exe = "ninja.exe" if os.name == "nt" else "ninja"
+    for d in os.environ.get("PATH", "").split(os.pathsep):
+        if d and os.path.exists(os.path.join(d, ninja_exe)):
+            print(f"[startup] ninja found at {os.path.join(d, ninja_exe)}",
+                  file=sys.stderr, flush=True)
+            return d
+    print("[startup] ninja NOT on PATH — BigVGAN vocoder JIT will fall back "
+          "to torch. Install with `uv sync` in the worker dir.",
+          file=sys.stderr, flush=True)
+    return None
+
+
+_ensure_ninja_on_path()
 
 
 def _do_heavy_imports_serially() -> None:
