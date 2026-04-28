@@ -28,6 +28,22 @@ sys.__nexus_jsonrpc_stdout__ = _JSONRPC_STDOUT  # type: ignore[attr-defined]
 # in-depth: also set on the host launch spec.
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
+# Put the venv's CLI bindir on PATH so child processes spawned by torch
+# can find venv-installed binaries — most importantly `ninja`, which
+# `torch.utils.cpp_extension.verify_ninja_availability()` resolves via
+# `subprocess.run(['ninja', '--version'])`. Without this, BigVGAN's
+# custom CUDA kernel JIT fails over to the slower torch-only vocoder
+# path even when `ninja` is in the venv (Windows: `<venv>/Scripts`,
+# POSIX: `<venv>/bin`).
+#
+# `os.path.dirname(sys.executable)` is exactly that bindir whenever the
+# worker is launched via the venv's `python.exe` — which is how the
+# host's lease factory always launches it. Prepending makes the venv's
+# binaries take precedence over any system-installed shadow.
+_venv_bindir = os.path.dirname(sys.executable)
+if _venv_bindir and _venv_bindir not in os.environ.get("PATH", "").split(os.pathsep):
+    os.environ["PATH"] = _venv_bindir + os.pathsep + os.environ.get("PATH", "")
+
 
 def _do_heavy_imports_serially() -> None:
     """Import scipy / sklearn / transformers / indextts.infer_v2 + torch on
