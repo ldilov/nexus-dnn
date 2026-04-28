@@ -55,14 +55,14 @@ pub fn router(state: RunsState) -> Router {
 /// SSE progress channel for a single run.
 ///
 /// Frontend's `subscribeRunProgress` opens this stream after a successful
-/// `POST /runs` and listens for per-segment events. The current
-/// implementation is a polling shim: every 2 seconds we re-read the run
-/// row + emit it as one `data:` frame, terminating the stream when the
-/// run reaches a terminal status (`completed`/`failed`/`cancelled`/
-/// `partial`). When the queue + worker pipeline get wired through
-/// `NotificationFanout`, the polling loop can be replaced with a
-/// `broadcast::Receiver<ProgressEvent>` filtered by `run_id` — the
-/// connection contract on the client side stays identical.
+/// `POST /runs` and listens for per-segment events. The handler subscribes
+/// to the per-run `RunChannelRegistry` channel registered by the
+/// dispatcher and forwards `RunEvent::SegmentStarted`,
+/// `SegmentCompleted`, `SegmentFailed`, and `RunTerminal` straight to the
+/// client. If the dispatcher takes a while to register the channel
+/// (cold-lease boot can be several minutes for the first run), the
+/// handler retries every 100 ms and falls back to polling the run row
+/// for an early terminal state. See `run_progress_stream` for details.
 async fn run_progress(
     State(state): State<RunsState>,
     Path((raw_deployment_id, raw_run_id)): Path<(String, String)>,
@@ -107,40 +107,45 @@ fn run_progress_stream(
         // popped this run, we briefly retry — there's a small window
         // between `enqueue` (in create_run) and `register` (in the
         // dispatcher loop) where the channel does not exist yet.
+        // Retry budget: 3000 iterations × 100 ms = 5 minutes. The cold-boot
+        // lease (Python venv + first VRAM model load) can legitimately take
+        // several minutes; bailing out earlier would leave the user with a
+        // phantom "failed" message while the run continued in the background.
+        // The async_stream future is cancelled when the SSE connection drops,
+        // so a long loop does not waste resources for disconnected clients.
+        // DB-poll fast-path runs every 5th iteration (~1 Hz) — enough to
+        // catch a dispatcher that finished before we subscribed without
+        // saturating SQLite while concurrent installs are running.
         let mut maybe_rx = None;
-        for _ in 0..50 {
+        for i in 0..3000_u32 {
             if let Some(rx) = state.run_channels.subscribe(run_id.as_str()).await {
                 maybe_rx = Some(rx);
                 break;
             }
-            // Poll the run row — if it's already terminal, the dispatcher
-            // finished before we subscribed; emit a single run_terminal
-            // and close.
-            if let Ok(Some(row)) = state.repos.runs.get(&run_id).await {
-                if matches!(row.status.as_str(), "completed" | "failed" | "cancelled" | "partial") {
-                    let payload = serde_json::json!({
-                        "type": "run_terminal",
-                        "run_id": run_id.as_str(),
-                        "status": row.status,
-                    });
-                    yield Ok(Event::default().event("run_terminal").data(payload.to_string()));
-                    return;
+            if i % 5 == 0 {
+                if let Ok(Some(row)) = state.repos.runs.get(&run_id).await {
+                    if matches!(row.status.as_str(), "completed" | "failed" | "cancelled" | "partial") {
+                        let payload = serde_json::json!({
+                            "type": "run_terminal",
+                            "run_id": run_id.as_str(),
+                            "status": row.status,
+                        });
+                        yield Ok(Event::default().event("run_terminal").data(payload.to_string()));
+                        return;
+                    }
                 }
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        let mut rx = match maybe_rx {
-            Some(rx) => rx,
-            None => {
-                let payload = serde_json::json!({
-                    "type": "run_terminal",
-                    "run_id": run_id.as_str(),
-                    "status": "failed",
-                    "error": "dispatcher did not pick up run within 5s",
-                });
-                yield Ok(Event::default().event("run_terminal").data(payload.to_string()));
-                return;
-            }
+        let Some(mut rx) = maybe_rx else {
+            let payload = serde_json::json!({
+                "type": "run_terminal",
+                "run_id": run_id.as_str(),
+                "status": "failed",
+                "error": "dispatcher did not pick up run within 5 minutes",
+            });
+            yield Ok(Event::default().event("run_terminal").data(payload.to_string()));
+            return;
         };
         loop {
             match rx.recv().await {
@@ -154,8 +159,7 @@ fn run_progress_stream(
                     }
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                    // Slow subscriber — drop the lagged frames and continue.
-                    continue;
+                    // Slow subscriber — drop the lagged frames and keep going.
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                     return;
