@@ -45,6 +45,10 @@ ulid = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 toml = "0.8"
 
+[[bin]]
+name = "api-doc-check"
+path = "src/bin/api_doc_check.rs"
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 http-body-util = "0.1"
