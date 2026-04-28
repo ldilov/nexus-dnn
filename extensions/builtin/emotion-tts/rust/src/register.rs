@@ -243,7 +243,7 @@ impl EmotionTtsRouterProvider {
         // a data dir — preserves prior behavior for the StubLeaseFactory
         // path and tests that don't set `host_data_dir`.
         let output_root_base = self.resources.host_data_dir.clone().map_or_else(
-            || std::env::temp_dir().join("nexus-emotion-tts-runs"),
+            || std::env::temp_dir().join(crate::FALLBACK_RUNS_DIR),
             |host_data_dir| {
                 host_data_dir
                     .join("extensions")
