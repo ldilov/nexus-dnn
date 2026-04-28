@@ -37,6 +37,12 @@ dependencies = [
   # to `wetext` (kaldifst-based, has Windows wheels) and monkey-patch
   # IndexTTS's TextNormalizer.load() to use the Darwin path globally.
   "wetext>=0.1.2",
+  # Build system used by BigVGAN's custom CUDA kernel JIT path. Without
+  # ninja installed, BigVGAN logs `RuntimeError('Ninja is required ...')`
+  # and falls back to the slower torch path on first synthesis. Pinning
+  # >=1.11 ensures the wheel-distributed binary is on PATH for the JIT
+  # toolchain. Pure-Python wheel — no native compile required.
+  "ninja>=1.11",
 ]
 
 [project.optional-dependencies]
