@@ -1,27 +1,18 @@
 mod app;
 mod config;
+mod log_format;
 
+use std::io::IsTerminal;
 use std::path::Path;
 
 use anyhow::Context;
 use clap::Parser;
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::fmt::format::Writer;
-use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::app::NexusApp;
 use crate::config::NexusConfig;
-
-/// Compact local-time formatter: `15:59:42.448` instead of the default
-/// full RFC-3339 string. Easier to scan when tailing the host log.
-struct CompactLocalTime;
-
-impl FormatTime for CompactLocalTime {
-    fn format_time(&self, w: &mut Writer<'_>) -> std::fmt::Result {
-        write!(w, "{}", chrono::Local::now().format("%H:%M:%S%.3f"))
-    }
-}
+use crate::log_format::PrettyFormat;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -53,26 +44,23 @@ fn initialize_tracing(config: &NexusConfig) -> Option<WorkerGuard> {
     let logs_dir = config.logs_dir();
     let file_appender_outcome = create_file_appender(&logs_dir);
 
+    // Auto-detect TTY for the terminal layer. Honors `NO_COLOR=1`
+    // (https://no-color.org) for users who want plain text in their
+    // terminal too. The file layer always disables ANSI regardless.
+    let stdout_use_ansi = std::io::stdout().is_terminal()
+        && std::env::var_os("NO_COLOR").is_none();
+    // `with_ansi(...)` controls the FIELD formatter's escape codes
+    // (italic field names, dim `=` separator). Match it to the level's
+    // ANSI mode so a NO_COLOR=1 env or piped-to-file run is fully clean.
     let stdout_layer = fmt::layer()
-        .compact()
-        .with_target(true)
-        .with_thread_ids(false)
-        .with_level(true)
-        .with_ansi(true)
-        .with_timer(CompactLocalTime);
+        .with_ansi(stdout_use_ansi)
+        .event_format(PrettyFormat { use_ansi: stdout_use_ansi });
 
-    // Build the registry. tracing-subscriber's `Option<Layer>`
-    // implementation lets us conditionally include the file layer
-    // without resorting to a boxed trait object (which doesn't compose
-    // cleanly with chained `.with()` calls on a layered subscriber).
     let file_layer = file_appender_outcome.as_ref().map(|(non_blocking, _)| {
         fmt::layer()
             .with_writer(non_blocking.clone())
             .with_ansi(false)
-            .with_target(true)
-            .with_thread_ids(false)
-            .with_level(true)
-            .with_timer(CompactLocalTime)
+            .event_format(PrettyFormat { use_ansi: false })
     });
 
     tracing_subscriber::registry()
@@ -171,14 +159,13 @@ fn install_console_subscriber() -> Option<WorkerGuard> {
     );
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info"));
+    let use_ansi = std::io::stdout().is_terminal()
+        && std::env::var_os("NO_COLOR").is_none();
     tracing_subscriber::registry()
         .with(
             fmt::layer()
-                .compact()
-                .with_target(true)
-                .with_level(true)
-                .with_ansi(true)
-                .with_timer(CompactLocalTime),
+                .with_ansi(use_ansi)
+                .event_format(PrettyFormat { use_ansi }),
         )
         .with(env_filter)
         .init();
