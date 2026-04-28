@@ -217,6 +217,13 @@ pub trait DeploymentsRepo: Send + Sync {
         compile_gpt_enabled: Option<bool>,
         model_family: Option<&str>,
     ) -> RepoResult<()>;
+    /// Task G2 — set or clear the default voice for Quick voice mode.
+    /// Passing `None` clears the column (user opted out of Quick mode).
+    async fn set_default_voice(
+        &self,
+        dep: &DeploymentId,
+        voice: Option<&VoiceAssetId>,
+    ) -> RepoResult<()>;
 }
 
 #[async_trait]
