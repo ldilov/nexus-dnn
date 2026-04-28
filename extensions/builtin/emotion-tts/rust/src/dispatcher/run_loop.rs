@@ -140,11 +140,19 @@ async fn dispatch_inner(
             voice_sha256s.get(voice_asset_id).cloned()
         });
 
+    // Snapshot the latest cached handshake (populated as a side-effect of
+    // earlier `spawn_if_needed` calls or explicit `/runtime/handshake`
+    // invocations). When None, prepare() falls back to deterministic
+    // `unknown-*` sentinels so the resulting cache row cannot collide
+    // with a row written after the worker reports its real version.
+    let runtime_meta = lease_provider.cached_handshake().await;
+
     let cfg = PrepareConfig {
         output_root,
         voice_path_resolver: voice_resolver,
         voice_sha256_resolver,
         default_voice_asset_id: dep_row.default_voice_asset_id.clone(),
+        runtime_meta: runtime_meta.clone(),
     };
     let prepared = prepare(repos, run_id, &cfg, extension_version).await?;
 
@@ -455,8 +463,20 @@ async fn dispatch_inner(
             content_hash: hash,
             audio_artifact_ref: audio_ref,
             extension_version: extension_version.to_string(),
-            runtime_version: "0.0.0".into(),
-            model_version: "indextts-2".into(),
+            runtime_version: runtime_meta
+                .as_ref()
+                .map_or(
+                    crate::backend_client::FALLBACK_RUNTIME_VERSION,
+                    crate::backend_client::HandshakeInfo::runtime_version_for_cache,
+                )
+                .to_string(),
+            model_version: runtime_meta
+                .as_ref()
+                .map_or(
+                    crate::backend_client::FALLBACK_MODEL_VERSION,
+                    crate::backend_client::HandshakeInfo::model_version_for_cache,
+                )
+                .to_string(),
             size_bytes: 0,
             hit_count: 0,
             created_at: now,
