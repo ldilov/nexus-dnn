@@ -108,41 +108,119 @@ async fn dispatch_inner(
     };
     let prepared = prepare(repos, run_id, &cfg, extension_version).await?;
 
-    // Insert all utterance rows up-front in `queued` state so the
-    // `segment_started` notifications have something to update.
+    let policy_uses_cache = matches!(prepared.run.cache_policy.as_str(), "use_cache");
+
+    let hashes: Vec<crate::domain::ContentHash> = prepared
+        .utterances
+        .iter()
+        .filter_map(|p| p.content_hash.clone())
+        .collect();
+    let lookups = if policy_uses_cache && !hashes.is_empty() {
+        repos.cache.lookup_many(&hashes).await.unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    // Build a map from hash → cache row.
+    let mut hit_by_hash: std::collections::HashMap<String, crate::storage::repo_traits::SynthesisCacheRow> =
+        std::collections::HashMap::new();
+    for (h, maybe_row) in hashes.iter().zip(lookups.into_iter()) {
+        if let Some(row) = maybe_row {
+            hit_by_hash.insert(h.as_str().to_string(), row);
+        }
+    }
+
+    // Insert utterance rows. Cache hits land directly in `completed`
+    // state with the cached audio_artifact_ref. Misses go in as `queued`.
     let utterance_rows: Vec<UtteranceRow> = prepared
         .utterances
         .iter()
-        .map(|p| UtteranceRow {
-            utterance_id: p.utterance_id.clone(),
-            run_id: run_id.clone(),
-            global_index: p.global_index,
-            character_display: p.character_display.clone(),
-            character_sanitised: p.character_sanitised.clone(),
-            character_index: p.character_index,
-            text: p.text.clone(),
-            source_line_number: p.global_index,
-            inline_overrides_json: "{}".to_string(),
-            legacy_emotion_ref: None,
-            resolved_mapping_id: None,
-            resolved_speaker_voice_asset_id: None,
-            resolved_emotion_mode: Some("none".to_string()),
-            resolved_emotion_payload_json: None,
-            resolved_seed: None,
-            resolved_generation_json: None,
-            content_hash: None,
-            status: "queued".to_string(),
-            source_run_id: None,
-            audio_artifact_ref: None,
-            cache_hit: false,
-            duration_ms: None,
-            started_at: None,
-            finished_at: None,
-            failure_category: None,
-            failure_detail: None,
+        .map(|p| {
+            let hit = p
+                .content_hash
+                .as_ref()
+                .and_then(|h| hit_by_hash.get(h.as_str()));
+            if let Some(row) = hit {
+                UtteranceRow {
+                    utterance_id: p.utterance_id.clone(),
+                    run_id: run_id.clone(),
+                    global_index: p.global_index,
+                    character_display: p.character_display.clone(),
+                    character_sanitised: p.character_sanitised.clone(),
+                    character_index: p.character_index,
+                    text: p.text.clone(),
+                    source_line_number: p.global_index,
+                    inline_overrides_json: "{}".to_string(),
+                    legacy_emotion_ref: None,
+                    resolved_mapping_id: None,
+                    resolved_speaker_voice_asset_id: None,
+                    resolved_emotion_mode: Some("none".to_string()),
+                    resolved_emotion_payload_json: None,
+                    resolved_seed: None,
+                    resolved_generation_json: None,
+                    content_hash: p.content_hash.as_ref().map(|h| h.as_str().to_string()),
+                    status: "completed".to_string(),
+                    source_run_id: None,
+                    audio_artifact_ref: Some(row.audio_artifact_ref.clone()),
+                    cache_hit: true,
+                    duration_ms: None,
+                    started_at: Some(Utc::now().timestamp()),
+                    finished_at: Some(Utc::now().timestamp()),
+                    failure_category: None,
+                    failure_detail: None,
+                }
+            } else {
+                UtteranceRow {
+                    utterance_id: p.utterance_id.clone(),
+                    run_id: run_id.clone(),
+                    global_index: p.global_index,
+                    character_display: p.character_display.clone(),
+                    character_sanitised: p.character_sanitised.clone(),
+                    character_index: p.character_index,
+                    text: p.text.clone(),
+                    source_line_number: p.global_index,
+                    inline_overrides_json: "{}".to_string(),
+                    legacy_emotion_ref: None,
+                    resolved_mapping_id: None,
+                    resolved_speaker_voice_asset_id: None,
+                    resolved_emotion_mode: Some("none".to_string()),
+                    resolved_emotion_payload_json: None,
+                    resolved_seed: None,
+                    resolved_generation_json: None,
+                    content_hash: p.content_hash.as_ref().map(|h| h.as_str().to_string()),
+                    status: "queued".to_string(),
+                    source_run_id: None,
+                    audio_artifact_ref: None,
+                    cache_hit: false,
+                    duration_ms: None,
+                    started_at: None,
+                    finished_at: None,
+                    failure_category: None,
+                    failure_detail: None,
+                }
+            }
         })
         .collect();
     repos.utterances.insert_many(&utterance_rows).await?;
+
+    // Fire SegmentCompleted SSE events up-front for cache hits so the
+    // frontend's progress table fills immediately without waiting for the
+    // worker to boot.
+    for plan in &prepared.utterances {
+        let is_hit = plan
+            .content_hash
+            .as_ref()
+            .map(|h| hit_by_hash.contains_key(h.as_str()))
+            .unwrap_or(false);
+        if is_hit {
+            let _ = tx.send(crate::dispatcher::RunEvent::SegmentCompleted {
+                run_id: run_id.as_str().to_string(),
+                utterance_id: plan.utterance_id.as_str().to_string(),
+                global_index: plan.global_index,
+                duration_ms: 0,
+            });
+        }
+    }
 
     // TODO(spec-035 follow-up): replace with `set_started_guarded` that
     // only transitions queued → running. Today this can race with a
@@ -154,10 +232,27 @@ async fn dispatch_inner(
     let client = lease_provider.spawn_if_needed().await?;
     let mut notifications = client.lease().subscribe_notifications().await;
 
+    // Filter the batch payload to miss segments only — cache hits have
+    // already been inserted as `completed` and don't need synthesis.
+    let miss_segment_ids: std::collections::HashSet<String> = prepared
+        .utterances
+        .iter()
+        .filter(|p| {
+            p.content_hash
+                .as_ref()
+                .map(|h| !hit_by_hash.contains_key(h.as_str()))
+                .unwrap_or(true)
+        })
+        .map(|p| p.utterance_id.as_str().to_string())
+        .collect();
+
+    let mut batch_input = prepared.batch_input.clone();
+    batch_input.segments.retain(|s| miss_segment_ids.contains(&s.segment_id));
+
     // Dispatch the batch RPC and the notification draining concurrently.
     // The worker emits per-segment notifications while the RPC is in
     // flight; the RPC resolves once the entire batch is done.
-    let segment_total = prepared.batch_input.segments.len();
+    let segment_total = batch_input.segments.len();
     let segment_lookup: std::collections::HashMap<String, i64> = prepared
         .utterances
         .iter()
@@ -195,19 +290,28 @@ async fn dispatch_inner(
     });
 
     let batch_op = BatchSynthesizeOperator::new(Arc::new(client.clone()));
-    let rpc_result: crate::domain::Result<BatchOutput> = tokio::select! {
-        biased;
-        _ = qrun.cancel.cancelled() => {
-            // Best-effort cancel RPC; ignore the result.
-            let _ = client
-                .call::<_, serde_json::Value>(
-                    "cancel",
-                    &serde_json::json!({"run_id": run_id.as_str()}),
-                )
-                .await;
-            Err(EmotionTtsError::Conflict("run cancelled".into()))
+    let rpc_result: crate::domain::Result<BatchOutput> = if batch_input.segments.is_empty() {
+        // All segments were cache hits — skip the worker RPC entirely.
+        Ok(BatchOutput {
+            request_id: batch_input.request_id.clone(),
+            status: "ok".into(),
+            segments: vec![],
+        })
+    } else {
+        tokio::select! {
+            biased;
+            _ = qrun.cancel.cancelled() => {
+                // Best-effort cancel RPC; ignore the result.
+                let _ = client
+                    .call::<_, serde_json::Value>(
+                        "cancel",
+                        &serde_json::json!({"run_id": run_id.as_str()}),
+                    )
+                    .await;
+                Err(EmotionTtsError::Conflict("run cancelled".into()))
+            }
+            result = batch_op.execute(batch_input.clone()) => result,
         }
-        result = batch_op.execute(prepared.batch_input.clone()) => result,
     };
 
     // Wait briefly for trailing notifications, then forcibly abort the
@@ -246,6 +350,49 @@ async fn dispatch_inner(
     }
 
     let _output = rpc_result?;
+
+    // Insert new cache rows for completed miss segments so future runs
+    // with the same hash can be served from cache. Duplicate inserts
+    // (e.g., two concurrent runs synthesising the same segment) are
+    // expected; log at debug and move on.
+    let now = Utc::now().timestamp();
+    let utts_after = repos.utterances.list_by_run(run_id).await?;
+    for u in &utts_after {
+        if u.cache_hit {
+            continue;
+        }
+        if u.status != "completed" {
+            continue;
+        }
+        let Some(hash_str) = u.content_hash.clone() else {
+            continue;
+        };
+        let Some(audio_ref) = u.audio_artifact_ref.clone() else {
+            continue;
+        };
+        let hash = match crate::domain::ContentHash::from_hex(hash_str) {
+            Ok(h) => h,
+            Err(_) => continue,
+        };
+        let cache_row = crate::storage::repo_traits::SynthesisCacheRow {
+            content_hash: hash,
+            audio_artifact_ref: audio_ref,
+            extension_version: extension_version.to_string(),
+            runtime_version: "0.0.0".into(),
+            model_version: "indextts-2".into(),
+            size_bytes: 0,
+            hit_count: 0,
+            created_at: now,
+            last_hit_at: now,
+        };
+        if let Err(e) = repos.cache.insert(&cache_row).await {
+            tracing::debug!(
+                target: "emotion_tts::dispatch",
+                error = %e,
+                "cache insert failed (likely duplicate)"
+            );
+        }
+    }
 
     // Recompute terminal status from utterance rows — the most reliable
     // source given that not every notification is guaranteed to arrive.
