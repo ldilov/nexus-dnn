@@ -159,6 +159,23 @@ async fn deleting_deployment_cascades_to_all_child_tables() {
     .await
     .expect("insert workflow");
 
+    // Synthesis cache rows are intentionally cross-deployment (content-hash
+    // dedup). Seed one independent of `dep` so we can assert it survives
+    // the deployment delete — locks in the audit's "cache_excluded by design"
+    // decision against accidental future cascade.
+    sqlx::query(
+        "INSERT INTO ext_emotion_tts__synthesis_cache
+            (content_hash, audio_artifact_ref, extension_version,
+             runtime_version, model_version, size_bytes,
+             hit_count, created_at, last_hit_at)
+         VALUES ('0000000000000000000000000000000000000000000000000000000000000001', 'artifact://audio', '0.1.0',
+                 'unknown-runtime', 'unknown-model-version', 0,
+                 0, 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .expect("insert synthesis cache row");
+
     let utt_count = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM ext_emotion_tts__utterances WHERE run_id = 'r_b'",
     )
@@ -197,5 +214,18 @@ async fn deleting_deployment_cascades_to_all_child_tables() {
     assert_eq!(
         utt_count_after, 0,
         "utterance should cascade-delete via runs when deployment is removed",
+    );
+
+    let cache_count_after = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM ext_emotion_tts__synthesis_cache \
+         WHERE content_hash = '0000000000000000000000000000000000000000000000000000000000000001'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("count synthesis cache after");
+    assert_eq!(
+        cache_count_after, 1,
+        "synthesis_cache rows have no deployment_id and MUST survive a \
+         deployment delete (cross-deployment dedup is intentional, audit FR-isolation-7)",
     );
 }
