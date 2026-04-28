@@ -938,13 +938,33 @@ fn log_discovery_summary(registry: &InMemoryExtensionRegistry) {
     let layouts = registry.list_layouts();
     let ui_contributions = registry.list_ui_contributions();
 
-    tracing::info!("╔══════════════════════════════════════════════════╗");
-    tracing::info!("║          NEXUS-DNN Extension Discovery          ║");
-    tracing::info!("╠══════════════════════════════════════════════════╣");
+    use crate::log_format::BANNER_TARGET;
 
+    // The banner target opts out of the standard timestamp/icon/level/
+    // target prefix (see crates/nexus-core/src/log_format.rs). Each line
+    // is emitted verbatim so the column alignment and section dividers
+    // hold visually. File output gets the same lines without any ANSI
+    // (the formatter's `use_ansi=false` for the file appender layer).
+
+    let rule_thick = "─".repeat(60);
+    let rule_thin = "·".repeat(60);
+
+    tracing::info!(target: BANNER_TARGET, "");
+    tracing::info!(target: BANNER_TARGET, "  {rule_thick}");
+    tracing::info!(target: BANNER_TARGET, "    NEXUS-DNN  ·  Extension Discovery");
+    tracing::info!(target: BANNER_TARGET, "  {rule_thick}");
+
+    // Extensions section.
     if extensions.is_empty() {
-        tracing::warn!("║  No extensions discovered                        ║");
+        tracing::warn!(target: BANNER_TARGET, "    No extensions discovered.");
     } else {
+        let label = format!("Extensions ({})", extensions.len());
+        tracing::info!(target: BANNER_TARGET, "    {label}");
+        let name_width = extensions
+            .iter()
+            .map(|e| e.manifest.extension.name.as_deref().unwrap_or(&e.manifest.extension.id).chars().count())
+            .max()
+            .unwrap_or(0);
         for ext in &extensions {
             let status = ext.status.as_str();
             let name = ext
@@ -953,43 +973,64 @@ fn log_discovery_summary(registry: &InMemoryExtensionRegistry) {
                 .name
                 .as_deref()
                 .unwrap_or(&ext.manifest.extension.id);
+            let glyph = if status == "active" { "●" } else { "✗" };
             tracing::info!(
-                "║  Extension: {name} v{ver} [{status}]",
+                target: BANNER_TARGET,
+                "      {glyph}  {name:<name_width$}  v{ver}  [{status}]",
                 ver = ext.manifest.extension.version,
             );
         }
     }
 
-    tracing::info!("╠──────────────────────────────────────────────────╣");
-    tracing::info!("║  Operators: {count}", count = operators.len());
-
+    // Operators section.
+    tracing::info!(target: BANNER_TARGET, "");
+    tracing::info!(target: BANNER_TARGET, "    Operators ({})", operators.len());
+    let op_id_width = operators
+        .iter()
+        .map(|op| op.operator.id.chars().count())
+        .max()
+        .unwrap_or(0);
     for op in &operators {
         tracing::info!(
-            "║    ✓ {id} v{ver}",
+            target: BANNER_TARGET,
+            "      ✓  {id:<op_id_width$}  v{ver}",
             id = op.operator.id,
             ver = op.operator.version,
         );
     }
 
-    tracing::info!("║  Recipes:   {count}", count = recipes.len());
-
+    // Recipes section.
+    tracing::info!(target: BANNER_TARGET, "");
+    tracing::info!(target: BANNER_TARGET, "    Recipes ({})", recipes.len());
     for recipe in &recipes {
-        tracing::info!("║    ✓ {name}", name = recipe.recipe.display_name);
+        tracing::info!(
+            target: BANNER_TARGET,
+            "      ✓  {name}",
+            name = recipe.recipe.display_name,
+        );
     }
 
-    tracing::info!("║  Layouts:   {count}", count = layouts.len());
-
+    // Layouts section.
+    tracing::info!(target: BANNER_TARGET, "");
+    tracing::info!(target: BANNER_TARGET, "    Layouts ({})", layouts.len());
     for layout in &layouts {
-        let default_marker = if layout.is_default { " (default)" } else { "" };
-        tracing::info!("║    ✓ {name}{default_marker}", name = layout.display_name,);
+        let default_marker = if layout.is_default { "  (default)" } else { "" };
+        tracing::info!(
+            target: BANNER_TARGET,
+            "      ✓  {name}{default_marker}",
+            name = layout.display_name,
+        );
     }
 
+    // UI contributions tally.
+    tracing::info!(target: BANNER_TARGET, "");
     tracing::info!(
-        "║  UI:        {count} contributions",
+        target: BANNER_TARGET,
+        "    UI contributions: {count}",
         count = ui_contributions.len()
     );
-
-    tracing::info!("╚══════════════════════════════════════════════════╝");
+    tracing::info!(target: BANNER_TARGET, "  {rule_thin}");
+    tracing::info!(target: BANNER_TARGET, "");
 }
 
 fn emit_discovery_events(event_bus: &dyn EventBus, report: &DiscoveryReport) {
