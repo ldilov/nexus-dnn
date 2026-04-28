@@ -103,49 +103,62 @@ fn run_progress_stream(
     run_id: RunId,
 ) -> impl Stream<Item = std::result::Result<Event, Infallible>> {
     async_stream::stream! {
-        let mut tick = tokio::time::interval(Duration::from_secs(2));
-        // First tick fires immediately so the client gets initial state
-        // without waiting 2s.
-        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        // Try to find the per-run channel. If the dispatcher has not yet
+        // popped this run, we briefly retry — there's a small window
+        // between `enqueue` (in create_run) and `register` (in the
+        // dispatcher loop) where the channel does not exist yet.
+        let mut maybe_rx = None;
+        for _ in 0..50 {
+            if let Some(rx) = state.run_channels.subscribe(run_id.as_str()).await {
+                maybe_rx = Some(rx);
+                break;
+            }
+            // Poll the run row — if it's already terminal, the dispatcher
+            // finished before we subscribed; emit a single run_terminal
+            // and close.
+            if let Ok(Some(row)) = state.repos.runs.get(&run_id).await {
+                if matches!(row.status.as_str(), "completed" | "failed" | "cancelled" | "partial") {
+                    let payload = serde_json::json!({
+                        "type": "run_terminal",
+                        "run_id": run_id.as_str(),
+                        "status": row.status,
+                    });
+                    yield Ok(Event::default().event("run_terminal").data(payload.to_string()));
+                    return;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        let mut rx = match maybe_rx {
+            Some(rx) => rx,
+            None => {
+                let payload = serde_json::json!({
+                    "type": "run_terminal",
+                    "run_id": run_id.as_str(),
+                    "status": "failed",
+                    "error": "dispatcher did not pick up run within 5s",
+                });
+                yield Ok(Event::default().event("run_terminal").data(payload.to_string()));
+                return;
+            }
+        };
         loop {
-            tick.tick().await;
-            match state.repos.runs.get(&run_id).await {
-                Ok(Some(row)) => {
-                    let payload = run_summary_json(&row);
-                    let frame = Event::default()
-                        .event("run_state")
-                        .data(payload.to_string());
-                    yield Ok(frame);
-                    if matches!(
-                        row.status.as_str(),
-                        "completed" | "failed" | "cancelled" | "partial"
-                    ) {
-                        let terminal = Event::default()
-                            .event("run_terminal")
-                            .data(payload.to_string());
-                        yield Ok(terminal);
-                        break;
+            match rx.recv().await {
+                Ok(event) => {
+                    let name = event.sse_event_name();
+                    let data = serde_json::to_string(&event)
+                        .unwrap_or_else(|_| "{}".to_string());
+                    yield Ok(Event::default().event(name).data(data));
+                    if matches!(event, crate::dispatcher::RunEvent::RunTerminal { .. }) {
+                        return;
                     }
                 }
-                Ok(None) => {
-                    // Run row vanished mid-stream — emit a synthetic
-                    // failure frame and close.
-                    let body = json!({
-                        "runId": run_id.as_str(),
-                        "status": "failed",
-                        "error": "run row disappeared",
-                    });
-                    yield Ok(Event::default().event("run_terminal").data(body.to_string()));
-                    break;
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                    // Slow subscriber — drop the lagged frames and continue.
+                    continue;
                 }
-                Err(err) => {
-                    let body = json!({
-                        "runId": run_id.as_str(),
-                        "status": "failed",
-                        "error": err.to_string(),
-                    });
-                    yield Ok(Event::default().event("run_terminal").data(body.to_string()));
-                    break;
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    return;
                 }
             }
         }
