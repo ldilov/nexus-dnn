@@ -32,15 +32,7 @@ struct ListQuery {
     deployment_id: String,
 }
 
-/// Query extractor for shared-id endpoints (GET/PATCH/DELETE on
-/// `/presets/{preset_id}`). The handler enforces that the row's
-/// `deployment_id` matches the caller's claim and returns 404 (NOT 403)
-/// on mismatch — keeps preset existence opaque across deployments.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ScopedQuery {
-    deployment_id: String,
-}
+use crate::router::guard::{self, ScopedQuery};
 
 /// Shared-id row fetch with cross-deployment isolation. Returns the row
 /// only when its `deployment_id` matches the caller's claim; on mismatch
@@ -56,9 +48,11 @@ async fn assert_belongs_to_deployment(
         .get(id)
         .await?
         .ok_or_else(|| EmotionTtsError::not_found(format!("preset {id}")))?;
-    if row.deployment_id.as_str() != claimed_deployment_id {
-        return Err(EmotionTtsError::not_found(format!("preset {id}")));
-    }
+    guard::assert_deployment_match(
+        row.deployment_id.as_str(),
+        claimed_deployment_id,
+        || format!("preset {id}"),
+    )?;
     Ok(row)
 }
 
