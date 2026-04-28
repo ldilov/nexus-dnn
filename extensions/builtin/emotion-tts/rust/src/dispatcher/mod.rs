@@ -9,6 +9,7 @@ pub(crate) mod run_loop;
 pub use channels::{RegistrationGuard, RunChannelRegistry, RunEventReceiver, RunEventSender};
 pub use events::RunEvent;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use tokio::task::JoinHandle;
@@ -67,6 +68,7 @@ pub fn spawn_dispatcher(
     registry: Arc<RunChannelRegistry>,
     artifact_store: Option<Arc<dyn HostArtifactStore>>,
     extension_version: impl Into<String>,
+    output_root_base: PathBuf,
 ) -> JoinHandle<()> {
     let extension_version = extension_version.into();
     tokio::spawn(async move {
@@ -87,11 +89,14 @@ pub fn spawn_dispatcher(
             let registry_c = registry.clone();
             let store_c = artifact_store.clone();
             let version_c = extension_version.clone();
+            let base_c = output_root_base.clone();
             // Isolate each run in its own task so a panic does not kill
             // the dispatcher.
             let join = tokio::spawn(async move {
-                run_loop::process_one(qrun, repos_c, lease_c, registry_c, store_c, version_c)
-                    .await;
+                run_loop::process_one(
+                    qrun, repos_c, lease_c, registry_c, store_c, version_c, base_c,
+                )
+                .await;
             });
             if let Err(err) = join.await {
                 tracing::error!(
