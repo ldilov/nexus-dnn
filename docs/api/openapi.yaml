@@ -1,0 +1,1620 @@
+openapi: 3.1.0
+info:
+  title: Nexus DNN API
+  version: 0.1.0
+  description: |
+    Hand-maintained OpenAPI 3.1 spec for the Nexus DNN host process and the two
+    builtin extensions (`nexus.local-llm`, `nexus.audio.emotiontts`).
+
+    See [`API.md`](./API.md) for the narrative reference. This file is the
+    machine-readable companion — clients can use `openapi-generator-cli`,
+    `oats`, `hey-api`, or any compatible tool to derive a typed client.
+
+    All JSON responses (success and error) are wrapped in the `ApiResponse`
+    envelope (`#/components/schemas/ApiResponse`) unless explicitly marked as
+    `application/zip`, `application/octet-stream`, `text/event-stream`, or
+    `multipart/form-data`. Per-route response schemas describe the shape of the
+    `data` field inside the envelope; the envelope itself is omitted from each
+    response definition for brevity.
+
+    **Status:** Living document, last reconciled `2026-04-28` against branch
+    `035-extension-dependency-installer`. Run `cargo run -p nexus-api --bin
+    api-doc-check` to verify drift.
+  contact:
+    name: Nexus DNN
+    url: https://github.com/lazardilov/nexus-dnn
+  license:
+    name: GPL-3.0
+    url: https://www.gnu.org/licenses/gpl-3.0.html
+
+servers:
+  - url: http://127.0.0.1:3000
+    description: Default loopback bind. Configure via `NEXUS_PORT`.
+
+tags:
+  - name: Health
+    description: Liveness, system info, metrics.
+  - name: Extensions
+    description: Extension lifecycle (discover, enable, disable, install-from-zip).
+  - name: ExtensionDependencies
+    description: Spec 035 dependency installer.
+  - name: ExtensionStorage
+    description: Storage namespace contributions per extension.
+  - name: ExtensionUI
+    description: Extension UI bundles + custom-element catalog.
+  - name: ExtensionRouter
+    description: Generic pass-through to extension-owned routes.
+  - name: Operators
+    description: Operator catalog (workflow node types).
+  - name: Recipes
+    description: Recipe catalog (canonical workflow templates).
+  - name: Workflows
+    description: User-authored workflow documents + canvas.
+  - name: Modules
+    description: Aggregated module gallery (Spec 019).
+  - name: Deployments
+    description: Configured runnable instances of recipes/workflows.
+  - name: Runs
+    description: Host-level run lifecycle.
+  - name: Artifacts
+    description: Artifact metadata, blob, content, lineage.
+  - name: BackendRuntimes
+    description: Spec 032 generic backend-runtime catalog and lease API.
+  - name: BackendsLegacy
+    description: Deprecated `/api/v1/llm/backends/*` (sunset 2026-05-13).
+  - name: HostModels
+    description: Host model registry + leases (Spec 031).
+  - name: ModelStore
+    description: Spec 025 search + downloads.
+  - name: HuggingFace
+    description: HuggingFace integration (per-extension).
+  - name: UI
+    description: UI components, contributions, layouts.
+  - name: HostIntrospection
+    description: `/api/host/*` facts (Spec 028).
+  - name: Streams
+    description: WebSocket and SSE streams.
+  - name: LocalLLM
+    description: Builtin extension `nexus.local-llm` — chat threads, messages, model binding.
+  - name: EmotionTTS
+    description: Builtin extension `nexus.audio.emotiontts` — runs, voice assets, mappings, exports.
+
+paths:
+
+  # ─── Health ────────────────────────────────────────────────────────────────
+  /api/v1/health:
+    get:
+      tags: [Health]
+      operationId: health
+      summary: Liveness + uptime.
+      responses: { '200': { $ref: '#/components/responses/HealthOk' } }
+  /api/v1/metrics:
+    get:
+      tags: [Health]
+      operationId: metrics
+      summary: Process and registry metrics.
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+  /api/v1/system/info:
+    get:
+      tags: [Health]
+      operationId: systemInfo
+      summary: OS, host version, build commit.
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+  /api/v1/tools:
+    get:
+      tags: [Health]
+      operationId: listTools
+      summary: List host-registered tools (Spec 028).
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+
+  # ─── Extensions ───────────────────────────────────────────────────────────
+  /api/v1/extensions:
+    get:
+      tags: [Extensions]
+      operationId: listExtensions
+      summary: List discovered extensions with registry status.
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+  /api/v1/extensions/{id}:
+    parameters: [{ $ref: '#/components/parameters/ExtensionId' }]
+    get:
+      tags: [Extensions]
+      operationId: getExtension
+      summary: Full record for one extension.
+      responses: { '200': { $ref: '#/components/responses/JsonOk' }, '404': { $ref: '#/components/responses/Error' } }
+  /api/v1/extensions/refresh:
+    post:
+      tags: [Extensions]
+      operationId: refreshExtensions
+      summary: Re-discover extensions on disk.
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+  /api/v1/extensions/{id}/reveal:
+    parameters: [{ $ref: '#/components/parameters/ExtensionId' }]
+    post:
+      tags: [Extensions]
+      operationId: revealExtensionFolder
+      summary: Open extension folder in OS file explorer.
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+  /api/v1/extensions/{id}/enable:
+    parameters: [{ $ref: '#/components/parameters/ExtensionId' }]
+    post:
+      tags: [Extensions]
+      operationId: enableExtension
+      summary: Enable; checks dependencies, emits `extension_activated`.
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+  /api/v1/extensions/{id}/disable:
+    parameters: [{ $ref: '#/components/parameters/ExtensionId' }]
+    post:
+      tags: [Extensions]
+      operationId: disableExtension
+      summary: Disable; releases leases and unmounts router.
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+  /api/v1/extensions/install-from-zip:
+    post:
+      tags: [Extensions]
+      operationId: installFromZip
+      summary: Install extension from zip body (max 64 MiB).
+      requestBody:
+        required: true
+        content:
+          application/zip:
+            schema: { type: string, format: binary }
+      responses: { '200': { $ref: '#/components/responses/JsonOk' }, '413': { $ref: '#/components/responses/Error' } }
+
+  # ─── Extension dependencies (Spec 035) ────────────────────────────────────
+  /api/v1/extensions/{id}/dependencies:
+    parameters: [{ $ref: '#/components/parameters/ExtensionId' }]
+    get:
+      tags: [ExtensionDependencies]
+      operationId: listExtensionDependencies
+      summary: List dependency steps with status.
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+  /api/v1/extensions/{id}/install:
+    parameters: [{ $ref: '#/components/parameters/ExtensionId' }]
+    post:
+      tags: [ExtensionDependencies]
+      operationId: startExtensionInstall
+      summary: Start the install plan. SSE progress on `/api/v1/events`.
+      responses: { '202': { $ref: '#/components/responses/JsonOk' } }
+  /api/v1/extensions/{id}/install/steps/{step_id}/retry:
+    parameters:
+      - { $ref: '#/components/parameters/ExtensionId' }
+      - in: path
+        name: step_id
+        required: true
+        schema: { type: string }
+    post:
+      tags: [ExtensionDependencies]
+      operationId: retryExtensionInstallStep
+      summary: Retry a failed install step in place.
+      responses: { '202': { $ref: '#/components/responses/JsonOk' } }
+  /api/v1/extensions/{id}/install/cancel:
+    parameters: [{ $ref: '#/components/parameters/ExtensionId' }]
+    post:
+      tags: [ExtensionDependencies]
+      operationId: cancelExtensionInstall
+      summary: Cancel the in-flight install.
+      responses: { '202': { $ref: '#/components/responses/JsonOk' } }
+
+  # ─── Extension storage contributions ──────────────────────────────────────
+  /api/v1/extensions/{id}/storage:
+    parameters: [{ $ref: '#/components/parameters/ExtensionId' }]
+    get:
+      tags: [ExtensionStorage]
+      operationId: getExtensionStorage
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+  /api/v1/extensions/{id}/storage/validate:
+    parameters: [{ $ref: '#/components/parameters/ExtensionId' }]
+    post:
+      tags: [ExtensionStorage]
+      operationId: validateExtensionStorage
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+  /api/v1/extensions/{id}/storage/apply:
+    parameters: [{ $ref: '#/components/parameters/ExtensionId' }]
+    post:
+      tags: [ExtensionStorage]
+      operationId: applyExtensionStorage
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+  /api/v1/extensions/{id}/storage/verify:
+    parameters: [{ $ref: '#/components/parameters/ExtensionId' }]
+    post:
+      tags: [ExtensionStorage]
+      operationId: verifyExtensionStorage
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+  /api/v1/extensions/{id}/storage/uninstall:
+    parameters: [{ $ref: '#/components/parameters/ExtensionId' }]
+    post:
+      tags: [ExtensionStorage]
+      operationId: uninstallExtensionStorage
+      summary: Drop the namespace. **Destructive.**
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+  /api/v1/storage/namespaces:
+    get:
+      tags: [ExtensionStorage]
+      operationId: listStorageNamespaces
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+
+  # ─── Extension UI ─────────────────────────────────────────────────────────
+  /api/v1/ui/extension-components:
+    get:
+      tags: [ExtensionUI]
+      operationId: listExtensionComponents
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+  /api/v1/extensions/{id}/ui/{path}:
+    parameters:
+      - { $ref: '#/components/parameters/ExtensionId' }
+      - in: path
+        name: path
+        required: true
+        allowReserved: true
+        schema: { type: string }
+        description: 'Extension asset sub-path (catch-all). May contain `/` separators; clients must NOT percent-encode them.'
+    get:
+      tags: [ExtensionUI]
+      operationId: getExtensionAsset
+      responses:
+        '200': { description: Asset stream., content: { 'application/octet-stream': { schema: { type: string, format: binary } } } }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/v1/extensions/{id}/reload:
+    parameters: [{ $ref: '#/components/parameters/ExtensionId' }]
+    post:
+      tags: [ExtensionUI]
+      operationId: reloadExtension
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+
+  # ─── Generic extension router ─────────────────────────────────────────────
+  # NOTE: The generic catch-all `/api/v1/extensions/{ext_id}/{rest}` exists
+  # at runtime (any extension's router is mounted there), but is intentionally
+  # NOT enumerated as a path item to avoid OpenAPI's "paths MUST be unambiguous"
+  # rule colliding with the concrete `nexus.local-llm` and `nexus.audio.emotiontts`
+  # paths below. Treat any extension's full surface as "everything under
+  # `/api/v1/extensions/<ext_id>/`" — see API.md § Generic extension router.
+
+  # ─── Operators / Recipes ──────────────────────────────────────────────────
+  /api/v1/operators:
+    get: { tags: [Operators], operationId: listOperators, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/operators/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get: { tags: [Operators], operationId: getOperator, responses: { '200': { $ref: '#/components/responses/JsonOk' }, '404': { $ref: '#/components/responses/Error' } } }
+  /api/v1/recipes:
+    get: { tags: [Recipes], operationId: listRecipes, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/recipes/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get: { tags: [Recipes], operationId: getRecipe, responses: { '200': { $ref: '#/components/responses/JsonOk' }, '404': { $ref: '#/components/responses/Error' } } }
+
+  # ─── Workflows ────────────────────────────────────────────────────────────
+  /api/v1/workflows:
+    get:  { tags: [Workflows], operationId: listWorkflows, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+    post: { tags: [Workflows], operationId: createWorkflow, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '201': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/workflows/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get:    { tags: [Workflows], operationId: getWorkflow, responses: { '200': { $ref: '#/components/responses/JsonOk' }, '404': { $ref: '#/components/responses/Error' } } }
+    put:    { tags: [Workflows], operationId: updateWorkflow, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+    delete: { tags: [Workflows], operationId: deleteWorkflow, responses: { '204': { description: Deleted. } } }
+  /api/v1/workflows/{id}/graph:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    put: { tags: [Workflows], operationId: updateWorkflowGraph, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/workflows/{id}/canvas:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get: { tags: [Workflows], operationId: getWorkflowCanvas, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+    put: { tags: [Workflows], operationId: putWorkflowCanvas, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/workflows/{id}/revert:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post: { tags: [Workflows], operationId: revertWorkflow, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/workflows/validate:
+    post: { tags: [Workflows], operationId: validateWorkflow, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/workflows/validate-payload:
+    post: { tags: [Workflows], operationId: validateWorkflowPayload, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+
+  # ─── Modules ──────────────────────────────────────────────────────────────
+  /api/v1/modules:
+    get: { tags: [Modules], operationId: listModules, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/modules/{module_id}:
+    parameters: [{ in: path, name: module_id, required: true, schema: { type: string } }]
+    get: { tags: [Modules], operationId: getModule, responses: { '200': { $ref: '#/components/responses/JsonOk' }, '404': { $ref: '#/components/responses/Error' } } }
+  /api/v1/modules/{module_id}/blueprint:
+    parameters: [{ in: path, name: module_id, required: true, schema: { type: string } }]
+    get: { tags: [Modules], operationId: getModuleBlueprint, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/modules/{module_id}/deployments:
+    parameters: [{ in: path, name: module_id, required: true, schema: { type: string } }]
+    post: { tags: [Modules], operationId: createDeploymentFromModule, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '201': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/modules/{module_id}/blueprint/dry-run:
+    parameters: [{ in: path, name: module_id, required: true, schema: { type: string } }]
+    post: { tags: [Modules], operationId: dryRunModuleBlueprint, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/modules/{module_id}/materialize:
+    parameters: [{ in: path, name: module_id, required: true, schema: { type: string }, description: 'Format: `user:draft:{uuid}`' }]
+    post: { tags: [Modules], operationId: materializeDraftModule, responses: { '201': { $ref: '#/components/responses/JsonOk' } } }
+
+  # ─── Deployments ──────────────────────────────────────────────────────────
+  /api/v1/deployments:
+    get:  { tags: [Deployments], operationId: listDeployments, parameters: [{ in: query, name: workspace_id, schema: { type: string } }, { in: query, name: state, schema: { type: string } }, { in: query, name: limit, schema: { type: integer, minimum: 1 } }], responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+    post: { tags: [Deployments], operationId: createDeployment, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '201': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/deployments/import:
+    post: { tags: [Deployments], operationId: importDeployment, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '201': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/deployments/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get:   { tags: [Deployments], operationId: getDeployment, responses: { '200': { $ref: '#/components/responses/JsonOk' }, '404': { $ref: '#/components/responses/Error' } } }
+    patch: { tags: [Deployments], operationId: patchDeployment, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/deployments/{id}/revisions/{rev}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+      - { in: path, name: rev, required: true, schema: { type: string } }
+    get: { tags: [Deployments], operationId: getDeploymentRevision, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/deployments/{id}/revisions:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post: { tags: [Deployments], operationId: saveDeploymentRevision, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '201': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/deployments/{id}/validate:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post: { tags: [Deployments], operationId: validateDeployment, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/deployments/{id}/load:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post: { tags: [Deployments], operationId: loadDeployment, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/deployments/{id}/runs:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post: { tags: [Deployments], operationId: createDeploymentRun, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/deployments/{id}/clone:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post: { tags: [Deployments], operationId: cloneDeployment, responses: { '201': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/deployments/{id}/export:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post: { tags: [Deployments], operationId: exportDeployment, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+
+  # ─── Runs ─────────────────────────────────────────────────────────────────
+  /api/v1/runs:
+    get:
+      tags: [Runs]
+      operationId: listRuns
+      parameters:
+        - { in: query, name: deployment_id, schema: { type: string } }
+        - { in: query, name: state, schema: { type: string } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: before_at, schema: { type: string, format: date-time } }
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+    post: { tags: [Runs], operationId: createRun, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/runs/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get: { tags: [Runs], operationId: getRun, responses: { '200': { $ref: '#/components/responses/JsonOk' }, '404': { $ref: '#/components/responses/Error' } } }
+  /api/v1/runs/{id}/cancel:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post: { tags: [Runs], operationId: cancelRun, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/runs/{id}/retry:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post: { tags: [Runs], operationId: retryRun, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+
+  # ─── Artifacts ────────────────────────────────────────────────────────────
+  /api/v1/artifacts:
+    get: { tags: [Artifacts], operationId: listArtifacts, parameters: [{ in: query, name: run_id, schema: { type: string } }, { in: query, name: type, schema: { type: string } }, { in: query, name: node_id, schema: { type: string } }], responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/artifacts/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get: { tags: [Artifacts], operationId: getArtifact, responses: { '200': { $ref: '#/components/responses/JsonOk' }, '404': { $ref: '#/components/responses/Error' } } }
+  /api/v1/artifacts/{id}/blob:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get:
+      tags: [Artifacts]
+      operationId: getArtifactBlob
+      responses:
+        '200':
+          description: Raw artifact bytes.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+  /api/v1/artifacts/{id}/content:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get: { tags: [Artifacts], operationId: getArtifactContent, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/artifacts/{id}/lineage:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get: { tags: [Artifacts], operationId: getArtifactLineage, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+
+  # ─── Backend runtimes (Spec 032) ──────────────────────────────────────────
+  /api/v1/backend-runtimes:
+    get: { tags: [BackendRuntimes], operationId: listBackendRuntimes, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/backend-runtimes/{runtime_id}:
+    parameters: [{ in: path, name: runtime_id, required: true, schema: { type: string } }]
+    get: { tags: [BackendRuntimes], operationId: getBackendRuntime, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/backend-runtimes/{runtime_id}/install:
+    parameters: [{ in: path, name: runtime_id, required: true, schema: { type: string } }]
+    post: { tags: [BackendRuntimes], operationId: installBackendRuntime, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/backend-runtime-installs:
+    get: { tags: [BackendRuntimes], operationId: listBackendRuntimeInstalls, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/backend-runtime-installs/{install_id}:
+    parameters: [{ $ref: '#/components/parameters/InstallId' }]
+    get:    { tags: [BackendRuntimes], operationId: getBackendRuntimeInstall, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+    delete: { tags: [BackendRuntimes], operationId: uninstallBackendRuntime, responses: { '204': { description: Uninstalled. } } }
+  /api/v1/backend-runtime-installs/{install_id}/progress:
+    parameters: [{ $ref: '#/components/parameters/InstallId' }]
+    get:
+      tags: [BackendRuntimes, Streams]
+      operationId: streamBackendRuntimeInstallProgress
+      summary: SSE progress stream.
+      responses:
+        '200':
+          description: SSE stream.
+          content: { text/event-stream: { schema: { type: string } } }
+  /api/v1/backend-runtime-installs/{install_id}/health:
+    parameters: [{ $ref: '#/components/parameters/InstallId' }]
+    get: { tags: [BackendRuntimes], operationId: getBackendRuntimeInstallHealth, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/backend-runtime-installs/{install_id}/retry:
+    parameters: [{ $ref: '#/components/parameters/InstallId' }]
+    post: { tags: [BackendRuntimes], operationId: retryBackendRuntimeInstall, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/backend-runtime-installs/{install_id}/start:
+    parameters: [{ $ref: '#/components/parameters/InstallId' }]
+    post: { tags: [BackendRuntimes], operationId: startBackendRuntimeInstall, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/backend-runtime-installs/{install_id}/stop:
+    parameters: [{ $ref: '#/components/parameters/InstallId' }]
+    post: { tags: [BackendRuntimes], operationId: stopBackendRuntimeInstall, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/backend-runtime-installs/{install_id}/restart:
+    parameters: [{ $ref: '#/components/parameters/InstallId' }]
+    post: { tags: [BackendRuntimes], operationId: restartBackendRuntimeInstall, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/backend-runtime-leases:
+    get: { tags: [BackendRuntimes], operationId: listBackendRuntimeLeases, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/backend-runtime-leases/{lease_id}:
+    parameters: [{ in: path, name: lease_id, required: true, schema: { type: string } }]
+    get:    { tags: [BackendRuntimes], operationId: getBackendRuntimeLease, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+    delete: { tags: [BackendRuntimes], operationId: releaseBackendRuntimeLease, responses: { '204': { description: Released. } } }
+
+  # ─── Legacy LLM backends (deprecated) ─────────────────────────────────────
+  /api/v1/llm/backends:
+    get: { tags: [BackendsLegacy], operationId: legacyListBackends, deprecated: true, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/llm/backends/{backend_id}:
+    parameters: [{ $ref: '#/components/parameters/BackendId' }]
+    get: { tags: [BackendsLegacy], operationId: legacyGetBackend, deprecated: true, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/llm/backends/{backend_id}/variants:
+    parameters: [{ $ref: '#/components/parameters/BackendId' }]
+    get: { tags: [BackendsLegacy], operationId: legacyListBackendVariants, deprecated: true, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/llm/backends/{backend_id}/install:
+    parameters: [{ $ref: '#/components/parameters/BackendId' }]
+    post: { tags: [BackendsLegacy], operationId: legacyInstallBackend, deprecated: true, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/llm/backends/{backend_id}/validate:
+    parameters: [{ $ref: '#/components/parameters/BackendId' }]
+    post: { tags: [BackendsLegacy], operationId: legacyValidateBackend, deprecated: true, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/llm/backends/{backend_id}/repair:
+    parameters: [{ $ref: '#/components/parameters/BackendId' }]
+    post: { tags: [BackendsLegacy], operationId: legacyRepairBackend, deprecated: true, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/llm/backends/{backend_id}/settings:
+    parameters: [{ $ref: '#/components/parameters/BackendId' }]
+    get: { tags: [BackendsLegacy], operationId: legacyGetBackendSettings, deprecated: true, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+    put: { tags: [BackendsLegacy], operationId: legacyPutBackendSettings, deprecated: true, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/llm/backends/{backend_id}/logs:
+    parameters: [{ $ref: '#/components/parameters/BackendId' }]
+    get: { tags: [BackendsLegacy], operationId: legacyGetBackendLogs, deprecated: true, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/llm/backends/{backend_id}/diagnostics:
+    parameters: [{ $ref: '#/components/parameters/BackendId' }]
+    get: { tags: [BackendsLegacy], operationId: legacyGetBackendDiagnostics, deprecated: true, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/llm/backends/{backend_id}/load-state:
+    parameters: [{ $ref: '#/components/parameters/BackendId' }]
+    get: { tags: [BackendsLegacy], operationId: legacyGetBackendLoadState, deprecated: true, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+
+  # ─── Host models / generic backends ───────────────────────────────────────
+  /api/v1/host-models:
+    get:  { tags: [HostModels], operationId: listHostModels, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+    post: { tags: [HostModels], operationId: installHostModel, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/host-models/resolve:
+    post: { tags: [HostModels], operationId: resolveHostModels, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/host-models/{install_id}/dependents:
+    parameters: [{ $ref: '#/components/parameters/InstallId' }]
+    get: { tags: [HostModels], operationId: listHostModelDependents, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/host-models/{install_id}/leases:
+    parameters: [{ $ref: '#/components/parameters/InstallId' }]
+    post: { tags: [HostModels], operationId: createHostModelLease, responses: { '201': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/host-models/leases/{lease_id}:
+    parameters: [{ in: path, name: lease_id, required: true, schema: { type: string } }]
+    delete: { tags: [HostModels], operationId: releaseHostModelLease, responses: { '204': { description: Released. } } }
+  /api/v1/backends:
+    get: { tags: [HostModels], operationId: listHostBackends, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/backends/runtime-defaults:
+    get: { tags: [HostModels], operationId: getRuntimeDefaults, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/backends/{family}/parameters:
+    parameters: [{ in: path, name: family, required: true, schema: { type: string } }]
+    get: { tags: [HostModels], operationId: getBackendParameterCatalog, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/backends/load-model:
+    post: { tags: [HostModels], operationId: loadModelFirstSpawn, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/backends/{install_id}/lease:
+    parameters: [{ $ref: '#/components/parameters/InstallId' }]
+    post: { tags: [HostModels], operationId: createHostBackendLease, responses: { '201': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/backends/{install_id}:
+    parameters: [{ $ref: '#/components/parameters/InstallId' }]
+    delete: { tags: [HostModels], operationId: uninstallHostBackend, responses: { '204': { description: Uninstalled. } } }
+  /api/v1/backends/leases/{lease_id}:
+    parameters: [{ in: path, name: lease_id, required: true, schema: { type: string } }]
+    delete: { tags: [HostModels], operationId: releaseHostBackendLease, responses: { '204': { description: Released. } } }
+
+  # ─── Model store (Spec 025) ───────────────────────────────────────────────
+  /api/v1/model-store/backends:
+    get: { tags: [ModelStore], operationId: listModelStoreBackends, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/model-store/installed:
+    get: { tags: [ModelStore], operationId: getModelStoreInstalled, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/model-store/search:
+    get:
+      tags: [ModelStore]
+      operationId: searchModelStore
+      parameters:
+        - { in: query, name: q, schema: { type: string } }
+        - { in: query, name: task, schema: { type: string } }
+        - { in: query, name: family, schema: { type: string } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: offset, schema: { type: integer, minimum: 0 } }
+      responses: { '200': { $ref: '#/components/responses/JsonOk' } }
+  /api/v1/model-store/models/{family_id}:
+    parameters: [{ in: path, name: family_id, required: true, schema: { type: string } }]
+    get: { tags: [ModelStore], operationId: getModelStoreFamily, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/model-store/downloads:
+    post: { tags: [ModelStore], operationId: createModelStoreDownload, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/model-store/downloads/{job_id}:
+    parameters: [{ in: path, name: job_id, required: true, schema: { type: string } }]
+    get: { tags: [ModelStore], operationId: getModelStoreDownloadStatus, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/model-store/downloads/{job_id}/pause:
+    parameters: [{ in: path, name: job_id, required: true, schema: { type: string } }]
+    post: { tags: [ModelStore], operationId: pauseModelStoreDownload, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/model-store/downloads/{job_id}/resume:
+    parameters: [{ in: path, name: job_id, required: true, schema: { type: string } }]
+    post: { tags: [ModelStore], operationId: resumeModelStoreDownload, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/model-store/settings/hf-token:
+    get:    { tags: [ModelStore], operationId: getHfTokenStatus, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+    put:    { tags: [ModelStore], operationId: setHfToken, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '204': { description: Set. } } }
+    delete: { tags: [ModelStore], operationId: clearHfToken, responses: { '204': { description: Cleared. } } }
+
+  # ─── HuggingFace integration ──────────────────────────────────────────────
+  /api/v1/huggingface/search:
+    get: { tags: [HuggingFace], operationId: legacyHuggingfaceSearch, deprecated: true, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/huggingface/repos/{repo_id}:
+    parameters: [{ in: path, name: repo_id, required: true, schema: { type: string } }]
+    get: { tags: [HuggingFace], operationId: legacyHuggingfaceRepoDetail, deprecated: true, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/extensions/{ext_id}/huggingface/models:
+    parameters: [{ $ref: '#/components/parameters/GenericExtensionId' }]
+    get:  { tags: [HuggingFace], operationId: listExtHuggingfaceModels, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+    post: { tags: [HuggingFace], operationId: installExtHuggingfaceModel, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/extensions/{ext_id}/huggingface/tasks/{task_id}/cancel:
+    parameters:
+      - { $ref: '#/components/parameters/GenericExtensionId' }
+      - { in: path, name: task_id, required: true, schema: { type: string } }
+    post: { tags: [HuggingFace], operationId: cancelExtHuggingfaceTask, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/extensions/{ext_id}/huggingface/models/{model_id}/load:
+    parameters:
+      - { $ref: '#/components/parameters/GenericExtensionId' }
+      - { in: path, name: model_id, required: true, schema: { type: string } }
+    post: { tags: [HuggingFace], operationId: loadExtHuggingfaceModel, responses: { '202': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/extensions/{ext_id}/huggingface/models/{model_id}/hyperparameters:
+    parameters:
+      - { $ref: '#/components/parameters/GenericExtensionId' }
+      - { in: path, name: model_id, required: true, schema: { type: string } }
+    patch: { tags: [HuggingFace], operationId: patchExtHuggingfaceHyperparameters, requestBody: { $ref: '#/components/requestBodies/JsonAny' }, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+
+  # ─── UI ───────────────────────────────────────────────────────────────────
+  /api/v1/ui/components:
+    get: { tags: [UI], operationId: listUiComponents, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/ui/contributions:
+    get: { tags: [UI], operationId: listUiContributions, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/ui/contributions/viewers:
+    get: { tags: [UI], operationId: listUiViewers, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/ui/contributions/commands:
+    get: { tags: [UI], operationId: listUiCommands, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/ui/contributions/inspectors:
+    get: { tags: [UI], operationId: listUiInspectors, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/ui/contributions/widgets:
+    get: { tags: [UI], operationId: listUiWidgets, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/ui/layouts:
+    get: { tags: [UI], operationId: listUiLayouts, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/v1/ui/layouts/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get: { tags: [UI], operationId: getUiLayout, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+
+  # ─── Host introspection (Spec 028) ────────────────────────────────────────
+  /api/host/models/{rest}:
+    parameters:
+      - in: path
+        name: rest
+        required: true
+        allowReserved: true
+        schema: { type: string }
+        description: 'Catch-all path; format-agnostic model identifier. May contain `/` — do not percent-encode.'
+    get: { tags: [HostIntrospection], operationId: getHostModelMetadata, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+  /api/host/cpu/cores:
+    get: { tags: [HostIntrospection], operationId: getHostCpuCores, responses: { '200': { $ref: '#/components/responses/JsonOk' } } }
+
+  # ─── Streams ──────────────────────────────────────────────────────────────
+  /api/v1/events:
+    get:
+      tags: [Streams]
+      operationId: subscribeEvents
+      summary: WebSocket — unified Nexus event bus.
+      parameters:
+        - { in: query, name: run_id, schema: { type: string } }
+        - { in: query, name: event_type, schema: { type: string } }
+      responses:
+        '101':
+          description: WebSocket upgrade. Frames are JSON `NexusEvent` objects.
+  /api/v1/backends/events:
+    get:
+      tags: [Streams]
+      operationId: subscribeBackendEvents
+      summary: WebSocket — backend lifecycle events.
+      responses:
+        '101': { description: WebSocket upgrade. }
+
+  # ─── Builtin: nexus.local-llm ─────────────────────────────────────────────
+  /api/v1/extensions/nexus.local-llm/chat/threads:
+    get:
+      tags: [LocalLLM]
+      operationId: localLlmListThreads
+      parameters:
+        - { in: query, name: deployment_id, schema: { type: string } }
+        - { in: query, name: exclude_unbound, schema: { type: boolean, default: false } }
+        - { in: query, name: limit, schema: { type: integer, default: 50, minimum: 1 } }
+        - { in: query, name: before_updated_at, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: List of threads.
+          content: { application/json: { schema: { $ref: '#/components/schemas/LocalLlmListThreadsResponse' } } }
+    post:
+      tags: [LocalLLM]
+      operationId: localLlmCreateThread
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/LocalLlmCreateThreadRequest' } } }
+      responses:
+        '201':
+          description: Created.
+          content: { application/json: { schema: { $ref: '#/components/schemas/LocalLlmChatThread' } } }
+  /api/v1/extensions/nexus.local-llm/chat/threads/{thread_id}:
+    parameters: [{ $ref: '#/components/parameters/ThreadId' }]
+    get:
+      tags: [LocalLLM]
+      operationId: localLlmGetThread
+      responses:
+        '200':
+          description: Thread.
+          content: { application/json: { schema: { $ref: '#/components/schemas/LocalLlmChatThread' } } }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [LocalLLM]
+      operationId: localLlmPatchThread
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/LocalLlmPatchThreadRequest' } } }
+      responses:
+        '200':
+          description: Updated.
+          content: { application/json: { schema: { $ref: '#/components/schemas/LocalLlmChatThread' } } }
+    delete:
+      tags: [LocalLLM]
+      operationId: localLlmDeleteThread
+      responses: { '204': { description: Deleted. } }
+  /api/v1/extensions/nexus.local-llm/chat/threads/{thread_id}/messages:
+    parameters: [{ $ref: '#/components/parameters/ThreadId' }]
+    get:
+      tags: [LocalLLM]
+      operationId: localLlmListMessages
+      parameters:
+        - { in: query, name: after_ordinal, schema: { type: integer, minimum: 0 } }
+        - { in: query, name: limit, schema: { type: integer, default: 100, minimum: 1 } }
+      responses:
+        '200':
+          description: Messages.
+          content: { application/json: { schema: { $ref: '#/components/schemas/LocalLlmListMessagesResponse' } } }
+    post:
+      tags: [LocalLLM]
+      operationId: localLlmAppendMessage
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/LocalLlmAppendMessageRequest' } } }
+      responses:
+        '201':
+          description: Created.
+          content: { application/json: { schema: { $ref: '#/components/schemas/LocalLlmChatMessage' } } }
+  /api/v1/extensions/nexus.local-llm/chat/threads/{thread_id}/generation_settings:
+    parameters: [{ $ref: '#/components/parameters/ThreadId' }]
+    get:
+      tags: [LocalLLM]
+      operationId: localLlmGetGenerationSettings
+      responses:
+        '200':
+          description: Settings.
+          content: { application/json: { schema: { $ref: '#/components/schemas/LocalLlmGenerationParams' } } }
+    put:
+      tags: [LocalLLM]
+      operationId: localLlmSetGenerationSettings
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/LocalLlmGenerationParams' } } }
+      responses:
+        '200':
+          description: Settings echoed.
+          content: { application/json: { schema: { $ref: '#/components/schemas/LocalLlmGenerationParams' } } }
+  /api/v1/extensions/nexus.local-llm/chat/threads/{thread_id}/active_model:
+    parameters: [{ $ref: '#/components/parameters/ThreadId' }]
+    get:
+      tags: [LocalLLM]
+      operationId: localLlmGetActiveModel
+      responses:
+        '200':
+          description: Active binding (`null` if none).
+          content: { application/json: { schema: { oneOf: [ { $ref: '#/components/schemas/LocalLlmActiveModelBinding' }, { type: 'null' } ] } } }
+    put:
+      tags: [LocalLLM]
+      operationId: localLlmSetActiveModel
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/LocalLlmSetActiveModelBody' } } }
+      responses:
+        '202':
+          description: Async load started.
+          content: { application/json: { schema: { $ref: '#/components/schemas/LocalLlmActiveModelStatus' } } }
+    delete:
+      tags: [LocalLLM]
+      operationId: localLlmUnloadActiveModel
+      responses: { '204': { description: Unloaded. } }
+  /api/v1/extensions/nexus.local-llm/chat/threads/{thread_id}/active_model/status:
+    parameters: [{ $ref: '#/components/parameters/ThreadId' }]
+    get:
+      tags: [LocalLLM]
+      operationId: localLlmGetActiveModelStatus
+      responses:
+        '200':
+          description: Load status.
+          content: { application/json: { schema: { $ref: '#/components/schemas/LocalLlmActiveModelStatus' } } }
+
+  # ─── Builtin: nexus.audio.emotiontts ──────────────────────────────────────
+  /api/v1/extensions/nexus.audio.emotiontts/runtime/health:
+    get:    { tags: [EmotionTTS], operationId: emotionttsRuntimeHealth, responses: { '200': { description: Health. } } }
+  /api/v1/extensions/nexus.audio.emotiontts/runtime/handshake:
+    get:    { tags: [EmotionTTS], operationId: emotionttsRuntimeHandshake, responses: { '200': { description: Handshake metadata. } } }
+  /api/v1/extensions/nexus.audio.emotiontts/runtime/start:
+    post:   { tags: [EmotionTTS], operationId: emotionttsRuntimeStart, responses: { '202': { description: Spawning. } } }
+  /api/v1/extensions/nexus.audio.emotiontts/runtime/stop:
+    post:   { tags: [EmotionTTS], operationId: emotionttsRuntimeStop, responses: { '200': { description: Stopped. Includes cancelled run ids. } } }
+  /api/v1/extensions/nexus.audio.emotiontts/runtime/restart:
+    post:   { tags: [EmotionTTS], operationId: emotionttsRuntimeRestart, responses: { '202': { description: Restarting. } } }
+
+  /api/v1/extensions/nexus.audio.emotiontts/workflow/:
+    get:
+      tags: [EmotionTTS]
+      operationId: emotionttsGetWorkflow
+      parameters: [{ in: query, name: deploymentId, required: true, schema: { type: string } }]
+      responses: { '200': { description: Workflow doc. } }
+    put:
+      tags: [EmotionTTS]
+      operationId: emotionttsPutWorkflow
+      requestBody: { $ref: '#/components/requestBodies/JsonAny' }
+      responses: { '200': { description: Persisted. } }
+  /api/v1/extensions/nexus.audio.emotiontts/workflow/default:
+    get: { tags: [EmotionTTS], operationId: emotionttsGetDefaultWorkflow, responses: { '200': { description: Vanilla template. } } }
+  /api/v1/extensions/nexus.audio.emotiontts/workflow/catalog:
+    get: { tags: [EmotionTTS], operationId: emotionttsGetWorkflowCatalog, responses: { '200': { description: Catalog. } } }
+
+  /api/v1/extensions/nexus.audio.emotiontts/exports/{export_id}/download:
+    parameters: [{ in: path, name: export_id, required: true, schema: { type: string } }]
+    get:
+      tags: [EmotionTTS]
+      operationId: emotionttsDownloadExport
+      responses:
+        '200':
+          description: ZIP bundle.
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        '503': { $ref: '#/components/responses/Error' }
+
+  /api/v1/extensions/nexus.audio.emotiontts/families:
+    get: { tags: [EmotionTTS], operationId: emotionttsListFamilies, responses: { '200': { description: Families with reconciliation status. } } }
+  /api/v1/extensions/nexus.audio.emotiontts/families/{family_id}:
+    parameters: [{ in: path, name: family_id, required: true, schema: { type: string } }]
+    get: { tags: [EmotionTTS], operationId: emotionttsGetFamily, responses: { '200': { description: Family detail. } } }
+  /api/v1/extensions/nexus.audio.emotiontts/families/{family_id}/install-hint:
+    parameters: [{ in: path, name: family_id, required: true, schema: { type: string } }]
+    get: { tags: [EmotionTTS], operationId: emotionttsGetFamilyInstallHint, responses: { '200': { description: Install hint. } } }
+
+  /api/v1/extensions/nexus.audio.emotiontts/mappings/:
+    get:
+      tags: [EmotionTTS]
+      operationId: emotionttsListMappings
+      parameters: [{ in: query, name: deploymentId, required: true, schema: { type: string } }]
+      responses:
+        '200':
+          description: Mappings.
+          content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsMappingsList' } } }
+    post:
+      tags: [EmotionTTS]
+      operationId: emotionttsCreateMapping
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsCreateMappingBody' } } }
+      responses:
+        '201':
+          description: Created.
+          content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsCharacterMappingRow' } } }
+  /api/v1/extensions/nexus.audio.emotiontts/mappings/import:
+    post:
+      tags: [EmotionTTS]
+      operationId: emotionttsImportMappings
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsImportMappingsBody' } } }
+      responses: { '200': { description: Import result with created/skipped/replaced ids. } }
+  /api/v1/extensions/nexus.audio.emotiontts/mappings/export:
+    get:
+      tags: [EmotionTTS]
+      operationId: emotionttsExportMappings
+      parameters: [{ in: query, name: deploymentId, required: true, schema: { type: string } }]
+      responses: { '200': { description: Versioned export bundle. } }
+  /api/v1/extensions/nexus.audio.emotiontts/mappings/{mapping_id}:
+    parameters: [{ in: path, name: mapping_id, required: true, schema: { type: string } }]
+    get:    { tags: [EmotionTTS], operationId: emotionttsGetMapping, responses: { '200': { description: Mapping., content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsCharacterMappingRow' } } } } } }
+    patch:
+      tags: [EmotionTTS]
+      operationId: emotionttsPatchMapping
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsPatchMappingBody' } } }
+      responses: { '200': { description: Updated., content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsCharacterMappingRow' } } } } }
+    delete: { tags: [EmotionTTS], operationId: emotionttsDeleteMapping, responses: { '204': { description: Soft-deleted. } } }
+  /api/v1/extensions/nexus.audio.emotiontts/mappings/{mapping_id}/duplicate:
+    parameters: [{ in: path, name: mapping_id, required: true, schema: { type: string } }]
+    post:
+      tags: [EmotionTTS]
+      operationId: emotionttsDuplicateMapping
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsDuplicateMappingBody' } } }
+      responses: { '201': { description: Cloned., content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsCharacterMappingRow' } } } } }
+
+  /api/v1/extensions/nexus.audio.emotiontts/presets/:
+    get:
+      tags: [EmotionTTS]
+      operationId: emotionttsListPresets
+      parameters: [{ in: query, name: deploymentId, required: true, schema: { type: string } }]
+      responses: { '200': { description: Presets. } }
+    post:
+      tags: [EmotionTTS]
+      operationId: emotionttsCreatePreset
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsCreatePresetBody' } } }
+      responses: { '201': { description: Created., content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsVectorPresetRow' } } } } }
+  /api/v1/extensions/nexus.audio.emotiontts/presets/{preset_id}:
+    parameters: [{ in: path, name: preset_id, required: true, schema: { type: string } }]
+    get:    { tags: [EmotionTTS], operationId: emotionttsGetPreset, responses: { '200': { description: Preset. } } }
+    patch:
+      tags: [EmotionTTS]
+      operationId: emotionttsPatchPreset
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsPatchPresetBody' } } }
+      responses: { '200': { description: Updated. } }
+    delete: { tags: [EmotionTTS], operationId: emotionttsDeletePreset, responses: { '204': { description: Deleted. } } }
+
+  /api/v1/extensions/nexus.audio.emotiontts/voice-assets/:
+    get:
+      tags: [EmotionTTS]
+      operationId: emotionttsListVoiceAssets
+      parameters: [{ in: query, name: deploymentId, required: true, schema: { type: string } }]
+      responses: { '200': { description: Voice assets. } }
+    post:
+      tags: [EmotionTTS]
+      operationId: emotionttsUploadVoiceAsset
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [deploymentId, displayName, kind, audio]
+              properties:
+                deploymentId: { type: string }
+                displayName: { type: string }
+                kind: { type: string, enum: [speaker, emotion, mixed] }
+                referenceText: { type: string }
+                audio: { type: string, format: binary }
+      responses:
+        '201':
+          description: Uploaded; preprocessing fires asynchronously.
+          content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsVoiceAssetRow' } } }
+  /api/v1/extensions/nexus.audio.emotiontts/voice-assets/{voice_asset_id}:
+    parameters: [{ in: path, name: voice_asset_id, required: true, schema: { type: string } }]
+    get:    { tags: [EmotionTTS], operationId: emotionttsGetVoiceAsset, responses: { '200': { description: Voice asset. } } }
+    delete: { tags: [EmotionTTS], operationId: emotionttsDeleteVoiceAsset, responses: { '204': { description: Soft-deleted. } } }
+  /api/v1/extensions/nexus.audio.emotiontts/voice-assets/{voice_asset_id}/preprocess:
+    parameters: [{ in: path, name: voice_asset_id, required: true, schema: { type: string } }]
+    post:
+      tags: [EmotionTTS]
+      operationId: emotionttsPreprocessVoiceAsset
+      responses:
+        '200': { description: Already up-to-date. }
+        '202': { description: Reprocessed. }
+  /api/v1/extensions/nexus.audio.emotiontts/voice-assets/probe:
+    post:
+      tags: [EmotionTTS]
+      operationId: emotionttsProbeAudio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [artifactRef]
+              properties:
+                artifactRef: { type: string }
+      responses:
+        '200':
+          description: Probe result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  durationMs: { type: integer }
+                  sampleRate: { type: integer }
+                  channels: { type: integer }
+                  warnings:
+                    type: array
+                    items: { type: string, enum: [too_short, too_long, long, very_long] }
+
+  /api/v1/extensions/nexus.audio.emotiontts/deployments/{deployment_id}/engine-settings:
+    parameters: [{ $ref: '#/components/parameters/EmotionTtsDeploymentId' }]
+    get: { tags: [EmotionTTS], operationId: emotionttsGetEngineSettings, responses: { '200': { description: Engine settings. } } }
+    patch:
+      tags: [EmotionTTS]
+      operationId: emotionttsPatchEngineSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                referencePreprocessEnabled: { type: boolean }
+                oasEnabled: { type: boolean }
+                compileGptEnabled: { type: boolean }
+                modelFamily: { type: string }
+      responses: { '200': { description: Updated. } }
+  /api/v1/extensions/nexus.audio.emotiontts/deployments/{deployment_id}/oas-threshold:
+    parameters: [{ $ref: '#/components/parameters/EmotionTtsDeploymentId' }]
+    patch:
+      tags: [EmotionTTS]
+      operationId: emotionttsPatchOasThreshold
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [samplesSeen]
+              properties:
+                thresholdLearned: { type: [number, 'null'], minimum: 0, maximum: 1 }
+                samplesSeen: { type: integer, minimum: 0 }
+      responses: { '204': { description: Set. } }
+
+  /api/v1/extensions/nexus.audio.emotiontts/deployments/{deployment_id}/runs:
+    parameters: [{ $ref: '#/components/parameters/EmotionTtsDeploymentId' }]
+    get:
+      tags: [EmotionTTS]
+      operationId: emotionttsListRuns
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: status, schema: { type: string } }
+      responses: { '200': { description: Runs list. } }
+    post:
+      tags: [EmotionTTS]
+      operationId: emotionttsCreateRun
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsCreateRunBody' } } }
+      responses:
+        '202':
+          description: Queued.
+          content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsCreateRunResponse' } } }
+  /api/v1/extensions/nexus.audio.emotiontts/deployments/{deployment_id}/runs/{run_id}:
+    parameters:
+      - { $ref: '#/components/parameters/EmotionTtsDeploymentId' }
+      - { in: path, name: run_id, required: true, schema: { type: string } }
+    get: { tags: [EmotionTTS], operationId: emotionttsGetRun, responses: { '200': { description: Run detail with utterances. } } }
+  /api/v1/extensions/nexus.audio.emotiontts/deployments/{deployment_id}/runs/{run_id}/cancel:
+    parameters:
+      - { $ref: '#/components/parameters/EmotionTtsDeploymentId' }
+      - { in: path, name: run_id, required: true, schema: { type: string } }
+    post:
+      tags: [EmotionTTS]
+      operationId: emotionttsCancelRun
+      responses:
+        '202':
+          description: Cancelling or cancelled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [cancelling, cancelled] }
+  /api/v1/extensions/nexus.audio.emotiontts/deployments/{deployment_id}/runs/{run_id}/resume:
+    parameters:
+      - { $ref: '#/components/parameters/EmotionTtsDeploymentId' }
+      - { in: path, name: run_id, required: true, schema: { type: string } }
+    post: { tags: [EmotionTTS], operationId: emotionttsResumeRun, responses: { '202': { description: New run id. } } }
+  /api/v1/extensions/nexus.audio.emotiontts/deployments/{deployment_id}/runs/{run_id}/progress:
+    parameters:
+      - { $ref: '#/components/parameters/EmotionTtsDeploymentId' }
+      - { in: path, name: run_id, required: true, schema: { type: string } }
+    get:
+      tags: [EmotionTTS, Streams]
+      operationId: emotionttsRunProgress
+      summary: SSE — segment_started / segment_completed / segment_failed / run_terminal.
+      responses:
+        '200':
+          description: SSE stream of `EmotionTtsSseEvent` frames.
+          content:
+            text/event-stream:
+              schema: { $ref: '#/components/schemas/EmotionTtsSseEvent' }
+  /api/v1/extensions/nexus.audio.emotiontts/deployments/{deployment_id}/runs/test-line:
+    parameters: [{ $ref: '#/components/parameters/EmotionTtsDeploymentId' }]
+    post:
+      tags: [EmotionTTS]
+      operationId: emotionttsTestLineRun
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsTestLineBody' } } }
+      responses:
+        '202':
+          description: Queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runId: { type: string }
+                  etaSeconds: { type: number }
+  /api/v1/extensions/nexus.audio.emotiontts/runs/{run_id}/diagnostics:
+    parameters: [{ in: path, name: run_id, required: true, schema: { type: string } }]
+    get: { tags: [EmotionTTS], operationId: emotionttsRunDiagnostics, responses: { '200': { description: Alignment diagnostics (placeholder). } } }
+
+  /api/v1/extensions/nexus.audio.emotiontts/deployments/:
+    get:  { tags: [EmotionTTS], operationId: emotionttsListDeployments, responses: { '200': { description: Deployments. } } }
+    post:
+      tags: [EmotionTTS]
+      operationId: emotionttsCreateDeployment
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsCreateDeploymentBody' } } }
+      responses: { '201': { description: Created., content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsDeploymentRow' } } } } }
+  /api/v1/extensions/nexus.audio.emotiontts/deployments/{deployment_id}:
+    parameters: [{ $ref: '#/components/parameters/EmotionTtsDeploymentId' }]
+    get:
+      tags: [EmotionTTS]
+      operationId: emotionttsGetDeployment
+      responses: { '200': { description: Deployment., content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsDeploymentRow' } } } } }
+    patch:
+      tags: [EmotionTTS]
+      operationId: emotionttsPatchDeployment
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsPatchDeploymentBody' } } }
+      responses: { '200': { description: Updated. } }
+    delete: { tags: [EmotionTTS], operationId: emotionttsDeleteDeployment, responses: { '204': { description: Deleted. } } }
+  /api/v1/extensions/nexus.audio.emotiontts/deployments/{deployment_id}/default-voice:
+    parameters: [{ $ref: '#/components/parameters/EmotionTtsDeploymentId' }]
+    patch:
+      tags: [EmotionTTS]
+      operationId: emotionttsSetDefaultVoice
+      summary: Set or clear the deployment's quick-mode default voice (Spec 035, 2026-04-28).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [voiceAssetId]
+              properties:
+                voiceAssetId:
+                  type: [string, 'null']
+                  description: Voice asset id to use as default, or `null` to clear.
+      responses: { '204': { description: Set or cleared. } }
+  /api/v1/extensions/nexus.audio.emotiontts/deployments/{deployment_id}/resume:
+    parameters: [{ $ref: '#/components/parameters/EmotionTtsDeploymentId' }]
+    post:
+      tags: [EmotionTTS]
+      operationId: emotionttsProbeResume
+      responses:
+        '200':
+          description: Resumability probe.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deploymentId: { type: string }
+                  mostRecentRunId: { type: [string, 'null'] }
+                  resumable: { type: boolean }
+
+# ─── Components ─────────────────────────────────────────────────────────────
+components:
+
+  parameters:
+    ExtensionId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+      description: Extension id (e.g. `nexus.local-llm`).
+    GenericExtensionId:
+      in: path
+      name: ext_id
+      required: true
+      schema: { type: string }
+    InstallId:
+      in: path
+      name: install_id
+      required: true
+      schema: { type: string }
+    BackendId:
+      in: path
+      name: backend_id
+      required: true
+      schema: { type: string }
+    ThreadId:
+      in: path
+      name: thread_id
+      required: true
+      schema: { type: string }
+    EmotionTtsDeploymentId:
+      in: path
+      name: deployment_id
+      required: true
+      schema: { type: string }
+
+  requestBodies:
+    JsonAny:
+      required: true
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
+
+  responses:
+    JsonOk:
+      description: Standard envelope-wrapped JSON success.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiResponse' }
+    HealthOk:
+      description: Health.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status: { type: string, example: ok }
+              uptime_secs: { type: integer }
+              extensions_loaded: { type: integer }
+              workers_active: { type: integer }
+    Error:
+      description: Envelope-wrapped error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiResponse' }
+
+  schemas:
+
+    # ─── Envelope ─────────────────────────────────────────────────────────
+    ApiResponse:
+      type: object
+      properties:
+        data:
+          description: Success payload, or `null` on error.
+          oneOf:
+            - { type: 'null' }
+            - { type: object, additionalProperties: true }
+            - { type: array, items: { type: object, additionalProperties: true } }
+        meta:
+          type: object
+          properties:
+            timestamp: { type: string, format: date-time }
+        error:
+          oneOf:
+            - { type: 'null' }
+            - $ref: '#/components/schemas/ApiError'
+
+    ApiError:
+      type: object
+      required: [code, category, message]
+      properties:
+        code: { type: string, description: 'Machine-readable error code.' }
+        category:
+          type: string
+          enum: [validation, unauthorized, not_found, conflict, internal]
+        message: { type: string }
+        details:
+          description: Optional structured payload.
+          oneOf:
+            - { type: 'null' }
+            - { type: object, additionalProperties: true }
+
+    # ─── local-llm ────────────────────────────────────────────────────────
+    LocalLlmChatThread:
+      type: object
+      required: [thread_id, extension_id, title_resolved, is_unbound, created_at, updated_at]
+      properties:
+        thread_id: { type: string }
+        extension_id: { type: string, examples: ['nexus.local-llm'] }
+        deployment_id: { type: [string, 'null'] }
+        install_id: { type: [string, 'null'] }
+        title: { type: [string, 'null'] }
+        title_auto: { type: [string, 'null'] }
+        title_resolved: { type: string }
+        system_prompt: { type: [string, 'null'] }
+        sampler_override: { $ref: '#/components/schemas/LocalLlmSamplerOverride' }
+        is_unbound: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    LocalLlmSamplerOverride:
+      type: [object, 'null']
+      additionalProperties: true
+
+    LocalLlmSamplerBlock:
+      type: [object, 'null']
+      additionalProperties: true
+
+    LocalLlmCreateThreadRequest:
+      type: object
+      properties:
+        deployment_id: { type: [string, 'null'] }
+        install_id: { type: [string, 'null'] }
+        title: { type: [string, 'null'] }
+        system_prompt: { type: [string, 'null'] }
+        sampler_override: { $ref: '#/components/schemas/LocalLlmSamplerOverride' }
+
+    LocalLlmPatchThreadRequest:
+      type: object
+      properties:
+        title: { type: [string, 'null'] }
+        sampler_override: { $ref: '#/components/schemas/LocalLlmSamplerOverride' }
+        clear_sampler_override: { type: boolean, default: false }
+        attach_to_current_deployment: { type: boolean, default: false }
+
+    LocalLlmListThreadsResponse:
+      type: object
+      required: [threads, has_more]
+      properties:
+        threads: { type: array, items: { $ref: '#/components/schemas/LocalLlmChatThread' } }
+        has_more: { type: boolean }
+        next_before_updated_at: { type: [string, 'null'], format: date-time }
+
+    LocalLlmChatMessage:
+      type: object
+      required: [message_id, thread_id, ordinal, role, content, is_partial, created_at]
+      properties:
+        message_id: { type: string }
+        thread_id: { type: string }
+        ordinal: { type: integer, minimum: 0 }
+        role: { type: string, enum: [user, assistant, system] }
+        content: { type: string }
+        sampler_effective: { $ref: '#/components/schemas/LocalLlmSamplerBlock' }
+        is_partial: { type: boolean }
+        retry_of_message_id: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+
+    LocalLlmAppendMessageRequest:
+      type: object
+      required: [role, content]
+      properties:
+        role: { type: string, enum: [user, assistant, system] }
+        content: { type: string }
+        sampler_effective: { $ref: '#/components/schemas/LocalLlmSamplerBlock' }
+        is_partial: { type: boolean, default: false }
+        retry_of_message_id: { type: [string, 'null'] }
+
+    LocalLlmListMessagesResponse:
+      type: object
+      required: [messages, has_more]
+      properties:
+        messages: { type: array, items: { $ref: '#/components/schemas/LocalLlmChatMessage' } }
+        has_more: { type: boolean }
+        next_after_ordinal: { type: [integer, 'null'] }
+
+    LocalLlmGenerationParams:
+      type: object
+      properties:
+        temperature: { type: number, default: 0.8 }
+        top_p: { type: number, default: 0.95 }
+        top_k: { type: integer, default: 40 }
+        max_tokens: { type: integer, default: 4096 }
+        repeat_penalty: { type: number, default: 1.1 }
+        system_prompt: { type: string, default: 'You are a helpful assistant.' }
+
+    LocalLlmActiveModelBinding:
+      type: object
+      required: [family_id, variant_id, artifact_id, absolute_path, label]
+      properties:
+        family_id: { type: string }
+        variant_id: { type: string }
+        artifact_id: { type: string }
+        absolute_path: { type: string }
+        label: { type: string }
+
+    LocalLlmRuntimeTuning:
+      type: object
+      properties:
+        n_gpu_layers: { type: integer }
+        threads: { type: integer }
+        flash_attn: { type: boolean }
+        ctx_size: { type: integer }
+        cache_type_k: { type: string, enum: [fp16, q8_0, q4_0] }
+        cache_type_v: { type: string, enum: [fp16, q8_0, q4_0] }
+
+    LocalLlmSetActiveModelBody:
+      type: object
+      required: [family_id, variant_id]
+      properties:
+        family_id: { type: string }
+        variant_id: { type: string }
+        runtime: { $ref: '#/components/schemas/LocalLlmRuntimeTuning' }
+
+    LocalLlmActiveModelStatus:
+      type: object
+      properties:
+        state:
+          oneOf:
+            - type: object
+              required: [kind, family_id, variant_id, label]
+              properties:
+                kind: { const: Loading }
+                family_id: { type: string }
+                variant_id: { type: string }
+                label: { type: string }
+            - type: object
+              required: [kind, binding]
+              properties:
+                kind: { const: Ready }
+                binding: { $ref: '#/components/schemas/LocalLlmActiveModelBinding' }
+                lease_id: { type: [string, 'null'] }
+                port: { type: integer }
+            - type: object
+              required: [kind, family_id, variant_id, reason]
+              properties:
+                kind: { const: Failed }
+                family_id: { type: string }
+                variant_id: { type: string }
+                reason: { type: string }
+
+    # ─── emotion-tts (camelCase wire format) ──────────────────────────────
+    EmotionTtsCharacterMappingRow:
+      type: object
+      properties:
+        mappingId: { type: string }
+        deploymentId: { type: string }
+        characterName: { type: string }
+        speakerVoiceAssetId: { type: string }
+        defaultEmotionMode: { type: string, enum: [none, audio_ref, vector_preset, qwen_template] }
+        defaultEmotionVoiceAssetId: { type: [string, 'null'] }
+        defaultVectorPresetId: { type: [string, 'null'] }
+        defaultQwenTemplate: { type: [string, 'null'] }
+        defaultSpeedFactor: { type: number, minimum: 0.5, maximum: 2.0 }
+        isActive: { type: boolean }
+        notes: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    EmotionTtsMappingsList:
+      type: object
+      properties:
+        mappings: { type: array, items: { $ref: '#/components/schemas/EmotionTtsCharacterMappingRow' } }
+
+    EmotionTtsCreateMappingBody:
+      type: object
+      required: [deploymentId, characterName, speakerVoiceAssetId]
+      properties:
+        deploymentId: { type: string }
+        characterName: { type: string }
+        speakerVoiceAssetId: { type: string }
+        defaultEmotionMode: { type: string, enum: [none, audio_ref, vector_preset, qwen_template], default: none }
+        defaultEmotionVoiceAssetId: { type: [string, 'null'] }
+        defaultVectorPresetId: { type: [string, 'null'] }
+        defaultQwenTemplate: { type: [string, 'null'] }
+        defaultSpeedFactor: { type: number, minimum: 0.5, maximum: 2.0 }
+        notes: { type: [string, 'null'] }
+
+    EmotionTtsPatchMappingBody:
+      type: object
+      properties:
+        characterName: { type: string }
+        speakerVoiceAssetId: { type: string }
+        defaultEmotionMode: { type: string, enum: [none, audio_ref, vector_preset, qwen_template] }
+        defaultEmotionVoiceAssetId: { type: [string, 'null'] }
+        defaultVectorPresetId: { type: [string, 'null'] }
+        defaultQwenTemplate: { type: [string, 'null'] }
+        defaultSpeedFactor: { type: number, minimum: 0.5, maximum: 2.0 }
+        notes: { type: [string, 'null'] }
+
+    EmotionTtsDuplicateMappingBody:
+      type: object
+      required: [targetDeploymentId]
+      properties:
+        targetDeploymentId: { type: string }
+        overrideCharacterName: { type: [string, 'null'] }
+
+    EmotionTtsImportMappingsBody:
+      type: object
+      required: [targetDeploymentId, mappings, conflictStrategy]
+      properties:
+        targetDeploymentId: { type: string }
+        mappings: { type: array, items: { type: object, additionalProperties: true } }
+        conflictStrategy: { type: string, enum: [error, skip, replace] }
+
+    EmotionTtsVectorPresetRow:
+      type: object
+      properties:
+        presetId: { type: string }
+        deploymentId: { type: string }
+        presetName: { type: string }
+        vector:
+          type: array
+          items: { type: number, minimum: 0, maximum: 1 }
+          minItems: 8
+          maxItems: 8
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    EmotionTtsCreatePresetBody:
+      type: object
+      required: [deploymentId, presetName, vector]
+      properties:
+        deploymentId: { type: string }
+        presetName: { type: string, maxLength: 120 }
+        vector:
+          type: array
+          items: { type: number, minimum: 0, maximum: 1 }
+          minItems: 8
+          maxItems: 8
+
+    EmotionTtsPatchPresetBody:
+      type: object
+      properties:
+        presetName: { type: string, maxLength: 120 }
+        vector:
+          type: array
+          items: { type: number, minimum: 0, maximum: 1 }
+          minItems: 8
+          maxItems: 8
+
+    EmotionTtsVoiceAssetRow:
+      type: object
+      properties:
+        voiceAssetId: { type: string }
+        deploymentId: { type: string }
+        displayName: { type: string }
+        kind: { type: string, enum: [speaker, emotion, mixed] }
+        audioArtifactRef: { type: string }
+        contentSha256: { type: string }
+        referenceText: { type: [string, 'null'] }
+        sampleRate: { type: [integer, 'null'] }
+        durationMs: { type: [integer, 'null'] }
+        sourceType: { type: string }
+        notes: { type: [string, 'null'] }
+        isActive: { type: boolean }
+        preprocessedArtifactRef: { type: [string, 'null'] }
+        preprocessingReport:
+          type: [object, 'null']
+          additionalProperties: true
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    EmotionTtsDeploymentRow:
+      type: object
+      properties:
+        deploymentId: { type: string }
+        hostExtensionInstanceRef: { type: string }
+        displayName: { type: string }
+        backendRuntimePreference: { type: string }
+        defaultOutputFormat: { type: string, enum: [wav, mp3, flac] }
+        defaultSpeedFactor: { type: number, minimum: 0.5, maximum: 2.0 }
+        defaultGenerationOverridesJson: { type: [object, 'null'], additionalProperties: true }
+        mostRecentRunId: { type: [string, 'null'] }
+        partialRunId: { type: [string, 'null'] }
+        referencePreprocessEnabled: { type: boolean }
+        oasEnabled: { type: boolean }
+        compileGptEnabled: { type: boolean }
+        modelFamily:
+          type: [string, 'null']
+          description: Active model family for this deployment. Falls back to the extension's `DEFAULT_MODEL_FAMILY` constant when null.
+        oasThresholdLearned: { type: [number, 'null'] }
+        oasSamplesSeen: { type: integer, minimum: 0 }
+        defaultVoiceAssetId:
+          type: [string, 'null']
+          description: Quick-mode default voice (Spec 035, 2026-04-28). `null` if unset.
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    EmotionTtsCreateDeploymentBody:
+      type: object
+      required: [displayName, hostExtensionInstanceRef, backendRuntimePreference]
+      properties:
+        displayName: { type: string }
+        hostExtensionInstanceRef: { type: string }
+        backendRuntimePreference: { type: string }
+        defaultOutputFormat: { type: string, enum: [wav, mp3, flac], default: mp3 }
+        defaultSpeedFactor: { type: number, minimum: 0.5, maximum: 2.0, default: 1.0 }
+        modelFamily: { type: string }
+
+    EmotionTtsPatchDeploymentBody:
+      type: object
+      properties:
+        displayName: { type: string }
+        backendRuntimePreference: { type: string }
+        defaultOutputFormat: { type: string, enum: [wav, mp3, flac] }
+        defaultSpeedFactor: { type: number, minimum: 0.5, maximum: 2.0 }
+        defaultGenerationOverrides:
+          type: [object, 'null']
+          additionalProperties: true
+
+    EmotionTtsCreateRunBody:
+      type: object
+      required: [script]
+      properties:
+        script: { type: string }
+        parserMode: { type: string, enum: [dialogue, raw_text, advanced_tagged], default: dialogue }
+        outputFormat: { type: string, enum: [wav, mp3, flac] }
+        speedFactor: { type: number, minimum: 0.5, maximum: 2.0, default: 1.0 }
+        speedMode: { type: string, default: preserve_pitch }
+        seedStrategy: { type: string, enum: [increment_per_line, fixed, custom], default: increment_per_line }
+        baseSeed: { type: integer, default: 42 }
+        cachePolicy: { type: string, enum: [use_cache, force_regenerate, read_only_cache], default: use_cache }
+        globalEmotion:
+          type: [object, 'null']
+          additionalProperties: true
+        generation:
+          type: [object, 'null']
+          additionalProperties: true
+
+    EmotionTtsCreateRunResponse:
+      type: object
+      properties:
+        runId: { type: string }
+        queuePosition: { type: integer, minimum: 0 }
+        preflight:
+          type: object
+          properties:
+            unresolvedCharacters: { type: array, items: { type: string } }
+            predictedFilenames: { type: array, items: { type: string } }
+            parserWarnings: { type: array, items: { type: object, additionalProperties: true } }
+
+    EmotionTtsTestLineBody:
+      type: object
+      required: [line]
+      properties:
+        line: { type: string }
+        outputFormat: { type: string, enum: [wav, mp3, flac] }
+        globalEmotion:
+          type: [object, 'null']
+          additionalProperties: true
+        generation:
+          type: [object, 'null']
+          additionalProperties: true
+
+    EmotionTtsSseEvent:
+      description: Frame on `/runs/{run_id}/progress` SSE stream.
+      oneOf:
+        - type: object
+          required: [type, run_id, utterance_id, global_index]
+          properties:
+            type: { const: segment_started }
+            run_id: { type: string }
+            utterance_id: { type: string }
+            global_index: { type: integer }
+        - type: object
+          required: [type, run_id, utterance_id, global_index, duration_ms]
+          properties:
+            type: { const: segment_completed }
+            run_id: { type: string }
+            utterance_id: { type: string }
+            global_index: { type: integer }
+            duration_ms: { type: integer }
+        - type: object
+          required: [type, run_id, utterance_id, global_index, failure_category]
+          properties:
+            type: { const: segment_failed }
+            run_id: { type: string }
+            utterance_id: { type: string }
+            global_index: { type: integer }
+            failure_category: { type: string }
+            failure_detail: { type: [string, 'null'] }
+        - type: object
+          required: [type, run_id, status]
+          properties:
+            type: { const: run_terminal }
+            run_id: { type: string }
+            status: { type: string, enum: [completed, failed, cancelled, partial] }
