@@ -40,11 +40,23 @@ The spec was reviewed against each checklist item and updated where needed:
 - **No NEEDS CLARIFICATION markers** — all decisions either had a reasonable industry-standard default (declarative chain, pitch-preserving speed, -16 LUFS target, 32-op chain cap) or were captured in Assumptions.
 - **Measurability** — all 8 SCs are quantitative or have a deterministic verification path (boundary test, contract test, cross-correlation tolerance).
 
-### Open items deferred to `/speckit.plan`
+### Open items previously deferred — now in scope
 
-- Concrete data model for `edit_chain_json` column (JSON schema; ULID-keyed operations vs ordered list).
-- Worker implementation strategy for sample-accurate trim across compressed sources (decode-edit-re-encode vs container-level cut).
-- Frontend waveform library selection (peaks.js vs custom canvas vs reuse of existing Spectral-Graphite primitive).
-- Whether the `edit_log` table is needed at v1 or deferred to a future "audit trail" spec.
+The four items originally listed for the plan stage have been promoted into testable user-facing requirements:
 
-These are implementation details that belong in the plan, not the spec.
+1. **Edit chain data model** → FR-005, FR-005a, FR-005b, FR-006, FR-006a + Key Entities (Edit operation, Edit chain, Chain digest). Identity, ordering, determinism, and digest semantics are all specified without prescribing wire format details (those stay in the plan).
+2. **Worker sample-accurate trim** → FR-026, FR-027, FR-028 + SC-009. Verified by a known-duration sine-tone test across mp3/wav/opus inputs. Implementation choice (decode-edit-re-encode) is captured in Assumptions; the spec only requires the testable outcome.
+3. **Waveform library selection** → FR-033 through FR-038 + SC-011. The contract is the UX behavior (drag accuracy, keyboard nudge granularities, real-time numeric feedback, edit-region overlays, playback awareness). FR-038 explicitly defers library choice to the plan.
+4. **Audit log table** → US5 (P3) + FR-029, FR-030, FR-031, FR-032 + SC-010 + Key Entities (Audit entry). Decision: in v1 scope. The `ext_emotion_tts__audio_edit_log` table is created as a single additive migration, captures actor identity as `system` until auth lands, and persists independently of chain state.
+
+The decisions are documented in the Assumptions section so the plan stage doesn't have to re-derive them.
+
+### Genuinely deferred to `/speckit.plan`
+
+- Per-operation JSON wire schema (field names, validation tags, version envelope).
+- ffmpeg invocation strategy per operation (CLI args, filter graph composition).
+- Frontend waveform library decision (peaks.js vs custom canvas vs Spectral-Graphite extension).
+- Migration sequencing (single migration adding both `edit_chain_json` columns and the audit log table, vs separate migrations).
+- Concurrency strategy when multiple browser tabs edit the same asset (last-write-wins is in-spec; the implementation may need a generation counter for the "stale" indicator).
+
+These are pure implementation details with no user-visible behavior to specify.
