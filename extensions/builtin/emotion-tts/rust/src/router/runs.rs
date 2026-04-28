@@ -32,6 +32,7 @@ pub struct RunsState {
     pub repos: Repos,
     pub queue: SharedQueue,
     pub extension_version: String,
+    pub run_channels: std::sync::Arc<crate::dispatcher::RunChannelRegistry>,
 }
 
 #[must_use]
