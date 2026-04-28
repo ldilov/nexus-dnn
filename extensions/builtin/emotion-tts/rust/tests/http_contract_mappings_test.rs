@@ -254,10 +254,14 @@ async fn duplicate_into_other_deployment_works() {
 
     let dup_body = json!({ "targetDeploymentId": dep_dst.as_str() });
     let resp = router
+        .clone()
         .oneshot(
             Request::builder()
                 .method(Method::POST)
-                .uri(format!("/mappings/{mapping_id}/duplicate"))
+                .uri(format!(
+                    "/mappings/{mapping_id}/duplicate?deploymentId={}",
+                    dep_src.as_str()
+                ))
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(&dup_body).unwrap()))
                 .unwrap(),
@@ -269,6 +273,27 @@ async fn duplicate_into_other_deployment_works() {
     assert_eq!(body["deploymentId"].as_str().unwrap(), dep_dst.as_str());
     assert_eq!(body["characterName"].as_str().unwrap(), "Bob");
     assert_ne!(body["mappingId"].as_str().unwrap(), mapping_id);
+
+    // Cross-deployment regression: caller claims dep_dst as the source
+    // deployment but the mapping actually belongs to dep_src. Must 404
+    // (not 403) and must not produce a duplicated row in dep_dst beyond
+    // the legitimate one above.
+    let resp_bleed = router
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(format!(
+                    "/mappings/{mapping_id}/duplicate?deploymentId={}",
+                    dep_dst.as_str()
+                ))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&dup_body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (bleed_status, _) = parse_body(resp_bleed).await;
+    assert_eq!(bleed_status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

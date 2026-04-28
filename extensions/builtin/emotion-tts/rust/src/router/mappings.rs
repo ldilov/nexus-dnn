@@ -315,9 +315,10 @@ async fn delete_mapping(
 async fn duplicate(
     State(state): State<Arc<MappingsState>>,
     Path(id): Path<String>,
+    Query(query): Query<ScopedQuery>,
     Json(body): Json<DuplicateBody>,
 ) -> Response {
-    match duplicate_impl(&state, &id, body).await {
+    match duplicate_impl(&state, &id, &query.deployment_id, body).await {
         Ok(row) => (StatusCode::CREATED, Json(mapping_json(&row))).into_response(),
         Err(err) => err.into_response(),
     }
@@ -334,15 +335,14 @@ struct DuplicateBody {
 async fn duplicate_impl(
     state: &MappingsState,
     id: &str,
+    source_deployment_id: &str,
     body: DuplicateBody,
 ) -> Result<CharacterMappingRow> {
     let mid = MappingId::try_from(id)?;
-    let src = state
-        .repos
-        .mappings
-        .get(&mid)
-        .await?
-        .ok_or_else(|| EmotionTtsError::not_found(format!("mapping {mid}")))?;
+    // Source mapping must belong to the caller's claimed deployment.
+    // Returns 404 on mismatch — same shape as a real not-found so
+    // cross-deployment scans cannot probe existence (audit FR-isolation-2).
+    let src = assert_belongs_to_deployment(state, &mid, source_deployment_id).await?;
 
     let target_dep = DeploymentId::try_from(body.target_deployment_id.as_str())?;
     let name = body
