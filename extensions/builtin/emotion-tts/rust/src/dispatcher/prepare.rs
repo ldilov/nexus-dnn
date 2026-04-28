@@ -78,6 +78,15 @@ pub(crate) async fn prepare(
     // artifact reference.
     let global_emotion =
         parse_global_emotion(run.global_emotion_snapshot_json.as_deref(), cfg);
+    // Diagnostic for the "emotion not applied" bug — prints what the
+    // parser saw and what it produced. Remove once the global emotion
+    // path is verified end-to-end on a real host.
+    tracing::info!(
+        target: "emotion_tts::dispatch",
+        snapshot_json = %run.global_emotion_snapshot_json.as_deref().unwrap_or("<null>"),
+        parsed_mode = %global_emotion.mode().as_str(),
+        "parse_global_emotion result"
+    );
 
     let parser_mode = match run.parser_mode.as_str() {
         "raw_text" => ParserMode::RawText,
