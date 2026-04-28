@@ -5,6 +5,7 @@
 //! and mapping domain errors into the JSON envelope.
 
 use std::convert::Infallible;
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::{Path, Query, State};
@@ -32,7 +33,7 @@ pub struct RunsState {
     pub repos: Repos,
     pub queue: SharedQueue,
     pub extension_version: String,
-    pub run_channels: std::sync::Arc<crate::dispatcher::RunChannelRegistry>,
+    pub run_channels: Arc<crate::dispatcher::RunChannelRegistry>,
 }
 
 #[must_use]
