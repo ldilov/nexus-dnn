@@ -14,6 +14,7 @@ import { DeploymentHeader } from "./components/deployment_header";
 import { EmotionPanel } from "./components/emotion_panel";
 import { GenerationSettingsPanel } from "./components/generation_settings_panel";
 import { HistoryPanel } from "./components/history_panel";
+import { QuickVoicePicker } from "./components/quick_voice_picker";
 import { RunPanel } from "./components/run_panel";
 import { ScriptEditor } from "./components/script_editor";
 import { RecipeUi } from "./recipe.ui";
@@ -39,17 +40,19 @@ export function RecipeView(): JSX.Element {
   });
   const [generation, setGeneration] = useState<Record<string, unknown>>({});
   const [cachePolicy, setCachePolicy] = useState<CachePolicy>("use_cache");
+  const [quickMode, setQuickMode] = useState(deployment.defaultVoiceAssetId != null);
 
   const createPayload: CreateRunRequest = useMemo(
     () => ({
       script,
+      parserMode: quickMode ? "raw_text" : "dialogue",
       outputFormat,
       speedFactor,
       globalEmotion,
       generation,
       cachePolicy,
     }),
-    [script, outputFormat, speedFactor, globalEmotion, generation, cachePolicy],
+    [script, quickMode, outputFormat, speedFactor, globalEmotion, generation, cachePolicy],
   );
 
   const mappingsByLower = useMemo(() => {
@@ -67,13 +70,31 @@ export function RecipeView(): JSX.Element {
       unmappableFields={workflow.unmappableFields}
       header={<DeploymentHeader deployment={deployment} />}
       scriptEditor={
-        <ScriptEditor
-          value={script}
-          onChange={setScript}
-          outputFormat={outputFormat}
-          mappings={mappingsByLower}
-          deploymentId={deployment.deploymentId}
-        />
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={quickMode}
+                onChange={(e) => setQuickMode(e.target.checked)}
+              />
+              Quick mode (no character mapping required)
+            </label>
+            {quickMode && (
+              <QuickVoicePicker
+                deploymentId={deployment.deploymentId}
+                initialVoiceAssetId={deployment.defaultVoiceAssetId ?? null}
+              />
+            )}
+          </div>
+          <ScriptEditor
+            value={script}
+            onChange={setScript}
+            outputFormat={outputFormat}
+            mappings={mappingsByLower}
+            deploymentId={deployment.deploymentId}
+          />
+        </div>
       }
       emotionPanel={
         <EmotionPanel

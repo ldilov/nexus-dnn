@@ -87,4 +87,15 @@ impl ExportHistoryRepo for SqliteExportHistoryRepo {
             .map_err(to_err)?;
         row.as_ref().map(map_row).transpose()
     }
+
+    async fn get_latest_for_run(&self, run: &RunId) -> RepoResult<Option<ExportHistoryRow>> {
+        let row = sqlx::query(
+            "SELECT * FROM ext_emotion_tts__export_history WHERE run_id = ? ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(run.as_str())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(to_err)?;
+        row.as_ref().map(map_row).transpose()
+    }
 }

@@ -118,6 +118,11 @@ pub struct GlobalEmotion {
     pub audio_ref_id: Option<String>,
     pub vector: Option<[f64; 8]>,
     pub qwen_template: Option<String>,
+    /// `None` is treated as the implicit default (`1.0`) by `resolve_global`
+    /// — the resolver applies `inline_alpha.or(g.alpha).unwrap_or(1.0)` so
+    /// every downstream `EmotionPayload` carries a concrete `f64`. Callers
+    /// that serialize `GlobalEmotion` directly should be aware that `None`
+    /// here does NOT mean "alpha = 0".
     pub alpha: Option<f64>,
 }
 

@@ -4,6 +4,7 @@ pub mod backend_runtimes;
 pub mod backends;
 pub mod deployments;
 pub mod errors;
+pub mod extension_dependencies;
 pub mod extension_ui;
 pub mod extensions;
 pub mod extensions_install;

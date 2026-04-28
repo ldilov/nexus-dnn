@@ -47,13 +47,16 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
         </section>
       </div>
       <div className={css.rightColumn}>
-        <section className={css.panel} aria-label="Emotion panel">
-          <h2 className={css.panelTitle}>Emotion</h2>
-          {props.emotionPanel}
-        </section>
+        {/* Run sits at the top so the primary "Generate" CTA is always
+            above the fold; Emotion + history are configuration / observability
+            and live below the action button. */}
         <section className={css.panel} aria-label="Run">
           <h2 className={css.panelTitle}>Run</h2>
           {props.runPanel}
+        </section>
+        <section className={css.panel} aria-label="Emotion panel">
+          <h2 className={css.panelTitle}>Emotion</h2>
+          {props.emotionPanel}
         </section>
         <section className={css.panel} aria-label="Recent runs">
           <h2 className={css.panelTitle}>Recent runs</h2>

@@ -16,6 +16,8 @@ tracing = { workspace = true }
 nexus-protocol = { path = "../nexus-protocol" }
 nexus-events = { path = "../nexus-events" }
 nexus-extension = { path = "../nexus-extension" }
+nexus-extension-deps = { path = "../nexus-extension-deps" }
+dashmap = "6"
 nexus-workflow = { path = "../nexus-workflow" }
 nexus-worker = { path = "../nexus-worker" }
 nexus-run = { path = "../nexus-run" }
@@ -41,6 +43,11 @@ tempfile = "3"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
 ulid = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+toml = "0.8"
+
+[[bin]]
+name = "api-doc-check"
+path = "src/bin/api_doc_check.rs"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
@@ -53,6 +60,8 @@ tracing-test = { version = "0.2", features = ["no-env-filter"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 async-trait = "0.1"
 nexus-local-llm-chat-history = { path = "../../extensions/builtin/local-llm/rust" }
+flate2 = "1"
+tar = "0.4"
 
 [[bench]]
 name = "dispatcher_overhead"

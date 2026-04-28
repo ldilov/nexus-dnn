@@ -124,7 +124,7 @@ export function EmotionPanel({ value, onChange, deploymentId }: Props): JSX.Elem
     setPresets((prev) => prev.filter((p) => p.presetId !== presetId));
     if (selectedPresetId === presetId) setSelectedPresetId("");
     try {
-      await deletePreset(presetId);
+      await deletePreset(deploymentId, presetId);
     } catch (err: unknown) {
       if (mounted.current) {
         setPresets(snapshot);

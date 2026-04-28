@@ -24,8 +24,8 @@ pub fn router(repos: Repos) -> Router {
         .route("/", get(list).post(create))
         .route("/import", post(import))
         .route("/export", get(export))
-        .route("/:mapping_id", get(fetch).patch(patch_mapping).delete(delete_mapping))
-        .route("/:mapping_id/duplicate", post(duplicate))
+        .route("/{mapping_id}", get(fetch).patch(patch_mapping).delete(delete_mapping))
+        .route("/{mapping_id}/duplicate", post(duplicate))
         .with_state(Arc::new(MappingsState { repos }))
 }
 
@@ -33,6 +33,30 @@ pub fn router(repos: Repos) -> Router {
 #[serde(rename_all = "camelCase")]
 struct ListQuery {
     deployment_id: String,
+}
+
+use crate::router::guard::{self, ScopedQuery};
+
+/// Shared-id row fetch with cross-deployment isolation. Returns the row
+/// only when its `deployment_id` matches the caller's claim; on mismatch
+/// returns the same `NotFound` error a real lookup miss would produce.
+async fn assert_belongs_to_deployment(
+    state: &MappingsState,
+    id: &MappingId,
+    claimed_deployment_id: &str,
+) -> Result<CharacterMappingRow> {
+    let row = state
+        .repos
+        .mappings
+        .get(id)
+        .await?
+        .ok_or_else(|| EmotionTtsError::not_found(format!("mapping {id}")))?;
+    guard::assert_deployment_match(
+        row.deployment_id.as_str(),
+        claimed_deployment_id,
+        || format!("mapping {id}"),
+    )?;
+    Ok(row)
 }
 
 async fn list(
@@ -147,21 +171,21 @@ async fn create_impl(state: &MappingsState, body: CreateMappingBody) -> Result<C
 async fn fetch(
     State(state): State<Arc<MappingsState>>,
     Path(id): Path<String>,
+    Query(query): Query<ScopedQuery>,
 ) -> Response {
-    match fetch_impl(&state, &id).await {
+    match fetch_impl(&state, &id, &query.deployment_id).await {
         Ok(row) => (StatusCode::OK, Json(mapping_json(&row))).into_response(),
         Err(err) => err.into_response(),
     }
 }
 
-async fn fetch_impl(state: &MappingsState, id: &str) -> Result<CharacterMappingRow> {
+async fn fetch_impl(
+    state: &MappingsState,
+    id: &str,
+    claimed_deployment_id: &str,
+) -> Result<CharacterMappingRow> {
     let id = MappingId::try_from(id)?;
-    state
-        .repos
-        .mappings
-        .get(&id)
-        .await?
-        .ok_or_else(|| EmotionTtsError::not_found(format!("mapping {id}")))
+    assert_belongs_to_deployment(state, &id, claimed_deployment_id).await
 }
 
 #[derive(Debug, Deserialize)]
@@ -180,9 +204,10 @@ struct PatchMappingBody {
 async fn patch_mapping(
     State(state): State<Arc<MappingsState>>,
     Path(id): Path<String>,
+    Query(query): Query<ScopedQuery>,
     Json(body): Json<PatchMappingBody>,
 ) -> Response {
-    match patch_impl(&state, &id, body).await {
+    match patch_impl(&state, &id, &query.deployment_id, body).await {
         Ok(row) => (StatusCode::OK, Json(mapping_json(&row))).into_response(),
         Err(err) => err.into_response(),
     }
@@ -191,15 +216,11 @@ async fn patch_mapping(
 async fn patch_impl(
     state: &MappingsState,
     id: &str,
+    claimed_deployment_id: &str,
     body: PatchMappingBody,
 ) -> Result<CharacterMappingRow> {
     let mid = MappingId::try_from(id)?;
-    let mut row = state
-        .repos
-        .mappings
-        .get(&mid)
-        .await?
-        .ok_or_else(|| EmotionTtsError::not_found(format!("mapping {mid}")))?;
+    let mut row = assert_belongs_to_deployment(state, &mid, claimed_deployment_id).await?;
 
     if let Some(name) = body.character_name {
         let trimmed = name.trim().to_string();
@@ -270,11 +291,15 @@ async fn patch_impl(
 async fn delete_mapping(
     State(state): State<Arc<MappingsState>>,
     Path(id): Path<String>,
+    Query(query): Query<ScopedQuery>,
 ) -> Response {
     let id = match MappingId::try_from(id.as_str()) {
         Ok(v) => v,
         Err(err) => return EmotionTtsError::from(err).into_response(),
     };
+    if let Err(err) = assert_belongs_to_deployment(&state, &id, &query.deployment_id).await {
+        return err.into_response();
+    }
     match state.repos.mappings.deactivate(&id).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => err.into_response(),
@@ -284,9 +309,10 @@ async fn delete_mapping(
 async fn duplicate(
     State(state): State<Arc<MappingsState>>,
     Path(id): Path<String>,
+    Query(query): Query<ScopedQuery>,
     Json(body): Json<DuplicateBody>,
 ) -> Response {
-    match duplicate_impl(&state, &id, body).await {
+    match duplicate_impl(&state, &id, &query.deployment_id, body).await {
         Ok(row) => (StatusCode::CREATED, Json(mapping_json(&row))).into_response(),
         Err(err) => err.into_response(),
     }
@@ -303,15 +329,14 @@ struct DuplicateBody {
 async fn duplicate_impl(
     state: &MappingsState,
     id: &str,
+    source_deployment_id: &str,
     body: DuplicateBody,
 ) -> Result<CharacterMappingRow> {
     let mid = MappingId::try_from(id)?;
-    let src = state
-        .repos
-        .mappings
-        .get(&mid)
-        .await?
-        .ok_or_else(|| EmotionTtsError::not_found(format!("mapping {mid}")))?;
+    // Source mapping must belong to the caller's claimed deployment.
+    // Returns 404 on mismatch — same shape as a real not-found so
+    // cross-deployment scans cannot probe existence (audit FR-isolation-2).
+    let src = assert_belongs_to_deployment(state, &mid, source_deployment_id).await?;
 
     let target_dep = DeploymentId::try_from(body.target_deployment_id.as_str())?;
     let name = body

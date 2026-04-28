@@ -8,14 +8,26 @@
 
 pub mod backend_client;
 pub mod cache_evictor;
+pub mod dispatcher;
 pub mod domain;
 pub mod families;
+pub mod host_adapter;
 pub mod host_contract;
 pub mod operators;
 pub mod queue;
+pub mod register;
 pub mod router;
 pub mod storage;
 pub mod workflow_binding;
+
+pub use register::{EmotionTtsProviderResources, EmotionTtsRouterProvider, EXTENSION_ID};
+
+/// Subdirectory used under `std::env::temp_dir()` when no `host_data_dir`
+/// has been wired into the dispatcher (test embeds, the `register()`
+/// entrypoint that predates host data-dir plumbing). Real host-managed
+/// runs land under `<host_data_dir>/extensions/<EXTENSION_ID>/runs/` —
+/// see `EmotionTtsRouterProvider::build_router_inner_async`.
+pub const FALLBACK_RUNS_DIR: &str = "nexus-emotion-tts-runs";
 
 use std::sync::Arc;
 
@@ -55,6 +67,8 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration { version: 10, name: "deployments_partial_run_id", sql: include_str!("../../storage/migrations/010_deployments_partial_run_id.sql") },
     Migration { version: 11, name: "deployment_engine_settings", sql: include_str!("../../storage/migrations/011_deployment_engine_settings.sql") },
     Migration { version: 12, name: "voice_assets_preprocess",    sql: include_str!("../../storage/migrations/012_voice_assets_preprocess.sql") },
+    Migration { version: 13, name: "deployment_default_voice",   sql: include_str!("../../storage/migrations/013_deployment_default_voice.sql") },
+    Migration { version: 14, name: "fk_cascade",                 sql: include_str!("../../storage/migrations/014_fk_cascade.sql") },
 ];
 
 pub const EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -68,7 +82,43 @@ pub async fn register(
     let repos = crate::storage::build_repos(pool).await?;
     let queue = Arc::new(RuntimeQueue::new());
     let provider = lease_factory.map(|f| Arc::new(crate::backend_client::LeaseProvider::new(f)));
-    let router = router::build_router(repos, queue, EXTENSION_VERSION, provider, artifact_store);
+    let run_channels = Arc::new(crate::dispatcher::RunChannelRegistry::new());
+    // The dispatcher only runs when a LeaseProvider is wired in. Without
+    // a lease there is no worker to talk to, so any enqueued run would
+    // sit in the queue forever. Callers passing `lease_factory: None`
+    // must accept that runs cannot complete — the SSE handler will
+    // observe the 5-minute "no channel registered" timeout and emit a
+    // synthetic run_terminal/failed.
+    if let Some(p) = provider.clone() {
+        // Discard the JoinHandle — dropping it does not abort the task per
+        // tokio::spawn semantics; the dispatcher runs for the process lifetime.
+        // This entry point predates `host_data_dir` plumbing — fall back to
+        // `temp_dir()` so existing callers (tests, embedders without a data
+        // dir wired in) keep working. Real host-managed runs go through
+        // `EmotionTtsRouterProvider::build_router_inner_async`, which uses
+        // the host data dir when available.
+        let output_root_base = std::env::temp_dir().join(crate::FALLBACK_RUNS_DIR);
+        drop(crate::dispatcher::spawn_dispatcher(
+            queue.clone(),
+            repos.clone(),
+            p.clone(),
+            run_channels.clone(),
+            artifact_store.clone(),
+            EXTENSION_VERSION,
+            output_root_base,
+        ));
+        drop(crate::dispatcher::spawn_idle_watcher(p));
+    }
+    let router = router::build_router_with_families(
+        repos,
+        queue,
+        EXTENSION_VERSION,
+        provider,
+        artifact_store,
+        run_channels,
+        Arc::new(crate::families::FamilyRegistry::new(Vec::new())),
+        crate::router::families::default_reconciler(),
+    );
     Ok(ExtensionHandle {
         migrations: MIGRATIONS,
         router,

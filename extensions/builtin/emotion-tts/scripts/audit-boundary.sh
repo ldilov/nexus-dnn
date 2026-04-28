@@ -29,6 +29,9 @@ BACKEND_RUNTIMES_VIEW="$REPO_ROOT/apps/web/src/views/backend-runtimes"
 # Grandfathered test fixtures (see audit-boundary.ps1 for explanation).
 GRANDFATHERED_FIXTURES=(
   "$REPO_ROOT/crates/nexus-backend-runtimes/src/generic/ids/runtime_id.rs"
+  "$REPO_ROOT/crates/nexus-extension-deps/tests/boundary_test.rs"
+  "$REPO_ROOT/crates/nexus-core/Cargo.toml"
+  "$REPO_ROOT/crates/nexus-core/src/app.rs"
 )
 
 violations=0

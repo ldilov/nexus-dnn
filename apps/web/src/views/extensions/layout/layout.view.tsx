@@ -7,9 +7,16 @@ import {
 
 export interface ExtensionLayoutViewProps {
   layoutId: string;
+  /**
+   * Optional deployment context. When set, the bundle's root custom
+   * element receives `deployment-id="<id>"` so it can route to its
+   * per-deployment views (e.g. `/<id>/recipe`) instead of falling
+   * back to its index landing page.
+   */
+  deploymentId?: string;
 }
 
-export function ExtensionLayoutView({ layoutId }: ExtensionLayoutViewProps) {
+export function ExtensionLayoutView({ layoutId, deploymentId }: ExtensionLayoutViewProps) {
   const [state, setState] = useState<LayoutViewState>({ status: "loading" });
 
   const load = useCallback(() => {
@@ -26,5 +33,6 @@ export function ExtensionLayoutView({ layoutId }: ExtensionLayoutViewProps) {
     load();
   }, [load]);
 
-  return <ExtensionLayoutUI state={state} onRetry={load} />;
+  const rootAttrs = deploymentId ? { "deployment-id": deploymentId } : undefined;
+  return <ExtensionLayoutUI state={state} onRetry={load} rootAttrs={rootAttrs} />;
 }

@@ -13,6 +13,8 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 nexus-protocol = { path = "../nexus-protocol" }
+nexus-extension-deps = { path = "../nexus-extension-deps" }
+serde_yaml = "0.9"
 sqlparser = { version = "0.55", features = ["visitor"] }
 sha2 = "0.10"
 regex-lite = "0.1"
