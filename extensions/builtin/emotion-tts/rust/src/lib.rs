@@ -60,6 +60,7 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration { version: 10, name: "deployments_partial_run_id", sql: include_str!("../../storage/migrations/010_deployments_partial_run_id.sql") },
     Migration { version: 11, name: "deployment_engine_settings", sql: include_str!("../../storage/migrations/011_deployment_engine_settings.sql") },
     Migration { version: 12, name: "voice_assets_preprocess",    sql: include_str!("../../storage/migrations/012_voice_assets_preprocess.sql") },
+    Migration { version: 13, name: "deployment_default_voice",   sql: include_str!("../../storage/migrations/013_deployment_default_voice.sql") },
 ];
 
 pub const EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION");

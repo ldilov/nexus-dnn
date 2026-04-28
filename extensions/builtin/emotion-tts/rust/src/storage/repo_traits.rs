@@ -32,6 +32,8 @@ pub struct DeploymentRow {
     pub oas_threshold_learned: Option<f64>,
     #[serde(default)]
     pub oas_samples_seen: i64,
+    #[serde(default)]
+    pub default_voice_asset_id: Option<VoiceAssetId>,
     pub created_at: i64,
     pub updated_at: i64,
 }

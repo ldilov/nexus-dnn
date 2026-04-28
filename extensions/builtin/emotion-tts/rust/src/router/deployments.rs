@@ -129,6 +129,7 @@ async fn create_impl(
         model_family,
         oas_threshold_learned: None,
         oas_samples_seen: 0,
+        default_voice_asset_id: None,
         created_at: now,
         updated_at: now,
     };
@@ -216,6 +217,7 @@ async fn get_impl(state: &DeploymentsState, id: &str) -> Result<DeploymentRow> {
         model_family: default_family_id,
         oas_threshold_learned: None,
         oas_samples_seen: 0,
+        default_voice_asset_id: None,
         created_at: now,
         updated_at: now,
     };

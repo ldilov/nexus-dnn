@@ -165,6 +165,7 @@ async fn dispatcher_emits_segment_events_and_runs_to_completion() {
             model_family: "indextts-2".into(),
             oas_threshold_learned: None,
             oas_samples_seen: 0,
+            default_voice_asset_id: None,
             created_at: now,
             updated_at: now,
         })
@@ -441,6 +442,7 @@ async fn dispatcher_writes_export_history_on_completed_run() {
             model_family: "indextts-2".into(),
             oas_threshold_learned: None,
             oas_samples_seen: 0,
+            default_voice_asset_id: None,
             created_at: now,
             updated_at: now,
         })
@@ -698,6 +700,7 @@ async fn dispatcher_serves_cache_hits_without_calling_worker() {
             model_family: "indextts-2".into(),
             oas_threshold_learned: None,
             oas_samples_seen: 0,
+            default_voice_asset_id: None,
             created_at: now,
             updated_at: now,
         })
@@ -962,6 +965,7 @@ async fn resume_run_reuses_cache_from_original() {
             model_family: "indextts-2".into(),
             oas_threshold_learned: None,
             oas_samples_seen: 0,
+            default_voice_asset_id: None,
             created_at: now,
             updated_at: now,
         })
@@ -1250,6 +1254,7 @@ async fn test_line_skips_cache_and_export() {
             model_family: "indextts-2".into(),
             oas_threshold_learned: None,
             oas_samples_seen: 0,
+            default_voice_asset_id: None,
             created_at: now,
             updated_at: now,
         })
