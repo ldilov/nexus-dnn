@@ -12,7 +12,9 @@ anyhow = "1"
 clap = { version = "4", features = ["derive", "env"] }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
 tracing-log = "0.2"
+console-subscriber = { version = "0.4", optional = true }
 tokio = { workspace = true }
 nexus-protocol = { path = "../nexus-protocol" }
 nexus-events = { path = "../nexus-events" }
@@ -40,6 +42,13 @@ semver = { workspace = true }
 chrono = { workspace = true }
 axum = "0.8"
 dirs = "6"
+
+[features]
+# Enables `--debug-async` to install `console-subscriber`, exposing every
+# tokio task to `tokio-console`. Also requires building with
+# `RUSTFLAGS="--cfg tokio_unstable"`. Off by default to keep the standard
+# build clean of unstable tokio internals.
+console = ["dep:console-subscriber"]
 
 [dev-dependencies]
 tokio = { workspace = true }
