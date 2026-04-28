@@ -45,6 +45,14 @@ impl SynthesisCacheRepo for SqliteSynthesisCacheRepo {
         row.as_ref().map(map_row).transpose()
     }
 
+    async fn lookup_many(&self, hashes: &[ContentHash]) -> RepoResult<Vec<Option<SynthesisCacheRow>>> {
+        let mut out = Vec::with_capacity(hashes.len());
+        for h in hashes {
+            out.push(self.get(h).await?);
+        }
+        Ok(out)
+    }
+
     async fn insert(&self, row: &SynthesisCacheRow) -> RepoResult<()> {
         sqlx::query(
             "INSERT INTO ext_emotion_tts__synthesis_cache \
