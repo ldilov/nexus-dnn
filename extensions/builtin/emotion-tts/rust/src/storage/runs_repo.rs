@@ -150,15 +150,16 @@ impl RunsRepo for SqliteRunsRepo {
         Ok(result.rows_affected() > 0)
     }
 
-    async fn set_started(&self, id: &RunId, at: i64) -> RepoResult<()> {
-        sqlx::query(
-            "UPDATE ext_emotion_tts__runs SET status = 'running', started_at = ? WHERE run_id = ?",
+    async fn set_started_guarded(&self, id: &RunId, at: i64) -> RepoResult<bool> {
+        let result = sqlx::query(
+            "UPDATE ext_emotion_tts__runs SET status = 'running', started_at = ? \
+             WHERE run_id = ? AND status = 'queued'",
         )
         .bind(at)
         .bind(id.as_str())
         .execute(&self.pool)
         .await
         .map_err(to_err)?;
-        Ok(())
+        Ok(result.rows_affected() > 0)
     }
 }
