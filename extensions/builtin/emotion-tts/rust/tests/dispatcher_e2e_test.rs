@@ -1211,6 +1211,271 @@ async fn resume_run_reuses_cache_from_original() {
 }
 
 // ---------------------------------------------------------------------------
+// Test: raw_text run uses deployment default voice when no character mapping
+// exists
+// ---------------------------------------------------------------------------
+//
+// Seeds a deployment with `default_voice_asset_id` set to a real voice, but
+// does NOT insert any CharacterMappingRow. Enqueues a run with
+// parser_mode="raw_text" and script="Hello.\nWorld." — the raw_text parser
+// attributes both lines to "Narrator" (no character tag). With no mapping for
+// "Narrator" the prepare() path must fall back to the deployment's
+// `default_voice_asset_id` (G3 fallback) rather than returning a Conflict
+// error.
+//
+// Validates G3 + G1 together. Pins the Quick voice mode contract:
+// adding a default voice unblocks plain-text synthesis without any
+// per-character setup.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn raw_text_run_uses_deployment_default_voice() {
+    let pool = fresh_pool().await;
+    let repos = Repos::from_pool(pool);
+
+    let dep = DeploymentId::try_from("dep_test_quick").unwrap();
+    let now = Utc::now().timestamp();
+
+    // Voice asset — the default voice the deployment will fall back to.
+    // Use "f".repeat(64) — distinct sha256 from all other tests.
+    let voice_sha256 = "f".repeat(64);
+    let voice_id = VoiceAssetId::new();
+    let voice_wav = std::env::temp_dir()
+        .join(format!("voice-quick-{}.wav", voice_id.as_str()));
+    std::fs::write(&voice_wav, b"RIFF\0\0\0\0WAVEfmt ").unwrap();
+    let voice_wav_str = voice_wav.to_string_lossy().into_owned();
+
+    repos
+        .voice_assets
+        .insert(&VoiceAssetRow {
+            voice_asset_id: voice_id.clone(),
+            deployment_id: dep.clone(),
+            display_name: "Default".into(),
+            kind: "speaker".into(),
+            audio_artifact_ref: voice_wav_str,
+            content_sha256: voice_sha256,
+            reference_text: None,
+            sample_rate: Some(24000),
+            duration_ms: Some(5000),
+            source_type: "upload".into(),
+            notes: None,
+            is_active: true,
+            preprocessed_artifact_ref: None,
+            preprocessing_report_json: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    // Deployment WITH default_voice_asset_id set — the key difference from
+    // all other tests which use None here.
+    repos
+        .deployments
+        .insert(&DeploymentRow {
+            deployment_id: dep.clone(),
+            host_extension_instance_ref: "host:test".into(),
+            display_name: "Quick Mode Test Deployment".into(),
+            backend_runtime_preference: None,
+            default_output_format: "wav".into(),
+            default_speed_factor: 1.0,
+            default_generation_overrides_json: "{}".into(),
+            most_recent_run_id: None,
+            partial_run_id: None,
+            reference_preprocess_enabled: true,
+            oas_enabled: false,
+            compile_gpt_enabled: false,
+            model_family: "indextts-2".into(),
+            oas_threshold_learned: None,
+            oas_samples_seen: 0,
+            default_voice_asset_id: Some(voice_id.clone()),
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    // NO character mappings — this is the whole point of the test.
+
+    // Run with parser_mode="raw_text" and a two-line script. The raw_text
+    // parser attributes both lines to "Narrator"; without a mapping and
+    // without a default_voice_asset_id this would error. With the default
+    // set, prepare() should succeed and produce two UtterancePlan entries.
+    let run_id = RunId::new();
+    repos
+        .runs
+        .insert(&RunRow {
+            run_id: run_id.clone(),
+            deployment_id: dep.clone(),
+            kind: "batch".into(),
+            status: "queued".into(),
+            script_snapshot: "Hello.\nWorld.".into(),
+            parser_mode: "raw_text".into(),
+            generation_settings_json: "{}".into(),
+            global_emotion_snapshot_json: None,
+            output_format: "wav".into(),
+            speed_factor: 1.0,
+            speed_mode: "preserve_pitch".into(),
+            cache_policy: "force_regenerate".into(),
+            seed_strategy: "fixed".into(),
+            base_seed: 42,
+            original_run_id: None,
+            runtime_install_id: None,
+            runtime_version: None,
+            model_version: None,
+            extension_version: "0.0.0-test".into(),
+            queued_at: now,
+            started_at: None,
+            finished_at: None,
+            error_category: None,
+            error_detail: None,
+        })
+        .await
+        .unwrap();
+
+    // The two-line script produces 2 utterances. We write a WAV stub for the
+    // output of each segment so any downstream read succeeds.
+    let wav_dir = std::env::temp_dir().join("nexus-emotion-tts-test-quick");
+    std::fs::create_dir_all(&wav_dir).unwrap();
+
+    let (lease, notif_tx) = ChannelLease::new(move |method, _params| {
+        if method != "synthesize.batch" {
+            return Err(LeaseError::Rpc {
+                code: -32601,
+                message: format!("method not found: {method}"),
+            });
+        }
+        Ok(json!({"request_id": "x", "status": "ok", "segments": []}))
+    });
+
+    // Notification pusher: poll until both utterance rows exist, then push
+    // segment_started + segment_completed for each one in sequence.
+    let notif_tx_clone = notif_tx.clone();
+    let run_id_notif = run_id.as_str().to_string();
+    let repos_for_notifier = repos.clone();
+    let run_id_for_notifier = run_id.clone();
+    let wav_dir_for_notifier = wav_dir.clone();
+    tokio::spawn(async move {
+        // Poll until both utterance rows appear (prepare() inserts them before
+        // starting the worker RPC).
+        let segment_ids = loop {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            let rows = repos_for_notifier
+                .utterances
+                .list_by_run(&run_id_for_notifier)
+                .await
+                .unwrap_or_default();
+            if rows.len() >= 2 {
+                break rows
+                    .into_iter()
+                    .map(|r| r.utterance_id.as_str().to_string())
+                    .collect::<Vec<_>>();
+            }
+        };
+
+        for segment_id in segment_ids {
+            // Write a stub WAV to the expected output path so downstream
+            // reads succeed if anything tries to open the file.
+            let stub_path = wav_dir_for_notifier.join(format!("{}.wav", &segment_id));
+            let _ = std::fs::write(&stub_path, b"RIFF\0\0\0\0WAVEfmt ");
+            let output_path = stub_path.to_string_lossy().into_owned();
+
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            let _ = notif_tx_clone.send(NotificationEnvelope {
+                method: "segment_started".into(),
+                params: json!({
+                    "segmentId": segment_id,
+                    "runId": run_id_notif,
+                }),
+            });
+
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            let _ = notif_tx_clone.send(NotificationEnvelope {
+                method: "segment_completed".into(),
+                params: json!({
+                    "segmentId": segment_id,
+                    "runId": run_id_notif,
+                    "durationMs": 500,
+                    "outputPathAbs": output_path,
+                }),
+            });
+        }
+    });
+
+    let queue = Arc::new(RuntimeQueue::new());
+    let registry = Arc::new(RunChannelRegistry::new());
+    let provider = Arc::new(LeaseProvider::new(Arc::new(StaticLeaseFactory(
+        lease as SharedLease,
+    ))));
+
+    let _handle = spawn_dispatcher(
+        queue.clone(),
+        repos.clone(),
+        provider,
+        registry.clone(),
+        None,
+        "0.0.0-test",
+    );
+
+    queue
+        .enqueue(run_id.clone(), dep.as_str(), RunClass::Batch)
+        .await;
+
+    // Poll until the dispatcher registers the per-run channel.
+    let mut rx = None;
+    for _ in 0..100 {
+        if let Some(r) = registry.subscribe(run_id.as_str()).await {
+            rx = Some(r);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let mut rx = rx.expect("dispatcher should register run channel within 2s");
+
+    // Drain events until RunTerminal arrives (or 15s timeout for 2 segments).
+    tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            match rx.recv().await {
+                Ok(ev) => {
+                    if matches!(ev, RunEvent::RunTerminal { .. }) {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    })
+    .await
+    .expect("dispatcher should reach RunTerminal within 15s");
+
+    // Assert 1: utterance rows exist — prepare() ran and produced segments
+    // without erroring on "no mapping for Narrator".
+    let utts = repos
+        .utterances
+        .list_by_run(&run_id)
+        .await
+        .expect("utterance query must not fail");
+    assert!(
+        !utts.is_empty(),
+        "prepare() should have produced utterance rows for raw_text script with default voice"
+    );
+
+    // Assert 2: run did not fail with an unmapped-character error. The
+    // G3 fallback must have delivered the default voice for every utterance.
+    let final_row = repos
+        .runs
+        .get(&run_id)
+        .await
+        .unwrap()
+        .expect("run row must exist");
+    assert_ne!(
+        final_row.status, "failed",
+        "run should not fail on unmapped characters when default voice is set; got status {:?}",
+        final_row.status
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Test: test_line run does NOT write cache rows and does NOT write export ZIP
 // ---------------------------------------------------------------------------
 //
