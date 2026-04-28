@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { ExtensionApiError } from "../../../services/http";
-import { cancelRun, createRun, getRun, subscribeRunProgress } from "../../../services/runs_client";
+import { cancelRun, createRun, getRun, resumeRun, subscribeRunProgress } from "../../../services/runs_client";
 import type { CreateRunRequest, ProgressEvent, Run } from "../../../services/types";
 import * as css from "../recipe.css";
 
@@ -188,9 +188,34 @@ export function RunPanel(props: Props): JSX.Element {
         </a>
       )}
 
-      {isPartial && (
-        <div className={css.warningBanner}>
-          Partial run — click Generate again to resume (cache-hit completed segments).
+      {isPartial && run && (
+        <div className={css.warningBanner} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ flex: 1 }}>Partial run — some segments failed or were cancelled.</span>
+          <button
+            type="button"
+            className={css.secondaryButton}
+            onClick={async () => {
+              try {
+                const resumed = await resumeRun(props.deploymentId, run.runId);
+                setRunId(resumed.runId);
+                setSegments(new Map());
+                setRun(null);
+                setPhase("running");
+                unsubscribeRef.current?.();
+                unsubscribeRef.current = subscribeRunProgress(
+                  props.deploymentId,
+                  resumed.runId,
+                  (event) => handleEvent(event, setSegments, setPhase, setRun, props.deploymentId, resumed.runId),
+                  () => setPhase("error"),
+                );
+              } catch (err) {
+                setError(extractMessage(err));
+                setPhase("error");
+              }
+            }}
+          >
+            Resume run
+          </button>
         </div>
       )}
 
