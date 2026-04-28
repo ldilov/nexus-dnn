@@ -1,7 +1,6 @@
 //! Single-run handler — pulled out so it can be tested independently
 //! and so the outer loop can panic-isolate each iteration.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -30,30 +29,7 @@ pub(crate) async fn process_one(
     let run_id_str = run_id.as_str().to_string();
     let (tx, _guard) = registry.register(run_id_str.clone()).await;
 
-    let result = dispatch_inner(
-        &qrun,
-        &repos,
-        &lease_provider,
-        &tx,
-        // Voice files in this build are stored at absolute paths in the
-        // voice_assets row's `audio_artifact_ref` column. The repository
-        // already returns them ready-to-use, so the resolver is identity.
-        Arc::new({
-            let repos = repos.clone();
-            move |voice_asset_id: &str| -> Option<String> {
-                let repos = repos.clone();
-                let id = voice_asset_id.to_string();
-                tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(async move {
-                        let parsed = crate::domain::VoiceAssetId::try_from(id.as_str()).ok()?;
-                        let row = repos.voice_assets.get(&parsed).await.ok().flatten()?;
-                        Some(row.audio_artifact_ref)
-                    })
-                })
-            }
-        }),
-    )
-    .await;
+    let result = dispatch_inner(&qrun, &repos, &lease_provider, &tx).await;
 
     let terminal_status = match result {
         Ok(status) => status,
@@ -84,7 +60,6 @@ async fn dispatch_inner(
     repos: &Repos,
     lease_provider: &Arc<LeaseProvider>,
     tx: &crate::dispatcher::RunEventSender,
-    voice_resolver: Arc<dyn Fn(&str) -> Option<String> + Send + Sync>,
 ) -> crate::domain::Result<String> {
     let run_id = &qrun.run_id;
 
@@ -95,6 +70,23 @@ async fn dispatch_inner(
         .join("nexus-emotion-tts-runs")
         .join(qrun.deployment_id.clone())
         .join(run_id.as_str());
+
+    // Pre-fetch all voice assets for this deployment so the prepare()
+    // step's voice_path_resolver can be a synchronous HashMap lookup —
+    // avoids tokio::task::block_in_place (which panics under
+    // single-thread runtimes used by #[tokio::test]).
+    let dep_id = crate::domain::DeploymentId::try_from(qrun.deployment_id.as_str())
+        .map_err(|e| EmotionTtsError::internal(format!("invalid deployment id: {e}")))?;
+    let voice_rows = repos.voice_assets.list_by_deployment(&dep_id).await?;
+    let voice_paths: std::collections::HashMap<String, String> = voice_rows
+        .into_iter()
+        .map(|row| (row.voice_asset_id.as_str().to_string(), row.audio_artifact_ref))
+        .collect();
+
+    let voice_resolver: Arc<dyn Fn(&str) -> Option<String> + Send + Sync> =
+        Arc::new(move |voice_asset_id: &str| -> Option<String> {
+            voice_paths.get(voice_asset_id).cloned()
+        });
 
     let cfg = PrepareConfig {
         output_root,
@@ -138,7 +130,10 @@ async fn dispatch_inner(
         .collect();
     repos.utterances.insert_many(&utterance_rows).await?;
 
-    // Mark run started.
+    // TODO(spec-035 follow-up): replace with `set_started_guarded` that
+    // only transitions queued → running. Today this can race with a
+    // cancel arriving between insert_many and set_started, overwriting
+    // the cancelled status back to running.
     repos.runs.set_started(run_id, Utc::now().timestamp()).await?;
 
     // Acquire the lease (spawns the worker if needed; takes minutes on cold start).
@@ -201,8 +196,15 @@ async fn dispatch_inner(
         result = batch_op.execute(prepared.batch_input.clone()) => result,
     };
 
-    // Wait briefly for trailing notifications, then stop draining.
-    let _ = tokio::time::timeout(Duration::from_secs(2), drain).await;
+    // Wait briefly for trailing notifications, then forcibly abort the
+    // drain task. Without the abort, the drain would keep writing
+    // `segment_completed` to the DB after `process_one` has already
+    // emitted `RunTerminal`, producing out-of-order SSE events and
+    // stale row state.
+    let mut drain = drain;
+    if tokio::time::timeout(Duration::from_secs(2), &mut drain).await.is_err() {
+        drain.abort();
+    }
 
     if qrun.cancel.is_cancelled() {
         return Ok("cancelled".to_string());
@@ -260,7 +262,14 @@ async fn forward_notification(
     match env.method.as_str() {
         "segment_started" => {
             if let Ok(uid) = crate::domain::UtteranceId::try_from(segment_id.as_str()) {
-                let _ = repos.utterances.update_status(&uid, "running").await;
+                if let Err(err) = repos.utterances.update_status(&uid, "running").await {
+                    tracing::warn!(
+                        target: "emotion_tts::dispatch",
+                        utterance_id = uid.as_str(),
+                        error = %err,
+                        "failed to persist segment_started status — terminal status may be incorrect"
+                    );
+                }
             }
             let _ = tx.send(RunEvent::SegmentStarted {
                 run_id: run_id_str,
@@ -281,10 +290,18 @@ async fn forward_notification(
                 .unwrap_or("")
                 .to_string();
             if let Ok(uid) = crate::domain::UtteranceId::try_from(segment_id.as_str()) {
-                let _ = repos
+                if let Err(err) = repos
                     .utterances
                     .mark_completed(&uid, &audio_ref, false, Some(duration_ms))
-                    .await;
+                    .await
+                {
+                    tracing::warn!(
+                        target: "emotion_tts::dispatch",
+                        utterance_id = uid.as_str(),
+                        error = %err,
+                        "failed to persist segment_completed status — terminal status may be incorrect"
+                    );
+                }
             }
             *completed += 1;
             let _ = tx.send(RunEvent::SegmentCompleted {
@@ -307,7 +324,14 @@ async fn forward_notification(
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
             if let Ok(uid) = crate::domain::UtteranceId::try_from(segment_id.as_str()) {
-                let _ = repos.utterances.update_status(&uid, "failed").await;
+                if let Err(err) = repos.utterances.update_status(&uid, "failed").await {
+                    tracing::warn!(
+                        target: "emotion_tts::dispatch",
+                        utterance_id = uid.as_str(),
+                        error = %err,
+                        "failed to persist segment_failed status — terminal status may be incorrect"
+                    );
+                }
             }
             *failed += 1;
             let _ = tx.send(RunEvent::SegmentFailed {
@@ -324,6 +348,3 @@ async fn forward_notification(
         }
     }
 }
-
-#[allow(dead_code)]
-fn _bind_unused(_p: PathBuf) {}
