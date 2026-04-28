@@ -339,12 +339,132 @@ async fn reader_loop(
 async fn stderr_forwarder(stderr: tokio::process::ChildStderr, lease_id: RuntimeLeaseId) {
     let mut lines = BufReader::new(stderr).lines();
     while let Ok(Some(line)) = lines.next_line().await {
-        // Use a short, dedicated target so the host's compact log formatter
-        // renders `INFO worker.stderr: <line>` instead of the verbose
-        // `nexus_backend_runtimes::generic::leases::stdio_lease` module path.
-        // Drop the "worker stderr:" literal prefix — the target name already
-        // signals provenance, so the bare line is what the user sees.
-        tracing::info!(target: "worker.stderr", lease_id = %lease_id, "{line}");
+        // Classify the line so warnings + errors don't all show up as INFO.
+        // Most worker output is from Python's `logging` module, which formats
+        // as `<timestamp> <LEVEL> <module> <msg>` — that's the easy case.
+        // We also catch a few other heuristic cues (`Traceback`,
+        // `RuntimeError(`, leading `>> Failed`, etc.) that appear in libraries
+        // like indextts/BigVGAN that print directly to stderr.
+        match classify_stderr_line(&line) {
+            StderrLevel::Error => {
+                tracing::error!(target: "worker.stderr", lease_id = %lease_id, "{line}");
+            }
+            StderrLevel::Warn => {
+                tracing::warn!(target: "worker.stderr", lease_id = %lease_id, "{line}");
+            }
+            StderrLevel::Info => {
+                tracing::info!(target: "worker.stderr", lease_id = %lease_id, "{line}");
+            }
+            StderrLevel::Debug => {
+                tracing::debug!(target: "worker.stderr", lease_id = %lease_id, "{line}");
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StderrLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+}
+
+/// Heuristic mapping from a worker stderr line to a tracing level.
+///
+/// First looks for the Python `logging` module's standard format
+/// (`YYYY-MM-DD HH:MM:SS,mmm LEVEL module msg`) and extracts the level
+/// token. Falls back to substring matches for common error indicators
+/// (Traceback, RuntimeError, `>> Failed`, etc.) for libraries that
+/// `print()` to stderr instead of using `logging`.
+fn classify_stderr_line(line: &str) -> StderrLevel {
+    if let Some(level) = extract_python_logging_level(line) {
+        return level;
+    }
+    let trimmed = line.trim_start();
+    // Tracebacks and explicit error names → ERROR.
+    if trimmed.starts_with("Traceback (most recent call last)")
+        || trimmed.starts_with("RuntimeError(")
+        || trimmed.starts_with("Error:")
+    {
+        return StderrLevel::Error;
+    }
+    // BigVGAN / indextts use `>> Failed ...` for non-fatal degradation
+    // and `>> X restored from: Y` for status updates. Treat the failed
+    // prefix as a warning, the restored prefix as info.
+    if trimmed.starts_with(">> Failed") || trimmed.starts_with(">>> Failed") {
+        return StderrLevel::Warn;
+    }
+    StderrLevel::Info
+}
+
+fn extract_python_logging_level(line: &str) -> Option<StderrLevel> {
+    // Tokenize on whitespace; find the first token that's a level word.
+    // Python `logging`'s default format puts level after timestamp:
+    //   "2026-04-28 22:16:43,191 WARNING indextts.gpt..."
+    // The timestamp consumes the first two whitespace-separated tokens
+    // (date + "HH:MM:SS,mmm"); the third is the level.
+    for token in line.split_ascii_whitespace().take(5) {
+        match token {
+            "DEBUG" => return Some(StderrLevel::Debug),
+            "INFO" => return Some(StderrLevel::Info),
+            "WARNING" | "WARN" => return Some(StderrLevel::Warn),
+            "ERROR" | "CRITICAL" | "FATAL" => return Some(StderrLevel::Error),
+            _ => continue,
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod stderr_classify_tests {
+    use super::*;
+
+    #[test]
+    fn python_logging_warning_classifies_warn() {
+        let line = "2026-04-28 22:16:43,191 WARNING indextts.gpt.transformers_modeling_utils GPT2InferenceModel ...";
+        assert_eq!(classify_stderr_line(line), StderrLevel::Warn);
+    }
+
+    #[test]
+    fn python_logging_info_classifies_info() {
+        let line = "2026-04-28 22:24:08,191 INFO accelerate.utils.modeling We will use 90% of the memory ...";
+        assert_eq!(classify_stderr_line(line), StderrLevel::Info);
+    }
+
+    #[test]
+    fn python_logging_error_classifies_error() {
+        let line = "2026-04-28 22:24:08,191 ERROR torch.distributed something exploded";
+        assert_eq!(classify_stderr_line(line), StderrLevel::Error);
+    }
+
+    #[test]
+    fn double_arrow_failed_classifies_warn() {
+        let line = ">> Failed to load custom CUDA kernel for BigVGAN. Falling back to torch.";
+        assert_eq!(classify_stderr_line(line), StderrLevel::Warn);
+    }
+
+    #[test]
+    fn runtime_error_classifies_error() {
+        let line = "RuntimeError('Ninja is required to load C++ extensions ...')";
+        assert_eq!(classify_stderr_line(line), StderrLevel::Error);
+    }
+
+    #[test]
+    fn traceback_classifies_error() {
+        let line = "Traceback (most recent call last):";
+        assert_eq!(classify_stderr_line(line), StderrLevel::Error);
+    }
+
+    #[test]
+    fn plain_status_line_classifies_info() {
+        let line = ">> GPT weights restored from: C:\\Users\\foo\\gpt.pth";
+        assert_eq!(classify_stderr_line(line), StderrLevel::Info);
+    }
+
+    #[test]
+    fn empty_line_classifies_info() {
+        assert_eq!(classify_stderr_line(""), StderrLevel::Info);
     }
 }
 
