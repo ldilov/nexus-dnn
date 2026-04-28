@@ -836,16 +836,25 @@ paths:
       parameters: [{ in: query, name: deploymentId, required: true, schema: { type: string } }]
       responses: { '200': { description: Versioned export bundle. } }
   /api/v1/extensions/nexus.audio.emotiontts/mappings/{mapping_id}:
-    parameters: [{ in: path, name: mapping_id, required: true, schema: { type: string } }]
-    get:    { tags: [EmotionTTS], operationId: emotionttsGetMapping, responses: { '200': { description: Mapping., content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsCharacterMappingRow' } } } } } }
+    parameters:
+      - { in: path,  name: mapping_id,    required: true, schema: { type: string } }
+      - { in: query, name: deploymentId, required: true, schema: { type: string }, description: "Caller's claimed deployment. The handler returns 404 (NOT 403) if the row's deployment_id does not match — preventing cross-deployment existence probes." }
+    get:    { tags: [EmotionTTS], operationId: emotionttsGetMapping, responses: { '200': { description: Mapping., content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsCharacterMappingRow' } } } }, '404': { description: Not found, or row belongs to a different deployment. } } }
     patch:
       tags: [EmotionTTS]
       operationId: emotionttsPatchMapping
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsPatchMappingBody' } } }
-      responses: { '200': { description: Updated., content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsCharacterMappingRow' } } } } }
-    delete: { tags: [EmotionTTS], operationId: emotionttsDeleteMapping, responses: { '204': { description: Soft-deleted. } } }
+      responses:
+        '200': { description: Updated., content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsCharacterMappingRow' } } } }
+        '404': { description: Not found, or row belongs to a different deployment. }
+    delete:
+      tags: [EmotionTTS]
+      operationId: emotionttsDeleteMapping
+      responses:
+        '204': { description: Soft-deleted. }
+        '404': { description: Not found, or row belongs to a different deployment. }
   /api/v1/extensions/nexus.audio.emotiontts/mappings/{mapping_id}/duplicate:
     parameters: [{ in: path, name: mapping_id, required: true, schema: { type: string } }]
     post:
@@ -870,16 +879,25 @@ paths:
         content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsCreatePresetBody' } } }
       responses: { '201': { description: Created., content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsVectorPresetRow' } } } } }
   /api/v1/extensions/nexus.audio.emotiontts/presets/{preset_id}:
-    parameters: [{ in: path, name: preset_id, required: true, schema: { type: string } }]
-    get:    { tags: [EmotionTTS], operationId: emotionttsGetPreset, responses: { '200': { description: Preset. } } }
+    parameters:
+      - { in: path,  name: preset_id,    required: true, schema: { type: string } }
+      - { in: query, name: deploymentId, required: true, schema: { type: string }, description: "Caller's claimed deployment. The handler returns 404 (NOT 403) if the row's deployment_id does not match — preventing cross-deployment existence probes." }
+    get:    { tags: [EmotionTTS], operationId: emotionttsGetPreset, responses: { '200': { description: Preset. }, '404': { description: Not found, or row belongs to a different deployment. } } }
     patch:
       tags: [EmotionTTS]
       operationId: emotionttsPatchPreset
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsPatchPresetBody' } } }
-      responses: { '200': { description: Updated. } }
-    delete: { tags: [EmotionTTS], operationId: emotionttsDeletePreset, responses: { '204': { description: Deleted. } } }
+      responses:
+        '200': { description: Updated. }
+        '404': { description: Not found, or row belongs to a different deployment. }
+    delete:
+      tags: [EmotionTTS]
+      operationId: emotionttsDeletePreset
+      responses:
+        '204': { description: Deleted. }
+        '404': { description: Not found, or row belongs to a different deployment. }
 
   /api/v1/extensions/nexus.audio.emotiontts/voice-assets/:
     get:
@@ -908,9 +926,16 @@ paths:
           description: Uploaded; preprocessing fires asynchronously.
           content: { application/json: { schema: { $ref: '#/components/schemas/EmotionTtsVoiceAssetRow' } } }
   /api/v1/extensions/nexus.audio.emotiontts/voice-assets/{voice_asset_id}:
-    parameters: [{ in: path, name: voice_asset_id, required: true, schema: { type: string } }]
-    get:    { tags: [EmotionTTS], operationId: emotionttsGetVoiceAsset, responses: { '200': { description: Voice asset. } } }
-    delete: { tags: [EmotionTTS], operationId: emotionttsDeleteVoiceAsset, responses: { '204': { description: Soft-deleted. } } }
+    parameters:
+      - { in: path,  name: voice_asset_id, required: true, schema: { type: string } }
+      - { in: query, name: deploymentId,   required: true, schema: { type: string }, description: "Caller's claimed deployment. The handler returns 404 (NOT 403) if the row's deployment_id does not match — preventing cross-deployment existence probes." }
+    get:    { tags: [EmotionTTS], operationId: emotionttsGetVoiceAsset, responses: { '200': { description: Voice asset. }, '404': { description: Not found, or row belongs to a different deployment. } } }
+    delete:
+      tags: [EmotionTTS]
+      operationId: emotionttsDeleteVoiceAsset
+      responses:
+        '204': { description: Soft-deleted. }
+        '404': { description: Not found, or row belongs to a different deployment. }
   /api/v1/extensions/nexus.audio.emotiontts/voice-assets/{voice_asset_id}/preprocess:
     parameters: [{ in: path, name: voice_asset_id, required: true, schema: { type: string } }]
     post:

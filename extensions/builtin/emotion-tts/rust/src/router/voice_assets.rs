@@ -153,6 +153,16 @@ struct ListQuery {
     deployment_id: String,
 }
 
+/// Query extractor used by every shared-id endpoint to prove the caller is
+/// asking about the deployment that actually owns the row. The handler
+/// returns 404 (NOT 403) when the row's `deployment_id` differs — keeps
+/// row existence opaque across deployment boundaries.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ScopedQuery {
+    deployment_id: String,
+}
+
 async fn list(
     State(state): State<Arc<VoiceAssetsState>>,
     Query(query): Query<ListQuery>,
@@ -173,13 +183,22 @@ async fn list(
 async fn fetch(
     State(state): State<Arc<VoiceAssetsState>>,
     Path(id): Path<String>,
+    Query(query): Query<ScopedQuery>,
 ) -> Response {
     let id = match VoiceAssetId::try_from(id.as_str()) {
         Ok(v) => v,
         Err(err) => return EmotionTtsError::from(err).into_response(),
     };
     match state.repos.voice_assets.get(&id).await {
-        Ok(Some(row)) => (StatusCode::OK, Json(voice_asset_json(&row))).into_response(),
+        Ok(Some(row)) => {
+            // Cross-deployment isolation: the caller must claim the deployment
+            // that owns this voice asset. Mismatch → 404 (NOT 403) to avoid
+            // leaking the existence of rows owned by other deployments.
+            if row.deployment_id.as_str() != query.deployment_id {
+                return EmotionTtsError::not_found(format!("voice asset {id}")).into_response();
+            }
+            (StatusCode::OK, Json(voice_asset_json(&row))).into_response()
+        }
         Ok(None) => EmotionTtsError::not_found(format!("voice asset {id}")).into_response(),
         Err(err) => err.into_response(),
     }
@@ -188,11 +207,24 @@ async fn fetch(
 async fn deactivate(
     State(state): State<Arc<VoiceAssetsState>>,
     Path(id): Path<String>,
+    Query(query): Query<ScopedQuery>,
 ) -> Response {
     let id = match VoiceAssetId::try_from(id.as_str()) {
         Ok(v) => v,
         Err(err) => return EmotionTtsError::from(err).into_response(),
     };
+    // Read-then-validate-then-mutate. Same 404-on-mismatch contract as `fetch`.
+    match state.repos.voice_assets.get(&id).await {
+        Ok(Some(row)) => {
+            if row.deployment_id.as_str() != query.deployment_id {
+                return EmotionTtsError::not_found(format!("voice asset {id}")).into_response();
+            }
+        }
+        Ok(None) => {
+            return EmotionTtsError::not_found(format!("voice asset {id}")).into_response();
+        }
+        Err(err) => return err.into_response(),
+    }
     match state.repos.voice_assets.deactivate(&id).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => err.into_response(),

@@ -51,20 +51,27 @@ export async function createMapping(
 }
 
 export async function patchMapping(
+  deploymentId: string,
   mappingId: string,
   body: Partial<CharacterMapping>,
 ): Promise<CharacterMapping> {
-  return apiFetch(`/mappings/${mappingId}`, {
-    method: "PATCH",
-    body: JSON.stringify(body),
-  });
+  return apiFetch(
+    `/mappings/${mappingId}?deploymentId=${encodeURIComponent(deploymentId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 export async function deactivateMapping(
-  _deploymentId: string,
+  deploymentId: string,
   mappingId: string,
 ): Promise<void> {
-  await apiFetch(`/mappings/${mappingId}`, { method: "DELETE" });
+  await apiFetch(
+    `/mappings/${mappingId}?deploymentId=${encodeURIComponent(deploymentId)}`,
+    { method: "DELETE" },
+  );
 }
 
 export async function duplicateMapping(
