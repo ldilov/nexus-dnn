@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import type { Deployment } from "../../../services/deployments_client";
 import { ExtensionApiError } from "../../../services/http";
 import { INDEXTTS_FAMILY_ID, startModelDownload } from "../../../services/model_store_client";
@@ -19,6 +20,7 @@ interface Props {
 const HEALTH_POLL_MS = 4000;
 
 export function DeploymentHeader({ deployment }: Props): JSX.Element {
+  const navigate = useNavigate();
   const [health, setHealth] = useState<RuntimeHealth | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -133,6 +135,15 @@ export function DeploymentHeader({ deployment }: Props): JSX.Element {
           Download IndexTTS-2 model
         </button>
       )}
+
+      <button
+        type="button"
+        className={css.secondaryButton}
+        onClick={() => navigate(`/${deployment.deploymentId}/mappings`)}
+        title="Manage character → voice mappings (upload voice samples, edit emotion defaults)"
+      >
+        Mappings
+      </button>
 
       {error && !modelMissing && <span className={css.dangerBanner}>{error}</span>}
     </div>

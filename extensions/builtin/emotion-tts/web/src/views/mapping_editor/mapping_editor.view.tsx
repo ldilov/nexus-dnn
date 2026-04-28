@@ -280,7 +280,12 @@ export function MappingEditorView(): JSX.Element {
         )}
 
         {!selected ? (
-          <EmptyDetail />
+          <EmptyDetail
+            voiceCount={voiceAssets.length}
+            onUploadVoice={async (file) => {
+              await handleVoiceUpload(file, file.name.replace(/\..+$/, ""), "speaker");
+            }}
+          />
         ) : (
           <MappingDetail
             mapping={selected}
@@ -336,7 +341,56 @@ export function MappingEditorView(): JSX.Element {
   );
 }
 
-function EmptyDetail(): JSX.Element {
+interface EmptyDetailProps {
+  voiceCount: number;
+  onUploadVoice: (file: File) => Promise<void>;
+}
+
+function EmptyDetail({ voiceCount, onUploadVoice }: EmptyDetailProps): JSX.Element {
+  // First-time UX: no voices uploaded yet. The "+ Add" mapping button is
+  // gated on voiceCount >= 1, so without an upload affordance here the
+  // user is in a chicken-and-egg dead-end. Surface the dropzone right on
+  // the empty state so they can upload, then create their first mapping.
+  if (voiceCount === 0) {
+    return (
+      <div className={css.fieldset} style={{ padding: "3rem 2rem" }}>
+        <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+          <h2
+            style={{
+              fontFamily: "var(--font-display, var(--font))",
+              fontSize: "1.4rem",
+              margin: "0 0 0.75rem",
+              color: "var(--text)",
+            }}
+          >
+            Upload your first voice
+          </h2>
+          <p
+            style={{
+              fontFamily: "var(--font)",
+              fontSize: "1rem",
+              color: "var(--text-muted)",
+              maxWidth: "44ch",
+              margin: "0 auto",
+              lineHeight: 1.5,
+            }}
+          >
+            EmotionTTS clones the voice from a short audio sample (5–30 s clean
+            mp3 or wav). Drop one in below, then click <strong>+ Add</strong>{" "}
+            on the left to map a character to it.
+          </p>
+        </div>
+        <AudioDropzone
+          label="Drop or click to upload your first voice (mp3 / wav)"
+          onFile={async (file) => {
+            await onUploadVoice(file);
+            return null;
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className={css.fieldset} style={{ textAlign: "center", padding: "4rem" }}>
       <p style={{ fontFamily: "var(--font)", fontSize: "1.1rem", color: "var(--text-muted)" }}>

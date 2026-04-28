@@ -8,15 +8,21 @@
 //!
 //! Mirrors `nexus_local_llm_chat_history::LocalLlmRouterProvider`.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use axum::Router;
 use nexus_extension::{BuildRouterError, ExtensionContext, ExtensionRouterProvider};
 use sqlx::SqlitePool;
 
+use crate::backend_client::{LeaseFactory, LeaseProvider};
+use crate::domain::{EmotionTtsError, Result as DomainResult};
+use crate::host_adapter::EmotionTtsLeaseFactory;
+use crate::host_contract::{HostArtifactStore, ModelArtifactLocator, SharedLease};
 use crate::queue::RuntimeQueue;
 use crate::storage::Repos;
-use crate::{EXTENSION_VERSION, MIGRATIONS, build_router_with};
+use crate::{EXTENSION_VERSION, MIGRATIONS};
 
 pub const EXTENSION_ID: &str = "nexus.audio.emotiontts";
 
@@ -25,11 +31,65 @@ pub const EXTENSION_ID: &str = "nexus.audio.emotiontts";
 #[derive(Clone)]
 pub struct EmotionTtsProviderResources {
     pub pool: SqlitePool,
+    /// Filesystem dir the extension was loaded from (where `worker/` lives).
+    /// When set together with `host_data_dir`, the provider builds a real
+    /// StdioLease-backed factory and the recipe header's "Install / Start
+    /// runtime" actually spawns a worker. When either is `None`, the
+    /// provider falls back to a stub factory that surfaces a clear
+    /// "not yet wired" error — useful for tests and minimal-config hosts.
+    pub extension_dir: Option<PathBuf>,
+    /// Host data dir (typically `~/.nexus`). Combined with the extension's
+    /// id to derive the runtime/venv install paths the dep installer wrote.
+    pub host_data_dir: Option<PathBuf>,
+    /// Host-side resolver for installed model artifact paths. Required at
+    /// `model.load` time — without it, the lease factory cannot tell the
+    /// worker where IndexTTS-2 weights live and `model.load` fails with
+    /// `adapter is not configured`.
+    pub model_locator: Option<Arc<dyn ModelArtifactLocator>>,
+    /// Host-side artifact store for voice-asset uploads (mp3/wav clips
+    /// users upload via the mapping editor). When `None`, the voice-assets
+    /// router falls back to a 503 stub and the recipe page can't load.
+    pub artifact_store: Option<Arc<dyn HostArtifactStore>>,
 }
 
 impl EmotionTtsProviderResources {
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            extension_dir: None,
+            host_data_dir: None,
+            model_locator: None,
+            artifact_store: None,
+        }
+    }
+
+    /// Builder-style: attach a host-side artifact store for voice uploads.
+    #[must_use]
+    pub fn with_artifact_store(mut self, store: Arc<dyn HostArtifactStore>) -> Self {
+        self.artifact_store = Some(store);
+        self
+    }
+
+    /// Builder-style: attach the filesystem dirs the host knows about.
+    /// Both must be supplied for the runtime spawn path to wire up; either
+    /// missing falls back to the stub factory.
+    #[must_use]
+    pub fn with_directories(
+        mut self,
+        extension_dir: PathBuf,
+        host_data_dir: PathBuf,
+    ) -> Self {
+        self.extension_dir = Some(extension_dir);
+        self.host_data_dir = Some(host_data_dir);
+        self
+    }
+
+    /// Builder-style: attach a model artifact locator. Required for the
+    /// runtime spawn path to find IndexTTS-2 weights at acquire time.
+    #[must_use]
+    pub fn with_model_locator(mut self, locator: Arc<dyn ModelArtifactLocator>) -> Self {
+        self.model_locator = Some(locator);
+        self
     }
 }
 
@@ -48,6 +108,16 @@ impl EmotionTtsRouterProvider {
         // reach the inner router. Path-parameter syntax follows axum's
         // `{name}` convention.
         vec![
+            // Runtime lifecycle (recipe header polls these to decide whether to
+            // show "Stopped"/"Ready"/etc. — must be declared even though the
+            // current factory is a stub; otherwise the dispatcher rejects them
+            // as `unknown_extension` 404 and the recipe header surfaces a red
+            // "Not Found" pill instead of an honest "Stopped" badge.)
+            "/runtime/health".into(),
+            "/runtime/handshake".into(),
+            "/runtime/start".into(),
+            "/runtime/stop".into(),
+            "/runtime/restart".into(),
             // Deployments
             "/deployments".into(),
             "/deployments/{deployment_id}".into(),
@@ -141,12 +211,56 @@ impl EmotionTtsRouterProvider {
 
         let repos = Repos::from_pool(self.resources.pool.clone());
         let queue = Arc::new(RuntimeQueue::new());
-        // For now the artifact_store + lease_provider are not threaded
-        // from the host. The voice-assets surface returns its
-        // `not_configured` envelope (added in the recent review pass)
-        // and the runtime/lease surface stays mounted but unused. Both
-        // can be wired later without breaking the route mount.
-        Ok(build_router_with(repos, queue, EXTENSION_VERSION))
+        // Construct the real StdioLease-backed factory if the host wired in
+        // both filesystem dirs; otherwise fall back to the stub that surfaces
+        // a clear "not yet configured" error. The fallback keeps the
+        // runtime/* routes mounted (200 instead of 404) so the recipe header
+        // shows "Stopped" rather than a red "Not Found" pill.
+        let lease_factory: Arc<dyn LeaseFactory> = match (
+            self.resources.extension_dir.clone(),
+            self.resources.host_data_dir.clone(),
+        ) {
+            (Some(ext_dir), Some(host_data_dir)) => {
+                let factory_data_dir = host_data_dir.join("extensions").join(EXTENSION_ID);
+                Arc::new(EmotionTtsLeaseFactory::new(
+                    ext_dir,
+                    factory_data_dir,
+                    self.resources.model_locator.clone(),
+                ))
+            }
+            _ => Arc::new(StubLeaseFactory),
+        };
+        let provider = Arc::new(LeaseProvider::new(lease_factory));
+        let artifact_store = self.resources.artifact_store.clone();
+        Ok(crate::router::build_router(
+            repos,
+            queue,
+            EXTENSION_VERSION,
+            Some(provider),
+            artifact_store,
+        ))
+    }
+}
+
+/// Placeholder factory that returns a clear, structured error any time the
+/// recipe header tries to spawn the runtime. Real implementation requires
+/// host-side wiring (see register.rs `build_router_inner_async` doc-comment).
+///
+/// The error message is intentionally explicit so the toast surfaced by
+/// `DeploymentHeader.install` reads like a genuine product status, not a
+/// stack-trace fragment.
+struct StubLeaseFactory;
+
+#[async_trait]
+impl LeaseFactory for StubLeaseFactory {
+    async fn acquire(&self) -> DomainResult<SharedLease> {
+        Err(EmotionTtsError::RuntimeUnavailable(
+            "EmotionTTS runtime backend is not yet wired through the host. \
+             The dependency installer can validate your install (Settings → \
+             Dependencies → Reinstall everything), but starting a long-lived \
+             worker from the recipe header is not implemented in this build."
+                .into(),
+        ))
     }
 }
 

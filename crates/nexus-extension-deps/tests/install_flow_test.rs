@@ -263,6 +263,7 @@ async fn full_install_flow_succeeds_and_is_idempotent() {
         progress_sink: progress_sink.clone(),
         cancellation_token: CancellationToken::new(),
         install_run_id: Uuid::nil(),
+        force: false,
     };
 
     let report = runner.run_install(&mut ctx).await;
@@ -365,6 +366,7 @@ async fn full_install_flow_succeeds_and_is_idempotent() {
         progress_sink,
         cancellation_token: CancellationToken::new(),
         install_run_id: Uuid::nil(),
+        force: false,
     };
     let report2 = runner2.run_install(&mut ctx2).await;
     assert!(

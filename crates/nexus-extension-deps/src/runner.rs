@@ -203,6 +203,10 @@ pub struct RunnerContext<'a> {
     pub progress_sink: Arc<dyn ProgressSink>,
     pub cancellation_token: tokio_util::sync::CancellationToken,
     pub install_run_id: uuid::Uuid,
+    /// When true, every step's `probe` is bypassed and `run` executes
+    /// unconditionally. Used by the "Reinstall everything" CTA so a user
+    /// can force a full reinstall even when probes report `Satisfied`.
+    pub force: bool,
 }
 
 #[derive(Debug)]
@@ -282,7 +286,8 @@ async fn run_one_step(
         upstream_artifacts,
     };
 
-    // Probe first.
+    // Probe first — unless the runner is in `force` mode, in which case the
+    // user explicitly asked for a full reinstall and we go straight to run().
     let emit_probe_failure = |error: StepError| {
         ctx.progress_sink.emit(ProgressEvent::StepFailed {
             extension_id: ctx.extension_id.to_owned(),
@@ -293,51 +298,59 @@ async fn run_one_step(
         });
         StepOutcome::Failed { error }
     };
-    let probe_started = std::time::Instant::now();
-    let probe_result = handler.probe(&step_ctx, &step.spec).await;
-    let probe_ms = probe_started.elapsed().as_millis() as u64;
-    match probe_result {
-        Ok(ProbeResult::Satisfied { artifact }) => {
-            info!(
-                target: "spec_035::runner",
-                step_id = %step.id,
-                probe_ms,
-                artifact_path = ?artifact.path,
-                "step: probe satisfied — skipping run (no install needed)"
-            );
-            debug!(step_id = %step.id, "probe satisfied — skipping run");
-            return StepOutcome::Skipped {
-                reason: "already satisfied".to_owned(),
-                artifact: Some(artifact),
-            };
-        }
-        Ok(ProbeResult::Unsupported { reason }) => {
-            tracing::warn!(
-                target: "spec_035::runner",
-                step_id = %step.id,
-                probe_ms,
-                %reason,
-                "step: probe reported unsupported platform — failing"
-            );
-            return emit_probe_failure(StepError::new("unsupported_platform", reason));
-        }
-        Ok(ProbeResult::NotSatisfied) => {
-            info!(
-                target: "spec_035::runner",
-                step_id = %step.id,
-                probe_ms,
-                "step: probe NotSatisfied — proceeding to run"
-            );
-        }
-        Err(e) => {
-            tracing::error!(
-                target: "spec_035::runner",
-                step_id = %step.id,
-                probe_ms,
-                error = %e,
-                "step: probe errored — failing"
-            );
-            return emit_probe_failure(dep_error_to_step_error(e));
+    if ctx.force {
+        info!(
+            target: "spec_035::runner",
+            step_id = %step.id,
+            "step: force=true — skipping probe and running unconditionally"
+        );
+    } else {
+        let probe_started = std::time::Instant::now();
+        let probe_result = handler.probe(&step_ctx, &step.spec).await;
+        let probe_ms = probe_started.elapsed().as_millis() as u64;
+        match probe_result {
+            Ok(ProbeResult::Satisfied { artifact }) => {
+                info!(
+                    target: "spec_035::runner",
+                    step_id = %step.id,
+                    probe_ms,
+                    artifact_path = ?artifact.path,
+                    "step: probe satisfied — skipping run (no install needed)"
+                );
+                debug!(step_id = %step.id, "probe satisfied — skipping run");
+                return StepOutcome::Skipped {
+                    reason: "already satisfied".to_owned(),
+                    artifact: Some(artifact),
+                };
+            }
+            Ok(ProbeResult::Unsupported { reason }) => {
+                tracing::warn!(
+                    target: "spec_035::runner",
+                    step_id = %step.id,
+                    probe_ms,
+                    %reason,
+                    "step: probe reported unsupported platform — failing"
+                );
+                return emit_probe_failure(StepError::new("unsupported_platform", reason));
+            }
+            Ok(ProbeResult::NotSatisfied) => {
+                info!(
+                    target: "spec_035::runner",
+                    step_id = %step.id,
+                    probe_ms,
+                    "step: probe NotSatisfied — proceeding to run"
+                );
+            }
+            Err(e) => {
+                tracing::error!(
+                    target: "spec_035::runner",
+                    step_id = %step.id,
+                    probe_ms,
+                    error = %e,
+                    "step: probe errored — failing"
+                );
+                return emit_probe_failure(dep_error_to_step_error(e));
+            }
         }
     }
 
@@ -646,6 +659,7 @@ mod tests {
             progress_sink: sink.clone(),
             cancellation_token: tokio_util::sync::CancellationToken::new(),
             install_run_id: uuid::Uuid::nil(),
+            force: false,
         }
     }
 

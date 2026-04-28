@@ -273,12 +273,6 @@ impl NexusApp {
                 backend_event_bus.clone(),
                 nexus_local_llm_chat_history::ModelLoadRegistry::new(),
             ));
-        let extension_router_registry = build_extension_router_registry(
-            pool_for_extensions,
-            app_for_health.config.port,
-            chat_resources,
-        );
-
         // Spec 035 — clone the handles the dep adapters need before they get
         // moved into the AppState fields below.
         let db_for_dep = db.clone();
@@ -287,6 +281,32 @@ impl NexusApp {
         let huggingface_for_dep = huggingface.clone();
         let capability_registry_for_dep = capability_registry.clone();
         let download_job_store_for_dep = download_job_store.clone();
+
+        // Construct the model-store client up front so the same instance can
+        // flow into (a) the extension router registry — extensions that need
+        // to query installed model paths at acquire time consume it through
+        // their own contract — and (b) the AppState `dep_model_store` field
+        // below. Avoids two parallel constructions diverging.
+        let model_store_client: Arc<dyn nexus_extension_deps::ModelStoreClient> =
+            Arc::new(nexus_api::dep_bootstrap::RealModelStoreClient::new(
+                install_map_for_dep.clone(),
+                download_orchestrator_for_dep.clone(),
+                Some(huggingface_for_dep.clone()),
+                capability_registry_for_dep.clone(),
+                Some(download_job_store_for_dep.clone()),
+            ));
+
+        let extension_router_registry = build_extension_router_registry(
+            pool_for_extensions,
+            app_for_health.config.port,
+            chat_resources,
+            extension_registry.clone(),
+            app_for_health.config.resolved_data_dir(),
+            model_store_client.clone(),
+            artifact_store.clone(),
+        );
+
+
 
         // Resolve the embedded-Python asset once: env-var override wins, then
         // the spec-032 REGISTRY pin for the host's target triple. The same
@@ -392,15 +412,7 @@ impl NexusApp {
                     python_asset_for_dep_bootstrapper,
                 ),
             )),
-            dep_model_store: Some(std::sync::Arc::new(
-                nexus_api::dep_bootstrap::RealModelStoreClient::new(
-                    install_map_for_dep,
-                    download_orchestrator_for_dep,
-                    Some(huggingface_for_dep),
-                    capability_registry_for_dep,
-                    Some(download_job_store_for_dep),
-                ),
-            )),
+            dep_model_store: Some(model_store_client.clone()),
             dep_worker_handshake: Some(std::sync::Arc::new(
                 nexus_api::dep_bootstrap::RealWorkerHandshake,
             )),
@@ -453,6 +465,10 @@ fn build_extension_router_registry(
     pool: sqlx::SqlitePool,
     host_port: u16,
     chat_resources: Arc<nexus_local_llm_chat_history::ChatHandlerResources>,
+    extension_registry: Arc<nexus_extension::InMemoryExtensionRegistry>,
+    host_data_dir: std::path::PathBuf,
+    model_store_client: Arc<dyn nexus_extension_deps::ModelStoreClient>,
+    artifact_store: Arc<nexus_artifact::FilesystemArtifactStore>,
 ) -> nexus_api::extension_router::SharedRegistry {
     use nexus_api::extension_router::{DefaultRegistry, ExtensionId, ExtensionRouterRegistry};
     use nexus_extension::{ExtensionContext, ExtensionRouterProvider, HostFacts};
@@ -470,11 +486,29 @@ fn build_extension_router_registry(
                 ),
             ),
         ),
-        Arc::new(
-            emotion_tts_extension::EmotionTtsRouterProvider::new(
-                emotion_tts_extension::EmotionTtsProviderResources::new(pool),
-            ),
-        ),
+        Arc::new(emotion_tts_extension::EmotionTtsRouterProvider::new({
+            let mut res = emotion_tts_extension::EmotionTtsProviderResources::new(pool.clone());
+            let id = emotion_tts_extension::EXTENSION_ID;
+            if let Some(ext) = extension_registry.get_extension(id) {
+                res = res.with_directories(ext.directory.clone(), host_data_dir.clone());
+            }
+            // Adapt the generic spec-035 model-store client to the extension's
+            // own `ModelArtifactLocator` contract so the lease factory can
+            // resolve IndexTTS-2's on-disk path at acquire time.
+            res = res.with_model_locator(Arc::new(ModelStoreLocatorAdapter {
+                inner: model_store_client.clone(),
+            }));
+            // Wire the host's artifact store through the extension's
+            // own `HostArtifactStore` adapter so the voice-asset upload +
+            // resolve path is functional. Without this the recipe page
+            // throws "voice asset store not configured by host" on load.
+            res = res.with_artifact_store(Arc::new(
+                emotion_tts_extension::host_adapter::HostArtifactStoreAdapter::new(
+                    artifact_store.clone(),
+                ),
+            ));
+            res
+        })),
     ];
 
     for provider in &providers {
@@ -521,6 +555,41 @@ fn build_extension_router_registry(
 
     registry.seal();
     registry as nexus_api::extension_router::SharedRegistry
+}
+
+/// Bridges the spec-035 generic `ModelStoreClient` to extension-defined
+/// `ModelArtifactLocator` traits. Lives here (host-side) so individual
+/// extensions stay free of host-runtime crate dependencies. Generic in name
+/// — any extension that defines a similar locator trait can be served by
+/// this same adapter.
+struct ModelStoreLocatorAdapter {
+    inner: Arc<dyn nexus_extension_deps::ModelStoreClient>,
+}
+
+#[async_trait::async_trait]
+impl emotion_tts_extension::host_contract::ModelArtifactLocator for ModelStoreLocatorAdapter {
+    async fn locate_family(&self, family_id: &str) -> Option<std::path::PathBuf> {
+        // The spec-035 trait surfaces an accelerator filter; we don't need
+        // it here — the worker picks the variant at load time. Pass `None`.
+        let raw = self
+            .inner
+            .is_family_installed(family_id, None)
+            .await
+            .ok()
+            .flatten()?;
+        // `is_family_installed`'s contract returns the path to *one file* in
+        // the snapshot (the install_map's first row) — useful for single-file
+        // formats like GGUF, but for multi-file snapshot installs the worker
+        // wants the *directory* containing every file (config.yaml, gpt.pth,
+        // s2mel.pth, qwen subdir, etc.). Normalize to the parent directory
+        // when the resolved path is a regular file. If it's already a dir
+        // (or a missing path), pass through unchanged.
+        if raw.is_file() {
+            raw.parent().map(std::path::Path::to_path_buf)
+        } else {
+            Some(raw)
+        }
+    }
 }
 
 async fn persist_discovery_to_db(
