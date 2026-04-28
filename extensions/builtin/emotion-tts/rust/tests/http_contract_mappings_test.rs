@@ -111,6 +111,7 @@ async fn seed_voice_asset(repos: &Repos, dep: &DeploymentId) -> VoiceAssetId {
             is_active: true,
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
+            edit_chain_json: None,
             created_at: now,
             updated_at: now,
         })

@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 
 use emotion_tts_extension::domain::cache_key::{build, CacheKeyInput};
 use emotion_tts_extension::domain::emotion::EmotionPayload;
+use emotion_tts_extension::domain::ChainDigest;
 
 fn sample(family: &str) -> CacheKeyInput {
     CacheKeyInput {
@@ -24,6 +25,7 @@ fn sample(family: &str) -> CacheKeyInput {
         speed_factor: 1.0,
         speed_mode: "preserve_pitch".into(),
         output_format: "mp3".into(),
+        voice_asset_chain_digest: ChainDigest::EMPTY.clone(),
     }
 }
 

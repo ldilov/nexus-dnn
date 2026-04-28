@@ -191,6 +191,7 @@ async fn dispatcher_emits_segment_events_and_runs_to_completion() {
             is_active: true,
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
+            edit_chain_json: None,
             created_at: now,
             updated_at: now,
         })
@@ -468,6 +469,7 @@ async fn dispatcher_writes_export_history_on_completed_run() {
             is_active: true,
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
+            edit_chain_json: None,
             created_at: now,
             updated_at: now,
         })
@@ -730,6 +732,7 @@ async fn dispatcher_serves_cache_hits_without_calling_worker() {
             is_active: true,
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
+            edit_chain_json: None,
             created_at: now,
             updated_at: now,
         })
@@ -822,6 +825,7 @@ async fn dispatcher_serves_cache_hits_without_calling_worker() {
         speed_factor: 1.0,
         speed_mode: "preserve_pitch".into(),
         output_format: "wav".into(),
+        voice_asset_chain_digest: emotion_tts_extension::domain::ChainDigest::EMPTY.clone(),
     };
     let hash = build_cache_key(&cache_input).expect("cache key must build for valid inputs");
 
@@ -997,6 +1001,7 @@ async fn resume_run_reuses_cache_from_original() {
             is_active: true,
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
+            edit_chain_json: None,
             created_at: now,
             updated_at: now,
         })
@@ -1075,6 +1080,7 @@ async fn resume_run_reuses_cache_from_original() {
         speed_factor: 1.0,
         speed_mode: "preserve_pitch".into(),
         output_format: "wav".into(),
+        voice_asset_chain_digest: emotion_tts_extension::domain::ChainDigest::EMPTY.clone(),
     };
     let hash = build_cache_key(&cache_input).expect("cache key must build for valid inputs");
 
@@ -1301,6 +1307,7 @@ async fn raw_text_run_uses_deployment_default_voice() {
             is_active: true,
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
+            edit_chain_json: None,
             created_at: now,
             updated_at: now,
         })
@@ -1565,6 +1572,7 @@ async fn test_line_skips_cache_and_export() {
             is_active: true,
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
+            edit_chain_json: None,
             created_at: now,
             updated_at: now,
         })
@@ -1856,6 +1864,7 @@ async fn mapping_vector_preset_default_applied_to_cache_key() {
             is_active: true,
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
+            edit_chain_json: None,
             created_at: now,
             updated_at: now,
         })
@@ -1957,6 +1966,7 @@ async fn mapping_vector_preset_default_applied_to_cache_key() {
         speed_factor: 1.0,
         speed_mode: "preserve_pitch".into(),
         output_format: "wav".into(),
+        voice_asset_chain_digest: emotion_tts_extension::domain::ChainDigest::EMPTY.clone(),
     };
     let expected_hash = build_cache_key(&expected_cache_input)
         .expect("expected cache key must build for valid inputs");
@@ -2161,6 +2171,7 @@ async fn inline_emotion_vector_override_applied_to_cache_key() {
             is_active: true,
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
+            edit_chain_json: None,
             created_at: now,
             updated_at: now,
         })
@@ -2250,6 +2261,7 @@ async fn inline_emotion_vector_override_applied_to_cache_key() {
         speed_factor: 1.0,
         speed_mode: "preserve_pitch".into(),
         output_format: "wav".into(),
+        voice_asset_chain_digest: emotion_tts_extension::domain::ChainDigest::EMPTY.clone(),
     };
     let expected_hash = build_cache_key(&expected_cache_input)
         .expect("expected cache key must build for valid inputs");
