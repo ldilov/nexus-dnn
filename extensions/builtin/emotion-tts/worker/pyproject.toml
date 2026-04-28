@@ -2,16 +2,28 @@
 name = "emotion-tts-worker"
 version = "0.1.0"
 description = "IndexTTS-2 synthesis worker for the EmotionTTS Nexus extension (spec 031). Speaks JSON-RPC/NDJSON over stdio to the host-side Rust shim."
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.11,<3.13"
 readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
 
 dependencies = [
-  "index-tts",
+  # IndexTTS is NOT published on PyPI — uv resolves it via the git source
+  # declared under [tool.uv.sources].indextts (note: no hyphen — the upstream
+  # package name in setup.py is "indextts").
+  "indextts",
+  # >=2.4 satisfies upstream's indextts torch>=2.1.2 constraint while letting
+  # us pull modern wheels via the [tool.uv.index] pytorch-cu128 mapping below.
   "torch>=2.4",
   "torchaudio>=2.4",
-  "transformers>=4.45",
-  "numpy>=1.26",
+  # Upstream IndexTTS-2 (main, version 2.0.0) pins transformers==4.52.1 and
+  # tokenizers==0.21.0 exactly. Loose ranges below satisfy those pins while
+  # leaving room for security patches in the .x lane.
+  "transformers>=4.52,<5.0",
+  "tokenizers>=0.21,<0.22",
+  # Upstream pins numpy==1.26.2 exactly. NumPy 2.x has incompatible API
+  # breaks (`np.float_`, etc.) that librosa<0.11 and numba<0.59 rely on,
+  # plus a torch ABI break — keep the worker pinned to 1.x explicitly.
+  "numpy>=1.26,<2.0",
   "pydantic>=2.8",
   "ffmpeg-python>=0.2",
   "soundfile>=0.12",
@@ -19,11 +31,26 @@ dependencies = [
   "silero-vad>=5.1",
   "matplotlib>=3.8",
   "pyyaml>=6.0",
+  # Pure-Python text normalizer used cross-platform. IndexTTS's upstream
+  # `wetextprocessing` transitive (via tn → pynini) does not build on
+  # Windows because pynini's sdist passes GCC-only flags to MSVC. We swap
+  # to `wetext` (kaldifst-based, has Windows wheels) and monkey-patch
+  # IndexTTS's TextNormalizer.load() to use the Darwin path globally.
+  "wetext>=0.1.2",
+  # Build system used by BigVGAN's custom CUDA kernel JIT path. Without
+  # ninja installed, BigVGAN logs `RuntimeError('Ninja is required ...')`
+  # and falls back to the slower torch path on first synthesis. Pinning
+  # >=1.11 ensures the wheel-distributed binary is on PATH for the JIT
+  # toolchain. Pure-Python wheel — no native compile required.
+  "ninja>=1.11",
 ]
 
 [project.optional-dependencies]
 deepspeed = ["deepspeed>=0.15"]
-denoise = ["rnnoise-wheels>=0.1"]
+# `denoise` extra removed — `rnnoise-wheels` is not published on PyPI and
+# uv's lockfile-consistency check rejects unresolvable extras even when not
+# activated. Re-introduce when a working denoise package is identified
+# (either as a PyPI dist or via [tool.uv.sources] git pin).
 dev = [
   "pytest>=8",
   "pytest-asyncio>=0.23",
@@ -44,10 +71,25 @@ packages = ["src/emotion_tts_worker"]
 
 [tool.uv]
 managed = true
+# Drop `wetextprocessing` (pulled in by indextts) from the resolution graph
+# entirely. It transitively requires pynini, which has no Windows wheels and
+# whose sdist will not build with MSVC. We replace its functionality with
+# `wetext` (declared above) and a runtime monkey-patch in the worker. The
+# `python_version < '0'` marker is always false, so this override removes
+# wetextprocessing wherever it would otherwise be required.
+override-dependencies = ["wetextprocessing ; python_version < '0'"]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }
 torchaudio = { index = "pytorch-cu128" }
+# indextts is not on PyPI. Upstream's only published tag is `v1.5.0`, which
+# is the IndexTTS v1 line and does NOT contain `indextts/infer_v2.py` —
+# the IndexTTS-2 entrypoint we need (`from indextts.infer_v2 import IndexTTS2`)
+# only exists on `main`. Pin to a SHA on `main` for reproducibility:
+#   * `version` field on main self-reports 2.0.0
+#   * SHA below was verified to contain `indextts/infer_v2.py`
+# When upstream cuts a v2 release tag, switch this to `tag = "v2.x.y"`.
+indextts = { git = "https://github.com/index-tts/index-tts", rev = "830f6f8f94a51fea23ab1d639027a86200075a4e" }
 
 [[tool.uv.index]]
 name = "pytorch-cu128"

@@ -82,6 +82,7 @@ async fn setup() -> (axum::Router, Repos, DeploymentId) {
             model_family: "indextts-2".into(),
             oas_threshold_learned: None,
             oas_samples_seen: 0,
+            default_voice_asset_id: None,
             created_at: now,
             updated_at: now,
         })
@@ -257,6 +258,7 @@ async fn resume_of_run_from_other_deployment_returns_404() {
             model_family: "indextts-2".into(),
             oas_threshold_learned: None,
             oas_samples_seen: 0,
+            default_voice_asset_id: None,
             created_at: now,
             updated_at: now,
         })

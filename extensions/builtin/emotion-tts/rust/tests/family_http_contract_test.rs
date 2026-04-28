@@ -66,6 +66,7 @@ async fn build_test_router() -> axum::Router {
         "0.2.0",
         None,
         None,
+        Arc::new(emotion_tts_extension::dispatcher::RunChannelRegistry::new()),
         registry,
         mixed_reconciler(),
     )
@@ -179,7 +180,14 @@ async fn partial_status_propagates_missing_detail() {
     });
 
     let router = build_router_with_families(
-        repos, queue, "0.2.0", None, None, registry, reconciler,
+        repos,
+        queue,
+        "0.2.0",
+        None,
+        None,
+        Arc::new(emotion_tts_extension::dispatcher::RunChannelRegistry::new()),
+        registry,
+        reconciler,
     );
 
     let response = router

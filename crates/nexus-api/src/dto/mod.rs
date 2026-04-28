@@ -1,6 +1,7 @@
 pub mod artifacts;
 pub mod canvas;
 pub mod envelope;
+pub mod extension_dependencies;
 pub mod extensions;
 pub mod models;
 pub mod recipes;

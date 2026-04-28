@@ -6,6 +6,20 @@ import "./theme/tokens.css";
 
 const TAG = "emotion-tts-app";
 const HOST_EVENT = "ext-event";
+const STYLESHEET_ID = "emotion-tts-stylesheet";
+
+function ensureStylesheet(): void {
+  if (typeof document === "undefined") return;
+  if (document.getElementById(STYLESHEET_ID)) return;
+  const href = new URL("./emotion-tts.css", import.meta.url).href;
+  const link = document.createElement("link");
+  link.id = STYLESHEET_ID;
+  link.rel = "stylesheet";
+  link.href = href;
+  document.head.appendChild(link);
+}
+
+ensureStylesheet();
 
 interface HostContext {
   apiBase?: string;

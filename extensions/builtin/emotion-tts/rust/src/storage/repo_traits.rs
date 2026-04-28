@@ -32,6 +32,8 @@ pub struct DeploymentRow {
     pub oas_threshold_learned: Option<f64>,
     #[serde(default)]
     pub oas_samples_seen: i64,
+    #[serde(default)]
+    pub default_voice_asset_id: Option<VoiceAssetId>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -215,6 +217,13 @@ pub trait DeploymentsRepo: Send + Sync {
         compile_gpt_enabled: Option<bool>,
         model_family: Option<&str>,
     ) -> RepoResult<()>;
+    /// Task G2 — set or clear the default voice for Quick voice mode.
+    /// Passing `None` clears the column (user opted out of Quick mode).
+    async fn set_default_voice(
+        &self,
+        dep: &DeploymentId,
+        voice: Option<&VoiceAssetId>,
+    ) -> RepoResult<()>;
 }
 
 #[async_trait]
@@ -270,7 +279,10 @@ pub trait RunsRepo: Send + Sync {
         finished_at: Option<i64>,
         from_any: &[&str],
     ) -> RepoResult<bool>;
-    async fn set_started(&self, id: &RunId, at: i64) -> RepoResult<()>;
+    /// Transition queued → running, returning `true` iff the row was queued at
+    /// the time of the call. Closes the race where a cancel arriving between
+    /// utterance insertion and dispatcher start would be silently overwritten.
+    async fn set_started_guarded(&self, id: &RunId, at: i64) -> RepoResult<bool>;
 }
 
 #[async_trait]
@@ -291,6 +303,7 @@ pub trait UtterancesRepo: Send + Sync {
 #[async_trait]
 pub trait SynthesisCacheRepo: Send + Sync {
     async fn get(&self, hash: &ContentHash) -> RepoResult<Option<SynthesisCacheRow>>;
+    async fn lookup_many(&self, hashes: &[ContentHash]) -> RepoResult<Vec<Option<SynthesisCacheRow>>>;
     async fn insert(&self, row: &SynthesisCacheRow) -> RepoResult<()>;
     async fn record_hit(&self, hash: &ContentHash, at: i64) -> RepoResult<()>;
     async fn total_size_bytes(&self) -> RepoResult<i64>;
@@ -317,4 +330,5 @@ pub trait ExportHistoryRepo: Send + Sync {
     async fn insert(&self, row: &ExportHistoryRow) -> RepoResult<()>;
     async fn list_by_deployment(&self, dep: &DeploymentId, limit: i64) -> RepoResult<Vec<ExportHistoryRow>>;
     async fn get(&self, id: &ExportId) -> RepoResult<Option<ExportHistoryRow>>;
+    async fn get_latest_for_run(&self, run: &RunId) -> RepoResult<Option<ExportHistoryRow>>;
 }

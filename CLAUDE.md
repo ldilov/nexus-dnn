@@ -1,6 +1,6 @@
 ﻿# nexus-dnn Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-04-24
+Auto-generated from all feature plans. Last updated: 2026-04-25
 
 ## Active Technologies
 - SQLite via `nexus-storage`. One new migration `012_extensions_primary_refs.sql` adds two additive nullable columns — `extensions.primary_recipe_id` (TEXT) and `extensions.default_workflow_id` (TEXT) — plus non-durable mirroring of the manifest-icon contract on extension upsert (icon stored inside the registry record, not a new column; see data-model.md). No other schema changes. (main)
@@ -35,6 +35,7 @@ cargo test; cargo clippy
 Rust 1.84 (workspace MSRV per existing crates): Follow standard conventions
 
 ## Recent Changes
+- 035-extension-dependency-installer: New host crate `nexus-extension-deps` (Rust 1.84) — generic typed-step-graph dep installer (`runtime`/`package_set`/`system_binary`/`model_artifact`/`validation` handlers), `fetch_artifact` primitive (sha256-verified streaming + Range resume + 4 archive formats), `InstallRunner` walking topo-sorted plans, 4 HTTP routes under `/api/v1/extensions/:id/{dependencies,install,install/steps/:step_id/retry,install/cancel}`, 5 SSE event variants on the existing `event_bus`, host UI at `/extensions/:id/settings` with Overview + Dependencies tabs (React 19 + SWR + zod + vanilla-extract + sonner). EmotionTTS manifest migrated to `dependencies.steps[]`. Boundary audit + Rust spec-opacity guard enforce FR-060 + FR-005.
 - 030-extension-router-mount: Added Rust 1.84 (workspace MSRV). No TypeScript changes required — the frontend was written against `/api/v1/extensions/nexus.local-llm/*` in spec 029 already; this spec makes those URLs reachable.
 - 029-chat-history-persistence: Added Rust 1.84 (workspace MSRV) for the new extension subproject; TypeScript 5.x / React 19 / Vite 6 / Node ≥ 20 for the frontend edits.
 

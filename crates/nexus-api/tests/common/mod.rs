@@ -213,6 +213,13 @@ pub async fn harness_with_extra(
         lease_manager: std::sync::Arc::new(
             nexus_backend_runtimes::generic::leases::LeaseManager::new(),
         ),
+        dep_handler_registry: None,
+        dep_install_state: std::sync::Arc::new(dashmap::DashMap::new()),
+        dep_runtime_bootstrapper: None,
+        dep_model_store: None,
+        dep_worker_handshake: None,
+        dep_fetch_artifact: None,
+        dep_host_data_dir: None,
     };
 
     TestHarness {
@@ -347,6 +354,13 @@ async fn harness_from_ext_dir(hf: Arc<StubHf>, ext_dir: tempfile::TempDir) -> Te
         lease_manager: std::sync::Arc::new(
             nexus_backend_runtimes::generic::leases::LeaseManager::new(),
         ),
+        dep_handler_registry: None,
+        dep_install_state: std::sync::Arc::new(dashmap::DashMap::new()),
+        dep_runtime_bootstrapper: None,
+        dep_model_store: None,
+        dep_worker_handshake: None,
+        dep_fetch_artifact: None,
+        dep_host_data_dir: None,
     };
 
     TestHarness {

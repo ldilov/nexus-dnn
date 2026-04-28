@@ -5,21 +5,35 @@ import * as styles from "./layout_renderer.css";
 
 type LayoutRendererProps = {
   layout: LayoutDefinition;
+  /**
+   * Attributes injected onto the layout's ROOT custom element only.
+   * Used by the deployment-detail page to pass `deployment-id` so the
+   * mounted extension bundle can route to its per-deployment views
+   * (e.g. `/<id>/recipe`) instead of falling back to its index
+   * landing page.
+   */
+  rootAttrs?: Record<string, string>;
 };
 
-export function LayoutRenderer({ layout }: LayoutRendererProps) {
+export function LayoutRenderer({ layout, rootAttrs }: LayoutRendererProps) {
   return (
     <div className={styles.rendererRoot}>
-      <LayoutNodeRenderer node={layout.root} />
+      <LayoutNodeRenderer node={layout.root} injectAttrs={rootAttrs} />
     </div>
   );
 }
 
 type LayoutNodeRendererProps = {
   node: LayoutNodeType;
+  /**
+   * Extra attributes merged onto this node's props if it's a custom
+   * element. Only the root node receives these — children render with
+   * their own YAML-declared props untouched.
+   */
+  injectAttrs?: Record<string, string>;
 };
 
-function LayoutNodeRenderer({ node }: LayoutNodeRendererProps) {
+function LayoutNodeRenderer({ node, injectAttrs }: LayoutNodeRendererProps) {
   const renderer = getComponentRenderer(node.type);
 
   const children = (node.children ?? []).map((child, i) => (
@@ -31,8 +45,12 @@ function LayoutNodeRenderer({ node }: LayoutNodeRendererProps) {
   }
 
   if (isCustomElementTag(node.type)) {
+    const merged: Record<string, unknown> = {
+      ...(node.props ?? {}),
+      ...(injectAttrs ?? {}),
+    };
     return (
-      <ExtensionCustomElement tag={node.type} props={node.props ?? undefined}>
+      <ExtensionCustomElement tag={node.type} props={merged}>
         {children}
       </ExtensionCustomElement>
     );

@@ -81,7 +81,12 @@ async fn two_extensions_with_different_runtime_ids_coexist_in_catalog() {
     let pool = make_runtime_pool().await;
     let catalog = SqliteCatalogRepo::new(pool.clone());
 
-    let a = sample_entry("test.echo", "test-echo-runtime", RuntimeFamily::Python, 0xAA);
+    let a = sample_entry(
+        "test.echo",
+        "test-echo-runtime",
+        RuntimeFamily::Python,
+        0xAA,
+    );
     let b = sample_entry(
         "test.echo.v2",
         "test-echo-runtime-2",
@@ -173,8 +178,7 @@ async fn duplicate_runtime_id_across_extensions_detected_via_checksum() {
     let pool = make_runtime_pool().await;
     let catalog = SqliteCatalogRepo::new(pool.clone());
 
-    let first =
-        sample_entry("test.echo", "ext.first", RuntimeFamily::Python, 0xAA);
+    let first = sample_entry("test.echo", "ext.first", RuntimeFamily::Python, 0xAA);
     catalog.upsert(&first).await.expect("first upsert");
 
     let existing = catalog
@@ -184,8 +188,7 @@ async fn duplicate_runtime_id_across_extensions_detected_via_checksum() {
         .expect("present");
     assert_eq!(existing.source_extension_id.as_str(), "ext.first");
 
-    let second =
-        sample_entry("test.echo", "ext.second", RuntimeFamily::Python, 0xBB);
+    let second = sample_entry("test.echo", "ext.second", RuntimeFamily::Python, 0xBB);
     let collision_check = if existing.source_extension_id != second.source_extension_id {
         Err(GenericRepoError::UniqueViolation(format!(
             "runtime_id `{}` already contributed by `{}`",
@@ -197,7 +200,10 @@ async fn duplicate_runtime_id_across_extensions_detected_via_checksum() {
 
     let err = collision_check.expect_err("must reject cross-extension duplicate");
     let msg = err.to_string();
-    assert!(msg.contains("test.echo"), "error names the runtime_id: {msg}");
+    assert!(
+        msg.contains("test.echo"),
+        "error names the runtime_id: {msg}"
+    );
     assert!(msg.contains("ext.first"), "error names the owner: {msg}");
 
     let all = catalog.list_all().await.unwrap();

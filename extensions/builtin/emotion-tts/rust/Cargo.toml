@@ -1,5 +1,3 @@
-[workspace]
-
 [package]
 name = "emotion-tts-extension"
 version = "0.1.0"
@@ -12,7 +10,7 @@ publish = false
 path = "src/lib.rs"
 
 [dependencies]
-axum = { version = "0.7", default-features = false, features = ["json", "macros", "tokio", "http1", "query", "multipart"] }
+axum = { version = "0.8", default-features = false, features = ["json", "macros", "tokio", "http1", "query", "multipart"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "fs", "process", "io-util", "time"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -31,8 +29,17 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
 futures = "0.3"
-tokio-util = "0.7"
+tokio-util = { version = "0.7", features = ["io"] }
+async-stream = "0.3"
 urlencoding = "2"
+nexus-extension = { path = "../../../../crates/nexus-extension" }
+# Host-side StdioLease adapter lives inside this extension's crate (in
+# `host_adapter.rs`) so the host shell stays free of emotion-tts-specific
+# wiring code. Pulls in the host's lease primitives — same shape as the
+# grandfathered `nexus-local-llm-worker` arrangement.
+nexus-backend-runtimes = { path = "../../../../crates/nexus-backend-runtimes" }
+nexus-artifact = { path = "../../../../crates/nexus-artifact" }
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }

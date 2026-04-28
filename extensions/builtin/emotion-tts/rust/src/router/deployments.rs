@@ -3,13 +3,13 @@ use std::sync::Arc;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, patch, post};
 use axum::Router;
 use chrono::Utc;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::domain::{DeploymentId, EmotionTtsError, Result};
+use crate::domain::{DeploymentId, EmotionTtsError, Result, VoiceAssetId};
 use crate::families::FamilyRegistry;
 use crate::storage::repo_traits::DeploymentRow;
 use crate::storage::Repos;
@@ -31,8 +31,9 @@ pub fn router(repos: Repos) -> Router {
 pub fn router_with_families(repos: Repos, family_registry: Arc<FamilyRegistry>) -> Router {
     Router::new()
         .route("/", get(list_deployments).post(create_deployment))
-        .route("/:deployment_id", get(get_deployment).patch(patch_deployment).delete(delete_deployment))
-        .route("/:deployment_id/resume", post(resume))
+        .route("/{deployment_id}", get(get_deployment).patch(patch_deployment).delete(delete_deployment))
+        .route("/{deployment_id}/default-voice", patch(set_default_voice))
+        .route("/{deployment_id}/resume", post(resume))
         .with_state(Arc::new(DeploymentsState { repos, family_registry }))
 }
 
@@ -129,6 +130,7 @@ async fn create_impl(
         model_family,
         oas_threshold_learned: None,
         oas_samples_seen: 0,
+        default_voice_asset_id: None,
         created_at: now,
         updated_at: now,
     };
@@ -140,20 +142,88 @@ async fn get_deployment(
     State(state): State<Arc<DeploymentsState>>,
     Path(id): Path<String>,
 ) -> Response {
+    tracing::info!(
+        target: "emotion_tts::deployments",
+        deployment_id = %id,
+        "GET /deployments/:id — handler entered"
+    );
     match get_impl(&state, &id).await {
-        Ok(row) => (StatusCode::OK, Json(deployment_json(&row))).into_response(),
-        Err(err) => err.into_response(),
+        Ok(row) => {
+            tracing::info!(
+                target: "emotion_tts::deployments",
+                deployment_id = %id,
+                "GET /deployments/:id — 200 OK"
+            );
+            (StatusCode::OK, Json(deployment_json(&row))).into_response()
+        }
+        Err(err) => {
+            tracing::warn!(
+                target: "emotion_tts::deployments",
+                deployment_id = %id,
+                category = err.category(),
+                message = %err,
+                "GET /deployments/:id — error response"
+            );
+            err.into_response()
+        }
     }
 }
 
 async fn get_impl(state: &DeploymentsState, id: &str) -> Result<DeploymentRow> {
-    let id = DeploymentId::try_from(id)?;
-    state
-        .repos
-        .deployments
-        .get(&id)
-        .await?
-        .ok_or_else(|| EmotionTtsError::not_found(format!("deployment {id}")))
+    let id = match DeploymentId::try_from(id) {
+        Ok(v) => v,
+        Err(err) => {
+            tracing::warn!(
+                target: "emotion_tts::deployments",
+                raw_id = %id,
+                error = %err,
+                "deployment id parse failed (not a ULID) — host likely passed a UUID or other format"
+            );
+            return Err(err.into());
+        }
+    };
+    if let Some(row) = state.repos.deployments.get(&id).await? {
+        return Ok(row);
+    }
+    tracing::info!(
+        target: "emotion_tts::deployments",
+        deployment_id = %id,
+        "deployment row absent — auto-seeding default"
+    );
+    // Auto-seed: the host creates a deployment row in its own DB and
+    // navigates the user to the extension UI without ever calling the
+    // extension's create_deployment endpoint. The extension's local DB
+    // therefore has no row when the recipe view's loader fires its first
+    // GET — the user sees `ExtensionApiError: Not Found` and the recipe
+    // page renders an error boundary. Mirror the pattern from
+    // `workflows.rs::load_or_seed`: when a GET arrives for a deployment
+    // we don't know yet, persist a minimal default row keyed by the
+    // host-supplied id and return it. The extension treats the host's
+    // deployment id as authoritative; subsequent edits go through PATCH.
+    let now = Utc::now().timestamp();
+    let default_family_id = crate::storage::repo_traits::DEFAULT_MODEL_FAMILY.to_owned();
+    let seeded = DeploymentRow {
+        deployment_id: id.clone(),
+        host_extension_instance_ref: id.as_str().to_owned(),
+        display_name: id.as_str().to_owned(),
+        backend_runtime_preference: None,
+        default_output_format: default_format(),
+        default_speed_factor: default_speed(),
+        default_generation_overrides_json: "{}".to_owned(),
+        most_recent_run_id: None,
+        partial_run_id: None,
+        reference_preprocess_enabled: true,
+        oas_enabled: true,
+        compile_gpt_enabled: false,
+        model_family: default_family_id,
+        oas_threshold_learned: None,
+        oas_samples_seen: 0,
+        default_voice_asset_id: None,
+        created_at: now,
+        updated_at: now,
+    };
+    state.repos.deployments.insert(&seeded).await?;
+    Ok(seeded)
 }
 
 #[derive(Debug, Deserialize)]
@@ -262,6 +332,41 @@ async fn resume_impl(state: &DeploymentsState, id: &str) -> Result<Value> {
         "mostRecentRunId": row.most_recent_run_id.map(|r| r.into_inner()),
         "resumable": has_recent,
     }))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DefaultVoiceBody {
+    voice_asset_id: Option<String>,
+}
+
+async fn set_default_voice(
+    State(state): State<Arc<DeploymentsState>>,
+    Path(deployment_id): Path<String>,
+    Json(body): Json<DefaultVoiceBody>,
+) -> Response {
+    match set_default_voice_impl(&state, &deployment_id, body).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(err) => err.into_response(),
+    }
+}
+
+async fn set_default_voice_impl(
+    state: &DeploymentsState,
+    deployment_id: &str,
+    body: DefaultVoiceBody,
+) -> Result<()> {
+    let dep = DeploymentId::try_from(deployment_id)?;
+    let parsed = body
+        .voice_asset_id
+        .map(|s| VoiceAssetId::try_from(s.as_str()))
+        .transpose()?;
+    state
+        .repos
+        .deployments
+        .set_default_voice(&dep, parsed.as_ref())
+        .await?;
+    Ok(())
 }
 
 fn deployment_json(row: &DeploymentRow) -> Value {

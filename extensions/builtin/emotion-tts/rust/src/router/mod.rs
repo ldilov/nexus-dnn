@@ -8,6 +8,7 @@ pub mod deployments;
 pub mod engine_settings;
 pub mod exports;
 pub mod families;
+pub(crate) mod guard;
 pub mod mappings;
 pub mod middleware;
 pub mod presets;
@@ -39,6 +40,7 @@ pub fn build_router(
         extension_version,
         provider,
         artifact_store,
+        Arc::new(crate::dispatcher::RunChannelRegistry::new()),
         Arc::new(FamilyRegistry::new(Vec::new())),
         families::default_reconciler(),
     )
@@ -54,6 +56,7 @@ pub fn build_router_with_families(
     extension_version: impl Into<String>,
     provider: Option<Arc<LeaseProvider>>,
     artifact_store: Option<Arc<dyn HostArtifactStore>>,
+    run_channels: Arc<crate::dispatcher::RunChannelRegistry>,
     family_registry: Arc<FamilyRegistry>,
     reconciler: families::BoxReconciler,
 ) -> Router {
@@ -61,6 +64,7 @@ pub fn build_router_with_families(
         repos: repos.clone(),
         queue: queue.clone(),
         extension_version: extension_version.into(),
+        run_channels,
     };
     let mut router = Router::new()
         .merge(runs::router(runs_state))
@@ -70,7 +74,10 @@ pub fn build_router_with_families(
         )
         .nest("/mappings", mappings::router(repos.clone()))
         .nest("/presets", presets::router(repos.clone()))
-        .nest("/exports", exports::router())
+        .nest(
+            "/exports",
+            exports::router(repos.clone(), artifact_store.clone()),
+        )
         .nest("/workflow", workflows::router(repos.clone()))
         .merge(engine_settings::router(repos.clone()))
         .merge(families::router(families::FamiliesState {
@@ -96,5 +103,23 @@ pub fn build_router_with_families(
 
 fn voice_assets_stub() -> Router {
     use axum::http::StatusCode;
-    Router::new().fallback(|| async { StatusCode::NOT_IMPLEMENTED })
+    use axum::response::{IntoResponse, Json};
+    use serde_json::json;
+    Router::new().fallback(|| async {
+        // Match the host's `ErrorEnvelope` shape so the frontend's
+        // `apiFetch` error handler can surface a useful message instead
+        // of a bare 501 with no body. The voice-assets surface is
+        // unavailable when the host did not pass a `HostArtifactStore`
+        // into `build_router_with_families` — that's a host
+        // configuration issue, not a route-not-found.
+        let body = json!({
+            "status": "error",
+            "category": "not_configured",
+            "message": "voice asset store not configured by host — \
+                        ensure HostArtifactStore is wired into \
+                        build_router_with_families at extension load time",
+            "request_id": null,
+        });
+        (StatusCode::SERVICE_UNAVAILABLE, Json(body)).into_response()
+    })
 }

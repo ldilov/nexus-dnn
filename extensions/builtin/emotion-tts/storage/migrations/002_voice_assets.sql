@@ -18,8 +18,8 @@ CREATE TABLE IF NOT EXISTS ext_emotion_tts__voice_assets (
     updated_at           INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_voice_assets_deployment
+CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_voice_assets_deployment
     ON ext_emotion_tts__voice_assets (deployment_id);
 
-CREATE INDEX IF NOT EXISTS idx_voice_assets_content
+CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_voice_assets_content
     ON ext_emotion_tts__voice_assets (content_sha256);

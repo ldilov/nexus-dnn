@@ -35,8 +35,8 @@ pub struct FamiliesState {
 pub fn router(state: FamiliesState) -> Router {
     Router::new()
         .route("/families", get(list))
-        .route("/families/:family_id", get(fetch))
-        .route("/families/:family_id/install-hint", get(install_hint))
+        .route("/families/{family_id}", get(fetch))
+        .route("/families/{family_id}/install-hint", get(install_hint))
         .with_state(state)
 }
 

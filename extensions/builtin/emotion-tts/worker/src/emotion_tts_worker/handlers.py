@@ -20,6 +20,7 @@ from .model_loader import (
     handle_ensure_model,
     handle_unload_model,
     orchestrate_load,
+    probe_model_dir,
 )
 from .rpc import ErrorCodes, Methods, error_response
 
@@ -87,6 +88,14 @@ def register_phase4_handlers(
     async def load_model(params: Any) -> dict[str, Any]:
         if adapter is None:
             raise ModelLoadFailedError("adapter is not configured")
+        # Cheap precheck: confirm every required file is on disk before
+        # diving into IndexTTS2's internal load (which buries missing-file
+        # errors under a torch stack trace). Surfaces a structured
+        # `model_missing` envelope to the host instead of an opaque
+        # `model_load_failed`.
+        presence = probe_model_dir(adapter._settings.model_dir_abs)
+        if not presence.present:
+            raise _RpcErrorProxy(ModelMissingError(presence.missing_files).rpc_error())
         include_qwen = bool(params.get("include_qwen", True)) if isinstance(params, dict) else True
         try:
             return orchestrate_load(
@@ -108,12 +117,31 @@ def register_phase4_handlers(
         cancelled = GLOBAL_TOKEN.cancel(request_id)
         return {"request_id": request_id, "cancel_acked": cancelled}
 
+    async def voice_preprocess(params: Any) -> dict[str, Any]:
+        # No-op stub. The host's voice-asset upload flow calls
+        # `voice.preprocess` after every successful upload to do optional
+        # background work (loudness normalization, silence trimming, etc.).
+        # IndexTTS-2 clones from raw audio just fine, so we skip the
+        # preprocessing — but the host's caller still needs a structured
+        # OK response, otherwise it logs a misleading warning every upload.
+        request_id = (
+            str(params.get("request_id", ""))
+            if isinstance(params, dict)
+            else ""
+        )
+        return {
+            "request_id": request_id,
+            "preprocessed": False,
+            "skipped_reason": "preprocessing is a no-op for IndexTTS-2; raw audio works",
+        }
+
     worker.register(Methods.HANDSHAKE, handshake, replace=True)
     worker.register(Methods.HEALTH, health, replace=True)
     worker.register(Methods.MODEL_LOAD, load_model)
     worker.register("model.ensure", ensure_model)
     worker.register(Methods.MODEL_UNLOAD, unload_model)
     worker.register(Methods.CANCEL, cancel)
+    worker.register("voice.preprocess", voice_preprocess)
 
     if synthesis is not None:
         async def synthesize_batch(params: Any) -> dict[str, Any]:

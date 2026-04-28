@@ -14,9 +14,7 @@ use serde::Serialize;
 use nexus_backend_runtimes::generic::catalog::{BackendRuntimeCatalogRepo, SqliteCatalogRepo};
 use nexus_backend_runtimes::generic::enums::OwnerKind;
 use nexus_backend_runtimes::generic::ids::RuntimeInstallId;
-use nexus_backend_runtimes::generic::installs::{
-    BackendRuntimeInstallsRepo, SqliteInstallsRepo,
-};
+use nexus_backend_runtimes::generic::installs::{BackendRuntimeInstallsRepo, SqliteInstallsRepo};
 use nexus_backend_runtimes::generic::leases::{
     AcquireOptions, BackendRuntimeLease, LeaseError, SqliteLeasesRepo, acquire_lease,
 };
@@ -131,7 +129,10 @@ pub async fn restart(
     let new_lease_id = lease.id();
     let pid = lease.pid().map(|p| p as i32);
     let state_str = lease.state().as_str();
-    state.lease_manager.register(lease.clone(), install_id).await;
+    state
+        .lease_manager
+        .register(lease.clone(), install_id)
+        .await;
 
     ApiResponse::ok(RestartResponse {
         new_lease_id: new_lease_id.to_string(),
