@@ -82,6 +82,11 @@ async fn dispatch_inner(
     // single-thread runtimes used by #[tokio::test]).
     let dep_id = crate::domain::DeploymentId::try_from(qrun.deployment_id.as_str())
         .map_err(|e| EmotionTtsError::internal(format!("invalid deployment id: {e}")))?;
+    let dep_row = repos
+        .deployments
+        .get(&dep_id)
+        .await?
+        .ok_or_else(|| EmotionTtsError::not_found(format!("deployment {dep_id}")))?;
     let voice_rows = repos.voice_assets.list_by_deployment(&dep_id).await?;
     let mut voice_paths: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     let mut voice_sha256s: std::collections::HashMap<String, String> = std::collections::HashMap::new();
@@ -105,6 +110,7 @@ async fn dispatch_inner(
         output_root,
         voice_path_resolver: voice_resolver,
         voice_sha256_resolver,
+        default_voice_asset_id: dep_row.default_voice_asset_id.clone(),
     };
     let prepared = prepare(repos, run_id, &cfg, extension_version).await?;
 
