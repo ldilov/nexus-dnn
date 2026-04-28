@@ -922,3 +922,286 @@ async fn dispatcher_serves_cache_hits_without_calling_worker() {
         "utterance must reference the pre-seeded cached audio file"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Test: resume run reuses cache rows from the original run
+// ---------------------------------------------------------------------------
+//
+// Seeds an original run (status=partial) and a cache row whose hash matches
+// what the dispatcher will compute for the single segment. Then enqueues a
+// NEW resume run that points at the original via `original_run_id`. Asserts:
+//   - synthesize.batch handler call count is 0 (cache hit short-circuits)
+//   - all utterance rows for the resume run have cache_hit=true
+//   - all utterance rows have source_run_id=Some(original_run_id) (C2 fix)
+//   - resume run reaches "completed"
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn resume_run_reuses_cache_from_original() {
+    let pool = fresh_pool().await;
+    let repos = Repos::from_pool(pool);
+
+    let dep = DeploymentId::try_from("dep_test_resume_cache").unwrap();
+    let now = Utc::now().timestamp();
+
+    repos
+        .deployments
+        .insert(&DeploymentRow {
+            deployment_id: dep.clone(),
+            host_extension_instance_ref: "host:test".into(),
+            display_name: "Resume Cache Test Deployment".into(),
+            backend_runtime_preference: None,
+            default_output_format: "wav".into(),
+            default_speed_factor: 1.0,
+            default_generation_overrides_json: "{}".into(),
+            most_recent_run_id: None,
+            partial_run_id: None,
+            reference_preprocess_enabled: true,
+            oas_enabled: false,
+            compile_gpt_enabled: false,
+            model_family: "indextts-2".into(),
+            oas_threshold_learned: None,
+            oas_samples_seen: 0,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    // Use "d".repeat(64) — distinct from the other three tests.
+    let voice_sha256 = "d".repeat(64);
+    let voice_id = VoiceAssetId::new();
+    repos
+        .voice_assets
+        .insert(&VoiceAssetRow {
+            voice_asset_id: voice_id.clone(),
+            deployment_id: dep.clone(),
+            display_name: "Narrator".into(),
+            kind: "speaker".into(),
+            audio_artifact_ref: "/tmp/fake_voice_resume.wav".into(),
+            content_sha256: voice_sha256.clone(),
+            reference_text: None,
+            sample_rate: Some(24000),
+            duration_ms: Some(5000),
+            source_type: "upload".into(),
+            notes: None,
+            is_active: true,
+            preprocessed_artifact_ref: None,
+            preprocessing_report_json: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    repos
+        .mappings
+        .insert(&CharacterMappingRow {
+            mapping_id: MappingId::new(),
+            deployment_id: dep.clone(),
+            character_name: "Narrator".into(),
+            character_name_lower: "narrator".into(),
+            speaker_voice_asset_id: voice_id.clone(),
+            default_emotion_mode: "none".into(),
+            default_emotion_voice_asset_id: None,
+            default_vector_preset_id: None,
+            default_qwen_template: None,
+            default_speed_factor: None,
+            default_generation_overrides_json: "{}".into(),
+            is_active: true,
+            notes: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    // Insert an original run that ended in `partial`.
+    let original_run_id = RunId::new();
+    repos
+        .runs
+        .insert(&RunRow {
+            run_id: original_run_id.clone(),
+            deployment_id: dep.clone(),
+            kind: "batch".into(),
+            status: "partial".into(),
+            script_snapshot: "Narrator: Hello world.".into(),
+            parser_mode: "dialogue".into(),
+            generation_settings_json: "{}".into(),
+            global_emotion_snapshot_json: None,
+            output_format: "wav".into(),
+            speed_factor: 1.0,
+            speed_mode: "preserve_pitch".into(),
+            cache_policy: "use_cache".into(),
+            seed_strategy: "fixed".into(),
+            base_seed: 42,
+            original_run_id: None,
+            runtime_install_id: None,
+            runtime_version: None,
+            model_version: None,
+            extension_version: "0.0.0-test".into(),
+            queued_at: now,
+            started_at: Some(now),
+            finished_at: Some(now),
+            error_category: None,
+            error_detail: None,
+        })
+        .await
+        .unwrap();
+
+    // Pre-seed the cache row with the same hash prepare() will compute for the
+    // single segment in "Narrator: Hello world." with the voice above.
+    let cache_input = CacheKeyInput {
+        extension_version: "0.0.0-test".into(),
+        runtime_version: "0.0.0".into(),
+        model_version: "indextts-2".into(),
+        model_family: "indextts-2".into(),
+        text: "Narrator: Hello world.".into(),
+        speaker_ref_sha256: voice_sha256,
+        emotion: EmotionPayload::None,
+        generation_params: BTreeMap::new(),
+        seed: 42,
+        speed_factor: 1.0,
+        speed_mode: "preserve_pitch".into(),
+        output_format: "wav".into(),
+    };
+    let hash = build_cache_key(&cache_input).expect("cache key must build for valid inputs");
+
+    repos
+        .cache
+        .insert(&SynthesisCacheRow {
+            content_hash: hash.clone(),
+            audio_artifact_ref: "/tmp/resume_cached_seg.wav".into(),
+            extension_version: "0.0.0-test".into(),
+            runtime_version: "0.0.0".into(),
+            model_version: "indextts-2".into(),
+            size_bytes: 100,
+            hit_count: 0,
+            created_at: now,
+            last_hit_at: now,
+        })
+        .await
+        .unwrap();
+
+    // Insert the resume run: same script, points at the original via original_run_id.
+    let resume_run_id = RunId::new();
+    repos
+        .runs
+        .insert(&RunRow {
+            run_id: resume_run_id.clone(),
+            deployment_id: dep.clone(),
+            kind: "batch".into(),
+            status: "queued".into(),
+            script_snapshot: "Narrator: Hello world.".into(),
+            parser_mode: "dialogue".into(),
+            generation_settings_json: "{}".into(),
+            global_emotion_snapshot_json: None,
+            output_format: "wav".into(),
+            speed_factor: 1.0,
+            speed_mode: "preserve_pitch".into(),
+            cache_policy: "use_cache".into(),
+            seed_strategy: "fixed".into(),
+            base_seed: 42,
+            original_run_id: Some(original_run_id.clone()),
+            runtime_install_id: None,
+            runtime_version: None,
+            model_version: None,
+            extension_version: "0.0.0-test".into(),
+            queued_at: now,
+            started_at: None,
+            finished_at: None,
+            error_category: None,
+            error_detail: None,
+        })
+        .await
+        .unwrap();
+
+    // Build a lease whose synthesize.batch handler counts every call.
+    // The count must remain zero — cache hits skip the RPC entirely.
+    let call_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = call_count.clone();
+    let (lease, _notif_tx) = ChannelLease::new(move |method, _params| {
+        if method == "synthesize.batch" {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+        Ok(json!({"request_id": "x", "status": "ok", "segments": []}))
+    });
+
+    let queue = Arc::new(RuntimeQueue::new());
+    let registry = Arc::new(RunChannelRegistry::new());
+    let provider = Arc::new(LeaseProvider::new(Arc::new(StaticLeaseFactory(
+        lease as SharedLease,
+    ))));
+
+    let _handle = spawn_dispatcher(
+        queue.clone(),
+        repos.clone(),
+        provider,
+        registry.clone(),
+        None,
+        "0.0.0-test",
+    );
+
+    queue
+        .enqueue(resume_run_id.clone(), dep.as_str(), RunClass::Resume)
+        .await;
+
+    let mut rx = None;
+    for _ in 0..100 {
+        if let Some(r) = registry.subscribe(resume_run_id.as_str()).await {
+            rx = Some(r);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let mut rx = rx.expect("dispatcher should register run channel within 2s");
+
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            match rx.recv().await {
+                Ok(ev) => {
+                    if matches!(ev, RunEvent::RunTerminal { .. }) {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    })
+    .await
+    .expect("dispatcher should reach RunTerminal within 10s");
+
+    assert_eq!(
+        call_count.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "synthesize.batch must not be called when every segment is a cache hit on resume"
+    );
+
+    let final_row = repos
+        .runs
+        .get(&resume_run_id)
+        .await
+        .unwrap()
+        .expect("resume run row must exist");
+    assert_eq!(
+        final_row.status, "completed",
+        "resume run must reach 'completed' on all-cache-hit path, got {:?}",
+        final_row.status
+    );
+
+    // All utterance rows for the resume run must have cache_hit=true and
+    // source_run_id pointing at the original run (C2 fix).
+    let utts = repos
+        .utterances
+        .list_by_run(&resume_run_id)
+        .await
+        .expect("utterance query must not fail");
+    assert_eq!(utts.len(), 1, "expected exactly one utterance row for resume run");
+    let utt = &utts[0];
+    assert!(utt.cache_hit, "utterance must have cache_hit=true on resume");
+    assert_eq!(
+        utt.source_run_id.as_ref().map(|id| id.as_str()),
+        Some(original_run_id.as_str()),
+        "utterance source_run_id must equal the original run id (C2 fix)"
+    );
+}
