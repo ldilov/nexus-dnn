@@ -207,6 +207,27 @@ async fn dispatch_inner(
     }
 
     if qrun.cancel.is_cancelled() {
+        // Mark in-flight utterances as cancelled so the recomputed
+        // terminal status (above) and any future read of the run reflect
+        // the user's intent. Errors are logged but do not block the
+        // cancel response — the run row itself is updated by process_one.
+        let utts = repos.utterances.list_by_run(run_id).await.unwrap_or_default();
+        for u in utts {
+            if u.status == "running" || u.status == "queued" {
+                if let Err(err) = repos
+                    .utterances
+                    .update_status(&u.utterance_id, "cancelled")
+                    .await
+                {
+                    tracing::warn!(
+                        target: "emotion_tts::dispatch",
+                        utterance_id = u.utterance_id.as_str(),
+                        error = %err,
+                        "failed to mark in-flight utterance cancelled"
+                    );
+                }
+            }
+        }
         return Ok("cancelled".to_string());
     }
 
