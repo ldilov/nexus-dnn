@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use sqlx::{Row, SqlitePool};
 
-use crate::domain::{DeploymentId, RunId};
+use crate::domain::{DeploymentId, RunId, VoiceAssetId};
 use crate::storage::repo_traits::{
     DeploymentRow, DeploymentsRepo, RepoResult, DEFAULT_MODEL_FAMILY,
 };
@@ -28,6 +28,7 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<DeploymentRow> {
     let oas_raw: Option<i64> = row.try_get("oas_enabled").map_err(sqlx_to_err)?;
     let compile_raw: Option<i64> = row.try_get("compile_gpt_enabled").map_err(sqlx_to_err)?;
     let model_family: Option<String> = row.try_get("model_family").map_err(sqlx_to_err)?;
+    let default_voice_raw: Option<String> = row.try_get("default_voice_asset_id").map_err(sqlx_to_err)?;
 
     Ok(DeploymentRow {
         deployment_id: DeploymentId::try_from(id_s.as_str())?,
@@ -45,6 +46,9 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<DeploymentRow> {
         model_family: model_family.unwrap_or_else(|| DEFAULT_MODEL_FAMILY.to_string()),
         oas_threshold_learned: row.try_get("oas_threshold_learned").map_err(sqlx_to_err)?,
         oas_samples_seen: row.try_get("oas_samples_seen").map_err(sqlx_to_err)?,
+        default_voice_asset_id: default_voice_raw
+            .map(|s| VoiceAssetId::try_from(s.as_str()))
+            .transpose()?,
         created_at: row.try_get("created_at").map_err(sqlx_to_err)?,
         updated_at: row.try_get("updated_at").map_err(sqlx_to_err)?,
     })
@@ -61,8 +65,8 @@ impl DeploymentsRepo for SqliteDeploymentsRepo {
             "INSERT INTO ext_emotion_tts__deployments \
              (deployment_id, host_extension_instance_ref, display_name, backend_runtime_preference, \
               default_output_format, default_speed_factor, default_generation_overrides_json, \
-              most_recent_run_id, created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              most_recent_run_id, default_voice_asset_id, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(row.deployment_id.as_str())
         .bind(&row.host_extension_instance_ref)
@@ -72,6 +76,7 @@ impl DeploymentsRepo for SqliteDeploymentsRepo {
         .bind(row.default_speed_factor)
         .bind(&row.default_generation_overrides_json)
         .bind(row.most_recent_run_id.as_ref().map(RunId::as_str))
+        .bind(row.default_voice_asset_id.as_ref().map(VoiceAssetId::as_str))
         .bind(row.created_at)
         .bind(row.updated_at)
         .execute(&self.pool)
@@ -102,7 +107,7 @@ impl DeploymentsRepo for SqliteDeploymentsRepo {
             "UPDATE ext_emotion_tts__deployments SET \
                host_extension_instance_ref = ?, display_name = ?, backend_runtime_preference = ?, \
                default_output_format = ?, default_speed_factor = ?, default_generation_overrides_json = ?, \
-               most_recent_run_id = ?, updated_at = ? \
+               most_recent_run_id = ?, default_voice_asset_id = ?, updated_at = ? \
              WHERE deployment_id = ?",
         )
         .bind(&row.host_extension_instance_ref)
@@ -112,6 +117,7 @@ impl DeploymentsRepo for SqliteDeploymentsRepo {
         .bind(row.default_speed_factor)
         .bind(&row.default_generation_overrides_json)
         .bind(row.most_recent_run_id.as_ref().map(RunId::as_str))
+        .bind(row.default_voice_asset_id.as_ref().map(VoiceAssetId::as_str))
         .bind(row.updated_at)
         .bind(row.deployment_id.as_str())
         .execute(&self.pool)
