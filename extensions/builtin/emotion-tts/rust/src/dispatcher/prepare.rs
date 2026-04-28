@@ -446,6 +446,8 @@ fn build_mapping_defaults(
 /// All other override keys (`emotion_vector`, `qwen`, `emotion_alpha`,
 /// and any future additions) are forwarded verbatim — `from_map` parses
 /// the values it understands and ignores the rest.
+const INLINE_AUDIO_REF_KEY: &str = "emotion_audio_ref";
+
 fn build_inline_overrides(
     raw: &BTreeMap<String, String>,
     cfg: &PrepareConfig,
@@ -453,10 +455,15 @@ fn build_inline_overrides(
     if raw.is_empty() {
         return InlineOverrides::default();
     }
+    // Defer the clone until we actually need to rewrite. The
+    // `emotion_audio_ref` key is uncommon in practice — most utterances
+    // use `emotion_vector`, which is forwarded verbatim — so the borrow
+    // path saves a per-utterance heap allocation in the hot loop.
+    let Some(ref_id) = raw.get(INLINE_AUDIO_REF_KEY) else {
+        return InlineOverrides::from_map(raw);
+    };
+    let resolved = (cfg.voice_path_resolver)(ref_id).unwrap_or_else(|| ref_id.clone());
     let mut normalised: BTreeMap<String, String> = raw.clone();
-    if let Some(ref_id) = raw.get("emotion_audio_ref") {
-        let resolved = (cfg.voice_path_resolver)(ref_id).unwrap_or_else(|| ref_id.clone());
-        normalised.insert("emotion_audio_ref".to_string(), resolved);
-    }
+    normalised.insert(INLINE_AUDIO_REF_KEY.to_string(), resolved);
     InlineOverrides::from_map(&normalised)
 }
