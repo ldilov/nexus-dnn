@@ -317,4 +317,5 @@ pub trait ExportHistoryRepo: Send + Sync {
     async fn insert(&self, row: &ExportHistoryRow) -> RepoResult<()>;
     async fn list_by_deployment(&self, dep: &DeploymentId, limit: i64) -> RepoResult<Vec<ExportHistoryRow>>;
     async fn get(&self, id: &ExportId) -> RepoResult<Option<ExportHistoryRow>>;
+    async fn get_latest_for_run(&self, run: &RunId) -> RepoResult<Option<ExportHistoryRow>>;
 }

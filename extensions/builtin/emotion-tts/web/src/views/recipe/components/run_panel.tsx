@@ -180,7 +180,7 @@ export function RunPanel(props: Props): JSX.Element {
 
       {run?.exportArtifactRef && (
         <a
-          href={`/api/v1/artifacts/${run.exportArtifactRef}/download`}
+          href={`/api/v1/extensions/nexus.audio.emotiontts/exports/${run.exportArtifactRef}/download`}
           download
           className={css.secondaryButton}
         >

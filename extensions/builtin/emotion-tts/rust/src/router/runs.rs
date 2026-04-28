@@ -457,7 +457,22 @@ async fn get_run_impl(state: &RunsState, deployment_id: &str, run_id: &str) -> R
         .list_by_run(&run_id)
         .await
         .unwrap_or_default();
-    Ok(run_detail_json(&row, &utterances))
+    let mut body = run_detail_json(&row, &utterances);
+    let export = state
+        .repos
+        .exports
+        .get_latest_for_run(&run_id)
+        .await
+        .unwrap_or(None);
+    if let Some(e) = export {
+        if let Some(obj) = body.as_object_mut() {
+            obj.insert(
+                "exportArtifactRef".into(),
+                Value::String(e.export_id.as_str().to_string()),
+            );
+        }
+    }
+    Ok(body)
 }
 
 pub async fn cancel_run(
