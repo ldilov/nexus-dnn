@@ -55,6 +55,7 @@ async fn seed_deployment(repos: &Repos) -> DeploymentId {
             model_family: "indextts-2".into(),
             oas_threshold_learned: None,
             oas_samples_seen: 0,
+            default_voice_asset_id: None,
             created_at: now,
             updated_at: now,
         })

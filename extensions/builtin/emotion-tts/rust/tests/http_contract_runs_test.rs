@@ -4,16 +4,22 @@
 //! own migrations applied and the ULID-backed queue.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::body::{to_bytes, Body};
 use axum::http::{Method, Request, StatusCode};
 use chrono::Utc;
 use emotion_tts_extension::build_router_with;
-use emotion_tts_extension::domain::{DeploymentId, MappingId, VoiceAssetId};
+use emotion_tts_extension::dispatcher::RunChannelRegistry;
+use emotion_tts_extension::domain::{DeploymentId, MappingId, RunId, UtteranceId, VoiceAssetId};
 use emotion_tts_extension::queue::RuntimeQueue;
-use emotion_tts_extension::storage::repo_traits::{CharacterMappingRow, DeploymentRow};
+use emotion_tts_extension::router::build_router_with_families;
+use emotion_tts_extension::storage::repo_traits::{
+    CharacterMappingRow, DeploymentRow, RunRow, UtteranceRow,
+};
 use emotion_tts_extension::storage::Repos;
 use emotion_tts_extension::MIGRATIONS;
+use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;
@@ -55,6 +61,7 @@ async fn seed_deployment(repos: &Repos) -> DeploymentId {
             model_family: "indextts-2".into(),
             oas_threshold_learned: None,
             oas_samples_seen: 0,
+            default_voice_asset_id: None,
             created_at: now,
             updated_at: now,
         })
@@ -430,4 +437,168 @@ async fn test_line_endpoint_accepts_202() {
     let (status, body) = parse_body(resp).await;
     assert_eq!(status, StatusCode::ACCEPTED);
     assert!(body["runId"].as_str().unwrap().len() > 0);
+}
+
+#[tokio::test]
+async fn sse_replays_completed_utterances_on_subscribe() {
+    let pool = fresh_pool().await;
+    let repos = Repos::from_pool(pool);
+    let now = Utc::now().timestamp();
+
+    let dep_id = seed_deployment(&repos).await;
+
+    let run_id = RunId::new();
+    repos
+        .runs
+        .insert(&RunRow {
+            run_id: run_id.clone(),
+            deployment_id: dep_id.clone(),
+            kind: "batch".into(),
+            status: "running".into(),
+            script_snapshot: "Narrator: Hello world.".into(),
+            parser_mode: "dialogue".into(),
+            generation_settings_json: "{}".into(),
+            global_emotion_snapshot_json: None,
+            output_format: "wav".into(),
+            speed_factor: 1.0,
+            speed_mode: "preserve_pitch".into(),
+            cache_policy: "use_cache".into(),
+            seed_strategy: "fixed".into(),
+            base_seed: 42,
+            original_run_id: None,
+            runtime_install_id: None,
+            runtime_version: None,
+            model_version: None,
+            extension_version: "0.0.0-test".into(),
+            queued_at: now,
+            started_at: Some(now),
+            finished_at: None,
+            error_category: None,
+            error_detail: None,
+        })
+        .await
+        .unwrap();
+
+    let utt1_id = UtteranceId::new();
+    let utt2_id = UtteranceId::new();
+    repos
+        .utterances
+        .insert_many(&[
+            UtteranceRow {
+                utterance_id: utt1_id.clone(),
+                run_id: run_id.clone(),
+                global_index: 1,
+                character_display: "Narrator".into(),
+                character_sanitised: "Narrator".into(),
+                character_index: 1,
+                text: "Hello".into(),
+                source_line_number: 1,
+                inline_overrides_json: "{}".into(),
+                legacy_emotion_ref: None,
+                resolved_mapping_id: None,
+                resolved_speaker_voice_asset_id: None,
+                resolved_emotion_mode: Some("none".into()),
+                resolved_emotion_payload_json: None,
+                resolved_seed: None,
+                resolved_generation_json: None,
+                content_hash: None,
+                status: "completed".into(),
+                source_run_id: None,
+                audio_artifact_ref: Some("/tmp/seg1.wav".into()),
+                cache_hit: false,
+                duration_ms: Some(1234),
+                started_at: Some(now),
+                finished_at: Some(now),
+                failure_category: None,
+                failure_detail: None,
+            },
+            UtteranceRow {
+                utterance_id: utt2_id.clone(),
+                run_id: run_id.clone(),
+                global_index: 2,
+                character_display: "Narrator".into(),
+                character_sanitised: "Narrator".into(),
+                character_index: 2,
+                text: "World".into(),
+                source_line_number: 2,
+                inline_overrides_json: "{}".into(),
+                legacy_emotion_ref: None,
+                resolved_mapping_id: None,
+                resolved_speaker_voice_asset_id: None,
+                resolved_emotion_mode: Some("none".into()),
+                resolved_emotion_payload_json: None,
+                resolved_seed: None,
+                resolved_generation_json: None,
+                content_hash: None,
+                status: "failed".into(),
+                source_run_id: None,
+                audio_artifact_ref: None,
+                cache_hit: false,
+                duration_ms: None,
+                started_at: Some(now),
+                finished_at: Some(now),
+                failure_category: Some("synthesis_failed".into()),
+                failure_detail: Some("test failure".into()),
+            },
+        ])
+        .await
+        .unwrap();
+
+    // Pre-register a channel so the SSE handler's subscribe loop succeeds
+    // immediately and reaches the replay block. Without this the handler
+    // would spin 3000 × 100 ms (5 minutes) before falling back to a
+    // synthetic run_terminal/failed frame.
+    let registry = Arc::new(RunChannelRegistry::new());
+    let (_tx, _guard) = registry.register(run_id.as_str()).await;
+
+    let queue = Arc::new(RuntimeQueue::new());
+    let router = build_router_with_families(
+        repos.clone(),
+        queue,
+        "0.0.0-test",
+        None,
+        None,
+        registry,
+        Arc::new(emotion_tts_extension::families::FamilyRegistry::new(Vec::new())),
+        emotion_tts_extension::router::families::default_reconciler(),
+    );
+
+    let path = format!(
+        "/deployments/{}/runs/{}/progress",
+        dep_id.as_str(),
+        run_id.as_str()
+    );
+    let req = Request::builder()
+        .method(Method::GET)
+        .uri(&path)
+        .body(Body::empty())
+        .unwrap();
+    let response = router.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Read body frames with a short deadline. The SSE stream stays open
+    // after replay (waiting for live events), so we collect whatever
+    // arrives within 500 ms and then inspect the accumulated bytes.
+    let mut body = response.into_body();
+    let mut collected: Vec<u8> = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(500);
+    while let Ok(Some(frame_result)) =
+        tokio::time::timeout_at(deadline, body.frame()).await
+    {
+        if let Ok(frame) = frame_result {
+            if let Some(data) = frame.data_ref() {
+                collected.extend_from_slice(data);
+            }
+        }
+    }
+
+    let body_str = String::from_utf8_lossy(&collected);
+    assert!(
+        body_str.contains("event: segment_completed"),
+        "expected event: segment_completed in SSE replay; got:\n{body_str}"
+    );
+    assert!(
+        body_str.contains("event: segment_failed"),
+        "expected event: segment_failed in SSE replay; got:\n{body_str}"
+    );
 }

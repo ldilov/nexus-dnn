@@ -78,6 +78,22 @@ async fn build_state() -> AppState {
             r.seal();
             r as nexus_api::extension_router::SharedRegistry
         },
+        family_handlers:
+            nexus_backend_runtimes::generic::family_handler::FamilyHandlerRegistry::new(),
+        pipeline_events: {
+            let (tx, _) = tokio::sync::broadcast::channel(nexus_api::PIPELINE_EVENT_CAPACITY);
+            std::sync::Arc::new(tx)
+        },
+        lease_manager: std::sync::Arc::new(
+            nexus_backend_runtimes::generic::leases::LeaseManager::new(),
+        ),
+        dep_handler_registry: None,
+        dep_install_state: std::sync::Arc::new(dashmap::DashMap::new()),
+        dep_runtime_bootstrapper: None,
+        dep_model_store: None,
+        dep_worker_handshake: None,
+        dep_fetch_artifact: None,
+        dep_host_data_dir: None,
     }
 }
 

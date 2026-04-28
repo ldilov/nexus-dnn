@@ -33,17 +33,24 @@ export async function createPreset(
 }
 
 export async function patchPreset(
+  deploymentId: string,
   presetId: string,
   body: { presetName?: string; vector?: EmotionVector },
 ): Promise<VectorPreset> {
-  return apiFetch(`/presets/${presetId}`, {
-    method: "PATCH",
-    body: JSON.stringify(body),
-  });
+  return apiFetch(
+    `/presets/${presetId}?deploymentId=${encodeURIComponent(deploymentId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    },
+  );
 }
 
-export async function deletePreset(presetId: string): Promise<void> {
-  await apiFetch(`/presets/${presetId}`, { method: "DELETE" });
+export async function deletePreset(deploymentId: string, presetId: string): Promise<void> {
+  await apiFetch(
+    `/presets/${presetId}?deploymentId=${encodeURIComponent(deploymentId)}`,
+    { method: "DELETE" },
+  );
 }
 
 export function toPresetBundle(

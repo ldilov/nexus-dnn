@@ -132,6 +132,19 @@ async fn evict_to_zero_target_is_noop() {
 }
 
 #[tokio::test]
+async fn lookup_many_returns_aligned_results() {
+    let pool = fresh_pool().await;
+    let repos = Repos::from_pool(pool);
+    let h1 = hash(1);
+    let h2 = hash(2);
+    insert_entry(&repos, &h1, 1024, 100).await;
+    let results = repos.cache.lookup_many(&[h1.clone(), h2.clone()]).await.unwrap();
+    assert_eq!(results.len(), 2);
+    assert!(results[0].is_some(), "h1 in cache");
+    assert!(results[1].is_none(), "h2 not in cache");
+}
+
+#[tokio::test]
 async fn insert_conflict_refreshes_last_hit_at() {
     let pool = fresh_pool().await;
     let repos = Repos::from_pool(pool);

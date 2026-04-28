@@ -11,9 +11,16 @@ export type LayoutViewState =
 export interface ExtensionLayoutUIProps {
   state: LayoutViewState;
   onRetry: () => void;
+  /**
+   * Attributes injected onto the root custom element rendered by this
+   * layout. The deployment-detail page uses this to pass
+   * `deployment-id` so the mounted extension bundle routes to its
+   * per-deployment views.
+   */
+  rootAttrs?: Record<string, string>;
 }
 
-export function ExtensionLayoutUI({ state, onRetry }: ExtensionLayoutUIProps) {
+export function ExtensionLayoutUI({ state, onRetry, rootAttrs }: ExtensionLayoutUIProps) {
   if (state.status === "loading") {
     return (
       <div className={styles.loadingContainer}>
@@ -35,7 +42,7 @@ export function ExtensionLayoutUI({ state, onRetry }: ExtensionLayoutUIProps) {
   }
   return (
     <div className={styles.container}>
-      <LayoutRenderer layout={state.layout} />
+      <LayoutRenderer layout={state.layout} rootAttrs={rootAttrs} />
     </div>
   );
 }

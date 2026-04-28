@@ -6,5 +6,5 @@ CREATE TABLE IF NOT EXISTS ext_emotion_tts__workflows (
     updated_at      INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_workflows_customised
+CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_workflows_customised
     ON ext_emotion_tts__workflows (customised);

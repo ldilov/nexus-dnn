@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS ext_emotion_tts__export_history (
     created_at               INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_export_history_deployment
+CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_export_history_deployment
     ON ext_emotion_tts__export_history (deployment_id, created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_export_history_run
+CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_export_history_run
     ON ext_emotion_tts__export_history (run_id);

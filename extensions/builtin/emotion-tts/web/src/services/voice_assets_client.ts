@@ -50,8 +50,14 @@ export async function uploadVoiceAsset(
   return (await resp.json()) as VoiceAsset;
 }
 
-export async function deactivateVoiceAsset(voiceAssetId: string): Promise<void> {
-  await apiFetch(`/voice-assets/${voiceAssetId}`, { method: "DELETE" });
+export async function deactivateVoiceAsset(
+  deploymentId: string,
+  voiceAssetId: string,
+): Promise<void> {
+  await apiFetch(
+    `/voice-assets/${voiceAssetId}?deploymentId=${encodeURIComponent(deploymentId)}`,
+    { method: "DELETE" },
+  );
 }
 
 export async function probeVoiceAsset(artifactRef: string): Promise<ProbeResult> {

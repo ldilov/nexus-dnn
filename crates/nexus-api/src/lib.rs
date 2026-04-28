@@ -1,3 +1,4 @@
+pub mod dep_bootstrap;
 pub mod dto;
 pub mod envelope;
 pub mod error;
@@ -80,6 +81,22 @@ pub struct AppState {
     /// Populated by `POST /install/:id/start`, drained by stop /
     /// uninstall / extension-deactivate paths.
     pub lease_manager: Arc<nexus_backend_runtimes::generic::leases::LeaseManager>,
+    /// Spec 035 — generic dependency-installer state. The `HandlerRegistry` and
+    /// per-extension `RunState` map are wired by host bootstrap; the
+    /// `Option`s default to `None` to keep existing tests working without the
+    /// installer plumbed in.
+    pub dep_handler_registry: Option<Arc<nexus_extension_deps::HandlerRegistry>>,
+    pub dep_install_state: Arc<
+        dashmap::DashMap<
+            String,
+            Arc<tokio::sync::Mutex<nexus_extension_deps::ExtensionInstallState>>,
+        >,
+    >,
+    pub dep_runtime_bootstrapper: Option<Arc<dyn nexus_extension_deps::RuntimeBootstrapper>>,
+    pub dep_model_store: Option<Arc<dyn nexus_extension_deps::ModelStoreClient>>,
+    pub dep_worker_handshake: Option<Arc<dyn nexus_extension_deps::WorkerHandshake>>,
+    pub dep_fetch_artifact: Option<Arc<nexus_extension_deps::fetch::FetchArtifact>>,
+    pub dep_host_data_dir: Option<PathBuf>,
 }
 
 /// Broadcast backlog for pipeline phase events — sized so a fresh

@@ -62,6 +62,40 @@ pub struct ActivatedExtension {
     pub validation_errors: Vec<String>,
     pub status: ExtensionStatus,
     pub directory: PathBuf,
+    /// Spec 035 — parsed install plan derived from `manifest.dependencies` (or
+    /// translated from legacy `runtime_dependencies[]`). `None` if the manifest
+    /// declared no dependencies. Validated against the host's
+    /// [`nexus_extension_deps::handler::HandlerRegistry`] at scan time.
+    pub install_plan: Option<nexus_extension_deps::plan::InstallPlan>,
+}
+
+impl ActivatedExtension {
+    /// Spec 035 T024 — derive the [`InstallPlan`] from the manifest (`dependencies:`
+    /// block, with legacy `runtime_dependencies[]` fallback) and validate every step
+    /// against the supplied [`HandlerRegistry`]. Idempotent — calling more than once
+    /// re-validates and re-stamps `install_plan`.
+    ///
+    /// [`InstallPlan`]: nexus_extension_deps::plan::InstallPlan
+    /// [`HandlerRegistry`]: nexus_extension_deps::handler::HandlerRegistry
+    pub fn populate_install_plan(
+        &mut self,
+        registry: &nexus_extension_deps::handler::HandlerRegistry,
+    ) -> Result<(), nexus_extension_deps::DepError> {
+        match crate::manifest::resolve_dependencies_block(&self.manifest) {
+            None => {
+                self.install_plan = None;
+            }
+            Some(block) => {
+                let plan = nexus_extension_deps::plan::parse_dependencies_block(
+                    &self.manifest.extension.id,
+                    block,
+                    registry,
+                )?;
+                self.install_plan = Some(plan);
+            }
+        }
+        Ok(())
+    }
 }
 
 pub(super) struct RegistryState {
