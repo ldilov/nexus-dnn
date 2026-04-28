@@ -86,11 +86,12 @@ pub async fn register(
         drop(crate::dispatcher::spawn_dispatcher(
             queue.clone(),
             repos.clone(),
-            p,
+            p.clone(),
             run_channels.clone(),
             artifact_store.clone(),
             EXTENSION_VERSION,
         ));
+        drop(crate::dispatcher::spawn_idle_watcher(p));
     }
     let router = router::build_router_with_families(
         repos,
