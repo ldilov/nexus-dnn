@@ -1253,6 +1253,37 @@ async fn raw_text_run_uses_deployment_default_voice() {
     std::fs::write(&voice_wav, b"RIFF\0\0\0\0WAVEfmt ").unwrap();
     let voice_wav_str = voice_wav.to_string_lossy().into_owned();
 
+    // Insert order matters under FK enforcement (migration 014):
+    //   1. Deployment FIRST (voice_assets.deployment_id FK -> deployments).
+    //   2. Voice asset SECOND.
+    //   3. Set the deployment's default_voice_asset_id LAST — that column's
+    //      FK -> voice_assets is ON DELETE SET NULL (migration 013), and the
+    //      target row must exist before the reference can be installed.
+    repos
+        .deployments
+        .insert(&DeploymentRow {
+            deployment_id: dep.clone(),
+            host_extension_instance_ref: "host:test".into(),
+            display_name: "Quick Mode Test Deployment".into(),
+            backend_runtime_preference: None,
+            default_output_format: "wav".into(),
+            default_speed_factor: 1.0,
+            default_generation_overrides_json: "{}".into(),
+            most_recent_run_id: None,
+            partial_run_id: None,
+            reference_preprocess_enabled: true,
+            oas_enabled: false,
+            compile_gpt_enabled: false,
+            model_family: "indextts-2".into(),
+            oas_threshold_learned: None,
+            oas_samples_seen: 0,
+            default_voice_asset_id: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
     repos
         .voice_assets
         .insert(&VoiceAssetRow {
@@ -1276,30 +1307,9 @@ async fn raw_text_run_uses_deployment_default_voice() {
         .await
         .unwrap();
 
-    // Deployment WITH default_voice_asset_id set — the key difference from
-    // all other tests which use None here.
     repos
         .deployments
-        .insert(&DeploymentRow {
-            deployment_id: dep.clone(),
-            host_extension_instance_ref: "host:test".into(),
-            display_name: "Quick Mode Test Deployment".into(),
-            backend_runtime_preference: None,
-            default_output_format: "wav".into(),
-            default_speed_factor: 1.0,
-            default_generation_overrides_json: "{}".into(),
-            most_recent_run_id: None,
-            partial_run_id: None,
-            reference_preprocess_enabled: true,
-            oas_enabled: false,
-            compile_gpt_enabled: false,
-            model_family: "indextts-2".into(),
-            oas_threshold_learned: None,
-            oas_samples_seen: 0,
-            default_voice_asset_id: Some(voice_id.clone()),
-            created_at: now,
-            updated_at: now,
-        })
+        .set_default_voice(&dep, Some(&voice_id))
         .await
         .unwrap();
 
