@@ -382,10 +382,14 @@ fn classify_stderr_line(line: &str) -> StderrLevel {
         return level;
     }
     let trimmed = line.trim_start();
-    // Tracebacks and explicit error names → ERROR.
+    // Tracebacks and explicit error names → ERROR. Match BOTH `RuntimeError(`
+    // (the `repr()` output that BigVGAN prints) AND `<Word>Error:` (the
+    // standard exception traceback final line). Without the second match,
+    // a real traceback's terminal `RuntimeError: ...` line was being
+    // classified as INFO.
     if trimmed.starts_with("Traceback (most recent call last)")
         || trimmed.starts_with("RuntimeError(")
-        || trimmed.starts_with("Error:")
+        || trimmed.contains("Error: ")
     {
         return StderrLevel::Error;
     }
@@ -453,6 +457,18 @@ mod stderr_classify_tests {
     #[test]
     fn traceback_classifies_error() {
         let line = "Traceback (most recent call last):";
+        assert_eq!(classify_stderr_line(line), StderrLevel::Error);
+    }
+
+    #[test]
+    fn traceback_terminal_line_classifies_error() {
+        let line = "RuntimeError: CUDA out of memory.";
+        assert_eq!(classify_stderr_line(line), StderrLevel::Error);
+    }
+
+    #[test]
+    fn value_error_with_colon_classifies_error() {
+        let line = "ValueError: invalid input shape (128, 256)";
         assert_eq!(classify_stderr_line(line), StderrLevel::Error);
     }
 
