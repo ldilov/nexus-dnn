@@ -154,39 +154,78 @@ impl StdioLease {
         params: serde_json::Value,
         timeout: Duration,
     ) -> Result<serde_json::Value, LeaseError> {
-        let current = *self.state.lock().expect("lease state mutex poisoned");
-        if matches!(current, LeaseState::Released | LeaseState::Failed) {
-            return Err(LeaseError::RuntimeUnavailable);
-        }
-
-        let (id, rx) = self.matchmaker.allocate();
-        let request = RpcRequest::new(id, method, params);
-        let frame =
-            serde_json::to_value(&request).map_err(|e| LeaseError::Internal(e.to_string()))?;
-
-        if self.writer_tx.send(WriterCmd::Frame(frame)).await.is_err() {
-            self.matchmaker.cancel(id);
-            return Err(LeaseError::WorkerCrashed);
-        }
-
-        let outcome = match tokio::time::timeout(timeout, rx).await {
-            Ok(Ok(Ok(resp))) => resp,
-            Ok(Ok(Err(f))) => return Err(LeaseError::from(f)),
-            Ok(Err(_)) => return Err(LeaseError::WorkerCrashed),
-            Err(_) => {
-                self.matchmaker.cancel(id);
-                return Err(LeaseError::Timeout);
+        // RPC trace span. Every log line emitted while the RPC is in
+        // flight (including `worker.stderr` lines forwarded by the
+        // stderr_forwarder task running concurrently) is correlated
+        // back to the active method via this span's fields. The span's
+        // duration is captured automatically — making "which RPC was
+        // hung when the worker timed out?" answerable from the log.
+        //
+        // We use `Instrument::instrument` rather than `info_span!()`
+        // followed by `_enter` because the body is async and `_enter`
+        // doesn't survive across `.await` points.
+        use tracing::Instrument;
+        let span = tracing::info_span!(
+            "rpc",
+            method = %method,
+            lease_id = %self.lease_id,
+            timeout_ms = timeout.as_millis() as u64,
+        );
+        async move {
+            let current = *self.state.lock().expect("lease state mutex poisoned");
+            if matches!(current, LeaseState::Released | LeaseState::Failed) {
+                tracing::debug!(state = ?current, "rpc rejected: lease in terminal state");
+                return Err(LeaseError::RuntimeUnavailable);
             }
-        };
 
-        if let Some(err) = outcome.error {
-            return Err(LeaseError::Rpc {
-                code: err.code,
-                message: err.message,
-                data: err.data,
-            });
+            let (id, rx) = self.matchmaker.allocate();
+            let request = RpcRequest::new(id, method, params);
+            let frame = serde_json::to_value(&request)
+                .map_err(|e| LeaseError::Internal(e.to_string()))?;
+
+            tracing::debug!(rpc_id = %id, "rpc dispatched");
+
+            if self.writer_tx.send(WriterCmd::Frame(frame)).await.is_err() {
+                self.matchmaker.cancel(id);
+                tracing::warn!(rpc_id = %id, "rpc writer channel closed — worker crashed");
+                return Err(LeaseError::WorkerCrashed);
+            }
+
+            let outcome = match tokio::time::timeout(timeout, rx).await {
+                Ok(Ok(Ok(resp))) => resp,
+                Ok(Ok(Err(f))) => return Err(LeaseError::from(f)),
+                Ok(Err(_)) => {
+                    tracing::warn!(rpc_id = %id, "rpc reply channel closed — worker crashed");
+                    return Err(LeaseError::WorkerCrashed);
+                }
+                Err(_) => {
+                    self.matchmaker.cancel(id);
+                    tracing::warn!(
+                        rpc_id = %id,
+                        timeout_ms = timeout.as_millis() as u64,
+                        "rpc timed out"
+                    );
+                    return Err(LeaseError::Timeout);
+                }
+            };
+
+            if let Some(err) = outcome.error {
+                tracing::warn!(
+                    rpc_id = %id,
+                    code = err.code,
+                    message = %err.message,
+                    "rpc returned error"
+                );
+                return Err(LeaseError::Rpc {
+                    code: err.code,
+                    message: err.message,
+                    data: err.data,
+                });
+            }
+            Ok(outcome.result.unwrap_or(serde_json::Value::Null))
         }
-        Ok(outcome.result.unwrap_or(serde_json::Value::Null))
+        .instrument(span)
+        .await
     }
 }
 
