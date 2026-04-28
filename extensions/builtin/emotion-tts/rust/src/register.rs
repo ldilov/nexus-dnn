@@ -234,11 +234,13 @@ impl EmotionTtsRouterProvider {
         let run_channels = Arc::new(crate::dispatcher::RunChannelRegistry::new());
         // Discard the JoinHandle — dropping it does not abort the task per
         // tokio::spawn semantics; the dispatcher runs for the process lifetime.
+        let artifact_store_for_dispatcher = self.resources.artifact_store.clone();
         drop(crate::dispatcher::spawn_dispatcher(
             queue.clone(),
             repos.clone(),
             provider.clone(),
             run_channels.clone(),
+            artifact_store_for_dispatcher,
             EXTENSION_VERSION,
         ));
         let artifact_store = self.resources.artifact_store.clone();
