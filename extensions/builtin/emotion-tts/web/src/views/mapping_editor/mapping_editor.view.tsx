@@ -94,7 +94,7 @@ export function MappingEditorView(): JSX.Element {
       if (!selected) return;
       const snapshot = selected;
       try {
-        const next = await patchMapping(selected.mappingId, patch);
+        const next = await patchMapping(deployment.deploymentId, selected.mappingId, patch);
         setMappings((prev) => prev.map((m) => (m.mappingId === next.mappingId ? next : m)));
       } catch (err) {
         setMappings((prev) =>
@@ -103,7 +103,7 @@ export function MappingEditorView(): JSX.Element {
         setError(extract(err));
       }
     },
-    [selected],
+    [selected, deployment.deploymentId],
   );
 
   const addMapping = useCallback(async () => {
