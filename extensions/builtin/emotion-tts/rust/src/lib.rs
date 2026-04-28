@@ -8,6 +8,7 @@
 
 pub mod backend_client;
 pub mod cache_evictor;
+pub mod dispatcher;
 pub mod domain;
 pub mod families;
 pub mod host_adapter;
