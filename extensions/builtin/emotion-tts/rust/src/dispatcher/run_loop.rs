@@ -273,6 +273,28 @@ async fn dispatch_inner(
         .set_started_guarded(run_id, Utc::now().timestamp())
         .await?;
     if !started {
+        // Mirror the cancel cleanup that runs after the dispatch loop:
+        // mark any queued utterances cancelled so reads of the run row's
+        // utterance set don't observe permanently-stale `queued` rows.
+        // `process_one` writes the terminal `cancelled` status on the run
+        // itself based on the returned string.
+        let utts = repos.utterances.list_by_run(run_id).await.unwrap_or_default();
+        for u in utts {
+            if u.status == "queued" {
+                if let Err(err) = repos
+                    .utterances
+                    .update_status(&u.utterance_id, "cancelled")
+                    .await
+                {
+                    tracing::warn!(
+                        target: "emotion_tts::dispatch",
+                        utterance_id = u.utterance_id.as_str(),
+                        error = %err,
+                        "failed to mark queued utterance cancelled after lost set_started race"
+                    );
+                }
+            }
+        }
         return Ok("cancelled".to_string());
     }
 
