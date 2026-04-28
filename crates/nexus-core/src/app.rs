@@ -938,22 +938,21 @@ fn log_discovery_summary(registry: &InMemoryExtensionRegistry) {
     let layouts = registry.list_layouts();
     let ui_contributions = registry.list_ui_contributions();
 
-    use std::io::IsTerminal;
-
-    use crate::log_format::{paint, PaintColor, BANNER_TARGET};
+    use crate::log_format::BANNER_TARGET;
 
     // The banner target opts out of the standard timestamp/icon/level/
     // target prefix (see crates/nexus-core/src/log_format.rs). Each line
     // is emitted verbatim so the column alignment and section dividers
     // hold visually.
     //
-    // We compute `use_ansi` once here and feed it into `paint(...)` so
-    // status tokens render colored on a TTY but as plain text in the
-    // file-appender output. Note that the file appender's formatter ALSO
-    // strips any leftover ANSI from BANNER_TARGET messages defensively,
-    // so even if `use_ansi` is mis-detected the on-disk log stays clean.
-    let use_ansi = std::io::stdout().is_terminal()
-        && std::env::var_os("NO_COLOR").is_none();
+    // Banner status tokens are intentionally plain text. An earlier
+    // pass tried to color `[active]` green via raw ANSI escapes, but
+    // hand-rolled ANSI doesn't auto-enable Windows
+    // ENABLE_VIRTUAL_TERMINAL_PROCESSING the way tracing-subscriber's
+    // own `with_ansi(true)` (via `nu-ansi-term`) does — so the codes
+    // rendered as literal `\x1b[32m` text on classic Windows consoles.
+    // Until we wire `enable_ansi_support` at startup or build a more
+    // robust terminal detection, the banner stays plain.
 
     let rule_thick = "─".repeat(60);
     let rule_thin = "·".repeat(60);
@@ -982,24 +981,16 @@ fn log_discovery_summary(registry: &InMemoryExtensionRegistry) {
                 .name
                 .as_deref()
                 .unwrap_or(&ext.manifest.extension.id);
-            let (glyph, status_color) = match status {
-                "active" => ("●", PaintColor::Green),
-                "error" => ("✗", PaintColor::Red),
-                _ => ("◌", PaintColor::DimGrey),
+            let glyph = match status {
+                "active" => "●",
+                "error" => "✗",
+                _ => "◌",
             };
-            let glyph_painted = paint(use_ansi, status_color, glyph);
-            let status_painted = paint(use_ansi, status_color, &format!("[{status}]"));
-            // Pre-format the line: tracing's `{var}` capture syntax
-            // would treat painted strings as Debug-formatted fields,
-            // escaping the ESC byte to literal `\x1b` text. Building
-            // the line via plain `format!` and passing as `"{}"` keeps
-            // the escape sequences intact for the terminal to render.
-            let line = format!(
-                "      {glyph_painted}  {name:<width$}  v{ver}  {status_painted}",
-                width = name_width,
+            tracing::info!(
+                target: BANNER_TARGET,
+                "      {glyph}  {name:<name_width$}  v{ver}  [{status}]",
                 ver = ext.manifest.extension.version,
             );
-            tracing::info!(target: BANNER_TARGET, "{}", line);
         }
     }
 
