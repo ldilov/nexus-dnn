@@ -3,10 +3,22 @@ mod config;
 
 use anyhow::Context;
 use clap::Parser;
+use tracing_subscriber::fmt::format::Writer;
+use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::app::NexusApp;
 use crate::config::NexusConfig;
+
+/// Compact local-time formatter: `15:59:42.448` instead of the default
+/// full RFC-3339 string. Easier to scan when tailing the host log.
+struct CompactLocalTime;
+
+impl FormatTime for CompactLocalTime {
+    fn format_time(&self, w: &mut Writer<'_>) -> std::fmt::Result {
+        write!(w, "{}", chrono::Local::now().format("%H:%M:%S%.3f"))
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -57,8 +69,22 @@ fn initialize_tracing(default_level: &str) {
         EnvFilter::new(directives.join(","))
     });
 
+    // ANSI colors are auto-disabled when stdout is not a TTY (e.g.,
+    // `cargo run | tee log.txt` or systemd journal capture). The
+    // `compact()` style folds structured fields onto the same line as
+    // the message, which trims the noisy lease_id=... tail and makes
+    // each event a single readable line. The local-time formatter
+    // drops the date prefix and the redundant microseconds.
     tracing_subscriber::registry()
-        .with(fmt::layer().with_target(true).with_thread_ids(false))
+        .with(
+            fmt::layer()
+                .compact()
+                .with_target(true)
+                .with_thread_ids(false)
+                .with_level(true)
+                .with_ansi(true)
+                .with_timer(CompactLocalTime),
+        )
         .with(env_filter)
         .init();
 }
