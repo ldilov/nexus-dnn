@@ -165,6 +165,49 @@ impl BackendClient {
         };
         self.call(rpc::methods::VOICE_PREPROCESS, &params).await
     }
+
+    /// Spec 036 / US1 — typed wrapper for `audio.edit`. Materialises the
+    /// declarative `chain` against the source artifact at
+    /// `source_artifact_abs`, writing the derived audio to
+    /// `output_artifact_abs`. Returns the worker's typed report including
+    /// the canonical `chain_digest`, source/derived durations, optional
+    /// measured LUFS, and per-op timing.
+    pub async fn audio_edit(
+        &self,
+        request_id: impl Into<String>,
+        source_artifact_abs: impl Into<String>,
+        output_artifact_abs: impl Into<String>,
+        chain: serde_json::Value,
+    ) -> Result<params::AudioEditResult> {
+        let params = params::AudioEditParams {
+            request_id: request_id.into(),
+            source_artifact_abs: source_artifact_abs.into(),
+            output_artifact_abs: output_artifact_abs.into(),
+            chain,
+        };
+        self.call(rpc::methods::AUDIO_EDIT, &params).await
+    }
+
+    /// Spec 036 / US1 — typed wrapper for `audio.edit.preview`. Worker
+    /// writes the materialised audio to a temp file under its scratch
+    /// directory and returns the absolute path; the calling Rust route is
+    /// responsible for streaming the bytes back and deleting the temp file
+    /// once the response body has been drained (or the connection closes).
+    pub async fn audio_edit_preview(
+        &self,
+        request_id: impl Into<String>,
+        source_artifact_abs: impl Into<String>,
+        chain: serde_json::Value,
+        format_hint: Option<String>,
+    ) -> Result<params::AudioEditPreviewResult> {
+        let params = params::AudioEditPreviewParams {
+            request_id: request_id.into(),
+            source_artifact_abs: source_artifact_abs.into(),
+            chain,
+            format_hint,
+        };
+        self.call(rpc::methods::AUDIO_EDIT_PREVIEW, &params).await
+    }
 }
 
 /// Factory contract the host implements to mint new leases on demand.

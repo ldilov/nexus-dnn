@@ -135,6 +135,9 @@ pub(crate) async fn prepare(
         ))
     })?;
 
+    let chain_digests =
+        build_voice_chain_digest_map(repos, &mappings, cfg.default_voice_asset_id.as_ref()).await?;
+
     let mut segments = Vec::with_capacity(resolved.resolved.len());
     let mut plans = Vec::with_capacity(resolved.resolved.len());
     for (idx, r) in resolved.resolved.iter().enumerate() {
@@ -227,7 +230,10 @@ pub(crate) async fn prepare(
                     speed_factor: run.speed_factor,
                     speed_mode: run.speed_mode.clone(),
                     output_format: run.output_format.clone(),
-                    voice_asset_chain_digest: crate::domain::ChainDigest::EMPTY.clone(),
+                    voice_asset_chain_digest: chain_digests
+                        .get(speaker_voice_id.as_str())
+                        .cloned()
+                        .unwrap_or(crate::domain::ChainDigest::EMPTY),
                 };
                 build_cache_key(&cache_input).ok()
             });
@@ -467,4 +473,35 @@ fn build_inline_overrides(
     let mut normalised: BTreeMap<String, String> = raw.clone();
     normalised.insert(INLINE_AUDIO_REF_KEY.to_string(), resolved);
     InlineOverrides::from_map(&normalised)
+}
+
+/// Build a `voice_asset_id -> ChainDigest` map for every voice asset
+/// referenced by the run's mappings (plus the deployment's default voice
+/// if any). Spec 036 / US1 / FR-014 — keys synthesis cache rows by chain
+/// digest so an asset with an applied edit chain does not collide with
+/// the same asset before the edit was applied.
+async fn build_voice_chain_digest_map(
+    repos: &Repos,
+    mappings: &[CharacterMappingRow],
+    default_voice_asset_id: Option<&crate::domain::VoiceAssetId>,
+) -> Result<HashMap<String, crate::domain::ChainDigest>> {
+    let mut ids: Vec<crate::domain::VoiceAssetId> = mappings
+        .iter()
+        .map(|m| m.speaker_voice_asset_id.clone())
+        .collect();
+    if let Some(default) = default_voice_asset_id {
+        ids.push(default.clone());
+    }
+    ids.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+    ids.dedup_by(|a, b| a.as_str() == b.as_str());
+
+    let mut out = HashMap::with_capacity(ids.len());
+    for id in &ids {
+        let chain = repos.voice_assets.read_edit_chain(id).await?;
+        let digest = chain
+            .as_ref()
+            .map_or(crate::domain::ChainDigest::EMPTY, crate::domain::ChainDigest::of);
+        out.insert(id.as_str().to_string(), digest);
+    }
+    Ok(out)
 }

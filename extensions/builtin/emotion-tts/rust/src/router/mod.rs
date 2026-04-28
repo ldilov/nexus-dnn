@@ -4,6 +4,7 @@
 //! `runs` (the US1 MVP surface); other families remain 501 stubs until
 //! their owning user story lands.
 
+pub mod audio_edit;
 pub mod deployments;
 pub mod engine_settings;
 pub mod exports;

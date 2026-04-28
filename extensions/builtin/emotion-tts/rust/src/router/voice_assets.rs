@@ -53,6 +53,7 @@ pub fn router(
         .route("/{voice_asset_id}", get(fetch).delete(deactivate))
         .route("/{voice_asset_id}/preprocess", post(preprocess))
         .route("/probe", post(probe))
+        .merge(crate::router::audio_edit::routes())
         .with_state(state)
 }
 
@@ -364,6 +365,7 @@ async fn upload_impl(
         preprocessed_artifact_ref: None,
         preprocessing_report_json: None,
         edit_chain_json: None,
+        derived_artifact_ref: None,
         created_at: now,
         updated_at: now,
     };
@@ -493,6 +495,7 @@ fn voice_asset_json(row: &VoiceAssetRow) -> Value {
         "isActive": row.is_active,
         "preprocessedArtifactRef": row.preprocessed_artifact_ref,
         "preprocessingReport": report,
+        "derivedArtifactRef": row.derived_artifact_ref,
         "createdAt": row.created_at,
         "updatedAt": row.updated_at,
     })
