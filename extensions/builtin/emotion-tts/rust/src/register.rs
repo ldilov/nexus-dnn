@@ -232,13 +232,15 @@ impl EmotionTtsRouterProvider {
         };
         let provider = Arc::new(LeaseProvider::new(lease_factory));
         let run_channels = Arc::new(crate::dispatcher::RunChannelRegistry::new());
-        let _dispatcher = crate::dispatcher::spawn_dispatcher(
+        // Discard the JoinHandle — dropping it does not abort the task per
+        // tokio::spawn semantics; the dispatcher runs for the process lifetime.
+        drop(crate::dispatcher::spawn_dispatcher(
             queue.clone(),
             repos.clone(),
             provider.clone(),
             run_channels.clone(),
             EXTENSION_VERSION,
-        );
+        ));
         let artifact_store = self.resources.artifact_store.clone();
         Ok(crate::router::build_router_with_families(
             repos,

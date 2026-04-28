@@ -74,14 +74,22 @@ pub async fn register(
     let queue = Arc::new(RuntimeQueue::new());
     let provider = lease_factory.map(|f| Arc::new(crate::backend_client::LeaseProvider::new(f)));
     let run_channels = Arc::new(crate::dispatcher::RunChannelRegistry::new());
+    // The dispatcher only runs when a LeaseProvider is wired in. Without
+    // a lease there is no worker to talk to, so any enqueued run would
+    // sit in the queue forever. Callers passing `lease_factory: None`
+    // must accept that runs cannot complete — the SSE handler will
+    // observe the 5-minute "no channel registered" timeout and emit a
+    // synthetic run_terminal/failed.
     if let Some(p) = provider.clone() {
-        let _dispatcher = crate::dispatcher::spawn_dispatcher(
+        // Discard the JoinHandle — dropping it does not abort the task per
+        // tokio::spawn semantics; the dispatcher runs for the process lifetime.
+        drop(crate::dispatcher::spawn_dispatcher(
             queue.clone(),
             repos.clone(),
             p,
             run_channels.clone(),
             EXTENSION_VERSION,
-        );
+        ));
     }
     let router = router::build_router_with_families(
         repos,
