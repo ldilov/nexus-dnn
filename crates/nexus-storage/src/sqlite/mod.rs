@@ -8,7 +8,9 @@ mod operators;
 mod runs;
 mod workflows;
 
-use sqlx::sqlite::SqlitePool;
+use std::str::FromStr;
+
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 
 use crate::database::Database;
 use crate::error::StorageError;
@@ -23,7 +25,8 @@ pub struct SqliteDatabase {
 
 impl SqliteDatabase {
     pub async fn new(database_url: &str) -> Result<Self, StorageError> {
-        let pool = SqlitePool::connect(database_url).await?;
+        let opts = SqliteConnectOptions::from_str(database_url)?.foreign_keys(true);
+        let pool = SqlitePool::connect_with(opts).await?;
         let db = Self { pool };
         migrations::run_migrations(&db.pool).await?;
         Ok(db)
