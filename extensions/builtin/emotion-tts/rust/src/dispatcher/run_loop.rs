@@ -242,19 +242,21 @@ async fn forward_notification(
     completed: &mut usize,
     failed: &mut usize,
 ) {
-    // Worker payload conventions: every per-segment notification
-    // includes a `segment_id` (= utterance_id we generated) and the
-    // worker echoes it back; map → global_index for the SSE payload.
+    // Worker payload conventions: notifications are camelCase per the
+    // worker's `synthesis.py::_emit_*` builders. We translate to our
+    // snake_case `RunEvent` shape here. The segment_id key in our
+    // `lookup` map is the utterance_id string we generated in prepare()
+    // and echoed to the worker as `segment_id` in the batch params.
     let segment_id = env
         .params
-        .get("segment_id")
+        .get("segmentId")
         .and_then(|v| v.as_str())
         .unwrap_or_default()
         .to_string();
     let global_index = lookup.get(&segment_id).copied().unwrap_or(-1);
     let run_id_str = env
         .params
-        .get("run_id")
+        .get("runId")
         .and_then(|v| v.as_str())
         .unwrap_or_default()
         .to_string();
@@ -280,12 +282,12 @@ async fn forward_notification(
         "segment_completed" => {
             let duration_ms = env
                 .params
-                .get("duration_ms")
+                .get("durationMs")
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0);
             let audio_ref = env
                 .params
-                .get("output_path_abs")
+                .get("outputPathAbs")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
@@ -314,13 +316,13 @@ async fn forward_notification(
         "segment_failed" => {
             let failure_category = env
                 .params
-                .get("failure_category")
+                .get("failureCategory")
                 .and_then(|v| v.as_str())
                 .unwrap_or("synthesis_failed")
                 .to_string();
             let failure_detail = env
                 .params
-                .get("failure_detail")
+                .get("failureDetail")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
             if let Ok(uid) = crate::domain::UtteranceId::try_from(segment_id.as_str()) {
