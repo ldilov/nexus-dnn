@@ -2,6 +2,7 @@
 
 pub mod channels;
 pub mod events;
+pub(crate) mod prepare;
 pub(crate) mod run_loop;
 
 pub use channels::{RegistrationGuard, RunChannelRegistry, RunEventReceiver, RunEventSender};
