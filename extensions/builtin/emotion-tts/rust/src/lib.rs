@@ -22,6 +22,13 @@ pub mod workflow_binding;
 
 pub use register::{EmotionTtsProviderResources, EmotionTtsRouterProvider, EXTENSION_ID};
 
+/// Subdirectory used under `std::env::temp_dir()` when no `host_data_dir`
+/// has been wired into the dispatcher (test embeds, the `register()`
+/// entrypoint that predates host data-dir plumbing). Real host-managed
+/// runs land under `<host_data_dir>/extensions/<EXTENSION_ID>/runs/` —
+/// see `EmotionTtsRouterProvider::build_router_inner_async`.
+pub const FALLBACK_RUNS_DIR: &str = "nexus-emotion-tts-runs";
+
 use std::sync::Arc;
 
 use axum::Router;
@@ -89,7 +96,7 @@ pub async fn register(
         // dir wired in) keep working. Real host-managed runs go through
         // `EmotionTtsRouterProvider::build_router_inner_async`, which uses
         // the host data dir when available.
-        let output_root_base = std::env::temp_dir().join("nexus-emotion-tts-runs");
+        let output_root_base = std::env::temp_dir().join(crate::FALLBACK_RUNS_DIR);
         drop(crate::dispatcher::spawn_dispatcher(
             queue.clone(),
             repos.clone(),

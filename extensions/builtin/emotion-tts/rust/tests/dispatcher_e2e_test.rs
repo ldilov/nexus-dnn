@@ -330,7 +330,7 @@ async fn dispatcher_emits_segment_events_and_runs_to_completion() {
         registry.clone(),
         None,
         "0.0.0-test",
-        std::env::temp_dir().join("nexus-emotion-tts-runs"),
+        std::env::temp_dir().join(emotion_tts_extension::FALLBACK_RUNS_DIR),
     );
 
     // Enqueue the run.
@@ -600,7 +600,7 @@ async fn dispatcher_writes_export_history_on_completed_run() {
         registry.clone(),
         Some(artifact_store),
         "0.0.0-test",
-        std::env::temp_dir().join("nexus-emotion-tts-runs"),
+        std::env::temp_dir().join(emotion_tts_extension::FALLBACK_RUNS_DIR),
     );
 
     queue
@@ -863,7 +863,7 @@ async fn dispatcher_serves_cache_hits_without_calling_worker() {
         registry.clone(),
         None,
         "0.0.0-test",
-        std::env::temp_dir().join("nexus-emotion-tts-runs"),
+        std::env::temp_dir().join(emotion_tts_extension::FALLBACK_RUNS_DIR),
     );
 
     queue
@@ -1147,7 +1147,7 @@ async fn resume_run_reuses_cache_from_original() {
         registry.clone(),
         None,
         "0.0.0-test",
-        std::env::temp_dir().join("nexus-emotion-tts-runs"),
+        std::env::temp_dir().join(emotion_tts_extension::FALLBACK_RUNS_DIR),
     );
 
     queue
@@ -1419,7 +1419,7 @@ async fn raw_text_run_uses_deployment_default_voice() {
         registry.clone(),
         None,
         "0.0.0-test",
-        std::env::temp_dir().join("nexus-emotion-tts-runs"),
+        std::env::temp_dir().join(emotion_tts_extension::FALLBACK_RUNS_DIR),
     );
 
     queue
@@ -1692,7 +1692,7 @@ async fn test_line_skips_cache_and_export() {
         registry.clone(),
         Some(artifact_store),
         "0.0.0-test",
-        std::env::temp_dir().join("nexus-emotion-tts-runs"),
+        std::env::temp_dir().join(emotion_tts_extension::FALLBACK_RUNS_DIR),
     );
 
     // Enqueue via the test-line priority slot. The dispatcher's gating reads

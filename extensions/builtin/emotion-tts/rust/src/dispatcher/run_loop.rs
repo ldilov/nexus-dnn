@@ -83,7 +83,7 @@ async fn dispatch_inner(
     // when the host has wired in a data dir, or `temp_dir()/...` for
     // tests and minimal-config hosts (StubLeaseFactory path).
     let output_root = output_root_base
-        .join(qrun.deployment_id.clone())
+        .join(qrun.deployment_id.as_str())
         .join(run_id.as_str());
 
     // Pre-fetch all voice assets for this deployment so the prepare()
