@@ -23,6 +23,8 @@ import {
   listVoiceAssets,
   uploadVoiceAsset,
 } from "../../services/voice_assets_client";
+import type { ApplyEditResponse } from "../../services/audio_edit_client";
+import { AudioEditPanel } from "./components/audio_edit_panel";
 import * as css from "./mapping_editor.css";
 
 interface LoaderData {
@@ -184,6 +186,18 @@ export function MappingEditorView(): JSX.Element {
     [deployment.deploymentId],
   );
 
+  const handleEditChainPersisted = useCallback(
+    async (_response: ApplyEditResponse) => {
+      await refreshVoices();
+      setToast("Edit applied.");
+    },
+    [refreshVoices],
+  );
+
+  const handleEditError = useCallback((message: string) => {
+    setError(message);
+  }, []);
+
   const runTestLine = useCallback(
     async (text: string, format: OutputFormat): Promise<{ runId: string } | null> => {
       if (!selected) return null;
@@ -336,6 +350,8 @@ export function MappingEditorView(): JSX.Element {
               return uploaded;
             }}
             onTestLine={runTestLine}
+            onEditChainPersisted={handleEditChainPersisted}
+            onEditError={handleEditError}
           />
         )}
       </section>
@@ -422,6 +438,8 @@ interface MappingDetailProps {
     kind: VoiceAsset["kind"],
   ) => Promise<VoiceAsset | null>;
   onTestLine: (text: string, format: OutputFormat) => Promise<{ runId: string } | null>;
+  onEditChainPersisted: (response: ApplyEditResponse) => void;
+  onEditError: (message: string) => void;
 }
 
 type TestLineStatus = "idle" | "running" | "done" | "error";
@@ -612,6 +630,15 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
             label={speaker ? "Replace speaker audio" : "Drop or click to upload speaker audio"}
             onFile={(file) => props.onUploadVoice(file, file.name.replace(/\..+$/, ""), "speaker")}
           />
+
+          {speaker && (
+            <AudioEditPanel
+              voiceAsset={speaker}
+              deploymentId={props.deploymentId}
+              onChainPersisted={props.onEditChainPersisted}
+              onError={props.onEditError}
+            />
+          )}
 
           {emotionVoice && (
             <>

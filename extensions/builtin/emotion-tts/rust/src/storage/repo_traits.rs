@@ -72,6 +72,11 @@ pub struct VoiceAssetRow {
     pub preprocessing_report_json: Option<String>,
     #[serde(default)]
     pub edit_chain_json: Option<String>,
+    /// Spec 036 / US1 — set when an audio-edit chain has been applied. The
+    /// host artifact ref of the materialised derived blob. `audio_artifact_ref`
+    /// always stays pointed at the source so revert is a single column clear.
+    #[serde(default)]
+    pub derived_artifact_ref: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -256,6 +261,14 @@ pub trait VoiceAssetsRepo: Send + Sync {
         &self,
         asset_id: &VoiceAssetId,
         chain: Option<&EditChain>,
+    ) -> RepoResult<()>;
+    /// Spec 036 / US1 — set or clear the derived artifact ref produced by
+    /// applying an edit chain. Passing `None` clears the column (revert to
+    /// source).
+    async fn set_derived_artifact_ref(
+        &self,
+        asset_id: &VoiceAssetId,
+        derived_artifact_ref: Option<&str>,
     ) -> RepoResult<()>;
 }
 

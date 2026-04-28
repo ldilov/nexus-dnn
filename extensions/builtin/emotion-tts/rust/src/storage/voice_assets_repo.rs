@@ -39,6 +39,7 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<VoiceAssetRow> {
         preprocessed_artifact_ref: row.try_get("preprocessed_artifact_ref").map_err(to_err)?,
         preprocessing_report_json: row.try_get("preprocessing_report_json").map_err(to_err)?,
         edit_chain_json: row.try_get("edit_chain_json").map_err(to_err)?,
+        derived_artifact_ref: row.try_get("derived_artifact_ref").map_err(to_err)?,
         created_at: row.try_get("created_at").map_err(to_err)?,
         updated_at: row.try_get("updated_at").map_err(to_err)?,
     })
@@ -156,6 +157,24 @@ impl VoiceAssetsRepo for SqliteVoiceAssetsRepo {
              WHERE voice_asset_id = ?",
         )
         .bind(serialized)
+        .bind(asset_id.as_str())
+        .execute(&self.pool)
+        .await
+        .map_err(to_err)?;
+        Ok(())
+    }
+
+    async fn set_derived_artifact_ref(
+        &self,
+        asset_id: &VoiceAssetId,
+        derived_artifact_ref: Option<&str>,
+    ) -> RepoResult<()> {
+        sqlx::query(
+            "UPDATE ext_emotion_tts__voice_assets \
+             SET derived_artifact_ref = ?, updated_at = strftime('%s', 'now') \
+             WHERE voice_asset_id = ?",
+        )
+        .bind(derived_artifact_ref)
         .bind(asset_id.as_str())
         .execute(&self.pool)
         .await
