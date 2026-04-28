@@ -8,6 +8,7 @@
 //! Principle V / XIII: the extension depends on abstractions, never on the
 //! host's runtime crates.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -16,6 +17,19 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 
 use crate::domain::RuntimeLeaseId;
+
+/// Resolves the on-disk path for an installed model family. Implemented
+/// host-side by an adapter over the spec-035 model store. The lease factory
+/// queries this at acquire-time so the worker can find IndexTTS-2 weights —
+/// without it, the worker's Python entrypoint sees `EMOTIONTTS_MODEL_DIR_ABS`
+/// missing and the IndexTTS adapter never gets constructed, which surfaces
+/// as `model.load failed: adapter is not configured`.
+#[async_trait]
+pub trait ModelArtifactLocator: Send + Sync {
+    /// Returns the absolute path to the model artifact root for `family_id`,
+    /// or `None` if the family is not installed.
+    async fn locate_family(&self, family_id: &str) -> Option<PathBuf>;
+}
 
 #[async_trait]
 pub trait HostStoragePool: Send + Sync {

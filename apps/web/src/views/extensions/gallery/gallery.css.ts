@@ -108,6 +108,29 @@ export const title = style({
   lineHeight: vars.font.lineHeight.tight,
 });
 
+/**
+ * Title rendered as a link to the extension settings page. Visually
+ * indistinguishable from the static title until hover, where the accent color
+ * reveals affordance. Discoverable second entry point alongside the footer
+ * Settings button.
+ */
+export const titleLink = style([
+  title,
+  {
+    textDecoration: "none",
+    cursor: "pointer",
+    transition: `color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+    selectors: {
+      "&:hover": { color: vars.color.accent.primary },
+      "&:focus-visible": {
+        outline: `2px solid ${vars.color.accent.primary}`,
+        outlineOffset: "2px",
+        borderRadius: "2px",
+      },
+    },
+  },
+]);
+
 export const sourceChip = style({
   fontFamily: vars.font.ui,
   fontSize: "9px",
@@ -254,6 +277,17 @@ export const iconButtonDanger = style({
     },
   },
 });
+
+/**
+ * Anchor-styled variant of `iconButton` for `<Link>` usage so React Router
+ * can navigate without dropping the icon button's affordance.
+ */
+export const iconButtonLink = style([
+  iconButton,
+  {
+    textDecoration: "none",
+  },
+]);
 
 // ---------- Toggle switch ----------
 export const toggle = style({

@@ -2,7 +2,7 @@
 name = "emotion-tts-worker"
 version = "0.1.0"
 description = "IndexTTS-2 synthesis worker for the EmotionTTS Nexus extension (spec 031). Speaks JSON-RPC/NDJSON over stdio to the host-side Rust shim."
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.11,<3.13"
 readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
 
@@ -15,13 +15,15 @@ dependencies = [
   # us pull modern wheels via the [tool.uv.index] pytorch-cu128 mapping below.
   "torch>=2.4",
   "torchaudio>=2.4",
-  # Upstream indextts pins transformers==4.36.2 exactly. The prior >=4.45
-  # declaration here was unsatisfiable against that pin; loose range below
-  # accepts the pinned version while staying flexible.
-  "transformers>=4.36,<4.50",
-  # Upstream pins tokenizers==0.15.0 exactly; loose range satisfies it.
-  "tokenizers>=0.15,<0.21",
-  "numpy>=1.26",
+  # Upstream IndexTTS-2 (main, version 2.0.0) pins transformers==4.52.1 and
+  # tokenizers==0.21.0 exactly. Loose ranges below satisfy those pins while
+  # leaving room for security patches in the .x lane.
+  "transformers>=4.52,<5.0",
+  "tokenizers>=0.21,<0.22",
+  # Upstream pins numpy==1.26.2 exactly. NumPy 2.x has incompatible API
+  # breaks (`np.float_`, etc.) that librosa<0.11 and numba<0.59 rely on,
+  # plus a torch ABI break — keep the worker pinned to 1.x explicitly.
+  "numpy>=1.26,<2.0",
   "pydantic>=2.8",
   "ffmpeg-python>=0.2",
   "soundfile>=0.12",
@@ -74,11 +76,14 @@ override-dependencies = ["wetextprocessing ; python_version < '0'"]
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }
 torchaudio = { index = "pytorch-cu128" }
-# indextts is not on PyPI — pin to the v1.5.0 release tag from upstream.
-# Bump the tag here when refreshing the IndexTTS version. Note: the upstream
-# setup.py at v1.5.0 self-reports "version=0.1.4" (their tag/version field
-# disagree); the resolved package is whatever the tag points at.
-indextts = { git = "https://github.com/index-tts/index-tts", tag = "v1.5.0" }
+# indextts is not on PyPI. Upstream's only published tag is `v1.5.0`, which
+# is the IndexTTS v1 line and does NOT contain `indextts/infer_v2.py` —
+# the IndexTTS-2 entrypoint we need (`from indextts.infer_v2 import IndexTTS2`)
+# only exists on `main`. Pin to a SHA on `main` for reproducibility:
+#   * `version` field on main self-reports 2.0.0
+#   * SHA below was verified to contain `indextts/infer_v2.py`
+# When upstream cuts a v2 release tag, switch this to `tag = "v2.x.y"`.
+indextts = { git = "https://github.com/index-tts/index-tts", rev = "830f6f8f94a51fea23ab1d639027a86200075a4e" }
 
 [[tool.uv.index]]
 name = "pytorch-cu128"

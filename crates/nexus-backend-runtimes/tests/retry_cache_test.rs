@@ -106,7 +106,10 @@ async fn download_caches_archive_under_host_download_cache() {
         cached_path.display()
     );
     assert!(partial.join(ARCHIVE_FILENAME).exists());
-    assert_eq!(c.downloaded_archive.as_deref(), Some(partial.join(ARCHIVE_FILENAME).as_path()));
+    assert_eq!(
+        c.downloaded_archive.as_deref(),
+        Some(partial.join(ARCHIVE_FILENAME).as_path())
+    );
 }
 
 #[tokio::test]

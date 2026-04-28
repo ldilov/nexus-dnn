@@ -58,11 +58,7 @@ async fn probe_interpreter(python: &Path) -> Result<(), GenericInstallError> {
         return Err(GenericInstallError::new(
             PHASE,
             PipelineFailureCategory::PythonBootstrapFailed,
-            format!(
-                "python probe failed ({}): {}",
-                output.status,
-                stderr.trim()
-            ),
+            format!("python probe failed ({}): {}", output.status, stderr.trim()),
         ));
     }
     let stdout = String::from_utf8_lossy(&output.stdout);

@@ -34,7 +34,12 @@ dependencies:
       spec:
         family: python
         version: ">=3.11,<3.13"
-        accelerator_profiles: [cpu, cuda12, cuda13]
+        # PyTorch publishes wheel indices for cu118/cu121/cu124/cu128. There
+        # is no `cu13x` wheel index today; if/when upstream ships CUDA 13,
+        # add `cuda13` back. Until then, advertising `cuda13` lets the dep
+        # installer match it on a CUDA 13 host and then fail to find a
+        # torch wheel — better to fall back to cuda12 (cu128 covers 12.x).
+        accelerator_profiles: [cpu, cuda12]
 
     - id: pkgs
       type: package_set
@@ -50,9 +55,15 @@ dependencies:
       spec:
         id: ffmpeg
         version: ">=4.0"
-        # Real URLs + sha256 land in T079. Placeholder zero-hashes here keep the
-        # graph parse-valid; install will surface a categorised sha256_mismatch
-        # until a maintainer populates real release pins.
+        # Prefer a system-installed ffmpeg when one is on PATH — this is the
+        # common case on dev machines and avoids re-downloading a 100+ MB build
+        # for every fresh install. Falls back to the bundled URL when no
+        # system ffmpeg exists. The bundled URLs below point at "latest"
+        # releases that can't be sha256-pinned; they're a soft fallback only.
+        allow_system_path: true
+        # Placeholder zero-hashes keep the graph parse-valid; the bundled
+        # download path will only fire (and fail loudly) if PATH-resolution
+        # missed and a maintainer hasn't yet pinned real release URLs.
         sources:
           - platform: windows-x64
             url: "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip"

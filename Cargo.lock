@@ -181,6 +181,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-stream"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b5a71a6f37880a80d1d7f19efd781e4b5de42c88f0722cc13bcb6cc2cfe8476"
+dependencies = [
+ "async-stream-impl",
+ "futures-core",
+ "pin-project-lite",
+]
+
+[[package]]
+name = "async-stream-impl"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7c24de15d275a1ecfd47a380fb4d5ec9bfe0933f309ed5e705b775596a3574d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -219,6 +241,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b52af3cb4058c895d37317bb27508dccc8e5f2d39454016b297bf4a400597b8"
 dependencies = [
  "axum-core",
+ "axum-macros",
  "base64",
  "bytes",
  "form_urlencoded",
@@ -266,6 +289,17 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
+]
+
+[[package]]
+name = "axum-macros"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7aa268c23bfbbd2c4363b9cd302a4f504fb2a9dfe7e3451d66f35dd392e20aca"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -726,6 +760,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "csv"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52cd9d68cf7efc6ddfaaee42e7288d3a99d613d4b50f76ce9827ae0c6e14f938"
+dependencies = [
+ "csv-core",
+ "itoa",
+ "ryu",
+ "serde_core",
+]
+
+[[package]]
+name = "csv-core"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "704a3c26996a80471189265814dbc2c257598b96b8a7feae2d31ace646bb9782"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "dashmap"
 version = "6.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -866,6 +921,42 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e079f19b08ca6239f47f8ba8509c11cf3ea30095831f7fed61441475edd8c449"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "emotion-tts-extension"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "async-trait",
+ "axum",
+ "chrono",
+ "csv",
+ "futures",
+ "hex",
+ "http-body-util",
+ "nexus-artifact",
+ "nexus-backend-runtimes",
+ "nexus-extension",
+ "once_cell",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "sqlx",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tower",
+ "tracing",
+ "ulid",
+ "urlencoding",
+ "zip",
 ]
 
 [[package]]
@@ -2025,6 +2116,7 @@ dependencies = [
  "camino",
  "chrono",
  "dashmap",
+ "flate2",
  "futures-util",
  "http-body-util",
  "mime_guess",
@@ -2051,12 +2143,14 @@ dependencies = [
  "serde_json",
  "sha2",
  "sqlx",
+ "tar",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
  "tokio-tungstenite 0.24.0",
  "tokio-util",
+ "toml",
  "tower",
  "tower-http",
  "tracing",
@@ -2119,16 +2213,19 @@ name = "nexus-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "camino",
  "chrono",
  "clap",
  "dirs",
+ "emotion-tts-extension",
  "nexus-api",
  "nexus-artifact",
  "nexus-backend-runtimes",
  "nexus-events",
  "nexus-extension",
+ "nexus-extension-deps",
  "nexus-huggingface",
  "nexus-local-llm-chat-history",
  "nexus-models-store",
@@ -4642,6 +4739,12 @@ dependencies = [
  "percent-encoding",
  "serde",
 ]
+
+[[package]]
+name = "urlencoding"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 
 [[package]]
 name = "utf-8"
