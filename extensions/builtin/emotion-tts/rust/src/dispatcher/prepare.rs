@@ -53,6 +53,9 @@ pub(crate) struct PrepareConfig {
     /// Resolves a `VoiceAssetId` to the `content_sha256` of the voice asset.
     /// Used as `speaker_ref_sha256` in the cache key computation.
     pub voice_sha256_resolver: std::sync::Arc<dyn Fn(&str) -> Option<String> + Send + Sync>,
+    /// Fallback voice used when a character has no explicit mapping.
+    /// Required for `raw_text` parser mode (single-speaker plain text).
+    pub default_voice_asset_id: Option<crate::domain::VoiceAssetId>,
 }
 
 pub(crate) async fn prepare(
@@ -83,7 +86,7 @@ pub(crate) async fn prepare(
         })
         .await?;
 
-    if !resolved.unresolved_characters.is_empty() {
+    if cfg.default_voice_asset_id.is_none() && !resolved.unresolved_characters.is_empty() {
         return Err(EmotionTtsError::Conflict(format!(
             "{} unmapped characters: {:?}",
             resolved.unresolved_characters.len(),
@@ -103,25 +106,34 @@ pub(crate) async fn prepare(
     for (idx, r) in resolved.resolved.iter().enumerate() {
         // The mapping lookup key is the display name lowercased — same
         // logic `MappingResolveOperator` uses internally.
-        let mapping = mappings
+        // Pass 1: look for an explicit character mapping.
+        // Pass 2: fall back to the deployment's default voice (raw_text mode).
+        let mapping_opt = mappings
             .iter()
-            .find(|m| m.character_name_lower == r.utterance.character_display.to_lowercase())
-            .ok_or_else(|| {
-                EmotionTtsError::internal(format!(
-                    "internal: resolved character {} has no matching mapping row",
-                    r.utterance.character_display
-                ))
-            })?;
-        let speaker_path = (cfg.voice_path_resolver)(mapping.speaker_voice_asset_id.as_str())
+            .find(|m| m.character_name_lower == r.utterance.character_display.to_lowercase());
+
+        let speaker_voice_id = match mapping_opt {
+            Some(m) => m.speaker_voice_asset_id.clone(),
+            None => match &cfg.default_voice_asset_id {
+                Some(id) => id.clone(),
+                None => {
+                    return Err(EmotionTtsError::Conflict(format!(
+                        "no mapping for character '{}' and no default voice set",
+                        r.utterance.character_display
+                    )))
+                }
+            },
+        };
+
+        let speaker_path = (cfg.voice_path_resolver)(speaker_voice_id.as_str())
             .ok_or_else(|| {
                 EmotionTtsError::Conflict(format!(
-                    "voice file missing for character {} (asset {})",
-                    r.utterance.character_display,
-                    mapping.speaker_voice_asset_id.as_str()
+                    "voice file missing for asset {}",
+                    speaker_voice_id.as_str()
                 ))
             })?;
 
-        let content_hash = (cfg.voice_sha256_resolver)(mapping.speaker_voice_asset_id.as_str())
+        let content_hash = (cfg.voice_sha256_resolver)(speaker_voice_id.as_str())
             .and_then(|sha256| {
                 let cache_input = CacheKeyInput {
                     extension_version: extension_version.to_string(),
@@ -160,7 +172,7 @@ pub(crate) async fn prepare(
             text: r.utterance.text.clone(),
             output_target_abs: output_target_abs.clone(),
             content_hash,
-            speaker_voice_asset_id: mapping.speaker_voice_asset_id.clone(),
+            speaker_voice_asset_id: speaker_voice_id.clone(),
         });
 
         segments.push(SynthesisSegment {
