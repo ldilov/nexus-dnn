@@ -989,11 +989,17 @@ fn log_discovery_summary(registry: &InMemoryExtensionRegistry) {
             };
             let glyph_painted = paint(use_ansi, status_color, glyph);
             let status_painted = paint(use_ansi, status_color, &format!("[{status}]"));
-            tracing::info!(
-                target: BANNER_TARGET,
-                "      {glyph_painted}  {name:<name_width$}  v{ver}  {status_painted}",
+            // Pre-format the line: tracing's `{var}` capture syntax
+            // would treat painted strings as Debug-formatted fields,
+            // escaping the ESC byte to literal `\x1b` text. Building
+            // the line via plain `format!` and passing as `"{}"` keeps
+            // the escape sequences intact for the terminal to render.
+            let line = format!(
+                "      {glyph_painted}  {name:<width$}  v{ver}  {status_painted}",
+                width = name_width,
                 ver = ext.manifest.extension.version,
             );
+            tracing::info!(target: BANNER_TARGET, "{}", line);
         }
     }
 
