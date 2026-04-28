@@ -796,9 +796,11 @@ async fn dispatcher_serves_cache_hits_without_calling_worker() {
     // Compute the same hash that prepare() will compute for the single segment.
     // The inputs mirror prepare.rs exactly:
     //   extension_version  → passed to spawn_dispatcher as "0.0.0-test"
-    //   runtime_version    → hardcoded "0.0.0" in prepare.rs
-    //   model_version      → hardcoded "indextts-2" in prepare.rs
-    //   model_family       → hardcoded "indextts-2" in prepare.rs
+    //   runtime_version    → FALLBACK_RUNTIME_VERSION ("unknown-runtime")
+    //                         because no handshake has populated
+    //                         LeaseProvider::cached_handshake in this test
+    //   model_version      → FALLBACK_MODEL_VERSION ("unknown-model")
+    //   model_family       → FALLBACK_MODEL_FAMILY ("unknown-model")
     //   text               → dialogue parser treats "Narrator: Hello world." as an
     //                         UNTAGGED line (no leading `[`), so the full trimmed
     //                         line becomes the utterance text unchanged.
@@ -809,9 +811,9 @@ async fn dispatcher_serves_cache_hits_without_calling_worker() {
     //   output_format      → run.output_format = "wav"
     let cache_input = CacheKeyInput {
         extension_version: "0.0.0-test".into(),
-        runtime_version: "0.0.0".into(),
-        model_version: "indextts-2".into(),
-        model_family: "indextts-2".into(),
+        runtime_version: emotion_tts_extension::backend_client::FALLBACK_RUNTIME_VERSION.into(),
+        model_version: emotion_tts_extension::backend_client::FALLBACK_MODEL_VERSION.into(),
+        model_family: emotion_tts_extension::backend_client::FALLBACK_MODEL_FAMILY.into(),
         text: "Narrator: Hello world.".into(),
         speaker_ref_sha256: voice_sha256,
         emotion: EmotionPayload::None,
@@ -829,8 +831,8 @@ async fn dispatcher_serves_cache_hits_without_calling_worker() {
             content_hash: hash.clone(),
             audio_artifact_ref: "/tmp/cached_seg.wav".into(),
             extension_version: "0.0.0-test".into(),
-            runtime_version: "0.0.0".into(),
-            model_version: "indextts-2".into(),
+            runtime_version: emotion_tts_extension::backend_client::FALLBACK_RUNTIME_VERSION.into(),
+            model_version: emotion_tts_extension::backend_client::FALLBACK_MODEL_VERSION.into(),
             size_bytes: 100,
             hit_count: 0,
             created_at: now,
@@ -1058,11 +1060,13 @@ async fn resume_run_reuses_cache_from_original() {
 
     // Pre-seed the cache row with the same hash prepare() will compute for the
     // single segment in "Narrator: Hello world." with the voice above.
+    // Without a populated handshake the runtime/model version fields take
+    // the FALLBACK_* sentinels — see comment in the cache_hit test above.
     let cache_input = CacheKeyInput {
         extension_version: "0.0.0-test".into(),
-        runtime_version: "0.0.0".into(),
-        model_version: "indextts-2".into(),
-        model_family: "indextts-2".into(),
+        runtime_version: emotion_tts_extension::backend_client::FALLBACK_RUNTIME_VERSION.into(),
+        model_version: emotion_tts_extension::backend_client::FALLBACK_MODEL_VERSION.into(),
+        model_family: emotion_tts_extension::backend_client::FALLBACK_MODEL_FAMILY.into(),
         text: "Narrator: Hello world.".into(),
         speaker_ref_sha256: voice_sha256,
         emotion: EmotionPayload::None,
@@ -1080,8 +1084,8 @@ async fn resume_run_reuses_cache_from_original() {
             content_hash: hash.clone(),
             audio_artifact_ref: "/tmp/resume_cached_seg.wav".into(),
             extension_version: "0.0.0-test".into(),
-            runtime_version: "0.0.0".into(),
-            model_version: "indextts-2".into(),
+            runtime_version: emotion_tts_extension::backend_client::FALLBACK_RUNTIME_VERSION.into(),
+            model_version: emotion_tts_extension::backend_client::FALLBACK_MODEL_VERSION.into(),
             size_bytes: 100,
             hit_count: 0,
             created_at: now,

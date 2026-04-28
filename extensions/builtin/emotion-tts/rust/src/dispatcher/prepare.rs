@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use crate::backend_client::HandshakeInfo;
 use crate::domain::cache_key::{build as build_cache_key, CacheKeyInput};
 use crate::domain::emotion::EmotionPayload;
 use crate::domain::filenames::build_filename;
@@ -56,6 +57,13 @@ pub(crate) struct PrepareConfig {
     /// Fallback voice used when a character has no explicit mapping.
     /// Required for `raw_text` parser mode (single-speaker plain text).
     pub default_voice_asset_id: Option<crate::domain::VoiceAssetId>,
+    /// Latest cached worker handshake. When `Some`, supplies the real
+    /// `worker_version` + `model_family_id` to the cache key. When
+    /// `None` (no handshake yet), the cache key uses the deterministic
+    /// `unknown-runtime` / `unknown-model` sentinels from
+    /// [`crate::backend_client`] so a future real-handshake row cannot
+    /// collide.
+    pub runtime_meta: Option<HandshakeInfo>,
 }
 
 pub(crate) async fn prepare(
@@ -145,9 +153,30 @@ pub(crate) async fn prepare(
             .and_then(|sha256| {
                 let cache_input = CacheKeyInput {
                     extension_version: extension_version.to_string(),
-                    runtime_version: "0.0.0".to_string(), // TODO: thread real runtime_version once available
-                    model_version: "indextts-2".to_string(),
-                    model_family: "indextts-2".to_string(),
+                    runtime_version: cfg
+                        .runtime_meta
+                        .as_ref()
+                        .map_or(
+                            crate::backend_client::FALLBACK_RUNTIME_VERSION,
+                            HandshakeInfo::runtime_version_for_cache,
+                        )
+                        .to_string(),
+                    model_version: cfg
+                        .runtime_meta
+                        .as_ref()
+                        .map_or(
+                            crate::backend_client::FALLBACK_MODEL_VERSION,
+                            HandshakeInfo::model_version_for_cache,
+                        )
+                        .to_string(),
+                    model_family: cfg
+                        .runtime_meta
+                        .as_ref()
+                        .map_or(
+                            crate::backend_client::FALLBACK_MODEL_FAMILY,
+                            HandshakeInfo::model_family_for_cache,
+                        )
+                        .to_string(),
                     text: r.utterance.text.clone(),
                     speaker_ref_sha256: sha256,
                     emotion: global_emotion.clone(),
