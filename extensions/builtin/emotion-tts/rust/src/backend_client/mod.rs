@@ -122,9 +122,18 @@ pub struct LeaseProvider {
     state: Mutex<LeaseSlot>,
 }
 
-#[derive(Default)]
 struct LeaseSlot {
     client: Option<BackendClient>,
+    last_activity: Option<std::time::Instant>,
+}
+
+impl Default for LeaseSlot {
+    fn default() -> Self {
+        Self {
+            client: None,
+            last_activity: None,
+        }
+    }
 }
 
 impl LeaseProvider {
@@ -138,14 +147,19 @@ impl LeaseProvider {
 
     pub async fn spawn_if_needed(&self) -> Result<BackendClient> {
         let mut slot = self.state.lock().await;
-        if let Some(existing) = &slot.client {
-            if is_serviceable(existing.lease().state()) {
-                return Ok(existing.clone());
-            }
+        let reuse = slot
+            .client
+            .as_ref()
+            .filter(|c| is_serviceable(c.lease().state()))
+            .cloned();
+        if let Some(existing) = reuse {
+            slot.last_activity = Some(std::time::Instant::now());
+            return Ok(existing);
         }
         let lease = self.factory.acquire().await?;
         let client = BackendClient::new(lease);
         slot.client = Some(client.clone());
+        slot.last_activity = Some(std::time::Instant::now());
         Ok(client)
     }
 
@@ -168,6 +182,17 @@ impl LeaseProvider {
     pub async fn restart(&self) -> Result<BackendClient> {
         self.stop().await?;
         self.spawn_if_needed().await
+    }
+
+    /// Returns `Some(elapsed)` when a live lease exists, or `None` when no
+    /// lease has been acquired. The idle-release watcher uses this to decide
+    /// whether to call `stop()`.
+    pub async fn idle_for(&self) -> Option<std::time::Duration> {
+        let slot = self.state.lock().await;
+        if slot.client.is_none() {
+            return None;
+        }
+        slot.last_activity.map(|t| t.elapsed())
     }
 }
 

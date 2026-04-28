@@ -18,6 +18,44 @@ use crate::host_contract::HostArtifactStore;
 use crate::queue::SharedQueue;
 use crate::storage::Repos;
 
+/// Spawn a background task that releases the lease after
+/// `EMOTIONTTS_LEASE_IDLE_SECS` seconds of inactivity (default 600).
+///
+/// The watcher ticks every 30 s and calls [`LeaseProvider::stop`] once
+/// [`LeaseProvider::idle_for`] reports elapsed time ≥ the configured budget.
+/// Releasing frees ~5 GB of VRAM while the user is away; the next
+/// `spawn_if_needed` call re-acquires at the cost of a cold-boot.
+pub fn spawn_idle_watcher(lease_provider: Arc<LeaseProvider>) -> JoinHandle<()> {
+    let idle_secs: u64 = std::env::var("EMOTIONTTS_LEASE_IDLE_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(600);
+    let idle = std::time::Duration::from_secs(idle_secs);
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(30));
+        loop {
+            tick.tick().await;
+            if let Some(elapsed) = lease_provider.idle_for().await {
+                if elapsed >= idle {
+                    if let Err(err) = lease_provider.stop().await {
+                        tracing::warn!(
+                            target: "emotion_tts::dispatch",
+                            error = %err,
+                            "lease idle release failed"
+                        );
+                    } else {
+                        tracing::info!(
+                            target: "emotion_tts::dispatch",
+                            idle_secs = elapsed.as_secs(),
+                            "released idle lease"
+                        );
+                    }
+                }
+            }
+        }
+    })
+}
+
 /// Spawn the dispatcher background task. Returns the `JoinHandle` so the
 /// caller can `.abort()` it on shutdown (host has no shutdown hook today,
 /// so the handle is currently dropped — the task lives for the process

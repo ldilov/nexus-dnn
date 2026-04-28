@@ -243,6 +243,7 @@ impl EmotionTtsRouterProvider {
             artifact_store_for_dispatcher,
             EXTENSION_VERSION,
         ));
+        drop(crate::dispatcher::spawn_idle_watcher(provider.clone()));
         let artifact_store = self.resources.artifact_store.clone();
         Ok(crate::router::build_router_with_families(
             repos,
