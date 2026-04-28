@@ -12,6 +12,21 @@
 -- transaction — the host's connection pool always runs with FK enforcement
 -- ON (see crates/nexus-storage/src/sqlite/mod.rs).
 --
+-- WHY THE PRAGMAS ARE NOT A NO-OP: SQLite's docs say `PRAGMA foreign_keys`
+-- cannot be changed *inside* an open transaction. The migration runner
+-- (extensions/.../register.rs invokes `sqlx::raw_sql(...).execute(pool)`)
+-- does NOT wrap the file in an outer transaction, so the leading
+-- `PRAGMA foreign_keys = OFF` executes BEFORE `BEGIN TRANSACTION` opens —
+-- enforcement is genuinely off for the rebuild span. The trailing
+-- `PRAGMA foreign_keys = ON` likewise runs AFTER `COMMIT`. Both PRAGMAs
+-- take effect.
+--
+-- Idempotency: the migration runner gates re-application via
+-- `ext_emotion_tts__schema_versions`, so this script runs at most once
+-- per database. The `DROP TABLE IF EXISTS *_new` guards below are
+-- belt-and-braces in case someone runs the SQL out-of-band (test
+-- harness mistake, manual recovery).
+--
 -- Tables rebuilt:
 --   * ext_emotion_tts__voice_assets        (cols from 002 + 012)
 --   * ext_emotion_tts__character_mappings  (cols from 003)
@@ -28,6 +43,7 @@ PRAGMA foreign_keys = OFF;
 BEGIN TRANSACTION;
 
 -- voice_assets ---------------------------------------------------------------
+DROP TABLE IF EXISTS ext_emotion_tts__voice_assets__new;
 CREATE TABLE ext_emotion_tts__voice_assets__new (
     voice_asset_id              TEXT PRIMARY KEY NOT NULL,
     deployment_id               TEXT NOT NULL,
@@ -70,6 +86,7 @@ CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_voice_assets_content
     ON ext_emotion_tts__voice_assets (content_sha256);
 
 -- character_mappings ---------------------------------------------------------
+DROP TABLE IF EXISTS ext_emotion_tts__character_mappings__new;
 CREATE TABLE ext_emotion_tts__character_mappings__new (
     mapping_id                          TEXT PRIMARY KEY NOT NULL,
     deployment_id                       TEXT NOT NULL,
@@ -102,6 +119,7 @@ CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_character_mappings_speaker
     ON ext_emotion_tts__character_mappings (speaker_voice_asset_id);
 
 -- vector_presets -------------------------------------------------------------
+DROP TABLE IF EXISTS ext_emotion_tts__vector_presets__new;
 CREATE TABLE ext_emotion_tts__vector_presets__new (
     preset_id       TEXT PRIMARY KEY NOT NULL,
     deployment_id   TEXT NOT NULL,
@@ -121,6 +139,7 @@ CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_vector_presets_deployment
     ON ext_emotion_tts__vector_presets (deployment_id);
 
 -- runs -----------------------------------------------------------------------
+DROP TABLE IF EXISTS ext_emotion_tts__runs__new;
 CREATE TABLE ext_emotion_tts__runs__new (
     run_id                          TEXT PRIMARY KEY NOT NULL,
     deployment_id                   TEXT NOT NULL,
@@ -166,6 +185,7 @@ CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_runs_original
     ON ext_emotion_tts__runs (original_run_id);
 
 -- utterances (FK to runs, not deployments) -----------------------------------
+DROP TABLE IF EXISTS ext_emotion_tts__utterances__new;
 CREATE TABLE ext_emotion_tts__utterances__new (
     utterance_id                        TEXT PRIMARY KEY NOT NULL,
     run_id                              TEXT NOT NULL,
@@ -213,6 +233,7 @@ CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_utterances_content_hash
     ON ext_emotion_tts__utterances (content_hash);
 
 -- export_history -------------------------------------------------------------
+DROP TABLE IF EXISTS ext_emotion_tts__export_history__new;
 CREATE TABLE ext_emotion_tts__export_history__new (
     export_id                TEXT PRIMARY KEY NOT NULL,
     deployment_id            TEXT NOT NULL,
@@ -240,6 +261,7 @@ CREATE INDEX IF NOT EXISTS ext_emotion_tts_idx_export_history_run
     ON ext_emotion_tts__export_history (run_id);
 
 -- workflows ------------------------------------------------------------------
+DROP TABLE IF EXISTS ext_emotion_tts__workflows__new;
 CREATE TABLE ext_emotion_tts__workflows__new (
     deployment_id   TEXT PRIMARY KEY NOT NULL,
     document_json   TEXT NOT NULL,
