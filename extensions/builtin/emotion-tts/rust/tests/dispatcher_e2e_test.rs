@@ -1,5 +1,6 @@
 mod fixtures;
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -9,6 +10,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use emotion_tts_extension::backend_client::{LeaseFactory, LeaseProvider};
 use emotion_tts_extension::dispatcher::{spawn_dispatcher, RunChannelRegistry, RunEvent};
+use emotion_tts_extension::domain::cache_key::{build as build_cache_key, CacheKeyInput};
+use emotion_tts_extension::domain::emotion::EmotionPayload;
 use emotion_tts_extension::domain::{DeploymentId, MappingId, RunId, VoiceAssetId};
 use emotion_tts_extension::host_contract::{
     BackendRuntimeLease, LeaseError, LeaseState, NotificationEnvelope, NotificationStream,
@@ -16,7 +19,7 @@ use emotion_tts_extension::host_contract::{
 };
 use emotion_tts_extension::queue::{RunClass, RuntimeQueue};
 use emotion_tts_extension::storage::repo_traits::{
-    CharacterMappingRow, DeploymentRow, RunRow, VoiceAssetRow,
+    CharacterMappingRow, DeploymentRow, RunRow, SynthesisCacheRow, VoiceAssetRow,
 };
 use emotion_tts_extension::storage::Repos;
 use emotion_tts_extension::{domain::RuntimeLeaseId, MIGRATIONS};
@@ -654,5 +657,268 @@ async fn dispatcher_writes_export_history_on_completed_run() {
         final_row.status, "completed",
         "DB run row status should be 'completed', got {:?}",
         final_row.status
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: cache-hit-only run never calls synthesize.batch
+// ---------------------------------------------------------------------------
+//
+// Pre-seeds a SynthesisCacheRow whose content_hash exactly matches what
+// prepare() computes for the single segment in "Narrator: Hello world." with
+// cache_policy="use_cache". Asserts:
+//   - synthesize.batch handler call count is 0 (RPC short-circuited)
+//   - run row reaches "completed"
+//   - utterance row has cache_hit=true + cached audio_artifact_ref
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn dispatcher_serves_cache_hits_without_calling_worker() {
+    let pool = fresh_pool().await;
+    let repos = Repos::from_pool(pool);
+
+    let dep = DeploymentId::try_from("dep_test_cache_hit").unwrap();
+    let now = Utc::now().timestamp();
+
+    repos
+        .deployments
+        .insert(&DeploymentRow {
+            deployment_id: dep.clone(),
+            host_extension_instance_ref: "host:test".into(),
+            display_name: "Cache Hit Test Deployment".into(),
+            backend_runtime_preference: None,
+            default_output_format: "wav".into(),
+            default_speed_factor: 1.0,
+            default_generation_overrides_json: "{}".into(),
+            most_recent_run_id: None,
+            partial_run_id: None,
+            reference_preprocess_enabled: true,
+            oas_enabled: false,
+            compile_gpt_enabled: false,
+            model_family: "indextts-2".into(),
+            oas_threshold_learned: None,
+            oas_samples_seen: 0,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    // Use "c".repeat(64) — valid 64-char lowercase hex, distinct from the
+    // other two tests so their pools don't interfere.
+    let voice_sha256 = "c".repeat(64);
+    let voice_id = VoiceAssetId::new();
+    repos
+        .voice_assets
+        .insert(&VoiceAssetRow {
+            voice_asset_id: voice_id.clone(),
+            deployment_id: dep.clone(),
+            display_name: "Narrator".into(),
+            kind: "speaker".into(),
+            audio_artifact_ref: "/tmp/fake_voice_cache_hit.wav".into(),
+            content_sha256: voice_sha256.clone(),
+            reference_text: None,
+            sample_rate: Some(24000),
+            duration_ms: Some(5000),
+            source_type: "upload".into(),
+            notes: None,
+            is_active: true,
+            preprocessed_artifact_ref: None,
+            preprocessing_report_json: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    repos
+        .mappings
+        .insert(&CharacterMappingRow {
+            mapping_id: MappingId::new(),
+            deployment_id: dep.clone(),
+            character_name: "Narrator".into(),
+            character_name_lower: "narrator".into(),
+            speaker_voice_asset_id: voice_id.clone(),
+            default_emotion_mode: "none".into(),
+            default_emotion_voice_asset_id: None,
+            default_vector_preset_id: None,
+            default_qwen_template: None,
+            default_speed_factor: None,
+            default_generation_overrides_json: "{}".into(),
+            is_active: true,
+            notes: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    // Seed run with cache_policy="use_cache". Without this the dispatcher
+    // skips the cache lookup entirely and the test would falsely pass for
+    // the wrong reason.
+    let run_id = RunId::new();
+    repos
+        .runs
+        .insert(&RunRow {
+            run_id: run_id.clone(),
+            deployment_id: dep.clone(),
+            kind: "batch".into(),
+            status: "queued".into(),
+            script_snapshot: "Narrator: Hello world.".into(),
+            parser_mode: "dialogue".into(),
+            generation_settings_json: "{}".into(),
+            global_emotion_snapshot_json: None,
+            output_format: "wav".into(),
+            speed_factor: 1.0,
+            speed_mode: "preserve_pitch".into(),
+            cache_policy: "use_cache".into(),
+            seed_strategy: "fixed".into(),
+            base_seed: 42,
+            original_run_id: None,
+            runtime_install_id: None,
+            runtime_version: None,
+            model_version: None,
+            extension_version: "0.0.0-test".into(),
+            queued_at: now,
+            started_at: None,
+            finished_at: None,
+            error_category: None,
+            error_detail: None,
+        })
+        .await
+        .unwrap();
+
+    // Compute the same hash that prepare() will compute for the single segment.
+    // The inputs mirror prepare.rs exactly:
+    //   extension_version  → passed to spawn_dispatcher as "0.0.0-test"
+    //   runtime_version    → hardcoded "0.0.0" in prepare.rs
+    //   model_version      → hardcoded "indextts-2" in prepare.rs
+    //   model_family       → hardcoded "indextts-2" in prepare.rs
+    //   text               → dialogue parser treats "Narrator: Hello world." as an
+    //                         UNTAGGED line (no leading `[`), so the full trimmed
+    //                         line becomes the utterance text unchanged.
+    //   speaker_ref_sha256 → voice_sha256 above
+    //   seed               → run.base_seed = 42
+    //   speed_factor       → run.speed_factor = 1.0
+    //   speed_mode         → run.speed_mode = "preserve_pitch"
+    //   output_format      → run.output_format = "wav"
+    let cache_input = CacheKeyInput {
+        extension_version: "0.0.0-test".into(),
+        runtime_version: "0.0.0".into(),
+        model_version: "indextts-2".into(),
+        model_family: "indextts-2".into(),
+        text: "Narrator: Hello world.".into(),
+        speaker_ref_sha256: voice_sha256,
+        emotion: EmotionPayload::None,
+        generation_params: BTreeMap::new(),
+        seed: 42,
+        speed_factor: 1.0,
+        speed_mode: "preserve_pitch".into(),
+        output_format: "wav".into(),
+    };
+    let hash = build_cache_key(&cache_input).expect("cache key must build for valid inputs");
+
+    repos
+        .cache
+        .insert(&SynthesisCacheRow {
+            content_hash: hash.clone(),
+            audio_artifact_ref: "/tmp/cached_seg.wav".into(),
+            extension_version: "0.0.0-test".into(),
+            runtime_version: "0.0.0".into(),
+            model_version: "indextts-2".into(),
+            size_bytes: 100,
+            hit_count: 0,
+            created_at: now,
+            last_hit_at: now,
+        })
+        .await
+        .unwrap();
+
+    // Build a lease whose synthesize.batch handler counts every call.
+    // The count must remain zero — cache hits skip the RPC entirely.
+    let call_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = call_count.clone();
+    let (lease, _notif_tx) = ChannelLease::new(move |method, _params| {
+        if method == "synthesize.batch" {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+        Ok(json!({"request_id": "x", "status": "ok", "segments": []}))
+    });
+
+    let queue = Arc::new(RuntimeQueue::new());
+    let registry = Arc::new(RunChannelRegistry::new());
+    let provider = Arc::new(LeaseProvider::new(Arc::new(StaticLeaseFactory(
+        lease as SharedLease,
+    ))));
+
+    let _handle = spawn_dispatcher(
+        queue.clone(),
+        repos.clone(),
+        provider,
+        registry.clone(),
+        None,
+        "0.0.0-test",
+    );
+
+    queue
+        .enqueue(run_id.clone(), dep.as_str(), RunClass::Batch)
+        .await;
+
+    let mut rx = None;
+    for _ in 0..100 {
+        if let Some(r) = registry.subscribe(run_id.as_str()).await {
+            rx = Some(r);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let mut rx = rx.expect("dispatcher should register run channel within 2s");
+
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            match rx.recv().await {
+                Ok(ev) => {
+                    if matches!(ev, RunEvent::RunTerminal { .. }) {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    })
+    .await
+    .expect("dispatcher should reach RunTerminal within 10s");
+
+    assert_eq!(
+        call_count.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "synthesize.batch must not be called when every segment is a cache hit"
+    );
+
+    let final_row = repos
+        .runs
+        .get(&run_id)
+        .await
+        .unwrap()
+        .expect("run row must exist");
+    assert_eq!(
+        final_row.status, "completed",
+        "run must reach 'completed' on all-cache-hit path, got {:?}",
+        final_row.status
+    );
+
+    // Utterance row must reflect cache_hit=true and the cached audio_artifact_ref.
+    let utts = repos
+        .utterances
+        .list_by_run(&run_id)
+        .await
+        .expect("utterance query must not fail");
+    assert_eq!(utts.len(), 1, "expected exactly one utterance row");
+    let utt = &utts[0];
+    assert!(utt.cache_hit, "utterance must have cache_hit=true");
+    assert_eq!(
+        utt.audio_artifact_ref.as_deref(),
+        Some("/tmp/cached_seg.wav"),
+        "utterance must reference the pre-seeded cached audio file"
     );
 }
