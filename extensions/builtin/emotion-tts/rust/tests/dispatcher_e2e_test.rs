@@ -192,6 +192,7 @@ async fn dispatcher_emits_segment_events_and_runs_to_completion() {
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
             edit_chain_json: None,
+            derived_artifact_ref: None,
             created_at: now,
             updated_at: now,
         })
@@ -470,6 +471,7 @@ async fn dispatcher_writes_export_history_on_completed_run() {
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
             edit_chain_json: None,
+            derived_artifact_ref: None,
             created_at: now,
             updated_at: now,
         })
@@ -733,6 +735,7 @@ async fn dispatcher_serves_cache_hits_without_calling_worker() {
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
             edit_chain_json: None,
+            derived_artifact_ref: None,
             created_at: now,
             updated_at: now,
         })
@@ -1002,6 +1005,7 @@ async fn resume_run_reuses_cache_from_original() {
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
             edit_chain_json: None,
+            derived_artifact_ref: None,
             created_at: now,
             updated_at: now,
         })
@@ -1308,6 +1312,7 @@ async fn raw_text_run_uses_deployment_default_voice() {
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
             edit_chain_json: None,
+            derived_artifact_ref: None,
             created_at: now,
             updated_at: now,
         })
@@ -1573,6 +1578,7 @@ async fn test_line_skips_cache_and_export() {
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
             edit_chain_json: None,
+            derived_artifact_ref: None,
             created_at: now,
             updated_at: now,
         })
@@ -1865,6 +1871,7 @@ async fn mapping_vector_preset_default_applied_to_cache_key() {
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
             edit_chain_json: None,
+            derived_artifact_ref: None,
             created_at: now,
             updated_at: now,
         })
@@ -2172,6 +2179,7 @@ async fn inline_emotion_vector_override_applied_to_cache_key() {
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
             edit_chain_json: None,
+            derived_artifact_ref: None,
             created_at: now,
             updated_at: now,
         })

@@ -94,42 +94,42 @@ audible effect and a different `content_sha256` for the derived artifact.
 
 ### Tests for User Story 1 (RED first)
 
-- [ ] T019 [P] [US1] Write failing pytest `extensions/builtin/emotion-tts/worker/tests/test_audio_edit_trim_accuracy.py` asserting first non-silent sample of trimmed output is within ±1 ms of expected boundary for WAV, MP3, and OPUS sources (FR-026, SC-009)
-- [ ] T020 [P] [US1] Write failing pytest `extensions/builtin/emotion-tts/worker/tests/test_audio_edit_normalize_lufs.py` asserting measured integrated loudness is within ±0.5 LU of `target_lufs` after normalize op
-- [ ] T021 [P] [US1] Write failing Rust test `extensions/builtin/emotion-tts/rust/tests/http_contract_audio_edit_voice_asset_test.rs` covering the four routes used in US1: `POST .../voice-assets/{id}/edit`, `DELETE .../voice-assets/{id}/edit`, `POST .../voice-assets/{id}/edit/preview`, plus a 404-on-cross-deployment assertion (FR-016, SC-008)
+- [X] T019 [P] [US1] Write failing pytest `extensions/builtin/emotion-tts/worker/tests/test_audio_edit_trim_accuracy.py` asserting first non-silent sample of trimmed output is within ±1 ms of expected boundary for WAV, MP3, and OPUS sources (FR-026, SC-009)
+- [X] T020 [P] [US1] Write failing pytest `extensions/builtin/emotion-tts/worker/tests/test_audio_edit_normalize_lufs.py` asserting measured integrated loudness is within ±0.5 LU of `target_lufs` after normalize op
+- [X] T021 [P] [US1] Write failing Rust test `extensions/builtin/emotion-tts/rust/tests/http_contract_audio_edit_voice_asset_test.rs` covering the four routes used in US1: `POST .../voice-assets/{id}/edit`, `DELETE .../voice-assets/{id}/edit`, `POST .../voice-assets/{id}/edit/preview`, plus a 404-on-cross-deployment assertion (FR-016, SC-008)
 
 ### Worker pipeline implementation (US1)
 
-- [ ] T022 [US1] Create `extensions/builtin/emotion-tts/worker/src/emotion_tts_worker/audio_edit.py` with `apply_chain(source_abs, output_abs, chain) -> AudioEditReport`; per-op handlers for `trim`, `normalize` only in this slice; ffmpeg-python decode → numpy fold → soundfile encode pipeline per [contracts/rpc-audio-edit.md](./contracts/rpc-audio-edit.md)
-- [ ] T023 [US1] Register `audio.edit` and `audio.edit.preview` JSON-RPC handlers in `extensions/builtin/emotion-tts/worker/src/emotion_tts_worker/handlers.py` calling into `audio_edit.apply_chain` and a `materialize_to_temp` helper
-- [ ] T024 [US1] Run T019, T020 → GREEN
+- [X] T022 [US1] Create `extensions/builtin/emotion-tts/worker/src/emotion_tts_worker/audio_edit.py` with `apply_chain(source_abs, output_abs, chain) -> AudioEditReport`; per-op handlers for `trim`, `normalize` only in this slice; ffmpeg-python decode → numpy fold → soundfile encode pipeline per [contracts/rpc-audio-edit.md](./contracts/rpc-audio-edit.md)
+- [X] T023 [US1] Register `audio.edit` and `audio.edit.preview` JSON-RPC handlers in `extensions/builtin/emotion-tts/worker/src/emotion_tts_worker/handlers.py` calling into `audio_edit.apply_chain` and a `materialize_to_temp` helper
+- [X] T024 [US1] Run T019, T020 → GREEN
 
 ### Rust dispatcher + RPC integration (US1)
 
-- [ ] T025 [US1] Add `AudioEditParams` and `AudioEditPreviewParams` structs to `extensions/builtin/emotion-tts/rust/src/backend_client/params.rs` matching the contract in [contracts/rpc-audio-edit.md](./contracts/rpc-audio-edit.md)
-- [ ] T026 [US1] Add `audio_edit(...)` and `audio_edit_preview(...)` methods to `extensions/builtin/emotion-tts/rust/src/backend_client/mod.rs::BackendClient` using existing `BackendClient::call`
-- [ ] T027 [US1] Extend `extensions/builtin/emotion-tts/rust/src/dispatcher/prepare.rs` voice-path resolution to honor `edit_chain_json`: when chain present, materialize derived artifact via `HostArtifactStore` keyed on `chain_digest` and return derived path; otherwise return source path
+- [X] T025 [US1] Add `AudioEditParams` and `AudioEditPreviewParams` structs to `extensions/builtin/emotion-tts/rust/src/backend_client/params.rs` matching the contract in [contracts/rpc-audio-edit.md](./contracts/rpc-audio-edit.md)
+- [X] T026 [US1] Add `audio_edit(...)` and `audio_edit_preview(...)` methods to `extensions/builtin/emotion-tts/rust/src/backend_client/mod.rs::BackendClient` using existing `BackendClient::call`
+- [X] T027 [US1] Extend `extensions/builtin/emotion-tts/rust/src/dispatcher/prepare.rs` voice-path resolution to honor `edit_chain_json`: when chain present, materialize derived artifact via `HostArtifactStore` keyed on `chain_digest` and return derived path; otherwise return source path
 
 ### HTTP routes (US1)
 
-- [ ] T028 [US1] Extend `extensions/builtin/emotion-tts/rust/src/router/voice_assets.rs` with `POST /voice-assets/{voice_asset_id}/edit` calling `assert_deployment_match`, persisting chain via T016, materializing derived artifact, returning `ApplyEditResponse` per OpenAPI; rejects with 409 + `StaleDigestError` body when `digest_before` mismatches persisted state
-- [ ] T029 [US1] Extend `voice_assets.rs` with `POST /voice-assets/{voice_asset_id}/edit/preview` streaming bytes from worker temp file via `tokio_util::io::ReaderStream` + RAII `PreviewTempGuard`
-- [ ] T030 [US1] Extend `voice_assets.rs` with `DELETE /voice-assets/{voice_asset_id}/edit` clearing chain (no-op if already empty) and reverting `audio_artifact_ref`
-- [ ] T031 [US1] Emit `extension.emotiontts.audio.edited` event on `EventBus` from each apply/clear path with `voice_asset_id`, `operation_count`, `derived_artifact_ref` per FR-019
-- [ ] T032 [US1] Run T021 → GREEN
+- [X] T028 [US1] Extend `extensions/builtin/emotion-tts/rust/src/router/voice_assets.rs` with `POST /voice-assets/{voice_asset_id}/edit` calling `assert_deployment_match`, persisting chain via T016, materializing derived artifact, returning `ApplyEditResponse` per OpenAPI; rejects with 409 + `StaleDigestError` body when `digest_before` mismatches persisted state
+- [X] T029 [US1] Extend `voice_assets.rs` with `POST /voice-assets/{voice_asset_id}/edit/preview` streaming bytes from worker temp file via `tokio_util::io::ReaderStream` + RAII `PreviewTempGuard`
+- [X] T030 [US1] Extend `voice_assets.rs` with `DELETE /voice-assets/{voice_asset_id}/edit` clearing chain (no-op if already empty) and reverting `audio_artifact_ref`
+- [X] T031 [US1] Emit `extension.emotiontts.audio.edited` event on `EventBus` from each apply/clear path with `voice_asset_id`, `operation_count`, `derived_artifact_ref` per FR-019
+- [X] T032 [US1] Run T021 → GREEN
 
 ### Frontend — voice-asset editor (US1)
 
-- [ ] T033 [P] [US1] Create `extensions/builtin/emotion-tts/web/src/services/audio_edit_client.ts` with typed wrappers for the three voice-asset endpoints (apply, preview, clear)
-- [ ] T034 [P] [US1] Create `extensions/builtin/emotion-tts/web/src/views/mapping_editor/components/waveform_canvas.tsx` rendering peaks via Web Audio `decodeAudioData` + Canvas; expose drag-handle props (start/end) and a vertical playhead; vanilla-extract sibling `waveform_canvas.css.ts`
-- [ ] T035 [US1] Create `extensions/builtin/emotion-tts/web/src/views/mapping_editor/components/audio_edit_panel.tsx` (presentational) wiring waveform + Apply/Preview/Reset buttons + normalize toggle for the US1 op set; call `audio_edit_client` for actions; vanilla-extract sibling `audio_edit_panel.css.ts`
-- [ ] T036 [US1] Wire `audio_edit_panel` into `extensions/builtin/emotion-tts/web/src/views/mapping_editor/mapping_editor.view.tsx` so selecting a voice asset opens the editor in the existing 360-px sidebar
-- [ ] T037 [US1] Surface worker validation errors as inline messages in `audio_edit_panel.tsx` per FR-025 (not generic toasts)
+- [X] T033 [P] [US1] Create `extensions/builtin/emotion-tts/web/src/services/audio_edit_client.ts` with typed wrappers for the three voice-asset endpoints (apply, preview, clear)
+- [X] T034 [P] [US1] Create `extensions/builtin/emotion-tts/web/src/views/mapping_editor/components/waveform_canvas.tsx` rendering peaks via Web Audio `decodeAudioData` + Canvas; expose drag-handle props (start/end) and a vertical playhead; vanilla-extract sibling `waveform_canvas.css.ts`
+- [X] T035 [US1] Create `extensions/builtin/emotion-tts/web/src/views/mapping_editor/components/audio_edit_panel.tsx` (presentational) wiring waveform + Apply/Preview/Reset buttons + normalize toggle for the US1 op set; call `audio_edit_client` for actions; vanilla-extract sibling `audio_edit_panel.css.ts`
+- [X] T036 [US1] Wire `audio_edit_panel` into `extensions/builtin/emotion-tts/web/src/views/mapping_editor/mapping_editor.view.tsx` so selecting a voice asset opens the editor in the existing 360-px sidebar
+- [X] T037 [US1] Surface worker validation errors as inline messages in `audio_edit_panel.tsx` per FR-025 (not generic toasts)
 
 ### US1 wrap-up
 
-- [ ] T038 [US1] Run quickstart steps 1–5 manually in the browser; capture before/after waveform screenshots for the PR description
-- [ ] T039 [US1] **Pause for code review**: invoke `/requesting-code-review` with diff `git diff main..HEAD -- extensions/builtin/emotion-tts/` and address findings before moving to US2
+- [X] T038 [US1] Run quickstart steps 1–5 manually in the browser; capture before/after waveform screenshots for the PR description
+- [X] T039 [US1] **Pause for code review**: invoke `/requesting-code-review` with diff `git diff main..HEAD -- extensions/builtin/emotion-tts/` and address findings before moving to US2
 
 **Checkpoint**: User Story 1 fully functional and testable independently.
 

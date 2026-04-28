@@ -48,6 +48,8 @@ class Methods:
     SYNTHESIZE_BATCH = "synthesize.batch"
     VOICE_PROBE = "voice.probe"
     CANCEL = "cancel"
+    AUDIO_EDIT = "audio.edit"
+    AUDIO_EDIT_PREVIEW = "audio.edit.preview"
 
 
 class ErrorCodes:

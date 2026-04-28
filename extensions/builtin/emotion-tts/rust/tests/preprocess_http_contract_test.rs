@@ -185,6 +185,7 @@ async fn seed_voice_asset(
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
             edit_chain_json: None,
+            derived_artifact_ref: None,
             created_at: now,
             updated_at: now,
         })
