@@ -1,0 +1,314 @@
+openapi: 3.0.3
+info:
+  title: EmotionTTS Audio Editing
+  version: "0.1.0"
+  description: |
+    Audio editing endpoints contributed by the EmotionTTS extension. All routes
+    mount under the host's generic dispatcher prefix
+    `/api/v1/extensions/nexus.audio.emotiontts/`. Cross-deployment access yields
+    HTTP 404 (never 403) per the established `router::guard` contract.
+
+servers:
+  - url: /api/v1/extensions/nexus.audio.emotiontts
+
+paths:
+  /voice-assets/{voiceAssetId}/edit:
+    post:
+      summary: Apply an edit chain to a voice asset
+      parameters:
+        - in: path
+          name: voiceAssetId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: deploymentId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApplyEditRequest' }
+      responses:
+        '200':
+          description: Edit applied; derived artifact updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplyEditResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { description: Voice asset not in this deployment }
+        '409':
+          description: Stale digest on Apply (concurrent edit detected)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaleDigestError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      summary: Clear the edit chain (revert to source)
+      parameters:
+        - in: path
+          name: voiceAssetId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: deploymentId
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Chain cleared (or already empty — no-op) }
+        '404': { description: Voice asset not in this deployment }
+
+  /voice-assets/{voiceAssetId}/edit/preview:
+    post:
+      summary: Materialise an edit chain to a temp file and stream the bytes
+      description: |
+        Does not persist. Server-side temp file is deleted after the response is
+        fully streamed (or the connection closes).
+      parameters:
+        - in: path
+          name: voiceAssetId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: deploymentId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PreviewRequest' }
+      responses:
+        '200':
+          description: Preview audio bytes
+          content:
+            audio/wav: { schema: { type: string, format: binary } }
+            audio/mpeg: { schema: { type: string, format: binary } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { description: Voice asset not in this deployment }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /deployments/{deploymentId}/runs/{runId}/utterances/{utteranceId}/edit:
+    post:
+      summary: Apply an edit chain to a single run-output utterance
+      parameters:
+        - in: path
+          name: deploymentId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: runId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: utteranceId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApplyEditRequest' }
+      responses:
+        '200':
+          description: Segment audio rebuilt; export ZIP marked stale
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplyEditResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { description: Utterance/run not in this deployment }
+        '409': { $ref: '#/components/responses/StaleDigestError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /audit/{targetKind}/{targetId}:
+    get:
+      summary: List audit entries for a target (voice asset or utterance)
+      parameters:
+        - in: path
+          name: targetKind
+          required: true
+          schema:
+            type: string
+            enum: [voice_asset, utterance]
+        - in: path
+          name: targetId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: deploymentId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: Audit entries (newest first)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items: { $ref: '#/components/schemas/AuditEntry' }
+        '404': { description: Target not in this deployment }
+
+components:
+  schemas:
+    EditOp:
+      oneOf:
+        - $ref: '#/components/schemas/Op_Trim'
+        - $ref: '#/components/schemas/Op_Crop'
+        - $ref: '#/components/schemas/Op_Normalize'
+        - $ref: '#/components/schemas/Op_Speed'
+        - $ref: '#/components/schemas/Op_FadeIn'
+        - $ref: '#/components/schemas/Op_FadeOut'
+        - $ref: '#/components/schemas/Op_Mute'
+      discriminator: { propertyName: mode }
+    Op_Trim:
+      type: object
+      required: [id, mode, start_ms, end_ms]
+      properties:
+        id: { type: string, description: ULID }
+        mode: { type: string, enum: [trim] }
+        start_ms: { type: integer, minimum: 0 }
+        end_ms: { type: integer, minimum: 1 }
+    Op_Crop:
+      type: object
+      required: [id, mode, start_ms, end_ms]
+      properties:
+        id: { type: string }
+        mode: { type: string, enum: [crop] }
+        start_ms: { type: integer, minimum: 0 }
+        end_ms: { type: integer, minimum: 1 }
+    Op_Normalize:
+      type: object
+      required: [id, mode, target_lufs]
+      properties:
+        id: { type: string }
+        mode: { type: string, enum: [normalize] }
+        target_lufs: { type: number, minimum: -30.0, maximum: -6.0 }
+    Op_Speed:
+      type: object
+      required: [id, mode, factor]
+      properties:
+        id: { type: string }
+        mode: { type: string, enum: [speed] }
+        factor: { type: number, minimum: 0.5, maximum: 2.0 }
+    Op_FadeIn:
+      type: object
+      required: [id, mode, duration_ms]
+      properties:
+        id: { type: string }
+        mode: { type: string, enum: [fade_in] }
+        duration_ms: { type: integer, minimum: 1 }
+    Op_FadeOut:
+      type: object
+      required: [id, mode, duration_ms]
+      properties:
+        id: { type: string }
+        mode: { type: string, enum: [fade_out] }
+        duration_ms: { type: integer, minimum: 1 }
+    Op_Mute:
+      type: object
+      required: [id, mode, start_ms, end_ms]
+      properties:
+        id: { type: string }
+        mode: { type: string, enum: [mute] }
+        start_ms: { type: integer, minimum: 0 }
+        end_ms: { type: integer, minimum: 1 }
+    EditChain:
+      type: object
+      required: [version, ops]
+      properties:
+        version: { type: integer, enum: [1] }
+        ops:
+          type: array
+          maxItems: 32
+          items: { $ref: '#/components/schemas/EditOp' }
+    ApplyEditRequest:
+      type: object
+      required: [chain]
+      properties:
+        chain: { $ref: '#/components/schemas/EditChain' }
+        digest_before:
+          type: string
+          description: Digest currently expected by the caller; rejects with 409 on mismatch
+    ApplyEditResponse:
+      type: object
+      required: [chain_digest, derived_artifact_ref, source_duration_ms, derived_duration_ms]
+      properties:
+        chain_digest: { type: string, description: 64-char SHA-256 hex }
+        derived_artifact_ref: { type: string }
+        source_duration_ms: { type: integer }
+        derived_duration_ms: { type: integer }
+        measured_lufs:
+          type: number
+          nullable: true
+          description: Present when chain contains a normalize op
+        per_op_durations_ms:
+          type: array
+          items:
+            type: object
+            properties:
+              op_id: { type: string }
+              duration_ms: { type: number }
+    PreviewRequest:
+      type: object
+      required: [chain]
+      properties:
+        chain: { $ref: '#/components/schemas/EditChain' }
+    AuditEntry:
+      type: object
+      required: [entry_id, target_id, target_kind, digest_before, digest_after, operation_count, recorded_at, actor]
+      properties:
+        entry_id: { type: string, description: ULID }
+        target_id: { type: string }
+        target_kind: { type: string, enum: [voice_asset, utterance] }
+        digest_before: { type: string }
+        digest_after: { type: string }
+        operation_count: { type: integer, minimum: 0 }
+        recorded_at: { type: string, format: date-time }
+        actor: { type: string }
+    StaleDigestError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string, enum: [stale_digest] }
+            message: { type: string }
+            current_digest: { type: string }
+  responses:
+    ValidationError:
+      description: Validation failed (chain too long, op out of range, etc.)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code: { type: string }
+                  message: { type: string }
+    InternalError:
+      description: Worker-side or pipeline failure
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code: { type: string }
+                  message: { type: string }
+    StaleDigestError:
+      description: Concurrent edit detected (digest mismatch)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/StaleDigestError' }

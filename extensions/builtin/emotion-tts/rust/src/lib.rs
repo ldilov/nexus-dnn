@@ -69,6 +69,10 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration { version: 12, name: "voice_assets_preprocess",    sql: include_str!("../../storage/migrations/012_voice_assets_preprocess.sql") },
     Migration { version: 13, name: "deployment_default_voice",   sql: include_str!("../../storage/migrations/013_deployment_default_voice.sql") },
     Migration { version: 14, name: "fk_cascade",                 sql: include_str!("../../storage/migrations/014_fk_cascade.sql") },
+    Migration { version: 15, name: "voice_asset_edit_chain",     sql: include_str!("../../storage/migrations/015_voice_asset_edit_chain.sql") },
+    Migration { version: 16, name: "utterance_edit_chain",       sql: include_str!("../../storage/migrations/016_utterance_edit_chain.sql") },
+    Migration { version: 17, name: "audio_edit_log",             sql: include_str!("../../storage/migrations/017_audio_edit_log.sql") },
+    Migration { version: 18, name: "utterance_updated_at",       sql: include_str!("../../storage/migrations/018_utterance_updated_at.sql") },
 ];
 
 pub const EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION");
