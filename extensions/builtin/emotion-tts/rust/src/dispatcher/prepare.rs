@@ -227,6 +227,7 @@ pub(crate) async fn prepare(
                     speed_factor: run.speed_factor,
                     speed_mode: run.speed_mode.clone(),
                     output_format: run.output_format.clone(),
+                    voice_asset_chain_digest: crate::domain::ChainDigest::EMPTY.clone(),
                 };
                 build_cache_key(&cache_input).ok()
             });
