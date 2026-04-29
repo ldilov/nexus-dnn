@@ -29,8 +29,10 @@ export const handle = style({
   alignItems: "center",
   justifyContent: "center",
   outline: "none",
+  borderRadius: vars.radius.sm,
   selectors: {
-    "&:focus-visible::after": {
+    "&:focus-visible": {
+      outline: "none",
       boxShadow: vars.shadow.focusRing,
     },
   },

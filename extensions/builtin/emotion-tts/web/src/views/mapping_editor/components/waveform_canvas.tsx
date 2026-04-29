@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { vars } from "../../../theme/tokens.css";
 import { useWaveformPeaks } from "../../../hooks/use_waveform_peaks";
+import { useReducedMotion } from "../../../hooks/use_reduced_motion";
 import * as css from "./waveform_canvas.css";
 
 export interface WaveformCanvasProps {
@@ -53,6 +54,7 @@ export function WaveformCanvas(props: WaveformCanvasProps): JSX.Element {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<ActiveDrag>(null);
   const peaksState = useWaveformPeaks(audioUrl, width);
+  const prefersReducedMotion = useReducedMotion();
 
   useEffect(() => {
     paintWaveform(canvasRef.current, peaksState.peaks, width, height);
@@ -175,7 +177,14 @@ export function WaveformCanvas(props: WaveformCanvasProps): JSX.Element {
       </div>
 
       {isPlaying && (
-        <div className={css.playhead} style={{ left: `${playheadPct}%` }} aria-hidden="true" />
+        <div
+          className={css.playhead}
+          style={{
+            left: `${playheadPct}%`,
+            transition: prefersReducedMotion ? "none" : undefined,
+          }}
+          aria-hidden="true"
+        />
       )}
     </div>
   );
