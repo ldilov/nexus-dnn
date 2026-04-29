@@ -253,10 +253,10 @@ confirm 3 entries (2 applies + 1 clear) with correct before/after digests.
 in plan.md § Test strategy. Not a new user story — an enforcement phase that
 covers the requirements all five stories depend on.
 
-- [ ] T075 [P] Write Playwright interaction test `extensions/builtin/emotion-tts/web/tests/e2e/waveform_precision.spec.ts` covering: drag-accuracy ≤ 100 ms at default zoom + ≤ 10 ms at max zoom (FR-033 / SC-011); arrow key nudge = 10 ms (FR-035); Shift+arrow = 100 ms; Ctrl+arrow = 1 ms
-- [ ] T076 [P] Write Playwright spec `extensions/builtin/emotion-tts/web/tests/e2e/waveform_overlays.spec.ts` asserting muted regions render a flat horizontal bar; fade regions render a triangular gradient; trimmed regions are dimmed (FR-036)
-- [ ] T077 Add `useReducedMotion` honor to `waveform_canvas.tsx` drag-feedback animation per Constitution XII.6
-- [ ] T078 Add keyboard-handle focus styling (vanilla-extract `:focus-visible` ring) to `waveform_canvas.css.ts` for accessibility
+- [X] T075 [P] Write Playwright interaction test `extensions/builtin/emotion-tts/web/tests/e2e/waveform_precision.spec.ts` covering: drag-accuracy ≤ 100 ms at default zoom + ≤ 10 ms at max zoom (FR-033 / SC-011); arrow key nudge = 10 ms (FR-035); Shift+arrow = 100 ms; Ctrl+arrow = 1 ms
+- [X] T076 [P] Write Playwright spec `extensions/builtin/emotion-tts/web/tests/e2e/waveform_overlays.spec.ts` asserting muted regions render a flat horizontal bar; fade regions render a triangular gradient; trimmed regions are dimmed (FR-036)
+- [X] T077 Add `useReducedMotion` honor to `waveform_canvas.tsx` drag-feedback animation per Constitution XII.6
+- [X] T078 Add keyboard-handle focus styling (vanilla-extract `:focus-visible` ring) to `waveform_canvas.css.ts` for accessibility
 
 ---
 
