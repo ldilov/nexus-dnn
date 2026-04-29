@@ -200,3 +200,14 @@ export const audioPlayer = style({
 export const slider = style({
   width: "100%",
 });
+
+export const previewHint = style({
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.caption,
+  color: vars.color.textMuted,
+  letterSpacing: vars.tracking.label,
+  textTransform: "uppercase",
+  paddingLeft: vars.space.sm,
+  borderLeft: `1px solid ${vars.color.surfaceHigh}`,
+  marginLeft: vars.space.xs,
+});

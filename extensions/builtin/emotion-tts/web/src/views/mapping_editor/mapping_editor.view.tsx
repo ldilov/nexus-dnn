@@ -256,6 +256,7 @@ export function MappingEditorView(): JSX.Element {
                   className={isSelected ? css.mappingRowSelected : css.mappingRow}
                   onClick={() => setSelectedId(m.mappingId)}
                   aria-pressed={isSelected}
+                  data-testid="mapping-row"
                 >
                   <span className={css.characterInitial} aria-hidden="true">
                     {initialOf(m.characterName)}
