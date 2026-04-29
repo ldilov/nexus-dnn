@@ -29,8 +29,14 @@ import type {
   NormalizeOp,
   TrimOp,
 } from "../../../services/audio_edit_client";
+import { EditChainList } from "./edit_chain_list";
 import { WaveformCanvas } from "./waveform_canvas";
 import * as css from "./audio_edit_panel.css";
+
+interface RemovalStackEntry {
+  op: EditOp;
+  index: number;
+}
 
 export interface AudioEditPanelProps {
   voiceAsset: VoiceAsset;
@@ -50,20 +56,25 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
   );
 
   const [chain, setChain] = useState<EditChain>(() => initialChainFor(sourceDurationMs));
-  const [normalizeOn, setNormalizeOn] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [previewObjectUrl, setPreviewObjectUrl] = useState<string | null>(null);
   const [applyInFlight, setApplyInFlight] = useState(false);
   const [previewInFlight, setPreviewInFlight] = useState(false);
   const [hasPreviewedAtLeastOnce, setHasPreviewedAtLeastOnce] = useState(false);
   const [measuredLufs, setMeasuredLufs] = useState<number | null>(null);
+  const [removalStack, setRemovalStack] = useState<RemovalStackEntry[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const normalizeOn = useMemo(
+    () => chain.ops.some((op) => op.mode === "normalize"),
+    [chain.ops],
+  );
 
   useEffect(() => {
     setChain(initialChainFor(sourceDurationMs));
-    setNormalizeOn(false);
     setValidationError(null);
     setHasPreviewedAtLeastOnce(false);
+    setRemovalStack([]);
   }, [voiceAsset.voiceAssetId, sourceDurationMs]);
 
   useEffect(() => {
@@ -97,7 +108,6 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
 
   const toggleNormalize = useCallback(
     (next: boolean) => {
-      setNormalizeOn(next);
       setChain((prev) => {
         const withoutNormalize: EditOp[] = prev.ops.filter((op) => op.mode !== "normalize");
         if (next) {
@@ -115,8 +125,27 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
   );
 
   const removeOp = useCallback((opId: string) => {
-    setChain((prev) => ({ ...prev, ops: prev.ops.filter((op) => op.id !== opId) }));
-  }, []);
+    const idx = chain.ops.findIndex((op) => op.id === opId);
+    if (idx === -1) return;
+    const removed = chain.ops[idx];
+    if (!removed) return;
+    const nextOps = [...chain.ops.slice(0, idx), ...chain.ops.slice(idx + 1)];
+    setChain({ ...chain, ops: nextOps });
+    setRemovalStack((stackPrev) => [...stackPrev, { op: removed, index: idx }]);
+  }, [chain]);
+
+  const undoLastRemoval = useCallback(() => {
+    const entry = removalStack[removalStack.length - 1];
+    if (!entry) return;
+    const insertAt = Math.min(entry.index, chain.ops.length);
+    const nextOps = [
+      ...chain.ops.slice(0, insertAt),
+      entry.op,
+      ...chain.ops.slice(insertAt),
+    ];
+    setChain({ ...chain, ops: nextOps });
+    setRemovalStack(removalStack.slice(0, -1));
+  }, [chain, removalStack]);
 
   const validateLocal = useCallback((): boolean => {
     const err = validateChain(chain, sourceDurationMs);
@@ -156,6 +185,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
       });
       setValidationError(null);
       setMeasuredLufs(response.measured_lufs ?? null);
+      setRemovalStack([]);
       onChainPersisted(response);
     } catch (err) {
       const message =
@@ -173,10 +203,10 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
 
   const handleReset = useCallback(() => {
     setChain(initialChainFor(sourceDurationMs));
-    setNormalizeOn(false);
     setValidationError(null);
     setMeasuredLufs(null);
     setHasPreviewedAtLeastOnce(false);
+    setRemovalStack([]);
     if (previewObjectUrl) {
       URL.revokeObjectURL(previewObjectUrl);
       setPreviewObjectUrl(null);
@@ -252,25 +282,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
 
         <div className={css.controlBlock}>
           <span className={css.labelRow}>Operations · {chain.ops.length}</span>
-          <div className={css.opsList}>
-            {chain.ops.length === 0 ? (
-              <span className={css.opMeta}>No operations yet.</span>
-            ) : (
-              chain.ops.map((op) => (
-                <div key={op.id} className={css.opRow}>
-                  <span className={css.opName}>{describeOp(op)}</span>
-                  <button
-                    type="button"
-                    className={css.removeButton}
-                    onClick={() => removeOp(op.id)}
-                    aria-label={`Remove ${op.mode} operation`}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
+          <EditChainList chain={chain} onRemoveOp={removeOp} />
         </div>
       </div>
 
@@ -299,6 +311,18 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
         >
           Reset
         </button>
+        {removalStack.length > 0 && (
+          <button
+            type="button"
+            className={css.undoButton}
+            onClick={undoLastRemoval}
+            disabled={applyInFlight || previewInFlight}
+            data-testid="undo-last-removal"
+            aria-label="Undo last removal"
+          >
+            Undo last removal ({removalStack.length})
+          </button>
+        )}
         {hasPreviewedAtLeastOnce && (
           <span
             className={css.previewHint}
@@ -356,25 +380,6 @@ function updateOp<TMode extends EditOp["mode"]>(
   const next = [...chain.ops];
   next[idx] = updater(next[idx] as Extract<EditOp, { mode: TMode }>);
   return { ...chain, ops: next };
-}
-
-function describeOp(op: EditOp): string {
-  switch (op.mode) {
-    case "trim":
-      return `Trim · ${formatMs(op.start_ms)} → ${formatMs(op.end_ms)}`;
-    case "crop":
-      return `Crop · ${formatMs(op.start_ms)} → ${formatMs(op.end_ms)}`;
-    case "normalize":
-      return `Normalize · ${op.target_lufs.toFixed(1)} LUFS`;
-    case "speed":
-      return `Speed · ${op.factor.toFixed(2)}×`;
-    case "fade_in":
-      return `Fade in · ${op.duration_ms} ms`;
-    case "fade_out":
-      return `Fade out · ${op.duration_ms} ms`;
-    case "mute":
-      return `Mute · ${formatMs(op.start_ms)} → ${formatMs(op.end_ms)}`;
-  }
 }
 
 function formatMs(ms: number): string {
