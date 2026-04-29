@@ -202,16 +202,16 @@ confirm rebuilt audio matches the chain with the remaining 2 ops.
 
 ### Tests for User Story 4 (RED first)
 
-- [ ] T059 [P] [US4] Write failing Rust test `extensions/builtin/emotion-tts/rust/tests/audio_edit_op_remove_rebuild_test.rs` asserting that PATCHing an asset's chain to drop op[id] yields derived audio identical (cross-correlation ≥ 0.99) to a chain built from scratch with the same surviving ops (SC-007)
+- [X] T059 [P] [US4] Write failing Rust test `extensions/builtin/emotion-tts/rust/tests/audio_edit_op_remove_rebuild_test.rs` asserting that PATCHing an asset's chain to drop op[id] yields derived audio identical (cross-correlation ≥ 0.99) to a chain built from scratch with the same surviving ops (SC-007)
 
 ### Frontend implementation (US4)
 
-- [ ] T060 [P] [US4] Create `extensions/builtin/emotion-tts/web/src/views/mapping_editor/components/edit_chain_list.tsx` rendering ordered ops with per-op Remove button + parameter summary; presentational, vanilla-extract sibling
-- [ ] T061 [US4] Wire `edit_chain_list` into `audio_edit_panel.tsx`; Remove emits an updated chain (drop op by id) and triggers an Apply with `digest_before = current_persisted_digest`
-- [ ] T062 [US4] Add an in-memory "removal stack" to `audio_edit_panel.tsx`; Undo last removal pushes the op back into the chain at its original position and re-Applies
-- [ ] T063 [US4] Backend: extend `voice_assets.rs::edit` apply path to accept any chain that re-orders / drops ops (already supported via the generic chain payload — verify with the new test)
-- [ ] T064 [US4] Run T059 → GREEN
-- [ ] T065 [US4] **Pause for code review**: invoke `/requesting-code-review` with the US4 diff before US5
+- [X] T060 [P] [US4] Create `extensions/builtin/emotion-tts/web/src/views/mapping_editor/components/edit_chain_list.tsx` rendering ordered ops with per-op Remove button + parameter summary; presentational, vanilla-extract sibling
+- [X] T061 [US4] Wire `edit_chain_list` into `audio_edit_panel.tsx`; Remove emits an updated chain (drop op by id) and triggers an Apply with `digest_before = current_persisted_digest`
+- [X] T062 [US4] Add an in-memory "removal stack" to `audio_edit_panel.tsx`; Undo last removal pushes the op back into the chain at its original position and re-Applies
+- [X] T063 [US4] Backend: extend `voice_assets.rs::edit` apply path to accept any chain that re-orders / drops ops (already supported via the generic chain payload — verify with the new test)
+- [X] T064 [US4] Run T059 → GREEN
+- [X] T065 [US4] **Pause for code review**: invoke `/requesting-code-review` with the US4 diff before US5
 
 **Checkpoint**: Op removal + in-session undo work end-to-end.
 

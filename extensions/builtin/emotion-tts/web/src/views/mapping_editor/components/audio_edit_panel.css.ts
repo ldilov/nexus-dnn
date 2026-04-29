@@ -177,6 +177,28 @@ export const resetButton = style({
   },
 });
 
+export const undoButton = style({
+  background: "transparent",
+  color: vars.color.text,
+  border: `1px dashed ${vars.color.textMuted}`,
+  borderRadius: vars.radius.sm,
+  padding: `${vars.space.sm} ${vars.space.md}`,
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.caption,
+  cursor: "pointer",
+  letterSpacing: vars.tracking.label,
+  selectors: {
+    "&:hover:not(:disabled)": {
+      borderColor: vars.color.text,
+      background: vars.color.surfaceHigh,
+    },
+    "&:disabled": {
+      opacity: 0.5,
+      cursor: "not-allowed",
+    },
+  },
+});
+
 export const errorBanner = style({
   background: `color-mix(in oklab, ${vars.color.danger} 14%, transparent)`,
   color: vars.color.danger,
