@@ -132,7 +132,10 @@ pub fn default_workflow() -> WorkflowDocument {
         .collect();
     let edges = CURATED_EDGES
         .iter()
-        .map(|(a, b)| Edge { from: (*a).into(), to: (*b).into() })
+        .map(|(a, b)| Edge {
+            from: (*a).into(),
+            to: (*b).into(),
+        })
         .collect();
     WorkflowDocument {
         template_id: WORKFLOW_TEMPLATE_ID.into(),
@@ -280,7 +283,11 @@ pub fn compute_customised(doc: &WorkflowDocument) -> bool {
         }
     }
 
-    if doc.nodes.iter().any(|n| !curated_ids.contains(n.id.as_str())) {
+    if doc
+        .nodes
+        .iter()
+        .any(|n| !curated_ids.contains(n.id.as_str()))
+    {
         return true;
     }
 
@@ -315,9 +322,9 @@ fn parse_path(raw: &str) -> Result<ParsedPath> {
         return Ok(ParsedPath::Input(rest.into()));
     }
     if let Some(rest) = raw.strip_prefix("node:") {
-        let (node_id, tail) = rest.split_once('.').ok_or_else(|| {
-            EmotionTtsError::validation(format!("malformed node path {raw:?}"))
-        })?;
+        let (node_id, tail) = rest
+            .split_once('.')
+            .ok_or_else(|| EmotionTtsError::validation(format!("malformed node path {raw:?}")))?;
         let key = tail.strip_prefix("config.").ok_or_else(|| {
             EmotionTtsError::validation(format!("node path must use .config. prefix: {raw:?}"))
         })?;

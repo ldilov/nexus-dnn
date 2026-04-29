@@ -31,10 +31,18 @@ pub fn router(repos: Repos) -> Router {
 pub fn router_with_families(repos: Repos, family_registry: Arc<FamilyRegistry>) -> Router {
     Router::new()
         .route("/", get(list_deployments).post(create_deployment))
-        .route("/{deployment_id}", get(get_deployment).patch(patch_deployment).delete(delete_deployment))
+        .route(
+            "/{deployment_id}",
+            get(get_deployment)
+                .patch(patch_deployment)
+                .delete(delete_deployment),
+        )
         .route("/{deployment_id}/default-voice", patch(set_default_voice))
         .route("/{deployment_id}/resume", post(resume))
-        .with_state(Arc::new(DeploymentsState { repos, family_registry }))
+        .with_state(Arc::new(DeploymentsState {
+            repos,
+            family_registry,
+        }))
 }
 
 async fn list_deployments(State(state): State<Arc<DeploymentsState>>) -> Response {
@@ -90,10 +98,14 @@ async fn create_impl(
         return Err(EmotionTtsError::validation("displayName cannot be empty"));
     }
     if !matches!(body.default_output_format.as_str(), "wav" | "mp3" | "flac") {
-        return Err(EmotionTtsError::validation("defaultOutputFormat must be wav|mp3|flac"));
+        return Err(EmotionTtsError::validation(
+            "defaultOutputFormat must be wav|mp3|flac",
+        ));
     }
     if !(0.5..=2.0).contains(&body.default_speed_factor) {
-        return Err(EmotionTtsError::validation("defaultSpeedFactor must be 0.5..=2.0"));
+        return Err(EmotionTtsError::validation(
+            "defaultSpeedFactor must be 0.5..=2.0",
+        ));
     }
 
     // Spec 034 US5 T103 — validate model_family against the registry.
@@ -271,13 +283,17 @@ async fn patch_impl(
     }
     if let Some(fmt) = body.default_output_format {
         if !matches!(fmt.as_str(), "wav" | "mp3" | "flac") {
-            return Err(EmotionTtsError::validation("defaultOutputFormat must be wav|mp3|flac"));
+            return Err(EmotionTtsError::validation(
+                "defaultOutputFormat must be wav|mp3|flac",
+            ));
         }
         row.default_output_format = fmt;
     }
     if let Some(speed) = body.default_speed_factor {
         if !(0.5..=2.0).contains(&speed) {
-            return Err(EmotionTtsError::validation("defaultSpeedFactor must be 0.5..=2.0"));
+            return Err(EmotionTtsError::validation(
+                "defaultSpeedFactor must be 0.5..=2.0",
+            ));
         }
         row.default_speed_factor = speed;
     }

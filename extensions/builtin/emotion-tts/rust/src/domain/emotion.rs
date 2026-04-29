@@ -139,24 +139,39 @@ pub fn resolve(
     global: &GlobalEmotion,
 ) -> Resolved {
     if let Some(payload) = resolve_inline_explicit(inline) {
-        return Resolved { payload, source: EmotionSource::Inline };
+        return Resolved {
+            payload,
+            source: EmotionSource::Inline,
+        };
     }
     if let Some(tok) = legacy_ref {
         let alpha = inline.emotion_alpha.unwrap_or(1.0);
         return Resolved {
-            payload: EmotionPayload::AudioRef { ref_id: tok.to_string(), alpha },
+            payload: EmotionPayload::AudioRef {
+                ref_id: tok.to_string(),
+                alpha,
+            },
             source: EmotionSource::Inline,
         };
     }
     if let Some(m) = mapping {
         if let Some(payload) = resolve_mapping(m, inline.emotion_alpha) {
-            return Resolved { payload, source: EmotionSource::Mapping };
+            return Resolved {
+                payload,
+                source: EmotionSource::Mapping,
+            };
         }
     }
     if let Some(payload) = resolve_global(global, inline.emotion_alpha) {
-        return Resolved { payload, source: EmotionSource::Global };
+        return Resolved {
+            payload,
+            source: EmotionSource::Global,
+        };
     }
-    Resolved { payload: EmotionPayload::None, source: EmotionSource::None }
+    Resolved {
+        payload: EmotionPayload::None,
+        source: EmotionSource::None,
+    }
 }
 
 fn resolve_inline_explicit(inline: &InlineOverrides) -> Option<EmotionPayload> {
@@ -167,10 +182,16 @@ fn resolve_inline_explicit(inline: &InlineOverrides) -> Option<EmotionPayload> {
         }
     }
     if let Some(id) = &inline.emotion_audio_ref {
-        return Some(EmotionPayload::AudioRef { ref_id: id.clone(), alpha });
+        return Some(EmotionPayload::AudioRef {
+            ref_id: id.clone(),
+            alpha,
+        });
     }
     if let Some(tmpl) = &inline.qwen_template {
-        return Some(EmotionPayload::QwenTemplate { template: tmpl.clone(), alpha });
+        return Some(EmotionPayload::QwenTemplate {
+            template: tmpl.clone(),
+            alpha,
+        });
     }
     None
 }
@@ -265,7 +286,12 @@ mod tests {
     fn legacy_ref_wins_when_no_inline_explicit() {
         let inline = InlineOverrides::default();
         let mapping = mapping_audio_ref("mapping_ref");
-        let r = resolve(&inline, Some("legacy_token"), Some(&mapping), &GlobalEmotion::default());
+        let r = resolve(
+            &inline,
+            Some("legacy_token"),
+            Some(&mapping),
+            &GlobalEmotion::default(),
+        );
         assert_eq!(r.source, EmotionSource::Inline);
         match r.payload {
             EmotionPayload::AudioRef { ref_id, .. } => assert_eq!(ref_id, "legacy_token"),
@@ -276,7 +302,12 @@ mod tests {
     #[test]
     fn mapping_wins_when_no_inline_no_legacy() {
         let mapping = mapping_audio_ref("mapping_ref");
-        let r = resolve(&InlineOverrides::default(), None, Some(&mapping), &GlobalEmotion::default());
+        let r = resolve(
+            &InlineOverrides::default(),
+            None,
+            Some(&mapping),
+            &GlobalEmotion::default(),
+        );
         assert_eq!(r.source, EmotionSource::Mapping);
     }
 
@@ -290,7 +321,12 @@ mod tests {
 
     #[test]
     fn falls_through_to_none() {
-        let r = resolve(&InlineOverrides::default(), None, None, &GlobalEmotion::default());
+        let r = resolve(
+            &InlineOverrides::default(),
+            None,
+            None,
+            &GlobalEmotion::default(),
+        );
         assert_eq!(r.source, EmotionSource::None);
         assert!(matches!(r.payload, EmotionPayload::None));
     }
@@ -353,7 +389,12 @@ mod tests {
             qwen_template: Some("Friendly teen: {seg}".into()),
             ..Default::default()
         };
-        let r = resolve(&InlineOverrides::default(), None, Some(&mapping), &GlobalEmotion::default());
+        let r = resolve(
+            &InlineOverrides::default(),
+            None,
+            Some(&mapping),
+            &GlobalEmotion::default(),
+        );
         assert_eq!(r.source, EmotionSource::Mapping);
         assert!(matches!(r.payload, EmotionPayload::QwenTemplate { .. }));
     }
@@ -365,7 +406,12 @@ mod tests {
             audio_ref_id: None,
             ..Default::default()
         };
-        let r = resolve(&InlineOverrides::default(), None, Some(&mapping), &GlobalEmotion::default());
+        let r = resolve(
+            &InlineOverrides::default(),
+            None,
+            Some(&mapping),
+            &GlobalEmotion::default(),
+        );
         assert_eq!(r.source, EmotionSource::None);
     }
 

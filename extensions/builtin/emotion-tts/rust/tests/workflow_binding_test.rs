@@ -31,14 +31,16 @@ fn extra_loudness_node_marks_customised_but_output_format_still_binds() {
     });
     doc.edges
         .retain(|e| !(e.from == "postprocess_1" && e.to == "export_bundle_1"));
-    doc.edges.push(emotion_tts_extension::workflow_binding::Edge {
-        from: "postprocess_1".into(),
-        to: "loudness_normalize_1".into(),
-    });
-    doc.edges.push(emotion_tts_extension::workflow_binding::Edge {
-        from: "loudness_normalize_1".into(),
-        to: "export_bundle_1".into(),
-    });
+    doc.edges
+        .push(emotion_tts_extension::workflow_binding::Edge {
+            from: "postprocess_1".into(),
+            to: "loudness_normalize_1".into(),
+        });
+    doc.edges
+        .push(emotion_tts_extension::workflow_binding::Edge {
+            from: "loudness_normalize_1".into(),
+            to: "export_bundle_1".into(),
+        });
 
     refresh_customised(&mut doc);
     assert!(doc.customised, "extra node must flip customised to true");

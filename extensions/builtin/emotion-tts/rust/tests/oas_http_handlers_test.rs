@@ -94,6 +94,7 @@ async fn seed_run(repos: &Repos, dep: &DeploymentId) -> RunId {
             finished_at: Some(now),
             error_category: None,
             error_detail: None,
+            export_zip_stale_at: None,
         })
         .await
         .unwrap();
@@ -128,10 +129,8 @@ async fn get_engine_settings_returns_documented_defaults() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    let body: Value = serde_json::from_slice(
-        &to_bytes(response.into_body(), usize::MAX).await.unwrap(),
-    )
-    .unwrap();
+    let body: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(body["deploymentId"], dep.as_str());
     assert_eq!(body["referencePreprocessEnabled"], true);
     assert_eq!(body["oasEnabled"], true);
@@ -162,10 +161,8 @@ async fn patch_engine_settings_updates_individual_fields() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    let body: Value = serde_json::from_slice(
-        &to_bytes(response.into_body(), usize::MAX).await.unwrap(),
-    )
-    .unwrap();
+    let body: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(body["oasEnabled"], false);
     assert_eq!(body["compileGptEnabled"], true);
     // Unspecified fields left alone.
@@ -260,10 +257,8 @@ async fn get_diagnostics_returns_empty_shape_for_completed_run() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    let body: Value = serde_json::from_slice(
-        &to_bytes(response.into_body(), usize::MAX).await.unwrap(),
-    )
-    .unwrap();
+    let body: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(body["runId"], run.as_str());
     assert!(body["segments"].is_array());
     assert_eq!(body["segments"].as_array().unwrap().len(), 0);

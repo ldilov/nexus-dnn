@@ -126,7 +126,11 @@ pub struct ContentHash(String);
 impl ContentHash {
     pub fn from_hex(hex: impl Into<String>) -> std::result::Result<Self, IdError> {
         let hex = hex.into();
-        if hex.len() != 64 || !hex.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()) {
+        if hex.len() != 64
+            || !hex
+                .chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        {
             return Err(IdError::NotSha256(hex));
         }
         Ok(Self(hex))

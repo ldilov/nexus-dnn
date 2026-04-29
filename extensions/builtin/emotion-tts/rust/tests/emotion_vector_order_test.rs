@@ -56,9 +56,7 @@ fn wire_json_serialises_vector_as_ordered_array() {
     let vector = vector_from_inline("happy=0.7,surprised=0.2");
     let payload = EmotionPayload::EmotionVector { vector, alpha: 1.0 };
     let wire = serde_json::to_value(&payload).expect("serialises");
-    let arr = wire["vector"]
-        .as_array()
-        .expect("vector field is an array");
+    let arr = wire["vector"].as_array().expect("vector field is an array");
     assert_eq!(arr.len(), 8);
     assert!((arr[0].as_f64().unwrap() - 0.7).abs() < 1e-9);
     assert!((arr[6].as_f64().unwrap() - 0.2).abs() < 1e-9);
