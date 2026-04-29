@@ -48,6 +48,7 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<RunRow> {
         finished_at: row.try_get("finished_at").map_err(to_err)?,
         error_category: row.try_get("error_category").map_err(to_err)?,
         error_detail: row.try_get("error_detail").map_err(to_err)?,
+        export_zip_stale_at: row.try_get("export_zip_stale_at").map_err(to_err)?,
     })
 }
 
@@ -161,5 +162,18 @@ impl RunsRepo for SqliteRunsRepo {
         .await
         .map_err(to_err)?;
         Ok(result.rows_affected() > 0)
+    }
+
+    async fn set_export_zip_stale(&self, id: &RunId) -> RepoResult<()> {
+        sqlx::query(
+            "UPDATE ext_emotion_tts__runs \
+             SET export_zip_stale_at = strftime('%s', 'now') \
+             WHERE run_id = ?",
+        )
+        .bind(id.as_str())
+        .execute(&self.pool)
+        .await
+        .map_err(to_err)?;
+        Ok(())
     }
 }

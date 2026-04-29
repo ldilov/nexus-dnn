@@ -74,6 +74,8 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration { version: 17, name: "audio_edit_log",             sql: include_str!("../../storage/migrations/017_audio_edit_log.sql") },
     Migration { version: 18, name: "utterance_updated_at",       sql: include_str!("../../storage/migrations/018_utterance_updated_at.sql") },
     Migration { version: 19, name: "voice_asset_derived_ref",    sql: include_str!("../../storage/migrations/019_voice_asset_derived_ref.sql") },
+    Migration { version: 20, name: "run_export_zip_stale_at",    sql: include_str!("../../storage/migrations/020_run_export_zip_stale_at.sql") },
+    Migration { version: 21, name: "utterance_derived_ref",      sql: include_str!("../../storage/migrations/021_utterance_derived_ref.sql") },
 ];
 
 pub const EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION");

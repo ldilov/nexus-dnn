@@ -252,6 +252,7 @@ async fn dispatcher_emits_segment_events_and_runs_to_completion() {
             finished_at: None,
             error_category: None,
             error_detail: None,
+            export_zip_stale_at: None,
         })
         .await
         .unwrap();
@@ -528,6 +529,7 @@ async fn dispatcher_writes_export_history_on_completed_run() {
             finished_at: None,
             error_category: None,
             error_detail: None,
+            export_zip_stale_at: None,
         })
         .await
         .unwrap();
@@ -795,6 +797,7 @@ async fn dispatcher_serves_cache_hits_without_calling_worker() {
             finished_at: None,
             error_category: None,
             error_detail: None,
+            export_zip_stale_at: None,
         })
         .await
         .unwrap();
@@ -1063,6 +1066,7 @@ async fn resume_run_reuses_cache_from_original() {
             finished_at: Some(now),
             error_category: None,
             error_detail: None,
+            export_zip_stale_at: None,
         })
         .await
         .unwrap();
@@ -1133,6 +1137,7 @@ async fn resume_run_reuses_cache_from_original() {
             finished_at: None,
             error_category: None,
             error_detail: None,
+            export_zip_stale_at: None,
         })
         .await
         .unwrap();
@@ -1359,6 +1364,7 @@ async fn raw_text_run_uses_deployment_default_voice() {
             finished_at: None,
             error_category: None,
             error_detail: None,
+            export_zip_stale_at: None,
         })
         .await
         .unwrap();
@@ -1640,6 +1646,7 @@ async fn test_line_skips_cache_and_export() {
             finished_at: None,
             error_category: None,
             error_detail: None,
+            export_zip_stale_at: None,
         })
         .await
         .unwrap();
@@ -1950,6 +1957,7 @@ async fn mapping_vector_preset_default_applied_to_cache_key() {
             finished_at: None,
             error_category: None,
             error_detail: None,
+            export_zip_stale_at: None,
         })
         .await
         .unwrap();
@@ -2244,6 +2252,7 @@ async fn inline_emotion_vector_override_applied_to_cache_key() {
             finished_at: None,
             error_category: None,
             error_detail: None,
+            export_zip_stale_at: None,
         })
         .await
         .unwrap();

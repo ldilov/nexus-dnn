@@ -56,6 +56,7 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<UtteranceRow> {
         failure_category: row.try_get("failure_category").map_err(to_err)?,
         failure_detail: row.try_get("failure_detail").map_err(to_err)?,
         edit_chain_json: row.try_get("edit_chain_json").map_err(to_err)?,
+        derived_artifact_ref: row.try_get("derived_artifact_ref").map_err(to_err)?,
         updated_at: row.try_get("updated_at").map_err(to_err)?,
     })
 }
@@ -196,6 +197,49 @@ impl UtterancesRepo for SqliteUtterancesRepo {
              WHERE utterance_id = ?",
         )
         .bind(serialized)
+        .bind(utterance_id.as_str())
+        .execute(&self.pool)
+        .await
+        .map_err(to_err)?;
+        Ok(())
+    }
+
+    async fn set_derived_artifact_ref(
+        &self,
+        utterance_id: &UtteranceId,
+        derived_artifact_ref: Option<&str>,
+    ) -> RepoResult<()> {
+        sqlx::query(
+            "UPDATE ext_emotion_tts__utterances \
+             SET derived_artifact_ref = ?, updated_at = strftime('%s', 'now') \
+             WHERE utterance_id = ?",
+        )
+        .bind(derived_artifact_ref)
+        .bind(utterance_id.as_str())
+        .execute(&self.pool)
+        .await
+        .map_err(to_err)?;
+        Ok(())
+    }
+
+    async fn write_edit_chain_with_derived(
+        &self,
+        utterance_id: &UtteranceId,
+        chain: Option<&EditChain>,
+        derived_artifact_ref: Option<&str>,
+    ) -> RepoResult<()> {
+        let serialized = match chain {
+            None => None,
+            Some(c) => Some(serde_json::to_string(c).map_err(EmotionTtsError::from)?),
+        };
+        sqlx::query(
+            "UPDATE ext_emotion_tts__utterances \
+             SET edit_chain_json = ?, derived_artifact_ref = ?, \
+                 updated_at = strftime('%s', 'now') \
+             WHERE utterance_id = ?",
+        )
+        .bind(serialized)
+        .bind(derived_artifact_ref)
         .bind(utterance_id.as_str())
         .execute(&self.pool)
         .await
