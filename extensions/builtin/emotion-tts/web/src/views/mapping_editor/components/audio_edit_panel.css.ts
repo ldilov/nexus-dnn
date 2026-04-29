@@ -223,6 +223,30 @@ export const slider = style({
   width: "100%",
 });
 
+export const auditSection = style({
+  marginTop: vars.space.sm,
+});
+
+export const auditSummary = style({
+  cursor: "pointer",
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.caption,
+  letterSpacing: vars.tracking.label,
+  textTransform: "uppercase",
+  color: vars.color.textMuted,
+  padding: `${vars.space.xs} 0`,
+  selectors: {
+    "&:focus-visible": {
+      outline: "none",
+      boxShadow: vars.shadow.focusRing,
+      borderRadius: vars.radius.sm,
+    },
+    "&:hover": {
+      color: vars.color.text,
+    },
+  },
+});
+
 export const previewHint = style({
   fontFamily: vars.font.mono,
   fontSize: vars.text.caption,

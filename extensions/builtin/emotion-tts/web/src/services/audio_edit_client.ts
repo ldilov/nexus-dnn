@@ -218,6 +218,50 @@ export async function previewVoiceAssetEdit(
   return resp.blob();
 }
 
+export interface AuditEntry {
+  entry_id: string;
+  target_id: string;
+  target_kind: "voice_asset" | "utterance";
+  digest_before: string;
+  digest_after: string;
+  operation_count: number;
+  recorded_at: string;
+  actor: string;
+}
+
+export interface AuditLogResponse {
+  entries: AuditEntry[];
+}
+
+/**
+ * Spec 036 / US5 — fetch the audit-log timeline for a single edit target.
+ * Returns entries in reverse-chronological order. 404 on cross-deployment
+ * access or unknown target.
+ */
+export async function fetchAuditLog(
+  deploymentId: string,
+  targetKind: "voice_asset" | "utterance",
+  targetId: string,
+  limit = 50,
+): Promise<AuditLogResponse> {
+  const url =
+    `${EXTENSION_PREFIX}/audit/${encodeURIComponent(targetKind)}/${encodeURIComponent(targetId)}` +
+    `?deploymentId=${encodeURIComponent(deploymentId)}&limit=${encodeURIComponent(String(limit))}`;
+  const resp = await fetch(url, {
+    method: "GET",
+    headers: { accept: "application/json" },
+  });
+  if (!resp.ok) {
+    const body = (await resp.json().catch(() => null)) as
+      | { error?: { message?: string }; message?: string }
+      | null;
+    const message =
+      body?.error?.message ?? body?.message ?? `audit fetch failed: ${resp.status}`;
+    throw new Error(message);
+  }
+  return (await resp.json()) as AuditLogResponse;
+}
+
 /** Generate an opaque alphanumeric op id, ULID-shaped (26 chars, upper-case). */
 export function newOperationId(): string {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 26).toUpperCase();

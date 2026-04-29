@@ -5,6 +5,7 @@
 //! their owning user story lands.
 
 pub mod audio_edit;
+pub mod audit;
 pub mod deployments;
 pub mod engine_settings;
 pub mod exports;
@@ -84,6 +85,7 @@ pub fn build_router_with_families(
         )
         .nest("/workflow", workflows::router(repos.clone()))
         .merge(engine_settings::router(repos.clone()))
+        .merge(audit::router(repos.clone()))
         .merge(families::router(families::FamiliesState {
             registry: family_registry,
             reconciler,

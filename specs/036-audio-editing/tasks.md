@@ -227,21 +227,21 @@ confirm 3 entries (2 applies + 1 clear) with correct before/after digests.
 
 ### Tests for User Story 5 (RED first)
 
-- [ ] T066 [P] [US5] Write failing test `extensions/builtin/emotion-tts/rust/tests/http_contract_audio_edit_audit_test.rs` asserting `GET /audit/{kind}/{id}?deploymentId=...` returns expected entries in reverse-chronological order with 404 on cross-deployment
-- [ ] T067 [P] [US5] Extend `extensions/builtin/emotion-tts/rust/tests/audio_edit_audit_log_sequence_test.rs` (T009) with a "deleted target retains audit entries" case (FR-030 edge case)
+- [X] T066 [P] [US5] Write failing test `extensions/builtin/emotion-tts/rust/tests/http_contract_audio_edit_audit_test.rs` asserting `GET /audit/{kind}/{id}?deploymentId=...` returns expected entries in reverse-chronological order with 404 on cross-deployment
+- [X] T067 [P] [US5] Extend `extensions/builtin/emotion-tts/rust/tests/audio_edit_audit_log_sequence_test.rs` (T009) with a "deleted target retains audit entries" case (FR-030 edge case)
 
 ### Backend implementation (US5)
 
-- [ ] T068 [US5] Wire audit-log appends into `voice_assets.rs::edit` (apply, clear, op-remove paths) and `runs.rs::utterance_edit` per FR-029 — emit one entry per state-changing call; no entry on no-op apply or no-op clear
-- [ ] T069 [US5] Create `extensions/builtin/emotion-tts/rust/src/router/audit.rs` with `GET /audit/{target_kind}/{target_id}` consuming `?deploymentId=` + `?limit=` query params; mount under main router in `router/mod.rs`
-- [ ] T070 [US5] Run T066, T067 → GREEN
+- [X] T068 [US5] Wire audit-log appends into `voice_assets.rs::edit` (apply, clear, op-remove paths) and `runs.rs::utterance_edit` per FR-029 — emit one entry per state-changing call; no entry on no-op apply or no-op clear
+- [X] T069 [US5] Create `extensions/builtin/emotion-tts/rust/src/router/audit.rs` with `GET /audit/{target_kind}/{target_id}` consuming `?deploymentId=` + `?limit=` query params; mount under main router in `router/mod.rs`
+- [X] T070 [US5] Run T066, T067 → GREEN
 
 ### Frontend implementation (US5)
 
-- [ ] T071 [P] [US5] Create `extensions/builtin/emotion-tts/web/src/views/mapping_editor/components/audit_history_panel.tsx` listing entries (reverse chronological, op-count + chain-digest column, timestamp formatted with the existing `formatRelative` util); presentational, vanilla-extract sibling
-- [ ] T072 [US5] Wire `audit_history_panel` into `audio_edit_panel.tsx` as a collapsible section under the chain list; fetch via `audio_edit_client.ts::fetchAuditLog`
-- [ ] T073 [US5] Run quickstart step 7 (audit panel manual check)
-- [ ] T074 [US5] **Pause for code review**: invoke `/requesting-code-review` with the US5 diff before polish phase
+- [X] T071 [P] [US5] Create `extensions/builtin/emotion-tts/web/src/views/mapping_editor/components/audit_history_panel.tsx` listing entries (reverse chronological, op-count + chain-digest column, timestamp formatted with the existing `formatRelative` util); presentational, vanilla-extract sibling
+- [X] T072 [US5] Wire `audit_history_panel` into `audio_edit_panel.tsx` as a collapsible section under the chain list; fetch via `audio_edit_client.ts::fetchAuditLog`
+- [~] T073 [US5] Run quickstart step 7 (audit panel manual check) — punted, requires live deployment
+- [X] T074 [US5] **Pause for code review**: invoke `/requesting-code-review` with the US5 diff before polish phase
 
 **Checkpoint**: All user stories work independently.
 
