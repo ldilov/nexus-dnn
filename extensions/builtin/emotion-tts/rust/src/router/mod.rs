@@ -15,6 +15,7 @@ pub mod middleware;
 pub mod presets;
 pub mod runs;
 pub mod runtime;
+pub mod utterance_edit;
 pub mod voice_assets;
 pub mod workflows;
 
@@ -66,6 +67,8 @@ pub fn build_router_with_families(
         queue: queue.clone(),
         extension_version: extension_version.into(),
         run_channels,
+        artifact_store: artifact_store.clone(),
+        lease_provider: provider.clone(),
     };
     let mut router = Router::new()
         .merge(runs::router(runs_state))

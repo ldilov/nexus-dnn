@@ -475,6 +475,7 @@ async fn sse_replays_completed_utterances_on_subscribe() {
             finished_at: None,
             error_category: None,
             error_detail: None,
+            export_zip_stale_at: None,
         })
         .await
         .unwrap();
@@ -512,6 +513,7 @@ async fn sse_replays_completed_utterances_on_subscribe() {
                 failure_category: None,
                 failure_detail: None,
                 edit_chain_json: None,
+                derived_artifact_ref: None,
                 updated_at: None,
             },
             UtteranceRow {
@@ -542,6 +544,7 @@ async fn sse_replays_completed_utterances_on_subscribe() {
                 failure_category: Some("synthesis_failed".into()),
                 failure_detail: Some("test failure".into()),
                 edit_chain_json: None,
+                derived_artifact_ref: None,
                 updated_at: None,
             },
         ])

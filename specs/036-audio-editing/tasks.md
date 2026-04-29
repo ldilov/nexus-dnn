@@ -146,20 +146,20 @@ download the export, confirm the edited segment is present.
 
 ### Tests for User Story 2 (RED first)
 
-- [ ] T040 [P] [US2] Write failing test `extensions/builtin/emotion-tts/rust/tests/http_contract_audio_edit_utterance_test.rs` covering `POST /deployments/{dep_id}/runs/{run_id}/utterances/{utt_id}/edit` happy path + 404 on cross-deployment + 409 on stale digest
-- [ ] T041 [P] [US2] Write failing test `extensions/builtin/emotion-tts/rust/tests/utterance_edit_export_invalidation_test.rs` asserting export ZIP for the run is marked stale after a per-utterance edit
+- [X] T040 [P] [US2] Write failing test `extensions/builtin/emotion-tts/rust/tests/http_contract_audio_edit_utterance_test.rs` covering `POST /deployments/{dep_id}/runs/{run_id}/utterances/{utt_id}/edit` happy path + 404 on cross-deployment + 409 on stale digest
+- [X] T041 [P] [US2] Write failing test `extensions/builtin/emotion-tts/rust/tests/utterance_edit_export_invalidation_test.rs` asserting export ZIP for the run is marked stale after a per-utterance edit
 
 ### Implementation (US2)
 
-- [ ] T042 [US2] Extend `extensions/builtin/emotion-tts/rust/src/router/runs.rs` with `POST /deployments/{deployment_id}/runs/{run_id}/utterances/{utterance_id}/edit` using `assert_deployment_match`, persisting chain via T017, materializing derived segment audio
-- [ ] T043 [US2] In the same handler, mark the run's export ZIP stale (set existing `export_status = needs_rebuild` flag in `runs_repo`); reuse export-rebuild path from existing run-detail flow
-- [ ] T044 [US2] Extend dispatcher `prepare.rs` (or add `dispatcher/utterance_edit.rs`) so the per-utterance derived artifact resolution mirrors the voice-asset path (source preserved, derived computed)
-- [ ] T045 [P] [US2] Create `extensions/builtin/emotion-tts/web/src/views/run_detail/components/per_utterance_edit.tsx` presentational component reusing `waveform_canvas` + the trim/speed/mute subset; vanilla-extract sibling
-- [ ] T046 [US2] Wire `per_utterance_edit` into `extensions/builtin/emotion-tts/web/src/views/run_detail/run_detail.view.tsx`: hover-to-reveal Edit button per segment row; opens an inline editor; Apply triggers segment rebuild and re-renders the row with the new derived ref
-- [ ] T047 [US2] After Apply, surface the run's "Rebuild export" CTA in the run detail header (existing button gains `disabled={export_status !== 'needs_rebuild'}` logic)
-- [ ] T048 [US2] Run T040, T041 → GREEN
-- [ ] T049 [US2] Run quickstart step 6 manually
-- [ ] T050 [US2] **Pause for code review**: invoke `/requesting-code-review` with the US2 diff before US3
+- [X] T042 [US2] Extend `extensions/builtin/emotion-tts/rust/src/router/runs.rs` with `POST /deployments/{deployment_id}/runs/{run_id}/utterances/{utterance_id}/edit` using `assert_deployment_match`, persisting chain via T017, materializing derived segment audio
+- [X] T043 [US2] In the same handler, mark the run's export ZIP stale (set existing `export_status = needs_rebuild` flag in `runs_repo`); reuse export-rebuild path from existing run-detail flow
+- [X] T044 [US2] Extend dispatcher `prepare.rs` (or add `dispatcher/utterance_edit.rs`) so the per-utterance derived artifact resolution mirrors the voice-asset path (source preserved, derived computed)
+- [X] T045 [P] [US2] Create `extensions/builtin/emotion-tts/web/src/views/run_detail/components/per_utterance_edit.tsx` presentational component reusing `waveform_canvas` + the trim/speed/mute subset; vanilla-extract sibling
+- [X] T046 [US2] Wire `per_utterance_edit` into `extensions/builtin/emotion-tts/web/src/views/run_detail/run_detail.view.tsx`: hover-to-reveal Edit button per segment row; opens an inline editor; Apply triggers segment rebuild and re-renders the row with the new derived ref
+- [X] T047 [US2] After Apply, surface the run's "Rebuild export" CTA in the run detail header (existing button gains `disabled={export_status !== 'needs_rebuild'}` logic)
+- [X] T048 [US2] Run T040, T041 → GREEN
+- [X] T049 [US2] Run quickstart step 6 manually
+- [X] T050 [US2] **Pause for code review**: invoke `/requesting-code-review` with the US2 diff before US3
 
 **Checkpoint**: User Stories 1 + 2 both work independently.
 

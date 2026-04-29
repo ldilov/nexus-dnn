@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLoaderData, useNavigate } from "react-router";
 import { ExtensionApiError } from "../../services/http";
 import { resumeRun } from "../../services/runs_client";
-import type { Run, RunStatus, UtteranceStatus } from "../../services/types";
+import type { ApplyEditResponse } from "../../services/audio_edit_client";
+import type { Run, RunStatus, UtteranceState, UtteranceStatus } from "../../services/types";
+import { PerUtteranceEdit } from "./components/per_utterance_edit";
 import * as css from "./run_detail.css";
 
 interface LoaderData {
@@ -10,15 +12,30 @@ interface LoaderData {
 }
 
 const RESUMABLE: readonly RunStatus[] = ["cancelled", "failed", "partial"];
+const TOAST_DURATION_MS = 2600;
 
 export function RunDetailView(): JSX.Element {
-  const { run } = useLoaderData() as LoaderData;
+  const { run: initialRun } = useLoaderData() as LoaderData;
   const navigate = useNavigate();
+  const [run, setRun] = useState<Run>(initialRun);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingUtteranceId, setEditingUtteranceId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRun(initialRun);
+  }, [initialRun]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), TOAST_DURATION_MS);
+    return () => clearTimeout(id);
+  }, [toast]);
 
   const metrics = useMemo(() => deriveMetrics(run), [run]);
   const canResume = RESUMABLE.includes(run.status) && run.kind === "batch";
+  const isExportStale = (run.exportZipStaleAt ?? null) !== null;
 
   const onRerun = async (): Promise<void> => {
     if (!run.deploymentId) return;
@@ -33,6 +50,24 @@ export function RunDetailView(): JSX.Element {
       setBusy(false);
     }
   };
+
+  const handleEditClick = useCallback((utteranceId: string) => {
+    setEditingUtteranceId((prev) => (prev === utteranceId ? null : utteranceId));
+  }, []);
+
+  const handleEditCancel = useCallback(() => {
+    setEditingUtteranceId(null);
+  }, []);
+
+  const handleEditApplied = (utteranceId: string, response: ApplyEditResponse): void => {
+    setRun((prev) => applyEditToRun(prev, utteranceId, response));
+    setEditingUtteranceId(null);
+    setToast("Segment edited");
+  };
+
+  const handleEditError = useCallback((message: string) => {
+    setToast(message);
+  }, []);
 
   return (
     <main className={css.shell}>
@@ -115,39 +150,121 @@ export function RunDetailView(): JSX.Element {
             )}
           </div>
           <ul className={css.utteranceList}>
-            {run.utterances.map((u) => (
-              <li key={u.utteranceId} className={css.utterance}>
-                <span className={css.uttIndex}>#{u.globalIndex.toString().padStart(3, "0")}</span>
-                <span className={css.uttCharacter} title={u.characterDisplay}>
-                  {u.characterDisplay}
-                </span>
-                <span className={css.uttText} title={u.text}>
-                  {u.text}
-                </span>
-                <span className={css.uttMeta}>
-                  {u.cacheHit && <span className={css.cacheChip}>cached</span>}
-                  {u.durationMs ? <span>{formatDuration(u.durationMs)}</span> : null}
-                  <span className={css.uttStatus[u.status as UtteranceStatus]}>{u.status}</span>
-                </span>
-              </li>
-            ))}
+            {run.utterances.map((u) => {
+              const isEditing = editingUtteranceId === u.utteranceId;
+              const canEdit =
+                u.status === "completed" &&
+                (u.audioArtifactRef !== null && u.audioArtifactRef !== undefined);
+              const audioRef = u.derivedArtifactRef ?? u.audioArtifactRef ?? null;
+              const audioUrl = audioRef
+                ? `/api/v1/artifacts/${encodeURIComponent(audioRef)}/download`
+                : "";
+              const hasEdit = (u.derivedArtifactRef ?? null) !== null;
+              return (
+                <li key={u.utteranceId} className={css.utteranceItem}>
+                  <div className={css.utterance}>
+                    <span className={css.uttIndex}>
+                      #{u.globalIndex.toString().padStart(3, "0")}
+                    </span>
+                    <span className={css.uttCharacter} title={u.characterDisplay}>
+                      {u.characterDisplay}
+                    </span>
+                    <span className={css.uttText} title={u.text}>
+                      {u.text}
+                    </span>
+                    <span className={css.uttMeta}>
+                      {u.cacheHit && <span className={css.cacheChip}>cached</span>}
+                      {hasEdit && <span className={css.editChip}>edited</span>}
+                      {u.durationMs ? <span>{formatDuration(u.durationMs)}</span> : null}
+                      <span className={css.uttStatus[u.status as UtteranceStatus]}>{u.status}</span>
+                      {canEdit && (
+                        <button
+                          type="button"
+                          className={css.editButton}
+                          onClick={() => handleEditClick(u.utteranceId)}
+                          aria-expanded={isEditing}
+                          aria-label={isEditing ? "Close segment editor" : "Edit segment"}
+                        >
+                          {isEditing ? "Close" : "Edit"}
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                  {isEditing && audioUrl && run.deploymentId && (
+                    <PerUtteranceEdit
+                      deploymentId={run.deploymentId}
+                      runId={run.runId}
+                      utterance={u}
+                      audioUrl={audioUrl}
+                      onApplied={(resp) => handleEditApplied(u.utteranceId, resp)}
+                      onError={handleEditError}
+                      onCancel={handleEditCancel}
+                    />
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </section>
 
-        {run.exportArtifactRef && (
-          <div className={css.footer}>
-            <a
-              href={`/api/v1/artifacts/${run.exportArtifactRef}/download`}
-              download
-              className={css.exportLink}
-            >
-              Download ZIP <span className={css.exportArrow}>↓</span>
-            </a>
-          </div>
-        )}
+        {renderExportFooter(run, isExportStale)}
       </div>
+
+      {toast && (
+        <div className={css.inlineToast} role="status" aria-live="polite">
+          {toast}
+        </div>
+      )}
     </main>
   );
+}
+
+function renderExportFooter(run: Run, isStale: boolean): JSX.Element | null {
+  if (!run.exportArtifactRef && !isStale) return null;
+  const hadPriorExport = !!run.exportArtifactRef;
+  const hint = hadPriorExport ? "Edits since last export" : "Edits pending export";
+  return (
+    <div className={css.footer}>
+      {isStale ? (
+        <div className={css.rebuildBlock}>
+          <p className={css.rebuildHint}>{hint}</p>
+          <button
+            type="button"
+            className={css.rebuildButton}
+            disabled
+            aria-disabled="true"
+            title="Rebuild required (backend rebuild endpoint pending)"
+          >
+            Rebuild required <span className={css.exportArrow}>↻</span>
+          </button>
+        </div>
+      ) : run.exportArtifactRef ? (
+        <a
+          href={`/api/v1/artifacts/${run.exportArtifactRef}/download`}
+          download
+          className={css.exportLink}
+        >
+          Download ZIP <span className={css.exportArrow}>↓</span>
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+function applyEditToRun(prev: Run, utteranceId: string, response: ApplyEditResponse): Run {
+  const utterances: UtteranceState[] = prev.utterances.map((u) => {
+    if (u.utteranceId !== utteranceId) return u;
+    return {
+      ...u,
+      derivedArtifactRef: response.derived_artifact_ref,
+      durationMs: response.derived_duration_ms,
+    };
+  });
+  return {
+    ...prev,
+    utterances,
+    exportZipStaleAt: prev.exportZipStaleAt ?? Math.floor(Date.now() / 1000),
+  };
 }
 
 interface StatCardProps {
