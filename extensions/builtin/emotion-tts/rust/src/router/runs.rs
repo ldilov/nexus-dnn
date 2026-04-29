@@ -27,8 +27,8 @@ use crate::host_contract::HostArtifactStore;
 use crate::operators::mapping_resolve::{Input as MapInput, MappingResolveOperator};
 use crate::operators::Operator;
 use crate::queue::{RunClass, SharedQueue};
-use crate::storage::Repos;
 use crate::storage::repo_traits::RunRow;
+use crate::storage::Repos;
 
 #[derive(Clone)]
 pub struct RunsState {
@@ -51,15 +51,27 @@ pub fn router(state: RunsState) -> Router {
         lease_provider: state.lease_provider.clone(),
     });
     Router::new()
-        .route("/deployments/{deployment_id}/runs", get(list_runs).post(create_run))
+        .route(
+            "/deployments/{deployment_id}/runs",
+            get(list_runs).post(create_run),
+        )
         .route("/deployments/{deployment_id}/runs/{run_id}", get(get_run))
-        .route("/deployments/{deployment_id}/runs/{run_id}/cancel", post(cancel_run))
-        .route("/deployments/{deployment_id}/runs/{run_id}/resume", post(resume_run))
+        .route(
+            "/deployments/{deployment_id}/runs/{run_id}/cancel",
+            post(cancel_run),
+        )
+        .route(
+            "/deployments/{deployment_id}/runs/{run_id}/resume",
+            post(resume_run),
+        )
         .route(
             "/deployments/{deployment_id}/runs/{run_id}/progress",
             get(run_progress),
         )
-        .route("/deployments/{deployment_id}/runs/test-line", post(test_line))
+        .route(
+            "/deployments/{deployment_id}/runs/test-line",
+            post(test_line),
+        )
         .route("/runs/{run_id}/diagnostics", get(diagnostics))
         .with_state(state)
         .merge(crate::router::utterance_edit::routes(utterance_edit_state))
@@ -234,10 +246,7 @@ fn run_progress_stream(
 /// per-utterance `AlignmentDiagnostics`; until then the endpoint is
 /// discoverable-but-empty so the frontend can ship without blocking on
 /// the full pipeline.
-async fn diagnostics(
-    State(state): State<RunsState>,
-    Path(raw_run_id): Path<String>,
-) -> Response {
+async fn diagnostics(State(state): State<RunsState>, Path(raw_run_id): Path<String>) -> Response {
     let run_id = match RunId::try_from(raw_run_id.as_str()) {
         Ok(v) => v,
         Err(err) => return EmotionTtsError::from(err).into_response(),
@@ -364,7 +373,9 @@ async fn create_run_impl(
         )));
     }
     if !(0.5..=2.0).contains(&body.speed_factor) {
-        return Err(EmotionTtsError::validation("speed_factor must be 0.5..=2.0"));
+        return Err(EmotionTtsError::validation(
+            "speed_factor must be 0.5..=2.0",
+        ));
     }
 
     let parser_mode = match body.parser_mode.as_str() {
@@ -429,10 +440,7 @@ async fn create_run_impl(
         status: "queued".into(),
         script_snapshot: body.script,
         parser_mode: body.parser_mode,
-        generation_settings_json: body
-            .generation
-            .unwrap_or_else(|| json!({}))
-            .to_string(),
+        generation_settings_json: body.generation.unwrap_or_else(|| json!({})).to_string(),
         global_emotion_snapshot_json: body.global_emotion.map(|v| v.to_string()),
         output_format: body.output_format,
         speed_factor: body.speed_factor,
@@ -458,11 +466,7 @@ async fn create_run_impl(
         .queue
         .enqueue(run_id.clone(), deployment_id, RunClass::Batch)
         .await;
-    let position = state
-        .queue
-        .position_of(&run_id)
-        .await
-        .unwrap_or(-1);
+    let position = state.queue.position_of(&run_id).await.unwrap_or(-1);
 
     Ok(json!({
         "runId": run_id.as_str(),
@@ -566,7 +570,11 @@ async fn cancel_run_impl(state: &RunsState, deployment_id: &str, run_id: &str) -
         .update_status(&run_id, "cancelled", Some(Utc::now().timestamp()))
         .await?;
     if row.kind == "batch" {
-        state.repos.deployments.set_partial_run(&dep, Some(&run_id)).await?;
+        state
+            .repos
+            .deployments
+            .set_partial_run(&dep, Some(&run_id))
+            .await?;
     }
     Ok(json!({ "status": status }))
 }
@@ -631,7 +639,12 @@ async fn resume_run_impl(state: &RunsState, deployment_id: &str, run_id: &str) -
         cache_policy: original.cache_policy.clone(),
         seed_strategy: original.seed_strategy.clone(),
         base_seed: original.base_seed,
-        original_run_id: Some(original.original_run_id.clone().unwrap_or(original_id.clone())),
+        original_run_id: Some(
+            original
+                .original_run_id
+                .clone()
+                .unwrap_or(original_id.clone()),
+        ),
         runtime_install_id: original.runtime_install_id.clone(),
         runtime_version: None,
         model_version: None,
@@ -699,10 +712,7 @@ async fn test_line_impl(
         status: "queued".into(),
         script_snapshot: body.line,
         parser_mode: "dialogue".into(),
-        generation_settings_json: body
-            .generation
-            .unwrap_or_else(|| json!({}))
-            .to_string(),
+        generation_settings_json: body.generation.unwrap_or_else(|| json!({})).to_string(),
         global_emotion_snapshot_json: body.global_emotion.map(|v| v.to_string()),
         output_format: body.output_format,
         speed_factor: 1.0,
@@ -751,7 +761,10 @@ fn run_summary_json(row: &RunRow) -> Value {
     })
 }
 
-fn run_detail_json(row: &RunRow, utterances: &[crate::storage::repo_traits::UtteranceRow]) -> Value {
+fn run_detail_json(
+    row: &RunRow,
+    utterances: &[crate::storage::repo_traits::UtteranceRow],
+) -> Value {
     let utt: Vec<Value> = utterances
         .iter()
         .map(|u| {
@@ -774,14 +787,25 @@ fn run_detail_json(row: &RunRow, utterances: &[crate::storage::repo_traits::Utte
         .collect();
     let mut base = run_summary_json(row);
     let obj = base.as_object_mut().unwrap();
-    obj.insert("scriptSnapshot".into(), Value::String(row.script_snapshot.clone()));
-    obj.insert("outputFormat".into(), Value::String(row.output_format.clone()));
+    obj.insert(
+        "scriptSnapshot".into(),
+        Value::String(row.script_snapshot.clone()),
+    );
+    obj.insert(
+        "outputFormat".into(),
+        Value::String(row.output_format.clone()),
+    );
     obj.insert("speedFactor".into(), json!(row.speed_factor));
     obj.insert("speedMode".into(), Value::String(row.speed_mode.clone()));
-    obj.insert("cachePolicy".into(), Value::String(row.cache_policy.clone()));
-    obj.insert("seedStrategy".into(), Value::String(row.seed_strategy.clone()));
+    obj.insert(
+        "cachePolicy".into(),
+        Value::String(row.cache_policy.clone()),
+    );
+    obj.insert(
+        "seedStrategy".into(),
+        Value::String(row.seed_strategy.clone()),
+    );
     obj.insert("baseSeed".into(), json!(row.base_seed));
     obj.insert("utterances".into(), Value::Array(utt));
     base
 }
-

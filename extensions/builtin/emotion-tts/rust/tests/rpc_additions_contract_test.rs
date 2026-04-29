@@ -3,8 +3,8 @@ use emotion_tts_extension::backend_client::params::{
     CapabilityProbeEntry, CapabilityProbeParams, CapabilityProbeResult, CompileCompletePayload,
     CompileFailedPayload, CompileStartedPayload, DiagnosticAlignmentPayload, FamilyListEntry,
     FamilyListResult, FamilySwitchParams, FamilySwitchResult, PreprocessWarningPayload,
-    PreprocessingReport, PreprocessingStage, SpeakerCacheHint,
-    SynthesizeBatchSpec034Extensions, VoicePreprocessParams, VoicePreprocessResult,
+    PreprocessingReport, PreprocessingStage, SpeakerCacheHint, SynthesizeBatchSpec034Extensions,
+    VoicePreprocessParams, VoicePreprocessResult,
 };
 use emotion_tts_extension::backend_client::rpc::{error_codes, methods};
 use emotion_tts_extension::host_contract::NotificationEnvelope;
@@ -62,7 +62,10 @@ fn voice_preprocess_result_matches_contract_sample() {
     assert!(result.succeeded);
     assert_eq!(result.report.stages.len(), 3);
     assert_eq!(result.report.stages[1].status, "skipped");
-    assert_eq!(result.report.stages[1].reason.as_deref(), Some("rnnoise import failed"));
+    assert_eq!(
+        result.report.stages[1].reason.as_deref(),
+        Some("rnnoise import failed")
+    );
     assert_eq!(
         result.report.stages[0].extra.get("input_sample_rate"),
         Some(&json!(48000)),
@@ -167,7 +170,10 @@ fn synthesize_batch_extensions_backwards_compatible() {
     assert_eq!(parsed.model_family.as_deref(), Some("indextts-2"));
     assert_eq!(
         parsed.speaker_cache_hint,
-        Some(SpeakerCacheHint { enabled: true, budget_mb: 512 }),
+        Some(SpeakerCacheHint {
+            enabled: true,
+            budget_mb: 512
+        }),
     );
 }
 

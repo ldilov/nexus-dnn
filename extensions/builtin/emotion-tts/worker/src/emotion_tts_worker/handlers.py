@@ -143,12 +143,7 @@ def register_phase4_handlers(
         }
 
     async def audio_edit(params: Any) -> dict[str, Any]:
-        """Apply an EditChain to a source artifact and write derived audio.
-
-        Wire contract: ``specs/036-audio-editing/contracts/rpc-audio-edit.md``.
-        Validation errors are mapped to JSON-RPC -32602 (INVALID_PARAMS); IO
-        and codec errors are mapped to -33020 (SYNTHESIS_FAILED, reused).
-        """
+        """Apply an EditChain to a source artifact and write derived audio."""
 
         if not isinstance(params, dict):
             raise _RpcErrorProxy(_validation_error("params must be an object"))
@@ -156,8 +151,13 @@ def register_phase4_handlers(
             source = Path(params["source_artifact_abs"])
             output = Path(params["output_artifact_abs"])
             chain = params["chain"]
+            chain_digest = params["chain_digest"]
         except KeyError as exc:
             raise _RpcErrorProxy(_validation_error(f"missing required field: {exc.args[0]}")) from exc
+        if not isinstance(chain_digest, str) or len(chain_digest) != 64:
+            raise _RpcErrorProxy(
+                _validation_error("chain_digest must be a 64-character hex string")
+            )
         try:
             report = await asyncio.to_thread(
                 audio_edit_module.apply_chain, source, output, chain
@@ -166,7 +166,7 @@ def register_phase4_handlers(
             raise _RpcErrorProxy(_validation_error(str(exc))) from exc
         except (OSError, RuntimeError) as exc:
             raise _RpcErrorProxy(_synthesis_failed_error(str(exc))) from exc
-        return _serialize_report(report)
+        return _serialize_report(report, chain_digest)
 
     async def audio_edit_preview(params: Any) -> dict[str, Any]:
         """Materialize an EditChain to a worker temp file; return path + size + format."""
@@ -260,11 +260,9 @@ def _synthesis_failed_error(message: str) -> dict[str, Any]:
     return {"code": ErrorCodes.SYNTHESIS_FAILED, "message": message}
 
 
-def _serialize_report(report: Any) -> dict[str, Any]:
-    """Convert an ``audio_edit.AudioEditReport`` to its JSON-RPC result envelope."""
-
+def _serialize_report(report: Any, chain_digest: str) -> dict[str, Any]:
     return {
-        "chain_digest": report.chain_digest,
+        "chain_digest": chain_digest,
         "source_duration_ms": report.source_duration_ms,
         "derived_duration_ms": report.derived_duration_ms,
         "measured_lufs": report.measured_lufs,

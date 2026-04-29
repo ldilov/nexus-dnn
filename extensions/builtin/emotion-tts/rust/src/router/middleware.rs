@@ -32,7 +32,8 @@ impl ErrorEnvelope {
 
 impl IntoResponse for EmotionTtsError {
     fn into_response(self) -> Response {
-        let status = StatusCode::from_u16(self.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        let status =
+            StatusCode::from_u16(self.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         let body = ErrorEnvelope::from_error(&self, None);
         (status, Json(body)).into_response()
     }

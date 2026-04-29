@@ -91,7 +91,10 @@ mod tests {
         async fn get(&self, _hash: &ContentHash) -> RepoResult<Option<SynthesisCacheRow>> {
             Ok(None)
         }
-        async fn lookup_many(&self, hashes: &[ContentHash]) -> RepoResult<Vec<Option<SynthesisCacheRow>>> {
+        async fn lookup_many(
+            &self,
+            hashes: &[ContentHash],
+        ) -> RepoResult<Vec<Option<SynthesisCacheRow>>> {
             Ok(hashes.iter().map(|_| None).collect())
         }
         async fn insert(&self, _row: &SynthesisCacheRow) -> RepoResult<()> {
@@ -140,7 +143,10 @@ mod tests {
             async fn get(&self, _: &ContentHash) -> RepoResult<Option<SynthesisCacheRow>> {
                 Err(EmotionTtsError::internal("boom"))
             }
-            async fn lookup_many(&self, hashes: &[ContentHash]) -> RepoResult<Vec<Option<SynthesisCacheRow>>> {
+            async fn lookup_many(
+                &self,
+                hashes: &[ContentHash],
+            ) -> RepoResult<Vec<Option<SynthesisCacheRow>>> {
                 Ok(hashes.iter().map(|_| None).collect())
             }
             async fn insert(&self, _: &SynthesisCacheRow) -> RepoResult<()> {

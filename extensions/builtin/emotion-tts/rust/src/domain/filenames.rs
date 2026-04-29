@@ -34,7 +34,9 @@ pub fn sanitise_character_name(display: &str) -> String {
 
     let replaced = UNSAFE_CHARS.replace_all(trimmed, "_").to_string();
     let collapsed = collapse_underscores(&replaced);
-    let stripped = collapsed.trim_matches(|c: char| c == '_' || c == '.' || c == '-').to_string();
+    let stripped = collapsed
+        .trim_matches(|c: char| c == '_' || c == '.' || c == '-')
+        .to_string();
 
     let base = if stripped.is_empty() {
         NARRATOR_SANITISED.to_string()

@@ -136,9 +136,17 @@ async fn post_run_returns_202_with_preflight_payload() {
 
     assert!(body.get("runId").unwrap().is_string());
     let preflight = body.get("preflight").unwrap();
-    let unresolved = preflight.get("unresolvedCharacters").unwrap().as_array().unwrap();
+    let unresolved = preflight
+        .get("unresolvedCharacters")
+        .unwrap()
+        .as_array()
+        .unwrap();
     assert!(unresolved.is_empty());
-    let predicted = preflight.get("predictedFilenames").unwrap().as_array().unwrap();
+    let predicted = preflight
+        .get("predictedFilenames")
+        .unwrap()
+        .as_array()
+        .unwrap();
     assert_eq!(predicted.len(), 2);
     assert!(predicted[0].as_str().unwrap().ends_with("_Bob_001.mp3"));
     assert!(predicted[1].as_str().unwrap().ends_with("_Alice_001.mp3"));
@@ -165,7 +173,10 @@ async fn preflight_surfaces_parser_warnings() {
     assert_eq!(status, StatusCode::ACCEPTED);
     let warnings = body["preflight"]["parserWarnings"].as_array().unwrap();
     assert_eq!(warnings.len(), 1);
-    assert_eq!(warnings[0]["kind"].as_str().unwrap(), "unknown_override_key");
+    assert_eq!(
+        warnings[0]["kind"].as_str().unwrap(),
+        "unknown_override_key"
+    );
 }
 
 #[tokio::test]
@@ -566,7 +577,9 @@ async fn sse_replays_completed_utterances_on_subscribe() {
         None,
         None,
         registry,
-        Arc::new(emotion_tts_extension::families::FamilyRegistry::new(Vec::new())),
+        Arc::new(emotion_tts_extension::families::FamilyRegistry::new(
+            Vec::new(),
+        )),
         emotion_tts_extension::router::families::default_reconciler(),
     );
 
@@ -589,9 +602,7 @@ async fn sse_replays_completed_utterances_on_subscribe() {
     let mut body = response.into_body();
     let mut collected: Vec<u8> = Vec::new();
     let deadline = tokio::time::Instant::now() + Duration::from_millis(500);
-    while let Ok(Some(frame_result)) =
-        tokio::time::timeout_at(deadline, body.frame()).await
-    {
+    while let Ok(Some(frame_result)) = tokio::time::timeout_at(deadline, body.frame()).await {
         if let Ok(frame) = frame_result {
             if let Some(data) = frame.data_ref() {
                 collected.extend_from_slice(data);

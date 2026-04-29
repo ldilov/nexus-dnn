@@ -55,27 +55,111 @@ pub struct Migration {
 }
 
 pub const MIGRATIONS: &[Migration] = &[
-    Migration { version: 1, name: "deployments",        sql: include_str!("../../storage/migrations/001_deployments.sql") },
-    Migration { version: 2, name: "voice_assets",       sql: include_str!("../../storage/migrations/002_voice_assets.sql") },
-    Migration { version: 3, name: "character_mappings", sql: include_str!("../../storage/migrations/003_character_mappings.sql") },
-    Migration { version: 4, name: "vector_presets",     sql: include_str!("../../storage/migrations/004_vector_presets.sql") },
-    Migration { version: 5, name: "runs",               sql: include_str!("../../storage/migrations/005_runs.sql") },
-    Migration { version: 6, name: "utterances",         sql: include_str!("../../storage/migrations/006_utterances.sql") },
-    Migration { version: 7, name: "synthesis_cache",    sql: include_str!("../../storage/migrations/007_synthesis_cache.sql") },
-    Migration { version: 8, name: "export_history",     sql: include_str!("../../storage/migrations/008_export_history.sql") },
-    Migration { version: 9, name: "workflows",           sql: include_str!("../../storage/migrations/009_workflows.sql") },
-    Migration { version: 10, name: "deployments_partial_run_id", sql: include_str!("../../storage/migrations/010_deployments_partial_run_id.sql") },
-    Migration { version: 11, name: "deployment_engine_settings", sql: include_str!("../../storage/migrations/011_deployment_engine_settings.sql") },
-    Migration { version: 12, name: "voice_assets_preprocess",    sql: include_str!("../../storage/migrations/012_voice_assets_preprocess.sql") },
-    Migration { version: 13, name: "deployment_default_voice",   sql: include_str!("../../storage/migrations/013_deployment_default_voice.sql") },
-    Migration { version: 14, name: "fk_cascade",                 sql: include_str!("../../storage/migrations/014_fk_cascade.sql") },
-    Migration { version: 15, name: "voice_asset_edit_chain",     sql: include_str!("../../storage/migrations/015_voice_asset_edit_chain.sql") },
-    Migration { version: 16, name: "utterance_edit_chain",       sql: include_str!("../../storage/migrations/016_utterance_edit_chain.sql") },
-    Migration { version: 17, name: "audio_edit_log",             sql: include_str!("../../storage/migrations/017_audio_edit_log.sql") },
-    Migration { version: 18, name: "utterance_updated_at",       sql: include_str!("../../storage/migrations/018_utterance_updated_at.sql") },
-    Migration { version: 19, name: "voice_asset_derived_ref",    sql: include_str!("../../storage/migrations/019_voice_asset_derived_ref.sql") },
-    Migration { version: 20, name: "run_export_zip_stale_at",    sql: include_str!("../../storage/migrations/020_run_export_zip_stale_at.sql") },
-    Migration { version: 21, name: "utterance_derived_ref",      sql: include_str!("../../storage/migrations/021_utterance_derived_ref.sql") },
+    Migration {
+        version: 1,
+        name: "deployments",
+        sql: include_str!("../../storage/migrations/001_deployments.sql"),
+    },
+    Migration {
+        version: 2,
+        name: "voice_assets",
+        sql: include_str!("../../storage/migrations/002_voice_assets.sql"),
+    },
+    Migration {
+        version: 3,
+        name: "character_mappings",
+        sql: include_str!("../../storage/migrations/003_character_mappings.sql"),
+    },
+    Migration {
+        version: 4,
+        name: "vector_presets",
+        sql: include_str!("../../storage/migrations/004_vector_presets.sql"),
+    },
+    Migration {
+        version: 5,
+        name: "runs",
+        sql: include_str!("../../storage/migrations/005_runs.sql"),
+    },
+    Migration {
+        version: 6,
+        name: "utterances",
+        sql: include_str!("../../storage/migrations/006_utterances.sql"),
+    },
+    Migration {
+        version: 7,
+        name: "synthesis_cache",
+        sql: include_str!("../../storage/migrations/007_synthesis_cache.sql"),
+    },
+    Migration {
+        version: 8,
+        name: "export_history",
+        sql: include_str!("../../storage/migrations/008_export_history.sql"),
+    },
+    Migration {
+        version: 9,
+        name: "workflows",
+        sql: include_str!("../../storage/migrations/009_workflows.sql"),
+    },
+    Migration {
+        version: 10,
+        name: "deployments_partial_run_id",
+        sql: include_str!("../../storage/migrations/010_deployments_partial_run_id.sql"),
+    },
+    Migration {
+        version: 11,
+        name: "deployment_engine_settings",
+        sql: include_str!("../../storage/migrations/011_deployment_engine_settings.sql"),
+    },
+    Migration {
+        version: 12,
+        name: "voice_assets_preprocess",
+        sql: include_str!("../../storage/migrations/012_voice_assets_preprocess.sql"),
+    },
+    Migration {
+        version: 13,
+        name: "deployment_default_voice",
+        sql: include_str!("../../storage/migrations/013_deployment_default_voice.sql"),
+    },
+    Migration {
+        version: 14,
+        name: "fk_cascade",
+        sql: include_str!("../../storage/migrations/014_fk_cascade.sql"),
+    },
+    Migration {
+        version: 15,
+        name: "voice_asset_edit_chain",
+        sql: include_str!("../../storage/migrations/015_voice_asset_edit_chain.sql"),
+    },
+    Migration {
+        version: 16,
+        name: "utterance_edit_chain",
+        sql: include_str!("../../storage/migrations/016_utterance_edit_chain.sql"),
+    },
+    Migration {
+        version: 17,
+        name: "audio_edit_log",
+        sql: include_str!("../../storage/migrations/017_audio_edit_log.sql"),
+    },
+    Migration {
+        version: 18,
+        name: "utterance_updated_at",
+        sql: include_str!("../../storage/migrations/018_utterance_updated_at.sql"),
+    },
+    Migration {
+        version: 19,
+        name: "voice_asset_derived_ref",
+        sql: include_str!("../../storage/migrations/019_voice_asset_derived_ref.sql"),
+    },
+    Migration {
+        version: 20,
+        name: "run_export_zip_stale_at",
+        sql: include_str!("../../storage/migrations/020_run_export_zip_stale_at.sql"),
+    },
+    Migration {
+        version: 21,
+        name: "utterance_derived_ref",
+        sql: include_str!("../../storage/migrations/021_utterance_derived_ref.sql"),
+    },
 ];
 
 pub const EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION");

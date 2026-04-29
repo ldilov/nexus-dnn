@@ -93,11 +93,19 @@ impl BackendRuntimeLease for MockEditLease {
                         message: "missing output_artifact_abs".into(),
                     })?
                     .to_string();
+                let chain_digest = params
+                    .get("chain_digest")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| LeaseError::Rpc {
+                        code: -32602,
+                        message: "missing chain_digest".into(),
+                    })?
+                    .to_string();
                 tokio::fs::write(&output_path, b"derived-audio-bytes")
                     .await
                     .map_err(|e| LeaseError::Transport(format!("write derived: {e}")))?;
                 Ok(json!({
-                    "chain_digest": "0".repeat(64),
+                    "chain_digest": chain_digest,
                     "source_duration_ms": 2_000,
                     "derived_duration_ms": 1_800,
                     "measured_lufs": null,
@@ -220,7 +228,13 @@ async fn build_test_router() -> (axum::Router, Repos, DeploymentId, VoiceAssetId
     let factory: Arc<dyn LeaseFactory> = Arc::new(StaticLeaseFactory(lease));
     let provider = Arc::new(LeaseProvider::new(factory));
 
-    let router = build_router(repos.clone(), queue, "0.0.0-test", Some(provider), Some(store));
+    let router = build_router(
+        repos.clone(),
+        queue,
+        "0.0.0-test",
+        Some(provider),
+        Some(store),
+    );
 
     let dep = seed_deployment(&repos, "Deployment A").await;
     let asset = seed_voice_asset(&repos, &dep, "alice_voice").await;
@@ -327,7 +341,11 @@ async fn apply_then_remove_op_persists_rebuilt_chain_with_audit_trail() {
     let digest_b = ChainDigest::of(&chain_b);
 
     let (status_a, body_a) = apply_chain(&router, &asset, &dep, &chain_a).await;
-    assert_eq!(status_a, StatusCode::OK, "first apply must 200; body={body_a}");
+    assert_eq!(
+        status_a,
+        StatusCode::OK,
+        "first apply must 200; body={body_a}"
+    );
     assert_eq!(
         body_a["chain_digest"].as_str().unwrap(),
         digest_a.as_str(),

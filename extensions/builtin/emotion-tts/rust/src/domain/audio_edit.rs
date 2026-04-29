@@ -1,14 +1,3 @@
-//! Spec 036 — declarative edit chain types.
-//!
-//! `EditOp` is the single transformation primitive (trim, crop, normalize,
-//! speed, fade, mute). `EditChain` is the ordered list. Both are pure data —
-//! validation is the only behaviour the domain layer carries; actual audio
-//! work happens in the Python worker (Phase 4) and ffmpeg fallback.
-//!
-//! Each operation carries an [`OperationId`] (ULID) so that two ops with
-//! identical parameters but different identities still produce different
-//! [`crate::domain::ChainDigest`] values — preserving forensic trace fidelity
-//! when an op is removed and re-added.
 
 use std::fmt;
 use std::str::FromStr;
@@ -42,9 +31,6 @@ impl OperationId {
         &self.0
     }
 
-    /// Consume the id, returning the owned ULID string. Reserved for Phase 4
-    /// callers that move the id into a serialisable response payload without
-    /// an additional clone.
     #[must_use]
     pub fn into_inner(self) -> String {
         self.0
@@ -141,13 +127,15 @@ pub enum EditOp {
 impl EditOp {
     pub fn validate(&self) -> Result<()> {
         match self {
-            Self::Trim { start_ms, end_ms, .. } => {
-                validate_range(*start_ms, *end_ms, "trim/crop result")
-            }
-            Self::Crop { start_ms, end_ms, .. } => {
-                validate_range(*start_ms, *end_ms, "trim/crop result")
-            }
-            Self::Mute { start_ms, end_ms, .. } => validate_range(*start_ms, *end_ms, "mute span"),
+            Self::Trim {
+                start_ms, end_ms, ..
+            } => validate_range(*start_ms, *end_ms, "trim/crop result"),
+            Self::Crop {
+                start_ms, end_ms, ..
+            } => validate_range(*start_ms, *end_ms, "trim/crop result"),
+            Self::Mute {
+                start_ms, end_ms, ..
+            } => validate_range(*start_ms, *end_ms, "mute span"),
             Self::Normalize { target_lufs, .. } => validate_target_lufs(*target_lufs),
             Self::Speed { factor, .. } => validate_speed_factor(*factor),
             Self::FadeIn { duration_ms, .. } | Self::FadeOut { duration_ms, .. } => {
@@ -328,7 +316,10 @@ mod tests {
             start_ms: 0,
             end_ms: MIN_TRIM_DURATION_MS,
         };
-        assert!(op.validate().is_ok(), "boundary condition: end - start == MIN must be accepted");
+        assert!(
+            op.validate().is_ok(),
+            "boundary condition: end - start == MIN must be accepted"
+        );
     }
 
     #[test]

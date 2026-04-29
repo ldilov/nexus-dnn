@@ -1,11 +1,3 @@
-/**
- * Spec 036 / US5 — read-only audit-log timeline beneath the audio-edit panel.
- *
- * Presentational; the parent owns fetching and refresh after Apply / Reset.
- * Renders a reverse-chronological list of edit-chain transitions: timestamp,
- * operation count, truncated chain digest, actor.
- */
-
 import type { AuditEntry } from "../../../services/audio_edit_client";
 import * as css from "./audit_history_panel.css";
 

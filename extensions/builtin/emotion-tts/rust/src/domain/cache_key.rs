@@ -227,7 +227,10 @@ mod tests {
     fn content_hash_is_valid_64_char_lower_hex() {
         let h = build(&sample_input()).unwrap();
         assert_eq!(h.as_str().len(), 64);
-        assert!(h.as_str().chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert!(h
+            .as_str()
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
     }
 
     #[test]

@@ -60,7 +60,10 @@ pub fn ffmpeg_concat_args(input: &Input) -> Vec<String> {
     ];
     if input.gap_ms > 0 {
         args.push("-af".into());
-        args.push(format!("apad=pad_dur={:.3}", f64::from(input.gap_ms) / 1000.0));
+        args.push(format!(
+            "apad=pad_dur={:.3}",
+            f64::from(input.gap_ms) / 1000.0
+        ));
     }
     args.push("-c:a".into());
     match input.output_format.to_lowercase().as_str() {
@@ -83,7 +86,9 @@ impl Operator for PreviewMixOperator {
 
     async fn execute(&self, input: Input) -> Result<Output> {
         if input.segment_paths_abs.is_empty() {
-            return Err(EmotionTtsError::validation("cannot preview-mix zero segments"));
+            return Err(EmotionTtsError::validation(
+                "cannot preview-mix zero segments",
+            ));
         }
 
         let list = build_concat_list(&input.segment_paths_abs);
@@ -118,10 +123,7 @@ mod tests {
 
     #[test]
     fn concat_list_lines() {
-        let s = build_concat_list(&[
-            "/a/one.wav".into(),
-            "/b/two.wav".into(),
-        ]);
+        let s = build_concat_list(&["/a/one.wav".into(), "/b/two.wav".into()]);
         let lines: Vec<&str> = s.lines().collect();
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0], "file '/a/one.wav'");

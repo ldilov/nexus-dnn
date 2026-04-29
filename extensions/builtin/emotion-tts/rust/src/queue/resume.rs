@@ -92,20 +92,14 @@ mod tests {
 
     #[test]
     fn all_cache_hits() {
-        let (_out, summary) = plan_resume(vec![
-            entry(1, Some("a")),
-            entry(2, Some("b")),
-        ]);
+        let (_out, summary) = plan_resume(vec![entry(1, Some("a")), entry(2, Some("b"))]);
         assert_eq!(summary.cache_hits, 2);
         assert_eq!(summary.to_synthesise, 0);
     }
 
     #[test]
     fn all_resynthesise() {
-        let (_out, summary) = plan_resume(vec![
-            entry(1, None),
-            entry(2, None),
-        ]);
+        let (_out, summary) = plan_resume(vec![entry(1, None), entry(2, None)]);
         assert_eq!(summary.cache_hits, 0);
         assert_eq!(summary.to_synthesise, 2);
     }

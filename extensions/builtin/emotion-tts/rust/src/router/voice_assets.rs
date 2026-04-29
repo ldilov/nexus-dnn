@@ -85,15 +85,14 @@ async fn preprocess_impl(
         .get(&asset_id)
         .await?
         .ok_or_else(|| EmotionTtsError::not_found(format!("voice asset {asset_id}")))?;
-    guard::assert_deployment_match(
-        row.deployment_id.as_str(),
-        claimed_deployment_id,
-        || format!("voice asset {asset_id}"),
-    )?;
+    guard::assert_deployment_match(row.deployment_id.as_str(), claimed_deployment_id, || {
+        format!("voice asset {asset_id}")
+    })?;
 
     if let Some(existing_json) = &row.preprocessing_report_json {
-        if let Ok(existing) =
-            serde_json::from_str::<crate::backend_client::params::PreprocessingReport>(existing_json)
+        if let Ok(existing) = serde_json::from_str::<
+            crate::backend_client::params::PreprocessingReport,
+        >(existing_json)
         {
             if existing.pipeline_version
                 == crate::backend_client::params::PreprocessingReport::default_pipeline_version()
@@ -126,7 +125,10 @@ async fn preprocess_impl(
         .ok_or_else(|| EmotionTtsError::internal("non-utf8 temp path".to_string()))?
         .to_string();
 
-    let request_id = format!("preprocess-{asset_id}-{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
+    let request_id = format!(
+        "preprocess-{asset_id}-{}",
+        Utc::now().timestamp_nanos_opt().unwrap_or(0)
+    );
     let result = client
         .voice_preprocess(&request_id, &source_abs, &out_abs)
         .await?;
@@ -283,10 +285,7 @@ fn spawn_background_preprocess(
     });
 }
 
-async fn upload_impl(
-    state: &VoiceAssetsState,
-    mut multipart: Multipart,
-) -> Result<VoiceAssetRow> {
+async fn upload_impl(state: &VoiceAssetsState, mut multipart: Multipart) -> Result<VoiceAssetRow> {
     let mut deployment_id: Option<String> = None;
     let mut display_name: Option<String> = None;
     let mut kind: Option<String> = None;
@@ -318,10 +317,10 @@ async fn upload_impl(
         }
     }
 
-    let deployment_id = deployment_id
-        .ok_or_else(|| EmotionTtsError::validation("missing field: deploymentId"))?;
-    let display_name = display_name
-        .ok_or_else(|| EmotionTtsError::validation("missing field: displayName"))?;
+    let deployment_id =
+        deployment_id.ok_or_else(|| EmotionTtsError::validation("missing field: deploymentId"))?;
+    let display_name =
+        display_name.ok_or_else(|| EmotionTtsError::validation("missing field: displayName"))?;
     let kind = kind.unwrap_or_else(|| "speaker".into());
     if !matches!(kind.as_str(), "speaker" | "emotion" | "mixed") {
         return Err(EmotionTtsError::validation(format!(
@@ -330,8 +329,7 @@ async fn upload_impl(
     }
 
     let dep = DeploymentId::try_from(deployment_id.as_str())?;
-    let bytes = audio_bytes
-        .ok_or_else(|| EmotionTtsError::validation("missing field: audio"))?;
+    let bytes = audio_bytes.ok_or_else(|| EmotionTtsError::validation("missing field: audio"))?;
     if bytes.is_empty() {
         return Err(EmotionTtsError::validation("audio payload is empty"));
     }
@@ -393,7 +391,10 @@ async fn probe_impl(state: &VoiceAssetsState, body: ProbeBody) -> Result<Value> 
     if body.artifact_ref.trim().is_empty() {
         return Err(EmotionTtsError::validation("artifactRef is required"));
     }
-    let path = state.artifact_store.resolve_path(&body.artifact_ref).await?;
+    let path = state
+        .artifact_store
+        .resolve_path(&body.artifact_ref)
+        .await?;
     let probe = ffprobe_run(&path).await?;
     Ok(json!({
         "durationMs": probe.duration_ms,
@@ -443,12 +444,17 @@ async fn ffprobe_run(path: &str) -> Result<ProbeResult> {
     let first_audio = parsed
         .get("streams")
         .and_then(Value::as_array)
-        .and_then(|arr| arr.iter().find(|s| s.get("codec_type").and_then(Value::as_str) == Some("audio")));
+        .and_then(|arr| {
+            arr.iter()
+                .find(|s| s.get("codec_type").and_then(Value::as_str) == Some("audio"))
+        });
     let sample_rate = first_audio
         .and_then(|s| s.get("sample_rate"))
         .and_then(Value::as_str)
         .and_then(|v| v.parse::<i64>().ok());
-    let channels = first_audio.and_then(|s| s.get("channels")).and_then(Value::as_i64);
+    let channels = first_audio
+        .and_then(|s| s.get("channels"))
+        .and_then(Value::as_i64);
     Ok(ProbeResult {
         duration_ms: (duration_s * 1000.0).round() as i64,
         sample_rate,
