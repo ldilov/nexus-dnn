@@ -94,6 +94,7 @@ async fn seed_run(repos: &Repos, dep: &DeploymentId) -> RunId {
             finished_at: Some(now),
             error_category: None,
             error_detail: None,
+            export_zip_stale_at: None,
         })
         .await
         .unwrap();

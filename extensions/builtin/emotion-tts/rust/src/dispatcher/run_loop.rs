@@ -262,6 +262,7 @@ async fn dispatch_inner(
                     failure_category: None,
                     failure_detail: None,
                     edit_chain_json: None,
+                    derived_artifact_ref: None,
                     updated_at: None,
                 }
             } else {
@@ -293,6 +294,7 @@ async fn dispatch_inner(
                     failure_category: None,
                     failure_detail: None,
                     edit_chain_json: None,
+                    derived_artifact_ref: None,
                     updated_at: None,
                 }
             }

@@ -43,7 +43,9 @@ pub(crate) async fn write_export_zip(
         let (status, audio_ref, duration_ms, cache_hit, source_run_id) = match row {
             Some(r) => (
                 r.status.clone(),
-                r.audio_artifact_ref.clone(),
+                r.derived_artifact_ref
+                    .clone()
+                    .or_else(|| r.audio_artifact_ref.clone()),
                 r.duration_ms,
                 r.cache_hit,
                 r.source_run_id.as_ref().map(|id| id.as_str().to_string()),

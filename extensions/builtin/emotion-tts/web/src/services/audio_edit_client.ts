@@ -150,6 +150,42 @@ export async function applyVoiceAssetEdit(
   return (await resp.json()) as ApplyEditResponse;
 }
 
+/**
+ * Apply an edit chain to a single utterance within a completed run.
+ * Mirrors `applyVoiceAssetEdit` but scoped to the per-segment endpoint
+ * defined by spec 036 / US2. Throws `StaleDigestError` on 409.
+ */
+export async function applyUtteranceEdit(
+  deploymentId: string,
+  runId: string,
+  utteranceId: string,
+  request: ApplyEditRequest,
+): Promise<ApplyEditResponse> {
+  const path = `/deployments/${encodeURIComponent(deploymentId)}/runs/${encodeURIComponent(runId)}/utterances/${encodeURIComponent(utteranceId)}/edit`;
+  const url = `${EXTENSION_PREFIX}${path}`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 409) {
+    const body = (await resp.json().catch(() => null)) as StaleDigestErrorBody | null;
+    const current = body?.error?.current_digest ?? "";
+    const message =
+      body?.error?.message ??
+      "Edit chain has changed in another tab. Reload to continue.";
+    throw new StaleDigestError(current, message);
+  }
+  if (!resp.ok) {
+    const body = (await resp.json().catch(() => null)) as
+      | { error?: { message?: string } }
+      | null;
+    const message = body?.error?.message ?? `apply failed: ${resp.status}`;
+    throw new Error(message);
+  }
+  return (await resp.json()) as ApplyEditResponse;
+}
+
 export async function clearVoiceAssetEdit(
   voiceAssetId: string,
   deploymentId: string,
