@@ -19,9 +19,11 @@ use futures::stream::Stream;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use crate::backend_client::LeaseProvider;
 use crate::domain::filenames::build_filename;
 use crate::domain::parser::{parse_script, ParserMode};
 use crate::domain::{DeploymentId, EmotionTtsError, Result, RunId};
+use crate::host_contract::HostArtifactStore;
 use crate::operators::mapping_resolve::{Input as MapInput, MappingResolveOperator};
 use crate::operators::Operator;
 use crate::queue::{RunClass, SharedQueue};
@@ -34,10 +36,20 @@ pub struct RunsState {
     pub queue: SharedQueue,
     pub extension_version: String,
     pub run_channels: Arc<crate::dispatcher::RunChannelRegistry>,
+    /// Spec 036 / US2 — needed by the per-utterance edit handler. `None`
+    /// when the host boots without an artifact store / lease factory wired
+    /// (CI tests that exercise other endpoints can leave these unset).
+    pub artifact_store: Option<Arc<dyn HostArtifactStore>>,
+    pub lease_provider: Option<Arc<LeaseProvider>>,
 }
 
 #[must_use]
 pub fn router(state: RunsState) -> Router {
+    let utterance_edit_state = Arc::new(crate::router::utterance_edit::UtteranceEditState {
+        repos: state.repos.clone(),
+        artifact_store: state.artifact_store.clone(),
+        lease_provider: state.lease_provider.clone(),
+    });
     Router::new()
         .route("/deployments/{deployment_id}/runs", get(list_runs).post(create_run))
         .route("/deployments/{deployment_id}/runs/{run_id}", get(get_run))
@@ -50,6 +62,7 @@ pub fn router(state: RunsState) -> Router {
         .route("/deployments/{deployment_id}/runs/test-line", post(test_line))
         .route("/runs/{run_id}/diagnostics", get(diagnostics))
         .with_state(state)
+        .merge(crate::router::utterance_edit::routes(utterance_edit_state))
 }
 
 /// SSE progress channel for a single run.
@@ -437,6 +450,7 @@ async fn create_run_impl(
         finished_at: None,
         error_category: None,
         error_detail: None,
+        export_zip_stale_at: None,
     };
     state.repos.runs.insert(&row).await?;
 
@@ -627,6 +641,7 @@ async fn resume_run_impl(state: &RunsState, deployment_id: &str, run_id: &str) -
         finished_at: None,
         error_category: None,
         error_detail: None,
+        export_zip_stale_at: None,
     };
     state.repos.runs.insert(&resumed).await?;
     state
@@ -705,6 +720,7 @@ async fn test_line_impl(
         finished_at: None,
         error_category: None,
         error_detail: None,
+        export_zip_stale_at: None,
     };
     state.repos.runs.insert(&row).await?;
     state

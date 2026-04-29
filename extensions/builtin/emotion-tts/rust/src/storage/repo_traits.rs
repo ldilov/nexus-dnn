@@ -136,6 +136,11 @@ pub struct RunRow {
     pub finished_at: Option<i64>,
     pub error_category: Option<String>,
     pub error_detail: Option<String>,
+    /// Spec 036 / US2 — set when a per-utterance edit lands on a completed
+    /// run, signalling the export ZIP no longer matches the segment audio
+    /// on disk. NULL means the ZIP is fresh (or no export has been built).
+    #[serde(default)]
+    pub export_zip_stale_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,6 +173,12 @@ pub struct UtteranceRow {
     pub failure_detail: Option<String>,
     #[serde(default)]
     pub edit_chain_json: Option<String>,
+    /// Spec 036 / US2 — set when an audio-edit chain has been applied to this
+    /// utterance. Holds the host artifact ref of the materialised derived
+    /// segment audio. `audio_artifact_ref` always stays pointed at the
+    /// originally-synthesized segment (FR-008).
+    #[serde(default)]
+    pub derived_artifact_ref: Option<String>,
     #[serde(default)]
     pub updated_at: Option<i64>,
 }
@@ -312,6 +323,11 @@ pub trait RunsRepo: Send + Sync {
     /// the time of the call. Closes the race where a cancel arriving between
     /// utterance insertion and dispatcher start would be silently overwritten.
     async fn set_started_guarded(&self, id: &RunId, at: i64) -> RepoResult<bool>;
+    /// Spec 036 / US2 — mark the run's export ZIP stale by stamping
+    /// `export_zip_stale_at` with the current epoch second. Called from the
+    /// per-utterance edit handler so the run-detail UI can surface a
+    /// "rebuild export" CTA. Idempotent.
+    async fn set_export_zip_stale(&self, id: &RunId) -> RepoResult<()>;
 }
 
 #[async_trait]
@@ -336,6 +352,24 @@ pub trait UtterancesRepo: Send + Sync {
         &self,
         utterance_id: &UtteranceId,
         chain: Option<&EditChain>,
+    ) -> RepoResult<()>;
+    /// Spec 036 / US2 — set or clear the derived artifact ref produced by
+    /// applying a per-utterance edit chain. Passing `None` clears the column
+    /// (revert to the source segment audio).
+    async fn set_derived_artifact_ref(
+        &self,
+        utterance_id: &UtteranceId,
+        derived_artifact_ref: Option<&str>,
+    ) -> RepoResult<()>;
+
+    /// Spec 036 / US2 — atomic write of `edit_chain_json` + `derived_artifact_ref`
+    /// in a single UPDATE so the persisted chain and the derived blob ref can
+    /// never diverge under partial-failure of two separate statements.
+    async fn write_edit_chain_with_derived(
+        &self,
+        utterance_id: &UtteranceId,
+        chain: Option<&EditChain>,
+        derived_artifact_ref: Option<&str>,
     ) -> RepoResult<()>;
 }
 
