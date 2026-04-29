@@ -1,5 +1,3 @@
-"""Top-level audio-edit orchestration: validate → decode → fold ops → encode."""
-
 from __future__ import annotations
 
 import time
@@ -10,7 +8,6 @@ from typing import Any
 import numpy as np
 
 from . import codecs, ops
-from .digest import compute_digest
 from .types import AudioEditReport, OpDuration
 from .validation import validate_chain
 
@@ -19,25 +16,22 @@ DEFAULT_FORMAT = "wav"
 
 
 def apply_chain(source_abs: Path, output_abs: Path, chain: dict[str, Any]) -> AudioEditReport:
-    """Apply ``chain`` to ``source_abs`` and write derived audio to ``output_abs``.
-
-    Raises ``ValueError`` on validation failure or ``RuntimeError`` on codec /
-    IO failure. The returned ``AudioEditReport`` is the JSON-RPC result body.
-    """
+    """Apply ``chain`` to ``source_abs`` and write derived audio to ``output_abs``."""
 
     validate_chain(chain)
     samples, sr = codecs.decode_source(source_abs)
     source_duration_ms = _duration_ms(samples, sr)
+    warnings = _collect_range_warnings(chain["ops"], source_duration_ms)
     samples, durations, measured_lufs = _fold_ops(samples, sr, chain["ops"])
     derived_duration_ms = _duration_ms(samples, sr)
     codecs.encode_output(samples, sr, output_abs)
     return AudioEditReport(
-        chain_digest=compute_digest(chain),
+        chain_digest="",
         source_duration_ms=source_duration_ms,
         derived_duration_ms=derived_duration_ms,
         measured_lufs=measured_lufs,
         per_op_durations_ms=durations,
-        warnings=[],
+        warnings=warnings,
     )
 
 
@@ -47,12 +41,7 @@ def materialize_to_temp(
     temp_dir: Path,
     format_hint: str = DEFAULT_FORMAT,
 ) -> tuple[Path, AudioEditReport]:
-    """Materialize ``chain`` to a unique tempfile inside ``temp_dir``.
-
-    Returns ``(absolute_path, report)``. The caller (Rust router) owns
-    deletion. Single-pass: the pipeline runs once and the report describes
-    the same artifact written to ``absolute_path``.
-    """
+    """Materialize ``chain`` to a unique tempfile inside ``temp_dir``."""
 
     fmt = format_hint.lower().lstrip(".")
     if fmt not in {"wav", "mp3"}:
@@ -61,6 +50,21 @@ def materialize_to_temp(
     output_path = temp_dir / f"preview-{uuid.uuid4().hex}.{fmt}"
     report = apply_chain(source_abs, output_path, chain)
     return output_path, report
+
+
+def _collect_range_warnings(op_list: list[dict[str, Any]], source_duration_ms: int) -> list[str]:
+    warnings: list[str] = []
+    for op in op_list:
+        mode = op.get("mode")
+        if mode not in {"trim", "crop", "mute"}:
+            continue
+        end_ms = int(op["end_ms"])
+        if end_ms > source_duration_ms:
+            warnings.append(
+                f"op {op.get('id', '?')} {mode}: end_ms={end_ms} exceeds source "
+                f"duration {source_duration_ms}ms — output will be clamped"
+            )
+    return warnings
 
 
 def _fold_ops(

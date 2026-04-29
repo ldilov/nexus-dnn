@@ -37,15 +37,19 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<SynthesisCacheRow> {
 #[async_trait]
 impl SynthesisCacheRepo for SqliteSynthesisCacheRepo {
     async fn get(&self, hash: &ContentHash) -> RepoResult<Option<SynthesisCacheRow>> {
-        let row = sqlx::query("SELECT * FROM ext_emotion_tts__synthesis_cache WHERE content_hash = ?")
-            .bind(hash.as_str())
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(to_err)?;
+        let row =
+            sqlx::query("SELECT * FROM ext_emotion_tts__synthesis_cache WHERE content_hash = ?")
+                .bind(hash.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(to_err)?;
         row.as_ref().map(map_row).transpose()
     }
 
-    async fn lookup_many(&self, hashes: &[ContentHash]) -> RepoResult<Vec<Option<SynthesisCacheRow>>> {
+    async fn lookup_many(
+        &self,
+        hashes: &[ContentHash],
+    ) -> RepoResult<Vec<Option<SynthesisCacheRow>>> {
         let mut out = Vec::with_capacity(hashes.len());
         for h in hashes {
             out.push(self.get(h).await?);
@@ -91,10 +95,12 @@ impl SynthesisCacheRepo for SqliteSynthesisCacheRepo {
     }
 
     async fn total_size_bytes(&self) -> RepoResult<i64> {
-        let row = sqlx::query("SELECT COALESCE(SUM(size_bytes), 0) AS total FROM ext_emotion_tts__synthesis_cache")
-            .fetch_one(&self.pool)
-            .await
-            .map_err(to_err)?;
+        let row = sqlx::query(
+            "SELECT COALESCE(SUM(size_bytes), 0) AS total FROM ext_emotion_tts__synthesis_cache",
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(to_err)?;
         Ok(row.try_get::<i64, _>("total").map_err(to_err)?)
     }
 

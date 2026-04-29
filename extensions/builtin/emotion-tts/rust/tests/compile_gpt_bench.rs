@@ -37,10 +37,13 @@ fn from_deployment_composes_compile_on_payload() {
     assert_eq!(wire["model_family"], "indextts-2");
     assert_eq!(wire["enable_attention_capture"], true);
     assert_eq!(wire["enable_compile"], true);
-    assert_eq!(wire["speaker_cache_hint"], json!({
-        "enabled": true,
-        "budget_mb": 200,
-    }));
+    assert_eq!(
+        wire["speaker_cache_hint"],
+        json!({
+            "enabled": true,
+            "budget_mb": 200,
+        })
+    );
 }
 
 #[test]

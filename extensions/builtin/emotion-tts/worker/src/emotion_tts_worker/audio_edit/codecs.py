@@ -1,11 +1,3 @@
-"""Codec dispatch for audio-edit IO.
-
-WAV/FLAC are read/written through ``soundfile`` directly. Compressed inputs
-(mp3/opus/aac/m4a/ogg) round-trip through ffmpeg into PCM (research.md R2 —
-sample-accurate boundaries). Compressed outputs encode through ffmpeg from a
-WAV intermediate. Sample rate is preserved end-to-end (FR-028).
-"""
-
 from __future__ import annotations
 
 import shutil

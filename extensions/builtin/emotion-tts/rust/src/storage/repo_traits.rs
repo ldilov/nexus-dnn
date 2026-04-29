@@ -263,11 +263,11 @@ pub trait VoiceAssetsRepo: Send + Sync {
         preprocessed_artifact_ref: Option<&str>,
         preprocessing_report_json: Option<&str>,
     ) -> RepoResult<()>;
-    /// Spec 036 — load the persisted edit chain for a voice asset.
-    /// Returns `None` when the column is `NULL` (no chain → use source audio).
     async fn read_edit_chain(&self, asset_id: &VoiceAssetId) -> RepoResult<Option<EditChain>>;
-    /// Spec 036 — write or clear the edit chain for a voice asset.
-    /// Passing `None` writes `NULL` (chain cleared).
+    async fn read_edit_chains_for(
+        &self,
+        asset_ids: &[VoiceAssetId],
+    ) -> RepoResult<std::collections::HashMap<String, EditChain>>;
     async fn write_edit_chain(
         &self,
         asset_id: &VoiceAssetId,
@@ -288,7 +288,11 @@ pub trait MappingsRepo: Send + Sync {
     async fn insert(&self, row: &CharacterMappingRow) -> RepoResult<()>;
     async fn get(&self, id: &MappingId) -> RepoResult<Option<CharacterMappingRow>>;
     async fn list_by_deployment(&self, dep: &DeploymentId) -> RepoResult<Vec<CharacterMappingRow>>;
-    async fn find_by_character(&self, dep: &DeploymentId, name_lower: &str) -> RepoResult<Option<CharacterMappingRow>>;
+    async fn find_by_character(
+        &self,
+        dep: &DeploymentId,
+        name_lower: &str,
+    ) -> RepoResult<Option<CharacterMappingRow>>;
     async fn update(&self, row: &CharacterMappingRow) -> RepoResult<()>;
     async fn deactivate(&self, id: &MappingId) -> RepoResult<()>;
 }
@@ -307,7 +311,12 @@ pub trait RunsRepo: Send + Sync {
     async fn insert(&self, row: &RunRow) -> RepoResult<()>;
     async fn get(&self, id: &RunId) -> RepoResult<Option<RunRow>>;
     async fn list_by_deployment(&self, dep: &DeploymentId, limit: i64) -> RepoResult<Vec<RunRow>>;
-    async fn update_status(&self, id: &RunId, status: &str, finished_at: Option<i64>) -> RepoResult<()>;
+    async fn update_status(
+        &self,
+        id: &RunId,
+        status: &str,
+        finished_at: Option<i64>,
+    ) -> RepoResult<()>;
     /// Update status only if the current status is one of `from_any`.
     ///
     /// Returns `true` if a row matched and was updated; `false` if the row was
@@ -376,7 +385,10 @@ pub trait UtterancesRepo: Send + Sync {
 #[async_trait]
 pub trait SynthesisCacheRepo: Send + Sync {
     async fn get(&self, hash: &ContentHash) -> RepoResult<Option<SynthesisCacheRow>>;
-    async fn lookup_many(&self, hashes: &[ContentHash]) -> RepoResult<Vec<Option<SynthesisCacheRow>>>;
+    async fn lookup_many(
+        &self,
+        hashes: &[ContentHash],
+    ) -> RepoResult<Vec<Option<SynthesisCacheRow>>>;
     async fn insert(&self, row: &SynthesisCacheRow) -> RepoResult<()>;
     async fn record_hit(&self, hash: &ContentHash, at: i64) -> RepoResult<()>;
     async fn total_size_bytes(&self) -> RepoResult<i64>;
@@ -401,7 +413,11 @@ pub trait WorkflowsRepo: Send + Sync {
 #[async_trait]
 pub trait ExportHistoryRepo: Send + Sync {
     async fn insert(&self, row: &ExportHistoryRow) -> RepoResult<()>;
-    async fn list_by_deployment(&self, dep: &DeploymentId, limit: i64) -> RepoResult<Vec<ExportHistoryRow>>;
+    async fn list_by_deployment(
+        &self,
+        dep: &DeploymentId,
+        limit: i64,
+    ) -> RepoResult<Vec<ExportHistoryRow>>;
     async fn get(&self, id: &ExportId) -> RepoResult<Option<ExportHistoryRow>>;
     async fn get_latest_for_run(&self, run: &RunId) -> RepoResult<Option<ExportHistoryRow>>;
 }

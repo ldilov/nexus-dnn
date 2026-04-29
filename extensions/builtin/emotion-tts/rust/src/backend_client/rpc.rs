@@ -19,13 +19,11 @@ pub mod methods {
     pub const VOICE_PROBE: &str = "voice.probe";
     pub const CANCEL: &str = "cancel";
 
-    // Spec 034 additions
     pub const VOICE_PREPROCESS: &str = "voice.preprocess";
     pub const CAPABILITY_PROBE: &str = "capability.probe";
     pub const FAMILY_LIST: &str = "family.list";
     pub const FAMILY_SWITCH: &str = "family.switch";
 
-    // Spec 036 additions — declarative audio-edit chain pipeline.
     pub const AUDIO_EDIT: &str = "audio.edit";
     pub const AUDIO_EDIT_PREVIEW: &str = "audio.edit.preview";
 }
@@ -80,14 +78,14 @@ pub fn lease_error_to_domain(err: LeaseError) -> EmotionTtsError {
             error_codes::MODEL_LOAD_FAILED => {
                 EmotionTtsError::internal(format!("model_load_failed: {message}"))
             }
-            error_codes::HANDSHAKE_PROTOCOL_MISMATCH => {
-                EmotionTtsError::RuntimeUnavailable(format!("handshake protocol mismatch: {message}"))
-            }
-            error_codes::CUDA_OOM => {
-                EmotionTtsError::internal(format!("cuda_oom: {message}"))
-            }
+            error_codes::HANDSHAKE_PROTOCOL_MISMATCH => EmotionTtsError::RuntimeUnavailable(
+                format!("handshake protocol mismatch: {message}"),
+            ),
+            error_codes::CUDA_OOM => EmotionTtsError::internal(format!("cuda_oom: {message}")),
             error_codes::CANCELLED | error_codes::CANCELLED_V1 => EmotionTtsError::Cancelled,
-            error_codes::SYNTHESIS_FAILED => EmotionTtsError::internal(format!("synthesis failed: {message}")),
+            error_codes::SYNTHESIS_FAILED => {
+                EmotionTtsError::internal(format!("synthesis failed: {message}"))
+            }
             error_codes::PREPROCESS_INPUT_REJECTED => {
                 EmotionTtsError::validation(format!("preprocess input rejected: {message}"))
             }
@@ -100,13 +98,17 @@ pub fn lease_error_to_domain(err: LeaseError) -> EmotionTtsError {
             }
             _ => EmotionTtsError::Rpc { code, message },
         },
-        LeaseError::Timeout => EmotionTtsError::Timeout { op: "send_rpc".into() },
+        LeaseError::Timeout => EmotionTtsError::Timeout {
+            op: "send_rpc".into(),
+        },
         LeaseError::Cancelled => EmotionTtsError::Cancelled,
         LeaseError::WorkerCrashed => EmotionTtsError::RuntimeUnavailable("worker crashed".into()),
-        LeaseError::InvalidState { state, op } => EmotionTtsError::RuntimeUnavailable(format!(
-            "lease {state:?} cannot perform {op}"
-        )),
-        LeaseError::Transport(msg) => EmotionTtsError::RuntimeUnavailable(format!("transport: {msg}")),
+        LeaseError::InvalidState { state, op } => {
+            EmotionTtsError::RuntimeUnavailable(format!("lease {state:?} cannot perform {op}"))
+        }
+        LeaseError::Transport(msg) => {
+            EmotionTtsError::RuntimeUnavailable(format!("transport: {msg}"))
+        }
     }
 }
 

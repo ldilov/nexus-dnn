@@ -1,15 +1,3 @@
-//! Spec 036 / US1 — voice-asset audio-edit routes.
-//!
-//! Mounted under `/voice-assets` by [`super::voice_assets::router`] so the
-//! external surface is:
-//!
-//! * `POST   /voice-assets/{id}/edit?deploymentId=…`         — apply chain
-//! * `DELETE /voice-assets/{id}/edit?deploymentId=…`         — clear chain
-//! * `POST   /voice-assets/{id}/edit/preview?deploymentId=…` — stream preview
-//!
-//! Cross-deployment access on any of the three returns 404 (not 403) per
-//! the [`super::guard`] contract — FR-016 / SC-008.
-
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -19,7 +7,6 @@ use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::post;
 use axum::Router;
-use chrono::Utc;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio_util::io::ReaderStream;
@@ -27,14 +14,12 @@ use tokio_util::io::ReaderStream;
 use crate::domain::{ChainDigest, EditChain, EmotionTtsError, Result, VoiceAssetId};
 use crate::router::guard::{self, ScopedQuery};
 use crate::router::voice_assets::VoiceAssetsState;
-use crate::storage::audit_log_repo::{AuditEntry, TargetKind, SYSTEM_ACTOR};
+use crate::storage::audio_edit_atomic::{self, build_audit_entry, CommitOutcome};
+use crate::storage::audit_log_repo::{TargetKind, SYSTEM_ACTOR};
 
 const PREVIEW_CONTENT_TYPE_WAV: &str = "audio/wav";
 const PREVIEW_CONTENT_TYPE_MP3: &str = "audio/mpeg";
 
-/// Sub-router mounted by [`crate::router::voice_assets::router`]. Exposes
-/// the three audio-edit routes; the parent router supplies the shared
-/// [`VoiceAssetsState`].
 pub fn routes() -> Router<Arc<VoiceAssetsState>> {
     Router::new()
         .route("/{voice_asset_id}/edit", post(apply).delete(clear))
@@ -68,10 +53,6 @@ async fn apply(
     }
 }
 
-/// Two-shape outcome of [`apply_impl`]. Stale-digest is modelled out-of-band of
-/// the standard error envelope so the route can emit the OpenAPI
-/// `StaleDigestError` body shape `{ error: { code, message, current_digest } }`
-/// — UI clients need `current_digest` to reload and rebase their chain edits.
 enum ApplyOutcome {
     Ok(Value),
     StaleDigest { current: ChainDigest },
@@ -94,7 +75,8 @@ async fn clear(
     Query(query): Query<ScopedQuery>,
 ) -> Response {
     match clear_impl(&state, &id, &query.deployment_id).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(ClearOutcome::Ok) => StatusCode::NO_CONTENT.into_response(),
+        Ok(ClearOutcome::StaleDigest { current }) => stale_digest_response(&current),
         Err(err) => err.into_response(),
     }
 }
@@ -137,20 +119,43 @@ async fn apply_impl(
     }
 
     let report = run_audio_edit_rpc(state, &asset_id, &row, &req.chain, &new_digest).await?;
-    persist_apply(state, &asset_id, &req.chain, &report.derived_artifact_ref).await?;
-
     let operation_count = req.chain.operation_count();
-    append_audit_entry(
-        state,
-        &row.deployment_id,
+    let audit = build_audit_entry(
+        ulid::Ulid::new().to_string(),
+        row.deployment_id.clone(),
+        asset_id.as_str().to_owned(),
+        TargetKind::VoiceAsset,
+        current_digest.clone(),
+        new_digest.clone(),
+        operation_count,
+        SYSTEM_ACTOR.to_string(),
+    );
+
+    let outcome = audio_edit_atomic::commit_voice_asset_apply(
+        &state.repos.pool,
         asset_id.as_str(),
         &current_digest,
-        &new_digest,
-        operation_count,
+        &req.chain,
+        &report.derived_artifact_ref,
+        &audit,
     )
     .await?;
-    emit_edited_event(asset_id.as_str(), operation_count, &report.derived_artifact_ref);
 
+    if let CommitOutcome::StaleDigest { current } = outcome {
+        tracing::warn!(
+            target: "extension.emotiontts.audio.edited",
+            voice_asset_id = asset_id.as_str(),
+            orphaned_derived_artifact_ref = report.derived_artifact_ref.as_str(),
+            "concurrent writer changed chain between RPC and commit; derived artifact orphaned",
+        );
+        return Ok(ApplyOutcome::StaleDigest { current });
+    }
+
+    emit_edited_event(
+        asset_id.as_str(),
+        operation_count,
+        &report.derived_artifact_ref,
+    );
     Ok(ApplyOutcome::Ok(apply_response_json(&new_digest, &report)))
 }
 
@@ -175,15 +180,33 @@ async fn run_audio_edit_rpc(
     })?;
     let client = provider.spawn_if_needed().await?;
 
-    let source_abs = state.artifact_store.resolve_path(source_ref_for(row)).await?;
+    let source_abs = state
+        .artifact_store
+        .resolve_path(source_ref_for(row))
+        .await?;
     let derived_path = derived_temp_path(asset_id, new_digest);
     let derived_abs = path_to_string(&derived_path)?;
     let request_id = make_request_id("edit", asset_id.as_str());
 
     let chain_value = serde_json::to_value(chain)?;
     let report = client
-        .audio_edit(&request_id, &source_abs, &derived_abs, chain_value)
+        .audio_edit(
+            &request_id,
+            &source_abs,
+            &derived_abs,
+            chain_value,
+            new_digest.as_str(),
+        )
         .await?;
+
+    if report.chain_digest != new_digest.as_str() {
+        return Err(EmotionTtsError::internal(format!(
+            "worker chain digest {worker} != host {host}; canonical-JSON drift",
+            worker = report.chain_digest,
+            host = new_digest.as_str()
+        )));
+    }
+
     let put = read_and_store_derived(state, &derived_path, &row.display_name).await?;
     Ok(EditOutcome {
         derived_artifact_ref: put.artifact_ref,
@@ -193,25 +216,6 @@ async fn run_audio_edit_rpc(
         per_op_durations_ms: report.per_op_durations_ms,
         warnings: report.warnings,
     })
-}
-
-async fn persist_apply(
-    state: &VoiceAssetsState,
-    asset_id: &VoiceAssetId,
-    chain: &EditChain,
-    derived_artifact_ref: &str,
-) -> Result<()> {
-    state
-        .repos
-        .voice_assets
-        .write_edit_chain(asset_id, Some(chain))
-        .await?;
-    state
-        .repos
-        .voice_assets
-        .set_derived_artifact_ref(asset_id, Some(derived_artifact_ref))
-        .await?;
-    Ok(())
 }
 
 fn apply_response_json(new_digest: &ChainDigest, outcome: &EditOutcome) -> Value {
@@ -226,43 +230,47 @@ fn apply_response_json(new_digest: &ChainDigest, outcome: &EditOutcome) -> Value
     })
 }
 
+enum ClearOutcome {
+    Ok,
+    StaleDigest { current: ChainDigest },
+}
+
 async fn clear_impl(
     state: &VoiceAssetsState,
     raw_id: &str,
     claimed_deployment_id: &str,
-) -> Result<()> {
+) -> Result<ClearOutcome> {
     let asset_id = VoiceAssetId::try_from(raw_id)?;
     let row = guarded_voice_asset(state, &asset_id, claimed_deployment_id).await?;
     let Some(chain) = state.repos.voice_assets.read_edit_chain(&asset_id).await? else {
-        return Ok(());
+        return Ok(ClearOutcome::Ok);
     };
     let digest_before = ChainDigest::of(&chain);
-    persist_clear(state, &asset_id).await?;
-    append_audit_entry(
-        state,
-        &row.deployment_id,
+    let audit = build_audit_entry(
+        ulid::Ulid::new().to_string(),
+        row.deployment_id.clone(),
+        asset_id.as_str().to_owned(),
+        TargetKind::VoiceAsset,
+        digest_before.clone(),
+        ChainDigest::EMPTY,
+        0,
+        SYSTEM_ACTOR.to_string(),
+    );
+
+    let outcome = audio_edit_atomic::commit_voice_asset_clear(
+        &state.repos.pool,
         asset_id.as_str(),
         &digest_before,
-        &ChainDigest::EMPTY,
-        0,
+        &audit,
     )
     .await?;
-    emit_edited_event(asset_id.as_str(), 0, &row.audio_artifact_ref);
-    Ok(())
-}
 
-async fn persist_clear(state: &VoiceAssetsState, asset_id: &VoiceAssetId) -> Result<()> {
-    state
-        .repos
-        .voice_assets
-        .write_edit_chain(asset_id, None)
-        .await?;
-    state
-        .repos
-        .voice_assets
-        .set_derived_artifact_ref(asset_id, None)
-        .await?;
-    Ok(())
+    if let CommitOutcome::StaleDigest { current } = outcome {
+        return Ok(ClearOutcome::StaleDigest { current });
+    }
+
+    emit_edited_event(asset_id.as_str(), 0, &row.audio_artifact_ref);
+    Ok(ClearOutcome::Ok)
 }
 
 async fn preview_impl(
@@ -280,7 +288,10 @@ async fn preview_impl(
     })?;
     let client = provider.spawn_if_needed().await?;
 
-    let source_abs = state.artifact_store.resolve_path(source_ref_for(&row)).await?;
+    let source_abs = state
+        .artifact_store
+        .resolve_path(source_ref_for(&row))
+        .await?;
     let request_id = make_request_id("edit-preview", asset_id.as_str());
     let chain_value = serde_json::to_value(&chain)?;
 
@@ -302,11 +313,9 @@ async fn guarded_voice_asset(
         .get(asset_id)
         .await?
         .ok_or_else(|| EmotionTtsError::not_found(format!("voice asset {asset_id}")))?;
-    guard::assert_deployment_match(
-        row.deployment_id.as_str(),
-        claimed_deployment_id,
-        || format!("voice asset {asset_id}"),
-    )?;
+    guard::assert_deployment_match(row.deployment_id.as_str(), claimed_deployment_id, || {
+        format!("voice asset {asset_id}")
+    })?;
     Ok(row)
 }
 
@@ -331,10 +340,7 @@ fn path_to_string(path: &std::path::Path) -> Result<String> {
 }
 
 fn make_request_id(prefix: &str, asset_id: &str) -> String {
-    format!(
-        "{prefix}-{asset_id}-{}",
-        ulid::Ulid::new()
-    )
+    format!("{prefix}-{asset_id}-{}", ulid::Ulid::new())
 }
 
 async fn read_and_store_derived(
@@ -352,28 +358,6 @@ async fn read_and_store_derived(
         .store(bytes, &display, Some("audio/wav"))
         .await?;
     Ok(put)
-}
-
-async fn append_audit_entry(
-    state: &VoiceAssetsState,
-    deployment_id: &crate::domain::DeploymentId,
-    target_id: &str,
-    digest_before: &ChainDigest,
-    digest_after: &ChainDigest,
-    operation_count: u16,
-) -> Result<()> {
-    let entry = AuditEntry {
-        entry_id: ulid::Ulid::new().to_string(),
-        deployment_id: deployment_id.clone(),
-        target_id: target_id.to_owned(),
-        target_kind: TargetKind::VoiceAsset,
-        digest_before: digest_before.clone(),
-        digest_after: digest_after.clone(),
-        operation_count,
-        recorded_at: Utc::now(),
-        actor: SYSTEM_ACTOR.to_string(),
-    };
-    state.repos.audio_edit_log.append(&entry).await
 }
 
 fn emit_edited_event(voice_asset_id: &str, operation_count: u16, derived_artifact_ref: &str) {
@@ -411,9 +395,7 @@ async fn stream_preview(temp_path_abs: &str, format: &str) -> Result<Response> {
         .await
         .map_err(|e| EmotionTtsError::internal(format!("open preview temp file: {e}")))?;
 
-    let guard = PreviewTempGuard {
-        path: path.clone(),
-    };
+    let guard = PreviewTempGuard { path: path.clone() };
     let stream = guarded_stream(ReaderStream::new(file), guard);
     let body = Body::from_stream(stream);
 
@@ -430,10 +412,6 @@ async fn stream_preview(temp_path_abs: &str, format: &str) -> Result<Response> {
         .map_err(|e| EmotionTtsError::internal(format!("response builder: {e}")))
 }
 
-/// RAII cleanup for the worker-side preview temp file. When the response
-/// body stream is dropped (after the bytes have been sent or the client
-/// disconnected) the guard removes the file from disk so the worker's
-/// scratch directory does not grow unbounded.
 struct PreviewTempGuard {
     path: PathBuf,
 }

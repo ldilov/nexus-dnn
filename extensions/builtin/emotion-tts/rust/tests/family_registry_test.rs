@@ -19,7 +19,11 @@ fn families_dir() -> PathBuf {
 #[test]
 fn load_picks_up_both_shipped_descriptors() {
     let reg = FamilyRegistry::load_from_dir(&families_dir()).expect("load registry");
-    let ids: Vec<&str> = reg.descriptors().iter().map(|d| d.family_id.as_str()).collect();
+    let ids: Vec<&str> = reg
+        .descriptors()
+        .iter()
+        .map(|d| d.family_id.as_str())
+        .collect();
     assert!(
         ids.contains(&"indextts-2"),
         "registry must include the default family; got {ids:?}",
@@ -33,7 +37,11 @@ fn load_picks_up_both_shipped_descriptors() {
 #[test]
 fn load_produces_sorted_descriptors() {
     let reg = FamilyRegistry::load_from_dir(&families_dir()).expect("load");
-    let ids: Vec<String> = reg.descriptors().iter().map(|d| d.family_id.clone()).collect();
+    let ids: Vec<String> = reg
+        .descriptors()
+        .iter()
+        .map(|d| d.family_id.clone())
+        .collect();
     let mut sorted = ids.clone();
     sorted.sort();
     assert_eq!(ids, sorted, "load_from_dir must return deterministic order");
@@ -97,9 +105,15 @@ async fn reconcile_maps_each_descriptor_through_probe_callback() {
         .await
         .expect("reconcile");
 
-    let v2 = entries.iter().find(|e| e.descriptor.family_id == "indextts-2").unwrap();
+    let v2 = entries
+        .iter()
+        .find(|e| e.descriptor.family_id == "indextts-2")
+        .unwrap();
     assert_eq!(v2.status, FamilyStatus::Available);
-    let v25 = entries.iter().find(|e| e.descriptor.family_id == "indextts-2-5").unwrap();
+    let v25 = entries
+        .iter()
+        .find(|e| e.descriptor.family_id == "indextts-2-5")
+        .unwrap();
     assert_eq!(v25.status, FamilyStatus::NotInstalled);
 }
 

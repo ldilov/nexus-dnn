@@ -23,7 +23,9 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<UtteranceRow> {
     let id: String = row.try_get("utterance_id").map_err(to_err)?;
     let run: String = row.try_get("run_id").map_err(to_err)?;
     let mapping: Option<String> = row.try_get("resolved_mapping_id").map_err(to_err)?;
-    let speaker: Option<String> = row.try_get("resolved_speaker_voice_asset_id").map_err(to_err)?;
+    let speaker: Option<String> = row
+        .try_get("resolved_speaker_voice_asset_id")
+        .map_err(to_err)?;
     let source_run: Option<String> = row.try_get("source_run_id").map_err(to_err)?;
     let cache_hit: i64 = row.try_get("cache_hit").map_err(to_err)?;
     Ok(UtteranceRow {
@@ -37,17 +39,23 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<UtteranceRow> {
         source_line_number: row.try_get("source_line_number").map_err(to_err)?,
         inline_overrides_json: row.try_get("inline_overrides_json").map_err(to_err)?,
         legacy_emotion_ref: row.try_get("legacy_emotion_ref").map_err(to_err)?,
-        resolved_mapping_id: mapping.map(|s| MappingId::try_from(s.as_str())).transpose()?,
+        resolved_mapping_id: mapping
+            .map(|s| MappingId::try_from(s.as_str()))
+            .transpose()?,
         resolved_speaker_voice_asset_id: speaker
             .map(|s| VoiceAssetId::try_from(s.as_str()))
             .transpose()?,
         resolved_emotion_mode: row.try_get("resolved_emotion_mode").map_err(to_err)?,
-        resolved_emotion_payload_json: row.try_get("resolved_emotion_payload_json").map_err(to_err)?,
+        resolved_emotion_payload_json: row
+            .try_get("resolved_emotion_payload_json")
+            .map_err(to_err)?,
         resolved_seed: row.try_get("resolved_seed").map_err(to_err)?,
         resolved_generation_json: row.try_get("resolved_generation_json").map_err(to_err)?,
         content_hash: row.try_get("content_hash").map_err(to_err)?,
         status: row.try_get("status").map_err(to_err)?,
-        source_run_id: source_run.map(|s| RunId::try_from(s.as_str())).transpose()?,
+        source_run_id: source_run
+            .map(|s| RunId::try_from(s.as_str()))
+            .transpose()?,
         audio_artifact_ref: row.try_get("audio_artifact_ref").map_err(to_err)?,
         cache_hit: cache_hit != 0,
         duration_ms: row.try_get("duration_ms").map_err(to_err)?,
@@ -163,10 +171,7 @@ impl UtterancesRepo for SqliteUtterancesRepo {
         Ok(())
     }
 
-    async fn read_edit_chain(
-        &self,
-        utterance_id: &UtteranceId,
-    ) -> RepoResult<Option<EditChain>> {
+    async fn read_edit_chain(&self, utterance_id: &UtteranceId) -> RepoResult<Option<EditChain>> {
         let row = sqlx::query(
             "SELECT edit_chain_json FROM ext_emotion_tts__utterances WHERE utterance_id = ?",
         )
@@ -178,7 +183,9 @@ impl UtterancesRepo for SqliteUtterancesRepo {
         let raw: Option<String> = row.try_get("edit_chain_json").map_err(to_err)?;
         match raw {
             None => Ok(None),
-            Some(json) => Ok(Some(serde_json::from_str(&json).map_err(EmotionTtsError::from)?)),
+            Some(json) => Ok(Some(
+                serde_json::from_str(&json).map_err(EmotionTtsError::from)?,
+            )),
         }
     }
 

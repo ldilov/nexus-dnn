@@ -91,11 +91,19 @@ impl BackendRuntimeLease for MockEditLease {
                         message: "missing output_artifact_abs".into(),
                     })?
                     .to_string();
+                let chain_digest = params
+                    .get("chain_digest")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| LeaseError::Rpc {
+                        code: -32602,
+                        message: "missing chain_digest".into(),
+                    })?
+                    .to_string();
                 tokio::fs::write(&output_path, b"derived-segment-bytes")
                     .await
                     .map_err(|e| LeaseError::Transport(format!("write derived: {e}")))?;
                 Ok(json!({
-                    "chain_digest": "0".repeat(64),
+                    "chain_digest": chain_digest,
                     "source_duration_ms": 1_500,
                     "derived_duration_ms": 1_400,
                     "measured_lufs": null,
@@ -274,7 +282,13 @@ async fn build_test_router() -> (
     let factory: Arc<dyn LeaseFactory> = Arc::new(StaticLeaseFactory(lease));
     let provider = Arc::new(LeaseProvider::new(factory));
 
-    let router = build_router(repos.clone(), queue, "0.0.0-test", Some(provider), Some(store));
+    let router = build_router(
+        repos.clone(),
+        queue,
+        "0.0.0-test",
+        Some(provider),
+        Some(store),
+    );
 
     let dep_a = seed_deployment(&repos, "Deployment A").await;
     let dep_b = seed_deployment(&repos, "Deployment B").await;
@@ -326,7 +340,10 @@ async fn apply_edit_chain_to_utterance_returns_200() {
     let resp = router.oneshot(req).await.unwrap();
     let (status, body) = parse_body(resp).await;
     assert_eq!(status, StatusCode::OK, "body: {body}");
-    assert!(body["chain_digest"].as_str().is_some(), "missing chain_digest");
+    assert!(
+        body["chain_digest"].as_str().is_some(),
+        "missing chain_digest"
+    );
     assert!(
         body["derived_artifact_ref"].as_str().is_some(),
         "missing derived_artifact_ref"

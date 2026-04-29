@@ -10,12 +10,14 @@
 use axum::body::{to_bytes, Body};
 use axum::http::{Method, Request, StatusCode};
 use chrono::Utc;
-use emotion_tts_extension::domain::{ChainDigest, DeploymentId, EditChain, EditOp, OperationId, VoiceAssetId};
+use emotion_tts_extension::domain::{
+    ChainDigest, DeploymentId, EditChain, EditOp, OperationId, VoiceAssetId,
+};
+use emotion_tts_extension::queue::RuntimeQueue;
 use emotion_tts_extension::router::build_router;
 use emotion_tts_extension::storage::audit_log_repo::{AuditEntry, TargetKind};
 use emotion_tts_extension::storage::repo_traits::{DeploymentRow, VoiceAssetRow};
 use emotion_tts_extension::storage::Repos;
-use emotion_tts_extension::queue::RuntimeQueue;
 use emotion_tts_extension::MIGRATIONS;
 use serde_json::Value;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -168,7 +170,13 @@ fn entry(
     }
 }
 
-async fn build_test_router() -> (axum::Router, Repos, DeploymentId, DeploymentId, VoiceAssetId) {
+async fn build_test_router() -> (
+    axum::Router,
+    Repos,
+    DeploymentId,
+    DeploymentId,
+    VoiceAssetId,
+) {
     let pool = fresh_pool().await;
     let repos = Repos::from_pool(pool);
     let queue = Arc::new(RuntimeQueue::new());
@@ -215,17 +223,38 @@ async fn audit_lookup_returns_entries_in_reverse_chronological_order() {
 
     repos
         .audio_edit_log
-        .append(&entry(&dep_a, asset.as_str(), d_empty.clone(), d1.clone(), 1, 0))
+        .append(&entry(
+            &dep_a,
+            asset.as_str(),
+            d_empty.clone(),
+            d1.clone(),
+            1,
+            0,
+        ))
         .await
         .unwrap();
     repos
         .audio_edit_log
-        .append(&entry(&dep_a, asset.as_str(), d1.clone(), d2.clone(), 2, 1_000))
+        .append(&entry(
+            &dep_a,
+            asset.as_str(),
+            d1.clone(),
+            d2.clone(),
+            2,
+            1_000,
+        ))
         .await
         .unwrap();
     repos
         .audio_edit_log
-        .append(&entry(&dep_a, asset.as_str(), d2.clone(), d3.clone(), 3, 2_000))
+        .append(&entry(
+            &dep_a,
+            asset.as_str(),
+            d2.clone(),
+            d3.clone(),
+            3,
+            2_000,
+        ))
         .await
         .unwrap();
     repos
@@ -296,17 +325,38 @@ async fn audit_lookup_respects_limit_query_param() {
 
     repos
         .audio_edit_log
-        .append(&entry(&dep_a, asset.as_str(), d_empty.clone(), d1.clone(), 1, 0))
+        .append(&entry(
+            &dep_a,
+            asset.as_str(),
+            d_empty.clone(),
+            d1.clone(),
+            1,
+            0,
+        ))
         .await
         .unwrap();
     repos
         .audio_edit_log
-        .append(&entry(&dep_a, asset.as_str(), d1.clone(), d2.clone(), 2, 1_000))
+        .append(&entry(
+            &dep_a,
+            asset.as_str(),
+            d1.clone(),
+            d2.clone(),
+            2,
+            1_000,
+        ))
         .await
         .unwrap();
     repos
         .audio_edit_log
-        .append(&entry(&dep_a, asset.as_str(), d2.clone(), d3.clone(), 3, 2_000))
+        .append(&entry(
+            &dep_a,
+            asset.as_str(),
+            d2.clone(),
+            d3.clone(),
+            3,
+            2_000,
+        ))
         .await
         .unwrap();
 

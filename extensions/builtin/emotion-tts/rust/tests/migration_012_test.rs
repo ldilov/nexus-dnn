@@ -81,6 +81,10 @@ async fn migration_012_new_columns_are_nullable() {
     .await
     .expect("select");
 
-    assert!(row.get::<Option<String>, _>("preprocessed_artifact_ref").is_none());
-    assert!(row.get::<Option<String>, _>("preprocessing_report_json").is_none());
+    assert!(row
+        .get::<Option<String>, _>("preprocessed_artifact_ref")
+        .is_none());
+    assert!(row
+        .get::<Option<String>, _>("preprocessing_report_json")
+        .is_none());
 }

@@ -227,8 +227,16 @@ mod tests {
         ]);
         // Load-from-dir sorts; ad-hoc constructor doesn't — test the
         // contract documented on FamilyRegistry::load_from_dir.
-        let ids: Vec<&str> = reg.descriptors().iter().map(|d| d.family_id.as_str()).collect();
-        assert_eq!(ids, vec!["b", "a"], "ad-hoc constructor preserves input order");
+        let ids: Vec<&str> = reg
+            .descriptors()
+            .iter()
+            .map(|d| d.family_id.as_str())
+            .collect();
+        assert_eq!(
+            ids,
+            vec!["b", "a"],
+            "ad-hoc constructor preserves input order"
+        );
     }
 
     #[test]

@@ -1,10 +1,3 @@
-"""Per-op transforms keyed off the EditOp ``mode`` discriminator.
-
-Trim / mute / fade / normalize are pure numpy. Speed uses ffmpeg ``atempo``
-(research.md R3 — pitch-preserving) via a tempfile round-trip. Each op
-returns a fresh ndarray (immutability per coding-style.md).
-"""
-
 from __future__ import annotations
 
 import math
@@ -34,28 +27,28 @@ def mute(samples: np.ndarray, sr: int, start_ms: int, end_ms: int) -> np.ndarray
     out = samples.copy()
     start = ms_to_samples(start_ms, sr)
     end = min(ms_to_samples(end_ms, sr), out.shape[0])
-    if end > start:
+    if end <= start:
+        return out
+    if out.ndim == 1:
         out[start:end] = 0.0
+    else:
+        out[start:end, :] = 0.0
     return out
 
 
-def normalize(samples: np.ndarray, sr: int, target_lufs: float) -> tuple[np.ndarray, float]:
-    """Apply a constant gain so the integrated loudness lands at ``target_lufs``.
-
-    Returns the gain-adjusted samples plus the post-gain measured LUFS.
-    Multichannel input is passed verbatim to ``pyloudnorm.Meter`` so ITU-R
-    BS.1770 channel weighting applies; downmixing before measurement would
-    skew the reading away from the standard.
-    """
+def normalize(samples: np.ndarray, sr: int, target_lufs: float) -> tuple[np.ndarray, float | None]:
+    """Apply gain so integrated loudness lands at ``target_lufs``; returns (samples, measured_after)."""
 
     meter = pyloudnorm.Meter(sr)
     current_lufs = float(meter.integrated_loudness(samples.astype(np.float64)))
     if not math.isfinite(current_lufs):
-        return samples.copy(), current_lufs
+        return samples.copy(), None
     gain_db = target_lufs - current_lufs
     gain_linear = float(10.0 ** (gain_db / 20.0))
     out = (samples * gain_linear).astype(np.float32, copy=False)
     measured_after = float(meter.integrated_loudness(out.astype(np.float64)))
+    if not math.isfinite(measured_after):
+        return out, None
     return out, measured_after
 
 

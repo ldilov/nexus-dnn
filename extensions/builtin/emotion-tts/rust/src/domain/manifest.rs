@@ -133,11 +133,7 @@ impl Manifest {
     }
 
     /// Spec 034 US2 — stamp OAS context on the manifest after a batch.
-    pub fn record_oas_active(
-        &mut self,
-        active: bool,
-        summary: Option<AlignmentSummary>,
-    ) {
+    pub fn record_oas_active(&mut self, active: bool, summary: Option<AlignmentSummary>) {
         self.oas_active = Some(active);
         if active && summary.is_some() {
             self.alignment_summary = summary;
@@ -231,7 +227,11 @@ pub fn write_csv<W: Write>(entries: &[ManifestEntry], writer: W) -> std::io::Res
             e.status.clone(),
             e.filename.clone().unwrap_or_default(),
             e.duration_ms.map(|v| v.to_string()).unwrap_or_default(),
-            if e.cache_hit { "true".into() } else { "false".into() },
+            if e.cache_hit {
+                "true".into()
+            } else {
+                "false".into()
+            },
             e.resolved_emotion_mode
                 .map(|m| m.as_str().to_string())
                 .unwrap_or_default(),
@@ -281,7 +281,19 @@ mod tests {
     #[test]
     fn partial_true_when_any_non_completed() {
         let entries = vec![entry(1, "completed"), entry(2, "failed")];
-        let m = build_manifest("run_02", "dep_01", "0.1.0", "mp3", 1.0, "preserve_pitch", None, None, None, 0, entries);
+        let m = build_manifest(
+            "run_02",
+            "dep_01",
+            "0.1.0",
+            "mp3",
+            1.0,
+            "preserve_pitch",
+            None,
+            None,
+            None,
+            0,
+            entries,
+        );
         assert!(m.partial);
         assert_eq!(m.utterance_completed, 1);
         assert_eq!(m.utterance_failed, 1);
@@ -290,13 +302,37 @@ mod tests {
     #[test]
     fn partial_false_when_all_completed() {
         let entries = vec![entry(1, "completed"), entry(2, "completed")];
-        let m = build_manifest("run_02", "dep_01", "0.1.0", "mp3", 1.0, "preserve_pitch", None, None, None, 0, entries);
+        let m = build_manifest(
+            "run_02",
+            "dep_01",
+            "0.1.0",
+            "mp3",
+            1.0,
+            "preserve_pitch",
+            None,
+            None,
+            None,
+            0,
+            entries,
+        );
         assert!(!m.partial);
     }
 
     #[test]
     fn chain_original_run_id_preserved() {
-        let m = build_manifest("run_02", "dep_01", "0.1.0", "mp3", 1.0, "preserve_pitch", Some("run_01".into()), None, None, 0, vec![]);
+        let m = build_manifest(
+            "run_02",
+            "dep_01",
+            "0.1.0",
+            "mp3",
+            1.0,
+            "preserve_pitch",
+            Some("run_01".into()),
+            None,
+            None,
+            0,
+            vec![],
+        );
         assert_eq!(m.original_run_id.as_deref(), Some("run_01"));
     }
 
@@ -308,7 +344,19 @@ mod tests {
             entry(3, "failed"),
             entry(4, "cancelled"),
         ];
-        let m = build_manifest("run_02", "dep_01", "0.1.0", "mp3", 1.0, "preserve_pitch", None, None, None, 0, entries);
+        let m = build_manifest(
+            "run_02",
+            "dep_01",
+            "0.1.0",
+            "mp3",
+            1.0,
+            "preserve_pitch",
+            None,
+            None,
+            None,
+            0,
+            entries,
+        );
         assert_eq!(m.utterance_total, 4);
         assert_eq!(m.utterance_completed, 2);
         assert_eq!(m.utterance_failed, 1);
@@ -335,7 +383,19 @@ mod tests {
 
     #[test]
     fn json_serialises() {
-        let m = build_manifest("run_02", "dep_01", "0.1.0", "mp3", 1.0, "preserve_pitch", None, None, None, 0, vec![entry(1, "completed")]);
+        let m = build_manifest(
+            "run_02",
+            "dep_01",
+            "0.1.0",
+            "mp3",
+            1.0,
+            "preserve_pitch",
+            None,
+            None,
+            None,
+            0,
+            vec![entry(1, "completed")],
+        );
         let json = m.to_pretty_json().unwrap();
         assert!(json.contains("\"partial\""));
         assert!(json.contains("\"entries\""));

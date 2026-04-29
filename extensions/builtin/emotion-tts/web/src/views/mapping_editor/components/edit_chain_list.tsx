@@ -1,12 +1,3 @@
-/**
- * Spec 036 / US4 — ordered list of edit-chain operations.
- *
- * Pure presentational. Renders one row per op showing the mode label, a
- * compact parameter summary, and a Remove button. Empty state renders a
- * single muted line. The parent owns the chain state and the removal
- * callback (see FR-022).
- */
-
 import type { EditChain, EditOp } from "../../../services/audio_edit_client";
 import * as css from "./edit_chain_list.css";
 
