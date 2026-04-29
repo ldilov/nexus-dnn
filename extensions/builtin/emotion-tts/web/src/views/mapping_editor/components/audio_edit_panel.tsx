@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { VoiceAsset } from "../../../services/voice_assets_client";
 import {
   applyVoiceAssetEdit,
+  fetchAuditLog,
   newOperationId,
   previewVoiceAssetEdit,
   StaleDigestError,
@@ -24,11 +25,13 @@ import {
 } from "../../../services/audio_edit_client";
 import type {
   ApplyEditResponse,
+  AuditEntry,
   EditChain,
   EditOp,
   NormalizeOp,
   TrimOp,
 } from "../../../services/audio_edit_client";
+import { AuditHistoryPanel } from "./audit_history_panel";
 import { EditChainList } from "./edit_chain_list";
 import { WaveformCanvas } from "./waveform_canvas";
 import * as css from "./audio_edit_panel.css";
@@ -63,6 +66,10 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
   const [hasPreviewedAtLeastOnce, setHasPreviewedAtLeastOnce] = useState(false);
   const [measuredLufs, setMeasuredLufs] = useState<number | null>(null);
   const [removalStack, setRemovalStack] = useState<RemovalStackEntry[]>([]);
+  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
+  const [auditRefreshKey, setAuditRefreshKey] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const normalizeOn = useMemo(
@@ -76,6 +83,29 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
     setHasPreviewedAtLeastOnce(false);
     setRemovalStack([]);
   }, [voiceAsset.voiceAssetId, sourceDurationMs]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAuditLoading(true);
+    setAuditError(null);
+    fetchAuditLog(deploymentId, "voice_asset", voiceAsset.voiceAssetId, 50)
+      .then((response) => {
+        if (cancelled) return;
+        setAuditEntries(response.entries);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : "audit fetch failed";
+        setAuditError(message);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setAuditLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [deploymentId, voiceAsset.voiceAssetId, auditRefreshKey]);
 
   useEffect(() => {
     return () => {
@@ -187,6 +217,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
       setMeasuredLufs(response.measured_lufs ?? null);
       setRemovalStack([]);
       onChainPersisted(response);
+      setAuditRefreshKey((prev) => prev + 1);
     } catch (err) {
       const message =
         err instanceof StaleDigestError
@@ -207,6 +238,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
     setMeasuredLufs(null);
     setHasPreviewedAtLeastOnce(false);
     setRemovalStack([]);
+    setAuditRefreshKey((prev) => prev + 1);
     if (previewObjectUrl) {
       URL.revokeObjectURL(previewObjectUrl);
       setPreviewObjectUrl(null);
@@ -350,6 +382,17 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
           {validationError}
         </div>
       )}
+
+      <details className={css.auditSection}>
+        <summary className={css.auditSummary}>
+          Edit history{auditEntries.length > 0 ? ` · ${auditEntries.length}` : ""}
+        </summary>
+        <AuditHistoryPanel
+          entries={auditEntries}
+          loading={auditLoading}
+          error={auditError}
+        />
+      </details>
     </div>
   );
 }
