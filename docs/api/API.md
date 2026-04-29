@@ -787,6 +787,41 @@ Validation: duration `100ms ≤ d ≤ 5min`; warnings emitted at `> 30s` and `> 
 | PATCH  | `deployments/{deployment_id}/default-voice`                 | `{ voiceAssetId: string \| null }`                                                                         | **Spec 035 / 2026-04-28** — Set or clear quick-mode default voice. Returns `204`. |
 | POST   | `deployments/{deployment_id}/resume`                        | —                                                                                                          | Probe — `{ deploymentId, mostRecentRunId, resumable: bool }`. |
 
+#### Audio editing (Spec 036) — `extensions/builtin/emotion-tts/rust/src/router/{audio_edit,utterance_edit,audit}.rs`
+
+> **Wire format:** snake_case (matches the persisted `EditChain` JSON, diverges from the surrounding camelCase emotion-tts surface).
+>
+> **Full schemas:** [`specs/036-audio-editing/contracts/openapi-audio-edit.yaml`](../../specs/036-audio-editing/contracts/openapi-audio-edit.yaml).
+
+| Method | Path                                                                                  | Body / Query                                                              | Description |
+| ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------- |
+| POST   | `voice-assets/{voice_asset_id}/edit?deploymentId=…`                                   | `{ chain: { version: 1, ops[] }, digest_before? }`                        | Apply chain. Returns `{ chain_digest, derived_artifact_ref, source_duration_ms, derived_duration_ms, measured_lufs?, per_op_durations_ms[] }`. 409 + `StaleDigestError` on digest mismatch. |
+| DELETE | `voice-assets/{voice_asset_id}/edit?deploymentId=…`                                   | —                                                                         | Clear chain (no-op if already empty). Returns `204`. |
+| POST   | `voice-assets/{voice_asset_id}/edit/preview?deploymentId=…`                           | `{ chain }`                                                               | Materialise to temp file + stream bytes (`audio/wav` or `audio/mpeg`). Server-side temp file dropped via RAII when stream closes. Response carries `Cache-Control: no-store`. |
+| POST   | `deployments/{deployment_id}/runs/{run_id}/utterances/{utterance_id}/edit`            | `{ chain, digest_before? }`                                               | Per-utterance edit on completed run. Rebuilds segment audio + marks export ZIP stale (`export_status = needs_rebuild`). Same 404-not-403 cross-deployment rule. |
+| GET    | `audit/{target_kind}/{target_id}?deploymentId=…&limit=`                               | `target_kind ∈ {voice_asset, utterance}`; `limit ∈ [1, 200]` default 50    | Reverse-chronological audit entries. Audit rows survive target deletion (FR-030). |
+
+**Op set:** `trim`, `crop`, `normalize`, `speed` (pitch-preserving via ffmpeg `atempo`), `fade_in`, `fade_out`, `mute`. Chain capped at 32 ops (`maxItems: 32`).
+
+**RPC method names** (worker-side JSON-RPC, NOT host literals — boundary-audited):
+
+| Method            | Maps to                                                  |
+| ----------------- | -------------------------------------------------------- |
+| `audio.edit`      | `worker/.../audio_edit/pipeline.py::apply_chain`         |
+| `audio.edit.preview` | Materialise chain to temp file + return path for streaming. |
+
+**Audit log table:** `ext_emotion_tts__audio_edit_log` (migration `017_audio_edit_log.sql`). Indexed on `(target_id, recorded_at DESC)` and `(deployment_id, recorded_at DESC)`. Soft refs only — no FK to target tables, so audit rows persist past target deletion.
+
+**Event:** `extension.emotiontts.audio.edited` on the host event bus (FR-019), payload `{ voice_asset_id, operation_count, derived_artifact_ref }`.
+
+**Migrations contributed by Spec 036:**
+
+| Migration | Adds |
+| --------- | ---- |
+| 015 | `voice_assets.edit_chain_json` (nullable TEXT). |
+| 016 | `utterances.edit_chain_json` (nullable TEXT). |
+| 017 | `ext_emotion_tts__audio_edit_log` table (audit trail). |
+
 ### Storage tables
 
 The extension owns 9 tables under the `emotion_tts` namespace. See [`docs/database-schema.md`](../database-schema.md) for full schema. Notable migrations:
@@ -829,5 +864,6 @@ The binary is intentionally small — it walks the same `build()` function the s
 
 | Date       | Change                                                                                |
 | ---------- | ------------------------------------------------------------------------------------- |
+| 2026-04-28 | Spec 036 audio editing surface added under `nexus.audio.emotiontts`: 5 routes (apply / clear / preview voice-asset edit, per-utterance edit, audit history) + migrations 015–017 + audit log table. |
 | 2026-04-28 | Initial consolidated revision. Replaces the stale `docs/api-reference.md` (will be removed in a follow-up). |
 

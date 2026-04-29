@@ -87,17 +87,30 @@ async fn get_families_lists_reconciled_entries() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let body: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
 
     let families = body["families"].as_array().expect("families array");
     assert!(families.len() >= 2);
-    let v2 = families.iter().find(|f| f["familyId"] == "indextts-2").unwrap();
+    let v2 = families
+        .iter()
+        .find(|f| f["familyId"] == "indextts-2")
+        .unwrap();
     assert_eq!(v2["status"], "available");
     assert_eq!(v2["modelFamilyRef"], "IndexTeam/IndexTTS-2");
-    assert!(v2["supportedLanguages"].as_array().unwrap().contains(&Value::String("zh".into())));
-    let v25 = families.iter().find(|f| f["familyId"] == "indextts-2-5").unwrap();
+    assert!(v2["supportedLanguages"]
+        .as_array()
+        .unwrap()
+        .contains(&Value::String("zh".into())));
+    let v25 = families
+        .iter()
+        .find(|f| f["familyId"] == "indextts-2-5")
+        .unwrap();
     assert_eq!(v25["status"], "not_installed");
-    assert!(v25["supportedLanguages"].as_array().unwrap().contains(&Value::String("ja".into())));
+    assert!(v25["supportedLanguages"]
+        .as_array()
+        .unwrap()
+        .contains(&Value::String("ja".into())));
 }
 
 #[tokio::test]
@@ -158,7 +171,8 @@ async fn get_install_hint_returns_encoded_host_path() {
     assert!(host_endpoint.starts_with("/api/v1/model-store/families/"));
     assert!(host_endpoint.ends_with("/download"));
     assert!(
-        host_endpoint.contains("IndexTeam%2FIndexTTS-2") || host_endpoint.contains("IndexTeam/IndexTTS-2"),
+        host_endpoint.contains("IndexTeam%2FIndexTTS-2")
+            || host_endpoint.contains("IndexTeam/IndexTTS-2"),
         "install hint should carry the URL-encoded or raw ref; got {host_endpoint}",
     );
 }
@@ -174,7 +188,10 @@ async fn partial_status_propagates_missing_detail() {
     let registry = Arc::new(FamilyRegistry::load_from_dir(&families_dir()).expect("load"));
     let reconciler: BoxReconciler = Arc::new(|_id: &str| {
         async {
-            Ok(FamilyStatusSnapshot::partial(vec!["gpt.pth".into(), "bpe.model".into()]))
+            Ok(FamilyStatusSnapshot::partial(vec![
+                "gpt.pth".into(),
+                "bpe.model".into(),
+            ]))
         }
         .boxed()
     });
@@ -209,7 +226,11 @@ async fn partial_status_propagates_missing_detail() {
     }
 
     // FamilyStatus enum round-trip sanity.
-    for variant in [FamilyStatus::Available, FamilyStatus::NotInstalled, FamilyStatus::Partial] {
+    for variant in [
+        FamilyStatus::Available,
+        FamilyStatus::NotInstalled,
+        FamilyStatus::Partial,
+    ] {
         let v = serde_json::to_value(variant).unwrap();
         assert!(v.is_string());
     }

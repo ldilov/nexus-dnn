@@ -72,11 +72,7 @@ async fn load_or_seed(state: &WorkflowsState, dep: &DeploymentId) -> Result<Work
     Ok(seeded)
 }
 
-async fn persist(
-    state: &WorkflowsState,
-    dep: &DeploymentId,
-    doc: &WorkflowDocument,
-) -> Result<()> {
+async fn persist(state: &WorkflowsState, dep: &DeploymentId, doc: &WorkflowDocument) -> Result<()> {
     let document_json = serde_json::to_string(doc)
         .map_err(|e| EmotionTtsError::internal(format!("serialise workflow: {e}")))?;
     let row = WorkflowRow {
@@ -171,12 +167,18 @@ async fn fetch_catalog() -> Response {
         template_id: WORKFLOW_TEMPLATE_ID,
         nodes: CURATED_NODES
             .iter()
-            .map(|(id, op)| CatalogEntry { node_id: *id, operator_id: *op })
+            .map(|(id, op)| CatalogEntry {
+                node_id: *id,
+                operator_id: *op,
+            })
             .collect(),
         recipe_fields: RecipeField::ALL
             .iter()
             .copied()
-            .map(|f| FieldEntry { field: f, targets: f.targets() })
+            .map(|f| FieldEntry {
+                field: f,
+                targets: f.targets(),
+            })
             .collect(),
     };
     (StatusCode::OK, Json(body)).into_response()

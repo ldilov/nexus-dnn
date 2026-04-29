@@ -75,7 +75,10 @@ impl Operator for EmotionResolveOperator {
     }
 }
 
-fn mapping_for(ru: &ResolvedUtterance, mappings: &[CharacterMappingRow]) -> Option<MappingDefaults> {
+fn mapping_for(
+    ru: &ResolvedUtterance,
+    mappings: &[CharacterMappingRow],
+) -> Option<MappingDefaults> {
     let id = ru.mapping_id.as_ref()?;
     let row = mappings.iter().find(|m| m.mapping_id.as_str() == id)?;
     let mode = match row.default_emotion_mode.as_str() {
@@ -86,7 +89,10 @@ fn mapping_for(ru: &ResolvedUtterance, mappings: &[CharacterMappingRow]) -> Opti
     };
     Some(MappingDefaults {
         mode,
-        audio_ref_id: row.default_emotion_voice_asset_id.as_ref().map(|v| v.to_string()),
+        audio_ref_id: row
+            .default_emotion_voice_asset_id
+            .as_ref()
+            .map(|v| v.to_string()),
         vector: None,
         qwen_template: row.default_qwen_template.clone(),
         alpha: None,

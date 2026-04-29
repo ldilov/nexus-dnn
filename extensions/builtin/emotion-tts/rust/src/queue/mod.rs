@@ -55,11 +55,19 @@ impl RuntimeQueue {
         }
     }
 
-    pub async fn enqueue_batch(&self, run_id: RunId, deployment_id: impl Into<String>) -> QueuedRun {
+    pub async fn enqueue_batch(
+        &self,
+        run_id: RunId,
+        deployment_id: impl Into<String>,
+    ) -> QueuedRun {
         self.enqueue(run_id, deployment_id, RunClass::Batch).await
     }
 
-    pub async fn enqueue_test_line(&self, run_id: RunId, deployment_id: impl Into<String>) -> Result<QueuedRun> {
+    pub async fn enqueue_test_line(
+        &self,
+        run_id: RunId,
+        deployment_id: impl Into<String>,
+    ) -> Result<QueuedRun> {
         let mut state = self.state.lock().await;
         if state.test_slot.is_some() {
             return Err(EmotionTtsError::conflict("test-line slot already occupied"));
@@ -76,7 +84,12 @@ impl RuntimeQueue {
         Ok(queued)
     }
 
-    pub async fn enqueue(&self, run_id: RunId, deployment_id: impl Into<String>, class: RunClass) -> QueuedRun {
+    pub async fn enqueue(
+        &self,
+        run_id: RunId,
+        deployment_id: impl Into<String>,
+        class: RunClass,
+    ) -> QueuedRun {
         let queued = QueuedRun {
             run_id,
             deployment_id: deployment_id.into(),
@@ -160,10 +173,18 @@ impl RuntimeQueue {
 
     pub async fn position_of(&self, run_id: &RunId) -> Option<i64> {
         let state = self.state.lock().await;
-        if state.in_flight.as_ref().is_some_and(|q| q.run_id == *run_id) {
+        if state
+            .in_flight
+            .as_ref()
+            .is_some_and(|q| q.run_id == *run_id)
+        {
             return Some(0);
         }
-        if state.test_slot.as_ref().is_some_and(|q| q.run_id == *run_id) {
+        if state
+            .test_slot
+            .as_ref()
+            .is_some_and(|q| q.run_id == *run_id)
+        {
             return Some(1);
         }
         state

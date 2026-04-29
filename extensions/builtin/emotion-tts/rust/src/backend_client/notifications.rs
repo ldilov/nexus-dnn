@@ -106,7 +106,10 @@ mod tests {
             method: "segment_completed".into(),
             params: serde_json::json!({"idx": 1}),
         };
-        assert!(matches!(ProgressEvent::from(env), ProgressEvent::SegmentCompleted(_)));
+        assert!(matches!(
+            ProgressEvent::from(env),
+            ProgressEvent::SegmentCompleted(_)
+        ));
     }
 
     #[test]

@@ -4,6 +4,8 @@
 //! `runs` (the US1 MVP surface); other families remain 501 stubs until
 //! their owning user story lands.
 
+pub mod audio_edit;
+pub mod audit;
 pub mod deployments;
 pub mod engine_settings;
 pub mod exports;
@@ -14,6 +16,7 @@ pub mod middleware;
 pub mod presets;
 pub mod runs;
 pub mod runtime;
+pub mod utterance_edit;
 pub mod voice_assets;
 pub mod workflows;
 
@@ -65,6 +68,8 @@ pub fn build_router_with_families(
         queue: queue.clone(),
         extension_version: extension_version.into(),
         run_channels,
+        artifact_store: artifact_store.clone(),
+        lease_provider: provider.clone(),
     };
     let mut router = Router::new()
         .merge(runs::router(runs_state))
@@ -80,6 +85,7 @@ pub fn build_router_with_families(
         )
         .nest("/workflow", workflows::router(repos.clone()))
         .merge(engine_settings::router(repos.clone()))
+        .merge(audit::router(repos.clone()))
         .merge(families::router(families::FamiliesState {
             registry: family_registry,
             reconciler,

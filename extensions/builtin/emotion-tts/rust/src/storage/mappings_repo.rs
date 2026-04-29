@@ -23,7 +23,9 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<CharacterMappingRow> {
     let id: String = row.try_get("mapping_id").map_err(to_err)?;
     let dep: String = row.try_get("deployment_id").map_err(to_err)?;
     let speaker: String = row.try_get("speaker_voice_asset_id").map_err(to_err)?;
-    let emo_va: Option<String> = row.try_get("default_emotion_voice_asset_id").map_err(to_err)?;
+    let emo_va: Option<String> = row
+        .try_get("default_emotion_voice_asset_id")
+        .map_err(to_err)?;
     let preset: Option<String> = row.try_get("default_vector_preset_id").map_err(to_err)?;
     let is_active: i64 = row.try_get("is_active").map_err(to_err)?;
     Ok(CharacterMappingRow {
@@ -82,11 +84,12 @@ impl MappingsRepo for SqliteMappingsRepo {
     }
 
     async fn get(&self, id: &MappingId) -> RepoResult<Option<CharacterMappingRow>> {
-        let row = sqlx::query("SELECT * FROM ext_emotion_tts__character_mappings WHERE mapping_id = ?")
-            .bind(id.as_str())
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(to_err)?;
+        let row =
+            sqlx::query("SELECT * FROM ext_emotion_tts__character_mappings WHERE mapping_id = ?")
+                .bind(id.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(to_err)?;
         row.as_ref().map(map_row).transpose()
     }
 

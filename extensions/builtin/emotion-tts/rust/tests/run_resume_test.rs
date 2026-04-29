@@ -122,6 +122,7 @@ async fn insert_run(repos: &Repos, dep: &DeploymentId, status: &str, kind: &str)
             finished_at: if status == "queued" { None } else { Some(now) },
             error_category: None,
             error_detail: None,
+            export_zip_stale_at: None,
         })
         .await
         .unwrap();
@@ -164,7 +165,10 @@ async fn resume_of_cancelled_run_creates_new_run_with_original_run_id() {
     assert_eq!(new_row.speed_factor, 1.1);
     assert_eq!(new_row.base_seed, 42);
     assert_eq!(
-        new_row.original_run_id.as_ref().map(|r| r.as_str().to_string()),
+        new_row
+            .original_run_id
+            .as_ref()
+            .map(|r| r.as_str().to_string()),
         Some(original.as_str().to_string())
     );
 }
@@ -193,7 +197,10 @@ async fn resume_chains_original_run_id_through_multiple_resumes() {
     let third = RunId::try_from(third_id).unwrap();
     let third_row = repos.runs.get(&third).await.unwrap().unwrap();
     assert_eq!(
-        third_row.original_run_id.as_ref().map(|r| r.as_str().to_string()),
+        third_row
+            .original_run_id
+            .as_ref()
+            .map(|r| r.as_str().to_string()),
         Some(first.as_str().to_string()),
         "chained resume preserves the earliest interrupted run id on the new row"
     );
@@ -277,7 +284,11 @@ async fn cancel_flips_deployment_partial_run_id() {
 
     let req = Request::builder()
         .method(Method::POST)
-        .uri(format!("/deployments/{}/runs/{}/cancel", dep.as_str(), run_id.as_str()))
+        .uri(format!(
+            "/deployments/{}/runs/{}/cancel",
+            dep.as_str(),
+            run_id.as_str()
+        ))
         .body(Body::empty())
         .unwrap();
     let (status, _) = parse(router.clone().oneshot(req).await.unwrap()).await;
@@ -285,7 +296,10 @@ async fn cancel_flips_deployment_partial_run_id() {
 
     let dep_row = repos.deployments.get(&dep).await.unwrap().unwrap();
     assert_eq!(
-        dep_row.partial_run_id.as_ref().map(|r| r.as_str().to_string()),
+        dep_row
+            .partial_run_id
+            .as_ref()
+            .map(|r| r.as_str().to_string()),
         Some(run_id.as_str().to_string())
     );
 }
@@ -297,7 +311,11 @@ async fn cancel_does_not_flip_partial_run_id_for_test_line() {
 
     let req = Request::builder()
         .method(Method::POST)
-        .uri(format!("/deployments/{}/runs/{}/cancel", dep.as_str(), run_id.as_str()))
+        .uri(format!(
+            "/deployments/{}/runs/{}/cancel",
+            dep.as_str(),
+            run_id.as_str()
+        ))
         .body(Body::empty())
         .unwrap();
     let (status, _) = parse(router.clone().oneshot(req).await.unwrap()).await;
