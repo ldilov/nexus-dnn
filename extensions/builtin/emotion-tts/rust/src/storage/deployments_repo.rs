@@ -24,22 +24,35 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<DeploymentRow> {
     let most_recent: Option<String> = row.try_get("most_recent_run_id").map_err(sqlx_to_err)?;
     let partial_run: Option<String> = row.try_get("partial_run_id").map_err(sqlx_to_err)?;
 
-    let ref_pp_raw: Option<i64> = row.try_get("reference_preprocess_enabled").map_err(sqlx_to_err)?;
+    let ref_pp_raw: Option<i64> = row
+        .try_get("reference_preprocess_enabled")
+        .map_err(sqlx_to_err)?;
     let oas_raw: Option<i64> = row.try_get("oas_enabled").map_err(sqlx_to_err)?;
     let compile_raw: Option<i64> = row.try_get("compile_gpt_enabled").map_err(sqlx_to_err)?;
     let model_family: Option<String> = row.try_get("model_family").map_err(sqlx_to_err)?;
-    let default_voice_raw: Option<String> = row.try_get("default_voice_asset_id").map_err(sqlx_to_err)?;
+    let default_voice_raw: Option<String> =
+        row.try_get("default_voice_asset_id").map_err(sqlx_to_err)?;
 
     Ok(DeploymentRow {
         deployment_id: DeploymentId::try_from(id_s.as_str())?,
-        host_extension_instance_ref: row.try_get("host_extension_instance_ref").map_err(sqlx_to_err)?,
+        host_extension_instance_ref: row
+            .try_get("host_extension_instance_ref")
+            .map_err(sqlx_to_err)?,
         display_name: row.try_get("display_name").map_err(sqlx_to_err)?,
-        backend_runtime_preference: row.try_get("backend_runtime_preference").map_err(sqlx_to_err)?,
+        backend_runtime_preference: row
+            .try_get("backend_runtime_preference")
+            .map_err(sqlx_to_err)?,
         default_output_format: row.try_get("default_output_format").map_err(sqlx_to_err)?,
         default_speed_factor: row.try_get("default_speed_factor").map_err(sqlx_to_err)?,
-        default_generation_overrides_json: row.try_get("default_generation_overrides_json").map_err(sqlx_to_err)?,
-        most_recent_run_id: most_recent.map(|s| RunId::try_from(s.as_str())).transpose()?,
-        partial_run_id: partial_run.map(|s| RunId::try_from(s.as_str())).transpose()?,
+        default_generation_overrides_json: row
+            .try_get("default_generation_overrides_json")
+            .map_err(sqlx_to_err)?,
+        most_recent_run_id: most_recent
+            .map(|s| RunId::try_from(s.as_str()))
+            .transpose()?,
+        partial_run_id: partial_run
+            .map(|s| RunId::try_from(s.as_str()))
+            .transpose()?,
         reference_preprocess_enabled: ref_pp_raw.map_or(true, |v| v != 0),
         oas_enabled: oas_raw.map_or(true, |v| v != 0),
         compile_gpt_enabled: compile_raw.map_or(false, |v| v != 0),
@@ -95,10 +108,11 @@ impl DeploymentsRepo for SqliteDeploymentsRepo {
     }
 
     async fn list(&self) -> RepoResult<Vec<DeploymentRow>> {
-        let rows = sqlx::query("SELECT * FROM ext_emotion_tts__deployments ORDER BY updated_at DESC")
-            .fetch_all(&self.pool)
-            .await
-            .map_err(sqlx_to_err)?;
+        let rows =
+            sqlx::query("SELECT * FROM ext_emotion_tts__deployments ORDER BY updated_at DESC")
+                .fetch_all(&self.pool)
+                .await
+                .map_err(sqlx_to_err)?;
         rows.iter().map(map_row).collect()
     }
 

@@ -87,6 +87,7 @@ async fn insert_run(repos: &Repos, dep: &DeploymentId, status: &str) -> RunId {
             finished_at: if status == "queued" { None } else { Some(now) },
             error_category: None,
             error_detail: None,
+            export_zip_stale_at: None,
         })
         .await
         .unwrap();

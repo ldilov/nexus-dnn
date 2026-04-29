@@ -138,7 +138,11 @@ async fn lookup_many_returns_aligned_results() {
     let h1 = hash(1);
     let h2 = hash(2);
     insert_entry(&repos, &h1, 1024, 100).await;
-    let results = repos.cache.lookup_many(&[h1.clone(), h2.clone()]).await.unwrap();
+    let results = repos
+        .cache
+        .lookup_many(&[h1.clone(), h2.clone()])
+        .await
+        .unwrap();
     assert_eq!(results.len(), 2);
     assert!(results[0].is_some(), "h1 in cache");
     assert!(results[1].is_none(), "h2 not in cache");

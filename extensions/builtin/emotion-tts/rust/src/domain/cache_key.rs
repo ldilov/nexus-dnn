@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::domain::emotion::EmotionPayload;
-use crate::domain::{ContentHash, EmotionTtsError, Result};
+use crate::domain::{ChainDigest, ContentHash, EmotionTtsError, Result};
 
 pub const FORMAT_VERSION: &str = "v2";
 
@@ -29,6 +29,8 @@ pub struct CacheKeyInput {
     pub speed_factor: f64,
     pub speed_mode: String,
     pub output_format: String,
+    #[serde(default)]
+    pub voice_asset_chain_digest: ChainDigest,
 }
 
 fn default_model_family() -> String {
@@ -51,7 +53,8 @@ pub fn build_canonical_string(input: &CacheKeyInput) -> String {
          seed={seed}\n\
          speed_factor={speed}\n\
          speed_mode={speed_mode}\n\
-         output_format={output_format}",
+         output_format={output_format}\n\
+         voice_asset_chain_digest={chain_digest}",
         version = FORMAT_VERSION,
         ext = input.extension_version,
         runtime = input.runtime_version,
@@ -66,6 +69,7 @@ pub fn build_canonical_string(input: &CacheKeyInput) -> String {
         speed = speed,
         speed_mode = input.speed_mode,
         output_format = input.output_format,
+        chain_digest = input.voice_asset_chain_digest.as_str(),
     )
 }
 
@@ -133,6 +137,7 @@ mod tests {
             speed_factor: 1.0,
             speed_mode: "preserve_pitch".into(),
             output_format: "mp3".into(),
+            voice_asset_chain_digest: ChainDigest::EMPTY.clone(),
         }
     }
 
@@ -222,7 +227,10 @@ mod tests {
     fn content_hash_is_valid_64_char_lower_hex() {
         let h = build(&sample_input()).unwrap();
         assert_eq!(h.as_str().len(), 64);
-        assert!(h.as_str().chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert!(h
+            .as_str()
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
     }
 
     #[test]
@@ -240,6 +248,50 @@ mod tests {
         assert_ne!(
             a, b,
             "FR-242: cache key MUST include model_family so cross-family hits are impossible",
+        );
+    }
+
+    #[test]
+    fn chain_digest_change_changes_hash() {
+        let a = build(&sample_input()).unwrap();
+        let mut i = sample_input();
+        let chain = crate::domain::EditChain {
+            version: 1,
+            ops: vec![crate::domain::EditOp::Trim {
+                id: crate::domain::OperationId::new(),
+                start_ms: 100,
+                end_ms: 5_000,
+            }],
+        };
+        i.voice_asset_chain_digest = ChainDigest::of(&chain);
+        let b = build(&i).unwrap();
+        assert_ne!(
+            a, b,
+            "SC-003: a populated voice-asset chain digest MUST invalidate cache hits",
+        );
+    }
+
+    #[test]
+    fn chain_clear_restores_empty_cache_key() {
+        let initial = build(&sample_input()).unwrap();
+        let mut populated = sample_input();
+        let chain = crate::domain::EditChain {
+            version: 1,
+            ops: vec![crate::domain::EditOp::Normalize {
+                id: crate::domain::OperationId::new(),
+                target_lufs: -16.0,
+            }],
+        };
+        populated.voice_asset_chain_digest = ChainDigest::of(&chain);
+        let intermediate = build(&populated).unwrap();
+        assert_ne!(initial, intermediate);
+
+        let mut cleared = populated;
+        cleared.voice_asset_chain_digest = ChainDigest::EMPTY.clone();
+        let restored = build(&cleared).unwrap();
+        assert_eq!(
+            initial, restored,
+            "SC-004: clearing the chain MUST restore the original cache key",
         );
     }
 }

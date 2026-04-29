@@ -76,11 +76,7 @@ pub fn filter_graph(speed_factor: f64) -> Option<String> {
 
 #[must_use]
 pub fn ffmpeg_args(input: &Input) -> Vec<String> {
-    let mut args = vec![
-        "-y".into(),
-        "-i".into(),
-        input.input_wav_abs.clone(),
-    ];
+    let mut args = vec!["-y".into(), "-i".into(), input.input_wav_abs.clone()];
 
     if let Some(graph) = filter_graph(input.speed_factor) {
         args.push("-filter:a".into());

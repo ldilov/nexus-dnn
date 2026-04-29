@@ -145,33 +145,33 @@ async fn dispatch_inner(
         .await?
         .ok_or_else(|| EmotionTtsError::not_found(format!("deployment {dep_id}")))?;
     let voice_rows = repos.voice_assets.list_by_deployment(&dep_id).await?;
-    let mut voice_paths: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-    let mut voice_sha256s: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut voice_paths: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    let mut voice_sha256s: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     for row in voice_rows {
         let key = row.voice_asset_id.as_str().to_string();
-        // The voice_assets row's audio_artifact_ref is a host-internal
-        // artifact reference (e.g., "blobs/1f/1f84...") — NOT an absolute
-        // filesystem path. The worker needs an absolute path it can open.
-        // Resolve through the host's artifact store when available; fall
-        // back to the raw ref so tests that pre-populate absolute paths
-        // continue to work.
+        let path_ref = row
+            .derived_artifact_ref
+            .clone()
+            .unwrap_or_else(|| row.audio_artifact_ref.clone());
         let resolved_path = if let Some(store) = artifact_store.as_ref() {
-            match store.resolve_path(&row.audio_artifact_ref).await {
+            match store.resolve_path(&path_ref).await {
                 Ok(abs) => abs,
                 Err(err) => {
                     tracing::warn!(
                         target: "emotion_tts::dispatch",
                         voice_asset_id = key.as_str(),
-                        artifact_ref = %row.audio_artifact_ref,
+                        artifact_ref = %path_ref,
                         error = %err,
                         "artifact store could not resolve voice path; \
                          falling back to raw ref (worker will likely fail)"
                     );
-                    row.audio_artifact_ref.clone()
+                    path_ref
                 }
             }
         } else {
-            row.audio_artifact_ref.clone()
+            path_ref
         };
         voice_paths.insert(key.clone(), resolved_path);
         voice_sha256s.insert(key, row.content_sha256);
@@ -217,8 +217,10 @@ async fn dispatch_inner(
     };
 
     // Build a map from hash → cache row.
-    let mut hit_by_hash: std::collections::HashMap<String, crate::storage::repo_traits::SynthesisCacheRow> =
-        std::collections::HashMap::new();
+    let mut hit_by_hash: std::collections::HashMap<
+        String,
+        crate::storage::repo_traits::SynthesisCacheRow,
+    > = std::collections::HashMap::new();
     for (h, maybe_row) in hashes.iter().zip(lookups.into_iter()) {
         if let Some(row) = maybe_row {
             hit_by_hash.insert(h.as_str().to_string(), row);
@@ -263,6 +265,9 @@ async fn dispatch_inner(
                     finished_at: Some(Utc::now().timestamp()),
                     failure_category: None,
                     failure_detail: None,
+                    edit_chain_json: None,
+                    derived_artifact_ref: None,
+                    updated_at: None,
                 }
             } else {
                 UtteranceRow {
@@ -292,6 +297,9 @@ async fn dispatch_inner(
                     finished_at: None,
                     failure_category: None,
                     failure_detail: None,
+                    edit_chain_json: None,
+                    derived_artifact_ref: None,
+                    updated_at: None,
                 }
             }
         })
@@ -333,7 +341,11 @@ async fn dispatch_inner(
         // utterance set don't observe permanently-stale `queued` rows.
         // `process_one` writes the terminal `cancelled` status on the run
         // itself based on the returned string.
-        let utts = repos.utterances.list_by_run(run_id).await.unwrap_or_default();
+        let utts = repos
+            .utterances
+            .list_by_run(run_id)
+            .await
+            .unwrap_or_default();
         for u in utts {
             if u.status == "queued" {
                 if let Err(err) = repos
@@ -404,7 +416,9 @@ async fn dispatch_inner(
         .collect();
 
     let mut batch_input = prepared.batch_input.clone();
-    batch_input.segments.retain(|s| miss_segment_ids.contains(&s.segment_id));
+    batch_input
+        .segments
+        .retain(|s| miss_segment_ids.contains(&s.segment_id));
 
     // Dispatch the batch RPC and the notification draining concurrently.
     // The worker emits per-segment notifications while the RPC is in
@@ -477,7 +491,10 @@ async fn dispatch_inner(
     // emitted `RunTerminal`, producing out-of-order SSE events and
     // stale row state.
     let mut drain = drain;
-    if tokio::time::timeout(Duration::from_secs(2), &mut drain).await.is_err() {
+    if tokio::time::timeout(Duration::from_secs(2), &mut drain)
+        .await
+        .is_err()
+    {
         drain.abort();
     }
 
@@ -486,7 +503,11 @@ async fn dispatch_inner(
         // terminal status (above) and any future read of the run reflect
         // the user's intent. Errors are logged but do not block the
         // cancel response — the run row itself is updated by process_one.
-        let utts = repos.utterances.list_by_run(run_id).await.unwrap_or_default();
+        let utts = repos
+            .utterances
+            .list_by_run(run_id)
+            .await
+            .unwrap_or_default();
         for u in utts {
             if u.status == "running" || u.status == "queued" {
                 if let Err(err) = repos
@@ -521,54 +542,54 @@ async fn dispatch_inner(
     let now = Utc::now().timestamp();
     let utts_after = repos.utterances.list_by_run(run_id).await?;
     if !is_test_line {
-    for u in &utts_after {
-        if u.cache_hit {
-            continue;
+        for u in &utts_after {
+            if u.cache_hit {
+                continue;
+            }
+            if u.status != "completed" {
+                continue;
+            }
+            let Some(hash_str) = u.content_hash.clone() else {
+                continue;
+            };
+            let Some(audio_ref) = u.audio_artifact_ref.clone() else {
+                continue;
+            };
+            let hash = match crate::domain::ContentHash::from_hex(hash_str) {
+                Ok(h) => h,
+                Err(_) => continue,
+            };
+            let cache_row = crate::storage::repo_traits::SynthesisCacheRow {
+                content_hash: hash,
+                audio_artifact_ref: audio_ref,
+                extension_version: extension_version.to_string(),
+                runtime_version: runtime_meta
+                    .as_ref()
+                    .map_or(
+                        crate::backend_client::FALLBACK_RUNTIME_VERSION,
+                        crate::backend_client::HandshakeInfo::runtime_version_for_cache,
+                    )
+                    .to_string(),
+                model_version: runtime_meta
+                    .as_ref()
+                    .map_or(
+                        crate::backend_client::FALLBACK_MODEL_VERSION,
+                        crate::backend_client::HandshakeInfo::model_version_for_cache,
+                    )
+                    .to_string(),
+                size_bytes: 0,
+                hit_count: 0,
+                created_at: now,
+                last_hit_at: now,
+            };
+            if let Err(e) = repos.cache.insert(&cache_row).await {
+                tracing::debug!(
+                    target: "emotion_tts::dispatch",
+                    error = %e,
+                    "cache insert failed (likely duplicate)"
+                );
+            }
         }
-        if u.status != "completed" {
-            continue;
-        }
-        let Some(hash_str) = u.content_hash.clone() else {
-            continue;
-        };
-        let Some(audio_ref) = u.audio_artifact_ref.clone() else {
-            continue;
-        };
-        let hash = match crate::domain::ContentHash::from_hex(hash_str) {
-            Ok(h) => h,
-            Err(_) => continue,
-        };
-        let cache_row = crate::storage::repo_traits::SynthesisCacheRow {
-            content_hash: hash,
-            audio_artifact_ref: audio_ref,
-            extension_version: extension_version.to_string(),
-            runtime_version: runtime_meta
-                .as_ref()
-                .map_or(
-                    crate::backend_client::FALLBACK_RUNTIME_VERSION,
-                    crate::backend_client::HandshakeInfo::runtime_version_for_cache,
-                )
-                .to_string(),
-            model_version: runtime_meta
-                .as_ref()
-                .map_or(
-                    crate::backend_client::FALLBACK_MODEL_VERSION,
-                    crate::backend_client::HandshakeInfo::model_version_for_cache,
-                )
-                .to_string(),
-            size_bytes: 0,
-            hit_count: 0,
-            created_at: now,
-            last_hit_at: now,
-        };
-        if let Err(e) = repos.cache.insert(&cache_row).await {
-            tracing::debug!(
-                target: "emotion_tts::dispatch",
-                error = %e,
-                "cache insert failed (likely duplicate)"
-            );
-        }
-    }
     }
 
     // Recompute terminal status from utterance rows — the most reliable

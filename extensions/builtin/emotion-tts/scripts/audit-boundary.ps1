@@ -42,6 +42,7 @@ $hostBackendRuntimesView = Join-Path $RepoRoot 'apps/web/src/views/backend-runti
 # the rule, not a leak.
 $grandfatheredFixtures = @(
     (Join-Path $RepoRoot 'crates/nexus-backend-runtimes/src/generic/ids/runtime_id.rs'),
+    (Join-Path $RepoRoot 'crates/nexus-backend-runtimes/src/generic/leases/stdio_lease.rs'),
     (Join-Path $RepoRoot 'crates/nexus-extension-deps/tests/boundary_test.rs'),
     # Spec 030 router-mount wiring. Cargo deps + the providers vec
     # in `app.rs` MUST name the extension by id — that's how the

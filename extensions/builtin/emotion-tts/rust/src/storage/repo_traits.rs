@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::domain::{
-    ContentHash, DeploymentId, EmotionTtsError, ExportId, MappingId, PresetId, RunId, UtteranceId,
-    VoiceAssetId,
+    ContentHash, DeploymentId, EditChain, EmotionTtsError, ExportId, MappingId, PresetId, RunId,
+    UtteranceId, VoiceAssetId,
 };
 
 pub type RepoResult<T> = Result<T, EmotionTtsError>;
@@ -70,6 +70,13 @@ pub struct VoiceAssetRow {
     pub preprocessed_artifact_ref: Option<String>,
     #[serde(default)]
     pub preprocessing_report_json: Option<String>,
+    #[serde(default)]
+    pub edit_chain_json: Option<String>,
+    /// Spec 036 / US1 — set when an audio-edit chain has been applied. The
+    /// host artifact ref of the materialised derived blob. `audio_artifact_ref`
+    /// always stays pointed at the source so revert is a single column clear.
+    #[serde(default)]
+    pub derived_artifact_ref: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -129,6 +136,11 @@ pub struct RunRow {
     pub finished_at: Option<i64>,
     pub error_category: Option<String>,
     pub error_detail: Option<String>,
+    /// Spec 036 / US2 — set when a per-utterance edit lands on a completed
+    /// run, signalling the export ZIP no longer matches the segment audio
+    /// on disk. NULL means the ZIP is fresh (or no export has been built).
+    #[serde(default)]
+    pub export_zip_stale_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,6 +171,16 @@ pub struct UtteranceRow {
     pub finished_at: Option<i64>,
     pub failure_category: Option<String>,
     pub failure_detail: Option<String>,
+    #[serde(default)]
+    pub edit_chain_json: Option<String>,
+    /// Spec 036 / US2 — set when an audio-edit chain has been applied to this
+    /// utterance. Holds the host artifact ref of the materialised derived
+    /// segment audio. `audio_artifact_ref` always stays pointed at the
+    /// originally-synthesized segment (FR-008).
+    #[serde(default)]
+    pub derived_artifact_ref: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -241,6 +263,24 @@ pub trait VoiceAssetsRepo: Send + Sync {
         preprocessed_artifact_ref: Option<&str>,
         preprocessing_report_json: Option<&str>,
     ) -> RepoResult<()>;
+    async fn read_edit_chain(&self, asset_id: &VoiceAssetId) -> RepoResult<Option<EditChain>>;
+    async fn read_edit_chains_for(
+        &self,
+        asset_ids: &[VoiceAssetId],
+    ) -> RepoResult<std::collections::HashMap<String, EditChain>>;
+    async fn write_edit_chain(
+        &self,
+        asset_id: &VoiceAssetId,
+        chain: Option<&EditChain>,
+    ) -> RepoResult<()>;
+    /// Spec 036 / US1 — set or clear the derived artifact ref produced by
+    /// applying an edit chain. Passing `None` clears the column (revert to
+    /// source).
+    async fn set_derived_artifact_ref(
+        &self,
+        asset_id: &VoiceAssetId,
+        derived_artifact_ref: Option<&str>,
+    ) -> RepoResult<()>;
 }
 
 #[async_trait]
@@ -248,7 +288,11 @@ pub trait MappingsRepo: Send + Sync {
     async fn insert(&self, row: &CharacterMappingRow) -> RepoResult<()>;
     async fn get(&self, id: &MappingId) -> RepoResult<Option<CharacterMappingRow>>;
     async fn list_by_deployment(&self, dep: &DeploymentId) -> RepoResult<Vec<CharacterMappingRow>>;
-    async fn find_by_character(&self, dep: &DeploymentId, name_lower: &str) -> RepoResult<Option<CharacterMappingRow>>;
+    async fn find_by_character(
+        &self,
+        dep: &DeploymentId,
+        name_lower: &str,
+    ) -> RepoResult<Option<CharacterMappingRow>>;
     async fn update(&self, row: &CharacterMappingRow) -> RepoResult<()>;
     async fn deactivate(&self, id: &MappingId) -> RepoResult<()>;
 }
@@ -267,7 +311,12 @@ pub trait RunsRepo: Send + Sync {
     async fn insert(&self, row: &RunRow) -> RepoResult<()>;
     async fn get(&self, id: &RunId) -> RepoResult<Option<RunRow>>;
     async fn list_by_deployment(&self, dep: &DeploymentId, limit: i64) -> RepoResult<Vec<RunRow>>;
-    async fn update_status(&self, id: &RunId, status: &str, finished_at: Option<i64>) -> RepoResult<()>;
+    async fn update_status(
+        &self,
+        id: &RunId,
+        status: &str,
+        finished_at: Option<i64>,
+    ) -> RepoResult<()>;
     /// Update status only if the current status is one of `from_any`.
     ///
     /// Returns `true` if a row matched and was updated; `false` if the row was
@@ -283,6 +332,11 @@ pub trait RunsRepo: Send + Sync {
     /// the time of the call. Closes the race where a cancel arriving between
     /// utterance insertion and dispatcher start would be silently overwritten.
     async fn set_started_guarded(&self, id: &RunId, at: i64) -> RepoResult<bool>;
+    /// Spec 036 / US2 — mark the run's export ZIP stale by stamping
+    /// `export_zip_stale_at` with the current epoch second. Called from the
+    /// per-utterance edit handler so the run-detail UI can surface a
+    /// "rebuild export" CTA. Idempotent.
+    async fn set_export_zip_stale(&self, id: &RunId) -> RepoResult<()>;
 }
 
 #[async_trait]
@@ -298,12 +352,43 @@ pub trait UtterancesRepo: Send + Sync {
         cache_hit: bool,
         duration_ms: Option<i64>,
     ) -> RepoResult<()>;
+    /// Spec 036 — load the persisted edit chain for an utterance.
+    /// Returns `None` when the column is `NULL` (no chain → use source segment).
+    async fn read_edit_chain(&self, utterance_id: &UtteranceId) -> RepoResult<Option<EditChain>>;
+    /// Spec 036 — write or clear the edit chain for an utterance.
+    /// Passing `None` writes `NULL` (chain cleared).
+    async fn write_edit_chain(
+        &self,
+        utterance_id: &UtteranceId,
+        chain: Option<&EditChain>,
+    ) -> RepoResult<()>;
+    /// Spec 036 / US2 — set or clear the derived artifact ref produced by
+    /// applying a per-utterance edit chain. Passing `None` clears the column
+    /// (revert to the source segment audio).
+    async fn set_derived_artifact_ref(
+        &self,
+        utterance_id: &UtteranceId,
+        derived_artifact_ref: Option<&str>,
+    ) -> RepoResult<()>;
+
+    /// Spec 036 / US2 — atomic write of `edit_chain_json` + `derived_artifact_ref`
+    /// in a single UPDATE so the persisted chain and the derived blob ref can
+    /// never diverge under partial-failure of two separate statements.
+    async fn write_edit_chain_with_derived(
+        &self,
+        utterance_id: &UtteranceId,
+        chain: Option<&EditChain>,
+        derived_artifact_ref: Option<&str>,
+    ) -> RepoResult<()>;
 }
 
 #[async_trait]
 pub trait SynthesisCacheRepo: Send + Sync {
     async fn get(&self, hash: &ContentHash) -> RepoResult<Option<SynthesisCacheRow>>;
-    async fn lookup_many(&self, hashes: &[ContentHash]) -> RepoResult<Vec<Option<SynthesisCacheRow>>>;
+    async fn lookup_many(
+        &self,
+        hashes: &[ContentHash],
+    ) -> RepoResult<Vec<Option<SynthesisCacheRow>>>;
     async fn insert(&self, row: &SynthesisCacheRow) -> RepoResult<()>;
     async fn record_hit(&self, hash: &ContentHash, at: i64) -> RepoResult<()>;
     async fn total_size_bytes(&self) -> RepoResult<i64>;
@@ -328,7 +413,11 @@ pub trait WorkflowsRepo: Send + Sync {
 #[async_trait]
 pub trait ExportHistoryRepo: Send + Sync {
     async fn insert(&self, row: &ExportHistoryRow) -> RepoResult<()>;
-    async fn list_by_deployment(&self, dep: &DeploymentId, limit: i64) -> RepoResult<Vec<ExportHistoryRow>>;
+    async fn list_by_deployment(
+        &self,
+        dep: &DeploymentId,
+        limit: i64,
+    ) -> RepoResult<Vec<ExportHistoryRow>>;
     async fn get(&self, id: &ExportId) -> RepoResult<Option<ExportHistoryRow>>;
     async fn get_latest_for_run(&self, run: &RunId) -> RepoResult<Option<ExportHistoryRow>>;
 }

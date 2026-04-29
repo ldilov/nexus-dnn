@@ -101,6 +101,11 @@ export interface UtteranceState {
   durationMs?: number | null;
   status: UtteranceStatus;
   failureCategory?: string | null;
+  derivedArtifactRef?: string | null;
+  /** @internal Backend-persisted chain JSON; opaque to the frontend. Apply/clear
+   * actions use the typed `EditChain` from `audio_edit_client.ts`; this field is
+   * mirrored on the row shape only for forward compatibility. */
+  readonly editChainJson?: string | null;
 }
 
 export interface Run extends RunSummary {
@@ -117,6 +122,7 @@ export interface Run extends RunSummary {
   exportArtifactRef?: string | null;
   manifestArtifactRef?: string | null;
   previewArtifactRef?: string | null;
+  exportZipStaleAt?: number | null;
 }
 
 export interface ErrorEnvelope {

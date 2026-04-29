@@ -47,10 +47,10 @@ pub async fn run(ctx: &mut InstallCtx) -> Result<(), GenericInstallError> {
     })?;
     let cache_target = cache_root.join(format!("{}.bin", &asset.sha256));
 
-    let need_fetch = match inspect_existing(&cache_target, &asset.sha256).await {
-        Some(n) if n == asset.size => false,
-        _ => true,
-    };
+    let need_fetch = !matches!(
+        inspect_existing(&cache_target, &asset.sha256).await,
+        Some(n) if n == asset.size
+    );
 
     if need_fetch {
         if let Some(rest) = asset.url.strip_prefix("file://") {

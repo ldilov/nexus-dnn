@@ -233,3 +233,62 @@ pub struct PreprocessWarningPayload {
     pub skipped_stage: String,
     pub reason: String,
 }
+
+// ---------------------------------------------------------------------------
+// audio.edit + audio.edit.preview  (spec 036, US1)
+//
+// `chain` is carried as a raw `serde_json::Value` so the wire format stays
+// stable across schema evolution — the worker re-validates it server-side
+// against `EditChain`. Keeping it untyped here avoids a host-side recompile
+// every time the chain JSON gains an optional field.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct AudioEditParams {
+    pub request_id: String,
+    pub source_artifact_abs: String,
+    pub output_artifact_abs: String,
+    pub chain: serde_json::Value,
+    pub chain_digest: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct AudioEditResult {
+    pub chain_digest: String,
+    pub source_duration_ms: u32,
+    pub derived_duration_ms: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub measured_lufs: Option<f32>,
+    #[serde(default)]
+    pub per_op_durations_ms: Vec<OpDuration>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct OpDuration {
+    pub op_id: String,
+    pub duration_ms: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct AudioEditPreviewParams {
+    pub request_id: String,
+    pub source_artifact_abs: String,
+    pub chain: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format_hint: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct AudioEditPreviewResult {
+    pub temp_path_abs: String,
+    pub format: String,
+    pub byte_size: u64,
+    pub derived_duration_ms: u32,
+}
