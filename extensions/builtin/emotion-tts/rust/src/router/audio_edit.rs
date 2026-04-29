@@ -29,7 +29,6 @@ use crate::router::guard::{self, ScopedQuery};
 use crate::router::voice_assets::VoiceAssetsState;
 use crate::storage::audit_log_repo::{AuditEntry, TargetKind, SYSTEM_ACTOR};
 
-const PREVIEW_DEFAULT_FORMAT: &str = "wav";
 const PREVIEW_CONTENT_TYPE_WAV: &str = "audio/wav";
 const PREVIEW_CONTENT_TYPE_MP3: &str = "audio/mpeg";
 
