@@ -55,6 +55,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
   const [previewObjectUrl, setPreviewObjectUrl] = useState<string | null>(null);
   const [applyInFlight, setApplyInFlight] = useState(false);
   const [previewInFlight, setPreviewInFlight] = useState(false);
+  const [hasPreviewedAtLeastOnce, setHasPreviewedAtLeastOnce] = useState(false);
   const [measuredLufs, setMeasuredLufs] = useState<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -62,6 +63,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
     setChain(initialChainFor(sourceDurationMs));
     setNormalizeOn(false);
     setValidationError(null);
+    setHasPreviewedAtLeastOnce(false);
   }, [voiceAsset.voiceAssetId, sourceDurationMs]);
 
   useEffect(() => {
@@ -134,6 +136,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
       if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
       const url = URL.createObjectURL(blob);
       setPreviewObjectUrl(url);
+      setHasPreviewedAtLeastOnce(true);
       requestAnimationFrame(() => audioRef.current?.play().catch(() => undefined));
     } catch (err) {
       const message = err instanceof Error ? err.message : "preview failed";
@@ -173,6 +176,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
     setNormalizeOn(false);
     setValidationError(null);
     setMeasuredLufs(null);
+    setHasPreviewedAtLeastOnce(false);
     if (previewObjectUrl) {
       URL.revokeObjectURL(previewObjectUrl);
       setPreviewObjectUrl(null);
@@ -295,6 +299,16 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
         >
           Reset
         </button>
+        {hasPreviewedAtLeastOnce && (
+          <span
+            className={css.previewHint}
+            data-testid="preview-consumed-hint"
+            role="note"
+            aria-live="polite"
+          >
+            Preview again after edits to verify before applying
+          </span>
+        )}
       </div>
 
       {previewObjectUrl && (
