@@ -265,17 +265,17 @@ covers the requirements all five stories depend on.
 **Purpose**: Documentation, audit-script enforcement, FR-027 verification,
 end-of-spec verification.
 
-- [ ] T079 [P] Update `docs/api/openapi.yaml` to inline / `$ref` the spec-036 endpoints from [contracts/openapi-audio-edit.yaml](./contracts/openapi-audio-edit.yaml)
-- [ ] T080 [P] Update `docs/api/API.md` extension section with the 6 new endpoints + RPC method names + audit-log shape
-- [ ] T081 [P] Update `extensions/builtin/emotion-tts/README.md` with the audio-edit feature summary, op set, edit-chain shape, and links to spec 036
-- [ ] T082 [P] Update root `README.md` "Recent specs" list to include 036
-- [ ] T083 Update `CLAUDE.md` "Active Technologies" list with one line summarising spec 036 additions
-- [ ] T084 [P] Write failing pytest `extensions/builtin/emotion-tts/worker/tests/test_audio_edit_speed_pitch.py` asserting pitch shift ≤ ±5 cents on speed `0.75` and `1.25` (FR-027); implement chained `atempo` if needed; run → GREEN
-- [ ] T085 Extend `extensions/builtin/emotion-tts/rust/tests/boundary_test.rs` with three assertions per [contracts/boundary-audit.md](./contracts/boundary-audit.md): no host references to `ext_emotion_tts__audio_edit_log`, `audio.edit`, `audio.edit.preview`
-- [ ] T086 Run `extensions/builtin/emotion-tts/scripts/audit-boundary.sh` (or `.ps1`); confirm PASS
-- [ ] T087 Run full extension test suite: `cargo test -p emotion-tts-extension`, `pnpm tsc --noEmit`, `pnpm test`, worker `uv run pytest`; confirm all green
-- [ ] T088 Run all 8 quickstart steps end-to-end on a fresh deployment; capture demo screen-recording for PR description
-- [ ] T089 Run final cross-spec workflow: `cargo test --workspace` to confirm no host-tree regression; `cargo clippy --workspace --all-targets -- -D warnings` on touched files
+- [X] T079 [P] Update `docs/api/openapi.yaml` to inline / `$ref` the spec-036 endpoints from [contracts/openapi-audio-edit.yaml](./contracts/openapi-audio-edit.yaml)
+- [X] T080 [P] Update `docs/api/API.md` extension section with the 6 new endpoints + RPC method names + audit-log shape
+- [X] T081 [P] Update `extensions/builtin/emotion-tts/README.md` with the audio-edit feature summary, op set, edit-chain shape, and links to spec 036
+- [X] T082 [P] Update root `README.md` "Recent specs" list to include 036
+- [X] T083 Update `CLAUDE.md` "Active Technologies" list with one line summarising spec 036 additions
+- [X] T084 [P] Write failing pytest `extensions/builtin/emotion-tts/worker/tests/test_audio_edit_speed_pitch.py` asserting pitch shift ≤ ±5 cents on speed `0.75` and `1.25` (FR-027); implement chained `atempo` if needed; run → GREEN
+- [X] T085 Extend `extensions/builtin/emotion-tts/rust/tests/boundary_test.rs` with three assertions per [contracts/boundary-audit.md](./contracts/boundary-audit.md): no host references to `ext_emotion_tts__audio_edit_log`, `audio.edit`, `audio.edit.preview`
+- [X] T086 Run `extensions/builtin/emotion-tts/scripts/audit-boundary.sh` (or `.ps1`); confirm PASS
+- [X] T087 Run full extension test suite: `cargo test -p emotion-tts-extension`, `pnpm tsc --noEmit`, `pnpm test`, worker `uv run pytest`; confirm all green
+- [X] T088 Run all 8 quickstart steps end-to-end on a fresh deployment; capture demo screen-recording for PR description
+- [X] T089 Run final cross-spec workflow: `cargo test --workspace` to confirm no host-tree regression; `cargo clippy --workspace --all-targets -- -D warnings` on touched files
 - [ ] T090 **Final code review pass**: invoke `/requesting-code-review` with full branch diff `git diff main..HEAD`; address findings before merge
 
 ---
