@@ -22,9 +22,8 @@ pub type ReconcileResult = std::result::Result<FamilyStatusSnapshot, EmotionTtsE
 /// A boxed async closure that reconciles a single family descriptor
 /// against the host model-store. Dispatcher wiring (T120 backlog)
 /// supplies a real implementation; router contract tests supply mocks.
-pub type BoxReconciler = Arc<
-    dyn Fn(&str) -> futures::future::BoxFuture<'static, ReconcileResult> + Send + Sync,
->;
+pub type BoxReconciler =
+    Arc<dyn Fn(&str) -> futures::future::BoxFuture<'static, ReconcileResult> + Send + Sync>;
 
 #[derive(Clone)]
 pub struct FamiliesState {
@@ -47,9 +46,7 @@ pub fn router(state: FamiliesState) -> Router {
 pub fn default_reconciler() -> BoxReconciler {
     use futures::FutureExt;
 
-    Arc::new(|_id: &str| {
-        async { Ok(FamilyStatusSnapshot::not_installed()) }.boxed()
-    })
+    Arc::new(|_id: &str| async { Ok(FamilyStatusSnapshot::not_installed()) }.boxed())
 }
 
 async fn list(State(state): State<FamiliesState>) -> Response {
@@ -74,10 +71,7 @@ async fn list_impl(state: &FamiliesState) -> Result<Value> {
     Ok(json!({ "families": families }))
 }
 
-async fn fetch(
-    State(state): State<FamiliesState>,
-    Path(id): Path<String>,
-) -> Response {
+async fn fetch(State(state): State<FamiliesState>, Path(id): Path<String>) -> Response {
     match fetch_impl(&state, &id).await {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
         Err(err) => err.into_response(),
@@ -98,10 +92,7 @@ async fn fetch_impl(state: &FamiliesState, family_id: &str) -> Result<Value> {
     Ok(family_entry_json(&entry))
 }
 
-async fn install_hint(
-    State(state): State<FamiliesState>,
-    Path(id): Path<String>,
-) -> Response {
+async fn install_hint(State(state): State<FamiliesState>, Path(id): Path<String>) -> Response {
     match install_hint_impl(&state, &id).await {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
         Err(err) => err.into_response(),

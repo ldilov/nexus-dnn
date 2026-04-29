@@ -140,7 +140,11 @@ fn parse_dialogue(script: &str, mode: ParserMode) -> ParsePlan {
         }
     }
 
-    ParsePlan { mode, utterances, report }
+    ParsePlan {
+        mode,
+        utterances,
+        report,
+    }
 }
 
 fn parse_raw_text(script: &str) -> ParsePlan {
@@ -163,7 +167,11 @@ fn parse_raw_text(script: &str) -> ParsePlan {
             inline_overrides: BTreeMap::new(),
         });
     }
-    ParsePlan { mode: ParserMode::RawText, utterances, report }
+    ParsePlan {
+        mode: ParserMode::RawText,
+        utterances,
+        report,
+    }
 }
 
 fn try_parse_tagged(
@@ -291,7 +299,10 @@ mod tests {
         assert_eq!(u.character_display, "Bob");
         assert_eq!(u.inline_overrides.get("speed"), Some(&"1.1".to_string()));
         assert_eq!(u.inline_overrides.get("seed"), Some(&"42".to_string()));
-        assert_eq!(u.inline_overrides.get("temperature"), Some(&"0.7".to_string()));
+        assert_eq!(
+            u.inline_overrides.get("temperature"),
+            Some(&"0.7".to_string())
+        );
     }
 
     #[test]
@@ -358,7 +369,10 @@ mod tests {
     fn raw_text_mode_attributes_all_to_narrator() {
         let plan = parse_script("[Bob] hello\nworld", ParserMode::RawText);
         assert_eq!(plan.utterances.len(), 2);
-        assert!(plan.utterances.iter().all(|u| u.character_display == NARRATOR));
+        assert!(plan
+            .utterances
+            .iter()
+            .all(|u| u.character_display == NARRATOR));
     }
 
     #[test]

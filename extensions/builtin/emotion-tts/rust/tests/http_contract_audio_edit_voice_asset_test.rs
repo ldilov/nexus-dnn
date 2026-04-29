@@ -30,7 +30,7 @@ use emotion_tts_extension::host_contract::{
 use emotion_tts_extension::queue::RuntimeQueue;
 use emotion_tts_extension::router::build_router;
 use emotion_tts_extension::storage::repo_traits::{DeploymentRow, VoiceAssetRow};
-use emotion_tts_extension::storage::Repos;
+use emotion_tts_extension::storage::{Repos, TargetKind};
 use emotion_tts_extension::MIGRATIONS;
 use futures::stream;
 use serde_json::{json, Value};
@@ -95,11 +95,19 @@ impl BackendRuntimeLease for MockEditLease {
                         message: "missing output_artifact_abs".into(),
                     })?
                     .to_string();
+                let chain_digest = params
+                    .get("chain_digest")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| LeaseError::Rpc {
+                        code: -32602,
+                        message: "missing chain_digest".into(),
+                    })?
+                    .to_string();
                 tokio::fs::write(&output_path, b"derived-audio-bytes")
                     .await
                     .map_err(|e| LeaseError::Transport(format!("write derived: {e}")))?;
                 Ok(json!({
-                    "chain_digest": "0".repeat(64),
+                    "chain_digest": chain_digest,
                     "source_duration_ms": 2_000,
                     "derived_duration_ms": 1_800,
                     "measured_lufs": null,
@@ -110,8 +118,10 @@ impl BackendRuntimeLease for MockEditLease {
                 }))
             }
             "audio.edit.preview" => {
-                let tmp = std::env::temp_dir()
-                    .join(format!("emotion_tts_audio_edit_preview_{}.wav", uuid_like()));
+                let tmp = std::env::temp_dir().join(format!(
+                    "emotion_tts_audio_edit_preview_{}.wav",
+                    uuid_like()
+                ));
                 tokio::fs::write(&tmp, PREVIEW_BYTES)
                     .await
                     .map_err(|e| LeaseError::Transport(format!("write preview: {e}")))?;
@@ -234,7 +244,13 @@ async fn seed_voice_asset(repos: &Repos, dep: &DeploymentId, name: &str) -> Voic
     id
 }
 
-async fn build_test_router() -> (axum::Router, Repos, DeploymentId, DeploymentId, VoiceAssetId) {
+async fn build_test_router() -> (
+    axum::Router,
+    Repos,
+    DeploymentId,
+    DeploymentId,
+    VoiceAssetId,
+) {
     let pool = fresh_pool().await;
     let repos = Repos::from_pool(pool);
     let queue = Arc::new(RuntimeQueue::new());
@@ -244,7 +260,13 @@ async fn build_test_router() -> (axum::Router, Repos, DeploymentId, DeploymentId
     let factory: Arc<dyn LeaseFactory> = Arc::new(StaticLeaseFactory(lease));
     let provider = Arc::new(LeaseProvider::new(factory));
 
-    let router = build_router(repos.clone(), queue, "0.0.0-test", Some(provider), Some(store));
+    let router = build_router(
+        repos.clone(),
+        queue,
+        "0.0.0-test",
+        Some(provider),
+        Some(store),
+    );
 
     let dep_a = seed_deployment(&repos, "Deployment A").await;
     let dep_b = seed_deployment(&repos, "Deployment B").await;
@@ -290,7 +312,10 @@ async fn apply_edit_chain_to_voice_asset_returns_200() {
     let resp = router.oneshot(req).await.unwrap();
     let (status, body) = parse_body(resp).await;
     assert_eq!(status, StatusCode::OK, "body: {body}");
-    assert!(body["chain_digest"].as_str().is_some(), "missing chain_digest");
+    assert!(
+        body["chain_digest"].as_str().is_some(),
+        "missing chain_digest"
+    );
     assert!(
         body["derived_artifact_ref"].as_str().is_some(),
         "missing derived_artifact_ref"
@@ -397,7 +422,10 @@ async fn preview_edit_chain_streams_audio_bytes() {
         "content-type must be audio/wav or audio/mpeg, got {ct:?}"
     );
     let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
-    assert!(!bytes.is_empty(), "preview must stream non-empty audio bytes");
+    assert!(
+        !bytes.is_empty(),
+        "preview must stream non-empty audio bytes"
+    );
     assert_eq!(bytes.as_ref(), PREVIEW_BYTES);
 }
 
@@ -417,4 +445,100 @@ async fn preview_edit_chain_cross_deployment_returns_404() {
         .unwrap();
     let resp = router.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+// T093 — no-op apply (chain unchanged) MUST skip the worker round-trip and
+// MUST NOT record an audit entry. Closes the gap flagged by /speckit-analyze
+// (U3) for spec.md § Edge Cases L101.
+
+async fn apply_chain_request(
+    router: &axum::Router,
+    asset: &VoiceAssetId,
+    deployment_id: &str,
+    chain: Value,
+) -> (StatusCode, Value) {
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!(
+            "/voice-assets/{asset}/edit?deploymentId={deployment_id}",
+            asset = asset.as_str()
+        ))
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&json!({ "chain": chain })).unwrap(),
+        ))
+        .unwrap();
+    let resp = router.clone().oneshot(req).await.unwrap();
+    parse_body(resp).await
+}
+
+#[tokio::test]
+async fn applying_same_chain_twice_is_a_noop_and_writes_no_extra_audit_entry() {
+    let (router, repos, dep_a, _dep_b, asset) = build_test_router().await;
+    let chain = sample_chain(0, 1_500);
+
+    let (status1, body1) =
+        apply_chain_request(&router, &asset, dep_a.as_str(), chain.clone()).await;
+    assert_eq!(status1, StatusCode::OK, "first apply: {body1}");
+    let first_digest = body1["chain_digest"].as_str().unwrap().to_string();
+    let first_derived = body1["derived_artifact_ref"].as_str().unwrap().to_string();
+
+    let entries_after_first = repos
+        .audio_edit_log
+        .list_for_target(&dep_a, TargetKind::VoiceAsset, asset.as_str(), 10)
+        .await
+        .expect("list audit");
+    assert_eq!(
+        entries_after_first.len(),
+        1,
+        "first apply must record exactly one audit entry"
+    );
+
+    let (status2, body2) = apply_chain_request(&router, &asset, dep_a.as_str(), chain).await;
+    assert_eq!(status2, StatusCode::OK, "no-op apply must still 200");
+    assert_eq!(
+        body2["chain_digest"].as_str().unwrap(),
+        first_digest,
+        "no-op apply must return the existing digest"
+    );
+    assert_eq!(
+        body2["derived_artifact_ref"].as_str().unwrap(),
+        first_derived,
+        "no-op apply must return the existing derived artifact ref"
+    );
+    assert!(
+        body2["per_op_durations_ms"].is_array()
+            && body2["per_op_durations_ms"].as_array().unwrap().is_empty(),
+        "no-op apply must report zero per-op durations (worker round-trip skipped)"
+    );
+
+    let entries_after_second = repos
+        .audio_edit_log
+        .list_for_target(&dep_a, TargetKind::VoiceAsset, asset.as_str(), 10)
+        .await
+        .expect("list audit after no-op");
+    assert_eq!(
+        entries_after_second.len(),
+        1,
+        "no-op apply MUST NOT record an audit entry (FR-029 / Edge case L101)"
+    );
+}
+
+#[tokio::test]
+async fn applying_empty_chain_to_clean_asset_is_a_noop_no_audit() {
+    let (router, repos, dep_a, _dep_b, asset) = build_test_router().await;
+
+    let empty_chain = json!({ "version": 1, "ops": [] });
+    let (status, body) = apply_chain_request(&router, &asset, dep_a.as_str(), empty_chain).await;
+    assert_eq!(status, StatusCode::OK, "empty-on-empty must 200: {body}");
+
+    let entries = repos
+        .audio_edit_log
+        .list_for_target(&dep_a, TargetKind::VoiceAsset, asset.as_str(), 10)
+        .await
+        .expect("list audit");
+    assert!(
+        entries.is_empty(),
+        "empty chain on clean asset must not record an audit entry"
+    );
 }

@@ -250,6 +250,7 @@ pub struct AudioEditParams {
     pub source_artifact_abs: String,
     pub output_artifact_abs: String,
     pub chain: serde_json::Value,
+    pub chain_digest: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

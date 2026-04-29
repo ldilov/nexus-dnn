@@ -92,7 +92,10 @@ pub async fn plan<S>(
     for (segment, key_input) in candidates {
         let content_hash = cache_key::build(&key_input)?;
         if !policy.reads_cache() {
-            misses.push(PlannedMiss { segment, content_hash });
+            misses.push(PlannedMiss {
+                segment,
+                content_hash,
+            });
             continue;
         }
         match cache.get(&content_hash).await? {
@@ -102,7 +105,10 @@ pub async fn plan<S>(
                 cached_artifact_ref: row.audio_artifact_ref,
                 source_run_id: None,
             }),
-            None => misses.push(PlannedMiss { segment, content_hash }),
+            None => misses.push(PlannedMiss {
+                segment,
+                content_hash,
+            }),
         }
     }
 

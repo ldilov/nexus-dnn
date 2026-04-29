@@ -24,7 +24,10 @@ pub fn router(repos: Repos) -> Router {
         .route("/", get(list).post(create))
         .route("/import", post(import))
         .route("/export", get(export))
-        .route("/{mapping_id}", get(fetch).patch(patch_mapping).delete(delete_mapping))
+        .route(
+            "/{mapping_id}",
+            get(fetch).patch(patch_mapping).delete(delete_mapping),
+        )
         .route("/{mapping_id}/duplicate", post(duplicate))
         .with_state(Arc::new(MappingsState { repos }))
 }
@@ -51,18 +54,13 @@ async fn assert_belongs_to_deployment(
         .get(id)
         .await?
         .ok_or_else(|| EmotionTtsError::not_found(format!("mapping {id}")))?;
-    guard::assert_deployment_match(
-        row.deployment_id.as_str(),
-        claimed_deployment_id,
-        || format!("mapping {id}"),
-    )?;
+    guard::assert_deployment_match(row.deployment_id.as_str(), claimed_deployment_id, || {
+        format!("mapping {id}")
+    })?;
     Ok(row)
 }
 
-async fn list(
-    State(state): State<Arc<MappingsState>>,
-    Query(query): Query<ListQuery>,
-) -> Response {
+async fn list(State(state): State<Arc<MappingsState>>, Query(query): Query<ListQuery>) -> Response {
     let dep = match DeploymentId::try_from(query.deployment_id.as_str()) {
         Ok(v) => v,
         Err(err) => return EmotionTtsError::from(err).into_response(),
@@ -110,7 +108,10 @@ async fn create(
     }
 }
 
-async fn create_impl(state: &MappingsState, body: CreateMappingBody) -> Result<CharacterMappingRow> {
+async fn create_impl(
+    state: &MappingsState,
+    body: CreateMappingBody,
+) -> Result<CharacterMappingRow> {
     let dep = DeploymentId::try_from(body.deployment_id.as_str())?;
     let name = body.character_name.trim().to_string();
     if name.is_empty() {
@@ -258,16 +259,11 @@ async fn patch_impl(
         row.default_emotion_mode = mode;
     }
     if let Some(emo) = body.default_emotion_voice_asset_id {
-        row.default_emotion_voice_asset_id = emo
-            .as_deref()
-            .map(VoiceAssetId::try_from)
-            .transpose()?;
+        row.default_emotion_voice_asset_id =
+            emo.as_deref().map(VoiceAssetId::try_from).transpose()?;
     }
     if let Some(preset) = body.default_vector_preset_id {
-        row.default_vector_preset_id = preset
-            .as_deref()
-            .map(PresetId::try_from)
-            .transpose()?;
+        row.default_vector_preset_id = preset.as_deref().map(PresetId::try_from).transpose()?;
     }
     if let Some(tmpl) = body.default_qwen_template {
         row.default_qwen_template = tmpl;
@@ -275,7 +271,9 @@ async fn patch_impl(
     if let Some(speed) = body.default_speed_factor {
         if let Some(v) = speed {
             if !(0.5..=2.0).contains(&v) {
-                return Err(EmotionTtsError::validation("defaultSpeedFactor must be 0.5..=2.0"));
+                return Err(EmotionTtsError::validation(
+                    "defaultSpeedFactor must be 0.5..=2.0",
+                ));
             }
         }
         row.default_speed_factor = speed;
@@ -345,7 +343,9 @@ async fn duplicate_impl(
         .trim()
         .to_string();
     if name.is_empty() {
-        return Err(EmotionTtsError::validation("duplicate name cannot be empty"));
+        return Err(EmotionTtsError::validation(
+            "duplicate name cannot be empty",
+        ));
     }
     let name_lower = name.to_lowercase();
     if state
@@ -435,10 +435,7 @@ struct ImportMapping {
     notes: Option<String>,
 }
 
-async fn import(
-    State(state): State<Arc<MappingsState>>,
-    Json(body): Json<ImportBody>,
-) -> Response {
+async fn import(State(state): State<Arc<MappingsState>>, Json(body): Json<ImportBody>) -> Response {
     match import_impl(&state, body).await {
         Ok(v) => (StatusCode::CREATED, Json(v)).into_response(),
         Err(err) => err.into_response(),
@@ -457,7 +454,9 @@ async fn import_impl(state: &MappingsState, body: ImportBody) -> Result<Value> {
     for m in body.mappings {
         let name = m.character_name.trim().to_string();
         if name.is_empty() {
-            return Err(EmotionTtsError::validation("mapping has empty characterName"));
+            return Err(EmotionTtsError::validation(
+                "mapping has empty characterName",
+            ));
         }
         let name_lower = name.to_lowercase();
         let existing = state

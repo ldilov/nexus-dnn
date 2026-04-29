@@ -74,11 +74,7 @@ impl EmotionTtsProviderResources {
     /// Both must be supplied for the runtime spawn path to wire up; either
     /// missing falls back to the stub factory.
     #[must_use]
-    pub fn with_directories(
-        mut self,
-        extension_dir: PathBuf,
-        host_data_dir: PathBuf,
-    ) -> Self {
+    pub fn with_directories(mut self, extension_dir: PathBuf, host_data_dir: PathBuf) -> Self {
         self.extension_dir = Some(extension_dir);
         self.host_data_dir = Some(host_data_dir);
         self

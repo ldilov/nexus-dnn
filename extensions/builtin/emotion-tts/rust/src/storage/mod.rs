@@ -6,6 +6,7 @@
 
 pub mod repo_traits;
 
+pub mod audio_edit_atomic;
 pub mod audit_log_repo;
 pub mod deployments_repo;
 pub mod export_history_repo;
@@ -42,6 +43,7 @@ pub struct Repos {
     pub exports: Arc<dyn ExportHistoryRepo>,
     pub workflows: Arc<dyn WorkflowsRepo>,
     pub audio_edit_log: Arc<dyn AuditLogRepo>,
+    pub pool: SqlitePool,
 }
 
 impl Repos {
@@ -54,15 +56,23 @@ impl Repos {
             presets: Arc::new(presets_repo::SqlitePresetsRepo::new(pool.clone())),
             runs: Arc::new(runs_repo::SqliteRunsRepo::new(pool.clone())),
             utterances: Arc::new(utterances_repo::SqliteUtterancesRepo::new(pool.clone())),
-            cache: Arc::new(synthesis_cache_repo::SqliteSynthesisCacheRepo::new(pool.clone())),
-            exports: Arc::new(export_history_repo::SqliteExportHistoryRepo::new(pool.clone())),
+            cache: Arc::new(synthesis_cache_repo::SqliteSynthesisCacheRepo::new(
+                pool.clone(),
+            )),
+            exports: Arc::new(export_history_repo::SqliteExportHistoryRepo::new(
+                pool.clone(),
+            )),
             workflows: Arc::new(workflows_repo::SqliteWorkflowsRepo::new(pool.clone())),
-            audio_edit_log: Arc::new(audit_log_repo::SqliteAuditLogRepo::new(pool)),
+            audio_edit_log: Arc::new(audit_log_repo::SqliteAuditLogRepo::new(pool.clone())),
+            pool,
         }
     }
 }
 
 pub async fn build_repos(pool: Arc<dyn HostStoragePool>) -> crate::domain::Result<Repos> {
-    let sqlite = pool.acquire().await.map_err(crate::domain::EmotionTtsError::from)?;
+    let sqlite = pool
+        .acquire()
+        .await
+        .map_err(crate::domain::EmotionTtsError::from)?;
     Ok(Repos::from_pool(sqlite))
 }

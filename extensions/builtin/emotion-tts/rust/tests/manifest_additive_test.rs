@@ -1,8 +1,8 @@
+use emotion_tts_extension::domain::emotion::{EmotionMode, EmotionSource};
 use emotion_tts_extension::domain::manifest::{
     build_manifest, AlignmentDiagnostics, AlignmentSummary, Manifest, ManifestEntry,
     ReferenceVariant, ThresholdSource,
 };
-use emotion_tts_extension::domain::emotion::{EmotionMode, EmotionSource};
 use serde_json::json;
 
 fn minimal_entry() -> ManifestEntry {
@@ -72,7 +72,10 @@ fn historic_manifest_json_without_spec_034_fields_still_parses() {
 
     let m: Manifest = serde_json::from_value(historic).expect("historic manifest parses");
     assert_eq!(m.run_id, "run_01");
-    assert!(m.model_family.is_none(), "new optional fields default to None");
+    assert!(
+        m.model_family.is_none(),
+        "new optional fields default to None"
+    );
     assert!(m.reference_preprocess_active.is_none());
     assert!(m.compile_active.is_none());
     assert!(m.oas_active.is_none());
@@ -158,7 +161,10 @@ fn flagged_alignment_serialises_attention_map_ref_and_per_head() {
         attention_map_artifact_ref: Some("artifact://diagnostics/xyz.png".into()),
     };
     let v = serde_json::to_value(&diag).unwrap();
-    assert_eq!(v["attention_map_artifact_ref"], "artifact://diagnostics/xyz.png");
+    assert_eq!(
+        v["attention_map_artifact_ref"],
+        "artifact://diagnostics/xyz.png"
+    );
     assert_eq!(v["threshold_source"], "rolling_mad");
     assert_eq!(v["per_head_scores"].as_array().unwrap().len(), 5);
 }
@@ -174,8 +180,17 @@ fn reference_variant_serialises_snake_case() {
 #[test]
 fn record_compile_active_stamps_field() {
     let mut m = build_manifest(
-        "run_04", "dep_01", "0.1.0", "mp3", 1.0, "preserve_pitch",
-        None, None, None, 0, vec![minimal_entry()],
+        "run_04",
+        "dep_01",
+        "0.1.0",
+        "mp3",
+        1.0,
+        "preserve_pitch",
+        None,
+        None,
+        None,
+        0,
+        vec![minimal_entry()],
     );
     assert!(m.compile_active.is_none());
     m.record_compile_active(true);
@@ -187,11 +202,24 @@ fn record_compile_active_stamps_field() {
 #[test]
 fn record_oas_active_includes_summary_when_active() {
     let mut m = build_manifest(
-        "run_05", "dep_01", "0.1.0", "mp3", 1.0, "preserve_pitch",
-        None, None, None, 0, vec![minimal_entry()],
+        "run_05",
+        "dep_01",
+        "0.1.0",
+        "mp3",
+        1.0,
+        "preserve_pitch",
+        None,
+        None,
+        None,
+        0,
+        vec![minimal_entry()],
     );
     let summary = AlignmentSummary {
-        min: 0.3, median: 0.6, p95: 0.8, flagged_count: 2, total_count: 20,
+        min: 0.3,
+        median: 0.6,
+        p95: 0.8,
+        flagged_count: 2,
+        total_count: 20,
     };
     m.record_oas_active(true, Some(summary.clone()));
     assert_eq!(m.oas_active, Some(true));
@@ -201,11 +229,24 @@ fn record_oas_active_includes_summary_when_active() {
 #[test]
 fn record_oas_inactive_does_not_set_summary() {
     let mut m = build_manifest(
-        "run_06", "dep_01", "0.1.0", "mp3", 1.0, "preserve_pitch",
-        None, None, None, 0, vec![minimal_entry()],
+        "run_06",
+        "dep_01",
+        "0.1.0",
+        "mp3",
+        1.0,
+        "preserve_pitch",
+        None,
+        None,
+        None,
+        0,
+        vec![minimal_entry()],
     );
     let summary = AlignmentSummary {
-        min: 0.3, median: 0.6, p95: 0.8, flagged_count: 0, total_count: 0,
+        min: 0.3,
+        median: 0.6,
+        p95: 0.8,
+        flagged_count: 0,
+        total_count: 0,
     };
     m.record_oas_active(false, Some(summary));
     assert_eq!(m.oas_active, Some(false));
@@ -215,8 +256,17 @@ fn record_oas_inactive_does_not_set_summary() {
 #[test]
 fn record_model_family_and_preprocess_active_stamp_fields() {
     let mut m = build_manifest(
-        "run_07", "dep_01", "0.1.0", "mp3", 1.0, "preserve_pitch",
-        None, None, None, 0, vec![minimal_entry()],
+        "run_07",
+        "dep_01",
+        "0.1.0",
+        "mp3",
+        1.0,
+        "preserve_pitch",
+        None,
+        None,
+        None,
+        0,
+        vec![minimal_entry()],
     );
     m.record_model_family("indextts-2-5");
     m.record_reference_preprocess_active(true);

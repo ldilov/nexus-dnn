@@ -113,16 +113,9 @@ async fn audit_log_returns_entries_in_reverse_chronological_order() {
     repo.append(&entry(&dep, target, d2.clone(), d3.clone(), 3, 2_000))
         .await
         .expect("append 3");
-    repo.append(&entry(
-        &dep,
-        target,
-        d3.clone(),
-        d_empty.clone(),
-        0,
-        3_000,
-    ))
-    .await
-    .expect("append clear");
+    repo.append(&entry(&dep, target, d3.clone(), d_empty.clone(), 0, 3_000))
+        .await
+        .expect("append clear");
 
     let listed = repo
         .list_for_target(&dep, TargetKind::VoiceAsset, target, 10)

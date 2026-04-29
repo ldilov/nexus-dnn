@@ -1,16 +1,3 @@
-/**
- * Spec 036 / US2 — per-utterance audio-edit panel.
- *
- * Compact inline editor scoped to a single segment of a completed run.
- * Mirrors the voice-asset edit panel (US1) but trades the full-width layout
- * for a row-embedded form: short waveform, optional normalize, and a binary
- * Apply / Cancel choice (preview is intentionally a US3 feature, not here).
- *
- * Owns the in-progress chain (draft state). On Apply success the parent is
- * notified via `onApplied`; on validation or backend errors the parent is
- * notified via `onError` and the message is mirrored inline (FR-025).
- */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyUtteranceEdit,
@@ -52,12 +39,19 @@ export function PerUtteranceEdit(props: PerUtteranceEditProps): JSX.Element {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [applyInFlight, setApplyInFlight] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const applyControllerRef = useRef<AbortController | null>(null);
+  const persistedDigestRef = useRef<string | null>(null);
 
   useEffect(() => {
     setChain(initialChainFor(sourceDurationMs));
     setNormalizeOn(false);
     setValidationError(null);
+    persistedDigestRef.current = null;
   }, [utterance.utteranceId, sourceDurationMs]);
+
+  useEffect(() => {
+    return () => applyControllerRef.current?.abort();
+  }, []);
 
   useEffect(() => {
     const focusable = rootRef.current?.querySelector<HTMLElement>(
@@ -118,13 +112,28 @@ export function PerUtteranceEdit(props: PerUtteranceEditProps): JSX.Element {
       return;
     }
     setValidationError(null);
+    if (applyInFlight) return;
+    applyControllerRef.current?.abort();
+    const controller = new AbortController();
+    applyControllerRef.current = controller;
     setApplyInFlight(true);
     try {
-      const response = await applyUtteranceEdit(deploymentId, runId, utterance.utteranceId, {
-        chain,
-      });
+      const digestBefore = persistedDigestRef.current ?? undefined;
+      const response = await applyUtteranceEdit(
+        deploymentId,
+        runId,
+        utterance.utteranceId,
+        digestBefore ? { chain, digest_before: digestBefore } : { chain },
+        { signal: controller.signal },
+      );
+      if (controller.signal.aborted) return;
+      persistedDigestRef.current = response.chain_digest;
       onApplied(response);
     } catch (caught) {
+      if (controller.signal.aborted) return;
+      if (caught instanceof StaleDigestError) {
+        persistedDigestRef.current = caught.currentDigest || null;
+      }
       const message =
         caught instanceof StaleDigestError
           ? "Edit chain has changed in another tab. Reload to continue."
@@ -134,9 +143,9 @@ export function PerUtteranceEdit(props: PerUtteranceEditProps): JSX.Element {
       setValidationError(message);
       onError(message);
     } finally {
-      setApplyInFlight(false);
+      if (!controller.signal.aborted) setApplyInFlight(false);
     }
-  }, [chain, sourceDurationMs, deploymentId, runId, utterance.utteranceId, onApplied, onError]);
+  }, [chain, sourceDurationMs, applyInFlight, deploymentId, runId, utterance.utteranceId, onApplied, onError]);
 
   return (
     <div className={css.root} ref={rootRef} onKeyDown={handleRootKeyDown}>

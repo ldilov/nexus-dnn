@@ -38,13 +38,25 @@ editor. Zero host-crate edits, zero host migrations, zero new top-level routes.
   HTML Canvas — no new npm dependency. `wavesurfer.js` is the discoverable
   alternative if FR-033/FR-037 prove painful, evaluated in Phase 0 research.
 
-**Storage**: SQLite via `nexus-storage`. Three additive migrations, all
+**Storage**: SQLite via `nexus-storage`. Seven additive migrations, all
 extension-owned under `extensions/builtin/emotion-tts/storage/migrations/`:
 - `015_voice_asset_edit_chain.sql` — adds `edit_chain_json TEXT` (nullable) to
   `ext_emotion_tts__voice_assets`.
 - `016_utterance_edit_chain.sql` — adds `edit_chain_json TEXT` (nullable) to
   `ext_emotion_tts__utterances`.
 - `017_audio_edit_log.sql` — creates `ext_emotion_tts__audio_edit_log` (audit trail).
+- `018_utterance_updated_at.sql` — adds nullable `updated_at INTEGER` to
+  `ext_emotion_tts__utterances` so per-utterance edit-chain writes (FR-007) can
+  stamp a change-detection timestamp; mirrors the voice-asset pattern.
+- `019_voice_asset_derived_ref.sql` — adds nullable `derived_artifact_ref TEXT`
+  to `ext_emotion_tts__voice_assets`. Stores the materialised post-edit blob's
+  artifact ref so the dispatcher's `prepare()` step can return derived paths
+  without re-running the worker (FR-008 source preservation).
+- `020_run_export_zip_stale_at.sql` — adds nullable `export_zip_stale_at INTEGER`
+  to `ext_emotion_tts__runs`. Set to current epoch second when a per-utterance
+  edit lands so the run-detail UI can surface a "rebuild export" CTA (FR-015 / US2).
+- `021_utterance_derived_ref.sql` — mirror of 019 for utterances; stores the
+  per-utterance derived artifact ref alongside the source segment.
 
 No host migrations. No FK constraint crosses the host/extension boundary.
 

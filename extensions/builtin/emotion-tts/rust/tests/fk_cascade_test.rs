@@ -55,7 +55,10 @@ async fn deleting_deployment_cascades_to_voice_assets() {
     .await
     .expect("insert voice asset");
 
-    assert_eq!(count(&pool, "ext_emotion_tts__voice_assets", "dep_cascade_a").await, 1);
+    assert_eq!(
+        count(&pool, "ext_emotion_tts__voice_assets", "dep_cascade_a").await,
+        1
+    );
 
     sqlx::query("DELETE FROM ext_emotion_tts__deployments WHERE deployment_id = 'dep_cascade_a'")
         .execute(&pool)

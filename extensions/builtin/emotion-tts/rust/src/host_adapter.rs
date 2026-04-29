@@ -34,9 +34,9 @@ const INDEXTTS_FAMILY_ID: &str = "huggingface:IndexTeam/IndexTTS-2";
 use nexus_backend_runtimes::generic::enums::LeaseState as HostLeaseState;
 use nexus_backend_runtimes::generic::ids::RuntimeLeaseId as HostLeaseId;
 use nexus_backend_runtimes::generic::install_ctx::LaunchSpec;
-use nexus_backend_runtimes::generic::leases::BackendRuntimeLease as HostLease;
 use nexus_backend_runtimes::generic::leases::error::LeaseError as HostLeaseError;
 use nexus_backend_runtimes::generic::leases::stdio_lease::StdioLease;
+use nexus_backend_runtimes::generic::leases::BackendRuntimeLease as HostLease;
 
 /// Factory the recipe header's `/runtime/start` endpoint calls into. Each
 /// `acquire()` spawns a fresh worker process, runs the JSON-RPC handshake,
@@ -83,12 +83,8 @@ impl ExtLeaseFactory for EmotionTtsLeaseFactory {
         }
         let model_dir = model_dir.expect("checked above");
 
-        let launch = build_launch_spec(
-            &self.extension_dir,
-            &self.extension_data_dir,
-            &model_dir,
-        )
-        .map_err(|e| {
+        let launch = build_launch_spec(&self.extension_dir, &self.extension_data_dir, &model_dir)
+            .map_err(|e| {
             EmotionTtsError::RuntimeUnavailable(format!("worker spawn setup failed: {e}"))
         })?;
 
@@ -113,11 +109,7 @@ impl ExtLeaseFactory for EmotionTtsLeaseFactory {
             "waiting for worker handshake (worker is doing pre-imports)…"
         );
         match inner
-            .send_rpc_with_timeout(
-                "handshake",
-                serde_json::json!({}),
-                handshake_timeout,
-            )
+            .send_rpc_with_timeout("handshake", serde_json::json!({}), handshake_timeout)
             .await
         {
             Ok(_) => {
@@ -202,11 +194,7 @@ impl ExtLeaseFactory for EmotionTtsLeaseFactory {
 
         let load_start = std::time::Instant::now();
         let outcome = inner
-            .send_rpc_with_timeout(
-                "model.load",
-                serde_json::json!({}),
-                MODEL_LOAD_TIMEOUT,
-            )
+            .send_rpc_with_timeout("model.load", serde_json::json!({}), MODEL_LOAD_TIMEOUT)
             .await;
         progress_kill.cancel();
         let _ = progress_task.await;
@@ -254,7 +242,11 @@ const MODEL_LOAD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(6
 /// here to surface the worker's actual diagnostic on `model_load_failed`.
 fn format_lease_error(e: &HostLeaseError) -> String {
     match e {
-        HostLeaseError::Rpc { code, message, data } => {
+        HostLeaseError::Rpc {
+            code,
+            message,
+            data,
+        } => {
             let detail = data
                 .as_ref()
                 .and_then(|d| d.get("detail"))
@@ -303,11 +295,7 @@ impl ExtLease for EmotionTtsLeaseAdapter {
         map_state_host_to_ext(self.inner.state())
     }
 
-    async fn send_rpc(
-        &self,
-        method: &str,
-        params: JsonValue,
-    ) -> Result<JsonValue, ExtLeaseError> {
+    async fn send_rpc(&self, method: &str, params: JsonValue) -> Result<JsonValue, ExtLeaseError> {
         self.inner
             .send_rpc(method, params)
             .await
@@ -493,7 +481,11 @@ fn map_state_host_to_ext(s: HostLeaseState) -> ExtLeaseState {
 
 fn map_error_host_to_ext(e: HostLeaseError) -> ExtLeaseError {
     match e {
-        HostLeaseError::Rpc { code, message, data } => {
+        HostLeaseError::Rpc {
+            code,
+            message,
+            data,
+        } => {
             // The worker encodes the actual failure cause in `data.detail`
             // (see `ModelLoadFailedError.rpc_error()` in model_loader.py).
             // Without merging it into the message here, the recipe header
@@ -516,7 +508,9 @@ fn map_error_host_to_ext(e: HostLeaseError) -> ExtLeaseError {
             }
         }
         HostLeaseError::WorkerCrashed => ExtLeaseError::WorkerCrashed,
-        HostLeaseError::RuntimeUnavailable => ExtLeaseError::Transport("runtime unavailable".into()),
+        HostLeaseError::RuntimeUnavailable => {
+            ExtLeaseError::Transport("runtime unavailable".into())
+        }
         HostLeaseError::Timeout => ExtLeaseError::Timeout,
         HostLeaseError::PayloadTooLarge => ExtLeaseError::Transport("payload too large".into()),
         HostLeaseError::CrashRecovered => ExtLeaseError::WorkerCrashed,
@@ -524,7 +518,6 @@ fn map_error_host_to_ext(e: HostLeaseError) -> ExtLeaseError {
         HostLeaseError::Internal(msg) => ExtLeaseError::Transport(msg),
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // HostArtifactStore adapter: bridges the host's `nexus_artifact::ArtifactStore`
@@ -574,7 +567,13 @@ impl ExtArtifactStore for HostArtifactStoreAdapter {
         // unique-enough temp dir per upload.
         let safe = display_name
             .chars()
-            .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect::<String>();
         let temp_path = self
             .inner

@@ -1,10 +1,3 @@
-"""Worker-boundary re-validation of EditChain JSON.
-
-Defense-in-depth — the Rust router is the primary validator (data-model.md
-§ Validation rules). Raising ``ValueError`` here keeps the wire contract
-("JSON-RPC -32602 INVALID_PARAMS") owned by the calling handler.
-"""
-
 from __future__ import annotations
 
 from typing import Any

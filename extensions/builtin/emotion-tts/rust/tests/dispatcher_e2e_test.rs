@@ -48,7 +48,8 @@ struct ChannelLease {
     /// exactly once (the dispatcher only subscribes once per run).
     notif_rx: tokio::sync::Mutex<Option<mpsc::UnboundedReceiver<NotificationEnvelope>>>,
     /// Synchronous RPC handler — returns Ok(value) or Err(LeaseError).
-    handler: Arc<dyn Fn(&str, serde_json::Value) -> Result<serde_json::Value, LeaseError> + Send + Sync>,
+    handler:
+        Arc<dyn Fn(&str, serde_json::Value) -> Result<serde_json::Value, LeaseError> + Send + Sync>,
 }
 
 impl ChannelLease {
@@ -1223,9 +1224,16 @@ async fn resume_run_reuses_cache_from_original() {
         .list_by_run(&resume_run_id)
         .await
         .expect("utterance query must not fail");
-    assert_eq!(utts.len(), 1, "expected exactly one utterance row for resume run");
+    assert_eq!(
+        utts.len(),
+        1,
+        "expected exactly one utterance row for resume run"
+    );
     let utt = &utts[0];
-    assert!(utt.cache_hit, "utterance must have cache_hit=true on resume");
+    assert!(
+        utt.cache_hit,
+        "utterance must have cache_hit=true on resume"
+    );
     assert_eq!(
         utt.source_run_id.as_ref().map(|id| id.as_str()),
         Some(original_run_id.as_str()),
@@ -1263,8 +1271,7 @@ async fn raw_text_run_uses_deployment_default_voice() {
     // Use "f".repeat(64) — distinct sha256 from all other tests.
     let voice_sha256 = "f".repeat(64);
     let voice_id = VoiceAssetId::new();
-    let voice_wav = std::env::temp_dir()
-        .join(format!("voice-quick-{}.wav", voice_id.as_str()));
+    let voice_wav = std::env::temp_dir().join(format!("voice-quick-{}.wav", voice_id.as_str()));
     std::fs::write(&voice_wav, b"RIFF\0\0\0\0WAVEfmt ").unwrap();
     let voice_wav_str = voice_wav.to_string_lossy().into_owned();
 
@@ -1972,10 +1979,7 @@ async fn mapping_vector_preset_default_applied_to_cache_key() {
         model_family: emotion_tts_extension::backend_client::FALLBACK_MODEL_FAMILY.into(),
         text: "Narrator: Hello world.".into(),
         speaker_ref_sha256: voice_sha256.clone(),
-        emotion: EmotionPayload::EmotionVector {
-            vector,
-            alpha: 1.0,
-        },
+        emotion: EmotionPayload::EmotionVector { vector, alpha: 1.0 },
         generation_params: BTreeMap::new(),
         seed: 42,
         speed_factor: 1.0,
