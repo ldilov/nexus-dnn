@@ -113,7 +113,9 @@ async fn migration_011_toggle_columns_are_nullable() {
     .await
     .expect("select");
 
-    assert!(row.get::<Option<i64>, _>("reference_preprocess_enabled").is_none());
+    assert!(row
+        .get::<Option<i64>, _>("reference_preprocess_enabled")
+        .is_none());
     assert!(row.get::<Option<i64>, _>("oas_enabled").is_none());
     assert!(row.get::<Option<i64>, _>("compile_gpt_enabled").is_none());
     assert!(row.get::<Option<String>, _>("model_family").is_none());

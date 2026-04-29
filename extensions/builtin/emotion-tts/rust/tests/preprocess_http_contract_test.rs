@@ -184,6 +184,8 @@ async fn seed_voice_asset(
             is_active: true,
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
+            edit_chain_json: None,
+            derived_artifact_ref: None,
             created_at: now,
             updated_at: now,
         })
@@ -233,7 +235,9 @@ async fn build_test_router(
     store: Arc<InMemoryArtifactStore>,
     lease: MockBackendRuntimeLease,
 ) -> axum::Router {
-    let factory = Arc::new(MockLeaseFactory { lease: Arc::new(lease) });
+    let factory = Arc::new(MockLeaseFactory {
+        lease: Arc::new(lease),
+    });
     let provider = Arc::new(LeaseProvider::new(factory));
     let queue = Arc::new(RuntimeQueue::new());
     build_router(repos, queue, "0.2.0", Some(provider), Some(store))
@@ -257,7 +261,11 @@ async fn post_preprocess_returns_202_with_report_on_first_run() {
         .oneshot(
             Request::builder()
                 .method(Method::POST)
-                .uri(format!("/voice-assets/{}/preprocess?deploymentId={}", asset, dep.as_str()))
+                .uri(format!(
+                    "/voice-assets/{}/preprocess?deploymentId={}",
+                    asset,
+                    dep.as_str()
+                ))
                 .header("content-type", "application/json")
                 .body(Body::empty())
                 .unwrap(),
@@ -272,8 +280,14 @@ async fn post_preprocess_returns_202_with_report_on_first_run() {
     assert_eq!(body["report"]["pipeline_version"], "1");
     assert_eq!(body["report"]["stages"][0]["stage"], "decode");
     assert_eq!(body["report"]["stages"][2]["status"], "skipped");
-    assert_eq!(body["report"]["stages"][2]["reason"], "rnnoise import failed");
-    assert_eq!(body["report"]["warnings"][0], "denoise: rnnoise import failed");
+    assert_eq!(
+        body["report"]["stages"][2]["reason"],
+        "rnnoise import failed"
+    );
+    assert_eq!(
+        body["report"]["warnings"][0],
+        "denoise: rnnoise import failed"
+    );
 
     // Post-condition: the asset row now carries the preprocessed ref + report.
     let row = repos.voice_assets.get(&asset).await.unwrap().unwrap();
@@ -291,12 +305,21 @@ async fn post_preprocess_returns_200_unchanged_on_second_call() {
     let dep = seed_deployment(&repos).await;
     let asset = seed_voice_asset(&repos, &store, &dep).await;
 
-    let router1 = build_test_router(repos.clone(), store.clone(), successful_preprocess_handler()).await;
+    let router1 = build_test_router(
+        repos.clone(),
+        store.clone(),
+        successful_preprocess_handler(),
+    )
+    .await;
     let first = router1
         .oneshot(
             Request::builder()
                 .method(Method::POST)
-                .uri(format!("/voice-assets/{}/preprocess?deploymentId={}", asset, dep.as_str()))
+                .uri(format!(
+                    "/voice-assets/{}/preprocess?deploymentId={}",
+                    asset,
+                    dep.as_str()
+                ))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -317,7 +340,11 @@ async fn post_preprocess_returns_200_unchanged_on_second_call() {
         .oneshot(
             Request::builder()
                 .method(Method::POST)
-                .uri(format!("/voice-assets/{}/preprocess?deploymentId={}", asset, dep.as_str()))
+                .uri(format!(
+                    "/voice-assets/{}/preprocess?deploymentId={}",
+                    asset,
+                    dep.as_str()
+                ))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -347,7 +374,11 @@ async fn post_preprocess_missing_asset_returns_404() {
         .oneshot(
             Request::builder()
                 .method(Method::POST)
-                .uri(format!("/voice-assets/{}/preprocess?deploymentId={}", fake_id, dep.as_str()))
+                .uri(format!(
+                    "/voice-assets/{}/preprocess?deploymentId={}",
+                    fake_id,
+                    dep.as_str()
+                ))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -377,7 +408,11 @@ async fn post_preprocess_maps_rpc_input_rejected_to_400() {
         .oneshot(
             Request::builder()
                 .method(Method::POST)
-                .uri(format!("/voice-assets/{}/preprocess?deploymentId={}", asset, dep.as_str()))
+                .uri(format!(
+                    "/voice-assets/{}/preprocess?deploymentId={}",
+                    asset,
+                    dep.as_str()
+                ))
                 .body(Body::empty())
                 .unwrap(),
         )

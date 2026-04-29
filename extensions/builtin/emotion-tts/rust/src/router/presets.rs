@@ -22,7 +22,10 @@ pub struct PresetsState {
 pub fn router(repos: Repos) -> Router {
     Router::new()
         .route("/", get(list).post(create))
-        .route("/{preset_id}", get(fetch).patch(patch_preset).delete(delete_preset))
+        .route(
+            "/{preset_id}",
+            get(fetch).patch(patch_preset).delete(delete_preset),
+        )
         .with_state(Arc::new(PresetsState { repos }))
 }
 
@@ -48,11 +51,9 @@ async fn assert_belongs_to_deployment(
         .get(id)
         .await?
         .ok_or_else(|| EmotionTtsError::not_found(format!("preset {id}")))?;
-    guard::assert_deployment_match(
-        row.deployment_id.as_str(),
-        claimed_deployment_id,
-        || format!("preset {id}"),
-    )?;
+    guard::assert_deployment_match(row.deployment_id.as_str(), claimed_deployment_id, || {
+        format!("preset {id}")
+    })?;
     Ok(row)
 }
 
@@ -203,7 +204,9 @@ fn validate_name(raw: &str) -> Result<String> {
         return Err(EmotionTtsError::validation("presetName cannot be empty"));
     }
     if trimmed.chars().count() > 120 {
-        return Err(EmotionTtsError::validation("presetName too long (max 120 chars)"));
+        return Err(EmotionTtsError::validation(
+            "presetName too long (max 120 chars)",
+        ));
     }
     Ok(trimmed.to_string())
 }

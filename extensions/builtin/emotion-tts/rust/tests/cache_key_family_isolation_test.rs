@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 
 use emotion_tts_extension::domain::cache_key::{build, CacheKeyInput};
 use emotion_tts_extension::domain::emotion::EmotionPayload;
+use emotion_tts_extension::domain::ChainDigest;
 
 fn sample(family: &str) -> CacheKeyInput {
     CacheKeyInput {
@@ -24,6 +25,7 @@ fn sample(family: &str) -> CacheKeyInput {
         speed_factor: 1.0,
         speed_mode: "preserve_pitch".into(),
         output_format: "mp3".into(),
+        voice_asset_chain_digest: ChainDigest::EMPTY.clone(),
     }
 }
 
@@ -97,15 +99,18 @@ fn sc_208_mock_second_family_produces_100_percent_miss_rate() {
     // cache hits. In Rust-cache-key terms that's: every key pair across
     // families must diverge. Sweep 20 text samples to prove it.
     let texts = [
-        "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta",
-        "iota", "kappa", "lambda", "mu", "nu", "xi", "omicron", "pi",
-        "rho", "sigma", "tau", "upsilon",
+        "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa",
+        "lambda", "mu", "nu", "xi", "omicron", "pi", "rho", "sigma", "tau", "upsilon",
     ];
     for text in texts {
         let mut a = sample("indextts-2");
         let mut b = sample("indextts-2-5");
         a.text = text.into();
         b.text = text.into();
-        assert_ne!(build(&a).unwrap(), build(&b).unwrap(), "collision for text={text}");
+        assert_ne!(
+            build(&a).unwrap(),
+            build(&b).unwrap(),
+            "collision for text={text}"
+        );
     }
 }

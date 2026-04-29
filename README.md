@@ -101,6 +101,13 @@ nexus-dnn/
 | [Data Model](docs/data-model.md) | Entities, relationships, state machines |
 | [Python SDK](docs/python-sdk.md) | Python worker SDK reference |
 
+### Builtin extensions
+
+| Extension | Purpose |
+|-----------|---------|
+| [`local-llm`](extensions/builtin/local-llm/) | Chat threads + per-thread LLM bindings on top of llama.cpp leases. |
+| [`emotion-tts`](extensions/builtin/emotion-tts/) | Multi-character emotional TTS via IndexTTS-2. **Spec 036** adds non-destructive audio editing (trim / crop / normalize / pitch-preserving speed / fades / mute) on voice assets and per-utterance run outputs, with audit trail and preview-before-apply. |
+
 ## Contributing
 
 1. Fork the repository

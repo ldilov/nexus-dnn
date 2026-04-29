@@ -145,6 +145,8 @@ async fn voice_asset_get_cross_deployment_returns_404() {
             is_active: true,
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
+            edit_chain_json: None,
+            derived_artifact_ref: None,
             created_at: now,
             updated_at: now,
         })
@@ -220,6 +222,8 @@ async fn mapping_delete_cross_deployment_returns_404_and_does_not_mutate() {
             is_active: true,
             preprocessed_artifact_ref: None,
             preprocessing_report_json: None,
+            edit_chain_json: None,
+            derived_artifact_ref: None,
             created_at: now,
             updated_at: now,
         })

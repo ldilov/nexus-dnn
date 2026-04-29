@@ -218,7 +218,19 @@ mod tests {
     #[tokio::test]
     async fn missing_audio_source_errors() {
         let dir = TempDir::new().unwrap();
-        let manifest = build_manifest("run_01", "dep_01", "0.1.0", "mp3", 1.0, "preserve_pitch", None, None, None, 0, vec![]);
+        let manifest = build_manifest(
+            "run_01",
+            "dep_01",
+            "0.1.0",
+            "mp3",
+            1.0,
+            "preserve_pitch",
+            None,
+            None,
+            None,
+            0,
+            vec![],
+        );
         let zip_path = dir.path().join("bundle.zip");
         let op = ExportBundleOperator;
         let err = op

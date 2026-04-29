@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::backend_client::BackendClient;
 use crate::backend_client::rpc::methods;
+use crate::backend_client::BackendClient;
 use crate::domain::emotion::{EmotionPayload, EmotionSource};
 use crate::domain::Result;
 use crate::operators::{Operator, OperatorId};
@@ -179,7 +179,10 @@ mod tests {
 
     #[test]
     fn emotion_wire_none() {
-        assert_eq!(emotion_wire(&EmotionPayload::None), json!({ "mode": "none" }));
+        assert_eq!(
+            emotion_wire(&EmotionPayload::None),
+            json!({ "mode": "none" })
+        );
     }
 
     #[test]

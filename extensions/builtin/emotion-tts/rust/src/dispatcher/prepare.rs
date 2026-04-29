@@ -13,8 +13,10 @@ use crate::domain::emotion::{
 };
 use crate::domain::filenames::build_filename;
 use crate::domain::parser::{parse_script, ParserMode};
-use crate::domain::{DeploymentId, EmotionTtsError, Result, RunId};
-use crate::operators::batch_synthesize::{BatchOptimisations, Input as BatchInput, SynthesisSegment};
+use crate::domain::{EmotionTtsError, Result, RunId};
+use crate::operators::batch_synthesize::{
+    BatchOptimisations, Input as BatchInput, SynthesisSegment,
+};
 use crate::operators::mapping_resolve::{Input as MapInput, MappingResolveOperator};
 use crate::operators::Operator;
 use crate::storage::repo_traits::{CharacterMappingRow, RunRow};
@@ -22,13 +24,8 @@ use crate::storage::Repos;
 
 pub(crate) struct Prepared {
     pub run: RunRow,
-    pub deployment_id: DeploymentId,
     pub batch_input: BatchInput,
     pub utterances: Vec<UtterancePlan>,
-    /// Set when this run is a resume — points at the original (partial)
-    /// run whose completed utterances we want to attribute as
-    /// `source_run_id` on the new utterance rows. Lets the UI trace
-    /// reused audio back to where it was first synthesized.
     pub source_run_id: Option<crate::domain::RunId>,
 }
 
@@ -41,7 +38,6 @@ pub(crate) struct UtterancePlan {
     pub text: String,
     pub output_target_abs: String,
     pub content_hash: Option<crate::domain::ContentHash>,
-    pub speaker_voice_asset_id: crate::domain::VoiceAssetId,
 }
 
 #[derive(Clone)]
@@ -87,8 +83,7 @@ pub(crate) async fn prepare(
     // Audio-ref payloads get their ref_id resolved through the voice path
     // resolver below so the worker receives an absolute filesystem path,
     // not a host artifact reference.
-    let global_emotion =
-        parse_global_emotion(run.global_emotion_snapshot_json.as_deref(), cfg);
+    let global_emotion = parse_global_emotion(run.global_emotion_snapshot_json.as_deref(), cfg);
 
     // Pre-fetch all vector presets for this deployment once. Per-character
     // mappings reference presets by id when their default emotion mode is
@@ -135,6 +130,9 @@ pub(crate) async fn prepare(
         ))
     })?;
 
+    let chain_digests =
+        build_voice_chain_digest_map(repos, &mappings, cfg.default_voice_asset_id.as_ref()).await?;
+
     let mut segments = Vec::with_capacity(resolved.resolved.len());
     let mut plans = Vec::with_capacity(resolved.resolved.len());
     for (idx, r) in resolved.resolved.iter().enumerate() {
@@ -159,8 +157,8 @@ pub(crate) async fn prepare(
             },
         };
 
-        let speaker_path = (cfg.voice_path_resolver)(speaker_voice_id.as_str())
-            .ok_or_else(|| {
+        let speaker_path =
+            (cfg.voice_path_resolver)(speaker_voice_id.as_str()).ok_or_else(|| {
                 EmotionTtsError::Conflict(format!(
                     "voice file missing for asset {}",
                     speaker_voice_id.as_str()
@@ -183,16 +181,11 @@ pub(crate) async fn prepare(
         // map is left untouched; only the value passed to
         // `InlineOverrides::from_map` is normalised.
         let inline = build_inline_overrides(&r.utterance.inline_overrides, cfg);
-        let utterance_emotion = resolve_emotion(
-            &inline,
-            None,
-            mapping_defaults.as_ref(),
-            &global_emotion,
-        )
-        .payload;
+        let utterance_emotion =
+            resolve_emotion(&inline, None, mapping_defaults.as_ref(), &global_emotion).payload;
 
-        let content_hash = (cfg.voice_sha256_resolver)(speaker_voice_id.as_str())
-            .and_then(|sha256| {
+        let content_hash =
+            (cfg.voice_sha256_resolver)(speaker_voice_id.as_str()).and_then(|sha256| {
                 let cache_input = CacheKeyInput {
                     extension_version: extension_version.to_string(),
                     runtime_version: cfg
@@ -227,6 +220,10 @@ pub(crate) async fn prepare(
                     speed_factor: run.speed_factor,
                     speed_mode: run.speed_mode.clone(),
                     output_format: run.output_format.clone(),
+                    voice_asset_chain_digest: chain_digests
+                        .get(speaker_voice_id.as_str())
+                        .cloned()
+                        .unwrap_or(crate::domain::ChainDigest::EMPTY),
                 };
                 build_cache_key(&cache_input).ok()
             });
@@ -251,7 +248,6 @@ pub(crate) async fn prepare(
             text: r.utterance.text.clone(),
             output_target_abs: output_target_abs.clone(),
             content_hash,
-            speaker_voice_asset_id: speaker_voice_id.clone(),
         });
 
         segments.push(SynthesisSegment {
@@ -279,7 +275,6 @@ pub(crate) async fn prepare(
     let source_run_id = run.original_run_id.clone();
     Ok(Prepared {
         run,
-        deployment_id: dep,
         batch_input,
         utterances: plans,
         source_run_id,
@@ -448,10 +443,7 @@ fn build_mapping_defaults(
 /// the values it understands and ignores the rest.
 const INLINE_AUDIO_REF_KEY: &str = "emotion_audio_ref";
 
-fn build_inline_overrides(
-    raw: &BTreeMap<String, String>,
-    cfg: &PrepareConfig,
-) -> InlineOverrides {
+fn build_inline_overrides(raw: &BTreeMap<String, String>, cfg: &PrepareConfig) -> InlineOverrides {
     if raw.is_empty() {
         return InlineOverrides::default();
     }
@@ -466,4 +458,31 @@ fn build_inline_overrides(
     let mut normalised: BTreeMap<String, String> = raw.clone();
     normalised.insert(INLINE_AUDIO_REF_KEY.to_string(), resolved);
     InlineOverrides::from_map(&normalised)
+}
+
+async fn build_voice_chain_digest_map(
+    repos: &Repos,
+    mappings: &[CharacterMappingRow],
+    default_voice_asset_id: Option<&crate::domain::VoiceAssetId>,
+) -> Result<HashMap<String, crate::domain::ChainDigest>> {
+    let mut ids: Vec<crate::domain::VoiceAssetId> = mappings
+        .iter()
+        .map(|m| m.speaker_voice_asset_id.clone())
+        .collect();
+    if let Some(default) = default_voice_asset_id {
+        ids.push(default.clone());
+    }
+    ids.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+    ids.dedup_by(|a, b| a.as_str() == b.as_str());
+
+    let chains = repos.voice_assets.read_edit_chains_for(&ids).await?;
+    let mut out = HashMap::with_capacity(ids.len());
+    for id in &ids {
+        let digest = chains.get(id.as_str()).map_or_else(
+            || crate::domain::ChainDigest::EMPTY,
+            crate::domain::ChainDigest::of,
+        );
+        out.insert(id.as_str().to_string(), digest);
+    }
+    Ok(out)
 }

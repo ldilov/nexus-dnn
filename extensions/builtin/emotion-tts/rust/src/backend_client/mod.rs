@@ -19,8 +19,8 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use tokio::sync::Mutex;
 
-use crate::host_contract::{LeaseState, SharedLease};
 use crate::domain::{EmotionTtsError, Result};
+use crate::host_contract::{LeaseState, SharedLease};
 
 /// Parsed worker `handshake` response. Kept on `LeaseProvider` so the
 /// dispatcher can populate cache-key fields (`runtime_version`,
@@ -117,8 +117,9 @@ impl BackendClient {
             .send_rpc(method, json_params)
             .await
             .map_err(rpc::lease_error_to_domain)?;
-        serde_json::from_value::<R>(response)
-            .map_err(|err| EmotionTtsError::internal(format!("decode response for {method}: {err}")))
+        serde_json::from_value::<R>(response).map_err(|err| {
+            EmotionTtsError::internal(format!("decode response for {method}: {err}"))
+        })
     }
 
     /// Spec 034 / US5 (T104) — typed wrapper for `family.list`.
@@ -164,6 +165,51 @@ impl BackendClient {
             pipeline_version: params::PreprocessingReport::default_pipeline_version().to_string(),
         };
         self.call(rpc::methods::VOICE_PREPROCESS, &params).await
+    }
+
+    /// Spec 036 / US1 — typed wrapper for `audio.edit`. Materialises the
+    /// declarative `chain` against the source artifact at
+    /// `source_artifact_abs`, writing the derived audio to
+    /// `output_artifact_abs`. Returns the worker's typed report including
+    /// the canonical `chain_digest`, source/derived durations, optional
+    /// measured LUFS, and per-op timing.
+    pub async fn audio_edit(
+        &self,
+        request_id: impl Into<String>,
+        source_artifact_abs: impl Into<String>,
+        output_artifact_abs: impl Into<String>,
+        chain: serde_json::Value,
+        chain_digest: impl Into<String>,
+    ) -> Result<params::AudioEditResult> {
+        let params = params::AudioEditParams {
+            request_id: request_id.into(),
+            source_artifact_abs: source_artifact_abs.into(),
+            output_artifact_abs: output_artifact_abs.into(),
+            chain,
+            chain_digest: chain_digest.into(),
+        };
+        self.call(rpc::methods::AUDIO_EDIT, &params).await
+    }
+
+    /// Spec 036 / US1 — typed wrapper for `audio.edit.preview`. Worker
+    /// writes the materialised audio to a temp file under its scratch
+    /// directory and returns the absolute path; the calling Rust route is
+    /// responsible for streaming the bytes back and deleting the temp file
+    /// once the response body has been drained (or the connection closes).
+    pub async fn audio_edit_preview(
+        &self,
+        request_id: impl Into<String>,
+        source_artifact_abs: impl Into<String>,
+        chain: serde_json::Value,
+        format_hint: Option<String>,
+    ) -> Result<params::AudioEditPreviewResult> {
+        let params = params::AudioEditPreviewParams {
+            request_id: request_id.into(),
+            source_artifact_abs: source_artifact_abs.into(),
+            chain,
+            format_hint,
+        };
+        self.call(rpc::methods::AUDIO_EDIT_PREVIEW, &params).await
     }
 }
 
@@ -319,7 +365,10 @@ impl LeaseProvider {
 /// `Released` are dead ends and force a fresh spawn.
 #[must_use]
 const fn is_serviceable(state: LeaseState) -> bool {
-    matches!(state, LeaseState::Starting | LeaseState::Ready | LeaseState::Busy)
+    matches!(
+        state,
+        LeaseState::Starting | LeaseState::Ready | LeaseState::Busy
+    )
 }
 
 #[cfg(test)]

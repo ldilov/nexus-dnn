@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use sqlx::{Row, SqlitePool};
 
-use crate::domain::{DeploymentId, EmotionTtsError, VoiceAssetId};
+use crate::domain::{DeploymentId, EditChain, EmotionTtsError, VoiceAssetId};
 use crate::storage::repo_traits::{RepoResult, VoiceAssetRow, VoiceAssetsRepo};
 
 pub struct SqliteVoiceAssetsRepo {
@@ -38,6 +38,8 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<VoiceAssetRow> {
         is_active: is_active != 0,
         preprocessed_artifact_ref: row.try_get("preprocessed_artifact_ref").map_err(to_err)?,
         preprocessing_report_json: row.try_get("preprocessing_report_json").map_err(to_err)?,
+        edit_chain_json: row.try_get("edit_chain_json").map_err(to_err)?,
+        derived_artifact_ref: row.try_get("derived_artifact_ref").map_err(to_err)?,
         created_at: row.try_get("created_at").map_err(to_err)?,
         updated_at: row.try_get("updated_at").map_err(to_err)?,
     })
@@ -73,11 +75,12 @@ impl VoiceAssetsRepo for SqliteVoiceAssetsRepo {
     }
 
     async fn get(&self, id: &VoiceAssetId) -> RepoResult<Option<VoiceAssetRow>> {
-        let row = sqlx::query("SELECT * FROM ext_emotion_tts__voice_assets WHERE voice_asset_id = ?")
-            .bind(id.as_str())
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(to_err)?;
+        let row =
+            sqlx::query("SELECT * FROM ext_emotion_tts__voice_assets WHERE voice_asset_id = ?")
+                .bind(id.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(to_err)?;
         row.as_ref().map(map_row).transpose()
     }
 
@@ -118,6 +121,97 @@ impl VoiceAssetsRepo for SqliteVoiceAssetsRepo {
         .bind(preprocessed_artifact_ref)
         .bind(preprocessing_report_json)
         .bind(id.as_str())
+        .execute(&self.pool)
+        .await
+        .map_err(to_err)?;
+        Ok(())
+    }
+
+    async fn read_edit_chain(&self, asset_id: &VoiceAssetId) -> RepoResult<Option<EditChain>> {
+        let row = sqlx::query(
+            "SELECT edit_chain_json FROM ext_emotion_tts__voice_assets WHERE voice_asset_id = ?",
+        )
+        .bind(asset_id.as_str())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(to_err)?;
+        let Some(row) = row else { return Ok(None) };
+        let raw: Option<String> = row.try_get("edit_chain_json").map_err(to_err)?;
+        match raw {
+            None => Ok(None),
+            Some(json) => Ok(Some(
+                serde_json::from_str(&json).map_err(EmotionTtsError::from)?,
+            )),
+        }
+    }
+
+    async fn read_edit_chains_for(
+        &self,
+        asset_ids: &[VoiceAssetId],
+    ) -> RepoResult<std::collections::HashMap<String, EditChain>> {
+        if asset_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let placeholders = std::iter::repeat_n("?", asset_ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT voice_asset_id, edit_chain_json \
+             FROM ext_emotion_tts__voice_assets \
+             WHERE voice_asset_id IN ({placeholders})"
+        );
+        let mut q = sqlx::query(&sql);
+        for id in asset_ids {
+            q = q.bind(id.as_str());
+        }
+        let rows = q.fetch_all(&self.pool).await.map_err(to_err)?;
+        let mut out = std::collections::HashMap::with_capacity(rows.len());
+        for row in rows {
+            let id: String = row.try_get("voice_asset_id").map_err(to_err)?;
+            let raw: Option<String> = row.try_get("edit_chain_json").map_err(to_err)?;
+            if let Some(json) = raw {
+                let chain: EditChain =
+                    serde_json::from_str(&json).map_err(EmotionTtsError::from)?;
+                out.insert(id, chain);
+            }
+        }
+        Ok(out)
+    }
+
+    async fn write_edit_chain(
+        &self,
+        asset_id: &VoiceAssetId,
+        chain: Option<&EditChain>,
+    ) -> RepoResult<()> {
+        let serialized = match chain {
+            None => None,
+            Some(c) => Some(serde_json::to_string(c).map_err(EmotionTtsError::from)?),
+        };
+        sqlx::query(
+            "UPDATE ext_emotion_tts__voice_assets \
+             SET edit_chain_json = ?, updated_at = strftime('%s', 'now') \
+             WHERE voice_asset_id = ?",
+        )
+        .bind(serialized)
+        .bind(asset_id.as_str())
+        .execute(&self.pool)
+        .await
+        .map_err(to_err)?;
+        Ok(())
+    }
+
+    async fn set_derived_artifact_ref(
+        &self,
+        asset_id: &VoiceAssetId,
+        derived_artifact_ref: Option<&str>,
+    ) -> RepoResult<()> {
+        sqlx::query(
+            "UPDATE ext_emotion_tts__voice_assets \
+             SET derived_artifact_ref = ?, updated_at = strftime('%s', 'now') \
+             WHERE voice_asset_id = ?",
+        )
+        .bind(derived_artifact_ref)
+        .bind(asset_id.as_str())
         .execute(&self.pool)
         .await
         .map_err(to_err)?;

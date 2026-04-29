@@ -1162,6 +1162,193 @@ paths:
                   mostRecentRunId: { type: [string, 'null'] }
                   resumable: { type: boolean }
 
+  # ─── Audio editing (Spec 036) ──────────────────────────────────────────────
+  # Full schemas live in specs/036-audio-editing/contracts/openapi-audio-edit.yaml.
+  # Snake_case wire format (matches the rest of the spec-036 surface — diverges
+  # from the surrounding camelCase emotion-tts surface to keep parity with the
+  # `EditChain { version, ops[] }` JSON persisted in storage).
+  /api/v1/extensions/nexus.audio.emotiontts/voice-assets/{voice_asset_id}/edit:
+    parameters:
+      - { in: path,  name: voice_asset_id, required: true, schema: { type: string } }
+      - { in: query, name: deploymentId,   required: true, schema: { type: string }, description: "Caller's claimed deployment. Returns 404 (NOT 403) on cross-deployment access." }
+    post:
+      tags: [EmotionTTS]
+      operationId: emotionttsApplyVoiceAssetEdit
+      summary: Apply an edit chain to a voice asset (Spec 036).
+      description: |
+        Persists the chain, materialises a derived artifact via `HostArtifactStore`
+        keyed on `chain_digest`, and emits `extension.emotiontts.audio.edited` on
+        the host event bus. Rejects with 409 + `StaleDigestError` when
+        `digest_before` mismatches the persisted digest. Appends one row to
+        `ext_emotion_tts__audio_edit_log` per state-changing call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chain]
+              properties:
+                chain:
+                  type: object
+                  required: [version, ops]
+                  properties:
+                    version: { type: integer, enum: [1] }
+                    ops:
+                      type: array
+                      maxItems: 32
+                      items:
+                        description: 'See `EditOp` in specs/036-audio-editing/contracts/openapi-audio-edit.yaml — discriminator `mode` ∈ {trim, crop, normalize, speed, fade_in, fade_out, mute}.'
+                        type: object
+                digest_before: { type: string, description: 'Expected current digest; rejects 409 on mismatch.' }
+      responses:
+        '200':
+          description: Edit applied; derived artifact updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [chain_digest, derived_artifact_ref, source_duration_ms, derived_duration_ms]
+                properties:
+                  chain_digest: { type: string, description: 64-char SHA-256 hex over canonical chain JSON. }
+                  derived_artifact_ref: { type: string }
+                  source_duration_ms: { type: integer }
+                  derived_duration_ms: { type: integer }
+                  measured_lufs: { type: [number, 'null'], description: Present when chain contains a normalize op. }
+                  per_op_durations_ms:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        op_id: { type: string }
+                        duration_ms: { type: number }
+        '400': { description: Validation failed (chain too long, op out of range). }
+        '404': { description: Voice asset not in this deployment. }
+        '409': { description: Stale digest on Apply (concurrent edit detected). }
+        '500': { description: Worker-side or pipeline failure. }
+    delete:
+      tags: [EmotionTTS]
+      operationId: emotionttsClearVoiceAssetEdit
+      summary: Clear the edit chain (revert to source).
+      responses:
+        '204': { description: Chain cleared (or already empty — no-op). }
+        '404': { description: Voice asset not in this deployment. }
+
+  /api/v1/extensions/nexus.audio.emotiontts/voice-assets/{voice_asset_id}/edit/preview:
+    parameters:
+      - { in: path,  name: voice_asset_id, required: true, schema: { type: string } }
+      - { in: query, name: deploymentId,   required: true, schema: { type: string } }
+    post:
+      tags: [EmotionTTS]
+      operationId: emotionttsPreviewVoiceAssetEdit
+      summary: Materialise an edit chain to a temp file and stream the bytes (Spec 036).
+      description: |
+        Does not persist. Server-side temp file is deleted after the response is
+        fully streamed (or the connection closes — RAII guard). Response carries
+        `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chain]
+              properties:
+                chain:
+                  type: object
+                  required: [version, ops]
+                  properties:
+                    version: { type: integer, enum: [1] }
+                    ops: { type: array, items: { type: object } }
+      responses:
+        '200':
+          description: Preview audio bytes.
+          content:
+            audio/wav:  { schema: { type: string, format: binary } }
+            audio/mpeg: { schema: { type: string, format: binary } }
+        '400': { description: Validation failed. }
+        '404': { description: Voice asset not in this deployment. }
+        '500': { description: Worker-side or pipeline failure. }
+
+  /api/v1/extensions/nexus.audio.emotiontts/deployments/{deployment_id}/runs/{run_id}/utterances/{utterance_id}/edit:
+    parameters:
+      - { $ref: '#/components/parameters/EmotionTtsDeploymentId' }
+      - { in: path, name: run_id,       required: true, schema: { type: string } }
+      - { in: path, name: utterance_id, required: true, schema: { type: string } }
+    post:
+      tags: [EmotionTTS]
+      operationId: emotionttsApplyUtteranceEdit
+      summary: Apply an edit chain to a single run-output utterance (Spec 036).
+      description: |
+        Persists the chain on the utterance, rebuilds the segment audio, and
+        marks the run's export ZIP stale (`export_status = needs_rebuild`).
+        Same 404-not-403 cross-deployment rule as the rest of the surface.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chain]
+              properties:
+                chain:
+                  type: object
+                  required: [version, ops]
+                  properties:
+                    version: { type: integer, enum: [1] }
+                    ops: { type: array, items: { type: object } }
+                digest_before: { type: string }
+      responses:
+        '200':
+          description: Segment audio rebuilt; export ZIP marked stale.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chain_digest: { type: string }
+                  derived_artifact_ref: { type: string }
+        '400': { description: Validation failed. }
+        '404': { description: Utterance/run not in this deployment. }
+        '409': { description: Stale digest. }
+        '500': { description: Worker-side or pipeline failure. }
+
+  /api/v1/extensions/nexus.audio.emotiontts/audit/{target_kind}/{target_id}:
+    parameters:
+      - { in: path,  name: target_kind, required: true, schema: { type: string, enum: [voice_asset, utterance] } }
+      - { in: path,  name: target_id,   required: true, schema: { type: string } }
+      - { in: query, name: deploymentId, required: true, schema: { type: string } }
+      - { in: query, name: limit,        required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+    get:
+      tags: [EmotionTTS]
+      operationId: emotionttsListAuditEntries
+      summary: List audit entries for a target (voice asset or utterance) — Spec 036.
+      description: |
+        Reverse-chronological. Audit rows survive target deletion (FR-030).
+      responses:
+        '200':
+          description: Audit entries (newest first).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      required: [entry_id, target_id, target_kind, digest_before, digest_after, operation_count, recorded_at, actor]
+                      properties:
+                        entry_id:        { type: string, description: ULID. }
+                        target_id:       { type: string }
+                        target_kind:     { type: string, enum: [voice_asset, utterance] }
+                        digest_before:   { type: string }
+                        digest_after:    { type: string }
+                        operation_count: { type: integer, minimum: 0 }
+                        recorded_at:     { type: string, format: date-time }
+                        actor:           { type: string }
+        '404': { description: Target not in this deployment. }
+
 # ─── Components ─────────────────────────────────────────────────────────────
 components:
 

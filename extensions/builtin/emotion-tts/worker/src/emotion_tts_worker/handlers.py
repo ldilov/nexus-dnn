@@ -8,10 +8,13 @@ intrinsic handlers still work on CPU-only CI.
 
 from __future__ import annotations
 
+import asyncio
+import tempfile
 import time
+from pathlib import Path
 from typing import Any
 
-from . import __version__
+from . import __version__, audio_edit as audio_edit_module
 from .cancellation import GLOBAL_TOKEN
 from .main import ProtocolVersion, Worker
 from .model_loader import (
@@ -22,7 +25,7 @@ from .model_loader import (
     orchestrate_load,
     probe_model_dir,
 )
-from .rpc import ErrorCodes, Methods, error_response
+from .rpc import ErrorCodes, Methods
 
 
 DEFAULT_HANDSHAKE_PROTOCOL = ProtocolVersion
@@ -86,13 +89,15 @@ def register_phase4_handlers(
             raise _RpcErrorProxy(exc.rpc_error()) from exc
 
     async def load_model(params: Any) -> dict[str, Any]:
+        """Load the model with a structured-missing-file precheck.
+
+        IndexTTS2's internal load buries missing-file errors under a torch
+        stack trace; the precheck surfaces a `model_missing` envelope to the
+        host instead of an opaque `model_load_failed`.
+        """
+
         if adapter is None:
             raise ModelLoadFailedError("adapter is not configured")
-        # Cheap precheck: confirm every required file is on disk before
-        # diving into IndexTTS2's internal load (which buries missing-file
-        # errors under a torch stack trace). Surfaces a structured
-        # `model_missing` envelope to the host instead of an opaque
-        # `model_load_failed`.
         presence = probe_model_dir(adapter._settings.model_dir_abs)
         if not presence.present:
             raise _RpcErrorProxy(ModelMissingError(presence.missing_files).rpc_error())
@@ -118,12 +123,14 @@ def register_phase4_handlers(
         return {"request_id": request_id, "cancel_acked": cancelled}
 
     async def voice_preprocess(params: Any) -> dict[str, Any]:
-        # No-op stub. The host's voice-asset upload flow calls
-        # `voice.preprocess` after every successful upload to do optional
-        # background work (loudness normalization, silence trimming, etc.).
-        # IndexTTS-2 clones from raw audio just fine, so we skip the
-        # preprocessing — but the host's caller still needs a structured
-        # OK response, otherwise it logs a misleading warning every upload.
+        """No-op stub for the host's post-upload `voice.preprocess` call.
+
+        IndexTTS-2 clones from raw audio just fine, so optional preprocessing
+        (loudness normalization, silence trimming) is skipped. The structured
+        OK response keeps the host caller from logging a misleading warning
+        on every upload.
+        """
+
         request_id = (
             str(params.get("request_id", ""))
             if isinstance(params, dict)
@@ -135,6 +142,63 @@ def register_phase4_handlers(
             "skipped_reason": "preprocessing is a no-op for IndexTTS-2; raw audio works",
         }
 
+    async def audio_edit(params: Any) -> dict[str, Any]:
+        """Apply an EditChain to a source artifact and write derived audio."""
+
+        if not isinstance(params, dict):
+            raise _RpcErrorProxy(_validation_error("params must be an object"))
+        try:
+            source = Path(params["source_artifact_abs"])
+            output = Path(params["output_artifact_abs"])
+            chain = params["chain"]
+            chain_digest = params["chain_digest"]
+        except KeyError as exc:
+            raise _RpcErrorProxy(_validation_error(f"missing required field: {exc.args[0]}")) from exc
+        if not isinstance(chain_digest, str) or len(chain_digest) != 64:
+            raise _RpcErrorProxy(
+                _validation_error("chain_digest must be a 64-character hex string")
+            )
+        try:
+            report = await asyncio.to_thread(
+                audio_edit_module.apply_chain, source, output, chain
+            )
+        except ValueError as exc:
+            raise _RpcErrorProxy(_validation_error(str(exc))) from exc
+        except (OSError, RuntimeError) as exc:
+            raise _RpcErrorProxy(_synthesis_failed_error(str(exc))) from exc
+        return _serialize_report(report, chain_digest)
+
+    async def audio_edit_preview(params: Any) -> dict[str, Any]:
+        """Materialize an EditChain to a worker temp file; return path + size + format."""
+
+        if not isinstance(params, dict):
+            raise _RpcErrorProxy(_validation_error("params must be an object"))
+        try:
+            source = Path(params["source_artifact_abs"])
+            chain = params["chain"]
+        except KeyError as exc:
+            raise _RpcErrorProxy(_validation_error(f"missing required field: {exc.args[0]}")) from exc
+        format_hint = params.get("format_hint") or "wav"
+        temp_dir = Path(tempfile.gettempdir()) / "emotion-tts-audio-edit"
+        try:
+            temp_path, report = await asyncio.to_thread(
+                audio_edit_module.materialize_to_temp, source, chain, temp_dir, format_hint
+            )
+        except ValueError as exc:
+            raise _RpcErrorProxy(_validation_error(str(exc))) from exc
+        except (OSError, RuntimeError) as exc:
+            raise _RpcErrorProxy(_synthesis_failed_error(str(exc))) from exc
+        try:
+            byte_size = temp_path.stat().st_size
+        except OSError:
+            byte_size = 0
+        return {
+            "temp_path_abs": str(temp_path),
+            "format": str(format_hint).lower().lstrip("."),
+            "byte_size": int(byte_size),
+            "derived_duration_ms": report.derived_duration_ms,
+        }
+
     worker.register(Methods.HANDSHAKE, handshake, replace=True)
     worker.register(Methods.HEALTH, health, replace=True)
     worker.register(Methods.MODEL_LOAD, load_model)
@@ -142,6 +206,8 @@ def register_phase4_handlers(
     worker.register(Methods.MODEL_UNLOAD, unload_model)
     worker.register(Methods.CANCEL, cancel)
     worker.register("voice.preprocess", voice_preprocess)
+    worker.register(Methods.AUDIO_EDIT, audio_edit)
+    worker.register(Methods.AUDIO_EDIT_PREVIEW, audio_edit_preview)
 
     if synthesis is not None:
         async def synthesize_batch(params: Any) -> dict[str, Any]:
@@ -184,6 +250,28 @@ class _RpcErrorProxy(Exception):
     def __init__(self, rpc_error: dict[str, Any]) -> None:
         super().__init__(rpc_error.get("message", "rpc error"))
         self.rpc_error = rpc_error
+
+
+def _validation_error(message: str) -> dict[str, Any]:
+    return {"code": ErrorCodes.INVALID_PARAMS, "message": message}
+
+
+def _synthesis_failed_error(message: str) -> dict[str, Any]:
+    return {"code": ErrorCodes.SYNTHESIS_FAILED, "message": message}
+
+
+def _serialize_report(report: Any, chain_digest: str) -> dict[str, Any]:
+    return {
+        "chain_digest": chain_digest,
+        "source_duration_ms": report.source_duration_ms,
+        "derived_duration_ms": report.derived_duration_ms,
+        "measured_lufs": report.measured_lufs,
+        "per_op_durations_ms": [
+            {"op_id": d.op_id, "duration_ms": d.duration_ms}
+            for d in report.per_op_durations_ms
+        ],
+        "warnings": list(report.warnings),
+    }
 
 
 def _python_version() -> str:

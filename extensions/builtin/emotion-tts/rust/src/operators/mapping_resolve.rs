@@ -78,7 +78,10 @@ impl Operator for MappingResolveOperator {
             });
         }
 
-        Ok(Output { resolved, unresolved_characters: unresolved })
+        Ok(Output {
+            resolved,
+            unresolved_characters: unresolved,
+        })
     }
 }
 
