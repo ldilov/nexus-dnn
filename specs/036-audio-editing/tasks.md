@@ -176,16 +176,16 @@ artifact store; reload shows the persisted state only.
 
 ### Tests for User Story 3 (RED first)
 
-- [ ] T051 [P] [US3] Write failing pytest `extensions/builtin/emotion-tts/worker/tests/test_audio_edit_preview_temp_cleanup.py` asserting the worker's `materialize_to_temp` helper deletes its temp file when the caller closes the stream early (simulated by RAII drop)
-- [ ] T052 [P] [US3] Write failing Playwright spec `extensions/builtin/emotion-tts/web/tests/e2e/preview_flow.spec.ts` per quickstart step 3 (US3 acceptance scenarios)
+- [X] T051 [P] [US3] Write failing pytest `extensions/builtin/emotion-tts/worker/tests/test_audio_edit_preview_temp_cleanup.py` asserting the worker's `materialize_to_temp` helper deletes its temp file when the caller closes the stream early (simulated by RAII drop)
+- [X] T052 [P] [US3] Write failing Playwright spec `extensions/builtin/emotion-tts/web/tests/e2e/preview_flow.spec.ts` per quickstart step 3 (US3 acceptance scenarios)
 
 ### Implementation (US3)
 
-- [ ] T053 [US3] In `extensions/builtin/emotion-tts/rust/src/router/voice_assets.rs::edit_preview`, ensure `PreviewTempGuard` Drop cleans up even on dropped HTTP connections; verify with the worker test
-- [ ] T054 [US3] Add a Web Audio API decoder + `<audio>` element to `audio_edit_panel.tsx` so Preview bytes play in-browser; consecutive previews revoke the previous Object URL to prevent memory leaks
-- [ ] T055 [US3] In `audio_edit_panel.tsx`, gate the Apply button behind a "preview consumed" UX hint (non-blocking) so users notice the preview/apply distinction per FR-023
-- [ ] T056 [US3] Add `Cache-Control: no-store` to the preview response in `voice_assets.rs::edit_preview`
-- [ ] T057 [US3] Run T051, T052 → GREEN
+- [X] T053 [US3] In `extensions/builtin/emotion-tts/rust/src/router/voice_assets.rs::edit_preview`, ensure `PreviewTempGuard` Drop cleans up even on dropped HTTP connections; verify with the worker test
+- [X] T054 [US3] Add a Web Audio API decoder + `<audio>` element to `audio_edit_panel.tsx` so Preview bytes play in-browser; consecutive previews revoke the previous Object URL to prevent memory leaks
+- [X] T055 [US3] In `audio_edit_panel.tsx`, gate the Apply button behind a "preview consumed" UX hint (non-blocking) so users notice the preview/apply distinction per FR-023
+- [X] T056 [US3] Add `Cache-Control: no-store` to the preview response in `voice_assets.rs::edit_preview`
+- [X] T057 [US3] Run T051, T052 → GREEN
 - [ ] T058 [US3] **Pause for code review**: invoke `/requesting-code-review` with the US3 diff before US4
 
 **Checkpoint**: User Stories 1 + 2 + 3 all work; preview-without-persist verified.
