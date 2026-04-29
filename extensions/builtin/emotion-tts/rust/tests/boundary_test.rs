@@ -39,13 +39,16 @@ fn boundary_audit_reports_clean() {
     );
 
     let (program, args): (&str, Vec<String>) = if cfg!(windows) {
-        ("powershell", vec![
-            "-NoProfile".into(),
-            "-ExecutionPolicy".into(),
-            "Bypass".into(),
-            "-File".into(),
-            ps1.to_string_lossy().into_owned(),
-        ])
+        (
+            "powershell",
+            vec![
+                "-NoProfile".into(),
+                "-ExecutionPolicy".into(),
+                "Bypass".into(),
+                "-File".into(),
+                ps1.to_string_lossy().into_owned(),
+            ],
+        )
     } else {
         ("bash", vec![sh.to_string_lossy().into_owned()])
     };

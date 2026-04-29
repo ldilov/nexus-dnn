@@ -75,11 +75,12 @@ impl VoiceAssetsRepo for SqliteVoiceAssetsRepo {
     }
 
     async fn get(&self, id: &VoiceAssetId) -> RepoResult<Option<VoiceAssetRow>> {
-        let row = sqlx::query("SELECT * FROM ext_emotion_tts__voice_assets WHERE voice_asset_id = ?")
-            .bind(id.as_str())
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(to_err)?;
+        let row =
+            sqlx::query("SELECT * FROM ext_emotion_tts__voice_assets WHERE voice_asset_id = ?")
+                .bind(id.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(to_err)?;
         row.as_ref().map(map_row).transpose()
     }
 
@@ -138,8 +139,43 @@ impl VoiceAssetsRepo for SqliteVoiceAssetsRepo {
         let raw: Option<String> = row.try_get("edit_chain_json").map_err(to_err)?;
         match raw {
             None => Ok(None),
-            Some(json) => Ok(Some(serde_json::from_str(&json).map_err(EmotionTtsError::from)?)),
+            Some(json) => Ok(Some(
+                serde_json::from_str(&json).map_err(EmotionTtsError::from)?,
+            )),
         }
+    }
+
+    async fn read_edit_chains_for(
+        &self,
+        asset_ids: &[VoiceAssetId],
+    ) -> RepoResult<std::collections::HashMap<String, EditChain>> {
+        if asset_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let placeholders = std::iter::repeat_n("?", asset_ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT voice_asset_id, edit_chain_json \
+             FROM ext_emotion_tts__voice_assets \
+             WHERE voice_asset_id IN ({placeholders})"
+        );
+        let mut q = sqlx::query(&sql);
+        for id in asset_ids {
+            q = q.bind(id.as_str());
+        }
+        let rows = q.fetch_all(&self.pool).await.map_err(to_err)?;
+        let mut out = std::collections::HashMap::with_capacity(rows.len());
+        for row in rows {
+            let id: String = row.try_get("voice_asset_id").map_err(to_err)?;
+            let raw: Option<String> = row.try_get("edit_chain_json").map_err(to_err)?;
+            if let Some(json) = raw {
+                let chain: EditChain =
+                    serde_json::from_str(&json).map_err(EmotionTtsError::from)?;
+                out.insert(id, chain);
+            }
+        }
+        Ok(out)
     }
 
     async fn write_edit_chain(

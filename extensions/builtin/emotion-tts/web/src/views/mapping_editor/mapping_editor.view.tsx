@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData } from "react-router";
-import { motion, AnimatePresence } from "motion/react";
+import { AnimatePresence, LazyMotion, domAnimation, m } from "motion/react";
 import type { Deployment } from "../../services/deployments_client";
 import type {
   CharacterMapping,
@@ -275,20 +275,22 @@ export function MappingEditorView(): JSX.Element {
       </aside>
 
       <section className={css.detail} aria-label="Mapping detail">
-        <AnimatePresence>
-          {toast && (
-            <motion.div
-              key={toast}
-              className={css.toast}
-              initial={{ opacity: 0, y: -6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              role="status"
-            >
-              {toast}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <LazyMotion features={domAnimation}>
+          <AnimatePresence>
+            {toast && (
+              <m.div
+                key={toast}
+                className={css.toast}
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                role="status"
+              >
+                {toast}
+              </m.div>
+            )}
+          </AnimatePresence>
+        </LazyMotion>
         {error && (
           <div className={css.errorBanner} role="alert">
             {error}
@@ -366,37 +368,15 @@ interface EmptyDetailProps {
 }
 
 function EmptyDetail({ voiceCount, onUploadVoice }: EmptyDetailProps): JSX.Element {
-  // First-time UX: no voices uploaded yet. The "+ Add" mapping button is
-  // gated on voiceCount >= 1, so without an upload affordance here the
-  // user is in a chicken-and-egg dead-end. Surface the dropzone right on
-  // the empty state so they can upload, then create their first mapping.
   if (voiceCount === 0) {
     return (
-      <div className={css.fieldset} style={{ padding: "3rem 2rem" }}>
-        <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
-          <h2
-            style={{
-              fontFamily: "var(--font-display, var(--font))",
-              fontSize: "1.4rem",
-              margin: "0 0 0.75rem",
-              color: "var(--text)",
-            }}
-          >
-            Upload your first voice
-          </h2>
-          <p
-            style={{
-              fontFamily: "var(--font)",
-              fontSize: "1rem",
-              color: "var(--text-muted)",
-              maxWidth: "44ch",
-              margin: "0 auto",
-              lineHeight: 1.5,
-            }}
-          >
-            EmotionTTS clones the voice from a short audio sample (5–30 s clean
-            mp3 or wav). Drop one in below, then click <strong>+ Add</strong>{" "}
-            on the left to map a character to it.
+      <div className={`${css.fieldset} ${css.emptyOnboarding}`}>
+        <div className={css.emptyOnboardingHeader}>
+          <h2 className={css.emptyOnboardingTitle}>Upload your first voice</h2>
+          <p className={css.emptyOnboardingSubtitle}>
+            EmotionTTS clones the voice from a short audio sample (5–30 s clean mp3 or wav).
+            Drop one in below, then click <strong>+ Add</strong> on the left to map a
+            character to it.
           </p>
         </div>
         <AudioDropzone
@@ -411,8 +391,8 @@ function EmptyDetail({ voiceCount, onUploadVoice }: EmptyDetailProps): JSX.Eleme
   }
 
   return (
-    <div className={css.fieldset} style={{ textAlign: "center", padding: "4rem" }}>
-      <p style={{ fontFamily: "var(--font)", fontSize: "1.1rem", color: "var(--text-muted)" }}>
+    <div className={`${css.fieldset} ${css.emptyHint}`}>
+      <p className={css.emptyHintText}>
         Select a character on the left, or click <strong>+ Add</strong> to create one.
       </p>
     </div>
@@ -532,14 +512,12 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
           {testStatus === "running" ? "Synthesising…" : "Test this line"}
         </button>
         {testStatus === "done" && (
-          <span style={{ marginLeft: 12, color: "var(--color-success, #4caf50)" }}>
+          <span className={css.testStatusDone}>
             Synthesised — see host logs for the output file path.
           </span>
         )}
         {testStatus === "error" && testError && (
-          <span style={{ marginLeft: 12, color: "var(--color-error, crimson)" }}>
-            {testError}
-          </span>
+          <span className={css.testStatusError}>{testError}</span>
         )}
       </div>
 
@@ -692,14 +670,16 @@ function VoiceDetail({ voice }: { voice: VoiceAsset }): JSX.Element {
       {voice.durationMs != null && (
         <div className={css.durationBar}>
           <div className={css.durationTrack}>
-            <motion.div
-              className={css.durationFill}
-              initial={{ width: 0 }}
-              animate={{
-                width: `${Math.min(100, (voice.durationMs / 60000) * 100)}%`,
-              }}
-              transition={{ duration: 0.35 }}
-            />
+            <LazyMotion features={domAnimation}>
+              <m.div
+                className={css.durationFill}
+                initial={{ width: 0 }}
+                animate={{
+                  width: `${Math.min(100, (voice.durationMs / 60000) * 100)}%`,
+                }}
+                transition={{ duration: 0.35 }}
+              />
+            </LazyMotion>
           </div>
           {durationWarning && (
             <span
@@ -812,7 +792,9 @@ function ImportExportBar({
         ref={fileRef}
         type="file"
         accept="application/json,.json"
-        style={{ display: "none" }}
+        className={css.hiddenFileInput}
+        aria-hidden="true"
+        tabIndex={-1}
         onChange={async (e) => {
           const file = e.currentTarget.files?.[0];
           e.currentTarget.value = "";

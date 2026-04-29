@@ -4,8 +4,8 @@ mod fixtures;
 
 use std::sync::Arc;
 
-use emotion_tts_extension::backend_client::BackendClient;
 use emotion_tts_extension::backend_client::rpc::methods;
+use emotion_tts_extension::backend_client::BackendClient;
 use emotion_tts_extension::host_contract::{BackendRuntimeLease, LeaseError};
 use fixtures::mock_backend::MockBackendRuntimeLease;
 use serde_json::json;

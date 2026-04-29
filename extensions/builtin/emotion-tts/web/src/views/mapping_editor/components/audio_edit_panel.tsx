@@ -1,18 +1,3 @@
-/**
- * Spec 036 / US1 — voice-asset audio-edit panel.
- *
- * Owns the in-progress edit chain (draft state) and the three actions:
- *   * Preview — renders the chain to a temp file and plays it inline
- *   * Apply   — persists the chain (rebuilding the derived artifact)
- *   * Reset   — discards the draft, reverting to the persisted chain
- *
- * Persisted state arrives via `voiceAsset` (the parent owns SWR / loader
- * revalidation). On Apply success the parent is notified via
- * `onChainPersisted`; on any backend or validation error the parent is
- * notified via `onError`. The inline error block renders the same message
- * locally (FR-025), with `role="alert"` for screen readers.
- */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { VoiceAsset } from "../../../services/voice_assets_client";
 import {
@@ -70,7 +55,13 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
   const [auditRefreshKey, setAuditRefreshKey] = useState(0);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const previewControllerRef = useRef<AbortController | null>(null);
+  const applyControllerRef = useRef<AbortController | null>(null);
+  const auditControllerRef = useRef<AbortController | null>(null);
+  const persistedDigestRef = useRef<string | null>(null);
+  const previewSeqRef = useRef(0);
 
   const normalizeOn = useMemo(
     () => chain.ops.some((op) => op.mode === "normalize"),
@@ -82,29 +73,32 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
     setValidationError(null);
     setHasPreviewedAtLeastOnce(false);
     setRemovalStack([]);
+    persistedDigestRef.current = null;
   }, [voiceAsset.voiceAssetId, sourceDurationMs]);
 
   useEffect(() => {
-    let cancelled = false;
+    auditControllerRef.current?.abort();
+    const controller = new AbortController();
+    auditControllerRef.current = controller;
     setAuditLoading(true);
     setAuditError(null);
-    fetchAuditLog(deploymentId, "voice_asset", voiceAsset.voiceAssetId, 50)
+    fetchAuditLog(deploymentId, "voice_asset", voiceAsset.voiceAssetId, 50, {
+      signal: controller.signal,
+    })
       .then((response) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setAuditEntries(response.entries);
       })
       .catch((err: unknown) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         const message = err instanceof Error ? err.message : "audit fetch failed";
         setAuditError(message);
       })
       .finally(() => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setAuditLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [deploymentId, voiceAsset.voiceAssetId, auditRefreshKey]);
 
   useEffect(() => {
@@ -113,18 +107,33 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
     };
   }, [previewObjectUrl]);
 
+  useEffect(() => {
+    return () => {
+      previewControllerRef.current?.abort();
+      applyControllerRef.current?.abort();
+      auditControllerRef.current?.abort();
+    };
+  }, []);
+
   const trim = chain.ops.find((op): op is TrimOp => op.mode === "trim");
   const normalize = chain.ops.find((op): op is NormalizeOp => op.mode === "normalize");
   const startMs = trim?.start_ms ?? 0;
   const endMs = trim?.end_ms ?? Math.max(1, sourceDurationMs);
 
   const updateTrim = useCallback((nextStart: number, nextEnd: number) => {
-    setChain((prev) => updateOp(prev, "trim", (op) => ({
-      ...op,
-      mode: "trim",
-      start_ms: Math.max(0, Math.floor(nextStart)),
-      end_ms: Math.max(Math.floor(nextStart) + 1, Math.floor(nextEnd)),
-    } as TrimOp)));
+    setChain((prev) =>
+      updateOp(
+        prev,
+        "trim",
+        (op) =>
+          ({
+            ...op,
+            mode: "trim",
+            start_ms: Math.max(0, Math.floor(nextStart)),
+            end_ms: Math.max(Math.floor(nextStart) + 1, Math.floor(nextEnd)),
+          }) as TrimOp,
+      ),
+    );
   }, []);
 
   const onChangeStart = useCallback(
@@ -136,43 +145,39 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
     [startMs, updateTrim],
   );
 
-  const toggleNormalize = useCallback(
-    (next: boolean) => {
-      setChain((prev) => {
-        const withoutNormalize: EditOp[] = prev.ops.filter((op) => op.mode !== "normalize");
-        if (next) {
-          const normalizeOp: NormalizeOp = {
-            id: newOperationId(),
-            mode: "normalize",
-            target_lufs: DEFAULT_LUFS,
-          };
-          return { ...prev, ops: [...withoutNormalize, normalizeOp] };
-        }
-        return { ...prev, ops: withoutNormalize };
-      });
-    },
-    [],
-  );
+  const toggleNormalize = useCallback((next: boolean) => {
+    setChain((prev) => {
+      const withoutNormalize: EditOp[] = prev.ops.filter((op) => op.mode !== "normalize");
+      if (next) {
+        const normalizeOp: NormalizeOp = {
+          id: newOperationId(),
+          mode: "normalize",
+          target_lufs: DEFAULT_LUFS,
+        };
+        return { ...prev, ops: [...withoutNormalize, normalizeOp] };
+      }
+      return { ...prev, ops: withoutNormalize };
+    });
+  }, []);
 
-  const removeOp = useCallback((opId: string) => {
-    const idx = chain.ops.findIndex((op) => op.id === opId);
-    if (idx === -1) return;
-    const removed = chain.ops[idx];
-    if (!removed) return;
-    const nextOps = [...chain.ops.slice(0, idx), ...chain.ops.slice(idx + 1)];
-    setChain({ ...chain, ops: nextOps });
-    setRemovalStack((stackPrev) => [...stackPrev, { op: removed, index: idx }]);
-  }, [chain]);
+  const removeOp = useCallback(
+    (opId: string) => {
+      const idx = chain.ops.findIndex((op) => op.id === opId);
+      if (idx === -1) return;
+      const removed = chain.ops[idx];
+      if (!removed) return;
+      const nextOps = [...chain.ops.slice(0, idx), ...chain.ops.slice(idx + 1)];
+      setChain({ ...chain, ops: nextOps });
+      setRemovalStack((stackPrev) => [...stackPrev, { op: removed, index: idx }]);
+    },
+    [chain],
+  );
 
   const undoLastRemoval = useCallback(() => {
     const entry = removalStack[removalStack.length - 1];
     if (!entry) return;
     const insertAt = Math.min(entry.index, chain.ops.length);
-    const nextOps = [
-      ...chain.ops.slice(0, insertAt),
-      entry.op,
-      ...chain.ops.slice(insertAt),
-    ];
+    const nextOps = [...chain.ops.slice(0, insertAt), entry.op, ...chain.ops.slice(insertAt)];
     setChain({ ...chain, ops: nextOps });
     setRemovalStack(removalStack.slice(0, -1));
   }, [chain, removalStack]);
@@ -189,50 +194,84 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
 
   const handlePreview = useCallback(async () => {
     if (!validateLocal()) return;
+    if (applyInFlight) return;
+    previewControllerRef.current?.abort();
+    const controller = new AbortController();
+    previewControllerRef.current = controller;
+    const seq = ++previewSeqRef.current;
     setPreviewInFlight(true);
     try {
-      const blob = await previewVoiceAssetEdit(voiceAsset.voiceAssetId, deploymentId, chain);
+      const blob = await previewVoiceAssetEdit(voiceAsset.voiceAssetId, deploymentId, chain, {
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || seq !== previewSeqRef.current) return;
       if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
       const url = URL.createObjectURL(blob);
       setPreviewObjectUrl(url);
       setHasPreviewedAtLeastOnce(true);
       requestAnimationFrame(() => audioRef.current?.play().catch(() => undefined));
     } catch (err) {
+      if (controller.signal.aborted) return;
       const message = err instanceof Error ? err.message : "preview failed";
       setValidationError(message);
       onError(message);
     } finally {
-      setPreviewInFlight(false);
+      if (!controller.signal.aborted) setPreviewInFlight(false);
     }
-  }, [validateLocal, voiceAsset.voiceAssetId, deploymentId, chain, previewObjectUrl, onError]);
+  }, [validateLocal, applyInFlight, voiceAsset.voiceAssetId, deploymentId, chain, previewObjectUrl, onError]);
 
   const handleApply = useCallback(async () => {
     if (!validateLocal()) return;
+    if (previewInFlight || applyInFlight) return;
+    previewControllerRef.current?.abort();
+    applyControllerRef.current?.abort();
+    const controller = new AbortController();
+    applyControllerRef.current = controller;
     setApplyInFlight(true);
     try {
-      const response = await applyVoiceAssetEdit(voiceAsset.voiceAssetId, deploymentId, {
-        chain,
-      });
+      const digestBefore = persistedDigestRef.current ?? undefined;
+      const response = await applyVoiceAssetEdit(
+        voiceAsset.voiceAssetId,
+        deploymentId,
+        digestBefore ? { chain, digest_before: digestBefore } : { chain },
+        { signal: controller.signal },
+      );
+      if (controller.signal.aborted) return;
+      persistedDigestRef.current = response.chain_digest;
       setValidationError(null);
       setMeasuredLufs(response.measured_lufs ?? null);
       setRemovalStack([]);
       onChainPersisted(response);
       setAuditRefreshKey((prev) => prev + 1);
     } catch (err) {
-      const message =
-        err instanceof StaleDigestError
-          ? "Edit chain has changed in another tab. Reload to continue."
-          : err instanceof Error
-            ? err.message
-            : "apply failed";
+      if (controller.signal.aborted) return;
+      const isStale = err instanceof StaleDigestError;
+      if (err instanceof StaleDigestError) {
+        persistedDigestRef.current = err.currentDigest || null;
+      }
+      const message = isStale
+        ? "Edit chain has changed in another tab. Reload to continue."
+        : err instanceof Error
+          ? err.message
+          : "apply failed";
       setValidationError(message);
       onError(message);
     } finally {
-      setApplyInFlight(false);
+      if (!controller.signal.aborted) setApplyInFlight(false);
     }
-  }, [validateLocal, voiceAsset.voiceAssetId, deploymentId, chain, onChainPersisted, onError]);
+  }, [
+    validateLocal,
+    previewInFlight,
+    applyInFlight,
+    voiceAsset.voiceAssetId,
+    deploymentId,
+    chain,
+    onChainPersisted,
+    onError,
+  ]);
 
   const handleReset = useCallback(() => {
+    previewControllerRef.current?.abort();
     setChain(initialChainFor(sourceDurationMs));
     setValidationError(null);
     setMeasuredLufs(null);
@@ -246,20 +285,25 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
   }, [sourceDurationMs, previewObjectUrl]);
 
   const onLufsChange = useCallback((value: number) => {
-    setChain((prev) => updateOp(prev, "normalize", (op) => ({
-      ...op,
-      mode: "normalize",
-      target_lufs: value,
-    } as NormalizeOp)));
+    setChain((prev) =>
+      updateOp(
+        prev,
+        "normalize",
+        (op) =>
+          ({
+            ...op,
+            mode: "normalize",
+            target_lufs: value,
+          }) as NormalizeOp,
+      ),
+    );
   }, []);
 
   return (
     <div className={css.root}>
       <header className={css.header}>
         <h3 className={css.title}>Edit · {voiceAsset.displayName}</h3>
-        <span className={css.sourceMeta}>
-          Source · {formatMs(sourceDurationMs)}
-        </span>
+        <span className={css.sourceMeta}>Source · {formatMs(sourceDurationMs)}</span>
       </header>
 
       <WaveformCanvas

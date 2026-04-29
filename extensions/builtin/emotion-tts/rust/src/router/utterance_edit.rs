@@ -1,18 +1,3 @@
-//! Spec 036 / US2 — per-utterance audio-edit route.
-//!
-//! Mirrors [`super::audio_edit`] (the voice-asset edit surface) but scoped to
-//! a single segment of a completed run. The handler:
-//!
-//! * `POST /deployments/{deployment_id}/runs/{run_id}/utterances/{utterance_id}/edit`
-//!
-//! Cross-deployment access (the path's `deployment_id` does not own the run,
-//! or the run does not own the utterance) returns 404 (not 403) per the
-//! [`super::guard`] contract — FR-016 / SC-008.
-//!
-//! On success the run's `export_zip_stale_at` column is stamped so the
-//! run-detail UI can surface a "rebuild export" CTA (FR-015 / US2 acceptance
-//! scenario 2).
-
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -21,17 +6,15 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::post;
 use axum::Router;
-use chrono::Utc;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::backend_client::LeaseProvider;
-use crate::domain::{
-    ChainDigest, EditChain, EmotionTtsError, Result, RunId, UtteranceId,
-};
+use crate::domain::{ChainDigest, EditChain, EmotionTtsError, Result, RunId, UtteranceId};
 use crate::host_contract::HostArtifactStore;
 use crate::router::guard;
-use crate::storage::audit_log_repo::{AuditEntry, TargetKind, SYSTEM_ACTOR};
+use crate::storage::audio_edit_atomic::{self, build_audit_entry, CommitOutcome};
+use crate::storage::audit_log_repo::{TargetKind, SYSTEM_ACTOR};
 use crate::storage::repo_traits::{RunRow, UtteranceRow};
 use crate::storage::Repos;
 
@@ -96,16 +79,14 @@ async fn apply_impl(
 ) -> Result<ApplyOutcome> {
     let utterance_id = UtteranceId::try_from(raw_utterance_id)?;
     let run_id = RunId::try_from(raw_run_id)?;
-    let (run, utterance) = guarded_lookup(
-        state,
-        &utterance_id,
-        &run_id,
-        raw_deployment_id,
-    )
-    .await?;
+    let (run, utterance) = guarded_lookup(state, &utterance_id, &run_id, raw_deployment_id).await?;
     req.chain.validate()?;
 
-    let current = state.repos.utterances.read_edit_chain(&utterance_id).await?;
+    let current = state
+        .repos
+        .utterances
+        .read_edit_chain(&utterance_id)
+        .await?;
     let current_digest = current.as_ref().map_or(ChainDigest::EMPTY, ChainDigest::of);
     if let Some(expected) = req.digest_before.as_deref() {
         if current_digest.as_str() != expected {
@@ -117,25 +98,53 @@ async fn apply_impl(
 
     let new_digest = ChainDigest::of(&req.chain);
     if current_digest == new_digest {
-        return Ok(ApplyOutcome::Ok(noop_apply_response(&utterance, &new_digest)));
+        return Ok(ApplyOutcome::Ok(noop_apply_response(
+            &utterance,
+            &new_digest,
+        )));
     }
 
-    let report = run_audio_edit_rpc(state, &utterance_id, &utterance, &req.chain, &new_digest).await?;
-    persist_apply(state, &utterance_id, &req.chain, &report.derived_artifact_ref).await?;
-    state.repos.runs.set_export_zip_stale(&run_id).await?;
+    let report =
+        run_audio_edit_rpc(state, &utterance_id, &utterance, &req.chain, &new_digest).await?;
 
     let operation_count = req.chain.operation_count();
-    append_audit_entry(
-        state,
-        run.deployment_id.as_str(),
-        utterance_id.as_str(),
-        &current_digest,
-        &new_digest,
+    let audit = build_audit_entry(
+        ulid::Ulid::new().to_string(),
+        run.deployment_id.clone(),
+        utterance_id.as_str().to_owned(),
+        TargetKind::Utterance,
+        current_digest.clone(),
+        new_digest.clone(),
         operation_count,
+        SYSTEM_ACTOR.to_string(),
+    );
+
+    let outcome = audio_edit_atomic::commit_utterance_apply(
+        &state.repos.pool,
+        utterance_id.as_str(),
+        run_id.as_str(),
+        &current_digest,
+        &req.chain,
+        &report.derived_artifact_ref,
+        &audit,
     )
     .await?;
-    emit_edited_event(utterance_id.as_str(), operation_count, &report.derived_artifact_ref);
 
+    if let CommitOutcome::StaleDigest { current } = outcome {
+        tracing::warn!(
+            target: "extension.emotiontts.audio.edited",
+            utterance_id = utterance_id.as_str(),
+            orphaned_derived_artifact_ref = report.derived_artifact_ref.as_str(),
+            "concurrent writer changed chain between RPC and commit; derived artifact orphaned",
+        );
+        return Ok(ApplyOutcome::StaleDigest { current });
+    }
+
+    emit_edited_event(
+        utterance_id.as_str(),
+        operation_count,
+        &report.derived_artifact_ref,
+    );
     Ok(ApplyOutcome::Ok(apply_response_json(&new_digest, &report)))
 }
 
@@ -152,7 +161,9 @@ async fn guarded_lookup(
         .await?
         .ok_or_else(|| EmotionTtsError::not_found(format!("utterance {utterance_id}")))?;
     if utterance.run_id != *run_id {
-        return Err(EmotionTtsError::not_found(format!("utterance {utterance_id}")));
+        return Err(EmotionTtsError::not_found(format!(
+            "utterance {utterance_id}"
+        )));
     }
     let run = state
         .repos
@@ -160,11 +171,9 @@ async fn guarded_lookup(
         .get(run_id)
         .await?
         .ok_or_else(|| EmotionTtsError::not_found(format!("run {run_id}")))?;
-    guard::assert_deployment_match(
-        run.deployment_id.as_str(),
-        claimed_deployment_id,
-        || format!("utterance {utterance_id}"),
-    )?;
+    guard::assert_deployment_match(run.deployment_id.as_str(), claimed_deployment_id, || {
+        format!("utterance {utterance_id}")
+    })?;
     Ok((run, utterance))
 }
 
@@ -200,8 +209,23 @@ async fn run_audio_edit_rpc(
 
     let chain_value = serde_json::to_value(chain)?;
     let report = client
-        .audio_edit(&request_id, &source_abs, &derived_abs, chain_value)
+        .audio_edit(
+            &request_id,
+            &source_abs,
+            &derived_abs,
+            chain_value,
+            new_digest.as_str(),
+        )
         .await?;
+
+    if report.chain_digest != new_digest.as_str() {
+        return Err(EmotionTtsError::internal(format!(
+            "worker chain digest {worker} != host {host}; canonical-JSON drift",
+            worker = report.chain_digest,
+            host = new_digest.as_str()
+        )));
+    }
+
     let put = read_and_store_derived(&store, &derived_path, utterance_id).await?;
     Ok(EditOutcome {
         derived_artifact_ref: put.artifact_ref,
@@ -211,30 +235,6 @@ async fn run_audio_edit_rpc(
         per_op_durations_ms: report.per_op_durations_ms,
         warnings: report.warnings,
     })
-}
-
-async fn persist_apply(
-    state: &UtteranceEditState,
-    utterance_id: &UtteranceId,
-    chain: &EditChain,
-    derived_artifact_ref: &str,
-) -> Result<()> {
-    if let Err(err) = state
-        .repos
-        .utterances
-        .write_edit_chain_with_derived(utterance_id, Some(chain), Some(derived_artifact_ref))
-        .await
-    {
-        tracing::error!(
-            target: "extension.emotiontts.audio.edited",
-            utterance_id = utterance_id.as_str(),
-            orphaned_derived_artifact_ref = derived_artifact_ref,
-            error = %err,
-            "persisted derived blob but chain write failed; reaper required",
-        );
-        return Err(err);
-    }
-    Ok(())
 }
 
 fn apply_response_json(new_digest: &ChainDigest, outcome: &EditOutcome) -> Value {
@@ -309,29 +309,6 @@ async fn read_and_store_derived(
     let display = format!("utterance_{utterance_id}__edited.wav");
     let put = store.store(bytes, &display, Some("audio/wav")).await?;
     Ok(put)
-}
-
-async fn append_audit_entry(
-    state: &UtteranceEditState,
-    deployment_id: &str,
-    target_id: &str,
-    digest_before: &ChainDigest,
-    digest_after: &ChainDigest,
-    operation_count: u16,
-) -> Result<()> {
-    let dep = crate::domain::DeploymentId::try_from(deployment_id)?;
-    let entry = AuditEntry {
-        entry_id: ulid::Ulid::new().to_string(),
-        deployment_id: dep,
-        target_id: target_id.to_owned(),
-        target_kind: TargetKind::Utterance,
-        digest_before: digest_before.clone(),
-        digest_after: digest_after.clone(),
-        operation_count,
-        recorded_at: Utc::now(),
-        actor: SYSTEM_ACTOR.to_string(),
-    };
-    state.repos.audio_edit_log.append(&entry).await
 }
 
 fn emit_edited_event(utterance_id: &str, operation_count: u16, derived_artifact_ref: &str) {

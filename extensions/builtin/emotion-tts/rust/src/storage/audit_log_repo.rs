@@ -1,11 +1,3 @@
-//! Spec 036 — append-only audit log for audio-edit chain transitions.
-//!
-//! Every chain apply / clear / op-removal records one row capturing the
-//! `before → after` digest pair, the operation count after the transition,
-//! and the actor (currently always `"system"` until auth lands per FR-029).
-//!
-//! Soft FK to `deployment_id` only (Constitution Appendix G); rows survive
-//! target deletion (FR-030 edge case) so historical edits remain queryable.
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -16,9 +8,6 @@ use crate::domain::{ChainDigest, DeploymentId, EmotionTtsError};
 
 pub type RepoResult<T> = Result<T, EmotionTtsError>;
 
-/// Placeholder actor for audit entries until host auth is wired (FR-029). Used
-/// by every Phase 3+ callsite so the eventual auth migration is a single
-/// constant change rather than a sweep.
 pub const SYSTEM_ACTOR: &str = "system";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -91,7 +80,7 @@ fn to_err(e: sqlx::Error) -> EmotionTtsError {
 
 const RECORDED_AT_FORMAT: &str = "%Y-%m-%dT%H:%M:%S%.3fZ";
 
-fn format_timestamp(ts: DateTime<Utc>) -> String {
+pub(crate) fn format_timestamp(ts: DateTime<Utc>) -> String {
     ts.format(RECORDED_AT_FORMAT).to_string()
 }
 
@@ -128,7 +117,10 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<AuditEntry> {
 }
 
 fn parse_digest(value: &str) -> RepoResult<ChainDigest> {
-    if value.len() != 64 || !value.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+    if value.len() != 64
+        || !value
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
     {
         return Err(EmotionTtsError::internal(format!(
             "invalid digest {value:?} stored in audit log"

@@ -1,15 +1,3 @@
-/**
- * Spec 036 / US1 — typed wrappers for the EmotionTTS audio-edit HTTP surface.
- *
- * Three voice-asset routes are mounted under the host's generic dispatcher
- * prefix; see `extensions/builtin/emotion-tts/rust/src/router/audio_edit.rs`
- * and `specs/036-audio-editing/contracts/openapi-audio-edit.yaml`.
- *
- * Apply uses the JSON envelope wrapper (`apiFetch`); preview returns a binary
- * blob and clear returns 204 — both bypass `apiFetch` to keep the contract
- * predictable.
- */
-
 import { apiFetch, EXTENSION_PREFIX } from "./http";
 
 export type EditOpMode =
@@ -119,11 +107,15 @@ export class StaleDigestError extends Error {
   }
 }
 
-/** Apply a chain. Throws `StaleDigestError` on 409, generic Error otherwise. */
+export interface FetchOptions {
+  signal?: AbortSignal;
+}
+
 export async function applyVoiceAssetEdit(
   voiceAssetId: string,
   deploymentId: string,
   request: ApplyEditRequest,
+  options: FetchOptions = {},
 ): Promise<ApplyEditResponse> {
   const path = `/voice-assets/${encodeURIComponent(voiceAssetId)}/edit?deploymentId=${encodeURIComponent(deploymentId)}`;
   const url = `${EXTENSION_PREFIX}${path}`;
@@ -131,35 +123,27 @@ export async function applyVoiceAssetEdit(
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify(request),
+    ...(options.signal ? { signal: options.signal } : {}),
   });
   if (resp.status === 409) {
     const body = (await resp.json().catch(() => null)) as StaleDigestErrorBody | null;
     const current = body?.error?.current_digest ?? "";
     const message =
-      body?.error?.message ??
-      "Edit chain has changed in another tab. Reload to continue.";
+      body?.error?.message ?? "Edit chain has changed in another tab. Reload to continue.";
     throw new StaleDigestError(current, message);
   }
   if (!resp.ok) {
-    const body = (await resp.json().catch(() => null)) as
-      | { error?: { message?: string } }
-      | null;
-    const message = body?.error?.message ?? `apply failed: ${resp.status}`;
-    throw new Error(message);
+    throw new Error(await readErrorMessage(resp, "apply"));
   }
   return (await resp.json()) as ApplyEditResponse;
 }
 
-/**
- * Apply an edit chain to a single utterance within a completed run.
- * Mirrors `applyVoiceAssetEdit` but scoped to the per-segment endpoint
- * defined by spec 036 / US2. Throws `StaleDigestError` on 409.
- */
 export async function applyUtteranceEdit(
   deploymentId: string,
   runId: string,
   utteranceId: string,
   request: ApplyEditRequest,
+  options: FetchOptions = {},
 ): Promise<ApplyEditResponse> {
   const path = `/deployments/${encodeURIComponent(deploymentId)}/runs/${encodeURIComponent(runId)}/utterances/${encodeURIComponent(utteranceId)}/edit`;
   const url = `${EXTENSION_PREFIX}${path}`;
@@ -167,21 +151,17 @@ export async function applyUtteranceEdit(
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify(request),
+    ...(options.signal ? { signal: options.signal } : {}),
   });
   if (resp.status === 409) {
     const body = (await resp.json().catch(() => null)) as StaleDigestErrorBody | null;
     const current = body?.error?.current_digest ?? "";
     const message =
-      body?.error?.message ??
-      "Edit chain has changed in another tab. Reload to continue.";
+      body?.error?.message ?? "Edit chain has changed in another tab. Reload to continue.";
     throw new StaleDigestError(current, message);
   }
   if (!resp.ok) {
-    const body = (await resp.json().catch(() => null)) as
-      | { error?: { message?: string } }
-      | null;
-    const message = body?.error?.message ?? `apply failed: ${resp.status}`;
-    throw new Error(message);
+    throw new Error(await readErrorMessage(resp, "apply"));
   }
   return (await resp.json()) as ApplyEditResponse;
 }
@@ -189,9 +169,13 @@ export async function applyUtteranceEdit(
 export async function clearVoiceAssetEdit(
   voiceAssetId: string,
   deploymentId: string,
+  options: FetchOptions = {},
 ): Promise<void> {
   const url = `${EXTENSION_PREFIX}/voice-assets/${encodeURIComponent(voiceAssetId)}/edit?deploymentId=${encodeURIComponent(deploymentId)}`;
-  const resp = await fetch(url, { method: "DELETE" });
+  const resp = await fetch(url, {
+    method: "DELETE",
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
   if (!resp.ok && resp.status !== 204) {
     throw new Error(`clear edit failed: ${resp.status}`);
   }
@@ -201,19 +185,17 @@ export async function previewVoiceAssetEdit(
   voiceAssetId: string,
   deploymentId: string,
   chain: EditChain,
+  options: FetchOptions = {},
 ): Promise<Blob> {
   const url = `${EXTENSION_PREFIX}/voice-assets/${encodeURIComponent(voiceAssetId)}/edit/preview?deploymentId=${encodeURIComponent(deploymentId)}`;
   const resp = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "audio/wav, audio/mpeg" },
     body: JSON.stringify({ chain }),
+    ...(options.signal ? { signal: options.signal } : {}),
   });
   if (!resp.ok) {
-    const body = (await resp.json().catch(() => null)) as
-      | { error?: { message?: string } }
-      | null;
-    const message = body?.error?.message ?? `preview failed: ${resp.status}`;
-    throw new Error(message);
+    throw new Error(await readErrorMessage(resp, "preview"));
   }
   return resp.blob();
 }
@@ -233,16 +215,12 @@ export interface AuditLogResponse {
   entries: AuditEntry[];
 }
 
-/**
- * Spec 036 / US5 — fetch the audit-log timeline for a single edit target.
- * Returns entries in reverse-chronological order. 404 on cross-deployment
- * access or unknown target.
- */
 export async function fetchAuditLog(
   deploymentId: string,
   targetKind: "voice_asset" | "utterance",
   targetId: string,
   limit = 50,
+  options: FetchOptions = {},
 ): Promise<AuditLogResponse> {
   const url =
     `${EXTENSION_PREFIX}/audit/${encodeURIComponent(targetKind)}/${encodeURIComponent(targetId)}` +
@@ -250,19 +228,14 @@ export async function fetchAuditLog(
   const resp = await fetch(url, {
     method: "GET",
     headers: { accept: "application/json" },
+    ...(options.signal ? { signal: options.signal } : {}),
   });
   if (!resp.ok) {
-    const body = (await resp.json().catch(() => null)) as
-      | { error?: { message?: string }; message?: string }
-      | null;
-    const message =
-      body?.error?.message ?? body?.message ?? `audit fetch failed: ${resp.status}`;
-    throw new Error(message);
+    throw new Error(await readErrorMessage(resp, "audit fetch"));
   }
   return (await resp.json()) as AuditLogResponse;
 }
 
-/** Generate an opaque alphanumeric op id, ULID-shaped (26 chars, upper-case). */
 export function newOperationId(): string {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 26).toUpperCase();
 }
@@ -272,11 +245,6 @@ export interface ChainValidationError {
   opId?: string;
 }
 
-/**
- * Client-side chain validation. Mirrors the server-side rules so the UI can
- * surface inline errors without a round-trip. Returns null when the chain is
- * valid; never throws.
- */
 export function validateChain(
   chain: EditChain,
   sourceDurationMs: number,
@@ -303,10 +271,7 @@ function validateOp(op: EditOp, sourceDurationMs: number): ChainValidationError 
     case "mute":
       return validateRange(op.id, op.start_ms, op.end_ms, sourceDurationMs);
     case "normalize":
-      if (
-        op.target_lufs < NORMALIZE_LUFS_MIN ||
-        op.target_lufs > NORMALIZE_LUFS_MAX
-      ) {
+      if (op.target_lufs < NORMALIZE_LUFS_MIN || op.target_lufs > NORMALIZE_LUFS_MAX) {
         return {
           opId: op.id,
           message: `Normalize target must be between ${NORMALIZE_LUFS_MIN} and ${NORMALIZE_LUFS_MAX} LUFS.`,
@@ -327,6 +292,13 @@ function validateOp(op: EditOp, sourceDurationMs: number): ChainValidationError 
         return { opId: op.id, message: "Fade duration must be at least 1 ms." };
       }
       return null;
+    default: {
+      const exhaustive: never = op;
+      void exhaustive;
+      return {
+        message: `Unknown edit op mode in chain — refusing to apply.`,
+      };
+    }
   }
 }
 
@@ -346,4 +318,11 @@ function validateRange(
     return { opId, message: "End extends past source duration." };
   }
   return null;
+}
+
+async function readErrorMessage(resp: Response, action: string): Promise<string> {
+  const body = (await resp.json().catch(() => null)) as
+    | { error?: { message?: string }; message?: string }
+    | null;
+  return body?.error?.message ?? body?.message ?? `${action} failed: ${resp.status}`;
 }

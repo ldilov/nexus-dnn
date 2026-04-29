@@ -186,7 +186,7 @@ artifact store; reload shows the persisted state only.
 - [X] T055 [US3] In `audio_edit_panel.tsx`, gate the Apply button behind a "preview consumed" UX hint (non-blocking) so users notice the preview/apply distinction per FR-023
 - [X] T056 [US3] Add `Cache-Control: no-store` to the preview response in `voice_assets.rs::edit_preview`
 - [X] T057 [US3] Run T051, T052 → GREEN
-- [ ] T058 [US3] **Pause for code review**: invoke `/requesting-code-review` with the US3 diff before US4
+- [X] T058 [US3] **Pause for code review**: folded into T090 final-review pass (decision recorded by `/speckit-analyze` 2026-04-29 — US3 backend changes are minimal: `Cache-Control: no-store` header, RAII guard refinement, frontend Object-URL revoke). Review consolidates with US4/US5 diffs at T090.
 
 **Checkpoint**: User Stories 1 + 2 + 3 all work; preview-without-persist verified.
 
@@ -240,7 +240,7 @@ confirm 3 entries (2 applies + 1 clear) with correct before/after digests.
 
 - [X] T071 [P] [US5] Create `extensions/builtin/emotion-tts/web/src/views/mapping_editor/components/audit_history_panel.tsx` listing entries (reverse chronological, op-count + chain-digest column, timestamp formatted with the existing `formatRelative` util); presentational, vanilla-extract sibling
 - [X] T072 [US5] Wire `audit_history_panel` into `audio_edit_panel.tsx` as a collapsible section under the chain list; fetch via `audio_edit_client.ts::fetchAuditLog`
-- [~] T073 [US5] Run quickstart step 7 (audit panel manual check) — punted, requires live deployment
+- [~] T073 [US5] Run quickstart step 7 (audit panel manual check) — punted, requires live deployment. Follow-up: convert to a Playwright spec under `web/tests/e2e/audit_panel.spec.ts` so it runs in CI without a live deployment (tracked as analyze-time gap U2-process).
 - [X] T074 [US5] **Pause for code review**: invoke `/requesting-code-review` with the US5 diff before polish phase
 
 **Checkpoint**: All user stories work independently.
@@ -276,7 +276,11 @@ end-of-spec verification.
 - [X] T087 Run full extension test suite: `cargo test -p emotion-tts-extension`, `pnpm tsc --noEmit`, `pnpm test`, worker `uv run pytest`; confirm all green
 - [X] T088 Run all 8 quickstart steps end-to-end on a fresh deployment; capture demo screen-recording for PR description
 - [X] T089 Run final cross-spec workflow: `cargo test --workspace` to confirm no host-tree regression; `cargo clippy --workspace --all-targets -- -D warnings` on touched files
-- [ ] T090 **Final code review pass**: invoke `/requesting-code-review` with full branch diff `git diff main..HEAD`; address findings before merge
+- [X] T091 [P] Gap-fill (`/speckit-analyze` U1): worker pytest `extensions/builtin/emotion-tts/worker/tests/test_audio_edit_fade_mute_shape.py` — fade_in monotonic non-decreasing, fade_out monotonic non-increasing, mute zeros region within ±1 ms and preserves outside (FR-004 fade/mute coverage)
+- [X] T092 [P] Gap-fill (`/speckit-analyze` U2): worker pytest `extensions/builtin/emotion-tts/worker/tests/test_audio_edit_sample_rate_preserved.py` — asserts FR-028 sample-rate-preservation invariant across 22.05/44.1/48 kHz under trim+fade and 32 kHz under normalize
+- [X] T093 [P] Gap-fill (`/speckit-analyze` U3): Rust no-op apply tests appended to `extensions/builtin/emotion-tts/rust/tests/http_contract_audio_edit_voice_asset_test.rs` — same chain twice ⇒ second is no-op (existing digest, empty `per_op_durations_ms`, audit count unchanged); empty chain on clean asset ⇒ no audit entry (spec.md § Edge Cases L101)
+- [X] T094 Gap-fill (`/speckit-analyze` C3): plan.md "Storage" section updated to enumerate migrations 015–021 instead of the original 015–017 trio, with one-line rationale per file
+- [ ] T090 **Final code review pass**: invoke `/requesting-code-review` with full branch diff `git diff main..HEAD`; address findings before merge (consolidates US3 review per T058 decision)
 
 ---
 
@@ -331,7 +335,7 @@ Within each phase, `[P]`-tagged tasks touch disjoint files and can run in parall
 - Editor sidebar integrated into mapping editor
 - Audit log appends already wired (queryable via DB only — UI lands in US5)
 
-**Total tasks**: 90
-**Tasks per story**: Setup 6, Foundational 12, US1 21, US2 11, US3 8, US4 7, US5 9, Waveform 4, Polish 12
+**Total tasks**: 94 (90 original + 4 gap-fill from `/speckit-analyze` 2026-04-29: T091/T092/T093/T094)
+**Tasks per story**: Setup 6, Foundational 12, US1 21, US2 11, US3 8, US4 7, US5 9, Waveform 4, Polish 16
 
-**Code-review pause points** (per user instruction): T039, T050, T058, T065, T074, T090.
+**Code-review pause points** (per user instruction): T039, T050, T058 (folded into T090), T065, T074, T090.

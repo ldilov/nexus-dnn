@@ -1,12 +1,4 @@
-/**
- * Spec 036 / US1 — decode an audio URL into normalised peak amplitudes.
- *
- * Returns one positive peak per pixel column at the requested target width.
- * Decoding happens in an `OfflineAudioContext`; the result is cached per
- * `(audioUrl, targetWidth)` so re-renders during drag don't re-decode.
- */
-
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 export interface WaveformPeaksState {
   peaks: Float32Array | null;
@@ -14,16 +6,14 @@ export interface WaveformPeaksState {
   error: string | null;
 }
 
-export function useWaveformPeaks(
-  audioUrl: string,
-  targetWidth: number,
-): WaveformPeaksState {
+const peaksCache = new Map<string, Float32Array>();
+
+export function useWaveformPeaks(audioUrl: string, targetWidth: number): WaveformPeaksState {
   const [state, setState] = useState<WaveformPeaksState>({
     peaks: null,
     isLoading: true,
     error: null,
   });
-  const lastKeyRef = useRef<string>("");
 
   useEffect(() => {
     if (!audioUrl || targetWidth <= 0) {
@@ -31,35 +21,41 @@ export function useWaveformPeaks(
       return;
     }
     const key = `${audioUrl}::${targetWidth}`;
-    if (lastKeyRef.current === key) return;
-    lastKeyRef.current = key;
-
-    let cancelled = false;
+    const cached = peaksCache.get(key);
+    if (cached) {
+      setState({ peaks: cached, isLoading: false, error: null });
+      return;
+    }
+    const controller = new AbortController();
     setState({ peaks: null, isLoading: true, error: null });
 
-    decodePeaks(audioUrl, targetWidth)
+    decodePeaks(audioUrl, targetWidth, controller.signal)
       .then((peaks) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
+        peaksCache.set(key, peaks);
         setState({ peaks, isLoading: false, error: null });
       })
       .catch((err: unknown) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         const message = err instanceof Error ? err.message : "decode failed";
         setState({ peaks: null, isLoading: false, error: message });
       });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [audioUrl, targetWidth]);
 
   return state;
 }
 
-async function decodePeaks(audioUrl: string, targetWidth: number): Promise<Float32Array> {
-  const resp = await fetch(audioUrl);
+async function decodePeaks(
+  audioUrl: string,
+  targetWidth: number,
+  signal: AbortSignal,
+): Promise<Float32Array> {
+  const resp = await fetch(audioUrl, { signal });
   if (!resp.ok) throw new Error(`failed to load audio (${resp.status})`);
   const buffer = await resp.arrayBuffer();
+  if (signal.aborted) throw new DOMException("aborted", "AbortError");
   const ctx = new OfflineAudioContext(1, 1, 44100);
   const audio = await ctx.decodeAudioData(buffer.slice(0));
   return computePeaks(audio, targetWidth);

@@ -102,7 +102,12 @@ async fn parse_body(resp: axum::response::Response) -> (StatusCode, Value) {
     (status, body)
 }
 
-async fn post_preset(router: &axum::Router, dep: &str, name: &str, vector: [f64; 8]) -> (StatusCode, Value) {
+async fn post_preset(
+    router: &axum::Router,
+    dep: &str,
+    name: &str,
+    vector: [f64; 8],
+) -> (StatusCode, Value) {
     let body = json!({
         "deploymentId": dep,
         "presetName": name,
@@ -259,10 +264,7 @@ async fn patch_rename_respects_uniqueness() {
         .oneshot(
             Request::builder()
                 .method(Method::PATCH)
-                .uri(format!(
-                    "/presets/{calm_id}?deploymentId={}",
-                    dep.as_str()
-                ))
+                .uri(format!("/presets/{calm_id}?deploymentId={}", dep.as_str()))
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(&patch).unwrap()))
                 .unwrap(),

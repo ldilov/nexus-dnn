@@ -1,18 +1,3 @@
-//! Spec 036 / US5 — read-only audit-log endpoint.
-//!
-//! `GET /audit/{target_kind}/{target_id}?deploymentId=…&limit=…`
-//!
-//! Cross-deployment access AND access to deleted/non-existent targets both
-//! return 404 (FR-016 guard contract — never leak target existence across
-//! deployments). FR-030 preserves audit entries at the storage layer
-//! (`audit_log_repo` has no FK to the target row, see
-//! `audio_edit_audit_log_sequence_test::audit_log_survives_target_deletion`),
-//! but the public HTTP endpoint requires the target row to confirm
-//! deployment membership before exposing entries. Forensic recovery of
-//! orphaned entries is a storage-layer / DB-shell concern, not a public
-//! API surface.
-//! See FR-029, FR-030, FR-031, FR-032.
-
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
@@ -118,7 +103,9 @@ async fn enforce_target_scope(
     claimed_deployment: &DeploymentId,
 ) -> Result<()> {
     match target_kind {
-        TargetKind::VoiceAsset => assert_voice_asset_scope(repos, target_id, claimed_deployment).await,
+        TargetKind::VoiceAsset => {
+            assert_voice_asset_scope(repos, target_id, claimed_deployment).await
+        }
         TargetKind::Utterance => assert_utterance_scope(repos, target_id, claimed_deployment).await,
     }
 }

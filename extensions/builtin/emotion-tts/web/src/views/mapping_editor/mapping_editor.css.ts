@@ -453,3 +453,61 @@ export const waveformBar = style({
 globalStyle(`${dropzone} input`, {
   display: "none",
 });
+
+export const emptyOnboarding = style({
+  padding: `${vars.space.xl} ${vars.space.lg}`,
+});
+
+export const emptyOnboardingHeader = style({
+  textAlign: "center",
+  marginBottom: vars.space.lg,
+});
+
+export const emptyOnboardingTitle = style({
+  fontFamily: vars.font.display,
+  fontSize: vars.text.head,
+  margin: `0 0 ${vars.space.sm}`,
+  color: vars.color.text,
+});
+
+export const emptyOnboardingSubtitle = style({
+  fontFamily: vars.font.body,
+  fontSize: vars.text.body,
+  color: vars.color.textMuted,
+  maxWidth: "44ch",
+  margin: "0 auto",
+  lineHeight: 1.5,
+});
+
+export const emptyHint = style({
+  textAlign: "center",
+  padding: vars.space.section,
+});
+
+export const emptyHintText = style({
+  fontFamily: vars.font.body,
+  fontSize: vars.text.subhead,
+  color: vars.color.textMuted,
+});
+
+export const testStatusDone = style({
+  marginLeft: vars.space.sm,
+  color: vars.color.success,
+});
+
+export const testStatusError = style({
+  marginLeft: vars.space.sm,
+  color: vars.color.danger,
+});
+
+export const hiddenFileInput = style({
+  position: "absolute",
+  width: "1px",
+  height: "1px",
+  padding: 0,
+  margin: "-1px",
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  whiteSpace: "nowrap",
+  border: 0,
+});

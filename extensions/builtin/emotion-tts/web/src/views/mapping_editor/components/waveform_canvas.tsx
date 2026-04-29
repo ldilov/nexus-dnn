@@ -1,17 +1,4 @@
-/**
- * Spec 036 / US1 — purely presentational waveform editor surface.
- *
- * Decodes `audioUrl` into peaks via `useWaveformPeaks`, paints them on a
- * `<canvas>`, and overlays two draggable region handles (start/end) plus an
- * optional playhead cursor. Region outside `[startMs, endMs]` is dimmed to
- * satisfy FR-036.
- *
- * Keyboard fine-adjust per FR-035: when a handle has focus, arrow keys nudge
- * by 10 ms (Shift = 100 ms, Ctrl = 1 ms).
- */
-
-import { useCallback, useEffect, useRef, useState } from "react";
-import { vars } from "../../../theme/tokens.css";
+import { useCallback, useEffect, useRef } from "react";
 import { useWaveformPeaks } from "../../../hooks/use_waveform_peaks";
 import { useReducedMotion } from "../../../hooks/use_reduced_motion";
 import * as css from "./waveform_canvas.css";
@@ -90,13 +77,14 @@ export function WaveformCanvas(props: WaveformCanvasProps): JSX.Element {
 
   const beginDrag = (which: "start" | "end") => (ev: React.PointerEvent) => {
     ev.preventDefault();
+    ev.stopPropagation();
     dragRef.current = which;
   };
 
   const handleCanvasClick = (ev: React.PointerEvent) => {
     if (!onSeek) return;
     const target = ev.target as HTMLElement;
-    if (target.dataset.handle) return;
+    if (target.closest("[data-handle]")) return;
     onSeek(handleSize(ev.clientX));
   };
 
@@ -222,12 +210,6 @@ function paintWaveform(
   }
 }
 
-/**
- * Resolve a CSS custom property to a concrete colour string usable as a
- * Canvas2D `fillStyle`. The fallback is the literal default baked into
- * `theme/tokens.css.ts` so canvas painting stays in sync with the token's
- * documented default when the variable is not set on this subtree.
- */
 function readCssVar(el: HTMLElement, varName: string, fallback: string): string {
   const value = getComputedStyle(el).getPropertyValue(varName).trim();
   return value || fallback;
