@@ -3,6 +3,8 @@ import { WorkflowCatalog } from "./components/workflow_catalog";
 import { StageView } from "./components/canvas/stage_view";
 import { GraphView } from "./components/canvas/graph_view";
 import { RunTraceView } from "./components/canvas/run_trace_view";
+import { WorkflowActionBar } from "./components/workflow_action_bar";
+import { PageHero } from "../../components/base/page_hero";
 import { useRootOutletContext } from "../../root_layout";
 import { fetchWorkflow } from "../../services/workflows";
 import * as styles from "../../app.css";
@@ -18,11 +20,18 @@ export default function WorkflowsRoute() {
     workflowViewMode,
     setWorkflowViewMode,
     activeView,
+    setActiveView,
     selectedNode,
     setSelectedNode,
     nodeProgress,
     events,
     loadError,
+    metrics,
+    metricsConnected,
+    isRunning,
+    onRun,
+    onCancel,
+    onValidate,
   } = ctx;
 
   const handleWorkflowSelect = useCallback(
@@ -62,12 +71,23 @@ export default function WorkflowsRoute() {
 
   return (
     <div className={local.surfaceColumn}>
+      {showCatalog && (
+        <div className={local.heroSlot}>
+          <PageHero
+            eyebrow="Authoring surface · Node graphs"
+            title="Workflows"
+            meta={
+              <span>
+                Compiled graphs of operators. Pick a workflow to inspect its stages, run
+                traces, or open it in the editor.
+              </span>
+            }
+          />
+        </div>
+      )}
       <div
-        style={{
-          display: showCatalog ? "block" : "none",
-          flex: showCatalog ? "1 1 auto" : "0 0 auto",
-          minHeight: 0,
-        }}
+        className={`${showCatalog ? local.catalogSlot : local.catalogSlotPinned}`}
+        hidden={!showCatalog}
       >
         <WorkflowCatalog
           selectedId={workflow?.id ?? null}
@@ -76,11 +96,8 @@ export default function WorkflowsRoute() {
           onResume={handleResumeLastOpened}
         />
       </div>
-      {workflow && (
-        <div
-          className={local.editorColumn}
-          style={{ display: showCatalog ? "none" : "flex" }}
-        >
+      {workflow && !showCatalog && (
+        <div className={local.editorColumn}>
           <button
             type="button"
             onClick={handleBackToCatalog}
@@ -94,6 +111,16 @@ export default function WorkflowsRoute() {
             </span>
             Back to catalog
           </button>
+          <WorkflowActionBar
+            activeView={activeView}
+            onViewChange={setActiveView}
+            metrics={metrics}
+            metricsConnected={metricsConnected}
+            isRunning={isRunning}
+            onRun={onRun}
+            onCancel={onCancel}
+            onValidate={onValidate}
+          />
           <div className={local.editorActiveViewRow}>
             {activeView === "stage" && (
               <StageView

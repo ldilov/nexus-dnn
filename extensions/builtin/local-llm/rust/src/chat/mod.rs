@@ -24,9 +24,9 @@ use axum::routing::get;
 /// "overlapping method route" panics. The legacy host-mounted
 /// `create_thread` / `list_threads` / `send_message` handlers are
 /// retired in CP2; spec 029's flat-shaped chat-history endpoints
-/// replace them. Frontend consumers (`thread_list.tsx`,
-/// `chat_panel.tsx`, etc.) follow the schema repoint outlined in
-/// research §R5.
+/// replace them. Spec 037 retired the standalone host-side chat layout
+/// components in favour of the shared `ChatSurface` plus a host adapter
+/// that bridges these endpoints onto its props contract.
 pub fn build_chat_router(resources: Arc<ChatHandlerResources>) -> Router {
     Router::new()
         .route(
