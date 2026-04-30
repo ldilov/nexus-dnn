@@ -1,4 +1,9 @@
 import type { DeploymentSummary, ModuleSummary } from "../../api/client";
+import { PageHero } from "../../components/base/page_hero";
+import { Section } from "../../components/base/section";
+import { Pill } from "../../components/base/pill";
+import { StatusChip, type StatusKind } from "../../components/base/status_chip";
+import { EmptyState } from "../../components/layout/empty_state";
 import { ModuleBadge } from "../modules/module_badge";
 import * as s from "./deployments.css";
 
@@ -28,6 +33,14 @@ function formatTimestamp(iso: string): string {
   }
 }
 
+function deploymentChipKind(state: string): StatusKind {
+  const normalized = state.toLowerCase();
+  if (normalized === "failed" || normalized === "error") return "failed";
+  if (normalized === "active" || normalized === "running" || normalized === "live") return "live";
+  if (normalized === "draft") return "draft";
+  return "idle";
+}
+
 export function DeploymentsUI({
   items,
   modules,
@@ -40,49 +53,65 @@ export function DeploymentsUI({
   onOpenModule,
   onGoToModules,
 }: DeploymentsUIProps) {
+  const userCount = items.filter((d) => {
+    const m = resolveModule(d);
+    return m?.source_kind === "user";
+  }).length;
+  const totalRuns = items.reduce((acc, d) => acc + (d.run_count ?? 0), 0);
+
   return (
     <div className={s.root}>
-      <header className={s.header}>
-        <div>
-          {/* scan-terminology: allow — canonical page name per FR-T02 glossary */}
-          <h1 className={s.title}>Deployments</h1>
-          <p className={s.subtitle}>
-            Saved working states of modules — name, restore, and re-run them
-            without touching the source.
-          </p>
-        </div>
-        <div className={s.filterBar}>
-          <label className={s.filterCheckbox}>
-            <input
-              type="checkbox"
-              checked={filter.userOnly}
-              onChange={(e) =>
-                onFilterChange({ ...filter, userOnly: e.target.checked })
-              }
-            />
-            User modules only
-          </label>
-          <select
-            value={filter.moduleId ?? ""}
-            onChange={(e) =>
-              onFilterChange({ ...filter, moduleId: e.target.value || null })
-            }
-            aria-label="Filter by module"
-          >
-            <option value="">All modules</option>
-            {modules.map((m) => (
-              <option key={m.module_id} value={m.module_id}>
-                {m.display_name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </header>
+      <PageHero
+        eyebrow="Operator surface · Saved working states"
+        title="Deployments"
+        meta={
+          <span className={s.subtitle}>
+            Saved working states of modules — name, restore, and re-run them without
+            touching the source.
+          </span>
+        }
+      />
 
-      {isLoading && (
-        // scan-terminology: allow
-        <p className={s.subtitle}>Loading deployments…</p>
-      )}
+      <div className={s.summaryGrid}>
+        <div className={s.summaryStat}>
+          <span className={s.summaryStatLabel}>Total</span>
+          <span className={s.summaryStatValue}>{items.length}</span>
+        </div>
+        <div className={s.summaryStat}>
+          <span className={s.summaryStatLabel}>User modules</span>
+          <span className={s.summaryStatValue}>{userCount}</span>
+        </div>
+        <div className={s.summaryStat}>
+          <span className={s.summaryStatLabel}>Runs total</span>
+          <span className={s.summaryStatValue}>{totalRuns || "—"}</span>
+        </div>
+      </div>
+
+      <div className={s.filterBar} role="toolbar" aria-label="Filter deployments">
+        <Pill
+          active={filter.userOnly}
+          onClick={() => onFilterChange({ ...filter, userOnly: !filter.userOnly })}
+        >
+          User modules only
+        </Pill>
+        <select
+          className={s.moduleSelect}
+          value={filter.moduleId ?? ""}
+          onChange={(e) =>
+            onFilterChange({ ...filter, moduleId: e.target.value || null })
+          }
+          aria-label="Filter by module"
+        >
+          <option value="">All modules</option>
+          {modules.map((m) => (
+            <option key={m.module_id} value={m.module_id}>
+              {m.display_name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {isLoading && <p className={s.subtitle}>Loading deployments…</p>}
 
       {errorMessage && (
         <div className={s.error} role="alert">
@@ -91,64 +120,72 @@ export function DeploymentsUI({
       )}
 
       {!isLoading && !errorMessage && items.length === 0 && (
-        <div className={s.empty}>
-          <span className={`material-symbols-outlined ${s.emptyIcon}`}>
-            rocket_launch
-          </span>
-          {/* scan-terminology: allow */}
-          <span className={s.emptyTitle}>No deployments match your filters</span>
-          <p className={s.subtitle}>
-            Save a module as a deployment to capture its current runtime,
-            model, and parameter selections for later reuse.
-          </p>
-        </div>
+        <EmptyState
+          count="0"
+          line="Save a module as a deployment to capture its current runtime, model, and parameter selections for later reuse."
+          primaryAction={{ label: "Browse modules", onClick: onGoToModules }}
+        />
       )}
 
       {items.length > 0 && (
-        // scan-terminology: allow
-        <ul className={s.list} aria-label="Deployments">
-          {items.map((item) => {
-            const linked = resolveModule(item);
-            return (
-              <li key={item.id} className={s.card}>
-                <div>
-                  <div className={s.cardTitle}>
-                    <button
-                      type="button"
-                      className={s.cardTitleButton}
-                      onClick={() => onOpenDeployment(item.id)}
-                    >
-                      {item.display_name}
-                    </button>
-                  </div>
-                  <div className={s.cardSlug}>{item.slug}</div>
-                  <div className={s.cardMeta}>
-                    <span>created from {item.created_from_surface}</span>
-                    <span>{item.run_count} runs</span>
-                    <span>updated {formatTimestamp(item.updated_at)}</span>
-                    {linked ? (
-                      <ModuleBadge
-                        moduleId={linked.module_id}
-                        displayName={linked.display_name}
-                        icon={linked.icon}
-                        onOpen={onOpenModule}
+        <Section number="01" title="All deployments">
+          <ul className={s.cardGrid} aria-label="Deployments">
+            {items.map((item) => {
+              const linked = resolveModule(item);
+              const stateKind = deploymentChipKind(item.state);
+              return (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    className={s.card}
+                    onClick={() => onOpenDeployment(item.id)}
+                  >
+                    <div className={s.cardHeader}>
+                      <h3 className={s.cardTitle}>{item.display_name}</h3>
+                      <StatusChip
+                        kind={stateKind}
+                        label={item.state}
+                        pulse={stateKind === "live"}
                       />
-                    ) : (
-                      <ModuleBadge
-                        moduleId="user:blank"
-                        displayName="Module"
-                        icon={{ kind: "symbol", value: "apps" }}
-                        onOpen={onGoToModules}
-                      />
-                    )}
-                  </div>
-                </div>
-                <span className={s.badge}>{item.state}</span>
-                <span className={s.badge}>{item.restore_state}</span>
-              </li>
-            );
-          })}
-        </ul>
+                    </div>
+                    <span className={s.cardSlug}>{item.slug}</span>
+                    <div className={s.cardMeta}>
+                      <span className={s.cardMetaItem}>
+                        <span className={s.cardMetaLabel}>From</span>
+                        {item.created_from_surface}
+                      </span>
+                      <span className={s.cardMetaItem}>
+                        <span className={s.cardMetaLabel}>Runs</span>
+                        {item.run_count}
+                      </span>
+                      <span className={s.cardMetaItem}>
+                        <span className={s.cardMetaLabel}>Updated</span>
+                        {formatTimestamp(item.updated_at)}
+                      </span>
+                    </div>
+                    <div className={s.cardModuleRow}>
+                      {linked ? (
+                        <ModuleBadge
+                          moduleId={linked.module_id}
+                          displayName={linked.display_name}
+                          icon={linked.icon}
+                          onOpen={onOpenModule}
+                        />
+                      ) : (
+                        <ModuleBadge
+                          moduleId="user:blank"
+                          displayName="Module"
+                          icon={{ kind: "symbol", value: "apps" }}
+                          onOpen={onGoToModules}
+                        />
+                      )}
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </Section>
       )}
     </div>
   );

@@ -1,9 +1,26 @@
 import { style } from "@vanilla-extract/css";
+import { vars } from "../../theme/contract.css";
 
 export const surfaceColumn = style({
   display: "flex",
   flexDirection: "column",
   minHeight: 0,
+});
+
+export const heroSlot = style({
+  paddingBlock: vars.density.padSection,
+  maxWidth: "1400px",
+  marginInline: "auto",
+  width: "100%",
+});
+
+export const catalogSlot = style({
+  flex: "1 1 auto",
+  minHeight: 0,
+});
+
+export const catalogSlotPinned = style({
+  flex: "0 0 auto",
 });
 
 export const editorColumn = style({

@@ -1,6 +1,6 @@
 import { createTheme } from "@vanilla-extract/css";
 import { vars } from "./contract.css";
-import { color, spacing, radii, typography, motion } from "../tokens/primitives";
+import { color, spacing, radii, typography, motion, density, cardStyle, accentMode } from "../tokens/primitives";
 
 export const darkTheme = createTheme(vars, {
   color: {
@@ -29,6 +29,9 @@ export const darkTheme = createTheme(vars, {
       tertiary: color.tertiary.base,
       tertiaryDim: color.tertiary.dim,
       cyan: "#06B6D4",
+      accent: accentMode.primary.accent,
+      accentDim: accentMode.primary.accentDim,
+      accentGlow: accentMode.primary.accentGlow,
     },
     onColor: {
       primary: color.primary.onPrimary,
@@ -68,6 +71,7 @@ export const darkTheme = createTheme(vars, {
     ui: typography.family.body,
     code: typography.family.code,
     size: {
+      kbd: typography.size[10],
       caption: typography.size[11],
       bodySm: typography.size[12],
       body: typography.size[13],
@@ -133,6 +137,37 @@ export const darkTheme = createTheme(vars, {
     sm: "0 2px 4px rgba(0,0,0,0.4)",
     md: "0 4px 12px rgba(0,0,0,0.5)",
     lg: "0 12px 32px rgba(0,0,0,0.6)",
+    glowAccent: `0 0 24px ${accentMode.primary.accentGlow}`,
+  },
+  density: {
+    d1: density.cozy.d1, d2: density.cozy.d2, d3: density.cozy.d3, d4: density.cozy.d4,
+    d5: density.cozy.d5, d6: density.cozy.d6, d7: density.cozy.d7, d8: density.cozy.d8, d9: density.cozy.d9,
+    padCard: density.cozy.padCard,
+    padSection: density.cozy.padSection,
+    rowH: density.cozy.rowH,
+    gapCard: density.cozy.gapCard,
+  },
+  card: {
+    bg: cardStyle.flat.bg,
+    border: cardStyle.flat.border,
+    shadow: cardStyle.flat.shadow,
+    backdrop: cardStyle.flat.backdrop,
+  },
+  chip: {
+    height: spacing[12],
+    dot: spacing[3],
+    padX: spacing[5],
+    gap: spacing[3],
+    fontSize: typography.size[11],
+  },
+  focus: {
+    ringWidth: spacing[1],
+    offset: spacing[1],
+  },
+  text: {
+    eyebrow: typography.size[11],
+    chip: typography.size[11],
+    sectionTitle: typography.size[20],
   },
   z: {
     base: "0",

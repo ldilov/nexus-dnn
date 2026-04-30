@@ -1059,6 +1059,23 @@ export const emptyState = style({
   minHeight: "200px",
 });
 
+export const emptyStateCount = style({
+  fontFamily: vars.font.code,
+  fontSize: "clamp(64px, 6vw + 32px, 128px)",
+  fontWeight: vars.font.weight.regular,
+  color: vars.color.text.muted,
+  lineHeight: 1,
+  letterSpacing: "-0.02em",
+});
+
+export const emptyStateLine = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
+  color: vars.color.text.secondary,
+  maxWidth: "420px",
+  lineHeight: vars.font.lineHeight.normal,
+});
+
 export const emptyStateIconBox = style({
   width: "64px",
   height: "64px",

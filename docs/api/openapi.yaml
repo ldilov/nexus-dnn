@@ -1349,6 +1349,72 @@ paths:
                         actor:           { type: string }
         '404': { description: Target not in this deployment. }
 
+  # ─── Draft AI suggestions (spec 037 / Phase 8) ─────────────────────────────
+  # Host-owned, extension-agnostic stream of inline AI suggestions for
+  # Module Drafts. Acquires an inference backend through the existing
+  # backend-runtime-leases machinery. Boundary contract: no extension id
+  # appears in the path. SSE event-stream contract is documented in
+  # `specs/037-spectral-graphite-redesign/contracts/draft_suggestions.events.md`.
+  /api/v1/modules/drafts/{draft_id}/suggestions:
+    post:
+      tags: [Drafts]
+      operationId: startDraftSuggestionStream
+      summary: Open a Server-Sent Events stream of suggestion deltas for a Module Draft.
+      description: |
+        First event is always `stream_started`; tokens follow; terminal
+        event is exactly one of `complete | error | cancelled`. Cancel
+        mid-stream via the cancel endpoint OR by closing the connection.
+      parameters:
+        - in: path
+          name: draft_id
+          required: true
+          schema: { type: string, minLength: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftSuggestionRequest' }
+      responses:
+        '200':
+          description: Stream opened. Body is `text/event-stream`.
+          content:
+            text/event-stream:
+              schema: { type: string, description: 'SSE event stream — see draft_suggestions.events.md.' }
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftSuggestionValidationError' }
+        '503':
+          description: |
+            No backend leasable for pre-stream lease acquisition. After
+            the stream is open, lease loss is reported via SSE
+            `error { code: "lease_revoked" }` instead of HTTP 503.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftSuggestionNoBackendError' }
+  /api/v1/modules/drafts/{draft_id}/suggestions/{stream_id}/cancel:
+    post:
+      tags: [Drafts]
+      operationId: cancelDraftSuggestionStream
+      summary: Cancel an in-flight suggestion stream (idempotent).
+      description: |
+        Sets the cancel flag on the running stream; the stream task
+        observes the flag between tokens and emits a final `cancelled`
+        event before closing. Idempotent — cancelling a finished or
+        unknown `stream_id` returns 204.
+      parameters:
+        - in: path
+          name: draft_id
+          required: true
+          schema: { type: string, minLength: 1 }
+        - in: path
+          name: stream_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Cancellation accepted (or stream already finished/unknown). }
+
 # ─── Components ─────────────────────────────────────────────────────────────
 components:
 
@@ -1846,3 +1912,58 @@ components:
             type: { const: run_terminal }
             run_id: { type: string }
             status: { type: string, enum: [completed, failed, cancelled, partial] }
+
+    # ─── Draft AI suggestions (spec 037 / Phase 8) ────────────────────────
+    DraftSuggestionRequest:
+      type: object
+      required: [cursor_line, context]
+      properties:
+        cursor_line:
+          type: integer
+          minimum: 1
+          description: One-based line index in the draft text.
+        intent:
+          type: string
+          enum: [complete-line, rewrite-line, next-step-suggestion]
+          default: complete-line
+        context:
+          type: object
+          required: [draft_text, active_line_text]
+          properties:
+            draft_text:
+              type: string
+              minLength: 1
+            active_line_text:
+              type: string
+            preceding_lines:
+              type: integer
+              minimum: 0
+              maximum: 20
+              default: 5
+        max_tokens:
+          type: integer
+          minimum: 16
+          maximum: 512
+          default: 96
+    DraftSuggestionValidationError:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, enum: [validation_error] }
+        message: { type: string }
+        details:
+          type: object
+          additionalProperties: { type: string }
+          description: Field-level violation map; keys are dotted field paths.
+    DraftSuggestionNoBackendError:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, enum: [no_backend_leasable] }
+        message: { type: string, description: User-safe message; never leaks internal stack frames. }
+        cta:
+          type: object
+          description: Generic next-step hint; not extension-aware.
+          properties:
+            label: { type: string, example: "Configure backend" }
+            href:  { type: string, example: "/backends" }

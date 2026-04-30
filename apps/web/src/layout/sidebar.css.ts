@@ -4,12 +4,11 @@ import { vars } from "../theme/contract.css";
 
 const COLLAPSED_WIDTH = "64px";
 const EXPANDED_WIDTH = "256px";
-const TOP_BAR_HEIGHT = "48px";
 
 export const container = style({
   position: "fixed",
   left: 0,
-  top: TOP_BAR_HEIGHT,
+  top: "24px",
   bottom: 0,
   width: COLLAPSED_WIDTH,
   backgroundColor: vars.color.bg.panel,
@@ -24,18 +23,34 @@ export const containerExpanded = style({
   width: EXPANDED_WIDTH,
 });
 
+export const containerFloat = style({
+  width: EXPANDED_WIDTH,
+  left: vars.density.d4,
+  top: vars.density.d6,
+  bottom: vars.density.d6,
+  borderRadius: vars.radius.panel,
+  boxShadow: vars.shadow.lg,
+  backdropFilter: "blur(20px)",
+});
+
 export const header = style({
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  height: "48px",
+  height: "56px",
   flexShrink: 0,
-  borderBottom: `1px solid ${vars.color.outline.variant}`,
 });
 
 export const headerExpanded = style({
-  justifyContent: "flex-end",
+  justifyContent: "space-between",
+  paddingLeft: "16px",
   paddingRight: "12px",
+});
+
+export const brandSlot = style({
+  display: "inline-flex",
+  alignItems: "center",
+  minWidth: 0,
 });
 
 export const navSection = style({
@@ -88,18 +103,12 @@ export const navItemRecipe = recipe({
   variants: {
     active: {
       true: {
-        color: vars.color.accent.primary,
-        backgroundColor: vars.color.bg.elevated,
-        "::before": {
-          content: '""',
-          position: "absolute",
-          left: 0,
-          top: "50%",
-          transform: "translateY(-50%)",
-          width: "3px",
-          height: "20px",
-          backgroundColor: vars.color.accent.primary,
-          borderRadius: "0 2px 2px 0",
+        color: vars.color.text.primary,
+        backgroundImage: `linear-gradient(135deg, color-mix(in oklab, ${vars.color.accent.primaryDim} 38%, transparent), color-mix(in oklab, ${vars.color.accent.secondaryDim} 22%, transparent))`,
+        boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.accent.primaryDim} 55%, transparent)`,
+        ":focus-visible": {
+          outline: "none",
+          boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.accent.primaryDim} 55%, transparent), 0 0 0 2px ${vars.color.accent.primary}`,
         },
       },
     },
@@ -154,8 +163,6 @@ export const pinButton = style({
     outlineOffset: "2px",
   },
 });
-
-export const pinButtonVisible = style({});
 
 export const pinButtonActive = style({
   color: vars.color.accent.primary,

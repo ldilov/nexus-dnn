@@ -27,6 +27,9 @@ export const vars = createThemeContract({
       tertiary: "",
       tertiaryDim: "",
       cyan: "",
+      accent: "",
+      accentDim: "",
+      accentGlow: "",
     },
     onColor: {
       primary: "",
@@ -66,6 +69,7 @@ export const vars = createThemeContract({
     ui: "",
     code: "",
     size: {
+      kbd: "",
       caption: "",
       bodySm: "",
       body: "",
@@ -131,6 +135,36 @@ export const vars = createThemeContract({
     sm: "",
     md: "",
     lg: "",
+    glowAccent: "",
+  },
+  density: {
+    d1: "", d2: "", d3: "", d4: "", d5: "", d6: "", d7: "", d8: "", d9: "",
+    padCard: "",
+    padSection: "",
+    rowH: "",
+    gapCard: "",
+  },
+  card: {
+    bg: "",
+    border: "",
+    shadow: "",
+    backdrop: "",
+  },
+  chip: {
+    height: "",
+    dot: "",
+    padX: "",
+    gap: "",
+    fontSize: "",
+  },
+  focus: {
+    ringWidth: "",
+    offset: "",
+  },
+  text: {
+    eyebrow: "",
+    chip: "",
+    sectionTitle: "",
   },
   z: {
     base: "",

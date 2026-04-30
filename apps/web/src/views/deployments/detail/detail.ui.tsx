@@ -1,4 +1,5 @@
 import type { LayoutSummary, Workflow } from "../../../api/client";
+import { PageHero } from "../../../components/base/page_hero";
 import { GraphView } from "../../workflows/components/canvas/graph_view";
 import { ExtensionLayoutView } from "../../extensions/layout/layout.view";
 import * as s from "./detail.css";
@@ -63,13 +64,12 @@ export function DeploymentDetailUI({
         ← Back to deployments
       </button>
 
-      <header className={s.hero}>
-        {/* scan-terminology: allow */}
-        <h1 className={s.title}>{displayName ?? "Deployment detail"}</h1>
-        <div className={s.slug}>{slug ?? deploymentId}</div>
-      </header>
+      <PageHero
+        eyebrow="Deployment detail"
+        title={displayName ?? "Deployment detail"}
+        meta={<span className={s.slug}>{slug ?? deploymentId}</span>}
+      />
 
-      {/* scan-terminology: allow */}
       <div className={s.tabs} role="tablist" aria-label="Deployment tabs">
         {TABS.map((t) => (
           <button
