@@ -22,8 +22,7 @@ export const topBar = style({
   display: "flex",
   alignItems: "center",
   gap: vars.space.gapMd,
-  padding: `0 ${vars.space.insetXl}`,
-  backgroundColor: vars.color.bg.panel,
+  backgroundColor: "transparent",
   zIndex: vars.z.base,
 });
 
@@ -32,14 +31,20 @@ export const canvas = style({
   gridRow: "2",
   overflow: "hidden",
   backgroundColor: vars.color.bg.canvas,
+  paddingInline: vars.density.padSection,
 });
 
 export const inspector = style({
   gridColumn: "2",
   gridRow: "2 / -1",
   width: "320px",
-  backgroundColor: vars.color.bg.panel,
-  overflow: "auto",
+  marginLeft: "-80px",
+  marginTop: vars.density.d4,
+  marginBottom: vars.density.d4,
+  marginRight: vars.density.d4,
+  zIndex: 2,
+  backgroundColor: "transparent",
+  overflow: "visible",
 });
 
 export const inspectorCollapsed = style({

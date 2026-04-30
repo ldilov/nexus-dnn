@@ -4,11 +4,11 @@ import { vars } from "../../theme/contract.css";
 export const inputRecipe = recipe({
   base: {
     width: "100%",
-    backgroundColor: vars.color.bg.app,
+    backgroundColor: vars.color.bg.lowest,
     color: vars.color.text.primary,
     border: "none",
     borderBottom: `1px solid ${vars.color.outline.variant}`,
-    borderRadius: vars.radius.control,
+    borderRadius: `${vars.radius.control} ${vars.radius.control} 0 0`,
     fontFamily: vars.font.ui,
     fontSize: vars.font.size.body,
     lineHeight: vars.font.lineHeight.normal,

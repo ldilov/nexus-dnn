@@ -321,6 +321,23 @@ A "module" is a unified view across extensions, recipes, workflows, and deployme
 
 ---
 
+## Draft AI suggestions (Spec 037 / Phase 8)
+
+Source: `crates/nexus-api/src/handlers/draft_suggestions/`.
+
+Host-owned, **extension-agnostic** stream of inline AI suggestions for Module Drafts. The host acquires an inference backend via the existing `/api/v1/backend-runtime-leases` machinery; the path contains zero extension-id literals (Constitution Principle XIII / FR-051). The wire-format SSE event contract lives at `specs/037-spectral-graphite-redesign/contracts/draft_suggestions.events.md`.
+
+| Method | Path                                                                              | Description |
+| ------ | --------------------------------------------------------------------------------- | ----------- |
+| POST   | `/api/v1/modules/drafts/{draft_id}/suggestions`                                   | Open an SSE stream of suggestion deltas for one draft line. First event is `stream_started`; tokens follow; terminal event is `complete \| error \| cancelled`. Pre-stream lease failure returns HTTP 503 with `{ code: "no_backend_leasable", cta: { label, href: "/backends" } }`. Validation failure returns 400 with a typed `validation_error` body. |
+| POST   | `/api/v1/modules/drafts/{draft_id}/suggestions/{stream_id}/cancel`                | Cancel an in-flight stream (idempotent — always 204, even for unknown / finished `stream_id`). The streaming task observes the cancel flag between tokens and emits a final `cancelled { reason: "client_cancelled" }` event before closing. |
+
+**SSE event types**: `stream_started`, `token`, `partial`, `complete`, `error`, `cancelled`. Each event has an explicit `event:` field — consumers dispatch by type, not by structural payload match. See the events contract for full schemas.
+
+**Boundary audit**: `crates/nexus-api/tests/draft_suggestions/boundary_audit_test.rs` greps the handler module for any extension-id literal on every `cargo test` run.
+
+---
+
 ## Deployments
 
 Source: `crates/nexus-api/src/handlers/deployments/`.

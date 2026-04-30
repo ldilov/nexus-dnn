@@ -4,133 +4,167 @@ import { vars } from "../../theme/contract.css";
 export const root = style({
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.gapLg,
-  padding: vars.space.insetLg,
-  minHeight: "100%",
+  gap: vars.density.padSection,
+  paddingBlock: vars.density.padSection,
+  maxWidth: "1400px",
+  marginInline: "auto",
+  width: "100%",
 });
 
-export const header = style({
+export const filterBar = style({
   display: "flex",
-  alignItems: "baseline",
-  justifyContent: "space-between",
-  gap: vars.space.insetMd,
+  alignItems: "center",
+  gap: vars.density.d3,
   flexWrap: "wrap",
+  position: "sticky",
+  top: 0,
+  zIndex: 1,
+  paddingBlock: vars.density.d3,
+  background: vars.color.bg.canvas,
 });
 
-export const title = style({
-  fontSize: vars.font.size.heading,
-  fontWeight: vars.font.weight.semibold,
+export const moduleSelect = style({
+  height: vars.control.heightSm,
+  paddingInline: vars.density.d4,
+  background: vars.color.bg.lowest,
   color: vars.color.text.primary,
-  margin: 0,
-});
-
-export const subtitle = style({
+  border: "none",
+  borderRadius: vars.radius.full,
+  fontFamily: vars.font.ui,
   fontSize: vars.font.size.bodySm,
-  color: vars.color.text.muted,
-  margin: 0,
+  cursor: "pointer",
 });
 
-export const list = style({
-  display: "flex",
-  flexDirection: "column",
-  gap: vars.space.gapSm,
+export const cardGrid = style({
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: vars.density.gapCard,
+  listStyle: "none",
+  padding: 0,
+  margin: 0,
+  "@media": {
+    "(min-width: 1280px)": {
+      gridTemplateColumns: "repeat(3, 1fr)",
+    },
+    "(min-width: 960px) and (max-width: 1279px)": {
+      gridTemplateColumns: "repeat(2, 1fr)",
+    },
+  },
 });
 
 export const card = style({
-  display: "grid",
-  gridTemplateColumns: "1fr auto auto",
-  alignItems: "center",
-  gap: vars.space.insetMd,
-  padding: vars.space.insetLg,
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.density.d3,
+  padding: vars.density.padCard,
   borderRadius: vars.radius.card,
-  border: `1px solid ${vars.color.outline.variant}`,
-  background: vars.color.bg.panel,
+  background: vars.card.bg,
+  boxShadow: vars.card.shadow,
+  backdropFilter: vars.card.backdrop,
+  cursor: "pointer",
+  textAlign: "left",
+  border: "none",
+  transition: `transform ${vars.motion.durationFast} ${vars.motion.easingDefault}, background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  ":hover": {
+    backgroundColor: vars.color.bg.hover,
+    transform: "translateY(-1px)",
+  },
+});
+
+export const cardHeader = style({
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: vars.density.d3,
 });
 
 export const cardTitle = style({
+  fontFamily: vars.font.headline,
+  fontSize: vars.font.size.headingSm,
   fontWeight: vars.font.weight.semibold,
-  fontSize: vars.font.size.bodyLg,
   color: vars.color.text.primary,
+  letterSpacing: "-0.01em",
+  margin: 0,
 });
 
 export const cardSlug = style({
   fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,
   color: vars.color.text.muted,
-  marginTop: vars.space.insetXs,
+  letterSpacing: "0.02em",
 });
 
 export const cardMeta = style({
-  fontSize: vars.font.size.bodySm,
-  color: vars.color.text.muted,
   display: "flex",
-  gap: vars.space.insetMd,
   flexWrap: "wrap",
-});
-
-export const badge = style({
-  display: "inline-flex",
-  alignItems: "center",
-  padding: `${vars.space.insetXs} ${vars.space.insetSm}`,
-  borderRadius: vars.radius.control,
-  background: vars.color.bg.elevated,
-  color: vars.color.text.secondary,
+  gap: vars.density.d3,
+  fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
+  color: vars.color.text.secondary,
 });
 
-export const empty = style({
+export const cardMetaItem = style({
+  display: "inline-flex",
+  alignItems: "baseline",
+  gap: vars.density.d2,
+});
+
+export const cardMetaLabel = style({
+  color: vars.color.text.muted,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+});
+
+export const cardModuleRow = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.density.d3,
+  marginTop: "auto",
+});
+
+export const summaryGrid = style({
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: vars.density.gapCard,
+});
+
+export const summaryStat = style({
   display: "flex",
   flexDirection: "column",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: vars.space.insetMd,
-  padding: vars.space.insetXl,
-  border: `1px dashed ${vars.color.outline.variant}`,
-  borderRadius: vars.radius.container,
-  color: vars.color.text.muted,
-  textAlign: "center",
+  gap: vars.density.d2,
+  padding: vars.density.padCard,
+  borderRadius: vars.radius.card,
+  background: vars.card.bg,
 });
 
-export const emptyIcon = style({
-  fontSize: "48px",
-  color: vars.color.text.muted,
-});
-
-export const emptyTitle = style({
-  fontSize: vars.font.size.bodyLg,
+export const summaryStatLabel = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.text.eyebrow,
   fontWeight: vars.font.weight.semibold,
-  color: vars.color.text.secondary,
+  letterSpacing: "0.16em",
+  textTransform: "uppercase",
+  color: vars.color.text.muted,
+});
+
+export const summaryStatValue = style({
+  fontFamily: vars.font.code,
+  fontSize: "clamp(28px, 1.6vw + 18px, 44px)",
+  fontWeight: vars.font.weight.regular,
+  color: vars.color.text.primary,
+  lineHeight: 1,
+  letterSpacing: "-0.02em",
 });
 
 export const error = style({
-  padding: vars.space.insetMd,
-  borderRadius: vars.radius.control,
-  background: vars.color.bg.elevated,
+  padding: vars.density.padCard,
+  borderRadius: vars.radius.card,
+  background: vars.card.bg,
   color: vars.color.error.text,
   fontSize: vars.font.size.bodySm,
 });
 
-export const filterBar = style({
-  display: "flex",
-  gap: "0.75rem",
-  alignItems: "center",
-  flexWrap: "wrap",
-});
-
-export const filterCheckbox = style({
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "0.5rem",
-  cursor: "pointer",
-});
-
-export const cardTitleButton = style({
-  background: "transparent",
-  border: "none",
-  color: "inherit",
-  font: "inherit",
-  cursor: "pointer",
-  padding: 0,
+export const subtitle = style({
+  fontSize: vars.font.size.bodySm,
+  color: vars.color.text.secondary,
+  margin: 0,
 });

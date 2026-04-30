@@ -8,116 +8,67 @@ export const heroEyebrowIcon = style({
 export const ctaStat = style({
   cursor: "pointer",
   textAlign: "left",
+  background: vars.card.bg,
+  border: "none",
+  ":hover": {
+    backgroundColor: vars.color.bg.hover,
+  },
 });
 
 export const container = style({
   display: "flex",
   flexDirection: "column",
-  gap: "32px",
-  padding: "32px 40px",
+  gap: vars.density.padSection,
+  paddingBlock: vars.density.padSection,
   maxWidth: "1400px",
-  margin: "0 auto",
-});
-
-export const hero = style({
-  display: "flex",
-  flexDirection: "column",
-  gap: "8px",
-});
-
-export const heroEyebrow = style({
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "8px",
-  fontFamily: vars.font.code,
-  fontSize: "11px",
-  fontWeight: 700,
-  letterSpacing: "0.24em",
-  textTransform: "uppercase",
-  color: "#22D3EE",
-});
-
-export const heroTitle = style({
-  fontFamily: vars.font.headline,
-  fontSize: "36px",
-  fontWeight: 700,
-  letterSpacing: "-0.025em",
-  lineHeight: 1.1,
-  color: vars.color.text.primary,
-  margin: 0,
-});
-
-export const heroSubtitle = style({
-  fontFamily: vars.font.ui,
-  fontSize: "15px",
-  color: vars.color.text.secondary,
-  maxWidth: "640px",
-  lineHeight: 1.5,
+  marginInline: "auto",
+  width: "100%",
 });
 
 export const statGrid = style({
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: "16px",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: vars.density.gapCard,
 });
 
 export const stat = style({
   display: "flex",
   flexDirection: "column",
-  gap: "4px",
-  padding: "16px 18px",
-  borderRadius: "14px",
-  backgroundColor: vars.color.bg.panel,
-  border: `1px solid ${vars.color.outline.variant}`,
+  gap: vars.density.d2,
+  padding: vars.density.padCard,
+  borderRadius: vars.radius.card,
+  backgroundColor: vars.card.bg,
+  boxShadow: vars.card.shadow,
+  backdropFilter: vars.card.backdrop,
 });
 
 export const statLabel = style({
   fontFamily: vars.font.code,
-  fontSize: "10px",
-  fontWeight: 600,
+  fontSize: vars.text.eyebrow,
+  fontWeight: vars.font.weight.semibold,
   letterSpacing: "0.16em",
   textTransform: "uppercase",
   color: vars.color.text.muted,
 });
 
 export const statValue = style({
-  fontFamily: vars.font.headline,
-  fontSize: "28px",
-  fontWeight: 700,
+  fontFamily: vars.font.code,
+  fontSize: "clamp(36px, 2vw + 24px, 56px)",
+  fontWeight: vars.font.weight.regular,
   color: vars.color.text.primary,
-  lineHeight: 1.1,
+  lineHeight: 1,
+  letterSpacing: "-0.02em",
 });
 
 export const statDelta = style({
-  fontFamily: vars.font.code,
-  fontSize: "11px",
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
   color: vars.color.text.secondary,
-});
-
-export const section = style({
-  display: "flex",
-  flexDirection: "column",
-  gap: "14px",
-});
-
-export const sectionHeader = style({
-  display: "flex",
-  alignItems: "baseline",
-  justifyContent: "space-between",
-  gap: "16px",
-});
-
-export const sectionTitle = style({
-  fontFamily: vars.font.headline,
-  fontSize: "18px",
-  fontWeight: 600,
-  letterSpacing: "-0.01em",
-  color: vars.color.text.primary,
 });
 
 export const sectionLink = style({
   fontFamily: vars.font.ui,
-  fontSize: "13px",
+  fontSize: vars.font.size.bodySm,
   color: vars.color.accent.primary,
   background: "none",
   border: "none",
@@ -130,6 +81,6 @@ export const sectionLink = style({
 
 export const emptyLine = style({
   fontFamily: vars.font.ui,
-  fontSize: "13px",
+  fontSize: vars.font.size.bodySm,
   color: vars.color.text.muted,
 });

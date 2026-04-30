@@ -1,5 +1,6 @@
 import { type CSSProperties } from "react";
 import { NavLink, useLocation } from "react-router";
+import { BrandMark } from "./brand_mark";
 import * as styles from "./sidebar.css";
 
 type UtilityItemId = "settings" | "help";
@@ -8,8 +9,6 @@ type NavItem = {
   readonly path: string;
   readonly label: string;
   readonly icon: string;
-  // Match rule for the active state. "exact" = only when pathname === path,
-  // "prefix" = when pathname starts with path. Defaults to "prefix".
   readonly match?: "exact" | "prefix";
 };
 
@@ -22,12 +21,7 @@ type UtilityItem = {
 const CORE_NAV_ITEMS: readonly NavItem[] = [
   { path: "/", label: "Home", icon: "home", match: "exact" },
   { path: "/modules", label: "Modules", icon: "apps" },
-  // scan-terminology: allow — canonical sidebar label per FR-T02 glossary
   { path: "/deployments", label: "Deployments", icon: "rocket_launch" },
-  // Backends + Models are host-level surfaces (spec 017 host-managed model
-  // store + backend registry). They used to be declared inside each
-  // extension's layout as drawers; now they live once, here, in the
-  // shell so every extension shares them.
   { path: "/backends", label: "Backends", icon: "developer_board" },
   { path: "/models", label: "Models", icon: "model_training" },
   { path: "/runs", label: "Runs", icon: "play_arrow" },
@@ -50,8 +44,11 @@ type ExtensionNavItem = {
   readonly icon: string;
 };
 
+export type SidebarVariant = "expanded" | "rail" | "float";
+
 type SidebarProps = {
-  pinned: boolean;
+  variant?: SidebarVariant;
+  pinned?: boolean;
   onTogglePin: () => void;
   onUtility?: (id: UtilityItemId) => void;
   extensionNavItems?: readonly ExtensionNavItem[];
@@ -64,15 +61,21 @@ function isItemActive(pathname: string, item: NavItem): boolean {
 }
 
 export function Sidebar({
+  variant,
   pinned,
   onTogglePin,
   onUtility,
   extensionNavItems = [],
 }: SidebarProps) {
   const { pathname } = useLocation();
-  const expanded = pinned;
+  const resolvedVariant: SidebarVariant = variant ?? (pinned ? "expanded" : "rail");
+  const expanded = resolvedVariant === "expanded" || resolvedVariant === "float";
 
-  const containerCls = [styles.container, expanded ? styles.containerExpanded : ""]
+  const containerCls = [
+    styles.container,
+    expanded ? styles.containerExpanded : "",
+    resolvedVariant === "float" ? styles.containerFloat : "",
+  ]
     .filter(Boolean)
     .join(" ");
 
@@ -89,7 +92,7 @@ export function Sidebar({
 
   const pinCls = [
     styles.pinButton,
-    pinned ? styles.pinButtonActive : "",
+    expanded ? styles.pinButtonActive : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -123,8 +126,6 @@ export function Sidebar({
     match: "prefix" as const,
   }));
 
-  // Home first, then extensions, then the rest of the core nav (preserves
-  // the historical ordering before the refactor).
   const orderedNav: readonly NavItem[] = [
     CORE_NAV_ITEMS[0]!,
     ...extensionItems,
@@ -134,15 +135,20 @@ export function Sidebar({
   return (
     <div className={containerCls}>
       <div className={headerCls}>
+        {expanded && (
+          <span className={styles.brandSlot}>
+            <BrandMark wordmark size={22} />
+          </span>
+        )}
         <button
           className={pinCls}
           onClick={onTogglePin}
-          aria-label={pinned ? "Collapse sidebar" : "Expand sidebar"}
-          aria-expanded={pinned}
-          title={pinned ? "Collapse sidebar" : "Expand sidebar"}
+          aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
+          aria-expanded={expanded}
+          title={expanded ? "Collapse sidebar" : "Expand sidebar"}
         >
           <span className={`material-symbols-outlined ${styles.iconXl}`}>
-            {pinned ? "menu_open" : "menu"}
+            {expanded ? "menu_open" : "menu"}
           </span>
         </button>
       </div>

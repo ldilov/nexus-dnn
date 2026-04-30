@@ -97,6 +97,7 @@ export const typography = {
     code: "'JetBrains Mono', 'Fira Code', monospace",
   },
   size: {
+    10: "0.625rem",
     11: "0.6875rem",
     12: "0.75rem",
     13: "0.8125rem",
@@ -134,5 +135,62 @@ export const motion = {
     default: "cubic-bezier(0.2, 0, 0, 1)",
     spring: "cubic-bezier(0.34, 1.56, 0.64, 1)",
     exit: "cubic-bezier(0.4, 0, 1, 1)",
+  },
+} as const;
+
+export const density = {
+  compact: {
+    d1: "2px", d2: "6px", d3: "8px", d4: "12px",
+    d5: "14px", d6: "16px", d7: "22px", d8: "32px", d9: "48px",
+    padCard: "16px", padSection: "22px", rowH: "44px", gapCard: "10px",
+  },
+  cozy: {
+    d1: "4px", d2: "8px", d3: "12px", d4: "16px",
+    d5: "20px", d6: "24px", d7: "32px", d8: "44px", d9: "64px",
+    padCard: "22px", padSection: "28px", rowH: "52px", gapCard: "14px",
+  },
+  spacious: {
+    d1: "6px", d2: "10px", d3: "16px", d4: "22px",
+    d5: "28px", d6: "36px", d7: "48px", d8: "64px", d9: "96px",
+    padCard: "32px", padSection: "44px", rowH: "64px", gapCard: "20px",
+  },
+} as const;
+
+export const cardStyle = {
+  flat: {
+    bg: "var(--color-surface-container-low)",
+    border: "none",
+    shadow: "none",
+    backdrop: "none",
+  },
+  glass: {
+    bg: "rgba(29, 32, 35, 0.62)",
+    border: "1px solid rgba(186, 158, 255, 0.08)",
+    shadow: "0 4px 16px rgba(0, 0, 0, 0.32)",
+    backdrop: "blur(20px) saturate(1.2)",
+  },
+  elevated: {
+    bg: "var(--color-surface-container-high)",
+    border: "1px solid rgba(70, 72, 74, 0.22)",
+    shadow: "0 12px 32px rgba(0, 0, 0, 0.4)",
+    backdrop: "none",
+  },
+} as const;
+
+export const accentMode = {
+  primary: {
+    accent: "#ba9eff",
+    accentDim: "#8455ef",
+    accentGlow: "rgba(132, 85, 239, 0.27)",
+  },
+  secondary: {
+    accent: "#9093ff",
+    accentDim: "#6063ee",
+    accentGlow: "rgba(96, 99, 238, 0.32)",
+  },
+  tertiary: {
+    accent: "#ff8439",
+    accentDim: "#fd761a",
+    accentGlow: "rgba(253, 118, 26, 0.28)",
   },
 } as const;

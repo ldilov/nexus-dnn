@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import type { Extension } from "../../../api/client";
 import { InstallExtensionDrawer } from "../../../components/install/install_extension_drawer";
+import { PageHero } from "../../../components/base/page_hero";
 import * as s from "./gallery.css";
 
 export interface GalleryActionState {
@@ -37,38 +38,51 @@ export function ExtensionsGalleryUI({
   onInstalled,
   setupRequired,
 }: ExtensionsGalleryUIProps) {
-  if (errorMessage) {
-    return <div className={s.errorState}>{errorMessage}</div>;
-  }
   return (
     <div className={s.root}>
-      <ExtensionSection
-        label="Built-in Extensions"
-        count={builtins.length}
-        items={builtins}
-        action={action}
-        onToggle={onToggle}
-        showDelete={false}
-        setupRequired={setupRequired}
+      <PageHero
+        eyebrow="Operator surface · Capability registry"
+        title="Extensions"
+        meta={
+          <span>
+            Built-in and externally installed extensions. Toggle to enable, manage
+            dependencies, or open the gallery to install more.
+          </span>
+        }
       />
-      <ExtensionSection
-        label="External Extensions"
-        count={externals.length}
-        items={externals}
-        action={action}
-        onToggle={onToggle}
-        showDelete
-        trailing={<InstallCard onClick={onOpenDrawer} />}
-        setupRequired={setupRequired}
-      />
-      {totalCount === 0 && (
-        <div className={s.emptyState}>No extensions loaded</div>
+      {errorMessage ? (
+        <div className={s.errorState}>{errorMessage}</div>
+      ) : (
+        <>
+          <ExtensionSection
+            label="Built-in Extensions"
+            count={builtins.length}
+            items={builtins}
+            action={action}
+            onToggle={onToggle}
+            showDelete={false}
+            setupRequired={setupRequired}
+          />
+          <ExtensionSection
+            label="External Extensions"
+            count={externals.length}
+            items={externals}
+            action={action}
+            onToggle={onToggle}
+            showDelete
+            trailing={<InstallCard onClick={onOpenDrawer} />}
+            setupRequired={setupRequired}
+          />
+          {totalCount === 0 && (
+            <div className={s.emptyState}>No extensions loaded</div>
+          )}
+          <InstallExtensionDrawer
+            open={drawerOpen}
+            onClose={onCloseDrawer}
+            onInstalled={onInstalled}
+          />
+        </>
       )}
-      <InstallExtensionDrawer
-        open={drawerOpen}
-        onClose={onCloseDrawer}
-        onInstalled={onInstalled}
-      />
     </div>
   );
 }

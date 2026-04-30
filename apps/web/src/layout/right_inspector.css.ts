@@ -2,10 +2,16 @@ import { style } from "@vanilla-extract/css";
 import { vars } from "../theme/contract.css";
 
 export const container = style({
-  padding: vars.space.insetXl,
   display: "flex",
   flexDirection: "column",
   gap: vars.space.insetLg,
+  height: "100%",
+  padding: vars.density.padCard,
+  backgroundColor: vars.card.bg,
+  boxShadow: vars.card.shadow,
+  backdropFilter: vars.card.backdrop,
+  borderRadius: vars.radius.panel,
+  overflow: "auto",
 });
 
 export const heading = style({

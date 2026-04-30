@@ -126,10 +126,10 @@ use crate::extension_router;
 use crate::frontend;
 use crate::handlers;
 use crate::handlers::{
-    artifacts, backend_events_ws, backend_runtimes, backends, deployments, extension_dependencies,
-    extension_ui, extensions, extensions_install, health, host, huggingface, metrics, modules,
-    recipes, runs, storage_contributions, system, tools, ui_components, ui_contributions,
-    ui_layouts, workflows,
+    artifacts, backend_events_ws, backend_runtimes, backends, deployments, draft_suggestions,
+    extension_dependencies, extension_ui, extensions, extensions_install, health, host,
+    huggingface, metrics, modules, recipes, runs, storage_contributions, system, tools,
+    ui_components, ui_contributions, ui_layouts, workflows,
 };
 use crate::ws;
 
@@ -465,6 +465,15 @@ pub fn build(state: AppState) -> Router {
     let api_v1 = api_v1.nest("/modules", modules::router());
     let api_v1 = api_v1.nest("/modules", modules::draft_router());
     let api_v1 = api_v1.nest("/extensions", extensions_install::router());
+
+    // Draft AI suggestion stream (spec 037 / Phase 8). Mounted under the
+    // host root because the routes already include `/api/v1/...` paths
+    // and ship their own `Extension`-attached state — the route paths
+    // are absolute, so wire at the top-level Router after `api_v1`.
+    let draft_suggestions_provider: std::sync::Arc<dyn draft_suggestions::SuggestionStreamProvider> =
+        std::sync::Arc::new(draft_suggestions::NullStreamProvider::new());
+    let draft_suggestions_router: Router<AppState> =
+        draft_suggestions::router::<AppState>(draft_suggestions_provider);
     let api_v1 = api_v1
         .route(
             "/extensions/{ext_id}/{*rest}",
@@ -493,6 +502,7 @@ pub fn build(state: AppState) -> Router {
     Router::new()
         .nest("/api/v1", api_v1)
         .nest("/api/host", api_host)
+        .merge(draft_suggestions_router)
         .fallback(frontend::static_handler)
         .layer(CatchPanicLayer::new())
         // request_id MUST be the outermost user-visible layer so the

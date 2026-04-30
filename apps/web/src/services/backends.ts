@@ -70,6 +70,34 @@ export async function uninstallBackend(
   }
 }
 
+export type LeaseStateString =
+  | "starting"
+  | "ready"
+  | "busy"
+  | "stopping"
+  | "failed"
+  | "released";
+
+export interface LeaseSummary {
+  lease_id: string;
+  runtime_install_id: string;
+  owner_kind: string;
+  state: LeaseStateString;
+}
+
+export async function fetchLiveLeases(
+  signal?: AbortSignal,
+): Promise<LeaseSummary[]> {
+  const res = await fetch(`/api/v1/backend-runtime-leases?live_only=true`, {
+    signal,
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  const body = (await res.json()) as {
+    data?: { leases?: LeaseSummary[] };
+  };
+  return body?.data?.leases ?? [];
+}
+
 export async function listHostBackends(baseUrl?: string): Promise<unknown> {
   const prefix = baseUrl ?? "";
   const res = await fetch(`${prefix}/api/v1/llm/backends`);
