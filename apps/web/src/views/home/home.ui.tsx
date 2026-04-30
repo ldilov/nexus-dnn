@@ -1,5 +1,8 @@
 import type { Extension, Recipe, Workflow } from "../../api/client";
 import { RecipeCatalog } from "../../catalog/recipe_catalog";
+import { PageHero } from "../../components/base/page_hero";
+import { Section } from "../../components/base/section";
+import { StatusChip } from "../../components/base/status_chip";
 import * as styles from "./home.css";
 
 export interface HomeUIProps {
@@ -25,19 +28,19 @@ export function HomeUI({
 }: HomeUIProps) {
   return (
     <div className={styles.container}>
-      <section className={styles.hero}>
-        <span className={styles.heroEyebrow}>
-          <span className={`material-symbols-outlined ${styles.heroEyebrowIcon}`}>
-            hub
-          </span>
-          Nexus DNN · Local-First AI Runtime
-        </span>
-        <h1 className={styles.heroTitle}>Welcome back</h1>
-        <p className={styles.heroSubtitle}>
-          Launch a recipe to start working, inspect a workflow graph, or manage the
-          extensions that power your local AI stack.
-        </p>
-      </section>
+      <PageHero
+        eyebrow="Nexus DNN · Local-First AI Runtime"
+        title="Welcome back"
+        meta={
+          <>
+            <StatusChip kind="idle" label="Local-only" />
+            <span className={styles.emptyLine}>
+              Launch a recipe to start working, inspect a workflow graph, or manage
+              the extensions that power your local AI stack.
+            </span>
+          </>
+        }
+      />
 
       <div className={styles.statGrid}>
         <div className={styles.stat}>
@@ -57,27 +60,26 @@ export function HomeUI({
         </div>
         <div className={styles.stat}>
           <span className={styles.statLabel}>Runs</span>
-          <span className={styles.statValue}>0</span>
+          <span className={styles.statValue}>—</span>
           <span className={styles.statDelta}>last 24h</span>
         </div>
       </div>
 
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h2 className={styles.sectionTitle}>Featured recipes</h2>
-          {onGoToRecipes && (
+      <Section
+        number="01"
+        title="Featured recipes"
+        right={
+          onGoToRecipes && (
             <button type="button" className={styles.sectionLink} onClick={onGoToRecipes}>
               View all →
             </button>
-          )}
-        </div>
+          )
+        }
+      >
         <RecipeCatalog onOpenRecipe={onOpenRecipe} />
-      </section>
+      </Section>
 
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h2 className={styles.sectionTitle}>Get moving</h2>
-        </div>
+      <Section number="02" title="Get moving">
         <div className={styles.statGrid}>
           <button
             type="button"
@@ -98,7 +100,7 @@ export function HomeUI({
             <span className={styles.statDelta}>Enable and install</span>
           </button>
         </div>
-      </section>
+      </Section>
     </div>
   );
 }

@@ -15,10 +15,14 @@ export const buttonRecipe = recipe({
     lineHeight: vars.font.lineHeight.tight,
     cursor: "pointer",
     whiteSpace: "nowrap",
-    transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+    transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}, border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
     ":disabled": {
       opacity: 0.5,
       cursor: "not-allowed",
+    },
+    ":focus-visible": {
+      outline: "none",
+      boxShadow: `0 0 0 ${vars.focus.ringWidth} ${vars.color.accent.accent}`,
     },
   },
   variants: {
@@ -27,17 +31,18 @@ export const buttonRecipe = recipe({
         background: vars.color.accent.primary,
         color: vars.color.onColor.primary,
         fontWeight: vars.font.weight.semibold,
-        transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
         ":hover": {
           background: vars.color.accent.primaryHover,
-          boxShadow: `0 0 12px 0 ${vars.color.accent.primaryDim}66`,
+          boxShadow: `0 0 12px 0 color-mix(in oklab, ${vars.color.accent.primaryDim} 40%, transparent)`,
         },
       },
       secondary: {
-        backgroundColor: vars.color.bg.elevated,
+        backgroundColor: "transparent",
         color: vars.color.text.primary,
+        boxShadow: `inset 0 0 0 1px ${vars.color.outline.variant}`,
         ":hover": {
           backgroundColor: vars.color.bg.hover,
+          boxShadow: `inset 0 0 0 1px ${vars.color.outline.base}`,
         },
       },
       ghost: {
@@ -46,6 +51,15 @@ export const buttonRecipe = recipe({
         ":hover": {
           backgroundColor: vars.color.bg.hover,
           color: vars.color.text.primary,
+        },
+      },
+      tertiary: {
+        backgroundColor: vars.color.accent.tertiary,
+        color: vars.color.onColor.tertiary,
+        fontWeight: vars.font.weight.semibold,
+        ":hover": {
+          backgroundColor: vars.color.accent.tertiaryDim,
+          boxShadow: `0 0 16px 0 color-mix(in oklab, ${vars.color.accent.tertiaryDim} 40%, transparent)`,
         },
       },
       danger: {
@@ -60,7 +74,7 @@ export const buttonRecipe = recipe({
       },
       accent: {
         backgroundColor: vars.color.accent.tertiary,
-        color: vars.color.text.inverse,
+        color: vars.color.onColor.tertiary,
         ":hover": { opacity: 0.9 },
       },
     },

@@ -73,10 +73,18 @@ export const badgeRecipe = recipe({
         color: vars.color.mod.system,
       },
     },
+    mono: {
+      true: {
+        fontFamily: vars.font.code,
+        fontWeight: vars.font.weight.regular,
+        letterSpacing: "0.02em",
+      },
+    },
   },
   defaultVariants: {
     size: "sm",
     intent: "neutral",
+    mono: false,
   },
 });
 
