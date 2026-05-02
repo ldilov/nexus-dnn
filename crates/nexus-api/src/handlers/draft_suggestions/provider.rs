@@ -43,12 +43,45 @@ pub enum StreamItem {
 
 pub type StreamItems = Pin<Box<dyn Stream<Item = StreamItem> + Send>>;
 
+/// RAII guard that releases the backend lease when dropped. Owned by
+/// the spawned producer task — any exit path (complete / cancel / error /
+/// lease-revoked / client-disconnect / panic) drops the task, which drops
+/// the guard, which releases the lease. Implementations MUST attach the
+/// release closure here; without it the lease leaks on non-happy paths.
+///
+/// `LeaseGuard::noop()` is acceptable for fakes that hold no real lease.
+pub struct LeaseGuard {
+    on_drop: Option<Box<dyn FnOnce() + Send>>,
+}
+
+impl LeaseGuard {
+    pub fn new(release: impl FnOnce() + Send + 'static) -> Self {
+        Self {
+            on_drop: Some(Box::new(release)),
+        }
+    }
+
+    pub fn noop() -> Self {
+        Self { on_drop: None }
+    }
+}
+
+impl Drop for LeaseGuard {
+    fn drop(&mut self) {
+        if let Some(release) = self.on_drop.take() {
+            release();
+        }
+    }
+}
+
 /// Outcome of acquiring a stream — includes the lease id (carried through
 /// to the `stream_started` SSE event so the client can correlate cancel
-/// requests to their backend-side lease).
+/// requests to their backend-side lease) and a `LeaseGuard` whose `Drop`
+/// is the contractual release point.
 pub struct StreamHandle {
     pub lease_id: String,
     pub items: StreamItems,
+    pub lease_guard: LeaseGuard,
 }
 
 /// Cooperative cancel flag shared between the handler and the provider
@@ -74,8 +107,8 @@ impl CancelFlag {
 /// Implementations MUST honor the `cancel` flag: once it flips to `true`,
 /// no further `Token` items may be yielded; the stream MUST close (via
 /// `Done` or by terminating the `Stream`) within a small bounded number
-/// of items. Implementations MAY release backend resources eagerly
-/// (preferred) or lazily on `Drop` (acceptable for fakes).
+/// of items. Lease release is RAII via the `LeaseGuard` returned in the
+/// `StreamHandle` — implementations MUST NOT release the lease eagerly.
 #[async_trait]
 pub trait SuggestionStreamProvider: Send + Sync {
     async fn open_stream(
@@ -160,6 +193,7 @@ impl SuggestionStreamProvider for FakeStreamProvider {
         Ok(StreamHandle {
             lease_id: self.lease_id.clone(),
             items: Box::pin(ReceiverStream::new(rx)),
+            lease_guard: LeaseGuard::noop(),
         })
     }
 }
@@ -259,5 +293,22 @@ mod tests {
         f.cancel();
         f.cancel();
         assert!(f.is_cancelled());
+    }
+
+    #[test]
+    fn lease_guard_runs_release_exactly_once_on_drop() {
+        let counter = Arc::new(AtomicBool::new(false));
+        let inner = counter.clone();
+        let guard = LeaseGuard::new(move || {
+            inner.store(true, Ordering::SeqCst);
+        });
+        assert!(!counter.load(Ordering::SeqCst));
+        drop(guard);
+        assert!(counter.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn lease_guard_noop_does_not_panic_on_drop() {
+        drop(LeaseGuard::noop());
     }
 }
