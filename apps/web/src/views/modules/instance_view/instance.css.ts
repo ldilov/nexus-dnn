@@ -720,26 +720,6 @@ export const draftBanner = style({
   flexWrap: "wrap",
 });
 
-export const draftActions = style({
-  display: "flex",
-  gap: vars.space.sm,
-  alignItems: "center",
-});
-
-export const draftInput = style({
-  background: vars.color.surfaceContainerLowest,
-  border: `1px solid ${vars.color.outlineVariant}`,
-  padding: `${vars.space.xs} ${vars.space.md}`,
-  fontSize: vars.text.bodyS,
-  color: vars.color.onSurface,
-  minWidth: "200px",
-  borderRadius: vars.radius.sm,
-  fontFamily: vars.font.ui,
-  selectors: {
-    "&:focus": { outline: "none", borderColor: vars.color.primary },
-  },
-});
-
 // ─── Error / loading / misc ───────────────────────────────────────────────
 
 export const errorBox = style({

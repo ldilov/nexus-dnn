@@ -39,6 +39,15 @@ export const heroCount = style({
   marginLeft: "var(--d-3)",
 });
 
+export const heroLede = style({
+  margin: 0,
+  maxWidth: "62ch",
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
+  lineHeight: 1.55,
+  color: vars.color.text.secondary,
+});
+
 export const heroMeta = style({
   display: "flex",
   alignItems: "center",

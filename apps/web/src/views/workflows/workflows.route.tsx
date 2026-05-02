@@ -76,12 +76,7 @@ export default function WorkflowsRoute() {
           <PageHero
             eyebrow="Authoring surface · Node graphs"
             title="Workflows"
-            meta={
-              <span>
-                Compiled graphs of operators. Pick a workflow to inspect its stages, run
-                traces, or open it in the editor.
-              </span>
-            }
+            lede="Compiled graphs of operators. Pick a workflow to inspect its stages, run traces, or open it in the editor."
           />
         </div>
       )}

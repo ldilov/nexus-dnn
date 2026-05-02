@@ -8,7 +8,7 @@ export function RunsPlaceholderRoute() {
       <PageHero
         eyebrow="Operator surface · Run history"
         title="Runs"
-        meta={<span>Per-run timelines, traces, and per-node heat across every deployment. Run history surfaces here once it lands.</span>}
+        lede="Per-run timelines, traces, and per-node heat across every deployment. Run history surfaces here once it lands."
       />
       <EmptyState
         count="0"
