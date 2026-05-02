@@ -24070,13 +24070,6 @@ class w_ extends HTMLElement {
   disconnectedCallback() {
     this.root?.unmount(), this.root = null, this.observer?.disconnect(), this.observer = null;
   }
-  // Mirror `document.body.dataset.{accent,density,card}` onto this custom
-  // element so the scoped CSS selectors in `theme/tokens.css.ts` re-bind
-  // tokens whenever the host tweak panel writes a new value. Runs once on
-  // connect and then on every body-attribute mutation. Defaults baked into
-  // the theme cover the no-attribute case, so a missing host (e.g. running
-  // the bundle in isolation for the visual baseline) still paints with the
-  // documented `cozy / primary / flat` baseline.
   syncTweaksFromBody() {
     for (const a of fb) {
       const l = T_(a);
