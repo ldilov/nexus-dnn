@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef, type SyntheticEvent } from "react";
 import { useNavigate } from "react-router";
 import type { CharacterMapping } from "../../../services/mappings_client";
 import type { OutputFormat } from "../../../services/types";
@@ -14,6 +14,15 @@ interface Props {
   deploymentId: string;
 }
 
+interface LineToken {
+  kind: "blank" | "narrator" | "character";
+  raw: string;
+  character?: string;
+  override?: string;
+  text?: string;
+  hasMapping?: boolean;
+}
+
 interface LineAttribution {
   lineNumber: number;
   character: string;
@@ -21,23 +30,46 @@ interface LineAttribution {
   hasMapping: boolean;
 }
 
+const PALETTE = [
+  "var(--accent, #ba9eff)",
+  "var(--secondary, #9093ff)",
+  "var(--tertiary, #ff8439)",
+  "var(--success, #80e0a8)",
+  "var(--warning, #f0c265)",
+  "var(--info, #7fdbff)",
+];
+
 export function ScriptEditor(props: Props): JSX.Element {
   const navigate = useNavigate();
-  const { attributions, unresolved, predictedFilenames } = useMemo(
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const { tokens, attributions, unresolved, predictedFilenames, characterColor } = useMemo(
     () => analyseScript(props.value, props.outputFormat, props.mappings),
     [props.value, props.outputFormat, props.mappings],
   );
 
+  const handleScroll = (event: SyntheticEvent<HTMLTextAreaElement>): void => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+    overlay.scrollTop = event.currentTarget.scrollTop;
+    overlay.scrollLeft = event.currentTarget.scrollLeft;
+  };
+
   return (
     <div>
-      <textarea
-        className={css.scriptTextarea}
-        value={props.value}
-        onChange={(e) => props.onChange(e.currentTarget.value)}
-        placeholder={"[Bob] Hey there\n[Alice] Hello\n..."}
-        aria-label="Dialogue script"
-        spellCheck={false}
-      />
+      <div className={css.scriptShell}>
+        <div ref={overlayRef} className={css.scriptOverlay} aria-hidden="true">
+          {tokens.map((tok, idx) => renderToken(tok, idx, characterColor))}
+        </div>
+        <textarea
+          className={css.scriptTextarea}
+          value={props.value}
+          onChange={(e) => props.onChange(e.currentTarget.value)}
+          onScroll={handleScroll}
+          placeholder={"[Bob] Hey there\n[Alice] Hello\n..."}
+          aria-label="Dialogue script"
+          spellCheck={false}
+        />
+      </div>
 
       {unresolved.length > 0 && (
         <Banner severity="error">
@@ -87,33 +119,80 @@ export function ScriptEditor(props: Props): JSX.Element {
   );
 }
 
+function renderToken(
+  tok: LineToken,
+  idx: number,
+  characterColor: Map<string, string>,
+): JSX.Element {
+  if (tok.kind === "blank") {
+    return <span key={idx}>{tok.raw}{"\n"}</span>;
+  }
+  if (tok.kind === "narrator") {
+    return (
+      <span key={idx}>
+        <span className={css.scriptText}>{tok.raw}</span>
+        {"\n"}
+      </span>
+    );
+  }
+  const color = characterColor.get(tok.character?.toLowerCase() ?? "") ?? "currentColor";
+  const charClass = tok.hasMapping ? css.scriptCharacter : `${css.scriptCharacter} ${css.scriptUnresolved}`;
+  return (
+    <span key={idx}>
+      <span className={charClass} style={{ color }}>
+        [{tok.character}
+        {tok.override && <span className={css.scriptOverride}>|{tok.override}</span>}]
+      </span>
+      <span className={css.scriptText}> {tok.text ?? ""}</span>
+      {"\n"}
+    </span>
+  );
+}
+
 function analyseScript(
   script: string,
   outputFormat: OutputFormat,
   mappings: Map<string, CharacterMapping>,
-): { attributions: LineAttribution[]; unresolved: string[]; predictedFilenames: string[] } {
+): {
+  tokens: LineToken[];
+  attributions: LineAttribution[];
+  unresolved: string[];
+  predictedFilenames: string[];
+  characterColor: Map<string, string>;
+} {
   const tagRegex = /^\[(?<body>[^\]]*)\](?<rest>.*)$/;
+  const tokens: LineToken[] = [];
   const attributions: LineAttribution[] = [];
   const unresolvedSet = new Set<string>();
   const characterCounter = new Map<string, number>();
   const predictedFilenames: string[] = [];
+  const characterColor = new Map<string, string>();
+  let nextColorIndex = 0;
 
   const lines = script.split(/\r?\n/);
   let globalIndex = 0;
 
   lines.forEach((raw, idx) => {
     const trimmed = raw.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      tokens.push({ kind: "blank", raw });
+      return;
+    }
     const lineNumber = idx + 1;
     const match = trimmed.match(tagRegex);
     let character = "Narrator";
     let text = trimmed;
+    let override: string | undefined;
+    let isTagged = false;
     if (match && match.groups) {
+      isTagged = true;
       const body = (match.groups["body"] ?? "").trim();
       const rest = (match.groups["rest"] ?? "").trim();
       const head = body.split("|")[0] ?? "";
       const name = head.split(":")[0] ?? "";
       character = name.trim() || "Narrator";
+      const tail = body.includes("|") ? body.slice(body.indexOf("|") + 1) : "";
+      override = tail.trim() || undefined;
       text = rest;
     }
 
@@ -124,6 +203,19 @@ function analyseScript(
     const hasMapping = character === "Narrator" || mappings.has(lower);
     if (!hasMapping) unresolvedSet.add(character);
 
+    if (character !== "Narrator" && !characterColor.has(lower)) {
+      characterColor.set(lower, PALETTE[nextColorIndex % PALETTE.length] ?? "currentColor");
+      nextColorIndex += 1;
+    }
+
+    if (isTagged) {
+      const tok: LineToken = { kind: "character", raw, character, text, hasMapping };
+      if (override !== undefined) tok.override = override;
+      tokens.push(tok);
+    } else {
+      tokens.push({ kind: "narrator", raw });
+    }
+
     attributions.push({ lineNumber, character, text, hasMapping });
     predictedFilenames.push(
       `${globalIndex.toString().padStart(3, "0")}_${sanitise(character)}_${count
@@ -133,9 +225,11 @@ function analyseScript(
   });
 
   return {
+    tokens,
     attributions,
     unresolved: Array.from(unresolvedSet),
     predictedFilenames,
+    characterColor,
   };
 }
 
