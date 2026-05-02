@@ -5,6 +5,7 @@ import { resumeRun } from "../../services/runs_client";
 import type { ApplyEditResponse } from "../../services/audio_edit_client";
 import type { Run, RunStatus, UtteranceState, UtteranceStatus } from "../../services/types";
 import { PerUtteranceEdit } from "./components/per_utterance_edit";
+import { sectionLabel } from "../../components/section_label.css";
 import * as css from "./run_detail.css";
 
 interface LoaderData {
@@ -140,9 +141,11 @@ export function RunDetailView(): JSX.Element {
           </section>
         )}
 
-        <section className={css.panel} aria-label="Utterances">
+        <section className={css.panel} aria-labelledby="run-detail-utterances">
           <div className={css.panelHeader}>
-            <h2 className={css.panelTitle}>Utterances</h2>
+            <h2 id="run-detail-utterances" className={sectionLabel}>
+              01 / Utterances
+            </h2>
             {metrics.completed > 0 && (
               <span className={css.cacheSummary}>
                 <span className={css.cacheRatio}>{metrics.cached}</span>/{metrics.completed} from cache
