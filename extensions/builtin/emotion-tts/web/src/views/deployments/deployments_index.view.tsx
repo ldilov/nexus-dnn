@@ -1,5 +1,7 @@
 import { Link, useLoaderData } from "react-router";
 import type { Deployment } from "../../services/deployments_client";
+import { EmptyState } from "../../components/empty_state";
+import { sectionLabel } from "../../components/section_label.css";
 import * as css from "./deployments_index.css";
 
 interface LoaderData {
@@ -30,15 +32,12 @@ export function DeploymentsIndexView(): JSX.Element {
       </header>
 
       <section className={css.panel}>
-        <h2 className={css.sectionLabel}>01 / Deployments</h2>
+        <h2 className={sectionLabel}>01 / Deployments</h2>
         {deployments.length === 0 ? (
-          <div className={css.empty}>
-            <span className={css.emptyGlyph} aria-hidden="true">
-              0
-            </span>
-            <p className={css.emptyTitle}>No deployments yet.</p>
-            <p className={css.emptyHint}>Host shell → Extensions → EmotionTTS → New</p>
-          </div>
+          <EmptyState
+            title="No deployments yet."
+            hint="Host shell → Extensions → EmotionTTS → New"
+          />
         ) : (
           <ul className={css.list}>
             {deployments.map((d) => (
