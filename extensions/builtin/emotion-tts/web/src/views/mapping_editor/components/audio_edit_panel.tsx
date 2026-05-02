@@ -20,6 +20,7 @@ import { AuditHistoryPanel } from "./audit_history_panel";
 import { EditChainList } from "./edit_chain_list";
 import { WaveformCanvas } from "./waveform_canvas";
 import * as css from "./audio_edit_panel.css";
+import { Banner } from "../../../components/banner";
 
 interface RemovalStackEntry {
   op: EditOp;
@@ -421,11 +422,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
         />
       )}
 
-      {validationError && (
-        <div className={css.errorBanner} role="alert" aria-live="polite">
-          {validationError}
-        </div>
-      )}
+      {validationError && <Banner severity="error">{validationError}</Banner>}
 
       <details className={css.auditSection}>
         <summary className={css.auditSummary}>

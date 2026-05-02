@@ -536,11 +536,3 @@ export const inlineToast = style({
   zIndex: 50,
 });
 
-export const errorBanner = style({
-  padding: `${vars.space.sm} ${vars.space.md}`,
-  borderRadius: vars.radius.md,
-  background: `color-mix(in oklab, ${vars.color.danger} 14%, ${vars.color.surfaceRaised})`,
-  color: vars.color.text,
-  fontFamily: vars.font.mono,
-  fontSize: vars.text.caption,
-});
