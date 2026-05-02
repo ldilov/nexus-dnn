@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { materializeDraft } from "../../../api/client";
 import { AiSuggestionPill } from "../../../components/draft/ai_suggestion_pill";
+import { PageHero } from "../../../components/base/page_hero";
 import {
   clearDraftEnvelope,
   readDraftEnvelope,
@@ -132,9 +133,7 @@ export function DraftView({ sourceModuleId, draftUuid }: DraftViewProps) {
   if (state.kind === "loading") {
     return (
       <Shell>
-        <header className={s.identityBanner}>
-          <span className={s.idText}>Loading draft…</span>
-        </header>
+        <PageHero eyebrow="Module draft" title="Loading draft…" />
       </Shell>
     );
   }
@@ -142,6 +141,7 @@ export function DraftView({ sourceModuleId, draftUuid }: DraftViewProps) {
   if (state.kind === "error") {
     return (
       <Shell>
+        <PageHero eyebrow="Module draft" title="Not available" />
         <div className={s.errorBox} role="alert">
           {state.message}
         </div>
@@ -195,22 +195,25 @@ export function DraftView({ sourceModuleId, draftUuid }: DraftViewProps) {
         </div>
       )}
 
-      <header className={s.identityBanner}>
-        <span className={s.statusDot} aria-hidden="true" />
-        <span className={s.idText}>— (draft)</span>
-        <span className={s.displayName}>
-          {env.display_name || "Untitled Module"}
-        </span>
-        <span className={s.sourceBadge}>
-          <span
-            className={`material-symbols-outlined ${s.iconSm}`}
-            aria-hidden="true"
-          >
-            {env.source_module_id === "user:blank" ? "add_box" : "apps"}
-          </span>
-          Draft from {env.source_display_name}
-        </span>
-      </header>
+      <PageHero
+        eyebrow="Module draft · Unsaved fork"
+        title={env.display_name || "Untitled Module"}
+        meta={
+          <>
+            <span className={s.statusDot} aria-hidden="true" />
+            <span className={s.idText}>— (draft)</span>
+            <span className={s.sourceBadge}>
+              <span
+                className={`material-symbols-outlined ${s.iconSm}`}
+                aria-hidden="true"
+              >
+                {env.source_module_id === "user:blank" ? "add_box" : "apps"}
+              </span>
+              Draft from {env.source_display_name}
+            </span>
+          </>
+        }
+      />
 
       <div className={s.panel}>
         <div className={s.readOnlyNote}>
