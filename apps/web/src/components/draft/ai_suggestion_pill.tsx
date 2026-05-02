@@ -74,13 +74,14 @@ export function AiSuggestionPill({
 
   if (state.phase === "idle" || state.phase === "dismissed") return null;
 
+  const isError = state.phase === "error";
   return (
     <LazyMotion features={domAnimation} strict>
       <m.div
         className={styles.root}
         style={style}
-        role="status"
-        aria-live="polite"
+        role={isError ? "alert" : "status"}
+        aria-live={isError ? "assertive" : "polite"}
         aria-label="AI suggestion"
         initial={transition.initial}
         animate={transition.animate}

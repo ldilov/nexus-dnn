@@ -74,7 +74,6 @@ export function TopBar({
             search
           </span>
           <span>Search</span>
-          <kbd className={styles.searchHotkey}>⌘K</kbd>
         </button>
         {tweakPanel}
         <button

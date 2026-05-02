@@ -33,7 +33,13 @@ export function StageView({
               ? `${styles.nodeCard} ${styles.nodeCardSelected}`
               : styles.nodeCard;
             return (
-              <div key={node.id} className={cls} onClick={() => onSelectNode(node)}>
+              <button
+                key={node.id}
+                type="button"
+                className={cls}
+                aria-pressed={isSelected}
+                onClick={() => onSelectNode(node)}
+              >
                 <div className={styles.nodeName}>{node.id}</div>
                 <div className={styles.nodeOperator}>{node.operator}</div>
                 {progress && (
@@ -41,7 +47,7 @@ export function StageView({
                     <StatusBadge status={progress.status as BadgeStatus} />
                   </div>
                 )}
-              </div>
+              </button>
             );
           })}
         </div>

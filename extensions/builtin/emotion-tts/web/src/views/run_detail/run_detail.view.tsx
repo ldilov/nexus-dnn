@@ -22,7 +22,9 @@ export function RunDetailView(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingUtteranceId, setEditingUtteranceId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; severity: "success" | "error" } | null>(
+    null,
+  );
 
   useEffect(() => {
     setRun(initialRun);
@@ -63,11 +65,11 @@ export function RunDetailView(): JSX.Element {
   const handleEditApplied = (utteranceId: string, response: ApplyEditResponse): void => {
     setRun((prev) => applyEditToRun(prev, utteranceId, response));
     setEditingUtteranceId(null);
-    setToast("Segment edited");
+    setToast({ message: "Segment edited", severity: "success" });
   };
 
   const handleEditError = useCallback((message: string) => {
-    setToast(message);
+    setToast({ message, severity: "error" });
   }, []);
 
   return (
@@ -110,13 +112,13 @@ export function RunDetailView(): JSX.Element {
         </section>
 
         {canResume && (
-          <section className={css.resumePanel} aria-label="Resume run">
+          <section className={css.resumePanel} aria-labelledby="run-detail-resume-title">
             <div className={css.resumeCopy}>
-              <p className={css.resumeTitle}>
+              <h2 id="run-detail-resume-title" className={css.resumeTitle}>
                 {metrics.failed > 0
                   ? `${metrics.failed} line${metrics.failed === 1 ? "" : "s"} did not complete`
                   : "Run was interrupted before completion"}
-              </p>
+              </h2>
               <p className={css.resumeBody}>
                 Resume picks up where the last attempt left off — completed audio is re-used from cache.
               </p>
@@ -214,8 +216,12 @@ export function RunDetailView(): JSX.Element {
       </div>
 
       {toast && (
-        <div className={css.inlineToast} role="status" aria-live="polite">
-          {toast}
+        <div
+          className={css.inlineToast}
+          role={toast.severity === "error" ? "alert" : "status"}
+          aria-live={toast.severity === "error" ? "assertive" : "polite"}
+        >
+          {toast.message}
         </div>
       )}
     </main>
