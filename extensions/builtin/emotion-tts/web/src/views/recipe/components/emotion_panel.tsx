@@ -8,6 +8,8 @@ import {
   type VectorPreset,
 } from "../../../services/presets_client";
 import type { EmotionMode, GlobalEmotion } from "../../../services/types";
+import { Banner } from "../../../components/banner";
+import { Button } from "../../../components/button";
 import * as css from "./emotion_panel.css";
 import { EmotionRadar } from "./emotion_radar";
 import { EmotionSliders } from "./emotion_sliders";
@@ -144,7 +146,12 @@ export function EmotionPanel({ value, onChange, deploymentId }: Props): JSX.Elem
   return (
     <div className={css.shell}>
       <div className={css.radarColumn}>
-        <EmotionRadar vector={vector} pulseKey={pulseKey} />
+        <EmotionRadar
+          vector={vector}
+          pulseKey={pulseKey}
+          onChange={(next) => setVector(next as EmotionVector)}
+          disabled={mode !== "emotion_vector"}
+        />
         <span className={css.helpText}>{summariseMode(mode, selectedPreset?.presetName)}</span>
       </div>
 
@@ -181,21 +188,21 @@ export function EmotionPanel({ value, onChange, deploymentId }: Props): JSX.Elem
                 ))}
               </select>
               {selectedPresetId && (
-                <button
-                  type="button"
-                  className={css.presetActionDanger}
+                <Button
+                  variant="danger"
+                  size="sm"
                   onClick={() => void removePreset(selectedPresetId)}
                   disabled={busy}
                 >
                   Delete preset
-                </button>
+                </Button>
               )}
-              <button type="button" className={css.presetAction} onClick={resetVector}>
+              <Button variant="ghost" size="sm" onClick={resetVector}>
                 Reset
-              </button>
-              <button type="button" className={css.presetAction} onClick={randomVector}>
+              </Button>
+              <Button variant="ghost" size="sm" onClick={randomVector}>
                 Random
-              </button>
+              </Button>
             </div>
 
             <EmotionSliders vector={vector} onChange={setVector} />
@@ -216,13 +223,13 @@ export function EmotionPanel({ value, onChange, deploymentId }: Props): JSX.Elem
                 maxLength={120}
                 aria-label="Preset name"
               />
-              <button
+              <Button
                 type="submit"
-                className={css.presetActionPrimary}
+                size="sm"
                 disabled={busy || savingName.trim().length === 0}
               >
                 Save preset
-              </button>
+              </Button>
             </form>
           </>
         )}
@@ -274,7 +281,7 @@ export function EmotionPanel({ value, onChange, deploymentId }: Props): JSX.Elem
           </div>
         )}
 
-        {presetsError && <p className={css.errorText}>{presetsError}</p>}
+        {presetsError && <Banner severity="error">{presetsError}</Banner>}
 
         <pre className={css.overrideDocs}>{OVERRIDE_DOCS}</pre>
       </div>

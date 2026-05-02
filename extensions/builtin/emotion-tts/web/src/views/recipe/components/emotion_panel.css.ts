@@ -132,50 +132,6 @@ export const presetSelect = style({
   ":focus": { boxShadow: `inset 0 -2px 0 ${vars.color.accent}` },
 });
 
-export const presetAction = style({
-  padding: `${vars.space.xs} ${vars.space.md}`,
-  borderRadius: vars.radius.sm,
-  border: "none",
-  background: "transparent",
-  color: vars.color.textMuted,
-  fontFamily: vars.font.body,
-  fontSize: vars.text.caption,
-  fontWeight: 600,
-  letterSpacing: vars.tracking.label,
-  textTransform: "uppercase",
-  cursor: "pointer",
-  boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
-  transition: `background ${vars.motion.fast}, color ${vars.motion.fast}`,
-  ":hover": { background: vars.color.surfaceHigh, color: vars.color.text },
-  ":disabled": { cursor: "not-allowed", opacity: 0.45 },
-});
-
-export const presetActionPrimary = style([
-  presetAction,
-  {
-    background: vars.color.accent,
-    color: vars.color.accentOn,
-    boxShadow: `0 0 0 1px ${vars.color.accent}`,
-    ":hover": {
-      background: vars.color.accent,
-      color: vars.color.accentOn,
-      boxShadow: `0 0 0 1px ${vars.color.accent}, ${vars.color.accentGlow}`,
-    },
-  },
-]);
-
-export const presetActionDanger = style([
-  presetAction,
-  {
-    color: vars.color.danger,
-    boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.danger} 40%, transparent)`,
-    ":hover": {
-      background: `color-mix(in oklab, ${vars.color.danger} 10%, transparent)`,
-      color: vars.color.danger,
-    },
-  },
-]);
-
 export const alphaRow = style({
   display: "grid",
   gridTemplateColumns: "minmax(96px, auto) 1fr 64px",
@@ -231,12 +187,6 @@ export const presetNameInput = style({
   transition: `box-shadow ${vars.motion.fast}`,
   ":focus": { boxShadow: `inset 0 -2px 0 ${vars.color.accent}` },
   "::placeholder": { color: vars.color.textFaint },
-});
-
-export const errorText = style({
-  color: vars.color.danger,
-  fontSize: vars.text.caption,
-  margin: 0,
 });
 
 export const overrideDocs = style({
