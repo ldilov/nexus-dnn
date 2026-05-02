@@ -1,4 +1,4 @@
-//! Spec 037 — pure prompt builder for the Draft AI suggestion stream.
+//! Pure prompt builder for the Draft AI suggestion stream.
 //!
 //! Extension-agnostic: knows nothing about which backend or model will
 //! consume the prompt. Returns a system + user pair that any

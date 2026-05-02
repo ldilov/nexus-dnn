@@ -1,4 +1,4 @@
-//! Spec 037 — `POST /api/v1/modules/drafts/{draft_id}/suggestions`.
+//! `POST /api/v1/modules/drafts/{draft_id}/suggestions`.
 //!
 //! Validates the request, builds the prompt, asks the configured
 //! `SuggestionStreamProvider` for a token stream, and re-encodes the
@@ -138,6 +138,9 @@ pub async fn start_stream(
         lease_guard,
     } = handle;
     tokio::spawn(async move {
+        // Named binding (not `let _ = …`) so the LeaseGuard lives until the
+        // task body ends. `let _ = …` would drop immediately and leak the lease.
+        #[allow(clippy::let_underscore_drop)]
         let _lease_guard = lease_guard;
         let started_at = std::time::Instant::now();
         let mut buffered = String::new();
@@ -165,9 +168,7 @@ pub async fn start_stream(
                         break;
                     }
                 }
-                StreamItem::Token(_) => {
-                    // Skip empty deltas — forbidden by the contract.
-                }
+                StreamItem::Token(_) => {}
                 StreamItem::Done => {
                     terminated_with = Some(SuggestionResponseEvent::Complete {
                         final_text: buffered.clone(),
@@ -205,8 +206,6 @@ pub async fn start_stream(
             elapsed_ms: elapsed_ms_capped(started_at),
         });
         if let Ok(ev) = encoder.encode(&terminal) {
-            // Bounded send: if the consumer body has stopped draining
-            // (rare flaky client) give up rather than wedging this task.
             let _ = tokio::time::timeout(TERMINAL_SEND_TIMEOUT, tx.send(Ok(ev))).await;
         }
         registry.remove(&stream_id);

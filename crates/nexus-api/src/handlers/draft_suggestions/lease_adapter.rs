@@ -1,4 +1,4 @@
-//! Spec 037 / T078 — production `SuggestionStreamProvider` impls.
+//! Production `SuggestionStreamProvider` impls (T078b is the real lease-backed adapter).
 //!
 //! Currently exposes only [`NullStreamProvider`] — a placeholder that
 //! always returns `NoEligibleBackend`. This lets the host wire the
