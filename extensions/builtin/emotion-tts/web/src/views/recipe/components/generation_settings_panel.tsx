@@ -1,4 +1,5 @@
 import type { CachePolicy, OutputFormat } from "../../../services/types";
+import { Button } from "../../../components/button";
 import * as css from "../recipe.css";
 
 interface Props {
@@ -75,17 +76,17 @@ export function GenerationSettingsPanel({
       >
         <span className={css.label}>Cache</span>
         {CACHE_POLICIES.map((p) => (
-          <button
+          <Button
             key={p.id}
-            type="button"
+            variant={cachePolicy === p.id ? "primary" : "secondary"}
+            size="sm"
             role="radio"
             aria-checked={cachePolicy === p.id}
-            className={cachePolicy === p.id ? css.primaryButton : css.secondaryButton}
             onClick={() => onCachePolicyChange(p.id)}
             title={p.help}
           >
             {p.label}
-          </button>
+          </Button>
         ))}
       </div>
       <p className={css.label} aria-live="polite">

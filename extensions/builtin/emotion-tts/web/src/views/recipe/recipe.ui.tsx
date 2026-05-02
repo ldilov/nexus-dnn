@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import * as css from "./recipe.css";
 import { sectionLabel } from "../../components/section_label.css";
 import { Banner } from "../../components/banner";
+import { Panel } from "../../components/panel";
 import type { Deployment } from "../../services/deployments_client";
 import type { RecipeField } from "../../services/workflows_client";
 
@@ -39,39 +40,39 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
         </Banner>
       )}
       <div className={css.leftColumn}>
-        <section className={css.panel} aria-labelledby="recipe-section-script">
+        <Panel aria-labelledby="recipe-section-script">
           <h2 id="recipe-section-script" className={sectionLabel}>
             01 / Script
           </h2>
           {props.scriptEditor}
-        </section>
-        <section className={css.panel} aria-labelledby="recipe-section-settings">
+        </Panel>
+        <Panel aria-labelledby="recipe-section-settings">
           <h2 id="recipe-section-settings" className={sectionLabel}>
             02 / Settings
           </h2>
           {props.settingsPanel}
-        </section>
+        </Panel>
       </div>
       <div className={css.rightColumn}>
         {/* Run sits above the fold so Generate is always reachable. */}
-        <section className={css.panel} aria-labelledby="recipe-section-run">
+        <Panel aria-labelledby="recipe-section-run">
           <h2 id="recipe-section-run" className={sectionLabel}>
             03 / Run
           </h2>
           {props.runPanel}
-        </section>
-        <section className={css.panel} aria-labelledby="recipe-section-emotion">
+        </Panel>
+        <Panel aria-labelledby="recipe-section-emotion">
           <h2 id="recipe-section-emotion" className={sectionLabel}>
             04 / Emotion
           </h2>
           {props.emotionPanel}
-        </section>
-        <section className={css.panel} aria-labelledby="recipe-section-history">
+        </Panel>
+        <Panel aria-labelledby="recipe-section-history">
           <h2 id="recipe-section-history" className={sectionLabel}>
             05 / Recent runs
           </h2>
           {props.historyPanel}
-        </section>
+        </Panel>
       </div>
     </div>
   );

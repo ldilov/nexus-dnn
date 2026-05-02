@@ -5,6 +5,12 @@ import { cancelRun, createRun, getRun, resumeRun, subscribeRunProgress } from ".
 import type { CreateRunRequest, ProgressEvent, Run } from "../../../services/types";
 import * as css from "../recipe.css";
 import { Banner } from "../../../components/banner";
+import { Button } from "../../../components/button";
+import {
+  sizeStyle as buttonSize,
+  variantStyle as buttonVariant,
+} from "../../../components/button.css";
+import { StatusPill } from "../../../components/status_pill";
 
 type Phase = "idle" | "starting" | "running" | "terminal" | "error";
 
@@ -129,35 +135,24 @@ export function RunPanel(props: Props): JSX.Element {
           <strong>Run failed to start</strong>
           <span>{error}</span>
           {errorIsUnmapped && (
-            <button
-              type="button"
-              className={css.secondaryButton}
+            <Button
+              variant="secondary"
               onClick={() => navigate(`/${props.deploymentId}/mappings`)}
               style={{ alignSelf: "flex-start" }}
             >
               Open Mappings →
-            </button>
+            </Button>
           )}
         </Banner>
       )}
 
       <div className={css.controlRow}>
-        <button
-          type="button"
-          className={css.primaryButton}
-          disabled={!props.canGenerate || canCancel}
-          onClick={startRun}
-        >
+        <Button disabled={!props.canGenerate || canCancel} onClick={startRun}>
           {phase === "running" ? "Running…" : "Generate + Export ZIP"}
-        </button>
-        <button
-          type="button"
-          className={css.dangerButton}
-          disabled={!canCancel}
-          onClick={cancel}
-        >
+        </Button>
+        <Button variant="danger" disabled={!canCancel} onClick={cancel}>
           Cancel
-        </button>
+        </Button>
       </div>
 
       {dominantFailure && (
@@ -178,7 +173,8 @@ export function RunPanel(props: Props): JSX.Element {
         <a
           href={`/api/v1/extensions/nexus.audio.emotiontts/exports/${run.exportArtifactRef}/download`}
           download
-          className={css.secondaryButton}
+          className={`${buttonVariant.secondary} ${buttonSize.md}`}
+          style={{ textDecoration: "none" }}
         >
           Download ZIP
         </a>
@@ -187,9 +183,8 @@ export function RunPanel(props: Props): JSX.Element {
       {isPartial && run && (
         <Banner severity="warning">
           <span style={{ flex: 1 }}>Partial run — some segments failed or were cancelled.</span>
-          <button
-            type="button"
-            className={css.secondaryButton}
+          <Button
+            variant="secondary"
             onClick={async () => {
               try {
                 const resumed = await resumeRun(props.deploymentId, run.runId);
@@ -211,7 +206,7 @@ export function RunPanel(props: Props): JSX.Element {
             }}
           >
             Resume run
-          </button>
+          </Button>
         </Banner>
       )}
 
@@ -230,7 +225,7 @@ export function RunPanel(props: Props): JSX.Element {
               <tr key={s.globalIndex} className={css.progressRow}>
                 <td className={css.progressCell}>{s.globalIndex.toString().padStart(3, "0")}</td>
                 <td className={css.progressCell}>
-                  <span className={pillFor(s.status)}>{s.status}</span>
+                  <StatusPill tone={toneFor(s.status)}>{s.status}</StatusPill>
                 </td>
                 <td className={css.progressCell}>{s.durationMs ? `${s.durationMs} ms` : "—"}</td>
                 <td className={css.progressCell}>{s.failureCategory ?? ""}</td>
@@ -293,16 +288,16 @@ async function handleEvent(
   }
 }
 
-function pillFor(status: SegmentState["status"]): string {
+function toneFor(status: SegmentState["status"]): "success" | "accent" | "danger" | "neutral" {
   switch (status) {
     case "completed":
-      return css.statusPillCompleted;
+      return "success";
     case "running":
-      return css.statusPillRunning;
+      return "accent";
     case "failed":
-      return css.statusPillFailed;
+      return "danger";
     default:
-      return css.statusPill;
+      return "neutral";
   }
 }
 

@@ -5,6 +5,8 @@ import { resumeRun } from "../../../services/runs_client";
 import type { RunStatus, RunSummary } from "../../../services/types";
 import * as css from "../recipe.css";
 import { Banner } from "../../../components/banner";
+import { Button } from "../../../components/button";
+import { StatusPill } from "../../../components/status_pill";
 
 interface Props {
   runs: RunSummary[];
@@ -49,16 +51,17 @@ export function HistoryPanel({ runs, deploymentId }: Props): JSX.Element {
               {resumable && (
                 <>
                   {" "}
-                  <span className={statusPillFor(r.status)}>partial — resumable</span>
+                  <StatusPill tone={r.status === "failed" ? "danger" : "warning"}>
+                    partial — resumable
+                  </StatusPill>
                   {" "}
-                  <button
-                    type="button"
-                    className={css.secondaryButton}
+                  <Button
+                    variant="secondary"
                     disabled={busyRunId === r.runId}
                     onClick={() => void onResume(r.runId)}
                   >
                     {busyRunId === r.runId ? "Resuming…" : "Resume"}
-                  </button>
+                  </Button>
                 </>
               )}
             </li>
@@ -67,11 +70,6 @@ export function HistoryPanel({ runs, deploymentId }: Props): JSX.Element {
       </ul>
     </>
   );
-}
-
-function statusPillFor(status: RunStatus): string {
-  if (status === "failed") return css.statusPillFailed;
-  return css.statusPillRunning;
 }
 
 function describeError(err: unknown): string {

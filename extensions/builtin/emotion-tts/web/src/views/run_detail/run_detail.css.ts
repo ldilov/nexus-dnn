@@ -1,15 +1,9 @@
-import { keyframes, style, styleVariants } from "@vanilla-extract/css";
+import { keyframes, style } from "@vanilla-extract/css";
 import { vars } from "../../theme/tokens.css";
 
 const fadeUp = keyframes({
   from: { opacity: 0, transform: "translateY(12px)" },
   to: { opacity: 1, transform: "translateY(0)" },
-});
-
-const pulse = keyframes({
-  "0%": { opacity: 0.6 },
-  "50%": { opacity: 1 },
-  "100%": { opacity: 0.6 },
 });
 
 const shimmer = keyframes({
@@ -96,52 +90,7 @@ export const titleRunId = style({
   letterSpacing: 0,
 });
 
-const statusBase = style({
-  display: "inline-flex",
-  alignItems: "center",
-  gap: vars.space.xs,
-  padding: "6px 14px 6px 10px",
-  borderRadius: vars.radius.pill,
-  fontSize: vars.text.caption,
-  fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: vars.tracking.label,
-  background: vars.color.surfaceHigh,
-  fontFamily: vars.font.body,
-  "::before": {
-    content: '""',
-    width: "8px",
-    height: "8px",
-    borderRadius: vars.radius.pill,
-    background: "currentColor",
-    boxShadow: "0 0 0 3px color-mix(in oklab, currentColor 25%, transparent)",
-    display: "inline-block",
-  },
-});
 
-export const statusHero = styleVariants({
-  queued: [statusBase, { color: vars.color.textMuted }],
-  running: [
-    statusBase,
-    {
-      color: vars.color.accent,
-      "::before": {
-        content: '""',
-        width: "8px",
-        height: "8px",
-        borderRadius: vars.radius.pill,
-        background: "currentColor",
-        boxShadow: "0 0 0 3px color-mix(in oklab, currentColor 25%, transparent)",
-        display: "inline-block",
-        animation: `${pulse} 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite`,
-      },
-    },
-  ],
-  completed: [statusBase, { color: vars.color.success }],
-  failed: [statusBase, { color: vars.color.danger }],
-  cancelled: [statusBase, { color: vars.color.textMuted }],
-  partial: [statusBase, { color: vars.color.warning }],
-});
 
 export const stats = style({
   display: "grid",
@@ -236,25 +185,6 @@ export const resumeBody = style({
   margin: 0,
 });
 
-export const resumeButton = style({
-  padding: `${vars.space.sm} ${vars.space.lg}`,
-  borderRadius: vars.radius.sm,
-  border: "none",
-  fontFamily: vars.font.body,
-  fontWeight: 600,
-  fontSize: vars.text.body,
-  background: vars.color.accent,
-  color: vars.color.accentOn,
-  cursor: "pointer",
-  boxShadow: `0 0 0 1px ${vars.color.accent}`,
-  transition: `background ${vars.motion.fast}, box-shadow ${vars.motion.fast}, transform ${vars.motion.fast}`,
-  ":hover": {
-    boxShadow: `0 0 0 1px ${vars.color.accent}, ${vars.color.accentGlow}`,
-  },
-  ":active": { transform: "translateY(1px)" },
-  ":disabled": { cursor: "not-allowed", opacity: 0.55, transform: "none" },
-});
-
 export const resumeError = style({
   flex: "1 1 100%",
   fontFamily: vars.font.mono,
@@ -262,25 +192,6 @@ export const resumeError = style({
   color: vars.color.danger,
   margin: 0,
   paddingTop: vars.space.xs,
-});
-
-export const panel = style({
-  background: vars.color.surfaceRaised,
-  borderRadius: vars.radius.lg,
-  padding: `${vars.space.lg} ${vars.space.lg} ${vars.space.md}`,
-  display: "flex",
-  flexDirection: "column",
-  gap: vars.space.md,
-  boxShadow: vars.shadow.subtle,
-  animation: `${fadeUp} 440ms 240ms cubic-bezier(0.16, 1, 0.3, 1) both`,
-});
-
-export const panelHeader = style({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: vars.space.md,
-  flexWrap: "wrap",
 });
 
 export const cacheSummary = style({
@@ -423,37 +334,6 @@ export const cacheChip = style({
   fontWeight: 600,
   textTransform: "lowercase",
   letterSpacing: "0.02em",
-});
-
-// Status pill — inline variant for the utterance row
-const inlinePill = style({
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "6px",
-  padding: "2px 10px 2px 8px",
-  borderRadius: vars.radius.pill,
-  fontSize: vars.text.micro,
-  fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: vars.tracking.label,
-  background: vars.color.surfaceHigh,
-  fontFamily: vars.font.body,
-  "::before": {
-    content: '""',
-    width: "5px",
-    height: "5px",
-    borderRadius: vars.radius.pill,
-    background: "currentColor",
-    display: "inline-block",
-  },
-});
-
-export const uttStatus = styleVariants({
-  queued: [inlinePill, { color: vars.color.textMuted }],
-  running: [inlinePill, { color: vars.color.accent }],
-  completed: [inlinePill, { color: vars.color.success }],
-  failed: [inlinePill, { color: vars.color.danger }],
-  cancelled: [inlinePill, { color: vars.color.textMuted, opacity: 0.7 }],
 });
 
 export const footer = style({
