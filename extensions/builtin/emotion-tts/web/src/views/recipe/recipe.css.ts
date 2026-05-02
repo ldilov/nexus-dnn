@@ -49,28 +49,6 @@ export const panel = style({
   boxShadow: vars.shadow.subtle,
 });
 
-export const panelTitle = style({
-  fontFamily: vars.font.display,
-  fontSize: vars.text.subhead,
-  fontWeight: 600,
-  letterSpacing: vars.tracking.display,
-  margin: 0,
-  paddingBottom: vars.space.xs,
-  color: vars.color.text,
-  display: "flex",
-  alignItems: "center",
-  gap: vars.space.sm,
-  "::before": {
-    content: '""',
-    width: "6px",
-    height: "6px",
-    borderRadius: vars.radius.pill,
-    background: vars.color.accent,
-    boxShadow: vars.color.accentGlow,
-    display: "inline-block",
-  },
-});
-
 export const deploymentHeader = style({
   display: "flex",
   alignItems: "center",

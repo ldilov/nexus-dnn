@@ -311,25 +311,6 @@ export const panelHeader = style({
   flexWrap: "wrap",
 });
 
-export const panelTitle = style({
-  fontFamily: vars.font.display,
-  fontSize: vars.text.subhead,
-  fontWeight: 600,
-  letterSpacing: vars.tracking.display,
-  margin: 0,
-  display: "flex",
-  alignItems: "center",
-  gap: vars.space.sm,
-  "::before": {
-    content: '""',
-    width: "6px",
-    height: "6px",
-    borderRadius: vars.radius.pill,
-    background: vars.color.accent,
-    boxShadow: vars.color.accentGlow,
-  },
-});
-
 export const cacheSummary = style({
   fontFamily: vars.font.mono,
   fontSize: vars.text.caption,
