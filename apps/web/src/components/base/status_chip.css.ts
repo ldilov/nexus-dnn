@@ -1,4 +1,4 @@
-import { keyframes, style, styleVariants } from "@vanilla-extract/css";
+import { globalStyle, keyframes, style, styleVariants } from "@vanilla-extract/css";
 import { vars } from "../../theme/contract.css";
 
 export const chip = style({
@@ -38,35 +38,34 @@ export const chipDotPulse = style({
 });
 
 export const chipKind = styleVariants({
-  live: {
-    selectors: {
-      [`${chip}& ${chipDot}`]: {
-        background: vars.color.success.base,
-        boxShadow: `0 0 8px ${vars.color.success.base}55`,
-      },
-    },
-  },
-  idle: {
-    selectors: {
-      [`${chip}& ${chipDot}`]: { background: vars.color.outline.base },
-    },
-  },
-  failed: {
-    selectors: {
-      [`${chip}& ${chipDot}`]: { background: vars.color.error.base },
-    },
-  },
+  live: {},
+  idle: {},
+  failed: {},
   draft: {
     color: vars.color.text.secondary,
-    selectors: {
-      [`${chip}& ${chipDot}`]: { background: vars.color.accent.tertiary },
-    },
   },
   ai: {
     background: `linear-gradient(135deg, ${vars.color.accent.secondary}40, ${vars.color.accent.secondary}10)`,
     color: vars.color.accent.secondary,
     boxShadow: `inset 0 0 0 1px ${vars.color.accent.secondary}40, 0 0 12px ${vars.color.accent.secondary}22`,
   },
+});
+
+globalStyle(`${chip}${chipKind.live} ${chipDot}`, {
+  background: vars.color.success.base,
+  boxShadow: `0 0 8px ${vars.color.success.base}55`,
+});
+
+globalStyle(`${chip}${chipKind.idle} ${chipDot}`, {
+  background: vars.color.outline.base,
+});
+
+globalStyle(`${chip}${chipKind.failed} ${chipDot}`, {
+  background: vars.color.error.base,
+});
+
+globalStyle(`${chip}${chipKind.draft} ${chipDot}`, {
+  background: vars.color.accent.tertiary,
 });
 
 export type StatusKind = keyof typeof chipKind;
