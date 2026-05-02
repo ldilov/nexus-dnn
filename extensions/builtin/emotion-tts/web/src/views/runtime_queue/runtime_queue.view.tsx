@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../../services/http";
+import { EmptyState } from "../../components/empty_state";
+import { sectionLabel } from "../../components/section_label.css";
 import * as css from "./runtime_queue.css";
 
 interface QueueEntry {
@@ -58,17 +60,13 @@ export function RuntimeQueueView(): JSX.Element {
           </section>
         ) : entries === null ? null : entries.length === 0 ? (
           <section className={css.panel}>
-            <div className={css.empty}>
-              <span className={css.emptyGlyph} aria-hidden="true">
-                0
-              </span>
-              <p className={css.emptyTitle}>Queue is quiet.</p>
-              <p className={css.emptyHint}>Start a synthesis from a deployment's recipe surface.</p>
-            </div>
+            <EmptyState title="Queue is quiet." hint="Recipe → Generate" />
           </section>
         ) : (
-          <section className={css.panel} aria-label="Queued runs">
-            <h2 className={css.sectionLabel}>01 / In flight</h2>
+          <section className={css.panel} aria-labelledby="runtime-queue-section">
+            <h2 id="runtime-queue-section" className={sectionLabel}>
+              01 / In flight
+            </h2>
             <ul className={css.list}>
               {entries.map((entry) => {
                 const isActive = entry.position === 1;
