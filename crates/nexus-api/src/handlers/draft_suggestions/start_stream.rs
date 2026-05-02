@@ -31,7 +31,7 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use super::errors::{DraftSuggestionError, ErrorCode};
 use super::prompt_template::{PromptInputs, build_prompt};
-use super::provider::{CancelFlag, StreamItem, SuggestionStreamProvider};
+use super::provider::{CancelFlag, StreamHandle, StreamItem, SuggestionStreamProvider};
 use super::registry::StreamRegistry;
 use super::sse::SseEncoder;
 use super::types::{
@@ -132,11 +132,17 @@ pub async fn start_stream(
     }
 
     let registry = state.registry.clone();
+    let StreamHandle {
+        lease_id: _,
+        items,
+        lease_guard,
+    } = handle;
     tokio::spawn(async move {
+        let _lease_guard = lease_guard;
         let started_at = std::time::Instant::now();
         let mut buffered = String::new();
         let mut tokens_emitted: u32 = 0;
-        let mut items = handle.items;
+        let mut items = items;
         let mut terminated_with: Option<SuggestionResponseEvent> = None;
 
         while let Some(item) = items.next().await {
@@ -232,7 +238,12 @@ fn pre_stream_error_response(err: &DraftSuggestionError) -> Response {
             None,
         ),
         PromptTooLong(_) => (StatusCode::BAD_REQUEST, ErrorCode::PromptTooLong, None),
-        LeaseRevoked(_) | Internal(_) => (
+        Internal(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorCode::Internal,
+            None,
+        ),
+        LeaseRevoked(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             ErrorCode::Internal,
             None,

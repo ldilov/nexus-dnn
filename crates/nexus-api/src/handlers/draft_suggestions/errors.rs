@@ -18,6 +18,9 @@ pub enum DraftSuggestionError {
     ModelUnavailable(String),
     #[error("prompt too long: {0}")]
     PromptTooLong(String),
+    /// Callers MUST pass operator-safe text — `ui_message` echoes this
+    /// payload verbatim to the client. Never include raw upstream text,
+    /// stack frames, or internal paths.
     #[error("validation error: {0}")]
     Validation(String),
     #[error("internal error: {0}")]
