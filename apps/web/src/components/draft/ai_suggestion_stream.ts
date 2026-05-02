@@ -67,16 +67,10 @@ export function useSuggestionStream(
   const dismissedKeysRef = useRef<Set<string>>(new Set());
   const cacheRef = useRef<Map<string, SuggestionState>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
-  // Invariant: `streamIdRef.current === non-null` ⇒ a server-side stream
-  // is in flight and the cancel endpoint may meaningfully target it.
-  // Cleared on every terminal SSE event AND when the client aborts via
-  // `cancelInflight` (in which case the AbortController abort is the
-  // primary cancel signal — the cancel POST is courtesy-only per the
-  // events contract).
+  // Invariant: non-null ⇒ a server-side stream is in flight and the cancel
+  // endpoint may target it. Cleared on every terminal event and on abort.
   const streamIdRef = useRef<StreamId | null>(null);
   const optsRef = useRef(opts);
-  // Strict-mode-safe ref sync: keep `optsRef.current` updated AFTER the
-  // render commits, not during render.
   useEffect(() => {
     optsRef.current = opts;
   });
@@ -130,11 +124,7 @@ export function useSuggestionStream(
         handlers: {
           onEvent: (event: SuggestionEvent) => {
             if (lastKeyRef.current !== key) {
-              // The originating request was superseded (the user moved
-              // on). The AbortController already closed our end of the
-              // SSE channel, but the server may have buffered and sent
-              // `stream_started` before observing the close. Send the
-              // courtesy cancel POST so server-side accounting matches.
+              // Superseded: server may have buffered stream_started before observing close.
               if (event.type === "stream_started") {
                 void cancelStream(draftIdBranded, event.stream_id);
               }
@@ -226,7 +216,6 @@ export function useSuggestionStream(
     [cancelInflight],
   );
 
-  // Auto-trigger on cursor settle.
   useEffect(() => {
     if (opts.enabled === false) {
       cancelInflight();
@@ -258,7 +247,6 @@ export function useSuggestionStream(
     opts.debounceMs,
   ]);
 
-  // Always abort on unmount.
   useEffect(() => {
     return () => {
       cancelInflight();

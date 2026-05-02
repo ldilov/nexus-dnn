@@ -52,6 +52,7 @@ export const router = createHashRouter([
       { path: "models-search", lazy: () => import("./views/models-search") },
       { path: "extensions", Component: ExtensionsGalleryRoute },
       {
+        // audit-allow: boundary — dispatcher route mounting the Local LLM chat surface; literal IS the contract
         path: "extensions/nexus.local-llm/chat/:threadId",
         lazy: async () => {
           const mod = await import("./views/extensions/local-llm/chat");

@@ -220,10 +220,7 @@ export async function cancelStream(
   signal?: AbortSignal,
 ): Promise<void> {
   const url = `/api/v1/modules/drafts/${encodeURIComponent(draftId)}/suggestions/${encodeURIComponent(streamId)}/cancel`;
-  // Fire-and-forget by design: the SSE body close is the authoritative
-  // cancel signal; this POST is courtesy-only for server-side accounting
-  // (per `contracts/draft_suggestions.events.md`). Errors (network,
-  // 5xx) are intentionally swallowed.
+  // SSE body close is the authoritative cancel; this POST is courtesy-only.
   await fetch(url, { method: "POST", signal }).catch(() => {});
 }
 
@@ -235,9 +232,7 @@ function parseFrame(frame: string): SuggestionEvent | null {
     if (line.startsWith("event:")) {
       eventName = line.slice(6).trim();
     } else if (line.startsWith("data:")) {
-      // SSE spec: strip exactly one optional leading space, never more.
-      // `trimStart()` would corrupt JSON whose first character is an
-      // intentional indent.
+      // SSE spec strips one optional leading space; trimStart would corrupt indented JSON.
       const rest = line.slice(5);
       dataLines.push(rest.startsWith(" ") ? rest.slice(1) : rest);
     }
@@ -308,11 +303,6 @@ function assembleEvent(name: string, data: unknown): SuggestionEvent | null {
 }
 
 async function safeJson(response: Response): Promise<unknown> {
-  // Trust-but-verify: the host typically returns the documented
-  // typed envelopes (`NoBackendError` / `ValidationError`), but the
-  // body could be malformed under a misconfigured proxy or a future
-  // schema drift. Returning a synthetic envelope keeps the consumer's
-  // `.code` / `.message` reads safe rather than throwing here.
   try {
     return await response.json();
   } catch {
