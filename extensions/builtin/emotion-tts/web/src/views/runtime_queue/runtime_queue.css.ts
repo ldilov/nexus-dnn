@@ -251,31 +251,47 @@ export const empty = style({
   padding: `${vars.space.xl} ${vars.space.lg}`,
   display: "flex",
   flexDirection: "column",
-  alignItems: "center",
-  gap: vars.space.sm,
-  textAlign: "center",
+  alignItems: "flex-start",
+  gap: vars.space.xs,
   color: vars.color.textMuted,
 });
 
 export const emptyGlyph = style({
-  fontFamily: vars.font.display,
-  fontSize: "2.5rem",
-  color: vars.color.textFaint,
-  letterSpacing: vars.tracking.display,
+  fontFamily: vars.font.mono,
+  fontSize: "5rem",
+  lineHeight: 1,
+  fontWeight: 600,
+  color: vars.color.text,
+  fontVariantNumeric: "tabular-nums",
+  margin: 0,
+  marginBottom: vars.space.sm,
 });
 
 export const emptyTitle = style({
-  fontFamily: vars.font.display,
+  fontFamily: vars.font.body,
   fontSize: vars.text.subhead,
-  fontWeight: 600,
+  fontWeight: 500,
   color: vars.color.text,
   margin: 0,
 });
 
-export const emptyBody = style({
-  fontSize: vars.text.body,
+export const emptyHint = style({
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  color: vars.color.textFaint,
+  textTransform: "uppercase",
+  letterSpacing: vars.tracking.label,
+  marginTop: vars.space.xs,
+});
+
+export const sectionLabel = style({
+  fontFamily: vars.font.body,
+  fontSize: vars.text.caption,
+  textTransform: "uppercase",
+  letterSpacing: vars.tracking.label,
   color: vars.color.textMuted,
   margin: 0,
+  marginBottom: vars.space.md,
 });
 
 export const errorBanner = style({
