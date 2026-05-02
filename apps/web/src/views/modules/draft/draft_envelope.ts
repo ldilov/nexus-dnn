@@ -1,9 +1,3 @@
-// Spec 019 FR-BM03 / FR-050 / FR-051 — sessionStorage envelope for drafts.
-// A draft is a client-side fork of some read-only module surface (Blank,
-// extension instance, or user instance). It lives in sessionStorage until
-// the user saves, at which point the materialize endpoint turns it into a
-// deployment.
-
 import { draftStorageKey } from "./draft_uuid";
 
 export interface DraftEnvelope {
@@ -61,9 +55,7 @@ export function clearDraftEnvelope(uuid: string): void {
   }
 }
 
-// Spec 019 T408 — evict any draft keys older than `maxAgeMs` on app boot.
-// Keeps sessionStorage tidy for users who open the app frequently and
-// abandon drafts. Defaults to 7 days.
+// Defaults to 7 days.
 export function sweepStaleDrafts(maxAgeMs = 7 * 24 * 60 * 60 * 1000): number {
   let evicted = 0;
   try {

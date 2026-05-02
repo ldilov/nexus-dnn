@@ -329,11 +329,6 @@ export const toggleKnobOn = style({
 });
 
 // ---------- Install drop zone ----------
-const dashPulse = keyframes({
-  "0%, 100%": { opacity: 0.6 },
-  "50%": { opacity: 1 },
-});
-
 export const installCard = style({
   display: "flex",
   flexDirection: "column",
@@ -355,13 +350,6 @@ export const installCard = style({
       outlineColor: vars.color.accent.primary,
     },
   },
-});
-
-export const installCardActive = style({
-  background: vars.color.bg.elevated,
-  color: vars.color.accent.primary,
-  outline: `1px dashed ${vars.color.accent.primary}`,
-  animation: `${dashPulse} 1.2s ease-in-out infinite`,
 });
 
 export const installIcon = style({
