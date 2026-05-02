@@ -3,6 +3,7 @@ import { apiFetch } from "../../services/http";
 import { EmptyState } from "../../components/empty_state";
 import { sectionLabel } from "../../components/section_label.css";
 import { Banner } from "../../components/banner";
+import { Panel } from "../../components/panel";
 import * as css from "./runtime_queue.css";
 
 interface QueueEntry {
@@ -58,11 +59,11 @@ export function RuntimeQueueView(): JSX.Element {
         {error ? (
           <Banner severity="error">{error}</Banner>
         ) : entries === null ? null : entries.length === 0 ? (
-          <section className={css.panel}>
+          <Panel density="compact">
             <EmptyState title="Queue is quiet." hint="Recipe → Generate" />
-          </section>
+          </Panel>
         ) : (
-          <section className={css.panel} aria-labelledby="runtime-queue-section">
+          <Panel density="compact" aria-labelledby="runtime-queue-section">
             <h2 id="runtime-queue-section" className={sectionLabel}>
               01 / In flight
             </h2>
@@ -106,7 +107,7 @@ export function RuntimeQueueView(): JSX.Element {
                 );
               })}
             </ul>
-          </section>
+          </Panel>
         )}
       </div>
     </main>
