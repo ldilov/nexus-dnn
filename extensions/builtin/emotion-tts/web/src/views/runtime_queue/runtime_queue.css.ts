@@ -95,14 +95,6 @@ export const lede = style({
   maxWidth: "62ch",
 });
 
-export const panel = style({
-  background: vars.color.surfaceRaised,
-  borderRadius: vars.radius.lg,
-  padding: vars.space.sm,
-  boxShadow: vars.shadow.subtle,
-  animation: `${fadeUp} 400ms 80ms cubic-bezier(0.16, 1, 0.3, 1) both`,
-});
-
 export const list = style({
   listStyle: "none",
   padding: 0,

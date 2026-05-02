@@ -21,6 +21,12 @@ import { EditChainList } from "./edit_chain_list";
 import { WaveformCanvas } from "./waveform_canvas";
 import * as css from "./audio_edit_panel.css";
 import { Banner } from "../../../components/banner";
+import { Button } from "../../../components/button";
+import {
+  EditSurface,
+  EditSurfaceActions,
+  EditSurfaceHeader,
+} from "../../../components/edit_surface";
 
 interface RemovalStackEntry {
   op: EditOp;
@@ -301,11 +307,11 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
   }, []);
 
   return (
-    <div className={css.root}>
-      <header className={css.header}>
-        <h3 className={css.title}>Edit · {voiceAsset.displayName}</h3>
-        <span className={css.sourceMeta}>Source · {formatMs(sourceDurationMs)}</span>
-      </header>
+    <EditSurface variant="standalone">
+      <EditSurfaceHeader
+        title={`Edit · ${voiceAsset.displayName}`}
+        meta={`Source · ${formatMs(sourceDurationMs)}`}
+      />
 
       <WaveformCanvas
         audioUrl={audioUrl}
@@ -363,42 +369,38 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
         </div>
       </div>
 
-      <div className={css.buttonRow}>
-        <button
-          type="button"
-          className={css.previewButton}
+      <EditSurfaceActions>
+        <Button
+          variant="secondary"
           onClick={() => void handlePreview()}
           disabled={previewInFlight || applyInFlight}
         >
           {previewInFlight ? "Rendering preview…" : "Preview"}
-        </button>
-        <button
-          type="button"
-          className={css.applyButton}
+        </Button>
+        <Button
           onClick={() => void handleApply()}
           disabled={applyInFlight || previewInFlight}
         >
           {applyInFlight ? "Applying…" : "Apply"}
-        </button>
-        <button
-          type="button"
-          className={css.resetButton}
+        </Button>
+        <Button
+          variant="ghost"
           onClick={handleReset}
           disabled={applyInFlight || previewInFlight}
         >
           Reset
-        </button>
+        </Button>
         {removalStack.length > 0 && (
-          <button
-            type="button"
-            className={css.undoButton}
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={undoLastRemoval}
             disabled={applyInFlight || previewInFlight}
             data-testid="undo-last-removal"
             aria-label="Undo last removal"
           >
             Undo last removal ({removalStack.length})
-          </button>
+          </Button>
         )}
         {hasPreviewedAtLeastOnce && (
           <span
@@ -410,7 +412,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
             Preview again after edits to verify before applying
           </span>
         )}
-      </div>
+      </EditSurfaceActions>
 
       {previewObjectUrl && (
         <audio
@@ -434,7 +436,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
           error={auditError}
         />
       </details>
-    </div>
+    </EditSurface>
   );
 }
 

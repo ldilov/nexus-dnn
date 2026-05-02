@@ -76,13 +76,9 @@ export const heroCount = style({
   textTransform: "none",
 });
 
-export const panel = style({
+export const listPanel = style({
   width: "100%",
   maxWidth: "960px",
-  background: vars.color.surfaceRaised,
-  borderRadius: vars.radius.lg,
-  padding: `${vars.space.lg} ${vars.space.xl}`,
-  boxShadow: vars.shadow.raised,
 });
 
 export const list = style({
