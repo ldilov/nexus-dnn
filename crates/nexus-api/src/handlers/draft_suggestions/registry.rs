@@ -1,4 +1,4 @@
-//! Spec 037 — in-memory registry of in-flight suggestion streams.
+//! In-memory registry of in-flight suggestion streams.
 //!
 //! Maps `StreamId` → `CancelFlag` so the cancel endpoint can flip the
 //! flag without round-tripping through the streaming task. Entries are

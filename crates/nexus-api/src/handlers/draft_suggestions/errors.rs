@@ -1,5 +1,5 @@
-//! Spec 037 — typed errors for the Draft AI suggestion stream handler
-//! family. `ErrorCode` strings are wire-stable: they appear in HTTP-503
+//! Typed errors for the Draft AI suggestion stream handler family.
+//! `ErrorCode` strings are wire-stable: they appear in HTTP-503
 //! `NoBackendError.code` payloads and in SSE `error.code` fields per
 //! `contracts/draft_suggestions.openapi.yaml` and
 //! `contracts/draft_suggestions.events.md`.

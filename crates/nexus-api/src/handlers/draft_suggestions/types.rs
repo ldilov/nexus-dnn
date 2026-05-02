@@ -1,4 +1,4 @@
-//! Spec 037 — wire types for the Draft AI suggestion stream handler family.
+//! Wire types for the Draft AI suggestion stream handler family.
 //!
 //! See `contracts/draft_suggestions.openapi.yaml` (request shape) and
 //! `contracts/draft_suggestions.events.md` (response event shapes).

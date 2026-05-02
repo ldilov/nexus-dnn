@@ -1,5 +1,5 @@
-//! Spec 037 — abstraction over "drive a model with a prompt and yield
-//! tokens until done". The handler is generic over this trait so:
+//! Abstraction over "drive a model with a prompt and yield tokens until done".
+//! The handler is generic over this trait so:
 //!
 //! - Contract tests inject a `FakeStreamProvider` that yields canned
 //!   tokens or returns scripted errors (no real HTTP / no real lease).
@@ -310,5 +310,23 @@ mod tests {
     #[test]
     fn lease_guard_noop_does_not_panic_on_drop() {
         drop(LeaseGuard::noop());
+    }
+
+    #[tokio::test]
+    async fn lease_guard_releases_on_spawned_task_panic() {
+        let counter = Arc::new(AtomicBool::new(false));
+        let inner = counter.clone();
+        let guard = LeaseGuard::new(move || {
+            inner.store(true, Ordering::SeqCst);
+        });
+        let handle = tokio::spawn(async move {
+            let _g = guard;
+            panic!("simulated upstream failure");
+        });
+        let _ = handle.await;
+        assert!(
+            counter.load(Ordering::SeqCst),
+            "LeaseGuard release MUST run when the owning task panics",
+        );
     }
 }

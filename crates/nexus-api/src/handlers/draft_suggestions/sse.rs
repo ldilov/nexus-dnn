@@ -1,4 +1,4 @@
-//! Spec 037 — SSE encoder for the Draft AI suggestion stream.
+//! SSE encoder for the Draft AI suggestion stream.
 //!
 //! Maps `SuggestionResponseEvent` variants onto `axum::response::sse::Event`
 //! instances per `contracts/draft_suggestions.events.md`. The `event:`
@@ -140,6 +140,72 @@ mod tests {
         };
         let v = json_payload(&ev);
         assert_eq!(v["reason"], "client_cancelled");
+    }
+
+    /// Snapshot test asserting `json_payload` emits the exact JSON keys
+    /// documented in `contracts/draft_suggestions.events.md`. Replaces the
+    /// compile-time guarantee that was lost when `Serialize` was removed
+    /// from `SuggestionResponseEvent` (the wire shape is now hand-built).
+    #[test]
+    fn json_payload_matches_events_contract() {
+        use serde_json::Value;
+
+        fn keys(v: &Value) -> Vec<String> {
+            let mut out: Vec<String> = v
+                .as_object()
+                .expect("expected JSON object")
+                .keys()
+                .cloned()
+                .collect();
+            out.sort();
+            out
+        }
+
+        let started = SuggestionResponseEvent::StreamStarted {
+            stream_id: StreamId::new(),
+            started_at: "2026-05-02T00:00:00Z".into(),
+            lease_id: "lease-1".into(),
+        };
+        assert_eq!(
+            keys(&json_payload(&started)),
+            vec!["lease_id", "started_at", "stream_id"]
+        );
+
+        let token = SuggestionResponseEvent::Token { delta: "x".into() };
+        assert_eq!(keys(&json_payload(&token)), vec!["delta"]);
+
+        let partial = SuggestionResponseEvent::Partial {
+            text: "x".into(),
+            line_offset: 0,
+        };
+        assert_eq!(keys(&json_payload(&partial)), vec!["line_offset", "text"]);
+
+        let complete = SuggestionResponseEvent::Complete {
+            final_text: "x".into(),
+            tokens_emitted: 1,
+            elapsed_ms: 1,
+        };
+        assert_eq!(
+            keys(&json_payload(&complete)),
+            vec!["elapsed_ms", "final_text", "tokens_emitted"]
+        );
+
+        let err = SuggestionResponseEvent::Error {
+            code: "internal".into(),
+            message: "boom".into(),
+            retryable: false,
+        };
+        assert_eq!(keys(&json_payload(&err)), vec!["code", "message", "retryable"]);
+
+        let cancelled = SuggestionResponseEvent::Cancelled {
+            reason: "client_cancelled".into(),
+            tokens_emitted: 0,
+            elapsed_ms: 0,
+        };
+        assert_eq!(
+            keys(&json_payload(&cancelled)),
+            vec!["elapsed_ms", "reason", "tokens_emitted"]
+        );
     }
 
     #[test]
