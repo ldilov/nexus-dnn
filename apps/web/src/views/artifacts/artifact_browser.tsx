@@ -46,10 +46,16 @@ export function ArtifactBrowser({ runId }: ArtifactBrowserProps) {
               ? `${styles.artifactCard} ${styles.artifactCardSelected}`
               : styles.artifactCard;
           return (
-            <div key={art.id} className={cls} onClick={() => setSelected(art)}>
+            <button
+              key={art.id}
+              type="button"
+              className={cls}
+              aria-pressed={art.id === selected?.id}
+              onClick={() => setSelected(art)}
+            >
               <div className={styles.artifactName}>{displayName(art)}</div>
               <div className={styles.artifactMeta}>{art.artifact_type}</div>
-            </div>
+            </button>
           );
         })}
       </div>

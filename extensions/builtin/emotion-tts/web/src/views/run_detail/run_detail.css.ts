@@ -1,10 +1,6 @@
 import { keyframes, style, styleVariants } from "@vanilla-extract/css";
 import { vars } from "../../theme/tokens.css";
 
-// ----------------------------------------------------------------------------
-// Motion
-// ----------------------------------------------------------------------------
-
 const fadeUp = keyframes({
   from: { opacity: 0, transform: "translateY(12px)" },
   to: { opacity: 1, transform: "translateY(0)" },
@@ -20,10 +16,6 @@ const shimmer = keyframes({
   from: { backgroundPosition: "-200% 0" },
   to: { backgroundPosition: "200% 0" },
 });
-
-// ----------------------------------------------------------------------------
-// Shell + atmospherics
-// ----------------------------------------------------------------------------
 
 export const shell = style({
   minHeight: "100vh",
@@ -45,10 +37,6 @@ export const frame = style({
   flexDirection: "column",
   gap: vars.space.lg,
 });
-
-// ----------------------------------------------------------------------------
-// Hero
-// ----------------------------------------------------------------------------
 
 export const hero = style({
   display: "flex",
@@ -108,10 +96,6 @@ export const titleRunId = style({
   letterSpacing: 0,
 });
 
-// ----------------------------------------------------------------------------
-// Status pill (larger hero variant)
-// ----------------------------------------------------------------------------
-
 const statusBase = style({
   display: "inline-flex",
   alignItems: "center",
@@ -158,10 +142,6 @@ export const statusHero = styleVariants({
   cancelled: [statusBase, { color: vars.color.textMuted }],
   partial: [statusBase, { color: vars.color.warning }],
 });
-
-// ----------------------------------------------------------------------------
-// Stats strip — bento-style mini-cards
-// ----------------------------------------------------------------------------
 
 export const stats = style({
   display: "grid",
@@ -223,10 +203,6 @@ export const statBar = style({
   transition: `transform ${vars.motion.slow}`,
 });
 
-// ----------------------------------------------------------------------------
-// Resume CTA panel
-// ----------------------------------------------------------------------------
-
 export const resumePanel = style({
   display: "flex",
   flexWrap: "wrap",
@@ -287,10 +263,6 @@ export const resumeError = style({
   margin: 0,
   paddingTop: vars.space.xs,
 });
-
-// ----------------------------------------------------------------------------
-// Panel + utterance list
-// ----------------------------------------------------------------------------
 
 export const panel = style({
   background: vars.color.surfaceRaised,
@@ -484,10 +456,6 @@ export const uttStatus = styleVariants({
   cancelled: [inlinePill, { color: vars.color.textMuted, opacity: 0.7 }],
 });
 
-// ----------------------------------------------------------------------------
-// Footer — export CTA
-// ----------------------------------------------------------------------------
-
 export const footer = style({
   display: "flex",
   justifyContent: "flex-end",
@@ -567,10 +535,6 @@ export const inlineToast = style({
   boxShadow: vars.shadow.raised,
   zIndex: 50,
 });
-
-// ----------------------------------------------------------------------------
-// Error banner (for resumeRun failures)
-// ----------------------------------------------------------------------------
 
 export const errorBanner = style({
   padding: `${vars.space.sm} ${vars.space.md}`,

@@ -15639,7 +15639,7 @@ var QR = "mux0i60", IR = "mux0i61", ZR = "mux0i62", JR = "mux0i63";
 function Fb({ count: t = "0", title: a, hint: l }) {
   return /* @__PURE__ */ v.jsxs("div", { className: QR, children: [
     /* @__PURE__ */ v.jsx("span", { className: IR, "aria-hidden": "true", children: t }),
-    /* @__PURE__ */ v.jsx("p", { className: ZR, children: a }),
+    /* @__PURE__ */ v.jsx("h3", { className: ZR, children: a }),
     l ? /* @__PURE__ */ v.jsx("p", { className: JR, children: l }) : null
   ] });
 }
@@ -15663,8 +15663,8 @@ function hC() {
         ] })
       ] })
     ] }),
-    /* @__PURE__ */ v.jsxs("section", { className: rC, children: [
-      /* @__PURE__ */ v.jsx("h2", { className: ni, children: "01 / Deployments" }),
+    /* @__PURE__ */ v.jsxs("section", { className: rC, "aria-labelledby": "deployments-section-list", children: [
+      /* @__PURE__ */ v.jsx("h2", { id: "deployments-section-list", className: ni, children: "01 / Deployments" }),
       t.length === 0 ? /* @__PURE__ */ v.jsx(
         Fb,
         {
@@ -22519,7 +22519,9 @@ function ko(t) {
 var JN = "jq2zyb3", WN = "jq2zyb4", ez = "jq2zyb5", tz = "jq2zyb6", nz = "jq2zyb7", az = "jq2zyb8", iz = "jq2zyb9", lz = "jq2zyba", rz = "jq2zybb", sz = { queued: "jq2zybd jq2zybc", running: "jq2zybe jq2zybc", completed: "jq2zybf jq2zybc", failed: "jq2zybg jq2zybc", cancelled: "jq2zybh jq2zybc", partial: "jq2zybi jq2zybc" }, oz = "jq2zybj", uz = "jq2zybk", cz = "jq2zybl", fz = "jq2zybm", dz = "jq2zybn jq2zybm", hz = "jq2zybo", mz = "jq2zybp", pz = "jq2zybq", yz = "jq2zybr", gz = "jq2zybs", vz = "jq2zybt", bz = "jq2zybu", Sz = "jq2zybv", xz = "jq2zybw", Ez = "jq2zybx", Tz = "jq2zyby", wz = "jq2zybz", Rz = "jq2zyb10", Cz = "jq2zyb11", Mz = "jq2zyb12", Az = "jq2zyb13", jz = "jq2zyb14", Dz = "jq2zyb15", Nz = "jq2zyb16", zz = "jq2zyb17", Oz = "jq2zyb18", _z = { queued: "jq2zyb1a jq2zyb19", running: "jq2zyb1b jq2zyb19", completed: "jq2zyb1c jq2zyb19", failed: "jq2zyb1d jq2zyb19", cancelled: "jq2zyb1e jq2zyb19" }, Lz = "jq2zyb1f", Uz = "jq2zyb1g", W0 = "jq2zyb1h", Vz = "jq2zyb1i", Bz = "jq2zyb1j", Hz = "jq2zyb1k", qz = "jq2zyb1l";
 const kz = ["cancelled", "failed", "partial"], Pz = 2600;
 function Yz() {
-  const { run: t } = ss(), a = ki(), [l, s] = x.useState(t), [o, c] = x.useState(!1), [d, h] = x.useState(null), [p, m] = x.useState(null), [y, b] = x.useState(null);
+  const { run: t } = ss(), a = ki(), [l, s] = x.useState(t), [o, c] = x.useState(!1), [d, h] = x.useState(null), [p, m] = x.useState(null), [y, b] = x.useState(
+    null
+  );
   x.useEffect(() => {
     s(t);
   }, [t]), x.useEffect(() => {
@@ -22544,9 +22546,9 @@ function Yz() {
   }, []), O = x.useCallback(() => {
     m(null);
   }, []), B = (V, X) => {
-    s((K) => Fz(K, V, X)), m(null), b("Segment edited");
+    s((K) => Fz(K, V, X)), m(null), b({ message: "Segment edited", severity: "success" });
   }, L = x.useCallback((V) => {
-    b(V);
+    b({ message: V, severity: "error" });
   }, []);
   return /* @__PURE__ */ v.jsxs("main", { className: JN, children: [
     /* @__PURE__ */ v.jsxs("div", { className: WN, children: [
@@ -22586,9 +22588,9 @@ function Yz() {
           }
         )
       ] }),
-      T && /* @__PURE__ */ v.jsxs("section", { className: mz, "aria-label": "Resume run", children: [
+      T && /* @__PURE__ */ v.jsxs("section", { className: mz, "aria-labelledby": "run-detail-resume-title", children: [
         /* @__PURE__ */ v.jsxs("div", { className: pz, children: [
-          /* @__PURE__ */ v.jsx("p", { className: yz, children: S.failed > 0 ? `${S.failed} line${S.failed === 1 ? "" : "s"} did not complete` : "Run was interrupted before completion" }),
+          /* @__PURE__ */ v.jsx("h2", { id: "run-detail-resume-title", className: yz, children: S.failed > 0 ? `${S.failed} line${S.failed === 1 ? "" : "s"} did not complete` : "Run was interrupted before completion" }),
           /* @__PURE__ */ v.jsx("p", { className: gz, children: "Resume picks up where the last attempt left off — completed audio is re-used from cache." })
         ] }),
         /* @__PURE__ */ v.jsx(
@@ -22658,7 +22660,15 @@ function Yz() {
       ] }),
       Gz(l, w)
     ] }),
-    y && /* @__PURE__ */ v.jsx("div", { className: qz, role: "status", "aria-live": "polite", children: y })
+    y && /* @__PURE__ */ v.jsx(
+      "div",
+      {
+        className: qz,
+        role: y.severity === "error" ? "alert" : "status",
+        "aria-live": y.severity === "error" ? "assertive" : "polite",
+        children: y.message
+      }
+    )
   ] });
 }
 function Gz(t, a) {
