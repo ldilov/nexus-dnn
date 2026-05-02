@@ -122,6 +122,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
     return (
       <Shell>
         <div className={s.canvas}>
+          <PageHero eyebrow="Module instance" title="Loading…" />
           <div className={s.loadingBox}>Loading instance…</div>
         </div>
       </Shell>
@@ -141,6 +142,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
           <button type="button" className={s.backLink} onClick={handleBack}>
             ← Modules
           </button>
+          <PageHero eyebrow="Module instance" title="Not available" />
           <div className={s.errorBox} role="alert">
             {message}
           </div>
@@ -167,13 +169,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
         </button>
 
         <PageHero
-          eyebrow={
-            summary.source_kind === "extension"
-              ? "Module instance · Extension-published"
-              : summary.source_kind === "user"
-                ? "Module instance · User-authored"
-                : "Module instance · Blank"
-          }
+          eyebrow={formatSourceKindEyebrow(summary.source_kind)}
           title={summary.display_name}
           meta={
             <>
@@ -577,6 +573,12 @@ function countByState(summary: ModuleSummary, states: string[]): number {
     total += by[s] ?? 0;
   }
   return total;
+}
+
+function formatSourceKindEyebrow(sourceKind: string): string {
+  if (sourceKind === "extension") return "Module instance · Extension-published";
+  if (sourceKind === "user") return "Module instance · User-authored";
+  return "Module instance · Blank";
 }
 
 function shortId(id: string): string {

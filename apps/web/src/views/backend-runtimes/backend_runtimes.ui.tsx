@@ -11,6 +11,11 @@ interface Props {
   onInstall?: (runtime: CatalogEntry) => void;
 }
 
+/**
+ * Dumb presentational layer. Receives the already-fetched runtimes and
+ * groups them by `source_extension_id`. Zero hardcoded extension ids
+ * (FR-080) — the extension id surfaces only as a group header label.
+ */
 export function BackendRuntimesUI({ runtimes, onInstall }: Props) {
   if (runtimes.length === 0) {
     return (

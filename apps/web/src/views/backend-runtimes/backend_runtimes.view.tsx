@@ -38,13 +38,11 @@ export function BackendRuntimesView() {
         <PageHero
           eyebrow="Operator surface · Runtime catalog"
           title="Backend runtimes"
-          meta={
-            <span>
-              Failed to load:{" "}
-              {error instanceof Error ? error.message : "unknown error"}
-            </span>
-          }
         />
+        <div className={css.errorBox} role="alert">
+          Failed to load backend runtimes:{" "}
+          {error instanceof Error ? error.message : "unknown error"}
+        </div>
       </main>
     );
   }
