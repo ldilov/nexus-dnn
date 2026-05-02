@@ -53,6 +53,29 @@ export const lede = style({
   lineHeight: 1.5,
 });
 
+export const heroMeta = style({
+  display: "flex",
+  alignItems: "baseline",
+  gap: vars.space.sm,
+  margin: 0,
+  marginTop: vars.space.xs,
+  fontFamily: vars.font.body,
+  fontSize: vars.text.caption,
+  letterSpacing: vars.tracking.label,
+  textTransform: "uppercase",
+  color: vars.color.textMuted,
+});
+
+export const heroCount = style({
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.subhead,
+  fontVariantNumeric: "tabular-nums",
+  color: vars.color.text,
+  fontWeight: 600,
+  letterSpacing: 0,
+  textTransform: "none",
+});
+
 export const panel = style({
   width: "100%",
   maxWidth: "960px",
@@ -142,38 +165,28 @@ export const empty = style({
   padding: `${vars.space.xl} ${vars.space.lg}`,
   display: "flex",
   flexDirection: "column",
-  alignItems: "center",
-  gap: vars.space.sm,
-  textAlign: "center",
+  alignItems: "flex-start",
+  gap: vars.space.xs,
   color: vars.color.textMuted,
-  fontSize: vars.text.body,
-  lineHeight: 1.6,
-  borderRadius: vars.radius.md,
-  background: `linear-gradient(135deg, color-mix(in oklab, ${vars.color.accent} 6%, ${vars.color.surfaceMuted}), ${vars.color.surfaceMuted})`,
 });
 
 export const emptyGlyph = style({
-  fontFamily: vars.font.display,
-  fontSize: "2.75rem",
+  fontFamily: vars.font.mono,
+  fontSize: "5rem",
   lineHeight: 1,
-  color: vars.color.accent,
-  textShadow: vars.color.accentGlow,
-  letterSpacing: vars.tracking.display,
+  fontWeight: 600,
+  color: vars.color.text,
+  fontVariantNumeric: "tabular-nums",
+  margin: 0,
+  marginBottom: vars.space.sm,
 });
 
 export const emptyTitle = style({
-  fontFamily: vars.font.display,
+  fontFamily: vars.font.body,
   fontSize: vars.text.subhead,
-  fontWeight: 600,
+  fontWeight: 500,
   color: vars.color.text,
   margin: 0,
-});
-
-export const emptyBody = style({
-  fontSize: vars.text.body,
-  color: vars.color.textMuted,
-  margin: 0,
-  maxWidth: "48ch",
 });
 
 export const emptyHint = style({
