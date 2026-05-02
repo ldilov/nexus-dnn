@@ -8,6 +8,18 @@ const TAG = "emotion-tts-app";
 const HOST_EVENT = "ext-event";
 const STYLESHEET_ID = "emotion-tts-stylesheet";
 
+// Spec 037 / T061 — host live-tweak attributes that propagate from
+// `document.body.dataset.*` onto our custom element so the scoped theme
+// selectors in `theme/tokens.css.ts` re-bind. Names match the production
+// Spectral Graphite contract (`contracts/tokens.contract.md` §8).
+const TWEAK_ATTRS = ["accent", "density", "card"] as const;
+type TweakAttr = (typeof TWEAK_ATTRS)[number];
+
+function readBodyTweak(name: TweakAttr): string | undefined {
+  if (typeof document === "undefined" || !document.body) return undefined;
+  return document.body.dataset[name];
+}
+
 function ensureStylesheet(): void {
   if (typeof document === "undefined") return;
   if (document.getElementById(STYLESHEET_ID)) return;
@@ -37,6 +49,8 @@ class EmotionTtsAppElement extends HTMLElement {
 
   connectedCallback(): void {
     this.root = createRoot(this);
+    this.syncTweaksFromBody();
+    this.observeBodyTweaks();
     this.paint();
   }
 
@@ -49,6 +63,34 @@ class EmotionTtsAppElement extends HTMLElement {
     this.root = null;
     this.observer?.disconnect();
     this.observer = null;
+  }
+
+  // Mirror `document.body.dataset.{accent,density,card}` onto this custom
+  // element so the scoped CSS selectors in `theme/tokens.css.ts` re-bind
+  // tokens whenever the host tweak panel writes a new value. Runs once on
+  // connect and then on every body-attribute mutation. Defaults baked into
+  // the theme cover the no-attribute case, so a missing host (e.g. running
+  // the bundle in isolation for the visual baseline) still paints with the
+  // documented `cozy / primary / flat` baseline.
+  private syncTweaksFromBody(): void {
+    for (const name of TWEAK_ATTRS) {
+      const value = readBodyTweak(name);
+      if (value === undefined) {
+        delete this.dataset[name];
+      } else if (this.dataset[name] !== value) {
+        this.dataset[name] = value;
+      }
+    }
+  }
+
+  private observeBodyTweaks(): void {
+    if (typeof MutationObserver === "undefined" || !document.body) return;
+    if (this.observer) this.observer.disconnect();
+    this.observer = new MutationObserver(() => this.syncTweaksFromBody());
+    this.observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: TWEAK_ATTRS.map((name) => `data-${name}`),
+    });
   }
 
   set hostContext(ctx: HostContext | null) {
