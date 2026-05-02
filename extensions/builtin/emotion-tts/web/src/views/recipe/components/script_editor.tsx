@@ -4,6 +4,7 @@ import type { CharacterMapping } from "../../../services/mappings_client";
 import type { OutputFormat } from "../../../services/types";
 import * as css from "../recipe.css";
 import { Banner } from "../../../components/banner";
+import { Button } from "../../../components/button";
 
 interface Props {
   value: string;
@@ -42,10 +43,10 @@ export function ScriptEditor(props: Props): JSX.Element {
         <Banner severity="error">
           <strong>Unresolved characters:</strong>{" "}
           {unresolved.map((name) => (
-            <button
-              type="button"
+            <Button
               key={name}
-              className={css.secondaryButton}
+              variant="secondary"
+              size="sm"
               onClick={() =>
                 navigate(
                   `/${props.deploymentId}/mappings/new?character=${encodeURIComponent(name)}`,
@@ -53,7 +54,7 @@ export function ScriptEditor(props: Props): JSX.Element {
               }
             >
               Create mapping for {name}
-            </button>
+            </Button>
           ))}
         </Banner>
       )}

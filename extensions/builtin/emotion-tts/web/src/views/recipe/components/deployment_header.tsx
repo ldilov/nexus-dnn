@@ -13,6 +13,8 @@ import {
 } from "../../../services/runtime_client";
 import * as css from "../recipe.css";
 import { Banner } from "../../../components/banner";
+import { Button } from "../../../components/button";
+import { StatusPill } from "../../../components/status_pill";
 
 interface Props {
   deployment: Deployment;
@@ -103,7 +105,9 @@ export function DeploymentHeader({ deployment }: Props): JSX.Element {
       <span>{deployment.backendRuntimePreference ?? "indextts.python"}</span>
 
       <span className={css.label}>Badge</span>
-      <span className={statusPillFor(badge)}>{badgeLabel(badge)}</span>
+      <StatusPill tone={toneFor(badge)} pulse={badge === "starting" || badge === "installing"}>
+        {badgeLabel(badge)}
+      </StatusPill>
 
       {health && (
         <>
@@ -117,53 +121,52 @@ export function DeploymentHeader({ deployment }: Props): JSX.Element {
       )}
 
       {isStopped && (
-        <button type="button" className={css.primaryButton} disabled={busy} onClick={install}>
+        <Button disabled={busy} onClick={install}>
           Install / Start runtime
-        </button>
+        </Button>
       )}
       {isRunning && (
         <>
-          <button type="button" className={css.dangerButton} disabled={busy} onClick={stop}>
+          <Button variant="danger" disabled={busy} onClick={stop}>
             Stop backend
-          </button>
-          <button type="button" className={css.secondaryButton} disabled={busy} onClick={restart}>
+          </Button>
+          <Button variant="secondary" disabled={busy} onClick={restart}>
             Restart
-          </button>
+          </Button>
         </>
       )}
       {modelMissing && (
-        <button type="button" className={css.primaryButton} disabled={busy} onClick={downloadModel}>
+        <Button disabled={busy} onClick={downloadModel}>
           Download IndexTTS-2 model
-        </button>
+        </Button>
       )}
 
-      <button
-        type="button"
-        className={css.secondaryButton}
+      <Button
+        variant="secondary"
         onClick={() => navigate(`/${deployment.deploymentId}/mappings`)}
         title="Manage character → voice mappings (upload voice samples, edit emotion defaults)"
       >
         Mappings
-      </button>
+      </Button>
 
       {error && !modelMissing && <Banner severity="error">{error}</Banner>}
     </div>
   );
 }
 
-function statusPillFor(badge: string): string {
+function toneFor(badge: string): "success" | "accent" | "danger" | "neutral" {
   switch (badge) {
     case "ready":
     case "running":
-      return css.statusPillCompleted;
+      return "success";
     case "starting":
     case "stopping":
     case "installing":
-      return css.statusPillRunning;
+      return "accent";
     case "failed":
-      return css.statusPillFailed;
+      return "danger";
     default:
-      return css.statusPill;
+      return "neutral";
   }
 }
 

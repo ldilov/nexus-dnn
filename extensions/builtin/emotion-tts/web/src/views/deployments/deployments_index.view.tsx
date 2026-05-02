@@ -1,6 +1,7 @@
 import { Link, useLoaderData } from "react-router";
 import type { Deployment } from "../../services/deployments_client";
 import { EmptyState } from "../../components/empty_state";
+import { Panel } from "../../components/panel";
 import { sectionLabel } from "../../components/section_label.css";
 import * as css from "./deployments_index.css";
 
@@ -31,7 +32,12 @@ export function DeploymentsIndexView(): JSX.Element {
         </p>
       </header>
 
-      <section className={css.panel} aria-labelledby="deployments-section-list">
+      <Panel
+        density="airy"
+        elevation="raised"
+        className={css.listPanel}
+        aria-labelledby="deployments-section-list"
+      >
         <h2 id="deployments-section-list" className={sectionLabel}>
           01 / Deployments
         </h2>
@@ -60,7 +66,7 @@ export function DeploymentsIndexView(): JSX.Element {
             ))}
           </ul>
         )}
-      </section>
+      </Panel>
     </main>
   );
 }

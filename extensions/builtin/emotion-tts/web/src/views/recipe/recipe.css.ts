@@ -39,16 +39,6 @@ export const rightColumn = style({
   },
 });
 
-export const panel = style({
-  background: vars.color.surfaceRaised,
-  borderRadius: vars.radius.lg,
-  padding: `${vars.space.md} ${vars.space.lg}`,
-  display: "flex",
-  flexDirection: "column",
-  gap: vars.space.md,
-  boxShadow: vars.shadow.subtle,
-});
-
 export const deploymentHeader = style({
   display: "flex",
   alignItems: "center",
@@ -107,57 +97,6 @@ export const controlRow = style({
   alignItems: "center",
 });
 
-export const button = style({
-  padding: `${vars.space.sm} ${vars.space.md}`,
-  borderRadius: vars.radius.sm,
-  border: "none",
-  fontFamily: vars.font.body,
-  fontWeight: 600,
-  fontSize: vars.text.body,
-  cursor: "pointer",
-  transition: `background ${vars.motion.fast}, box-shadow ${vars.motion.fast}, transform ${vars.motion.fast}`,
-  ":active": { transform: "translateY(1px)" },
-  ":disabled": { cursor: "not-allowed", opacity: 0.45 },
-});
-
-export const primaryButton = style([
-  button,
-  {
-    background: vars.color.accent,
-    color: vars.color.accentOn,
-    boxShadow: `0 0 0 1px ${vars.color.accent}`,
-    ":hover": {
-      background: vars.color.accent,
-      boxShadow: `0 0 0 1px ${vars.color.accent}, ${vars.color.accentGlow}`,
-    },
-  },
-]);
-
-export const secondaryButton = style([
-  button,
-  {
-    background: "transparent",
-    color: vars.color.accent,
-    boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
-    ":hover": {
-      background: vars.color.surfaceHigh,
-      boxShadow: `inset 0 0 0 1px ${vars.color.accent}`,
-    },
-  },
-]);
-
-export const dangerButton = style([
-  button,
-  {
-    background: "transparent",
-    color: vars.color.danger,
-    boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.danger} 45%, transparent)`,
-    ":hover": {
-      background: `color-mix(in oklab, ${vars.color.danger} 12%, transparent)`,
-    },
-  },
-]);
-
 export const filenameList = style({
   fontFamily: vars.font.mono,
   fontSize: vars.text.caption,
@@ -194,45 +133,3 @@ export const progressCell = style({
   borderBottom: `1px solid ${vars.color.borderSubtle}`,
 });
 
-export const statusPill = style({
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "6px",
-  padding: `2px 10px 2px 8px`,
-  borderRadius: vars.radius.pill,
-  fontSize: vars.text.micro,
-  fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: vars.tracking.label,
-  background: vars.color.surfaceHigh,
-  color: vars.color.textMuted,
-  "::before": {
-    content: '""',
-    width: "6px",
-    height: "6px",
-    borderRadius: vars.radius.pill,
-    background: "currentColor",
-    display: "inline-block",
-  },
-});
-
-export const statusPillCompleted = style([
-  statusPill,
-  {
-    color: vars.color.success,
-  },
-]);
-
-export const statusPillRunning = style([
-  statusPill,
-  {
-    color: vars.color.accent,
-  },
-]);
-
-export const statusPillFailed = style([
-  statusPill,
-  {
-    color: vars.color.danger,
-  },
-]);
