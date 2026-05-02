@@ -11,6 +11,7 @@ import useSWR from "swr";
 import { fetchExtensions } from "../../services/api_client";
 import { OverviewTab } from "./tabs/overview.tab";
 import { DependenciesTab } from "./tabs/dependencies.tab";
+import { PageHero } from "../../components/base/page_hero";
 import * as s from "./extension_settings.css";
 
 export interface ExtensionSettingsViewProps {
@@ -75,6 +76,14 @@ export function ExtensionSettingsView({ extensionId }: ExtensionSettingsViewProp
         <span aria-hidden="true">›</span>
         <span>{extension.name ?? extension.id}</span>
       </nav>
+
+      <PageHero
+        eyebrow="Extension settings"
+        title={extension.name ?? extension.id}
+        meta={
+          extension.version ? <span>Version {extension.version}</span> : undefined
+        }
+      />
 
       <div
         className={s.tabBar}
