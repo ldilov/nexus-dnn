@@ -101,17 +101,6 @@ export const searchAffordance = style({
   },
 });
 
-export const searchHotkey = style({
-  fontFamily: vars.font.code,
-  fontSize: vars.font.size.kbd,
-  letterSpacing: "0.05em",
-  color: vars.color.text.muted,
-  paddingInline: vars.density.d2,
-  paddingBlock: "1px",
-  borderRadius: vars.radius.control,
-  background: vars.color.bg.hover,
-});
-
 export const iconButton = style({
   width: vars.control.heightSm,
   height: vars.control.heightSm,

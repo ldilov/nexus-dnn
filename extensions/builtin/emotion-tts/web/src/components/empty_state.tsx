@@ -13,7 +13,7 @@ export function EmptyState({ count = "0", title, hint }: EmptyStateProps): JSX.E
       <span className={css.glyph} aria-hidden="true">
         {count}
       </span>
-      <p className={css.title}>{title}</p>
+      <h3 className={css.title}>{title}</h3>
       {hint ? <p className={css.hint}>{hint}</p> : null}
     </div>
   );
