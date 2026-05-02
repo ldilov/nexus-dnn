@@ -58,28 +58,82 @@ export const deploymentTitle = style({
   margin: 0,
 });
 
-export const scriptTextarea = style({
+export const scriptShell = style({
+  position: "relative",
   width: "100%",
   minHeight: "360px",
+  borderRadius: vars.radius.md,
+  background: vars.color.surfaceMuted,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
+  transition: `box-shadow ${vars.motion.fast}`,
+  selectors: {
+    "&:focus-within": {
+      boxShadow: `inset 0 0 0 1px ${vars.color.accent}, ${vars.shadow.glow}`,
+    },
+  },
+});
+
+const scriptShared = {
   fontFamily: vars.font.mono,
   fontSize: vars.text.body,
   lineHeight: 1.55,
   padding: vars.space.md,
-  borderRadius: vars.radius.md,
   border: "none",
   outline: "none",
-  background: vars.color.surfaceMuted,
-  color: vars.color.text,
+  background: "transparent",
+  whiteSpace: "pre-wrap" as const,
+  wordWrap: "break-word" as const,
+  margin: 0,
+  letterSpacing: 0,
+};
+
+export const scriptOverlay = style({
+  ...scriptShared,
+  position: "absolute",
+  inset: 0,
+  pointerEvents: "none",
+  color: vars.color.textMuted,
+  overflow: "hidden",
+});
+
+export const scriptTextarea = style({
+  ...scriptShared,
+  position: "relative",
+  width: "100%",
+  minHeight: "360px",
+  display: "block",
+  color: "transparent",
+  caretColor: vars.color.text,
   resize: "vertical",
-  transition: `box-shadow ${vars.motion.fast}`,
-  boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
-  ":focus": {
-    boxShadow: `inset 0 0 0 1px ${vars.color.accent}, ${vars.shadow.glow}`,
+  selectors: {
+    "&::placeholder": {
+      color: vars.color.textFaint,
+      fontFamily: vars.font.mono,
+    },
+    "&::selection": {
+      background: `color-mix(in oklab, ${vars.color.accent} 35%, transparent)`,
+      color: vars.color.text,
+    },
   },
-  "::placeholder": {
-    color: vars.color.textFaint,
-    fontFamily: vars.font.mono,
-  },
+});
+
+export const scriptCharacter = style({
+  fontWeight: 600,
+});
+
+export const scriptText = style({
+  color: vars.color.text,
+});
+
+export const scriptUnresolved = style({
+  textDecoration: "underline wavy",
+  textDecorationColor: vars.color.danger,
+  textUnderlineOffset: "3px",
+});
+
+export const scriptOverride = style({
+  color: vars.color.secondary,
+  fontStyle: "italic",
 });
 
 export const label = style({
@@ -133,3 +187,33 @@ export const progressCell = style({
   borderBottom: `1px solid ${vars.color.borderSubtle}`,
 });
 
+export const preflightList = style({
+  listStyle: "none",
+  padding: 0,
+  margin: `0 0 ${vars.space.sm}`,
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.xs,
+});
+
+export const preflightItem = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.sm,
+  padding: `${vars.space.xs} ${vars.space.sm}`,
+  borderRadius: vars.radius.sm,
+  background: vars.color.surfaceMuted,
+});
+
+export const preflightLabel = style({
+  fontSize: vars.text.caption,
+  color: vars.color.text,
+  fontWeight: 500,
+  flex: "1 1 auto",
+});
+
+export const preflightDetail = style({
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  color: vars.color.textMuted,
+});

@@ -21,10 +21,17 @@ interface SegmentState {
   failureCategory?: string;
 }
 
+interface DiagnosticItem {
+  label: string;
+  status: "ok" | "warn" | "fail";
+  detail?: string;
+}
+
 interface Props {
   deploymentId: string;
   createPayload: CreateRunRequest;
   canGenerate: boolean;
+  diagnostics?: DiagnosticItem[];
 }
 
 export function RunPanel(props: Props): JSX.Element {
@@ -120,8 +127,22 @@ export function RunPanel(props: Props): JSX.Element {
   // path instead of having to scan the recipe header for the right link.
   const errorIsUnmapped = error?.toLowerCase().includes("unmapped") ?? false;
 
+  const diagnostics = props.diagnostics ?? [];
+  const blockingDiagnostic = diagnostics.find((d) => d.status === "fail");
+
   return (
     <div>
+      {diagnostics.length > 0 && (
+        <ul className={css.preflightList} aria-label="Pre-flight checks">
+          {diagnostics.map((d) => (
+            <li key={d.label} className={css.preflightItem}>
+              <StatusPill tone={preflightTone(d.status)}>{preflightGlyph(d.status)}</StatusPill>
+              <span className={css.preflightLabel}>{d.label}</span>
+              {d.detail && <span className={css.preflightDetail}>{d.detail}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
       {error && (
         <Banner
           severity="error"
@@ -147,7 +168,10 @@ export function RunPanel(props: Props): JSX.Element {
       )}
 
       <div className={css.controlRow}>
-        <Button disabled={!props.canGenerate || canCancel} onClick={startRun}>
+        <Button
+          disabled={!props.canGenerate || canCancel || !!blockingDiagnostic}
+          onClick={startRun}
+        >
           {phase === "running" ? "Running…" : "Generate + Export ZIP"}
         </Button>
         <Button variant="danger" disabled={!canCancel} onClick={cancel}>
@@ -298,6 +322,28 @@ function toneFor(status: SegmentState["status"]): "success" | "accent" | "danger
       return "danger";
     default:
       return "neutral";
+  }
+}
+
+function preflightTone(status: DiagnosticItem["status"]): "success" | "warning" | "danger" {
+  switch (status) {
+    case "ok":
+      return "success";
+    case "warn":
+      return "warning";
+    case "fail":
+      return "danger";
+  }
+}
+
+function preflightGlyph(status: DiagnosticItem["status"]): string {
+  switch (status) {
+    case "ok":
+      return "ok";
+    case "warn":
+      return "warn";
+    case "fail":
+      return "stop";
   }
 }
 
