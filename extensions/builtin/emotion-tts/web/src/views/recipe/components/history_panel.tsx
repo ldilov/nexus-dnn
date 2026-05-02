@@ -4,6 +4,7 @@ import { ExtensionApiError } from "../../../services/http";
 import { resumeRun } from "../../../services/runs_client";
 import type { RunStatus, RunSummary } from "../../../services/types";
 import * as css from "../recipe.css";
+import { Banner } from "../../../components/banner";
 
 interface Props {
   runs: RunSummary[];
@@ -36,7 +37,7 @@ export function HistoryPanel({ runs, deploymentId }: Props): JSX.Element {
 
   return (
     <>
-      {error && <p className={css.dangerBanner}>{error}</p>}
+      {error && <Banner severity="error">{error}</Banner>}
       <ul className={css.filenameList}>
         {runs.map((r) => {
           const resumable = RESUMABLE_STATUSES.includes(r.status) && r.kind === "batch";

@@ -62,12 +62,6 @@ export const empty = style({
   fontStyle: "italic",
 });
 
-export const errorBanner = style({
-  fontFamily: vars.font.mono,
-  fontSize: vars.text.caption,
-  color: vars.color.danger,
-});
-
 export const loading = style({
   fontFamily: vars.font.mono,
   fontSize: vars.text.caption,

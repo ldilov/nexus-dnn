@@ -199,15 +199,6 @@ export const undoButton = style({
   },
 });
 
-export const errorBanner = style({
-  background: `color-mix(in oklab, ${vars.color.danger} 14%, transparent)`,
-  color: vars.color.danger,
-  borderRadius: vars.radius.sm,
-  padding: `${vars.space.sm} ${vars.space.md}`,
-  fontFamily: vars.font.body,
-  fontSize: vars.text.body,
-});
-
 export const lufsLabel = style({
   fontFamily: vars.font.mono,
   fontSize: vars.text.caption,

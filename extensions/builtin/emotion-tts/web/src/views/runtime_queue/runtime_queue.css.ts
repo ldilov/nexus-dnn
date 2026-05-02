@@ -239,19 +239,3 @@ export const etaLabel = style({
   letterSpacing: vars.tracking.label,
 });
 
-export const errorBanner = style({
-  padding: `${vars.space.md} ${vars.space.lg}`,
-  borderRadius: vars.radius.md,
-  background: `color-mix(in oklab, ${vars.color.danger} 14%, ${vars.color.surfaceRaised})`,
-  color: vars.color.text,
-  fontFamily: vars.font.mono,
-  fontSize: vars.text.body,
-  display: "flex",
-  alignItems: "center",
-  gap: vars.space.sm,
-  "::before": {
-    content: '"⚠"',
-    fontSize: vars.text.subhead,
-    color: vars.color.danger,
-  },
-});
