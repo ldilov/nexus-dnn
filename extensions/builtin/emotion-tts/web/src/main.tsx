@@ -8,10 +8,6 @@ const TAG = "emotion-tts-app";
 const HOST_EVENT = "ext-event";
 const STYLESHEET_ID = "emotion-tts-stylesheet";
 
-// Spec 037 / T061 — host live-tweak attributes that propagate from
-// `document.body.dataset.*` onto our custom element so the scoped theme
-// selectors in `theme/tokens.css.ts` re-bind. Names match the production
-// Spectral Graphite contract (`contracts/tokens.contract.md` §8).
 const TWEAK_ATTRS = ["accent", "density", "card"] as const;
 type TweakAttr = (typeof TWEAK_ATTRS)[number];
 
@@ -65,13 +61,6 @@ class EmotionTtsAppElement extends HTMLElement {
     this.observer = null;
   }
 
-  // Mirror `document.body.dataset.{accent,density,card}` onto this custom
-  // element so the scoped CSS selectors in `theme/tokens.css.ts` re-bind
-  // tokens whenever the host tweak panel writes a new value. Runs once on
-  // connect and then on every body-attribute mutation. Defaults baked into
-  // the theme cover the no-attribute case, so a missing host (e.g. running
-  // the bundle in isolation for the visual baseline) still paints with the
-  // documented `cozy / primary / flat` baseline.
   private syncTweaksFromBody(): void {
     for (const name of TWEAK_ATTRS) {
       const value = readBodyTweak(name);
