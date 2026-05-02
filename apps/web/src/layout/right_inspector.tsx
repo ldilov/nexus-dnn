@@ -78,7 +78,7 @@ function resourceChips(spec: OperatorDto | null | undefined): string[] {
 export function RightInspector({ selectedNode, selectedSpec, nodeStatus }: InspectorProps) {
   if (!selectedNode) {
     return (
-      <div className={styles.container}>
+      <div className={styles.container} role="region" aria-label="Node inspector" tabIndex={0}>
         <p className={styles.emptyState}>Select a node to inspect</p>
       </div>
     );

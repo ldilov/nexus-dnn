@@ -12,6 +12,7 @@ export const color = {
   onSurface: {
     base: "#f0f0f3",
     variant: "#aaabae",
+    muted: "#8c8e92",
   },
   primary: {
     base: "#ba9eff",
