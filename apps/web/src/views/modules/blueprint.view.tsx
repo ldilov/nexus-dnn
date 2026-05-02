@@ -15,6 +15,9 @@ import {
 } from "../../api/client";
 import { useModule, useWorkflow } from "../../hooks/use_api";
 import { GraphView } from "../workflows/components/canvas/graph_view";
+import { PageHero } from "../../components/base/page_hero";
+import { Pill } from "../../components/base/pill";
+import { Tabs } from "../../components/base/tabs";
 import * as s from "./blueprint.css";
 
 function Shell({ children }: { children: ReactElement | ReactElement[] | null | false | (ReactElement | null | false)[] }) {
@@ -123,6 +126,7 @@ export function BlueprintView({
     return (
       <Shell>
         <div className={s.canvas}>
+          <PageHero eyebrow="Module blueprint" title="Loading…" />
           <div className={s.loadingBox}>Loading blueprint…</div>
         </div>
       </Shell>
@@ -142,6 +146,7 @@ export function BlueprintView({
           <button type="button" className={s.backLink} onClick={handleBack}>
             ← Back to module
           </button>
+          <PageHero eyebrow="Module blueprint" title="Not available" />
           <div className={s.errorBox} role="alert">
             {message}
           </div>
@@ -173,9 +178,10 @@ export function BlueprintView({
           ← Back to module
         </button>
 
-        <header className={s.hero}>
-          <div className={s.heroLeft}>
-            <h1 className={s.title}>
+        <PageHero
+          eyebrow="Module blueprint · Read-only x-ray"
+          title={
+            <>
               {detail.summary.display_name}
               {selectedBlueprint ? (
                 <>
@@ -185,83 +191,87 @@ export function BlueprintView({
                   </span>
                 </>
               ) : null}
-            </h1>
-            <div className={s.heroMeta}>
+            </>
+          }
+          meta={
+            <>
               <span>
                 {mode === "recipe" ? "Recipe projection" : "Workflow graph"}
               </span>
-              <span>·</span>
+              <span aria-hidden="true">·</span>
               <span>
                 {selectedBlueprint?.step_count ?? 0} step
                 {selectedBlueprint?.step_count === 1 ? "" : "s"}
               </span>
               {workflow && (
                 <>
-                  <span>·</span>
+                  <span aria-hidden="true">·</span>
                   <span>{workflow.nodes.length} nodes</span>
-                  <span>·</span>
+                  <span aria-hidden="true">·</span>
                   <span>{workflow.edges.length} edges</span>
                 </>
               )}
-            </div>
-          </div>
-          <div className={s.heroActions}>
-            <button
-              type="button"
-              className={s.secondaryBtn}
-              onClick={dryRunAction}
-              disabled={dryRunning || !effectiveRecipeId || isExtensionInactive}
-              title={
-                isExtensionInactive
-                  ? "Extension must be active to dry-run"
-                  : undefined
-              }
-            >
-              <span
-                className={`material-symbols-outlined ${s.iconLg}`}
-                aria-hidden="true"
-              >
-                play_arrow
-              </span>
-              {dryRunning ? "Planning…" : "Dry Run"}
-            </button>
-            <button
-              type="button"
-              className={s.primaryBtn}
-              onClick={cloneAction}
-              disabled={cloning || !effectiveRecipeId || isExtensionInactive}
-              title={
-                isExtensionInactive
-                  ? "Extension must be active to clone to a deployment"
-                  : undefined
-              }
-            >
-              <span
-                className={`material-symbols-outlined ${s.iconLg}`}
-                aria-hidden="true"
-              >
-                rocket_launch
-              </span>
-              {/* scan-terminology: allow — CTA per FR-018 */}
-              {cloning ? "Cloning…" : "Clone to Deployment"}
-            </button>
-            {hasDeployments && detail.deployments[0] && (
-              <a
-                href={`/api/v1/deployments/${encodeURIComponent(detail.deployments[0].deployment_id)}/export`}
+            </>
+          }
+          actions={
+            <>
+              <button
+                type="button"
                 className={s.secondaryBtn}
-                rel="nofollow"
+                onClick={dryRunAction}
+                disabled={dryRunning || !effectiveRecipeId || isExtensionInactive}
+                title={
+                  isExtensionInactive
+                    ? "Extension must be active to dry-run"
+                    : undefined
+                }
               >
                 <span
                   className={`material-symbols-outlined ${s.iconLg}`}
                   aria-hidden="true"
                 >
-                  file_download
+                  play_arrow
                 </span>
-                Export .nx
-              </a>
-            )}
-          </div>
-        </header>
+                {dryRunning ? "Planning…" : "Dry Run"}
+              </button>
+              <button
+                type="button"
+                className={s.primaryBtn}
+                onClick={cloneAction}
+                disabled={cloning || !effectiveRecipeId || isExtensionInactive}
+                title={
+                  isExtensionInactive
+                    ? "Extension must be active to clone to a deployment"
+                    : undefined
+                }
+              >
+                <span
+                  className={`material-symbols-outlined ${s.iconLg}`}
+                  aria-hidden="true"
+                >
+                  rocket_launch
+                </span>
+                {/* scan-terminology: allow — CTA per FR-018 */}
+                {cloning ? "Cloning…" : "Clone to Deployment"}
+              </button>
+              {hasDeployments && detail.deployments[0] && (
+                <a
+                  href={`/api/v1/deployments/${encodeURIComponent(detail.deployments[0].deployment_id)}/export`}
+                  className={s.secondaryBtn}
+                  rel="nofollow"
+                >
+                  <span
+                    className={`material-symbols-outlined ${s.iconLg}`}
+                    aria-hidden="true"
+                  >
+                    file_download
+                  </span>
+                  Export .nx
+                </a>
+              )}
+            </>
+          }
+        />
 
         {/* Recipe picker pills (only when > 1 recipe) */}
         {multi && (
@@ -271,11 +281,9 @@ export function BlueprintView({
             aria-label="Pick a recipe"
           >
             {detail.summary.blueprints.map((bp) => (
-              <button
+              <Pill
                 key={bp.recipe_id}
-                type="button"
-                className={s.pill}
-                aria-pressed={effectiveRecipeId === bp.recipe_id}
+                active={effectiveRecipeId === bp.recipe_id}
                 onClick={() => handlePick(bp.recipe_id)}
               >
                 {bp.is_primary && (
@@ -284,7 +292,7 @@ export function BlueprintView({
                   </span>
                 )}
                 {bp.display_name}
-              </button>
+              </Pill>
             ))}
           </div>
         )}
@@ -307,53 +315,18 @@ export function BlueprintView({
         )}
 
         {!isExtensionInactive && (
-          <>
-            {/* Recipe | Workflow Graph segmented control */}
-            <div
-              className={s.modeToggle}
-              role="tablist"
-              aria-label="Projection mode"
-            >
-              <button
-                type="button"
-                role="tab"
-                className={s.modeBtn}
-                aria-selected={mode === "recipe"}
-                aria-controls="panel-recipe"
-                onClick={() => setMode("recipe")}
-              >
-                <span
-                  className={`material-symbols-outlined ${s.iconMd}`}
-                  aria-hidden="true"
-                >
-                  list_alt
-                </span>
-                Recipe
-              </button>
-              <button
-                type="button"
-                role="tab"
-                className={s.modeBtn}
-                aria-selected={mode === "workflow"}
-                aria-controls="panel-workflow"
-                onClick={() => setMode("workflow")}
-                disabled={!detail.summary.workflow_id}
-                title={
-                  detail.summary.workflow_id
-                    ? undefined
-                    : "This module has no workflow bound yet."
-                }
-              >
-                <span
-                  className={`material-symbols-outlined ${s.iconMd}`}
-                  aria-hidden="true"
-                >
-                  account_tree
-                </span>
-                Workflow graph
-              </button>
-            </div>
-          </>
+          <Tabs
+            variant="segmented"
+            activeId={mode}
+            onSelect={(id) => {
+              if (id === "workflow" && !detail.summary.workflow_id) return;
+              setMode(id);
+            }}
+            items={[
+              { id: "recipe", label: "Recipe" },
+              { id: "workflow", label: "Workflow graph" },
+            ]}
+          />
         )}
 
         {!isExtensionInactive && mode === "recipe" && (
