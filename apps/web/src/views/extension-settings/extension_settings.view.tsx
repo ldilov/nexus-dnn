@@ -51,14 +51,25 @@ export function ExtensionSettingsView({ extensionId }: ExtensionSettingsViewProp
   if (isLoading) {
     return (
       <div className={s.root}>
-        <div>Loading…</div>
+        <PageHero
+          eyebrow="Extension settings"
+          title="Loading…"
+        />
       </div>
     );
   }
   if (error || !extension) {
     return (
       <div className={s.root}>
-        <div className={s.errorState}>
+        <nav className={s.breadcrumb} aria-label="Breadcrumb">
+          <Link to="/extensions" className={s.breadcrumbLink}>
+            Extensions
+          </Link>
+          <span aria-hidden="true">›</span>
+          <span>{extensionId}</span>
+        </nav>
+        <PageHero eyebrow="Extension settings" title="Not available" />
+        <div className={s.errorState} role="alert">
           {extension
             ? "Could not load extension"
             : `Extension not found: ${extensionId}`}

@@ -19,6 +19,7 @@ import {
 } from "./components/SkeletonGrid";
 import { SortMenu } from "./components/SortMenu";
 import { PageHero } from "../../components/base/page_hero";
+import { heroMetaSep as pageHeroMetaSep } from "../../components/base/page_hero.css";
 import * as s from "./models_search.css";
 
 export interface ModelsSearchUIProps {
@@ -99,9 +100,12 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
         eyebrow="Operator surface · Model registry"
         title="Model Foundry"
         meta={
-          <span>
-            Showing <span className={s.heroCount}>{totalLabel(page.total_results)}</span>
-          </span>
+          <>
+            <span>Discover and quantize state-of-the-art architectures</span>
+            <span className={pageHeroMetaSep} aria-hidden="true">·</span>
+            <span>Showing</span>
+            <span className={s.heroCount}>{totalLabel(page.total_results)}</span>
+          </>
         }
       />
 
