@@ -127,6 +127,23 @@ sequenceDiagram
 
 ---
 
+## 🎨 Frontend Surfaces (Spec 037)
+
+### Generic ChatSurface
+
+The host frontend ships a single `ChatSurface` shell at [`apps/web/src/components/chat/`](../apps/web/src/components/chat/) — a generic, extension-agnostic chat UI (thread rail, message bubbles, composer, model picker, sampler panel, code-block renderer) that is consumed by both the host-rendered Local LLM YAML layout and the dedicated chat route, and is reusable by any deployment-detail view that wants chat context. The component contract has zero references to specific extension ids; the YAML registry adapter (`apps/web/src/layout/component_registry.tsx`) maps the data shape onto props.
+
+### Draft AI Suggestion Stream
+
+The host exposes an extension-agnostic SSE handler family at [`crates/nexus-api/src/handlers/draft_suggestions/`](../crates/nexus-api/src/handlers/draft_suggestions/) under:
+
+- `POST /api/v1/modules/drafts/{draft_id}/suggestions` — opens an SSE stream emitting `stream_started → token → partial → complete | error | cancelled`.
+- `POST /api/v1/modules/drafts/{draft_id}/suggestions/{stream_id}/cancel` — idempotent cancel.
+
+The handler implements policy "any lease that supports text completion with ≥ 2k context"; backend selection is driven by `nexus-backend-runtime-leases` and is independent of which extension publishes the runtime. Full request/response shapes and event variants are documented in [`docs/api/openapi.yaml`](api/openapi.yaml) and [`docs/api/API.md`](api/API.md). The frontend pill at `apps/web/src/components/draft/ai_suggestion_pill.tsx` consumes the stream via the SSE client at `apps/web/src/services/draft_suggestions.ts` and the React hook at `apps/web/src/components/draft/ai_suggestion_stream.ts`.
+
+---
+
 ## 🔗 Related Documentation
 
 | Document | Description |
