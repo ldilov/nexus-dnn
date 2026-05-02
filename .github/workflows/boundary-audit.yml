@@ -36,3 +36,14 @@ jobs:
       - name: Run local-llm boundary audit
         run: |
           bash extensions/builtin/local-llm/scripts/audit-boundary.sh
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: nexus-api-boundary
+
+      - name: Run draft_suggestions boundary + handler tests
+        run: cargo test -p nexus-api --test draft_suggestions

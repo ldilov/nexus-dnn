@@ -142,11 +142,11 @@ impl CancelReason {
     }
 }
 
-/// All SSE response event variants. The serialized form matches
-/// `contracts/draft_suggestions.events.md` (one variant per `event:`
-/// type; the `data:` line is the JSON payload below).
-#[derive(Debug, Clone, Serialize)]
-#[serde(untagged)]
+/// All SSE response event variants. Wire serialization is via the
+/// hand-built map in `sse::json_payload` (NOT via serde derive) so the
+/// `data:` line shape stays in lockstep with
+/// `contracts/draft_suggestions.events.md`.
+#[derive(Debug, Clone)]
 pub enum SuggestionResponseEvent {
     StreamStarted {
         stream_id: StreamId,
