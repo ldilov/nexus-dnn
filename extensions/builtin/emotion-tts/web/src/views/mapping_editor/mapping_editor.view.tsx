@@ -27,6 +27,11 @@ import type { ApplyEditResponse } from "../../services/audio_edit_client";
 import { AudioEditPanel } from "./components/audio_edit_panel";
 import * as css from "./mapping_editor.css";
 import { Banner } from "../../components/banner";
+import { Button } from "../../components/button";
+import { EmptyState } from "../../components/empty_state";
+import { Panel } from "../../components/panel";
+import { StatusPill } from "../../components/status_pill";
+import { sectionLabel } from "../../components/section_label.css";
 
 interface LoaderData {
   deployment: Deployment;
@@ -217,19 +222,23 @@ export function MappingEditorView(): JSX.Element {
     [deployment.deploymentId, selected],
   );
 
+  const voiceWord = voiceAssets.length === 1 ? "voice" : "voices";
+
   return (
     <div className={css.shell}>
-      <aside className={css.sidebar} aria-label="Character mappings">
+      <aside className={css.sidebar} aria-labelledby="mapping-sidebar-heading">
         <header className={css.sidebarHeader}>
           <div>
-            <h1 className={css.sidebarTitle}>Mappings</h1>
+            <h1 id="mapping-sidebar-heading" className={css.sidebarTitle}>
+              Cast
+            </h1>
             <span className={css.sidebarCount}>
-              {mappings.length} active · {voiceAssets.length} voice{voiceAssets.length === 1 ? "" : "s"}
+              {mappings.length} active · {voiceAssets.length} {voiceWord}
             </span>
           </div>
-          <button type="button" className={css.primaryButton} onClick={addMapping}>
+          <Button variant="primary" size="sm" onClick={addMapping}>
             + Add
-          </button>
+          </Button>
         </header>
 
         <input
@@ -245,7 +254,10 @@ export function MappingEditorView(): JSX.Element {
 
         <div className={css.sidebarList}>
           {filtered.length === 0 ? (
-            <div className={css.emptySidebar}>No mappings yet. Click Add to create one.</div>
+            <EmptyState
+              title="No mappings yet."
+              hint="Click + Add to create one."
+            />
           ) : (
             filtered.map((m) => {
               const voice = voiceById.get(m.speakerVoiceAssetId);
@@ -367,9 +379,12 @@ interface EmptyDetailProps {
 function EmptyDetail({ voiceCount, onUploadVoice }: EmptyDetailProps): JSX.Element {
   if (voiceCount === 0) {
     return (
-      <div className={`${css.fieldset} ${css.emptyOnboarding}`}>
+      <Panel density="airy" elevation="raised" aria-labelledby="onboarding-heading">
         <div className={css.emptyOnboardingHeader}>
-          <h2 className={css.emptyOnboardingTitle}>Upload your first voice</h2>
+          <p className={sectionLabel}>01 / Onboarding</p>
+          <h2 id="onboarding-heading" className={css.emptyOnboardingTitle}>
+            Upload your first voice
+          </h2>
           <p className={css.emptyOnboardingSubtitle}>
             EmotionTTS clones the voice from a short audio sample (5–30 s clean mp3 or wav).
             Drop one in below, then click <strong>+ Add</strong> on the left to map a
@@ -383,16 +398,17 @@ function EmptyDetail({ voiceCount, onUploadVoice }: EmptyDetailProps): JSX.Eleme
             return null;
           }}
         />
-      </div>
+      </Panel>
     );
   }
 
   return (
-    <div className={`${css.fieldset} ${css.emptyHint}`}>
-      <p className={css.emptyHintText}>
-        Select a character on the left, or click <strong>+ Add</strong> to create one.
-      </p>
-    </div>
+    <Panel density="airy">
+      <EmptyState
+        title="No character selected."
+        hint="Pick one on the left or + Add"
+      />
+    </Panel>
   );
 }
 
@@ -469,17 +485,23 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
     <>
       <header className={css.detailHeader}>
         <div>
-          <span className={css.detailSubtitle}>Character</span>
+          <p className={sectionLabel}>Character</p>
           <h2 className={css.detailTitle}>{mapping.characterName}</h2>
         </div>
         <div className={css.actionsRow}>
-          <button type="button" className={css.dangerButton} onClick={props.onDelete}>
+          <Button variant="danger" size="sm" onClick={props.onDelete}>
             Deactivate
-          </button>
+          </Button>
         </div>
       </header>
 
-      <div className={css.testLineBar}>
+      <Panel
+        tone="muted"
+        density="compact"
+        elevation="none"
+        className={css.testLineBar}
+        aria-label="Test line synthesis"
+      >
         <input
           type="text"
           className={css.testLineInput}
@@ -500,26 +522,27 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
           <option value="wav">wav</option>
           <option value="flac">flac</option>
         </select>
-        <button
-          type="button"
-          className={css.primaryButton}
+        <Button
+          variant="primary"
+          size="sm"
           onClick={() => void handleTestLine()}
           disabled={testStatus === "running"}
         >
           {testStatus === "running" ? "Synthesising…" : "Test this line"}
-        </button>
+        </Button>
         {testStatus === "done" && (
-          <span className={css.testStatusDone}>
-            Synthesised — see host logs for the output file path.
-          </span>
+          <StatusPill tone="success">Synthesised — see host logs for output path.</StatusPill>
         )}
         {testStatus === "error" && testError && (
-          <span className={css.testStatusError}>{testError}</span>
+          <StatusPill tone="danger">{testError}</StatusPill>
         )}
-      </div>
+      </Panel>
 
       <div className={css.detailBody}>
-        <div className={css.fieldset}>
+        <Panel density="comfortable" aria-labelledby="identity-heading">
+          <h3 id="identity-heading" className={sectionLabel}>
+            01 / Identity & Performance
+          </h3>
           <label className={css.field}>
             <span className={css.fieldLabel}>Character name</span>
             <input
@@ -592,9 +615,12 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
               }
             />
           </label>
-        </div>
+        </Panel>
 
-        <div className={css.fieldset}>
+        <Panel density="comfortable" aria-labelledby="voice-heading">
+          <h3 id="voice-heading" className={sectionLabel}>
+            02 / Voice Reference
+          </h3>
           <span className={css.fieldLabel}>Speaker reference</span>
           <VoicePicker
             value={mapping.speakerVoiceAssetId}
@@ -622,7 +648,7 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
               <VoiceDetail voice={emotionVoice} />
             </>
           )}
-        </div>
+        </Panel>
       </div>
     </>
   );
@@ -679,11 +705,9 @@ function VoiceDetail({ voice }: { voice: VoiceAsset }): JSX.Element {
             </LazyMotion>
           </div>
           {durationWarning && (
-            <span
-              className={durationWarning.level === "warn" ? css.durationWarn : css.durationDanger}
-            >
+            <StatusPill tone={durationWarning.level === "warn" ? "warning" : "danger"}>
               {durationWarning.message}
-            </span>
+            </StatusPill>
           )}
         </div>
       )}
@@ -782,9 +806,9 @@ function ImportExportBar({
 
   return (
     <div className={css.actionsRow}>
-      <button type="button" className={css.secondaryButton} onClick={onExport}>
+      <Button variant="secondary" size="sm" onClick={onExport}>
         Export JSON
-      </button>
+      </Button>
       <input
         ref={fileRef}
         type="file"
@@ -805,9 +829,9 @@ function ImportExportBar({
           }
         }}
       />
-      <button type="button" className={css.secondaryButton} onClick={() => fileRef.current?.click()}>
+      <Button variant="secondary" size="sm" onClick={() => fileRef.current?.click()}>
         Import JSON
-      </button>
+      </Button>
       <select
         className={css.input}
         value={strategy}

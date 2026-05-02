@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useLoaderData, useNavigate } from "react-router";
 import { createMapping } from "../../services/mappings_client";
 import type { PersistedEmotionMode } from "../../services/types";
+import { Banner } from "../../components/banner";
+import { Button } from "../../components/button";
 
 interface LoaderData {
   deploymentId: string;
@@ -71,10 +73,10 @@ export function NewMappingView(): JSX.Element {
             <option value="qwen_template">Qwen template</option>
           </select>
         </label>
-        <button type="submit" disabled={submitting}>
+        <Button type="submit" variant="primary" disabled={submitting}>
           Save mapping
-        </button>
-        {error && <p role="alert">{error}</p>}
+        </Button>
+        {error && <Banner severity="error">{error}</Banner>}
       </form>
     </main>
   );
