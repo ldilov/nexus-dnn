@@ -12,6 +12,7 @@ import {
   type RuntimeHealth,
 } from "../../../services/runtime_client";
 import * as css from "../recipe.css";
+import { Banner } from "../../../components/banner";
 
 interface Props {
   deployment: Deployment;
@@ -145,7 +146,7 @@ export function DeploymentHeader({ deployment }: Props): JSX.Element {
         Mappings
       </button>
 
-      {error && !modelMissing && <span className={css.dangerBanner}>{error}</span>}
+      {error && !modelMissing && <Banner severity="error">{error}</Banner>}
     </div>
   );
 }

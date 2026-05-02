@@ -26,6 +26,7 @@ import {
 import type { ApplyEditResponse } from "../../services/audio_edit_client";
 import { AudioEditPanel } from "./components/audio_edit_panel";
 import * as css from "./mapping_editor.css";
+import { Banner } from "../../components/banner";
 
 interface LoaderData {
   deployment: Deployment;
@@ -291,11 +292,7 @@ export function MappingEditorView(): JSX.Element {
             )}
           </AnimatePresence>
         </LazyMotion>
-        {error && (
-          <div className={css.errorBanner} role="alert">
-            {error}
-          </div>
-        )}
+        {error && <Banner severity="error">{error}</Banner>}
 
         {!selected ? (
           <EmptyDetail
