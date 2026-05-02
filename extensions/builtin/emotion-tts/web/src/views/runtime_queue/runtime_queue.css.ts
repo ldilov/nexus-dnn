@@ -95,10 +95,6 @@ export const lede = style({
   maxWidth: "62ch",
 });
 
-// ----------------------------------------------------------------------------
-// Queue list
-// ----------------------------------------------------------------------------
-
 export const panel = style({
   background: vars.color.surfaceRaised,
   borderRadius: vars.radius.lg,
@@ -242,10 +238,6 @@ export const etaLabel = style({
   textTransform: "uppercase",
   letterSpacing: vars.tracking.label,
 });
-
-// ----------------------------------------------------------------------------
-// Error states
-// ----------------------------------------------------------------------------
 
 export const errorBanner = style({
   padding: `${vars.space.md} ${vars.space.lg}`,

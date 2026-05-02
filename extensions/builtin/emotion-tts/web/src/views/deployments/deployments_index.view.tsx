@@ -31,8 +31,10 @@ export function DeploymentsIndexView(): JSX.Element {
         </p>
       </header>
 
-      <section className={css.panel}>
-        <h2 className={sectionLabel}>01 / Deployments</h2>
+      <section className={css.panel} aria-labelledby="deployments-section-list">
+        <h2 id="deployments-section-list" className={sectionLabel}>
+          01 / Deployments
+        </h2>
         {deployments.length === 0 ? (
           <EmptyState
             title="No deployments yet."
