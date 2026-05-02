@@ -22546,7 +22546,7 @@ function Gz() {
             /* @__PURE__ */ v.jsx(os, { to: `/${l.deploymentId}/recipe`, className: nz, children: "← Back to recipe" }),
             /* @__PURE__ */ v.jsx("span", { className: az, children: "·" })
           ] }) : null,
-          /* @__PURE__ */ v.jsx("span", { children: "Run detail" })
+          /* @__PURE__ */ v.jsx("span", { children: "EmotionTTS · Run detail" })
         ] }),
         /* @__PURE__ */ v.jsxs("div", { className: iz, children: [
           /* @__PURE__ */ v.jsxs("h1", { className: lz, children: [
@@ -22732,8 +22732,8 @@ function Qz(t) {
 function Iz(t) {
   return t instanceof ki ? `${t.category}: ${t.message}` : t instanceof Error ? t.message : "Unexpected error";
 }
-var Zz = "pcphqj2", Jz = "pcphqj3", Wz = "pcphqj4", eO = "pcphqj5", tO = "pcphqj6", nO = "pcphqj7", aO = "pcphqj8", iO = "pcphqj9", eb = "pcphqja", lO = "pcphqjb", tb = "pcphqjc", rO = "pcphqjd", sO = "pcphqje", oO = "pcphqjf pcphqje", uO = "pcphqjg", cO = "pcphqjh", fO = "pcphqji", dO = "pcphqjj", hO = "pcphqjk pcphqjj", mO = "pcphqjl pcphqjj", pO = "pcphqjm pcphqjj", yO = "pcphqjn", Sd = "pcphqjo", xd = "pcphqjp", gO = "pcphqjq", vO = "pcphqjr", bO = "pcphqjs", SO = "pcphqjt", xO = "pcphqju";
-function EO() {
+var Zz = "pcphqj2", Jz = "pcphqj3", Wz = "pcphqj4", eO = "pcphqj5", tO = "pcphqj6", nO = "pcphqj7", aO = "pcphqj8", iO = "pcphqj9", eb = "pcphqja", lO = "pcphqjb", tb = "pcphqjc", rO = "pcphqjd", sO = "pcphqje", oO = "pcphqjf pcphqje", uO = "pcphqjg", cO = "pcphqjh", fO = "pcphqji", dO = "pcphqjj", hO = "pcphqjk pcphqjj", mO = "pcphqjl pcphqjj", pO = "pcphqjm pcphqjj", yO = "pcphqjn", Sd = "pcphqjo", xd = "pcphqjp", gO = "pcphqjq", vO = "pcphqjr", bO = "pcphqjs", SO = "pcphqjt", xO = "pcphqju", EO = "pcphqjv";
+function TO() {
   const [t, a] = x.useState(null), [l, s] = x.useState(null);
   return x.useEffect(() => {
     let o = !1;
@@ -22752,48 +22752,51 @@ function EO() {
     };
   }, []), /* @__PURE__ */ v.jsx("main", { className: Zz, children: /* @__PURE__ */ v.jsxs("div", { className: Jz, children: [
     /* @__PURE__ */ v.jsxs("header", { className: Wz, children: [
-      /* @__PURE__ */ v.jsx("p", { className: eO, children: "Runtime" }),
+      /* @__PURE__ */ v.jsx("p", { className: eO, children: "EmotionTTS · Runtime queue" }),
       /* @__PURE__ */ v.jsxs("div", { className: tO, children: [
         /* @__PURE__ */ v.jsx("h1", { className: nO, children: "Queue" }),
         /* @__PURE__ */ v.jsx("span", { className: aO, children: "live · 3 s" })
       ] }),
       /* @__PURE__ */ v.jsx("p", { className: iO, children: "Work in flight on this host's backend lease. Position 1 is running now; the rest are waiting for GPU. Polls every three seconds." })
     ] }),
-    l ? /* @__PURE__ */ v.jsx("section", { className: xO, role: "alert", children: l }) : t === null ? null : t.length === 0 ? /* @__PURE__ */ v.jsx("section", { className: eb, children: /* @__PURE__ */ v.jsxs("div", { className: gO, children: [
-      /* @__PURE__ */ v.jsx("span", { className: vO, children: "○" }),
-      /* @__PURE__ */ v.jsx("p", { className: bO, children: "Queue is quiet" }),
-      /* @__PURE__ */ v.jsx("p", { className: SO, children: "No runs are pending. Start a synthesis from a deployment's recipe surface." })
-    ] }) }) : /* @__PURE__ */ v.jsx("section", { className: eb, "aria-label": "Queued runs", children: /* @__PURE__ */ v.jsx("ul", { className: lO, children: t.map((o) => {
-      const c = o.position === 1;
-      return /* @__PURE__ */ v.jsxs(
-        "li",
-        {
-          className: c ? `${tb} ${rO}` : tb,
-          children: [
-            /* @__PURE__ */ v.jsx("span", { className: c ? oO : sO, children: o.position }),
-            /* @__PURE__ */ v.jsxs("span", { className: uO, children: [
-              /* @__PURE__ */ v.jsx("span", { className: cO, children: o.deploymentName ?? o.deploymentId }),
-              /* @__PURE__ */ v.jsx("span", { className: fO, children: o.runId })
-            ] }),
-            /* @__PURE__ */ v.jsx("span", { className: TO(o.kind), children: wO(o.kind) }),
-            /* @__PURE__ */ v.jsx("span", { className: yO, children: o.etaSeconds !== void 0 && o.etaSeconds !== null ? /* @__PURE__ */ v.jsxs(v.Fragment, { children: [
-              /* @__PURE__ */ v.jsx("span", { className: Sd, children: RO(o.etaSeconds) }),
-              /* @__PURE__ */ v.jsx("span", { className: xd, children: "eta" })
-            ] }) : o.utteranceTotal !== void 0 && o.utteranceTotal !== null ? /* @__PURE__ */ v.jsxs(v.Fragment, { children: [
-              /* @__PURE__ */ v.jsx("span", { className: Sd, children: o.utteranceTotal }),
-              /* @__PURE__ */ v.jsx("span", { className: xd, children: "lines" })
-            ] }) : /* @__PURE__ */ v.jsxs(v.Fragment, { children: [
-              /* @__PURE__ */ v.jsx("span", { className: Sd, children: "—" }),
-              /* @__PURE__ */ v.jsx("span", { className: xd, children: "pending" })
-            ] }) })
-          ]
-        },
-        o.runId
-      );
-    }) }) })
+    l ? /* @__PURE__ */ v.jsx("section", { className: EO, role: "alert", children: l }) : t === null ? null : t.length === 0 ? /* @__PURE__ */ v.jsx("section", { className: eb, children: /* @__PURE__ */ v.jsxs("div", { className: gO, children: [
+      /* @__PURE__ */ v.jsx("span", { className: vO, "aria-hidden": "true", children: "0" }),
+      /* @__PURE__ */ v.jsx("p", { className: bO, children: "Queue is quiet." }),
+      /* @__PURE__ */ v.jsx("p", { className: SO, children: "Start a synthesis from a deployment's recipe surface." })
+    ] }) }) : /* @__PURE__ */ v.jsxs("section", { className: eb, "aria-label": "Queued runs", children: [
+      /* @__PURE__ */ v.jsx("h2", { className: xO, children: "01 / In flight" }),
+      /* @__PURE__ */ v.jsx("ul", { className: lO, children: t.map((o) => {
+        const c = o.position === 1;
+        return /* @__PURE__ */ v.jsxs(
+          "li",
+          {
+            className: c ? `${tb} ${rO}` : tb,
+            children: [
+              /* @__PURE__ */ v.jsx("span", { className: c ? oO : sO, children: o.position }),
+              /* @__PURE__ */ v.jsxs("span", { className: uO, children: [
+                /* @__PURE__ */ v.jsx("span", { className: cO, children: o.deploymentName ?? o.deploymentId }),
+                /* @__PURE__ */ v.jsx("span", { className: fO, children: o.runId })
+              ] }),
+              /* @__PURE__ */ v.jsx("span", { className: wO(o.kind), children: RO(o.kind) }),
+              /* @__PURE__ */ v.jsx("span", { className: yO, children: o.etaSeconds !== void 0 && o.etaSeconds !== null ? /* @__PURE__ */ v.jsxs(v.Fragment, { children: [
+                /* @__PURE__ */ v.jsx("span", { className: Sd, children: CO(o.etaSeconds) }),
+                /* @__PURE__ */ v.jsx("span", { className: xd, children: "eta" })
+              ] }) : o.utteranceTotal !== void 0 && o.utteranceTotal !== null ? /* @__PURE__ */ v.jsxs(v.Fragment, { children: [
+                /* @__PURE__ */ v.jsx("span", { className: Sd, children: o.utteranceTotal }),
+                /* @__PURE__ */ v.jsx("span", { className: xd, children: "lines" })
+              ] }) : /* @__PURE__ */ v.jsxs(v.Fragment, { children: [
+                /* @__PURE__ */ v.jsx("span", { className: Sd, children: "—" }),
+                /* @__PURE__ */ v.jsx("span", { className: xd, children: "pending" })
+              ] }) })
+            ]
+          },
+          o.runId
+        );
+      }) })
+    ] })
   ] }) });
 }
-function TO(t) {
+function wO(t) {
   switch (t) {
     case "batch":
       return hO;
@@ -22805,7 +22808,7 @@ function TO(t) {
       return dO;
   }
 }
-function wO(t) {
+function RO(t) {
   switch (t) {
     case "test_line":
       return "test line";
@@ -22813,12 +22816,12 @@ function wO(t) {
       return t;
   }
 }
-function RO(t) {
+function CO(t) {
   if (t < 60) return `${t}s`;
   const a = Math.floor(t / 60), l = t % 60;
   return l === 0 ? `${a}m` : `${a}m ${l}s`;
 }
-function CO() {
+function MO() {
   const { deploymentId: t, prefillCharacterName: a } = ss(), l = qi(), [s, o] = x.useState(a), [c, d] = x.useState(""), [h, p] = x.useState("none"), [m, y] = x.useState(!1), [b, S] = x.useState(null), T = x.useRef(null);
   x.useEffect(() => {
     T.current?.scrollIntoView({ behavior: "smooth", block: "center" }), T.current?.focus();
@@ -22877,45 +22880,45 @@ function CO() {
     ] })
   ] });
 }
-var MO = "_1oor31e0", AO = "_1oor31e1", jO = "_1oor31e2", DO = "_1oor31e3", NO = "_1oor31e4", zO = "_1oor31e5", OO = "_1oor31e6", _O = "_1oor31e7", LO = "_1oor31e8", UO = "_1oor31e9";
-const VO = 8;
-function BO(t) {
+var AO = "_1oor31e0", jO = "_1oor31e1", DO = "_1oor31e2", NO = "_1oor31e3", zO = "_1oor31e4", OO = "_1oor31e5", _O = "_1oor31e6", LO = "_1oor31e7", UO = "_1oor31e8", VO = "_1oor31e9";
+const BO = 8;
+function HO(t) {
   const { entries: a, loading: l, error: s } = t;
-  return /* @__PURE__ */ v.jsxs("div", { className: MO, "aria-busy": !!l, children: [
-    s && /* @__PURE__ */ v.jsx("div", { className: LO, role: "alert", children: s }),
-    l && !s && /* @__PURE__ */ v.jsx("div", { className: UO, "aria-live": "polite", children: "Loading edit history…" }),
-    !l && !s && a.length === 0 && /* @__PURE__ */ v.jsx("div", { className: _O, children: "No edits yet" }),
-    !l && !s && a.length > 0 && /* @__PURE__ */ v.jsx("ul", { className: AO, children: a.map((o) => /* @__PURE__ */ v.jsxs("li", { className: jO, children: [
-      /* @__PURE__ */ v.jsx("span", { className: DO, children: qO(o.recorded_at) }),
-      /* @__PURE__ */ v.jsx("span", { className: NO, children: o.operation_count === 0 ? "cleared" : `${o.operation_count} op${o.operation_count === 1 ? "" : "s"}` }),
-      /* @__PURE__ */ v.jsx("span", { className: zO, title: o.digest_after, children: HO(o.digest_after) }),
-      /* @__PURE__ */ v.jsx("span", { className: OO, children: o.actor })
+  return /* @__PURE__ */ v.jsxs("div", { className: AO, "aria-busy": !!l, children: [
+    s && /* @__PURE__ */ v.jsx("div", { className: UO, role: "alert", children: s }),
+    l && !s && /* @__PURE__ */ v.jsx("div", { className: VO, "aria-live": "polite", children: "Loading edit history…" }),
+    !l && !s && a.length === 0 && /* @__PURE__ */ v.jsx("div", { className: LO, children: "No edits yet" }),
+    !l && !s && a.length > 0 && /* @__PURE__ */ v.jsx("ul", { className: jO, children: a.map((o) => /* @__PURE__ */ v.jsxs("li", { className: DO, children: [
+      /* @__PURE__ */ v.jsx("span", { className: NO, children: kO(o.recorded_at) }),
+      /* @__PURE__ */ v.jsx("span", { className: zO, children: o.operation_count === 0 ? "cleared" : `${o.operation_count} op${o.operation_count === 1 ? "" : "s"}` }),
+      /* @__PURE__ */ v.jsx("span", { className: OO, title: o.digest_after, children: qO(o.digest_after) }),
+      /* @__PURE__ */ v.jsx("span", { className: _O, children: o.actor })
     ] }, o.entry_id)) })
   ] });
 }
-function HO(t) {
-  return t ? `${t.slice(0, VO)}…` : "—";
-}
 function qO(t) {
+  return t ? `${t.slice(0, BO)}…` : "—";
+}
+function kO(t) {
   const a = new Date(t);
   return Number.isNaN(a.getTime()) ? t : a.toLocaleString();
 }
-var nb = "_1c63kaw0", kO = "_1c63kaw1", PO = "_1c63kaw2", YO = "_1c63kaw3", GO = "_1c63kaw4", FO = "_1c63kaw5", $O = "_1c63kaw6", XO = "_1c63kaw7";
-function KO({ chain: t, onRemoveOp: a }) {
-  return t.ops.length === 0 ? /* @__PURE__ */ v.jsx("div", { className: nb, "data-testid": "edit-chain-list-empty", children: /* @__PURE__ */ v.jsx("span", { className: kO, children: "No edits yet" }) }) : /* @__PURE__ */ v.jsx("ol", { className: nb, "data-testid": "edit-chain-list", children: t.ops.map((l, s) => /* @__PURE__ */ v.jsxs("li", { className: PO, children: [
-    /* @__PURE__ */ v.jsxs("span", { className: YO, "aria-hidden": "true", children: [
+var nb = "_1c63kaw0", PO = "_1c63kaw1", YO = "_1c63kaw2", GO = "_1c63kaw3", FO = "_1c63kaw4", $O = "_1c63kaw5", XO = "_1c63kaw6", KO = "_1c63kaw7";
+function QO({ chain: t, onRemoveOp: a }) {
+  return t.ops.length === 0 ? /* @__PURE__ */ v.jsx("div", { className: nb, "data-testid": "edit-chain-list-empty", children: /* @__PURE__ */ v.jsx("span", { className: PO, children: "No edits yet" }) }) : /* @__PURE__ */ v.jsx("ol", { className: nb, "data-testid": "edit-chain-list", children: t.ops.map((l, s) => /* @__PURE__ */ v.jsxs("li", { className: YO, children: [
+    /* @__PURE__ */ v.jsxs("span", { className: GO, "aria-hidden": "true", children: [
       s + 1,
       "."
     ] }),
-    /* @__PURE__ */ v.jsxs("span", { className: GO, children: [
-      /* @__PURE__ */ v.jsx("span", { className: FO, children: ab(l) }),
-      /* @__PURE__ */ v.jsx("span", { className: $O, children: QO(l) })
+    /* @__PURE__ */ v.jsxs("span", { className: FO, children: [
+      /* @__PURE__ */ v.jsx("span", { className: $O, children: ab(l) }),
+      /* @__PURE__ */ v.jsx("span", { className: XO, children: IO(l) })
     ] }),
     /* @__PURE__ */ v.jsx(
       "button",
       {
         type: "button",
-        className: XO,
+        className: KO,
         onClick: () => a(l.id),
         "aria-label": `Remove ${ab(l)} (position ${s + 1})`,
         title: "Remove operation",
@@ -22942,7 +22945,7 @@ function ab(t) {
       return "Mute";
   }
 }
-function QO(t) {
+function IO(t) {
   switch (t.mode) {
     case "trim":
     case "crop":
@@ -22961,11 +22964,11 @@ function QO(t) {
 function ib(t) {
   return !Number.isFinite(t) || t < 0 ? "0.00s" : `${(t / 1e3).toFixed(2)}s`;
 }
-var IO = "_1o3ytop0", ZO = "_1o3ytop1", JO = "_1o3ytop2", WO = "_1o3ytop3", Ed = "_1o3ytop4", e3 = "_1o3ytop5", t3 = "_1o3ytop6", lb = "_1o3ytop7", n3 = "_1o3ytop8", a3 = "_1o3ytope", i3 = "_1o3ytopf", l3 = "_1o3ytopg", r3 = "_1o3ytoph", s3 = "_1o3ytopi", o3 = "_1o3ytopj", u3 = "_1o3ytopk", c3 = "_1o3ytopl", f3 = "_1o3ytopm", d3 = "_1o3ytopn", h3 = "_1o3ytopo", m3 = "_1o3ytopp";
+var ZO = "_1o3ytop0", JO = "_1o3ytop1", WO = "_1o3ytop2", e3 = "_1o3ytop3", Ed = "_1o3ytop4", t3 = "_1o3ytop5", n3 = "_1o3ytop6", lb = "_1o3ytop7", a3 = "_1o3ytop8", i3 = "_1o3ytope", l3 = "_1o3ytopf", r3 = "_1o3ytopg", s3 = "_1o3ytoph", o3 = "_1o3ytopi", u3 = "_1o3ytopj", c3 = "_1o3ytopk", f3 = "_1o3ytopl", d3 = "_1o3ytopm", h3 = "_1o3ytopn", m3 = "_1o3ytopo", p3 = "_1o3ytopp";
 const rb = -16;
-function p3(t) {
+function y3(t) {
   const { voiceAsset: a, deploymentId: l, onChainPersisted: s, onError: o } = t, c = a.durationMs ?? 0, d = x.useMemo(
-    () => y3(a.audioArtifactRef),
+    () => g3(a.audioArtifactRef),
     [a.audioArtifactRef]
   ), [h, p] = x.useState(() => Td(c)), [m, y] = x.useState(null), [b, S] = x.useState(null), [T, w] = x.useState(!1), [R, D] = x.useState(!1), [O, B] = x.useState(!1), [L, V] = x.useState(null), [X, K] = x.useState([]), [ee, A] = x.useState([]), [Q, te] = x.useState(!1), [ce, J] = x.useState(null), [P, le] = x.useState(0), Z = x.useRef(null), z = x.useRef(null), ne = x.useRef(null), se = x.useRef(null), ue = x.useRef(null), Re = x.useRef(0), j = x.useMemo(
     () => h.ops.some((be) => be.mode === "normalize"),
@@ -23112,13 +23115,13 @@ function p3(t) {
       )
     );
   }, []);
-  return /* @__PURE__ */ v.jsxs("div", { className: IO, children: [
-    /* @__PURE__ */ v.jsxs("header", { className: ZO, children: [
-      /* @__PURE__ */ v.jsxs("h3", { className: JO, children: [
+  return /* @__PURE__ */ v.jsxs("div", { className: ZO, children: [
+    /* @__PURE__ */ v.jsxs("header", { className: JO, children: [
+      /* @__PURE__ */ v.jsxs("h3", { className: WO, children: [
         "Edit · ",
         a.displayName
       ] }),
-      /* @__PURE__ */ v.jsxs("span", { className: WO, children: [
+      /* @__PURE__ */ v.jsxs("span", { className: e3, children: [
         "Source · ",
         Yo(c)
       ] })
@@ -23136,7 +23139,7 @@ function p3(t) {
     ),
     /* @__PURE__ */ v.jsxs("div", { className: Ed, children: [
       /* @__PURE__ */ v.jsx("span", { children: "Trim region" }),
-      /* @__PURE__ */ v.jsxs("span", { className: e3, children: [
+      /* @__PURE__ */ v.jsxs("span", { className: t3, children: [
         Yo(oe),
         " → ",
         Yo(xe),
@@ -23144,18 +23147,18 @@ function p3(t) {
         Yo(xe - oe)
       ] })
     ] }),
-    /* @__PURE__ */ v.jsxs("div", { className: t3, children: [
+    /* @__PURE__ */ v.jsxs("div", { className: n3, children: [
       /* @__PURE__ */ v.jsxs("div", { className: lb, children: [
         /* @__PURE__ */ v.jsxs("span", { className: Ed, children: [
           /* @__PURE__ */ v.jsx("span", { children: "Normalize loudness" }),
-          j && ie && /* @__PURE__ */ v.jsxs("span", { className: u3, children: [
+          j && ie && /* @__PURE__ */ v.jsxs("span", { className: c3, children: [
             "target ",
             ie.target_lufs.toFixed(1),
             " LUFS",
             L !== null && ` · measured ${L.toFixed(1)}`
           ] })
         ] }),
-        /* @__PURE__ */ v.jsxs("label", { className: n3, children: [
+        /* @__PURE__ */ v.jsxs("label", { className: a3, children: [
           /* @__PURE__ */ v.jsx(
             "input",
             {
@@ -23175,7 +23178,7 @@ function p3(t) {
           "input",
           {
             type: "range",
-            className: f3,
+            className: d3,
             min: -30,
             max: -6,
             step: 0.5,
@@ -23190,15 +23193,15 @@ function p3(t) {
           "Operations · ",
           h.ops.length
         ] }),
-        /* @__PURE__ */ v.jsx(KO, { chain: h, onRemoveOp: In })
+        /* @__PURE__ */ v.jsx(QO, { chain: h, onRemoveOp: In })
       ] })
     ] }),
-    /* @__PURE__ */ v.jsxs("div", { className: a3, children: [
+    /* @__PURE__ */ v.jsxs("div", { className: i3, children: [
       /* @__PURE__ */ v.jsx(
         "button",
         {
           type: "button",
-          className: l3,
+          className: r3,
           onClick: () => void pt(),
           disabled: R || T,
           children: R ? "Rendering preview…" : "Preview"
@@ -23208,7 +23211,7 @@ function p3(t) {
         "button",
         {
           type: "button",
-          className: i3,
+          className: l3,
           onClick: () => void Bt(),
           disabled: T || R,
           children: T ? "Applying…" : "Apply"
@@ -23218,7 +23221,7 @@ function p3(t) {
         "button",
         {
           type: "button",
-          className: r3,
+          className: s3,
           onClick: Ea,
           disabled: T || R,
           children: "Reset"
@@ -23228,7 +23231,7 @@ function p3(t) {
         "button",
         {
           type: "button",
-          className: s3,
+          className: o3,
           onClick: xa,
           disabled: T || R,
           "data-testid": "undo-last-removal",
@@ -23243,7 +23246,7 @@ function p3(t) {
       O && /* @__PURE__ */ v.jsx(
         "span",
         {
-          className: m3,
+          className: p3,
           "data-testid": "preview-consumed-hint",
           role: "note",
           "aria-live": "polite",
@@ -23257,18 +23260,18 @@ function p3(t) {
         ref: Z,
         src: b,
         controls: !0,
-        className: c3,
+        className: f3,
         "aria-label": "Edit preview"
       }
     ),
-    m && /* @__PURE__ */ v.jsx("div", { className: o3, role: "alert", "aria-live": "polite", children: m }),
-    /* @__PURE__ */ v.jsxs("details", { className: d3, children: [
-      /* @__PURE__ */ v.jsxs("summary", { className: h3, children: [
+    m && /* @__PURE__ */ v.jsx("div", { className: u3, role: "alert", "aria-live": "polite", children: m }),
+    /* @__PURE__ */ v.jsxs("details", { className: h3, children: [
+      /* @__PURE__ */ v.jsxs("summary", { className: m3, children: [
         "Edit history",
         ee.length > 0 ? ` · ${ee.length}` : ""
       ] }),
       /* @__PURE__ */ v.jsx(
-        BO,
+        HO,
         {
           entries: ee,
           loading: Q,
@@ -23298,12 +23301,12 @@ function sb(t, a, l) {
 function Yo(t) {
   return !Number.isFinite(t) || t < 0 ? "0.0s" : t < 1e3 ? `${Math.round(t)} ms` : `${(Math.round(t / 100) / 10).toFixed(1)}s`;
 }
-function y3(t) {
+function g3(t) {
   return t.startsWith("http://") || t.startsWith("https://") || t.startsWith("/") ? t : `/api/v1/artifacts/${encodeURIComponent(t)}`;
 }
-var g3 = "go9vi12", v3 = "go9vi13", b3 = "go9vi14", S3 = "go9vi15", x3 = "go9vi16", E3 = "go9vi17", T3 = "go9vi18", w3 = "go9vi19", R3 = "go9vi1a go9vi19", C3 = "go9vi1b", M3 = "go9vi1c", A3 = "go9vi1d", j3 = "go9vi1e", D3 = "go9vi1f", N3 = "go9vi1g", z3 = "go9vi1h", O3 = "go9vi1i", _3 = "go9vi1j", L3 = "go9vi1k", yu = "go9vi1l", Di = "go9vi1m", kr = "go9vi1n", Ol = "go9vi1o", U3 = "go9vi1p go9vi1o", V3 = "go9vi1q", B3 = "go9vi1r go9vi1q", H3 = "go9vi1s go9vi1q", q3 = "go9vi1t", k3 = "go9vi1u", P3 = "go9vi1v", Y3 = "go9vi1w", G3 = "go9vi1x", F3 = "go9vi1y", X1 = "go9vi1z", K1 = "go9vi110", ob = "go9vi111 go9vi110", $3 = "go9vi112 go9vi110", X3 = "go9vi113", K3 = "go9vi114", Q3 = "go9vi115", I3 = "go9vi116 go9vi1o", Z3 = "go9vi117", J3 = "go9vi118", W3 = "go9vi119", e_ = "go9vi11a", t_ = "go9vi11b", n_ = "go9vi11c", a_ = "go9vi11d", i_ = "go9vi11e", l_ = "go9vi11f", r_ = "go9vi11g", s_ = "go9vi11h";
-const o_ = ["none", "audio_ref", "vector_preset", "qwen_template"];
-function u_() {
+var v3 = "go9vi12", b3 = "go9vi13", S3 = "go9vi14", x3 = "go9vi15", E3 = "go9vi16", T3 = "go9vi17", w3 = "go9vi18", R3 = "go9vi19", C3 = "go9vi1a go9vi19", M3 = "go9vi1b", A3 = "go9vi1c", j3 = "go9vi1d", D3 = "go9vi1e", N3 = "go9vi1f", z3 = "go9vi1g", O3 = "go9vi1h", _3 = "go9vi1i", L3 = "go9vi1j", U3 = "go9vi1k", yu = "go9vi1l", Di = "go9vi1m", kr = "go9vi1n", Ol = "go9vi1o", V3 = "go9vi1p go9vi1o", B3 = "go9vi1q", H3 = "go9vi1r go9vi1q", q3 = "go9vi1s go9vi1q", k3 = "go9vi1t", P3 = "go9vi1u", Y3 = "go9vi1v", G3 = "go9vi1w", F3 = "go9vi1x", $3 = "go9vi1y", X1 = "go9vi1z", K1 = "go9vi110", ob = "go9vi111 go9vi110", X3 = "go9vi112 go9vi110", K3 = "go9vi113", Q3 = "go9vi114", I3 = "go9vi115", Z3 = "go9vi116 go9vi1o", J3 = "go9vi117", W3 = "go9vi118", e_ = "go9vi119", t_ = "go9vi11a", n_ = "go9vi11b", a_ = "go9vi11c", i_ = "go9vi11d", l_ = "go9vi11e", r_ = "go9vi11f", s_ = "go9vi11g", o_ = "go9vi11h";
+const u_ = ["none", "audio_ref", "vector_preset", "qwen_template"];
+function c_() {
   const { deployment: t, mappings: a, voiceAssets: l } = ss(), [s, o] = x.useState(a), [c, d] = x.useState(l), [h, p] = x.useState(
     a[0]?.mappingId ?? null
   ), [m, y] = x.useState(""), [b, S] = x.useState(null), [T, w] = x.useState(null), R = x.useMemo(() => {
@@ -23355,7 +23358,7 @@ function u_() {
       return;
     }
     try {
-      const le = p_(s), Z = await Gb(t.deploymentId, {
+      const le = y_(s), Z = await Gb(t.deploymentId, {
         characterName: le,
         speakerVoiceAssetId: P.voiceAssetId,
         defaultEmotionMode: "none"
@@ -23384,7 +23387,7 @@ function u_() {
   ), A = x.useCallback(async () => {
     try {
       const P = await qR(t.deploymentId);
-      x_(P, `${t.deploymentId}-mappings.json`), w("Mappings exported to JSON.");
+      E_(P, `${t.deploymentId}-mappings.json`), w("Mappings exported to JSON.");
     } catch (P) {
       S(Ni(P));
     }
@@ -23428,12 +23431,12 @@ function u_() {
     },
     [t.deploymentId, O]
   );
-  return /* @__PURE__ */ v.jsxs("div", { className: g3, children: [
-    /* @__PURE__ */ v.jsxs("aside", { className: v3, "aria-label": "Character mappings", children: [
-      /* @__PURE__ */ v.jsxs("header", { className: b3, children: [
+  return /* @__PURE__ */ v.jsxs("div", { className: v3, children: [
+    /* @__PURE__ */ v.jsxs("aside", { className: b3, "aria-label": "Character mappings", children: [
+      /* @__PURE__ */ v.jsxs("header", { className: S3, children: [
         /* @__PURE__ */ v.jsxs("div", { children: [
-          /* @__PURE__ */ v.jsx("h1", { className: S3, children: "Mappings" }),
-          /* @__PURE__ */ v.jsxs("span", { className: x3, children: [
+          /* @__PURE__ */ v.jsx("h1", { className: x3, children: "Mappings" }),
+          /* @__PURE__ */ v.jsxs("span", { className: E3, children: [
             s.length,
             " active · ",
             c.length,
@@ -23447,29 +23450,29 @@ function u_() {
         "input",
         {
           type: "search",
-          className: E3,
+          className: T3,
           placeholder: "Search characters",
           value: m,
           onChange: (P) => y(P.currentTarget.value),
           "aria-label": "Search characters"
         }
       ),
-      /* @__PURE__ */ v.jsx(m_, { onExport: A, onImport: Q }),
-      /* @__PURE__ */ v.jsx("div", { className: T3, children: D.length === 0 ? /* @__PURE__ */ v.jsx("div", { className: D3, children: "No mappings yet. Click Add to create one." }) : D.map((P) => {
+      /* @__PURE__ */ v.jsx(p_, { onExport: A, onImport: Q }),
+      /* @__PURE__ */ v.jsx("div", { className: w3, children: D.length === 0 ? /* @__PURE__ */ v.jsx("div", { className: N3, children: "No mappings yet. Click Add to create one." }) : D.map((P) => {
         const le = R.get(P.speakerVoiceAssetId), Z = P.mappingId === h;
         return /* @__PURE__ */ v.jsxs(
           "button",
           {
             type: "button",
-            className: Z ? R3 : w3,
+            className: Z ? C3 : R3,
             onClick: () => p(P.mappingId),
             "aria-pressed": Z,
             "data-testid": "mapping-row",
             children: [
-              /* @__PURE__ */ v.jsx("span", { className: C3, "aria-hidden": "true", children: y_(P.characterName) }),
-              /* @__PURE__ */ v.jsxs("span", { className: M3, children: [
-                /* @__PURE__ */ v.jsx("span", { className: A3, children: P.characterName }),
-                /* @__PURE__ */ v.jsxs("span", { className: j3, children: [
+              /* @__PURE__ */ v.jsx("span", { className: M3, "aria-hidden": "true", children: g_(P.characterName) }),
+              /* @__PURE__ */ v.jsxs("span", { className: A3, children: [
+                /* @__PURE__ */ v.jsx("span", { className: j3, children: P.characterName }),
+                /* @__PURE__ */ v.jsxs("span", { className: D3, children: [
                   P.defaultEmotionMode,
                   " · ",
                   le?.displayName ?? "no voice"
@@ -23481,11 +23484,11 @@ function u_() {
         );
       }) })
     ] }),
-    /* @__PURE__ */ v.jsxs("section", { className: N3, "aria-label": "Mapping detail", children: [
+    /* @__PURE__ */ v.jsxs("section", { className: z3, "aria-label": "Mapping detail", children: [
       /* @__PURE__ */ v.jsx(M1, { features: Y1, children: /* @__PURE__ */ v.jsx(F2, { children: T && /* @__PURE__ */ v.jsx(
         L1.div,
         {
-          className: K3,
+          className: Q3,
           initial: { opacity: 0, y: -6 },
           animate: { opacity: 1, y: 0 },
           exit: { opacity: 0, y: -6 },
@@ -23494,9 +23497,9 @@ function u_() {
         },
         T
       ) }) }),
-      b && /* @__PURE__ */ v.jsx("div", { className: X3, role: "alert", children: b }),
+      b && /* @__PURE__ */ v.jsx("div", { className: K3, role: "alert", children: b }),
       O ? /* @__PURE__ */ v.jsx(
-        f_,
+        d_,
         {
           deploymentId: t.deploymentId,
           mapping: O,
@@ -23539,7 +23542,7 @@ function u_() {
           onEditError: ce
         }
       ) : /* @__PURE__ */ v.jsx(
-        c_,
+        f_,
         {
           voiceCount: c.length,
           onUploadVoice: async (P) => {
@@ -23550,11 +23553,11 @@ function u_() {
     ] })
   ] });
 }
-function c_({ voiceCount: t, onUploadVoice: a }) {
-  return t === 0 ? /* @__PURE__ */ v.jsxs("div", { className: `${yu} ${W3}`, children: [
-    /* @__PURE__ */ v.jsxs("div", { className: e_, children: [
-      /* @__PURE__ */ v.jsx("h2", { className: t_, children: "Upload your first voice" }),
-      /* @__PURE__ */ v.jsxs("p", { className: n_, children: [
+function f_({ voiceCount: t, onUploadVoice: a }) {
+  return t === 0 ? /* @__PURE__ */ v.jsxs("div", { className: `${yu} ${e_}`, children: [
+    /* @__PURE__ */ v.jsxs("div", { className: t_, children: [
+      /* @__PURE__ */ v.jsx("h2", { className: n_, children: "Upload your first voice" }),
+      /* @__PURE__ */ v.jsxs("p", { className: a_, children: [
         "EmotionTTS clones the voice from a short audio sample (5–30 s clean mp3 or wav). Drop one in below, then click ",
         /* @__PURE__ */ v.jsx("strong", { children: "+ Add" }),
         " on the left to map a character to it."
@@ -23567,13 +23570,13 @@ function c_({ voiceCount: t, onUploadVoice: a }) {
         onFile: async (l) => (await a(l), null)
       }
     )
-  ] }) : /* @__PURE__ */ v.jsx("div", { className: `${yu} ${a_}`, children: /* @__PURE__ */ v.jsxs("p", { className: i_, children: [
+  ] }) : /* @__PURE__ */ v.jsx("div", { className: `${yu} ${i_}`, children: /* @__PURE__ */ v.jsxs("p", { className: l_, children: [
     "Select a character on the left, or click ",
     /* @__PURE__ */ v.jsx("strong", { children: "+ Add" }),
     " to create one."
   ] }) });
 }
-function f_(t) {
+function d_(t) {
   const { mapping: a, voiceAssets: l } = t, s = l.find((w) => w.voiceAssetId === a.speakerVoiceAssetId) ?? null, o = l.find((w) => w.voiceAssetId === a.defaultEmotionVoiceAssetId) ?? null, [c, d] = x.useState(""), [h, p] = x.useState("mp3"), [m, y] = x.useState("idle"), [b, S] = x.useState(null), T = x.useCallback(async () => {
     y("running"), S(null);
     const w = await t.onTestLine(c, h);
@@ -23602,19 +23605,19 @@ function f_(t) {
     y("error"), S("test-line timed out after 30s");
   }, [t.onTestLine, t.deploymentId, c, h]);
   return /* @__PURE__ */ v.jsxs(v.Fragment, { children: [
-    /* @__PURE__ */ v.jsxs("header", { className: z3, children: [
+    /* @__PURE__ */ v.jsxs("header", { className: O3, children: [
       /* @__PURE__ */ v.jsxs("div", { children: [
-        /* @__PURE__ */ v.jsx("span", { className: _3, children: "Character" }),
-        /* @__PURE__ */ v.jsx("h2", { className: O3, children: a.characterName })
+        /* @__PURE__ */ v.jsx("span", { className: L3, children: "Character" }),
+        /* @__PURE__ */ v.jsx("h2", { className: _3, children: a.characterName })
       ] }),
-      /* @__PURE__ */ v.jsx("div", { className: X1, children: /* @__PURE__ */ v.jsx("button", { type: "button", className: $3, onClick: t.onDelete, children: "Deactivate" }) })
+      /* @__PURE__ */ v.jsx("div", { className: X1, children: /* @__PURE__ */ v.jsx("button", { type: "button", className: X3, onClick: t.onDelete, children: "Deactivate" }) })
     ] }),
-    /* @__PURE__ */ v.jsxs("div", { className: Q3, children: [
+    /* @__PURE__ */ v.jsxs("div", { className: I3, children: [
       /* @__PURE__ */ v.jsx(
         "input",
         {
           type: "text",
-          className: I3,
+          className: Z3,
           placeholder: `[${a.characterName}] This is a test of the voice.`,
           value: c,
           onChange: (w) => d(w.currentTarget.value),
@@ -23647,10 +23650,10 @@ function f_(t) {
           children: m === "running" ? "Synthesising…" : "Test this line"
         }
       ),
-      m === "done" && /* @__PURE__ */ v.jsx("span", { className: l_, children: "Synthesised — see host logs for the output file path." }),
-      m === "error" && b && /* @__PURE__ */ v.jsx("span", { className: r_, children: b })
+      m === "done" && /* @__PURE__ */ v.jsx("span", { className: r_, children: "Synthesised — see host logs for the output file path." }),
+      m === "error" && b && /* @__PURE__ */ v.jsx("span", { className: s_, children: b })
     ] }),
-    /* @__PURE__ */ v.jsxs("div", { className: L3, children: [
+    /* @__PURE__ */ v.jsxs("div", { className: U3, children: [
       /* @__PURE__ */ v.jsxs("div", { className: yu, children: [
         /* @__PURE__ */ v.jsxs("label", { className: kr, children: [
           /* @__PURE__ */ v.jsx("span", { className: Di, children: "Character name" }),
@@ -23672,7 +23675,7 @@ function f_(t) {
               className: Ol,
               value: a.defaultEmotionMode,
               onChange: (w) => t.onModeChange(w.currentTarget.value),
-              children: o_.map((w) => /* @__PURE__ */ v.jsx("option", { value: w, children: g_(w) }, w))
+              children: u_.map((w) => /* @__PURE__ */ v.jsx("option", { value: w, children: v_(w) }, w))
             }
           )
         ] }),
@@ -23685,7 +23688,7 @@ function f_(t) {
           /* @__PURE__ */ v.jsx(
             "textarea",
             {
-              className: U3,
+              className: V3,
               value: a.defaultQwenTemplate ?? "",
               onChange: (w) => t.onQwenChange(w.currentTarget.value),
               onBlur: (w) => t.onQwenBlur(w.currentTarget.value)
@@ -23735,7 +23738,7 @@ function f_(t) {
       /* @__PURE__ */ v.jsxs("div", { className: yu, children: [
         /* @__PURE__ */ v.jsx("span", { className: Di, children: "Speaker reference" }),
         /* @__PURE__ */ v.jsx(
-          d_,
+          h_,
           {
             value: a.speakerVoiceAssetId,
             voices: l,
@@ -23751,7 +23754,7 @@ function f_(t) {
           }
         ),
         s && /* @__PURE__ */ v.jsx(
-          p3,
+          y3,
           {
             voiceAsset: s,
             deploymentId: t.deploymentId,
@@ -23767,7 +23770,7 @@ function f_(t) {
     ] })
   ] });
 }
-function d_({
+function h_({
   value: t,
   voices: a,
   onChange: l
@@ -23787,22 +23790,22 @@ function d_({
   );
 }
 function ub({ voice: t }) {
-  const a = v_(t.durationMs ?? null);
+  const a = b_(t.durationMs ?? null);
   return /* @__PURE__ */ v.jsxs("div", { children: [
-    /* @__PURE__ */ v.jsxs("div", { className: q3, children: [
+    /* @__PURE__ */ v.jsxs("div", { className: k3, children: [
       /* @__PURE__ */ v.jsx("span", { children: t.displayName }),
       /* @__PURE__ */ v.jsx("span", { children: t.kind }),
-      t.durationMs != null && /* @__PURE__ */ v.jsx("span", { children: b_(t.durationMs) }),
+      t.durationMs != null && /* @__PURE__ */ v.jsx("span", { children: S_(t.durationMs) }),
       t.sampleRate && /* @__PURE__ */ v.jsxs("span", { children: [
         t.sampleRate,
         " Hz"
       ] })
     ] }),
-    t.durationMs != null && /* @__PURE__ */ v.jsxs("div", { className: k3, children: [
-      /* @__PURE__ */ v.jsx("div", { className: P3, children: /* @__PURE__ */ v.jsx(M1, { features: Y1, children: /* @__PURE__ */ v.jsx(
+    t.durationMs != null && /* @__PURE__ */ v.jsxs("div", { className: P3, children: [
+      /* @__PURE__ */ v.jsx("div", { className: Y3, children: /* @__PURE__ */ v.jsx(M1, { features: Y1, children: /* @__PURE__ */ v.jsx(
         L1.div,
         {
-          className: Y3,
+          className: G3,
           initial: { width: 0 },
           animate: {
             width: `${Math.min(100, t.durationMs / 6e4 * 100)}%`
@@ -23813,20 +23816,20 @@ function ub({ voice: t }) {
       a && /* @__PURE__ */ v.jsx(
         "span",
         {
-          className: a.level === "warn" ? G3 : F3,
+          className: a.level === "warn" ? F3 : $3,
           children: a.message
         }
       )
     ] }),
-    /* @__PURE__ */ v.jsx(h_, { seed: t.contentSha256 })
+    /* @__PURE__ */ v.jsx(m_, { seed: t.contentSha256 })
   ] });
 }
-function h_({ seed: t }) {
-  const a = x.useMemo(() => S_(t, 48), [t]);
-  return /* @__PURE__ */ v.jsx("div", { className: Z3, "aria-hidden": "true", children: a.map((l, s) => /* @__PURE__ */ v.jsx(
+function m_({ seed: t }) {
+  const a = x.useMemo(() => x_(t, 48), [t]);
+  return /* @__PURE__ */ v.jsx("div", { className: J3, "aria-hidden": "true", children: a.map((l, s) => /* @__PURE__ */ v.jsx(
     "span",
     {
-      className: J3,
+      className: W3,
       style: { height: `${Math.max(6, l * 100)}%` }
     },
     s
@@ -23850,7 +23853,7 @@ function Q1({
   return /* @__PURE__ */ v.jsxs(
     "div",
     {
-      className: o ? H3 : l ? B3 : V3,
+      className: o ? q3 : l ? H3 : B3,
       onDragOver: (p) => {
         p.preventDefault(), s(!0);
       },
@@ -23885,7 +23888,7 @@ function Q1({
     }
   );
 }
-function m_({
+function p_({
   onExport: t,
   onImport: a
 }) {
@@ -23898,7 +23901,7 @@ function m_({
         ref: o,
         type: "file",
         accept: "application/json,.json",
-        className: s_,
+        className: o_,
         "aria-hidden": "true",
         tabIndex: -1,
         onChange: async (c) => {
@@ -23930,17 +23933,17 @@ function m_({
     )
   ] });
 }
-function p_(t) {
+function y_(t) {
   const a = new Set(t.map((s) => s.characterName.toLowerCase()));
   let l = t.length + 1;
   for (; a.has(`character ${l}`); ) l += 1;
   return `Character ${l}`;
 }
-function y_(t) {
+function g_(t) {
   const a = t.trim().charAt(0);
   return a ? a.toUpperCase() : "?";
 }
-function g_(t) {
+function v_(t) {
   switch (t) {
     case "none":
       return "None";
@@ -23952,16 +23955,16 @@ function g_(t) {
       return "Qwen template";
   }
 }
-function v_(t) {
+function b_(t) {
   return t == null ? null : t < 1e3 ? { level: "danger", message: "Clip is under 1 s — IndexTTS needs more reference." } : t > 6e4 ? {
     level: "danger",
     message: "Over 60 s — IndexTTS works best with 10–30 s clips."
   } : t > 3e4 ? { level: "warn", message: "Over 30 s — consider trimming for faster encoding." } : null;
 }
-function b_(t) {
+function S_(t) {
   return t < 1e3 ? `${t} ms` : `${Math.round(t / 100) / 10}s`;
 }
-function S_(t, a) {
+function x_(t, a) {
   const l = [];
   for (let s = 0; s < a; s += 1) {
     const o = t.charCodeAt(s % t.length);
@@ -23969,14 +23972,14 @@ function S_(t, a) {
   }
   return l;
 }
-function x_(t, a) {
+function E_(t, a) {
   const l = new Blob([JSON.stringify(t, null, 2)], { type: "application/json" }), s = URL.createObjectURL(l), o = document.createElement("a");
   o.href = s, o.download = a, document.body.appendChild(o), o.click(), document.body.removeChild(o), URL.revokeObjectURL(s);
 }
 function Ni(t) {
   return t instanceof ki || t instanceof Error ? t.message : "unknown error";
 }
-function E_() {
+function T_() {
   return [
     {
       path: "/",
@@ -24024,7 +24027,7 @@ function E_() {
         ]);
         return { deployment: l, mappings: s, voiceAssets: o };
       },
-      Component: u_
+      Component: c_
     },
     {
       path: "/:deploymentId/mappings/new",
@@ -24035,11 +24038,11 @@ function E_() {
           prefillCharacterName: s.searchParams.get("character") ?? ""
         };
       },
-      Component: CO
+      Component: MO
     },
     {
       path: "/runtime/queue",
-      Component: EO
+      Component: TO
     }
   ];
 }
@@ -24049,18 +24052,18 @@ function Cl(t, a) {
     throw new Response(`Missing path parameter: ${a}`, { status: 400 });
   return l;
 }
-const Wd = "emotion-tts-app", T_ = "ext-event", cb = "emotion-tts-stylesheet", fb = ["accent", "density", "card"];
-function w_(t) {
+const Wd = "emotion-tts-app", w_ = "ext-event", cb = "emotion-tts-stylesheet", fb = ["accent", "density", "card"];
+function R_(t) {
   if (!(typeof document > "u" || !document.body))
     return document.body.dataset[t];
 }
-function R_() {
+function C_() {
   if (typeof document > "u" || document.getElementById(cb)) return;
   const t = new URL("./emotion-tts.css", import.meta.url).href, a = document.createElement("link");
   a.id = cb, a.rel = "stylesheet", a.href = t, document.head.appendChild(a);
 }
-R_();
-class C_ extends HTMLElement {
+C_();
+class M_ extends HTMLElement {
   root = null;
   ctx = null;
   observer = null;
@@ -24078,7 +24081,7 @@ class C_ extends HTMLElement {
   }
   syncTweaksFromBody() {
     for (const a of fb) {
-      const l = w_(a);
+      const l = R_(a);
       l === void 0 ? delete this.dataset[a] : this.dataset[a] !== l && (this.dataset[a] = l);
     }
   }
@@ -24096,7 +24099,7 @@ class C_ extends HTMLElement {
   }
   paint() {
     if (!this.root || !this.isConnected) return;
-    const a = this.resolveInitialEntry(), l = Zw(E_(), { initialEntries: [a] });
+    const a = this.resolveInitialEntry(), l = Zw(T_(), { initialEntries: [a] });
     this.root.render(
       /* @__PURE__ */ v.jsx(x.StrictMode, { children: /* @__PURE__ */ v.jsx(Ww, { router: l }) })
     );
@@ -24109,7 +24112,7 @@ class C_ extends HTMLElement {
   }
   emitHostEvent(a, l) {
     this.dispatchEvent(
-      new CustomEvent(T_, {
+      new CustomEvent(w_, {
         detail: { topic: a, payload: l },
         bubbles: !0,
         composed: !0
@@ -24117,11 +24120,11 @@ class C_ extends HTMLElement {
     );
   }
 }
-function M_() {
-  typeof customElements > "u" || customElements.get(Wd) || customElements.define(Wd, C_);
+function A_() {
+  typeof customElements > "u" || customElements.get(Wd) || customElements.define(Wd, M_);
 }
-typeof customElements < "u" && !customElements.get(Wd) && M_();
+typeof customElements < "u" && !customElements.get(Wd) && A_();
 export {
-  M_ as register
+  A_ as register
 };
 //# sourceMappingURL=emotion-tts.js.map

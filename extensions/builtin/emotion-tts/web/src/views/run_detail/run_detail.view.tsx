@@ -82,7 +82,7 @@ export function RunDetailView(): JSX.Element {
                 <span className={css.eyebrowSeparator}>·</span>
               </>
             ) : null}
-            <span>Run detail</span>
+            <span>EmotionTTS · Run detail</span>
           </p>
           <div className={css.titleRow}>
             <h1 className={css.title}>
