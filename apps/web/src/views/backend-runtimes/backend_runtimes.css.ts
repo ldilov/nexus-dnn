@@ -7,22 +7,6 @@ export const page = style({
   padding: "24px",
 });
 
-export const header = style({
-  display: "flex",
-  flexDirection: "column",
-  gap: "4px",
-});
-
-export const title = style({
-  fontFamily: "var(--font-headline, 'Space Grotesk', sans-serif)",
-  fontSize: "28px",
-  fontWeight: 600,
-});
-
-export const subtitle = style({
-  color: "var(--text-secondary, #a7adbb)",
-});
-
 export const groupSection = style({
   display: "flex",
   flexDirection: "column",

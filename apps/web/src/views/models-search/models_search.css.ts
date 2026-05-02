@@ -29,50 +29,6 @@ export const grid = style({
   },
 });
 
-export const hero = style({
-  display: "flex",
-  alignItems: "flex-end",
-  justifyContent: "space-between",
-  gap: "24px",
-  paddingBottom: "4px",
-});
-
-export const heroText = style({
-  display: "flex",
-  flexDirection: "column",
-  gap: "4px",
-  minWidth: 0,
-});
-
-export const heroTitle = style({
-  fontFamily: vars.font.headline,
-  fontSize: "36px",
-  lineHeight: 1.05,
-  fontWeight: 700,
-  letterSpacing: "-0.02em",
-  color: vars.color.text.primary,
-  margin: 0,
-});
-
-export const heroSubtitle = style({
-  fontFamily: vars.font.code,
-  fontSize: "11px",
-  letterSpacing: "0.14em",
-  textTransform: "uppercase",
-  color: vars.color.text.muted,
-});
-
-export const heroMeta = style({
-  display: "flex",
-  alignItems: "center",
-  gap: "12px",
-  fontFamily: vars.font.code,
-  fontSize: "11px",
-  letterSpacing: "0.1em",
-  textTransform: "uppercase",
-  color: vars.color.text.muted,
-});
-
 export const heroCount = style({
   fontFamily: vars.font.code,
   fontSize: "11px",

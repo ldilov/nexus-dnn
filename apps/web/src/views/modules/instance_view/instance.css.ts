@@ -78,43 +78,7 @@ export const backLink = style({
   },
 });
 
-// ─── Hero ──────────────────────────────────────────────────────────────────
-
-export const hero = style({
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-end",
-  gap: vars.space["2xl"],
-  flexWrap: "wrap",
-});
-
-export const heroLeft = style({
-  display: "flex",
-  flexDirection: "column",
-  gap: vars.space.lg,
-  maxWidth: "720px",
-});
-
-export const heroTitle = style({
-  fontSize: "clamp(2rem, 1.5rem + 2.5vw, 3.5rem)",
-  fontWeight: 900,
-  letterSpacing: vars.tracking.tight,
-  lineHeight: 1.05,
-  margin: 0,
-  fontFamily: vars.font.ui,
-  // Editorial gradient: bright graphite → muted. Text clip via webkit.
-  background: `linear-gradient(135deg, ${vars.color.onSurface} 0%, ${vars.color.onSurfaceVariant} 100%)`,
-  WebkitBackgroundClip: "text",
-  WebkitTextFillColor: "transparent",
-  backgroundClip: "text",
-});
-
-export const heroMeta = style({
-  display: "flex",
-  alignItems: "center",
-  gap: vars.space.lg,
-  flexWrap: "wrap",
-});
+// ─── Hero meta primitives (consumed by PageHero `meta` slot) ──────────────
 
 export const buildChip = style({
   fontFamily: vars.font.mono,
@@ -170,12 +134,6 @@ export const statusDotIdle = style({
   height: "8px",
   borderRadius: vars.radius.full,
   background: vars.color.outline,
-});
-
-export const heroActions = style({
-  display: "flex",
-  gap: vars.space.md,
-  flexWrap: "wrap",
 });
 
 export const primaryBtn = style({
