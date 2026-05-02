@@ -18,6 +18,7 @@ import {
   SkeletonGrid,
 } from "./components/SkeletonGrid";
 import { SortMenu } from "./components/SortMenu";
+import { PageHero } from "../../components/base/page_hero";
 import * as s from "./models_search.css";
 
 export interface ModelsSearchUIProps {
@@ -94,18 +95,15 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
 
   return (
     <div className={s.page}>
-      <header className={s.hero}>
-        <div className={s.heroText}>
-          <h1 className={s.heroTitle}>Model Foundry</h1>
-          <span className={s.heroSubtitle}>
-            Discover and quantize state-of-the-art architectures
+      <PageHero
+        eyebrow="Operator surface · Model registry"
+        title="Model Foundry"
+        meta={
+          <span>
+            Showing <span className={s.heroCount}>{totalLabel(page.total_results)}</span>
           </span>
-        </div>
-        <div className={s.heroMeta}>
-          <span>Showing</span>
-          <span className={s.heroCount}>{totalLabel(page.total_results)}</span>
-        </div>
-      </header>
+        }
+      />
 
       <FilterBar
         query={query}
