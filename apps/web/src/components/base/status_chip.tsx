@@ -14,7 +14,9 @@ export function StatusChip({ kind, label, pulse = false }: StatusChipProps) {
   const dotCls = [chipDot, pulse ? chipDotPulse : ""].filter(Boolean).join(" ");
   return (
     <span className={cls}>
-      {kind !== "ai" ? <span className={dotCls} aria-hidden="true" /> : null}
+      {kind !== "ai" ? (
+        <span className={dotCls} aria-hidden="true" data-testid="status-chip-dot" />
+      ) : null}
       <span>{label}</span>
     </span>
   );
