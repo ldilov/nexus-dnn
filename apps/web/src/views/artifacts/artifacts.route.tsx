@@ -8,7 +8,7 @@ export function ArtifactsPlaceholderRoute() {
       <PageHero
         eyebrow="Operator surface · Artifact browser"
         title="Artifacts"
-        meta={<span>Outputs emitted by deployment runs — images, audio, text, JSON blobs — filtered to what's reachable now.</span>}
+        lede="Outputs emitted by deployment runs — images, audio, text, JSON blobs — filtered to what's reachable now."
       />
       <EmptyState
         count="0"
