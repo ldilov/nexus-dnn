@@ -6,6 +6,7 @@ import type { RunStatus, RunSummary } from "../../../services/types";
 import * as css from "../recipe.css";
 import { Banner } from "../../../components/banner";
 import { Button } from "../../../components/button";
+import { EmptyState } from "../../../components/empty_state";
 import { StatusPill } from "../../../components/status_pill";
 
 interface Props {
@@ -21,7 +22,7 @@ export function HistoryPanel({ runs, deploymentId }: Props): JSX.Element {
   const [error, setError] = useState<string | null>(null);
 
   if (runs.length === 0) {
-    return <p className={css.label}>No runs yet.</p>;
+    return <EmptyState title="No runs yet." hint="Generate to see history" />;
   }
 
   const onResume = async (runId: string): Promise<void> => {

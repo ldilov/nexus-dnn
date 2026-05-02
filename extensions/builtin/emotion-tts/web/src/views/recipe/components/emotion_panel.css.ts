@@ -62,7 +62,7 @@ export const modeButtonActive = style([
   {
     background: vars.color.surfaceHigh,
     color: vars.color.text,
-    boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
+    boxShadow: `inset 0 0 0 1px ${vars.color.accent}`,
   },
 ]);
 
@@ -89,7 +89,7 @@ export const sliderLabel = style({
 
 export const slider = style({
   width: "100%",
-  accentColor: vars.color.accent,
+  accentColor: vars.color.tertiary,
 });
 
 export const sliderNumber = style({
@@ -106,7 +106,7 @@ export const sliderNumber = style({
   transition: `box-shadow ${vars.motion.fast}`,
   boxShadow: `inset 0 -1px 0 ${vars.color.borderGhost}`,
   ":focus": {
-    boxShadow: `inset 0 -2px 0 ${vars.color.accent}`,
+    boxShadow: `inset 0 -2px 0 ${vars.color.tertiary}`,
   },
 });
 
