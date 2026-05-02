@@ -1,41 +1,21 @@
 import { createGlobalTheme, globalStyle } from "@vanilla-extract/css";
 
-// Spec 037 / T060 — Spectral Graphite token bridge for the emotion-tts
-// custom element.
-//
-// Per FR-040 and research R13 the extension is custom-element scoped — its
-// CSS variables are declared on `emotion-tts-app` (NOT on `:root`), so the
-// host's tokens cannot leak in and our tokens cannot leak out. The variable
-// NAMES match the production Spectral Graphite contract
-// (`specs/037-spectral-graphite-redesign/contracts/tokens.contract.md`)
-// so live tweaks (`data-accent` / `data-density` / `data-card`) propagated
-// from the host body via T061's MutationObserver re-bind the same names
-// inside the extension and visually re-skin without code changes.
-//
-// The `vars.X.Y` JS object shape (consumed by every `*.css.ts` in this
-// subtree) is preserved verbatim — only the underlying CSS-var names and
-// fallback values change.
-
 export const vars = createGlobalTheme("emotion-tts-app", {
   color: {
-    // Surface tiers
     surface: "var(--surface, #0c0e10)",
     surfaceMuted: "var(--surface-low, #111416)",
     surfaceRaised: "var(--surface-default, #171a1c)",
     surfaceHigh: "var(--surface-high, #1d2023)",
     surfaceHighest: "var(--surface-highest, #232629)",
     surfaceGlass: "rgba(29, 32, 35, 0.72)",
-    // Foreground
     text: "var(--on-surface, #f0f0f3)",
     textMuted: "var(--on-surface-variant, #aaabae)",
     textFaint: "var(--outline, #747578)",
-    // Accents — `accent` resolves through the data-accent indirection so
-    // toggling the host tweak panel re-skins the extension live (FR-009a).
     accent: "var(--accent, #ba9eff)",
     accentDim: "var(--accent-dim, #8455ef)",
     accentMuted: "var(--accent-dim, #8455ef)",
     accentOn: "var(--on-primary, #39008c)",
-    accentGlow: "var(--accent-glow, 0 0 16px rgba(132, 85, 239, 0.45))",
+    accentGlow: "var(--accent-glow, rgba(132, 85, 239, 0.45))",
     secondary: "var(--secondary, #9093ff)",
     tertiary: "var(--tertiary, #ff8439)",
     danger: "var(--error, #ff6e84)",
@@ -79,7 +59,7 @@ export const vars = createGlobalTheme("emotion-tts-app", {
     pill: "var(--r-pill, 999px)",
   },
   shadow: {
-    subtle: "0 1px 2px rgba(0, 0, 0, 0.3)",
+    subtle: "var(--shadow-sm, 0 4px 16px rgba(0, 0, 0, 0.32))",
     raised: "var(--shadow-md, 0 12px 32px rgba(0, 0, 0, 0.4))",
     glow: "var(--glow-accent, 0 0 24px rgba(132, 85, 239, 0.28))",
     focusRing: "0 0 0 2px var(--accent-glow, rgba(132, 85, 239, 0.55))",
@@ -91,39 +71,28 @@ export const vars = createGlobalTheme("emotion-tts-app", {
   },
 });
 
-// ─── Live tweak propagation ───────────────────────────────────────────────
-// T061 mirrors the host's `body[data-*]` onto our `emotion-tts-app` element
-// so the same selectors here re-bind tokens inside the extension. The
-// fallbacks below match the production Spectral Graphite values when the
-// host happens to be a different page (e.g. running the bundle in isolation
-// for the visual baseline test).
-
-// Accent indirection — the three values must match the production
-// `apps/web/src/styles/tokens.css` accent block bytes-for-bytes so a tweak
-// to the host re-renders identically here.
 globalStyle('emotion-tts-app[data-accent="primary"], emotion-tts-app:not([data-accent])', {
   vars: {
     "--accent": "#ba9eff",
     "--accent-dim": "#8455ef",
-    "--accent-glow": "color-mix(in oklch, #ba9eff 28%, transparent)",
+    "--accent-glow": "rgba(132, 85, 239, 0.27)",
   },
 });
 globalStyle('emotion-tts-app[data-accent="secondary"]', {
   vars: {
     "--accent": "#9093ff",
     "--accent-dim": "#6063ee",
-    "--accent-glow": "color-mix(in oklch, #9093ff 28%, transparent)",
+    "--accent-glow": "rgba(96, 99, 238, 0.32)",
   },
 });
 globalStyle('emotion-tts-app[data-accent="tertiary"]', {
   vars: {
     "--accent": "#ff8439",
     "--accent-dim": "#fd761a",
-    "--accent-glow": "color-mix(in oklch, #ff8439 28%, transparent)",
+    "--accent-glow": "rgba(253, 118, 26, 0.28)",
   },
 });
 
-// Density indirection — three modes per FR-009 / contract §3.
 globalStyle('emotion-tts-app[data-density="compact"]', {
   vars: {
     "--d-1": "2px",
@@ -176,6 +145,31 @@ globalStyle('emotion-tts-app[data-density="spacious"]', {
   },
 });
 
+globalStyle('emotion-tts-app[data-card="flat"], emotion-tts-app:not([data-card])', {
+  vars: {
+    "--card-bg": "var(--surface-low, #111416)",
+    "--card-border": "none",
+    "--card-shadow": "none",
+    "--card-backdrop": "none",
+  },
+});
+globalStyle('emotion-tts-app[data-card="glass"]', {
+  vars: {
+    "--card-bg": "rgba(29, 32, 35, 0.62)",
+    "--card-border": "1px solid rgba(186, 158, 255, 0.08)",
+    "--card-shadow": "var(--shadow-sm, 0 4px 16px rgba(0, 0, 0, 0.32))",
+    "--card-backdrop": "blur(20px) saturate(1.2)",
+  },
+});
+globalStyle('emotion-tts-app[data-card="elevated"]', {
+  vars: {
+    "--card-bg": "var(--surface-high, #1d2023)",
+    "--card-border": "1px solid rgba(70, 72, 74, 0.22)",
+    "--card-shadow": "var(--shadow-md, 0 12px 32px rgba(0, 0, 0, 0.4))",
+    "--card-backdrop": "none",
+  },
+});
+
 globalStyle("emotion-tts-app", {
   display: "block",
   minHeight: "100%",
@@ -194,8 +188,6 @@ globalStyle("emotion-tts-app code, emotion-tts-app pre", {
   fontFamily: vars.font.mono,
 });
 
-// Accessibility: keyboard-only focus ring honours the Spectral Graphite
-// no-borders aesthetic by using a spectral glow instead of a flat outline.
 globalStyle(
   [
     "emotion-tts-app button:focus-visible",
@@ -211,8 +203,6 @@ globalStyle(
   },
 );
 
-// Respect prefers-reduced-motion — strip animations to near-instant so the
-// editorial cascades don't become a barrier.
 globalStyle("emotion-tts-app *", {
   "@media": {
     "(prefers-reduced-motion: reduce)": {
