@@ -1,4 +1,4 @@
-//! Spec 037 — `POST /api/v1/modules/drafts/{draft_id}/suggestions/{stream_id}/cancel`.
+//! `POST /api/v1/modules/drafts/{draft_id}/suggestions/{stream_id}/cancel`.
 //!
 //! Idempotent. Returns 204 regardless of whether the stream is in-flight,
 //! finished, or unknown — per
@@ -25,7 +25,7 @@ pub async fn cancel_stream(
     Extension(state): Extension<DraftSuggestionState>,
     Path(params): Path<CancelPath>,
 ) -> Response {
-    let _ = params.draft_id; // reserved for per-draft auth checks later
+    let _ = params.draft_id;
     state.registry.cancel(&params.stream_id);
     StatusCode::NO_CONTENT.into_response()
 }

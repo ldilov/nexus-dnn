@@ -1,4 +1,4 @@
-//! Spec 037 — Module Draft AI suggestion stream (US8 / Phase 8).
+//! Module Draft AI suggestion stream.
 //!
 //! Generic, extension-agnostic handler family that opens a Server-Sent
 //! Events stream of suggestion deltas for a single line of a Module Draft.
