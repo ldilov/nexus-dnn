@@ -16,7 +16,7 @@ export const darkTheme = createTheme(vars, {
     text: {
       primary: color.onSurface.base,
       secondary: color.onSurface.variant,
-      muted: color.outline.base,
+      muted: color.onSurface.muted,
       inverse: color.primary.onPrimary,
     },
     accent: {
