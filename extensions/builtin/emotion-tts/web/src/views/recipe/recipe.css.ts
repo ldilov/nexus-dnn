@@ -158,44 +158,6 @@ export const dangerButton = style([
   },
 ]);
 
-export const warningBanner = style({
-  padding: `${vars.space.sm} ${vars.space.md}`,
-  borderRadius: vars.radius.md,
-  background: `color-mix(in oklab, ${vars.color.warning} 14%, ${vars.color.surfaceRaised})`,
-  color: vars.color.text,
-  fontSize: vars.text.body,
-  display: "flex",
-  alignItems: "center",
-  gap: vars.space.sm,
-  "::before": {
-    content: '""',
-    width: "6px",
-    height: "6px",
-    borderRadius: vars.radius.pill,
-    background: vars.color.warning,
-    flex: "0 0 auto",
-  },
-});
-
-export const dangerBanner = style({
-  padding: `${vars.space.sm} ${vars.space.md}`,
-  borderRadius: vars.radius.md,
-  background: `color-mix(in oklab, ${vars.color.danger} 14%, ${vars.color.surfaceRaised})`,
-  color: vars.color.text,
-  fontSize: vars.text.body,
-  display: "flex",
-  alignItems: "center",
-  gap: vars.space.sm,
-  "::before": {
-    content: '""',
-    width: "6px",
-    height: "6px",
-    borderRadius: vars.radius.pill,
-    background: vars.color.danger,
-    flex: "0 0 auto",
-  },
-});
-
 export const filenameList = style({
   fontFamily: vars.font.mono,
   fontSize: vars.text.caption,

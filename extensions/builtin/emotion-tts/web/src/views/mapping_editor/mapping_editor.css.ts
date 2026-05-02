@@ -402,14 +402,6 @@ export const dangerButton = style([
   },
 ]);
 
-export const errorBanner = style({
-  padding: `${vars.space.sm} ${vars.space.md}`,
-  borderRadius: vars.radius.md,
-  background: `color-mix(in oklab, ${vars.color.danger} 14%, ${vars.color.surfaceRaised})`,
-  color: vars.color.text,
-  fontSize: vars.text.body,
-});
-
 export const toast = style({
   padding: `${vars.space.sm} ${vars.space.md}`,
   borderRadius: vars.radius.md,

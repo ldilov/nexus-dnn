@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import type { CharacterMapping } from "../../../services/mappings_client";
 import type { OutputFormat } from "../../../services/types";
 import * as css from "../recipe.css";
+import { Banner } from "../../../components/banner";
 
 interface Props {
   value: string;
@@ -38,7 +39,7 @@ export function ScriptEditor(props: Props): JSX.Element {
       />
 
       {unresolved.length > 0 && (
-        <div className={css.dangerBanner} role="alert">
+        <Banner severity="error">
           <strong>Unresolved characters:</strong>{" "}
           {unresolved.map((name) => (
             <button
@@ -54,7 +55,7 @@ export function ScriptEditor(props: Props): JSX.Element {
               Create mapping for {name}
             </button>
           ))}
-        </div>
+        </Banner>
       )}
 
       {attributions.length > 0 && (

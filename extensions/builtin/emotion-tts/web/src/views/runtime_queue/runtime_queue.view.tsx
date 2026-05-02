@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "../../services/http";
 import { EmptyState } from "../../components/empty_state";
 import { sectionLabel } from "../../components/section_label.css";
+import { Banner } from "../../components/banner";
 import * as css from "./runtime_queue.css";
 
 interface QueueEntry {
@@ -55,9 +56,7 @@ export function RuntimeQueueView(): JSX.Element {
         </header>
 
         {error ? (
-          <section className={css.errorBanner} role="alert">
-            {error}
-          </section>
+          <Banner severity="error">{error}</Banner>
         ) : entries === null ? null : entries.length === 0 ? (
           <section className={css.panel}>
             <EmptyState title="Queue is quiet." hint="Recipe → Generate" />

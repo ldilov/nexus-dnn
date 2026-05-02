@@ -4,6 +4,7 @@ import { ExtensionApiError } from "../../../services/http";
 import { cancelRun, createRun, getRun, resumeRun, subscribeRunProgress } from "../../../services/runs_client";
 import type { CreateRunRequest, ProgressEvent, Run } from "../../../services/types";
 import * as css from "../recipe.css";
+import { Banner } from "../../../components/banner";
 
 type Phase = "idle" | "starting" | "running" | "terminal" | "error";
 
@@ -116,18 +117,13 @@ export function RunPanel(props: Props): JSX.Element {
   return (
     <div>
       {error && (
-        <div
-          className={css.dangerBanner}
-          role="alert"
-          aria-live="assertive"
+        <Banner
+          severity="error"
           style={{
             marginBottom: 12,
-            padding: "12px 14px",
-            display: "flex",
             flexDirection: "column",
+            alignItems: "flex-start",
             gap: 8,
-            fontSize: "0.95rem",
-            lineHeight: 1.45,
           }}
         >
           <strong>Run failed to start</strong>
@@ -142,7 +138,7 @@ export function RunPanel(props: Props): JSX.Element {
               Open Mappings →
             </button>
           )}
-        </div>
+        </Banner>
       )}
 
       <div className={css.controlRow}>
@@ -165,7 +161,7 @@ export function RunPanel(props: Props): JSX.Element {
       </div>
 
       {dominantFailure && (
-        <div className={css.dangerBanner} role="alert">
+        <Banner severity="error" style={{ flexDirection: "column", alignItems: "flex-start" }}>
           <strong>
             Run failed — {dominantFailure.count} of {dominantFailure.total} segments
             failed with <code>{dominantFailure.category}</code>
@@ -175,7 +171,7 @@ export function RunPanel(props: Props): JSX.Element {
               {failureHelp[dominantFailure.category]}
             </div>
           )}
-        </div>
+        </Banner>
       )}
 
       {run?.exportArtifactRef && (
@@ -189,7 +185,7 @@ export function RunPanel(props: Props): JSX.Element {
       )}
 
       {isPartial && run && (
-        <div className={css.warningBanner} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <Banner severity="warning">
           <span style={{ flex: 1 }}>Partial run — some segments failed or were cancelled.</span>
           <button
             type="button"
@@ -216,7 +212,7 @@ export function RunPanel(props: Props): JSX.Element {
           >
             Resume run
           </button>
-        </div>
+        </Banner>
       )}
 
       {segmentList.length > 0 && (

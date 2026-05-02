@@ -15,6 +15,7 @@ import type {
 import type { UtteranceState } from "../../../services/types";
 import { WaveformCanvas } from "../../mapping_editor/components/waveform_canvas";
 import * as css from "./per_utterance_edit.css";
+import { Banner } from "../../../components/banner";
 
 export interface PerUtteranceEditProps {
   deploymentId: string;
@@ -203,11 +204,7 @@ export function PerUtteranceEdit(props: PerUtteranceEditProps): JSX.Element {
         </button>
       </div>
 
-      {validationError && (
-        <div className={css.errorBanner} role="alert" aria-live="polite">
-          {validationError}
-        </div>
-      )}
+      {validationError && <Banner severity="error">{validationError}</Banner>}
     </div>
   );
 }

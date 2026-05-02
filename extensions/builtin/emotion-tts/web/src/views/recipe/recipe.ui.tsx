@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import * as css from "./recipe.css";
 import { sectionLabel } from "../../components/section_label.css";
+import { Banner } from "../../components/banner";
 import type { Deployment } from "../../services/deployments_client";
 import type { RecipeField } from "../../services/workflows_client";
 
@@ -27,7 +28,7 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
         {props.header}
       </header>
       {customised && (
-        <section className={css.warningBanner} aria-live="polite">
+        <Banner severity="warning">
           <strong>Workflow customised.</strong>{" "}
           {unmappable.length === 0
             ? "Every recipe field still binds, but the graph topology diverges from the curated template."
@@ -35,7 +36,7 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
           <a href="/#/workflows" target="_top">
             Open workflow canvas →
           </a>
-        </section>
+        </Banner>
       )}
       <div className={css.leftColumn}>
         <section className={css.panel} aria-labelledby="recipe-section-script">
