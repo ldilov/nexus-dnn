@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import * as css from "./recipe.css";
+import { sectionLabel } from "../../components/section_label.css";
 import type { Deployment } from "../../services/deployments_client";
 import type { RecipeField } from "../../services/workflows_client";
 
@@ -37,29 +38,37 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
         </section>
       )}
       <div className={css.leftColumn}>
-        <section className={css.panel} aria-label="Dialogue script">
-          <h2 className={css.panelTitle}>Script</h2>
+        <section className={css.panel} aria-labelledby="recipe-section-script">
+          <h2 id="recipe-section-script" className={sectionLabel}>
+            01 / Script
+          </h2>
           {props.scriptEditor}
         </section>
-        <section className={css.panel} aria-label="Generation settings">
-          <h2 className={css.panelTitle}>Settings</h2>
+        <section className={css.panel} aria-labelledby="recipe-section-settings">
+          <h2 id="recipe-section-settings" className={sectionLabel}>
+            02 / Settings
+          </h2>
           {props.settingsPanel}
         </section>
       </div>
       <div className={css.rightColumn}>
-        {/* Run sits at the top so the primary "Generate" CTA is always
-            above the fold; Emotion + history are configuration / observability
-            and live below the action button. */}
-        <section className={css.panel} aria-label="Run">
-          <h2 className={css.panelTitle}>Run</h2>
+        {/* Run sits above the fold so Generate is always reachable. */}
+        <section className={css.panel} aria-labelledby="recipe-section-run">
+          <h2 id="recipe-section-run" className={sectionLabel}>
+            03 / Run
+          </h2>
           {props.runPanel}
         </section>
-        <section className={css.panel} aria-label="Emotion panel">
-          <h2 className={css.panelTitle}>Emotion</h2>
+        <section className={css.panel} aria-labelledby="recipe-section-emotion">
+          <h2 id="recipe-section-emotion" className={sectionLabel}>
+            04 / Emotion
+          </h2>
           {props.emotionPanel}
         </section>
-        <section className={css.panel} aria-label="Recent runs">
-          <h2 className={css.panelTitle}>Recent runs</h2>
+        <section className={css.panel} aria-labelledby="recipe-section-history">
+          <h2 id="recipe-section-history" className={sectionLabel}>
+            05 / Recent runs
+          </h2>
           {props.historyPanel}
         </section>
       </div>
