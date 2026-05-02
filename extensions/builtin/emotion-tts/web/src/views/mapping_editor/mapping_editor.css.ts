@@ -160,16 +160,6 @@ export const rowKind = style({
   letterSpacing: "0.05em",
 });
 
-export const emptySidebar = style({
-  fontFamily: vars.font.body,
-  fontSize: vars.text.body,
-  color: vars.color.textMuted,
-  padding: `${vars.space.md} ${vars.space.sm}`,
-  textAlign: "center",
-  border: `1px dashed ${vars.color.borderSubtle}`,
-  borderRadius: vars.radius.md,
-});
-
 export const detail = style({
   display: "flex",
   flexDirection: "column",
@@ -194,14 +184,6 @@ export const detailTitle = style({
   lineHeight: 1.05,
 });
 
-export const detailSubtitle = style({
-  fontFamily: vars.font.mono,
-  fontSize: vars.text.caption,
-  color: vars.color.textMuted,
-  letterSpacing: "0.05em",
-  textTransform: "uppercase",
-});
-
 export const detailBody = style({
   display: "grid",
   gridTemplateColumns: "minmax(0, 2fr) minmax(280px, 1fr)",
@@ -211,16 +193,6 @@ export const detailBody = style({
       gridTemplateColumns: "1fr",
     },
   },
-});
-
-export const fieldset = style({
-  display: "flex",
-  flexDirection: "column",
-  gap: vars.space.sm,
-  padding: vars.space.md,
-  background: vars.color.surfaceRaised,
-  borderRadius: vars.radius.md,
-  boxShadow: vars.shadow.subtle,
 });
 
 export const fieldLabel = style({
@@ -334,73 +306,12 @@ export const durationFill = style({
   transition: `width ${vars.motion.normal}`,
 });
 
-export const durationWarn = style({
-  fontSize: vars.text.caption,
-  color: vars.color.warning,
-});
-
-export const durationDanger = style({
-  fontSize: vars.text.caption,
-  color: vars.color.danger,
-});
-
 export const actionsRow = style({
   display: "flex",
   flexWrap: "wrap",
   gap: vars.space.sm,
   alignItems: "center",
 });
-
-export const primaryButton = style({
-  padding: `${vars.space.sm} ${vars.space.md}`,
-  borderRadius: vars.radius.sm,
-  border: "none",
-  background: vars.color.accent,
-  color: vars.color.surfaceRaised,
-  fontWeight: 600,
-  fontFamily: vars.font.body,
-  cursor: "pointer",
-  transition: `transform ${vars.motion.fast}, box-shadow ${vars.motion.fast}`,
-  selectors: {
-    "&:hover:not(:disabled)": {
-      transform: "translateY(-1px)",
-      boxShadow: vars.shadow.raised,
-    },
-    "&:disabled": {
-      opacity: 0.5,
-      cursor: "not-allowed",
-    },
-  },
-});
-
-export const secondaryButton = style([
-  primaryButton,
-  {
-    background: vars.color.surfaceMuted,
-    color: vars.color.text,
-    border: `1px solid ${vars.color.borderSubtle}`,
-    selectors: {
-      "&:hover:not(:disabled)": {
-        background: vars.color.surfaceRaised,
-        transform: "translateY(-1px)",
-      },
-    },
-  },
-]);
-
-export const dangerButton = style([
-  primaryButton,
-  {
-    background: "transparent",
-    color: vars.color.danger,
-    border: `1px solid color-mix(in oklab, ${vars.color.danger} 45%, transparent)`,
-    selectors: {
-      "&:hover:not(:disabled)": {
-        background: `color-mix(in oklab, ${vars.color.danger} 14%, transparent)`,
-      },
-    },
-  },
-]);
 
 export const toast = style({
   padding: `${vars.space.sm} ${vars.space.md}`,
@@ -411,18 +322,17 @@ export const toast = style({
 });
 
 export const testLineBar = style({
-  display: "flex",
-  gap: vars.space.sm,
+  flexDirection: "row",
   alignItems: "center",
-  padding: vars.space.sm,
-  background: vars.color.surfaceMuted,
-  borderRadius: vars.radius.sm,
+  gap: vars.space.sm,
+  flexWrap: "wrap",
 });
 
 export const testLineInput = style([
   input,
   {
     flex: 1,
+    minWidth: "180px",
     fontFamily: vars.font.mono,
   },
 ]);
@@ -446,19 +356,19 @@ globalStyle(`${dropzone} input`, {
   display: "none",
 });
 
-export const emptyOnboarding = style({
-  padding: `${vars.space.xl} ${vars.space.lg}`,
-});
-
 export const emptyOnboardingHeader = style({
   textAlign: "center",
   marginBottom: vars.space.lg,
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.sm,
+  alignItems: "center",
 });
 
 export const emptyOnboardingTitle = style({
   fontFamily: vars.font.display,
   fontSize: vars.text.head,
-  margin: `0 0 ${vars.space.sm}`,
+  margin: 0,
   color: vars.color.text,
 });
 
@@ -467,29 +377,8 @@ export const emptyOnboardingSubtitle = style({
   fontSize: vars.text.body,
   color: vars.color.textMuted,
   maxWidth: "44ch",
-  margin: "0 auto",
+  margin: 0,
   lineHeight: 1.5,
-});
-
-export const emptyHint = style({
-  textAlign: "center",
-  padding: vars.space.section,
-});
-
-export const emptyHintText = style({
-  fontFamily: vars.font.body,
-  fontSize: vars.text.subhead,
-  color: vars.color.textMuted,
-});
-
-export const testStatusDone = style({
-  marginLeft: vars.space.sm,
-  color: vars.color.success,
-});
-
-export const testStatusError = style({
-  marginLeft: vars.space.sm,
-  color: vars.color.danger,
 });
 
 export const hiddenFileInput = style({
