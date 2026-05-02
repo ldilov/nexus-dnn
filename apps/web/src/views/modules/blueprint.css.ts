@@ -54,56 +54,10 @@ export const backLink = style({
   },
 });
 
-// ─── Hero ──────────────────────────────────────────────────────────────────
-
-export const hero = style({
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-end",
-  gap: vars.space["2xl"],
-  flexWrap: "wrap",
-});
-
-export const heroLeft = style({
-  display: "flex",
-  flexDirection: "column",
-  gap: vars.space.md,
-  maxWidth: "720px",
-});
-
-export const title = style({
-  fontSize: "clamp(1.75rem, 1.25rem + 2vw, 2.75rem)",
-  fontWeight: 900,
-  letterSpacing: vars.tracking.tight,
-  lineHeight: 1.05,
-  margin: 0,
-  fontFamily: vars.font.ui,
-  background: `linear-gradient(135deg, ${vars.color.onSurface} 0%, ${vars.color.onSurfaceVariant} 100%)`,
-  WebkitBackgroundClip: "text",
-  WebkitTextFillColor: "transparent",
-  backgroundClip: "text",
-});
+// ─── Hero accent (consumed by PageHero `title` slot) ──────────────────────
 
 export const titleAccent = style({
   color: vars.color.primary,
-  WebkitTextFillColor: vars.color.primary,
-});
-
-export const heroMeta = style({
-  display: "flex",
-  alignItems: "center",
-  gap: vars.space.md,
-  color: vars.color.onSurfaceVariant,
-  fontSize: vars.text.labelS,
-  letterSpacing: vars.tracking.wide,
-  textTransform: "uppercase",
-  fontWeight: 700,
-});
-
-export const heroActions = style({
-  display: "flex",
-  gap: vars.space.md,
-  flexWrap: "wrap",
 });
 
 export const primaryBtn = style({
@@ -170,84 +124,8 @@ export const pillRow = style({
   borderBottom: `1px solid ${vars.color.outlineVariant}`,
 });
 
-export const pill = style({
-  padding: `${vars.space.sm} ${vars.space.lg}`,
-  background: vars.color.surfaceContainer,
-  border: `1px solid ${vars.color.outlineVariant}`,
-  color: vars.color.onSurface,
-  borderRadius: vars.radius.full,
-  fontSize: vars.text.bodyS,
-  cursor: "pointer",
-  fontFamily: vars.font.ui,
-  display: "inline-flex",
-  alignItems: "center",
-  gap: vars.space.xs,
-  transition: `background ${motion.duration.cardGlow}, border-color ${motion.duration.cardGlow}`,
-  selectors: {
-    "&[aria-pressed='true']": {
-      background: vars.color.primaryContainer,
-      color: vars.color.onPrimaryContainer,
-      borderColor: vars.color.primary,
-    },
-    "&:hover:not([aria-pressed='true'])": {
-      background: vars.color.surfaceContainerHigh,
-    },
-    "&:focus-visible": {
-      outline: `2px solid ${vars.color.primary}`,
-      outlineOffset: "2px",
-    },
-  },
-  "@media": {
-    "(prefers-reduced-motion: reduce)": { transition: "none" },
-  },
-});
-
 export const primaryStar = style({
   color: vars.color.primary,
-});
-
-// ─── Mode toggle (Recipe | Workflow Graph) ────────────────────────────────
-
-export const modeToggle = style({
-  display: "inline-flex",
-  background: vars.color.surfaceContainer,
-  padding: "3px",
-  borderRadius: vars.radius.md,
-  border: `1px solid ${vars.color.outlineVariant}`,
-  alignSelf: "flex-start",
-});
-
-export const modeBtn = style({
-  padding: `${vars.space.sm} ${vars.space.lg}`,
-  background: "transparent",
-  border: "none",
-  borderRadius: vars.radius.sm,
-  color: vars.color.onSurfaceVariant,
-  cursor: "pointer",
-  fontFamily: vars.font.ui,
-  fontSize: vars.text.labelM,
-  fontWeight: 700,
-  letterSpacing: vars.tracking.wide,
-  textTransform: "uppercase",
-  display: "inline-flex",
-  alignItems: "center",
-  gap: vars.space.xs,
-  transition: `color ${motion.duration.tabCrossfade}, background ${motion.duration.tabCrossfade}`,
-  selectors: {
-    "&[aria-selected='true']": {
-      background: vars.color.surfaceContainerHighest,
-      color: vars.color.onSurface,
-      boxShadow: `0 0 0 1px ${vars.color.primary}40`,
-    },
-    "&:hover:not([aria-selected='true'])": { color: vars.color.onSurface },
-    "&:focus-visible": {
-      outline: `2px solid ${vars.color.primary}`,
-      outlineOffset: "2px",
-    },
-  },
-  "@media": {
-    "(prefers-reduced-motion: reduce)": { transition: "none" },
-  },
 });
 
 // ─── Section framing ──────────────────────────────────────────────────────

@@ -790,16 +790,7 @@ export const readOnlyNote = style({
   marginBottom: vars.space.lg,
 });
 
-// Draft-banner residuals (thin identity strip on draft routes).
-export const identityBanner = style({
-  display: "flex",
-  alignItems: "center",
-  gap: vars.space.md,
-  padding: `${vars.space.md} ${vars.space.xl}`,
-  background: vars.color.surfaceContainerLow,
-  borderBottom: `1px solid ${vars.color.outlineVariant}`,
-});
-
+// Draft hero meta primitives (consumed by PageHero `meta` slot on draft routes).
 export const bannerActions = style({
   display: "flex",
   gap: vars.space.sm,
@@ -819,13 +810,6 @@ export const idText = style({
   fontFamily: vars.font.mono,
   fontSize: vars.text.bodyS,
   color: vars.color.onSurfaceVariant,
-});
-
-export const displayName = style({
-  fontFamily: vars.font.ui,
-  fontSize: vars.text.titleS,
-  fontWeight: 600,
-  color: vars.color.onSurface,
 });
 
 export const sourceBadge = style({
