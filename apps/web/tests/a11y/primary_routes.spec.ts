@@ -39,25 +39,30 @@ async function hostAvailable(page: Page, probe: string | undefined): Promise<boo
 
 async function applyBaseline(page: Page): Promise<void> {
   // Set tweak storage BEFORE navigation so the pre-React initializer (T011) reads it.
+  // Production reader at apps/web/src/layout/tweak_storage.ts stores plain string
+  // values (matching ACCENTS / DENSITIES / CARDS allow-lists) — NOT JSON-wrapped.
   await page.addInitScript(() => {
     try {
-      window.localStorage.setItem(
-        "nexus.tweaks.accent",
-        JSON.stringify({ value: "primary" }),
-      );
-      window.localStorage.setItem(
-        "nexus.tweaks.density",
-        JSON.stringify({ value: "cozy" }),
-      );
-      window.localStorage.setItem(
-        "nexus.tweaks.card",
-        JSON.stringify({ value: "flat" }),
-      );
+      window.localStorage.setItem("nexus.tweaks.accent", "primary");
+      window.localStorage.setItem("nexus.tweaks.density", "cozy");
+      window.localStorage.setItem("nexus.tweaks.card", "flat");
     } catch {
       // ignore — fresh contexts may not have storage yet
     }
   });
   await page.emulateMedia({ reducedMotion: "reduce" });
+}
+
+async function assertBaselineApplied(page: Page): Promise<void> {
+  // Defensive: confirm the seed actually flowed through the pre-React initializer
+  // into body.dataset before we score the page. If TWEAK_DEFAULTS ever drifts away
+  // from the documented baseline, this catches it.
+  const dataset = await page.evaluate(() => ({
+    accent: document.body.dataset.accent,
+    density: document.body.dataset.density,
+    card: document.body.dataset.card,
+  }));
+  expect(dataset).toEqual({ accent: "primary", density: "cozy", card: "flat" });
 }
 
 test.describe("Primary host routes — WCAG 2.2 AA baseline (spec 037 T097)", () => {
@@ -69,6 +74,7 @@ test.describe("Primary host routes — WCAG 2.2 AA baseline (spec 037 T097)", ()
         return;
       }
       await page.goto(route.path, { waitUntil: "networkidle" });
+      await assertBaselineApplied(page);
 
       const results = await new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])

@@ -1,6 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
 
 // Spec 037 — T117 / FR-052: forced-colors regression check.
+// NOTE: extension-id literals (`nexus.local-llm`, `nexus.audio.emotiontts`) below
+// are dispatcher-route INPUTS exercised end-to-end, not host coupling. Per
+// `.claude/rules/host-extension-boundary.md` the rule scopes `apps/web/src/`,
+// not `apps/web/tests/`.
 // Walks the four anchor routes with `forcedColors: 'active'` (Windows High Contrast
 // emulation in Chromium) and asserts that:
 //   - the StatusChip dots remain perceivable (their visible bounding box is non-zero

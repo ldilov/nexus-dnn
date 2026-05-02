@@ -41,6 +41,10 @@ jobs:
 
       - name: Run boundary check (required)
         working-directory: apps/web
+        # bash -e -o pipefail (Actions default) propagates the audit's exit-1 through
+        # the `tee` pipe so a finding fails the job. Do NOT remove the pipefail
+        # dependency by switching to `> file` — the artifact-upload step needs the
+        # file even on failure (`if: always()`).
         run: pnpm audit:redesign --only=boundary --json | tee boundary-report.json
 
       - name: Upload boundary report
@@ -98,8 +102,18 @@ jobs:
             ARGS="$ARGS --since=${{ steps.since.outputs.ref }}"
           fi
           # Loop the five advisory checks individually so every section gets its own count.
+          # Capture stderr per-check so a script-level failure (exit 2) is recoverable
+          # — the JSON file may still be empty/garbage; the renderer surfaces that as
+          # `n/a` and emits a `core.warning`. We do NOT mask exit 1 (findings present)
+          # via 2>/dev/null.
           for check in hex px filler contrast io-boundary; do
-            pnpm audit:redesign --only=$check $ARGS > "advisory-$check.json" 2>/dev/null || true
+            pnpm audit:redesign --only=$check $ARGS \
+              > "advisory-$check.json" \
+              2> "advisory-$check.err" || true
+            if [ -s "advisory-$check.err" ]; then
+              echo "::warning::audit-redesign --only=$check produced stderr:"
+              cat "advisory-$check.err"
+            fi
           done
           ls -la advisory-*.json
 
