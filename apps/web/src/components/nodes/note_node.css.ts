@@ -4,7 +4,7 @@ import { globalStyle, keyframes, style } from "@vanilla-extract/css";
 import { vars } from "../../theme/contract.css";
 
 const noteFadeIn = keyframes({
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   from: { opacity: 0, transform: "rotate(-1.5deg) translateY(6px)" },
   to: { opacity: 1, transform: "rotate(-0.5deg) translateY(0)" },
 });
@@ -19,34 +19,34 @@ export const ACCENT_COLORS = {
 } as const;
 
 export const note = style({
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   minWidth: "180px",
-  // audit-allow: px — px — fixed layout breakpoint
+  // audit-allow: px — fixed layout breakpoint
   maxWidth: "320px",
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   padding: "10px 12px",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   borderRadius: "8px",
   background: ACCENT_COLORS.yellow,
   border: `1px solid rgba(245, 158, 11, 0.35)`,
   fontFamily: vars.font.ui,
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   fontSize: "12px",
   lineHeight: 1.45,
   color: vars.color.text.primary,
   whiteSpace: "pre-wrap",
   wordBreak: "break-word",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   boxShadow: "0 6px 16px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08)",
   transform: "rotate(-0.5deg)",
   animation: `${noteFadeIn} 260ms ${vars.motion.easingSpring} both`,
   transition: "transform 180ms ease, box-shadow 200ms ease",
   selectors: {
     "&:hover": {
-      // audit-allow: px — px — below minimum token granularity (sub-10px)
+      // audit-allow: px — below minimum token granularity (sub-10px)
       transform: "rotate(0deg) translateY(-2px)",
       boxShadow:
-        // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+        // audit-allow: px — node graph layout primitive (xy-flow contract)
         "0 14px 30px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12), 0 0 0 1px rgba(245, 158, 11, 0.4)",
     },
   },
@@ -72,12 +72,12 @@ export const textarea = style([
     background: "transparent",
     border: "1px dashed rgba(245, 158, 11, 0.5)",
     resize: "both",
-    // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+    // audit-allow: px — node graph layout primitive (xy-flow contract)
     minHeight: "60px",
-    // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+    // audit-allow: px — node graph layout primitive (xy-flow contract)
     minWidth: "180px",
     fontFamily: vars.font.ui,
-    // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+    // audit-allow: px — node graph layout primitive (xy-flow contract)
     fontSize: "12px",
     color: vars.color.text.primary,
     transform: "rotate(0deg)",
@@ -94,7 +94,7 @@ globalStyle(`.react-flow__node.dragging:has(${note})`, {
 globalStyle(`.react-flow__node.dragging ${note}`, {
   transform: "rotate(1.5deg) scale(1.04)",
   boxShadow:
-    // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+    // audit-allow: px — node graph layout primitive (xy-flow contract)
     "0 28px 54px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.15), 0 0 0 1px rgba(245, 158, 11, 0.55)",
   transition: "transform 140ms cubic-bezier(0.34, 1.56, 0.64, 1)",
 });

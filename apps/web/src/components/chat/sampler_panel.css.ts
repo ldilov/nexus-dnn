@@ -40,7 +40,7 @@ export const input = style({
   outline: "none",
   ":focus": {
     borderBottomColor: vars.color.accent.tertiary,
-    // audit-allow: px — px — below minimum token granularity (sub-10px)
+    // audit-allow: px — below minimum token granularity (sub-10px)
     boxShadow: `0 0 0 2px color-mix(in oklab, ${vars.color.accent.tertiary} 33%, transparent)`,
   },
 });

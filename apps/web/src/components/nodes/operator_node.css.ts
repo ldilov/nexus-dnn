@@ -7,7 +7,7 @@ import { vars } from "../../theme/contract.css";
 
 const pulse = keyframes({
   "0%, 100%": { boxShadow: "0 0 0 0 rgba(186, 158, 255, 0)" },
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   "50%": { boxShadow: "0 0 0 6px rgba(186, 158, 255, 0.25)" },
 });
 
@@ -19,7 +19,7 @@ const shimmer = keyframes({
 const fadeInUp = keyframes({
   from: {
     opacity: 0,
-    // audit-allow: px — px — below minimum token granularity (sub-10px)
+    // audit-allow: px — below minimum token granularity (sub-10px)
     transform: "translateY(6px) scale(0.96)",
   },
   to: {
@@ -35,14 +35,14 @@ const borderFlow = keyframes({
 
 export const node = style({
   position: "relative",
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   width: "240px",
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   borderRadius: "12px",
   background: `linear-gradient(160deg, ${vars.color.bg.elevated} 0%, ${vars.color.bg.panel} 100%)`,
   border: `1px solid ${vars.color.outline.variant}`,
   boxShadow:
-    // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+    // audit-allow: px — node graph layout primitive (xy-flow contract)
     "0 12px 28px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04)",
   overflow: "visible",
   transformOrigin: "center center",
@@ -56,10 +56,10 @@ export const node = style({
   selectors: {
     "&:hover": {
       borderColor: vars.color.accent.primary,
-      // audit-allow: px — px — below minimum token granularity (sub-10px)
+      // audit-allow: px — below minimum token granularity (sub-10px)
       transform: "translateY(-2px)",
       boxShadow:
-        // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+        // audit-allow: px — node graph layout primitive (xy-flow contract)
         "0 18px 38px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(186, 158, 255, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.06)",
     },
     "&:active": {
@@ -71,13 +71,13 @@ export const node = style({
       position: "absolute",
       inset: 0,
       pointerEvents: "none",
-      // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+      // audit-allow: px — node graph layout primitive (xy-flow contract)
       borderRadius: "12px",
       padding: "1px",
       background:
         "linear-gradient(135deg, rgba(186,158,255,0.25), rgba(34,211,238,0.12) 60%, transparent)",
       WebkitMask:
-        // audit-allow: hex — hex — pure-black contrast anchor
+        // audit-allow: hex — pure-black contrast anchor
         "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
       WebkitMaskComposite: "xor",
       maskComposite: "exclude",
@@ -98,7 +98,7 @@ export const node = style({
 
 export const nodeSelected = style({
   borderColor: vars.color.accent.primary,
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   boxShadow: `0 16px 32px rgba(0, 0, 0, 0.5), 0 0 0 2px ${vars.color.accent.primary}, 0 0 24px rgba(186, 158, 255, 0.28)`,
   selectors: {
     "&::before": {
@@ -142,20 +142,20 @@ export const nodeMissingSpec = style({
 
 export const header = style({
   position: "relative",
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   padding: "10px 12px 8px 12px",
   background:
     "linear-gradient(90deg, rgba(186,158,255,0.18), rgba(34,211,238,0.12) 60%, transparent)",
   backgroundSize: "200% 100%",
   borderBottom: `1px solid ${vars.color.outline.variant}`,
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   borderTopLeftRadius: "12px",
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   borderTopRightRadius: "12px",
   overflow: "hidden",
   display: "flex",
   flexDirection: "column",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
 });
 
@@ -166,43 +166,41 @@ export const headerRunning = style({
 export const titleRow = style({
   display: "flex",
   alignItems: "center",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "6px",
 });
 
 export const statusDot = style({
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   width: "8px",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   height: "8px",
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
-  borderRadius: "999px",
+  borderRadius: vars.radius.full,
   flexShrink: 0,
   backgroundColor: vars.color.text.muted,
 });
 
 export const statusDotRunning = style({
   backgroundColor: vars.color.accent.primary,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   boxShadow: `0 0 8px ${vars.color.accent.primary}`,
 });
 
 export const statusDotCompleted = style({
   backgroundColor: vars.color.success.base,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   boxShadow: `0 0 8px ${vars.color.success.base}`,
 });
 
 export const statusDotFailed = style({
   backgroundColor: vars.color.error.base,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   boxShadow: `0 0 8px ${vars.color.error.base}`,
 });
 
 export const title = style({
   fontFamily: vars.font.headline,
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
-  fontSize: "14px",
+  fontSize: vars.font.size.bodyLg,
   fontWeight: 700,
   color: vars.color.text.primary,
   letterSpacing: "-0.01em",
@@ -215,8 +213,7 @@ export const title = style({
 export const badgeRow = style({
   display: "flex",
   alignItems: "center",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
-  gap: "4px",
+  gap: vars.density.d1,
   marginLeft: "auto",
   flexShrink: 0,
 });
@@ -224,14 +221,12 @@ export const badgeRow = style({
 export const chip = style({
   display: "inline-flex",
   alignItems: "center",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
-  gap: "4px",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  gap: vars.density.d1,
+  // audit-allow: px — below minimum token granularity (sub-10px)
   padding: "1px 6px",
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
-  borderRadius: "999px",
+  borderRadius: vars.radius.full,
   fontFamily: vars.font.code,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   fontSize: "9px",
   fontWeight: 600,
   letterSpacing: "0.06em",
@@ -262,8 +257,7 @@ export const chipDraft = style({
 
 export const operatorId = style({
   fontFamily: vars.font.code,
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
-  fontSize: "10px",
+  fontSize: vars.font.size.kbd,
   color: vars.color.text.secondary,
   opacity: 0.85,
   whiteSpace: "nowrap",
@@ -272,26 +266,24 @@ export const operatorId = style({
 });
 
 export const body = style({
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   padding: "8px 0",
   display: "flex",
   flexDirection: "column",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
-  gap: "4px",
+  gap: vars.density.d1,
 });
 
 export const portRow = style({
   position: "relative",
   display: "flex",
   alignItems: "center",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
-  gap: "8px",
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  gap: vars.density.d2,
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   padding: "0 12px",
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   height: "28px",
   fontFamily: vars.font.code,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   fontSize: "11.5px",
   fontWeight: 500,
   color: vars.color.text.primary,
@@ -321,14 +313,13 @@ export const portName = style({
 
 export const requiredMark = style({
   color: vars.color.error.base,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   marginLeft: "2px",
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
-  fontSize: "10px",
+  fontSize: vars.font.size.kbd,
 });
 
 export const portType = style({
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   fontSize: "9.5px",
   color: vars.color.text.secondary,
   opacity: 0.95,
@@ -341,15 +332,13 @@ export const widgetRow = style({
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
-  gap: "8px",
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  gap: vars.density.d2,
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   padding: "0 12px",
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   height: "28px",
   fontFamily: vars.font.code,
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
-  fontSize: "11px",
+  fontSize: vars.font.size.caption,
   backgroundColor: "rgba(255, 255, 255, 0.015)",
   borderTop: `1px dashed ${vars.color.outline.variant}`,
   borderBottom: `1px dashed ${vars.color.outline.variant}`,
@@ -357,7 +346,7 @@ export const widgetRow = style({
 
 export const widgetLabel = style({
   color: vars.color.text.secondary,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   fontSize: "10.5px",
   fontWeight: 600,
   letterSpacing: "0.05em",
@@ -369,25 +358,24 @@ export const widgetValue = style({
   whiteSpace: "nowrap",
   overflow: "hidden",
   textOverflow: "ellipsis",
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   maxWidth: "140px",
 });
 
 export const footer = style({
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   padding: "6px 12px 8px 12px",
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
-  gap: "8px",
+  gap: vars.density.d2,
   borderTop: `1px solid ${vars.color.outline.variant}`,
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   borderBottomLeftRadius: "12px",
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   borderBottomRightRadius: "12px",
   fontFamily: vars.font.code,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   fontSize: "9.5px",
   fontWeight: 600,
   color: vars.color.text.secondary,
@@ -398,8 +386,7 @@ export const footer = style({
 export const footerMetric = style({
   display: "inline-flex",
   alignItems: "center",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
-  gap: "4px",
+  gap: vars.density.d1,
 });
 
 export const footerValueAccent = style({
@@ -407,13 +394,12 @@ export const footerValueAccent = style({
 });
 
 globalStyle(`${node} .react-flow__handle`, {
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   width: "12px",
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   height: "12px",
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
-  borderRadius: "999px",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  borderRadius: vars.radius.full,
+  // audit-allow: px — below minimum token granularity (sub-10px)
   border: "2px solid rgba(12, 14, 16, 0.9)",
   boxShadow: "0 0 0 1px rgba(255, 255, 255, 0.08)",
   transition: "transform 140ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 180ms ease-out",
@@ -424,26 +410,25 @@ globalStyle(`${node} .react-flow__handle`, {
 globalStyle(`${node} .react-flow__handle::after`, {
   content: "''",
   position: "absolute",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   inset: "-8px",
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
-  borderRadius: "999px",
+  borderRadius: vars.radius.full,
 });
 
 globalStyle(`${node} .react-flow__handle:hover`, {
   transform: "translateY(-50%) scale(1.35)",
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   boxShadow: "0 0 0 1px rgba(255, 255, 255, 0.18), 0 0 14px rgba(186, 158, 255, 0.35)",
 });
 
 globalStyle(`${node} .react-flow__handle.connecting`, {
   transform: "translateY(-50%) scale(1.35)",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   boxShadow: "0 0 0 5px rgba(186, 158, 255, 0.3), 0 0 18px rgba(186, 158, 255, 0.45)",
 });
 
 globalStyle(`${node} .react-flow__handle.valid`, {
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   boxShadow: "0 0 0 5px rgba(34, 211, 238, 0.4), 0 0 22px rgba(34, 211, 238, 0.5)",
 });
 
@@ -460,7 +445,7 @@ globalStyle(`.react-flow__node.dragging:has(${node})`, {
 globalStyle(`.react-flow__node.dragging ${node}`, {
   transform: "scale(1.04) rotate(0.6deg)",
   boxShadow:
-    // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+    // audit-allow: px — node graph layout primitive (xy-flow contract)
     "0 40px 80px rgba(0, 0, 0, 0.7), 0 0 0 2px rgba(186, 158, 255, 0.65), 0 0 60px rgba(186, 158, 255, 0.35), 0 0 120px rgba(34, 211, 238, 0.12)",
   borderColor: "rgba(186, 158, 255, 0.75)",
   transition: "transform 160ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 160ms ease-out",
@@ -481,11 +466,11 @@ globalStyle(`.react-flow__node.dragging ${node}::before`, {
 });
 
 globalStyle(`${node} .react-flow__handle-left`, {
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   left: "-6px",
 });
 globalStyle(`${node} .react-flow__handle-right`, {
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   right: "-6px",
 });
 
@@ -498,6 +483,6 @@ globalStyle(".react-flow__edge.animated .react-flow__edge-path", {
 });
 
 export const warningColor = style({
-  // audit-allow: hex — hex — neon decorative palette per design lang
+  // audit-allow: hex — neon decorative palette per design lang
   color: "var(--color-warning, #F59E0B)",
 });

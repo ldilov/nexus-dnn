@@ -27,10 +27,10 @@ export const triggerLabel = style({
 
 export const dropdown = style({
   position: "absolute",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   top: "calc(100% + 4px)",
   insetInlineEnd: 0,
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   minWidth: "260px",
   background: vars.card.bg,
   boxShadow: vars.card.shadow,
@@ -39,7 +39,7 @@ export const dropdown = style({
   padding: vars.density.d3,
   display: "flex",
   flexDirection: "column",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
   zIndex: vars.z.dropdown,
 });
@@ -69,7 +69,7 @@ export const item = style({
 export const itemLeft = style({
   display: "flex",
   flexDirection: "column",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
   minWidth: 0,
 });
@@ -80,7 +80,7 @@ export const itemBadge = style({
   letterSpacing: "0.06em",
   color: vars.color.text.muted,
   paddingInline: vars.density.d2,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   paddingBlock: "2px",
   background: vars.color.bg.hover,
   borderRadius: vars.radius.full,
@@ -95,7 +95,7 @@ export const itemContext = style({
 export const recoveryLink = style({
   marginInlineStart: vars.density.d2,
   paddingInline: vars.density.d2,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   paddingBlock: "2px",
   background: "transparent",
   border: "none",
@@ -104,14 +104,14 @@ export const recoveryLink = style({
   fontSize: vars.font.size.caption,
   color: vars.color.accent.secondary,
   textDecoration: "underline",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   textUnderlineOffset: "2px",
   ":hover": { color: vars.color.text.primary },
   selectors: {
     "&:focus-visible": {
-      // audit-allow: px — px — below minimum token granularity (sub-10px)
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outline: `2px solid ${vars.color.accent.secondary}`,
-      // audit-allow: px — px — below minimum token granularity (sub-10px)
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outlineOffset: "2px",
       borderRadius: vars.radius.control,
     },

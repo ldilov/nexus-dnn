@@ -13,7 +13,7 @@ export const wrap = style({
 
 export const textarea = style({
   flex: "1 1 auto",
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   minHeight: "32px",
   maxHeight: "8rem",
   resize: "none",
