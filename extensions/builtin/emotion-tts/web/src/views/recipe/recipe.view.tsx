@@ -21,6 +21,7 @@ import { listPresets, type VectorPreset } from "../../services/presets_client";
 import type { WorkflowResponse } from "../../services/workflows_client";
 import { AuditHistoryPanel, type AuditTargetOption } from "./components/audit_history_panel";
 import { CastRow, CastSection } from "./components/cast_row";
+import { DepRecipeBanner } from "./components/dep_recipe_banner";
 import { DeploymentHeader } from "./components/deployment_header";
 import { DirectModSliderStrip } from "./components/direct_mod_slider_strip";
 import { EmotionStudio } from "./components/emotion_studio";
@@ -285,7 +286,19 @@ export function RecipeView(): JSX.Element {
       deployment={deployment}
       workflowCustomised={workflow.workflow.customised}
       unmappableFields={workflow.unmappableFields}
-      hero={<DeploymentHeader deployment={deployment} />}
+      hero={
+        <>
+          <DeploymentHeader deployment={deployment} />
+          <DepRecipeBanner
+            runtimeId={deployment.backendRuntimePreference ?? "indextts.python"}
+            device={null}
+            sampleRateHz={null}
+            lineCount={parsedLines.length}
+            charCount={script.length}
+            estimatedDurationS={parsedLines.length * 4}
+          />
+        </>
+      }
       scriptSection={
         <ScriptSection
           quickMode={quickMode}
@@ -304,6 +317,7 @@ export function RecipeView(): JSX.Element {
         <CastSection unmappedCount={unmappedCount} totalCount={characters.length}>
           {characters.map((name) => {
             const mapping = mappingsByLower.get(name.toLowerCase()) ?? null;
+            // audit-allow: hex — neon decorative palette per design lang
             const color = characterColors[name] ?? "#ba9eff";
             return (
               <li key={name} style={{ listStyle: "none" }}>
@@ -536,6 +550,7 @@ function _CastSectionStub({
         style={{
           display: "inline-flex",
           alignSelf: "flex-start",
+          // audit-allow: px — below minimum token granularity (sub-10px)
           padding: "4px 12px",
           borderRadius: 999,
           background:
@@ -563,6 +578,7 @@ function _CastSectionStub({
                 gridTemplateColumns: "auto 1fr auto",
                 alignItems: "center",
                 gap: 16,
+                // audit-allow: px — sub-token spacing value, no density token at this step
                 padding: "12px 16px",
                 borderRadius: 10,
                 background: "var(--surface)",

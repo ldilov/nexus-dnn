@@ -48,7 +48,9 @@ export const item = style({
 });
 
 export const statusDot = style({
+  // audit-allow: px — below minimum token granularity (sub-10px)
   width: "8px",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   height: "8px",
   borderRadius: "50%",
   flex: "0 0 auto",

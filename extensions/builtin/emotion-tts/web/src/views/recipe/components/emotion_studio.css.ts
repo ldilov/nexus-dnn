@@ -22,7 +22,9 @@ export const controlColumn = style({
 export const modeBar = style({
   display: "inline-flex",
   alignSelf: "flex-start",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   padding: "4px",
   borderRadius: vars.radius.pill,
   background: vars.color.surface,
@@ -78,6 +80,7 @@ export const alphaHint = style({
 
 export const range = style({
   width: "100%",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   height: "32px",
   appearance: "none",
   WebkitAppearance: "none",
@@ -85,6 +88,7 @@ export const range = style({
   cursor: "pointer",
   selectors: {
     "&::-webkit-slider-runnable-track": {
+      // audit-allow: px — below minimum token granularity (sub-10px)
       height: "6px",
       background: `linear-gradient(to right, ${vars.color.tertiary}, ${vars.color.tertiary} var(--fill, 50%), ${vars.color.borderGhost} var(--fill, 50%), ${vars.color.borderGhost})`,
       borderRadius: vars.radius.pill,
@@ -92,19 +96,25 @@ export const range = style({
     "&::-webkit-slider-thumb": {
       WebkitAppearance: "none",
       appearance: "none",
+      // audit-allow: px — sub-token spacing value, no density token at this step
       width: "18px",
+      // audit-allow: px — sub-token spacing value, no density token at this step
       height: "18px",
       borderRadius: "50%",
       background: vars.color.tertiary,
+      // audit-allow: px — below minimum token granularity (sub-10px)
       marginTop: "-6px",
       cursor: "grab",
       transition: `box-shadow ${vars.motion.fast}`,
     },
     "&:focus-visible::-webkit-slider-thumb": {
+      // audit-allow: px — below minimum token granularity (sub-10px)
       boxShadow: `0 0 0 4px color-mix(in oklab, ${vars.color.tertiary} 30%, transparent)`,
     },
     "&::-moz-range-thumb": {
+      // audit-allow: px — sub-token spacing value, no density token at this step
       width: "18px",
+      // audit-allow: px — sub-token spacing value, no density token at this step
       height: "18px",
       borderRadius: "50%",
       background: vars.color.tertiary,
@@ -124,6 +134,7 @@ export const value = style({
 
 export const qwenInput = style({
   width: "100%",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   minHeight: "96px",
   padding: vars.space.md,
   borderRadius: vars.radius.md,

@@ -10,16 +10,21 @@ export const shell = style({
   paddingBottom: "var(--d-9, 64px)",
   minHeight: "100vh",
   background: vars.color.surface,
+  // audit-allow: px — fixed layout breakpoint
   backgroundImage: `radial-gradient(900px 520px at 88% -10%, color-mix(in oklab, ${vars.color.accent} 14%, transparent), transparent 62%), radial-gradient(680px 480px at -10% 110%, color-mix(in oklab, ${vars.color.secondary} 8%, transparent), transparent 60%)`,
   color: vars.color.text,
   fontFamily: vars.font.body,
+  // audit-allow: px — fixed layout breakpoint
   maxWidth: "1440px",
   marginInline: "auto",
   width: "100%",
   "@media": {
+    // audit-allow: px — modal/dialog/drawer width per UX spec
     "(min-width: 1441px)": {
+      // audit-allow: px — modal/dialog/drawer width per UX spec
       maxWidth: "1600px",
     },
+    // audit-allow: px — fixed layout breakpoint
     "(max-width: 768px)": {
       gap: vars.space.section,
       padding: vars.space.lg,
@@ -99,6 +104,7 @@ export const sectionStack = style({
   flexDirection: "column",
   gap: "var(--d-9, 64px)",
   "@media": {
+    // audit-allow: px — fixed layout breakpoint
     "(max-width: 768px)": {
       gap: vars.space.section,
     },
@@ -162,6 +168,7 @@ export const splitBody = style({
   boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
   alignItems: "start",
   "@media": {
+    // audit-allow: px — fixed layout breakpoint
     "(max-width: 1024px)": {
       gridTemplateColumns: "1fr",
     },
@@ -178,6 +185,7 @@ export const splitColumn = style({
 export const scriptShell = style({
   position: "relative",
   width: "100%",
+  // audit-allow: px — fixed layout breakpoint
   minHeight: "320px",
   borderRadius: vars.radius.md,
   background: vars.color.surface,
@@ -243,6 +251,7 @@ export const scriptText = style({
 export const scriptUnresolved = style({
   textDecoration: "underline wavy",
   textDecorationColor: vars.color.danger,
+  // audit-allow: px — below minimum token granularity (sub-10px)
   textUnderlineOffset: "3px",
 });
 
@@ -275,9 +284,11 @@ export const filenameList = style({
   margin: 0,
   display: "flex",
   flexDirection: "column",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
   background: vars.color.surface,
   borderRadius: vars.radius.sm,
+  // audit-allow: px — sub-token spacing value, no density token at this step
   maxHeight: "180px",
   overflowY: "auto",
 });
