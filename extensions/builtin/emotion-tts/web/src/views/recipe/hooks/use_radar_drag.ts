@@ -25,11 +25,13 @@ const KEYBOARD_STEP = 0.05;
 const KEYBOARD_PAGE = 0.2;
 
 export function useRadarDrag(options: UseRadarDragOptions): UseRadarDragResult {
-  const { vec, onChange, size } = options;
+  const { vec, onChange, size, reduceMotion = false } = options;
   const [liveVec, setLiveVec] = useState<EmotionVec>(vec);
   const [activeAxis, setActiveAxis] = useState<AxisKey | null>(null);
   const draggingRef = useRef<{ axis: AxisKey; pointerId: number; centerX: number; centerY: number; angle: number } | null>(null);
   const liveVecRef = useRef<EmotionVec>(vec);
+  const reduceMotionRef = useRef(reduceMotion);
+  reduceMotionRef.current = reduceMotion;
 
   useEffect(() => {
     setLiveVec(vec);
@@ -56,6 +58,7 @@ export function useRadarDrag(options: UseRadarDragOptions): UseRadarDragResult {
     (event: PointerEvent) => {
       const drag = draggingRef.current;
       if (!drag) return;
+      if (reduceMotionRef.current) return;
       const dx = event.clientX - drag.centerX;
       const dy = event.clientY - drag.centerY;
       const distance = Math.sqrt(dx * dx + dy * dy);
@@ -74,12 +77,31 @@ export function useRadarDrag(options: UseRadarDragOptions): UseRadarDragResult {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("pointercancel", handlePointerUp);
+      if (reduceMotionRef.current) {
+        const dx = event.clientX - drag.centerX;
+        const dy = event.clientY - drag.centerY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const radius = size / 2;
+        const value = Math.max(0, Math.min(1, distance / radius));
+        const final = { ...liveVecRef.current, [drag.axis]: value };
+        draggingRef.current = null;
+        commit(final);
+        return;
+      }
       draggingRef.current = null;
       commit(liveVecRef.current);
-      void event;
     },
-    [commit, handlePointerMove],
+    [commit, handlePointerMove, size],
   );
+
+  useEffect(() => {
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+      draggingRef.current = null;
+    };
+  }, [handlePointerMove, handlePointerUp]);
 
   const onPointerDown = useCallback(
     (axis: AxisKey, event: React.PointerEvent<SVGElement>) => {

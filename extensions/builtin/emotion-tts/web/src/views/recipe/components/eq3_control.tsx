@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useId, type CSSProperties } from "react";
 import { EQ3_PRESETS, type Eq3PresetKey } from "../lib/slider_chain";
 import * as css from "./eq3_control.css";
 
@@ -81,7 +81,7 @@ interface BandSliderProps {
 
 function BandSlider({ label, value, onChange, disabled }: BandSliderProps): JSX.Element {
   const fillPct = ((value - BAND_MIN) / (BAND_MAX - BAND_MIN)) * 100;
-  const id = `eq3-${label.toLowerCase()}`;
+  const id = useId();
   return (
     <div className={css.bandColumn}>
       <label htmlFor={id} className={css.bandLabel}>

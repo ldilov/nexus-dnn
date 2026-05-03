@@ -32,3 +32,17 @@ export const toggleRow = style({
   color: vars.color.textMuted,
 });
 
+export const advancedDisclosure = style({
+  border: "none",
+  background: "transparent",
+  cursor: "pointer",
+  padding: 0,
+  textAlign: "left",
+  color: vars.color.accent,
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  textTransform: "uppercase",
+  letterSpacing: vars.tracking.label,
+  alignSelf: "flex-start",
+});
+

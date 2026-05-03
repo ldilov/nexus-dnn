@@ -11,7 +11,6 @@ import soundfile as sf
 from emotion_tts_worker import audio_edit
 from emotion_tts_worker.audio_edit.digest import compute_digest
 
-
 SAMPLE_RATE = 44_100
 DURATION_S = 1.0
 

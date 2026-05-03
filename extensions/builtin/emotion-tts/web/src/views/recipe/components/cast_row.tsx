@@ -181,21 +181,7 @@ export function CastRow({
             </div>
           )}
           {isMapped && onClearMapping && (
-            <button
-              type="button"
-              onClick={onClearMapping}
-              style={{
-                alignSelf: "flex-start",
-                background: "transparent",
-                border: "none",
-                color: "var(--on-surface-variant)",
-                fontFamily: "var(--font-mono)",
-                fontSize: 11,
-                textTransform: "uppercase",
-                letterSpacing: "0.18em",
-                cursor: "pointer",
-              }}
-            >
+            <button type="button" className={css.clearButton} onClick={onClearMapping}>
               Clear mapping →
             </button>
           )}

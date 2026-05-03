@@ -65,6 +65,11 @@ function modeLabel(op: EditOp): string {
       return "Pitch";
     case "silence_strip":
       return "Silence trim";
+    default: {
+      const exhaustive: never = op;
+      void exhaustive;
+      return "Op";
+    }
   }
 }
 
@@ -90,6 +95,11 @@ function paramsSummary(op: EditOp): string {
       return `${op.semitones >= 0 ? "+" : ""}${op.semitones.toFixed(1)} st`;
     case "silence_strip":
       return `${op.threshold_db.toFixed(0)} dB`;
+    default: {
+      const exhaustive: never = op;
+      void exhaustive;
+      return "—";
+    }
   }
 }
 

@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useId, type CSSProperties } from "react";
 import { Button } from "../../../components/button";
 import {
   IDENTITY_SLIDER_STATE,
@@ -182,7 +182,7 @@ interface SliderGroupProps {
 function SliderGroup(props: SliderGroupProps): JSX.Element {
   const { label, sub, min, max, step, format, value, onChange, disabled } = props;
   const fillPct = ((value - min) / (max - min)) * 100;
-  const id = `dm-${label.toLowerCase()}`;
+  const id = useId();
   return (
     <div className={css.groupGrid}>
       <div className={css.groupBlock}>
@@ -241,18 +241,27 @@ function NormalizeSection({ normalize, onChange, disabled }: NormalizeSectionPro
     <div className={css.subSection}>
       <span className={css.subSectionTitle}>Normalize</span>
       <div className={css.radioRow} role="group" aria-label="Normalize mode">
-        {(["off", "peak", "loudness"] as const).map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            className={css.radioChip}
-            data-active={normalize.mode === mode}
-            disabled={disabled}
-            onClick={() => setMode(mode)}
-          >
-            {mode}
-          </button>
-        ))}
+        {(["off", "peak", "loudness"] as const).map((mode) => {
+          const peakUnsupported = mode === "peak";
+          return (
+            <button
+              key={mode}
+              type="button"
+              className={css.radioChip}
+              data-active={normalize.mode === mode}
+              disabled={disabled || peakUnsupported}
+              onClick={() => setMode(mode)}
+              title={
+                peakUnsupported
+                  ? "Peak normalize is not yet supported by the worker. Use Loudness (LUFS) instead."
+                  : undefined
+              }
+            >
+              {mode}
+              {peakUnsupported ? " (soon)" : ""}
+            </button>
+          );
+        })}
       </div>
       {normalize.mode !== "off" ? (
         <div className={css.groupGrid}>
@@ -291,16 +300,18 @@ interface FadeSectionProps {
 }
 
 function FadeSection({ inS, outS, onChange, disabled }: FadeSectionProps): JSX.Element {
+  const inId = useId();
+  const outId = useId();
   return (
     <div className={css.subSection}>
       <span className={css.subSectionTitle}>Fade</span>
       <div className={css.fadeRow}>
         <div className={css.fadeField}>
-          <label className={css.fadeLabel} htmlFor="fade-in">
+          <label className={css.fadeLabel} htmlFor={inId}>
             Fade in (s)
           </label>
           <input
-            id="fade-in"
+            id={inId}
             type="number"
             min={0}
             step={0.05}
@@ -311,11 +322,11 @@ function FadeSection({ inS, outS, onChange, disabled }: FadeSectionProps): JSX.E
           />
         </div>
         <div className={css.fadeField}>
-          <label className={css.fadeLabel} htmlFor="fade-out">
+          <label className={css.fadeLabel} htmlFor={outId}>
             Fade out (s)
           </label>
           <input
-            id="fade-out"
+            id={outId}
             type="number"
             min={0}
             step={0.05}

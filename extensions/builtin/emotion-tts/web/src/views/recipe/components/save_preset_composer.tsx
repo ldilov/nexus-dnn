@@ -5,6 +5,7 @@ import {
   type AxisKey,
   AXIS_LABELS,
   type EmotionVec,
+  clampVec,
   suggestPresetName,
   topAxes,
 } from "../lib/preset_naming";
@@ -112,8 +113,9 @@ export function PresetLibrary({
             >
               <button
                 type="button"
-                style={{ display: "contents", border: "none", background: "transparent", cursor: "pointer" }}
+                className={css.presetCardSelect}
                 onClick={() => onSelect(preset)}
+                aria-pressed={active}
               >
                 <EttsRadarMini vec={vec} size={28} />
                 <span className={css.presetCardName}>{preset.presetName}</span>
@@ -157,10 +159,11 @@ export function vecFromPreset(preset: VectorPreset): EmotionVec {
     {} as EmotionVec,
   );
   if (!Array.isArray(preset.vector)) return empty;
-  return AXIS_ORDER.reduce<EmotionVec>(
+  const raw = AXIS_ORDER.reduce<EmotionVec>(
     (acc, key, i) => ({ ...acc, [key]: preset.vector[i] ?? 0 }),
     empty,
   );
+  return clampVec(raw);
 }
 
 export function vecToPresetVector(vec: EmotionVec): [number, number, number, number, number, number, number, number] {

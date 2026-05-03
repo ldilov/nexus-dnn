@@ -207,20 +207,8 @@ export function PerUtteranceEdit(props: PerUtteranceEditProps): JSX.Element {
           </label>
           <button
             type="button"
-            className={css.toggleRow}
+            className={css.advancedDisclosure}
             onClick={() => setShowAdvanced((s) => !s)}
-            style={{
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              padding: 0,
-              textAlign: "left",
-              color: "var(--accent)",
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              textTransform: "uppercase",
-              letterSpacing: "0.18em",
-            }}
             aria-expanded={showAdvanced}
           >
             {showAdvanced ? "▾" : "▸"} Advanced effects · gain · eq · pitch · fade · silence trim

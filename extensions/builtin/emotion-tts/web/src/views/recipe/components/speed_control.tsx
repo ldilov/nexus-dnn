@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useId, type CSSProperties } from "react";
 import { Button } from "../../../components/button";
 import * as css from "./speed_control.css";
 
@@ -20,7 +20,7 @@ const SPEED_STEP = 0.05;
 export function SpeedControl(props: SpeedControlProps): JSX.Element {
   const { mode, value, supportsSynthSpeed, onChange, onReRenderAtSynthTime, disabled } = props;
   const fillPct = ((value - SPEED_MIN) / (SPEED_MAX - SPEED_MIN)) * 100;
-  const id = "speed-slider";
+  const id = useId();
 
   const setMode = (next: SpeedMode) => onChange(next, value);
   const setValue = (next: number) => onChange(mode, next);

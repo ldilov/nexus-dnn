@@ -1,4 +1,3 @@
-
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -102,7 +101,11 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<AuditEntry> {
     let op_count: i64 = row.try_get("operation_count").map_err(to_err)?;
     let recorded_at_raw: String = row.try_get("recorded_at").map_err(to_err)?;
     let actor: String = row.try_get("actor").map_err(to_err)?;
-    let chain_snapshot_json: Option<String> = row.try_get("chain_snapshot_json").unwrap_or(None);
+    let chain_snapshot_json: Option<String> = match row.try_get("chain_snapshot_json") {
+        Ok(value) => value,
+        Err(sqlx::Error::ColumnNotFound(_)) => None,
+        Err(e) => return Err(to_err(e)),
+    };
 
     Ok(AuditEntry {
         entry_id,

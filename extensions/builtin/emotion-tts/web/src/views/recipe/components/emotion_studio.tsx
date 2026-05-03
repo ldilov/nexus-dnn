@@ -6,7 +6,6 @@ import {
   createPreset,
   deletePreset,
   listPresets,
-  type EmotionVector,
   type VectorPreset,
 } from "../../../services/presets_client";
 import type { EmotionMode, GlobalEmotion } from "../../../services/types";
@@ -14,12 +13,10 @@ import { EttsRadar } from "./etts_radar";
 import {
   PresetLibrary,
   SavePresetComposer,
-  vecFromPreset,
   vecToPresetVector,
 } from "./save_preset_composer";
 import {
   AXIS_KEYS,
-  type AxisKey,
   type EmotionVec,
   EMPTY_VEC,
   clampVec,
@@ -289,7 +286,3 @@ function describe(err: unknown): string {
   return "Unknown error";
 }
 
-void vecFromPreset;
-type _UnusedHelpers = AxisKey | EmotionVector;
-const _ignore: _UnusedHelpers | undefined = undefined;
-void _ignore;

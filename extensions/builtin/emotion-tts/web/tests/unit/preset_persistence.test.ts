@@ -72,12 +72,22 @@ describe("preset persistence (SC-008)", () => {
     });
   });
 
-  it("simulates deletion irreversibility (FR-046)", () => {
-    const presets = [makePreset({ presetId: "p-1" }), makePreset({ presetId: "p-2" })];
-    const filtered = presets.filter((p) => p.presetId !== "p-1");
-    expect(filtered).toHaveLength(1);
-    expect(filtered[0]?.presetId).toBe("p-2");
-    expect(presets.find((p) => p.presetId === "p-1")).toBeDefined();
-    expect(filtered.find((p) => p.presetId === "p-1")).toBeUndefined();
+  it("vecFromPreset survives malformed vector entries", () => {
+    const malformed: VectorPreset = makePreset({
+      vector: [
+        Number.NaN,
+        2,
+        -1,
+        Number.POSITIVE_INFINITY,
+        0.5,
+        0,
+        0,
+        0,
+      ] as VectorPreset["vector"],
+    });
+    const recovered = vecFromPreset(malformed);
+    AXIS_KEYS.forEach((key) => {
+      expect(Number.isFinite(recovered[key])).toBe(true);
+    });
   });
 });

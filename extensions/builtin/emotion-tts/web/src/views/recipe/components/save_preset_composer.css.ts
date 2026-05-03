@@ -98,6 +98,21 @@ export const presetCard = style({
   },
 });
 
+export const presetCardSelect = style({
+  display: "grid",
+  gridTemplateColumns: "auto 1fr",
+  alignItems: "center",
+  gap: vars.space.sm,
+  border: "none",
+  background: "transparent",
+  padding: 0,
+  cursor: "pointer",
+  font: "inherit",
+  color: "inherit",
+  textAlign: "left",
+  width: "100%",
+});
+
 export const presetCardActive = style({
   background: `color-mix(in oklab, ${vars.color.accent} 14%, transparent)`,
   outline: `1px solid ${vars.color.accent}`,

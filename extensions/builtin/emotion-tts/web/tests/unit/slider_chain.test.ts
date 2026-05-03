@@ -102,17 +102,28 @@ describe("slider_chain", () => {
     expect(chain.ops).toHaveLength(0);
   });
 
-  it("mergeSliderEffectsIntoChain preserves trim + normalize", () => {
+  it("mergeSliderEffectsIntoChain preserves trim (the only non-slider-managed op)", () => {
     const trim: TrimOp = { id: "T1", mode: "trim", start_ms: 100, end_ms: 5000 };
-    const normalize: NormalizeOp = { id: "N1", mode: "normalize", target_lufs: -16 };
-    const base: EditChain = { version: 1, ops: [trim, normalize] };
+    const base: EditChain = { version: 1, ops: [trim] };
     const merged = mergeSliderEffectsIntoChain(base, {
       ...IDENTITY_SLIDER_STATE,
       volumeDb: 3,
     });
     expect(merged.ops.find((o) => o.mode === "trim")).toEqual(trim);
-    expect(merged.ops.find((o) => o.mode === "normalize")).toEqual(normalize);
     expect(merged.ops.find((o) => o.mode === "gain")).toBeDefined();
+  });
+
+  it("mergeSliderEffectsIntoChain replaces a pre-existing normalize op according to slider state", () => {
+    const normalize: NormalizeOp = { id: "N1", mode: "normalize", target_lufs: -16 };
+    const base: EditChain = { version: 1, ops: [normalize] };
+    const mergedOff = mergeSliderEffectsIntoChain(base, IDENTITY_SLIDER_STATE);
+    expect(mergedOff.ops.find((o) => o.mode === "normalize")).toBeUndefined();
+    const mergedNew = mergeSliderEffectsIntoChain(base, {
+      ...IDENTITY_SLIDER_STATE,
+      normalize: { mode: "loudness", targetDbOrLufs: -20 },
+    });
+    const normOp = mergedNew.ops.find((o) => o.mode === "normalize");
+    if (normOp?.mode === "normalize") expect(normOp.target_lufs).toBe(-20);
   });
 
   it("mergeSliderEffectsIntoChain replaces previous slider effects", () => {
@@ -132,13 +143,45 @@ describe("slider_chain", () => {
     expect(merged.ops.find((o) => o.mode === "trim")).toEqual(trim);
   });
 
-  it("deriveSliderEffectsFromChain ignores trim + normalize", () => {
+  it("deriveSliderEffectsFromChain preserves trim but exposes normalize as slider state", () => {
     const trim: TrimOp = { id: "T1", mode: "trim", start_ms: 0, end_ms: 1000 };
     const normalize: NormalizeOp = { id: "N1", mode: "normalize", target_lufs: -18 };
     const withGain = upsertGain({ version: 1, ops: [trim, normalize] }, 4);
     const state = deriveSliderEffectsFromChain(withGain);
     expect(state.volumeDb).toBe(4);
-    expect(state.normalize.mode).toBe("off");
+    expect(state.normalize.mode).toBe("loudness");
+    expect(state.normalize.targetDbOrLufs).toBe(-18);
+  });
+
+  it("mergeSliderEffectsIntoChain wires speed when mode='audio'", () => {
+    const base: EditChain = { version: 1, ops: [] };
+    const merged = mergeSliderEffectsIntoChain(base, {
+      ...IDENTITY_SLIDER_STATE,
+      speed: { mode: "audio", value: 0.92 },
+    });
+    const speedOps = merged.ops.filter((o) => o.mode === "speed");
+    expect(speedOps).toHaveLength(1);
+    if (speedOps[0]?.mode === "speed") expect(speedOps[0].factor).toBeCloseTo(0.92, 5);
+  });
+
+  it("mergeSliderEffectsIntoChain drops speed when mode='synth'", () => {
+    const base: EditChain = { version: 1, ops: [] };
+    const merged = mergeSliderEffectsIntoChain(base, {
+      ...IDENTITY_SLIDER_STATE,
+      speed: { mode: "synth", value: 0.92 },
+    });
+    expect(merged.ops.filter((o) => o.mode === "speed")).toHaveLength(0);
+  });
+
+  it("mergeSliderEffectsIntoChain wires normalize when mode='loudness'", () => {
+    const base: EditChain = { version: 1, ops: [] };
+    const merged = mergeSliderEffectsIntoChain(base, {
+      ...IDENTITY_SLIDER_STATE,
+      normalize: { mode: "loudness", targetDbOrLufs: -16 },
+    });
+    const normOps = merged.ops.filter((o) => o.mode === "normalize");
+    expect(normOps).toHaveLength(1);
+    if (normOps[0]?.mode === "normalize") expect(normOps[0].target_lufs).toBe(-16);
   });
 
   it("bijection: chainToSliderState ∘ applySliderState = identity-state shape", () => {
