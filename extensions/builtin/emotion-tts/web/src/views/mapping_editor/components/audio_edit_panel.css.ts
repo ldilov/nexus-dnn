@@ -18,6 +18,26 @@ export const numericLabel = style({
   color: vars.color.text,
 });
 
+export const advancedDisclosure = style({
+  border: "none",
+  background: "transparent",
+  cursor: "pointer",
+  padding: 0,
+  textAlign: "left",
+  color: vars.color.accent,
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  textTransform: "uppercase",
+  letterSpacing: vars.tracking.label,
+  alignSelf: "flex-start",
+});
+
+export const chainDigestValue = style({
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.body,
+  color: vars.color.secondary,
+});
+
 export const controls = style({
   display: "grid",
   gridTemplateColumns: "1fr 1fr",

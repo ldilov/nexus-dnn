@@ -31,6 +31,8 @@ export function EttsWaveform(props: EttsWaveformProps): JSX.Element {
     reduceMotion,
   } = props;
   const dragRef = useRef<{ kind: "start" | "end" | "create"; pointerId: number } | null>(null);
+  const loopRegionRef = useRef(loopRegion);
+  loopRegionRef.current = loopRegion;
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -168,23 +170,36 @@ export function EttsWaveform(props: EttsWaveformProps): JSX.Element {
 
   const handleLoopHandlePointerDown = useCallback(
     (kind: "start" | "end") => (event: React.PointerEvent<HTMLDivElement>) => {
-      if (!onLoopRegionChange || !loopRegion) return;
+      if (!onLoopRegionChange || !loopRegionRef.current) return;
       event.preventDefault();
       event.stopPropagation();
+      const handle = event.currentTarget;
+      try {
+        handle.setPointerCapture(event.pointerId);
+      } catch {
+        // some test environments lack pointer capture; window listeners still cover the drag
+      }
       dragRef.current = { kind, pointerId: event.pointerId };
       const onMove = (e: PointerEvent) => {
         if (!dragRef.current) return;
+        const current = loopRegionRef.current;
+        if (!current) return;
         const ratio = ratioFromClientX(e.clientX);
-        const next = { ...loopRegion };
+        const next = { ...current };
         if (dragRef.current.kind === "start") {
-          next.start = Math.min(ratio, loopRegion.end - 0.01);
+          next.start = Math.min(ratio, current.end - 0.01);
         } else {
-          next.end = Math.max(ratio, loopRegion.start + 0.01);
+          next.end = Math.max(ratio, current.start + 0.01);
         }
         onLoopRegionChange(next);
       };
-      const onUp = () => {
+      const onUp = (e: PointerEvent) => {
         dragRef.current = null;
+        try {
+          handle.releasePointerCapture(e.pointerId);
+        } catch {
+          // already released
+        }
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
         window.removeEventListener("pointercancel", onUp);
@@ -193,24 +208,38 @@ export function EttsWaveform(props: EttsWaveformProps): JSX.Element {
       window.addEventListener("pointerup", onUp);
       window.addEventListener("pointercancel", onUp);
     },
-    [loopRegion, onLoopRegionChange, ratioFromClientX],
+    [onLoopRegionChange, ratioFromClientX],
   );
 
   const handleTrackPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (event.shiftKey && onLoopRegionChange) {
         event.preventDefault();
+        const track = event.currentTarget;
+        try {
+          track.setPointerCapture(event.pointerId);
+        } catch {
+          // ignore capture failures (jsdom etc.)
+        }
         const startRatio = ratioFromClientX(event.clientX);
+        let lastRatio = startRatio;
         onLoopRegionChange({ start: startRatio, end: Math.min(1, startRatio + 0.05) });
         const onMove = (e: PointerEvent) => {
           const ratio = ratioFromClientX(e.clientX);
+          if (Math.abs(ratio - lastRatio) < 0.002) return;
+          lastRatio = ratio;
           if (ratio > startRatio) {
             onLoopRegionChange({ start: startRatio, end: ratio });
           } else {
             onLoopRegionChange({ start: ratio, end: startRatio });
           }
         };
-        const onUp = () => {
+        const onUp = (e: PointerEvent) => {
+          try {
+            track.releasePointerCapture(e.pointerId);
+          } catch {
+            // already released
+          }
           window.removeEventListener("pointermove", onMove);
           window.removeEventListener("pointerup", onUp);
           window.removeEventListener("pointercancel", onUp);

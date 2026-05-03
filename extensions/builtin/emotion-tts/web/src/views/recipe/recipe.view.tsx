@@ -45,7 +45,6 @@ import {
 } from "./lib/parse_dialogue";
 import {
   IDENTITY_SLIDER_STATE,
-  applySliderState,
   type DirectModSliderState,
 } from "./lib/slider_chain";
 import { RecipeUi } from "./recipe.ui";
@@ -186,14 +185,9 @@ export function RecipeView(): JSX.Element {
     [deployment.deploymentId, upsertMapping],
   );
 
-  const handleSliderChange = useCallback(
-    (next: DirectModSliderState) => {
-      setSliderState(next);
-      const chain = applySliderState({ version: 1, ops: [] }, next);
-      void chain;
-    },
-    [],
-  );
+  const handleSliderChange = useCallback((next: DirectModSliderState) => {
+    setSliderState(next);
+  }, []);
 
   const auditTargets = useMemo<AuditTargetOption[]>(() => {
     const targets: AuditTargetOption[] = [];
@@ -222,9 +216,22 @@ export function RecipeView(): JSX.Element {
       }
       let parsed: EditChain;
       try {
-        parsed = JSON.parse(chainJson) as EditChain;
-      } catch {
-        notify.error("Audit snapshot is malformed; cannot revert.");
+        const raw = JSON.parse(chainJson) as unknown;
+        if (
+          typeof raw !== "object" ||
+          raw === null ||
+          (raw as { version?: unknown }).version !== 1 ||
+          !Array.isArray((raw as { ops?: unknown }).ops)
+        ) {
+          throw new Error("snapshot is not a valid EditChain");
+        }
+        parsed = raw as EditChain;
+      } catch (err: unknown) {
+        notify.error(
+          err instanceof Error
+            ? `Audit snapshot is malformed: ${err.message}`
+            : "Audit snapshot is malformed; cannot revert.",
+        );
         return;
       }
       try {
@@ -290,12 +297,12 @@ export function RecipeView(): JSX.Element {
       script,
       parserMode: quickMode ? "raw_text" : "dialogue",
       outputFormat,
-      speedFactor: performance.pace,
+      speedFactor,
       globalEmotion: { ...globalEmotion, emotionAlpha: performance.intensity },
       generation,
       cachePolicy,
     }),
-    [script, quickMode, outputFormat, performance.pace, performance.intensity, globalEmotion, generation, cachePolicy],
+    [script, quickMode, outputFormat, speedFactor, performance.intensity, globalEmotion, generation, cachePolicy],
   );
 
   const diagnostics = useMemo(
@@ -399,7 +406,13 @@ export function RecipeView(): JSX.Element {
       }
       performanceSection={
         <>
-          <PerformanceSliders value={performance} onChange={setPerformance} />
+          <PerformanceSliders
+            value={{ ...performance, pace: speedFactor }}
+            onChange={(next) => {
+              setPerformance(next);
+              if (next.pace !== speedFactor) setSpeedFactor(next.pace);
+            }}
+          />
           <DirectModSliderStrip
             state={sliderState}
             onChange={handleSliderChange}
@@ -562,112 +575,6 @@ function ScriptSyntaxLegend(): JSX.Element {
         <code style={{ color: "var(--acid-green)" }}>[Char|audio:slow_breath.wav]</code> audio reference
       </li>
     </ul>
-  );
-}
-
-interface CastSectionStubProps {
-  characters: readonly string[];
-  characterColors: Record<string, string>;
-  lineCounts: Record<string, number>;
-  mappingsByLower: Map<string, CharacterMapping>;
-  unmappedCount: number;
-}
-
-// Retained for reference; the live cast section uses CastSection + CastRow now.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function _CastSectionStub({
-  characters,
-  characterColors,
-  lineCounts,
-  mappingsByLower,
-  unmappedCount,
-}: CastSectionStubProps): JSX.Element {
-  if (characters.length === 0) {
-    return (
-      <p style={{ margin: 0, color: "var(--on-surface-variant)" }}>
-        Add at least one tagged dialogue line to populate the cast.
-      </p>
-    );
-  }
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div
-        style={{
-          display: "inline-flex",
-          alignSelf: "flex-start",
-          // audit-allow: px — below minimum token granularity (sub-10px)
-          padding: "4px 12px",
-          borderRadius: 999,
-          background:
-            unmappedCount > 0
-              ? "color-mix(in oklab, var(--tertiary) 14%, transparent)"
-              : "color-mix(in oklab, var(--acid-green) 14%, transparent)",
-          color: unmappedCount > 0 ? "var(--tertiary)" : "var(--acid-green)",
-          fontFamily: "var(--font-mono)",
-          fontSize: 11,
-          textTransform: "uppercase",
-          letterSpacing: "0.18em",
-        }}
-      >
-        {unmappedCount > 0 ? `${unmappedCount} unmapped` : "All mapped"}
-      </div>
-      <ul style={{ display: "flex", flexDirection: "column", gap: 8, margin: 0, padding: 0, listStyle: "none" }}>
-        {characters.map((name) => {
-          const mapping = mappingsByLower.get(name.toLowerCase());
-          const color = characterColors[name];
-          return (
-            <li
-              key={name}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "auto 1fr auto",
-                alignItems: "center",
-                gap: 16,
-                // audit-allow: px — sub-token spacing value, no density token at this step
-                padding: "12px 16px",
-                borderRadius: 10,
-                background: "var(--surface)",
-              }}
-            >
-              <span
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 999,
-                  background: `color-mix(in oklab, ${color} 22%, transparent)`,
-                  color,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontFamily: "var(--font-display)",
-                  fontWeight: 700,
-                  fontSize: 14,
-                }}
-              >
-                {name[0]?.toUpperCase() ?? "?"}
-              </span>
-              <span>
-                <span style={{ color, fontWeight: 600, fontFamily: "var(--font-display)" }}>{name}</span>
-                <span style={{ marginLeft: 8, color: "var(--on-surface-variant)", fontSize: 12, fontFamily: "var(--font-mono)" }}>
-                  {lineCounts[name] ?? 0} lines
-                </span>
-              </span>
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.18em",
-                  color: mapping ? "var(--acid-green)" : "var(--tertiary)",
-                }}
-              >
-                {mapping ? "Mapped" : "Unmapped"}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
   );
 }
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 MAX_OPS = 32
 MIN_TRIM_DURATION_MS = 100
 SPEED_MIN = 0.5

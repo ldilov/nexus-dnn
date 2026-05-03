@@ -1,7 +1,6 @@
 use emotion_tts_extension::domain::{ChainDigest, EditChain};
 
-const FIXTURE_JSON: &str =
-    include_str!("../../worker/tests/fixtures/digest_contract_chain.json");
+const FIXTURE_JSON: &str = include_str!("../../worker/tests/fixtures/digest_contract_chain.json");
 
 const EXPECTED_HEX: &str = "31713f6bc5b2ff12cd9973847f6f91a26f0d4bb2906b9fa2501be96d39900145";
 
