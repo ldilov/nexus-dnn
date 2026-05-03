@@ -7,7 +7,12 @@ interface CodeBlockProps {
 
 export function CodeBlock({ code, lang }: CodeBlockProps) {
   return (
-    <pre className={block} data-lang={lang ?? "text"} aria-label={`code block ${lang ?? ""}`}>
+    <pre
+      className={block}
+      data-lang={lang ?? "text"}
+      aria-label={`code block${lang ? ` (${lang})` : ""}`}
+      tabIndex={0}
+    >
       <code>{code}</code>
     </pre>
   );

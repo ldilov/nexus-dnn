@@ -12,11 +12,22 @@ const streamMessageMock = vi.fn();
 const useModelLoadStateMock = vi.fn();
 const toastErrorMock = vi.fn();
 
+const { FakeSchemaVersionMismatchError } = vi.hoisted(() => {
+  class FakeSchemaVersionMismatchError extends Error {
+    constructor(public readonly stored: number, public readonly bundled: number) {
+      super(`extension version mismatch: stored=${stored} bundled=${bundled}`);
+      this.name = "SchemaVersionMismatchError";
+    }
+  }
+  return { FakeSchemaVersionMismatchError };
+});
+
 vi.mock("../../services/extension_chat", () => ({
   listThreads: (...args: unknown[]) => listThreadsMock(...args),
   createThread: (...args: unknown[]) => createThreadMock(...args),
   patchThread: (...args: unknown[]) => patchThreadMock(...args),
   deleteThread: (...args: unknown[]) => deleteThreadMock(...args),
+  SchemaVersionMismatchError: FakeSchemaVersionMismatchError,
 }));
 
 vi.mock("../../services/local_llm_chat", () => ({
@@ -86,7 +97,7 @@ describe("ChatPanelAdapter", () => {
     render(<ChatPanelAdapter />);
 
     await waitFor(() => {
-      expect(toastErrorMock).toHaveBeenCalledWith("Could not load chat sessions");
+      expect(toastErrorMock).toHaveBeenCalledWith("boom");
     });
   });
 
@@ -104,8 +115,20 @@ describe("ChatPanelAdapter", () => {
     });
 
     await waitFor(() => {
-      expect(toastErrorMock).toHaveBeenCalledWith("Could not create a new session");
+      expect(toastErrorMock).toHaveBeenCalledWith("network");
     });
+  });
+
+  it("renders a schema-mismatch banner when listThreads throws SchemaVersionMismatchError", async () => {
+    listThreadsMock.mockRejectedValueOnce(new FakeSchemaVersionMismatchError(3, 4));
+
+    render(<ChatPanelAdapter />);
+
+    await waitFor(() => {
+      const alerts = screen.getAllByRole("alert");
+      expect(alerts.some((el) => /stored 3, bundled 4/i.test(el.textContent ?? ""))).toBe(true);
+    });
+    expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
   it("re-fetches threads on local-llm/thread:changed window events", async () => {

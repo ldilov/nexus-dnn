@@ -27,7 +27,7 @@ export function EmotionSliders({ vector, onChange, disabled = false }: Props): J
   };
 
   return (
-    <div className={css.sliderGrid} role="group" aria-label="Emotion axes">
+    <fieldset className={css.sliderGrid} aria-label="Emotion axes">
       {AXIS_LABELS.map((key, idx) => (
         <div key={key} className={css.sliderRow}>
           <label htmlFor={`emo-slider-${idx}`} className={css.sliderLabel}>
@@ -60,6 +60,6 @@ export function EmotionSliders({ vector, onChange, disabled = false }: Props): J
           />
         </div>
       ))}
-    </div>
+    </fieldset>
   );
 }

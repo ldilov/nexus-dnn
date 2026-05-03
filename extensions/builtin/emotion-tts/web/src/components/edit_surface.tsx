@@ -68,9 +68,18 @@ export function EditSurfaceHeader({
 interface EditSurfaceActionsProps {
   children: ReactNode;
   className?: string;
+  role?: "group" | "toolbar";
 }
 
-export function EditSurfaceActions({ children, className }: EditSurfaceActionsProps): JSX.Element {
+export function EditSurfaceActions({
+  children,
+  className,
+  role = "group",
+}: EditSurfaceActionsProps): JSX.Element {
   const cls = [actionsStyle, className].filter(Boolean).join(" ");
-  return <div className={cls}>{children}</div>;
+  return (
+    <div className={cls} role={role}>
+      {children}
+    </div>
+  );
 }

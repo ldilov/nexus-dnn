@@ -296,7 +296,7 @@ function validateOp(op: EditOp, sourceDurationMs: number): ChainValidationError 
       const exhaustive: never = op;
       void exhaustive;
       return {
-        message: `Unknown edit op mode in chain — refusing to apply.`,
+        message: "Unknown edit op mode in chain — refusing to apply.",
       };
     }
   }

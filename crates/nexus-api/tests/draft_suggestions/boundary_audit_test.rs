@@ -1,7 +1,7 @@
-//! Spec 037 — T073 boundary audit for the Draft AI suggestion stream
-//! handler family. Constitution Principle XIII / FR-051 / SC-012 require
-//! that the host's draft-suggestion handler module contains zero
-//! references to any specific extension id.
+//! Boundary audit for the Draft AI suggestion stream handler family.
+//! Constitution Principle XIII / FR-051 / SC-012 require that the
+//! host's draft-suggestion handler module contains zero references to
+//! any specific extension id.
 //!
 //! This test is deliberately the cheapest test in the family — file-system
 //! grep over the handler module's source. It runs in milliseconds and

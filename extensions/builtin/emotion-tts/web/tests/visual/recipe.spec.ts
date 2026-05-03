@@ -1,9 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// Spec 037 — T067: Visual baseline for the EmotionTTS recipe screen.
-// Skip-on-no-data so this is safe in CI environments without a seeded
-// EmotionTTS deployment + warm IndexTTS-2 runtime.
-
 const HOST = process.env.EMOTIONTTS_HOST ?? "http://127.0.0.1:3000";
 const DEPLOYMENT_ID = process.env.EMOTIONTTS_DEPLOYMENT_ID ?? "dep_smoke";
 

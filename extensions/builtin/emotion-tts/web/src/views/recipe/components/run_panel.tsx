@@ -84,9 +84,6 @@ export function RunPanel(props: Props): JSX.Element {
   const canCancel = phase === "starting" || phase === "running";
   const isPartial = run?.status === "partial";
 
-  // When a run reaches terminal state and one or more segments failed,
-  // surface the most common failure category as a prominent banner so the
-  // user doesn't have to scan a table to figure out what went wrong.
   const failedSegments = segmentList.filter((s) => s.status === "failed");
   const dominantFailure = (() => {
     if (phase !== "terminal" || failedSegments.length === 0) return null;
@@ -119,12 +116,8 @@ export function RunPanel(props: Props): JSX.Element {
     cancelled:
       "Run was cancelled. Click Generate to retry.",
   };
+  const DEFAULT_FAILURE_HELP = "Check the run detail page for the per-segment error log.";
 
-  // If the error message mentions unmapped characters (the host's
-  // create_run rejects with a structured "X unmapped characters …" message
-  // when the script references characters with no voice mapping), offer a
-  // direct "Open Mappings" button so the user has a one-click recovery
-  // path instead of having to scan the recipe header for the right link.
   const errorIsUnmapped = error?.toLowerCase().includes("unmapped") ?? false;
 
   const diagnostics = props.diagnostics ?? [];
@@ -185,11 +178,9 @@ export function RunPanel(props: Props): JSX.Element {
             Run failed — {dominantFailure.count} of {dominantFailure.total} segments
             failed with <code>{dominantFailure.category}</code>
           </strong>
-          {failureHelp[dominantFailure.category] && (
-            <div style={{ marginTop: 6, fontWeight: 400 }}>
-              {failureHelp[dominantFailure.category]}
-            </div>
-          )}
+          <div style={{ marginTop: 6, fontWeight: 400 }}>
+            {failureHelp[dominantFailure.category] ?? DEFAULT_FAILURE_HELP}
+          </div>
         </Banner>
       )}
 
@@ -209,6 +200,7 @@ export function RunPanel(props: Props): JSX.Element {
           <span style={{ flex: 1 }}>Partial run — some segments failed or were cancelled.</span>
           <Button
             variant="secondary"
+            disabled={!!blockingDiagnostic}
             onClick={async () => {
               try {
                 const resumed = await resumeRun(props.deploymentId, run.runId);

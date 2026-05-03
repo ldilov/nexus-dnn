@@ -192,17 +192,6 @@ export function streamMessage(
     stream_options: { include_usage: true },
   };
 
-  console.info("[local-llm] → llama.cpp", {
-    url,
-    temperature: body.temperature,
-    top_p: body.top_p,
-    top_k: body.top_k,
-    max_tokens: body.max_tokens,
-    repeat_penalty: body.repeat_penalty,
-    messages_count: body.messages.length,
-    last_user_chars: req.messages[req.messages.length - 1]?.content?.length ?? 0,
-  });
-
   const startTs = performance.now();
   let firstTokenTs: number | null = null;
   const stats: StreamStats = {
@@ -228,7 +217,6 @@ export function streamMessage(
     stats.latencyMs = Math.round(
       firstTokenTs != null ? firstTokenTs - startTs : now - startTs,
     );
-    console.info("[local-llm] ← llama.cpp done", stats);
     handlers.onDone?.(stats);
   };
 

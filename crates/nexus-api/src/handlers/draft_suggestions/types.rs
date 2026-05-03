@@ -115,6 +115,26 @@ impl SuggestionRequest {
         if self.context.draft_text.is_empty() {
             violations.push(("context.draft_text", "must be non-empty".to_string()));
         }
+        if self.context.draft_text.len() > MAX_DRAFT_TEXT_BYTES {
+            violations.push((
+                "context.draft_text",
+                format!(
+                    "must be <= {} bytes; got {}",
+                    MAX_DRAFT_TEXT_BYTES,
+                    self.context.draft_text.len()
+                ),
+            ));
+        }
+        if self.context.active_line_text.len() > MAX_ACTIVE_LINE_BYTES {
+            violations.push((
+                "context.active_line_text",
+                format!(
+                    "must be <= {} bytes; got {}",
+                    MAX_ACTIVE_LINE_BYTES,
+                    self.context.active_line_text.len()
+                ),
+            ));
+        }
         if violations.is_empty() {
             Ok(())
         } else {
@@ -122,6 +142,9 @@ impl SuggestionRequest {
         }
     }
 }
+
+const MAX_DRAFT_TEXT_BYTES: usize = 64_000;
+const MAX_ACTIVE_LINE_BYTES: usize = 4_000;
 
 /// Reason a stream ended in the `cancelled` terminal state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

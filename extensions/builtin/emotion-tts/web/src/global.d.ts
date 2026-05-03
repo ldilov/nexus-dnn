@@ -12,5 +12,3 @@ declare global {
     type LibraryManagedAttributes<C, P> = ReactJSX.LibraryManagedAttributes<C, P>;
   }
 }
-
-export {};
