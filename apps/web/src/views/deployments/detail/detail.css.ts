@@ -8,7 +8,7 @@ export const root = style({
   paddingBlock: vars.density.padSection,
   height: "100%",
   minHeight: 0,
-  // audit-allow: px — px — fixed layout breakpoint
+  // audit-allow: px — fixed layout breakpoint
   maxWidth: "1400px",
   marginInline: "auto",
   width: "100%",
@@ -75,7 +75,7 @@ export const panel = style({
   boxShadow: vars.card.shadow,
   backdropFilter: vars.card.backdrop,
   borderRadius: vars.radius.card,
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   minHeight: "260px",
   display: "flex",
   flexDirection: "column",

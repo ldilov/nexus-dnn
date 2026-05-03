@@ -55,7 +55,7 @@ export const router = createHashRouter([
         // audit-allow: boundary — dispatcher route mounting the Local LLM chat surface; literal IS the contract
         path: "extensions/nexus.local-llm/chat/:threadId",
         lazy: async () => {
-          // audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
+          // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
           const mod = await import("./views/extensions/local-llm/chat");
           return { Component: mod.Component, loader: mod.loader };
         },

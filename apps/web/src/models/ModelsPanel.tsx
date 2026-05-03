@@ -161,7 +161,7 @@ function SearchResultsBody({ promise, onInstall, installs }: SearchResultsProps)
 }
 
 interface ModelsPanelProps {
-  // audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
+  // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
   /** Extension id declaring the huggingface capability. e.g. "local-llm". */
   extensionId: string;
 }

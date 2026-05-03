@@ -9,15 +9,15 @@ export const ghostBorder = style({
 });
 
 export const glassPanel = style({
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   backdropFilter: "blur(20px)",
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   WebkitBackdropFilter: "blur(20px)",
   background: `${vars.color.surfaceContainerHigh}cc`,
 });
 
 export const primaryDimGlow = style({
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   boxShadow: `0 0 12px 0 ${vars.color.primaryDim}44`,
   transitionProperty: "box-shadow",
   transitionDuration: motion.duration.cardGlow,
@@ -35,9 +35,9 @@ export const surfaceCard = style({
   transitionDuration: motion.duration.cardHoverLift,
   transitionTimingFunction: motion.ease.out,
   ":hover": {
-    // audit-allow: px — px — below minimum token granularity (sub-10px)
+    // audit-allow: px — below minimum token granularity (sub-10px)
     transform: "translateY(-2px)",
-    // audit-allow: px — px — sub-token spacing value, no density token at this step
+    // audit-allow: px — sub-token spacing value, no density token at this step
     boxShadow: `0 0 32px ${vars.color.surfaceContainerLowest}66`,
   },
   "@media": {
@@ -51,11 +51,11 @@ export const surfaceCard = style({
 });
 
 export const focusRing = style({
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   outline: `2px solid ${vars.color.primary}`,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   outlineOffset: "2px",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   boxShadow: `0 0 8px 0 ${vars.color.primaryDim}44`,
   transitionProperty: "outline-color, box-shadow",
   transitionDuration: motion.duration.focusRing,

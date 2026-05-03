@@ -24,9 +24,9 @@ export const cardHead = style({
 });
 
 export const iconTile = style({
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   width: "56px",
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   height: "56px",
   borderRadius: vars.radius.card,
   background: vars.color.accent.secondaryContainer,
@@ -69,7 +69,7 @@ export const description = style({
 
 export const statsRow = style({
   display: "grid",
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
   gap: vars.space.gapLg,
   paddingTop: vars.space.insetMd,
@@ -79,7 +79,7 @@ export const statsRow = style({
 export const stat = style({
   display: "flex",
   flexDirection: "column",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "4px",
 });
 
@@ -110,7 +110,7 @@ export const capabilityChip = style({
   fontSize: vars.font.size.caption,
   color: vars.color.text.secondary,
   background: vars.color.bg.elevated,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   padding: `4px ${vars.space.insetMd}`,
   borderRadius: vars.radius.full,
 });

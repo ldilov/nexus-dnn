@@ -760,16 +760,16 @@ function GraphViewInner({
           zoomable
           maskColor="rgba(0, 0, 0, 0.6)"
           nodeColor={(n) => {
-            // audit-allow: hex — hex — neon decorative palette per design lang
+            // audit-allow: hex — neon decorative palette per design lang
             if (n.type === "boundary") return "#6D28D9";
-            // audit-allow: hex — hex — neon decorative palette per design lang
+            // audit-allow: hex — neon decorative palette per design lang
             if (n.type === "note") return "#F59E0B";
-            // audit-allow: hex — hex — neon decorative palette per design lang
+            // audit-allow: hex — neon decorative palette per design lang
             if (n.type === "reroute") return "#94A3B8";
-            // audit-allow: hex — hex — neon decorative palette per design lang
+            // audit-allow: hex — neon decorative palette per design lang
             return "#1d2023";
           }}
-          // audit-allow: hex — hex — neon decorative palette per design lang
+          // audit-allow: hex — neon decorative palette per design lang
           nodeStrokeColor={() => "#ba9eff"}
           className={styles.miniMapBg}
         />

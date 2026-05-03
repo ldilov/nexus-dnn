@@ -123,7 +123,7 @@ export function AlignmentGuides() {
                 x2={isVertical ? g.position : 100000}
                 y1={isVertical ? -100000 : g.position}
                 y2={isVertical ? 100000 : g.position}
-                // audit-allow: hex — hex — neon decorative palette per design lang
+                // audit-allow: hex — neon decorative palette per design lang
                 stroke="#22D3EE"
                 strokeWidth={1.2 / viewport.zoom}
                 strokeDasharray={`${6 / viewport.zoom} ${4 / viewport.zoom}`}

@@ -33,7 +33,7 @@ export const buttonRecipe = recipe({
         fontWeight: vars.font.weight.semibold,
         ":hover": {
           background: vars.color.accent.primaryHover,
-          // audit-allow: px — px — sub-token spacing value, no density token at this step
+          // audit-allow: px — sub-token spacing value, no density token at this step
           boxShadow: `0 0 12px 0 color-mix(in oklab, ${vars.color.accent.primaryDim} 40%, transparent)`,
         },
       },
@@ -60,7 +60,7 @@ export const buttonRecipe = recipe({
         fontWeight: vars.font.weight.semibold,
         ":hover": {
           backgroundColor: vars.color.accent.tertiaryDim,
-          // audit-allow: px — px — sub-token spacing value, no density token at this step
+          // audit-allow: px — sub-token spacing value, no density token at this step
           boxShadow: `0 0 16px 0 color-mix(in oklab, ${vars.color.accent.tertiaryDim} 40%, transparent)`,
         },
       },

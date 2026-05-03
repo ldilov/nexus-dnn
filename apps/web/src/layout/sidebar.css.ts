@@ -6,13 +6,13 @@ import { recipe } from "@vanilla-extract/recipes";
 import { vars } from "../theme/contract.css";
 
 const COLLAPSED_WIDTH = "64px";
-// audit-allow: px — px — workspace shell scaffolding dimension
+// audit-allow: px — workspace shell scaffolding dimension
 const EXPANDED_WIDTH = "256px";
 
 export const container = style({
   position: "fixed",
   left: 0,
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   top: "24px",
   bottom: 0,
   width: COLLAPSED_WIDTH,
@@ -35,7 +35,7 @@ export const containerFloat = style({
   bottom: vars.density.d6,
   borderRadius: vars.radius.panel,
   boxShadow: vars.shadow.lg,
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   backdropFilter: "blur(20px)",
 });
 
@@ -43,16 +43,16 @@ export const header = style({
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   height: "56px",
   flexShrink: 0,
 });
 
 export const headerExpanded = style({
   justifyContent: "space-between",
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   paddingLeft: "16px",
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   paddingRight: "12px",
 });
 
@@ -78,7 +78,7 @@ export const utilitySection = style({
 });
 
 export const divider = style({
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   width: "24px",
   height: "1px",
   backgroundColor: vars.color.outline.variant,
@@ -90,11 +90,11 @@ export const navItemRecipe = recipe({
   base: {
     display: "flex",
     alignItems: "center",
-    // audit-allow: px — px — workspace shell scaffolding dimension
+    // audit-allow: px — workspace shell scaffolding dimension
     height: "40px",
-    // audit-allow: px — px — workspace shell scaffolding dimension
+    // audit-allow: px — workspace shell scaffolding dimension
     paddingLeft: "20px",
-    // audit-allow: px — px — workspace shell scaffolding dimension
+    // audit-allow: px — workspace shell scaffolding dimension
     gap: "12px",
     border: "none",
     backgroundColor: "transparent",
@@ -121,7 +121,7 @@ export const navItemRecipe = recipe({
         boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.accent.primaryDim} 55%, transparent)`,
         ":focus-visible": {
           outline: "none",
-          // audit-allow: px — px — below minimum token granularity (sub-10px)
+          // audit-allow: px — below minimum token granularity (sub-10px)
           boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.accent.primaryDim} 55%, transparent), 0 0 0 2px ${vars.color.accent.primary}`,
         },
       },
@@ -134,12 +134,12 @@ export const navItemRecipe = recipe({
 
 export const navItemIcon = style({
   flexShrink: 0,
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   width: "24px",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   fontSize: "22px",
   lineHeight: 1,
 });
@@ -162,9 +162,9 @@ export const pinButton = style({
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   width: "32px",
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   height: "32px",
   border: "none",
   backgroundColor: "transparent",
@@ -177,9 +177,9 @@ export const pinButton = style({
     color: vars.color.text.primary,
   },
   ":focus-visible": {
-    // audit-allow: px — px — below minimum token granularity (sub-10px)
+    // audit-allow: px — below minimum token granularity (sub-10px)
     outline: `2px solid ${vars.color.accent.primary}`,
-    // audit-allow: px — px — below minimum token granularity (sub-10px)
+    // audit-allow: px — below minimum token granularity (sub-10px)
     outlineOffset: "2px",
   },
 });
@@ -201,6 +201,6 @@ export const secondaryContentVisible = style({
 });
 
 export const iconXl = style({
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   fontSize: "22px",
 });

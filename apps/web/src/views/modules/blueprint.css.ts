@@ -15,7 +15,7 @@ export const root = style({
 export const canvas = style({
   position: "relative",
   zIndex: 1,
-  // audit-allow: px — px — fixed layout breakpoint
+  // audit-allow: px — fixed layout breakpoint
   maxWidth: "1440px",
   margin: "0 auto",
   padding: vars.space["2xl"],
@@ -28,13 +28,13 @@ export const ambientGlow = style({
   position: "fixed",
   top: 0,
   right: 0,
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   width: "500px",
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   height: "500px",
   background: vars.color.primary,
   opacity: 0.04,
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   filter: "blur(150px)",
   borderRadius: vars.radius.full,
   transform: "translate(25%, -50%)",
@@ -82,20 +82,20 @@ export const primaryBtn = style({
   display: "inline-flex",
   alignItems: "center",
   gap: vars.space.sm,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   boxShadow: `0 4px 20px ${vars.color.primaryDim}33`,
   transition: `background ${motion.duration.cardGlow}, box-shadow ${motion.duration.cardGlow}`,
   selectors: {
     "&:disabled": { opacity: 0.5, cursor: "not-allowed", boxShadow: "none" },
     "&:hover:not(:disabled)": {
       background: vars.color.primaryDim,
-      // audit-allow: px — px — below minimum token granularity (sub-10px)
+      // audit-allow: px — below minimum token granularity (sub-10px)
       boxShadow: `0 8px 28px ${vars.color.primaryDim}55`,
     },
     "&:focus-visible": {
-      // audit-allow: px — px — below minimum token granularity (sub-10px)
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outline: `2px solid ${vars.color.primary}`,
-      // audit-allow: px — px — below minimum token granularity (sub-10px)
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outlineOffset: "2px",
     },
   },
@@ -239,7 +239,7 @@ export const stepTitle = style({
 export const stepStageChip = style({
   display: "inline-flex",
   alignItems: "center",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   padding: `2px ${vars.space.sm}`,
   borderRadius: vars.radius.full,
   background: vars.color.surfaceContainerHigh,
@@ -340,7 +340,7 @@ export const svgNodeBoundary = style({
 
 export const svgNodeTitle = style({
   fill: vars.color.onSurface,
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   fontSize: "13px",
   fontWeight: 700,
   fontFamily: vars.font.ui,
@@ -348,7 +348,7 @@ export const svgNodeTitle = style({
 
 export const svgNodeOp = style({
   fill: vars.color.secondary,
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   fontSize: "10px",
   fontFamily: vars.font.mono,
 });
@@ -384,9 +384,9 @@ export const legendItem = style({
 });
 
 export const legendSwatch = style({
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   width: "14px",
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   height: "14px",
   borderRadius: vars.radius.sm,
   border: `1px solid ${vars.color.outlineVariant}`,
@@ -501,12 +501,12 @@ export const loadingBox = style({
 });
 
 export const iconLg = style({
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   fontSize: "18px",
 });
 
 export const iconMd = style({
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   fontSize: "16px",
 });
 
@@ -532,14 +532,14 @@ export const italicSpaced = style({
 });
 
 export const graphBoxTall = style({
-  // audit-allow: px — px — fixed layout breakpoint
+  // audit-allow: px — fixed layout breakpoint
   height: "560px",
   padding: 0,
 });
 
 export const centerCell = style({
   textAlign: "center",
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   width: "40px",
 });
 

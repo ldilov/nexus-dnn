@@ -12,9 +12,9 @@ const root = style({
   margin: 0,
   "::before": {
     content: '""',
-    // audit-allow: px — px — below minimum token granularity (sub-10px)
+    // audit-allow: px — below minimum token granularity (sub-10px)
     width: "6px",
-    // audit-allow: px — px — below minimum token granularity (sub-10px)
+    // audit-allow: px — below minimum token granularity (sub-10px)
     height: "6px",
     borderRadius: vars.radius.pill,
     flex: "0 0 auto",
