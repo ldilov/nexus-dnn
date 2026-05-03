@@ -2,73 +2,185 @@ import { style } from "@vanilla-extract/css";
 import { vars } from "../../theme/tokens.css";
 
 export const shell = style({
-  display: "grid",
-  // audit-allow: px — modal/dialog/drawer width per UX spec
-  gridTemplateColumns: "minmax(0, 1.3fr) minmax(340px, 0.7fr)",
-  gap: vars.space.lg,
-  padding: vars.space.lg,
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--d-9, 64px)",
+  padding: vars.space.xl,
+  paddingTop: vars.space.section,
+  paddingBottom: "var(--d-9, 64px)",
   minHeight: "100vh",
   background: vars.color.surface,
-  // audit-allow: px — fixed layout breakpoint
   backgroundImage: `radial-gradient(900px 520px at 88% -10%, color-mix(in oklab, ${vars.color.accent} 14%, transparent), transparent 62%), radial-gradient(680px 480px at -10% 110%, color-mix(in oklab, ${vars.color.secondary} 8%, transparent), transparent 60%)`,
   color: vars.color.text,
   fontFamily: vars.font.body,
+  maxWidth: "1440px",
+  marginInline: "auto",
+  width: "100%",
   "@media": {
-    // audit-allow: px — fixed layout breakpoint
-    "(max-width: 960px)": {
+    "(min-width: 1441px)": {
+      maxWidth: "1600px",
+    },
+    "(max-width: 768px)": {
+      gap: vars.space.section,
+      padding: vars.space.lg,
+      paddingTop: vars.space.xl,
+    },
+  },
+});
+
+export const heroBlock = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.md,
+});
+
+export const heroTopRow = style({
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: vars.space.lg,
+  flexWrap: "wrap",
+});
+
+export const heroEyebrow = style({
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.caption,
+  textTransform: "uppercase",
+  letterSpacing: vars.tracking.label,
+  color: vars.color.textMuted,
+});
+
+export const heroTitle = style({
+  fontFamily: vars.font.display,
+  fontSize: "clamp(1.75rem, 1.2rem + 1.5vw, 2.75rem)",
+  letterSpacing: vars.tracking.display,
+  color: vars.color.text,
+  margin: 0,
+  fontWeight: 600,
+});
+
+export const heroLede = style({
+  fontFamily: vars.font.body,
+  fontSize: vars.text.subhead,
+  lineHeight: 1.5,
+  color: vars.color.textMuted,
+  margin: 0,
+  maxWidth: "62ch",
+});
+
+export const heroMetaRow = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.lg,
+  flexWrap: "wrap",
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.caption,
+  color: vars.color.textMuted,
+});
+
+export const heroMetaItem = style({
+  display: "inline-flex",
+  alignItems: "baseline",
+  gap: vars.space.sm,
+});
+
+export const heroMetaLabel = style({
+  textTransform: "uppercase",
+  letterSpacing: vars.tracking.label,
+  color: vars.color.textFaint,
+});
+
+export const heroMetaValue = style({
+  color: vars.color.text,
+});
+
+export const sectionStack = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--d-9, 64px)",
+  "@media": {
+    "(max-width: 768px)": {
+      gap: vars.space.section,
+    },
+  },
+});
+
+export const section = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.lg,
+});
+
+export const sectionHeader = style({
+  display: "flex",
+  alignItems: "baseline",
+  justifyContent: "space-between",
+  gap: vars.space.lg,
+  flexWrap: "wrap",
+});
+
+export const sectionEyebrow = style({
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.caption,
+  textTransform: "uppercase",
+  letterSpacing: vars.tracking.label,
+  color: vars.color.textMuted,
+});
+
+export const sectionTitle = style({
+  fontFamily: vars.font.display,
+  fontSize: vars.text.head,
+  letterSpacing: vars.tracking.display,
+  margin: 0,
+  fontWeight: 600,
+});
+
+export const sectionMeta = style({
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.caption,
+  color: vars.color.textMuted,
+});
+
+export const sectionBody = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.lg,
+  padding: vars.space.xl,
+  background: vars.color.surfaceMuted,
+  borderRadius: vars.radius.lg,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+  minWidth: 0,
+});
+
+export const splitBody = style({
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.2fr)",
+  gap: vars.space.xl,
+  padding: vars.space.xl,
+  background: vars.color.surfaceMuted,
+  borderRadius: vars.radius.lg,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+  alignItems: "start",
+  "@media": {
+    "(max-width: 1024px)": {
       gridTemplateColumns: "1fr",
     },
   },
 });
 
-export const leftColumn = style({
+export const splitColumn = style({
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.md,
+  gap: vars.space.lg,
   minWidth: 0,
-});
-
-export const rightColumn = style({
-  display: "flex",
-  flexDirection: "column",
-  gap: vars.space.md,
-  position: "sticky",
-  top: vars.space.md,
-  alignSelf: "flex-start",
-  "@media": {
-    // audit-allow: px — fixed layout breakpoint
-    "(max-width: 960px)": {
-      position: "static",
-    },
-  },
-});
-
-export const deploymentHeader = style({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: vars.space.md,
-  flexWrap: "wrap",
-  padding: `${vars.space.md} ${vars.space.lg}`,
-  background: vars.color.surfaceMuted,
-  borderRadius: vars.radius.lg,
-  gridColumn: "1 / -1",
-});
-
-export const deploymentTitle = style({
-  fontFamily: vars.font.display,
-  fontSize: vars.text.head,
-  letterSpacing: vars.tracking.display,
-  margin: 0,
 });
 
 export const scriptShell = style({
   position: "relative",
   width: "100%",
-  // audit-allow: px — modal/dialog/drawer width per UX spec
-  minHeight: "360px",
+  minHeight: "320px",
   borderRadius: vars.radius.md,
-  background: vars.color.surfaceMuted,
+  background: vars.color.surface,
   boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
   transition: `box-shadow ${vars.motion.fast}`,
   selectors: {
@@ -131,7 +243,6 @@ export const scriptText = style({
 export const scriptUnresolved = style({
   textDecoration: "underline wavy",
   textDecorationColor: vars.color.danger,
-  // audit-allow: px — below minimum token granularity (sub-10px)
   textUnderlineOffset: "3px",
 });
 
@@ -164,11 +275,9 @@ export const filenameList = style({
   margin: 0,
   display: "flex",
   flexDirection: "column",
-  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
-  background: vars.color.surfaceMuted,
+  background: vars.color.surface,
   borderRadius: vars.radius.sm,
-  // audit-allow: px — sub-token spacing value, no density token at this step
   maxHeight: "180px",
   overflowY: "auto",
 });
@@ -183,7 +292,7 @@ export const progressTable = style({
 
 export const progressRow = style({
   transition: `background ${vars.motion.fast}`,
-  ":hover": { background: vars.color.surfaceMuted },
+  ":hover": { background: vars.color.surfaceRaised },
 });
 
 export const progressCell = style({
@@ -208,7 +317,7 @@ export const preflightItem = style({
   gap: vars.space.sm,
   padding: `${vars.space.xs} ${vars.space.sm}`,
   borderRadius: vars.radius.sm,
-  background: vars.color.surfaceMuted,
+  background: vars.color.surface,
 });
 
 export const preflightLabel = style({
