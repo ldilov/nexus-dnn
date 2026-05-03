@@ -90,10 +90,10 @@ describe("file-scope helpers", () => {
   });
 
   it("isTokenFile path-based exemption — tokens/ directory segment", () => {
-    expect(isTokenFile("apps/web/src/tokens/primitives.ts")).toBe(true);
+    expect(isTokenFile("tokens/exact.ts")).toBe(true);
     expect(isTokenFile("apps/web/src/tokens/contract.css.ts")).toBe(true);
-    expect(isTokenFile("apps/web/src/tokens.css.ts")).toBe(true);
     expect(isTokenFile("apps/web/src/components/foo.ts")).toBe(false);
+    expect(isTokenFile("apps/web/src/my-tokens/file.ts")).toBe(false);
     expect(isTokenFile("extensions/builtin/emotion-tts/web/src/tokens/colors.ts")).toBe(true);
   });
 
