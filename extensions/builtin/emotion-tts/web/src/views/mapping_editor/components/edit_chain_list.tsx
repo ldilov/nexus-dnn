@@ -57,6 +57,14 @@ function modeLabel(op: EditOp): string {
       return "Fade out";
     case "mute":
       return "Mute";
+    case "gain":
+      return "Volume";
+    case "eq3":
+      return "EQ";
+    case "pitch_shift":
+      return "Pitch";
+    case "silence_strip":
+      return "Silence trim";
   }
 }
 
@@ -74,7 +82,19 @@ function paramsSummary(op: EditOp): string {
       return `${op.duration_ms} ms in`;
     case "fade_out":
       return `${op.duration_ms} ms out`;
+    case "gain":
+      return `${op.gain_db >= 0 ? "+" : ""}${op.gain_db.toFixed(1)} dB`;
+    case "eq3":
+      return `${formatBand(op.low_db)} / ${formatBand(op.mid_db)} / ${formatBand(op.high_db)}`;
+    case "pitch_shift":
+      return `${op.semitones >= 0 ? "+" : ""}${op.semitones.toFixed(1)} st`;
+    case "silence_strip":
+      return `${op.threshold_db.toFixed(0)} dB`;
   }
+}
+
+function formatBand(db: number): string {
+  return `${db >= 0 ? "+" : ""}${db.toFixed(0)}`;
 }
 
 function formatSeconds(ms: number): string {

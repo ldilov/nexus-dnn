@@ -9,6 +9,14 @@ SPEED_MIN = 0.5
 SPEED_MAX = 2.0
 LUFS_MIN = -30.0
 LUFS_MAX = -6.0
+EQ3_BAND_DB_MIN = -12.0
+EQ3_BAND_DB_MAX = 12.0
+GAIN_DB_MIN = -24.0
+GAIN_DB_MAX = 24.0
+PITCH_SEMITONES_MIN = -12.0
+PITCH_SEMITONES_MAX = 12.0
+SILENCE_THRESHOLD_DB_MIN = -60.0
+SILENCE_THRESHOLD_DB_MAX = -20.0
 
 
 def validate_chain(chain: dict[str, Any]) -> None:
@@ -59,6 +67,35 @@ def _validate_op(index: int, op: Any) -> None:
         duration = _require_int(op, "duration_ms", index)
         if duration <= 0:
             raise ValueError(f"op[{index}] {mode}: duration_ms must be > 0 (got {duration})")
+    elif mode == "eq3":
+        for key in ("low_db", "mid_db", "high_db"):
+            value = _require_number(op, key, index)
+            if not (EQ3_BAND_DB_MIN <= value <= EQ3_BAND_DB_MAX):
+                raise ValueError(
+                    f"op[{index}] eq3: {key} {value} out of range "
+                    f"[{EQ3_BAND_DB_MIN}, {EQ3_BAND_DB_MAX}]"
+                )
+    elif mode == "gain":
+        gain_db = _require_number(op, "gain_db", index)
+        if not (GAIN_DB_MIN <= gain_db <= GAIN_DB_MAX):
+            raise ValueError(
+                f"op[{index}] gain: gain_db {gain_db} out of range "
+                f"[{GAIN_DB_MIN}, {GAIN_DB_MAX}]"
+            )
+    elif mode == "pitch_shift":
+        semitones = _require_number(op, "semitones", index)
+        if not (PITCH_SEMITONES_MIN <= semitones <= PITCH_SEMITONES_MAX):
+            raise ValueError(
+                f"op[{index}] pitch_shift: semitones {semitones} out of range "
+                f"[{PITCH_SEMITONES_MIN}, {PITCH_SEMITONES_MAX}]"
+            )
+    elif mode == "silence_strip":
+        threshold_db = _require_number(op, "threshold_db", index)
+        if not (SILENCE_THRESHOLD_DB_MIN <= threshold_db <= SILENCE_THRESHOLD_DB_MAX):
+            raise ValueError(
+                f"op[{index}] silence_strip: threshold_db {threshold_db} out of range "
+                f"[{SILENCE_THRESHOLD_DB_MIN}, {SILENCE_THRESHOLD_DB_MAX}]"
+            )
     else:
         raise ValueError(f"op[{index}] unknown mode: {mode!r}")
 
