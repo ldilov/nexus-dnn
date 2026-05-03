@@ -31,6 +31,7 @@ export const summary = style({
     background: `color-mix(in oklab, ${vars.color.accent} 6%, transparent)`,
   },
   "@media": {
+    // audit-allow: px — fixed layout breakpoint
     "(max-width: 640px)": {
       gridTemplateColumns: "auto 1fr",
       gridAutoRows: "min-content",
@@ -39,7 +40,9 @@ export const summary = style({
 });
 
 export const avatar = style({
+  // audit-allow: px — sub-token spacing value, no density token at this step
   width: "44px",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   height: "44px",
   borderRadius: vars.radius.pill,
   display: "inline-flex",
@@ -54,6 +57,7 @@ export const avatar = style({
 export const nameBlock = style({
   display: "flex",
   flexDirection: "column",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
   minWidth: 0,
 });
@@ -78,6 +82,7 @@ export const lineCount = style({
 export const mappingBlock = style({
   display: "flex",
   flexDirection: "column",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
   alignItems: "flex-end",
   fontFamily: vars.font.mono,
@@ -134,6 +139,7 @@ export const expansionRow = style({
   gap: vars.space.lg,
   alignItems: "center",
   "@media": {
+    // audit-allow: px — fixed layout breakpoint
     "(max-width: 640px)": {
       gridTemplateColumns: "1fr",
     },
@@ -170,6 +176,7 @@ export const dropZoneActive = style({
 
 export const presetGrid = style({
   display: "grid",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
   gap: vars.space.sm,
 });

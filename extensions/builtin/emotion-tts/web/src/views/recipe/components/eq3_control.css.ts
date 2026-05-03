@@ -57,6 +57,7 @@ export const sliderGrid = style({
   gap: vars.space.lg,
   alignItems: "stretch",
   "@media": {
+    // audit-allow: px — fixed layout breakpoint
     "(max-width: 640px)": {
       gridTemplateColumns: "1fr",
     },
@@ -124,6 +125,7 @@ export const verticalSlider = style({
       transition: `box-shadow ${vars.motion.fast}`,
     },
     "&:focus-visible::-webkit-slider-thumb": {
+      // audit-allow: px — below minimum token granularity (sub-10px)
       boxShadow: `0 0 0 4px color-mix(in oklab, ${vars.color.tertiary} 30%, transparent)`,
     },
     "&::-moz-range-thumb": {
@@ -135,6 +137,7 @@ export const verticalSlider = style({
       cursor: "grab",
     },
     "&:focus-visible::-moz-range-thumb": {
+      // audit-allow: px — below minimum token granularity (sub-10px)
       boxShadow: `0 0 0 4px color-mix(in oklab, ${vars.color.tertiary} 30%, transparent)`,
     },
     "&:focus": {

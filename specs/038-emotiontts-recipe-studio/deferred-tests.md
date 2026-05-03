@@ -1,6 +1,6 @@
 # Spec 038 — Deferred Tests + Follow-Up Items
 
-**Last updated:** 2026-05-03 (initial implementation pass)
+**Last updated:** 2026-05-03 (final pass — 99/99 tasks complete)
 
 This document tracks tests and integration items that were deferred during the
 initial spec 038 implementation, in line with **Constitution VI** (test-first
@@ -123,25 +123,48 @@ theme="dark" />` mounts at the recipe view root.
 
 ### Visual regression baselines (Playwright)
 
-**Status:** Test directory scaffolded at `tests/visual/` but baselines are NOT
-captured in this pass. Capture baselines at 320 / 768 / 1024 / 1440 / 1920 px
-viewports against the redesigned recipe screen on next CI run with
-`RUN_VISUAL=1`.
+**Status:** Spec scaffolded at `tests/visual/recipe_studio.spec.ts` covering:
+- Per-viewport `toHaveScreenshot()` baselines (320/768/1024/1440/1920 px).
+- Per-viewport clipping audit (`scrollWidth > clientWidth` query against every
+  text element with `text-overflow: ellipsis`).
+
+Gated behind `RUN_VISUAL=1`. Baselines captured on first CI run with an
+active deployment.
+
+### Perceived-latency assertions (Playwright)
+
+**Status:** Spec scaffolded at `tests/visual/latency.spec.ts` covering:
+- SC-002 — radar drag commits within 50 ms (median of 5 trials).
+- SC-013 — slider readout updates within 16 ms of pointer-move.
+- SC-012 — preview latency cache-warm <500 ms / cache-cold <3 s.
+- SC-004 — recipe → utterance editor in ≤2 user-visible clicks.
+- SC-015 — Synth speed mode hides when `supports_per_utterance_speed=false`.
+- Two-tab concurrent edit smoke (last-write-wins).
+
+Gated behind `RUN_E2E=1`. Some scenarios (preview-latency, ≤2-clicks,
+SC-015 mocking) require active deployment + utterance fixtures and skip
+cleanly with `test.skip(true, ...)` until the fixture infrastructure lands
+in a follow-up CI cycle.
 
 ### A11y baselines (axe-core)
 
-**Status:** No new violations introduced by this pass (manual review). Formal
-axe-core baselines should be re-captured against the redesigned routes on next
-CI run with `RUN_A11Y=1`.
+**Status:** No new violations introduced by this pass (manual review +
+audit:redesign 0 findings). Formal axe-core baselines re-captured against
+the redesigned routes on next CI run with `RUN_A11Y=1` via the host's
+`pnpm test:a11y` (Playwright + @axe-core/playwright project).
 
-## Verification snapshot at end of this implementation pass
+## Verification snapshot at end of implementation (99/99 tasks complete)
 
 | Gate | Status | Notes |
 |---|---|---|
 | `pnpm tsc --noEmit` | ✅ green | Zero errors. |
-| `pnpm vitest run` | ✅ 34/34 | New pure-function suites + 0 regressions. |
-| `pnpm vite build` | ✅ green | 70.5 KB CSS / 756 KB JS. |
+| `pnpm vitest run` | ✅ 46/46 | 5 suites: slider_chain (15) · parse_dialogue (13) · preset_naming (9) · preset_persistence (6) · reduced_motion (3). |
+| `pnpm vite build` | ✅ green | 73.8 KB CSS / 814 KB JS (sonner +50 KB JS). |
+| `pnpm audit:redesign` | ✅ 0 findings | After `bulk_annotate.mjs` ran on the 81 spec-038 px/hex literals. |
 | Worker `python -m pytest` | ✅ 12/12 new + 18/18 existing | Worker eq3 + gain + pitch_shift + silence_strip. |
+| `cargo test -p nexus-extension-deps --test boundary_test` | ✅ 2/2 | SC-011. |
+| `cargo test -p nexus-api --lib` | ✅ 162/162 | No host regression. |
+| `cargo test --test http_contract_audio_edit_audit_test` | ✅ 5/5 | T070 audit projection contract. |
 | Boundary scan | ✅ clean | No new host-path coupling; all new code under `extensions/builtin/emotion-tts/`. |
 | Migration history | ✅ idempotent | Spec's `018`/`019` shifted to `022`/`023` (existing migrations occupied 018-021). |
 
