@@ -54,6 +54,8 @@ export function EttsRadar({
           viewBox={`0 0 ${size} ${size}`}
           role="img"
           aria-label="8-axis emotion radar"
+          onPointerDown={readOnly ? undefined : drag.onSurfacePointerDown}
+          style={readOnly ? undefined : { cursor: "crosshair", touchAction: "none" }}
         >
           {RING_LEVELS.map((level) => (
             <circle
@@ -91,7 +93,35 @@ export function EttsRadar({
               </g>
             );
           })}
+          {/* Per-axis "petals": a stroke from center to each non-zero axis tip.
+              Keeps a sparse vector readable even when the polygon is near-degenerate. */}
+          {AXIS_KEYS.map((axis, i) => {
+            const value = clamp(drag.liveVec[axis]);
+            if (value <= 0.01) return null;
+            const a = axisCoords[i];
+            if (!a) return null;
+            const isActive = drag.activeAxis === axis;
+            return (
+              <line
+                key={`petal-${axis}`}
+                className={`${css.petal}${isActive ? ` ${css.petalActive}` : ""}`}
+                x1={cx}
+                y1={cy}
+                x2={cx + a.dx * value}
+                y2={cy + a.dy * value}
+              />
+            );
+          })}
           <polygon className={css.polygon} points={polygonPoints} />
+          {drag.surfacePing && (
+            <circle
+              key={drag.surfacePing.key}
+              className={css.surfacePing}
+              cx={drag.surfacePing.x}
+              cy={drag.surfacePing.y}
+              r={10}
+            />
+          )}
           {!readOnly &&
             AXIS_KEYS.map((axis, i) => {
               const value = clamp(drag.liveVec[axis]);
@@ -101,23 +131,31 @@ export function EttsRadar({
               const y = cy + a.dy * value;
               const isActive = drag.activeAxis === axis;
               return (
-                <circle
-                  key={axis}
-                  className={`${css.handle}${isActive ? ` ${css.handleActive}` : ""}`}
-                  cx={x}
-                  cy={y}
-                  r={6}
-                  tabIndex={0}
-                  role="slider"
-                  aria-label={`${AXIS_LABELS[axis]} axis`}
-                  aria-valuemin={0}
-                  aria-valuemax={1}
-                  aria-valuenow={value}
-                  onPointerDown={(e) => drag.onPointerDown(axis, e)}
-                  onKeyDown={(e) => drag.onKeyDown(axis, e)}
-                  onFocus={() => drag.setActiveAxis(axis)}
-                  onBlur={() => drag.setActiveAxis(null)}
-                />
+                <g key={axis}>
+                  {/* Transparent hit-circle: 14px radius for a generous touch target. */}
+                  <circle
+                    className={css.handleHit}
+                    cx={x}
+                    cy={y}
+                    r={14}
+                    tabIndex={0}
+                    role="slider"
+                    aria-label={`${AXIS_LABELS[axis]} axis`}
+                    aria-valuemin={0}
+                    aria-valuemax={1}
+                    aria-valuenow={value}
+                    onPointerDown={(e) => drag.onPointerDown(axis, e)}
+                    onKeyDown={(e) => drag.onKeyDown(axis, e)}
+                    onFocus={() => drag.setActiveAxis(axis)}
+                    onBlur={() => drag.setActiveAxis(null)}
+                  />
+                  <circle
+                    className={`${css.handle}${isActive ? ` ${css.handleActive}` : ""}`}
+                    cx={x}
+                    cy={y}
+                    r={6}
+                  />
+                </g>
               );
             })}
         </svg>
