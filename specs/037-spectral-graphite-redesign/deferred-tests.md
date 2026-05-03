@@ -100,16 +100,31 @@ runtime gaps surfaced during T120 / T100 verification:
       foreign-stream-id filtering, error mapping, empty-delta
       filtering, null-provider fallback). All `cargo test -p nexus-api`
       pass.
-  **Phase B deferred** — worker-side handlers in `local-llm` (Python).
-  Until any worker registers `text.complete.{start,cancel}` JSON-RPC
-  handlers + emits the notification stream, the host falls through to
-  `NoEligibleBackend`. Adding handlers to `local-llm` is the next
-  unblock; it bridges to the existing OpenAI-compat HTTP backend the
-  worker already runs on its lease port.
-  **Phase C deferred** — end-to-end verification with a live model.
-  Requires Phase B + a clean Windows host with a downloaded GGUF +
-  warm-cache P95 capture. Blocks D17/T119 (warm-cache latency).
-  Tracked as **D15 / Phase B** going forward.
+  **Phase B complete 2026-05-03** — local-llm worker-side handlers
+  shipped. New backend runtime contribution `nexus.local-llm.completions`
+  declared in `extensions/builtin/local-llm/manifest.yaml` with
+  `capability_tags: ["text-completion"]`; worker entrypoint at
+  `extensions/builtin/local-llm/backends/llamacpp/completions_worker.py`
+  registers `text.complete.start` / `text.complete.cancel` JSON-RPC
+  methods + emits `text.complete.{token,done,error}` notifications via
+  the new `BaseWorker.send_notification` SDK helper. 20 pytest tests
+  cover wire-format constants pinned against the Rust contract module,
+  pure helpers (`build_messages` / `extract_delta` / `classify_backend_error`),
+  and worker behavior (handle_start ack + producer kick-off, validation
+  rejects on empty user / non-positive max_tokens, cancel-mid-stream
+  emits done with cancelled=true, unknown stream-id cancel is ack-noop,
+  backend failure emits typed error notification with the correct code,
+  empty-delta filter). All 20 pass via `python -m pytest --asyncio-mode=auto`.
+  Boundary audit clean — no extension-id literals introduced into host
+  paths; the new code lives entirely under
+  `extensions/builtin/local-llm/`.
+  **Phase C still deferred** — end-to-end verification with a live
+  model. Requires (1) installing the new `nexus.local-llm.completions`
+  runtime via the Backends UI, (2) starting a lease against it, (3) a
+  downloaded GGUF model the worker can spawn via `LlamaCppAdapter`, and
+  (4) warm-cache P95 capture (blocks D17/T119). The protocol is now
+  fully wired host-side AND worker-side; Phase C is purely operational.
+  Tracked as **D15 / Phase C** going forward.
 - ~~Audit-script (`pnpm audit:redesign`) reports 851 advisory findings~~
   **Closed 2026-05-03 (was D16)**: T099 ran end-to-end as a 7-task
   subagent-driven sprint. The audit count grew to 2018 over the
