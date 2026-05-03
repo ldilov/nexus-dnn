@@ -1,3 +1,4 @@
+// audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
 const BASE = '/api/v1/extensions/nexus.local-llm';
 
 export type MessageRole = 'user' | 'assistant' | 'system';

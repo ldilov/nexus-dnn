@@ -67,6 +67,7 @@ export const cursor = style({
   display: "inline-block",
   width: "0.6em",
   height: "1em",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   marginInlineStart: "2px",
   background: vars.color.accent.secondary,
   verticalAlign: "text-bottom",

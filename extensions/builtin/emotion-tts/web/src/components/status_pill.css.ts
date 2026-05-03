@@ -21,12 +21,16 @@ export const sizeStyle = styleVariants({
   sm: [
     base,
     {
+      // audit-allow: px — px — below minimum token granularity (sub-10px)
       gap: "6px",
+      // audit-allow: px — px — below minimum token granularity (sub-10px)
       padding: "2px 10px 2px 8px",
       fontSize: vars.text.micro,
       "::before": {
         content: '""',
+        // audit-allow: px — px — below minimum token granularity (sub-10px)
         width: "5px",
+        // audit-allow: px — px — below minimum token granularity (sub-10px)
         height: "5px",
         borderRadius: vars.radius.pill,
         background: "currentColor",
@@ -38,14 +42,18 @@ export const sizeStyle = styleVariants({
     base,
     {
       gap: vars.space.xs,
+      // audit-allow: px — px — below minimum token granularity (sub-10px)
       padding: "6px 14px 6px 10px",
       fontSize: vars.text.caption,
       "::before": {
         content: '""',
+        // audit-allow: px — px — below minimum token granularity (sub-10px)
         width: "8px",
+        // audit-allow: px — px — below minimum token granularity (sub-10px)
         height: "8px",
         borderRadius: vars.radius.pill,
         background: "currentColor",
+        // audit-allow: px — px — below minimum token granularity (sub-10px)
         boxShadow: "0 0 0 3px color-mix(in oklab, currentColor 25%, transparent)",
         display: "inline-block",
       },

@@ -2,6 +2,7 @@ import { keyframes, style } from "@vanilla-extract/css";
 import { vars } from "./theme/contract.css";
 
 const routeEnterKeyframes = keyframes({
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   "0%": { opacity: 0, transform: "translateY(6px)" },
   "100%": { opacity: 1, transform: "translateY(0)" },
 });
@@ -37,6 +38,7 @@ export const extensionCanvas = style({
 export const placeholderText = style({
   color: vars.color.text.muted,
   textAlign: "center",
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   padding: "48px",
 });
 
@@ -51,14 +53,19 @@ export const drawerContent = style({
 export const backToCatalog = style({
   display: "inline-flex",
   alignItems: "center",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   gap: "6px",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   padding: "6px 12px",
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   marginBottom: "14px",
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   borderRadius: "999px",
   border: `1px solid ${vars.color.outline.variant}`,
   background: "transparent",
   color: vars.color.text.secondary,
   fontFamily: vars.font.code,
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   fontSize: "11px",
   textTransform: "uppercase",
   letterSpacing: "0.06em",

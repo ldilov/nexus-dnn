@@ -31,11 +31,17 @@ interface LineAttribution {
 }
 
 const PALETTE = [
+  // audit-allow: hex — hex — neon decorative palette per design lang
   "var(--accent, #ba9eff)",
+  // audit-allow: hex — hex — neon decorative palette per design lang
   "var(--secondary, #9093ff)",
+  // audit-allow: hex — hex — neon decorative palette per design lang
   "var(--tertiary, #ff8439)",
+  // audit-allow: hex — hex — neon decorative palette per design lang
   "var(--success, #80e0a8)",
+  // audit-allow: hex — hex — neon decorative palette per design lang
   "var(--warning, #f0c265)",
+  // audit-allow: hex — hex — neon decorative palette per design lang
   "var(--info, #7fdbff)",
 ];
 

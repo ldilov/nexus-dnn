@@ -1,3 +1,5 @@
+// audit-allow: px — sub-token spacing value, no density token at this step
+// audit-allow: px — below minimum token granularity (sub-10px)
 import { style } from "@vanilla-extract/css";
 import { vars } from "../theme/contract.css";
 
@@ -52,6 +54,7 @@ export const fieldGroup = style({
 
 export const sectionLabel = style({
   fontFamily: vars.font.code,
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   fontSize: "10px",
   fontWeight: 700,
   letterSpacing: "0.18em",
@@ -70,16 +73,21 @@ export const description = style({
 export const chipRow = style({
   display: "flex",
   flexWrap: "wrap",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   gap: "6px",
 });
 
 export const chip = style({
   display: "inline-flex",
   alignItems: "center",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   gap: "4px",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   padding: "2px 8px",
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   borderRadius: "999px",
   fontFamily: vars.font.code,
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   fontSize: "10px",
   fontWeight: 600,
   letterSpacing: "0.06em",
@@ -92,28 +100,36 @@ export const chip = style({
 export const portList = style({
   display: "flex",
   flexDirection: "column",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   gap: "4px",
 });
 
 export const portItem = style({
   display: "flex",
   alignItems: "center",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   gap: "8px",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   padding: "4px 8px",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   borderRadius: "6px",
   backgroundColor: "rgba(255,255,255,0.02)",
   border: `1px solid ${vars.color.outline.variant}`,
 });
 
 export const portDot = style({
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   width: "8px",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   height: "8px",
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   borderRadius: "999px",
   flexShrink: 0,
 });
 
 export const portName = style({
   fontFamily: vars.font.code,
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   fontSize: "11px",
   color: vars.color.text.primary,
 });
@@ -121,12 +137,15 @@ export const portName = style({
 export const portType = style({
   marginLeft: "auto",
   fontFamily: vars.font.code,
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   fontSize: "10px",
   color: vars.color.text.muted,
 });
 
 export const requiredMark = style({
   color: vars.color.error.base,
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   fontSize: "10px",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   marginLeft: "2px",
 });

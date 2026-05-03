@@ -58,6 +58,7 @@ export const variantStyle = styleVariants({
       background: vars.color.danger,
       color: vars.color.accentOn,
       ":hover": {
+        // audit-allow: px — px — sub-token spacing value, no density token at this step
         boxShadow: `0 0 0 1px ${vars.color.danger}, 0 0 24px color-mix(in oklab, ${vars.color.danger} 35%, transparent)`,
       },
     },

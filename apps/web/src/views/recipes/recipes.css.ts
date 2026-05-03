@@ -6,6 +6,7 @@ export const shell = style({
   flexDirection: "column",
   gap: vars.density.padSection,
   paddingBlock: vars.density.padSection,
+  // audit-allow: px — px — fixed layout breakpoint
   maxWidth: "1400px",
   marginInline: "auto",
   width: "100%",

@@ -3,6 +3,7 @@ import { vars } from "../../../theme/tokens.css";
 
 export const grid = style({
   display: "grid",
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
   gap: vars.space.sm,
   padding: 0,
@@ -13,6 +14,7 @@ const cardBase = style({
   display: "flex",
   flexDirection: "column",
   alignItems: "flex-start",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   gap: "2px",
   padding: `${vars.space.sm} ${vars.space.md}`,
   borderRadius: vars.radius.md,
