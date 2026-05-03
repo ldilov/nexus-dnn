@@ -78,7 +78,7 @@ export function useModelLoadState(threadId: string | null): ModelLoadState {
     });
 
     const rePoll = setTimeout(() => {
-      fetchActiveModelStatus(threadId)
+      fetchActiveModelStatus(threadId, ctrl.signal)
         .then((s) => setState(fromStatus(s)))
         .catch(() => {});
     }, 400);

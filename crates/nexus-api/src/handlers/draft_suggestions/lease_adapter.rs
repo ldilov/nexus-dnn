@@ -1,14 +1,9 @@
-//! Production `SuggestionStreamProvider` impls (T078b is the real lease-backed adapter).
+//! Production `SuggestionStreamProvider` implementations.
 //!
-//! Currently exposes only [`NullStreamProvider`] — a placeholder that
-//! always returns `NoEligibleBackend`. This lets the host wire the
-//! endpoint family at startup before the real lease-manager-backed
-//! provider lands; operators get the documented "no AI backend
-//! configured" CTA instead of a 404.
-//!
-//! The full lease-manager-backed adapter (lease acquisition with the
-//! "≥ 2k context, supports text completion" policy + OpenAI-style
-//! streaming endpoint client) lands as a follow-up to this scaffolding.
+//! Currently exposes only [`NullStreamProvider`] — always returns
+//! `NoEligibleBackend` so operators see the documented "no AI backend
+//! configured" CTA instead of a 404 while a real lease-manager-backed
+//! adapter is still pending.
 
 use async_trait::async_trait;
 
@@ -17,10 +12,9 @@ use super::prompt_template::PromptPair;
 use super::provider::{CancelFlag, StreamHandle, SuggestionStreamProvider};
 use super::types::SuggestionRequest;
 
-/// Default production provider until [`LeaseBackedStreamProvider`] (T078
-/// follow-up) lands. Always reports `NoEligibleBackend` so the endpoint
-/// returns 503 with the generic CTA payload defined in the OpenAPI
-/// fragment.
+/// Placeholder provider that always reports `NoEligibleBackend` so the
+/// endpoint returns 503 with the generic CTA payload defined in the
+/// OpenAPI fragment.
 pub struct NullStreamProvider;
 
 impl NullStreamProvider {

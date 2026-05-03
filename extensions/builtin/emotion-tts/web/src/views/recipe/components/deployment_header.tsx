@@ -100,7 +100,7 @@ export function DeploymentHeader({ deployment }: Props): JSX.Element {
   const modelMissing = error?.includes("model_missing") ?? false;
 
   return (
-    <div className={css.controlRow} role="status" aria-live="polite">
+    <output className={css.controlRow} aria-live="polite">
       <span className={css.label}>Runtime</span>
       <span>{deployment.backendRuntimePreference ?? "indextts.python"}</span>
 
@@ -150,7 +150,7 @@ export function DeploymentHeader({ deployment }: Props): JSX.Element {
       </Button>
 
       {error && !modelMissing && <Banner severity="error">{error}</Banner>}
-    </div>
+    </output>
   );
 }
 

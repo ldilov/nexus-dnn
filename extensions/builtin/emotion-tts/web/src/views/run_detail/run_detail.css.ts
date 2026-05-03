@@ -266,7 +266,7 @@ export const editButton = style({
   letterSpacing: vars.tracking.label,
   textTransform: "uppercase",
   cursor: "pointer",
-  padding: `2px 8px`,
+  padding: "2px 8px",
   borderRadius: vars.radius.pill,
   transition: `background ${vars.motion.fast}, color ${vars.motion.fast}`,
   selectors: {

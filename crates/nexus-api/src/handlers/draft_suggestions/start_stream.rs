@@ -117,8 +117,6 @@ pub async fn start_stream(
     };
 
     let stream_id = StreamId::new();
-    state.registry.insert(stream_id, cancel.clone());
-
     let (tx, rx) = mpsc::channel::<Result<Event, std::convert::Infallible>>(SSE_CHANNEL_CAPACITY);
     let encoder = SseEncoder::new();
 
@@ -127,9 +125,16 @@ pub async fn start_stream(
         started_at: chrono::Utc::now().to_rfc3339(),
         lease_id: handle.lease_id.clone(),
     };
-    if let Ok(ev) = encoder.encode(&started) {
-        let _ = tx.send(Ok(ev)).await;
-    }
+    let started_ev = match encoder.encode(&started) {
+        Ok(ev) => ev,
+        Err(_) => {
+            return pre_stream_error_response(&DraftSuggestionError::Internal(
+                "stream_started encoding failed".into(),
+            ));
+        }
+    };
+    state.registry.insert(stream_id, cancel.clone());
+    let _ = tx.send(Ok(started_ev)).await;
 
     let registry = state.registry.clone();
     let StreamHandle {
@@ -248,12 +253,16 @@ fn pre_stream_error_response(err: &DraftSuggestionError) -> Response {
             None,
         ),
     };
-    let mut body = json!({
-        "code": code.as_wire_str(),
-        "message": err.ui_message(),
-    });
-    if let Some(cta) = cta {
-        body.as_object_mut().unwrap().insert("cta".to_string(), cta);
-    }
+    let body = match cta {
+        Some(cta) => json!({
+            "code": code.as_wire_str(),
+            "message": err.ui_message(),
+            "cta": cta,
+        }),
+        None => json!({
+            "code": code.as_wire_str(),
+            "message": err.ui_message(),
+        }),
+    };
     (status, Json(body)).into_response()
 }

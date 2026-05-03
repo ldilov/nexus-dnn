@@ -64,6 +64,7 @@ export function EmotionRadar({
       const scale = size / rect.width;
       const px = (clientX - rect.left) * scale - cx;
       const py = (clientY - rect.top) * scale - cy;
+      if (lockedAxis === undefined && px * px + py * py < 64) return;
       const axis = lockedAxis ?? nearestAxis(px, py, axisCount);
       const axisAngle = -Math.PI / 2 + (2 * Math.PI * axis) / axisCount;
       const ax = Math.cos(axisAngle);
@@ -81,7 +82,7 @@ export function EmotionRadar({
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>): void => {
     if (!interactive) return;
     event.preventDefault();
-    (event.target as Element).setPointerCapture?.(event.pointerId);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
     updateAxisFromPoint(event.clientX, event.clientY);
   };
 
@@ -91,7 +92,7 @@ export function EmotionRadar({
   };
 
   const handlePointerUp = (event: PointerEvent<SVGSVGElement>): void => {
-    (event.target as Element).releasePointerCapture?.(event.pointerId);
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
     setActiveAxis(null);
   };
 
@@ -161,6 +162,7 @@ export function EmotionRadar({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         onKeyDown={handleKeyDown}
         className={interactive ? css.svgInteractive : undefined}
       >
@@ -174,7 +176,7 @@ export function EmotionRadar({
             />
           ))}
           {outerPoints.map((p, i) => (
-            <line key={i} x1={cx} y1={cy} x2={p.x} y2={p.y} />
+            <line key={AXIS_LABELS[i]} x1={cx} y1={cy} x2={p.x} y2={p.y} />
           ))}
         </g>
         <motion.polygon
@@ -195,7 +197,7 @@ export function EmotionRadar({
           const radius = isActive ? 6 : isDominant ? 5 : 3;
           return (
             <circle
-              key={i}
+              key={AXIS_LABELS[i]}
               cx={p.x}
               cy={p.y}
               r={radius}
@@ -221,14 +223,26 @@ export function EmotionRadar({
         ))}
       </svg>
       <div id={liveRegionId} className={css.dominant} aria-live="polite">
-        {dominant.value > 0 ? (
-          <>
-            <span className={css.dominantAxis}>{AXIS_LABELS[dominant.index]}</span>
-            <span className={css.dominantValue}>{dominant.value.toFixed(2)}</span>
-          </>
-        ) : (
-          <span className={css.dominantNeutral}>neutral · 0.00</span>
-        )}
+        {(() => {
+          if (activeAxis !== null) {
+            const value = vector[activeAxis] ?? 0;
+            return (
+              <>
+                <span className={css.dominantAxis}>{AXIS_LABELS[activeAxis]}</span>
+                <span className={css.dominantValue}>{value.toFixed(2)}</span>
+              </>
+            );
+          }
+          if (dominant.value > 0) {
+            return (
+              <>
+                <span className={css.dominantAxis}>{AXIS_LABELS[dominant.index]}</span>
+                <span className={css.dominantValue}>{dominant.value.toFixed(2)}</span>
+              </>
+            );
+          }
+          return <span className={css.dominantNeutral}>neutral · 0.00</span>;
+        })()}
       </div>
     </div>
   );

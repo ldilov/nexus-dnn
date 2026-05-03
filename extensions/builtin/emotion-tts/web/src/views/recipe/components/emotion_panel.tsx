@@ -161,6 +161,7 @@ export function EmotionPanel({ value, onChange, deploymentId }: Props): JSX.Elem
             <button
               key={m.id}
               type="button"
+              // biome-ignore lint/a11y/useSemanticElements: button-based radio preserves focus styles + click semantics across browsers — native radio doesn't fit the segmented bar visual
               role="radio"
               aria-checked={mode === m.id}
               className={mode === m.id ? css.modeButtonActive : css.modeButton}
@@ -283,7 +284,7 @@ export function EmotionPanel({ value, onChange, deploymentId }: Props): JSX.Elem
 
         {presetsError && <Banner severity="error">{presetsError}</Banner>}
 
-        <pre className={css.overrideDocs}>{OVERRIDE_DOCS}</pre>
+        <pre className={css.overrideDocs} >{OVERRIDE_DOCS}</pre>
       </div>
     </div>
   );

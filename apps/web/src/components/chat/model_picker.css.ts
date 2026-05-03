@@ -56,7 +56,7 @@ export const item = style({
   color: vars.color.text.secondary,
   ":hover": { background: vars.color.bg.hover, color: vars.color.text.primary },
   selectors: {
-    "&[aria-current='true']": {
+    "&[aria-selected='true']": {
       color: vars.color.text.primary,
       backgroundImage: `linear-gradient(135deg, color-mix(in oklab, ${vars.color.accent.primaryDim} 38%, transparent), color-mix(in oklab, ${vars.color.accent.secondaryDim} 22%, transparent))`,
     },
@@ -85,4 +85,26 @@ export const itemContext = style({
   fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,
   color: vars.color.text.muted,
+});
+
+export const recoveryLink = style({
+  marginInlineStart: vars.density.d2,
+  paddingInline: vars.density.d2,
+  paddingBlock: "2px",
+  background: "transparent",
+  border: "none",
+  cursor: "pointer",
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  color: vars.color.accent.secondary,
+  textDecoration: "underline",
+  textUnderlineOffset: "2px",
+  ":hover": { color: vars.color.text.primary },
+  selectors: {
+    "&:focus-visible": {
+      outline: `2px solid ${vars.color.accent.secondary}`,
+      outlineOffset: "2px",
+      borderRadius: vars.radius.control,
+    },
+  },
 });

@@ -53,6 +53,7 @@ export function MappingEditorView(): JSX.Element {
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
 
   const voiceById = useMemo(() => {
     const map = new Map<string, VoiceAsset>();
@@ -134,18 +135,24 @@ export function MappingEditorView(): JSX.Element {
     }
   }, [deployment.deploymentId, voiceAssets, mappings]);
 
-  const deleteSelected = useCallback(async () => {
+  const requestDelete = useCallback(() => {
     if (!selected) return;
-    if (!confirm(`Deactivate mapping for ${selected.characterName}?`)) return;
+    setConfirmDelete({ id: selected.mappingId, name: selected.characterName });
+  }, [selected]);
+
+  const performDelete = useCallback(async () => {
+    if (!confirmDelete) return;
+    const { id, name } = confirmDelete;
+    setConfirmDelete(null);
     try {
-      await deactivateMapping(deployment.deploymentId, selected.mappingId);
-      setMappings((prev) => prev.filter((m) => m.mappingId !== selected.mappingId));
+      await deactivateMapping(deployment.deploymentId, id);
+      setMappings((prev) => prev.filter((m) => m.mappingId !== id));
       setSelectedId(null);
-      setToast(`Mapping for ${selected.characterName} deactivated.`);
+      setToast(`Mapping for ${name} deactivated.`);
     } catch (err) {
       setError(extract(err));
     }
-  }, [deployment.deploymentId, selected]);
+  }, [deployment.deploymentId, confirmDelete]);
 
   const handleVoiceUpload = useCallback(
     async (file: File, displayName: string, kind: VoiceAsset["kind"]) => {
@@ -250,7 +257,7 @@ export function MappingEditorView(): JSX.Element {
           aria-label="Search characters"
         />
 
-        <ImportExportBar onExport={doExport} onImport={doImport} />
+        <ImportExportBar onExport={doExport} onImport={doImport} onParseError={setError} />
 
         <div className={css.sidebarList}>
           {filtered.length === 0 ? (
@@ -297,6 +304,7 @@ export function MappingEditorView(): JSX.Element {
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
+                // biome-ignore lint/a11y/useSemanticElements: motion-wrapped div needs role="status" — m.output is not a stable motion variant for animated transient toasts
                 role="status"
               >
                 {toast}
@@ -305,6 +313,17 @@ export function MappingEditorView(): JSX.Element {
           </AnimatePresence>
         </LazyMotion>
         {error && <Banner severity="error">{error}</Banner>}
+        {confirmDelete && (
+          <Banner severity="warning">
+            <span style={{ flex: 1 }}>Deactivate mapping for {confirmDelete.name}?</span>
+            <Button variant="danger" size="sm" onClick={() => void performDelete()}>
+              Delete
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(null)}>
+              Cancel
+            </Button>
+          </Banner>
+        )}
 
         {!selected ? (
           <EmptyDetail
@@ -315,6 +334,7 @@ export function MappingEditorView(): JSX.Element {
           />
         ) : (
           <MappingDetail
+            key={selected.mappingId}
             deploymentId={deployment.deploymentId}
             mapping={selected}
             voiceAssets={voiceAssets}
@@ -351,7 +371,7 @@ export function MappingEditorView(): JSX.Element {
               updateSelected({ defaultEmotionVoiceAssetId: value });
               void persistSelected({ defaultEmotionVoiceAssetId: value });
             }}
-            onDelete={deleteSelected}
+            onDelete={requestDelete}
             onUploadVoice={async (file, displayName, kind) => {
               const uploaded = await handleVoiceUpload(file, displayName, kind);
               if (uploaded && kind === "speaker") {
@@ -447,11 +467,21 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
   const [testFormat, setTestFormat] = useState<OutputFormat>("mp3");
   const [testStatus, setTestStatus] = useState<TestLineStatus>("idle");
   const [testError, setTestError] = useState<string | null>(null);
+  const cancelRef = useRef(false);
+
+  useEffect(() => {
+    cancelRef.current = false;
+    return () => {
+      cancelRef.current = true;
+    };
+  }, []);
 
   const handleTestLine = useCallback(async () => {
+    cancelRef.current = false;
     setTestStatus("running");
     setTestError(null);
     const result = await props.onTestLine(testText, testFormat);
+    if (cancelRef.current) return;
     if (!result) {
       setTestStatus("error");
       setTestError("Failed to enqueue test-line run.");
@@ -460,8 +490,10 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
     const { runId } = result;
     for (let i = 0; i < 60; i += 1) {
       await new Promise<void>((r) => setTimeout(r, 500));
+      if (cancelRef.current) return;
       try {
         const run = await getRun(props.deploymentId, runId);
+        if (cancelRef.current) return;
         if (run.status === "completed") {
           setTestStatus("done");
           return;
@@ -472,11 +504,13 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
           return;
         }
       } catch (err) {
+        if (cancelRef.current) return;
         setTestStatus("error");
         setTestError(err instanceof Error ? err.message : "unknown error");
         return;
       }
     }
+    if (cancelRef.current) return;
     setTestStatus("error");
     setTestError("test-line timed out after 30s");
   }, [props.onTestLine, props.deploymentId, testText, testFormat]);
@@ -722,7 +756,8 @@ function Waveform({ seed }: { seed: string }): JSX.Element {
     <div className={css.waveform} aria-hidden="true">
       {bars.map((h, i) => (
         <span
-          key={i}
+          // biome-ignore lint/suspicious/noArrayIndexKey: bar order is deterministic for a given seed and never reorders
+          key={`${seed}-${i}`}
           className={css.waveformBar}
           style={{ height: `${Math.max(6, h * 100)}%` }}
         />
@@ -769,6 +804,7 @@ function AudioDropzone({
         if (file) void handleFile(file);
       }}
       onClick={() => inputRef.current?.click()}
+      // biome-ignore lint/a11y/useSemanticElements: dropzone div hosts drag-drop handlers + a hidden file input click trigger; a real <button> can't be a drop target without losing the drop-styling state machine
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
@@ -797,9 +833,11 @@ function AudioDropzone({
 function ImportExportBar({
   onExport,
   onImport,
+  onParseError,
 }: {
   onExport: () => void;
   onImport: (bundle: MappingBundle, strategy: ImportConflictStrategy) => void;
+  onParseError: (message: string) => void;
 }): JSX.Element {
   const [strategy, setStrategy] = useState<ImportConflictStrategy>("error");
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -825,7 +863,7 @@ function ImportExportBar({
             const bundle = JSON.parse(text) as MappingBundle;
             onImport(bundle, strategy);
           } catch {
-            alert("Import failed: file is not a valid JSON mapping bundle.");
+            onParseError("Import failed: file is not a valid JSON mapping bundle.");
           }
         }}
       />
@@ -848,7 +886,7 @@ function ImportExportBar({
 
 function nextFreeName(mappings: CharacterMapping[]): string {
   const existing = new Set(mappings.map((m) => m.characterName.toLowerCase()));
-  let idx = mappings.length + 1;
+  let idx = 1;
   while (existing.has(`character ${idx}`)) idx += 1;
   return `Character ${idx}`;
 }

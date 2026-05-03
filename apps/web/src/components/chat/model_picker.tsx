@@ -13,9 +13,10 @@ interface ModelPickerProps {
   activeModelId: string | null;
   onSelect?: (id: string) => Promise<void>;
   status?: "ready" | "loading" | "unavailable";
+  onOpenBackends?: () => void;
 }
 
-export function ModelPicker({ models, activeModelId, onSelect, status = "ready" }: ModelPickerProps) {
+export function ModelPicker({ models, activeModelId, onSelect, status = "ready", onOpenBackends }: ModelPickerProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const active = models.find((m) => m.id === activeModelId);
@@ -39,6 +40,7 @@ export function ModelPicker({ models, activeModelId, onSelect, status = "ready" 
         className={styles.trigger}
         onClick={() => !readonly && setOpen((v) => !v)}
         disabled={readonly && !active}
+        role="combobox"
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label="Model picker"
@@ -46,6 +48,15 @@ export function ModelPicker({ models, activeModelId, onSelect, status = "ready" 
         <span className={styles.triggerLabel}>{label}</span>
         {active?.badge ? <span className={styles.itemBadge}>{active.badge}</span> : null}
       </button>
+      {status === "unavailable" && onOpenBackends ? (
+        <button
+          type="button"
+          className={styles.recoveryLink}
+          onClick={onOpenBackends}
+        >
+          Open Backends ↗
+        </button>
+      ) : null}
       {open && !readonly && (
         <div className={styles.dropdown} role="listbox" aria-label="Available models">
           {models.map((m) => (
@@ -53,7 +64,6 @@ export function ModelPicker({ models, activeModelId, onSelect, status = "ready" 
               key={m.id}
               type="button"
               role="option"
-              aria-current={m.id === activeModelId}
               aria-selected={m.id === activeModelId}
               className={styles.item}
               onClick={async () => {

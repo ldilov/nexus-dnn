@@ -53,7 +53,14 @@ export const newThreadBtn = style({
   },
 });
 
+export const row = style({
+  display: "flex",
+  alignItems: "stretch",
+  gap: "2px",
+});
+
 export const item = style({
+  flex: "1 1 auto",
   display: "flex",
   flexDirection: "column",
   gap: "2px",
@@ -65,6 +72,7 @@ export const item = style({
   cursor: "pointer",
   textAlign: "left",
   color: vars.color.text.secondary,
+  minWidth: 0,
   transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {
     background: vars.color.bg.hover,
@@ -77,6 +85,40 @@ export const item = style({
       color: vars.color.text.primary,
     },
   },
+});
+
+export const iconBtn = style({
+  flex: "0 0 auto",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "28px",
+  borderRadius: vars.radius.control,
+  background: "transparent",
+  border: "none",
+  cursor: "pointer",
+  color: vars.color.text.muted,
+  opacity: 0,
+  transition: `opacity ${vars.motion.durationFast} ${vars.motion.easingDefault}, background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  ":hover": { background: vars.color.bg.hover, color: vars.color.text.primary, opacity: 1 },
+  ":focus-visible": { opacity: 1 },
+  selectors: {
+    [`${row}:hover &`]: { opacity: 1 },
+  },
+});
+
+export const renameInput = style({
+  width: "100%",
+  paddingBlock: "2px",
+  paddingInline: vars.density.d2,
+  borderRadius: vars.radius.control,
+  background: vars.color.bg.lowest,
+  color: vars.color.text.primary,
+  border: `1px solid ${vars.color.outline.variant}`,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
+  outline: "none",
+  ":focus": { borderColor: vars.color.accent.secondary },
 });
 
 export const itemTitle = style({

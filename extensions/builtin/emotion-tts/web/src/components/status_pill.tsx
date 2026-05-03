@@ -28,7 +28,8 @@ export function StatusPill({
   style,
   title,
 }: StatusPillProps): JSX.Element {
-  const cls = [sizeStyle[size], toneStyle[tone], pulse ? pulseStyle : null, className]
+  const showPulse = pulse && tone !== "faint";
+  const cls = [sizeStyle[size], toneStyle[tone], showPulse ? pulseStyle : null, className]
     .filter(Boolean)
     .join(" ");
   return (

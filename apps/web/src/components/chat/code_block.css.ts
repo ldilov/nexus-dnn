@@ -13,4 +13,10 @@ export const block = style({
   color: vars.color.text.primary,
   overflow: "auto",
   whiteSpace: "pre",
+  selectors: {
+    "&:focus-visible": {
+      outline: `2px solid ${vars.color.accent.secondary}`,
+      outlineOffset: "2px",
+    },
+  },
 });

@@ -1,4 +1,4 @@
-//! Spec 037 / T072 — client-disconnect contract test.
+//! Client-disconnect contract test.
 //!
 //! Drops the SSE response body before consumption — the handler's
 //! background task MUST observe the closed downstream channel, stop
