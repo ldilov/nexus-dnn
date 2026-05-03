@@ -65,10 +65,12 @@ export function QuickVoicePicker({
 
   if (voices.length === 0) {
     return (
-      <EmptyState
-        title="No voices yet."
-        hint="Upload a voice in Mappings to enable quick mode."
-      />
+      <div role="radiogroup" aria-label="Default voice for quick mode">
+        <EmptyState
+          title="No voices yet."
+          hint="Upload a voice in Mappings to enable quick mode."
+        />
+      </div>
     );
   }
 
@@ -84,6 +86,7 @@ export function QuickVoicePicker({
           <button
             key={v.voiceAssetId}
             type="button"
+            // biome-ignore lint/a11y/useSemanticElements: button-based radio preserves focus styles + click semantics across browsers — native radio doesn't fit the card-grid visual
             role="radio"
             aria-checked={isSelected}
             disabled={busy}

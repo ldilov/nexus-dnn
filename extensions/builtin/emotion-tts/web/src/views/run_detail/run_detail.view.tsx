@@ -356,8 +356,6 @@ function heroToneFor(status: RunStatus): StatusPillTone {
       return "danger";
     case "partial":
       return "warning";
-    case "queued":
-    case "cancelled":
     default:
       return "neutral";
   }
@@ -373,7 +371,6 @@ function utteranceToneFor(status: UtteranceStatus): StatusPillTone {
       return "danger";
     case "cancelled":
       return "faint";
-    case "queued":
     default:
       return "neutral";
   }

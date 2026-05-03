@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode, type KeyboardEvent } from "react";
 import * as styles from "./composer.css";
 
+const MAX_COMPOSER_LINES = 6;
+const LINE_HEIGHT_PX = 24;
+
 interface ComposerProps {
   placeholder?: string;
   disabled?: boolean;
@@ -28,7 +31,7 @@ export function Composer({
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
-    const max = 6 * 24;
+    const max = MAX_COMPOSER_LINES * LINE_HEIGHT_PX;
     el.style.height = `${Math.min(el.scrollHeight, max)}px`;
   }, [value]);
 
@@ -68,7 +71,7 @@ export function Composer({
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKey}
           placeholder={placeholder}
-          aria-label={placeholder}
+          aria-label="Message"
         />
         {isStreaming && onCancelStream ? (
           <button

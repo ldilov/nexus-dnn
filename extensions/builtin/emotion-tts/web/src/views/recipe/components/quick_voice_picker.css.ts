@@ -17,7 +17,7 @@ const cardBase = style({
   padding: `${vars.space.sm} ${vars.space.md}`,
   borderRadius: vars.radius.md,
   background: vars.color.surfaceMuted,
-  border: `1px solid transparent`,
+  border: "1px solid transparent",
   cursor: "pointer",
   textAlign: "left",
   transition: `background ${vars.motion.fast}, border-color ${vars.motion.fast}, box-shadow ${vars.motion.fast}`,

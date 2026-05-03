@@ -184,10 +184,10 @@ function analyseScript(
     let text = trimmed;
     let override: string | undefined;
     let isTagged = false;
-    if (match && match.groups) {
+    if (match?.groups) {
       isTagged = true;
-      const body = (match.groups["body"] ?? "").trim();
-      const rest = (match.groups["rest"] ?? "").trim();
+      const body = (match.groups.body ?? "").trim();
+      const rest = (match.groups.rest ?? "").trim();
       const head = body.split("|")[0] ?? "";
       const name = head.split(":")[0] ?? "";
       character = name.trim() || "Narrator";

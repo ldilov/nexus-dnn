@@ -1,12 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// Spec 037 — T059: Visual baseline for the Local LLM chat anchor route
-// (`/#/extensions/nexus.local-llm/chat/<threadId>`).
-//
-// Skip-on-no-data so the spec is safe in CI environments without a seeded
-// host backend; the targeted anchor-route screenshot only fires when the
-// thread list endpoint returns at least one thread.
-
 const PROBE = "/api/v1/extensions/nexus.local-llm/chat/threads";
 
 async function applyBaseline(page: Page): Promise<void> {
@@ -16,7 +9,7 @@ async function applyBaseline(page: Page): Promise<void> {
       window.localStorage.setItem("nexus.tweaks.density", "cozy");
       window.localStorage.setItem("nexus.tweaks.card", "flat");
     } catch {
-      // ignore — fresh contexts may not have storage yet
+      /* fresh contexts may not have storage yet */
     }
   });
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -51,7 +44,10 @@ test("visual: Local LLM chat anchor route at chat baseline", async ({ page }, te
   await page.goto(`/#/extensions/nexus.local-llm/chat/${threadId}`, {
     waitUntil: "networkidle",
   });
-  await page.waitForTimeout(250);
+  await page.waitForLoadState("domcontentloaded");
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  );
 
   await expect(page).toHaveScreenshot(`local_llm_chat-1440.png`, {
     fullPage: true,

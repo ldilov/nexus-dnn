@@ -100,8 +100,8 @@ export const scriptTextarea = style({
   ...scriptShared,
   position: "relative",
   width: "100%",
-  minHeight: "360px",
   display: "block",
+  boxSizing: "border-box",
   color: "transparent",
   caretColor: vars.color.text,
   resize: "vertical",
@@ -117,9 +117,7 @@ export const scriptTextarea = style({
   },
 });
 
-export const scriptCharacter = style({
-  fontWeight: 600,
-});
+export const scriptCharacter = style({});
 
 export const scriptText = style({
   color: vars.color.text,

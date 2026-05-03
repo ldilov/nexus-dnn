@@ -31,6 +31,12 @@ const CACHE_POLICIES: readonly { id: CachePolicy; label: string; help: string }[
   },
 ];
 
+const DEFAULT_POLICY: { id: CachePolicy; label: string; help: string } = {
+  id: "use_cache",
+  label: "Use cache",
+  help: "Read hits, write misses. Fastest on re-runs.",
+};
+
 export function GenerationSettingsPanel({
   outputFormat,
   onOutputFormatChange,
@@ -45,7 +51,7 @@ export function GenerationSettingsPanel({
     onGenerationChange({ ...generation, [key]: value });
   };
 
-  const activePolicy = CACHE_POLICIES.find((p) => p.id === cachePolicy) ?? CACHE_POLICIES[0]!;
+  const activePolicy = CACHE_POLICIES.find((p) => p.id === cachePolicy) ?? DEFAULT_POLICY;
 
   return (
     <div>
@@ -80,6 +86,7 @@ export function GenerationSettingsPanel({
             key={p.id}
             variant={cachePolicy === p.id ? "primary" : "secondary"}
             size="sm"
+            // biome-ignore lint/a11y/useSemanticElements: button-based radio preserves focus styles + click semantics across browsers — native radio doesn't fit the pill-row visual
             role="radio"
             aria-checked={cachePolicy === p.id}
             onClick={() => onCachePolicyChange(p.id)}

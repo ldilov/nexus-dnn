@@ -1,4 +1,4 @@
-//! Spec 037 / T069 — cancel-mid-stream contract test.
+//! Cancel-mid-stream contract test.
 //!
 //! Sequence: open stream with a long script + slow producer → call cancel
 //! endpoint with the returned `stream_id` → final SSE event MUST be

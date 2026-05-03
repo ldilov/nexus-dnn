@@ -2,19 +2,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ChatSurface, type ChatMessage, type ChatThreadSummary } from "../components/chat";
 import { useModelLoadState } from "../hooks/use_model_load_state";
-// audit-allow: boundary — adapter is the registry bridge that wires the YAML "chat_panel" entry to the generic ChatSurface; references are load-bearing, not coupling
+// audit-allow: boundary — adapter bridges the YAML "chat_panel" entry to the generic ChatSurface
 import { streamMessage, type ChatTurn } from "../services/local_llm_chat";
 import {
   createThread,
   deleteThread,
   listThreads,
   patchThread,
+  SchemaVersionMismatchError,
   type ChatThread,
+  type SamplerOverride as RawSamplerOverride,
 } from "../services/extension_chat";
+import type { SamplerOverride } from "../components/chat/sampler_panel";
 
-// audit-allow: boundary — extension-defined window-event channel (THREAD_SELECTED / THREAD_CHANGED) consumed by the local-llm extension UI; the literal IS the contract, can't be parameterised
+// audit-allow: boundary — extension-defined window-event channels consumed by the local-llm extension UI
 const THREAD_SELECTED_EVENT = "local-llm/thread:selected";
-// audit-allow: boundary — paired with THREAD_SELECTED above; same window-event contract
 const THREAD_CHANGED_EVENT = "local-llm/thread:changed";
 
 export interface ChatPanelAdapterProps {
@@ -37,6 +39,21 @@ function toThreadSummary(t: ChatThread): ChatThreadSummary {
   };
 }
 
+function toSamplerOverrideView(raw: RawSamplerOverride | null | undefined): SamplerOverride | undefined {
+  if (!raw) return undefined;
+  return {
+    temperature: raw.temperature,
+    topP: raw.top_p,
+  };
+}
+
+function fromSamplerOverrideView(next: SamplerOverride): RawSamplerOverride {
+  return {
+    temperature: next.temperature,
+    top_p: next.topP,
+  };
+}
+
 export function ChatPanelAdapter({
   welcomeTitle,
   welcomeDescription,
@@ -45,12 +62,14 @@ export function ChatPanelAdapter({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<RuntimeMessage[]>([]);
   const [streamingId, setStreamingId] = useState<string | null>(null);
+  const [schemaMismatch, setSchemaMismatch] = useState<{ stored: number; bundled: number } | null>(null);
   const streamHandle = useRef<{ abort: () => void } | null>(null);
   const load = useModelLoadState(activeId);
 
   const refreshThreads = useCallback(async () => {
     try {
       const page = await listThreads({ limit: 50 });
+      setSchemaMismatch(null);
       setThreads(page.threads);
       if (!activeId && page.threads.length > 0) {
         const first = page.threads[0]!;
@@ -59,9 +78,14 @@ export function ChatPanelAdapter({
           new CustomEvent(THREAD_SELECTED_EVENT, { detail: { id: first.thread_id } }),
         );
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof SchemaVersionMismatchError) {
+        setSchemaMismatch({ stored: err.stored, bundled: err.bundled });
+        setThreads([]);
+        return;
+      }
       setThreads([]);
-      toast.error("Could not load chat sessions");
+      toast.error(err instanceof Error ? err.message : "Could not load chat sessions");
     }
   }, [activeId]);
 
@@ -103,8 +127,8 @@ export function ChatPanelAdapter({
       window.dispatchEvent(
         new CustomEvent(THREAD_SELECTED_EVENT, { detail: { id: created.thread_id } }),
       );
-    } catch {
-      toast.error("Could not create a new session");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not create a new session");
     }
   }, []);
 
@@ -112,8 +136,8 @@ export function ChatPanelAdapter({
     try {
       const updated = await patchThread(id, { title: nextTitle });
       setThreads((prev) => prev.map((t) => (t.thread_id === id ? updated : t)));
-    } catch {
-      toast.error("Rename failed");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Rename failed");
     }
   }, []);
 
@@ -122,10 +146,41 @@ export function ChatPanelAdapter({
       await deleteThread(id);
       setThreads((prev) => prev.filter((t) => t.thread_id !== id));
       if (activeId === id) setActiveId(null);
-    } catch {
-      toast.error("Delete failed");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete failed");
     }
   }, [activeId]);
+
+  const handleAttachToDeployment = useCallback(
+    async (id: string, _deploymentId: string) => {
+      try {
+        const updated = await patchThread(id, { attach_to_current_deployment: true });
+        setThreads((prev) => prev.map((t) => (t.thread_id === id ? updated : t)));
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Could not attach thread");
+      }
+    },
+    [],
+  );
+
+  const handleUpdateSamplerOverride = useCallback(
+    async (next: SamplerOverride) => {
+      if (!activeId) return;
+      try {
+        const updated = await patchThread(activeId, {
+          sampler_override: fromSamplerOverrideView(next),
+        });
+        setThreads((prev) => prev.map((t) => (t.thread_id === activeId ? updated : t)));
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Could not update sampler");
+      }
+    },
+    [activeId],
+  );
+
+  const handleOpenBackends = useCallback(() => {
+    window.location.assign("/backends");
+  }, []);
 
   const handleSend = useCallback(
     async (text: string) => {
@@ -166,9 +221,7 @@ export function ChatPanelAdapter({
                 m.id === assistantId
                   ? {
                       ...m,
-                      text: m.text
-                        ? `${m.text}\n\n_[stream failed: ${err.message}]_`
-                        : `_[stream failed: ${err.message}]_`,
+                      text: `Stream failed: ${err.message}`,
                       status: "failed" as const,
                     }
                   : m,
@@ -206,6 +259,12 @@ export function ChatPanelAdapter({
     [messages],
   );
 
+  const activeThread = useMemo(
+    () => (activeId ? threads.find((t) => t.thread_id === activeId) ?? null : null),
+    [threads, activeId],
+  );
+  const surfaceSampler = toSamplerOverrideView(activeThread?.sampler_override);
+
   const composerDisabled = !activeId || load.phase !== "ready";
   const disabledReason = !activeId
     ? "Create or pick a session to begin."
@@ -218,6 +277,9 @@ export function ChatPanelAdapter({
           : undefined;
 
   const isStreaming = streamingId !== null;
+  const schemaMismatchMessage = schemaMismatch
+    ? `Extension version mismatch — stored ${schemaMismatch.stored}, bundled ${schemaMismatch.bundled}. Reload after upgrading.`
+    : undefined;
 
   return (
     <ChatSurface
@@ -229,6 +291,7 @@ export function ChatPanelAdapter({
       onCreateThread={() => void handleCreateThread()}
       onRenameThread={handleRenameThread}
       onDeleteThread={handleDeleteThread}
+      onAttachThreadToDeployment={handleAttachToDeployment}
       messages={surfaceMessages}
       isStreaming={isStreaming}
       onSendMessage={handleSend}
@@ -236,6 +299,11 @@ export function ChatPanelAdapter({
       models={load.label ? [{ id: "active", label: load.label, badge: "local" }] : []}
       activeModelId={load.label ? "active" : null}
       modelPickerStatus={load.phase === "loading" ? "loading" : load.label ? "ready" : "unavailable"}
+      onOpenBackends={handleOpenBackends}
+      samplerOverride={surfaceSampler}
+      onUpdateSamplerOverride={handleUpdateSamplerOverride}
+      schemaMismatch={schemaMismatch !== null}
+      schemaMismatchMessage={schemaMismatchMessage}
       composerPlaceholder={isStreaming ? "Generating…" : "Send a message…"}
       composerDisabled={composerDisabled}
       composerDisabledReason={disabledReason}

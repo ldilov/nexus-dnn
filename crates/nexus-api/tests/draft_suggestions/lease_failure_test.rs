@@ -1,4 +1,4 @@
-//! Spec 037 / T071 — lease-revoked-mid-stream contract test.
+//! Lease-revoked-mid-stream contract test.
 //!
 //! When the provider yields a `LeaseRevoked` item mid-stream, the
 //! handler MUST emit a terminal SSE `error { code: "lease_revoked" }`
