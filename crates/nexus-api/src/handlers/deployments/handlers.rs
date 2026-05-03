@@ -6,6 +6,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
+use nexus_events::types::NexusEvent;
 use nexus_deployments::DeploymentRepository;
 use nexus_deployments::id::{DeploymentId, DeploymentRevisionId};
 use nexus_deployments::repository::{ListFilter, MetadataPatch};
@@ -32,7 +33,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", post(create).get(list))
         .route("/import", post(import))
-        .route("/{id}", get(detail).patch(update_metadata))
+        .route("/{id}", get(detail).patch(update_metadata).delete(delete_deployment))
         .route("/{id}/revisions/{rev}", get(get_revision))
         .route("/{id}/revisions", post(save_new_revision))
         .route("/{id}/validate", post(validate))
@@ -56,6 +57,10 @@ struct ListQuery {
     workspace_id: Option<String>,
     state: Option<String>,
     limit: Option<i64>,
+    /// Opt-in flag — when `true`, soft-deleted rows are returned alongside
+    /// live rows. Defaults to `false` so existing consumers see only live
+    /// rows after the soft-delete migration lands.
+    include_deleted: Option<bool>,
 }
 
 async fn list(State(state): State<AppState>, Query(q): Query<ListQuery>) -> impl IntoResponse {
@@ -64,11 +69,66 @@ async fn list(State(state): State<AppState>, Query(q): Query<ListQuery>) -> impl
         workspace_id: q.workspace_id,
         state: q.state,
         limit: q.limit,
+        include_deleted: q.include_deleted,
         ..Default::default()
     };
     match repo.list(&filter).await {
         Ok(items) => (StatusCode::OK, Json(ApiResponse::ok(items))).into_response(),
         Err(e) => err_to_response(e),
+    }
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct DeleteQuery {
+    /// When `true`, hard-purge an already-soft-deleted row. Defaults to
+    /// `false` (soft-delete only). Returns 409 if the row is still live.
+    purge: Option<bool>,
+}
+
+async fn delete_deployment(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(q): Query<DeleteQuery>,
+) -> impl IntoResponse {
+    let repo = repo_for(&state);
+    let did = match DeploymentId::from_str(&id) {
+        Ok(d) => d,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::err(
+                    StatusCode::BAD_REQUEST,
+                    "deployment.invalid_id",
+                    "deployment",
+                    String::from("malformed deployment id"),
+                )),
+            )
+                .into_response();
+        }
+    };
+    let now = chrono::Utc::now().to_rfc3339();
+    if q.purge.unwrap_or(false) {
+        match repo.purge(&did).await {
+            Ok(()) => {
+                state.event_bus.publish(NexusEvent::DeploymentPurged {
+                    deployment_id: did.to_string(),
+                    purged_at: now,
+                });
+                (StatusCode::NO_CONTENT, ()).into_response()
+            }
+            Err(e) => err_to_response(e),
+        }
+    } else {
+        match repo.soft_delete(&did).await {
+            Ok(()) => {
+                state.event_bus.publish(NexusEvent::DeploymentDeleted {
+                    deployment_id: did.to_string(),
+                    deleted_at: now,
+                });
+                (StatusCode::NO_CONTENT, ()).into_response()
+            }
+            Err(e) => err_to_response(e),
+        }
     }
 }
 
@@ -317,6 +377,10 @@ fn err_to_response(e: nexus_deployments::DeploymentError) -> axum::response::Res
     let (status, code) = match &e {
         NotFound(_) | RevisionNotFound(_) => (StatusCode::NOT_FOUND, "deployment.not_found"),
         SlugConflict => (StatusCode::CONFLICT, "deployment.slug_conflict"),
+        PurgeRequiresSoftDeleteFirst => (
+            StatusCode::CONFLICT,
+            "deployment.purge_requires_soft_delete_first",
+        ),
         ExecuteBlocked(_) | RestoreBlocked(_) => {
             (StatusCode::UNPROCESSABLE_ENTITY, "deployment.blocked")
         }

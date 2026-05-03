@@ -1,7 +1,11 @@
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
+import { toast } from "sonner";
+import { mutate as globalMutate } from "swr";
 import type { DeploymentSummary, ModuleSummary } from "../../api/client";
+import { ConfirmDialog } from "../../components/base/confirm_dialog";
 import { useDeploymentsList, useModules } from "../../hooks/use_api";
+import { deleteDeployment } from "../../services/deployments";
 import { DeploymentsUI, type DeploymentsFilter } from "./deployments.ui";
 
 export function DeploymentsView() {
@@ -10,11 +14,16 @@ export function DeploymentsView() {
     userOnly: false,
     moduleId: null,
   });
+  const [pendingDelete, setPendingDelete] = useState<DeploymentSummary | null>(
+    null,
+  );
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const {
     data: deployments,
     error: deploymentsError,
     isLoading: deploymentsLoading,
+    mutate: mutateDeployments,
   } = useDeploymentsList();
 
   const { data: modulesEnvelope } = useModules({ limit: 200 });
@@ -70,18 +79,69 @@ export function DeploymentsView() {
         ? "Failed to load deployments"
         : null;
 
+  const handleConfirmDelete = useCallback(async () => {
+    if (!pendingDelete) return;
+    const target = pendingDelete;
+    setDeleteBusy(true);
+    // Optimistic update — drop the row from the cached list immediately.
+    const previous = deployments ?? [];
+    const optimistic = previous.filter((d) => d.id !== target.id);
+    void mutateDeployments(optimistic, { revalidate: false });
+    try {
+      await deleteDeployment(target.id);
+      toast.success(`Deleted "${target.display_name}"`);
+      // Re-validate the list and the per-id detail cache.
+      void mutateDeployments();
+      void globalMutate(["deployment", target.id]);
+      setPendingDelete(null);
+    } catch (err) {
+      // Restore the optimistic removal on failure.
+      void mutateDeployments(previous, { revalidate: false });
+      const message =
+        err instanceof Error ? err.message : "Failed to delete deployment";
+      toast.error(message);
+    } finally {
+      setDeleteBusy(false);
+    }
+  }, [deployments, mutateDeployments, pendingDelete]);
+
   return (
-    <DeploymentsUI
-      items={items}
-      modules={modules}
-      filter={filter}
-      onFilterChange={setFilter}
-      resolveModule={resolveModule}
-      isLoading={deploymentsLoading}
-      errorMessage={errorMessage}
-      onOpenDeployment={(id) => navigate(`/deployments/${encodeURIComponent(id)}`)}
-      onOpenModule={handleOpenModule}
-      onGoToModules={() => navigate("/modules")}
-    />
+    <>
+      <DeploymentsUI
+        items={items}
+        modules={modules}
+        filter={filter}
+        onFilterChange={setFilter}
+        resolveModule={resolveModule}
+        isLoading={deploymentsLoading}
+        errorMessage={errorMessage}
+        onOpenDeployment={(id) => navigate(`/deployments/${encodeURIComponent(id)}`)}
+        onOpenModule={handleOpenModule}
+        onGoToModules={() => navigate("/modules")}
+        onRequestDelete={setPendingDelete}
+      />
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        eyebrow="Destructive action"
+        title={
+          pendingDelete
+            ? `Delete "${pendingDelete.display_name}"?`
+            : "Delete deployment?"
+        }
+        description="The deployment will be removed from the list. Its run history and produced artifacts stay in storage but stop being shown alongside this deployment."
+        impactLines={[
+          "The deployment row disappears from the operator surface.",
+          "Past runs and artifacts are kept (no cascade in this step).",
+          "Source recipe / workflow stays untouched.",
+        ]}
+        confirmLabel="Delete deployment"
+        destructive
+        busy={deleteBusy}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          if (!deleteBusy) setPendingDelete(null);
+        }}
+      />
+    </>
   );
 }

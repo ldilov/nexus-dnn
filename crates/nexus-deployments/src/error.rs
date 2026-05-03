@@ -22,6 +22,8 @@ pub enum DeploymentError {
     ExportBlockedBySecret,
     #[error("revision is referenced by {0} run(s)")]
     RevisionReferencedByRuns(usize),
+    #[error("deployment must be soft-deleted before purge")]
+    PurgeRequiresSoftDeleteFirst,
     #[error("hash mismatch")]
     HashMismatch,
     #[error("path outside workspace allow-list: {0}")]

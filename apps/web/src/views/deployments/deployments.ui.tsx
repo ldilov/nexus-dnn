@@ -23,6 +23,7 @@ export interface DeploymentsUIProps {
   onOpenDeployment: (id: string) => void;
   onOpenModule: (moduleId: string) => void;
   onGoToModules: () => void;
+  onRequestDelete: (deployment: DeploymentSummary) => void;
 }
 
 function formatTimestamp(iso: string): string {
@@ -52,6 +53,7 @@ export function DeploymentsUI({
   onOpenDeployment,
   onOpenModule,
   onGoToModules,
+  onRequestDelete,
 }: DeploymentsUIProps) {
   const userCount = items.filter((d) => {
     const m = resolveModule(d);
@@ -134,7 +136,24 @@ export function DeploymentsUI({
               const linked = resolveModule(item);
               const stateKind = deploymentChipKind(item.state);
               return (
-                <li key={item.id}>
+                <li key={item.id} className={s.cardWrapper}>
+                  <button
+                    type="button"
+                    className={s.deleteButton}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRequestDelete(item);
+                    }}
+                    aria-label={`Delete deployment ${item.display_name}`}
+                    title="Delete deployment"
+                  >
+                    <span
+                      className={`material-symbols-outlined ${s.deleteIcon}`}
+                      aria-hidden="true"
+                    >
+                      delete
+                    </span>
+                  </button>
                   <button
                     type="button"
                     className={s.card}
