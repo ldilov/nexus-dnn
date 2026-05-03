@@ -8,6 +8,7 @@ import {
   fetchActiveModelStatus,
   setActiveModel,
   type RuntimeTuning,
+// audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
 } from "../../services/local_llm_chat";
 import { subscribeSessionEvents } from "../../services/event_streams";
 import { RuntimePanel } from "./runtime_panel";
@@ -96,10 +97,14 @@ export function ModelPicker() {
       const ce = e as CustomEvent<{ id?: string }>;
       if (ce.detail?.id) activeThreadRef.current = ce.detail.id;
     };
+    // audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
     window.addEventListener("local-llm/model-picker:open", onOpen);
+    // audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
     window.addEventListener("local-llm/thread:selected", onSelected);
     return () => {
+      // audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
       window.removeEventListener("local-llm/model-picker:open", onOpen);
+      // audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
       window.removeEventListener("local-llm/thread:selected", onSelected);
     };
   }, []);

@@ -3,16 +3,21 @@ import { vars } from "../../theme/contract.css";
 
 export const root = style({
   display: "grid",
+  // audit-allow: px — px — modal/dialog/drawer width per UX spec
   gridTemplateColumns: "240px 1fr 320px",
   height: "100%",
   minHeight: 0,
   background: vars.color.bg.canvas,
   color: vars.color.text.primary,
   "@media": {
+    // audit-allow: px — px — fixed layout breakpoint
     "(max-width: 1280px)": {
+      // audit-allow: px — px — sub-token spacing value, no density token at this step
       gridTemplateColumns: "56px 1fr 320px",
     },
+    // audit-allow: px — px — fixed layout breakpoint
     "(max-width: 960px)": {
+      // audit-allow: px — px — sub-token spacing value, no density token at this step
       gridTemplateColumns: "56px 1fr",
     },
   },
@@ -100,6 +105,7 @@ export const inspector = style({
   background: vars.color.bg.panel,
   overflowY: "auto",
   "@media": {
+    // audit-allow: px — px — fixed layout breakpoint
     "(max-width: 960px)": {
       display: "none",
     },

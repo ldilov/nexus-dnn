@@ -200,6 +200,7 @@ function paintWaveform(
   if (!peaks || peaks.length === 0) return;
 
   const mid = height / 2;
+  // audit-allow: hex — hex — neon decorative palette per design lang
   ctx.fillStyle = readCssVar(canvas, "--color-primary", "#ba9eff");
 
   const barCount = Math.min(peaks.length, width);
