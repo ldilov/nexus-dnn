@@ -6,6 +6,8 @@ import {
   useModules,
   useWorkflow,
 } from "../../../hooks/use_api";
+import { useRuntimeStatus } from "../../../hooks/use_runtime_status";
+import type { StatusKind } from "../../../components/base/status_chip";
 import { DeploymentDetailUI, type DetailTabId } from "./detail.ui";
 
 export interface DeploymentDetailPlaceholderProps {
@@ -55,11 +57,42 @@ export function DeploymentDetailPlaceholder({
     );
   }, [deployment, layouts]);
 
+  // Module name for the title's left-of-dash slot. Prefer the linked
+  // module's display_name (clean for both EmotionTTS + Local LLM); fall
+  // back to null when no module is linked (rendered as just the name).
+  // Also strip the module-name prefix from displayName if it leads with
+  // "<module> — " (some deployments embed the module in the display name).
+  const moduleName = linkedModule?.display_name ?? null;
+  const rawDisplayName = deployment?.display_name ?? null;
+  const cleanedDisplayName = useMemo<string | null>(() => {
+    if (!rawDisplayName) return null;
+    if (!moduleName) return rawDisplayName;
+    const prefix = `${moduleName} — `;
+    return rawDisplayName.startsWith(prefix)
+      ? rawDisplayName.slice(prefix.length)
+      : rawDisplayName;
+  }, [rawDisplayName, moduleName]);
+
+  // Host-wide runtime liveness drives the deployment's pill. This is a
+  // close-enough proxy until a per-deployment lease query exists — see
+  // useRuntimeStatus for the polled contract.
+  const runtime = useRuntimeStatus();
+  const status: StatusKind =
+    runtime.kind === "live"
+      ? "live"
+      : runtime.kind === "failed"
+        ? "failed"
+        : "idle";
+  const statusLabel = runtime.kind === "live" ? "live" : "ready";
+
   return (
     <DeploymentDetailUI
       deploymentId={deploymentId}
-      displayName={deployment?.display_name ?? null}
+      displayName={cleanedDisplayName}
       slug={deployment?.slug ?? null}
+      moduleName={moduleName}
+      status={status}
+      statusLabel={statusLabel}
       tab={tab}
       onTabChange={setTab}
       onBack={onBack}
