@@ -404,7 +404,7 @@ export function checkContrast(declared) {
 
 // ─── File-scope helpers ───────────────────────────────────────────────
 export function isTokenFile(filePath) {
-  return /tokens[^/]*\.(css|ts)$/i.test(filePath);
+  return /(?:^|\/)tokens\//.test(filePath) || /tokens[^/]*\.(css|ts)$/i.test(filePath);
 }
 export function isDensityFile(filePath) {
   return /density[^/]*\.(css|ts)$/i.test(filePath);
