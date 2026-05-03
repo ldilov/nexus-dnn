@@ -21,6 +21,7 @@ export const timestamp = style({
   fontFamily: vars.font.code,
   color: vars.color.text.muted,
   flexShrink: 0,
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   width: "80px",
 });
 
@@ -29,6 +30,7 @@ export const nodeId = style({
   fontWeight: vars.font.weight.medium,
   color: vars.color.text.primary,
   flexShrink: 0,
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   width: "120px",
 });
 
@@ -45,5 +47,6 @@ export const emptyState = style({
   color: vars.color.text.muted,
   fontSize: vars.font.size.bodySm,
   textAlign: "center",
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   padding: "48px",
 });

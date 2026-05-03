@@ -1,16 +1,17 @@
 import { style } from "@vanilla-extract/css";
 import { vars } from "../../../theme/contract.css";
 
-// Full-height flex column so the Recipe tab can hand 100% of the remaining
-// canvas height to the embedded extension chat UI without squeezing it into
-// a fixed 500px pane.
 export const root = style({
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.gapMd,
-  padding: vars.space.insetLg,
+  gap: vars.density.gapCard,
+  paddingBlock: vars.density.padSection,
   height: "100%",
   minHeight: 0,
+  // audit-allow: px — fixed layout breakpoint
+  maxWidth: "1400px",
+  marginInline: "auto",
+  width: "100%",
 });
 
 export const backLink = style({
@@ -18,33 +19,15 @@ export const backLink = style({
   background: "transparent",
   border: "none",
   color: vars.color.text.muted,
-  fontSize: vars.font.size.bodySm,
-  letterSpacing: "0.1em",
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  letterSpacing: "0.08em",
   textTransform: "uppercase",
   cursor: "pointer",
   padding: 0,
-  fontFamily: "inherit",
   selectors: {
     "&:hover": { color: vars.color.text.primary },
   },
-});
-
-// Compact single-row hero: back link + title + slug inline. Gives the
-// tab panel below as much vertical room as possible — especially
-// important for the embedded chat surface on the Recipe tab.
-export const hero = style({
-  display: "flex",
-  alignItems: "baseline",
-  gap: vars.space.gapMd,
-  flexWrap: "wrap",
-});
-
-export const title = style({
-  fontSize: vars.font.size.headingSm,
-  fontWeight: vars.font.weight.semibold,
-  color: vars.color.text.primary,
-  margin: 0,
-  lineHeight: 1.1,
 });
 
 export const slug = style({
@@ -55,27 +38,28 @@ export const slug = style({
 
 export const tabs = style({
   display: "inline-flex",
-  gap: "2px",
-  padding: "3px",
-  background: vars.color.bg.panel,
-  border: `1px solid ${vars.color.outline.variant}`,
-  borderRadius: vars.radius.control,
+  gap: vars.density.d2,
+  padding: vars.density.d1,
+  background: vars.color.bg.lowest,
+  borderRadius: vars.radius.full,
   alignSelf: "flex-start",
   flexWrap: "wrap",
 });
 
 export const tab = style({
-  padding: `${vars.space.insetSm} ${vars.space.insetMd}`,
+  paddingInline: vars.density.d4,
+  height: vars.control.heightSm,
+  display: "inline-flex",
+  alignItems: "center",
   background: "transparent",
   border: "none",
-  borderRadius: vars.radius.control,
+  borderRadius: vars.radius.full,
   color: vars.color.text.muted,
+  fontFamily: vars.font.ui,
   fontSize: vars.font.size.bodySm,
-  fontWeight: vars.font.weight.semibold,
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
+  fontWeight: vars.font.weight.medium,
   cursor: "pointer",
-  fontFamily: "inherit",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   selectors: {
     "&[aria-selected='true']": {
       background: vars.color.bg.elevated,
@@ -86,14 +70,16 @@ export const tab = style({
 });
 
 export const panel = style({
-  padding: vars.space.insetLg,
-  background: vars.color.bg.panel,
-  border: `1px solid ${vars.color.outline.variant}`,
+  padding: vars.density.padCard,
+  background: vars.card.bg,
+  boxShadow: vars.card.shadow,
+  backdropFilter: vars.card.backdrop,
   borderRadius: vars.radius.card,
+  // audit-allow: px — sub-token spacing value, no density token at this step
   minHeight: "260px",
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.gapMd,
+  gap: vars.density.d4,
 });
 
 export const panelHeading = style({
@@ -104,42 +90,22 @@ export const panelHeading = style({
 });
 
 export const panelBody = style({
-  color: vars.color.text.muted,
+  color: vars.color.text.secondary,
   lineHeight: vars.font.lineHeight.relaxed,
   margin: 0,
   maxWidth: "68ch",
-});
-
-export const pendingTag = style({
-  alignSelf: "flex-start",
-  padding: `${vars.space.insetXs} ${vars.space.insetSm}`,
-  background: vars.color.bg.elevated,
-  border: `1px solid ${vars.color.outline.variant}`,
-  borderRadius: vars.radius.full,
-  color: vars.color.text.muted,
-  fontSize: vars.font.size.caption,
-  letterSpacing: "0.15em",
-  textTransform: "uppercase",
-  fontFamily: vars.font.code,
 });
 
 export const idBox = style({
   fontFamily: vars.font.code,
   fontSize: vars.font.size.bodySm,
   color: vars.color.text.muted,
-  padding: vars.space.insetMd,
-  background: vars.color.bg.elevated,
+  padding: vars.density.d3,
+  background: vars.color.bg.lowest,
   borderRadius: vars.radius.control,
-  border: `1px solid ${vars.color.outline.variant}`,
   wordBreak: "break-all",
 });
 
-// Live tab panel — no border, no padding. The Recipe tab embeds the
-// extension's own full-canvas chat layout (which ships its own header,
-// sidebar, input bar, etc.) so wrapping it in another framed panel just
-// duplicates chrome. The Workflow Graph tab embeds the editor canvas,
-// which also owns its own frame. Both surfaces get the full remaining
-// canvas height via `flex: 1`.
 export const panelLive = style({
   flex: "1 1 auto",
   minHeight: 0,
@@ -148,9 +114,6 @@ export const panelLive = style({
   overflow: "hidden",
 });
 
-// Extension-rendered chat UI lives inside this frame on the Recipe tab.
-// `flex: 1` + `minHeight: 0` is the canonical pattern that lets a nested
-// flex child actually shrink so the chat's own inner scrollbars work.
 export const chatFrame = style({
   flex: "1 1 auto",
   minHeight: 0,
@@ -160,20 +123,17 @@ export const chatFrame = style({
 });
 
 export const fallbackNote = style({
-  padding: vars.space.insetLg,
-  color: vars.color.text.muted,
+  padding: vars.density.padCard,
+  color: vars.color.text.secondary,
   lineHeight: vars.font.lineHeight.relaxed,
   fontSize: vars.font.size.body,
 });
 
 export const graphFrame = style({
-  padding: vars.space.insetLg,
+  padding: vars.density.padCard,
   overflow: "auto",
 });
 
-// ReactFlow reads clientWidth/clientHeight for layout — this frame lives
-// inside `panelLive` which is already a full-height flex column, so all
-// we need here is to claim the remaining space.
 export const realGraphFrame = style({
   flex: "1 1 auto",
   minHeight: 0,

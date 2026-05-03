@@ -15,6 +15,13 @@ import type {
 import type { UtteranceState } from "../../../services/types";
 import { WaveformCanvas } from "../../mapping_editor/components/waveform_canvas";
 import * as css from "./per_utterance_edit.css";
+import { Banner } from "../../../components/banner";
+import { Button } from "../../../components/button";
+import {
+  EditSurface,
+  EditSurfaceActions,
+  EditSurfaceHeader,
+} from "../../../components/edit_surface";
 
 export interface PerUtteranceEditProps {
   deploymentId: string;
@@ -42,6 +49,7 @@ export function PerUtteranceEdit(props: PerUtteranceEditProps): JSX.Element {
   const applyControllerRef = useRef<AbortController | null>(null);
   const persistedDigestRef = useRef<string | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: utterance.utteranceId is the reset trigger when the user picks a different utterance
   useEffect(() => {
     setChain(initialChainFor(sourceDurationMs));
     setNormalizeOn(false);
@@ -53,6 +61,7 @@ export function PerUtteranceEdit(props: PerUtteranceEditProps): JSX.Element {
     return () => applyControllerRef.current?.abort();
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: focus only re-runs when the user opens a different utterance
   useEffect(() => {
     const focusable = rootRef.current?.querySelector<HTMLElement>(
       "button:not([disabled]), [tabindex='0']",
@@ -148,67 +157,52 @@ export function PerUtteranceEdit(props: PerUtteranceEditProps): JSX.Element {
   }, [chain, sourceDurationMs, applyInFlight, deploymentId, runId, utterance.utteranceId, onApplied, onError]);
 
   return (
-    <div className={css.root} ref={rootRef} onKeyDown={handleRootKeyDown}>
-      <header className={css.header}>
-        <h4 className={css.title}>Edit segment</h4>
-        <span className={css.sourceMeta}>Source · {formatMs(sourceDurationMs)}</span>
-      </header>
+    <EditSurface variant="nested">
+      <div ref={rootRef} onKeyDown={handleRootKeyDown}>
+        <EditSurfaceHeader title="Edit segment" meta={`Source · ${formatMs(sourceDurationMs)}`} />
 
-      <WaveformCanvas
-        audioUrl={audioUrl}
-        durationMs={Math.max(1, sourceDurationMs)}
-        startMs={startMs}
-        endMs={endMs}
-        onChangeStart={onChangeStart}
-        onChangeEnd={onChangeEnd}
-        height={COMPACT_WAVEFORM_HEIGHT}
-        width={COMPACT_WAVEFORM_WIDTH}
-      />
+        <WaveformCanvas
+          audioUrl={audioUrl}
+          durationMs={Math.max(1, sourceDurationMs)}
+          startMs={startMs}
+          endMs={endMs}
+          onChangeStart={onChangeStart}
+          onChangeEnd={onChangeEnd}
+          height={COMPACT_WAVEFORM_HEIGHT}
+          width={COMPACT_WAVEFORM_WIDTH}
+        />
 
-      <div className={css.labelRow}>
-        <span>Trim region</span>
-        <span className={css.numericLabel}>
-          {formatMs(startMs)} → {formatMs(endMs)} · {formatMs(endMs - startMs)}
-        </span>
-      </div>
-
-      <div className={css.controls}>
-        <label className={css.toggleRow}>
-          <input
-            type="checkbox"
-            checked={normalizeOn}
-            onChange={(e) => toggleNormalize(e.currentTarget.checked)}
-            aria-label="Toggle loudness normalization"
-          />
-          <span>Normalize to {DEFAULT_LUFS.toFixed(0)} LUFS (broadcast-friendly)</span>
-        </label>
-      </div>
-
-      <div className={css.buttonRow}>
-        <button
-          type="button"
-          className={css.applyButton}
-          onClick={() => void handleApply()}
-          disabled={applyInFlight}
-        >
-          {applyInFlight ? "Applying…" : "Apply"}
-        </button>
-        <button
-          type="button"
-          className={css.cancelButton}
-          onClick={onCancel}
-          disabled={applyInFlight}
-        >
-          Cancel
-        </button>
-      </div>
-
-      {validationError && (
-        <div className={css.errorBanner} role="alert" aria-live="polite">
-          {validationError}
+        <div className={css.labelRow}>
+          <span>Trim region</span>
+          <span className={css.numericLabel}>
+            {formatMs(startMs)} → {formatMs(endMs)} · {formatMs(endMs - startMs)}
+          </span>
         </div>
-      )}
-    </div>
+
+        <div className={css.controls}>
+          <label className={css.toggleRow}>
+            <input
+              type="checkbox"
+              checked={normalizeOn}
+              onChange={(e) => toggleNormalize(e.currentTarget.checked)}
+              aria-label="Toggle loudness normalization"
+            />
+            <span>Normalize to {DEFAULT_LUFS.toFixed(0)} LUFS (broadcast-friendly)</span>
+          </label>
+        </div>
+
+        <EditSurfaceActions>
+          <Button size="sm" onClick={() => void handleApply()} disabled={applyInFlight}>
+            {applyInFlight ? "Applying…" : "Apply"}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onCancel} disabled={applyInFlight}>
+            Cancel
+          </Button>
+        </EditSurfaceActions>
+
+        {validationError && <Banner severity="error">{validationError}</Banner>}
+      </div>
+    </EditSurface>
   );
 }
 

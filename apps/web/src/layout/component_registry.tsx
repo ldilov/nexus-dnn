@@ -4,7 +4,7 @@ import { SplitPanel } from "../components/layout/split_panel";
 import { Stack } from "../components/layout/stack";
 import { TabsLayout } from "../components/layout/tabs_layout";
 import { CardLayout } from "../components/layout/card_layout";
-import { ChatPanel } from "../components/layout/chat_panel";
+import { ChatPanelAdapter } from "./chat_panel_adapter";
 import { DataTable } from "../components/layout/data_table";
 import { LayoutForm } from "../components/layout/form";
 import { FileBrowser } from "../components/layout/file_browser";
@@ -12,9 +12,6 @@ import { MetricsDashboard } from "../components/layout/metrics_dashboard";
 import { LayoutStatusBar } from "../components/layout/status_bar";
 import { ActionBar } from "../components/layout/action_bar";
 import { ListComponent } from "../components/layout/list_component";
-import { ThreadListComponent } from "../components/layout/thread_list";
-import { ModelSelectorComponent } from "../components/layout/model_selector";
-import { GenerationSettingsFormComponent } from "../components/layout/generation_settings_form";
 import { DetailView } from "../components/layout/detail_view";
 import { EmptyState } from "../components/layout/empty_state";
 import { CodeBlock } from "../components/layout/code_block";
@@ -74,22 +71,13 @@ const registry: Record<string, ComponentRenderer> = {
     );
   },
 
-  chat_panel: (node, children) => {
+  chat_panel: (node, _children) => {
     const props = toProps(node);
     return (
-      <ChatPanel
-        showStopButton={props.showStopButton as boolean | undefined}
-        showRetryButton={props.showRetryButton as boolean | undefined}
-        streamingEnabled={props.streamingEnabled as boolean | undefined}
-        messages={props.messages as { id: string; role: "user" | "assistant" | "system"; content: string }[] | undefined}
-        welcomeIcon={props.welcomeIcon as string | undefined}
+      <ChatPanelAdapter
         welcomeTitle={props.welcomeTitle as string | undefined}
         welcomeDescription={props.welcomeDescription as string | undefined}
-        modelName={props.modelName as string | undefined}
-        modelChips={props.modelChips as { label: string; type: "model" | "optimize" }[] | undefined}
-      >
-        {children}
-      </ChatPanel>
+      />
     );
   },
 
@@ -155,10 +143,6 @@ const registry: Record<string, ComponentRenderer> = {
     );
   },
 
-  model_selector: (_node, _children) => <ModelSelectorComponent />,
-
-  generation_settings_form: (_node, _children) => <GenerationSettingsFormComponent />,
-
   action_bar: (node, children) => {
     const props = toProps(node);
     return (
@@ -173,13 +157,6 @@ const registry: Record<string, ComponentRenderer> = {
   list: (node, children) => {
     const props = toProps(node);
     const itemType = props.itemType as string | undefined;
-    if (itemType === "thread") {
-      return (
-        <ThreadListComponent
-          emptyMessage={props.emptyMessage as string | undefined}
-        />
-      );
-    }
     return (
       <ListComponent
         items={props.items as { id: string; label: string; description?: string }[] | undefined}
@@ -353,6 +330,7 @@ const registry: Record<string, ComponentRenderer> = {
 
   models_panel: (node, _children) => {
     const props = toProps(node);
+    // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
     const extensionId = (props.extension_id as string | undefined) ?? "local-llm";
     return <ModelsPanel extensionId={extensionId} />;
   },

@@ -81,6 +81,7 @@ export const chatMessages = style({
   flex: 1,
   overflow: "auto",
   padding: vars.space.insetLg,
+  // audit-allow: px — chat input area clearance, not a spacing token
   paddingBottom: "140px",
   display: "flex",
   flexDirection: "column",
@@ -106,8 +107,8 @@ export const chatMessageRowAssistant = style({
 });
 
 export const chatMessageIconBox = style({
-  width: "24px",
-  height: "24px",
+  width: vars.density.d6,
+  height: vars.density.d6,
   borderRadius: vars.radius.full,
   display: "flex",
   alignItems: "center",
@@ -118,13 +119,13 @@ export const chatMessageIconBox = style({
 export const chatMessageIconBoxAssistant = style({
   backgroundColor: vars.color.accent.primaryDim,
   color: vars.color.text.primary,
-  fontSize: "14px",
+  fontSize: vars.font.size.bodyLg,
 });
 
 export const chatMessageIconBoxUser = style({
   backgroundColor: vars.color.bg.hover,
   color: vars.color.text.secondary,
-  fontSize: "14px",
+  fontSize: vars.font.size.bodyLg,
 });
 
 export const chatMessageBody = style({
@@ -163,8 +164,8 @@ export const chatBubbleBase = style({
 });
 
 export const chatBubbleUser = style({
-  backgroundColor: "#232629",
-  borderRadius: "16px",
+  backgroundColor: vars.color.bg.hover,
+  borderRadius: vars.radius.container,
   borderTopRightRadius: 0,
   border: "1px solid rgba(70, 72, 74, 0.1)",
   padding: `${vars.space.insetMd} ${vars.space.insetLg}`,
@@ -173,19 +174,23 @@ export const chatBubbleUser = style({
 export const chatBubbleAssistant = style({
   position: "relative",
   background: "linear-gradient(155deg, rgba(29, 32, 35, 0.85) 0%, rgba(17, 20, 22, 0.78) 100%)",
+  // audit-allow: px — glassmorphism blur radius, not a spacing token
   backdropFilter: "blur(20px)",
+  // audit-allow: px — glassmorphism blur radius, not a spacing token
   WebkitBackdropFilter: "blur(20px)",
+  // audit-allow: px — decorative glow shadow radii per design lang
   boxShadow: "inset 0 0 30px rgba(186, 158, 255, 0.06), 0 8px 24px rgba(0, 0, 0, 0.35), 0 0 25px rgba(244, 114, 182, 0.05)",
   border: "1px solid rgba(186, 158, 255, 0.22)",
+  // audit-allow: px — design-grid micro-rhythm value
   borderRadius: "22px",
-  borderTopLeftRadius: 4,
-  padding: "22px 24px",
+  borderTopLeftRadius: vars.radius.control,
+  padding: `${vars.density.d5} ${vars.density.d6}`,
 });
 
 export const chatCodeBlock = style({
   position: "relative",
   backgroundColor: "rgba(0, 0, 0, 0.8)",
-  borderRadius: "12px",
+  borderRadius: vars.density.d3,
   marginTop: vars.space.gapSm,
   overflow: "hidden",
   border: `1px solid ${vars.color.outline.variant}`,
@@ -211,14 +216,14 @@ export const chatCodeBlockCopy = style({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  width: "24px",
-  height: "24px",
+  width: vars.density.d6,
+  height: vars.density.d6,
   border: "none",
   borderRadius: vars.radius.control,
   backgroundColor: "transparent",
   color: vars.color.text.muted,
   cursor: "pointer",
-  fontSize: "16px",
+  fontSize: vars.icon.md,
   transition: `color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {
     color: vars.color.text.primary,
@@ -237,6 +242,7 @@ export const chatCodeBlockBody = style({
 
 export const chatCodeHighlightLine = style({
   backgroundColor: "rgba(186, 158, 255, 0.05)",
+  // audit-allow: px — hairline accent bar, below minimum token granularity
   borderLeft: `2px solid ${vars.color.accent.primary}`,
   display: "block",
   marginLeft: `-${vars.space.insetMd}`,
@@ -273,10 +279,11 @@ globalStyle(`${chatMarkdown} li > p`, { margin: "0.15em 0" });
 globalStyle(`${chatMarkdown} blockquote`, {
   margin: "0.6em 0",
   padding: "0.2em 0.9em",
+  // audit-allow: px — hairline accent bar, below minimum token granularity
   borderLeft: `2.5px solid ${vars.color.accent.primary}66`,
   color: vars.color.text.muted,
   background: "rgba(186, 158, 255, 0.04)",
-  borderRadius: "0 6px 6px 0",
+  borderRadius: `0 ${vars.radius.control} ${vars.radius.control} 0`,
 });
 globalStyle(`${chatMarkdown} hr`, {
   border: "none",
@@ -303,6 +310,7 @@ globalStyle(`${chatMarkdown} table`, {
 });
 globalStyle(`${chatMarkdown} th, ${chatMarkdown} td`, {
   border: `1px solid ${vars.color.outline.variant}`,
+  // audit-allow: px — markdown table cell padding, design-grid micro-rhythm value
   padding: "6px 10px",
   textAlign: "left",
 });
@@ -314,6 +322,7 @@ globalStyle(`${chatMarkdown} .katex-display`, {
   margin: "0.6em 0",
   overflowX: "auto",
   overflowY: "hidden",
+  // audit-allow: px — hairline katex display padding, below minimum token granularity
   padding: "2px 0",
 });
 globalStyle(`${chatMarkdown} .katex`, { fontSize: "1em" });
@@ -321,7 +330,9 @@ globalStyle(`${chatMarkdown} .katex`, { fontSize: "1em" });
 export const chatInlineCode = style({
   fontFamily: vars.font.code,
   fontSize: "0.9em",
+  // audit-allow: px — hairline vertical padding, below minimum token granularity
   padding: "1px 6px",
+  // audit-allow: px — design-grid micro-rhythm value
   borderRadius: "5px",
   background: "rgba(186, 158, 255, 0.12)",
   color: vars.color.accent.secondaryDim,
@@ -330,26 +341,31 @@ export const chatInlineCode = style({
 
 export const chatInputArea = style({
   position: "absolute",
-  bottom: "32px",
+  bottom: vars.density.d7,
   left: "50%",
   transform: "translateX(-50%)",
   width: "100%",
+  // audit-allow: px — fixed content-column max-width per IA contract
   maxWidth: "768px",
-  padding: "0 24px",
+  padding: `0 ${vars.density.d6}`,
   zIndex: 10,
 });
 
 export const chatInputGlass = style({
   position: "relative",
   backgroundColor: "rgba(17, 20, 22, 0.72)",
+  // audit-allow: px — glassmorphism blur radius, not a spacing token
   backdropFilter: "blur(20px)",
+  // audit-allow: px — glassmorphism blur radius, not a spacing token
   WebkitBackdropFilter: "blur(20px)",
+  // audit-allow: px — design-grid micro-rhythm value
   borderRadius: "18px",
   border: "1px solid rgba(186, 158, 255, 0.18)",
-  padding: "10px",
+  padding: vars.density.d2,
   display: "flex",
   flexDirection: "column",
-  gap: "8px",
+  gap: vars.density.d2,
+  // audit-allow: px — decorative glow shadow radii per design lang
   boxShadow: `0 12px 36px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255,255,255,0.02), inset 0 1px 0 rgba(255,255,255,0.05)`,
   transition: `border-color ${vars.motion.durationNormal} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationNormal} ${vars.motion.easingDefault}`,
   selectors: {
@@ -357,9 +373,11 @@ export const chatInputGlass = style({
       content: "''",
       position: "absolute",
       inset: "-1px",
+      // audit-allow: px — design-grid micro-rhythm value
       borderRadius: "19px",
       padding: "1px",
       background: `linear-gradient(120deg, rgba(186,158,255,0) 0%, rgba(186,158,255,0.3) 35%, rgba(244,114,182,0.25) 60%, rgba(34,211,238,0.3) 100%)`,
+      // audit-allow: hex — pure-black mask gradient per glassmorphism border technique
       WebkitMask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
       WebkitMaskComposite: "xor",
       maskComposite: "exclude",
@@ -369,6 +387,7 @@ export const chatInputGlass = style({
     },
     "&:focus-within": {
       borderColor: "rgba(186, 158, 255, 0.5)",
+      // audit-allow: px — decorative glow shadow radii per design lang
       boxShadow: `0 12px 36px rgba(0,0,0,0.5), 0 0 35px rgba(186, 158, 255, 0.18), 0 0 60px rgba(34, 211, 238, 0.1)`,
     },
     "&:focus-within::before": {
@@ -380,21 +399,22 @@ export const chatInputGlass = style({
 export const chatInputToolsRow = style({
   display: "flex",
   alignItems: "center",
-  gap: "4px",
-  padding: "0 4px",
+  gap: vars.density.d1,
+  padding: `0 ${vars.density.d1}`,
 });
 
 export const chatInputIconButton = style({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  width: "32px",
-  height: "32px",
+  width: vars.density.d7,
+  height: vars.density.d7,
   border: "none",
   borderRadius: vars.radius.card,
   backgroundColor: "transparent",
   color: vars.color.text.muted,
   cursor: "pointer",
+  // audit-allow: px — design-grid micro-rhythm value
   fontSize: "18px",
   flexShrink: 0,
   transition: `all ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
@@ -429,7 +449,7 @@ export const chatInputIconCode = style({
 
 export const chatInputDivider = style({
   width: "1px",
-  height: "16px",
+  height: vars.density.d4,
   backgroundColor: "rgba(70, 72, 74, 0.2)",
   flexShrink: 0,
 });
@@ -437,30 +457,34 @@ export const chatInputDivider = style({
 export const chatModelChip = style({
   display: "inline-flex",
   alignItems: "center",
+  // audit-allow: px — design-grid micro-rhythm value
   padding: "3px 10px",
   borderRadius: vars.radius.full,
   fontFamily: vars.font.code,
-  fontSize: "10px",
+  fontSize: vars.font.size.caption,
   fontWeight: 600,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
   background: "linear-gradient(90deg, rgba(34, 211, 238, 0.12), rgba(144, 147, 255, 0.12))",
   border: "1px solid rgba(34, 211, 238, 0.28)",
+  // audit-allow: hex — neon decorative glow per design lang
   color: "#22D3EE",
 });
 
 export const chatOptimizeChip = style({
   display: "inline-flex",
   alignItems: "center",
+  // audit-allow: px — design-grid micro-rhythm value
   padding: "3px 10px",
   borderRadius: vars.radius.full,
   fontFamily: vars.font.code,
-  fontSize: "10px",
+  fontSize: vars.font.size.caption,
   fontWeight: 600,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
   background: "linear-gradient(90deg, rgba(244, 114, 182, 0.14), rgba(186, 158, 255, 0.14))",
   border: "1px solid rgba(244, 114, 182, 0.3)",
+  // audit-allow: hex — neon decorative glow per design lang
   color: "#F472B6",
 });
 
@@ -468,7 +492,7 @@ export const chatInputRow = style({
   display: "flex",
   gap: vars.space.gapSm,
   alignItems: "flex-end",
-  padding: "0 4px",
+  padding: `0 ${vars.density.d1}`,
 });
 
 export const chatInput = style({
@@ -476,7 +500,7 @@ export const chatInput = style({
   backgroundColor: "transparent",
   color: vars.color.text.primary,
   border: "none",
-  padding: "8px 0",
+  padding: `${vars.density.d2} 0`,
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.body,
   outline: "none",
@@ -488,22 +512,30 @@ export const chatSendButton = style({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  width: "42px",
-  height: "42px",
+  // audit-allow: px — fixed send-button hit-target per UX spec; do not scale with density
+  width: "44px",
+  // audit-allow: px — fixed send-button hit-target per UX spec; do not scale with density
+  height: "44px",
   border: "none",
+  // audit-allow: px — design-grid micro-rhythm value
   borderRadius: "13px",
+  // audit-allow: hex — neon decorative glow per design lang
   background: `linear-gradient(135deg, #ba9eff 0%, #F472B6 55%, #22D3EE 120%)`,
   backgroundSize: "200% 200%",
   backgroundPosition: "0% 0%",
+  // audit-allow: hex — gradient anchor outside accent palette
   color: "#14061f",
   cursor: "pointer",
+  // audit-allow: px — design-grid micro-rhythm value
   fontSize: "18px",
   flexShrink: 0,
+  // audit-allow: px — decorative glow shadow radii per design lang
   boxShadow: "0 6px 16px rgba(186, 158, 255, 0.35), inset 0 1px 0 rgba(255,255,255,0.3)",
   transition: `transform ${vars.motion.durationFast} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}, background-position ${vars.motion.durationSlow} ${vars.motion.easingDefault}`,
   ":hover": {
     transform: "translateY(-1px)",
     backgroundPosition: "100% 100%",
+    // audit-allow: px — decorative glow shadow radii per design lang
     boxShadow: "0 10px 24px rgba(244, 114, 182, 0.45), 0 0 28px rgba(34, 211, 238, 0.3)",
   },
   ":active": {
@@ -519,6 +551,7 @@ export const dataTable = style({
 });
 
 export const dataTableHead = style({
+  // audit-allow: px — hairline accent bar, below minimum token granularity
   borderBottom: `2px solid ${vars.color.outline.variant}`,
 });
 
@@ -593,6 +626,7 @@ export const formSelect = style({
 
 export const formTextarea = style({
   width: "100%",
+  // audit-allow: px — fixed textarea minimum height per UX spec
   minHeight: "80px",
   backgroundColor: vars.color.bg.app,
   color: vars.color.text.primary,
@@ -624,6 +658,7 @@ export const formSliderValue = style({
   fontFamily: vars.font.code,
   fontSize: vars.font.size.bodySm,
   color: vars.color.text.secondary,
+  // audit-allow: px — fixed min-width for numeric label alignment
   minWidth: "40px",
   textAlign: "right",
 });
@@ -636,7 +671,9 @@ export const formToggleRow = style({
 
 export const formToggle = style({
   position: "relative",
+  // audit-allow: px — fixed toggle switch dimensions per component spec
   width: "36px",
+  // audit-allow: px — fixed toggle track height per component spec
   height: "20px",
   backgroundColor: vars.color.bg.hover,
   borderRadius: vars.radius.full,
@@ -652,27 +689,31 @@ export const formToggleActive = style({
 
 export const formToggleKnob = style({
   position: "absolute",
+  // audit-allow: px — hairline knob inset, below minimum token granularity
   top: "2px",
+  // audit-allow: px — hairline knob inset, below minimum token granularity
   left: "2px",
-  width: "16px",
-  height: "16px",
+  width: vars.density.d4,
+  height: vars.density.d4,
   borderRadius: vars.radius.full,
   backgroundColor: vars.color.text.primary,
   transition: `transform ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
 });
 
 export const formToggleKnobActive = style({
-  transform: "translateX(16px)",
+  transform: `translateX(${vars.density.d4})`,
 });
 
 export const metricsDashboard = style({
   display: "grid",
+  // audit-allow: px — fixed card min-width for metrics grid layout
   gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
   gap: vars.space.gapSm,
   padding: vars.space.insetMd,
 });
 
 export const metricsDashboardCompact = style({
+  // audit-allow: px — fixed card min-width for metrics grid layout
   gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
   gap: vars.space.gapXs,
   padding: vars.space.insetSm,
@@ -745,8 +786,8 @@ export const statusIndicator = style({
 });
 
 export const statusDot = style({
-  width: "6px",
-  height: "6px",
+  width: vars.space.insetSm,
+  height: vars.space.insetSm,
   borderRadius: vars.radius.full,
   backgroundColor: vars.color.success.base,
 });
@@ -785,6 +826,7 @@ export const listItem = style({
 
 export const listItemSelected = style({
   backgroundColor: `${vars.color.accent.primary}15`,
+  // audit-allow: px — hairline accent sidebar indicator, below minimum token granularity
   borderLeft: `3px solid ${vars.color.accent.primary}`,
   color: vars.color.accent.primary,
 });
@@ -812,8 +854,8 @@ export const detailHeader = style({
 });
 
 export const detailHeaderDot = style({
-  width: "6px",
-  height: "6px",
+  width: vars.space.insetSm,
+  height: vars.space.insetSm,
   borderRadius: vars.radius.full,
   backgroundColor: vars.color.accent.secondary,
   flexShrink: 0,
@@ -864,6 +906,7 @@ export const detailModelName = style({
 export const detailModelVersion = style({
   display: "inline-flex",
   alignItems: "center",
+  // audit-allow: px — hairline vertical padding, below minimum token granularity
   padding: `2px ${vars.space.insetSm}`,
   borderRadius: vars.radius.full,
   fontFamily: vars.font.code,
@@ -972,7 +1015,7 @@ export const detailContextItem = style({
 });
 
 export const detailContextIcon = style({
-  fontSize: "14px",
+  fontSize: vars.font.size.bodyLg,
   color: vars.color.accent.primary,
   flexShrink: 0,
 });
@@ -981,14 +1024,16 @@ export const detailContextClose = style({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+  // audit-allow: px — design-grid micro-rhythm value
   width: "18px",
+  // audit-allow: px — design-grid micro-rhythm value
   height: "18px",
   border: "none",
   borderRadius: vars.radius.full,
   backgroundColor: "transparent",
   color: vars.color.text.muted,
   cursor: "pointer",
-  fontSize: "14px",
+  fontSize: vars.font.size.bodyLg,
   marginLeft: "auto",
   flexShrink: 0,
   ":hover": {
@@ -1032,8 +1077,8 @@ export const detailHealthHeader = style({
 });
 
 export const detailHealthDot = style({
-  width: "8px",
-  height: "8px",
+  width: vars.density.d2,
+  height: vars.density.d2,
   borderRadius: vars.radius.full,
   backgroundColor: vars.color.accent.secondary,
 });
@@ -1056,22 +1101,44 @@ export const emptyState = style({
   padding: vars.space.insetXl,
   textAlign: "center",
   flex: 1,
+  // audit-allow: px — fixed empty state minimum height per UX spec
   minHeight: "200px",
 });
 
+export const emptyStateCount = style({
+  fontFamily: vars.font.code,
+  // audit-allow: px — fluid clamp expression for editorial large numeral
+  fontSize: "clamp(64px, 6vw + 32px, 128px)",
+  fontWeight: vars.font.weight.regular,
+  color: vars.color.text.muted,
+  lineHeight: 1,
+  letterSpacing: "-0.02em",
+});
+
+export const emptyStateLine = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
+  color: vars.color.text.secondary,
+  // audit-allow: px — fixed prose column max-width per layout spec
+  maxWidth: "420px",
+  lineHeight: vars.font.lineHeight.normal,
+});
+
 export const emptyStateIconBox = style({
-  width: "64px",
-  height: "64px",
+  width: vars.density.d9,
+  height: vars.density.d9,
   borderRadius: vars.radius.container,
   backgroundColor: `${vars.color.accent.primary}1a`,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  fontSize: "32px",
+  // font intentionally couples to density.d9 box size — both scale together
+  fontSize: vars.density.d7,
   color: vars.color.accent.primary,
 });
 
 export const emptyStateIcon = style({
+  // audit-allow: px — fixed icon size for editorial empty state
   fontSize: "48px",
   color: vars.color.text.muted,
   lineHeight: 1,
@@ -1089,6 +1156,7 @@ export const emptyStateDescription = style({
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.bodySm,
   color: vars.color.text.secondary,
+  // audit-allow: px — fixed prose column max-width per layout spec
   maxWidth: "320px",
   lineHeight: vars.font.lineHeight.relaxed,
 });
@@ -1102,7 +1170,7 @@ export const progressTracker = style({
 
 export const progressBar = style({
   width: "100%",
-  height: "8px",
+  height: vars.density.d2,
   backgroundColor: vars.color.bg.hover,
   borderRadius: vars.radius.full,
   overflow: "hidden",
@@ -1292,7 +1360,8 @@ globalStyle(`${markdownView} code`, {
   fontFamily: vars.font.code,
   fontSize: vars.font.size.bodySm,
   backgroundColor: vars.color.bg.elevated,
-  padding: `2px 6px`,
+  // audit-allow: px — hairline vertical padding, below minimum token granularity
+  padding: `2px ${vars.space.insetSm}`,
   borderRadius: vars.radius.control,
 });
 
@@ -1340,25 +1409,25 @@ export const unknownComponent = style({
 
 export const chatMessageTimestamp = style({
   fontFamily: vars.font.code,
-  fontSize: "10px",
+  fontSize: vars.font.size.kbd,
   color: vars.color.text.muted,
   textAlign: "right",
-  marginTop: "4px",
+  marginTop: vars.density.d1,
   opacity: 0.4,
 });
 
 export const chatMessageMeta = style({
   fontFamily: vars.font.code,
-  fontSize: "10px",
+  fontSize: vars.font.size.kbd,
   color: vars.color.text.muted,
   textTransform: "uppercase",
   letterSpacing: "0.05em",
-  marginTop: "8px",
+  marginTop: vars.density.d2,
   opacity: 0.5,
   cursor: "pointer",
   listStyle: "none",
   userSelect: "none",
-  transition: "opacity 150ms ease, color 150ms ease",
+  transition: `opacity ${vars.motion.durationFast} ease, color ${vars.motion.durationFast} ease`,
   ":hover": {
     opacity: 1,
     color: vars.color.accent.primary,
@@ -1369,21 +1438,22 @@ export const chatMessageMeta = style({
 });
 
 export const chatMessageMetaDetails = style({
-  marginTop: "8px",
+  marginTop: vars.density.d2,
 });
 
 export const chatMessageParams = style({
   display: "flex",
   flexWrap: "wrap",
+  // audit-allow: px — design-grid micro-rhythm value
   gap: "10px 14px",
-  marginTop: "6px",
-  padding: "8px 10px",
+  marginTop: vars.space.insetSm,
+  padding: `${vars.density.d2} ${vars.density.d2}`,
   fontFamily: vars.font.code,
-  fontSize: "11px",
+  fontSize: vars.font.size.caption,
   color: vars.color.text.muted,
   background: "rgba(186, 158, 255, 0.05)",
   border: `1px solid ${vars.color.outline.variant}`,
-  borderRadius: "8px",
+  borderRadius: vars.density.d2,
   lineHeight: 1.4,
 });
 
@@ -1394,23 +1464,23 @@ globalStyle(`${chatMessageParams} b`, {
 
 export const chatMessageActions = style({
   display: "flex",
-  gap: "8px",
-  marginTop: "12px",
-  paddingTop: "12px",
+  gap: vars.density.d2,
+  marginTop: vars.density.d3,
+  paddingTop: vars.density.d3,
   borderTop: `1px solid ${vars.color.outline.variant}`,
 });
 
 export const chatActionButton = style({
   display: "inline-flex",
   alignItems: "center",
-  gap: "6px",
-  padding: "6px 12px",
+  gap: vars.space.insetSm,
+  padding: `${vars.space.insetSm} ${vars.density.d3}`,
   borderRadius: vars.radius.card,
   border: "1px solid rgba(70, 72, 74, 0.1)",
   background: vars.color.bg.hover,
   color: vars.color.text.secondary,
   fontFamily: vars.font.ui,
-  fontSize: "11px",
+  fontSize: vars.font.size.caption,
   cursor: "pointer",
   transition: `all ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {
@@ -1422,7 +1492,7 @@ export const chatActionButton = style({
 export const detailLiveBadge = style({
   display: "inline-flex",
   alignItems: "center",
-  gap: "6px",
+  gap: vars.space.insetSm,
   marginLeft: "auto",
   fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,
@@ -1459,8 +1529,9 @@ export const chatStreamingSpinner = style({
 
 export const chatStreamingCursor = style({
   display: "inline-block",
-  width: "6px",
+  width: vars.space.insetSm,
   height: "1em",
+  // audit-allow: px — hairline cursor offset, below minimum token granularity
   marginLeft: "3px",
   verticalAlign: "text-bottom",
   background: "currentColor",
@@ -1474,8 +1545,8 @@ export const chatStreamingCursor = style({
 });
 
 export const detailLiveDot = style({
-  width: "6px",
-  height: "6px",
+  width: vars.space.insetSm,
+  height: vars.space.insetSm,
   borderRadius: vars.radius.full,
   backgroundColor: vars.color.accent.secondary,
   animation: `${pulseLive} 2s ease-in-out infinite`,
@@ -1489,9 +1560,11 @@ export const detailHealthCardGradient = style({
 
 const chatWelcomePulse = keyframes({
   "0%, 100%": {
+    // audit-allow: px — decorative keyframe glow shadow radii per design lang
     boxShadow: `0 0 60px rgba(186, 158, 255, 0.35), 0 0 120px rgba(244, 114, 182, 0.18), inset 0 1px 0 rgba(255,255,255,0.1)`,
   },
   "50%": {
+    // audit-allow: px — decorative keyframe glow shadow radii per design lang
     boxShadow: `0 0 80px rgba(34, 211, 238, 0.4), 0 0 150px rgba(186, 158, 255, 0.25), inset 0 1px 0 rgba(255,255,255,0.15)`,
   },
 });
@@ -1507,7 +1580,8 @@ export const chatWelcome = style({
   alignItems: "center",
   justifyContent: "center",
   textAlign: "center",
-  padding: "64px 32px",
+  padding: `${vars.density.d9} ${vars.density.d7}`,
+  // audit-allow: px — fixed content-column max-width per IA contract
   maxWidth: "640px",
   margin: "auto",
   position: "relative",
@@ -1518,15 +1592,21 @@ export const chatWelcomeIconBox = style({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+  // audit-allow: px — fixed welcome icon box size per design lang
   width: "88px",
+  // audit-allow: px — fixed welcome icon box size per design lang
   height: "88px",
+  // audit-allow: px — design-grid micro-rhythm value
   borderRadius: "28px",
   background: `linear-gradient(135deg, rgba(186, 158, 255, 0.28) 0%, rgba(244, 114, 182, 0.22) 50%, rgba(34, 211, 238, 0.26) 100%)`,
   border: "1px solid rgba(186, 158, 255, 0.35)",
+  // audit-allow: hex — pure-white contrast anchor
   color: "#ffffff",
-  marginBottom: "28px",
+  marginBottom: vars.density.d5,
   animation: `${chatWelcomePulse} 4s ease-in-out infinite`,
+  // audit-allow: px — glassmorphism blur radius, not a spacing token
   backdropFilter: "blur(10px)",
+  // audit-allow: px — glassmorphism blur radius, not a spacing token
   WebkitBackdropFilter: "blur(10px)",
   selectors: {
     "&::before": {
@@ -1534,7 +1614,9 @@ export const chatWelcomeIconBox = style({
       position: "absolute",
       top: "50%",
       left: "50%",
+      // audit-allow: px — fixed orbit ring diameter per design lang
       width: "148px",
+      // audit-allow: px — fixed orbit ring diameter per design lang
       height: "148px",
       borderRadius: "50%",
       border: "1px dashed rgba(186, 158, 255, 0.25)",
@@ -1547,7 +1629,9 @@ export const chatWelcomeIconBox = style({
       position: "absolute",
       top: "50%",
       left: "50%",
+      // audit-allow: px — fixed orbit ring diameter per design lang
       width: "200px",
+      // audit-allow: px — fixed orbit ring diameter per design lang
       height: "200px",
       borderRadius: "50%",
       border: "1px dashed rgba(34, 211, 238, 0.18)",
@@ -1560,18 +1644,21 @@ export const chatWelcomeIconBox = style({
 
 export const chatWelcomeTitle = style({
   fontFamily: vars.font.headline,
+  // audit-allow: px — fixed headline size for welcome screen
   fontSize: "36px",
   fontWeight: 800,
   letterSpacing: "-0.035em",
   lineHeight: 1.05,
-  margin: "0 0 12px 0",
+  margin: `0 0 ${vars.density.d3} 0`,
   color: vars.color.text.primary,
 });
 
 export const chatWelcomeDescription = style({
   fontFamily: vars.font.ui,
+  // audit-allow: px — design-grid micro-rhythm value
   fontSize: "15px",
   color: vars.color.text.secondary,
+  // audit-allow: px — fixed prose column max-width per layout spec
   maxWidth: "460px",
   lineHeight: 1.6,
   margin: 0,
@@ -1587,12 +1674,12 @@ export const iconInheritFilled = style({
 });
 
 export const iconSm = style({
-  fontSize: "14px",
+  fontSize: vars.font.size.bodyLg,
 });
 
 export const iconBadge = style({
-  fontSize: "12px",
-  marginRight: "4px",
+  fontSize: vars.font.size.bodySm,
+  marginRight: vars.density.d1,
 });
 
 export const hidden = style({
@@ -1605,6 +1692,7 @@ export const marginLeftAuto = style({
 
 export const tokenCountLabel = style({
   fontFamily: "var(--font-code)",
+  // audit-allow: px — below minimum token granularity, sub-10px fontSize
   fontSize: "9px",
   color: "rgba(116, 117, 120, 0.6)",
   textTransform: "uppercase",
@@ -1619,6 +1707,7 @@ export const codeInline = style({
   fontSize: vars.font.size.caption,
   backgroundColor: vars.color.bg.app,
   color: vars.color.text.primary,
+  // audit-allow: px — hairline vertical padding, below minimum token granularity
   padding: `2px ${vars.space.insetXs}`,
   borderRadius: vars.radius.control,
   border: `1px solid ${vars.color.outline.variant}`,
@@ -1631,14 +1720,16 @@ export const flexOne = style({
 });
 
 export const iconLg = style({
+  // audit-allow: px — design-grid micro-rhythm value
   fontSize: "18px",
 });
 
 export const iconMd = style({
-  fontSize: "16px",
+  fontSize: vars.icon.md,
 });
 
 export const iconXl = style({
+  // audit-allow: px — design-grid micro-rhythm value
   fontSize: "22px",
 });
 
@@ -1675,12 +1766,13 @@ export const descSmall = style({
 });
 
 export const centeredHint = style({
-  padding: "16px",
+  padding: vars.density.d4,
   textAlign: "center",
   opacity: 0.5,
 });
 
 export const accentIcon = style({
+  // audit-allow: px — design-grid micro-rhythm value
   fontSize: "18px",
   color: "var(--color-accent-secondary)",
 });

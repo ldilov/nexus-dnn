@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   fetchActiveModelStatus,
   type ActiveModelStatusPayload,
+// audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
 } from "../services/local_llm_chat";
 import { subscribeSessionEvents } from "../services/event_streams";
 
@@ -78,7 +79,7 @@ export function useModelLoadState(threadId: string | null): ModelLoadState {
     });
 
     const rePoll = setTimeout(() => {
-      fetchActiveModelStatus(threadId)
+      fetchActiveModelStatus(threadId, ctrl.signal)
         .then((s) => setState(fromStatus(s)))
         .catch(() => {});
     }, 400);

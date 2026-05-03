@@ -10,8 +10,8 @@ nexus-dnn provides a developer-grade runtime that treats generative workflows as
 
 ```text
 +----------------------------------------------------------+
-|  React/TS Web UI                                         |
-|  stage view | graph editor | run trace | artifact browser|
+|  React/TS Web UI — Spectral Graphite design language     |
+|  shell + chat + draft AI suggestions + artifact browser  |
 +----------------------------+-----------------------------+
                              |
                              | HTTP / WebSocket
@@ -100,6 +100,13 @@ nexus-dnn/
 | [Worker Protocol](docs/worker-protocol.md) | JSON-RPC 2.0 stdio protocol |
 | [Data Model](docs/data-model.md) | Entities, relationships, state machines |
 | [Python SDK](docs/python-sdk.md) | Python worker SDK reference |
+
+### Frontend design system — Spectral Graphite (Kinetic Observatory)
+
+Spec 037 ships a unified **Spectral Graphite** design language — dark graphite surfaces, violet / indigo / magma accent duty rules, JetBrains Mono for IDs and timings, and a glassmorphism layer for floating UI. Two cross-cutting host primitives:
+
+- **Generic `ChatSurface`** at [`apps/web/src/components/chat/`](apps/web/src/components/chat/) — a single chat shell shared by Local LLM and any deployment with chat context. Replaced four files of grandfathered host-extension boundary debt.
+- **Draft AI suggestion stream** at `/api/v1/modules/drafts/{draft_id}/suggestions` (POST + cancel endpoint) — extension-agnostic SSE handler family in [`crates/nexus-api/src/handlers/draft_suggestions/`](crates/nexus-api/src/handlers/draft_suggestions/) that streams indigo per-line suggestions into the Module Draft view from any leasable text-completion backend.
 
 ### Builtin extensions
 

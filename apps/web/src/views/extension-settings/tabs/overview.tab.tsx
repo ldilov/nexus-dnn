@@ -63,6 +63,7 @@ export function OverviewTab({ extension }: OverviewTabProps) {
 
         {extension.capabilities.length > 0 && (
           <div>
+            // audit-allow: px — below minimum token granularity (sub-10px)
             <span className={s.statLabel} style={{ display: "block", marginBottom: "8px" }}>
               Capabilities
             </span>

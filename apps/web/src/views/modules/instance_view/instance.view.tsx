@@ -11,6 +11,7 @@ import {
 import { useModule } from "../../../hooks/use_api";
 import { mintDraftUuid } from "../draft/draft_uuid";
 import { writeDraftEnvelope } from "../draft/draft_envelope";
+import { PageHero } from "../../../components/base/page_hero";
 import type { ReactNode } from "react";
 import * as s from "./instance.css";
 
@@ -121,6 +122,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
     return (
       <Shell>
         <div className={s.canvas}>
+          <PageHero eyebrow="Module instance" title="Loading…" />
           <div className={s.loadingBox}>Loading instance…</div>
         </div>
       </Shell>
@@ -140,6 +142,7 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
           <button type="button" className={s.backLink} onClick={handleBack}>
             ← Modules
           </button>
+          <PageHero eyebrow="Module instance" title="Not available" />
           <div className={s.errorBox} role="alert">
             {message}
           </div>
@@ -165,11 +168,11 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
           ← Modules
         </button>
 
-        {/* ── Hero ─────────────────────────────────────────────────────── */}
-        <header className={s.hero}>
-          <div className={s.heroLeft}>
-            <h1 className={s.heroTitle}>{summary.display_name}</h1>
-            <div className={s.heroMeta}>
+        <PageHero
+          eyebrow={formatSourceKindEyebrow(summary.source_kind)}
+          title={summary.display_name}
+          meta={
+            <>
               {summary.version && (
                 <span className={s.buildChip}>build v{summary.version}</span>
               )}
@@ -201,68 +204,70 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
                   {summary.runtime_family}
                 </span>
               )}
-            </div>
-          </div>
-          <div className={s.heroActions}>
-            <button
-              type="button"
-              className={s.secondaryBtn}
-              onClick={dryRunAction}
-              disabled={dryRunning || deployBlocked}
-            >
-              <span
-                className={`material-symbols-outlined ${s.iconLg}`}
-                aria-hidden="true"
+            </>
+          }
+          actions={
+            <>
+              <button
+                type="button"
+                className={s.secondaryBtn}
+                onClick={dryRunAction}
+                disabled={dryRunning || deployBlocked}
               >
-                play_arrow
-              </span>
-              {dryRunning ? "Planning…" : "Dry Run"}
-            </button>
-            <button
-              type="button"
-              className={s.secondaryBtn}
-              onClick={handleViewBlueprint}
-              disabled={deployBlocked}
-            >
-              <span
-                className={`material-symbols-outlined ${s.iconLg}`}
-                aria-hidden="true"
+                <span
+                  className={`material-symbols-outlined ${s.iconLg}`}
+                  aria-hidden="true"
+                >
+                  play_arrow
+                </span>
+                {dryRunning ? "Planning…" : "Dry Run"}
+              </button>
+              <button
+                type="button"
+                className={s.secondaryBtn}
+                onClick={handleViewBlueprint}
+                disabled={deployBlocked}
               >
-                menu_book
-              </span>
-              View Blueprint
-            </button>
-            <button
-              type="button"
-              className={s.secondaryBtn}
-              onClick={handleEdit}
-              disabled={forking || deployBlocked}
-            >
-              <span
-                className={`material-symbols-outlined ${s.iconLg}`}
-                aria-hidden="true"
+                <span
+                  className={`material-symbols-outlined ${s.iconLg}`}
+                  aria-hidden="true"
+                >
+                  menu_book
+                </span>
+                View Blueprint
+              </button>
+              <button
+                type="button"
+                className={s.secondaryBtn}
+                onClick={handleEdit}
+                disabled={forking || deployBlocked}
               >
-                edit
-              </span>
-              {forking ? "Forking…" : "Edit"}
-            </button>
-            <button
-              type="button"
-              className={s.primaryBtn}
-              onClick={deployAction}
-              disabled={deploying || deployBlocked}
-            >
-              <span
-                className={`material-symbols-outlined ${s.iconLg}`}
-                aria-hidden="true"
+                <span
+                  className={`material-symbols-outlined ${s.iconLg}`}
+                  aria-hidden="true"
+                >
+                  edit
+                </span>
+                {forking ? "Forking…" : "Edit"}
+              </button>
+              <button
+                type="button"
+                className={s.primaryBtn}
+                onClick={deployAction}
+                disabled={deploying || deployBlocked}
               >
-                rocket_launch
-              </span>
-              {/* scan-terminology: allow — canonical CTA per FR-012 */}
-              {deploying ? "Deploying…" : "Deploy Instance"}
-            </button>
-          </div>
-        </header>
+                <span
+                  className={`material-symbols-outlined ${s.iconLg}`}
+                  aria-hidden="true"
+                >
+                  rocket_launch
+                </span>
+                {/* scan-terminology: allow — canonical CTA per FR-012 */}
+                {deploying ? "Deploying…" : "Deploy Instance"}
+              </button>
+            </>
+          }
+        />
 
         {/* ── Content grid ─────────────────────────────────────────────── */}
         <div className={s.cardGrid}>
@@ -568,6 +573,12 @@ function countByState(summary: ModuleSummary, states: string[]): number {
     total += by[s] ?? 0;
   }
   return total;
+}
+
+function formatSourceKindEyebrow(sourceKind: string): string {
+  if (sourceKind === "extension") return "Module instance · Extension-published";
+  if (sourceKind === "user") return "Module instance · User-authored";
+  return "Module instance · Blank";
 }
 
 function shortId(id: string): string {

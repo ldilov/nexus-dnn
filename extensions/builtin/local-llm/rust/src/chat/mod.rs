@@ -5,16 +5,18 @@
 
 pub mod envelope;
 pub mod handlers;
+pub mod inference_cancel;
 pub mod load_registry;
 pub mod resources;
 
+pub use inference_cancel::InferenceCancelRegistry;
 pub use load_registry::{LoadState, ModelLoadRegistry};
 pub use resources::ChatHandlerResources;
 
 use std::sync::Arc;
 
 use axum::Router;
-use axum::routing::get;
+use axum::routing::{get, post};
 
 /// Build the chat sub-router. Mounts only the routes that have no
 /// spec-029 equivalent: generation settings, active-model binding, and
@@ -24,9 +26,9 @@ use axum::routing::get;
 /// "overlapping method route" panics. The legacy host-mounted
 /// `create_thread` / `list_threads` / `send_message` handlers are
 /// retired in CP2; spec 029's flat-shaped chat-history endpoints
-/// replace them. Frontend consumers (`thread_list.tsx`,
-/// `chat_panel.tsx`, etc.) follow the schema repoint outlined in
-/// research §R5.
+/// replace them. Spec 037 retired the standalone host-side chat layout
+/// components in favour of the shared `ChatSurface` plus a host adapter
+/// that bridges these endpoints onto its props contract.
 pub fn build_chat_router(resources: Arc<ChatHandlerResources>) -> Router {
     Router::new()
         .route(
@@ -42,6 +44,14 @@ pub fn build_chat_router(resources: Arc<ChatHandlerResources>) -> Router {
         .route(
             "/chat/threads/{thread_id}/active_model/status",
             get(handlers::get_active_model_status),
+        )
+        .route(
+            "/chat/threads/{thread_id}/inference/cancel",
+            post(handlers::cancel_inference),
+        )
+        .route(
+            "/chat/available_models",
+            get(handlers::list_available_models),
         )
         .with_state(resources)
 }

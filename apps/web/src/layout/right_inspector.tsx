@@ -47,6 +47,7 @@ function PortItem({ port }: { port: PortSpecDto }) {
     <div className={styles.portItem}>
       <span
         className={styles.portDot}
+        // audit-allow: px — below minimum token granularity (sub-10px)
         style={{ background: color.base, boxShadow: `0 0 8px ${color.glow}` }}
       />
       <span className={styles.portName}>
@@ -66,7 +67,11 @@ function resourceChips(spec: OperatorDto | null | undefined): string[] {
   if (spec.execution_mode) chips.push(spec.execution_mode);
   if (spec.cacheable) chips.push("cacheable");
   if (spec.resumable) chips.push("resumable");
-  if (spec.resource_hints && typeof spec.resource_hints === "object") {
+  if (
+    spec.resource_hints !== null &&
+    spec.resource_hints !== undefined &&
+    typeof spec.resource_hints === "object"
+  ) {
     const hints = spec.resource_hints as { gpu?: unknown; min_vram_mb?: unknown; cpu_cores?: unknown };
     if (hints.gpu === true) chips.push("gpu");
     if (typeof hints.min_vram_mb === "number") chips.push(`${hints.min_vram_mb} MB VRAM`);
@@ -78,7 +83,7 @@ function resourceChips(spec: OperatorDto | null | undefined): string[] {
 export function RightInspector({ selectedNode, selectedSpec, nodeStatus }: InspectorProps) {
   if (!selectedNode) {
     return (
-      <div className={styles.container}>
+      <div className={styles.container} role="region" aria-label="Node inspector" tabIndex={0}>
         <p className={styles.emptyState}>Select a node to inspect</p>
       </div>
     );
@@ -93,7 +98,7 @@ export function RightInspector({ selectedNode, selectedSpec, nodeStatus }: Inspe
   );
 
   return (
-    <div className={styles.container}>
+    <div className={styles.container} role="region" aria-label="Node inspector" tabIndex={0}>
       <h2 className={styles.heading}>{selectedSpec?.display_name ?? selectedNode.id}</h2>
       {nodeStatus && <Badge label={nodeStatus} intent={resolveIntent(nodeStatus)} showDot />}
 

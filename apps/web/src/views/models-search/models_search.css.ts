@@ -9,8 +9,11 @@ const pulse = keyframes({
 export const page = style({
   display: "flex",
   flexDirection: "column",
+  // audit-allow: px — design-grid micro-rhythm value, no token between gapMd(12) and gapXl(24)
   gap: "28px",
+  // audit-allow: px — page layout: 32px top/bottom gutter, 40px horizontal, 80px bottom padding are fixed layout values
   padding: "32px 40px 80px",
+  // audit-allow: px — fixed layout breakpoint max-width for models search page
   maxWidth: "1600px",
   margin: "0 auto",
   width: "100%",
@@ -21,61 +24,19 @@ export const page = style({
 
 export const grid = style({
   display: "grid",
-  gap: "20px",
+  gap: vars.density.d5,
+  // audit-allow: px — card grid min-width 360px is a fixed layout breakpoint, no token
   gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))",
   width: "100%",
   "@media": {
+    // audit-allow: px — 900px responsive breakpoint for single-column grid layout
     "(max-width: 900px)": { gridTemplateColumns: "1fr" },
   },
 });
 
-export const hero = style({
-  display: "flex",
-  alignItems: "flex-end",
-  justifyContent: "space-between",
-  gap: "24px",
-  paddingBottom: "4px",
-});
-
-export const heroText = style({
-  display: "flex",
-  flexDirection: "column",
-  gap: "4px",
-  minWidth: 0,
-});
-
-export const heroTitle = style({
-  fontFamily: vars.font.headline,
-  fontSize: "36px",
-  lineHeight: 1.05,
-  fontWeight: 700,
-  letterSpacing: "-0.02em",
-  color: vars.color.text.primary,
-  margin: 0,
-});
-
-export const heroSubtitle = style({
-  fontFamily: vars.font.code,
-  fontSize: "11px",
-  letterSpacing: "0.14em",
-  textTransform: "uppercase",
-  color: vars.color.text.muted,
-});
-
-export const heroMeta = style({
-  display: "flex",
-  alignItems: "center",
-  gap: "12px",
-  fontFamily: vars.font.code,
-  fontSize: "11px",
-  letterSpacing: "0.1em",
-  textTransform: "uppercase",
-  color: vars.color.text.muted,
-});
-
 export const heroCount = style({
   fontFamily: vars.font.code,
-  fontSize: "11px",
+  fontSize: vars.font.size.caption,
   color: vars.color.accent.primary,
   fontWeight: 600,
 });
@@ -83,51 +44,52 @@ export const heroCount = style({
 export const filterBar = style({
   display: "flex",
   flexDirection: "column",
-  gap: "12px",
-  padding: "16px 20px",
+  gap: vars.space.gapMd,
+  padding: `${vars.space.insetXl} ${vars.density.d5}`,
   background: vars.color.bg.panel,
   borderRadius: vars.radius.panel,
   position: "sticky",
-  top: "16px",
+  top: vars.space.insetXl,
   zIndex: 4,
-  backdropFilter: "blur(16px)",
+  backdropFilter: `blur(${vars.space.insetXl})`,
 });
 
 export const filterRow = style({
   display: "flex",
   flexWrap: "wrap",
   alignItems: "center",
+  // audit-allow: px — design-grid micro-rhythm value, no token between gapSm(4) and gapMd(12)
   gap: "10px",
 });
 
 export const filterLabel = style({
   fontFamily: vars.font.code,
-  fontSize: "10px",
+  fontSize: vars.font.size.kbd,
   letterSpacing: "0.14em",
   textTransform: "uppercase",
   fontWeight: 700,
   color: vars.color.text.muted,
-  marginRight: "4px",
+  marginRight: vars.space.gapSm,
 });
 
 export const separator = style({
   width: "1px",
-  height: "16px",
+  height: vars.space.insetXl,
   background: vars.color.outline.variant,
   opacity: 0.3,
-  margin: "0 4px",
+  margin: `0 ${vars.space.gapSm}`,
 });
 
 export const chip = style({
   appearance: "none",
   border: "none",
   cursor: "pointer",
-  padding: "6px 14px",
+  padding: `${vars.space.insetSm} ${vars.font.size.bodyLg}`,
   borderRadius: vars.radius.full,
   background: vars.color.bg.panel,
   color: vars.color.text.secondary,
   fontFamily: vars.font.ui,
-  fontSize: "10px",
+  fontSize: vars.font.size.kbd,
   fontWeight: 700,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
@@ -137,7 +99,9 @@ export const chip = style({
     color: vars.color.text.primary,
   },
   ":focus-visible": {
+    // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
     outline: `2px solid ${vars.color.accent.primary}`,
+    // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
     outlineOffset: "2px",
   },
 });
@@ -151,28 +115,33 @@ export const toggleSwitch = style({
   appearance: "none",
   display: "inline-flex",
   alignItems: "center",
+  // audit-allow: px — design-grid micro-rhythm value, no token between gapSm(4) and gapMd(12)
   gap: "10px",
   cursor: "pointer",
   border: "none",
   background: "transparent",
-  padding: "6px 10px",
+  padding: `${vars.space.insetSm} ${vars.density.d2}`,
   borderRadius: vars.radius.control,
   fontFamily: vars.font.ui,
-  fontSize: "11px",
+  fontSize: vars.font.size.caption,
   fontWeight: 600,
   color: vars.color.text.secondary,
   ":focus-visible": {
+    // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
     outline: `2px solid ${vars.color.accent.primary}`,
+    // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
     outlineOffset: "2px",
   },
 });
 
 export const toggleTrack = style({
   position: "relative",
+  // audit-allow: px — fixed toggle track geometry: 30×16px per UX spec, no density token
   width: "30px",
+  // audit-allow: px — fixed toggle track geometry: 30×16px per UX spec, no density token
   height: "16px",
   background: vars.color.bg.elevated,
-  borderRadius: "999px",
+  borderRadius: vars.radius.full,
   transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
 });
 
@@ -182,9 +151,13 @@ export const toggleTrackOn = style({
 
 export const toggleThumb = style({
   position: "absolute",
+  // audit-allow: px — toggle thumb offset 2px aligns thumb inside track per fixed toggle geometry
   top: "2px",
+  // audit-allow: px — toggle thumb offset 2px aligns thumb inside track per fixed toggle geometry
   left: "2px",
+  // audit-allow: px — fixed toggle thumb geometry: 12×12px per UX spec, no density token
   width: "12px",
+  // audit-allow: px — fixed toggle thumb geometry: 12×12px per UX spec, no density token
   height: "12px",
   borderRadius: "50%",
   background: vars.color.text.primary,
@@ -192,6 +165,7 @@ export const toggleThumb = style({
 });
 
 export const toggleThumbOn = style({
+  // audit-allow: px — toggle thumb travel distance matches track width minus thumb size minus 2×offset
   transform: "translateX(14px)",
 });
 
@@ -199,7 +173,7 @@ export const sortRow = style({
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  gap: "16px",
+  gap: vars.space.insetXl,
 });
 
 export const sortMenu = style({
@@ -209,22 +183,24 @@ export const sortMenu = style({
 export const sortButton = style({
   display: "inline-flex",
   alignItems: "center",
-  gap: "8px",
+  gap: vars.space.insetMd,
   appearance: "none",
   border: "none",
   cursor: "pointer",
-  padding: "8px 14px",
+  padding: `${vars.space.insetMd} ${vars.font.size.bodyLg}`,
   borderRadius: vars.radius.control,
   background: vars.color.bg.panel,
   color: vars.color.text.primary,
   fontFamily: vars.font.ui,
-  fontSize: "12px",
+  fontSize: vars.font.size.bodySm,
   fontWeight: 600,
   ":hover": {
     background: vars.color.bg.hover,
   },
   ":focus-visible": {
+    // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
     outline: `2px solid ${vars.color.accent.primary}`,
+    // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
     outlineOffset: "2px",
   },
 });
@@ -232,14 +208,15 @@ export const sortButton = style({
 export const sortPanel = style({
   position: "absolute",
   right: 0,
-  top: "calc(100% + 6px)",
+  top: `calc(100% + ${vars.space.insetSm})`,
+  // audit-allow: px — fixed dropdown minimum width, no layout token for 180px
   minWidth: "180px",
   background: vars.color.bg.elevated,
   borderRadius: vars.radius.panel,
-  padding: "6px",
+  padding: vars.space.insetSm,
   boxShadow: vars.shadow.lg,
   zIndex: 20,
-  backdropFilter: "blur(16px)",
+  backdropFilter: `blur(${vars.space.insetXl})`,
 });
 
 export const sortOption = style({
@@ -248,19 +225,21 @@ export const sortOption = style({
   display: "block",
   width: "100%",
   textAlign: "left",
-  padding: "8px 12px",
+  padding: `${vars.space.insetMd} ${vars.space.insetLg}`,
   borderRadius: vars.radius.control,
   background: "transparent",
   color: vars.color.text.secondary,
   fontFamily: vars.font.ui,
-  fontSize: "12px",
+  fontSize: vars.font.size.bodySm,
   cursor: "pointer",
   ":hover": {
     background: vars.color.bg.hover,
     color: vars.color.text.primary,
   },
   ":focus-visible": {
+    // audit-allow: px — WCAG 2.2 focus ring uses 2px width with -2px inset offset per design contract
     outline: `2px solid ${vars.color.accent.primary}`,
+    // audit-allow: px — WCAG 2.2 focus ring uses 2px width with -2px inset offset per design contract
     outlineOffset: "-2px",
   },
 });
@@ -271,8 +250,10 @@ export const sortOptionActive = style({
 
 export const viewToggle = style({
   display: "inline-flex",
+  // audit-allow: px — view toggle button gap 2px is below minimum token granularity (sub-4px)
   gap: "2px",
   background: vars.color.bg.panel,
+  // audit-allow: px — view toggle inset 3px is below minimum token granularity (sub-4px)
   padding: "3px",
   borderRadius: vars.radius.control,
 });
@@ -281,7 +262,7 @@ export const viewToggleButton = style({
   appearance: "none",
   border: "none",
   cursor: "pointer",
-  padding: "6px 10px",
+  padding: `${vars.space.insetSm} ${vars.density.d2}`,
   borderRadius: vars.radius.control,
   background: "transparent",
   color: vars.color.text.muted,
@@ -290,7 +271,9 @@ export const viewToggleButton = style({
   justifyContent: "center",
   ":hover": { color: vars.color.text.primary },
   ":focus-visible": {
+    // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
     outline: `2px solid ${vars.color.accent.primary}`,
+    // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
     outlineOffset: "2px",
   },
 });
@@ -307,16 +290,18 @@ export const gridList = style({
 export const bannerDegraded = style({
   display: "flex",
   alignItems: "center",
-  gap: "12px",
+  gap: vars.space.gapMd,
+  // audit-allow: px — design-grid micro-rhythm value, no token between gapSm(4) and gapMd(12)
   padding: "10px 16px",
   background: vars.color.bg.panel,
   color: vars.color.warning.text,
   borderRadius: vars.radius.control,
   fontFamily: vars.font.ui,
-  fontSize: "12px",
+  fontSize: vars.font.size.bodySm,
 });
 
 export const skeletonCard = style({
+  // audit-allow: px — fixed skeleton card height matches design spec, no layout token for 240px
   height: "240px",
   borderRadius: vars.radius.card,
   background: vars.color.bg.panel,
@@ -333,7 +318,8 @@ export const emptyState = style({
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
-  gap: "16px",
+  gap: vars.space.insetXl,
+  // audit-allow: px — empty state uses 80px top/bottom padding for visual breathing room, fixed layout value
   padding: "80px 24px",
   textAlign: "center",
   background: vars.color.bg.panel,
@@ -341,13 +327,14 @@ export const emptyState = style({
 });
 
 export const emptyIcon = style({
+  // audit-allow: px — decorative icon glyph at 48px is a fixed display size, no icon token for 48px
   fontSize: "48px",
   color: vars.color.text.muted,
 });
 
 export const emptyTitle = style({
   fontFamily: vars.font.headline,
-  fontSize: "20px",
+  fontSize: vars.font.size.heading,
   fontWeight: 700,
   color: vars.color.text.primary,
   margin: 0,
@@ -355,8 +342,9 @@ export const emptyTitle = style({
 
 export const emptyHint = style({
   fontFamily: vars.font.ui,
-  fontSize: "13px",
+  fontSize: vars.font.size.body,
   color: vars.color.text.secondary,
+  // audit-allow: px — fixed max-width constraint for empty state hint text readability
   maxWidth: "420px",
 });
 
@@ -364,25 +352,28 @@ export const emptyAction = style({
   appearance: "none",
   border: "none",
   cursor: "pointer",
-  padding: "8px 16px",
-  marginTop: "8px",
+  padding: `${vars.space.insetMd} ${vars.space.insetXl}`,
+  marginTop: vars.space.insetMd,
   borderRadius: vars.radius.control,
   background: vars.color.accent.primary,
   color: vars.color.onColor.primary,
   fontFamily: vars.font.ui,
-  fontSize: "11px",
+  fontSize: vars.font.size.caption,
   fontWeight: 700,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
   ":hover": { background: vars.color.accent.primaryHover },
   ":focus-visible": {
+    // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
     outline: `2px solid ${vars.color.accent.primary}`,
+    // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
     outlineOffset: "2px",
   },
 });
 
 export const errorState = style([
   emptyState,
+  // audit-allow: px — error state uses 3px left border accent; fixed decorative border below token granularity
   { borderLeft: `3px solid ${vars.color.error.base}` },
 ]);
 
@@ -390,28 +381,30 @@ export const paginator = style({
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  gap: "16px",
-  padding: "8px 4px",
+  gap: vars.space.insetXl,
+  padding: `${vars.space.insetMd} ${vars.space.gapSm}`,
 });
 
 export const paginatorPages = style({
   display: "inline-flex",
   alignItems: "center",
-  gap: "4px",
+  gap: vars.space.gapSm,
 });
 
 export const pageButton = style({
   appearance: "none",
   border: "none",
   cursor: "pointer",
+  // audit-allow: px — paginator button fixed hit-target geometry: 32×32px per UX spec
   minWidth: "32px",
+  // audit-allow: px — paginator button fixed hit-target geometry: 32×32px per UX spec
   height: "32px",
-  padding: "0 8px",
+  padding: `0 ${vars.space.insetMd}`,
   borderRadius: vars.radius.control,
   background: "transparent",
   color: vars.color.text.secondary,
   fontFamily: vars.font.code,
-  fontSize: "12px",
+  fontSize: vars.font.size.bodySm,
   fontWeight: 600,
   ":hover": {
     background: vars.color.bg.hover,
@@ -419,7 +412,9 @@ export const pageButton = style({
   },
   ":disabled": { opacity: 0.3, cursor: "not-allowed" },
   ":focus-visible": {
+    // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
     outline: `2px solid ${vars.color.accent.primary}`,
+    // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
     outlineOffset: "2px",
   },
 });
@@ -432,26 +427,29 @@ export const pageButtonActive = style({
 export const pageEllipsis = style({
   color: vars.color.text.muted,
   fontFamily: vars.font.code,
-  fontSize: "12px",
-  padding: "0 4px",
+  fontSize: vars.font.size.bodySm,
+  padding: `0 ${vars.space.gapSm}`,
 });
 
 export const pageSizeSelect = style({
   appearance: "none",
   cursor: "pointer",
-  padding: "6px 28px 6px 10px",
+  // audit-allow: px — select padding-right 28px provides clearance for custom dropdown arrow SVG
+  padding: `${vars.space.insetSm} 28px ${vars.space.insetSm} ${vars.density.d2}`,
   borderRadius: vars.radius.control,
   background: vars.color.bg.panel,
   color: vars.color.text.primary,
   fontFamily: vars.font.ui,
-  fontSize: "12px",
+  fontSize: vars.font.size.bodySm,
   border: "none",
   backgroundImage:
     "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' fill='none'><path d='M2 4l3 3 3-3' stroke='%23aaabae' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>\")",
   backgroundRepeat: "no-repeat",
-  backgroundPosition: "right 8px center",
+  backgroundPosition: `right ${vars.space.insetMd} center`,
   ":focus-visible": {
+    // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
     outline: `2px solid ${vars.color.accent.primary}`,
+    // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
     outlineOffset: "2px",
   },
 });
@@ -460,13 +458,15 @@ export const queryInput = style([
   chip,
   {
     flex: 1,
+    // audit-allow: px — query input min/max-width are fixed layout constraints for search UX
     minWidth: "240px",
+    // audit-allow: px — query input min/max-width are fixed layout constraints for search UX
     maxWidth: "420px",
-    padding: "8px 14px",
+    padding: `${vars.space.insetMd} ${vars.font.size.bodyLg}`,
     textTransform: "none",
     letterSpacing: "normal",
     fontFamily: vars.font.code,
-    fontSize: "12px",
+    fontSize: vars.font.size.bodySm,
   },
 ]);
 

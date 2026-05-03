@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../../services/http";
+import { EmptyState } from "../../components/empty_state";
+import { sectionLabel } from "../../components/section_label.css";
+import { Banner } from "../../components/banner";
+import { Panel } from "../../components/panel";
 import * as css from "./runtime_queue.css";
 
 interface QueueEntry {
@@ -41,7 +45,7 @@ export function RuntimeQueueView(): JSX.Element {
     <main className={css.shell}>
       <div className={css.frame}>
         <header className={css.hero}>
-          <p className={css.eyebrow}>Runtime</p>
+          <p className={css.eyebrow}>EmotionTTS · Runtime queue</p>
           <div className={css.titleRow}>
             <h1 className={css.title}>Queue</h1>
             <span className={css.liveChip}>live · 3 s</span>
@@ -53,21 +57,16 @@ export function RuntimeQueueView(): JSX.Element {
         </header>
 
         {error ? (
-          <section className={css.errorBanner} role="alert">
-            {error}
-          </section>
+          <Banner severity="error">{error}</Banner>
         ) : entries === null ? null : entries.length === 0 ? (
-          <section className={css.panel}>
-            <div className={css.empty}>
-              <span className={css.emptyGlyph}>○</span>
-              <p className={css.emptyTitle}>Queue is quiet</p>
-              <p className={css.emptyBody}>
-                No runs are pending. Start a synthesis from a deployment's recipe surface.
-              </p>
-            </div>
-          </section>
+          <Panel density="compact">
+            <EmptyState title="Queue is quiet." hint="Recipe → Generate" />
+          </Panel>
         ) : (
-          <section className={css.panel} aria-label="Queued runs">
+          <Panel density="compact" aria-labelledby="runtime-queue-section">
+            <h2 id="runtime-queue-section" className={sectionLabel}>
+              01 / In flight
+            </h2>
             <ul className={css.list}>
               {entries.map((entry) => {
                 const isActive = entry.position === 1;
@@ -108,7 +107,7 @@ export function RuntimeQueueView(): JSX.Element {
                 );
               })}
             </ul>
-          </section>
+          </Panel>
         )}
       </div>
     </main>

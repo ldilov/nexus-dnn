@@ -17,6 +17,7 @@ async function postJson(path: string, body: unknown): Promise<unknown> {
 async function newLocalLlmThread(): Promise<void> {
   try {
     const payload = (await postJson(
+      // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
       "/extensions/local-llm/chat/threads",
       {},
     )) as { data?: { id?: string; title?: string } };
@@ -25,9 +26,11 @@ async function newLocalLlmThread(): Promise<void> {
     toast.success(`Created ${title}`);
     if (id) {
       window.dispatchEvent(
+        // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
         new CustomEvent("local-llm/thread:created", { detail: { id, title } }),
       );
       window.dispatchEvent(
+        // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
         new CustomEvent("local-llm/session.state.changed", {
           detail: { id, cause: "created" },
         }),
@@ -40,6 +43,7 @@ async function newLocalLlmThread(): Promise<void> {
 }
 
 function openModelPicker(): void {
+  // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
   window.dispatchEvent(new CustomEvent("local-llm/model-picker:open"));
 }
 

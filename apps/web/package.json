@@ -20,7 +20,8 @@
     "scan:constitution": "node scripts/scan-constitution.mjs",
     "scan:bundle-size": "node scripts/bundle-size-check.mjs",
     "scan:components": "node scripts/scan-components.mjs",
-    "scan:all": "pnpm scan:theme && pnpm scan:terminology && pnpm scan:noop && pnpm scan:constitution && pnpm scan:components"
+    "scan:all": "pnpm scan:theme && pnpm scan:terminology && pnpm scan:noop && pnpm scan:constitution && pnpm scan:components",
+    "audit:redesign": "node scripts/audit_redesign.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.0",
@@ -55,7 +56,9 @@
     "@typescript-eslint/typescript-estree": "^8.0.0",
     "@vanilla-extract/vite-plugin": "^5.0.0",
     "@vitejs/plugin-react": "^4.0.0",
+    "culori": "^4.0.1",
     "jsdom": "^29.0.2",
+    "tinyglobby": "^0.2.10",
     "typescript": "^5.7.0",
     "vite": "^6.0.0",
     "vitest": "^4.1.4"

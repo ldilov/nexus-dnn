@@ -26,6 +26,12 @@ import {
 import type { ApplyEditResponse } from "../../services/audio_edit_client";
 import { AudioEditPanel } from "./components/audio_edit_panel";
 import * as css from "./mapping_editor.css";
+import { Banner } from "../../components/banner";
+import { Button } from "../../components/button";
+import { EmptyState } from "../../components/empty_state";
+import { Panel } from "../../components/panel";
+import { StatusPill } from "../../components/status_pill";
+import { sectionLabel } from "../../components/section_label.css";
 
 interface LoaderData {
   deployment: Deployment;
@@ -47,6 +53,7 @@ export function MappingEditorView(): JSX.Element {
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
 
   const voiceById = useMemo(() => {
     const map = new Map<string, VoiceAsset>();
@@ -128,18 +135,24 @@ export function MappingEditorView(): JSX.Element {
     }
   }, [deployment.deploymentId, voiceAssets, mappings]);
 
-  const deleteSelected = useCallback(async () => {
+  const requestDelete = useCallback(() => {
     if (!selected) return;
-    if (!confirm(`Deactivate mapping for ${selected.characterName}?`)) return;
+    setConfirmDelete({ id: selected.mappingId, name: selected.characterName });
+  }, [selected]);
+
+  const performDelete = useCallback(async () => {
+    if (!confirmDelete) return;
+    const { id, name } = confirmDelete;
+    setConfirmDelete(null);
     try {
-      await deactivateMapping(deployment.deploymentId, selected.mappingId);
-      setMappings((prev) => prev.filter((m) => m.mappingId !== selected.mappingId));
+      await deactivateMapping(deployment.deploymentId, id);
+      setMappings((prev) => prev.filter((m) => m.mappingId !== id));
       setSelectedId(null);
-      setToast(`Mapping for ${selected.characterName} deactivated.`);
+      setToast(`Mapping for ${name} deactivated.`);
     } catch (err) {
       setError(extract(err));
     }
-  }, [deployment.deploymentId, selected]);
+  }, [deployment.deploymentId, confirmDelete]);
 
   const handleVoiceUpload = useCallback(
     async (file: File, displayName: string, kind: VoiceAsset["kind"]) => {
@@ -216,19 +229,23 @@ export function MappingEditorView(): JSX.Element {
     [deployment.deploymentId, selected],
   );
 
+  const voiceWord = voiceAssets.length === 1 ? "voice" : "voices";
+
   return (
     <div className={css.shell}>
-      <aside className={css.sidebar} aria-label="Character mappings">
+      <aside className={css.sidebar} aria-labelledby="mapping-sidebar-heading">
         <header className={css.sidebarHeader}>
           <div>
-            <h1 className={css.sidebarTitle}>Mappings</h1>
+            <h1 id="mapping-sidebar-heading" className={css.sidebarTitle}>
+              Cast
+            </h1>
             <span className={css.sidebarCount}>
-              {mappings.length} active · {voiceAssets.length} voice{voiceAssets.length === 1 ? "" : "s"}
+              {mappings.length} active · {voiceAssets.length} {voiceWord}
             </span>
           </div>
-          <button type="button" className={css.primaryButton} onClick={addMapping}>
+          <Button variant="primary" size="sm" onClick={addMapping}>
             + Add
-          </button>
+          </Button>
         </header>
 
         <input
@@ -240,11 +257,14 @@ export function MappingEditorView(): JSX.Element {
           aria-label="Search characters"
         />
 
-        <ImportExportBar onExport={doExport} onImport={doImport} />
+        <ImportExportBar onExport={doExport} onImport={doImport} onParseError={setError} />
 
         <div className={css.sidebarList}>
           {filtered.length === 0 ? (
-            <div className={css.emptySidebar}>No mappings yet. Click Add to create one.</div>
+            <EmptyState
+              title="No mappings yet."
+              hint="Click + Add to create one."
+            />
           ) : (
             filtered.map((m) => {
               const voice = voiceById.get(m.speakerVoiceAssetId);
@@ -284,6 +304,7 @@ export function MappingEditorView(): JSX.Element {
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
+                // biome-ignore lint/a11y/useSemanticElements: motion-wrapped div needs role="status" — m.output is not a stable motion variant for animated transient toasts
                 role="status"
               >
                 {toast}
@@ -291,10 +312,17 @@ export function MappingEditorView(): JSX.Element {
             )}
           </AnimatePresence>
         </LazyMotion>
-        {error && (
-          <div className={css.errorBanner} role="alert">
-            {error}
-          </div>
+        {error && <Banner severity="error">{error}</Banner>}
+        {confirmDelete && (
+          <Banner severity="warning">
+            <span style={{ flex: 1 }}>Deactivate mapping for {confirmDelete.name}?</span>
+            <Button variant="danger" size="sm" onClick={() => void performDelete()}>
+              Delete
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(null)}>
+              Cancel
+            </Button>
+          </Banner>
         )}
 
         {!selected ? (
@@ -306,6 +334,7 @@ export function MappingEditorView(): JSX.Element {
           />
         ) : (
           <MappingDetail
+            key={selected.mappingId}
             deploymentId={deployment.deploymentId}
             mapping={selected}
             voiceAssets={voiceAssets}
@@ -342,7 +371,7 @@ export function MappingEditorView(): JSX.Element {
               updateSelected({ defaultEmotionVoiceAssetId: value });
               void persistSelected({ defaultEmotionVoiceAssetId: value });
             }}
-            onDelete={deleteSelected}
+            onDelete={requestDelete}
             onUploadVoice={async (file, displayName, kind) => {
               const uploaded = await handleVoiceUpload(file, displayName, kind);
               if (uploaded && kind === "speaker") {
@@ -370,9 +399,12 @@ interface EmptyDetailProps {
 function EmptyDetail({ voiceCount, onUploadVoice }: EmptyDetailProps): JSX.Element {
   if (voiceCount === 0) {
     return (
-      <div className={`${css.fieldset} ${css.emptyOnboarding}`}>
+      <Panel density="airy" elevation="raised" aria-labelledby="onboarding-heading">
         <div className={css.emptyOnboardingHeader}>
-          <h2 className={css.emptyOnboardingTitle}>Upload your first voice</h2>
+          <p className={sectionLabel}>01 / Onboarding</p>
+          <h2 id="onboarding-heading" className={css.emptyOnboardingTitle}>
+            Upload your first voice
+          </h2>
           <p className={css.emptyOnboardingSubtitle}>
             EmotionTTS clones the voice from a short audio sample (5–30 s clean mp3 or wav).
             Drop one in below, then click <strong>+ Add</strong> on the left to map a
@@ -386,16 +418,17 @@ function EmptyDetail({ voiceCount, onUploadVoice }: EmptyDetailProps): JSX.Eleme
             return null;
           }}
         />
-      </div>
+      </Panel>
     );
   }
 
   return (
-    <div className={`${css.fieldset} ${css.emptyHint}`}>
-      <p className={css.emptyHintText}>
-        Select a character on the left, or click <strong>+ Add</strong> to create one.
-      </p>
-    </div>
+    <Panel density="airy">
+      <EmptyState
+        title="No character selected."
+        hint="Pick one on the left or + Add"
+      />
+    </Panel>
   );
 }
 
@@ -434,11 +467,21 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
   const [testFormat, setTestFormat] = useState<OutputFormat>("mp3");
   const [testStatus, setTestStatus] = useState<TestLineStatus>("idle");
   const [testError, setTestError] = useState<string | null>(null);
+  const cancelRef = useRef(false);
+
+  useEffect(() => {
+    cancelRef.current = false;
+    return () => {
+      cancelRef.current = true;
+    };
+  }, []);
 
   const handleTestLine = useCallback(async () => {
+    cancelRef.current = false;
     setTestStatus("running");
     setTestError(null);
     const result = await props.onTestLine(testText, testFormat);
+    if (cancelRef.current) return;
     if (!result) {
       setTestStatus("error");
       setTestError("Failed to enqueue test-line run.");
@@ -447,8 +490,10 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
     const { runId } = result;
     for (let i = 0; i < 60; i += 1) {
       await new Promise<void>((r) => setTimeout(r, 500));
+      if (cancelRef.current) return;
       try {
         const run = await getRun(props.deploymentId, runId);
+        if (cancelRef.current) return;
         if (run.status === "completed") {
           setTestStatus("done");
           return;
@@ -459,11 +504,13 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
           return;
         }
       } catch (err) {
+        if (cancelRef.current) return;
         setTestStatus("error");
         setTestError(err instanceof Error ? err.message : "unknown error");
         return;
       }
     }
+    if (cancelRef.current) return;
     setTestStatus("error");
     setTestError("test-line timed out after 30s");
   }, [props.onTestLine, props.deploymentId, testText, testFormat]);
@@ -472,17 +519,23 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
     <>
       <header className={css.detailHeader}>
         <div>
-          <span className={css.detailSubtitle}>Character</span>
+          <p className={sectionLabel}>Character</p>
           <h2 className={css.detailTitle}>{mapping.characterName}</h2>
         </div>
         <div className={css.actionsRow}>
-          <button type="button" className={css.dangerButton} onClick={props.onDelete}>
+          <Button variant="danger" size="sm" onClick={props.onDelete}>
             Deactivate
-          </button>
+          </Button>
         </div>
       </header>
 
-      <div className={css.testLineBar}>
+      <Panel
+        tone="muted"
+        density="compact"
+        elevation="none"
+        className={css.testLineBar}
+        aria-label="Test line synthesis"
+      >
         <input
           type="text"
           className={css.testLineInput}
@@ -503,26 +556,27 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
           <option value="wav">wav</option>
           <option value="flac">flac</option>
         </select>
-        <button
-          type="button"
-          className={css.primaryButton}
+        <Button
+          variant="primary"
+          size="sm"
           onClick={() => void handleTestLine()}
           disabled={testStatus === "running"}
         >
           {testStatus === "running" ? "Synthesising…" : "Test this line"}
-        </button>
+        </Button>
         {testStatus === "done" && (
-          <span className={css.testStatusDone}>
-            Synthesised — see host logs for the output file path.
-          </span>
+          <StatusPill tone="success">Synthesised — see host logs for output path.</StatusPill>
         )}
         {testStatus === "error" && testError && (
-          <span className={css.testStatusError}>{testError}</span>
+          <StatusPill tone="danger">{testError}</StatusPill>
         )}
-      </div>
+      </Panel>
 
       <div className={css.detailBody}>
-        <div className={css.fieldset}>
+        <Panel density="comfortable" aria-labelledby="identity-heading">
+          <h3 id="identity-heading" className={sectionLabel}>
+            01 / Identity & Performance
+          </h3>
           <label className={css.field}>
             <span className={css.fieldLabel}>Character name</span>
             <input
@@ -595,9 +649,12 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
               }
             />
           </label>
-        </div>
+        </Panel>
 
-        <div className={css.fieldset}>
+        <Panel density="comfortable" aria-labelledby="voice-heading">
+          <h3 id="voice-heading" className={sectionLabel}>
+            02 / Voice Reference
+          </h3>
           <span className={css.fieldLabel}>Speaker reference</span>
           <VoicePicker
             value={mapping.speakerVoiceAssetId}
@@ -625,7 +682,7 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
               <VoiceDetail voice={emotionVoice} />
             </>
           )}
-        </div>
+        </Panel>
       </div>
     </>
   );
@@ -682,11 +739,9 @@ function VoiceDetail({ voice }: { voice: VoiceAsset }): JSX.Element {
             </LazyMotion>
           </div>
           {durationWarning && (
-            <span
-              className={durationWarning.level === "warn" ? css.durationWarn : css.durationDanger}
-            >
+            <StatusPill tone={durationWarning.level === "warn" ? "warning" : "danger"}>
               {durationWarning.message}
-            </span>
+            </StatusPill>
           )}
         </div>
       )}
@@ -701,7 +756,8 @@ function Waveform({ seed }: { seed: string }): JSX.Element {
     <div className={css.waveform} aria-hidden="true">
       {bars.map((h, i) => (
         <span
-          key={i}
+          // biome-ignore lint/suspicious/noArrayIndexKey: bar order is deterministic for a given seed and never reorders
+          key={`${seed}-${i}`}
           className={css.waveformBar}
           style={{ height: `${Math.max(6, h * 100)}%` }}
         />
@@ -748,6 +804,7 @@ function AudioDropzone({
         if (file) void handleFile(file);
       }}
       onClick={() => inputRef.current?.click()}
+      // biome-ignore lint/a11y/useSemanticElements: dropzone div hosts drag-drop handlers + a hidden file input click trigger; a real <button> can't be a drop target without losing the drop-styling state machine
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
@@ -776,18 +833,20 @@ function AudioDropzone({
 function ImportExportBar({
   onExport,
   onImport,
+  onParseError,
 }: {
   onExport: () => void;
   onImport: (bundle: MappingBundle, strategy: ImportConflictStrategy) => void;
+  onParseError: (message: string) => void;
 }): JSX.Element {
   const [strategy, setStrategy] = useState<ImportConflictStrategy>("error");
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   return (
     <div className={css.actionsRow}>
-      <button type="button" className={css.secondaryButton} onClick={onExport}>
+      <Button variant="secondary" size="sm" onClick={onExport}>
         Export JSON
-      </button>
+      </Button>
       <input
         ref={fileRef}
         type="file"
@@ -804,13 +863,13 @@ function ImportExportBar({
             const bundle = JSON.parse(text) as MappingBundle;
             onImport(bundle, strategy);
           } catch {
-            alert("Import failed: file is not a valid JSON mapping bundle.");
+            onParseError("Import failed: file is not a valid JSON mapping bundle.");
           }
         }}
       />
-      <button type="button" className={css.secondaryButton} onClick={() => fileRef.current?.click()}>
+      <Button variant="secondary" size="sm" onClick={() => fileRef.current?.click()}>
         Import JSON
-      </button>
+      </Button>
       <select
         className={css.input}
         value={strategy}
@@ -827,7 +886,7 @@ function ImportExportBar({
 
 function nextFreeName(mappings: CharacterMapping[]): string {
   const existing = new Set(mappings.map((m) => m.characterName.toLowerCase()));
-  let idx = mappings.length + 1;
+  let idx = 1;
   while (existing.has(`character ${idx}`)) idx += 1;
   return `Character ${idx}`;
 }

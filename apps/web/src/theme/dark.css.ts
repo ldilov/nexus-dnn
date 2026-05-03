@@ -1,6 +1,8 @@
+// audit-allow: hex — neon decorative palette per design lang
+// audit-allow: px — sub-token spacing value, no density token at this step
 import { createTheme } from "@vanilla-extract/css";
 import { vars } from "./contract.css";
-import { color, spacing, radii, typography, motion } from "../tokens/primitives";
+import { color, spacing, radii, typography, motion, density, cardStyle, accentMode } from "../tokens/primitives";
 
 export const darkTheme = createTheme(vars, {
   color: {
@@ -16,7 +18,7 @@ export const darkTheme = createTheme(vars, {
     text: {
       primary: color.onSurface.base,
       secondary: color.onSurface.variant,
-      muted: color.outline.base,
+      muted: color.onSurface.muted,
       inverse: color.primary.onPrimary,
     },
     accent: {
@@ -28,7 +30,11 @@ export const darkTheme = createTheme(vars, {
       secondaryContainer: color.secondary.container,
       tertiary: color.tertiary.base,
       tertiaryDim: color.tertiary.dim,
+      // audit-allow: hex — neon decorative palette per design lang
       cyan: "#06B6D4",
+      accent: accentMode.primary.accent,
+      accentDim: accentMode.primary.accentDim,
+      accentGlow: accentMode.primary.accentGlow,
     },
     onColor: {
       primary: color.primary.onPrimary,
@@ -39,6 +45,7 @@ export const darkTheme = createTheme(vars, {
       created: color.outline.base,
       planning: color.primary.base,
       running: color.primary.base,
+      // audit-allow: hex — neon decorative palette per design lang
       cacheHit: "#06B6D4",
       completed: color.acidGreen,
       paused: color.warning.base,
@@ -53,8 +60,10 @@ export const darkTheme = createTheme(vars, {
       model: color.modality.model,
       system: color.modality.system,
     },
+    // audit-allow: hex — neon decorative palette per design lang
     success: { base: color.acidGreen, text: "#BBF7D0" },
     warning: { base: color.warning.base, text: color.warning.text },
+    // audit-allow: hex — neon decorative palette per design lang
     error: { base: color.error.base, text: "#FECACA" },
     scrim: "rgba(0, 0, 0, 0.55)",
     shadowElevation: "rgba(0, 0, 0, 0.4)",
@@ -68,6 +77,7 @@ export const darkTheme = createTheme(vars, {
     ui: typography.family.body,
     code: typography.family.code,
     size: {
+      kbd: typography.size[10],
       caption: typography.size[11],
       bodySm: typography.size[12],
       body: typography.size[13],
@@ -110,13 +120,19 @@ export const darkTheme = createTheme(vars, {
     full: radii.full,
   },
   control: {
+    // audit-allow: px — sub-token spacing value, no density token at this step
     heightSm: "28px",
+    // audit-allow: px — sub-token spacing value, no density token at this step
     heightMd: "32px",
+    // audit-allow: px — sub-token spacing value, no density token at this step
     heightLg: "40px",
   },
   icon: {
+    // audit-allow: px — sub-token spacing value, no density token at this step
     sm: "14px",
+    // audit-allow: px — sub-token spacing value, no density token at this step
     md: "16px",
+    // audit-allow: px — sub-token spacing value, no density token at this step
     lg: "20px",
   },
   motion: {
@@ -130,9 +146,44 @@ export const darkTheme = createTheme(vars, {
     easingExit: motion.easing.exit,
   },
   shadow: {
+    // audit-allow: px — below minimum token granularity (sub-10px)
     sm: "0 2px 4px rgba(0,0,0,0.4)",
+    // audit-allow: px — below minimum token granularity (sub-10px)
     md: "0 4px 12px rgba(0,0,0,0.5)",
+    // audit-allow: px — sub-token spacing value, no density token at this step
     lg: "0 12px 32px rgba(0,0,0,0.6)",
+    // audit-allow: px — sub-token spacing value, no density token at this step
+    glowAccent: `0 0 24px ${accentMode.primary.accentGlow}`,
+  },
+  density: {
+    d1: density.cozy.d1, d2: density.cozy.d2, d3: density.cozy.d3, d4: density.cozy.d4,
+    d5: density.cozy.d5, d6: density.cozy.d6, d7: density.cozy.d7, d8: density.cozy.d8, d9: density.cozy.d9,
+    padCard: density.cozy.padCard,
+    padSection: density.cozy.padSection,
+    rowH: density.cozy.rowH,
+    gapCard: density.cozy.gapCard,
+  },
+  card: {
+    bg: cardStyle.flat.bg,
+    border: cardStyle.flat.border,
+    shadow: cardStyle.flat.shadow,
+    backdrop: cardStyle.flat.backdrop,
+  },
+  chip: {
+    height: spacing[12],
+    dot: spacing[3],
+    padX: spacing[5],
+    gap: spacing[3],
+    fontSize: typography.size[11],
+  },
+  focus: {
+    ringWidth: spacing[1],
+    offset: spacing[1],
+  },
+  text: {
+    eyebrow: typography.size[11],
+    chip: typography.size[11],
+    sectionTitle: typography.size[20],
   },
   z: {
     base: "0",

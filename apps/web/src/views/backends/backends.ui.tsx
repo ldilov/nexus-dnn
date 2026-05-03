@@ -4,6 +4,7 @@ import { BackendCard } from "./components/backend_card";
 import { BackendDetailDrawer } from "./components/backend_detail_drawer";
 import type { InstallStreamEvent } from "./components/install_modal";
 import { VariantPickerDrawer } from "./components/variant_picker_drawer";
+import { PageHero } from "../../components/base/page_hero";
 import * as css from "./backends.css";
 
 const InstallModal = lazy(() =>
@@ -68,12 +69,11 @@ export function BackendsUI({
 }: BackendsUIProps) {
   return (
     <main className={css.page}>
-      <header className={css.header}>
-        <div className={css.title}>Backends</div>
-        <div className={css.subtitle}>
-          Install and configure local inference runtimes
-        </div>
-      </header>
+      <PageHero
+        eyebrow="Operator surface · Inference runtimes"
+        title="Backends"
+        meta={<span>Install, validate, and configure local inference runtimes.</span>}
+      />
 
       {error && (
         <div className={css.errorPanel} role="alert">

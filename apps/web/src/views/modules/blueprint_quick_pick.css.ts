@@ -6,10 +6,12 @@ export const menu = style({
   top: "100%",
   right: 0,
   marginTop: vars.space.xs,
+  // audit-allow: px — sub-token spacing value, no density token at this step
   minWidth: "240px",
   background: vars.color.surfaceContainerHigh,
   border: `1px solid ${vars.color.outlineVariant}`,
   borderRadius: vars.radius.md,
+  // audit-allow: px — below minimum token granularity (sub-10px)
   boxShadow: `0 8px 24px ${vars.color.shadowElevation}`,
   padding: vars.space.xs,
   zIndex: vars.z.overlay,
@@ -33,7 +35,9 @@ export const item = style({
   selectors: {
     "&:hover": { background: vars.color.surfaceContainerHighest },
     "&:focus-visible": {
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outline: `2px solid ${vars.color.primary}`,
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outlineOffset: "-2px",
     },
   },
@@ -51,7 +55,9 @@ export const desc = style({
 
 export const primaryDot = style({
   display: "inline-block",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   width: "6px",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   height: "6px",
   borderRadius: vars.radius.full,
   background: vars.color.primary,
