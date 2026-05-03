@@ -70,7 +70,7 @@ export const IDENTITY_SLIDER_STATE: DirectModSliderState = {
   pitchSt: 0,
   normalize: { mode: "off", targetDbOrLufs: -16.0 },
   fade: { inS: 0, outS: 0, inCurve: "equal_power", outCurve: "equal_power" },
-  silence: { enabled: false, thresholdDb: -40 },
+  silence: { enabled: false, thresholdDb: -45 },
 };
 
 const EPSILON = 1e-3;
@@ -153,7 +153,7 @@ function cloneIdentity(): DirectModSliderState {
       inCurve: "equal_power",
       outCurve: "equal_power",
     },
-    silence: { enabled: false, thresholdDb: -40 },
+    silence: { enabled: false, thresholdDb: -45 },
   };
 }
 
@@ -276,7 +276,9 @@ export function applySliderState(
 const SLIDER_MANAGED_MODES: ReadonlySet<EditOp["mode"]> = new Set([
   "gain",
   "eq3",
+  "speed",
   "pitch_shift",
+  "normalize",
   "fade_in",
   "fade_out",
   "silence_strip",
@@ -298,7 +300,15 @@ export function mergeSliderEffectsIntoChain(
     state.eq3.mid,
     state.eq3.high,
   );
+  if (state.speed.mode === "audio") {
+    withSliderOps = upsertSpeed(withSliderOps, state.speed.value);
+  }
   withSliderOps = upsertPitchShift(withSliderOps, state.pitchSt);
+  withSliderOps = upsertNormalize(
+    withSliderOps,
+    state.normalize.mode === "off" ? "off" : "loudness",
+    state.normalize.targetDbOrLufs,
+  );
   withSliderOps = upsertFadeIn(withSliderOps, state.fade.inS);
   withSliderOps = upsertFadeOut(withSliderOps, state.fade.outS);
   withSliderOps = upsertSilenceStrip(

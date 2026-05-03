@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export interface WaveformPeaks {
   peaks: Float32Array;
@@ -37,23 +37,24 @@ export function useWaveformAudio(
     isFallback: false,
   });
   const cancelRef = useRef(false);
-
-  const synthesizePeaks = useCallback((): UseWaveformAudioResult => {
-    const peaks = generateSyntheticPeaks(peakCount, fallbackSeed, fallbackIntensity);
-    return {
-      peaks,
-      duration: 0,
-      sampleRate: 0,
-      ready: true,
-      error: null,
-      isFallback: true,
-    };
-  }, [fallbackIntensity, fallbackSeed, peakCount]);
+  const fallbackArgsRef = useRef({ fallbackSeed, fallbackIntensity, peakCount });
+  fallbackArgsRef.current = { fallbackSeed, fallbackIntensity, peakCount };
 
   useEffect(() => {
     cancelRef.current = false;
+    const synth = (): UseWaveformAudioResult => {
+      const { fallbackSeed: s, fallbackIntensity: i, peakCount: p } = fallbackArgsRef.current;
+      return {
+        peaks: generateSyntheticPeaks(p, s, i),
+        duration: 0,
+        sampleRate: 0,
+        ready: true,
+        error: null,
+        isFallback: true,
+      };
+    };
     if (!audioSrc) {
-      setState(synthesizePeaks());
+      setState(synth());
       return () => {
         cancelRef.current = true;
       };
@@ -69,7 +70,7 @@ export function useWaveformAudio(
         const Ctor =
           window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
         if (!Ctor) {
-          setState(synthesizePeaks());
+          setState(synth());
           return;
         }
         audioContext = new Ctor();
@@ -86,7 +87,7 @@ export function useWaveformAudio(
         });
       } catch (error: unknown) {
         if (cancelRef.current) return;
-        const fallback = synthesizePeaks();
+        const fallback = synth();
         setState({
           ...fallback,
           error: error instanceof Error ? error : new Error("decode failed"),
@@ -99,7 +100,7 @@ export function useWaveformAudio(
       cancelRef.current = true;
       if (audioContext) audioContext.close().catch(() => undefined);
     };
-  }, [audioSrc, peakCount, synthesizePeaks]);
+  }, [audioSrc, peakCount]);
 
   return state;
 }

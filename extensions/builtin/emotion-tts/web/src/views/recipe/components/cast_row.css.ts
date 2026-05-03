@@ -251,3 +251,16 @@ export const empty = style({
   color: vars.color.textMuted,
   margin: 0,
 });
+
+export const clearButton = style({
+  alignSelf: "flex-start",
+  background: "transparent",
+  border: "none",
+  color: vars.color.textMuted,
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  textTransform: "uppercase",
+  letterSpacing: vars.tracking.label,
+  cursor: "pointer",
+  padding: 0,
+});

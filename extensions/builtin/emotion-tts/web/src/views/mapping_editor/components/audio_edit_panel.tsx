@@ -409,19 +409,8 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
         <div className={css.controlBlock}>
           <button
             type="button"
+            className={css.advancedDisclosure}
             onClick={() => setShowAdvanced((s) => !s)}
-            style={{
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              padding: 0,
-              textAlign: "left",
-              color: "var(--accent)",
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              textTransform: "uppercase",
-              letterSpacing: "0.18em",
-            }}
             aria-expanded={showAdvanced}
           >
             {showAdvanced ? "▾" : "▸"} Advanced effects · gain · eq · pitch · fade · silence trim
@@ -439,11 +428,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
           <div className={css.controlBlock}>
             <span className={css.labelRow}>
               <span>Chain digest</span>
-              <span
-                className={css.numericLabel}
-                style={{ color: "var(--secondary)" }}
-                title={persistedChainDigest}
-              >
+              <span className={css.chainDigestValue} title={persistedChainDigest}>
                 {persistedChainDigest.slice(0, 12)}…
               </span>
             </span>

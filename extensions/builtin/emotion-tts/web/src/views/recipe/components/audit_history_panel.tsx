@@ -38,6 +38,7 @@ export function AuditHistoryPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reverting, setReverting] = useState(false);
+  const [rowRevertingId, setRowRevertingId] = useState<string | null>(null);
 
   const selected = useMemo(
     () => targets.find((t) => keyOf(t) === selectedKey) ?? targets[0],
@@ -156,7 +157,7 @@ export function AuditHistoryPanel({
             variant="ghost"
             size="sm"
             onClick={handleExport}
-            disabled={entries.length === 0}
+            disabled={entries.length === 0 || loading}
           >
             Export JSON
           </Button>
@@ -231,8 +232,12 @@ export function AuditHistoryPanel({
                   <button
                     type="button"
                     className={css.link}
+                    disabled={
+                      reverting || rowRevertingId !== null
+                    }
                     onClick={async () => {
                       if (!selected || !entry.chain_snapshot_json) return;
+                      if (rowRevertingId !== null || reverting) return;
                       if (
                         !window.confirm(
                           `Replay this ${entry.operation_count}-op chain on "${selected.label}"? A new audit entry will be written.`,
@@ -240,6 +245,7 @@ export function AuditHistoryPanel({
                       ) {
                         return;
                       }
+                      setRowRevertingId(entry.entry_id);
                       try {
                         await onRevertToChain(selected, entry.chain_snapshot_json, entry);
                         const refreshed = await fetchAuditLog(
@@ -251,10 +257,12 @@ export function AuditHistoryPanel({
                         setEntries(refreshed.entries);
                       } catch (err: unknown) {
                         setError(err instanceof Error ? err.message : "revert failed");
+                      } finally {
+                        setRowRevertingId(null);
                       }
                     }}
                   >
-                    Revert →
+                    {rowRevertingId === entry.entry_id ? "Reverting…" : "Revert →"}
                   </button>
                 )}
               </li>

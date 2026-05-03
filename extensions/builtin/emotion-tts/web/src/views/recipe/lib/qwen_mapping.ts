@@ -181,8 +181,11 @@ export function mapPromptToVector(prompt: string): EmotionVec {
   for (const mapping of KEYWORD_TABLE) {
     let hits = 0;
     for (const keyword of mapping.keywords) {
-      if (!normalized.includes(keyword)) continue;
-      const idx = normalized.indexOf(keyword);
+      const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+      const wordRe = new RegExp(`\\b${escaped}\\b`);
+      const match = wordRe.exec(normalized);
+      if (!match) continue;
+      const idx = match.index;
       const before = normalized.slice(0, idx);
       const lastClauseStart = Math.max(
         before.lastIndexOf(","),

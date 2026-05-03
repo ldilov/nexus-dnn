@@ -28,16 +28,22 @@ test.describe("Recipe Studio perceived-latency assertions", () => {
     expect(median, `Radar drag latency p50 = ${median}ms`).toBeLessThan(50);
   });
 
-  test("SC-013 — slider readout updates within 16 ms of pointer-move", async ({ page }) => {
+  test("SC-013 — slider readout updates within 16 ms in-page (1 frame at 60Hz)", async ({ page }) => {
     await page.goto(RECIPE_URL);
     await page.waitForSelector("input[type=range]", { timeout: 10_000 });
-    const slider = page.locator("input[type=range]").first();
-    const t0 = await page.evaluate(() => performance.now());
-    await slider.focus();
-    await page.keyboard.press("ArrowRight");
-    await page.waitForFunction(() => true);
-    const t1 = await page.evaluate(() => performance.now());
-    expect(t1 - t0, "slider readout update").toBeLessThan(64);
+    const elapsed = await page.evaluate(() => {
+      const slider = document.querySelector<HTMLInputElement>("input[type=range]");
+      if (!slider) return Number.POSITIVE_INFINITY;
+      slider.focus();
+      const t0 = performance.now();
+      const initial = Number(slider.value);
+      const step = Number(slider.step) || 1;
+      slider.value = String(initial + step);
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+      const t1 = performance.now();
+      return t1 - t0;
+    });
+    expect(elapsed, "in-page slider input handler").toBeLessThan(16);
   });
 
   test("SC-012 — preview latency cache-warm <500ms / cache-cold <3s", async ({ page }) => {

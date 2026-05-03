@@ -8,7 +8,6 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
-
 DECODE_VIA_FFMPEG_EXTS = {".mp3", ".opus", ".aac", ".m4a", ".ogg"}
 ENCODE_CODEC_BY_EXT: dict[str, tuple[str, list[str]]] = {
     ".mp3": ("libmp3lame", []),
