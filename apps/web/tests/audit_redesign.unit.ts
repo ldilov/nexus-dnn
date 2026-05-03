@@ -85,8 +85,16 @@ describe("isLineSuppressed", () => {
 describe("file-scope helpers", () => {
   it("isTokenFile recognises tokens variants", () => {
     expect(isTokenFile("apps/web/src/styles/tokens.css")).toBe(true);
-    expect(isTokenFile("apps/web/src/tokens/primitives.ts")).toBe(false);
+    expect(isTokenFile("apps/web/src/tokens/primitives.ts")).toBe(true);
     expect(isTokenFile("apps/web/src/foo.css")).toBe(false);
+  });
+
+  it("isTokenFile path-based exemption — tokens/ directory segment", () => {
+    expect(isTokenFile("apps/web/src/tokens/primitives.ts")).toBe(true);
+    expect(isTokenFile("apps/web/src/tokens/contract.css.ts")).toBe(true);
+    expect(isTokenFile("apps/web/src/tokens.css.ts")).toBe(true);
+    expect(isTokenFile("apps/web/src/components/foo.ts")).toBe(false);
+    expect(isTokenFile("extensions/builtin/emotion-tts/web/src/tokens/colors.ts")).toBe(true);
   });
 
   it("isDensityFile recognises density variants", () => {
