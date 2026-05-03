@@ -47,10 +47,12 @@ export const segmentButton = style({
 
 export const sliderRow = style({
   display: "grid",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "1fr 96px",
   gap: vars.space.lg,
   alignItems: "center",
   "@media": {
+    // audit-allow: px — fixed layout breakpoint
     "(max-width: 640px)": {
       gridTemplateColumns: "1fr",
     },
@@ -86,6 +88,7 @@ export const range = style({
       cursor: "grab",
     },
     "&:focus-visible::-webkit-slider-thumb": {
+      // audit-allow: px — below minimum token granularity (sub-10px)
       boxShadow: `0 0 0 4px color-mix(in oklab, ${vars.color.tertiary} 30%, transparent)`,
     },
     "&::-moz-range-thumb": {

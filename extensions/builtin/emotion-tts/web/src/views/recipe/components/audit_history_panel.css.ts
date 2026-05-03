@@ -91,6 +91,7 @@ export const row = style({
   fontSize: vars.text.caption,
   color: vars.color.textMuted,
   "@media": {
+    // audit-allow: px — fixed layout breakpoint
     "(max-width: 768px)": {
       gridTemplateColumns: "1fr auto",
       gap: vars.space.sm,

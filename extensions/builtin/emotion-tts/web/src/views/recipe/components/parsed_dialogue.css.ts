@@ -26,6 +26,7 @@ export const item = style({
 
 export const itemNarration = style({
   background: "transparent",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   borderLeft: `2px solid ${vars.color.borderGhost}`,
   borderRadius: 0,
   paddingLeft: vars.space.md,

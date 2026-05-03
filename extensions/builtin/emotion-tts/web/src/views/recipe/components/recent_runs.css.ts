@@ -57,6 +57,7 @@ export const row = style({
     color: vars.color.text,
   },
   "@media": {
+    // audit-allow: px — fixed layout breakpoint
     "(max-width: 768px)": {
       gridTemplateColumns: "1fr auto",
       gap: vars.space.sm,
