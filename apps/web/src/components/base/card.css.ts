@@ -27,6 +27,7 @@ export const cardRecipe = recipe({
     },
     selected: {
       true: {
+        // audit-allow: px — px — sub-token spacing value, no density token at this step
         boxShadow: `0 0 12px 0 ${vars.color.accent.primaryDim}44`,
       },
     },

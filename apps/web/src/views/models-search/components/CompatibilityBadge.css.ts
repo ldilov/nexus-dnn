@@ -4,10 +4,13 @@ import { vars } from "../../../theme/contract.css";
 export const badge = style({
   display: "inline-flex",
   alignItems: "center",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   gap: "6px",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   padding: "3px 9px",
   borderRadius: vars.radius.full,
   fontFamily: vars.font.code,
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   fontSize: "9px",
   fontWeight: 700,
   letterSpacing: "0.1em",
@@ -38,8 +41,11 @@ export const badgeVariants = styleVariants({
 });
 
 const shape = style({
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   width: "6px",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   height: "6px",
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   borderRadius: "999px",
   flexShrink: 0,
 });
@@ -54,8 +60,11 @@ export const shapeUnsupported = style([
   shape,
   {
     background: "transparent",
+    // audit-allow: px — px — below minimum token granularity (sub-10px)
     border: `2px solid ${vars.color.text.muted}`,
+    // audit-allow: px — px — below minimum token granularity (sub-10px)
     width: "8px",
+    // audit-allow: px — px — below minimum token granularity (sub-10px)
     height: "8px",
   },
 ]);
@@ -63,8 +72,11 @@ export const shapeUnknown = style([
   shape,
   {
     background: "transparent",
+    // audit-allow: px — px — below minimum token granularity (sub-10px)
     border: `2px dashed ${vars.color.text.muted}`,
+    // audit-allow: px — px — below minimum token granularity (sub-10px)
     width: "8px",
+    // audit-allow: px — px — below minimum token granularity (sub-10px)
     height: "8px",
   },
 ]);

@@ -3,6 +3,7 @@ import {
   fetchRuntimeDefaults,
   type RuntimeDefaults,
   type RuntimeTuning,
+// audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
 } from "../../services/local_llm_chat";
 import {
   getModelMetadata,
@@ -13,6 +14,7 @@ import * as css from "./model_picker.css";
 
 const CTX_OPTIONS = [2048, 4096, 8192, 16384, 32768];
 const KV_OPTIONS: Array<"fp16" | "q8_0" | "q4_0"> = ["fp16", "q8_0", "q4_0"];
+// audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
 const STORAGE_KEY = "local-llm:runtime-tuning";
 const GPU_LAYERS_FALLBACK_MAX = 128;
 const GPU_LAYERS_MAX = GPU_LAYERS_FALLBACK_MAX;

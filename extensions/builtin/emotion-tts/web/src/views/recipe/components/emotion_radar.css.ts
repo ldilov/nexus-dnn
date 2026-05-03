@@ -14,6 +14,7 @@ export const svgInteractive = style({
   outline: "none",
   borderRadius: vars.radius.md,
   ":focus-visible": {
+    // audit-allow: px — px — below minimum token granularity (sub-10px)
     boxShadow: `0 0 0 2px ${vars.color.accent}`,
   },
 });

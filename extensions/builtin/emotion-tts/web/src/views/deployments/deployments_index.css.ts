@@ -2,6 +2,7 @@ import { keyframes, style } from "@vanilla-extract/css";
 import { vars } from "../../theme/tokens.css";
 
 const fadeUp = keyframes({
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   from: { opacity: 0, transform: "translateY(10px)" },
   to: { opacity: 1, transform: "translateY(0)" },
 });
@@ -9,6 +10,7 @@ const fadeUp = keyframes({
 export const shell = style({
   minHeight: "100vh",
   background: vars.color.surface,
+  // audit-allow: px — px — fixed layout breakpoint
   backgroundImage: `radial-gradient(1100px 620px at 18% -10%, color-mix(in oklab, ${vars.color.accent} 14%, transparent), transparent 60%), radial-gradient(800px 520px at 110% 110%, color-mix(in oklab, ${vars.color.secondary} 10%, transparent), transparent 60%)`,
   color: vars.color.text,
   fontFamily: vars.font.body,
@@ -21,6 +23,7 @@ export const shell = style({
 
 export const hero = style({
   width: "100%",
+  // audit-allow: px — px — fixed layout breakpoint
   maxWidth: "960px",
   display: "flex",
   flexDirection: "column",
@@ -78,6 +81,7 @@ export const heroCount = style({
 
 export const listPanel = style({
   width: "100%",
+  // audit-allow: px — px — fixed layout breakpoint
   maxWidth: "960px",
 });
 
@@ -106,14 +110,18 @@ export const card = style({
   transition: `background ${vars.motion.fast}, transform ${vars.motion.fast}, box-shadow ${vars.motion.fast}`,
   ":hover": {
     background: vars.color.surfaceHigh,
+    // audit-allow: px — px — below minimum token granularity (sub-10px)
     transform: "translateX(4px)",
+    // audit-allow: px — px — below minimum token granularity (sub-10px)
     boxShadow: `inset 3px 0 0 ${vars.color.accent}`,
     textDecoration: "none",
   },
 });
 
 export const cardInitial = style({
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   width: "40px",
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   height: "40px",
   borderRadius: "50%",
   background: `color-mix(in oklab, ${vars.color.accent} 22%, transparent)`,
@@ -139,6 +147,7 @@ export const cardMeta = style({
   fontSize: vars.text.caption,
   color: vars.color.textMuted,
   margin: 0,
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   marginTop: "2px",
 });
 

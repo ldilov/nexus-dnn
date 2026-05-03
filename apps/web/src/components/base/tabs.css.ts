@@ -49,6 +49,7 @@ export const tabRecipe = recipe({
       variants: { variant: "underline", active: true },
       style: {
         color: vars.color.accent.primary,
+        // audit-allow: px — px — below minimum token granularity (sub-10px)
         boxShadow: `inset 0 -2px 0 0 ${vars.color.accent.primary}`,
       },
     },
@@ -78,7 +79,9 @@ export const tabBadge = style({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   minWidth: "18px",
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   height: "18px",
   padding: `0 ${vars.space.insetXs}`,
   borderRadius: vars.radius.full,

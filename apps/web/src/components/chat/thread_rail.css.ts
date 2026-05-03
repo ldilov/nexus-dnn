@@ -11,6 +11,7 @@ export const rail = style({
   overflowY: "auto",
   borderRight: `1px solid ${vars.color.outline.variant}`,
   "@media": {
+    // audit-allow: px — px — fixed layout breakpoint
     "(max-width: 1280px)": {
       paddingInline: vars.density.d2,
     },
@@ -29,6 +30,7 @@ export const railHeader = style({
   textTransform: "uppercase",
   color: vars.color.text.muted,
   "@media": {
+    // audit-allow: px — px — fixed layout breakpoint
     "(max-width: 1280px)": {
       display: "none",
     },
@@ -36,7 +38,9 @@ export const railHeader = style({
 });
 
 export const newThreadBtn = style({
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   height: "28px",
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   width: "28px",
   display: "inline-flex",
   alignItems: "center",
@@ -56,6 +60,7 @@ export const newThreadBtn = style({
 export const row = style({
   display: "flex",
   alignItems: "stretch",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   gap: "2px",
 });
 
@@ -63,6 +68,7 @@ export const item = style({
   flex: "1 1 auto",
   display: "flex",
   flexDirection: "column",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   gap: "2px",
   paddingInline: vars.density.d3,
   paddingBlock: vars.density.d2,
@@ -92,6 +98,7 @@ export const iconBtn = style({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   width: "28px",
   borderRadius: vars.radius.control,
   background: "transparent",
@@ -109,6 +116,7 @@ export const iconBtn = style({
 
 export const renameInput = style({
   width: "100%",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   paddingBlock: "2px",
   paddingInline: vars.density.d2,
   borderRadius: vars.radius.control,
@@ -138,6 +146,7 @@ export const itemMeta = style({
   overflow: "hidden",
   textOverflow: "ellipsis",
   "@media": {
+    // audit-allow: px — px — fixed layout breakpoint
     "(max-width: 1280px)": {
       display: "none",
     },

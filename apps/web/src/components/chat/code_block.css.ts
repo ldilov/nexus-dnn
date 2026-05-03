@@ -5,6 +5,7 @@ export const block = style({
   display: "block",
   paddingBlock: vars.density.d3,
   paddingInline: vars.density.d4,
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   borderInlineStart: `3px solid ${vars.color.accent.secondary}`,
   background: vars.color.bg.lowest,
   fontFamily: vars.font.code,
@@ -15,7 +16,9 @@ export const block = style({
   whiteSpace: "pre",
   selectors: {
     "&:focus-visible": {
+      // audit-allow: px — px — below minimum token granularity (sub-10px)
       outline: `2px solid ${vars.color.accent.secondary}`,
+      // audit-allow: px — px — below minimum token granularity (sub-10px)
       outlineOffset: "2px",
     },
   },

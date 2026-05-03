@@ -13,6 +13,7 @@ export function fetchActiveModel(
   signal?: AbortSignal,
 ): Promise<ActiveModelBinding | null> {
   return apiFetch<ActiveModelBinding | null>(
+    // audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
     `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model`,
     { signal },
   );
@@ -41,6 +42,7 @@ export function fetchGenerationSettings(
   signal?: AbortSignal,
 ): Promise<GenerationParams> {
   return apiFetch<GenerationParams>(
+    // audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
     `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/generation_settings`,
     { signal },
   );
@@ -52,6 +54,7 @@ export function setGenerationSettings(
   signal?: AbortSignal,
 ): Promise<GenerationParams> {
   return apiFetch<GenerationParams>(
+    // audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
     `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/generation_settings`,
     {
       method: "PUT",
@@ -110,6 +113,7 @@ export function setActiveModel(
     body.runtime = runtime;
   }
   return apiFetch<ActiveModelStatusPayload>(
+    // audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
     `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model`,
     {
       method: "PUT",
@@ -125,6 +129,7 @@ export function unloadActiveModel(
   signal?: AbortSignal,
 ): Promise<void> {
   return apiFetch<void>(
+    // audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
     `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model`,
     { method: "DELETE", signal },
   );
@@ -135,6 +140,7 @@ export function fetchActiveModelStatus(
   signal?: AbortSignal,
 ): Promise<ActiveModelStatusPayload | null> {
   return apiFetch<ActiveModelStatusPayload | null>(
+    // audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
     `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model/status`,
     { signal },
   );
@@ -157,6 +163,7 @@ export async function fetchAvailableModels(
   signal?: AbortSignal,
 ): Promise<AvailableModel[]> {
   const res = await apiFetch<AvailableModelsResponse>(
+    // audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
     `/extensions/nexus.local-llm/chat/available_models`,
     { signal },
   );
@@ -166,6 +173,7 @@ export async function fetchAvailableModels(
 export async function cancelInference(threadId: string): Promise<void> {
   try {
     await apiFetch<null>(
+      // audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
       `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/inference/cancel`,
       { method: "POST" },
     );

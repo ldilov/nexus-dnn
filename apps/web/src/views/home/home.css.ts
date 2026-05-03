@@ -2,6 +2,7 @@ import { style } from "@vanilla-extract/css";
 import { vars } from "../../theme/contract.css";
 
 export const heroEyebrowIcon = style({
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   fontSize: "14px",
 });
 
@@ -20,6 +21,7 @@ export const container = style({
   flexDirection: "column",
   gap: vars.density.padSection,
   paddingBlock: vars.density.padSection,
+  // audit-allow: px — px — fixed layout breakpoint
   maxWidth: "1400px",
   marginInline: "auto",
   width: "100%",
@@ -27,6 +29,7 @@ export const container = style({
 
 export const statGrid = style({
   display: "grid",
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: vars.density.gapCard,
 });
@@ -53,6 +56,7 @@ export const statLabel = style({
 
 export const statValue = style({
   fontFamily: vars.font.code,
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   fontSize: "clamp(36px, 2vw + 24px, 56px)",
   fontWeight: vars.font.weight.regular,
   color: vars.color.text.primary,

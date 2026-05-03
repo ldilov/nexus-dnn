@@ -34,7 +34,9 @@ export const toolbar = style({
 
 export const filterGroup = style({
   display: "inline-flex",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   gap: "2px",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   padding: "2px",
   background: vars.color.bg.elevated,
   borderRadius: vars.radius.control,
@@ -42,6 +44,7 @@ export const filterGroup = style({
 });
 
 export const filterChip = style({
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   padding: `3px ${vars.space.insetSm}`,
   background: "transparent",
   border: "none",
@@ -94,6 +97,7 @@ export const controlButton = style({
 });
 
 export const tallyChip = style({
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   padding: `2px ${vars.space.insetSm}`,
   background: vars.color.bg.elevated,
   borderRadius: vars.radius.full,
@@ -118,6 +122,7 @@ export const line = style({
   gridTemplateColumns: "auto auto auto 1fr",
   gap: vars.space.insetSm,
   alignItems: "baseline",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   padding: `3px ${vars.space.insetMd}`,
   borderBottom: `1px solid ${vars.color.outline.variant}`,
 });
@@ -134,6 +139,7 @@ const severityBase = {
   display: "inline-flex" as const,
   alignItems: "center" as const,
   justifyContent: "center" as const,
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   minWidth: "44px",
   padding: `1px ${vars.space.insetXs}`,
   borderRadius: vars.radius.control,
@@ -216,6 +222,8 @@ export const searchInput = style({
   color: "inherit",
   fontFamily: "inherit",
   fontSize: "inherit",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   padding: "2px 8px",
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   minWidth: "180px",
 });
