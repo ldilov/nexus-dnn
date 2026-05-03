@@ -18,6 +18,11 @@ export interface AuditHistoryPanelProps {
   deploymentId: string;
   targets: readonly AuditTargetOption[];
   onRevertToIdentity?: (target: AuditTargetOption) => Promise<void> | void;
+  onRevertToChain?: (
+    target: AuditTargetOption,
+    chainJson: string,
+    entry: AuditEntry,
+  ) => Promise<void> | void;
   emptyHint?: string;
 }
 
@@ -25,6 +30,7 @@ export function AuditHistoryPanel({
   deploymentId,
   targets,
   onRevertToIdentity,
+  onRevertToChain,
   emptyHint,
 }: AuditHistoryPanelProps): JSX.Element {
   const [selectedKey, setSelectedKey] = useState<string>(() => keyOf(targets[0]));
@@ -187,36 +193,73 @@ export function AuditHistoryPanel({
 
       {!loading && !error && entries.length > 0 && (
         <ul className={css.list}>
-          {entries.map((entry) => (
-            <li key={entry.entry_id} className={css.row}>
-              <span className={css.timestamp}>{formatTimestamp(entry.recorded_at)}</span>
-              <span className={css.opCount}>
-                {entry.operation_count === 0
-                  ? "cleared"
-                  : `${entry.operation_count} ops`}
-              </span>
-              <span className={css.digest} title={entry.digest_after}>
-                {entry.digest_after.slice(0, 12)}…
-              </span>
-              <span className={css.actor}>{entry.actor || "—"}</span>
-              <span
-                className={css.actionPill}
-                style={{
-                  background: `color-mix(in oklab, ${
-                    entry.operation_count === 0 ? "var(--error)" : "var(--accent)"
-                  } 14%, transparent)`,
-                  color:
-                    entry.operation_count === 0 ? "var(--error)" : "var(--accent)",
-                }}
-              >
-                {entry.digest_before === "" || !entry.digest_before
-                  ? "create"
-                  : entry.operation_count === 0
-                    ? "clear"
-                    : "update"}
-              </span>
-            </li>
-          ))}
+          {entries.map((entry) => {
+            const canRevert =
+              onRevertToChain &&
+              selected &&
+              !!entry.chain_snapshot_json &&
+              entry.operation_count > 0;
+            return (
+              <li key={entry.entry_id} className={css.row}>
+                <span className={css.timestamp}>{formatTimestamp(entry.recorded_at)}</span>
+                <span className={css.opCount}>
+                  {entry.operation_count === 0
+                    ? "cleared"
+                    : `${entry.operation_count} ops`}
+                </span>
+                <span className={css.digest} title={entry.digest_after}>
+                  {entry.digest_after.slice(0, 12)}…
+                </span>
+                <span className={css.actor}>{entry.actor || "—"}</span>
+                <span
+                  className={css.actionPill}
+                  style={{
+                    background: `color-mix(in oklab, ${
+                      entry.operation_count === 0 ? "var(--error)" : "var(--accent)"
+                    } 14%, transparent)`,
+                    color:
+                      entry.operation_count === 0 ? "var(--error)" : "var(--accent)",
+                  }}
+                >
+                  {entry.digest_before === "" || !entry.digest_before
+                    ? "create"
+                    : entry.operation_count === 0
+                      ? "clear"
+                      : "update"}
+                </span>
+                {canRevert && (
+                  <button
+                    type="button"
+                    className={css.link}
+                    onClick={async () => {
+                      if (!selected || !entry.chain_snapshot_json) return;
+                      if (
+                        !window.confirm(
+                          `Replay this ${entry.operation_count}-op chain on "${selected.label}"? A new audit entry will be written.`,
+                        )
+                      ) {
+                        return;
+                      }
+                      try {
+                        await onRevertToChain(selected, entry.chain_snapshot_json, entry);
+                        const refreshed = await fetchAuditLog(
+                          deploymentId,
+                          selected.kind,
+                          selected.id,
+                          50,
+                        );
+                        setEntries(refreshed.entries);
+                      } catch (err: unknown) {
+                        setError(err instanceof Error ? err.message : "revert failed");
+                      }
+                    }}
+                  >
+                    Revert →
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

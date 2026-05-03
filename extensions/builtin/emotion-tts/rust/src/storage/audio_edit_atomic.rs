@@ -123,6 +123,7 @@ pub fn build_audit_entry(
     digest_after: ChainDigest,
     operation_count: u16,
     actor: String,
+    chain_snapshot_json: Option<String>,
 ) -> AuditEntry {
     AuditEntry {
         entry_id,
@@ -134,6 +135,7 @@ pub fn build_audit_entry(
         operation_count,
         recorded_at: Utc::now(),
         actor,
+        chain_snapshot_json,
     }
 }
 
@@ -193,6 +195,7 @@ async fn bind_audit(
         .bind(i64::from(audit.operation_count))
         .bind(format_timestamp(audit.recorded_at))
         .bind(&audit.actor)
+        .bind(audit.chain_snapshot_json.as_deref())
         .execute(&mut **tx)
         .await
         .map_err(map_sqlx)?;
