@@ -1,5 +1,10 @@
-import { style } from "@vanilla-extract/css";
+import { keyframes, style } from "@vanilla-extract/css";
 import { vars } from "../../../theme/tokens.css";
+
+const surfacePingAnim = keyframes({
+  "0%": { transform: "scale(0.4)", opacity: 0.85 },
+  "100%": { transform: "scale(2.6)", opacity: 0 },
+});
 
 export const root = style({
   display: "flex",
@@ -38,32 +43,74 @@ export const axisLine = style({
 });
 
 export const polygon = style({
-  fill: `color-mix(in oklab, ${vars.color.accent} 18%, transparent)`,
+  fill: `color-mix(in oklab, ${vars.color.accent} 22%, transparent)`,
+  stroke: vars.color.accent,
+  // Visual stroke; non-scaling so near-degenerate polygons stay readable.
+  strokeWidth: 2,
+  vectorEffect: "non-scaling-stroke",
+  strokeLinejoin: "round",
+  pointerEvents: "none",
+  transition: `fill ${vars.motion.fast}`,
+});
+
+export const petal = style({
   stroke: vars.color.accent,
   strokeWidth: 1.5,
-  transition: `fill ${vars.motion.fast}`,
+  vectorEffect: "non-scaling-stroke",
+  strokeLinecap: "round",
+  opacity: 0.55,
+  pointerEvents: "none",
+  transition: `opacity ${vars.motion.fast}`,
+});
+
+export const petalActive = style({
+  opacity: 1,
+  filter: `drop-shadow(0 0 6px ${vars.color.accentGlow})`,
+});
+
+// Generously sized invisible hit target sits behind the visible dot so
+// the user doesn't have to be pixel-perfect to grab a handle.
+export const handleHit = style({
+  fill: "transparent",
+  cursor: "grab",
+  selectors: {
+    "&:active": { cursor: "grabbing" },
+  },
 });
 
 export const handle = style({
   fill: vars.color.tertiary,
-  cursor: "grab",
-  transition: `transform ${vars.motion.fast}, fill ${vars.motion.fast}`,
-  selectors: {
-    "&:hover": {
-      transform: "scale(1.25)",
-    },
-    "&:focus-visible": {
-      // audit-allow: px — below minimum token granularity (sub-10px)
-      outline: `2px solid ${vars.color.accent}`,
-      // audit-allow: px — below minimum token granularity (sub-10px)
-      outlineOffset: "2px",
-    },
-  },
+  // Pointer events flow to the hit-circle below; the visible dot is purely cosmetic.
+  pointerEvents: "none",
+  transition: `transform ${vars.motion.fast}, fill ${vars.motion.fast}, filter ${vars.motion.fast}`,
 });
 
 export const handleActive = style({
   fill: vars.color.accent,
-  transform: "scale(1.3)",
+  transform: "scale(1.35)",
+  transformOrigin: "center",
+  transformBox: "fill-box",
+  filter: `drop-shadow(0 0 6px ${vars.color.accentGlow})`,
+});
+
+export const surfacePing = style({
+  fill: "none",
+  stroke: vars.color.accent,
+  strokeWidth: 2,
+  vectorEffect: "non-scaling-stroke",
+  pointerEvents: "none",
+  transformOrigin: "center",
+  transformBox: "fill-box",
+  animationName: surfacePingAnim,
+  animationDuration: "320ms",
+  animationTimingFunction: "cubic-bezier(0.16, 1, 0.3, 1)",
+  animationFillMode: "forwards",
+  "@media": {
+    "(prefers-reduced-motion: reduce)": {
+      animation: "none",
+      opacity: 0,
+    },
+  },
 });
 
 export const axisLabel = style({
