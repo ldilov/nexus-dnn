@@ -20,6 +20,7 @@ pub mod notifications;
 pub mod repo;
 pub mod sqlite;
 pub mod stdio_lease;
+pub mod text_completion;
 pub mod trait_def;
 
 pub use acquire::{AcquireOptions, acquire_lease};
