@@ -65,37 +65,51 @@ runtime gaps surfaced during T120 / T100 verification:
 - 4 a11y test failures in `models-search.a11y.spec.ts` need a live
   host backend to render variant rows (HTTP 500 fallback when the
   API is offline). Not fixable without a backend; tracked as D14.
-- T078b real `LeaseBackedStreamProvider` impl deferred. **Architectural
-  re-scope 2026-05-03**: the original carve-out note framed this as
-  "the trait abstraction is in place; only the impl is missing —
-  multi-hour scope". Investigation during the spec 037 close-out
-  found the scope is materially larger:
-    1. The lease layer is JSON-RPC stdio (`send_rpc` +
-       `subscribe_notifications`) — there is no streaming
-       text-completion JSON-RPC contract anywhere in this codebase.
-    2. The `local-llm` worker registers ZERO inference RPC methods
-       (only lifecycle / monitoring / profile / runtime install).
-       Inference happens via a side-band HTTP server on a port the
-       worker exposes; that knowledge lives entirely inside the LLM
-       extension's `model_load_registry`.
-    3. `LeaseManager` has no capability filter — only install-id
-       lookup. There is no metadata on installs/leases describing
-       "supports text completion ≥ 2k context".
-  A real `LeaseBackedStreamProvider` therefore requires a new
-  cross-extension contract:
-    - JSON-RPC streaming methods (e.g. `text.complete.{start,cancel}`)
-      + matching `LeaseNotification` shapes (`text.complete.{token,done}`).
-    - Worker-side handlers for those methods in `local-llm` (and any
-      other backend that wants to participate).
-    - Capability metadata on installs/leases.
-    - `LeaseManager.acquire_with_capability` API.
-    - The `LeaseBackedStreamProvider` impl itself.
-  This is a multi-day, multi-spec design — not a single follow-up
-  sprint task. Re-tracked as a future RFC. The current
-  `NullStreamProvider` correctly returns the documented 503 + CTA so
-  the endpoint family is wired and the empty-state branch latency
-  passes its SC-011 half. Tracked as **D15** (architectural rework
-  required, not a simple impl swap).
+- T078b real `LeaseBackedStreamProvider` impl. **Phase A complete
+  2026-05-03 — host-side architecture shipped**. The original
+  carve-out framed this as "the trait abstraction is in place; only
+  the impl is missing". Investigation during the spec 037 close-out
+  found the scope was materially larger (no streaming JSON-RPC
+  contract anywhere in the codebase; local-llm worker registers zero
+  inference RPC methods; no capability filter on `LeaseManager`).
+  Phase A delivered the host side of the cross-extension contract:
+    - **Contract module** at
+      `crates/nexus-backend-runtimes/src/generic/leases/text_completion.rs`
+      — canonical capability tag (`text-completion`), JSON-RPC method
+      names (`text.complete.{start,cancel}`), notification names
+      (`text.complete.{token,done,error}`), and strongly-typed serde
+      shapes for params/results/notifications.
+    - **Capability filter** via the existing `CatalogEntry.capability_tags`
+      field — no schema migration needed; runtimes opt in by tagging
+      their catalog entry. New `EligibleLeaseFinder` trait composes
+      catalog → installs → live-lease-registry into a single "find me
+      a Ready lease that advertises text-completion" lookup.
+    - **`LeaseBackedStreamProvider` impl** in
+      `crates/nexus-api/src/handlers/draft_suggestions/lease_adapter.rs`
+      — opens via `text.complete.start`, subscribes to lease
+      notifications, demultiplexes by `stream_id`, forwards tokens,
+      maps error notifications to typed `DraftSuggestionError`, emits
+      cooperative cancel on `CancelFlag` flip or guard drop.
+    - **Router rewire** — `NullStreamProvider` replaced with
+      `LeaseBackedStreamProvider` in `router.rs`. When no participating
+      runtime has a Ready lease, the provider returns `NoEligibleBackend`
+      and the endpoint answers with the documented 503 + CTA payload
+      (preserving the empty-state half of SC-011 latency).
+    - **Tests**: 11 contract-shape tests on the contract module + 6
+      provider tests (happy-path forwarding, no-eligible-lease,
+      foreign-stream-id filtering, error mapping, empty-delta
+      filtering, null-provider fallback). All `cargo test -p nexus-api`
+      pass.
+  **Phase B deferred** — worker-side handlers in `local-llm` (Python).
+  Until any worker registers `text.complete.{start,cancel}` JSON-RPC
+  handlers + emits the notification stream, the host falls through to
+  `NoEligibleBackend`. Adding handlers to `local-llm` is the next
+  unblock; it bridges to the existing OpenAI-compat HTTP backend the
+  worker already runs on its lease port.
+  **Phase C deferred** — end-to-end verification with a live model.
+  Requires Phase B + a clean Windows host with a downloaded GGUF +
+  warm-cache P95 capture. Blocks D17/T119 (warm-cache latency).
+  Tracked as **D15 / Phase B** going forward.
 - ~~Audit-script (`pnpm audit:redesign`) reports 851 advisory findings~~
   **Closed 2026-05-03 (was D16)**: T099 ran end-to-end as a 7-task
   subagent-driven sprint. The audit count grew to 2018 over the

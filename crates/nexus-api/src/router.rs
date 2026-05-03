@@ -466,12 +466,35 @@ pub fn build(state: AppState) -> Router {
     let api_v1 = api_v1.nest("/modules", modules::draft_router());
     let api_v1 = api_v1.nest("/extensions", extensions_install::router());
 
-    // Draft AI suggestion stream (spec 037 / Phase 8). Mounted under the
-    // host root because the routes already include `/api/v1/...` paths
-    // and ship their own `Extension`-attached state — the route paths
-    // are absolute, so wire at the top-level Router after `api_v1`.
+    // Draft AI suggestion stream (spec 037 / Phase 8 + T078b). Mounted
+    // under the host root because the routes already include
+    // `/api/v1/...` paths and ship their own `Extension`-attached state.
+    // The provider is the lease-backed implementation that drives the
+    // generic text-completion JSON-RPC contract — runtimes opt in by
+    // tagging their catalog entry with the canonical capability tag.
+    // When no participating runtime has a Ready lease, the provider
+    // returns `NoEligibleBackend` and the endpoint answers with the
+    // documented 503 + CTA payload.
+    let catalog_repo: std::sync::Arc<
+        dyn nexus_backend_runtimes::generic::catalog::BackendRuntimeCatalogRepo,
+    > = std::sync::Arc::new(
+        nexus_backend_runtimes::generic::catalog::SqliteCatalogRepo::new(
+            state.db.pool().clone(),
+        ),
+    );
+    let installs_repo: std::sync::Arc<
+        dyn nexus_backend_runtimes::generic::installs::BackendRuntimeInstallsRepo,
+    > = std::sync::Arc::new(
+        nexus_backend_runtimes::generic::installs::SqliteInstallsRepo::new(
+            state.db.pool().clone(),
+        ),
+    );
     let draft_suggestions_provider: std::sync::Arc<dyn draft_suggestions::SuggestionStreamProvider> =
-        std::sync::Arc::new(draft_suggestions::NullStreamProvider::new());
+        std::sync::Arc::new(draft_suggestions::LeaseBackedStreamProvider::from_components(
+            catalog_repo,
+            installs_repo,
+            state.lease_manager.clone(),
+        ));
     let draft_suggestions_router: Router<AppState> =
         draft_suggestions::router::<AppState>(draft_suggestions_provider);
     let api_v1 = api_v1
