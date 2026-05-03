@@ -27,11 +27,22 @@ export const backLink = style({
   letterSpacing: "0.08em",
   textTransform: "uppercase",
   cursor: "pointer",
-  padding: 0,
+  // audit-allow: px — keep horizontal padding tight; vertical via minHeight
+  padding: "0 4px",
+  // WCAG 2.5.8 AA — minimum 24×24 touch target. Use the small-control
+  // density token so this scales with the host's density setting.
+  minHeight: vars.control.heightSm,
+  borderRadius: vars.radius.control,
   selectors: {
     "&:hover": { color: vars.color.text.primary },
+    "&:focus-visible": {
+      outline: `2px solid ${vars.color.accent.accent}`,
+      // audit-allow: px — focus ring offset matching host Button pattern
+      outlineOffset: "2px",
+    },
   },
 });
+
 
 export const backIcon = style({
   // audit-allow: px — icon size, no density token at this step
@@ -117,12 +128,6 @@ export const recipeIdValue = style({
   color: vars.color.accent.accent,
 });
 
-export const slug = style({
-  fontFamily: vars.font.code,
-  fontSize: vars.font.size.bodySm,
-  color: vars.color.text.muted,
-});
-
 export const actions = style({
   display: "flex",
   gap: vars.density.d2,
@@ -174,6 +179,12 @@ export const tab = style({
   marginBottom: "-1px",
   selectors: {
     "&:hover": { color: vars.color.text.primary },
+    "&:focus-visible": {
+      outline: `2px solid ${vars.color.accent.accent}`,
+      // audit-allow: px — focus ring offset matching host Button pattern
+      outlineOffset: "-4px",
+      borderRadius: vars.radius.control,
+    },
     "&[aria-selected='true']": {
       color: vars.color.text.primary,
       borderBottomColor: vars.color.accent.accent,
@@ -201,57 +212,12 @@ export const body = style({
   flex: "1 1 auto",
 });
 
-export const panel = style({
-  padding: vars.density.padCard,
-  background: vars.card.bg,
-  boxShadow: vars.card.shadow,
-  backdropFilter: vars.card.backdrop,
-  borderRadius: vars.radius.card,
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  minHeight: "260px",
-  display: "flex",
-  flexDirection: "column",
-  gap: vars.density.d4,
-});
-
-export const panelHeading = style({
-  fontSize: vars.font.size.bodyLg,
-  fontWeight: vars.font.weight.semibold,
-  color: vars.color.text.primary,
-  margin: 0,
-});
-
-export const panelBody = style({
-  color: vars.color.text.secondary,
-  lineHeight: vars.font.lineHeight.relaxed,
-  margin: 0,
-  maxWidth: "68ch",
-});
-
-export const idBox = style({
-  fontFamily: vars.font.code,
-  fontSize: vars.font.size.bodySm,
-  color: vars.color.text.muted,
-  padding: vars.density.d3,
-  background: vars.color.bg.lowest,
-  borderRadius: vars.radius.control,
-  wordBreak: "break-all",
-});
-
 export const panelLive = style({
   flex: "1 1 auto",
   minHeight: 0,
   display: "flex",
   flexDirection: "column",
   overflow: "hidden",
-});
-
-export const chatFrame = style({
-  flex: "1 1 auto",
-  minHeight: 0,
-  display: "flex",
-  flexDirection: "column",
-  position: "relative",
 });
 
 export const panelDocument = style({
@@ -272,11 +238,6 @@ export const fallbackNote = style({
   color: vars.color.text.secondary,
   lineHeight: vars.font.lineHeight.relaxed,
   fontSize: vars.font.size.body,
-});
-
-export const graphFrame = style({
-  padding: vars.density.padCard,
-  overflow: "auto",
 });
 
 export const realGraphFrame = style({
