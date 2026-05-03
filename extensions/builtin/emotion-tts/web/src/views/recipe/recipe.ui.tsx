@@ -13,6 +13,7 @@ export interface RecipeUiProps {
   emotionSection: ReactNode;
   performanceSection: ReactNode;
   recentRunsSection: ReactNode;
+  auditSection?: ReactNode;
   workflowCustomised?: boolean;
   unmappableFields?: RecipeField[];
 }
@@ -94,6 +95,16 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
         >
           {props.recentRunsSection}
         </RecipeSection>
+        {props.auditSection && (
+          <RecipeSection
+            number="07"
+            title="Edit history"
+            id="recipe-section-audit"
+            variant="default"
+          >
+            {props.auditSection}
+          </RecipeSection>
+        )}
       </div>
     </div>
   );
