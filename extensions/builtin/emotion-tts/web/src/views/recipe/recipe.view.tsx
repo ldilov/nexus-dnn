@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData } from "react-router";
+import { Toaster, toast } from "sonner";
+import { clearVoiceAssetEdit } from "../../services/audio_edit_client";
 import type { Deployment } from "../../services/deployments_client";
 import {
   createMapping,
@@ -17,6 +19,7 @@ import type {
 import { listVoiceAssets, uploadVoiceAsset, type VoiceAsset } from "../../services/voice_assets_client";
 import { listPresets, type VectorPreset } from "../../services/presets_client";
 import type { WorkflowResponse } from "../../services/workflows_client";
+import { AuditHistoryPanel, type AuditTargetOption } from "./components/audit_history_panel";
 import { CastRow, CastSection } from "./components/cast_row";
 import { DeploymentHeader } from "./components/deployment_header";
 import { DirectModSliderStrip } from "./components/direct_mod_slider_strip";
@@ -44,17 +47,10 @@ import { RecipeUi } from "./recipe.ui";
 
 const notify = {
   success(message: string): void {
-    if (typeof window !== "undefined") {
-      const ev = new CustomEvent("emotion-tts:toast", { detail: { kind: "success", message } });
-      window.dispatchEvent(ev);
-    }
+    toast.success(message);
   },
   error(message: string): void {
-    if (typeof window !== "undefined") {
-      const ev = new CustomEvent("emotion-tts:toast", { detail: { kind: "error", message } });
-      window.dispatchEvent(ev);
-    }
-    if (typeof console !== "undefined") console.warn("[emotion-tts]", message);
+    toast.error(message);
   },
 };
 
@@ -194,6 +190,56 @@ export function RecipeView(): JSX.Element {
     [],
   );
 
+  const auditTargets = useMemo<AuditTargetOption[]>(() => {
+    const targets: AuditTargetOption[] = [];
+    const seen = new Set<string>();
+    for (const m of mappings) {
+      const id = m.speakerVoiceAssetId;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const asset = voiceAssets.find((a) => a.voiceAssetId === id);
+      const label = asset?.displayName ?? `${m.characterName} · ${id.slice(0, 8)}`;
+      targets.push({ kind: "voice_asset", id, label });
+    }
+    for (const a of voiceAssets) {
+      if (seen.has(a.voiceAssetId)) continue;
+      seen.add(a.voiceAssetId);
+      targets.push({ kind: "voice_asset", id: a.voiceAssetId, label: a.displayName });
+    }
+    return targets;
+  }, [mappings, voiceAssets]);
+
+  const handleRevertAudit = useCallback(
+    async (target: AuditTargetOption): Promise<void> => {
+      if (target.kind !== "voice_asset") {
+        notify.error("Revert is only supported for voice assets in v1.");
+        return;
+      }
+      try {
+        await clearVoiceAssetEdit(target.id, deployment.deploymentId);
+        const affected = mappings.filter((m) => m.speakerVoiceAssetId === target.id);
+        await Promise.all(
+          affected.map((m) =>
+            patchMapping(deployment.deploymentId, m.mappingId, {
+              voiceAssetChainDigest: null,
+            }).catch(() => null),
+          ),
+        );
+        setMappings((prev) =>
+          prev.map((m) =>
+            m.speakerVoiceAssetId === target.id
+              ? { ...m, voiceAssetChainDigest: null }
+              : m,
+          ),
+        );
+        notify.success(`Cleared edit chain on ${target.label}`);
+      } catch (err: unknown) {
+        notify.error(err instanceof Error ? err.message : "revert failed");
+      }
+    },
+    [deployment.deploymentId, mappings],
+  );
+
   const createPayload: CreateRunRequest = useMemo(
     () => ({
       script,
@@ -233,7 +279,9 @@ export function RecipeView(): JSX.Element {
   );
 
   return (
-    <RecipeUi
+    <>
+      <Toaster position="bottom-right" richColors theme="dark" />
+      <RecipeUi
       deployment={deployment}
       workflowCustomised={workflow.workflow.customised}
       unmappableFields={workflow.unmappableFields}
@@ -321,7 +369,15 @@ export function RecipeView(): JSX.Element {
       recentRunsSection={
         <RecentRuns runs={runs} deploymentId={deployment.deploymentId} />
       }
-    />
+      auditSection={
+        <AuditHistoryPanel
+          deploymentId={deployment.deploymentId}
+          targets={auditTargets}
+          onRevertToIdentity={handleRevertAudit}
+        />
+      }
+      />
+    </>
   );
 }
 

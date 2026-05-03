@@ -226,12 +226,12 @@ description: "Task list for spec 038 — EmotionTTS Recipe Studio"
 
 ### Implementation for User Story 7
 
-- [ ] T069 [P] [US7] Implement the audit projection endpoint per `contracts/audit.openapi.yaml` — extend the existing spec 036 `router/audit.rs` with `GET /api/v1/extensions/nexus.audio.emotiontts/audio_edit/audit?target_kind=...&target_id=...&limit=...&cursor=...`. Returns `{events, next_cursor?}`. Cursor-based pagination with `last-event-id` opaque cursor.
+- [X] T069 [P] [US7] Implement the audit projection endpoint per `contracts/audit.openapi.yaml` — extend the existing spec 036 `router/audit.rs` with `GET /api/v1/extensions/nexus.audio.emotiontts/audio_edit/audit?target_kind=...&target_id=...&limit=...&cursor=...`. Returns `{events, next_cursor?}`. Cursor-based pagination with `last-event-id` opaque cursor.
 - [ ] T070 [P] [US7] Add a backend contract test for the new endpoint at `extensions/builtin/emotion-tts/rust/tests/audit_projection_test.rs` covering: empty log → `events: []`, single event → returns the event, multi-event reverse-chrono ordering, limit honored, cursor pagination, 404 on unknown target_id, 400 on missing params.
-- [ ] T071 [US7] Implement `extensions/builtin/emotion-tts/web/src/views/recipe/components/audit_history_panel.tsx` per `contracts/ui-props.contract.md` §11. Collapsible; consumes `audit_client.ts` (T019); `Revert to this chain` calls `audio_edit_client.upsertChain(prior_chain)` which writes a NEW audit row per FR-092.
-- [ ] T072 [US7] Implement `extensions/builtin/emotion-tts/web/src/views/recipe/components/audit_history_panel.css.ts`.
-- [ ] T073 [US7] Wire the audit panel into the recipe view + run-detail view + mapping editor. Each context filters by `target_kind` + `target_id`.
-- [ ] T074 [US7] Implement Export JSON per FR-093 — client-side JSON download with the full filtered audit trail.
+- [X] T071 [US7] Implement `extensions/builtin/emotion-tts/web/src/views/recipe/components/audit_history_panel.tsx` per `contracts/ui-props.contract.md` §11. Collapsible; consumes `audit_client.ts` (T019); `Revert to this chain` calls `audio_edit_client.upsertChain(prior_chain)` which writes a NEW audit row per FR-092.
+- [X] T072 [US7] Implement `extensions/builtin/emotion-tts/web/src/views/recipe/components/audit_history_panel.css.ts`.
+- [X] T073 [US7] Wire the audit panel into the recipe view + run-detail view + mapping editor. Each context filters by `target_kind` + `target_id`.
+- [X] T074 [US7] Implement Export JSON per FR-093 — client-side JSON download with the full filtered audit trail.
 
 **Checkpoint**: User Story 7 fully functional. Audit history surfaces; revert + export work.
 
@@ -254,7 +254,7 @@ description: "Task list for spec 038 — EmotionTTS Recipe Studio"
 - [ ] T082a Add the **SC-012 preview-latency** assertion — Playwright spec applies a single `gain` op to a representative ≤60 s utterance and measures cache-warm + cache-cold preview re-render times. Asserts cache-warm < 500 ms and cache-cold < 3 s on the documented dev-host baseline. Gated behind `RUN_E2E=1`.
 - [ ] T082b Add the **SC-004 ≤2-clicks-to-editor** assertion — Playwright spec navigates from the recipe screen → run-detail → utterance editor and counts user-visible clicks (page.locator clicks, NOT route navigations). Asserts `clickCount <= 2` per SC-004.
 - [ ] T083 Run the spec 038 quickstart §4 final-checks block. Every checkbox must pass before marking the spec complete.
-- [ ] T084 Update CLAUDE.md (auto-generated from feature plans) with the spec 038 entry by re-running `.specify/scripts/powershell/update-agent-context.ps1 -AgentType claude` if it has drifted.
+- [X] T084 Update CLAUDE.md (auto-generated from feature plans) with the spec 038 entry by re-running `.specify/scripts/powershell/update-agent-context.ps1 -AgentType claude` if it has drifted.
 - [ ] T084a [P] Add a two-tab concurrent-edit smoke test (Playwright) — opens the same recipe screen in two browser contexts, mutates `script` in tab A, mutates `vec` in tab B, verifies last-write-wins for the recipe-screen-local state and that audio-edit chains persist correctly under simultaneous writes. Asserts no chain corruption (digest stable). Edge case from spec.md addressed; not blocking but documents the v1 last-write-wins contract.
 - [X] T085 Create + commit `specs/038-emotiontts-recipe-studio/deferred-tests.md` mirroring spec 037's pattern — list per-component vitest deferred under Principle VI design-heavy carve-out, any other deferred coverage filed during implementation, and the explicit cite of FR-110a (visual-only restyle carve-out invocation).
 - [X] T086 Final boundary scan — `grep -rn "local-llm\|local_llm\|emotion-tts\|emotiontts" apps/web/src/ crates/` returns no NEW matches versus the spec 037 grandfathered baseline. Boundary is preserved per FR-110.
