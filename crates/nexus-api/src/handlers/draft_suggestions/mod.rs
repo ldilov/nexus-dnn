@@ -30,7 +30,9 @@ pub mod types;
 
 pub use cancel_stream::cancel_stream as cancel_stream_handler;
 pub use errors::{DraftSuggestionError, ErrorCode};
-pub use lease_adapter::NullStreamProvider;
+pub use lease_adapter::{
+    CatalogBackedLeaseFinder, EligibleLeaseFinder, LeaseBackedStreamProvider, NullStreamProvider,
+};
 pub use prompt_template::{PromptInputs, PromptPair, build_prompt};
 pub use provider::{
     CancelFlag, FakeStreamProvider, StreamHandle, StreamItem, SuggestionStreamProvider,
