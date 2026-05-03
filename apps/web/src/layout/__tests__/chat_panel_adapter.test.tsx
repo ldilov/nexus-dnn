@@ -32,6 +32,10 @@ vi.mock("../../services/extension_chat", () => ({
 
 vi.mock("../../services/local_llm_chat", () => ({
   streamMessage: (...args: unknown[]) => streamMessageMock(...args),
+  fetchAvailableModels: () => Promise.resolve([]),
+  cancelInference: () => Promise.resolve(),
+  setActiveModel: () => Promise.resolve({}),
+  unloadActiveModel: () => Promise.resolve(),
 }));
 
 vi.mock("../../hooks/use_model_load_state", () => ({

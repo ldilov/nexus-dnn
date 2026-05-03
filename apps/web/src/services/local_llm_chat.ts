@@ -140,6 +140,40 @@ export function fetchActiveModelStatus(
   );
 }
 
+export interface AvailableModel {
+  family_id: string;
+  variant_id: string | null;
+  label: string;
+  format: string;
+  size_bytes: number | null;
+  max_context: number | null;
+}
+
+interface AvailableModelsResponse {
+  models: AvailableModel[];
+}
+
+export async function fetchAvailableModels(
+  signal?: AbortSignal,
+): Promise<AvailableModel[]> {
+  const res = await apiFetch<AvailableModelsResponse>(
+    `/extensions/nexus.local-llm/chat/available_models`,
+    { signal },
+  );
+  return res.models;
+}
+
+export async function cancelInference(threadId: string): Promise<void> {
+  try {
+    await apiFetch<null>(
+      `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/inference/cancel`,
+      { method: "POST" },
+    );
+  } catch {
+    /* fire-and-forget — TCP disconnect is the actual cancel pathway */
+  }
+}
+
 export interface StreamStats {
   latencyMs: number;
   tokensPerSec?: number;

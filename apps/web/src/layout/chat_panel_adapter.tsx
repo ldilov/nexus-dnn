@@ -3,7 +3,15 @@ import { toast } from "sonner";
 import { ChatSurface, type ChatMessage, type ChatThreadSummary } from "../components/chat";
 import { useModelLoadState } from "../hooks/use_model_load_state";
 // audit-allow: boundary — adapter bridges the YAML "chat_panel" entry to the generic ChatSurface
-import { streamMessage, type ChatTurn } from "../services/local_llm_chat";
+import {
+  cancelInference,
+  fetchAvailableModels,
+  setActiveModel,
+  streamMessage,
+  unloadActiveModel,
+  type AvailableModel,
+  type ChatTurn,
+} from "../services/local_llm_chat";
 import {
   createThread,
   deleteThread,
@@ -54,6 +62,10 @@ function fromSamplerOverrideView(next: SamplerOverride): RawSamplerOverride {
   };
 }
 
+function buildModelId(m: AvailableModel): string {
+  return m.variant_id ? `${m.family_id}:${m.variant_id}` : m.family_id;
+}
+
 export function ChatPanelAdapter({
   welcomeTitle,
   welcomeDescription,
@@ -63,7 +75,9 @@ export function ChatPanelAdapter({
   const [messages, setMessages] = useState<RuntimeMessage[]>([]);
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [schemaMismatch, setSchemaMismatch] = useState<{ stored: number; bundled: number } | null>(null);
+  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const streamHandle = useRef<{ abort: () => void } | null>(null);
+  const streamingThreadRef = useRef<string | null>(null);
   const load = useModelLoadState(activeId);
 
   const refreshThreads = useCallback(async () => {
@@ -104,15 +118,34 @@ export function ChatPanelAdapter({
   useEffect(() => {
     return () => {
       streamHandle.current?.abort();
+      const lastStreaming = streamingThreadRef.current;
+      if (lastStreaming) {
+        void cancelInference(lastStreaming);
+      }
     };
   }, []);
 
   useEffect(() => {
     setMessages([]);
     streamHandle.current?.abort();
+    const lastStreaming = streamingThreadRef.current;
+    if (lastStreaming && lastStreaming !== activeId) {
+      void cancelInference(lastStreaming);
+    }
     streamHandle.current = null;
+    streamingThreadRef.current = null;
     setStreamingId(null);
   }, [activeId]);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetchAvailableModels(ctrl.signal)
+      .then((models) => setAvailableModels(models))
+      .catch(() => {
+        /* picker keeps the active-model fallback */
+      });
+    return () => ctrl.abort();
+  }, []);
 
   const handleSelectThread = useCallback((id: string) => {
     setActiveId(id);
@@ -182,6 +215,27 @@ export function ChatPanelAdapter({
     window.location.assign("/backends");
   }, []);
 
+  const handleSelectModel = useCallback(
+    async (modelId: string | null) => {
+      if (!activeId) return;
+      try {
+        if (!modelId) {
+          await unloadActiveModel(activeId);
+          return;
+        }
+        const target = availableModels.find((m) => buildModelId(m) === modelId);
+        if (!target) {
+          toast.error("Model not found in installed list");
+          return;
+        }
+        await setActiveModel(activeId, target.family_id, target.variant_id ?? "");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Could not switch model");
+      }
+    },
+    [activeId, availableModels],
+  );
+
   const handleSend = useCallback(
     async (text: string) => {
       if (!activeId || load.phase !== "ready" || load.port === undefined) return;
@@ -197,6 +251,7 @@ export function ChatPanelAdapter({
         { id: assistantId, role: "assistant", text: "", status: "streaming" },
       ]);
       setStreamingId(assistantId);
+      streamingThreadRef.current = activeId;
       const port = load.port;
       const handle = streamMessage(
         { port, messages: [...turns, { role: "user", content: text }] },
@@ -214,6 +269,7 @@ export function ChatPanelAdapter({
             );
             setStreamingId((current) => (current === assistantId ? null : current));
             streamHandle.current = null;
+            streamingThreadRef.current = null;
           },
           onError: (err) => {
             setMessages((prev) =>
@@ -229,6 +285,7 @@ export function ChatPanelAdapter({
             );
             setStreamingId((current) => (current === assistantId ? null : current));
             streamHandle.current = null;
+            streamingThreadRef.current = null;
           },
         },
       );
@@ -240,6 +297,11 @@ export function ChatPanelAdapter({
   const handleCancelStream = useCallback(() => {
     streamHandle.current?.abort();
     streamHandle.current = null;
+    const lastStreaming = streamingThreadRef.current;
+    if (lastStreaming) {
+      void cancelInference(lastStreaming);
+    }
+    streamingThreadRef.current = null;
     setStreamingId(null);
   }, []);
 
@@ -264,6 +326,25 @@ export function ChatPanelAdapter({
     [threads, activeId],
   );
   const surfaceSampler = toSamplerOverrideView(activeThread?.sampler_override);
+
+  const surfaceModels = useMemo(() => {
+    if (availableModels.length === 0) {
+      return load.label ? [{ id: "active", label: load.label, badge: "local" }] : [];
+    }
+    return availableModels.map((m) => ({
+      id: buildModelId(m),
+      label: m.label,
+      badge: m.format,
+    }));
+  }, [availableModels, load.label]);
+
+  const surfaceActiveModelId = useMemo(() => {
+    if (load.phase !== "ready") return null;
+    if (availableModels.length === 0) return load.label ? "active" : null;
+    if (!load.familyId) return null;
+    const id = load.variantId ? `${load.familyId}:${load.variantId}` : load.familyId;
+    return availableModels.some((m) => buildModelId(m) === id) ? id : null;
+  }, [availableModels, load.phase, load.label, load.familyId, load.variantId]);
 
   const composerDisabled = !activeId || load.phase !== "ready";
   const disabledReason = !activeId
@@ -296,9 +377,16 @@ export function ChatPanelAdapter({
       isStreaming={isStreaming}
       onSendMessage={handleSend}
       onCancelStream={handleCancelStream}
-      models={load.label ? [{ id: "active", label: load.label, badge: "local" }] : []}
-      activeModelId={load.label ? "active" : null}
-      modelPickerStatus={load.phase === "loading" ? "loading" : load.label ? "ready" : "unavailable"}
+      models={surfaceModels}
+      activeModelId={surfaceActiveModelId}
+      onSelectModel={handleSelectModel}
+      modelPickerStatus={
+        load.phase === "loading"
+          ? "loading"
+          : surfaceModels.length > 0
+            ? "ready"
+            : "unavailable"
+      }
       onOpenBackends={handleOpenBackends}
       samplerOverride={surfaceSampler}
       onUpdateSamplerOverride={handleUpdateSamplerOverride}
