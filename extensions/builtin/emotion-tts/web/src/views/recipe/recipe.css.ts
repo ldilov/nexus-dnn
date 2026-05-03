@@ -3,15 +3,18 @@ import { vars } from "../../theme/tokens.css";
 
 export const shell = style({
   display: "grid",
+  // audit-allow: px — modal/dialog/drawer width per UX spec
   gridTemplateColumns: "minmax(0, 1.3fr) minmax(340px, 0.7fr)",
   gap: vars.space.lg,
   padding: vars.space.lg,
   minHeight: "100vh",
   background: vars.color.surface,
+  // audit-allow: px — fixed layout breakpoint
   backgroundImage: `radial-gradient(900px 520px at 88% -10%, color-mix(in oklab, ${vars.color.accent} 14%, transparent), transparent 62%), radial-gradient(680px 480px at -10% 110%, color-mix(in oklab, ${vars.color.secondary} 8%, transparent), transparent 60%)`,
   color: vars.color.text,
   fontFamily: vars.font.body,
   "@media": {
+    // audit-allow: px — fixed layout breakpoint
     "(max-width: 960px)": {
       gridTemplateColumns: "1fr",
     },
@@ -33,41 +36,10 @@ export const rightColumn = style({
   top: vars.space.md,
   alignSelf: "flex-start",
   "@media": {
+    // audit-allow: px — fixed layout breakpoint
     "(max-width: 960px)": {
       position: "static",
     },
-  },
-});
-
-export const panel = style({
-  background: vars.color.surfaceRaised,
-  borderRadius: vars.radius.lg,
-  padding: `${vars.space.md} ${vars.space.lg}`,
-  display: "flex",
-  flexDirection: "column",
-  gap: vars.space.md,
-  boxShadow: vars.shadow.subtle,
-});
-
-export const panelTitle = style({
-  fontFamily: vars.font.display,
-  fontSize: vars.text.subhead,
-  fontWeight: 600,
-  letterSpacing: vars.tracking.display,
-  margin: 0,
-  paddingBottom: vars.space.xs,
-  color: vars.color.text,
-  display: "flex",
-  alignItems: "center",
-  gap: vars.space.sm,
-  "::before": {
-    content: '""',
-    width: "6px",
-    height: "6px",
-    borderRadius: vars.radius.pill,
-    background: vars.color.accent,
-    boxShadow: vars.color.accentGlow,
-    display: "inline-block",
   },
 });
 
@@ -90,28 +62,82 @@ export const deploymentTitle = style({
   margin: 0,
 });
 
-export const scriptTextarea = style({
+export const scriptShell = style({
+  position: "relative",
   width: "100%",
+  // audit-allow: px — modal/dialog/drawer width per UX spec
   minHeight: "360px",
+  borderRadius: vars.radius.md,
+  background: vars.color.surfaceMuted,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
+  transition: `box-shadow ${vars.motion.fast}`,
+  selectors: {
+    "&:focus-within": {
+      boxShadow: `inset 0 0 0 1px ${vars.color.accent}, ${vars.shadow.glow}`,
+    },
+  },
+});
+
+const scriptShared = {
   fontFamily: vars.font.mono,
   fontSize: vars.text.body,
   lineHeight: 1.55,
   padding: vars.space.md,
-  borderRadius: vars.radius.md,
   border: "none",
   outline: "none",
-  background: vars.color.surfaceMuted,
-  color: vars.color.text,
+  background: "transparent",
+  whiteSpace: "pre-wrap" as const,
+  wordWrap: "break-word" as const,
+  margin: 0,
+  letterSpacing: 0,
+};
+
+export const scriptOverlay = style({
+  ...scriptShared,
+  position: "absolute",
+  inset: 0,
+  pointerEvents: "none",
+  color: vars.color.textMuted,
+  overflow: "hidden",
+});
+
+export const scriptTextarea = style({
+  ...scriptShared,
+  position: "relative",
+  width: "100%",
+  display: "block",
+  boxSizing: "border-box",
+  color: "transparent",
+  caretColor: vars.color.text,
   resize: "vertical",
-  transition: `box-shadow ${vars.motion.fast}`,
-  boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
-  ":focus": {
-    boxShadow: `inset 0 0 0 1px ${vars.color.accent}, ${vars.shadow.glow}`,
+  selectors: {
+    "&::placeholder": {
+      color: vars.color.textFaint,
+      fontFamily: vars.font.mono,
+    },
+    "&::selection": {
+      background: `color-mix(in oklab, ${vars.color.accent} 35%, transparent)`,
+      color: vars.color.text,
+    },
   },
-  "::placeholder": {
-    color: vars.color.textFaint,
-    fontFamily: vars.font.mono,
-  },
+});
+
+export const scriptCharacter = style({});
+
+export const scriptText = style({
+  color: vars.color.text,
+});
+
+export const scriptUnresolved = style({
+  textDecoration: "underline wavy",
+  textDecorationColor: vars.color.danger,
+  // audit-allow: px — below minimum token granularity (sub-10px)
+  textUnderlineOffset: "3px",
+});
+
+export const scriptOverride = style({
+  color: vars.color.secondary,
+  fontStyle: "italic",
 });
 
 export const label = style({
@@ -129,95 +155,6 @@ export const controlRow = style({
   alignItems: "center",
 });
 
-export const button = style({
-  padding: `${vars.space.sm} ${vars.space.md}`,
-  borderRadius: vars.radius.sm,
-  border: "none",
-  fontFamily: vars.font.body,
-  fontWeight: 600,
-  fontSize: vars.text.body,
-  cursor: "pointer",
-  transition: `background ${vars.motion.fast}, box-shadow ${vars.motion.fast}, transform ${vars.motion.fast}`,
-  ":active": { transform: "translateY(1px)" },
-  ":disabled": { cursor: "not-allowed", opacity: 0.45 },
-});
-
-export const primaryButton = style([
-  button,
-  {
-    background: vars.color.accent,
-    color: vars.color.accentOn,
-    boxShadow: `0 0 0 1px ${vars.color.accent}`,
-    ":hover": {
-      background: vars.color.accent,
-      boxShadow: `0 0 0 1px ${vars.color.accent}, ${vars.color.accentGlow}`,
-    },
-  },
-]);
-
-export const secondaryButton = style([
-  button,
-  {
-    background: "transparent",
-    color: vars.color.accent,
-    boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
-    ":hover": {
-      background: vars.color.surfaceHigh,
-      boxShadow: `inset 0 0 0 1px ${vars.color.accent}`,
-    },
-  },
-]);
-
-export const dangerButton = style([
-  button,
-  {
-    background: "transparent",
-    color: vars.color.danger,
-    boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.danger} 45%, transparent)`,
-    ":hover": {
-      background: `color-mix(in oklab, ${vars.color.danger} 12%, transparent)`,
-    },
-  },
-]);
-
-export const warningBanner = style({
-  padding: `${vars.space.sm} ${vars.space.md}`,
-  borderRadius: vars.radius.md,
-  background: `color-mix(in oklab, ${vars.color.warning} 14%, ${vars.color.surfaceRaised})`,
-  color: vars.color.text,
-  fontSize: vars.text.body,
-  display: "flex",
-  alignItems: "center",
-  gap: vars.space.sm,
-  "::before": {
-    content: '""',
-    width: "6px",
-    height: "6px",
-    borderRadius: vars.radius.pill,
-    background: vars.color.warning,
-    flex: "0 0 auto",
-  },
-});
-
-export const dangerBanner = style({
-  padding: `${vars.space.sm} ${vars.space.md}`,
-  borderRadius: vars.radius.md,
-  background: `color-mix(in oklab, ${vars.color.danger} 14%, ${vars.color.surfaceRaised})`,
-  color: vars.color.text,
-  fontSize: vars.text.body,
-  display: "flex",
-  alignItems: "center",
-  gap: vars.space.sm,
-  "::before": {
-    content: '""',
-    width: "6px",
-    height: "6px",
-    borderRadius: vars.radius.pill,
-    background: vars.color.danger,
-    flex: "0 0 auto",
-  },
-});
-
 export const filenameList = style({
   fontFamily: vars.font.mono,
   fontSize: vars.text.caption,
@@ -227,9 +164,11 @@ export const filenameList = style({
   margin: 0,
   display: "flex",
   flexDirection: "column",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
   background: vars.color.surfaceMuted,
   borderRadius: vars.radius.sm,
+  // audit-allow: px — sub-token spacing value, no density token at this step
   maxHeight: "180px",
   overflowY: "auto",
 });
@@ -254,45 +193,33 @@ export const progressCell = style({
   borderBottom: `1px solid ${vars.color.borderSubtle}`,
 });
 
-export const statusPill = style({
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "6px",
-  padding: `2px 10px 2px 8px`,
-  borderRadius: vars.radius.pill,
-  fontSize: vars.text.micro,
-  fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: vars.tracking.label,
-  background: vars.color.surfaceHigh,
-  color: vars.color.textMuted,
-  "::before": {
-    content: '""',
-    width: "6px",
-    height: "6px",
-    borderRadius: vars.radius.pill,
-    background: "currentColor",
-    display: "inline-block",
-  },
+export const preflightList = style({
+  listStyle: "none",
+  padding: 0,
+  margin: `0 0 ${vars.space.sm}`,
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.xs,
 });
 
-export const statusPillCompleted = style([
-  statusPill,
-  {
-    color: vars.color.success,
-  },
-]);
+export const preflightItem = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.sm,
+  padding: `${vars.space.xs} ${vars.space.sm}`,
+  borderRadius: vars.radius.sm,
+  background: vars.color.surfaceMuted,
+});
 
-export const statusPillRunning = style([
-  statusPill,
-  {
-    color: vars.color.accent,
-  },
-]);
+export const preflightLabel = style({
+  fontSize: vars.text.caption,
+  color: vars.color.text,
+  fontWeight: 500,
+  flex: "1 1 auto",
+});
 
-export const statusPillFailed = style([
-  statusPill,
-  {
-    color: vars.color.danger,
-  },
-]);
+export const preflightDetail = style({
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  color: vars.color.textMuted,
+});

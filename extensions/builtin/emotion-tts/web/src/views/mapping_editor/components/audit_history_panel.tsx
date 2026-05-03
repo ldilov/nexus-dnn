@@ -1,4 +1,5 @@
 import type { AuditEntry } from "../../../services/audio_edit_client";
+import { Banner } from "../../../components/banner";
 import * as css from "./audit_history_panel.css";
 
 export interface AuditHistoryPanelProps {
@@ -14,11 +15,7 @@ export function AuditHistoryPanel(props: AuditHistoryPanelProps): JSX.Element {
 
   return (
     <div className={css.root} aria-busy={!!loading}>
-      {error && (
-        <div className={css.errorBanner} role="alert">
-          {error}
-        </div>
-      )}
+      {error && <Banner severity="error">{error}</Banner>}
       {loading && !error && (
         <div className={css.loading} aria-live="polite">
           Loading edit history…

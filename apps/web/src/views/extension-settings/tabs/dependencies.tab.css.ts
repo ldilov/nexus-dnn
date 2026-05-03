@@ -21,6 +21,7 @@ export const banner = style({
 export const bannerText = style({
   display: "flex",
   flexDirection: "column",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
 });
 
@@ -51,6 +52,7 @@ export const installButton = style({
   background: vars.color.accent.primary,
   border: "none",
   cursor: "pointer",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   padding: `10px ${vars.space.insetXl}`,
   borderRadius: vars.radius.control,
   transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, transform ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
@@ -66,7 +68,9 @@ export const installButton = style({
       cursor: "not-allowed",
     },
     "&:focus-visible": {
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outline: `2px solid ${vars.color.accent.primary}`,
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outlineOffset: "2px",
     },
   },
@@ -80,6 +84,7 @@ export const cancelButton = style({
   background: vars.color.bg.elevated,
   border: "none",
   cursor: "pointer",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   padding: `10px ${vars.space.insetLg}`,
   borderRadius: vars.radius.control,
   selectors: {
@@ -100,6 +105,7 @@ export const reinstallButton = style({
   background: "transparent",
   border: `1px solid ${vars.color.bg.bright}`,
   cursor: "pointer",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   padding: `9px ${vars.space.insetLg}`,
   borderRadius: vars.radius.control,
   transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
@@ -114,7 +120,9 @@ export const reinstallButton = style({
       cursor: "not-allowed",
     },
     "&:focus-visible": {
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outline: `2px solid ${vars.color.accent.primary}`,
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outlineOffset: "2px",
     },
   },

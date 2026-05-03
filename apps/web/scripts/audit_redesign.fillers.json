@@ -1,0 +1,32 @@
+{
+  "$schema": "Spec 037 / T093 — mockup-filler strings drawn from Prototype.html / screens/screens.jsx. Production source files MUST NOT contain these literals; if a value legitimately needs to appear (e.g. a default model name), annotate with // audit-allow: filler — <reason ≥ 8 chars>.",
+  "deployment_names": [
+    "Aurora bench",
+    "EmotionTTS · Dialogue Batch",
+    "Local LLM · Local Chat",
+    "Local LLM · Local RAG Chat",
+    "ProductCopy · Q3 push",
+    "Vision · Aurora bench",
+    "Triage · pager-duty",
+    "Search · staging",
+    "Embed · nightly recompute",
+    "Reviewer · personal"
+  ],
+  "owner_initials": ["JK", "Jamie Karis"],
+  "gpu_labels": [
+    "GPU · A100 · 40GB",
+    "cuda:0 · ctx 8K"
+  ],
+  "model_labels_filler": [
+    "llama-3.3-70b-q4",
+    "claude-haiku-4-5"
+  ],
+  "captions_filler": [
+    "Auroral sweep over basalt cliffs",
+    "Single hiker silhouette beneath shifting violet curtain"
+  ],
+  "code_filler": [
+    "use_search",
+    "RAG pipeline review"
+  ]
+}

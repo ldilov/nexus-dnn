@@ -1,5 +1,8 @@
 import { Link, useLoaderData } from "react-router";
 import type { Deployment } from "../../services/deployments_client";
+import { EmptyState } from "../../components/empty_state";
+import { Panel } from "../../components/panel";
+import { sectionLabel } from "../../components/section_label.css";
 import * as css from "./deployments_index.css";
 
 interface LoaderData {
@@ -8,6 +11,7 @@ interface LoaderData {
 
 export function DeploymentsIndexView(): JSX.Element {
   const { deployments } = useLoaderData() as LoaderData;
+  const word = deployments.length === 1 ? "deployment" : "deployments";
 
   return (
     <main className={css.shell}>
@@ -22,22 +26,26 @@ export function DeploymentsIndexView(): JSX.Element {
           Paste a script, map each speaker to a voice, tune emotion per line. The DAG handles
           synthesis, caching, and export — you focus on the take.
         </p>
+        <p className={css.heroMeta}>
+          <span className={css.heroCount}>{deployments.length}</span>
+          <span>{word} ready</span>
+        </p>
       </header>
 
-      <section className={css.panel}>
-        <h2 className={css.sectionLabel}>Deployments</h2>
+      <Panel
+        density="airy"
+        elevation="raised"
+        className={css.listPanel}
+        aria-labelledby="deployments-section-list"
+      >
+        <h2 id="deployments-section-list" className={sectionLabel}>
+          01 / Deployments
+        </h2>
         {deployments.length === 0 ? (
-          <div className={css.empty}>
-            <span className={css.emptyGlyph} aria-hidden="true">
-              ◈
-            </span>
-            <p className={css.emptyTitle}>No deployments yet</p>
-            <p className={css.emptyBody}>
-              A deployment is a named character-cast that binds voices, presets, and the
-              runtime settings for a script. Create your first one from the host shell.
-            </p>
-            <p className={css.emptyHint}>Host shell → Extensions → EmotionTTS → New</p>
-          </div>
+          <EmptyState
+            title="No deployments yet."
+            hint="Host shell → Extensions → EmotionTTS → New"
+          />
         ) : (
           <ul className={css.list}>
             {deployments.map((d) => (
@@ -58,7 +66,7 @@ export function DeploymentsIndexView(): JSX.Element {
             ))}
           </ul>
         )}
-      </section>
+      </Panel>
     </main>
   );
 }

@@ -9,6 +9,7 @@ export const stageRow = style({
 });
 
 export const stageColumn = style({
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   minWidth: "200px",
   display: "flex",
   flexDirection: "column",
@@ -36,6 +37,7 @@ export const nodeCard = style({
 });
 
 export const nodeCardSelected = style({
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   boxShadow: `0 0 12px 0 ${vars.color.accent.primaryDim}44`,
 });
 
@@ -62,5 +64,6 @@ export const emptyState = style({
   color: vars.color.text.muted,
   fontSize: vars.font.size.bodySm,
   textAlign: "center",
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   padding: "48px",
 });

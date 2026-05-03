@@ -8,6 +8,14 @@ const TAG = "emotion-tts-app";
 const HOST_EVENT = "ext-event";
 const STYLESHEET_ID = "emotion-tts-stylesheet";
 
+const TWEAK_ATTRS = ["accent", "density", "card"] as const;
+type TweakAttr = (typeof TWEAK_ATTRS)[number];
+
+function readBodyTweak(name: TweakAttr): string | undefined {
+  if (typeof document === "undefined" || !document.body) return undefined;
+  return document.body.dataset[name];
+}
+
 function ensureStylesheet(): void {
   if (typeof document === "undefined") return;
   if (document.getElementById(STYLESHEET_ID)) return;
@@ -37,6 +45,8 @@ class EmotionTtsAppElement extends HTMLElement {
 
   connectedCallback(): void {
     this.root = createRoot(this);
+    this.syncTweaksFromBody();
+    this.observeBodyTweaks();
     this.paint();
   }
 
@@ -49,6 +59,27 @@ class EmotionTtsAppElement extends HTMLElement {
     this.root = null;
     this.observer?.disconnect();
     this.observer = null;
+  }
+
+  private syncTweaksFromBody(): void {
+    for (const name of TWEAK_ATTRS) {
+      const value = readBodyTweak(name);
+      if (value === undefined) {
+        delete this.dataset[name];
+      } else if (this.dataset[name] !== value) {
+        this.dataset[name] = value;
+      }
+    }
+  }
+
+  private observeBodyTweaks(): void {
+    if (typeof MutationObserver === "undefined" || !document.body) return;
+    if (this.observer) this.observer.disconnect();
+    this.observer = new MutationObserver(() => this.syncTweaksFromBody());
+    this.observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: TWEAK_ATTRS.map((name) => `data-${name}`),
+    });
   }
 
   set hostContext(ctx: HostContext | null) {

@@ -28,7 +28,9 @@ globalStyle("a:hover", {
 });
 
 globalStyle(":focus-visible", {
+  // audit-allow: px — below minimum token granularity (sub-10px)
   outline: `3px solid ${vars.color.accent.primary}`,
+  // audit-allow: px — below minimum token granularity (sub-10px)
   outlineOffset: "2px",
 });
 
@@ -89,6 +91,7 @@ globalStyle(".material-symbols-outlined", {
   fontFamily: "'Material Symbols Outlined'",
   fontWeight: "normal",
   fontStyle: "normal",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   fontSize: "24px",
   lineHeight: 1,
   letterSpacing: "normal",

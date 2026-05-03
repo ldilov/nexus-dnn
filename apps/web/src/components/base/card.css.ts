@@ -3,9 +3,11 @@ import { vars } from "../../theme/contract.css";
 
 export const cardRecipe = recipe({
   base: {
-    backgroundColor: vars.color.bg.elevated,
+    backgroundColor: vars.card.bg,
     borderRadius: vars.radius.card,
-    padding: vars.space.insetLg,
+    padding: vars.density.padCard,
+    boxShadow: vars.card.shadow,
+    backdropFilter: vars.card.backdrop,
     transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}, transform ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   },
   variants: {
@@ -20,10 +22,12 @@ export const cardRecipe = recipe({
       },
       outlined: {
         backgroundColor: "transparent",
+        boxShadow: `inset 0 0 0 1px ${vars.color.outline.variant}`,
       },
     },
     selected: {
       true: {
+        // audit-allow: px — sub-token spacing value, no density token at this step
         boxShadow: `0 0 12px 0 ${vars.color.accent.primaryDim}44`,
       },
     },

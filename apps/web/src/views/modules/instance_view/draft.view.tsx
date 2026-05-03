@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { materializeDraft } from "../../../api/client";
+import { AiSuggestionPill } from "../../../components/draft/ai_suggestion_pill";
+import { PageHero } from "../../../components/base/page_hero";
 import {
   clearDraftEnvelope,
   readDraftEnvelope,
@@ -131,9 +133,7 @@ export function DraftView({ sourceModuleId, draftUuid }: DraftViewProps) {
   if (state.kind === "loading") {
     return (
       <Shell>
-        <header className={s.identityBanner}>
-          <span className={s.idText}>Loading draft…</span>
-        </header>
+        <PageHero eyebrow="Module draft" title="Loading draft…" />
       </Shell>
     );
   }
@@ -141,6 +141,7 @@ export function DraftView({ sourceModuleId, draftUuid }: DraftViewProps) {
   if (state.kind === "error") {
     return (
       <Shell>
+        <PageHero eyebrow="Module draft" title="Not available" />
         <div className={s.errorBox} role="alert">
           {state.message}
         </div>
@@ -194,22 +195,25 @@ export function DraftView({ sourceModuleId, draftUuid }: DraftViewProps) {
         </div>
       )}
 
-      <header className={s.identityBanner}>
-        <span className={s.statusDot} aria-hidden="true" />
-        <span className={s.idText}>— (draft)</span>
-        <span className={s.displayName}>
-          {env.display_name || "Untitled Module"}
-        </span>
-        <span className={s.sourceBadge}>
-          <span
-            className={`material-symbols-outlined ${s.iconSm}`}
-            aria-hidden="true"
-          >
-            {env.source_module_id === "user:blank" ? "add_box" : "apps"}
-          </span>
-          Draft from {env.source_display_name}
-        </span>
-      </header>
+      <PageHero
+        eyebrow="Module draft · Unsaved fork"
+        title={env.display_name || "Untitled Module"}
+        meta={
+          <>
+            <span className={s.statusDot} aria-hidden="true" />
+            <span className={s.idText}>— (draft)</span>
+            <span className={s.sourceBadge}>
+              <span
+                className={`material-symbols-outlined ${s.iconSm}`}
+                aria-hidden="true"
+              >
+                {env.source_module_id === "user:blank" ? "add_box" : "apps"}
+              </span>
+              Draft from {env.source_display_name}
+            </span>
+          </>
+        }
+      />
 
       <div className={s.panel}>
         <div className={s.readOnlyNote}>
@@ -220,6 +224,29 @@ export function DraftView({ sourceModuleId, draftUuid }: DraftViewProps) {
           and from that deployment's editor you can make arbitrary changes
           with full revision tracking (spec 018 territory).
         </div>
+        {/*
+          Spec 037 / T087 mount-point deviation — see
+          `specs/037-spectral-graphite-redesign/tasks.md` T087 entry.
+          The Module Draft view is currently a forked-payload viewer;
+          the per-line gutter mount the spec asks for arrives with the
+          rich draft editor (spec 018 territory). Until then the pill
+          is wired against the display_name input as a single "active
+          line". When the editor lands, move this mount into the gutter
+          and pass cursorLine / activeLineText / draftText from the
+          editor's selection state — the AiSuggestionPill prop contract
+          is unchanged.
+        */}
+        <AiSuggestionPill
+          draftId={`user:draft:${draftUuid}`}
+          cursorLine={1}
+          activeLineText={env.display_name}
+          draftText={env.display_name || "(unnamed draft)"}
+          intent="complete-line"
+          precedingLines={0}
+          maxTokens={48}
+          enabled={Boolean(env.display_name && env.display_name.length >= 3)}
+          onAcceptSuggestion={handleRename}
+        />
         <section>
           <h3 className={s.sectionHeader}>Forked payload</h3>
           <pre className={s.payloadPre}>

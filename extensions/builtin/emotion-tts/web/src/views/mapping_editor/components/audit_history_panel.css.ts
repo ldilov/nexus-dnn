@@ -21,6 +21,7 @@ export const list = style({
 
 export const row = style({
   display: "grid",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "minmax(120px, 1fr) auto auto auto",
   alignItems: "baseline",
   gap: vars.space.md,
@@ -60,12 +61,6 @@ export const empty = style({
   fontSize: vars.text.caption,
   color: vars.color.textFaint,
   fontStyle: "italic",
-});
-
-export const errorBanner = style({
-  fontFamily: vars.font.mono,
-  fontSize: vars.text.caption,
-  color: vars.color.danger,
 });
 
 export const loading = style({

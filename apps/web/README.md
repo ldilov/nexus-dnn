@@ -124,6 +124,15 @@ The frontend ships three safety nets, all runnable from `apps/web/`:
 Run all three at once via `pnpm scan:all && pnpm test:regression`. CI runs
 the same gates on every PR touching `apps/web/`.
 
+### Spec 037 — Spectral Graphite redesign harness
+
+Two additional gates land with the [Spectral Graphite redesign](../../specs/037-spectral-graphite-redesign/quickstart.md):
+
+- `pnpm audit:redesign` — six-check audit (`hex` / `px` / `filler` / `contrast` / `boundary` / `io-boundary`) over the redesign source. The `boundary` check is **required** in CI (Constitution XIII.7 — host ↔ extension boundary is a hard gate); the other five are **advisory** and post their findings as a PR comment via [`.github/workflows/audit-redesign.yml`](../../.github/workflows/audit-redesign.yml). Annotate legitimate exceptions with `// audit-allow: <check> — <reason ≥ 8 chars>` on the same line as the literal. Contract: [`contracts/audit_script.cli.md`](../../specs/037-spectral-graphite-redesign/contracts/audit_script.cli.md).
+- `pnpm test:a11y` — Playwright + `@axe-core/playwright` baseline. Asserts zero serious/critical WCAG 2.2 AA violations on every primary host route at the documented `data-density="cozy"` × `data-accent="primary"` × `data-card="flat"` baseline; `tests/a11y/forced_colors.spec.ts` adds a Windows High Contrast emulation pass over the four anchor routes.
+
+The operator smoke walkthrough for the redesign lives at [`specs/037-spectral-graphite-redesign/quickstart.md`](../../specs/037-spectral-graphite-redesign/quickstart.md).
+
 ## Layered architecture
 
 Top-level folders under `src/` each serve one concern. **Never** cross-import

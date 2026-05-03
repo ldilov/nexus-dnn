@@ -1,0 +1,50 @@
+# Spec 032 / spec 037 Phase B — pyproject.toml for the local-llm
+# extension's runtime workers.
+#
+# This file is consumed by the host's spec-032 install pipeline at the
+# `install_deps` phase: after the runtime archive extracts into the
+# install root, `uv sync` runs in `<install_root>/worker/` against this
+# file to materialise the venv the worker process imports from.
+#
+# The existing `requirements.txt` next to this file remains in use by
+# the legacy extension-worker install path (separate from the spec-032
+# pipeline) and is NOT consulted by `uv sync`.
+
+[project]
+name = "local-llm-worker"
+version = "0.1.0"
+description = "Local LLM extension workers — extension worker + text-completion runtime worker (spec 037 Phase B)"
+requires-python = ">=3.11"
+
+# Runtime dependencies the workers import:
+# - nexus-sdk: the in-repo Python SDK (path-relative dep). The spec-032
+#   install pipeline runs `uv sync` after the worker source has been
+#   extracted into `<install_root>/worker/`; the SDK is bundled
+#   alongside in the same archive (Phase C asset-packaging step), so a
+#   path-relative install resolves correctly inside the install tree.
+# - huggingface_hub: matches the value historically declared in
+#   `requirements.txt`; the legacy extension worker imports it.
+dependencies = [
+    "huggingface_hub>=0.25.0",
+]
+
+[project.optional-dependencies]
+# Test dependencies. Activated via `uv sync --extra dev` or pip install
+# `.[dev]`. The pytest suite at `extensions/builtin/local-llm/tests/`
+# requires `pytest-asyncio` to run the async worker tests; this entry
+# documents the requirement so CI doesn't have to discover it
+# implicitly.
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# The worker tree isn't wheel-distributed — production install path is
+# archive-extract + path-import. This entry only exists so `uv sync`
+# can resolve a build backend without erroring on missing packages.
+packages = ["backends", "chat", "methods", "models", "operators", "rag"]

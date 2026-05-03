@@ -8,6 +8,7 @@ import {
 import { BackendRuntimesUI } from "./backend_runtimes.ui";
 import { InstallModal } from "./components/install_modal";
 import { PipelineProgress } from "./components/pipeline_progress";
+import { PageHero } from "../../components/base/page_hero";
 import * as css from "./backend_runtimes.css";
 
 const REFRESH_INTERVAL_MS = 10_000;
@@ -34,10 +35,11 @@ export function BackendRuntimesView() {
   if (error) {
     return (
       <main className={css.page}>
-        <header className={css.header}>
-          <h1 className={css.title}>Backend Runtimes</h1>
-        </header>
-        <div className={css.errorBox}>
+        <PageHero
+          eyebrow="Operator surface · Runtime catalog"
+          title="Backend runtimes"
+        />
+        <div className={css.errorBox} role="alert">
           Failed to load backend runtimes:{" "}
           {error instanceof Error ? error.message : "unknown error"}
         </div>
@@ -48,10 +50,11 @@ export function BackendRuntimesView() {
   if (isLoading || !data) {
     return (
       <main className={css.page}>
-        <header className={css.header}>
-          <h1 className={css.title}>Backend Runtimes</h1>
-          <p className={css.subtitle}>Loading…</p>
-        </header>
+        <PageHero
+          eyebrow="Operator surface · Runtime catalog"
+          title="Backend runtimes"
+          meta={<span>Loading…</span>}
+        />
       </main>
     );
   }

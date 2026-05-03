@@ -10,6 +10,7 @@ type BadgeProps = {
   intent?: BadgeIntent;
   modality?: BadgeModality;
   showDot?: boolean;
+  mono?: boolean;
   className?: string;
 };
 
@@ -19,9 +20,10 @@ export function Badge({
   intent,
   modality,
   showDot = false,
+  mono,
   className,
 }: BadgeProps) {
-  const cls = [badgeRecipe({ size, intent, modality }), className]
+  const cls = [badgeRecipe({ size, intent, modality, mono }), className]
     .filter(Boolean)
     .join(" ");
 

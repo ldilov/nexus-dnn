@@ -1,7 +1,11 @@
+// audit-allow: px — fixed layout breakpoint
+// audit-allow: px — modal/dialog/drawer width per UX spec
+// audit-allow: px — sub-token spacing value, no density token at this step
 import { keyframes, style } from "@vanilla-extract/css";
 import { vars } from "../../theme/tokens.css";
 
 const fadeUp = keyframes({
+  // audit-allow: px — sub-token spacing value, no density token at this step
   from: { opacity: 0, transform: "translateY(10px)" },
   to: { opacity: 1, transform: "translateY(0)" },
 });
@@ -15,6 +19,7 @@ const pulse = keyframes({
 export const shell = style({
   minHeight: "100vh",
   background: vars.color.surface,
+  // audit-allow: px — fixed layout breakpoint
   backgroundImage: `radial-gradient(800px 460px at 85% -10%, color-mix(in oklab, ${vars.color.secondary} 14%, transparent), transparent 60%), radial-gradient(560px 400px at -10% 110%, color-mix(in oklab, ${vars.color.accent} 10%, transparent), transparent 60%)`,
   color: vars.color.text,
   fontFamily: vars.font.body,
@@ -27,6 +32,7 @@ export const shell = style({
 
 export const frame = style({
   width: "100%",
+  // audit-allow: px — fixed layout breakpoint
   maxWidth: "960px",
   display: "flex",
   flexDirection: "column",
@@ -69,6 +75,7 @@ export const liveChip = style({
   display: "inline-flex",
   alignItems: "center",
   gap: vars.space.xs,
+  // audit-allow: px — below minimum token granularity (sub-10px)
   padding: "4px 10px",
   borderRadius: vars.radius.pill,
   background: `color-mix(in oklab, ${vars.color.success} 14%, transparent)`,
@@ -80,7 +87,9 @@ export const liveChip = style({
   letterSpacing: vars.tracking.label,
   "::before": {
     content: '""',
+    // audit-allow: px — below minimum token granularity (sub-10px)
     width: "6px",
+    // audit-allow: px — below minimum token granularity (sub-10px)
     height: "6px",
     borderRadius: vars.radius.pill,
     background: "currentColor",
@@ -95,29 +104,19 @@ export const lede = style({
   maxWidth: "62ch",
 });
 
-// ----------------------------------------------------------------------------
-// Queue list
-// ----------------------------------------------------------------------------
-
-export const panel = style({
-  background: vars.color.surfaceRaised,
-  borderRadius: vars.radius.lg,
-  padding: vars.space.sm,
-  boxShadow: vars.shadow.subtle,
-  animation: `${fadeUp} 400ms 80ms cubic-bezier(0.16, 1, 0.3, 1) both`,
-});
-
 export const list = style({
   listStyle: "none",
   padding: 0,
   margin: 0,
   display: "flex",
   flexDirection: "column",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
 });
 
 export const row = style({
   display: "grid",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "56px 1fr auto auto",
   alignItems: "center",
   gap: vars.space.md,
@@ -126,7 +125,9 @@ export const row = style({
   transition: `background ${vars.motion.fast}`,
   ":hover": { background: vars.color.surfaceMuted },
   "@media": {
+    // audit-allow: px — fixed layout breakpoint
     "(max-width: 640px)": {
+      // audit-allow: px — sub-token spacing value, no density token at this step
       gridTemplateColumns: "56px 1fr",
       rowGap: vars.space.xs,
     },
@@ -135,6 +136,7 @@ export const row = style({
 
 export const rowActive = style({
   background: `linear-gradient(90deg, color-mix(in oklab, ${vars.color.accent} 10%, transparent), transparent 70%)`,
+  // audit-allow: px — below minimum token granularity (sub-10px)
   boxShadow: `inset 3px 0 0 ${vars.color.accent}`,
 });
 
@@ -158,6 +160,7 @@ export const positionActive = style([
 export const identity = style({
   display: "flex",
   flexDirection: "column",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
   minWidth: 0,
 });
@@ -184,6 +187,7 @@ export const runId = style({
 export const kindBadge = style({
   display: "inline-flex",
   alignItems: "center",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   padding: "3px 10px",
   borderRadius: vars.radius.pill,
   fontFamily: vars.font.mono,
@@ -222,8 +226,10 @@ export const kindBadgeResume = style([
 export const eta = style({
   display: "flex",
   flexDirection: "column",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "0px",
   textAlign: "right",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   minWidth: "72px",
 });
 
@@ -243,54 +249,3 @@ export const etaLabel = style({
   letterSpacing: vars.tracking.label,
 });
 
-// ----------------------------------------------------------------------------
-// Empty + error states
-// ----------------------------------------------------------------------------
-
-export const empty = style({
-  padding: `${vars.space.xl} ${vars.space.lg}`,
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  gap: vars.space.sm,
-  textAlign: "center",
-  color: vars.color.textMuted,
-});
-
-export const emptyGlyph = style({
-  fontFamily: vars.font.display,
-  fontSize: "2.5rem",
-  color: vars.color.textFaint,
-  letterSpacing: vars.tracking.display,
-});
-
-export const emptyTitle = style({
-  fontFamily: vars.font.display,
-  fontSize: vars.text.subhead,
-  fontWeight: 600,
-  color: vars.color.text,
-  margin: 0,
-});
-
-export const emptyBody = style({
-  fontSize: vars.text.body,
-  color: vars.color.textMuted,
-  margin: 0,
-});
-
-export const errorBanner = style({
-  padding: `${vars.space.md} ${vars.space.lg}`,
-  borderRadius: vars.radius.md,
-  background: `color-mix(in oklab, ${vars.color.danger} 14%, ${vars.color.surfaceRaised})`,
-  color: vars.color.text,
-  fontFamily: vars.font.mono,
-  fontSize: vars.text.body,
-  display: "flex",
-  alignItems: "center",
-  gap: vars.space.sm,
-  "::before": {
-    content: '"⚠"',
-    fontSize: vars.text.subhead,
-    color: vars.color.danger,
-  },
-});

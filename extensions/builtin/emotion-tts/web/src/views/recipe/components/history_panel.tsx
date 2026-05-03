@@ -4,6 +4,10 @@ import { ExtensionApiError } from "../../../services/http";
 import { resumeRun } from "../../../services/runs_client";
 import type { RunStatus, RunSummary } from "../../../services/types";
 import * as css from "../recipe.css";
+import { Banner } from "../../../components/banner";
+import { Button } from "../../../components/button";
+import { EmptyState } from "../../../components/empty_state";
+import { StatusPill } from "../../../components/status_pill";
 
 interface Props {
   runs: RunSummary[];
@@ -18,7 +22,7 @@ export function HistoryPanel({ runs, deploymentId }: Props): JSX.Element {
   const [error, setError] = useState<string | null>(null);
 
   if (runs.length === 0) {
-    return <p className={css.label}>No runs yet.</p>;
+    return <EmptyState title="No runs yet." hint="Generate to see history" />;
   }
 
   const onResume = async (runId: string): Promise<void> => {
@@ -36,7 +40,7 @@ export function HistoryPanel({ runs, deploymentId }: Props): JSX.Element {
 
   return (
     <>
-      {error && <p className={css.dangerBanner}>{error}</p>}
+      {error && <Banner severity="error">{error}</Banner>}
       <ul className={css.filenameList}>
         {runs.map((r) => {
           const resumable = RESUMABLE_STATUSES.includes(r.status) && r.kind === "batch";
@@ -48,16 +52,17 @@ export function HistoryPanel({ runs, deploymentId }: Props): JSX.Element {
               {resumable && (
                 <>
                   {" "}
-                  <span className={statusPillFor(r.status)}>partial — resumable</span>
+                  <StatusPill tone={r.status === "failed" ? "danger" : "warning"}>
+                    partial — resumable
+                  </StatusPill>
                   {" "}
-                  <button
-                    type="button"
-                    className={css.secondaryButton}
+                  <Button
+                    variant="secondary"
                     disabled={busyRunId === r.runId}
                     onClick={() => void onResume(r.runId)}
                   >
                     {busyRunId === r.runId ? "Resuming…" : "Resume"}
-                  </button>
+                  </Button>
                 </>
               )}
             </li>
@@ -66,11 +71,6 @@ export function HistoryPanel({ runs, deploymentId }: Props): JSX.Element {
       </ul>
     </>
   );
-}
-
-function statusPillFor(status: RunStatus): string {
-  if (status === "failed") return css.statusPillFailed;
-  return css.statusPillRunning;
 }
 
 function describeError(err: unknown): string {

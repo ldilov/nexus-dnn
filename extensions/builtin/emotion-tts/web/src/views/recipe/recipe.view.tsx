@@ -63,6 +63,58 @@ export function RecipeView(): JSX.Element {
     return map;
   }, [mappings]);
 
+  const diagnostics = useMemo(() => {
+    const checks: Array<{ label: string; status: "ok" | "warn" | "fail"; detail?: string }> = [];
+    const trimmed = script.trim();
+    if (trimmed.length === 0) {
+      checks.push({ label: "Script", status: "fail", detail: "empty" });
+    } else {
+      const lineCount = trimmed.split(/\r?\n/).filter((l) => l.trim().length > 0).length;
+      checks.push({ label: "Script", status: "ok", detail: `${lineCount} lines` });
+    }
+
+    if (quickMode) {
+      if (deployment.defaultVoiceAssetId) {
+        checks.push({ label: "Quick voice", status: "ok", detail: "default voice set" });
+      } else {
+        checks.push({ label: "Quick voice", status: "fail", detail: "no default voice" });
+      }
+    } else {
+      const referencedCharacters = new Set<string>();
+      const tagRegex = /^\[(?<body>[^\]]*)\]/;
+      for (const raw of trimmed.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line) continue;
+        const match = line.match(tagRegex);
+        const head = match?.groups?.body?.split("|")[0]?.trim() ?? "";
+        const name = head.split(":")[0]?.trim() ?? "";
+        if (name) referencedCharacters.add(name.toLowerCase());
+      }
+      const missing = Array.from(referencedCharacters).filter((n) => !mappingsByLower.has(n));
+      if (referencedCharacters.size === 0) {
+        checks.push({ label: "Cast", status: "warn", detail: "no characters detected" });
+      } else if (missing.length === 0) {
+        checks.push({
+          label: "Cast",
+          status: "ok",
+          detail: `${referencedCharacters.size} mapped`,
+        });
+      } else {
+        checks.push({
+          label: "Cast",
+          status: "fail",
+          detail: `${missing.length} unmapped`,
+        });
+      }
+    }
+
+    if (globalEmotion.mode === "qwen_template" && !globalEmotion.qwenTemplate?.trim()) {
+      checks.push({ label: "Emotion", status: "warn", detail: "Qwen template empty" });
+    }
+
+    return checks;
+  }, [script, quickMode, deployment.defaultVoiceAssetId, mappingsByLower, globalEmotion]);
+
   return (
     <RecipeUi
       deployment={deployment}
@@ -120,6 +172,7 @@ export function RecipeView(): JSX.Element {
           deploymentId={deployment.deploymentId}
           createPayload={createPayload}
           canGenerate={script.trim().length > 0}
+          diagnostics={diagnostics}
         />
       }
       historyPanel={<HistoryPanel runs={runs} deploymentId={deployment.deploymentId} />}

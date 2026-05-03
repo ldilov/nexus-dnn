@@ -126,10 +126,10 @@ use crate::extension_router;
 use crate::frontend;
 use crate::handlers;
 use crate::handlers::{
-    artifacts, backend_events_ws, backend_runtimes, backends, deployments, extension_dependencies,
-    extension_ui, extensions, extensions_install, health, host, huggingface, metrics, modules,
-    recipes, runs, storage_contributions, system, tools, ui_components, ui_contributions,
-    ui_layouts, workflows,
+    artifacts, backend_events_ws, backend_runtimes, backends, deployments, draft_suggestions,
+    extension_dependencies, extension_ui, extensions, extensions_install, health, host,
+    huggingface, metrics, modules, recipes, runs, storage_contributions, system, tools,
+    ui_components, ui_contributions, ui_layouts, workflows,
 };
 use crate::ws;
 
@@ -465,6 +465,38 @@ pub fn build(state: AppState) -> Router {
     let api_v1 = api_v1.nest("/modules", modules::router());
     let api_v1 = api_v1.nest("/modules", modules::draft_router());
     let api_v1 = api_v1.nest("/extensions", extensions_install::router());
+
+    // Draft AI suggestion stream (spec 037 / Phase 8 + T078b). Mounted
+    // under the host root because the routes already include
+    // `/api/v1/...` paths and ship their own `Extension`-attached state.
+    // The provider is the lease-backed implementation that drives the
+    // generic text-completion JSON-RPC contract — runtimes opt in by
+    // tagging their catalog entry with the canonical capability tag.
+    // When no participating runtime has a Ready lease, the provider
+    // returns `NoEligibleBackend` and the endpoint answers with the
+    // documented 503 + CTA payload.
+    let catalog_repo: std::sync::Arc<
+        dyn nexus_backend_runtimes::generic::catalog::BackendRuntimeCatalogRepo,
+    > = std::sync::Arc::new(
+        nexus_backend_runtimes::generic::catalog::SqliteCatalogRepo::new(
+            state.db.pool().clone(),
+        ),
+    );
+    let installs_repo: std::sync::Arc<
+        dyn nexus_backend_runtimes::generic::installs::BackendRuntimeInstallsRepo,
+    > = std::sync::Arc::new(
+        nexus_backend_runtimes::generic::installs::SqliteInstallsRepo::new(
+            state.db.pool().clone(),
+        ),
+    );
+    let draft_suggestions_provider: std::sync::Arc<dyn draft_suggestions::SuggestionStreamProvider> =
+        std::sync::Arc::new(draft_suggestions::LeaseBackedStreamProvider::from_components(
+            catalog_repo,
+            installs_repo,
+            state.lease_manager.clone(),
+        ));
+    let draft_suggestions_router: Router<AppState> =
+        draft_suggestions::router::<AppState>(draft_suggestions_provider);
     let api_v1 = api_v1
         .route(
             "/extensions/{ext_id}/{*rest}",
@@ -493,6 +525,7 @@ pub fn build(state: AppState) -> Router {
     Router::new()
         .nest("/api/v1", api_v1)
         .nest("/api/host", api_host)
+        .merge(draft_suggestions_router)
         .fallback(frontend::static_handler)
         .layer(CatchPanicLayer::new())
         // request_id MUST be the outermost user-visible layer so the

@@ -1,141 +1,100 @@
-import type { RuntimeMetrics } from "../api/client";
+import { Fragment, type ReactNode } from "react";
+import { StatusChip } from "../components/base/status_chip";
 import * as styles from "./top_bar.css";
 
-export type ViewId = "recipe" | "stage" | "graph" | "trace" | "timeline";
+export type RuntimeChipKind = "live" | "idle" | "failed";
 
-type TopBarProps = {
-  projectName: string;
-  activeView: ViewId;
-  onViewChange: (view: ViewId) => void;
-  showViewTabs: boolean;
-  metrics: RuntimeMetrics | null;
-  metricsConnected: boolean;
-  onRun: () => void;
-  onCancel: () => void;
-  onValidate: () => void;
-  isRunning: boolean;
-};
-
-const VIEW_TAB_ITEMS: { id: ViewId; label: string }[] = [
-  { id: "recipe", label: "Recipe" },
-  { id: "stage", label: "Stage" },
-  { id: "graph", label: "Graph" },
-  { id: "trace", label: "Trace" },
-  { id: "timeline", label: "Timeline" },
-];
-
-function formatVram(bytes: number): string {
-  if (bytes === 0) return "--";
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)}GB`;
+export interface BreadcrumbItem {
+  label: string;
+  onClick?: () => void;
 }
 
-function metricLevel(
-  value: number,
-  greenMax: number,
-  amberMax: number,
-): "normal" | "good" | "warning" | "danger" {
-  if (value === 0) return "normal";
-  if (value <= greenMax) return "good";
-  if (value <= amberMax) return "warning";
-  return "danger";
+export interface TopBarProps {
+  breadcrumbs: ReadonlyArray<BreadcrumbItem>;
+  runtime: { kind: RuntimeChipKind; label: string };
+  onOpenSearch?: () => void;
+  onOpenNotifications?: () => void;
+  onOpenProfile?: () => void;
+  profileInitials?: string;
+  /** Optional slot for the tweak panel (US6). Rendered between the
+   *  search affordance and notifications when supplied. */
+  tweakPanel?: ReactNode;
 }
 
 export function TopBar({
-  projectName,
-  activeView,
-  onViewChange,
-  showViewTabs,
-  metrics,
-  metricsConnected,
-  onRun,
-  onCancel,
-  onValidate,
-  isRunning,
+  breadcrumbs,
+  runtime,
+  onOpenSearch,
+  onOpenNotifications,
+  onOpenProfile,
+  profileInitials = "·",
+  tweakPanel,
 }: TopBarProps) {
   return (
-    <>
+    <div className={styles.root}>
       <div className={styles.leftZone}>
-        <span className={styles.brand}>{projectName}</span>
-        {showViewTabs && (
-          <div className={styles.viewTabs}>
-            {VIEW_TAB_ITEMS.map((tab) => {
-              const cls =
-                tab.id === activeView
-                  ? `${styles.viewTab} ${styles.viewTabActive}`
-                  : styles.viewTab;
-              return (
+        <nav aria-label="Breadcrumb" className={styles.breadcrumbList}>
+          {breadcrumbs.map((crumb, index) => {
+            const isLast = index === breadcrumbs.length - 1;
+            return (
+              <Fragment key={`${crumb.label}-${index}`}>
                 <button
-                  key={tab.id}
-                  className={cls}
-                  onClick={() => onViewChange(tab.id)}
+                  type="button"
+                  className={styles.breadcrumbCrumb({ last: isLast })}
+                  onClick={!isLast ? crumb.onClick : undefined}
+                  disabled={isLast || !crumb.onClick}
+                  aria-current={isLast ? "page" : undefined}
                 >
-                  {tab.label}
+                  {crumb.label}
                 </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <div className={styles.centerZone}>
-        {metrics && metricsConnected && (
-          <>
-            <div className={styles.metricChip}>
-              <span className={styles.metricLabel}>VRAM</span>
-              <span className={styles.metricValue({ level: "normal" })}>
-                {formatVram(metrics.vram_used_bytes)}
-              </span>
-            </div>
-            <div className={styles.metricChip}>
-              <span className={styles.metricLabel}>LAT</span>
-              <span
-                className={styles.metricValue({
-                  level: metricLevel(metrics.latency_ms, 50, 200),
-                })}
-              >
-                {metrics.latency_ms}ms
-              </span>
-            </div>
-            <div className={styles.metricChip}>
-              <span className={styles.metricLabel}>LOAD</span>
-              <span
-                className={styles.metricValue({
-                  level: metricLevel(metrics.gpu_utilization_pct, 60, 85),
-                })}
-              >
-                {metrics.gpu_utilization_pct}%
-              </span>
-            </div>
-          </>
-        )}
+                {!isLast && (
+                  <span className={styles.breadcrumbSeparator} aria-hidden="true">
+                    ›
+                  </span>
+                )}
+              </Fragment>
+            );
+          })}
+        </nav>
       </div>
 
       <div className={styles.rightZone}>
-        <button className={styles.iconButton} aria-label="Cluster">
-          <span className="material-symbols-outlined">hub</span>
+        <StatusChip
+          kind={runtime.kind === "failed" ? "failed" : runtime.kind === "live" ? "live" : "idle"}
+          label={runtime.label}
+          pulse={runtime.kind === "live"}
+        />
+        <button
+          type="button"
+          className={styles.searchAffordance}
+          onClick={onOpenSearch}
+          aria-label="Search"
+        >
+          <span className="material-symbols-outlined" aria-hidden="true">
+            search
+          </span>
+          <span>Search</span>
         </button>
-        <button className={styles.iconButton} aria-label="Sync">
-          <span className="material-symbols-outlined">cloud_sync</span>
+        {tweakPanel}
+        <button
+          type="button"
+          className={styles.iconButton}
+          onClick={onOpenNotifications}
+          aria-label="Notifications"
+        >
+          <span className="material-symbols-outlined" aria-hidden="true">
+            notifications
+          </span>
         </button>
-        <button className={styles.iconButton} aria-label="Quick action">
-          <span className="material-symbols-outlined">bolt</span>
-        </button>
-        {isRunning ? (
-          <button
-            className={`${styles.runButton} ${styles.runButtonActive}`}
-            onClick={onCancel}
-          >
-            Running
-          </button>
-        ) : (
-          <button className={styles.runButton} onClick={onRun}>
-            Run
-          </button>
-        )}
-        <button className={styles.validateButton} onClick={onValidate}>
-          Validate
+        <button
+          type="button"
+          className={styles.profileAvatar}
+          onClick={onOpenProfile}
+          aria-label="Profile"
+        >
+          {profileInitials}
         </button>
       </div>
-    </>
+    </div>
   );
 }

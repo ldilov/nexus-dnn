@@ -18,14 +18,10 @@ export function buildPreviewNode(
 }
 
 const DATA_BACKED_HINT: Record<string, string> = {
-  thread_list:
-    "Thread list normally fetches /api/v1/extensions/local-llm/chat/threads. Install the chat extension to see live threads.",
-  model_selector:
-    "Model selector binds to the host model registry. Load a model to see live choices.",
-  generation_settings_form:
-    "Generation settings form binds to the host's runtime parameter store. Load a model to populate the fields.",
   models_panel:
     "Models panel fetches the host model store for the given extension. Install models to see live content.",
+  chat_panel:
+    "Chat panel renders the shared ChatSurface via a host adapter. Bind a chat-bearing extension to see live threads + streaming.",
 };
 
 function demoChildrenFor(name: string): LayoutNode[] {

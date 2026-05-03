@@ -13,6 +13,7 @@ export function fetchActiveModel(
   signal?: AbortSignal,
 ): Promise<ActiveModelBinding | null> {
   return apiFetch<ActiveModelBinding | null>(
+    // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
     `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model`,
     { signal },
   );
@@ -41,6 +42,7 @@ export function fetchGenerationSettings(
   signal?: AbortSignal,
 ): Promise<GenerationParams> {
   return apiFetch<GenerationParams>(
+    // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
     `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/generation_settings`,
     { signal },
   );
@@ -52,6 +54,7 @@ export function setGenerationSettings(
   signal?: AbortSignal,
 ): Promise<GenerationParams> {
   return apiFetch<GenerationParams>(
+    // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
     `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/generation_settings`,
     {
       method: "PUT",
@@ -110,6 +113,7 @@ export function setActiveModel(
     body.runtime = runtime;
   }
   return apiFetch<ActiveModelStatusPayload>(
+    // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
     `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model`,
     {
       method: "PUT",
@@ -125,6 +129,7 @@ export function unloadActiveModel(
   signal?: AbortSignal,
 ): Promise<void> {
   return apiFetch<void>(
+    // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
     `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model`,
     { method: "DELETE", signal },
   );
@@ -135,9 +140,46 @@ export function fetchActiveModelStatus(
   signal?: AbortSignal,
 ): Promise<ActiveModelStatusPayload | null> {
   return apiFetch<ActiveModelStatusPayload | null>(
+    // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
     `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/active_model/status`,
     { signal },
   );
+}
+
+export interface AvailableModel {
+  family_id: string;
+  variant_id: string | null;
+  label: string;
+  format: string;
+  size_bytes: number | null;
+  max_context: number | null;
+}
+
+interface AvailableModelsResponse {
+  models: AvailableModel[];
+}
+
+export async function fetchAvailableModels(
+  signal?: AbortSignal,
+): Promise<AvailableModel[]> {
+  const res = await apiFetch<AvailableModelsResponse>(
+    // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
+    `/extensions/nexus.local-llm/chat/available_models`,
+    { signal },
+  );
+  return res.models;
+}
+
+export async function cancelInference(threadId: string): Promise<void> {
+  try {
+    await apiFetch<null>(
+      // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
+      `/extensions/nexus.local-llm/chat/threads/${encodeURIComponent(threadId)}/inference/cancel`,
+      { method: "POST" },
+    );
+  } catch {
+    /* fire-and-forget — TCP disconnect is the actual cancel pathway */
+  }
 }
 
 export interface StreamStats {
@@ -192,17 +234,6 @@ export function streamMessage(
     stream_options: { include_usage: true },
   };
 
-  console.info("[local-llm] → llama.cpp", {
-    url,
-    temperature: body.temperature,
-    top_p: body.top_p,
-    top_k: body.top_k,
-    max_tokens: body.max_tokens,
-    repeat_penalty: body.repeat_penalty,
-    messages_count: body.messages.length,
-    last_user_chars: req.messages[req.messages.length - 1]?.content?.length ?? 0,
-  });
-
   const startTs = performance.now();
   let firstTokenTs: number | null = null;
   const stats: StreamStats = {
@@ -228,7 +259,6 @@ export function streamMessage(
     stats.latencyMs = Math.round(
       firstTokenTs != null ? firstTokenTs - startTs : now - startTs,
     );
-    console.info("[local-llm] ← llama.cpp done", stats);
     handlers.onDone?.(stats);
   };
 
