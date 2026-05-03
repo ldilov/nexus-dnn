@@ -174,3 +174,45 @@ export const subtitle = style({
   color: vars.color.text.secondary,
   margin: 0,
 });
+
+export const cardWrapper = style({
+  position: "relative",
+  display: "block",
+});
+
+export const deleteButton = style({
+  position: "absolute",
+  top: vars.density.d3,
+  right: vars.density.d3,
+  width: vars.control.heightSm,
+  height: vars.control.heightSm,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  border: "none",
+  borderRadius: vars.radius.full,
+  background: "transparent",
+  color: vars.color.text.muted,
+  cursor: "pointer",
+  opacity: 0,
+  transition: `opacity ${vars.motion.durationFast} ${vars.motion.easingDefault}, background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  zIndex: 1,
+  selectors: {
+    [`${cardWrapper}:hover &, ${cardWrapper}:focus-within &`]: {
+      opacity: 1,
+    },
+    "&:hover, &:focus-visible": {
+      background: vars.color.bg.hover,
+      color: vars.color.error.text,
+      opacity: 1,
+    },
+    "&:focus-visible": {
+      outline: `${vars.focus.ringWidth} solid ${vars.color.accent.accent}`,
+      outlineOffset: vars.focus.offset,
+    },
+  },
+});
+
+export const deleteIcon = style({
+  fontSize: vars.icon.sm,
+});

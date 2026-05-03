@@ -421,7 +421,7 @@ impl DeploymentMappers {
              d.state, d.restore_state, d.is_archived, d.is_favorite, \
              d.created_at, d.updated_at, d.created_from_surface, \
              d.current_revision_id, d.last_run_id, d.last_successful_run_id, \
-             d.last_failed_run_id, d.run_count, d.notes_markdown, \
+             d.last_failed_run_id, d.run_count, d.notes_markdown, d.deleted_at, \
              sl.source_extension_id AS source_extension_id, \
              CASE WHEN sl.source_kind = 'user' THEN sl.source_id ELSE NULL END AS source_workflow_id \
              FROM deployments d \
@@ -462,6 +462,7 @@ impl DeploymentMappers {
         workspace_id: Option<&str>,
         state: Option<&str>,
         limit: i64,
+        include_deleted: bool,
     ) -> Result<Vec<DeploymentRowRaw>, StorageError> {
         // Spec 019 FR-050 follow-up (T400) — project the primary source link's
         // `source_extension_id` + `source_id` (for user-workflow sources)
@@ -471,12 +472,17 @@ impl DeploymentMappers {
         // is NULL (legacy rows predating 018's source-link writes), both
         // projected columns stay NULL and the frontend falls back to a
         // generic badge.
+        //
+        // `include_deleted` (default false) — soft-deleted rows (where
+        // `deleted_at IS NOT NULL`) are excluded from the standard listing.
+        // Pass `true` only for admin/recycle-bin surfaces that intend to
+        // surface tombstones.
         let rows = sqlx::query(
             "SELECT d.id, d.workspace_id, d.slug, d.display_name, d.description, \
              d.state, d.restore_state, d.is_archived, d.is_favorite, \
              d.created_at, d.updated_at, d.created_from_surface, \
              d.current_revision_id, d.last_run_id, d.last_successful_run_id, \
-             d.last_failed_run_id, d.run_count, d.notes_markdown, \
+             d.last_failed_run_id, d.run_count, d.notes_markdown, d.deleted_at, \
              sl.source_extension_id AS source_extension_id, \
              CASE WHEN sl.source_kind = 'user' THEN sl.source_id ELSE NULL END AS source_workflow_id \
              FROM deployments d \
@@ -485,14 +491,129 @@ impl DeploymentMappers {
               AND sl.is_primary_source = 1 \
              WHERE (?1 IS NULL OR d.workspace_id IS ?1) \
                AND (?2 IS NULL OR d.state = ?2) \
-             ORDER BY d.updated_at DESC LIMIT ?3",
+               AND (?3 = 1 OR d.deleted_at IS NULL) \
+             ORDER BY d.updated_at DESC LIMIT ?4",
         )
         .bind(workspace_id)
         .bind(state)
+        .bind(if include_deleted { 1_i64 } else { 0 })
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.into_iter().map(row_to_deployment).collect())
+    }
+
+    /// Soft-delete: stamp `deleted_at` so the row drops out of the default
+    /// list without losing data. Hard-purge requires a follow-up call to
+    /// [`Self::purge_deployment`].
+    pub async fn soft_delete_deployment(
+        &self,
+        id: &str,
+        deleted_at: &str,
+    ) -> Result<u64, StorageError> {
+        let res = sqlx::query(
+            "UPDATE deployments SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(deleted_at)
+        .bind(deleted_at)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        Ok(res.rows_affected())
+    }
+
+    /// Returns the row's `deleted_at` (if any) without filtering. Used by
+    /// the purge handler to enforce the soft-delete-first invariant.
+    pub async fn fetch_deleted_at(&self, id: &str) -> Result<Option<Option<String>>, StorageError> {
+        let row = sqlx::query("SELECT deleted_at FROM deployments WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.map(|r| r.try_get::<Option<String>, _>("deleted_at").unwrap_or(None)))
+    }
+
+    /// Hard-purge: removes the deployment row plus every dependent row in
+    /// host-owned deployment tables. Extension-owned rows that reference
+    /// the deployment id stay untouched — extensions react to the
+    /// `DeploymentPurged` event to clean up their own per-extension data.
+    pub async fn purge_deployment(&self, id: &str) -> Result<u64, StorageError> {
+        // Collect revision IDs first so we can clean per-revision tables
+        // without relying on cascade constraints (the schema does not
+        // enforce ON DELETE CASCADE).
+        let rev_rows = sqlx::query("SELECT id FROM deployment_revisions WHERE deployment_id = ?")
+            .bind(id)
+            .fetch_all(&self.pool)
+            .await?;
+        let revision_ids: Vec<String> = rev_rows
+            .iter()
+            .map(|r| r.try_get::<String, _>("id").unwrap_or_default())
+            .collect();
+
+        // Per-revision child tables.
+        for rev_id in &revision_ids {
+            sqlx::query("DELETE FROM deployment_artifact_bindings WHERE deployment_revision_id = ?")
+                .bind(rev_id)
+                .execute(&self.pool)
+                .await?;
+            sqlx::query("DELETE FROM deployment_model_bindings WHERE deployment_revision_id = ?")
+                .bind(rev_id)
+                .execute(&self.pool)
+                .await?;
+            sqlx::query("DELETE FROM deployment_runtime_bindings WHERE deployment_revision_id = ?")
+                .bind(rev_id)
+                .execute(&self.pool)
+                .await?;
+            sqlx::query("DELETE FROM deployment_parameters WHERE deployment_revision_id = ?")
+                .bind(rev_id)
+                .execute(&self.pool)
+                .await?;
+            sqlx::query("DELETE FROM deployment_source_links WHERE deployment_revision_id = ?")
+                .bind(rev_id)
+                .execute(&self.pool)
+                .await?;
+            sqlx::query("DELETE FROM deployment_snapshots WHERE deployment_revision_id = ?")
+                .bind(rev_id)
+                .execute(&self.pool)
+                .await?;
+            // Validations + their diagnostics.
+            let val_rows = sqlx::query(
+                "SELECT id FROM deployment_validations WHERE deployment_revision_id = ?",
+            )
+            .bind(rev_id)
+            .fetch_all(&self.pool)
+            .await?;
+            for v in val_rows {
+                let vid: String = v.try_get("id").unwrap_or_default();
+                sqlx::query(
+                    "DELETE FROM deployment_restore_diagnostics WHERE deployment_validation_id = ?",
+                )
+                .bind(&vid)
+                .execute(&self.pool)
+                .await?;
+            }
+            sqlx::query("DELETE FROM deployment_validations WHERE deployment_revision_id = ?")
+                .bind(rev_id)
+                .execute(&self.pool)
+                .await?;
+        }
+
+        sqlx::query("DELETE FROM deployment_run_links WHERE deployment_id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("DELETE FROM deployment_tags WHERE deployment_id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("DELETE FROM deployment_revisions WHERE deployment_id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        let res = sqlx::query("DELETE FROM deployments WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(res.rows_affected())
     }
 
     pub async fn update_metadata(
@@ -590,6 +711,8 @@ pub struct DeploymentRowRaw {
     /// `source_kind='user'`. Lets the frontend resolve a user-workflow
     /// module badge without a second round-trip.
     pub source_workflow_id: Option<String>,
+    /// Soft-delete tombstone (`NULL` for live rows).
+    pub deleted_at: Option<String>,
 }
 
 pub struct RevisionRowRaw {
@@ -624,5 +747,6 @@ fn row_to_deployment(r: sqlx::sqlite::SqliteRow) -> DeploymentRowRaw {
         notes_markdown: r.try_get("notes_markdown").ok(),
         source_extension_id: r.try_get("source_extension_id").ok(),
         source_workflow_id: r.try_get("source_workflow_id").ok(),
+        deleted_at: r.try_get("deleted_at").ok(),
     }
 }

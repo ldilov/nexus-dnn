@@ -169,4 +169,19 @@ pub enum NexusEvent {
         completed_at: String,
         outcome: String,
     },
+    /// A deployment was soft-deleted (tombstoned). The row still exists in
+    /// host storage but is hidden from default listings; extensions
+    /// listening for cleanup hooks should mark their per-extension data
+    /// as orphaned but may keep it around to support a restore window.
+    DeploymentDeleted {
+        deployment_id: String,
+        deleted_at: String,
+    },
+    /// A deployment was permanently purged from host storage. Extensions
+    /// MUST drop any per-extension rows keyed by `deployment_id` — the
+    /// host id is no longer resolvable.
+    DeploymentPurged {
+        deployment_id: String,
+        purged_at: String,
+    },
 }
