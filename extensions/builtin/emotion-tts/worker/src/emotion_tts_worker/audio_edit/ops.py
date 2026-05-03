@@ -115,7 +115,9 @@ def gain(samples: np.ndarray, sr: int, gain_db: float) -> np.ndarray:
     if abs(gain_db) < 1e-9:
         return samples.copy()
     factor = float(10.0 ** (gain_db / 20.0))
-    return (samples * factor).astype(np.float32, copy=False)
+    scaled = samples * factor
+    np.clip(scaled, -1.0, 1.0, out=scaled)
+    return scaled.astype(np.float32, copy=False)
 
 
 def eq3(
@@ -127,11 +129,11 @@ def eq3(
 ) -> np.ndarray:
     bands: list[str] = []
     if abs(low_db) >= 1e-9:
-        bands.append(f"equalizer=f=80:t=o:w=2:g={low_db}")
+        bands.append(f"equalizer=f=80:t=o:w=1:g={low_db}")
     if abs(mid_db) >= 1e-9:
-        bands.append(f"equalizer=f=1000:t=o:w=2:g={mid_db}")
+        bands.append(f"equalizer=f=1000:t=o:w=1:g={mid_db}")
     if abs(high_db) >= 1e-9:
-        bands.append(f"equalizer=f=8000:t=o:w=2:g={high_db}")
+        bands.append(f"equalizer=f=8000:t=o:w=1:g={high_db}")
     if not bands:
         return samples.copy()
     return _run_ffmpeg_filter(samples, sr, ",".join(bands), prefix="audio-edit-eq3-")

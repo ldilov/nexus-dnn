@@ -10,7 +10,6 @@ import soundfile as sf
 
 from emotion_tts_worker import audio_edit
 
-
 SAMPLE_RATE = 44_100
 
 
@@ -100,7 +99,6 @@ def test_gain_validation_rejects_out_of_range(tmp_path: Path) -> None:
         audio_edit.apply_chain(source, output, chain)
 
 
-@requires_ffmpeg
 def test_pitch_shift_zero_passthrough(tmp_path: Path) -> None:
     source = tmp_path / "in.wav"
     output = tmp_path / "out.wav"
@@ -176,4 +174,33 @@ def test_silence_strip_removes_leading_silence(tmp_path: Path) -> None:
     assert out_duration < src_duration - 0.3, (
         f"silence_strip should drop ~0.5s of leading silence; "
         f"src={src_duration:.3f}s out={out_duration:.3f}s"
+    )
+    assert out_duration > 0.5, (
+        f"silence_strip must preserve the tone segment (positive control); "
+        f"out={out_duration:.3f}s < 0.5s suggests the whole file was dropped"
+    )
+    out_rms = float(np.sqrt(np.mean(out * out)))
+    assert out_rms > 0.05, f"output RMS={out_rms:.4f} too low; tone content was lost"
+
+
+def test_gain_clips_to_full_scale(tmp_path: Path) -> None:
+    source = tmp_path / "in.wav"
+    output = tmp_path / "out.wav"
+    _write_sine(source, 440.0, 0.5)
+    chain = {
+        "version": 1,
+        "ops": [
+            {
+                "id": "01HX0000GAIN0CLIPPING0001",
+                "mode": "gain",
+                "gain_db": 24.0,
+            }
+        ],
+    }
+    audio_edit.apply_chain(source, output, chain)
+    out, _ = sf.read(str(output), dtype="float32", always_2d=False)
+    peak = float(np.max(np.abs(out)))
+    assert peak <= 1.0 + 1e-6, (
+        f"gain at +24 dB on a 0.5-amplitude sine must clip to [-1, 1]; "
+        f"peak={peak:.4f}"
     )

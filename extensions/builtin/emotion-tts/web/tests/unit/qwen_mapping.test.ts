@@ -61,4 +61,23 @@ describe("mapPromptToVector (FR-047)", () => {
     expect(vec.happy).toBeLessThanOrEqual(1);
     expect(vec.happy).toBeGreaterThan(0);
   });
+
+  it("does not match keywords inside other words (word-boundary regex)", () => {
+    // "broken" should not match inside "unbroken"
+    const v1 = mapPromptToVector("unbroken spirit");
+    expect(v1.sad).toBe(0);
+    // "snap" should not match inside "snapshot"
+    const v2 = mapPromptToVector("take a snapshot");
+    expect(v2.angry).toBe(0);
+    // "down" should not match inside "downtown"
+    const v3 = mapPromptToVector("downtown energy");
+    expect(v3.sad).toBe(0);
+  });
+
+  it("matches multi-word keywords across whitespace variants", () => {
+    const v1 = mapPromptToVector("kind of happy");
+    const v2 = mapPromptToVector("kind  of  happy");
+    expect(v1.happy).toBeGreaterThan(0);
+    expect(v2.happy).toBeGreaterThan(0);
+  });
 });

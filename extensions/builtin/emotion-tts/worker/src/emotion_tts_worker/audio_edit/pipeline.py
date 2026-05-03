@@ -11,7 +11,6 @@ from . import codecs, ops
 from .types import AudioEditReport, OpDuration
 from .validation import validate_chain
 
-
 DEFAULT_FORMAT = "wav"
 
 

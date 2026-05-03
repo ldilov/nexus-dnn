@@ -34,17 +34,10 @@ describe("prefers-reduced-motion substitution (FR-050)", () => {
     expect(result.matches).toBe(true);
   });
 
-  it("global stylesheet honors prefers-reduced-motion via @media query", () => {
-    const cssText = `
-      @media (prefers-reduced-motion: reduce) {
-        emotion-tts-app * {
-          animation-duration: 0.01ms;
-          transition-duration: 0.01ms;
-        }
-      }
-    `;
-    expect(cssText).toContain("(prefers-reduced-motion: reduce)");
-    expect(cssText).toContain("animation-duration: 0.01ms");
-    expect(cssText).toContain("transition-duration: 0.01ms");
+  it("useRadarDrag accepts reduceMotion option and exposes it on the result interface", async () => {
+    const mod = await import("../../src/views/recipe/hooks/use_radar_drag");
+    expect(typeof mod.useRadarDrag).toBe("function");
+    const fn = mod.useRadarDrag.toString();
+    expect(fn).toContain("reduceMotion");
   });
 });
