@@ -52,6 +52,15 @@ export async function restartRuntime(): Promise<void> {
   await apiFetch("/runtime/restart", { method: "POST" });
 }
 
+export const PER_UTTERANCE_SPEED_CAPABILITY = "per_utterance_speed";
+
+export function supportsPerUtteranceSpeed(handshake: HandshakeInfo | null | undefined): boolean {
+  if (!handshake) return false;
+  return Array.isArray(handshake.capabilities)
+    ? handshake.capabilities.includes(PER_UTTERANCE_SPEED_CAPABILITY)
+    : false;
+}
+
 export function badgeLabel(badge: RuntimeBadge): string {
   switch (badge) {
     case "not_installed":

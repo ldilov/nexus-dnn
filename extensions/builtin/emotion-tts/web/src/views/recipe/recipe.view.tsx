@@ -1,7 +1,12 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData } from "react-router";
 import type { Deployment } from "../../services/deployments_client";
-import type { CharacterMapping } from "../../services/mappings_client";
+import {
+  createMapping,
+  deactivateMapping,
+  patchMapping,
+  type CharacterMapping,
+} from "../../services/mappings_client";
 import type {
   CachePolicy,
   CreateRunRequest,
@@ -9,15 +14,49 @@ import type {
   OutputFormat,
   RunSummary,
 } from "../../services/types";
+import { listVoiceAssets, uploadVoiceAsset, type VoiceAsset } from "../../services/voice_assets_client";
+import { listPresets, type VectorPreset } from "../../services/presets_client";
 import type { WorkflowResponse } from "../../services/workflows_client";
+import { CastRow, CastSection } from "./components/cast_row";
 import { DeploymentHeader } from "./components/deployment_header";
-import { EmotionPanel } from "./components/emotion_panel";
+import { DirectModSliderStrip } from "./components/direct_mod_slider_strip";
+import { EmotionStudio } from "./components/emotion_studio";
 import { GenerationSettingsPanel } from "./components/generation_settings_panel";
-import { HistoryPanel } from "./components/history_panel";
+import { ParsedDialogue } from "./components/parsed_dialogue";
+import { PerformanceSliders, PERFORMANCE_DEFAULTS, type PerformanceSlidersValue } from "./components/performance_sliders";
+import { PreFlightBlock, type PreFlightCheck } from "./components/pre_flight_block";
 import { QuickVoicePicker } from "./components/quick_voice_picker";
+import { RecentRuns } from "./components/recent_runs";
 import { RunPanel } from "./components/run_panel";
 import { ScriptEditor } from "./components/script_editor";
+import {
+  assignCharacterColors,
+  lineCountByCharacter,
+  parseDialogue,
+  uniqueCharacters,
+} from "./lib/parse_dialogue";
+import {
+  IDENTITY_SLIDER_STATE,
+  applySliderState,
+  type DirectModSliderState,
+} from "./lib/slider_chain";
 import { RecipeUi } from "./recipe.ui";
+
+const notify = {
+  success(message: string): void {
+    if (typeof window !== "undefined") {
+      const ev = new CustomEvent("emotion-tts:toast", { detail: { kind: "success", message } });
+      window.dispatchEvent(ev);
+    }
+  },
+  error(message: string): void {
+    if (typeof window !== "undefined") {
+      const ev = new CustomEvent("emotion-tts:toast", { detail: { kind: "error", message } });
+      window.dispatchEvent(ev);
+    }
+    if (typeof console !== "undefined") console.warn("[emotion-tts]", message);
+  },
+};
 
 interface LoaderData {
   deployment: Deployment;
@@ -27,7 +66,13 @@ interface LoaderData {
 }
 
 export function RecipeView(): JSX.Element {
-  const { deployment, mappings, runs, workflow } = useLoaderData() as LoaderData;
+  const { deployment, mappings: initialMappings, runs, workflow } = useLoaderData() as LoaderData;
+
+  const [mappings, setMappings] = useState<CharacterMapping[]>(initialMappings);
+  const [voiceAssets, setVoiceAssets] = useState<VoiceAsset[]>([]);
+  const [vectorPresets, setVectorPresets] = useState<VectorPreset[]>([]);
+  const [activeCastCharacter, setActiveCastCharacter] = useState<string | null>(null);
+  const [sliderState, setSliderState] = useState<DirectModSliderState>(IDENTITY_SLIDER_STATE);
 
   const [script, setScript] = useState("");
   const [outputFormat, setOutputFormat] = useState<OutputFormat>(
@@ -41,19 +86,29 @@ export function RecipeView(): JSX.Element {
   const [generation, setGeneration] = useState<Record<string, unknown>>({});
   const [cachePolicy, setCachePolicy] = useState<CachePolicy>("use_cache");
   const [quickMode, setQuickMode] = useState(deployment.defaultVoiceAssetId != null);
+  const [performance, setPerformance] = useState<PerformanceSlidersValue>(PERFORMANCE_DEFAULTS);
 
-  const createPayload: CreateRunRequest = useMemo(
-    () => ({
-      script,
-      parserMode: quickMode ? "raw_text" : "dialogue",
-      outputFormat,
-      speedFactor,
-      globalEmotion,
-      generation,
-      cachePolicy,
-    }),
-    [script, quickMode, outputFormat, speedFactor, globalEmotion, generation, cachePolicy],
-  );
+  useEffect(() => {
+    let cancelled = false;
+    listVoiceAssets(deployment.deploymentId)
+      .then((r) => {
+        if (!cancelled) setVoiceAssets(r.voiceAssets);
+      })
+      .catch(() => undefined);
+    listPresets(deployment.deploymentId)
+      .then((r) => {
+        if (!cancelled) setVectorPresets(r.presets);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [deployment.deploymentId]);
+
+  const parsedLines = useMemo(() => parseDialogue(script), [script]);
+  const characters = useMemo(() => uniqueCharacters(parsedLines), [parsedLines]);
+  const characterColors = useMemo(() => assignCharacterColors(characters), [characters]);
+  const lineCounts = useMemo(() => lineCountByCharacter(parsedLines), [parsedLines]);
 
   const mappingsByLower = useMemo(() => {
     const map = new Map<string, CharacterMapping>();
@@ -63,119 +118,518 @@ export function RecipeView(): JSX.Element {
     return map;
   }, [mappings]);
 
-  const diagnostics = useMemo(() => {
-    const checks: Array<{ label: string; status: "ok" | "warn" | "fail"; detail?: string }> = [];
-    const trimmed = script.trim();
-    if (trimmed.length === 0) {
-      checks.push({ label: "Script", status: "fail", detail: "empty" });
-    } else {
-      const lineCount = trimmed.split(/\r?\n/).filter((l) => l.trim().length > 0).length;
-      checks.push({ label: "Script", status: "ok", detail: `${lineCount} lines` });
-    }
+  const unmappedCount = useMemo(() => {
+    if (quickMode) return 0;
+    return characters.filter((c) => !mappingsByLower.has(c.toLowerCase())).length;
+  }, [characters, mappingsByLower, quickMode]);
 
-    if (quickMode) {
-      if (deployment.defaultVoiceAssetId) {
-        checks.push({ label: "Quick voice", status: "ok", detail: "default voice set" });
-      } else {
-        checks.push({ label: "Quick voice", status: "fail", detail: "no default voice" });
+  const upsertMapping = useCallback(
+    async (
+      characterName: string,
+      patch: Partial<CharacterMapping>,
+    ): Promise<void> => {
+      const existing = mappingsByLower.get(characterName.toLowerCase());
+      try {
+        if (existing) {
+          const updated = await patchMapping(deployment.deploymentId, existing.mappingId, patch);
+          setMappings((prev) =>
+            prev.map((m) => (m.mappingId === updated.mappingId ? updated : m)),
+          );
+          notify.success(`Updated mapping for ${characterName}`);
+        } else if (patch.speakerVoiceAssetId) {
+          const created = await createMapping(deployment.deploymentId, {
+            ...patch,
+            characterName,
+            speakerVoiceAssetId: patch.speakerVoiceAssetId,
+          });
+          setMappings((prev) => [...prev, created]);
+          notify.success(`Mapped ${characterName} to voice`);
+        }
+      } catch (err: unknown) {
+        notify.error(err instanceof Error ? err.message : "mapping failed");
       }
-    } else {
-      const referencedCharacters = new Set<string>();
-      const tagRegex = /^\[(?<body>[^\]]*)\]/;
-      for (const raw of trimmed.split(/\r?\n/)) {
-        const line = raw.trim();
-        if (!line) continue;
-        const match = line.match(tagRegex);
-        const head = match?.groups?.body?.split("|")[0]?.trim() ?? "";
-        const name = head.split(":")[0]?.trim() ?? "";
-        if (name) referencedCharacters.add(name.toLowerCase());
-      }
-      const missing = Array.from(referencedCharacters).filter((n) => !mappingsByLower.has(n));
-      if (referencedCharacters.size === 0) {
-        checks.push({ label: "Cast", status: "warn", detail: "no characters detected" });
-      } else if (missing.length === 0) {
-        checks.push({
-          label: "Cast",
-          status: "ok",
-          detail: `${referencedCharacters.size} mapped`,
-        });
-      } else {
-        checks.push({
-          label: "Cast",
-          status: "fail",
-          detail: `${missing.length} unmapped`,
-        });
-      }
-    }
+    },
+    [mappingsByLower, deployment.deploymentId],
+  );
 
-    if (globalEmotion.mode === "qwen_template" && !globalEmotion.qwenTemplate?.trim()) {
-      checks.push({ label: "Emotion", status: "warn", detail: "Qwen template empty" });
-    }
+  const handleClearMapping = useCallback(
+    async (characterName: string): Promise<void> => {
+      const existing = mappingsByLower.get(characterName.toLowerCase());
+      if (!existing) return;
+      try {
+        await deactivateMapping(deployment.deploymentId, existing.mappingId);
+        setMappings((prev) => prev.filter((m) => m.mappingId !== existing.mappingId));
+        notify.success(`Cleared mapping for ${characterName}`);
+      } catch (err: unknown) {
+        notify.error(err instanceof Error ? err.message : "clear failed");
+      }
+    },
+    [mappingsByLower, deployment.deploymentId],
+  );
 
-    return checks;
-  }, [script, quickMode, deployment.defaultVoiceAssetId, mappingsByLower, globalEmotion]);
+  const handleUploadAndMap = useCallback(
+    async (characterName: string, file: File): Promise<void> => {
+      try {
+        const asset = await uploadVoiceAsset(
+          deployment.deploymentId,
+          file,
+          file.name.replace(/\.[^.]+$/, ""),
+          "speaker",
+        );
+        setVoiceAssets((prev) => [asset, ...prev]);
+        await upsertMapping(characterName, { speakerVoiceAssetId: asset.voiceAssetId });
+      } catch (err: unknown) {
+        notify.error(err instanceof Error ? err.message : "upload failed");
+      }
+    },
+    [deployment.deploymentId, upsertMapping],
+  );
+
+  const handleSliderChange = useCallback(
+    (next: DirectModSliderState) => {
+      setSliderState(next);
+      const chain = applySliderState({ version: 1, ops: [] }, next);
+      void chain;
+    },
+    [],
+  );
+
+  const createPayload: CreateRunRequest = useMemo(
+    () => ({
+      script,
+      parserMode: quickMode ? "raw_text" : "dialogue",
+      outputFormat,
+      speedFactor: performance.pace,
+      globalEmotion: { ...globalEmotion, emotionAlpha: performance.intensity },
+      generation,
+      cachePolicy,
+    }),
+    [script, quickMode, outputFormat, performance.pace, performance.intensity, globalEmotion, generation, cachePolicy],
+  );
+
+  const diagnostics = useMemo(
+    () => buildDiagnostics({
+      script,
+      quickMode,
+      defaultVoiceAssetId: deployment.defaultVoiceAssetId,
+      characters,
+      unmappedCount,
+      globalEmotion,
+      performance,
+    }),
+    [script, quickMode, deployment.defaultVoiceAssetId, characters, unmappedCount, globalEmotion, performance],
+  );
+
+  const legacyDiagnostics = useMemo(
+    () =>
+      diagnostics
+        .filter((d) => d.id !== "performance")
+        .map((d) => ({
+          label: d.label,
+          status: d.status === "ok" ? "ok" : d.status === "warn" ? "warn" : "fail",
+          detail: d.detail,
+        })) as { label: string; status: "ok" | "warn" | "fail"; detail?: string }[],
+    [diagnostics],
+  );
 
   return (
     <RecipeUi
       deployment={deployment}
       workflowCustomised={workflow.workflow.customised}
       unmappableFields={workflow.unmappableFields}
-      header={<DeploymentHeader deployment={deployment} />}
-      scriptEditor={
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="checkbox"
-                checked={quickMode}
-                onChange={(e) => setQuickMode(e.target.checked)}
-              />
-              Quick mode (no character mapping required)
-            </label>
-            {quickMode && (
-              <QuickVoicePicker
-                deploymentId={deployment.deploymentId}
-                initialVoiceAssetId={deployment.defaultVoiceAssetId ?? null}
-              />
-            )}
-          </div>
-          <ScriptEditor
-            value={script}
-            onChange={setScript}
-            outputFormat={outputFormat}
-            mappings={mappingsByLower}
-            deploymentId={deployment.deploymentId}
-          />
-        </div>
+      hero={<DeploymentHeader deployment={deployment} />}
+      scriptSection={
+        <ScriptSection
+          quickMode={quickMode}
+          onToggleQuickMode={setQuickMode}
+          deployment={deployment}
+          script={script}
+          onScriptChange={setScript}
+          outputFormat={outputFormat}
+          mappingsByLower={mappingsByLower}
+        />
       }
-      emotionPanel={
-        <EmotionPanel
+      parsedDialogueSection={
+        <ParsedDialogue lines={parsedLines} characterColors={characterColors} />
+      }
+      castSection={
+        <CastSection unmappedCount={unmappedCount} totalCount={characters.length}>
+          {characters.map((name) => {
+            const mapping = mappingsByLower.get(name.toLowerCase()) ?? null;
+            const color = characterColors[name] ?? "#ba9eff";
+            return (
+              <li key={name} style={{ listStyle: "none" }}>
+                <CastRow
+                  characterName={name}
+                  color={color}
+                  lineCount={lineCounts[name] ?? 0}
+                  mapping={mapping}
+                  voiceAssets={voiceAssets}
+                  presets={vectorPresets}
+                  active={activeCastCharacter === name}
+                  onToggle={() =>
+                    setActiveCastCharacter((c) => (c === name ? null : name))
+                  }
+                  onAssignVoiceAsset={(voiceAssetId) =>
+                    upsertMapping(name, { speakerVoiceAssetId: voiceAssetId })
+                  }
+                  onAssignPreset={(presetId) =>
+                    upsertMapping(name, { defaultVectorPresetId: presetId })
+                  }
+                  onUploadFile={(file) => handleUploadAndMap(name, file)}
+                  onClearMapping={() => handleClearMapping(name)}
+                />
+              </li>
+            );
+          })}
+        </CastSection>
+      }
+      emotionSection={
+        <EmotionStudio
           value={globalEmotion}
           onChange={setGlobalEmotion}
           deploymentId={deployment.deploymentId}
         />
       }
-      settingsPanel={
-        <GenerationSettingsPanel
-          outputFormat={outputFormat}
-          onOutputFormatChange={setOutputFormat}
-          speedFactor={speedFactor}
-          onSpeedFactorChange={setSpeedFactor}
-          cachePolicy={cachePolicy}
-          onCachePolicyChange={setCachePolicy}
-          generation={generation}
-          onGenerationChange={setGeneration}
-        />
+      performanceSection={
+        <>
+          <PerformanceSliders value={performance} onChange={setPerformance} />
+          <DirectModSliderStrip
+            state={sliderState}
+            onChange={handleSliderChange}
+            supportsSynthSpeed={false}
+          />
+          <PreFlightBlock checks={diagnostics} />
+          <GenerationSettingsPanel
+            outputFormat={outputFormat}
+            onOutputFormatChange={setOutputFormat}
+            speedFactor={speedFactor}
+            onSpeedFactorChange={setSpeedFactor}
+            cachePolicy={cachePolicy}
+            onCachePolicyChange={setCachePolicy}
+            generation={generation}
+            onGenerationChange={setGeneration}
+          />
+          <RunPanel
+            deploymentId={deployment.deploymentId}
+            createPayload={createPayload}
+            canGenerate={script.trim().length > 0}
+            diagnostics={legacyDiagnostics}
+          />
+        </>
       }
-      runPanel={
-        <RunPanel
-          deploymentId={deployment.deploymentId}
-          createPayload={createPayload}
-          canGenerate={script.trim().length > 0}
-          diagnostics={diagnostics}
-        />
+      recentRunsSection={
+        <RecentRuns runs={runs} deploymentId={deployment.deploymentId} />
       }
-      historyPanel={<HistoryPanel runs={runs} deploymentId={deployment.deploymentId} />}
     />
   );
+}
+
+interface ScriptSectionProps {
+  quickMode: boolean;
+  onToggleQuickMode: (v: boolean) => void;
+  deployment: Deployment;
+  script: string;
+  onScriptChange: (v: string) => void;
+  outputFormat: OutputFormat;
+  mappingsByLower: Map<string, CharacterMapping>;
+}
+
+function ScriptSection({
+  quickMode,
+  onToggleQuickMode,
+  deployment,
+  script,
+  onScriptChange,
+  outputFormat,
+  mappingsByLower,
+}: ScriptSectionProps): JSX.Element {
+  const charCount = script.length;
+  const wordCount = script.trim() ? script.trim().split(/\s+/).length : 0;
+  const lineCount = script.trim() ? script.trim().split(/\r?\n/).filter((l) => l.trim()).length : 0;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={quickMode}
+            onChange={(e) => onToggleQuickMode(e.target.checked)}
+          />
+          Quick mode (no character mapping required)
+        </label>
+        {quickMode && (
+          <QuickVoicePicker
+            deploymentId={deployment.deploymentId}
+            initialVoiceAssetId={deployment.defaultVoiceAssetId ?? null}
+          />
+        )}
+        <div
+          style={{
+            display: "inline-flex",
+            gap: 16,
+            fontFamily: "var(--font-mono)",
+            fontSize: 12,
+            color: "var(--on-surface-variant)",
+            marginLeft: "auto",
+          }}
+          aria-live="polite"
+        >
+          <span>
+            <strong style={{ color: "var(--accent)", fontFamily: "var(--font-mono)" }}>
+              {charCount.toString().padStart(3, "0")}
+            </strong>{" "}
+            chars
+          </span>
+          <span>
+            <strong style={{ color: "var(--accent)", fontFamily: "var(--font-mono)" }}>
+              {lineCount.toString().padStart(2, "0")}
+            </strong>{" "}
+            lines
+          </span>
+          <span>
+            <strong style={{ color: "var(--accent)", fontFamily: "var(--font-mono)" }}>
+              {wordCount.toString().padStart(3, "0")}
+            </strong>{" "}
+            words
+          </span>
+        </div>
+      </div>
+      <ScriptEditor
+        value={script}
+        onChange={onScriptChange}
+        outputFormat={outputFormat}
+        mappings={mappingsByLower}
+        deploymentId={deployment.deploymentId}
+      />
+      <ScriptSyntaxLegend />
+    </div>
+  );
+}
+
+function ScriptSyntaxLegend(): JSX.Element {
+  return (
+    <ul
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 16,
+        padding: 0,
+        margin: 0,
+        listStyle: "none",
+        fontFamily: "var(--font-mono)",
+        fontSize: 11,
+        color: "var(--on-surface-variant)",
+      }}
+    >
+      <li>
+        <code style={{ color: "var(--accent)" }}>[Char]</code> plain line
+      </li>
+      <li>
+        <code style={{ color: "var(--accent)" }}>[Char|emotion_vector:happy=0.7]</code> per-line vector
+      </li>
+      <li>
+        <code style={{ color: "var(--secondary)" }}>[Char|qwen:warm]</code> AI prompt mapping
+      </li>
+      <li>
+        <code style={{ color: "var(--tertiary)" }}>[Char|preset:Bittersweet]</code> saved preset
+      </li>
+      <li>
+        <code style={{ color: "var(--acid-green)" }}>[Char|audio:slow_breath.wav]</code> audio reference
+      </li>
+    </ul>
+  );
+}
+
+interface CastSectionStubProps {
+  characters: readonly string[];
+  characterColors: Record<string, string>;
+  lineCounts: Record<string, number>;
+  mappingsByLower: Map<string, CharacterMapping>;
+  unmappedCount: number;
+}
+
+// Retained for reference; the live cast section uses CastSection + CastRow now.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _CastSectionStub({
+  characters,
+  characterColors,
+  lineCounts,
+  mappingsByLower,
+  unmappedCount,
+}: CastSectionStubProps): JSX.Element {
+  if (characters.length === 0) {
+    return (
+      <p style={{ margin: 0, color: "var(--on-surface-variant)" }}>
+        Add at least one tagged dialogue line to populate the cast.
+      </p>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div
+        style={{
+          display: "inline-flex",
+          alignSelf: "flex-start",
+          padding: "4px 12px",
+          borderRadius: 999,
+          background:
+            unmappedCount > 0
+              ? "color-mix(in oklab, var(--tertiary) 14%, transparent)"
+              : "color-mix(in oklab, var(--acid-green) 14%, transparent)",
+          color: unmappedCount > 0 ? "var(--tertiary)" : "var(--acid-green)",
+          fontFamily: "var(--font-mono)",
+          fontSize: 11,
+          textTransform: "uppercase",
+          letterSpacing: "0.18em",
+        }}
+      >
+        {unmappedCount > 0 ? `${unmappedCount} unmapped` : "All mapped"}
+      </div>
+      <ul style={{ display: "flex", flexDirection: "column", gap: 8, margin: 0, padding: 0, listStyle: "none" }}>
+        {characters.map((name) => {
+          const mapping = mappingsByLower.get(name.toLowerCase());
+          const color = characterColors[name];
+          return (
+            <li
+              key={name}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "auto 1fr auto",
+                alignItems: "center",
+                gap: 16,
+                padding: "12px 16px",
+                borderRadius: 10,
+                background: "var(--surface)",
+              }}
+            >
+              <span
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 999,
+                  background: `color-mix(in oklab, ${color} 22%, transparent)`,
+                  color,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontFamily: "var(--font-display)",
+                  fontWeight: 700,
+                  fontSize: 14,
+                }}
+              >
+                {name[0]?.toUpperCase() ?? "?"}
+              </span>
+              <span>
+                <span style={{ color, fontWeight: 600, fontFamily: "var(--font-display)" }}>{name}</span>
+                <span style={{ marginLeft: 8, color: "var(--on-surface-variant)", fontSize: 12, fontFamily: "var(--font-mono)" }}>
+                  {lineCounts[name] ?? 0} lines
+                </span>
+              </span>
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.18em",
+                  color: mapping ? "var(--acid-green)" : "var(--tertiary)",
+                }}
+              >
+                {mapping ? "Mapped" : "Unmapped"}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+interface BuildDiagnosticsArgs {
+  script: string;
+  quickMode: boolean;
+  defaultVoiceAssetId: string | null | undefined;
+  characters: readonly string[];
+  unmappedCount: number;
+  globalEmotion: GlobalEmotion;
+  performance: PerformanceSlidersValue;
+}
+
+function buildDiagnostics({
+  script,
+  quickMode,
+  defaultVoiceAssetId,
+  characters,
+  unmappedCount,
+  globalEmotion,
+  performance,
+}: BuildDiagnosticsArgs): PreFlightCheck[] {
+  const checks: PreFlightCheck[] = [];
+  const trimmed = script.trim();
+  if (!trimmed) {
+    checks.push({ id: "script", status: "warn", label: "Script", detail: "empty" });
+  } else {
+    const lineCount = trimmed.split(/\r?\n/).filter((l) => l.trim()).length;
+    checks.push({
+      id: "script",
+      status: "ok",
+      label: "Script",
+      detail: `${lineCount} lines · ${trimmed.length} chars`,
+    });
+  }
+
+  if (quickMode) {
+    checks.push({
+      id: "voice",
+      status: defaultVoiceAssetId ? "ok" : "warn",
+      label: "Quick voice",
+      detail: defaultVoiceAssetId ? "default voice set" : "no default voice",
+    });
+  } else if (characters.length === 0) {
+    checks.push({ id: "cast", status: "info", label: "Cast", detail: "no characters detected" });
+  } else if (unmappedCount === 0) {
+    checks.push({ id: "cast", status: "ok", label: "Cast", detail: `${characters.length} mapped` });
+  } else {
+    checks.push({
+      id: "cast",
+      status: "warn",
+      label: "Cast",
+      detail: `${unmappedCount} unmapped`,
+    });
+  }
+
+  if (globalEmotion.mode === "qwen_template" && !globalEmotion.qwenTemplate?.trim()) {
+    checks.push({ id: "emotion", status: "warn", label: "Emotion", detail: "Qwen template empty" });
+  } else if (globalEmotion.mode === "emotion_vector") {
+    const v = globalEmotion.vector;
+    const hasNonZero = Array.isArray(v) && v.some((n) => Math.abs(n) > 0.01);
+    checks.push({
+      id: "emotion",
+      status: hasNonZero ? "ok" : "info",
+      label: "Emotion",
+      detail: hasNonZero ? "8-axis vector" : "neutral vector",
+    });
+  } else if (globalEmotion.mode === "audio_ref") {
+    checks.push({ id: "emotion", status: "ok", label: "Emotion", detail: "audio reference" });
+  } else {
+    checks.push({ id: "emotion", status: "info", label: "Emotion", detail: "neutral" });
+  }
+
+  checks.push({
+    id: "performance",
+    status: "info",
+    label: "Performance",
+    detail: `intensity ${Math.round(performance.intensity * 100)}% · pace ${performance.pace.toFixed(2)}× · pitch ${performance.pitchSt >= 0 ? "+" : ""}${performance.pitchSt.toFixed(1)}st`,
+  });
+
+  return checks;
 }

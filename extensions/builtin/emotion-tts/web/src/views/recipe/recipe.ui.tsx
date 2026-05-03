@@ -1,19 +1,18 @@
 import type { ReactNode } from "react";
 import * as css from "./recipe.css";
-import { sectionLabel } from "../../components/section_label.css";
 import { Banner } from "../../components/banner";
-import { Panel } from "../../components/panel";
 import type { Deployment } from "../../services/deployments_client";
 import type { RecipeField } from "../../services/workflows_client";
 
 export interface RecipeUiProps {
   deployment: Deployment;
-  header: ReactNode;
-  scriptEditor: ReactNode;
-  emotionPanel: ReactNode;
-  settingsPanel: ReactNode;
-  runPanel: ReactNode;
-  historyPanel: ReactNode;
+  hero: ReactNode;
+  scriptSection: ReactNode;
+  parsedDialogueSection: ReactNode;
+  castSection: ReactNode;
+  emotionSection: ReactNode;
+  performanceSection: ReactNode;
+  recentRunsSection: ReactNode;
   workflowCustomised?: boolean;
   unmappableFields?: RecipeField[];
 }
@@ -24,9 +23,16 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
 
   return (
     <div className={css.shell}>
-      <header className={css.deploymentHeader}>
-        <h1 className={css.deploymentTitle}>{props.deployment.displayName}</h1>
-        {props.header}
+      <header className={css.heroBlock}>
+        <div className={css.heroEyebrow}>EmotionTTS · Recipe Studio</div>
+        <div className={css.heroTopRow}>
+          <h1 className={css.heroTitle}>{props.deployment.displayName}</h1>
+        </div>
+        <p className={css.heroLede}>
+          Author the script, cast the voices, sculpt the emotion, and modulate every utterance —
+          all from a single screen, with cache-bound previews and a non-destructive edit chain.
+        </p>
+        {props.hero}
       </header>
       {customised && (
         <Banner severity="warning">
@@ -39,41 +45,82 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
           </a>
         </Banner>
       )}
-      <div className={css.leftColumn}>
-        <Panel aria-labelledby="recipe-section-script">
-          <h2 id="recipe-section-script" className={sectionLabel}>
-            01 / Script
-          </h2>
-          {props.scriptEditor}
-        </Panel>
-        <Panel aria-labelledby="recipe-section-settings">
-          <h2 id="recipe-section-settings" className={sectionLabel}>
-            02 / Settings
-          </h2>
-          {props.settingsPanel}
-        </Panel>
-      </div>
-      <div className={css.rightColumn}>
-        {/* Run sits above the fold so Generate is always reachable. */}
-        <Panel aria-labelledby="recipe-section-run">
-          <h2 id="recipe-section-run" className={sectionLabel}>
-            03 / Run
-          </h2>
-          {props.runPanel}
-        </Panel>
-        <Panel aria-labelledby="recipe-section-emotion">
-          <h2 id="recipe-section-emotion" className={sectionLabel}>
-            04 / Emotion
-          </h2>
-          {props.emotionPanel}
-        </Panel>
-        <Panel aria-labelledby="recipe-section-history">
-          <h2 id="recipe-section-history" className={sectionLabel}>
-            05 / Recent runs
-          </h2>
-          {props.historyPanel}
-        </Panel>
+      <div className={css.sectionStack}>
+        <RecipeSection
+          number="01"
+          title="Script"
+          id="recipe-section-script"
+          variant="default"
+        >
+          {props.scriptSection}
+        </RecipeSection>
+        <RecipeSection
+          number="02"
+          title="Parsed dialogue"
+          id="recipe-section-parsed"
+          variant="default"
+        >
+          {props.parsedDialogueSection}
+        </RecipeSection>
+        <RecipeSection
+          number="03"
+          title="Cast"
+          id="recipe-section-cast"
+          variant="default"
+        >
+          {props.castSection}
+        </RecipeSection>
+        <RecipeSection
+          number="04"
+          title="Emotion"
+          id="recipe-section-emotion"
+          variant="split"
+        >
+          {props.emotionSection}
+        </RecipeSection>
+        <RecipeSection
+          number="05"
+          title="Performance"
+          id="recipe-section-performance"
+          variant="default"
+        >
+          {props.performanceSection}
+        </RecipeSection>
+        <RecipeSection
+          number="06"
+          title="Recent runs"
+          id="recipe-section-runs"
+          variant="default"
+        >
+          {props.recentRunsSection}
+        </RecipeSection>
       </div>
     </div>
+  );
+}
+
+interface RecipeSectionProps {
+  number: string;
+  title: string;
+  id: string;
+  variant: "default" | "split";
+  children: ReactNode;
+}
+
+function RecipeSection({ number, title, id, variant, children }: RecipeSectionProps): JSX.Element {
+  return (
+    <section className={css.section} aria-labelledby={id}>
+      <header className={css.sectionHeader}>
+        <div>
+          <div className={css.sectionEyebrow}>
+            {number} / {title}
+          </div>
+          <h2 id={id} className={css.sectionTitle}>
+            {title}
+          </h2>
+        </div>
+      </header>
+      <div className={variant === "split" ? css.splitBody : css.sectionBody}>{children}</div>
+    </section>
   );
 }

@@ -103,6 +103,23 @@ def _dispatch(
         return ops.fade_in(samples, sr, int(op["duration_ms"])), measured_lufs
     if mode == "fade_out":
         return ops.fade_out(samples, sr, int(op["duration_ms"])), measured_lufs
+    if mode == "gain":
+        return ops.gain(samples, sr, float(op["gain_db"])), measured_lufs
+    if mode == "eq3":
+        return (
+            ops.eq3(
+                samples,
+                sr,
+                float(op["low_db"]),
+                float(op["mid_db"]),
+                float(op["high_db"]),
+            ),
+            measured_lufs,
+        )
+    if mode == "pitch_shift":
+        return ops.pitch_shift(samples, sr, float(op["semitones"])), measured_lufs
+    if mode == "silence_strip":
+        return ops.silence_strip(samples, sr, float(op["threshold_db"])), measured_lufs
     raise ValueError(f"unhandled op mode: {mode!r}")
 
 
