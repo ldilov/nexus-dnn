@@ -65,15 +65,57 @@ runtime gaps surfaced during T120 / T100 verification:
 - 4 a11y test failures in `models-search.a11y.spec.ts` need a live
   host backend to render variant rows (HTTP 500 fallback when the
   API is offline). Not fixable without a backend; tracked as D14.
-- T078b real `LeaseBackedStreamProvider` impl deferred — current
-  `NullStreamProvider` exposes the documented 503 + CTA payload, so
-  the endpoint family is wired. Real lease-backed impl is the only
-  Phase 8 backend gap. Tracked as D15.
-- Audit-script (`pnpm audit:redesign`) reports 851 advisory findings
-  on the redesign branch (px breakpoints, hex layout decoratives,
-  legacy catalog/). Per FR-051a these checks are advisory; SC-003
-  "zero un-suppressed" target needs token-migration work that
-  exceeds redesign scope. Tracked as D16.
+- T078b real `LeaseBackedStreamProvider` impl deferred. **Architectural
+  re-scope 2026-05-03**: the original carve-out note framed this as
+  "the trait abstraction is in place; only the impl is missing —
+  multi-hour scope". Investigation during the spec 037 close-out
+  found the scope is materially larger:
+    1. The lease layer is JSON-RPC stdio (`send_rpc` +
+       `subscribe_notifications`) — there is no streaming
+       text-completion JSON-RPC contract anywhere in this codebase.
+    2. The `local-llm` worker registers ZERO inference RPC methods
+       (only lifecycle / monitoring / profile / runtime install).
+       Inference happens via a side-band HTTP server on a port the
+       worker exposes; that knowledge lives entirely inside the LLM
+       extension's `model_load_registry`.
+    3. `LeaseManager` has no capability filter — only install-id
+       lookup. There is no metadata on installs/leases describing
+       "supports text completion ≥ 2k context".
+  A real `LeaseBackedStreamProvider` therefore requires a new
+  cross-extension contract:
+    - JSON-RPC streaming methods (e.g. `text.complete.{start,cancel}`)
+      + matching `LeaseNotification` shapes (`text.complete.{token,done}`).
+    - Worker-side handlers for those methods in `local-llm` (and any
+      other backend that wants to participate).
+    - Capability metadata on installs/leases.
+    - `LeaseManager.acquire_with_capability` API.
+    - The `LeaseBackedStreamProvider` impl itself.
+  This is a multi-day, multi-spec design — not a single follow-up
+  sprint task. Re-tracked as a future RFC. The current
+  `NullStreamProvider` correctly returns the documented 503 + CTA so
+  the endpoint family is wired and the empty-state branch latency
+  passes its SC-011 half. Tracked as **D15** (architectural rework
+  required, not a simple impl swap).
+- ~~Audit-script (`pnpm audit:redesign`) reports 851 advisory findings~~
+  **Closed 2026-05-03 (was D16)**: T099 ran end-to-end as a 7-task
+  subagent-driven sprint. The audit count grew to 2018 over the
+  intervening week (more files, not regressions) and was driven to
+  **0 un-suppressed findings**. Commits `0e13ac6..c89933d` (10
+  commits, all on branch tip). Approach: T1 fixed `isTokenFile` regex
+  misclassification (`tokens[^/]*\.X` → `(?:^|\/)tokens\/...|tokens[^/]*\.X`)
+  which exempted `tokens/primitives.ts` correctly (-111 false
+  positives); T2-T5 token-migrated the 5 biggest host offenders
+  (~700 findings closed via `vars.X.Y` substitution); T6
+  bulk-annotated the 115-file long tail with category-specific
+  reasons from a documented taxonomy (`px — fixed layout breakpoint`,
+  `px — node graph layout primitive (xy-flow contract)`,
+  `hex — neon decorative palette per design lang`, etc.). Two-stage
+  code review (spec compliance + code quality) caught 5 substantive
+  issues, all fixed before merge (density-token misuse for fontSize,
+  toggle clip in compact mode, tokenizable fontSizes mistakenly
+  annotated, log/select padding -4/-6px regression, exact-match
+  radii annotated where tokens existed). Final state: 0 findings,
+  typecheck clean, no value shifts >2px.
 - Lighthouse perf baseline (T118) + suggestion-stream P95 (T119)
   need lab infra (Lighthouse CI + a leasable backend). Tracked as D17.
 
