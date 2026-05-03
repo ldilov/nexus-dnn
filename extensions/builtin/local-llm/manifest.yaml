@@ -26,6 +26,18 @@ runtime_dependencies:
       - "cuda12"
       - "cuda13"
 
+backend_runtimes:
+  - runtime_id: "nexus.local-llm.completions"
+    display_name: "Local LLM — Text Completion"
+    family: "python"
+    transport: "stdio"
+    worker_entrypoint: "backends/llamacpp/completions_worker.py"
+    version_manifest: "backends/llamacpp/versions.yaml"
+    capability_tags:
+      - "text-completion"
+    supported_roles:
+      - "draft-suggestions"
+
 capabilities:
   - "filesystem.read"
   - "filesystem.write"
