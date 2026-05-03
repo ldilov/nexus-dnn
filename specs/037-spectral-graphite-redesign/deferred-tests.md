@@ -125,6 +125,24 @@ runtime gaps surfaced during T120 / T100 verification:
   (4) warm-cache P95 capture (blocks D17/T119). The protocol is now
   fully wired host-side AND worker-side; Phase C is purely operational.
   Tracked as **D15 / Phase C** going forward.
+  **2026-05-03 finalization gap-pass (commit follow-up)**: closed three
+  loose ends surfaced by `/speckit-analyze` post-Phase B:
+  (G1) added `extensions/builtin/local-llm/worker/pyproject.toml`
+  declaring runtime + dev (pytest, pytest-asyncio) deps so the spec-032
+  install pipeline's `install_deps` phase has a valid `uv sync` target;
+  (G5) created dedicated
+  `extensions/builtin/local-llm/backends/llamacpp/completions_versions.yaml`
+  and repointed the manifest's `version_manifest` field at it (was
+  reusing the llama.cpp binary release manifest semantically — now
+  separated; placeholder asset URLs documented as Phase C
+  packaging-step output);
+  (G2) added `.github/workflows/local-llm-pytest.yml` that runs the
+  20-test pytest suite on changes under `extensions/builtin/local-llm/**`,
+  `sdk/python/**`, and the canonical Rust contract module — plus a
+  redundant grep-step that asserts wire-format token strings exist in
+  BOTH source files, catching renames that the contract-pin tests
+  would also catch but providing a faster-to-diagnose CI signal.
+  Phase B + finalization complete; Phase C still operational.
 - ~~Audit-script (`pnpm audit:redesign`) reports 851 advisory findings~~
   **Closed 2026-05-03 (was D16)**: T099 ran end-to-end as a 7-task
   subagent-driven sprint. The audit count grew to 2018 over the

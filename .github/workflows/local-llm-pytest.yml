@@ -1,0 +1,79 @@
+name: local-llm-pytest
+
+# Spec 037 Phase B (T078b) — exercises the local-llm completions
+# worker's contract-shape pytest suite. The 20 tests pin wire-format
+# constants (capability tag, JSON-RPC method names, notification names,
+# error codes) against the canonical Rust contract module
+# `crates/nexus-backend-runtimes/src/generic/leases/text_completion.rs`
+# and verify the worker's producer / cancel / error mapping behavior.
+#
+# Without this CI gate, the Python ↔ Rust wire format could silently
+# drift on the first divergence — tokens would still flow but error
+# notifications would surface as generic `internal` instead of the
+# typed code the host expects.
+
+on:
+  pull_request:
+    paths:
+      - "extensions/builtin/local-llm/**"
+      - "sdk/python/**"
+      - "crates/nexus-backend-runtimes/src/generic/leases/text_completion.rs"
+      - ".github/workflows/local-llm-pytest.yml"
+  push:
+    branches: [main]
+    paths:
+      - "extensions/builtin/local-llm/**"
+      - "sdk/python/**"
+      - "crates/nexus-backend-runtimes/src/generic/leases/text_completion.rs"
+
+jobs:
+  pytest:
+    name: local-llm completions worker pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pytest + pytest-asyncio
+        # Match the dev-extras declared in
+        # extensions/builtin/local-llm/worker/pyproject.toml. Pinned by
+        # major version to keep the test runner stable; tighten if a
+        # specific feature dependency surfaces.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "pytest>=8.0" "pytest-asyncio>=0.23"
+
+      - name: Run pytest
+        # `--asyncio-mode=auto` matches the local invocation and the
+        # existing `[tool.pytest.ini_options]` convention used elsewhere
+        # in the repo. The conftest.py in tests/ wires sys.path so the
+        # in-repo nexus_sdk package is importable without a venv install.
+        run: |
+          python -m pytest extensions/builtin/local-llm/tests/ \
+            -v \
+            --asyncio-mode=auto
+
+      - name: Verify wire-format pins against Rust contract
+        # Independent guard — greps the Rust contract source for the
+        # exact constant strings the Python worker pins against. If
+        # someone renames `text.complete.start` in the Rust source
+        # without updating the Python side, the contract pin tests
+        # fail; this step provides a redundant signal that's easy to
+        # diff in the CI log.
+        run: |
+          set -e
+          for token in "text-completion" "text.complete.start" "text.complete.cancel" \
+                       "text.complete.token" "text.complete.done" "text.complete.error" \
+                       "model_unavailable" "prompt_too_long" "lease_revoked"; do
+            grep -q "$token" \
+              crates/nexus-backend-runtimes/src/generic/leases/text_completion.rs \
+              || (echo "Rust contract source missing canonical token: $token" && exit 1)
+            grep -q "$token" \
+              extensions/builtin/local-llm/backends/llamacpp/completions_worker.py \
+              || (echo "Python worker missing canonical token: $token" && exit 1)
+          done
+          echo "All canonical contract tokens present in both Rust + Python sources."
