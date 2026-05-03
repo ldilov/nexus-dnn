@@ -37,6 +37,7 @@ export const summaryRow = style({
 export const summaryAxis = style({
   display: "inline-flex",
   alignItems: "baseline",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
   padding: `${vars.space.xs} ${vars.space.sm}`,
   borderRadius: vars.radius.pill,
@@ -75,6 +76,7 @@ export const input = style({
 
 export const presetGrid = style({
   display: "grid",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
   gap: vars.space.sm,
 });

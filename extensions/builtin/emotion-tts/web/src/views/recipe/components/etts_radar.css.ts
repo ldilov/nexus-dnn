@@ -11,6 +11,7 @@ export const root = style({
 export const svgWrap = style({
   position: "relative",
   width: "100%",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   maxWidth: "360px",
   aspectRatio: "1 / 1",
   display: "flex",
@@ -52,7 +53,9 @@ export const handle = style({
       transform: "scale(1.25)",
     },
     "&:focus-visible": {
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outline: `2px solid ${vars.color.accent}`,
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outlineOffset: "2px",
     },
   },

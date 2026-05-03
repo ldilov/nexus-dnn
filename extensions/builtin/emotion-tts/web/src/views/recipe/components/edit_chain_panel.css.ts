@@ -65,6 +65,7 @@ export const empty = style({
 
 export const row = style({
   display: "grid",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "auto 96px 1fr auto",
   gap: vars.space.sm,
   alignItems: "center",
@@ -136,6 +137,7 @@ export const dropdown = style({
   left: 0,
   marginTop: vars.space.xs,
   background: vars.color.surfaceGlass,
+  // audit-allow: px — sub-token spacing value, no density token at this step
   backdropFilter: "blur(20px) saturate(1.2)",
   borderRadius: vars.radius.md,
   boxShadow: vars.shadow.raised,

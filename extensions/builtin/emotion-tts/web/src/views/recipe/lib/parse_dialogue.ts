@@ -13,11 +13,17 @@ export interface ParsedLine {
 }
 
 export const CHARACTER_PALETTE: readonly string[] = [
+  // audit-allow: hex — neon decorative palette per design lang
   "#ba9eff",
+  // audit-allow: hex — neon decorative palette per design lang
   "#9093ff",
+  // audit-allow: hex — neon decorative palette per design lang
   "#ff8439",
+  // audit-allow: hex — neon decorative palette per design lang
   "#22c55e",
+  // audit-allow: hex — neon decorative palette per design lang
   "#ffd34a",
+  // audit-allow: hex — neon decorative palette per design lang
   "#ff7aa8",
 ];
 
