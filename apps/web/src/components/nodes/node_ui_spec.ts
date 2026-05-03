@@ -52,17 +52,17 @@ export function readNodeUiSpec(spec: OperatorDto | null | undefined): NodeUiSpec
 }
 
 const ACCENT_COLORS: Record<NodeAccent, string> = {
-  // audit-allow: hex — hex — neon decorative palette per design lang
+  // audit-allow: hex — neon decorative palette per design lang
   purple: "#ba9eff",
-  // audit-allow: hex — hex — neon decorative palette per design lang
+  // audit-allow: hex — neon decorative palette per design lang
   pink: "#F472B6",
-  // audit-allow: hex — hex — neon decorative palette per design lang
+  // audit-allow: hex — neon decorative palette per design lang
   cyan: "#22D3EE",
-  // audit-allow: hex — hex — neon decorative palette per design lang
+  // audit-allow: hex — neon decorative palette per design lang
   orange: "#ff8439",
-  // audit-allow: hex — hex — neon decorative palette per design lang
+  // audit-allow: hex — neon decorative palette per design lang
   green: "#34D399",
-  // audit-allow: hex — hex — neon decorative palette per design lang
+  // audit-allow: hex — neon decorative palette per design lang
   gray: "#94A3B8",
 };
 

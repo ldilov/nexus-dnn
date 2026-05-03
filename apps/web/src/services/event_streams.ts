@@ -157,7 +157,7 @@ export function subscribeSessionEvents(
   return openReconnectingSocket<BackendEventRecord>(
     () =>
       `${wsScheme()}//${wsHost()}/api/v1/backends/events?family=${encodeURIComponent(
-        // audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
+        // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
         "extension.nexus.local-llm",
       )}`,
     (record) => {

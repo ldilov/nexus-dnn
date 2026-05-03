@@ -15,13 +15,13 @@ export const badgeRecipe = recipe({
   variants: {
     size: {
       sm: {
-        // audit-allow: px — px — sub-token spacing value, no density token at this step
+        // audit-allow: px — sub-token spacing value, no density token at this step
         height: "20px",
         padding: `0 ${vars.space.insetSm}`,
         fontSize: vars.font.size.caption,
       },
       md: {
-        // audit-allow: px — px — sub-token spacing value, no density token at this step
+        // audit-allow: px — sub-token spacing value, no density token at this step
         height: "24px",
         padding: `0 ${vars.space.insetMd}`,
         fontSize: vars.font.size.bodySm,
@@ -92,9 +92,9 @@ export const badgeRecipe = recipe({
 
 export const dot = recipe({
   base: {
-    // audit-allow: px — px — below minimum token granularity (sub-10px)
+    // audit-allow: px — below minimum token granularity (sub-10px)
     width: "6px",
-    // audit-allow: px — px — below minimum token granularity (sub-10px)
+    // audit-allow: px — below minimum token granularity (sub-10px)
     height: "6px",
     borderRadius: vars.radius.full,
     flexShrink: 0,

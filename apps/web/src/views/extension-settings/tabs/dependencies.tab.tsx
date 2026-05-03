@@ -25,7 +25,7 @@ export interface DependenciesTabProps {
 
 export function DependenciesTab({ extensionId }: DependenciesTabProps) {
   const swrKey = `/extensions/${extensionId}/dependencies`;
-  // audit-allow: io-boundary — io-boundary — direct fetch outside services/* layer, scoped to feature
+  // audit-allow: io-boundary — direct fetch outside services/* layer, scoped to feature
   const { data, error, isLoading, mutate } = useSWR(swrKey, () =>
     fetchDependencies(extensionId),
   );

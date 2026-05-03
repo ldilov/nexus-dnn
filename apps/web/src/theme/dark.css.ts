@@ -30,7 +30,7 @@ export const darkTheme = createTheme(vars, {
       secondaryContainer: color.secondary.container,
       tertiary: color.tertiary.base,
       tertiaryDim: color.tertiary.dim,
-      // audit-allow: hex — hex — neon decorative palette per design lang
+      // audit-allow: hex — neon decorative palette per design lang
       cyan: "#06B6D4",
       accent: accentMode.primary.accent,
       accentDim: accentMode.primary.accentDim,
@@ -45,7 +45,7 @@ export const darkTheme = createTheme(vars, {
       created: color.outline.base,
       planning: color.primary.base,
       running: color.primary.base,
-      // audit-allow: hex — hex — neon decorative palette per design lang
+      // audit-allow: hex — neon decorative palette per design lang
       cacheHit: "#06B6D4",
       completed: color.acidGreen,
       paused: color.warning.base,
@@ -60,10 +60,10 @@ export const darkTheme = createTheme(vars, {
       model: color.modality.model,
       system: color.modality.system,
     },
-    // audit-allow: hex — hex — neon decorative palette per design lang
+    // audit-allow: hex — neon decorative palette per design lang
     success: { base: color.acidGreen, text: "#BBF7D0" },
     warning: { base: color.warning.base, text: color.warning.text },
-    // audit-allow: hex — hex — neon decorative palette per design lang
+    // audit-allow: hex — neon decorative palette per design lang
     error: { base: color.error.base, text: "#FECACA" },
     scrim: "rgba(0, 0, 0, 0.55)",
     shadowElevation: "rgba(0, 0, 0, 0.4)",
@@ -120,19 +120,19 @@ export const darkTheme = createTheme(vars, {
     full: radii.full,
   },
   control: {
-    // audit-allow: px — px — sub-token spacing value, no density token at this step
+    // audit-allow: px — sub-token spacing value, no density token at this step
     heightSm: "28px",
-    // audit-allow: px — px — sub-token spacing value, no density token at this step
+    // audit-allow: px — sub-token spacing value, no density token at this step
     heightMd: "32px",
-    // audit-allow: px — px — sub-token spacing value, no density token at this step
+    // audit-allow: px — sub-token spacing value, no density token at this step
     heightLg: "40px",
   },
   icon: {
-    // audit-allow: px — px — sub-token spacing value, no density token at this step
+    // audit-allow: px — sub-token spacing value, no density token at this step
     sm: "14px",
-    // audit-allow: px — px — sub-token spacing value, no density token at this step
+    // audit-allow: px — sub-token spacing value, no density token at this step
     md: "16px",
-    // audit-allow: px — px — sub-token spacing value, no density token at this step
+    // audit-allow: px — sub-token spacing value, no density token at this step
     lg: "20px",
   },
   motion: {
@@ -146,13 +146,13 @@ export const darkTheme = createTheme(vars, {
     easingExit: motion.easing.exit,
   },
   shadow: {
-    // audit-allow: px — px — below minimum token granularity (sub-10px)
+    // audit-allow: px — below minimum token granularity (sub-10px)
     sm: "0 2px 4px rgba(0,0,0,0.4)",
-    // audit-allow: px — px — below minimum token granularity (sub-10px)
+    // audit-allow: px — below minimum token granularity (sub-10px)
     md: "0 4px 12px rgba(0,0,0,0.5)",
-    // audit-allow: px — px — sub-token spacing value, no density token at this step
+    // audit-allow: px — sub-token spacing value, no density token at this step
     lg: "0 12px 32px rgba(0,0,0,0.6)",
-    // audit-allow: px — px — sub-token spacing value, no density token at this step
+    // audit-allow: px — sub-token spacing value, no density token at this step
     glowAccent: `0 0 24px ${accentMode.primary.accentGlow}`,
   },
   density: {

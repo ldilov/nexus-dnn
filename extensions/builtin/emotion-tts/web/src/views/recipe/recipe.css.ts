@@ -3,18 +3,18 @@ import { vars } from "../../theme/tokens.css";
 
 export const shell = style({
   display: "grid",
-  // audit-allow: px — px — modal/dialog/drawer width per UX spec
+  // audit-allow: px — modal/dialog/drawer width per UX spec
   gridTemplateColumns: "minmax(0, 1.3fr) minmax(340px, 0.7fr)",
   gap: vars.space.lg,
   padding: vars.space.lg,
   minHeight: "100vh",
   background: vars.color.surface,
-  // audit-allow: px — px — fixed layout breakpoint
+  // audit-allow: px — fixed layout breakpoint
   backgroundImage: `radial-gradient(900px 520px at 88% -10%, color-mix(in oklab, ${vars.color.accent} 14%, transparent), transparent 62%), radial-gradient(680px 480px at -10% 110%, color-mix(in oklab, ${vars.color.secondary} 8%, transparent), transparent 60%)`,
   color: vars.color.text,
   fontFamily: vars.font.body,
   "@media": {
-    // audit-allow: px — px — fixed layout breakpoint
+    // audit-allow: px — fixed layout breakpoint
     "(max-width: 960px)": {
       gridTemplateColumns: "1fr",
     },
@@ -36,7 +36,7 @@ export const rightColumn = style({
   top: vars.space.md,
   alignSelf: "flex-start",
   "@media": {
-    // audit-allow: px — px — fixed layout breakpoint
+    // audit-allow: px — fixed layout breakpoint
     "(max-width: 960px)": {
       position: "static",
     },
@@ -65,7 +65,7 @@ export const deploymentTitle = style({
 export const scriptShell = style({
   position: "relative",
   width: "100%",
-  // audit-allow: px — px — modal/dialog/drawer width per UX spec
+  // audit-allow: px — modal/dialog/drawer width per UX spec
   minHeight: "360px",
   borderRadius: vars.radius.md,
   background: vars.color.surfaceMuted,
@@ -131,7 +131,7 @@ export const scriptText = style({
 export const scriptUnresolved = style({
   textDecoration: "underline wavy",
   textDecorationColor: vars.color.danger,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   textUnderlineOffset: "3px",
 });
 
@@ -164,11 +164,11 @@ export const filenameList = style({
   margin: 0,
   display: "flex",
   flexDirection: "column",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
   background: vars.color.surfaceMuted,
   borderRadius: vars.radius.sm,
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   maxHeight: "180px",
   overflowY: "auto",
 });

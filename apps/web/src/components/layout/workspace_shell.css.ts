@@ -26,7 +26,7 @@ export const toolbar = style({
   display: "flex",
   alignItems: "center",
   gap: vars.space.gapMd,
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   height: "48px",
   padding: `0 ${vars.space.insetLg}`,
   borderBottom: `1px solid ${vars.color.outline.variant}`,
@@ -37,10 +37,10 @@ export const toolbar = style({
 export const toolbarEyebrow = style({
   display: "inline-flex",
   alignItems: "center",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "8px",
   fontFamily: vars.font.code,
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   fontSize: "10px",
   fontWeight: 700,
   letterSpacing: "0.22em",
@@ -53,25 +53,25 @@ export const toolbarSpacer = style({ flex: 1 });
 export const toolbarActions = style({
   display: "flex",
   alignItems: "center",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "6px",
 });
 
 export const toolbarButton = style({
   display: "inline-flex",
   alignItems: "center",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "6px",
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   height: "32px",
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   padding: "0 12px",
   borderRadius: vars.radius.control,
   border: `1px solid ${vars.color.outline.variant}`,
   backgroundColor: "transparent",
   color: vars.color.text.secondary,
   fontFamily: vars.font.ui,
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   fontSize: "12px",
   fontWeight: 500,
   cursor: "pointer",
@@ -100,9 +100,9 @@ export const backdrop = style({
   position: "absolute",
   inset: 0,
   backgroundColor: "rgba(0, 0, 0, 0.45)",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   backdropFilter: "blur(4px)",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   WebkitBackdropFilter: "blur(4px)",
   zIndex: 10,
   animation: `${fadeIn} ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
@@ -123,7 +123,7 @@ export const drawer = style({
   display: "flex",
   flexDirection: "column",
   zIndex: 11,
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   boxShadow: "-24px 0 48px rgba(0, 0, 0, 0.45)",
   animation: `${slideIn} ${vars.motion.durationNormal} ${vars.motion.easingDefault}`,
   "@media": {
@@ -144,7 +144,7 @@ export const drawerHeader = style({
 
 export const drawerTitle = style({
   fontFamily: vars.font.headline,
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   fontSize: "16px",
   fontWeight: 600,
   letterSpacing: "-0.01em",
@@ -156,16 +156,16 @@ export const drawerCloseButton = style({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   width: "32px",
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   height: "32px",
   border: "none",
   borderRadius: vars.radius.control,
   backgroundColor: "transparent",
   color: vars.color.text.muted,
   cursor: "pointer",
-  // audit-allow: px — px — workspace shell scaffolding dimension
+  // audit-allow: px — workspace shell scaffolding dimension
   fontSize: "18px",
   transition: `color ${vars.motion.durationFast} ${vars.motion.easingDefault}, background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {

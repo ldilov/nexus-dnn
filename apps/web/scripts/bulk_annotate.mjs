@@ -24,35 +24,35 @@ console.log(`Processing ${findings.length} findings...`);
 // Reason taxonomy
 function getAnnotationReason(check, match, filePath) {
   if (check === "boundary") {
-    return "boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md";
+    return "grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md";
   }
   if (check === "io-boundary") {
-    return "io-boundary — direct fetch outside services/* layer, scoped to feature";
+    return "direct fetch outside services/* layer, scoped to feature";
   }
   if (check === "hex") {
     const h = match.toLowerCase();
-    if (h === "#000" || h === "#000000") return "hex — pure-black contrast anchor";
-    if (h === "#fff" || h === "#ffffff") return "hex — pure-white contrast anchor";
-    return "hex — neon decorative palette per design lang";
+    if (h === "#000" || h === "#000000") return "pure-black contrast anchor";
+    if (h === "#fff" || h === "#ffffff") return "pure-white contrast anchor";
+    return "neon decorative palette per design lang";
   }
   if (check === "px") {
     const val = parseInt(match);
-    if (val < 10) return "px — below minimum token granularity (sub-10px)";
+    if (val < 10) return "below minimum token granularity (sub-10px)";
     const BREAKPOINTS = new Set([320, 375, 440, 460, 480, 520, 560, 620, 640, 680, 720, 760, 768, 780, 800, 900, 960, 1024, 1080, 1100, 1200, 1279, 1280, 1400, 1440]);
-    if (BREAKPOINTS.has(val)) return "px — fixed layout breakpoint";
-    if (val === 999) return "px — sub-token spacing value, no density token at this step";
+    if (BREAKPOINTS.has(val)) return "fixed layout breakpoint";
+    if (val === 999) return "sub-token spacing value, no density token at this step";
     if (filePath.includes("node") || filePath.includes("canvas") || filePath.includes("graph") || filePath.includes("palette") || filePath.includes("operator_node") || filePath.includes("boundary_node") || filePath.includes("reroute_node") || filePath.includes("note_node") || filePath.includes("widget")) {
-      return "px — node graph layout primitive (xy-flow contract)";
+      return "node graph layout primitive (xy-flow contract)";
     }
     if (filePath.includes("shell") || filePath.includes("sidebar")) {
-      return "px — workspace shell scaffolding dimension";
+      return "workspace shell scaffolding dimension";
     }
     if (val >= 200 && (filePath.includes("modal") || filePath.includes("drawer") || filePath.includes("install_modal") || filePath.includes("catalog_shell") || filePath.includes("variant_picker") || filePath.includes("backend_detail") || filePath.includes("chat_surface") || filePath.includes("run_detail") || filePath.includes("mapping_editor") || filePath.includes("recipe.css") || filePath.includes("runtime_queue") || filePath.includes("deployments_index") || filePath.includes("recipe_catalog"))) {
-      return "px — modal/dialog/drawer width per UX spec";
+      return "modal/dialog/drawer width per UX spec";
     }
-    return "px — sub-token spacing value, no density token at this step";
+    return "sub-token spacing value, no density token at this step";
   }
-  return `${check} — design value outside current token contract`;
+  return "design value outside current token contract";
 }
 
 // Group findings by file

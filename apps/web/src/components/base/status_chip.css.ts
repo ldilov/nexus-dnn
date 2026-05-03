@@ -47,14 +47,14 @@ export const chipKind = styleVariants({
   ai: {
     background: `linear-gradient(135deg, ${vars.color.accent.secondary}40, ${vars.color.accent.secondary}10)`,
     color: vars.color.accent.secondary,
-    // audit-allow: px — px — sub-token spacing value, no density token at this step
+    // audit-allow: px — sub-token spacing value, no density token at this step
     boxShadow: `inset 0 0 0 1px ${vars.color.accent.secondary}40, 0 0 12px ${vars.color.accent.secondary}22`,
   },
 });
 
 globalStyle(`${chip}${chipKind.live} ${chipDot}`, {
   background: vars.color.success.base,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   boxShadow: `0 0 8px ${vars.color.success.base}55`,
 });
 

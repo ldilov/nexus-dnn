@@ -54,13 +54,13 @@ export const search = style({
   color: vars.color.onSurface,
   fontFamily: vars.font.ui,
   fontSize: vars.text.bodyM,
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   minWidth: "240px",
   selectors: {
     "&:focus-visible": {
-      // audit-allow: px — px — below minimum token granularity (sub-10px)
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outline: `2px solid ${vars.color.primary}`,
-      // audit-allow: px — px — below minimum token granularity (sub-10px)
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outlineOffset: "2px",
     },
   },
@@ -70,9 +70,9 @@ export const facetGroup = style({
   display: "inline-flex",
   background: vars.color.surfaceContainer,
   borderRadius: vars.radius.md,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   padding: "2px",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
 });
 
@@ -92,9 +92,9 @@ export const facetBtn = style({
     },
     "&:hover": { color: vars.color.onSurface },
     "&:focus-visible": {
-      // audit-allow: px — px — below minimum token granularity (sub-10px)
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outline: `2px solid ${vars.color.primary}`,
-      // audit-allow: px — px — below minimum token granularity (sub-10px)
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outlineOffset: "2px",
     },
   },
@@ -113,9 +113,9 @@ export const primaryCta = style({
   selectors: {
     "&:hover": { background: vars.color.primaryDim },
     "&:focus-visible": {
-      // audit-allow: px — px — below minimum token granularity (sub-10px)
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outline: `2px solid ${vars.color.primary}`,
-      // audit-allow: px — px — below minimum token granularity (sub-10px)
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outlineOffset: "2px",
     },
   },
@@ -137,7 +137,7 @@ export const secondaryCta = style({
 
 export const grid = style({
   display: "grid",
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
   gap: vars.space.lg,
 });
