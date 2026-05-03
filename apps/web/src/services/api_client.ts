@@ -412,9 +412,7 @@ export type DeploymentSummary = {
   readonly is_favorite: boolean;
   readonly created_at: string;
   readonly updated_at: string;
-  // Spec 019 T400 — primary source link of the current revision. Lets the
-  // flat deployments list resolve a module-provenance badge per row with
-  // zero extra round-trips. Both NULL on legacy rows predating the join.
+  // Primary source link of the current revision; null on legacy rows predating the join.
   readonly source_extension_id?: string | null;
   readonly source_workflow_id?: string | null;
 };
@@ -695,7 +693,7 @@ export function patchExtensionHyperparameters(
 }
 
 // =============================================================================
-// Spec 019 — Modules surface + ZIP install
+// Modules surface + ZIP install
 // =============================================================================
 
 export type ModuleIcon =
@@ -736,7 +734,6 @@ export interface ModuleSummary {
   default_model_binding_ref: string | null;
   deployments: DeploymentCounts;
   compatibility_summary: CompatibilitySummary;
-  // Spec 019 Instance-view redesign — hero + footer metadata.
   description?: string | null;
   publisher?: string | null;
   runtime_family?: string | null;

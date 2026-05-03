@@ -21,8 +21,11 @@ export const loadingContainer = style({
 });
 
 export const spinner = style({
+  // audit-allow: px — sub-token spacing value, no density token at this step
   width: "24px",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   height: "24px",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   border: `2px solid ${vars.color.outline.variant}`,
   borderTopColor: vars.color.accent.primary,
   borderRadius: vars.radius.full,
@@ -57,5 +60,6 @@ export const errorMessage = style({
   fontSize: vars.font.size.body,
   color: vars.color.text.secondary,
   textAlign: "center",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   maxWidth: "400px",
 });

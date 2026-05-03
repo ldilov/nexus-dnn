@@ -88,21 +88,30 @@ class BaseWorker:
     ) -> None:
         self._methods[method_name] = handler
 
+    def send_notification(self, method: str, params: dict[str, Any]) -> None:
+        """Emit one JSON-RPC 2.0 notification to the host.
+
+        Notifications are server-pushed messages with no `id` field; the
+        host's framer routes them through the lease NotificationFanout so
+        any number of subscribers can react. Use this for streaming
+        events that don't fit the request/response shape — e.g. token
+        deltas during a text-completion stream.
+        """
+        self._write_line(format_notification(method, params))
+
     def send_progress(self, request_id: str, percent: int, message: str) -> None:
-        notification = format_notification("progress", {
+        self.send_notification("progress", {
             "request_id": request_id,
             "percent": percent,
             "message": message,
         })
-        self._write_line(notification)
 
     def send_log(self, request_id: str, level: str, message: str) -> None:
-        notification = format_notification("log", {
+        self.send_notification("log", {
             "request_id": request_id,
             "level": level,
             "message": message,
         })
-        self._write_line(notification)
 
     def run(self) -> None:
         for line in sys.stdin:

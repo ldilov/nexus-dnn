@@ -14,6 +14,7 @@ use nexus_backend_runtimes::spawn::Spawner;
 use nexus_models_store::downloads::{DownloadOrchestrator, InstallMap};
 use sqlx::SqlitePool;
 
+use super::inference_cancel::InferenceCancelRegistry;
 use super::load_registry::ModelLoadRegistry;
 
 /// Bundle of host resources the chat handlers consume. All `Option`
@@ -29,6 +30,7 @@ pub struct ChatHandlerResources {
     pub backend_event_publisher: SharedPublisher,
     pub backend_event_bus: Arc<BackendEventBus>,
     pub model_load_registry: Arc<ModelLoadRegistry>,
+    pub inference_cancel_registry: Arc<InferenceCancelRegistry>,
 }
 
 impl ChatHandlerResources {
@@ -40,6 +42,7 @@ impl ChatHandlerResources {
         backend_event_publisher: SharedPublisher,
         backend_event_bus: Arc<BackendEventBus>,
         model_load_registry: Arc<ModelLoadRegistry>,
+        inference_cancel_registry: Arc<InferenceCancelRegistry>,
     ) -> Self {
         Self {
             pool,
@@ -49,6 +52,7 @@ impl ChatHandlerResources {
             backend_event_publisher,
             backend_event_bus,
             model_load_registry,
+            inference_cancel_registry,
         }
     }
 }

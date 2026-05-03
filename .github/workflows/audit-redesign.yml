@@ -1,0 +1,164 @@
+name: audit-redesign
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - "extensions/builtin/*/web/**"
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "extensions/builtin/*/web/**"
+
+# Spec 037 — FR-051a: Boundary check is REQUIRED (merge-blocking, Constitution XIII.7).
+# All other checks (hex / px / filler / contrast / io-boundary) are ADVISORY (non-blocking)
+# and post their results as a PR comment without affecting the merge gate.
+jobs:
+  audit-boundary-required:
+    name: Audit (boundary — required)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install deps
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile
+
+      - name: Run boundary check (required)
+        working-directory: apps/web
+        # bash -e -o pipefail (Actions default) propagates the audit's exit-1 through
+        # the `tee` pipe so a finding fails the job. Do NOT remove the pipefail
+        # dependency by switching to `> file` — the artifact-upload step needs the
+        # file even on failure (`if: always()`).
+        run: pnpm audit:redesign --only=boundary --json | tee boundary-report.json
+
+      - name: Upload boundary report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-redesign-boundary
+          path: apps/web/boundary-report.json
+          retention-days: 14
+
+  audit-rest-advisory:
+    name: Audit (hex/px/filler/contrast/io-boundary — advisory)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install deps
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve since-ref
+        id: since
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "ref=origin/${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run advisory checks
+        id: audit
+        working-directory: apps/web
+        continue-on-error: true
+        run: |
+          set +e
+          ARGS="--json"
+          if [ -n "${{ steps.since.outputs.ref }}" ]; then
+            ARGS="$ARGS --since=${{ steps.since.outputs.ref }}"
+          fi
+          # Loop the five advisory checks individually so every section gets its own count.
+          # Capture stderr per-check so a script-level failure (exit 2) is recoverable
+          # — the JSON file may still be empty/garbage; the renderer surfaces that as
+          # `n/a` and emits a `core.warning`. We do NOT mask exit 1 (findings present)
+          # via 2>/dev/null.
+          for check in hex px filler contrast io-boundary; do
+            pnpm audit:redesign --only=$check $ARGS \
+              > "advisory-$check.json" \
+              2> "advisory-$check.err" || true
+            if [ -s "advisory-$check.err" ]; then
+              echo "::warning::audit-redesign --only=$check produced stderr:"
+              cat "advisory-$check.err"
+            fi
+          done
+          ls -la advisory-*.json
+
+      - name: Upload advisory reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-redesign-advisory
+          path: apps/web/advisory-*.json
+          retention-days: 14
+
+      - name: Render PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const checks = ['hex', 'px', 'filler', 'contrast', 'io-boundary'];
+            let body = `### Audit redesign (advisory — non-blocking per FR-051a)\n\n`;
+            body += `> Boundary check (required) runs in a separate job and is the only gate.\n\n`;
+            body += `| Check | Findings | Accepted exceptions |\n|---|---:|---:|\n`;
+            for (const check of checks) {
+              const file = path.join('apps/web', `advisory-${check}.json`);
+              let findings = 'n/a';
+              let exceptions = 'n/a';
+              try {
+                const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+                const summary = raw?.summary?.by_check?.[check] ?? {};
+                findings = summary.findings ?? 0;
+                exceptions = summary.exceptions ?? 0;
+              } catch (err) {
+                core.warning(`Could not parse ${file}: ${err.message}`);
+              }
+              body += `| ${check} | ${findings} | ${exceptions} |\n`;
+            }
+            body += `\nFull JSON reports are attached as workflow artifacts (\`audit-redesign-advisory\`).\n`;
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            // Replace prior comments from this workflow.
+            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
+            for (const c of comments) {
+              if (c.user?.type === 'Bot' && c.body?.startsWith('### Audit redesign')) {
+                await github.rest.issues.deleteComment({ owner, repo, comment_id: c.id });
+              }
+            }
+            await github.rest.issues.createComment({ owner, repo, issue_number, body });

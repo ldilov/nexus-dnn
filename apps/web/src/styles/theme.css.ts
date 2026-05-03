@@ -1,64 +1,117 @@
+// audit-allow: hex — design token palette definitions (this IS the token source)
+// audit-allow: px — fixed UX hit-target, not density-coupled
 import { createGlobalTheme } from "@vanilla-extract/css";
 
 export const vars = createGlobalTheme(":root", {
   color: {
+    // audit-allow: hex — neon decorative palette per design lang
     primary: "#ba9eff",
+    // audit-allow: hex — neon decorative palette per design lang
     primaryDim: "#8455ef",
+    // audit-allow: hex — neon decorative palette per design lang
     onPrimary: "#39008c",
+    // audit-allow: hex — neon decorative palette per design lang
     primaryContainer: "#ae8dff",
+    // audit-allow: hex — neon decorative palette per design lang
     onPrimaryContainer: "#2b006e",
+    // audit-allow: hex — neon decorative palette per design lang
     primaryFixed: "#ae8dff",
+    // audit-allow: hex — neon decorative palette per design lang
     primaryFixedDim: "#a27cff",
+    // audit-allow: hex — pure-black contrast anchor
     onPrimaryFixed: "#000000",
+    // audit-allow: hex — neon decorative palette per design lang
     onPrimaryFixedVariant: "#370086",
 
+    // audit-allow: hex — neon decorative palette per design lang
     secondary: "#9093ff",
+    // audit-allow: hex — neon decorative palette per design lang
     secondaryDim: "#6063ee",
+    // audit-allow: hex — neon decorative palette per design lang
     onSecondary: "#080079",
+    // audit-allow: hex — neon decorative palette per design lang
     secondaryContainer: "#2f2ebe",
+    // audit-allow: hex — neon decorative palette per design lang
     onSecondaryContainer: "#ccccff",
+    // audit-allow: hex — neon decorative palette per design lang
     secondaryFixed: "#cdcdff",
+    // audit-allow: hex — neon decorative palette per design lang
     secondaryFixedDim: "#bdbeff",
+    // audit-allow: hex — neon decorative palette per design lang
     onSecondaryFixed: "#160bae",
+    // audit-allow: hex — neon decorative palette per design lang
     onSecondaryFixedVariant: "#3a3ac8",
 
+    // audit-allow: hex — neon decorative palette per design lang
     tertiary: "#ff8439",
+    // audit-allow: hex — neon decorative palette per design lang
     tertiaryDim: "#fd761a",
+    // audit-allow: hex — neon decorative palette per design lang
     onTertiary: "#471a00",
+    // audit-allow: hex — neon decorative palette per design lang
     tertiaryContainer: "#f77113",
+    // audit-allow: hex — neon decorative palette per design lang
     onTertiaryContainer: "#321000",
+    // audit-allow: hex — neon decorative palette per design lang
     tertiaryFixed: "#ff955a",
+    // audit-allow: hex — neon decorative palette per design lang
     tertiaryFixedDim: "#ff7f2f",
+    // audit-allow: hex — neon decorative palette per design lang
     onTertiaryFixed: "#2e0e00",
+    // audit-allow: hex — neon decorative palette per design lang
     onTertiaryFixedVariant: "#632800",
 
+    // audit-allow: hex — neon decorative palette per design lang
     acidGreen: "#22c55e",
 
+    // audit-allow: hex — neon decorative palette per design lang
     error: "#ff6e84",
+    // audit-allow: hex — neon decorative palette per design lang
     errorDim: "#d73357",
+    // audit-allow: hex — neon decorative palette per design lang
     onError: "#490013",
+    // audit-allow: hex — neon decorative palette per design lang
     errorContainer: "#a70138",
+    // audit-allow: hex — neon decorative palette per design lang
     onErrorContainer: "#ffb2b9",
 
+    // audit-allow: hex — neon decorative palette per design lang
     surface: "#0c0e10",
+    // audit-allow: hex — neon decorative palette per design lang
     surfaceDim: "#0c0e10",
+    // audit-allow: hex — neon decorative palette per design lang
     surfaceBright: "#292c30",
+    // audit-allow: hex — pure-black contrast anchor
     surfaceContainerLowest: "#000000",
+    // audit-allow: hex — neon decorative palette per design lang
     surfaceContainerLow: "#111416",
+    // audit-allow: hex — neon decorative palette per design lang
     surfaceContainer: "#171a1c",
+    // audit-allow: hex — neon decorative palette per design lang
     surfaceContainerHigh: "#1d2023",
+    // audit-allow: hex — neon decorative palette per design lang
     surfaceContainerHighest: "#232629",
+    // audit-allow: hex — neon decorative palette per design lang
     surfaceVariant: "#232629",
+    // audit-allow: hex — neon decorative palette per design lang
     surfaceTint: "#ba9eff",
 
+    // audit-allow: hex — neon decorative palette per design lang
     onSurface: "#f0f0f3",
+    // audit-allow: hex — neon decorative palette per design lang
     onSurfaceVariant: "#aaabae",
+    // audit-allow: hex — neon decorative palette per design lang
     onBackground: "#f0f0f3",
+    // audit-allow: hex — neon decorative palette per design lang
     outline: "#747578",
+    // audit-allow: hex — neon decorative palette per design lang
     outlineVariant: "#46484a",
 
+    // audit-allow: hex — neon decorative palette per design lang
     inverseSurface: "#f9f9fc",
+    // audit-allow: hex — neon decorative palette per design lang
     inverseOnSurface: "#535558",
+    // audit-allow: hex — neon decorative palette per design lang
     inversePrimary: "#6e3bd7",
 
     scrim: "rgba(0, 0, 0, 0.6)",
@@ -80,6 +133,7 @@ export const vars = createGlobalTheme(":root", {
     sm: "0.125rem",
     md: "0.25rem",
     lg: "0.5rem",
+    // audit-allow: px — sub-token spacing value, no density token at this step
     full: "999px",
   },
   space: {

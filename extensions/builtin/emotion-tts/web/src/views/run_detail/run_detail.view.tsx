@@ -5,6 +5,10 @@ import { resumeRun } from "../../services/runs_client";
 import type { ApplyEditResponse } from "../../services/audio_edit_client";
 import type { Run, RunStatus, UtteranceState, UtteranceStatus } from "../../services/types";
 import { PerUtteranceEdit } from "./components/per_utterance_edit";
+import { Button } from "../../components/button";
+import { Panel, PanelHeader } from "../../components/panel";
+import { sectionLabel } from "../../components/section_label.css";
+import { StatusPill, type StatusPillTone } from "../../components/status_pill";
 import * as css from "./run_detail.css";
 
 interface LoaderData {
@@ -21,7 +25,9 @@ export function RunDetailView(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingUtteranceId, setEditingUtteranceId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; severity: "success" | "error" } | null>(
+    null,
+  );
 
   useEffect(() => {
     setRun(initialRun);
@@ -62,11 +68,11 @@ export function RunDetailView(): JSX.Element {
   const handleEditApplied = (utteranceId: string, response: ApplyEditResponse): void => {
     setRun((prev) => applyEditToRun(prev, utteranceId, response));
     setEditingUtteranceId(null);
-    setToast("Segment edited");
+    setToast({ message: "Segment edited", severity: "success" });
   };
 
   const handleEditError = useCallback((message: string) => {
-    setToast(message);
+    setToast({ message, severity: "error" });
   }, []);
 
   return (
@@ -89,7 +95,9 @@ export function RunDetailView(): JSX.Element {
               {titleForKind(run.kind)}
               <span className={css.titleRunId}>{run.runId}</span>
             </h1>
-            <span className={css.statusHero[run.status]}>{run.status}</span>
+            <StatusPill size="md" tone={heroToneFor(run.status)} pulse={run.status === "running"}>
+              {run.status}
+            </StatusPill>
           </div>
         </header>
 
@@ -109,29 +117,24 @@ export function RunDetailView(): JSX.Element {
         </section>
 
         {canResume && (
-          <section className={css.resumePanel} aria-label="Resume run">
+          <section className={css.resumePanel} aria-labelledby="run-detail-resume-title">
             <div className={css.resumeCopy}>
-              <p className={css.resumeTitle}>
+              <h2 id="run-detail-resume-title" className={css.resumeTitle}>
                 {metrics.failed > 0
                   ? `${metrics.failed} line${metrics.failed === 1 ? "" : "s"} did not complete`
                   : "Run was interrupted before completion"}
-              </p>
+              </h2>
               <p className={css.resumeBody}>
                 Resume picks up where the last attempt left off — completed audio is re-used from cache.
               </p>
             </div>
-            <button
-              type="button"
-              className={css.resumeButton}
-              disabled={busy}
-              onClick={() => void onRerun()}
-            >
+            <Button size="lg" disabled={busy} onClick={() => void onRerun()}>
               {busy
                 ? "Resuming…"
                 : metrics.failed > 0
                   ? "Rerun failed lines"
                   : "Resume run"}
-            </button>
+            </Button>
             {error && (
               <p className={css.resumeError} role="alert">
                 {error}
@@ -140,15 +143,17 @@ export function RunDetailView(): JSX.Element {
           </section>
         )}
 
-        <section className={css.panel} aria-label="Utterances">
-          <div className={css.panelHeader}>
-            <h2 className={css.panelTitle}>Utterances</h2>
+        <Panel aria-labelledby="run-detail-utterances">
+          <PanelHeader>
+            <h2 id="run-detail-utterances" className={sectionLabel}>
+              01 / Utterances
+            </h2>
             {metrics.completed > 0 && (
               <span className={css.cacheSummary}>
                 <span className={css.cacheRatio}>{metrics.cached}</span>/{metrics.completed} from cache
               </span>
             )}
-          </div>
+          </PanelHeader>
           <ul className={css.utteranceList}>
             {run.utterances.map((u) => {
               const isEditing = editingUtteranceId === u.utteranceId;
@@ -176,7 +181,9 @@ export function RunDetailView(): JSX.Element {
                       {u.cacheHit && <span className={css.cacheChip}>cached</span>}
                       {hasEdit && <span className={css.editChip}>edited</span>}
                       {u.durationMs ? <span>{formatDuration(u.durationMs)}</span> : null}
-                      <span className={css.uttStatus[u.status as UtteranceStatus]}>{u.status}</span>
+                      <StatusPill tone={utteranceToneFor(u.status as UtteranceStatus)}>
+                        {u.status}
+                      </StatusPill>
                       {canEdit && (
                         <button
                           type="button"
@@ -205,14 +212,18 @@ export function RunDetailView(): JSX.Element {
               );
             })}
           </ul>
-        </section>
+        </Panel>
 
         {renderExportFooter(run, isExportStale)}
       </div>
 
       {toast && (
-        <div className={css.inlineToast} role="status" aria-live="polite">
-          {toast}
+        <div
+          className={css.inlineToast}
+          role={toast.severity === "error" ? "alert" : "status"}
+          aria-live={toast.severity === "error" ? "assertive" : "polite"}
+        >
+          {toast.message}
         </div>
       )}
     </main>
@@ -333,4 +344,34 @@ function describeError(err: unknown): string {
   if (err instanceof ExtensionApiError) return `${err.category}: ${err.message}`;
   if (err instanceof Error) return err.message;
   return "Unexpected error";
+}
+
+function heroToneFor(status: RunStatus): StatusPillTone {
+  switch (status) {
+    case "running":
+      return "accent";
+    case "completed":
+      return "success";
+    case "failed":
+      return "danger";
+    case "partial":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
+
+function utteranceToneFor(status: UtteranceStatus): StatusPillTone {
+  switch (status) {
+    case "running":
+      return "accent";
+    case "completed":
+      return "success";
+    case "failed":
+      return "danger";
+    case "cancelled":
+      return "faint";
+    default:
+      return "neutral";
+  }
 }

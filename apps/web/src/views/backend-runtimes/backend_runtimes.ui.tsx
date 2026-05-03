@@ -3,6 +3,7 @@ import {
   type CatalogEntry,
 } from "../../services/backend_runtimes_client";
 import { RuntimeCard } from "./components/runtime_card";
+import { PageHero } from "../../components/base/page_hero";
 import * as css from "./backend_runtimes.css";
 
 interface Props {
@@ -19,12 +20,11 @@ export function BackendRuntimesUI({ runtimes, onInstall }: Props) {
   if (runtimes.length === 0) {
     return (
       <main className={css.page}>
-        <header className={css.header}>
-          <h1 className={css.title}>Backend Runtimes</h1>
-          <p className={css.subtitle}>
-            Inference runtimes contributed by activated extensions.
-          </p>
-        </header>
+        <PageHero
+          eyebrow="Operator surface · Runtime catalog"
+          title="Backend runtimes"
+          meta={<span>Inference runtimes contributed by activated extensions.</span>}
+        />
         <div className={css.empty}>
           No backend runtimes are currently contributed. Activate an extension
           that declares a <code>backend_runtimes</code> entry.
@@ -34,16 +34,20 @@ export function BackendRuntimesUI({ runtimes, onInstall }: Props) {
   }
 
   const groups = groupByExtension(runtimes);
+  const runtimeWord = runtimes.length === 1 ? "runtime" : "runtimes";
+  const extWord = groups.length === 1 ? "extension" : "extensions";
 
   return (
     <main className={css.page}>
-      <header className={css.header}>
-        <h1 className={css.title}>Backend Runtimes</h1>
-        <p className={css.subtitle}>
-          {runtimes.length} runtime{runtimes.length === 1 ? "" : "s"} from{" "}
-          {groups.length} extension{groups.length === 1 ? "" : "s"}.
-        </p>
-      </header>
+      <PageHero
+        eyebrow="Operator surface · Runtime catalog"
+        title="Backend runtimes"
+        meta={
+          <span>
+            {runtimes.length} {runtimeWord} from {groups.length} {extWord}.
+          </span>
+        }
+      />
 
       {groups.map((group) => (
         <section key={group.extension_id} className={css.groupSection}>

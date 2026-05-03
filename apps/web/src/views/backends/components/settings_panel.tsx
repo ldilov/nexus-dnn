@@ -68,8 +68,8 @@ export function SettingsPanel({ initial, onSave }: Props) {
 
   return (
     <div className={css.panel} data-testid="backend-settings-panel">
-      <section className={css.section} aria-label="General">
-        <h3>General</h3>
+      <section className={css.section} aria-labelledby="backend-settings-general">
+        <h3 id="backend-settings-general">General</h3>
         <div className={css.row}>
           <label>Threads</label>
           <input
@@ -111,8 +111,8 @@ export function SettingsPanel({ initial, onSave }: Props) {
           />
         </div>
       </section>
-      <section className={css.section} aria-label="Network">
-        <h3>Network</h3>
+      <section className={css.section} aria-labelledby="backend-settings-network">
+        <h3 id="backend-settings-network">Network</h3>
         <div className={css.row}>
           <label>Bind address</label>
           <input
@@ -151,8 +151,8 @@ export function SettingsPanel({ initial, onSave }: Props) {
           </div>
         )}
       </section>
-      <section className={css.section} aria-label="Advanced">
-        <h3>Advanced</h3>
+      <section className={css.section} aria-labelledby="backend-settings-advanced">
+        <h3 id="backend-settings-advanced">Advanced</h3>
         <div className={css.row}>
           <label>Extra arguments</label>
           <textarea

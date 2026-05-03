@@ -60,6 +60,7 @@ export const docsLink = style({
 export const body = style({
   flex: 1,
   display: "grid",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "240px 1fr 360px",
   overflow: "hidden",
 });

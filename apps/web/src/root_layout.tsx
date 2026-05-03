@@ -1,24 +1,27 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   Outlet,
   useLoaderData,
   useLocation,
-  useMatch,
   useNavigate,
   useOutletContext,
 } from "react-router";
+import { toast } from "sonner";
 import { Shell } from "./layout/shell";
-import { TopBar, type ViewId } from "./layout/top_bar";
-import { Sidebar } from "./layout/sidebar";
+import { TopBar, type BreadcrumbItem } from "./layout/top_bar";
+import { Sidebar, type SidebarVariant } from "./layout/sidebar";
 import { RightInspector } from "./layout/right_inspector";
+import { TweakPanel } from "./layout/tweak_panel";
 import { Tabs } from "./components/base/tabs";
 import { sweepStaleDrafts } from "./views/modules/draft/draft_envelope";
 import { useOperatorSpecs } from "./hooks/use_operator_specs";
 import { useEventStream } from "./hooks/use_event_stream";
 import { usePollingMetrics } from "./hooks/use_polling_metrics";
+import { useRuntimeStatus } from "./hooks/use_runtime_status";
 import { fetchLayouts } from "./services/layouts";
 import { createRun } from "./services/runs";
 import type {
+  RuntimeMetrics,
   Workflow,
   WorkflowNode,
   LayoutSummary,
@@ -36,6 +39,7 @@ const BOTTOM_TABS = [
 ] as const;
 
 type WorkflowViewMode = "catalog" | "editor";
+export type ViewId = "stage" | "graph" | "trace" | "timeline";
 
 interface RootLoaderData {
   layouts: LayoutSummary[];
@@ -53,6 +57,7 @@ export interface RootOutletContext {
   workflowViewMode: WorkflowViewMode;
   setWorkflowViewMode: (mode: WorkflowViewMode) => void;
   activeView: ViewId;
+  setActiveView: (view: ViewId) => void;
   selectedNode: WorkflowNode | null;
   setSelectedNode: (node: WorkflowNode | null) => void;
   nodeProgress: Record<string, { status: string; progress: number }>;
@@ -67,6 +72,11 @@ export interface RootOutletContext {
   onGoToRecipes: () => void;
   onGoToWorkflows: () => void;
   onGoToExtensions: () => void;
+  metrics: RuntimeMetrics | null;
+  metricsConnected: boolean;
+  onRun: () => void;
+  onCancel: () => void;
+  onValidate: () => void;
 }
 
 export function useRootOutletContext(): RootOutletContext {
@@ -84,6 +94,48 @@ function latestProgressByNode(
   }
   return map;
 }
+
+const HOST_ROUTE_LABELS: Record<string, string> = {
+  modules: "Modules",
+  deployments: "Deployments",
+  recipes: "Recipes",
+  workflows: "Workflows",
+  backends: "Backends",
+  models: "Models",
+  runs: "Runs",
+  artifacts: "Artifacts",
+  extensions: "Extensions",
+};
+
+function buildBreadcrumbs(
+  pathname: string,
+  navigate: (to: string) => void,
+  extensionLayouts: ReadonlyArray<LayoutSummary>,
+): BreadcrumbItem[] {
+  const segments = pathname.split("/").filter(Boolean);
+  const home: BreadcrumbItem = { label: "Home", onClick: () => navigate("/") };
+  if (segments.length === 0) return [home];
+
+  const crumbs: BreadcrumbItem[] = [home];
+  let path = "";
+  for (let i = 0; i < segments.length; i += 1) {
+    const segment = segments[i]!;
+    path += `/${segment}`;
+    let label: string | null = HOST_ROUTE_LABELS[segment] ?? null;
+    if (!label && segments[0] === "extensions" && i === 1) {
+      const layout = extensionLayouts.find((l) => l.id === decodeURIComponent(segment));
+      label = layout?.display_name ?? decodeURIComponent(segment);
+    }
+    if (!label) label = decodeURIComponent(segment);
+    const target = path;
+    crumbs.push({
+      label,
+      onClick: i < segments.length - 1 ? () => navigate(target) : undefined,
+    });
+  }
+  return crumbs;
+}
+
 
 export default function RootLayout() {
   const { layouts: initialLayouts } = useLoaderData() as RootLoaderData;
@@ -105,7 +157,8 @@ export default function RootLayout() {
   const { specs: operatorSpecs } = useOperatorSpecs();
   const { events } = useEventStream();
   const nodeProgress = latestProgressByNode(events);
-  const { metrics, connected } = usePollingMetrics();
+  const { metrics, connected: metricsConnected } = usePollingMetrics();
+  const runtime = useRuntimeStatus();
 
   const refreshLayouts = useCallback(() => {
     fetchLayouts()
@@ -153,12 +206,12 @@ export default function RootLayout() {
 
   const location = useLocation();
 
-  const isWorkflowsRoute = useMatch("/workflows");
-  const showViewTabs = !!isWorkflowsRoute;
-  const inspectorVisible = !!isWorkflowsRoute;
+  const inspectorVisible = location.pathname.startsWith("/workflows");
 
-  const projectName =
-    isWorkflowsRoute && workflow?.name ? workflow.name : "Nexus DNN";
+  const breadcrumbs = useMemo(
+    () => buildBreadcrumbs(location.pathname, navigate, extensionLayouts),
+    [location.pathname, navigate, extensionLayouts],
+  );
 
   const outletContext: RootOutletContext = {
     workflow,
@@ -166,6 +219,7 @@ export default function RootLayout() {
     workflowViewMode,
     setWorkflowViewMode,
     activeView,
+    setActiveView,
     selectedNode,
     setSelectedNode,
     nodeProgress,
@@ -180,27 +234,38 @@ export default function RootLayout() {
     onGoToRecipes: goToRecipes,
     onGoToWorkflows: goToWorkflows,
     onGoToExtensions: goToExtensions,
+    metrics,
+    metricsConnected,
+    onRun: handleRun,
+    onCancel: handleCancel,
+    onValidate: () => {},
   };
+
+  const sidebarVariant: SidebarVariant = sidebarPinned ? "expanded" : "rail";
+  const notYetWired = useCallback(
+    (label: string) => () => {
+      toast.info(`${label} is not yet wired`, {
+        description: "Tracked as host-shell follow-up.",
+      });
+    },
+    [],
+  );
 
   return (
     <Shell
       topBar={
         <TopBar
-          projectName={projectName}
-          activeView={activeView}
-          onViewChange={setActiveView}
-          showViewTabs={showViewTabs}
-          metrics={metrics}
-          metricsConnected={connected}
-          onRun={handleRun}
-          onCancel={handleCancel}
-          onValidate={() => {}}
-          isRunning={isRunning}
+          breadcrumbs={breadcrumbs}
+          runtime={runtime}
+          onOpenSearch={notYetWired("Search")}
+          onOpenNotifications={notYetWired("Notifications")}
+          onOpenProfile={notYetWired("Profile")}
+          tweakPanel={<TweakPanel />}
         />
       }
       sidebar={
         <Sidebar
-          pinned={sidebarPinned}
+          variant={sidebarVariant}
           onTogglePin={() => setSidebarPinned((p) => !p)}
           extensionNavItems={extensionNavItems}
         />

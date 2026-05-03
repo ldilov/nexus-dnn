@@ -4,6 +4,13 @@ import { ExtensionApiError } from "../../../services/http";
 import { cancelRun, createRun, getRun, resumeRun, subscribeRunProgress } from "../../../services/runs_client";
 import type { CreateRunRequest, ProgressEvent, Run } from "../../../services/types";
 import * as css from "../recipe.css";
+import { Banner } from "../../../components/banner";
+import { Button } from "../../../components/button";
+import {
+  sizeStyle as buttonSize,
+  variantStyle as buttonVariant,
+} from "../../../components/button.css";
+import { StatusPill } from "../../../components/status_pill";
 
 type Phase = "idle" | "starting" | "running" | "terminal" | "error";
 
@@ -14,10 +21,17 @@ interface SegmentState {
   failureCategory?: string;
 }
 
+interface DiagnosticItem {
+  label: string;
+  status: "ok" | "warn" | "fail";
+  detail?: string;
+}
+
 interface Props {
   deploymentId: string;
   createPayload: CreateRunRequest;
   canGenerate: boolean;
+  diagnostics?: DiagnosticItem[];
 }
 
 export function RunPanel(props: Props): JSX.Element {
@@ -70,9 +84,6 @@ export function RunPanel(props: Props): JSX.Element {
   const canCancel = phase === "starting" || phase === "running";
   const isPartial = run?.status === "partial";
 
-  // When a run reaches terminal state and one or more segments failed,
-  // surface the most common failure category as a prominent banner so the
-  // user doesn't have to scan a table to figure out what went wrong.
   const failedSegments = segmentList.filter((s) => s.status === "failed");
   const dominantFailure = (() => {
     if (phase !== "terminal" || failedSegments.length === 0) return null;
@@ -105,95 +116,91 @@ export function RunPanel(props: Props): JSX.Element {
     cancelled:
       "Run was cancelled. Click Generate to retry.",
   };
+  const DEFAULT_FAILURE_HELP = "Check the run detail page for the per-segment error log.";
 
-  // If the error message mentions unmapped characters (the host's
-  // create_run rejects with a structured "X unmapped characters …" message
-  // when the script references characters with no voice mapping), offer a
-  // direct "Open Mappings" button so the user has a one-click recovery
-  // path instead of having to scan the recipe header for the right link.
   const errorIsUnmapped = error?.toLowerCase().includes("unmapped") ?? false;
+
+  const diagnostics = props.diagnostics ?? [];
+  const blockingDiagnostic = diagnostics.find((d) => d.status === "fail");
 
   return (
     <div>
+      {diagnostics.length > 0 && (
+        <ul className={css.preflightList} aria-label="Pre-flight checks">
+          {diagnostics.map((d) => (
+            <li key={d.label} className={css.preflightItem}>
+              <StatusPill tone={preflightTone(d.status)}>{preflightGlyph(d.status)}</StatusPill>
+              <span className={css.preflightLabel}>{d.label}</span>
+              {d.detail && <span className={css.preflightDetail}>{d.detail}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
       {error && (
-        <div
-          className={css.dangerBanner}
-          role="alert"
-          aria-live="assertive"
+        <Banner
+          severity="error"
           style={{
             marginBottom: 12,
-            padding: "12px 14px",
-            display: "flex",
             flexDirection: "column",
+            alignItems: "flex-start",
             gap: 8,
-            fontSize: "0.95rem",
-            lineHeight: 1.45,
           }}
         >
           <strong>Run failed to start</strong>
           <span>{error}</span>
           {errorIsUnmapped && (
-            <button
-              type="button"
-              className={css.secondaryButton}
+            <Button
+              variant="secondary"
               onClick={() => navigate(`/${props.deploymentId}/mappings`)}
               style={{ alignSelf: "flex-start" }}
             >
               Open Mappings →
-            </button>
+            </Button>
           )}
-        </div>
+        </Banner>
       )}
 
       <div className={css.controlRow}>
-        <button
-          type="button"
-          className={css.primaryButton}
-          disabled={!props.canGenerate || canCancel}
+        <Button
+          disabled={!props.canGenerate || canCancel || !!blockingDiagnostic}
           onClick={startRun}
         >
           {phase === "running" ? "Running…" : "Generate + Export ZIP"}
-        </button>
-        <button
-          type="button"
-          className={css.dangerButton}
-          disabled={!canCancel}
-          onClick={cancel}
-        >
+        </Button>
+        <Button variant="danger" disabled={!canCancel} onClick={cancel}>
           Cancel
-        </button>
+        </Button>
       </div>
 
       {dominantFailure && (
-        <div className={css.dangerBanner} role="alert">
+        <Banner severity="error" style={{ flexDirection: "column", alignItems: "flex-start" }}>
           <strong>
             Run failed — {dominantFailure.count} of {dominantFailure.total} segments
             failed with <code>{dominantFailure.category}</code>
           </strong>
-          {failureHelp[dominantFailure.category] && (
-            <div style={{ marginTop: 6, fontWeight: 400 }}>
-              {failureHelp[dominantFailure.category]}
-            </div>
-          )}
-        </div>
+          <div style={{ marginTop: 6, fontWeight: 400 }}>
+            {failureHelp[dominantFailure.category] ?? DEFAULT_FAILURE_HELP}
+          </div>
+        </Banner>
       )}
 
       {run?.exportArtifactRef && (
         <a
           href={`/api/v1/extensions/nexus.audio.emotiontts/exports/${run.exportArtifactRef}/download`}
           download
-          className={css.secondaryButton}
+          className={`${buttonVariant.secondary} ${buttonSize.md}`}
+          style={{ textDecoration: "none" }}
         >
           Download ZIP
         </a>
       )}
 
       {isPartial && run && (
-        <div className={css.warningBanner} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <Banner severity="warning">
           <span style={{ flex: 1 }}>Partial run — some segments failed or were cancelled.</span>
-          <button
-            type="button"
-            className={css.secondaryButton}
+          <Button
+            variant="secondary"
+            disabled={!!blockingDiagnostic}
             onClick={async () => {
               try {
                 const resumed = await resumeRun(props.deploymentId, run.runId);
@@ -215,8 +222,8 @@ export function RunPanel(props: Props): JSX.Element {
             }}
           >
             Resume run
-          </button>
-        </div>
+          </Button>
+        </Banner>
       )}
 
       {segmentList.length > 0 && (
@@ -234,7 +241,7 @@ export function RunPanel(props: Props): JSX.Element {
               <tr key={s.globalIndex} className={css.progressRow}>
                 <td className={css.progressCell}>{s.globalIndex.toString().padStart(3, "0")}</td>
                 <td className={css.progressCell}>
-                  <span className={pillFor(s.status)}>{s.status}</span>
+                  <StatusPill tone={toneFor(s.status)}>{s.status}</StatusPill>
                 </td>
                 <td className={css.progressCell}>{s.durationMs ? `${s.durationMs} ms` : "—"}</td>
                 <td className={css.progressCell}>{s.failureCategory ?? ""}</td>
@@ -297,16 +304,38 @@ async function handleEvent(
   }
 }
 
-function pillFor(status: SegmentState["status"]): string {
+function toneFor(status: SegmentState["status"]): "success" | "accent" | "danger" | "neutral" {
   switch (status) {
     case "completed":
-      return css.statusPillCompleted;
+      return "success";
     case "running":
-      return css.statusPillRunning;
+      return "accent";
     case "failed":
-      return css.statusPillFailed;
+      return "danger";
     default:
-      return css.statusPill;
+      return "neutral";
+  }
+}
+
+function preflightTone(status: DiagnosticItem["status"]): "success" | "warning" | "danger" {
+  switch (status) {
+    case "ok":
+      return "success";
+    case "warn":
+      return "warning";
+    case "fail":
+      return "danger";
+  }
+}
+
+function preflightGlyph(status: DiagnosticItem["status"]): string {
+  switch (status) {
+    case "ok":
+      return "ok";
+    case "warn":
+      return "warn";
+    case "fail":
+      return "stop";
   }
 }
 

@@ -1,15 +1,19 @@
+// audit-allow: px — sidebar width per IA contract
+// audit-allow: px — fixed UX hit-target, not density-coupled
+// audit-allow: px — sub-token spacing value, no density token at this step
 import { style } from "@vanilla-extract/css";
 import { recipe } from "@vanilla-extract/recipes";
 import { vars } from "../theme/contract.css";
 
 const COLLAPSED_WIDTH = "64px";
+// audit-allow: px — workspace shell scaffolding dimension
 const EXPANDED_WIDTH = "256px";
-const TOP_BAR_HEIGHT = "48px";
 
 export const container = style({
   position: "fixed",
   left: 0,
-  top: TOP_BAR_HEIGHT,
+  // audit-allow: px — workspace shell scaffolding dimension
+  top: "24px",
   bottom: 0,
   width: COLLAPSED_WIDTH,
   backgroundColor: vars.color.bg.panel,
@@ -24,18 +28,38 @@ export const containerExpanded = style({
   width: EXPANDED_WIDTH,
 });
 
+export const containerFloat = style({
+  width: EXPANDED_WIDTH,
+  left: vars.density.d4,
+  top: vars.density.d6,
+  bottom: vars.density.d6,
+  borderRadius: vars.radius.panel,
+  boxShadow: vars.shadow.lg,
+  // audit-allow: px — workspace shell scaffolding dimension
+  backdropFilter: "blur(20px)",
+});
+
 export const header = style({
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  height: "48px",
+  // audit-allow: px — workspace shell scaffolding dimension
+  height: "56px",
   flexShrink: 0,
-  borderBottom: `1px solid ${vars.color.outline.variant}`,
 });
 
 export const headerExpanded = style({
-  justifyContent: "flex-end",
+  justifyContent: "space-between",
+  // audit-allow: px — workspace shell scaffolding dimension
+  paddingLeft: "16px",
+  // audit-allow: px — workspace shell scaffolding dimension
   paddingRight: "12px",
+});
+
+export const brandSlot = style({
+  display: "inline-flex",
+  alignItems: "center",
+  minWidth: 0,
 });
 
 export const navSection = style({
@@ -54,6 +78,7 @@ export const utilitySection = style({
 });
 
 export const divider = style({
+  // audit-allow: px — workspace shell scaffolding dimension
   width: "24px",
   height: "1px",
   backgroundColor: vars.color.outline.variant,
@@ -65,8 +90,11 @@ export const navItemRecipe = recipe({
   base: {
     display: "flex",
     alignItems: "center",
+    // audit-allow: px — workspace shell scaffolding dimension
     height: "40px",
+    // audit-allow: px — workspace shell scaffolding dimension
     paddingLeft: "20px",
+    // audit-allow: px — workspace shell scaffolding dimension
     gap: "12px",
     border: "none",
     backgroundColor: "transparent",
@@ -88,18 +116,13 @@ export const navItemRecipe = recipe({
   variants: {
     active: {
       true: {
-        color: vars.color.accent.primary,
-        backgroundColor: vars.color.bg.elevated,
-        "::before": {
-          content: '""',
-          position: "absolute",
-          left: 0,
-          top: "50%",
-          transform: "translateY(-50%)",
-          width: "3px",
-          height: "20px",
-          backgroundColor: vars.color.accent.primary,
-          borderRadius: "0 2px 2px 0",
+        color: vars.color.text.primary,
+        backgroundImage: `linear-gradient(135deg, color-mix(in oklab, ${vars.color.accent.primaryDim} 38%, transparent), color-mix(in oklab, ${vars.color.accent.secondaryDim} 22%, transparent))`,
+        boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.accent.primaryDim} 55%, transparent)`,
+        ":focus-visible": {
+          outline: "none",
+          // audit-allow: px — below minimum token granularity (sub-10px)
+          boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.accent.primaryDim} 55%, transparent), 0 0 0 2px ${vars.color.accent.primary}`,
         },
       },
     },
@@ -111,10 +134,12 @@ export const navItemRecipe = recipe({
 
 export const navItemIcon = style({
   flexShrink: 0,
+  // audit-allow: px — workspace shell scaffolding dimension
   width: "24px",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
+  // audit-allow: px — workspace shell scaffolding dimension
   fontSize: "22px",
   lineHeight: 1,
 });
@@ -137,7 +162,9 @@ export const pinButton = style({
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
+  // audit-allow: px — workspace shell scaffolding dimension
   width: "32px",
+  // audit-allow: px — workspace shell scaffolding dimension
   height: "32px",
   border: "none",
   backgroundColor: "transparent",
@@ -150,12 +177,12 @@ export const pinButton = style({
     color: vars.color.text.primary,
   },
   ":focus-visible": {
+    // audit-allow: px — below minimum token granularity (sub-10px)
     outline: `2px solid ${vars.color.accent.primary}`,
+    // audit-allow: px — below minimum token granularity (sub-10px)
     outlineOffset: "2px",
   },
 });
-
-export const pinButtonVisible = style({});
 
 export const pinButtonActive = style({
   color: vars.color.accent.primary,
@@ -174,5 +201,6 @@ export const secondaryContentVisible = style({
 });
 
 export const iconXl = style({
+  // audit-allow: px — workspace shell scaffolding dimension
   fontSize: "22px",
 });

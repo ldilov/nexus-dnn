@@ -1,70 +1,70 @@
 {
-  "version": "1.0.0",
-  "capturedOnSha": "main",
+  "version": "1.1.0",
+  "capturedOnSha": "037-spectral-graphite-redesign",
   "entries": [
     {
       "path": "/",
       "title": "Nexus DNN",
-      "mustContain": ["Welcome back", "SETTINGS", "RUN"]
+      "mustContain": ["Welcome back", "SETTINGS"]
     },
     {
       "path": "/recipes",
       "title": "Nexus DNN",
-      "mustContain": ["SETTINGS", "RUN", "VALIDATE"]
+      "mustContain": ["SETTINGS"]
     },
     {
       "path": "/workflows",
       "title": "Nexus DNN",
-      "mustContain": ["Stage", "Graph", "Trace"]
+      "mustContain": ["Search workflows", "SETTINGS"]
     },
     {
       "path": "/modules",
       "title": "Nexus DNN",
-      "mustContain": ["Modules", "SETTINGS", "RUN"]
+      "mustContain": ["Modules", "SETTINGS"]
     },
     {
       "path": "/modules/user:blank",
       "title": "Nexus DNN",
-      "mustContain": ["SETTINGS", "RUN", "VALIDATE"],
+      "mustContain": ["SETTINGS"],
       "requiresFixture": true,
       "fixtureSeed": "module-user-blank.json"
     },
     {
       "path": "/modules/user:blank/blueprint",
       "title": "Nexus DNN",
-      "mustContain": ["SETTINGS", "RUN", "VALIDATE"],
+      "mustContain": ["SETTINGS"],
       "requiresFixture": true,
       "fixtureSeed": "module-user-blank.json"
     },
     {
       "path": "/deployments",
       "title": "Nexus DNN",
-      "mustContain": ["Deployments", "SETTINGS", "RUN"]
+      "mustContain": ["Deployments", "SETTINGS"]
     },
     {
       "path": "/backends",
       "title": "Nexus DNN",
-      "mustContain": ["SETTINGS", "RUN", "VALIDATE"]
+      "mustContain": ["SETTINGS"]
     },
     {
       "path": "/models",
       "title": "Nexus DNN",
-      "mustContain": ["Models", "Search models", "RUN"]
+      "mustContain": ["Models", "Search models"]
     },
     {
       "path": "/extensions",
       "title": "Nexus DNN",
-      "mustContain": ["SETTINGS", "RUN", "VALIDATE"]
+      "mustContain": ["SETTINGS"]
     },
     {
       "path": "/runs",
       "title": "Nexus DNN",
-      "mustContain": ["Run history", "SETTINGS", "RUN"]
+      "mustContain": ["Run history", "SETTINGS"]
     },
     {
       "path": "/artifacts",
       "title": "Nexus DNN",
-      "mustContain": ["Artifact browser", "SETTINGS", "RUN"]
+      "mustContain": ["Artifact browser", "SETTINGS"]
     }
   ]
 }

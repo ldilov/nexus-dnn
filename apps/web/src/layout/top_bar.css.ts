@@ -2,162 +2,135 @@ import { style } from "@vanilla-extract/css";
 import { recipe } from "@vanilla-extract/recipes";
 import { vars } from "../theme/contract.css";
 
+export const root = style({
+  display: "flex",
+  alignItems: "center",
+  width: "100%",
+  height: "100%",
+  paddingInline: vars.density.d6,
+  gap: vars.density.d6,
+});
+
 export const leftZone = style({
   display: "flex",
   alignItems: "center",
-  gap: vars.space.gapMd,
-  flex: "0 0 auto",
+  gap: vars.density.d3,
+  flex: "1 1 auto",
+  minWidth: 0,
+  overflow: "hidden",
 });
 
-export const brand = style({
-  fontFamily: vars.font.headline,
-  fontSize: vars.font.size.headingSm,
-  fontWeight: vars.font.weight.bold,
-  color: vars.color.accent.primary,
-  letterSpacing: "-0.02em",
-  lineHeight: 1,
-  cursor: "default",
-  userSelect: "none",
-});
-
-export const viewTabs = style({
-  display: "flex",
-  gap: vars.space.gapXs,
-});
-
-export const viewTab = style({
-  border: "none",
-  background: "transparent",
-  fontFamily: vars.font.ui,
-  fontSize: vars.font.size.bodySm,
-  fontWeight: vars.font.weight.medium,
-  color: vars.color.text.muted,
-  padding: `${vars.space.insetXs} ${vars.space.insetMd}`,
-  borderRadius: vars.radius.control,
-  cursor: "pointer",
-  transition: `color ${vars.motion.durationFast} ${vars.motion.easingDefault}, background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
-  ":hover": {
-    color: vars.color.text.primary,
-    background: vars.color.bg.hover,
-  },
-});
-
-export const viewTabActive = style({
-  color: vars.color.accent.primary,
-  background: vars.color.bg.elevated,
-  boxShadow: `inset 0 -2px 0 0 ${vars.color.accent.primary}`,
-});
-
-export const centerZone = style({
+export const breadcrumbList = style({
   display: "flex",
   alignItems: "center",
-  gap: vars.space.gapSm,
-  flex: 1,
-  justifyContent: "center",
-});
-
-export const metricChip = style({
-  display: "flex",
-  alignItems: "center",
-  gap: vars.space.gapXs,
-  padding: `${vars.space.insetXs} ${vars.space.insetMd}`,
-  background: vars.color.bg.elevated,
-  borderRadius: vars.radius.control,
-  outline: `1px solid ${vars.color.outline.variant}26`,
-  height: vars.control.heightSm,
-});
-
-export const metricLabel = style({
+  gap: vars.density.d2,
   fontFamily: vars.font.code,
-  fontSize: "10px",
-  textTransform: "uppercase",
-  letterSpacing: "0.05em",
-  color: vars.color.text.muted,
+  fontSize: vars.font.size.caption,
+  letterSpacing: "0.04em",
+  color: vars.color.text.secondary,
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
 });
 
-export const metricValue = recipe({
+export const breadcrumbCrumb = recipe({
   base: {
-    fontFamily: vars.font.code,
-    fontSize: vars.font.size.bodySm,
-    fontWeight: vars.font.weight.bold,
-  },
-  variants: {
-    level: {
-      normal: { color: vars.color.text.primary },
-      good: { color: vars.color.success.base },
-      warning: { color: vars.color.warning.base },
-      danger: { color: vars.color.error.base },
+    display: "inline-flex",
+    alignItems: "center",
+    gap: vars.density.d2,
+    color: vars.color.text.secondary,
+    background: "transparent",
+    border: "none",
+    padding: 0,
+    fontFamily: "inherit",
+    fontSize: "inherit",
+    letterSpacing: "inherit",
+    textTransform: "uppercase",
+    cursor: "pointer",
+    ":hover": {
+      color: vars.color.text.primary,
+    },
+    ":disabled": {
+      cursor: "default",
     },
   },
-  defaultVariants: {
-    level: "normal",
+  variants: {
+    last: {
+      true: {
+        color: vars.color.text.primary,
+        cursor: "default",
+        ":hover": {
+          color: vars.color.text.primary,
+        },
+      },
+    },
   },
+  defaultVariants: { last: false },
+});
+
+export const breadcrumbSeparator = style({
+  color: vars.color.text.muted,
+  fontSize: vars.font.size.caption,
+  userSelect: "none",
 });
 
 export const rightZone = style({
   display: "flex",
   alignItems: "center",
-  gap: vars.space.gapSm,
+  gap: vars.density.d3,
   flex: "0 0 auto",
 });
 
-export const iconButton = style({
-  width: "32px",
-  height: "32px",
-  display: "flex",
+export const searchAffordance = style({
+  display: "inline-flex",
   alignItems: "center",
-  justifyContent: "center",
-  background: "transparent",
-  border: "none",
+  gap: vars.density.d3,
+  height: vars.control.heightSm,
+  paddingInline: vars.density.d3,
+  background: vars.color.bg.lowest,
   color: vars.color.text.muted,
   borderRadius: vars.radius.control,
+  border: "none",
   cursor: "pointer",
-  fontSize: vars.icon.lg,
-  transition: `color ${vars.motion.durationFast} ${vars.motion.easingDefault}, background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {
     background: vars.color.bg.hover,
     color: vars.color.text.secondary,
   },
 });
 
-export const runButton = style({
-  height: vars.control.heightMd,
-  padding: `0 ${vars.space.insetXl}`,
-  background: vars.color.accent.primary,
-  color: vars.color.text.inverse,
-  fontFamily: vars.font.ui,
-  fontSize: vars.font.size.bodySm,
-  fontWeight: vars.font.weight.semibold,
-  borderRadius: vars.radius.control,
-  border: "none",
-  cursor: "pointer",
-  letterSpacing: "0.02em",
-  textTransform: "uppercase",
-  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
-  ":hover": {
-    background: vars.color.accent.primaryHover,
-  },
-});
-
-export const runButtonActive = style({
-  background: vars.color.accent.primaryDim,
-});
-
-export const validateButton = style({
-  height: vars.control.heightMd,
-  padding: `0 ${vars.space.insetLg}`,
+export const iconButton = style({
+  width: vars.control.heightSm,
+  height: vars.control.heightSm,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
   background: "transparent",
-  color: vars.color.text.primary,
-  fontFamily: vars.font.ui,
-  fontSize: vars.font.size.bodySm,
-  fontWeight: vars.font.weight.medium,
-  borderRadius: vars.radius.control,
   border: "none",
+  color: vars.color.text.secondary,
+  borderRadius: vars.radius.full,
   cursor: "pointer",
-  outline: `1px solid ${vars.color.outline.variant}66`,
-  textTransform: "uppercase",
-  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {
     background: vars.color.bg.hover,
+    color: vars.color.text.primary,
   },
+});
+
+export const profileAvatar = style({
+  width: vars.control.heightSm,
+  height: vars.control.heightSm,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: vars.radius.full,
+  background: `linear-gradient(135deg, ${vars.color.accent.primaryDim}, ${vars.color.accent.secondaryDim})`,
+  color: vars.color.onColor.primary,
+  fontFamily: vars.font.ui,
+  fontWeight: vars.font.weight.semibold,
+  fontSize: vars.font.size.caption,
+  border: "none",
+  cursor: "pointer",
 });
