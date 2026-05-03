@@ -14,6 +14,7 @@ export interface DirectModSliderStripProps {
   onChange: (next: DirectModSliderState) => void;
   supportsSynthSpeed: boolean;
   onReRenderAtSynthTime?: () => void;
+  onSliderFlush?: () => void;
   pendingExecution?: boolean;
   reduceMotion?: boolean;
   disabled?: boolean;
@@ -33,6 +34,7 @@ export function DirectModSliderStrip(props: DirectModSliderStripProps): JSX.Elem
     onChange,
     supportsSynthSpeed,
     onReRenderAtSynthTime,
+    onSliderFlush,
     pendingExecution = false,
     disabled = false,
     onApply,
@@ -45,8 +47,20 @@ export function DirectModSliderStrip(props: DirectModSliderStripProps): JSX.Elem
 
   const activeOps = computeActiveOps(state);
 
+  const handlePointerDownCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    if (
+      target.tagName === "INPUT" ||
+      target.tagName === "BUTTON" ||
+      target.closest("input, button")
+    ) {
+      onSliderFlush?.();
+    }
+  };
+
   return (
-    <div className={css.root}>
+    <div className={css.root} onPointerDownCapture={handlePointerDownCapture}>
       <div className={css.summaryRow}>
         {activeOps.length === 0 ? (
           <span className={css.summaryEmpty}>No active edits</span>

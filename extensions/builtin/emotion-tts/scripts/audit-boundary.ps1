@@ -49,7 +49,11 @@ $grandfatheredFixtures = @(
     # host's HTTP router learns about the extension's routes.
     # Same grandfathered pattern as `nexus-local-llm-chat-history`.
     (Join-Path $RepoRoot 'crates/nexus-core/Cargo.toml'),
-    (Join-Path $RepoRoot 'crates/nexus-core/src/app.rs')
+    (Join-Path $RepoRoot 'crates/nexus-core/src/app.rs'),
+    # Spec 037's host-side boundary self-test enumerates every extension id
+    # literal as part of its banned-fragments deny-list. Same pattern as
+    # the spec 035 boundary_test in nexus-extension-deps above.
+    (Join-Path $RepoRoot 'crates/nexus-api/tests/draft_suggestions/boundary_audit_test.rs')
 )
 
 $violations = @()
