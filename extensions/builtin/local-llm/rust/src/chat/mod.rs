@@ -5,16 +5,18 @@
 
 pub mod envelope;
 pub mod handlers;
+pub mod inference_cancel;
 pub mod load_registry;
 pub mod resources;
 
+pub use inference_cancel::InferenceCancelRegistry;
 pub use load_registry::{LoadState, ModelLoadRegistry};
 pub use resources::ChatHandlerResources;
 
 use std::sync::Arc;
 
 use axum::Router;
-use axum::routing::get;
+use axum::routing::{get, post};
 
 /// Build the chat sub-router. Mounts only the routes that have no
 /// spec-029 equivalent: generation settings, active-model binding, and
@@ -42,6 +44,14 @@ pub fn build_chat_router(resources: Arc<ChatHandlerResources>) -> Router {
         .route(
             "/chat/threads/{thread_id}/active_model/status",
             get(handlers::get_active_model_status),
+        )
+        .route(
+            "/chat/threads/{thread_id}/inference/cancel",
+            post(handlers::cancel_inference),
+        )
+        .route(
+            "/chat/available_models",
+            get(handlers::list_available_models),
         )
         .with_state(resources)
 }

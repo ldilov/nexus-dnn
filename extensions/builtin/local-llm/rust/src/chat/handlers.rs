@@ -964,6 +964,78 @@ pub async fn get_active_model_status(
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct AvailableModelDto {
+    pub family_id: String,
+    pub variant_id: Option<String>,
+    pub label: String,
+    pub format: String,
+    pub size_bytes: Option<u64>,
+    pub max_context: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AvailableModelsDto {
+    pub models: Vec<AvailableModelDto>,
+}
+
+pub async fn list_available_models(
+    State(res): State<Arc<ChatHandlerResources>>,
+) -> Response {
+    let Some(install_map) = res.install_map.as_ref() else {
+        return ApiResponse::ok(AvailableModelsDto { models: Vec::new() }).into_response();
+    };
+    let rows = match install_map.list_all(500).await {
+        Ok(r) => r,
+        Err(e) => {
+            return ApiResponse::<()>::internal(format!("list_all: {e}")).into_response();
+        }
+    };
+    let models: Vec<AvailableModelDto> = rows
+        .into_iter()
+        .filter(|row| row.format.eq_ignore_ascii_case("gguf"))
+        .map(|row| {
+            let label = derive_model_label(&row.family_id, row.variant_id.as_deref(), &row.filename);
+            AvailableModelDto {
+                family_id: row.family_id,
+                variant_id: row.variant_id,
+                label,
+                format: row.format,
+                size_bytes: row.size_bytes,
+                max_context: row.max_context,
+            }
+        })
+        .collect();
+    ApiResponse::ok(AvailableModelsDto { models }).into_response()
+}
+
+fn derive_model_label(family_id: &str, variant_id: Option<&str>, filename: &str) -> String {
+    match variant_id {
+        Some(v) if !v.is_empty() => format!("{family_id} · {v}"),
+        _ => {
+            let stem = filename
+                .rsplit_once('.')
+                .map(|(s, _)| s)
+                .unwrap_or(filename);
+            if stem.is_empty() {
+                family_id.to_string()
+            } else {
+                format!("{family_id} · {stem}")
+            }
+        }
+    }
+}
+
+pub async fn cancel_inference(
+    State(res): State<Arc<ChatHandlerResources>>,
+    Path(thread_id): Path<String>,
+) -> Response {
+    res.inference_cancel_registry
+        .mark_cancelled(thread_id)
+        .await;
+    ApiResponse::<()>::no_content().into_response()
+}
+
 pub async fn send_message(
     State(res): State<Arc<ChatHandlerResources>>,
     Path(thread_id): Path<String>,
