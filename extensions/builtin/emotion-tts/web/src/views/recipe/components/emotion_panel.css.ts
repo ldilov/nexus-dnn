@@ -3,12 +3,12 @@ import { vars } from "../../../theme/tokens.css";
 
 export const shell = style({
   display: "grid",
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "minmax(0, 220px) minmax(0, 1fr)",
   gap: vars.space.lg,
   alignItems: "start",
   "@media": {
-    // audit-allow: px — px — fixed layout breakpoint
+    // audit-allow: px — fixed layout breakpoint
     "(max-width: 780px)": {
       gridTemplateColumns: "1fr",
     },
@@ -36,9 +36,9 @@ export const controlsColumn = style({
 export const modeBar = style({
   display: "flex",
   flexWrap: "wrap",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   padding: "3px",
   borderRadius: vars.radius.md,
   background: vars.color.surfaceMuted,
@@ -78,7 +78,7 @@ export const sliderGrid = style({
 
 export const sliderRow = style({
   display: "grid",
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "minmax(96px, auto) 1fr 64px",
   gap: vars.space.sm,
   alignItems: "center",
@@ -111,7 +111,7 @@ export const sliderNumber = style({
   transition: `box-shadow ${vars.motion.fast}`,
   boxShadow: `inset 0 -1px 0 ${vars.color.borderGhost}`,
   ":focus": {
-    // audit-allow: px — px — below minimum token granularity (sub-10px)
+    // audit-allow: px — below minimum token granularity (sub-10px)
     boxShadow: `inset 0 -2px 0 ${vars.color.tertiary}`,
   },
 });
@@ -124,7 +124,7 @@ export const presetBar = style({
 });
 
 export const presetSelect = style({
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   flex: "1 1 200px",
   minWidth: 0,
   padding: `${vars.space.xs} ${vars.space.sm}`,
@@ -136,13 +136,13 @@ export const presetSelect = style({
   fontSize: vars.text.body,
   boxShadow: `inset 0 -1px 0 ${vars.color.borderGhost}`,
   outline: "none",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   ":focus": { boxShadow: `inset 0 -2px 0 ${vars.color.accent}` },
 });
 
 export const alphaRow = style({
   display: "grid",
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "minmax(96px, auto) 1fr 64px",
   gap: vars.space.sm,
   alignItems: "center",
@@ -150,7 +150,7 @@ export const alphaRow = style({
 
 export const templateArea = style({
   width: "100%",
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   minHeight: "104px",
   padding: vars.space.md,
   borderRadius: vars.radius.md,
@@ -183,7 +183,7 @@ export const savePresetForm = style({
 });
 
 export const presetNameInput = style({
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   flex: "1 1 220px",
   minWidth: 0,
   padding: `${vars.space.sm} ${vars.space.md}`,
@@ -196,7 +196,7 @@ export const presetNameInput = style({
   fontSize: vars.text.body,
   boxShadow: `inset 0 -1px 0 ${vars.color.borderGhost}`,
   transition: `box-shadow ${vars.motion.fast}`,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   ":focus": { boxShadow: `inset 0 -2px 0 ${vars.color.accent}` },
   "::placeholder": { color: vars.color.textFaint },
 });

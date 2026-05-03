@@ -69,7 +69,7 @@ export const list = style({
   padding: 0,
   display: "flex",
   flexDirection: "column",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
 });
 
@@ -77,7 +77,7 @@ const itemBase = style({
   width: "100%",
   display: "flex",
   flexDirection: "column",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "2px",
   padding: `${vars.space.insetXs} ${vars.space.insetMd}`,
   border: "none",
@@ -103,9 +103,9 @@ export const itemSelected = style([
   {
     background: vars.color.bg.elevated,
     color: vars.color.text.primary,
-    // audit-allow: px — px — below minimum token granularity (sub-10px)
+    // audit-allow: px — below minimum token granularity (sub-10px)
     borderLeft: `2px solid ${vars.color.accent.primary}`,
-    // audit-allow: px — px — below minimum token granularity (sub-10px)
+    // audit-allow: px — below minimum token granularity (sub-10px)
     paddingLeft: `calc(${vars.space.insetMd} - 2px)`,
   },
 ]);

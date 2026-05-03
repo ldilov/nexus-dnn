@@ -19,7 +19,7 @@ export const inputRecipe = recipe({
     },
     ":focus": {
       borderBottomColor: vars.color.accent.primary,
-      // audit-allow: px — px — below minimum token granularity (sub-10px)
+      // audit-allow: px — below minimum token granularity (sub-10px)
       boxShadow: `0 0 0 2px ${vars.color.accent.primary}33`,
     },
     ":disabled": {
@@ -64,7 +64,7 @@ export const inputRecipe = recipe({
         borderBottomColor: vars.color.error.base,
         ":focus": {
           borderBottomColor: vars.color.error.base,
-          // audit-allow: px — px — below minimum token granularity (sub-10px)
+          // audit-allow: px — below minimum token granularity (sub-10px)
           boxShadow: `0 0 0 2px ${vars.color.error.base}33`,
         },
       },

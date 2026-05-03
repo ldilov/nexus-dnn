@@ -8,15 +8,15 @@ const popIn = keyframes({
 
 export const reroute = style({
   position: "relative",
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   width: "18px",
-  // audit-allow: px — px — node graph layout primitive (xy-flow contract)
+  // audit-allow: px — node graph layout primitive (xy-flow contract)
   height: "18px",
-  // audit-allow: px — px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-token spacing value, no density token at this step
   borderRadius: "999px",
   background: vars.color.bg.panel,
   border: `1px solid ${vars.color.outline.variant}`,
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   boxShadow: "0 2px 6px rgba(0,0,0,0.5)",
   animation: `${popIn} 240ms ${vars.motion.easingSpring} both`,
   transition: "transform 160ms ease, box-shadow 160ms ease",
@@ -40,6 +40,6 @@ globalStyle(`.react-flow__node.dragging:has(${reroute})`, {
 });
 globalStyle(`.react-flow__node.dragging ${reroute}`, {
   transform: "scale(1.4)",
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   boxShadow: "0 8px 24px rgba(0,0,0,0.65), 0 0 16px rgba(186, 158, 255, 0.4)",
 });

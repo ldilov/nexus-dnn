@@ -330,7 +330,7 @@ const registry: Record<string, ComponentRenderer> = {
 
   models_panel: (node, _children) => {
     const props = toProps(node);
-    // audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
+    // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
     const extensionId = (props.extension_id as string | undefined) ?? "local-llm";
     return <ModelsPanel extensionId={extensionId} />;
   },

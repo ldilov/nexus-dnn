@@ -2,7 +2,7 @@ import { type ReactNode, useState, useCallback } from "react";
 import useSWR from "swr";
 import * as styles from "./backend_styles.css";
 import { fetchLoadState } from "../../api/client";
-// audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
+// audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
 import { installRuntime, getInstallStatus } from "../../services/local_llm_rpc";
 
 type BackendStatus = "running" | "installed" | "available" | "installing" | "failed" | "unavailable";
@@ -52,7 +52,7 @@ function BackendCard({ backend }: { backend: BackendOption }) {
     setLogs((prev) => [...prev.slice(-200), `[${ts}] ${msg}`]);
   }, []);
 
-  // audit-allow: io-boundary — io-boundary — direct fetch outside services/* layer, scoped to feature
+  // audit-allow: io-boundary — direct fetch outside services/* layer, scoped to feature
   const { data: loadState } = useSWR(
     `backend-load-state:${backend.id}`,
     () => fetchLoadState(backend.id),

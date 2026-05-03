@@ -7,6 +7,6 @@ export const fullSvg = style({
 });
 
 export const guideLineGlow = style({
-  // audit-allow: px — px — below minimum token granularity (sub-10px)
+  // audit-allow: px — below minimum token granularity (sub-10px)
   filter: "drop-shadow(0 0 4px rgba(34, 211, 238, 0.6))",
 });

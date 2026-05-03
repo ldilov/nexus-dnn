@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   fetchActiveModelStatus,
   type ActiveModelStatusPayload,
-// audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
+// audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
 } from "../services/local_llm_chat";
 import { subscribeSessionEvents } from "../services/event_streams";
 

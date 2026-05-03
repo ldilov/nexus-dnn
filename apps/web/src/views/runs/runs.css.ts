@@ -6,7 +6,7 @@ export const container = style({
   flexDirection: "column",
   gap: vars.density.padSection,
   paddingBlock: vars.density.padSection,
-  // audit-allow: px — px — fixed layout breakpoint
+  // audit-allow: px — fixed layout breakpoint
   maxWidth: "1400px",
   marginInline: "auto",
   width: "100%",
