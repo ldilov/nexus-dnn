@@ -788,8 +788,7 @@ export const backendIconBox = style({
   width: "52px",
   // audit-allow: px — fixed 52px icon box size per card design spec, must not scale with density
   height: "52px",
-  // audit-allow: px — 14px icon box corner radius, between card(10) and panel(14) tokens — editorial step
-  borderRadius: "14px",
+  borderRadius: vars.radius.panel,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -1080,8 +1079,7 @@ export const backendInstallingButton = style({
 
 export const backendLogPanel = style({
   marginTop: vars.space.gapMd,
-  // audit-allow: px — log panel corner radius at 14px = panel token (14px), exact match
-  borderRadius: "14px",
+  borderRadius: vars.radius.panel,
   border: `1px solid rgba(34, 211, 238, 0.15)`,
   background: `linear-gradient(180deg, rgba(12,14,16,0.92), rgba(12,14,16,0.76))`,
   overflow: "hidden",
@@ -1093,7 +1091,8 @@ export const backendLogHeader = style({
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  padding: `${vars.space.insetSm} ${vars.space.insetMd}`,
+  // audit-allow: px — bespoke log/select padding, no spacing token at 10×14
+  padding: "10px 14px",
   fontFamily: vars.font.code,
   fontSize: vars.font.size.kbd,
   // audit-allow: px — raw font-weight 600 for log header, no semibold token maps exactly to 600
@@ -1132,7 +1131,8 @@ export const backendLogBody = style({
   // audit-allow: px — fixed max-height at 220px for constrained log viewer, not a spacing token
   maxHeight: "220px",
   overflowY: "auto",
-  padding: `${vars.space.insetSm} ${vars.space.insetMd}`,
+  // audit-allow: px — bespoke log/select padding, no spacing token at 10×14
+  padding: "10px 14px",
   scrollbarWidth: "thin",
   scrollbarColor: `${NEON_CYAN}55 transparent`,
 });
@@ -1157,9 +1157,9 @@ globalStyle(`${backendLogBody}::-webkit-scrollbar-track`, { background: "transpa
 
 export const backendAccelSelect = style({
   width: "100%",
-  padding: `${vars.space.insetSm} ${vars.space.insetMd}`,
-  // audit-allow: px — select element corner radius at 10px = card token (10px), exact match
-  borderRadius: "10px",
+  // audit-allow: px — bespoke log/select padding, no spacing token at 10×14
+  padding: "10px 14px",
+  borderRadius: vars.radius.card,
   background: `linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0))`,
   backgroundColor: vars.color.bg.panel,
   color: vars.color.text.primary,
