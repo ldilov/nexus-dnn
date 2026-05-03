@@ -45,6 +45,7 @@ export class ExtensionCustomElement extends Component<
   }
 
   override componentDidMount() {
+    this.cancelled = false;
     void this.register();
   }
 
