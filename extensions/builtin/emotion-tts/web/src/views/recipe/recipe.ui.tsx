@@ -21,13 +21,14 @@ export interface RecipeUiProps {
 export function RecipeUi(props: RecipeUiProps): JSX.Element {
   const customised = props.workflowCustomised ?? false;
   const unmappable = props.unmappableFields ?? [];
+  const heroTitle = resolveHeroTitle(props.deployment.displayName, props.deployment.deploymentId);
 
   return (
     <div className={css.shell}>
       <header className={css.heroBlock}>
         <div className={css.heroEyebrow}>EmotionTTS · Recipe Studio</div>
         <div className={css.heroTopRow}>
-          <h1 className={css.heroTitle}>{props.deployment.displayName}</h1>
+          <h1 className={css.heroTitle}>{heroTitle}</h1>
         </div>
         <p className={css.heroLede}>
           Author the script, cast the voices, sculpt the emotion, and modulate every utterance —
@@ -108,6 +109,14 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
       </div>
     </div>
   );
+}
+
+function resolveHeroTitle(displayName: string, deploymentId: string): string {
+  const trimmed = (displayName ?? "").trim();
+  if (!trimmed || trimmed === deploymentId) {
+    return "Recipe Studio";
+  }
+  return trimmed;
 }
 
 interface RecipeSectionProps {
