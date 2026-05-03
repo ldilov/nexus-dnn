@@ -1,5 +1,5 @@
-//! Spec 037 / Phase 8 — shared test helpers for the Draft AI suggestion
-//! stream contract tests. Builds an axum app from the handler's
+//! Shared test helpers for the Draft AI suggestion stream contract
+//! tests. Builds an axum app from the handler's
 //! `router(provider)` and exposes a small SSE parser so individual test
 //! files stay focused on their scenario assertions.
 

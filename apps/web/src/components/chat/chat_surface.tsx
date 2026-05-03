@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ThreadRail } from "./thread_rail";
 import { MessageBubble } from "./message_bubble";
 import { Composer } from "./composer";
@@ -53,6 +53,7 @@ export interface ChatSurfaceProps {
   activeModelId: string | null;
   onSelectModel?: (id: string) => Promise<void>;
   modelPickerStatus?: "ready" | "loading" | "unavailable";
+  onOpenBackends?: () => void;
 
   samplerOverride?: SamplerOverride;
   onUpdateSamplerOverride?: (next: SamplerOverride) => Promise<void>;
@@ -64,9 +65,24 @@ export interface ChatSurfaceProps {
   showCodeBlocks?: boolean;
   showSendShortcutHint?: boolean;
 
+  schemaMismatch?: boolean;
+  schemaMismatchMessage?: ReactNode;
+
   ariaLabel?: string;
   testId?: string;
 }
+
+const visuallyHidden = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0,0,0,0)",
+  whiteSpace: "nowrap",
+  border: 0,
+} as const;
 
 export function ChatSurface(props: ChatSurfaceProps) {
   const {
@@ -76,6 +92,8 @@ export function ChatSurface(props: ChatSurfaceProps) {
     activeThreadId,
     onSelectThread,
     onCreateThread,
+    onRenameThread,
+    onDeleteThread,
     messages,
     isStreaming,
     onSendMessage,
@@ -85,6 +103,9 @@ export function ChatSurface(props: ChatSurfaceProps) {
     activeModelId,
     onSelectModel,
     modelPickerStatus,
+    onOpenBackends,
+    schemaMismatch,
+    schemaMismatchMessage,
     samplerOverride,
     onUpdateSamplerOverride,
     composerPlaceholder,
@@ -102,6 +123,18 @@ export function ChatSurface(props: ChatSurfaceProps) {
     return null;
   }, [messages]);
 
+  const wasStreamingRef = useRef(false);
+  const [streamCompletionAnnouncement, setStreamCompletionAnnouncement] = useState("");
+  useEffect(() => {
+    if (wasStreamingRef.current && !isStreaming) {
+      const tail = lastAssistantId ? messages.find((m) => m.id === lastAssistantId) : null;
+      setStreamCompletionAnnouncement(
+        tail?.status === "failed" ? "Assistant reply failed." : "Assistant reply complete.",
+      );
+    }
+    wasStreamingRef.current = isStreaming;
+  }, [isStreaming, lastAssistantId, messages]);
+
   const activeThread = useMemo(
     () => threads.find((t) => t.id === activeThreadId) ?? null,
     [threads, activeThreadId],
@@ -115,6 +148,8 @@ export function ChatSurface(props: ChatSurfaceProps) {
         activeThreadId={activeThreadId}
         onSelect={onSelectThread}
         onCreate={onCreateThread}
+        onRename={onRenameThread}
+        onDelete={onDeleteThread}
       />
 
       <div className={styles.center}>
@@ -130,11 +165,18 @@ export function ChatSurface(props: ChatSurfaceProps) {
               activeModelId={activeModelId}
               onSelect={onSelectModel}
               status={modelPickerStatus}
+              onOpenBackends={onOpenBackends}
             />
           </div>
         </header>
 
-        <div className={styles.messages} role="log" aria-live="polite">
+        {schemaMismatch ? (
+          <div className={styles.banner} role="alert">
+            {schemaMismatchMessage ?? "Extension version mismatch — reload after upgrading the extension."}
+          </div>
+        ) : null}
+
+        <div className={styles.messages} role="log" aria-live={isStreaming ? "off" : "polite"}>
           {messages.map((m) => (
             <MessageBubble
               key={m.id}
@@ -143,6 +185,10 @@ export function ChatSurface(props: ChatSurfaceProps) {
               onRetry={onRetryMessage}
             />
           ))}
+        </div>
+
+        <div role="status" aria-live="polite" style={visuallyHidden as CSSProperties}>
+          {streamCompletionAnnouncement}
         </div>
 
         <div className={styles.composerSlot}>

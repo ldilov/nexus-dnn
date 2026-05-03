@@ -3,8 +3,8 @@
 //!
 //! - Contract tests inject a `FakeStreamProvider` that yields canned
 //!   tokens or returns scripted errors (no real HTTP / no real lease).
-//! - The production impl (T078 lease_adapter) wraps `LeaseManager` and
-//!   the OpenAI-style streaming endpoint of whatever backend the lease
+//! - The production lease-backed adapter wraps `LeaseManager` and the
+//!   OpenAI-style streaming endpoint of whatever backend the lease
 //!   resolves to — extension-agnostic by virtue of the lease layer.
 //!
 //! Boundary contract: the trait surface uses only host types
@@ -133,8 +133,7 @@ pub struct FakeStreamProvider {
 pub struct FakePlan {
     pub script: Vec<StreamItem>,
     /// If `Some`, `open_stream` returns this error instead of opening a
-    /// stream — used to model the "no_backend_leasable" pre-stream
-    /// failure path (T070).
+    /// stream — models the "no_backend_leasable" pre-stream failure path.
     pub open_error: Option<DraftSuggestionError>,
 }
 

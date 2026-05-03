@@ -1,4 +1,4 @@
-import { style, styleVariants } from "@vanilla-extract/css";
+import { globalStyle, style, styleVariants } from "@vanilla-extract/css";
 import { vars } from "../theme/tokens.css";
 
 const base = style({
@@ -30,6 +30,10 @@ export const densityStyle = styleVariants({
   compact: { padding: vars.space.sm },
   comfortable: { padding: `${vars.space.md} ${vars.space.lg}` },
   airy: { padding: `${vars.space.lg} ${vars.space.xl}` },
+});
+
+globalStyle(`emotion-tts-app[data-card="glass"] [data-elevation="raised"]`, {
+  boxShadow: vars.shadow.subtle,
 });
 
 export const header = style({

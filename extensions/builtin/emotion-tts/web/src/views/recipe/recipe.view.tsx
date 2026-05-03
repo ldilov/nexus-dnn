@@ -86,7 +86,7 @@ export function RecipeView(): JSX.Element {
         const line = raw.trim();
         if (!line) continue;
         const match = line.match(tagRegex);
-        const head = match?.groups?.["body"]?.split("|")[0]?.trim() ?? "";
+        const head = match?.groups?.body?.split("|")[0]?.trim() ?? "";
         const name = head.split(":")[0]?.trim() ?? "";
         if (name) referencedCharacters.add(name.toLowerCase());
       }

@@ -1,4 +1,4 @@
-//! Spec 037 / T070 — pre-stream lease failure contract test.
+//! Pre-stream lease failure contract test.
 //!
 //! When the provider returns `NoEligibleBackend` from `open_stream`,
 //! the endpoint MUST return HTTP 503 with body

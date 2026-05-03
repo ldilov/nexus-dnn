@@ -75,6 +75,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
     [chain.ops],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: voiceAsset.voiceAssetId is the reset trigger when the user picks a different voice
   useEffect(() => {
     setChain(initialChainFor(sourceDurationMs));
     setValidationError(null);
@@ -83,6 +84,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
     persistedDigestRef.current = null;
   }, [voiceAsset.voiceAssetId, sourceDurationMs]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: auditRefreshKey is a manual refetch signal incremented after edit-chain mutations
   useEffect(() => {
     auditControllerRef.current?.abort();
     const controller = new AbortController();
@@ -415,6 +417,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
       </EditSurfaceActions>
 
       {previewObjectUrl && (
+        // biome-ignore lint/a11y/useMediaCaption: synthesised speech preview, no captions track
         <audio
           ref={audioRef}
           src={previewObjectUrl}

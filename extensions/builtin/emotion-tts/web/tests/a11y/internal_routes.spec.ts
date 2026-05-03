@@ -33,7 +33,7 @@ async function applyBaseline(page: Page): Promise<void> {
   await page.emulateMedia({ reducedMotion: "reduce" });
 }
 
-test.describe("EmotionTTS internal routes — WCAG 2.2 AA baseline (spec 037 T098)", () => {
+test.describe("EmotionTTS internal routes — WCAG 2.2 AA baseline", () => {
   for (const route of ROUTES) {
     test(`${route.id} — no serious/critical axe violations`, async ({ page }) => {
       await applyBaseline(page);

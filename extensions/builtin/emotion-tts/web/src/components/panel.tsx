@@ -35,7 +35,7 @@ export function Panel({
     .filter(Boolean)
     .join(" ");
   return (
-    <Tag className={cls} style={style} {...rest}>
+    <Tag className={cls} style={style} data-elevation={elevation} {...rest}>
       {children}
     </Tag>
   );

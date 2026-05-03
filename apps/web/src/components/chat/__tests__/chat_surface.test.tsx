@@ -75,7 +75,7 @@ describe("ChatSurface", () => {
   it("send button enables and onSendMessage fires on Enter", async () => {
     const onSendMessage = vi.fn(noop);
     renderSurface({ onSendMessage });
-    const textarea = screen.getByLabelText(/send a message/i);
+    const textarea = screen.getByPlaceholderText(/send a message/i);
     fireEvent.change(textarea, { target: { value: "ping" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
     expect(onSendMessage).toHaveBeenCalledWith("ping");
@@ -84,7 +84,7 @@ describe("ChatSurface", () => {
   it("Shift+Enter inserts newline rather than submitting", () => {
     const onSendMessage = vi.fn(noop);
     renderSurface({ onSendMessage });
-    const textarea = screen.getByLabelText(/send a message/i);
+    const textarea = screen.getByPlaceholderText(/send a message/i);
     fireEvent.change(textarea, { target: { value: "line1" } });
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true });
     expect(onSendMessage).not.toHaveBeenCalled();

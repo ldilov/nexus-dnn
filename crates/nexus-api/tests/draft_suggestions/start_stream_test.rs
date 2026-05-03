@@ -1,4 +1,4 @@
-//! Spec 037 / T068 — happy-path contract test for
+//! Happy-path contract test for
 //! `POST /api/v1/modules/drafts/{draft_id}/suggestions`.
 //!
 //! Invariants (per `contracts/draft_suggestions.events.md`):

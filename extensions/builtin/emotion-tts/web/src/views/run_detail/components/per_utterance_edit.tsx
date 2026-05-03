@@ -49,6 +49,7 @@ export function PerUtteranceEdit(props: PerUtteranceEditProps): JSX.Element {
   const applyControllerRef = useRef<AbortController | null>(null);
   const persistedDigestRef = useRef<string | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: utterance.utteranceId is the reset trigger when the user picks a different utterance
   useEffect(() => {
     setChain(initialChainFor(sourceDurationMs));
     setNormalizeOn(false);
@@ -60,6 +61,7 @@ export function PerUtteranceEdit(props: PerUtteranceEditProps): JSX.Element {
     return () => applyControllerRef.current?.abort();
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: focus only re-runs when the user opens a different utterance
   useEffect(() => {
     const focusable = rootRef.current?.querySelector<HTMLElement>(
       "button:not([disabled]), [tabindex='0']",
