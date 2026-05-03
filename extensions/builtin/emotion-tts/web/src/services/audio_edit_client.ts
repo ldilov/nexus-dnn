@@ -247,6 +247,7 @@ export interface AuditEntry {
   operation_count: number;
   recorded_at: string;
   actor: string;
+  chain_snapshot_json?: string | null;
 }
 
 export interface AuditLogResponse {

@@ -43,6 +43,7 @@ interface RemovalStackEntry {
 export interface AudioEditPanelProps {
   voiceAsset: VoiceAsset;
   deploymentId: string;
+  affectedCharacterNames?: readonly string[];
   onChainPersisted: (response: ApplyEditResponse) => void;
   onError: (message: string) => void;
 }
@@ -50,7 +51,13 @@ export interface AudioEditPanelProps {
 const DEFAULT_LUFS = -16.0;
 
 export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
-  const { voiceAsset, deploymentId, onChainPersisted, onError } = props;
+  const {
+    voiceAsset,
+    deploymentId,
+    affectedCharacterNames = [],
+    onChainPersisted,
+    onError,
+  } = props;
   const sourceDurationMs = voiceAsset.durationMs ?? 0;
   const audioUrl = useMemo(
     () => artifactUrl(voiceAsset.audioArtifactRef),
@@ -250,6 +257,15 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
   const handleApply = useCallback(async () => {
     if (!validateLocal()) return;
     if (previewInFlight || applyInFlight) return;
+    if (affectedCharacterNames.length > 1) {
+      const list = affectedCharacterNames.join(", ");
+      const confirmed = window.confirm(
+        `This voice asset is referenced by ${affectedCharacterNames.length} characters: ${list}.\n\n` +
+          "Applying this edit chain will affect every line they speak in the next batch.\n\n" +
+          "Continue?",
+      );
+      if (!confirmed) return;
+    }
     previewControllerRef.current?.abort();
     applyControllerRef.current?.abort();
     const controller = new AbortController();
@@ -291,6 +307,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
     validateLocal,
     previewInFlight,
     applyInFlight,
+    affectedCharacterNames,
     voiceAsset.voiceAssetId,
     deploymentId,
     chain,

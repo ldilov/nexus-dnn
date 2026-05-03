@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData } from "react-router";
 import { Toaster, toast } from "sonner";
-import { clearVoiceAssetEdit } from "../../services/audio_edit_client";
+import {
+  applyVoiceAssetEdit,
+  clearVoiceAssetEdit,
+  type EditChain,
+} from "../../services/audio_edit_client";
 import type { Deployment } from "../../services/deployments_client";
 import {
   createMapping,
@@ -210,6 +214,46 @@ export function RecipeView(): JSX.Element {
     return targets;
   }, [mappings, voiceAssets]);
 
+  const handleRevertAuditToChain = useCallback(
+    async (target: AuditTargetOption, chainJson: string): Promise<void> => {
+      if (target.kind !== "voice_asset") {
+        notify.error("Targeted revert is only supported for voice assets in v1.");
+        return;
+      }
+      let parsed: EditChain;
+      try {
+        parsed = JSON.parse(chainJson) as EditChain;
+      } catch {
+        notify.error("Audit snapshot is malformed; cannot revert.");
+        return;
+      }
+      try {
+        const response = await applyVoiceAssetEdit(target.id, deployment.deploymentId, {
+          chain: parsed,
+        });
+        const affected = mappings.filter((m) => m.speakerVoiceAssetId === target.id);
+        await Promise.all(
+          affected.map((m) =>
+            patchMapping(deployment.deploymentId, m.mappingId, {
+              voiceAssetChainDigest: response.chain_digest,
+            }).catch(() => null),
+          ),
+        );
+        setMappings((prev) =>
+          prev.map((m) =>
+            m.speakerVoiceAssetId === target.id
+              ? { ...m, voiceAssetChainDigest: response.chain_digest }
+              : m,
+          ),
+        );
+        notify.success(`Reverted ${target.label} to a prior chain`);
+      } catch (err: unknown) {
+        notify.error(err instanceof Error ? err.message : "revert failed");
+      }
+    },
+    [deployment.deploymentId, mappings],
+  );
+
   const handleRevertAudit = useCallback(
     async (target: AuditTargetOption): Promise<void> => {
       if (target.kind !== "voice_asset") {
@@ -388,6 +432,7 @@ export function RecipeView(): JSX.Element {
           deploymentId={deployment.deploymentId}
           targets={auditTargets}
           onRevertToIdentity={handleRevertAudit}
+          onRevertToChain={handleRevertAuditToChain}
         />
       }
       />

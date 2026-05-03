@@ -24,6 +24,8 @@ import {
   EMPTY_VEC,
   clampVec,
 } from "../lib/preset_naming";
+import { mapPromptToVector } from "../lib/qwen_mapping";
+import { Button } from "../../../components/button";
 
 export interface EmotionStudioProps {
   value: GlobalEmotion;
@@ -211,6 +213,27 @@ export function EmotionStudio({
               value={value.qwenTemplate ?? ""}
               onChange={(e) => setQwenTemplate(e.target.value)}
             />
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  const prompt = (value.qwenTemplate ?? "").trim();
+                  if (!prompt) return;
+                  const mapped = mapPromptToVector(prompt);
+                  onChange({
+                    ...value,
+                    mode: "emotion_vector",
+                    vector: vecToPresetVector(mapped),
+                  });
+                }}
+                disabled={!(value.qwenTemplate ?? "").trim()}
+              >
+                Map to vector →
+              </Button>
+              <span className={css.qwenHint}>
+                Heuristic v1: keyword-based mapping. Switches to vector mode on success.
+              </span>
+            </div>
             <span className={css.qwenHint}>
               The Qwen prompt is mapped to a vector at synth time. Per-line{" "}
               <code>[Char|qwen:…]</code> overrides take precedence.
