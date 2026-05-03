@@ -11,6 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:visual": "playwright test --project=visual",
+    "test:a11y": "playwright test --project=a11y",
+    "test:visual:update": "playwright test --project=visual --update-snapshots",
     "lint": "biome lint src",
     "lint:css": "stylelint \"src/**/*.css.ts\"",
     "format": "biome format --write src"

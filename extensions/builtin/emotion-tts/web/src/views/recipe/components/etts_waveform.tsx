@@ -24,11 +24,13 @@ export function EttsWaveform(props: EttsWaveformProps): JSX.Element {
     fallbackSeed = 1,
     fallbackIntensity = 0.6,
     loopRegion,
+    onLoopRegionChange,
     sampleRateHz,
     bitDepth,
     displayId,
     reduceMotion,
   } = props;
+  const dragRef = useRef<{ kind: "start" | "end" | "create"; pointerId: number } | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -157,12 +159,79 @@ export function EttsWaveform(props: EttsWaveformProps): JSX.Element {
   const totalDuration = waveform.duration > 0 ? waveform.duration : audioRef.current?.duration ?? 0;
   const playheadPct = totalDuration > 0 ? Math.max(0, Math.min(100, (currentTime / totalDuration) * 100)) : 0;
 
+  const ratioFromClientX = useCallback((clientX: number): number => {
+    const frame = frameRef.current;
+    if (!frame) return 0;
+    const rect = frame.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  }, []);
+
+  const handleLoopHandlePointerDown = useCallback(
+    (kind: "start" | "end") => (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!onLoopRegionChange || !loopRegion) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dragRef.current = { kind, pointerId: event.pointerId };
+      const onMove = (e: PointerEvent) => {
+        if (!dragRef.current) return;
+        const ratio = ratioFromClientX(e.clientX);
+        const next = { ...loopRegion };
+        if (dragRef.current.kind === "start") {
+          next.start = Math.min(ratio, loopRegion.end - 0.01);
+        } else {
+          next.end = Math.max(ratio, loopRegion.start + 0.01);
+        }
+        onLoopRegionChange(next);
+      };
+      const onUp = () => {
+        dragRef.current = null;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    },
+    [loopRegion, onLoopRegionChange, ratioFromClientX],
+  );
+
+  const handleTrackPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.shiftKey && onLoopRegionChange) {
+        event.preventDefault();
+        const startRatio = ratioFromClientX(event.clientX);
+        onLoopRegionChange({ start: startRatio, end: Math.min(1, startRatio + 0.05) });
+        const onMove = (e: PointerEvent) => {
+          const ratio = ratioFromClientX(e.clientX);
+          if (ratio > startRatio) {
+            onLoopRegionChange({ start: startRatio, end: ratio });
+          } else {
+            onLoopRegionChange({ start: ratio, end: startRatio });
+          }
+        };
+        const onUp = () => {
+          window.removeEventListener("pointermove", onMove);
+          window.removeEventListener("pointerup", onUp);
+          window.removeEventListener("pointercancel", onUp);
+        };
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+        window.addEventListener("pointercancel", onUp);
+        return;
+      }
+      handleSeek(event.clientX);
+    },
+    [handleSeek, onLoopRegionChange, ratioFromClientX],
+  );
+
   return (
     <div className={css.root}>
       <div
         ref={frameRef}
         className={css.canvasFrame}
-        onPointerDown={(ev) => handleSeek(ev.clientX)}
+        onPointerDown={handleTrackPointerDown}
+        title={onLoopRegionChange ? "Click to seek · Shift+drag to set loop" : "Click to seek"}
       >
         <canvas
           ref={canvasRef}
@@ -172,14 +241,40 @@ export function EttsWaveform(props: EttsWaveformProps): JSX.Element {
           aria-label="Audio waveform"
         />
         {loopRegion ? (
-          <div
-            className={css.loopRegion}
-            style={{
-              left: `${loopRegion.start * 100}%`,
-              width: `${(loopRegion.end - loopRegion.start) * 100}%`,
-            }}
-            aria-hidden="true"
-          />
+          <>
+            <div
+              className={css.loopRegion}
+              style={{
+                left: `${loopRegion.start * 100}%`,
+                width: `${(loopRegion.end - loopRegion.start) * 100}%`,
+              }}
+              aria-hidden="true"
+            />
+            {onLoopRegionChange ? (
+              <>
+                <div
+                  className={css.loopHandle}
+                  style={{ left: `${loopRegion.start * 100}%` }}
+                  onPointerDown={handleLoopHandlePointerDown("start")}
+                  role="slider"
+                  aria-label="Loop start"
+                  aria-valuemin={0}
+                  aria-valuemax={1}
+                  aria-valuenow={loopRegion.start}
+                />
+                <div
+                  className={css.loopHandle}
+                  style={{ left: `${loopRegion.end * 100}%` }}
+                  onPointerDown={handleLoopHandlePointerDown("end")}
+                  role="slider"
+                  aria-label="Loop end"
+                  aria-valuemin={0}
+                  aria-valuemax={1}
+                  aria-valuenow={loopRegion.end}
+                />
+              </>
+            ) : null}
+          </>
         ) : null}
         {!waveform.ready ? (
           <div className={css.loadingOverlay}>Decoding waveform…</div>

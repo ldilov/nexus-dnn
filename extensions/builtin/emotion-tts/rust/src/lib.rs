@@ -160,6 +160,21 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "utterance_derived_ref",
         sql: include_str!("../../storage/migrations/021_utterance_derived_ref.sql"),
     },
+    Migration {
+        version: 22,
+        name: "eq3_op_support",
+        sql: include_str!("../../storage/migrations/022_eq3_op_support.sql"),
+    },
+    Migration {
+        version: 23,
+        name: "voice_asset_chain_digest",
+        sql: include_str!("../../storage/migrations/023_voice_asset_chain_digest.sql"),
+    },
+    Migration {
+        version: 24,
+        name: "audit_chain_snapshot",
+        sql: include_str!("../../storage/migrations/024_audit_chain_snapshot.sql"),
+    },
 ];
 
 pub const EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -108,6 +108,7 @@ async fn apply_impl(
         run_audio_edit_rpc(state, &utterance_id, &utterance, &req.chain, &new_digest).await?;
 
     let operation_count = req.chain.operation_count();
+    let chain_snapshot = serde_json::to_string(&req.chain).ok();
     let audit = build_audit_entry(
         ulid::Ulid::new().to_string(),
         run.deployment_id.clone(),
@@ -117,6 +118,7 @@ async fn apply_impl(
         new_digest.clone(),
         operation_count,
         SYSTEM_ACTOR.to_string(),
+        chain_snapshot,
     );
 
     let outcome = audio_edit_atomic::commit_utterance_apply(

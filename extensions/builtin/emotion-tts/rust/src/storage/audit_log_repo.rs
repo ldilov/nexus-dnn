@@ -49,6 +49,8 @@ pub struct AuditEntry {
     pub operation_count: u16,
     pub recorded_at: DateTime<Utc>,
     pub actor: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_snapshot_json: Option<String>,
 }
 
 #[async_trait]
@@ -100,6 +102,7 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<AuditEntry> {
     let op_count: i64 = row.try_get("operation_count").map_err(to_err)?;
     let recorded_at_raw: String = row.try_get("recorded_at").map_err(to_err)?;
     let actor: String = row.try_get("actor").map_err(to_err)?;
+    let chain_snapshot_json: Option<String> = row.try_get("chain_snapshot_json").unwrap_or(None);
 
     Ok(AuditEntry {
         entry_id,
@@ -113,6 +116,7 @@ fn map_row(row: &sqlx::sqlite::SqliteRow) -> RepoResult<AuditEntry> {
         })?,
         recorded_at: parse_timestamp(recorded_at_raw.as_str())?,
         actor,
+        chain_snapshot_json,
     })
 }
 
@@ -135,8 +139,8 @@ impl AuditLogRepo for SqliteAuditLogRepo {
         sqlx::query(
             "INSERT INTO ext_emotion_tts__audio_edit_log \
              (entry_id, deployment_id, target_id, target_kind, digest_before, digest_after, \
-              operation_count, recorded_at, actor) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              operation_count, recorded_at, actor, chain_snapshot_json) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&entry.entry_id)
         .bind(entry.deployment_id.as_str())
@@ -147,6 +151,7 @@ impl AuditLogRepo for SqliteAuditLogRepo {
         .bind(i64::from(entry.operation_count))
         .bind(format_timestamp(entry.recorded_at))
         .bind(&entry.actor)
+        .bind(entry.chain_snapshot_json.as_deref())
         .execute(&self.pool)
         .await
         .map_err(to_err)?;
@@ -162,7 +167,7 @@ impl AuditLogRepo for SqliteAuditLogRepo {
     ) -> RepoResult<Vec<AuditEntry>> {
         let rows = sqlx::query(
             "SELECT entry_id, deployment_id, target_id, target_kind, digest_before, digest_after, \
-                    operation_count, recorded_at, actor \
+                    operation_count, recorded_at, actor, chain_snapshot_json \
              FROM ext_emotion_tts__audio_edit_log \
              WHERE deployment_id = ? AND target_kind = ? AND target_id = ? \
              ORDER BY recorded_at DESC, entry_id DESC \

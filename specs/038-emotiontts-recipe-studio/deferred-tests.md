@@ -1,6 +1,25 @@
 # Spec 038 — Deferred Tests + Follow-Up Items
 
-**Last updated:** 2026-05-03 (final pass — 99/99 tasks complete)
+**Last updated:** 2026-05-03 (post-analysis remediation — all C1–C5 closed, all V1–V3 scaffolded)
+
+## Post-analysis status (after `/speckit-analyze` + remediation)
+
+The analysis report flagged 5 coverage gaps (C1–C5) and 3 verification gates (V1–V3). All 5 implementation gaps are now closed:
+
+| Finding | Status | Detail |
+|---|---|---|
+| C1 FR-093 multi-character confirmation | ✅ shipped | `audio_edit_panel.tsx` checks `affectedCharacterNames.length > 1` and surfaces `window.confirm(...)` listing every affected character before commit. Threaded from `mapping_editor.view.tsx` via `MappingDetail.allMappings` prop. |
+| C2 FR-102 targeted revert | ✅ shipped | New migration `024_audit_chain_snapshot.sql` adds nullable `chain_snapshot_json TEXT`. `AuditEntry` Rust struct + repo + insert/select queries + `build_audit_entry` signature all extended. Apply handlers in `router/{audio_edit,utterance_edit}.rs` serialize the chain JSON on write. Frontend `AuditHistoryPanel` adds a per-row "Revert →" action when snapshot is present; `recipe.view.tsx::handleRevertAuditToChain` parses the snapshot and re-applies via existing `applyVoiceAssetEdit`. |
+| C3 FR-047 Qwen Map-to-vector | ✅ shipped | New `lib/qwen_mapping.ts` with `mapPromptToVector(prompt)` — keyword-table heuristic with intensifiers / hedges / clause-scoped negation. 9 vitest cases (qwen_mapping.test.ts). Wired to a "Map to vector →" button in `EmotionStudio` qwen mode that switches to vector mode on success. v1 is local-heuristic; future spec can route to a real backend without changing the prop shape. |
+| C4 FR-071 loop region drag | ✅ shipped | `EttsWaveform` now exposes start/end drag handles + Shift+drag to create a new loop region. `loopHandle` CSS with hover/focus state. `onLoopRegionChange` emits the new region on every move. |
+| C5 FR-086 mid-drag-switch flush | ✅ shipped | `DirectModSliderStrip` accepts an `onSliderFlush` callback fired via `onPointerDownCapture` whenever a slider/button receives a pointer-down. Native `input` events ensure each prior slider's value is already committed before the next pointer-down lands. |
+
+| Verification | Status |
+|---|---|
+| V1 visual baselines (SC-001) | Specs at `tests/visual/recipe_studio.spec.ts` — runs via `pnpm test:visual` (gated on RUN_VISUAL=1). Pre-existing playwright.config.ts has the `visual` project wired. |
+| V1 latency assertions (SC-002, SC-012, SC-013, SC-004, SC-015) | Spec at `tests/visual/latency.spec.ts` — runs via `pnpm test:e2e --project=chromium` (gated on RUN_E2E=1). |
+| V2 axe-core (SC-007) | Pre-existing spec at `tests/a11y/internal_routes.spec.ts` covers all 3 routes (deployments-index, recipe, mappings). Runs via `pnpm test:a11y` (gated on RUN_E2E=1). |
+| V3 voice-asset chain in next gen (SC-010) | Frontend wiring + write-back fully shipped. End-to-end audio inspection requires a fixture-backed Playwright scenario (deferred to next CI cycle once a fixture deployment is provisioned). |
 
 This document tracks tests and integration items that were deferred during the
 initial spec 038 implementation, in line with **Constitution VI** (test-first

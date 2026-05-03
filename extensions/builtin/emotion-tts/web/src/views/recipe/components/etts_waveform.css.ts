@@ -45,6 +45,28 @@ export const loopRegion = style({
   pointerEvents: "none",
 });
 
+export const loopHandle = style({
+  position: "absolute",
+  top: 0,
+  bottom: 0,
+  // audit-allow: px — sub-token spacing value, no density token at this step
+  width: "10px",
+  // audit-allow: px — sub-token spacing value, no density token at this step
+  marginLeft: "-5px",
+  cursor: "ew-resize",
+  background: vars.color.tertiary,
+  opacity: 0.6,
+  borderRadius: vars.radius.sm,
+  transition: `opacity ${vars.motion.fast}, transform ${vars.motion.fast}`,
+  selectors: {
+    "&:hover, &:focus-visible": {
+      opacity: 1,
+      transform: "scaleX(1.2)",
+      outline: "none",
+    },
+  },
+});
+
 export const loadingOverlay = style({
   position: "absolute",
   inset: 0,
