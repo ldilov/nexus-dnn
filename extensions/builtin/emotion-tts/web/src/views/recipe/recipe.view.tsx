@@ -58,6 +58,15 @@ const notify = {
   },
 };
 
+function safeParseGeneration(json: string): Record<string, unknown> {
+  try {
+    const v = JSON.parse(json) as unknown;
+    return typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
 interface LoaderData {
   deployment: Deployment;
   mappings: CharacterMapping[];
@@ -83,8 +92,26 @@ export function RecipeView(): JSX.Element {
     mode: "none",
     emotionAlpha: 1.0,
   });
-  const [generation, setGeneration] = useState<Record<string, unknown>>({});
+  const [generation, setGeneration] = useState<Record<string, unknown>>(() => {
+    const seeded = deployment.defaultGenerationOverridesJson
+      ? safeParseGeneration(deployment.defaultGenerationOverridesJson)
+      : {};
+    return {
+      temperature: 0.8,
+      top_p: 0.8,
+      seed: 42,
+      ...seeded,
+    };
+  });
   const [cachePolicy, setCachePolicy] = useState<CachePolicy>("use_cache");
+  // Mirror the deployment's default-voice id locally so `QuickVoicePicker`
+  // updates propagate without a full loader refetch. `useLoaderData` only
+  // re-runs on route revalidation; until then the picker would persist a
+  // change to the backend but the recipe's `unmappedCount` + `Quick voice`
+  // diagnostic would still observe the stale loader value (HIGH-3).
+  const [defaultVoiceAssetId, setDefaultVoiceAssetId] = useState<string | null>(
+    deployment.defaultVoiceAssetId ?? null,
+  );
   const [quickMode, setQuickMode] = useState(deployment.defaultVoiceAssetId != null);
   const [performance, setPerformance] = useState<PerformanceSlidersValue>(PERFORMANCE_DEFAULTS);
 
@@ -119,9 +146,14 @@ export function RecipeView(): JSX.Element {
   }, [mappings]);
 
   const unmappedCount = useMemo(() => {
-    if (quickMode) return 0;
+    // Quick-mode with a default voice covers every unmapped character;
+    // the dispatcher (`prepare.rs::prepare`) falls back to the deployment
+    // default when no character mapping resolves. Without a default voice
+    // unmapped lines would fail at run-creation time, so still count them
+    // as unmapped for the pre-flight UI.
+    if (quickMode && defaultVoiceAssetId) return 0;
     return characters.filter((c) => !mappingsByLower.has(c.toLowerCase())).length;
-  }, [characters, mappingsByLower, quickMode]);
+  }, [characters, mappingsByLower, quickMode, defaultVoiceAssetId]);
 
   const upsertMapping = useCallback(
     async (
@@ -309,13 +341,13 @@ export function RecipeView(): JSX.Element {
     () => buildDiagnostics({
       script,
       quickMode,
-      defaultVoiceAssetId: deployment.defaultVoiceAssetId,
+      defaultVoiceAssetId,
       characters,
       unmappedCount,
       globalEmotion,
       performance,
     }),
-    [script, quickMode, deployment.defaultVoiceAssetId, characters, unmappedCount, globalEmotion, performance],
+    [script, quickMode, defaultVoiceAssetId, characters, unmappedCount, globalEmotion, performance],
   );
 
   const legacyDiagnostics = useMemo(
@@ -359,6 +391,8 @@ export function RecipeView(): JSX.Element {
           onScriptChange={setScript}
           outputFormat={outputFormat}
           mappingsByLower={mappingsByLower}
+          defaultVoiceAssetId={defaultVoiceAssetId}
+          onDefaultVoiceAssetIdChange={setDefaultVoiceAssetId}
         />
       }
       parsedDialogueSection={
@@ -461,6 +495,8 @@ interface ScriptSectionProps {
   onScriptChange: (v: string) => void;
   outputFormat: OutputFormat;
   mappingsByLower: Map<string, CharacterMapping>;
+  defaultVoiceAssetId: string | null;
+  onDefaultVoiceAssetIdChange: (id: string | null) => void;
 }
 
 function ScriptSection({
@@ -471,6 +507,8 @@ function ScriptSection({
   onScriptChange,
   outputFormat,
   mappingsByLower,
+  defaultVoiceAssetId,
+  onDefaultVoiceAssetIdChange,
 }: ScriptSectionProps): JSX.Element {
   const charCount = script.length;
   const wordCount = script.trim() ? script.trim().split(/\s+/).length : 0;
@@ -498,7 +536,8 @@ function ScriptSection({
         {quickMode && (
           <QuickVoicePicker
             deploymentId={deployment.deploymentId}
-            initialVoiceAssetId={deployment.defaultVoiceAssetId ?? null}
+            initialVoiceAssetId={defaultVoiceAssetId}
+            onChange={onDefaultVoiceAssetIdChange}
           />
         )}
         <div

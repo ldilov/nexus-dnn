@@ -2403,3 +2403,240 @@ async fn inline_emotion_vector_override_applied_to_cache_key() {
         "utterance must reference the pre-seeded cached audio file"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Test: cache_policy="read_only_cache" produces NO writes to synthesis_cache
+// ---------------------------------------------------------------------------
+//
+// HIGH-B regression guard. Read-only cache means the dispatcher may consume
+// existing rows but must not create new ones. Pre-fix the write site only
+// gated on `is_test_line`, so a normal batch run with `read_only_cache`
+// would still seal a fresh cache row on every miss — defeating the policy.
+//
+// The flow:
+//   - Seed a single-utterance run with cache_policy="read_only_cache".
+//   - The cache table is empty, so every utterance is a miss.
+//   - The mock worker reports segment_completed.
+//   - After RunTerminal, synthesis_cache must still be empty.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn read_only_cache_policy_skips_cache_writes() {
+    let pool = fresh_pool().await;
+    let repos = Repos::from_pool(pool);
+
+    let dep = DeploymentId::try_from("dep_test_read_only_cache").unwrap();
+    let now = Utc::now().timestamp();
+
+    repos
+        .deployments
+        .insert(&DeploymentRow {
+            deployment_id: dep.clone(),
+            host_extension_instance_ref: "host:test".into(),
+            display_name: "Read-only cache test".into(),
+            backend_runtime_preference: None,
+            default_output_format: "wav".into(),
+            default_speed_factor: 1.0,
+            default_generation_overrides_json: "{}".into(),
+            most_recent_run_id: None,
+            partial_run_id: None,
+            reference_preprocess_enabled: true,
+            oas_enabled: false,
+            compile_gpt_enabled: false,
+            model_family: "indextts-2".into(),
+            oas_threshold_learned: None,
+            oas_samples_seen: 0,
+            default_voice_asset_id: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    let voice_sha256 = "f".repeat(64);
+    let voice_id = VoiceAssetId::new();
+    repos
+        .voice_assets
+        .insert(&VoiceAssetRow {
+            voice_asset_id: voice_id.clone(),
+            deployment_id: dep.clone(),
+            display_name: "Narrator".into(),
+            kind: "speaker".into(),
+            audio_artifact_ref: "/tmp/fake_voice_read_only.wav".into(),
+            content_sha256: voice_sha256,
+            reference_text: None,
+            sample_rate: Some(24000),
+            duration_ms: Some(5000),
+            source_type: "upload".into(),
+            notes: None,
+            is_active: true,
+            preprocessed_artifact_ref: None,
+            preprocessing_report_json: None,
+            edit_chain_json: None,
+            derived_artifact_ref: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    repos
+        .mappings
+        .insert(&CharacterMappingRow {
+            mapping_id: MappingId::new(),
+            deployment_id: dep.clone(),
+            character_name: "Narrator".into(),
+            character_name_lower: "narrator".into(),
+            speaker_voice_asset_id: voice_id.clone(),
+            default_emotion_mode: "none".into(),
+            default_emotion_voice_asset_id: None,
+            default_vector_preset_id: None,
+            default_qwen_template: None,
+            default_speed_factor: None,
+            default_generation_overrides_json: "{}".into(),
+            is_active: true,
+            notes: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .await
+        .unwrap();
+
+    let run_id = RunId::new();
+    repos
+        .runs
+        .insert(&RunRow {
+            run_id: run_id.clone(),
+            deployment_id: dep.clone(),
+            kind: "batch".into(),
+            status: "queued".into(),
+            script_snapshot: "Narrator: Hello world.".into(),
+            parser_mode: "dialogue".into(),
+            generation_settings_json: "{}".into(),
+            global_emotion_snapshot_json: None,
+            output_format: "wav".into(),
+            speed_factor: 1.0,
+            speed_mode: "preserve_pitch".into(),
+            cache_policy: "read_only_cache".into(),
+            seed_strategy: "fixed".into(),
+            base_seed: 42,
+            original_run_id: None,
+            runtime_install_id: None,
+            runtime_version: None,
+            model_version: None,
+            extension_version: "0.0.0-test".into(),
+            queued_at: now,
+            started_at: None,
+            finished_at: None,
+            error_category: None,
+            error_detail: None,
+            export_zip_stale_at: None,
+        })
+        .await
+        .unwrap();
+
+    let (lease, notif_tx) = ChannelLease::new(move |method, _params| {
+        if method != "synthesize.batch" {
+            return Err(LeaseError::Rpc {
+                code: -32601,
+                message: format!("method not found: {method}"),
+            });
+        }
+        Ok(json!({"request_id": "x", "status": "ok", "segments": []}))
+    });
+
+    let notif_tx_clone = notif_tx.clone();
+    let run_id_notif = run_id.as_str().to_string();
+    let repos_for_notifier = repos.clone();
+    let run_id_for_notifier = run_id.clone();
+    tokio::spawn(async move {
+        let segment_id = loop {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            let rows = repos_for_notifier
+                .utterances
+                .list_by_run(&run_id_for_notifier)
+                .await
+                .unwrap_or_default();
+            if let Some(row) = rows.first() {
+                break row.utterance_id.as_str().to_string();
+            }
+        };
+
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let _ = notif_tx_clone.send(NotificationEnvelope {
+            method: "segment_started".into(),
+            params: json!({
+                "segmentId": segment_id,
+                "runId": run_id_notif,
+            }),
+        });
+
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let _ = notif_tx_clone.send(NotificationEnvelope {
+            method: "segment_completed".into(),
+            params: json!({
+                "segmentId": segment_id,
+                "runId": run_id_notif,
+                "durationMs": 1234,
+                "outputPathAbs": "/tmp/out_read_only.wav",
+            }),
+        });
+    });
+
+    let queue = Arc::new(RuntimeQueue::new());
+    let registry = Arc::new(RunChannelRegistry::new());
+    let provider = Arc::new(LeaseProvider::new(Arc::new(StaticLeaseFactory(
+        lease as SharedLease,
+    ))));
+
+    let _handle = spawn_dispatcher(
+        queue.clone(),
+        repos.clone(),
+        provider,
+        registry.clone(),
+        None,
+        "0.0.0-test",
+        std::env::temp_dir().join(emotion_tts_extension::FALLBACK_RUNS_DIR),
+    );
+
+    queue
+        .enqueue(run_id.clone(), dep.as_str(), RunClass::Batch)
+        .await;
+
+    let mut rx = None;
+    for _ in 0..100 {
+        if let Some(r) = registry.subscribe(run_id.as_str()).await {
+            rx = Some(r);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let mut rx = rx.expect("dispatcher should register run channel within 2s");
+
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            match rx.recv().await {
+                Ok(ev) => {
+                    if matches!(ev, RunEvent::RunTerminal { .. }) {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    })
+    .await
+    .expect("dispatcher should reach RunTerminal within 10s");
+
+    // Allow any post-terminal async tasks to settle so a latent late write
+    // would still show up in the count.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // The run should not have written any rows to the cache table —
+    // read_only_cache means "consume existing rows; do not seal new ones".
+    assert_eq!(
+        repos.cache.total_size_bytes().await.unwrap(),
+        0,
+        "read_only_cache must NOT write new synthesis_cache rows"
+    );
+}

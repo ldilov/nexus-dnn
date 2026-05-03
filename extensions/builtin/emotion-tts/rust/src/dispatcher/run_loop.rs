@@ -535,13 +535,25 @@ async fn dispatch_inner(
     // bundle). Both side-effects are gated below.
     let is_test_line = prepared.run.kind == "test_line";
 
+    // `read_only_cache` is the policy a user picks when they want to
+    // benefit from existing cache rows but not pollute the table with
+    // new ones (e.g., scratch experimentation against a fresh seed).
+    // Mirror the read-side gating at line ~206 — only `use_cache` and
+    // `force_regenerate` write back. The read site explicitly does not
+    // include `read_only_cache` in the matched arms there either; a
+    // miss is a miss but we don't seal it as a cache row.
+    let policy_writes_cache = matches!(
+        prepared.run.cache_policy.as_str(),
+        "use_cache" | "force_regenerate"
+    );
+
     // Insert new cache rows for completed miss segments so future runs
     // with the same hash can be served from cache. Duplicate inserts
     // (e.g., two concurrent runs synthesising the same segment) are
     // expected; log at debug and move on.
     let now = Utc::now().timestamp();
     let utts_after = repos.utterances.list_by_run(run_id).await?;
-    if !is_test_line {
+    if !is_test_line && policy_writes_cache {
         for u in &utts_after {
             if u.cache_hit {
                 continue;
