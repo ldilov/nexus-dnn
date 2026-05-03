@@ -11,8 +11,7 @@ const STATUS_CLASSES: Record<ImplementationStatus, string> = {
 
 interface Props {
   runtime: CatalogEntry;
-  /** T070 — Install button handler. Renders only when provided and
-   * the runtime is `available`. */
+  /** Renders only when provided and the runtime is `available`. */
   onInstall?: (runtime: CatalogEntry) => void;
 }
 

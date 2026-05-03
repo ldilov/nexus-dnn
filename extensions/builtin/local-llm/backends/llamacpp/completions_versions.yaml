@@ -1,0 +1,42 @@
+# Spec 037 Phase B — version manifest for the
+# `nexus.local-llm.completions` runtime contribution.
+#
+# Distinct from `versions.yaml` next to this file (which describes
+# llama.cpp binary releases for the existing legacy install path).
+# This manifest is for the NEW Python-family completions runtime that
+# implements the host's text-completion JSON-RPC contract — its asset
+# is a worker-source archive (Python files + pyproject.toml), not a
+# llama.cpp binary.
+#
+# Phase B status: schema is correct + parser-validated; the actual
+# packaged worker archive does NOT yet exist. The `file://` asset URL
+# below is a placeholder that the install pipeline's `resolve` phase
+# would fail on with "asset not found" — that is expected. Phase C
+# operational work (D17 follow-up) ships the build step that produces
+# `assets/local-llm-completions-v0_1_0.zip` containing the worker
+# source tree (including `worker/pyproject.toml`) and computes the
+# real `sha256` + `size`.
+
+releases:
+  - release_id: "v0_1_0"
+    semver: "0.1.0"
+    notes: "Phase B asset placeholder — real packaged archive ships in Phase C"
+    targets:
+      - platform: "windows-x64"
+        accelerator_profile: "cpu"
+        asset:
+          url: "file://assets/local-llm-completions-v0_1_0.zip"
+          sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+          size: 0
+      - platform: "linux-x64"
+        accelerator_profile: "cpu"
+        asset:
+          url: "file://assets/local-llm-completions-v0_1_0.zip"
+          sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+          size: 0
+      - platform: "macos-arm64"
+        accelerator_profile: "cpu"
+        asset:
+          url: "file://assets/local-llm-completions-v0_1_0.zip"
+          sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+          size: 0

@@ -277,6 +277,7 @@ impl NexusApp {
                 backend_event_bus.clone(),
                 backend_event_bus.clone(),
                 nexus_local_llm_chat_history::ModelLoadRegistry::new(),
+                nexus_local_llm_chat_history::InferenceCancelRegistry::new(),
             ));
         // Spec 035 — clone the handles the dep adapters need before they get
         // moved into the AppState fields below.

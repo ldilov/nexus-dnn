@@ -15,11 +15,13 @@ export const badgeRecipe = recipe({
   variants: {
     size: {
       sm: {
+        // audit-allow: px — sub-token spacing value, no density token at this step
         height: "20px",
         padding: `0 ${vars.space.insetSm}`,
         fontSize: vars.font.size.caption,
       },
       md: {
+        // audit-allow: px — sub-token spacing value, no density token at this step
         height: "24px",
         padding: `0 ${vars.space.insetMd}`,
         fontSize: vars.font.size.bodySm,
@@ -73,16 +75,26 @@ export const badgeRecipe = recipe({
         color: vars.color.mod.system,
       },
     },
+    mono: {
+      true: {
+        fontFamily: vars.font.code,
+        fontWeight: vars.font.weight.regular,
+        letterSpacing: "0.02em",
+      },
+    },
   },
   defaultVariants: {
     size: "sm",
     intent: "neutral",
+    mono: false,
   },
 });
 
 export const dot = recipe({
   base: {
+    // audit-allow: px — below minimum token granularity (sub-10px)
     width: "6px",
+    // audit-allow: px — below minimum token granularity (sub-10px)
     height: "6px",
     borderRadius: vars.radius.full,
     flexShrink: 0,

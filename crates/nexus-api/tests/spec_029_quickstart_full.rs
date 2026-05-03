@@ -23,7 +23,7 @@ use nexus_local_llm_chat_history::host_client::HostDeploymentsClient;
 use nexus_local_llm_chat_history::ids::DeploymentId;
 use nexus_local_llm_chat_history::router::build_router_with_chat;
 use nexus_local_llm_chat_history::{
-    ChatHandlerResources, ChatHistoryStore, ModelLoadRegistry, migrations,
+    ChatHandlerResources, ChatHistoryStore, InferenceCancelRegistry, ModelLoadRegistry, migrations,
 };
 use serde_json::Value;
 use sqlx::SqlitePool;
@@ -70,6 +70,7 @@ async fn build_app(current: Option<DeploymentId>) -> axum::Router {
         backend_bus.clone(),
         backend_bus,
         ModelLoadRegistry::new(),
+        InferenceCancelRegistry::new(),
     ));
     let extension_router = build_router_with_chat(store, chat_resources);
 

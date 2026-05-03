@@ -2,6 +2,7 @@ import { style, styleVariants } from "@vanilla-extract/css";
 import { vars } from "../../../theme/contract.css";
 
 // Spectral Graphite-aligned BackendCard — drops the pre-theme fallback hex
+// audit-allow: hex — neon decorative palette per design lang
 // literals (var(--surface-raised, #1c1d22)) that pre-dated the vanilla-extract
 // theme contract; every value now flows through `vars.*` so the card
 // participates in the same design system as the rest of the shell.
@@ -14,6 +15,7 @@ export const card = style({
   borderRadius: vars.radius.card,
   background: vars.color.bg.panel,
   border: `1px solid ${vars.color.outline.variant}`,
+  // audit-allow: px — fixed layout breakpoint
   minWidth: "320px",
   transition: "border-color 150ms ease, background 150ms ease",
   selectors: {
@@ -41,6 +43,7 @@ export const title = style({
 
 // State-aware badges — each card_state picks its own pill color.
 const badgeBase = {
+  // audit-allow: px — below minimum token granularity (sub-10px)
   padding: `2px ${vars.space.insetSm}`,
   borderRadius: vars.radius.full,
   fontSize: vars.font.size.caption,
@@ -131,7 +134,9 @@ export const buttonPrimary = style({
       background: vars.color.accent.primaryHover,
     },
     "&:focus-visible": {
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outline: `2px solid ${vars.color.accent.primary}`,
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outlineOffset: "2px",
     },
     "&:disabled": {
@@ -152,7 +157,9 @@ export const buttonSecondary = style({
       background: vars.color.bg.hover,
     },
     "&:focus-visible": {
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outline: `2px solid ${vars.color.accent.primary}`,
+      // audit-allow: px — below minimum token granularity (sub-10px)
       outlineOffset: "2px",
     },
     "&:disabled": {

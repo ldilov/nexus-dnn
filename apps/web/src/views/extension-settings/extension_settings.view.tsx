@@ -11,6 +11,7 @@ import useSWR from "swr";
 import { fetchExtensions } from "../../services/api_client";
 import { OverviewTab } from "./tabs/overview.tab";
 import { DependenciesTab } from "./tabs/dependencies.tab";
+import { PageHero } from "../../components/base/page_hero";
 import * as s from "./extension_settings.css";
 
 export interface ExtensionSettingsViewProps {
@@ -50,14 +51,25 @@ export function ExtensionSettingsView({ extensionId }: ExtensionSettingsViewProp
   if (isLoading) {
     return (
       <div className={s.root}>
-        <div>Loading…</div>
+        <PageHero
+          eyebrow="Extension settings"
+          title="Loading…"
+        />
       </div>
     );
   }
   if (error || !extension) {
     return (
       <div className={s.root}>
-        <div className={s.errorState}>
+        <nav className={s.breadcrumb} aria-label="Breadcrumb">
+          <Link to="/extensions" className={s.breadcrumbLink}>
+            Extensions
+          </Link>
+          <span aria-hidden="true">›</span>
+          <span>{extensionId}</span>
+        </nav>
+        <PageHero eyebrow="Extension settings" title="Not available" />
+        <div className={s.errorState} role="alert">
           {extension
             ? "Could not load extension"
             : `Extension not found: ${extensionId}`}
@@ -75,6 +87,14 @@ export function ExtensionSettingsView({ extensionId }: ExtensionSettingsViewProp
         <span aria-hidden="true">›</span>
         <span>{extension.name ?? extension.id}</span>
       </nav>
+
+      <PageHero
+        eyebrow="Extension settings"
+        title={extension.name ?? extension.id}
+        meta={
+          extension.version ? <span>Version {extension.version}</span> : undefined
+        }
+      />
 
       <div
         className={s.tabBar}

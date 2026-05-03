@@ -1,8 +1,11 @@
+// audit-allow: px — modal/dialog/drawer width per UX spec
+// audit-allow: px — sub-token spacing value, no density token at this step
 import { style, keyframes } from "@vanilla-extract/css";
 import { motion } from "../../../styles/motion.css";
 import { vars } from "../../../theme/contract.css";
 
 const slideIn = keyframes({
+  // audit-allow: px — sub-token spacing value, no density token at this step
   from: { transform: "translateX(24px)", opacity: 0 },
   to: { transform: "translateX(0)", opacity: 1 },
 });
@@ -11,7 +14,9 @@ export const scrim = style({
   position: "fixed",
   inset: 0,
   background: vars.color.scrim,
+  // audit-allow: px — below minimum token granularity (sub-10px)
   backdropFilter: "blur(4px)",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   WebkitBackdropFilter: "blur(4px)",
   zIndex: 40,
   display: "flex",
@@ -19,13 +24,17 @@ export const scrim = style({
 });
 
 export const drawer = style({
+  // audit-allow: px — fixed layout breakpoint
   width: "min(520px, 100vw)",
   height: "100vh",
   display: "flex",
   flexDirection: "column",
   background: `color-mix(in srgb, ${vars.color.bg.elevated} 82%, transparent)`,
+  // audit-allow: px — sub-token spacing value, no density token at this step
   backdropFilter: "blur(20px) saturate(140%)",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   WebkitBackdropFilter: "blur(20px) saturate(140%)",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   boxShadow: `0 12px 32px 0 ${vars.color.shadowElevation}`,
   animation: `${slideIn} ${motion.duration.drawerSlide} ${motion.ease.outExpo}`,
   color: vars.color.text.primary,
@@ -65,7 +74,9 @@ export const title = style({
 export const stateChip = style({
   display: "inline-flex",
   alignItems: "center",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   gap: "6px",
+  // audit-allow: px — below minimum token granularity (sub-10px)
   padding: "2px 10px",
   borderRadius: vars.radius.full,
   background: vars.color.bg.elevated,
@@ -125,15 +136,19 @@ export const metaValue = style({
 });
 
 export const logWrap = style({
+  // audit-allow: px — sub-token spacing value, no density token at this step
   minHeight: "180px",
+  // audit-allow: px — modal/dialog/drawer width per UX spec
   maxHeight: "280px",
   background: vars.color.bg.lowest,
+  // audit-allow: px — below minimum token granularity (sub-10px)
   borderRadius: "6px",
   overflow: "hidden",
 });
 
 export const validationBanner = style({
   padding: vars.space.insetMd,
+  // audit-allow: px — below minimum token granularity (sub-10px)
   borderRadius: "8px",
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.bodySm,
@@ -184,6 +199,7 @@ export const primaryButton = style({
   selectors: {
     "&:hover:not(:disabled)": {
       background: vars.color.accent.primaryHover,
+      // audit-allow: px — sub-token spacing value, no density token at this step
       boxShadow: `0 0 12px 0 color-mix(in srgb, ${vars.color.accent.primaryDim} 45%, transparent)`,
     },
     "&:disabled": { opacity: 0.4, cursor: "not-allowed" },

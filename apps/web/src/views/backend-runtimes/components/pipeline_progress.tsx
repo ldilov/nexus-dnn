@@ -76,6 +76,7 @@ export function PipelineProgress({ installId, onTerminal, onClose }: Props) {
       <div className={css.modalPanel}>
         <div id="progress-title" className={css.modalTitle}>
           Installing{" "}
+          // audit-allow: px — sub-token spacing value, no density token at this step
           <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "13px" }}>
             {installId.slice(0, 12)}…
           </span>

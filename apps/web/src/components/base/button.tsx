@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes } from "react";
 import { buttonRecipe } from "./button.css";
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "success" | "accent";
+type ButtonVariant = "primary" | "secondary" | "ghost" | "tertiary" | "danger" | "success" | "accent";
 type ButtonSize = "sm" | "md" | "lg";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {

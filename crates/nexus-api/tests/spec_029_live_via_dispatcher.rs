@@ -62,6 +62,7 @@ async fn build_app_with_llm_provider() -> Router {
         backend_bus.clone(),
         backend_bus.clone(),
         nexus_local_llm_chat_history::ModelLoadRegistry::new(),
+        nexus_local_llm_chat_history::InferenceCancelRegistry::new(),
     ));
     let resources = LocalLlmProviderResources::new(pool, host_client, chat_resources);
     let provider = LocalLlmRouterProvider::new(resources);

@@ -55,6 +55,91 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  --accent: var(--color-primary);
+  --accent-dim: var(--color-primary-dim);
+  --accent-glow: rgba(132, 85, 239, 0.27);
+
+  --d-1: 4px;  --d-2: 8px;  --d-3: 12px; --d-4: 16px;
+  --d-5: 20px; --d-6: 24px; --d-7: 32px; --d-8: 44px; --d-9: 64px;
+  --pad-card: 22px;
+  --pad-section: 28px;
+  --row-h: 52px;
+  --gap-card: 14px;
+
+  --card-bg: var(--color-surface-container-low);
+  --card-border: none;
+  --card-shadow: none;
+  --card-backdrop: none;
+
+  --shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.32);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.55);
+  --glow-accent: 0 0 24px var(--accent-glow);
+
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-pill: 999px;
+}
+
+body[data-accent="primary"] {
+  --accent: #ba9eff;
+  --accent-dim: #8455ef;
+  --accent-glow: rgba(132, 85, 239, 0.27);
+}
+body[data-accent="secondary"] {
+  --accent: #9093ff;
+  --accent-dim: #6063ee;
+  --accent-glow: rgba(96, 99, 238, 0.32);
+}
+body[data-accent="tertiary"] {
+  --accent: #ff8439;
+  --accent-dim: #fd761a;
+  --accent-glow: rgba(253, 118, 26, 0.28);
+}
+
+body[data-density="compact"] {
+  --d-1: 2px;  --d-2: 6px;  --d-3: 8px;  --d-4: 12px;
+  --d-5: 14px; --d-6: 16px; --d-7: 22px; --d-8: 32px; --d-9: 48px;
+  --pad-card: 16px; --pad-section: 22px; --row-h: 44px; --gap-card: 10px;
+}
+body[data-density="cozy"] {
+  --d-1: 4px;  --d-2: 8px;  --d-3: 12px; --d-4: 16px;
+  --d-5: 20px; --d-6: 24px; --d-7: 32px; --d-8: 44px; --d-9: 64px;
+  --pad-card: 22px; --pad-section: 28px; --row-h: 52px; --gap-card: 14px;
+}
+body[data-density="spacious"] {
+  --d-1: 6px;  --d-2: 10px; --d-3: 16px; --d-4: 22px;
+  --d-5: 28px; --d-6: 36px; --d-7: 48px; --d-8: 64px; --d-9: 96px;
+  --pad-card: 32px; --pad-section: 44px; --row-h: 64px; --gap-card: 20px;
+}
+
+body[data-card="flat"] {
+  --card-bg: var(--color-surface-container-low);
+  --card-border: none;
+  --card-shadow: none;
+  --card-backdrop: none;
+}
+body[data-card="glass"] {
+  --card-bg: rgba(29, 32, 35, 0.62);
+  --card-border: 1px solid rgba(186, 158, 255, 0.08);
+  --card-shadow: var(--shadow-sm);
+  --card-backdrop: blur(20px) saturate(1.2);
+}
+body[data-card="elevated"] {
+  --card-bg: var(--color-surface-container-high);
+  --card-border: 1px solid rgba(70, 72, 74, 0.22);
+  --card-shadow: var(--shadow-md);
+  --card-backdrop: none;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (prefers-reduced-motion: reduce) {

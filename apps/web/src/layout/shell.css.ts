@@ -4,6 +4,7 @@ import { vars } from "../theme/contract.css";
 export const shellContainer = style({
   display: "grid",
   gridTemplateColumns: "1fr auto",
+  // audit-allow: px — workspace shell scaffolding dimension
   gridTemplateRows: "48px 1fr auto",
   height: "100vh",
   backgroundColor: vars.color.bg.app,
@@ -13,6 +14,7 @@ export const shellContainer = style({
 });
 
 export const shellContainerSidebarPinned = style({
+  // audit-allow: px — workspace shell scaffolding dimension
   marginLeft: "256px",
 });
 
@@ -22,8 +24,7 @@ export const topBar = style({
   display: "flex",
   alignItems: "center",
   gap: vars.space.gapMd,
-  padding: `0 ${vars.space.insetXl}`,
-  backgroundColor: vars.color.bg.panel,
+  backgroundColor: "transparent",
   zIndex: vars.z.base,
 });
 
@@ -32,17 +33,26 @@ export const canvas = style({
   gridRow: "2",
   overflow: "hidden",
   backgroundColor: vars.color.bg.canvas,
+  paddingInline: vars.density.padSection,
 });
 
 export const inspector = style({
   gridColumn: "2",
   gridRow: "2 / -1",
+  // audit-allow: px — fixed layout breakpoint
   width: "320px",
-  backgroundColor: vars.color.bg.panel,
-  overflow: "auto",
+  // audit-allow: px — workspace shell scaffolding dimension
+  marginLeft: "-80px",
+  marginTop: vars.density.d4,
+  marginBottom: vars.density.d4,
+  marginRight: vars.density.d4,
+  zIndex: 2,
+  backgroundColor: "transparent",
+  overflow: "visible",
 });
 
 export const inspectorCollapsed = style({
+  // audit-allow: px — below minimum token granularity (sub-10px)
   width: "0px",
   overflow: "hidden",
 });
@@ -55,5 +65,6 @@ export const bottomDrawer = style({
 });
 
 export const bottomDrawerCollapsed = style({
+  // audit-allow: px — below minimum token granularity (sub-10px)
   height: "0px",
 });

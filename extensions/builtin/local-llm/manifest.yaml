@@ -26,6 +26,24 @@ runtime_dependencies:
       - "cuda12"
       - "cuda13"
 
+backend_runtimes:
+  - runtime_id: "nexus.local-llm.completions"
+    display_name: "Local LLM — Text Completion"
+    family: "python"
+    transport: "stdio"
+    worker_entrypoint: "backends/llamacpp/completions_worker.py"
+    # Dedicated version manifest for this runtime — describes the
+    # worker-source archive that bundles the Python entrypoint +
+    # `worker/pyproject.toml`, NOT the legacy llama.cpp binary releases
+    # in `versions.yaml`. Phase C (D17 follow-up) ships the build step
+    # that produces the real packaged archive; current asset URLs are
+    # placeholders.
+    version_manifest: "backends/llamacpp/completions_versions.yaml"
+    capability_tags:
+      - "text-completion"
+    supported_roles:
+      - "draft-suggestions"
+
 capabilities:
   - "filesystem.read"
   - "filesystem.write"

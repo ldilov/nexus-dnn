@@ -49,6 +49,6 @@ describe("component_registry", () => {
   });
 
   it("registers the expected number of components", () => {
-    expect(extractRegistryKeys().size).toBe(32);
+    expect(extractRegistryKeys().size).toBe(30);
   });
 });

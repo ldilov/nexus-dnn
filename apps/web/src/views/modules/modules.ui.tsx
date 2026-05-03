@@ -1,5 +1,9 @@
 import type { ModuleSummary } from "../../api/client";
 import { InstallExtensionDrawer } from "../../components/install/install_extension_drawer";
+import { PageHero } from "../../components/base/page_hero";
+import { Pill } from "../../components/base/pill";
+import { Section } from "../../components/base/section";
+import { EmptyState } from "../../components/layout/empty_state";
 import { BlankModuleCard, ModuleCard } from "./module_card";
 import * as s from "./modules.css";
 
@@ -49,50 +53,43 @@ export function ModulesUI({
 }: ModulesUIProps) {
   return (
     <div className={s.root}>
-      <header className={s.header}>
-        <div className={s.titleBlock}>
-          <h1 className={s.title}>Modules</h1>
-          <p className={s.subtitle}>
-            One card per extension or user-authored flow. Click a card for
-            detail, "View Blueprint" to inspect recipes, or "Deploy Instance" to
-            create a live Deployment.
-          </p>
-        </div>
-        <div className={s.controls}>
-          <input
-            type="search"
-            placeholder="Search modules, tags, extensions…"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className={s.search}
-            aria-label="Search modules"
-          />
-          <div
-            className={s.facetGroup}
-            role="group"
-            aria-label="Module kind filter"
-          >
-            {(["all", "extension", "user"] as const).map((k) => (
-              <button
-                key={k}
-                type="button"
-                className={s.facetBtn}
-                aria-pressed={kind === k}
-                onClick={() => onKindChange(k)}
-              >
-                {k === "all" ? "All" : k === "extension" ? "Extensions" : "User"}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            className={s.secondaryCta}
-            onClick={onOpenInstaller}
-          >
+      <PageHero
+        eyebrow="Authoring surface · Module catalog"
+        title="Modules"
+        meta={
+          <span>
+            One card per extension or user-authored flow. Open detail, inspect blueprints,
+            or deploy a live instance.
+          </span>
+        }
+        actions={
+          <button type="button" className={s.secondaryCta} onClick={onOpenInstaller}>
             + Install Extension
           </button>
+        }
+      />
+
+      <div className={s.controls}>
+        <input
+          type="search"
+          placeholder="Search modules, tags, extensions…"
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          className={s.search}
+          aria-label="Search modules"
+        />
+        <div className={s.facetGroup} role="toolbar" aria-label="Module kind filter">
+          {(["all", "extension", "user"] as const).map((k) => (
+            <Pill
+              key={k}
+              active={kind === k}
+              onClick={() => onKindChange(k)}
+            >
+              {k === "all" ? "All" : k === "extension" ? "Extensions" : "User"}
+            </Pill>
+          ))}
         </div>
-      </header>
+      </div>
 
       {state.kind === "loading" && (
         <div className={s.empty}>Loading modules…</div>
@@ -107,11 +104,8 @@ export function ModulesUI({
       {state.kind === "ready" && (
         <>
           {extensionModules.length > 0 && (
-            <>
-              <h2 className={s.sectionHeader}>
-                Extension modules ({extensionModules.length})
-              </h2>
-              <div className={s.grid} role="grid" aria-label="Modules">
+            <Section number="01" title={`Extension modules (${extensionModules.length})`}>
+              <div className={s.grid} role="grid" aria-label="Extension modules">
                 {extensionModules.map((module) => (
                   <ModuleCard
                     key={module.module_id}
@@ -123,15 +117,12 @@ export function ModulesUI({
                   />
                 ))}
               </div>
-            </>
+            </Section>
           )}
 
           {(userModules.length > 0 || kind !== "extension") && (
-            <>
-              <h2 className={s.sectionHeader}>
-                User modules ({userModules.length})
-              </h2>
-              <div className={s.grid} role="grid" aria-label="Modules">
+            <Section number="02" title={`User modules (${userModules.length})`}>
+              <div className={s.grid} role="grid" aria-label="User modules">
                 <BlankModuleCard onStart={onBlank} />
                 {userModules.map((module) => (
                   <ModuleCard
@@ -144,14 +135,15 @@ export function ModulesUI({
                   />
                 ))}
               </div>
-            </>
+            </Section>
           )}
 
           {extensionModules.length === 0 && userModules.length === 0 && (
-            <div className={s.empty}>
-              No modules match your search. Install an extension or start a
-              blank module to begin.
-            </div>
+            <EmptyState
+              count="0"
+              line="No modules match your search. Install an extension or start a blank module to begin."
+              primaryAction={{ label: "Start blank module", onClick: onBlank }}
+            />
           )}
         </>
       )}

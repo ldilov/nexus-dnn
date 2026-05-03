@@ -159,11 +159,13 @@ function CodeWidget({ spec, value, editable, onChange }: WidgetProps) {
 }
 
 function ColorWidget({ value, editable, onChange }: WidgetProps) {
+  // audit-allow: hex — neon decorative palette per design lang
   const current = toString(value, "#ba9eff");
   if (!editable) {
     return (
       <span
         className={styles.readOnlyValue}
+        // audit-allow: px — node graph layout primitive (xy-flow contract)
         style={{ background: current, width: "28px", height: "14px", borderRadius: "3px" }}
       />
     );

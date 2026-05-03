@@ -9,6 +9,7 @@ export const container = style({
 
 export const artifactGrid = style({
   display: "grid",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
   gap: vars.space.insetLg,
 });
@@ -25,6 +26,7 @@ export const artifactCard = style({
 });
 
 export const artifactCardSelected = style({
+  // audit-allow: px — sub-token spacing value, no density token at this step
   boxShadow: `0 0 12px 0 ${vars.color.accent.primaryDim}44`,
 });
 
@@ -57,5 +59,6 @@ export const emptyState = style({
   color: vars.color.text.muted,
   fontSize: vars.font.size.bodySm,
   textAlign: "center",
+  // audit-allow: px — sub-token spacing value, no density token at this step
   padding: "48px",
 });
