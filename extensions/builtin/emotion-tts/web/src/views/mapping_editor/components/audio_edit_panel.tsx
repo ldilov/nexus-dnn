@@ -27,6 +27,13 @@ import {
   EditSurfaceActions,
   EditSurfaceHeader,
 } from "../../../components/edit_surface";
+import { DirectModSliderStrip } from "../../recipe/components/direct_mod_slider_strip";
+import {
+  deriveSliderEffectsFromChain,
+  IDENTITY_SLIDER_STATE,
+  mergeSliderEffectsIntoChain,
+  type DirectModSliderState,
+} from "../../recipe/lib/slider_chain";
 
 interface RemovalStackEntry {
   op: EditOp;
@@ -51,6 +58,8 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
   );
 
   const [chain, setChain] = useState<EditChain>(() => initialChainFor(sourceDurationMs));
+  const [sliderState, setSliderState] = useState<DirectModSliderState>(IDENTITY_SLIDER_STATE);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [previewObjectUrl, setPreviewObjectUrl] = useState<string | null>(null);
   const [applyInFlight, setApplyInFlight] = useState(false);
@@ -58,6 +67,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
   const [hasPreviewedAtLeastOnce, setHasPreviewedAtLeastOnce] = useState(false);
   const [measuredLufs, setMeasuredLufs] = useState<number | null>(null);
   const [removalStack, setRemovalStack] = useState<RemovalStackEntry[]>([]);
+  const [persistedChainDigest, setPersistedChainDigest] = useState<string | null>(null);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
@@ -77,12 +87,20 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: voiceAsset.voiceAssetId is the reset trigger when the user picks a different voice
   useEffect(() => {
-    setChain(initialChainFor(sourceDurationMs));
+    const fresh = initialChainFor(sourceDurationMs);
+    setChain(fresh);
+    setSliderState(deriveSliderEffectsFromChain(fresh));
     setValidationError(null);
     setHasPreviewedAtLeastOnce(false);
     setRemovalStack([]);
+    setPersistedChainDigest(null);
     persistedDigestRef.current = null;
   }, [voiceAsset.voiceAssetId, sourceDurationMs]);
+
+  const handleSliderChange = useCallback((next: DirectModSliderState) => {
+    setSliderState(next);
+    setChain((prev) => mergeSliderEffectsIntoChain(prev, next));
+  }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: auditRefreshKey is a manual refetch signal incremented after edit-chain mutations
   useEffect(() => {
@@ -247,6 +265,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
       );
       if (controller.signal.aborted) return;
       persistedDigestRef.current = response.chain_digest;
+      setPersistedChainDigest(response.chain_digest);
       setValidationError(null);
       setMeasuredLufs(response.measured_lufs ?? null);
       setRemovalStack([]);
@@ -369,6 +388,50 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
           <span className={css.labelRow}>Operations · {chain.ops.length}</span>
           <EditChainList chain={chain} onRemoveOp={removeOp} />
         </div>
+
+        <div className={css.controlBlock}>
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((s) => !s)}
+            style={{
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              padding: 0,
+              textAlign: "left",
+              color: "var(--accent)",
+              fontFamily: "var(--font-mono)",
+              fontSize: 11,
+              textTransform: "uppercase",
+              letterSpacing: "0.18em",
+            }}
+            aria-expanded={showAdvanced}
+          >
+            {showAdvanced ? "▾" : "▸"} Advanced effects · gain · eq · pitch · fade · silence trim
+          </button>
+          {showAdvanced && (
+            <DirectModSliderStrip
+              state={sliderState}
+              onChange={handleSliderChange}
+              supportsSynthSpeed={false}
+            />
+          )}
+        </div>
+
+        {persistedChainDigest && (
+          <div className={css.controlBlock}>
+            <span className={css.labelRow}>
+              <span>Chain digest</span>
+              <span
+                className={css.numericLabel}
+                style={{ color: "var(--secondary)" }}
+                title={persistedChainDigest}
+              >
+                {persistedChainDigest.slice(0, 12)}…
+              </span>
+            </span>
+          </div>
+        )}
       </div>
 
       <EditSurfaceActions>

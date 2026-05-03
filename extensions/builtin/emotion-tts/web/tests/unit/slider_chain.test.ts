@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { EditChain } from "../../src/services/audio_edit_client";
+import type { EditChain, TrimOp, NormalizeOp } from "../../src/services/audio_edit_client";
 import {
   applySliderState,
   chainToSliderState,
+  deriveSliderEffectsFromChain,
   EQ3_PRESETS,
   IDENTITY_SLIDER_STATE,
   isIdentityState,
+  mergeSliderEffectsIntoChain,
   upsertEq3,
   upsertFadeIn,
   upsertFadeOut,
@@ -98,6 +100,45 @@ describe("slider_chain", () => {
     expect(chain.ops).toHaveLength(1);
     chain = upsertSilenceStrip(chain, false, -40);
     expect(chain.ops).toHaveLength(0);
+  });
+
+  it("mergeSliderEffectsIntoChain preserves trim + normalize", () => {
+    const trim: TrimOp = { id: "T1", mode: "trim", start_ms: 100, end_ms: 5000 };
+    const normalize: NormalizeOp = { id: "N1", mode: "normalize", target_lufs: -16 };
+    const base: EditChain = { version: 1, ops: [trim, normalize] };
+    const merged = mergeSliderEffectsIntoChain(base, {
+      ...IDENTITY_SLIDER_STATE,
+      volumeDb: 3,
+    });
+    expect(merged.ops.find((o) => o.mode === "trim")).toEqual(trim);
+    expect(merged.ops.find((o) => o.mode === "normalize")).toEqual(normalize);
+    expect(merged.ops.find((o) => o.mode === "gain")).toBeDefined();
+  });
+
+  it("mergeSliderEffectsIntoChain replaces previous slider effects", () => {
+    const trim: TrimOp = { id: "T1", mode: "trim", start_ms: 0, end_ms: 1000 };
+    const base: EditChain = upsertGain(
+      { version: 1, ops: [trim] },
+      6,
+    );
+    expect(base.ops.filter((o) => o.mode === "gain")).toHaveLength(1);
+    const merged = mergeSliderEffectsIntoChain(base, {
+      ...IDENTITY_SLIDER_STATE,
+      volumeDb: -2,
+    });
+    const gainOps = merged.ops.filter((o) => o.mode === "gain");
+    expect(gainOps).toHaveLength(1);
+    if (gainOps[0]?.mode === "gain") expect(gainOps[0].gain_db).toBe(-2);
+    expect(merged.ops.find((o) => o.mode === "trim")).toEqual(trim);
+  });
+
+  it("deriveSliderEffectsFromChain ignores trim + normalize", () => {
+    const trim: TrimOp = { id: "T1", mode: "trim", start_ms: 0, end_ms: 1000 };
+    const normalize: NormalizeOp = { id: "N1", mode: "normalize", target_lufs: -18 };
+    const withGain = upsertGain({ version: 1, ops: [trim, normalize] }, 4);
+    const state = deriveSliderEffectsFromChain(withGain);
+    expect(state.volumeDb).toBe(4);
+    expect(state.normalize.mode).toBe("off");
   });
 
   it("bijection: chainToSliderState ∘ applySliderState = identity-state shape", () => {
