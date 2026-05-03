@@ -200,11 +200,23 @@ export function MappingEditorView(): JSX.Element {
   );
 
   const handleEditChainPersisted = useCallback(
-    async (_response: ApplyEditResponse) => {
+    async (response: ApplyEditResponse) => {
       await refreshVoices();
+      if (selected && response.chain_digest) {
+        try {
+          const next = await patchMapping(deployment.deploymentId, selected.mappingId, {
+            voiceAssetChainDigest: response.chain_digest,
+          });
+          setMappings((prev) =>
+            prev.map((m) => (m.mappingId === next.mappingId ? next : m)),
+          );
+        } catch (err) {
+          setError(extract(err));
+        }
+      }
       setToast("Edit applied.");
     },
-    [refreshVoices],
+    [refreshVoices, selected, deployment.deploymentId],
   );
 
   const handleEditError = useCallback((message: string) => {

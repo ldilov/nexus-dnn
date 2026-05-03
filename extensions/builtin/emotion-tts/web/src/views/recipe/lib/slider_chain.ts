@@ -273,6 +273,50 @@ export function applySliderState(
   return next;
 }
 
+const SLIDER_MANAGED_MODES: ReadonlySet<EditOp["mode"]> = new Set([
+  "gain",
+  "eq3",
+  "pitch_shift",
+  "fade_in",
+  "fade_out",
+  "silence_strip",
+]);
+
+export function mergeSliderEffectsIntoChain(
+  chain: EditChain,
+  state: DirectModSliderState,
+): EditChain {
+  const carry: EditChain = {
+    ...chain,
+    ops: chain.ops.filter((op) => !SLIDER_MANAGED_MODES.has(op.mode)),
+  };
+  const fresh: EditChain = { version: 1, ops: [] };
+  let withSliderOps = upsertGain(fresh, state.volumeDb);
+  withSliderOps = upsertEq3(
+    withSliderOps,
+    state.eq3.low,
+    state.eq3.mid,
+    state.eq3.high,
+  );
+  withSliderOps = upsertPitchShift(withSliderOps, state.pitchSt);
+  withSliderOps = upsertFadeIn(withSliderOps, state.fade.inS);
+  withSliderOps = upsertFadeOut(withSliderOps, state.fade.outS);
+  withSliderOps = upsertSilenceStrip(
+    withSliderOps,
+    state.silence.enabled,
+    state.silence.thresholdDb,
+  );
+  return { ...carry, ops: [...carry.ops, ...withSliderOps.ops] };
+}
+
+export function deriveSliderEffectsFromChain(chain: EditChain): DirectModSliderState {
+  const filtered: EditChain = {
+    ...chain,
+    ops: chain.ops.filter((op) => SLIDER_MANAGED_MODES.has(op.mode)),
+  };
+  return chainToSliderState(filtered);
+}
+
 export function isIdentityState(state: DirectModSliderState): boolean {
   return (
     Math.abs(state.volumeDb) < EPSILON &&
