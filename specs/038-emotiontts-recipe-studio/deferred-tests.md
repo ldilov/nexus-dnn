@@ -88,12 +88,38 @@ the `mappings_client.CharacterMapping.voiceAssetChainDigest` field is the
 contract-additive seam. No new endpoints; the patch reuses the existing
 `patchMapping` PATCH.
 
-### US7 — Audit history panel (Phase 9)
+### US7 — Audit history panel (Phase 9) — **SHIPPED**
 
-**Status:** **Service client shipped** at `services/audit_client.ts` (thin facade
-over the existing `fetchAuditLog` from spec 036's audio_edit_client). The
-`AuditHistoryPanel` UI component + revert action + Export JSON download are
-deferred. Backend endpoint `GET .../audit/{kind}/{id}` already exists (spec 036).
+A new `views/recipe/components/audit_history_panel.tsx` surfaces the existing
+`ext_emotion_tts__audio_edit_log` events on the recipe screen as section
+`07 / Edit history`. The component:
+
+- Fetches via the existing `fetchAuditLog(deploymentId, kind, id, 50)` (no
+  new endpoint).
+- Composes a flat list of voice-asset audit targets from active mappings +
+  uploaded voice assets; operator picks the target via a `<select>`.
+- Renders timestamp, op count, digest (first 12 chars in indigo mono),
+  actor, and an action pill (`create` / `update` / `clear`) per row.
+- **Export JSON** (US7c) — client-side download of the full audit array as
+  `audit-{kind}-{id}-{ts}.json`. Works.
+- **Revert to identity** (US7b) — clears the chain back to identity by
+  calling `clearVoiceAssetEdit(targetId, deploymentId)` and patching every
+  affected mapping's `voiceAssetChainDigest` to `null`. Refreshes the audit
+  list afterwards. v1 limitation: only supports voice-asset targets;
+  per-utterance revert deferred to a follow-up that extends the spec 036
+  utterance edit endpoint with a clear semantic.
+
+**v1 revert scope note:** "Revert to a *specific* prior chain" (re-applying a
+chain that was committed at a past audit event) is not supported because the
+audit log only stores `digest_before` / `digest_after` / `operation_count`,
+not the full chain JSON. To support targeted revert in a future spec, the
+audit log row needs a `chain_snapshot_json TEXT` column. v1 ships
+"clear-to-identity" which is the only safely-reversible operation given the
+current schema.
+
+**Toast UX:** swapped the inline `notify` shim for the `sonner` package
+(installed in this pass). The `<Toaster position="bottom-right" richColors
+theme="dark" />` mounts at the recipe view root.
 
 ### Visual regression baselines (Playwright)
 
