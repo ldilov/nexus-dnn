@@ -223,7 +223,7 @@ export const chatCodeBlockCopy = style({
   backgroundColor: "transparent",
   color: vars.color.text.muted,
   cursor: "pointer",
-  fontSize: vars.density.d4,
+  fontSize: vars.icon.md,
   transition: `color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {
     color: vars.color.text.primary,
@@ -283,7 +283,6 @@ globalStyle(`${chatMarkdown} blockquote`, {
   borderLeft: `2.5px solid ${vars.color.accent.primary}66`,
   color: vars.color.text.muted,
   background: "rgba(186, 158, 255, 0.04)",
-  // audit-allow: px — inline markdown blockquote radius, em units not supported here
   borderRadius: `0 ${vars.radius.control} ${vars.radius.control} 0`,
 });
 globalStyle(`${chatMarkdown} hr`, {
@@ -513,8 +512,10 @@ export const chatSendButton = style({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  width: vars.density.d8,
-  height: vars.density.d8,
+  // audit-allow: px — fixed send-button hit-target per UX spec; do not scale with density
+  width: "44px",
+  // audit-allow: px — fixed send-button hit-target per UX spec; do not scale with density
+  height: "44px",
   border: "none",
   // audit-allow: px — design-grid micro-rhythm value
   borderRadius: "13px",
@@ -672,7 +673,8 @@ export const formToggle = style({
   position: "relative",
   // audit-allow: px — fixed toggle switch dimensions per component spec
   width: "36px",
-  height: vars.density.d5,
+  // audit-allow: px — fixed toggle track height per component spec
+  height: "20px",
   backgroundColor: vars.color.bg.hover,
   borderRadius: vars.radius.full,
   cursor: "pointer",
@@ -1130,6 +1132,7 @@ export const emptyStateIconBox = style({
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
+  // font intentionally couples to density.d9 box size — both scale together
   fontSize: vars.density.d7,
   color: vars.color.accent.primary,
 });
@@ -1406,8 +1409,7 @@ export const unknownComponent = style({
 
 export const chatMessageTimestamp = style({
   fontFamily: vars.font.code,
-  // audit-allow: px — design-grid micro-rhythm value
-  fontSize: "10px",
+  fontSize: vars.font.size.kbd,
   color: vars.color.text.muted,
   textAlign: "right",
   marginTop: vars.density.d1,
@@ -1416,8 +1418,7 @@ export const chatMessageTimestamp = style({
 
 export const chatMessageMeta = style({
   fontFamily: vars.font.code,
-  // audit-allow: px — design-grid micro-rhythm value
-  fontSize: "10px",
+  fontSize: vars.font.size.kbd,
   color: vars.color.text.muted,
   textTransform: "uppercase",
   letterSpacing: "0.05em",
@@ -1448,8 +1449,7 @@ export const chatMessageParams = style({
   marginTop: vars.space.insetSm,
   padding: `${vars.density.d2} ${vars.density.d2}`,
   fontFamily: vars.font.code,
-  // audit-allow: px — design-grid micro-rhythm value
-  fontSize: "11px",
+  fontSize: vars.font.size.caption,
   color: vars.color.text.muted,
   background: "rgba(186, 158, 255, 0.05)",
   border: `1px solid ${vars.color.outline.variant}`,
@@ -1480,8 +1480,7 @@ export const chatActionButton = style({
   background: vars.color.bg.hover,
   color: vars.color.text.secondary,
   fontFamily: vars.font.ui,
-  // audit-allow: px — design-grid micro-rhythm value
-  fontSize: "11px",
+  fontSize: vars.font.size.caption,
   cursor: "pointer",
   transition: `all ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {
@@ -1679,7 +1678,7 @@ export const iconSm = style({
 });
 
 export const iconBadge = style({
-  fontSize: vars.density.d3,
+  fontSize: vars.font.size.bodySm,
   marginRight: vars.density.d1,
 });
 
@@ -1693,7 +1692,7 @@ export const marginLeftAuto = style({
 
 export const tokenCountLabel = style({
   fontFamily: "var(--font-code)",
-  // audit-allow: px — design-grid micro-rhythm value
+  // audit-allow: px — below minimum token granularity, sub-10px fontSize
   fontSize: "9px",
   color: "rgba(116, 117, 120, 0.6)",
   textTransform: "uppercase",
@@ -1726,7 +1725,7 @@ export const iconLg = style({
 });
 
 export const iconMd = style({
-  fontSize: vars.density.d4,
+  fontSize: vars.icon.md,
 });
 
 export const iconXl = style({
