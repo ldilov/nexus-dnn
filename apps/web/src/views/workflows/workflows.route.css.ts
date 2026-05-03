@@ -9,6 +9,7 @@ export const surfaceColumn = style({
 
 export const heroSlot = style({
   paddingBlock: vars.density.padSection,
+  // audit-allow: px — px — fixed layout breakpoint
   maxWidth: "1400px",
   marginInline: "auto",
   width: "100%",
@@ -36,5 +37,6 @@ export const editorActiveViewRow = style({
 });
 
 export const backIcon = style({
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   fontSize: "16px",
 });

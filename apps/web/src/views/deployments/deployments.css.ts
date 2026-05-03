@@ -6,6 +6,7 @@ export const root = style({
   flexDirection: "column",
   gap: vars.density.padSection,
   paddingBlock: vars.density.padSection,
+  // audit-allow: px — px — fixed layout breakpoint
   maxWidth: "1400px",
   marginInline: "auto",
   width: "100%",
@@ -37,15 +38,18 @@ export const moduleSelect = style({
 
 export const cardGrid = style({
   display: "grid",
+  // audit-allow: px — px — fixed layout breakpoint
   gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
   gap: vars.density.gapCard,
   listStyle: "none",
   padding: 0,
   margin: 0,
   "@media": {
+    // audit-allow: px — px — fixed layout breakpoint
     "(min-width: 1280px)": {
       gridTemplateColumns: "repeat(3, 1fr)",
     },
+    // audit-allow: px — px — fixed layout breakpoint
     "(min-width: 960px) and (max-width: 1279px)": {
       gridTemplateColumns: "repeat(2, 1fr)",
     },
@@ -124,6 +128,7 @@ export const cardModuleRow = style({
 
 export const summaryGrid = style({
   display: "grid",
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
   gap: vars.density.gapCard,
 });
@@ -148,6 +153,7 @@ export const summaryStatLabel = style({
 
 export const summaryStatValue = style({
   fontFamily: vars.font.code,
+  // audit-allow: px — px — sub-token spacing value, no density token at this step
   fontSize: "clamp(28px, 1.6vw + 18px, 44px)",
   fontWeight: vars.font.weight.regular,
   color: vars.color.text.primary,

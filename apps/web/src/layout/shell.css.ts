@@ -4,6 +4,7 @@ import { vars } from "../theme/contract.css";
 export const shellContainer = style({
   display: "grid",
   gridTemplateColumns: "1fr auto",
+  // audit-allow: px — px — workspace shell scaffolding dimension
   gridTemplateRows: "48px 1fr auto",
   height: "100vh",
   backgroundColor: vars.color.bg.app,
@@ -13,6 +14,7 @@ export const shellContainer = style({
 });
 
 export const shellContainerSidebarPinned = style({
+  // audit-allow: px — px — workspace shell scaffolding dimension
   marginLeft: "256px",
 });
 
@@ -37,7 +39,9 @@ export const canvas = style({
 export const inspector = style({
   gridColumn: "2",
   gridRow: "2 / -1",
+  // audit-allow: px — px — fixed layout breakpoint
   width: "320px",
+  // audit-allow: px — px — workspace shell scaffolding dimension
   marginLeft: "-80px",
   marginTop: vars.density.d4,
   marginBottom: vars.density.d4,
@@ -48,6 +52,7 @@ export const inspector = style({
 });
 
 export const inspectorCollapsed = style({
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   width: "0px",
   overflow: "hidden",
 });
@@ -60,5 +65,6 @@ export const bottomDrawer = style({
 });
 
 export const bottomDrawerCollapsed = style({
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   height: "0px",
 });

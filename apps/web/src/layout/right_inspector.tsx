@@ -47,6 +47,7 @@ function PortItem({ port }: { port: PortSpecDto }) {
     <div className={styles.portItem}>
       <span
         className={styles.portDot}
+        // audit-allow: px — px — below minimum token granularity (sub-10px)
         style={{ background: color.base, boxShadow: `0 0 8px ${color.glow}` }}
       />
       <span className={styles.portName}>

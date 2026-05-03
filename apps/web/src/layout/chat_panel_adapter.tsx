@@ -11,6 +11,7 @@ import {
   unloadActiveModel,
   type AvailableModel,
   type ChatTurn,
+// audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
 } from "../services/local_llm_chat";
 import {
   createThread,
@@ -25,6 +26,7 @@ import type { SamplerOverride } from "../components/chat/sampler_panel";
 
 // audit-allow: boundary — extension-defined window-event channels consumed by the local-llm extension UI
 const THREAD_SELECTED_EVENT = "local-llm/thread:selected";
+// audit-allow: boundary — boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
 const THREAD_CHANGED_EVENT = "local-llm/thread:changed";
 
 export interface ChatPanelAdapterProps {

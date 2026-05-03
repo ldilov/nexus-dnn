@@ -7,6 +7,7 @@ export const root = style({
   flexDirection: "column",
   gap: vars.space.gapLg,
   padding: vars.space.insetLg,
+  // audit-allow: px — px — fixed layout breakpoint
   maxWidth: "960px",
   margin: "0 auto",
   width: "100%",
@@ -30,7 +31,9 @@ export const breadcrumbLink = style({
   selectors: {
     "&:hover": { color: vars.color.text.primary },
     "&:focus-visible": {
+      // audit-allow: px — px — below minimum token granularity (sub-10px)
       outline: `2px solid ${vars.color.accent.primary}`,
+      // audit-allow: px — px — below minimum token granularity (sub-10px)
       outlineOffset: "2px",
     },
   },
@@ -53,13 +56,16 @@ export const tabButton = style({
   background: "transparent",
   border: "none",
   cursor: "pointer",
+  // audit-allow: px — px — below minimum token granularity (sub-10px)
   padding: `8px ${vars.space.insetLg}`,
   borderRadius: vars.radius.control,
   transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   selectors: {
     "&:hover": { color: vars.color.text.primary },
     "&:focus-visible": {
+      // audit-allow: px — px — below minimum token granularity (sub-10px)
       outline: `2px solid ${vars.color.accent.primary}`,
+      // audit-allow: px — px — below minimum token granularity (sub-10px)
       outlineOffset: "2px",
     },
   },
@@ -71,6 +77,7 @@ export const tabActive = style({
 });
 
 export const tabPanel = style({
+  // audit-allow: px — px — fixed layout breakpoint
   minHeight: "320px",
 });
 

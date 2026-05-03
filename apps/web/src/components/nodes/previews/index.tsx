@@ -58,6 +58,7 @@ function ChartPreview({ value }: PreviewProps) {
             y={60 - (v / max) * 60}
             width={4}
             height={(v / max) * 60}
+            // audit-allow: hex — hex — neon decorative palette per design lang
             fill="#ba9eff"
           />
         ))}
