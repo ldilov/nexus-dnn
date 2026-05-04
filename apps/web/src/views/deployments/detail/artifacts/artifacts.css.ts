@@ -126,16 +126,23 @@ export const actionsCell = style([
   },
 ]);
 
-export const iconButton = style({
+/* Anchor variant of the icon button — used for the <a download> link.
+ * Visually mirrors a Button variant="ghost" size="sm" iconOnly so the
+ * three artifact-row controls (play / download / delete) share the same
+ * 32px round-icon affordance. */
+export const iconLink = style({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  width: "30px",
-  height: "30px",
-  borderRadius: vars.radius.control,
+  // audit-allow: px — Button-equivalent touch-target.
+  width: "32px",
+  // audit-allow: px — Button-equivalent touch-target.
+  height: "32px",
+  borderRadius: vars.radius.full,
   border: "none",
   background: "transparent",
-  color: vars.color.text.muted,
+  color: vars.color.text.secondary,
+  textDecoration: "none",
   cursor: "pointer",
   transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   selectors: {
@@ -147,21 +154,8 @@ export const iconButton = style({
       outline: `${vars.focus.ringWidth} solid ${vars.color.accent.accent}`,
       outlineOffset: vars.focus.offset,
     },
-    "&:disabled": { opacity: 0.4, cursor: "default" },
   },
 });
-
-export const iconButtonDanger = style([
-  iconButton,
-  {
-    selectors: {
-      "&:hover": {
-        background: vars.color.bg.hover,
-        color: vars.color.error.text,
-      },
-    },
-  },
-]);
 
 export const player = style({
   display: "flex",
