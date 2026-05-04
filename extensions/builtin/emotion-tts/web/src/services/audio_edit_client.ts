@@ -7,7 +7,11 @@ export type EditOpMode =
   | "speed"
   | "fade_in"
   | "fade_out"
-  | "mute";
+  | "mute"
+  | "gain"
+  | "eq3"
+  | "pitch_shift"
+  | "silence_strip";
 
 export interface EditOpBase {
   id: string;
@@ -52,6 +56,28 @@ export interface MuteOp extends EditOpBase {
   end_ms: number;
 }
 
+export interface GainOp extends EditOpBase {
+  mode: "gain";
+  gain_db: number;
+}
+
+export interface Eq3Op extends EditOpBase {
+  mode: "eq3";
+  low_db: number;
+  mid_db: number;
+  high_db: number;
+}
+
+export interface PitchShiftOp extends EditOpBase {
+  mode: "pitch_shift";
+  semitones: number;
+}
+
+export interface SilenceStripOp extends EditOpBase {
+  mode: "silence_strip";
+  threshold_db: number;
+}
+
 export type EditOp =
   | TrimOp
   | CropOp
@@ -59,7 +85,11 @@ export type EditOp =
   | SpeedOp
   | FadeInOp
   | FadeOutOp
-  | MuteOp;
+  | MuteOp
+  | GainOp
+  | Eq3Op
+  | PitchShiftOp
+  | SilenceStripOp;
 
 export interface EditChain {
   version: 1;
@@ -99,6 +129,14 @@ export const NORMALIZE_LUFS_MIN = -30.0;
 export const NORMALIZE_LUFS_MAX = -6.0;
 export const SPEED_FACTOR_MIN = 0.5;
 export const SPEED_FACTOR_MAX = 2.0;
+export const GAIN_DB_MIN = -24.0;
+export const GAIN_DB_MAX = 24.0;
+export const EQ3_BAND_DB_MIN = -12.0;
+export const EQ3_BAND_DB_MAX = 12.0;
+export const PITCH_SHIFT_MIN = -12.0;
+export const PITCH_SHIFT_MAX = 12.0;
+export const SILENCE_STRIP_THRESHOLD_MIN = -60.0;
+export const SILENCE_STRIP_THRESHOLD_MAX = -20.0;
 
 export class StaleDigestError extends Error {
   constructor(public readonly currentDigest: string, message: string) {
@@ -209,6 +247,7 @@ export interface AuditEntry {
   operation_count: number;
   recorded_at: string;
   actor: string;
+  chain_snapshot_json?: string | null;
 }
 
 export interface AuditLogResponse {
@@ -290,6 +329,47 @@ function validateOp(op: EditOp, sourceDurationMs: number): ChainValidationError 
     case "fade_out":
       if (op.duration_ms < 1) {
         return { opId: op.id, message: "Fade duration must be at least 1 ms." };
+      }
+      return null;
+    case "gain":
+      if (op.gain_db < GAIN_DB_MIN || op.gain_db > GAIN_DB_MAX) {
+        return {
+          opId: op.id,
+          message: `Volume must be between ${GAIN_DB_MIN} and ${GAIN_DB_MAX} dB.`,
+        };
+      }
+      return null;
+    case "eq3":
+      for (const [name, value] of [
+        ["low_db", op.low_db],
+        ["mid_db", op.mid_db],
+        ["high_db", op.high_db],
+      ] as const) {
+        if (value < EQ3_BAND_DB_MIN || value > EQ3_BAND_DB_MAX) {
+          return {
+            opId: op.id,
+            message: `EQ ${name} must be between ${EQ3_BAND_DB_MIN} and ${EQ3_BAND_DB_MAX} dB.`,
+          };
+        }
+      }
+      return null;
+    case "pitch_shift":
+      if (op.semitones < PITCH_SHIFT_MIN || op.semitones > PITCH_SHIFT_MAX) {
+        return {
+          opId: op.id,
+          message: `Pitch must be between ${PITCH_SHIFT_MIN} and ${PITCH_SHIFT_MAX} semitones.`,
+        };
+      }
+      return null;
+    case "silence_strip":
+      if (
+        op.threshold_db < SILENCE_STRIP_THRESHOLD_MIN ||
+        op.threshold_db > SILENCE_STRIP_THRESHOLD_MAX
+      ) {
+        return {
+          opId: op.id,
+          message: `Silence threshold must be between ${SILENCE_STRIP_THRESHOLD_MIN} and ${SILENCE_STRIP_THRESHOLD_MAX} dB.`,
+        };
       }
       return null;
     default: {

@@ -90,7 +90,7 @@ export function EmotionPanel({ value, onChange, deploymentId }: Props): JSX.Elem
   };
 
   const setAlpha = (next: number): void => {
-    const clamped = Math.max(0, Math.min(1, Number.isFinite(next) ? next : 1));
+    const clamped = Math.max(0, Math.min(10, Number.isFinite(next) ? next : 1));
     onChange({ ...value, emotionAlpha: clamped });
   };
 
@@ -262,7 +262,7 @@ export function EmotionPanel({ value, onChange, deploymentId }: Props): JSX.Elem
             <input
               type="range"
               min={0}
-              max={1}
+              max={10}
               step={0.01}
               value={alpha}
               className={css.slider}
@@ -272,7 +272,7 @@ export function EmotionPanel({ value, onChange, deploymentId }: Props): JSX.Elem
             <input
               type="number"
               min={0}
-              max={1}
+              max={10}
               step={0.01}
               value={Number(alpha.toFixed(2))}
               className={css.sliderNumber}

@@ -60,6 +60,35 @@ export async function deactivateVoiceAsset(
   );
 }
 
+export async function renameVoiceAsset(
+  deploymentId: string,
+  voiceAssetId: string,
+  displayName: string,
+): Promise<VoiceAsset> {
+  return apiFetch<VoiceAsset>(
+    `/voice-assets/${voiceAssetId}?deploymentId=${encodeURIComponent(deploymentId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ displayName }),
+    },
+  );
+}
+
+/**
+ * Build a stream URL the browser can hand to a `<audio>` element. The
+ * extension's GET `/voice-assets/{id}/audio` endpoint streams the underlying
+ * audio regardless of the host's chosen storage scheme (file://, artifact://,
+ * cloud blob, etc.) — so the browser never needs to know how it's stored.
+ *
+ * Returns `null` only when the asset has no `audioArtifactRef` (genuinely
+ * unavailable) so callers can render a "preview unavailable" affordance.
+ */
+export function getVoiceAssetStreamUrl(asset: VoiceAsset): string | null {
+  if (!asset.audioArtifactRef) return null;
+  const params = new URLSearchParams({ deploymentId: asset.deploymentId });
+  return `${EXTENSION_PREFIX}/voice-assets/${encodeURIComponent(asset.voiceAssetId)}/audio?${params.toString()}`;
+}
+
 export async function probeVoiceAsset(artifactRef: string): Promise<ProbeResult> {
   return apiFetch("/voice-assets/probe", {
     method: "POST",

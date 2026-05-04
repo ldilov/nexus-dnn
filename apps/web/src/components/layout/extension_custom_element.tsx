@@ -26,6 +26,13 @@ interface ExtensionCustomElementProps {
   props?: Record<string, unknown>;
   children?: ReactNode;
   importer?: ImportModule;
+  /**
+   * Callback fired with the underlying custom element node once it has
+   * mounted (and `null` on unmount). Used by the deployment-detail shell
+   * to wire the per-extension action contract — see
+   * `apps/web/src/types/extension_actions.ts`.
+   */
+  elementRef?: (el: HTMLElement | null) => void;
 }
 
 interface ExtensionCustomElementState {
@@ -45,6 +52,7 @@ export class ExtensionCustomElement extends Component<
   }
 
   override componentDidMount() {
+    this.cancelled = false;
     void this.register();
   }
 
@@ -98,7 +106,12 @@ export class ExtensionCustomElement extends Component<
         </div>
       );
     }
-    return createElement(tag, toAttrs(props), children);
+    const { elementRef } = this.props;
+    const attrs = toAttrs(props);
+    if (elementRef) {
+      (attrs as Record<string, unknown>).ref = elementRef;
+    }
+    return createElement(tag, attrs, children);
   }
 }
 

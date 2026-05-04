@@ -7,5 +7,6 @@ INSERT INTO ext_emotion_tts__audio_edit_log (
     digest_after,
     operation_count,
     recorded_at,
-    actor
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    actor,
+    chain_snapshot_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

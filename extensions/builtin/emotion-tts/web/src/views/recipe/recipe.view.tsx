@@ -1,7 +1,19 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData } from "react-router";
+import { Toaster, toast } from "sonner";
+import {
+  applyVoiceAssetEdit,
+  clearVoiceAssetEdit,
+  type EditChain,
+} from "../../services/audio_edit_client";
 import type { Deployment } from "../../services/deployments_client";
-import type { CharacterMapping } from "../../services/mappings_client";
+import { apiFetch } from "../../services/http";
+import {
+  createMapping,
+  deactivateMapping,
+  patchMapping,
+  type CharacterMapping,
+} from "../../services/mappings_client";
 import type {
   CachePolicy,
   CreateRunRequest,
@@ -9,15 +21,70 @@ import type {
   OutputFormat,
   RunSummary,
 } from "../../services/types";
+import { listVoiceAssets, uploadVoiceAsset, type VoiceAsset } from "../../services/voice_assets_client";
+import { castListItem as castListItemClass } from "./recipe.css";
+import { VoiceLibrary } from "./components/voice_library/voice_library";
+import { listPresets, type VectorPreset } from "../../services/presets_client";
 import type { WorkflowResponse } from "../../services/workflows_client";
+import { AuditHistoryPanel, type AuditTargetOption } from "./components/audit_history_panel";
+import { CastRow, CastSection } from "./components/cast_row";
 import { DeploymentHeader } from "./components/deployment_header";
-import { EmotionPanel } from "./components/emotion_panel";
+import { DirectModSliderStrip } from "./components/direct_mod_slider_strip";
+import { EmotionStudio } from "./components/emotion_studio";
 import { GenerationSettingsPanel } from "./components/generation_settings_panel";
-import { HistoryPanel } from "./components/history_panel";
-import { QuickVoicePicker } from "./components/quick_voice_picker";
+import { ParsedDialogue } from "./components/parsed_dialogue";
+import { PerformanceSliders, PERFORMANCE_DEFAULTS, type PerformanceSlidersValue } from "./components/performance_sliders";
+import { PreFlightBlock } from "./components/pre_flight_block";
+import { RecentRuns } from "./components/recent_runs";
 import { RunPanel } from "./components/run_panel";
-import { ScriptEditor } from "./components/script_editor";
+import { ScriptSection } from "./components/script_section/script_section";
+import { buildDiagnostics } from "./lib/build_diagnostics";
+import {
+  assignCharacterColors,
+  lineCountByCharacter,
+  parseDialogue,
+  uniqueCharacters,
+} from "./lib/parse_dialogue";
+import {
+  IDENTITY_SLIDER_STATE,
+  type DirectModSliderState,
+} from "./lib/slider_chain";
 import { RecipeUi } from "./recipe.ui";
+
+const notify = {
+  success(message: string): void {
+    toast.success(message);
+  },
+  error(message: string): void {
+    toast.error(message);
+  },
+};
+
+const RECIPE_META_KEY = "__recipe";
+
+function safeParseGeneration(json: string): Record<string, unknown> {
+  try {
+    const v = JSON.parse(json) as unknown;
+    return typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function stripRecipeMeta(
+  overrides: Record<string, unknown>,
+): Record<string, unknown> {
+  // The namespaced `__recipe` blob is a sidecar for UI settings (quickMode,
+  // cachePolicy) and must not bleed into the generation-overrides payload
+  // sent to the worker. Build a fresh object excluding that key without
+  // tripping the unused-binding lint.
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(overrides)) {
+    if (key === RECIPE_META_KEY) continue;
+    out[key] = overrides[key];
+  }
+  return out;
+}
 
 interface LoaderData {
   deployment: Deployment;
@@ -27,7 +94,27 @@ interface LoaderData {
 }
 
 export function RecipeView(): JSX.Element {
-  const { deployment, mappings, runs, workflow } = useLoaderData() as LoaderData;
+  const { deployment, mappings: initialMappings, runs, workflow } = useLoaderData() as LoaderData;
+
+  const [mappings, setMappings] = useState<CharacterMapping[]>(initialMappings);
+  const [voiceAssets, setVoiceAssets] = useState<VoiceAsset[]>([]);
+  const [vectorPresets, setVectorPresets] = useState<VectorPreset[]>([]);
+  const [activeCastCharacter, setActiveCastCharacter] = useState<string | null>(null);
+  const [sliderState, setSliderState] = useState<DirectModSliderState>(IDENTITY_SLIDER_STATE);
+
+  const seededOverrides = useMemo(
+    () =>
+      deployment.defaultGenerationOverridesJson
+        ? safeParseGeneration(deployment.defaultGenerationOverridesJson)
+        : {},
+    [deployment.defaultGenerationOverridesJson],
+  );
+  const seededRecipeMeta = useMemo(() => {
+    const meta = seededOverrides[RECIPE_META_KEY];
+    return typeof meta === "object" && meta !== null
+      ? (meta as Record<string, unknown>)
+      : {};
+  }, [seededOverrides]);
 
   const [script, setScript] = useState("");
   const [outputFormat, setOutputFormat] = useState<OutputFormat>(
@@ -38,22 +125,92 @@ export function RecipeView(): JSX.Element {
     mode: "none",
     emotionAlpha: 1.0,
   });
-  const [generation, setGeneration] = useState<Record<string, unknown>>({});
-  const [cachePolicy, setCachePolicy] = useState<CachePolicy>("use_cache");
-  const [quickMode, setQuickMode] = useState(deployment.defaultVoiceAssetId != null);
-
-  const createPayload: CreateRunRequest = useMemo(
-    () => ({
-      script,
-      parserMode: quickMode ? "raw_text" : "dialogue",
-      outputFormat,
-      speedFactor,
-      globalEmotion,
-      generation,
-      cachePolicy,
-    }),
-    [script, quickMode, outputFormat, speedFactor, globalEmotion, generation, cachePolicy],
+  const [generation, setGeneration] = useState<Record<string, unknown>>(() => ({
+    temperature: 0.8,
+    top_p: 0.8,
+    seed: 42,
+    ...stripRecipeMeta(seededOverrides),
+  }));
+  const [cachePolicy, setCachePolicy] = useState<CachePolicy>(() => {
+    const v = seededRecipeMeta["cachePolicy"];
+    return v === "use_cache" || v === "force_regenerate" || v === "read_only_cache"
+      ? v
+      : "use_cache";
+  });
+  // Mirror the deployment's default-voice id locally so `QuickVoicePicker`
+  // updates propagate without a full loader refetch. `useLoaderData` only
+  // re-runs on route revalidation; until then the picker would persist a
+  // change to the backend but the recipe's `unmappedCount` + `Quick voice`
+  // diagnostic would still observe the stale loader value (HIGH-3).
+  const [defaultVoiceAssetId, setDefaultVoiceAssetId] = useState<string | null>(
+    deployment.defaultVoiceAssetId ?? null,
   );
+  const [quickMode, setQuickMode] = useState(() => {
+    const v = seededRecipeMeta["quickMode"];
+    if (typeof v === "boolean") return v;
+    return deployment.defaultVoiceAssetId != null;
+  });
+  const [performance, setPerformance] = useState<PerformanceSlidersValue>(PERFORMANCE_DEFAULTS);
+
+  useEffect(() => {
+    let cancelled = false;
+    listVoiceAssets(deployment.deploymentId)
+      .then((r) => {
+        if (!cancelled) setVoiceAssets(r.voiceAssets);
+      })
+      .catch(() => undefined);
+    listPresets(deployment.deploymentId)
+      .then((r) => {
+        if (!cancelled) setVectorPresets(r.presets);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [deployment.deploymentId]);
+
+  // Debounced PATCH: persist recipe-level settings (output format, speed,
+  // generation overrides, plus the namespaced `__recipe` sidecar holding
+  // quickMode + cachePolicy) so reloading the page rehydrates the user's
+  // last-known choices. Skips the very first run to avoid bouncing the
+  // loader-seeded values back to the server.
+  const isFirstPersistRef = useRef(true);
+  useEffect(() => {
+    if (isFirstPersistRef.current) {
+      isFirstPersistRef.current = false;
+      return undefined;
+    }
+    const handle = window.setTimeout(() => {
+      const overrides = {
+        ...generation,
+        [RECIPE_META_KEY]: {
+          quickMode,
+          cachePolicy,
+        },
+      };
+      void apiFetch(`/deployments/${deployment.deploymentId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          defaultOutputFormat: outputFormat,
+          defaultSpeedFactor: speedFactor,
+          defaultGenerationOverrides: overrides,
+        }),
+      }).catch(() => undefined);
+    }, 600);
+    return () => window.clearTimeout(handle);
+  }, [
+    deployment.deploymentId,
+    outputFormat,
+    speedFactor,
+    cachePolicy,
+    quickMode,
+    generation,
+  ]);
+
+  const parsedLines = useMemo(() => parseDialogue(script), [script]);
+  const characters = useMemo(() => uniqueCharacters(parsedLines), [parsedLines]);
+  const characterColors = useMemo(() => assignCharacterColors(characters), [characters]);
+  const lineCounts = useMemo(() => lineCountByCharacter(parsedLines), [parsedLines]);
 
   const mappingsByLower = useMemo(() => {
     const map = new Map<string, CharacterMapping>();
@@ -63,119 +220,344 @@ export function RecipeView(): JSX.Element {
     return map;
   }, [mappings]);
 
-  const diagnostics = useMemo(() => {
-    const checks: Array<{ label: string; status: "ok" | "warn" | "fail"; detail?: string }> = [];
-    const trimmed = script.trim();
-    if (trimmed.length === 0) {
-      checks.push({ label: "Script", status: "fail", detail: "empty" });
-    } else {
-      const lineCount = trimmed.split(/\r?\n/).filter((l) => l.trim().length > 0).length;
-      checks.push({ label: "Script", status: "ok", detail: `${lineCount} lines` });
-    }
+  const unmappedCount = useMemo(() => {
+    // Quick-mode with a default voice covers every unmapped character;
+    // the dispatcher (`prepare.rs::prepare`) falls back to the deployment
+    // default when no character mapping resolves. Without a default voice
+    // unmapped lines would fail at run-creation time, so still count them
+    // as unmapped for the pre-flight UI.
+    if (quickMode && defaultVoiceAssetId) return 0;
+    return characters.filter((c) => !mappingsByLower.has(c.toLowerCase())).length;
+  }, [characters, mappingsByLower, quickMode, defaultVoiceAssetId]);
 
-    if (quickMode) {
-      if (deployment.defaultVoiceAssetId) {
-        checks.push({ label: "Quick voice", status: "ok", detail: "default voice set" });
-      } else {
-        checks.push({ label: "Quick voice", status: "fail", detail: "no default voice" });
+  const upsertMapping = useCallback(
+    async (
+      characterName: string,
+      patch: Partial<CharacterMapping>,
+    ): Promise<void> => {
+      const existing = mappingsByLower.get(characterName.toLowerCase());
+      try {
+        if (existing) {
+          const updated = await patchMapping(deployment.deploymentId, existing.mappingId, patch);
+          setMappings((prev) =>
+            prev.map((m) => (m.mappingId === updated.mappingId ? updated : m)),
+          );
+          notify.success(`Updated mapping for ${characterName}`);
+        } else if (patch.speakerVoiceAssetId) {
+          const created = await createMapping(deployment.deploymentId, {
+            ...patch,
+            characterName,
+            speakerVoiceAssetId: patch.speakerVoiceAssetId,
+          });
+          setMappings((prev) => [...prev, created]);
+          notify.success(`Mapped ${characterName} to voice`);
+        }
+      } catch (err: unknown) {
+        notify.error(err instanceof Error ? err.message : "mapping failed");
       }
-    } else {
-      const referencedCharacters = new Set<string>();
-      const tagRegex = /^\[(?<body>[^\]]*)\]/;
-      for (const raw of trimmed.split(/\r?\n/)) {
-        const line = raw.trim();
-        if (!line) continue;
-        const match = line.match(tagRegex);
-        const head = match?.groups?.body?.split("|")[0]?.trim() ?? "";
-        const name = head.split(":")[0]?.trim() ?? "";
-        if (name) referencedCharacters.add(name.toLowerCase());
+    },
+    [mappingsByLower, deployment.deploymentId],
+  );
+
+  const handleClearMapping = useCallback(
+    async (characterName: string): Promise<void> => {
+      const existing = mappingsByLower.get(characterName.toLowerCase());
+      if (!existing) return;
+      try {
+        await deactivateMapping(deployment.deploymentId, existing.mappingId);
+        setMappings((prev) => prev.filter((m) => m.mappingId !== existing.mappingId));
+        notify.success(`Cleared mapping for ${characterName}`);
+      } catch (err: unknown) {
+        notify.error(err instanceof Error ? err.message : "clear failed");
       }
-      const missing = Array.from(referencedCharacters).filter((n) => !mappingsByLower.has(n));
-      if (referencedCharacters.size === 0) {
-        checks.push({ label: "Cast", status: "warn", detail: "no characters detected" });
-      } else if (missing.length === 0) {
-        checks.push({
-          label: "Cast",
-          status: "ok",
-          detail: `${referencedCharacters.size} mapped`,
+    },
+    [mappingsByLower, deployment.deploymentId],
+  );
+
+  const handleUploadAndMap = useCallback(
+    async (characterName: string, file: File): Promise<void> => {
+      try {
+        const asset = await uploadVoiceAsset(
+          deployment.deploymentId,
+          file,
+          file.name.replace(/\.[^.]+$/, ""),
+          "speaker",
+        );
+        setVoiceAssets((prev) => [asset, ...prev]);
+        await upsertMapping(characterName, { speakerVoiceAssetId: asset.voiceAssetId });
+      } catch (err: unknown) {
+        notify.error(err instanceof Error ? err.message : "upload failed");
+      }
+    },
+    [deployment.deploymentId, upsertMapping],
+  );
+
+  const handleSliderChange = useCallback((next: DirectModSliderState) => {
+    setSliderState(next);
+  }, []);
+
+  const auditTargets = useMemo<AuditTargetOption[]>(() => {
+    const targets: AuditTargetOption[] = [];
+    const seen = new Set<string>();
+    for (const m of mappings) {
+      const id = m.speakerVoiceAssetId;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const asset = voiceAssets.find((a) => a.voiceAssetId === id);
+      const label = asset?.displayName ?? `${m.characterName} · ${id.slice(0, 8)}`;
+      targets.push({ kind: "voice_asset", id, label });
+    }
+    for (const a of voiceAssets) {
+      if (seen.has(a.voiceAssetId)) continue;
+      seen.add(a.voiceAssetId);
+      targets.push({ kind: "voice_asset", id: a.voiceAssetId, label: a.displayName });
+    }
+    return targets;
+  }, [mappings, voiceAssets]);
+
+  const handleRevertAuditToChain = useCallback(
+    async (target: AuditTargetOption, chainJson: string): Promise<void> => {
+      if (target.kind !== "voice_asset") {
+        notify.error("Targeted revert is only supported for voice assets in v1.");
+        return;
+      }
+      let parsed: EditChain;
+      try {
+        const raw = JSON.parse(chainJson) as unknown;
+        if (
+          typeof raw !== "object" ||
+          raw === null ||
+          (raw as { version?: unknown }).version !== 1 ||
+          !Array.isArray((raw as { ops?: unknown }).ops)
+        ) {
+          throw new Error("snapshot is not a valid EditChain");
+        }
+        parsed = raw as EditChain;
+      } catch (err: unknown) {
+        notify.error(
+          err instanceof Error
+            ? `Audit snapshot is malformed: ${err.message}`
+            : "Audit snapshot is malformed; cannot revert.",
+        );
+        return;
+      }
+      try {
+        const response = await applyVoiceAssetEdit(target.id, deployment.deploymentId, {
+          chain: parsed,
         });
-      } else {
-        checks.push({
-          label: "Cast",
-          status: "fail",
-          detail: `${missing.length} unmapped`,
-        });
+        const affected = mappings.filter((m) => m.speakerVoiceAssetId === target.id);
+        await Promise.all(
+          affected.map((m) =>
+            patchMapping(deployment.deploymentId, m.mappingId, {
+              voiceAssetChainDigest: response.chain_digest,
+            }).catch(() => null),
+          ),
+        );
+        setMappings((prev) =>
+          prev.map((m) =>
+            m.speakerVoiceAssetId === target.id
+              ? { ...m, voiceAssetChainDigest: response.chain_digest }
+              : m,
+          ),
+        );
+        notify.success(`Reverted ${target.label} to a prior chain`);
+      } catch (err: unknown) {
+        notify.error(err instanceof Error ? err.message : "revert failed");
       }
-    }
+    },
+    [deployment.deploymentId, mappings],
+  );
 
-    if (globalEmotion.mode === "qwen_template" && !globalEmotion.qwenTemplate?.trim()) {
-      checks.push({ label: "Emotion", status: "warn", detail: "Qwen template empty" });
-    }
+  const handleRevertAudit = useCallback(
+    async (target: AuditTargetOption): Promise<void> => {
+      if (target.kind !== "voice_asset") {
+        notify.error("Revert is only supported for voice assets in v1.");
+        return;
+      }
+      try {
+        await clearVoiceAssetEdit(target.id, deployment.deploymentId);
+        const affected = mappings.filter((m) => m.speakerVoiceAssetId === target.id);
+        await Promise.all(
+          affected.map((m) =>
+            patchMapping(deployment.deploymentId, m.mappingId, {
+              voiceAssetChainDigest: null,
+            }).catch(() => null),
+          ),
+        );
+        setMappings((prev) =>
+          prev.map((m) =>
+            m.speakerVoiceAssetId === target.id
+              ? { ...m, voiceAssetChainDigest: null }
+              : m,
+          ),
+        );
+        notify.success(`Cleared edit chain on ${target.label}`);
+      } catch (err: unknown) {
+        notify.error(err instanceof Error ? err.message : "revert failed");
+      }
+    },
+    [deployment.deploymentId, mappings],
+  );
 
-    return checks;
-  }, [script, quickMode, deployment.defaultVoiceAssetId, mappingsByLower, globalEmotion]);
+  const createPayload: CreateRunRequest = useMemo(
+    () => ({
+      script,
+      parserMode: quickMode ? "raw_text" : "dialogue",
+      outputFormat,
+      speedFactor,
+      globalEmotion: { ...globalEmotion, emotionAlpha: performance.intensity },
+      generation,
+      cachePolicy,
+    }),
+    [script, quickMode, outputFormat, speedFactor, performance.intensity, globalEmotion, generation, cachePolicy],
+  );
+
+  const diagnostics = useMemo(
+    () => buildDiagnostics({
+      script,
+      quickMode,
+      defaultVoiceAssetId,
+      characters,
+      unmappedCount,
+      globalEmotion,
+      performance,
+    }),
+    [script, quickMode, defaultVoiceAssetId, characters, unmappedCount, globalEmotion, performance],
+  );
+
+  const legacyDiagnostics = useMemo(
+    () =>
+      diagnostics
+        .filter((d) => d.id !== "performance")
+        .map((d) => ({
+          label: d.label,
+          status: d.status === "ok" ? "ok" : d.status === "warn" ? "warn" : "fail",
+          detail: d.detail,
+        })) as { label: string; status: "ok" | "warn" | "fail"; detail?: string }[],
+    [diagnostics],
+  );
 
   return (
-    <RecipeUi
-      deployment={deployment}
-      workflowCustomised={workflow.workflow.customised}
-      unmappableFields={workflow.unmappableFields}
-      header={<DeploymentHeader deployment={deployment} />}
-      scriptEditor={
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="checkbox"
-                checked={quickMode}
-                onChange={(e) => setQuickMode(e.target.checked)}
-              />
-              Quick mode (no character mapping required)
-            </label>
-            {quickMode && (
-              <QuickVoicePicker
-                deploymentId={deployment.deploymentId}
-                initialVoiceAssetId={deployment.defaultVoiceAssetId ?? null}
-              />
-            )}
-          </div>
-          <ScriptEditor
-            value={script}
-            onChange={setScript}
+    <>
+      <Toaster position="bottom-right" richColors theme="dark" />
+      <RecipeUi
+        deployment={deployment}
+        canGenerate={script.trim().length > 0}
+        workflowCustomised={workflow.workflow.customised}
+        unmappableFields={workflow.unmappableFields}
+        hero={<DeploymentHeader deployment={deployment} />}
+        quickActions={
+          <RunPanel
+            deploymentId={deployment.deploymentId}
+            createPayload={createPayload}
+            canGenerate={script.trim().length > 0}
+            diagnostics={legacyDiagnostics}
+          />
+        }
+        scriptSection={
+          <ScriptSection
+            quickMode={quickMode}
+            onToggleQuickMode={setQuickMode}
+            deployment={deployment}
+            script={script}
+            onScriptChange={setScript}
             outputFormat={outputFormat}
-            mappings={mappingsByLower}
+            mappingsByLower={mappingsByLower}
+            defaultVoiceAssetId={defaultVoiceAssetId}
+            onDefaultVoiceAssetIdChange={setDefaultVoiceAssetId}
+          />
+        }
+        parsedDialogueSection={
+          <ParsedDialogue lines={parsedLines} characterColors={characterColors} />
+        }
+        voiceLibrarySection={
+          <VoiceLibrary
+            deploymentId={deployment.deploymentId}
+            voiceAssets={voiceAssets}
+            mappings={mappings}
+            characterColors={characterColors}
+            onVoiceAssetsChange={setVoiceAssets}
+          />
+        }
+        castSection={
+          <CastSection unmappedCount={unmappedCount} totalCount={characters.length}>
+            {characters.map((name) => {
+              const mapping = mappingsByLower.get(name.toLowerCase()) ?? null;
+              // audit-allow: hex — neon decorative palette per design lang
+              const color = characterColors[name] ?? "#ba9eff";
+              return (
+                <li key={name} className={castListItemClass}>
+                  <CastRow
+                    characterName={name}
+                    color={color}
+                    lineCount={lineCounts[name] ?? 0}
+                    mapping={mapping}
+                    voiceAssets={voiceAssets}
+                    presets={vectorPresets}
+                    active={activeCastCharacter === name}
+                    onToggle={() =>
+                      setActiveCastCharacter((c) => (c === name ? null : name))
+                    }
+                    onAssignVoiceAsset={(voiceAssetId) =>
+                      upsertMapping(name, { speakerVoiceAssetId: voiceAssetId })
+                    }
+                    onAssignPreset={(presetId) =>
+                      upsertMapping(name, { defaultVectorPresetId: presetId })
+                    }
+                    onUploadFile={(file) => handleUploadAndMap(name, file)}
+                    onClearMapping={() => handleClearMapping(name)}
+                  />
+                </li>
+              );
+            })}
+          </CastSection>
+        }
+        emotionSection={
+          <EmotionStudio
+            value={globalEmotion}
+            onChange={setGlobalEmotion}
             deploymentId={deployment.deploymentId}
           />
-        </div>
-      }
-      emotionPanel={
-        <EmotionPanel
-          value={globalEmotion}
-          onChange={setGlobalEmotion}
-          deploymentId={deployment.deploymentId}
-        />
-      }
-      settingsPanel={
-        <GenerationSettingsPanel
-          outputFormat={outputFormat}
-          onOutputFormatChange={setOutputFormat}
-          speedFactor={speedFactor}
-          onSpeedFactorChange={setSpeedFactor}
-          cachePolicy={cachePolicy}
-          onCachePolicyChange={setCachePolicy}
-          generation={generation}
-          onGenerationChange={setGeneration}
-        />
-      }
-      runPanel={
-        <RunPanel
-          deploymentId={deployment.deploymentId}
-          createPayload={createPayload}
-          canGenerate={script.trim().length > 0}
-          diagnostics={diagnostics}
-        />
-      }
-      historyPanel={<HistoryPanel runs={runs} deploymentId={deployment.deploymentId} />}
-    />
+        }
+        performanceSection={
+          <>
+            <PerformanceSliders
+              value={{ ...performance, pace: speedFactor }}
+              onChange={(next) => {
+                setPerformance(next);
+                if (next.pace !== speedFactor) setSpeedFactor(next.pace);
+              }}
+            />
+            <DirectModSliderStrip
+              state={sliderState}
+              onChange={handleSliderChange}
+              supportsSynthSpeed={false}
+            />
+            <PreFlightBlock checks={diagnostics} />
+            <GenerationSettingsPanel
+              outputFormat={outputFormat}
+              onOutputFormatChange={setOutputFormat}
+              speedFactor={speedFactor}
+              onSpeedFactorChange={setSpeedFactor}
+              cachePolicy={cachePolicy}
+              onCachePolicyChange={setCachePolicy}
+              generation={generation}
+              onGenerationChange={setGeneration}
+            />
+          </>
+        }
+        recentRunsSection={
+          <RecentRuns runs={runs} deploymentId={deployment.deploymentId} />
+        }
+        auditSection={
+          <AuditHistoryPanel
+            deploymentId={deployment.deploymentId}
+            targets={auditTargets}
+            onRevertToIdentity={handleRevertAudit}
+            onRevertToChain={handleRevertAuditToChain}
+          />
+        }
+      />
+    </>
   );
 }

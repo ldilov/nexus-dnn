@@ -27,6 +27,13 @@ import {
   EditSurfaceActions,
   EditSurfaceHeader,
 } from "../../../components/edit_surface";
+import { DirectModSliderStrip } from "../../recipe/components/direct_mod_slider_strip";
+import {
+  deriveSliderEffectsFromChain,
+  IDENTITY_SLIDER_STATE,
+  mergeSliderEffectsIntoChain,
+  type DirectModSliderState,
+} from "../../recipe/lib/slider_chain";
 
 interface RemovalStackEntry {
   op: EditOp;
@@ -36,6 +43,7 @@ interface RemovalStackEntry {
 export interface AudioEditPanelProps {
   voiceAsset: VoiceAsset;
   deploymentId: string;
+  affectedCharacterNames?: readonly string[];
   onChainPersisted: (response: ApplyEditResponse) => void;
   onError: (message: string) => void;
 }
@@ -43,7 +51,13 @@ export interface AudioEditPanelProps {
 const DEFAULT_LUFS = -16.0;
 
 export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
-  const { voiceAsset, deploymentId, onChainPersisted, onError } = props;
+  const {
+    voiceAsset,
+    deploymentId,
+    affectedCharacterNames = [],
+    onChainPersisted,
+    onError,
+  } = props;
   const sourceDurationMs = voiceAsset.durationMs ?? 0;
   const audioUrl = useMemo(
     () => artifactUrl(voiceAsset.audioArtifactRef),
@@ -51,6 +65,8 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
   );
 
   const [chain, setChain] = useState<EditChain>(() => initialChainFor(sourceDurationMs));
+  const [sliderState, setSliderState] = useState<DirectModSliderState>(IDENTITY_SLIDER_STATE);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [previewObjectUrl, setPreviewObjectUrl] = useState<string | null>(null);
   const [applyInFlight, setApplyInFlight] = useState(false);
@@ -58,6 +74,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
   const [hasPreviewedAtLeastOnce, setHasPreviewedAtLeastOnce] = useState(false);
   const [measuredLufs, setMeasuredLufs] = useState<number | null>(null);
   const [removalStack, setRemovalStack] = useState<RemovalStackEntry[]>([]);
+  const [persistedChainDigest, setPersistedChainDigest] = useState<string | null>(null);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
@@ -77,12 +94,20 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: voiceAsset.voiceAssetId is the reset trigger when the user picks a different voice
   useEffect(() => {
-    setChain(initialChainFor(sourceDurationMs));
+    const fresh = initialChainFor(sourceDurationMs);
+    setChain(fresh);
+    setSliderState(deriveSliderEffectsFromChain(fresh));
     setValidationError(null);
     setHasPreviewedAtLeastOnce(false);
     setRemovalStack([]);
+    setPersistedChainDigest(null);
     persistedDigestRef.current = null;
   }, [voiceAsset.voiceAssetId, sourceDurationMs]);
+
+  const handleSliderChange = useCallback((next: DirectModSliderState) => {
+    setSliderState(next);
+    setChain((prev) => mergeSliderEffectsIntoChain(prev, next));
+  }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: auditRefreshKey is a manual refetch signal incremented after edit-chain mutations
   useEffect(() => {
@@ -232,6 +257,15 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
   const handleApply = useCallback(async () => {
     if (!validateLocal()) return;
     if (previewInFlight || applyInFlight) return;
+    if (affectedCharacterNames.length > 1) {
+      const list = affectedCharacterNames.join(", ");
+      const confirmed = window.confirm(
+        `This voice asset is referenced by ${affectedCharacterNames.length} characters: ${list}.\n\n` +
+          "Applying this edit chain will affect every line they speak in the next batch.\n\n" +
+          "Continue?",
+      );
+      if (!confirmed) return;
+    }
     previewControllerRef.current?.abort();
     applyControllerRef.current?.abort();
     const controller = new AbortController();
@@ -247,6 +281,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
       );
       if (controller.signal.aborted) return;
       persistedDigestRef.current = response.chain_digest;
+      setPersistedChainDigest(response.chain_digest);
       setValidationError(null);
       setMeasuredLufs(response.measured_lufs ?? null);
       setRemovalStack([]);
@@ -272,6 +307,7 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
     validateLocal,
     previewInFlight,
     applyInFlight,
+    affectedCharacterNames,
     voiceAsset.voiceAssetId,
     deploymentId,
     chain,
@@ -369,6 +405,35 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
           <span className={css.labelRow}>Operations · {chain.ops.length}</span>
           <EditChainList chain={chain} onRemoveOp={removeOp} />
         </div>
+
+        <div className={css.controlBlock}>
+          <button
+            type="button"
+            className={css.advancedDisclosure}
+            onClick={() => setShowAdvanced((s) => !s)}
+            aria-expanded={showAdvanced}
+          >
+            {showAdvanced ? "▾" : "▸"} Advanced effects · gain · eq · pitch · fade · silence trim
+          </button>
+          {showAdvanced && (
+            <DirectModSliderStrip
+              state={sliderState}
+              onChange={handleSliderChange}
+              supportsSynthSpeed={false}
+            />
+          )}
+        </div>
+
+        {persistedChainDigest && (
+          <div className={css.controlBlock}>
+            <span className={css.labelRow}>
+              <span>Chain digest</span>
+              <span className={css.chainDigestValue} title={persistedChainDigest}>
+                {persistedChainDigest.slice(0, 12)}…
+              </span>
+            </span>
+          </div>
+        )}
       </div>
 
       <EditSurfaceActions>

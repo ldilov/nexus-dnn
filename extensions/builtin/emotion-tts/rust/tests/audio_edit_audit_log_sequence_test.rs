@@ -89,6 +89,7 @@ fn entry(
         operation_count,
         recorded_at: Utc::now() + chrono::Duration::milliseconds(offset_ms),
         actor: "system".into(),
+        chain_snapshot_json: None,
     }
 }
 
@@ -159,4 +160,69 @@ async fn audit_log_survives_target_deletion() {
         .expect("list");
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].digest_after, d1);
+}
+
+#[tokio::test]
+async fn audit_log_round_trips_chain_snapshot_json() {
+    let pool = fresh_pool().await;
+    let repo = SqliteAuditLogRepo::new(pool);
+    let dep = DeploymentId::new();
+    let target = "asset_snapshot_round_trip";
+    let chain = two_op_chain();
+    let snapshot = serde_json::to_string(&chain).expect("serialize chain");
+    let digest = ChainDigest::of(&chain);
+
+    let entry_with_snapshot = AuditEntry {
+        entry_id: ulid::Ulid::new().to_string(),
+        deployment_id: dep.clone(),
+        target_id: target.to_string(),
+        target_kind: TargetKind::VoiceAsset,
+        digest_before: ChainDigest::EMPTY.clone(),
+        digest_after: digest.clone(),
+        operation_count: 2,
+        recorded_at: Utc::now(),
+        actor: "system".into(),
+        chain_snapshot_json: Some(snapshot.clone()),
+    };
+    repo.append(&entry_with_snapshot).await.expect("append");
+
+    let listed = repo
+        .list_for_target(&dep, TargetKind::VoiceAsset, target, 10)
+        .await
+        .expect("list");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(
+        listed[0].chain_snapshot_json.as_deref(),
+        Some(snapshot.as_str()),
+        "Some(snapshot) must round-trip through storage byte-for-byte"
+    );
+    let decoded: EditChain =
+        serde_json::from_str(listed[0].chain_snapshot_json.as_deref().unwrap()).expect("decode");
+    assert_eq!(ChainDigest::of(&decoded), digest);
+}
+
+#[tokio::test]
+async fn audit_log_round_trips_none_snapshot_for_clear_events() {
+    let pool = fresh_pool().await;
+    let repo = SqliteAuditLogRepo::new(pool);
+    let dep = DeploymentId::new();
+    let target = "asset_clear_event";
+    let entry_clear = AuditEntry {
+        entry_id: ulid::Ulid::new().to_string(),
+        deployment_id: dep.clone(),
+        target_id: target.to_string(),
+        target_kind: TargetKind::VoiceAsset,
+        digest_before: ChainDigest::of(&one_op_chain()),
+        digest_after: ChainDigest::EMPTY.clone(),
+        operation_count: 0,
+        recorded_at: Utc::now(),
+        actor: "system".into(),
+        chain_snapshot_json: None,
+    };
+    repo.append(&entry_clear).await.expect("append");
+    let listed = repo
+        .list_for_target(&dep, TargetKind::VoiceAsset, target, 10)
+        .await
+        .expect("list");
+    assert!(listed[0].chain_snapshot_json.is_none());
 }

@@ -11,6 +11,7 @@ export interface CharacterMapping {
   defaultVectorPresetId?: string | null;
   defaultQwenTemplate?: string | null;
   defaultSpeedFactor?: number | null;
+  voiceAssetChainDigest?: string | null;
   isActive: boolean;
   notes?: string | null;
   createdAt: number;
