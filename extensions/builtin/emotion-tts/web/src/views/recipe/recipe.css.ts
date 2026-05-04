@@ -196,8 +196,8 @@ export const quickActions = style({
 
 export const scrollTopBtn = style({
   position: "fixed",
-  insetBlockEnd: vars.space.xl,
-  insetInlineEnd: vars.space.xl,
+  bottom: vars.space.xl,
+  right: vars.space.xl,
   width: "44px",
   height: "44px",
   borderRadius: vars.radius.pill,
