@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import * as css from "./recipe.css";
 import { Banner } from "../../components/banner";
 import type { Deployment } from "../../services/deployments_client";
@@ -131,16 +132,27 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
         )}
       </div>
       <StickyActionBar visible={showScrollTop} canGenerate={canGenerate} />
-      <button
-        type="button"
-        className={css.scrollTopBtn}
-        data-visible={showScrollTop ? "true" : "false"}
-        aria-label="Scroll to top"
-        title="Scroll to top"
-        onClick={scrollToTop}
-      >
-        ↑
-      </button>
+      {typeof document !== "undefined" &&
+        createPortal(
+          <button
+            type="button"
+            className={css.scrollTopBtn}
+            data-visible={showScrollTop ? "true" : "false"}
+            aria-label="Scroll to top"
+            title="Scroll to top"
+            onClick={scrollToTop}
+            style={{
+              position: "fixed",
+              bottom: "24px",
+              right: "24px",
+              top: "auto",
+              left: "auto",
+            }}
+          >
+            ↑
+          </button>,
+          document.body,
+        )}
     </div>
   );
 }
