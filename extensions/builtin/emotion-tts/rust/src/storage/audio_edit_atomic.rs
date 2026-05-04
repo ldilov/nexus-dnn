@@ -12,7 +12,8 @@ const SQL_VOICE_ASSET_CLEAR: &str =
     include_str!("../../../storage/queries/voice_asset_clear_chain.sql");
 const SQL_UTTERANCE_READ_CHAIN: &str =
     include_str!("../../../storage/queries/utterance_read_chain.sql");
-const SQL_UTTERANCE_APPLY: &str = include_str!("../../../storage/queries/utterance_apply_chain.sql");
+const SQL_UTTERANCE_APPLY: &str =
+    include_str!("../../../storage/queries/utterance_apply_chain.sql");
 const SQL_RUN_SET_EXPORT_STALE: &str =
     include_str!("../../../storage/queries/run_set_export_stale.sql");
 const SQL_AUDIT_LOG_INSERT: &str = include_str!("../../../storage/queries/audit_log_insert.sql");
@@ -114,6 +115,7 @@ pub async fn commit_utterance_apply(
 }
 
 #[must_use]
+#[allow(clippy::too_many_arguments)]
 pub fn build_audit_entry(
     entry_id: String,
     deployment_id: crate::domain::DeploymentId,
@@ -123,6 +125,7 @@ pub fn build_audit_entry(
     digest_after: ChainDigest,
     operation_count: u16,
     actor: String,
+    chain_snapshot_json: Option<String>,
 ) -> AuditEntry {
     AuditEntry {
         entry_id,
@@ -134,6 +137,7 @@ pub fn build_audit_entry(
         operation_count,
         recorded_at: Utc::now(),
         actor,
+        chain_snapshot_json,
     }
 }
 
@@ -193,6 +197,7 @@ async fn bind_audit(
         .bind(i64::from(audit.operation_count))
         .bind(format_timestamp(audit.recorded_at))
         .bind(&audit.actor)
+        .bind(audit.chain_snapshot_json.as_deref())
         .execute(&mut **tx)
         .await
         .map_err(map_sqlx)?;

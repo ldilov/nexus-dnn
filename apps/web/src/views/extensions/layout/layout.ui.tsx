@@ -18,9 +18,14 @@ export interface ExtensionLayoutUIProps {
    * per-deployment views.
    */
   rootAttrs?: Record<string, string>;
+  /**
+   * Receives the root custom element once mounted. Used by the
+   * deployment shell to wire the extension-action contract.
+   */
+  rootElementRef?: (el: HTMLElement | null) => void;
 }
 
-export function ExtensionLayoutUI({ state, onRetry, rootAttrs }: ExtensionLayoutUIProps) {
+export function ExtensionLayoutUI({ state, onRetry, rootAttrs, rootElementRef }: ExtensionLayoutUIProps) {
   if (state.status === "loading") {
     return (
       <div className={styles.loadingContainer}>
@@ -42,7 +47,7 @@ export function ExtensionLayoutUI({ state, onRetry, rootAttrs }: ExtensionLayout
   }
   return (
     <div className={styles.container}>
-      <LayoutRenderer layout={state.layout} rootAttrs={rootAttrs} />
+      <LayoutRenderer layout={state.layout} rootAttrs={rootAttrs} rootElementRef={rootElementRef} />
     </div>
   );
 }

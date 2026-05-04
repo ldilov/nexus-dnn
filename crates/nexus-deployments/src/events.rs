@@ -36,6 +36,9 @@ pub enum DeploymentEvent {
     Deleted {
         deployment_id: DeploymentId,
     },
+    Purged {
+        deployment_id: DeploymentId,
+    },
     RunCreated {
         deployment_id: DeploymentId,
         revision_id: DeploymentRevisionId,

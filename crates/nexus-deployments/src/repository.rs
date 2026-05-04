@@ -173,6 +173,10 @@ pub struct ListFilter {
     pub favorite: Option<bool>,
     pub tag: Option<String>,
     pub limit: Option<i64>,
+    /// When `true`, soft-deleted rows (those with a non-NULL `deleted_at`)
+    /// are included alongside live rows. Defaults to `false` so callers
+    /// that don't know about delete semantics keep seeing only live rows.
+    pub include_deleted: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -214,6 +218,11 @@ pub struct DeploymentRow {
     /// when the primary source's `source_kind='user'` (user workflow).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_workflow_id: Option<String>,
+    /// RFC3339 timestamp set when the deployment was soft-deleted; `None`
+    /// for live rows. Soft-deleted rows are excluded from list responses
+    /// unless the caller opts in via `ListFilter::include_deleted`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -292,4 +301,17 @@ pub trait DeploymentRepository: Send + Sync {
             "delete_revision: backend not implemented".into(),
         ))
     }
+
+    /// Mark the deployment as soft-deleted by stamping `deleted_at`.
+    /// Returns `NotFound` if no live row matches; idempotent calls on an
+    /// already-deleted row also return `NotFound` (caller treats both as
+    /// "nothing to do" but the handler maps it to 404 to keep semantics
+    /// crisp).
+    async fn soft_delete(&self, id: &DeploymentId) -> Result<(), DeploymentError>;
+
+    /// Hard-purge a soft-deleted deployment. The row + all host-owned
+    /// child rows are removed permanently. Returns
+    /// `PurgeRequiresSoftDeleteFirst` when the row exists but is still
+    /// live; `NotFound` when the row does not exist.
+    async fn purge(&self, id: &DeploymentId) -> Result<(), DeploymentError>;
 }

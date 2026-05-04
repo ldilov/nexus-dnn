@@ -421,6 +421,29 @@ export function fetchDeployments(): Promise<DeploymentSummary[]> {
   return apiFetch<DeploymentSummary[]>("/deployments");
 }
 
+export interface DeleteDeploymentOptions {
+  /** When true, hard-purge an already-soft-deleted row. Server returns 409
+   * if the row is still live — call without `purge` first. */
+  readonly purge?: boolean;
+}
+
+/**
+ * Soft-delete a deployment by id (default), or hard-purge it when
+ * `opts.purge` is true. Server returns 204 on success, 404 when the id is
+ * unknown, 409 when `purge` is requested but the row has not been
+ * soft-deleted yet.
+ */
+export function deleteDeployment(
+  id: string,
+  opts?: DeleteDeploymentOptions,
+): Promise<void> {
+  const suffix = opts?.purge ? "?purge=true" : "";
+  return apiFetch<void>(
+    `/deployments/${encodeURIComponent(id)}${suffix}`,
+    { method: "DELETE" },
+  );
+}
+
 export function fetchLayouts(): Promise<LayoutSummaryDto[]> {
   return apiFetch<ListResponseDto<LayoutSummaryDto>>("/ui/layouts").then(unwrapItems);
 }

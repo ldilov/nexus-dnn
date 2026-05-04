@@ -280,6 +280,7 @@ impl DeploymentRepository for SqliteDeploymentRepository {
             notes_markdown: raw.notes_markdown,
             source_extension_id: raw.source_extension_id,
             source_workflow_id: raw.source_workflow_id,
+            deleted_at: raw.deleted_at,
         })
     }
 
@@ -310,6 +311,7 @@ impl DeploymentRepository for SqliteDeploymentRepository {
                 filter.workspace_id.as_deref(),
                 filter.state.as_deref(),
                 filter.limit.unwrap_or(100),
+                filter.include_deleted.unwrap_or(false),
             )
             .await?;
         Ok(raws
@@ -337,6 +339,7 @@ impl DeploymentRepository for SqliteDeploymentRepository {
                 source_extension_id: raw.source_extension_id,
                 source_workflow_id: raw.source_workflow_id,
                 notes_markdown: raw.notes_markdown,
+                deleted_at: raw.deleted_at,
             })
             .collect())
     }
@@ -403,5 +406,28 @@ impl DeploymentRepository for SqliteDeploymentRepository {
     ) -> Result<(), DeploymentError> {
         self.inner.insert_tag(deployment_id.as_str(), tag).await?;
         Ok(())
+    }
+
+    async fn soft_delete(&self, id: &DeploymentId) -> Result<(), DeploymentError> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let affected = self.inner.soft_delete_deployment(id.as_str(), &now).await?;
+        if affected == 0 {
+            return Err(DeploymentError::NotFound(id.clone()));
+        }
+        Ok(())
+    }
+
+    async fn purge(&self, id: &DeploymentId) -> Result<(), DeploymentError> {
+        match self.inner.fetch_deleted_at(id.as_str()).await? {
+            None => Err(DeploymentError::NotFound(id.clone())),
+            Some(None) => Err(DeploymentError::PurgeRequiresSoftDeleteFirst),
+            Some(Some(_)) => {
+                let affected = self.inner.purge_deployment(id.as_str()).await?;
+                if affected == 0 {
+                    return Err(DeploymentError::NotFound(id.clone()));
+                }
+                Ok(())
+            }
+        }
     }
 }

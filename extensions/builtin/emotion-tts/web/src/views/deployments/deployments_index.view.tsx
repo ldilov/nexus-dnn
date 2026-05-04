@@ -1,4 +1,4 @@
-import { Link, useLoaderData } from "react-router";
+import { useLoaderData } from "react-router";
 import type { Deployment } from "../../services/deployments_client";
 import { EmptyState } from "../../components/empty_state";
 import { Panel } from "../../components/panel";
@@ -7,6 +7,61 @@ import * as css from "./deployments_index.css";
 
 interface LoaderData {
   deployments: Deployment[];
+}
+
+// Mirror of the host's `apps/web/src/types/host_navigate.ts` contract.
+// The extension cannot import host source directly (separate bundle), so the
+// constant + payload shape are duplicated here. Treat the host file as the
+// source of truth — both must move together until a shared contracts package
+// exists. TODO(nexus-host-contracts): publish a workspace package both sides
+// can consume.
+const NEXUS_HOST_NAVIGATE = "nexus-host-navigate";
+
+interface DeploymentDetailNavigateDetail {
+  readonly kind: "deployment-detail";
+  readonly deploymentId: string;
+}
+
+// Hash-router target for ctrl-/middle-click "open in new tab" semantics.
+// Plain-click navigation goes through the dispatched event, which decouples
+// this extension from any future host route change. The literal here is
+// reachable ONLY via the browser's native link handling — see the boundary
+// note in `apps/web/src/types/host_navigate.ts`.
+function buildHostDeploymentHref(deploymentId: string): string {
+  return `#/deployments/${encodeURIComponent(deploymentId)}`;
+}
+
+function navigateToHostDeployment(
+  event: React.MouseEvent<HTMLAnchorElement>,
+  deploymentId: string,
+): void {
+  if (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  ) {
+    // Let the browser follow the href natively (open-in-new-tab etc).
+    return;
+  }
+  event.preventDefault();
+  const detail: DeploymentDetailNavigateDetail = {
+    kind: "deployment-detail",
+    deploymentId,
+  };
+  // CustomEvent without `cancelable: true` cannot signal "no listener" via
+  // the dispatchEvent return value — it always returns true. Plain dispatch
+  // is sufficient: when running embedded in the host shell, the host's
+  // boot-time listener picks this up. When the extension runs without a
+  // host (preview / standalone test), the click is a silent no-op and the
+  // browser's native href fallback covers ctrl-/middle-click.
+  window.dispatchEvent(
+    new CustomEvent<DeploymentDetailNavigateDetail>(NEXUS_HOST_NAVIGATE, {
+      detail,
+    }),
+  );
 }
 
 export function DeploymentsIndexView(): JSX.Element {
@@ -50,7 +105,11 @@ export function DeploymentsIndexView(): JSX.Element {
           <ul className={css.list}>
             {deployments.map((d) => (
               <li key={d.deploymentId}>
-                <Link to={`/${d.deploymentId}/recipe`} className={css.card}>
+                <a
+                  href={buildHostDeploymentHref(d.deploymentId)}
+                  onClick={(e) => navigateToHostDeployment(e, d.deploymentId)}
+                  className={css.card}
+                >
                   <span className={css.cardInitial} aria-hidden="true">
                     {initialOf(d.displayName)}
                   </span>
@@ -61,7 +120,7 @@ export function DeploymentsIndexView(): JSX.Element {
                   <span className={css.chevron} aria-hidden="true">
                     →
                   </span>
-                </Link>
+                </a>
               </li>
             ))}
           </ul>

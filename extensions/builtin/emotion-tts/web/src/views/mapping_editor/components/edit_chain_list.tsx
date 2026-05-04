@@ -1,5 +1,6 @@
 import type { EditChain, EditOp } from "../../../services/audio_edit_client";
 import * as css from "./edit_chain_list.css";
+import { Button } from "../../../components/button";
 
 export interface EditChainListProps {
   chain: EditChain;
@@ -26,15 +27,16 @@ export function EditChainList({ chain, onRemoveOp }: EditChainListProps): JSX.El
             <span className={css.modeLabel}>{modeLabel(op)}</span>
             <span className={css.params}>{paramsSummary(op)}</span>
           </span>
-          <button
-            type="button"
-            className={css.removeButton}
+          <Button
+            variant="ghost"
+            size="xs"
+            iconOnly
             onClick={() => onRemoveOp(op.id)}
             aria-label={`Remove ${modeLabel(op)} (position ${index + 1})`}
             title="Remove operation"
           >
             ×
-          </button>
+          </Button>
         </li>
       ))}
     </ol>
@@ -57,6 +59,19 @@ function modeLabel(op: EditOp): string {
       return "Fade out";
     case "mute":
       return "Mute";
+    case "gain":
+      return "Volume";
+    case "eq3":
+      return "EQ";
+    case "pitch_shift":
+      return "Pitch";
+    case "silence_strip":
+      return "Silence trim";
+    default: {
+      const exhaustive: never = op;
+      void exhaustive;
+      return "Op";
+    }
   }
 }
 
@@ -74,7 +89,24 @@ function paramsSummary(op: EditOp): string {
       return `${op.duration_ms} ms in`;
     case "fade_out":
       return `${op.duration_ms} ms out`;
+    case "gain":
+      return `${op.gain_db >= 0 ? "+" : ""}${op.gain_db.toFixed(1)} dB`;
+    case "eq3":
+      return `${formatBand(op.low_db)} / ${formatBand(op.mid_db)} / ${formatBand(op.high_db)}`;
+    case "pitch_shift":
+      return `${op.semitones >= 0 ? "+" : ""}${op.semitones.toFixed(1)} st`;
+    case "silence_strip":
+      return `${op.threshold_db.toFixed(0)} dB`;
+    default: {
+      const exhaustive: never = op;
+      void exhaustive;
+      return "—";
+    }
   }
+}
+
+function formatBand(db: number): string {
+  return `${db >= 0 ? "+" : ""}${db.toFixed(0)}`;
 }
 
 function formatSeconds(ms: number): string {

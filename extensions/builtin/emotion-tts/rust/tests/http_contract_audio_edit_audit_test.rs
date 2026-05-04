@@ -167,6 +167,7 @@ fn entry(
         operation_count,
         recorded_at: Utc::now() + chrono::Duration::milliseconds(offset_ms),
         actor: "system".into(),
+        chain_snapshot_json: None,
     }
 }
 

@@ -200,11 +200,23 @@ export function MappingEditorView(): JSX.Element {
   );
 
   const handleEditChainPersisted = useCallback(
-    async (_response: ApplyEditResponse) => {
+    async (response: ApplyEditResponse) => {
       await refreshVoices();
+      if (selected && response.chain_digest) {
+        try {
+          const next = await patchMapping(deployment.deploymentId, selected.mappingId, {
+            voiceAssetChainDigest: response.chain_digest,
+          });
+          setMappings((prev) =>
+            prev.map((m) => (m.mappingId === next.mappingId ? next : m)),
+          );
+        } catch (err) {
+          setError(extract(err));
+        }
+      }
       setToast("Edit applied.");
     },
-    [refreshVoices],
+    [refreshVoices, selected, deployment.deploymentId],
   );
 
   const handleEditError = useCallback((message: string) => {
@@ -338,6 +350,7 @@ export function MappingEditorView(): JSX.Element {
             deploymentId={deployment.deploymentId}
             mapping={selected}
             voiceAssets={voiceAssets}
+            allMappings={mappings}
             onNameChange={(name) => {
               updateSelected({ characterName: name });
             }}
@@ -436,6 +449,7 @@ interface MappingDetailProps {
   deploymentId: string;
   mapping: CharacterMapping;
   voiceAssets: VoiceAsset[];
+  allMappings: CharacterMapping[];
   onNameChange: (name: string) => void;
   onNameBlur: (name: string) => void;
   onSpeakerChange: (id: string) => void;
@@ -459,8 +473,19 @@ interface MappingDetailProps {
 type TestLineStatus = "idle" | "running" | "done" | "error";
 
 function MappingDetail(props: MappingDetailProps): JSX.Element {
-  const { mapping, voiceAssets } = props;
+  const { mapping, voiceAssets, allMappings } = props;
   const speaker = voiceAssets.find((v) => v.voiceAssetId === mapping.speakerVoiceAssetId) ?? null;
+  const affectedCharacterNames = useMemo(
+    () =>
+      allMappings
+        .filter(
+          (m) =>
+            m.isActive &&
+            m.speakerVoiceAssetId === mapping.speakerVoiceAssetId,
+        )
+        .map((m) => m.characterName),
+    [allMappings, mapping.speakerVoiceAssetId],
+  );
   const emotionVoice =
     voiceAssets.find((v) => v.voiceAssetId === mapping.defaultEmotionVoiceAssetId) ?? null;
   const [testText, setTestText] = useState("");
@@ -671,6 +696,7 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
             <AudioEditPanel
               voiceAsset={speaker}
               deploymentId={props.deploymentId}
+              affectedCharacterNames={affectedCharacterNames}
               onChainPersisted={props.onEditChainPersisted}
               onError={props.onEditError}
             />

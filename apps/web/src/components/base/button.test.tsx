@@ -1,0 +1,53 @@
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { Button } from "./button";
+
+describe("Button (host)", () => {
+  it("renders a primary md button by default", () => {
+    render(<Button>Save</Button>);
+    const btn = screen.getByRole("button", { name: "Save" });
+    expect(btn).toBeTruthy();
+    expect(btn.getAttribute("aria-busy")).toBeNull();
+    expect(btn.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("applies different variant + size class names", () => {
+    const { rerender } = render(
+      <Button variant="primary" size="md">A</Button>,
+    );
+    const primaryClass = screen.getByRole("button").className;
+    rerender(<Button variant="danger" size="lg">A</Button>);
+    const dangerClass = screen.getByRole("button").className;
+    expect(primaryClass).not.toEqual(dangerClass);
+  });
+
+  it("renders a spinner and sets aria-busy when loading", () => {
+    render(<Button loading>Saving…</Button>);
+    const btn = screen.getByRole("button", { name: "Saving…" });
+    expect(btn.getAttribute("aria-busy")).toBe("true");
+    expect(btn.hasAttribute("disabled")).toBe(true);
+    const spinner = btn.querySelector("[aria-hidden='true']");
+    expect(spinner).toBeTruthy();
+  });
+
+  it("blocks onClick when disabled", () => {
+    const onClick = vi.fn();
+    render(
+      <Button disabled onClick={onClick}>
+        Disabled
+      </Button>,
+    );
+    fireEvent.click(screen.getByRole("button"));
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("supports the iconOnly variant across sizes", () => {
+    render(
+      <Button iconOnly size="sm" aria-label="close">
+        ×
+      </Button>,
+    );
+    const btn = screen.getByRole("button", { name: "close" });
+    expect(btn).toBeTruthy();
+  });
+});

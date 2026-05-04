@@ -77,6 +77,30 @@ pub(crate) async fn prepare(
         .ok_or_else(|| EmotionTtsError::not_found(format!("run {run_id}")))?;
     let dep = run.deployment_id.clone();
 
+    // Parse the persisted generation blob (set by `create_run` from
+    // `CreateRunBody.generation`). Tolerates malformed JSON / non-object
+    // payloads — those degrade to an empty map and the worker falls back
+    // to its built-in defaults. The map is used twice: forwarded into
+    // each `SynthesisSegment.generation` (so temperature/top_p/etc.
+    // actually reach the worker) and folded into the cache key as
+    // `generation_params` (so two runs with different sampling settings
+    // don't collide).
+    let generation_value: serde_json::Value = serde_json::from_str(&run.generation_settings_json)
+        .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
+    let generation_obj: serde_json::Map<String, serde_json::Value> = match &generation_value {
+        serde_json::Value::Object(m) => m.clone(),
+        _ => serde_json::Map::new(),
+    };
+    let generation_params_btree: BTreeMap<String, String> = generation_obj
+        .iter()
+        // The per-utterance `seed` is computed below from
+        // (base_seed, seed_strategy) and folded into the cache key
+        // independently. Keep the user-supplied `seed` (if any) out of
+        // `generation_params` so cache keys don't double-count.
+        .filter(|(k, _)| k.as_str() != "seed")
+        .map(|(k, v)| (k.clone(), stringify_generation_value(v)))
+        .collect();
+
     // Parse the global emotion snapshot once into the typed `GlobalEmotion`
     // struct expected by `domain::emotion::resolve`. Falls back to a
     // mode=None default on missing field / malformed JSON / unknown mode.
@@ -184,6 +208,18 @@ pub(crate) async fn prepare(
         let utterance_emotion =
             resolve_emotion(&inline, None, mapping_defaults.as_ref(), &global_emotion).payload;
 
+        // Per-utterance effective seed. `increment_per_line` advances the
+        // base by the (zero-based) utterance index so each segment gets a
+        // distinct sampling seed; `random_per_line` is owned by the worker
+        // (it ignores the supplied seed and rolls its own); everything else
+        // ("fixed" or unrecognised) reuses the base verbatim. The computed
+        // value is what gets folded into the cache key AND forwarded to
+        // the worker as `generation.seed`.
+        let utterance_seed: i64 = match run.seed_strategy.as_str() {
+            "increment_per_line" => run.base_seed.saturating_add(idx as i64),
+            _ => run.base_seed,
+        };
+
         let content_hash =
             (cfg.voice_sha256_resolver)(speaker_voice_id.as_str()).and_then(|sha256| {
                 let cache_input = CacheKeyInput {
@@ -215,8 +251,8 @@ pub(crate) async fn prepare(
                     text: r.utterance.text.clone(),
                     speaker_ref_sha256: sha256,
                     emotion: utterance_emotion.clone(),
-                    generation_params: BTreeMap::new(),
-                    seed: run.base_seed,
+                    generation_params: generation_params_btree.clone(),
+                    seed: utterance_seed,
                     speed_factor: run.speed_factor,
                     speed_mode: run.speed_mode.clone(),
                     output_format: run.output_format.clone(),
@@ -250,6 +286,15 @@ pub(crate) async fn prepare(
             content_hash,
         });
 
+        // Forward the user-supplied generation map AND the per-utterance
+        // computed seed to the worker. The worker's `_build_infer_kwargs`
+        // pops `seed` (and a handful of other named keys) from this dict
+        // and forwards everything else verbatim into `infer()` — so two
+        // runs with different temperatures produce different audio AND
+        // different cache rows (see `generation_params_btree` above).
+        let mut segment_generation = generation_obj.clone();
+        segment_generation.insert("seed".to_string(), serde_json::json!(utterance_seed));
+
         segments.push(SynthesisSegment {
             segment_id: utterance_id.as_str().to_string(),
             global_index,
@@ -259,7 +304,7 @@ pub(crate) async fn prepare(
             text: r.utterance.text.clone(),
             speaker_audio_ref_abs: speaker_path,
             emotion: utterance_emotion,
-            generation: serde_json::json!({}),
+            generation: serde_json::Value::Object(segment_generation),
             output_target_abs,
         });
     }
@@ -312,9 +357,14 @@ fn parse_global_emotion(json_str: Option<&str>, cfg: &PrepareConfig) -> GlobalEm
 
     match mode {
         "audio_ref" => {
+            // Frontend canonical key (per `web/src/services/types.ts:15`)
+            // is `audioRefVoiceAssetId`. Older payloads may still use
+            // `audioRefId` / `audio_ref_id` — accept all three so a
+            // re-run of an existing run row keeps working.
             let ref_id = v
-                .get("audioRefId")
+                .get("audioRefVoiceAssetId")
                 .and_then(|r| r.as_str())
+                .or_else(|| v.get("audioRefId").and_then(|r| r.as_str()))
                 .or_else(|| v.get("audio_ref_id").and_then(|r| r.as_str()))
                 .map(str::to_string);
             let Some(raw_ref) = ref_id else {
@@ -460,6 +510,27 @@ fn build_inline_overrides(raw: &BTreeMap<String, String>, cfg: &PrepareConfig) -
     InlineOverrides::from_map(&normalised)
 }
 
+/// Stable string representation of a generation-param value for cache-key
+/// hashing. Numbers are formatted via `serde_json` so `1.0` and `1` agree
+/// with their JSON representation, booleans become `"true"`/`"false"`,
+/// strings drop their quotes, and any other shape (object/array/null)
+/// falls through to the canonical JSON string. Two runs with semantically
+/// equal generation maps must produce byte-equal strings here.
+fn stringify_generation_value(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Bool(b) => b.to_string(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Null => "null".to_string(),
+        // Objects + arrays: lean on serde_json's canonical ordering
+        // (BTreeMap-backed by default in this crate's serde_json
+        // version). This is best-effort — nested non-trivial generation
+        // values are rare and the cache key still differs across distinct
+        // shapes, just maybe not optimally so.
+        other => other.to_string(),
+    }
+}
+
 async fn build_voice_chain_digest_map(
     repos: &Repos,
     mappings: &[CharacterMappingRow],
@@ -485,4 +556,163 @@ async fn build_voice_chain_digest_map(
         out.insert(id.as_str().to_string(), digest);
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg_with_resolver_returning_path(path: &'static str) -> PrepareConfig {
+        PrepareConfig {
+            output_root: std::env::temp_dir(),
+            voice_path_resolver: std::sync::Arc::new(move |_id: &str| Some(path.to_string())),
+            voice_sha256_resolver: std::sync::Arc::new(|_id: &str| None),
+            default_voice_asset_id: None,
+            runtime_meta: None,
+        }
+    }
+
+    #[test]
+    fn parse_global_emotion_audio_ref_accepts_camelcase_voice_asset_key() {
+        // The frontend `GlobalEmotion` type (services/types.ts) uses
+        // `audioRefVoiceAssetId`. parse_global_emotion must accept this
+        // canonical key (HIGH-1).
+        let json = r#"{"mode":"audio_ref","audioRefVoiceAssetId":"voice_xyz","emotionAlpha":0.6}"#;
+        let cfg = cfg_with_resolver_returning_path("/abs/path/voice.wav");
+        let parsed = parse_global_emotion(Some(json), &cfg);
+        assert_eq!(parsed.mode, EmotionMode::AudioRef);
+        assert_eq!(parsed.audio_ref_id.as_deref(), Some("/abs/path/voice.wav"));
+        // alpha must thread through (HIGH-2 spec finding).
+        assert_eq!(parsed.alpha, Some(0.6));
+    }
+
+    #[test]
+    fn parse_global_emotion_audio_ref_still_accepts_legacy_keys() {
+        // Existing run rows persisted with the older `audioRefId` /
+        // `audio_ref_id` shape must keep deserialising — re-runs of an
+        // older run should not break.
+        let cfg = cfg_with_resolver_returning_path("/abs/legacy.wav");
+        for legacy in [
+            r#"{"mode":"audio_ref","audioRefId":"voice_old"}"#,
+            r#"{"mode":"audio_ref","audio_ref_id":"voice_older"}"#,
+        ] {
+            let parsed = parse_global_emotion(Some(legacy), &cfg);
+            assert_eq!(parsed.mode, EmotionMode::AudioRef);
+            assert_eq!(parsed.audio_ref_id.as_deref(), Some("/abs/legacy.wav"));
+        }
+    }
+
+    #[test]
+    fn stringify_generation_value_handles_common_shapes() {
+        assert_eq!(stringify_generation_value(&serde_json::json!(0.8)), "0.8");
+        assert_eq!(stringify_generation_value(&serde_json::json!(1)), "1");
+        assert_eq!(stringify_generation_value(&serde_json::json!(true)), "true");
+        assert_eq!(
+            stringify_generation_value(&serde_json::json!("warm")),
+            "warm"
+        );
+        assert_eq!(
+            stringify_generation_value(&serde_json::Value::Null),
+            "null"
+        );
+    }
+
+    /// Mirrors the per-utterance seed math in `prepare()` — keep this
+    /// in lockstep with the body. Regressions here are HIGH-A
+    /// (cache-key correctness) AND a worker-side determinism bug at
+    /// the same time.
+    fn compute_utterance_seed(strategy: &str, base_seed: i64, idx: usize) -> i64 {
+        match strategy {
+            "increment_per_line" => base_seed.saturating_add(idx as i64),
+            _ => base_seed,
+        }
+    }
+
+    #[test]
+    fn seed_strategy_increment_per_line_advances_per_utterance() {
+        let seeds: Vec<i64> = (0..4)
+            .map(|i| compute_utterance_seed("increment_per_line", 100, i))
+            .collect();
+        assert_eq!(seeds, vec![100, 101, 102, 103]);
+    }
+
+    #[test]
+    fn seed_strategy_fixed_repeats_base_seed() {
+        let seeds: Vec<i64> = (0..3)
+            .map(|i| compute_utterance_seed("fixed", 42, i))
+            .collect();
+        assert_eq!(seeds, vec![42, 42, 42]);
+    }
+
+    #[test]
+    fn seed_strategy_unknown_falls_back_to_base_seed() {
+        // Unknown strategies (forward-compat) must NOT silently increment.
+        // The worker is the source of truth for `random_per_line`; it
+        // ignores the supplied seed and rolls its own.
+        let seeds: Vec<i64> = (0..3)
+            .map(|i| compute_utterance_seed("random_per_line", 7, i))
+            .collect();
+        assert_eq!(seeds, vec![7, 7, 7]);
+    }
+
+    /// HIGH-C: `generation_params` must be derived from the run's
+    /// generation map and exclude the `seed` key (which is folded into
+    /// CacheKeyInput::seed independently). Two cache keys built with
+    /// different temperatures must differ.
+    #[test]
+    fn generation_params_are_built_from_run_generation_settings() {
+        use crate::domain::cache_key::{build as build_cache_key, CacheKeyInput};
+        use crate::domain::emotion::EmotionPayload;
+
+        fn build_input(temperature: f64) -> CacheKeyInput {
+            let gen = serde_json::json!({
+                "temperature": temperature,
+                "top_p": 0.9,
+                "seed": 42,
+            });
+            let obj = match &gen {
+                serde_json::Value::Object(m) => m.clone(),
+                _ => unreachable!(),
+            };
+            let params: BTreeMap<String, String> = obj
+                .iter()
+                .filter(|(k, _)| k.as_str() != "seed")
+                .map(|(k, v)| (k.clone(), stringify_generation_value(v)))
+                .collect();
+
+            CacheKeyInput {
+                extension_version: "0.0.0-test".into(),
+                runtime_version: "rt".into(),
+                model_version: "mv".into(),
+                model_family: "mf".into(),
+                text: "hello".into(),
+                speaker_ref_sha256: "a".repeat(64),
+                emotion: EmotionPayload::None,
+                generation_params: params,
+                seed: 42,
+                speed_factor: 1.0,
+                speed_mode: "preserve_pitch".into(),
+                output_format: "wav".into(),
+                voice_asset_chain_digest: crate::domain::ChainDigest::EMPTY,
+            }
+        }
+
+        let h1 = build_cache_key(&build_input(0.8)).expect("hash 1");
+        let h2 = build_cache_key(&build_input(1.2)).expect("hash 2");
+        assert_ne!(
+            h1.as_str(),
+            h2.as_str(),
+            "different temperatures must produce different cache keys (HIGH-C)"
+        );
+
+        // And: if generation_params is left empty (the pre-fix BTreeMap::new()
+        // behaviour), both temperatures collapse onto the same key — this
+        // is the regression we're guarding against.
+        let mut empty_input = build_input(0.8);
+        empty_input.generation_params = BTreeMap::new();
+        let h_empty_a = build_cache_key(&empty_input).expect("hash empty a");
+        empty_input.generation_params = BTreeMap::new();
+        let h_empty_b = build_cache_key(&empty_input).expect("hash empty b");
+        assert_eq!(h_empty_a.as_str(), h_empty_b.as_str());
+    }
 }
