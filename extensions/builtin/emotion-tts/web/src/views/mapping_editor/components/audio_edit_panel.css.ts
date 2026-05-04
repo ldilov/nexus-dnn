@@ -5,6 +5,7 @@ export const labelRow = style({
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
+  gap: vars.space.sm,
   fontFamily: vars.font.mono,
   fontSize: vars.text.caption,
   color: vars.color.textMuted,
@@ -12,36 +13,77 @@ export const labelRow = style({
   textTransform: "uppercase",
 });
 
+export const labelLeft = style({
+  display: "inline-flex",
+  alignItems: "center",
+  // audit-allow: px — sub-token gap between label text and help dot
+  gap: "6px",
+});
+
 export const numericLabel = style({
   fontFamily: vars.font.mono,
   fontSize: vars.text.body,
   color: vars.color.text,
+  letterSpacing: 0,
+  textTransform: "none",
 });
 
 export const advancedDisclosure = style({
   border: "none",
   background: "transparent",
   cursor: "pointer",
-  padding: 0,
+  padding: `${vars.space.sm} 0`,
   textAlign: "left",
-  color: vars.color.accent,
+  color: vars.color.text,
   fontFamily: vars.font.mono,
-  fontSize: vars.text.micro,
+  fontSize: vars.text.caption,
   textTransform: "uppercase",
   letterSpacing: vars.tracking.label,
   alignSelf: "flex-start",
+  display: "inline-flex",
+  alignItems: "center",
+  // audit-allow: px — sub-token gap for inline glyph
+  gap: "8px",
+  transition: `color ${vars.motion.fast}`,
+  selectors: {
+    "&:hover": { color: vars.color.accent },
+    "&:focus-visible": {
+      outline: `2px solid ${vars.color.accent}`,
+      outlineOffset: "2px",
+      borderRadius: vars.radius.sm,
+    },
+  },
+});
+
+export const advancedCaret = style({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  // audit-allow: px — caret glyph width
+  width: "12px",
+  color: vars.color.textMuted,
+});
+
+export const advancedSummary = style({
+  fontFamily: vars.font.body,
+  fontSize: vars.text.caption,
+  color: vars.color.textMuted,
+  letterSpacing: 0,
+  textTransform: "none",
 });
 
 export const chainDigestValue = style({
   fontFamily: vars.font.mono,
-  fontSize: vars.text.body,
+  fontSize: vars.text.caption,
   color: vars.color.secondary,
+  letterSpacing: 0,
+  textTransform: "none",
 });
 
 export const controls = style({
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: vars.space.md,
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.lg,
 });
 
 export const controlBlock = style({
@@ -54,6 +96,11 @@ export const toggleRow = style({
   display: "flex",
   alignItems: "center",
   gap: vars.space.sm,
+  fontFamily: vars.font.body,
+  fontSize: vars.text.caption,
+  color: vars.color.text,
+  letterSpacing: 0,
+  textTransform: "none",
 });
 
 export const opsList = style({
@@ -100,6 +147,8 @@ export const lufsLabel = style({
   fontFamily: vars.font.mono,
   fontSize: vars.text.caption,
   color: vars.color.textMuted,
+  letterSpacing: 0,
+  textTransform: "none",
 });
 
 export const audioPlayer = style({
@@ -136,12 +185,12 @@ export const auditSummary = style({
 });
 
 export const previewHint = style({
-  fontFamily: vars.font.mono,
+  fontFamily: vars.font.body,
   fontSize: vars.text.caption,
   color: vars.color.textMuted,
-  letterSpacing: vars.tracking.label,
-  textTransform: "uppercase",
+  letterSpacing: 0,
+  textTransform: "none",
   paddingLeft: vars.space.sm,
-  borderLeft: `1px solid ${vars.color.surfaceHigh}`,
+  borderLeft: `1px solid ${vars.color.borderSubtle}`,
   marginLeft: vars.space.xs,
 });
