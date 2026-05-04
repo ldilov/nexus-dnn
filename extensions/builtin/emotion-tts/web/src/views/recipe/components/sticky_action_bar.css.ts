@@ -3,8 +3,8 @@ import { vars } from "../../../theme/tokens.css";
 
 export const bar = style({
   position: "fixed",
-  insetBlockEnd: vars.space.xl,
-  insetInlineStart: "50%",
+  bottom: vars.space.xl,
+  left: "50%",
   transform: "translate(-50%, 12px)",
   display: "inline-flex",
   alignItems: "center",

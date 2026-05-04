@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import {
   getRuntimeHealth,
@@ -103,13 +104,21 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
         ? "Generating…"
         : "Generate";
 
-  return (
+  if (typeof document === "undefined") return <></>;
+  return createPortal(
     <div
       className={css.bar}
       data-visible={visible ? "true" : "false"}
       role="toolbar"
       aria-label="Quick actions"
       aria-hidden={!visible}
+      style={{
+        position: "fixed",
+        bottom: "24px",
+        left: "50%",
+        right: "auto",
+        top: "auto",
+      }}
     >
       <button
         type="button"
@@ -149,6 +158,7 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
           </span>
         )}
       </button>
-    </div>
+    </div>,
+    document.body,
   );
 }
