@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
+import { toast } from "sonner";
 import { ExtensionApiError } from "../../../services/http";
 import { cancelRun, createRun, getRun, resumeRun, subscribeRunProgress } from "../../../services/runs_client";
 import type { CreateRunRequest, ProgressEvent, Run } from "../../../services/types";
@@ -49,6 +50,37 @@ export function RunPanel(props: Props): JSX.Element {
     };
   }, []);
 
+  // Notify any sticky/floating action bar of the current phase so it can
+  // disable Generate while a run is in flight.
+  useEffect(() => {
+    const detail: { busy: boolean } = {
+      busy: phase === "starting" || phase === "running",
+    };
+    window.dispatchEvent(new CustomEvent("emotion-tts:run-state", { detail }));
+  }, [phase]);
+
+  const handleRunTerminal = useCallback(
+    (terminalRun: Run): void => {
+      const status = terminalRun.status;
+      if (status === "completed" || status === "partial") {
+        toast.success(
+          status === "completed"
+            ? "Run complete — open the Artifacts tab to download"
+            : "Partial run — open the Artifacts tab for what was produced",
+          {
+            action: {
+              label: "Artifacts",
+              onClick: () => {
+                navigate(`/${props.deploymentId}?tab=artifacts`);
+              },
+            },
+          },
+        );
+      }
+    },
+    [navigate, props.deploymentId],
+  );
+
   const startRun = useCallback(async () => {
     setPhase("starting");
     setError(null);
@@ -62,14 +94,37 @@ export function RunPanel(props: Props): JSX.Element {
       unsubscribeRef.current = subscribeRunProgress(
         props.deploymentId,
         created.runId,
-        (event) => handleEvent(event, setSegments, setPhase, setRun, props.deploymentId, created.runId),
+        (event) =>
+          handleEvent(
+            event,
+            setSegments,
+            setPhase,
+            (terminalRun) => {
+              setRun(terminalRun);
+              handleRunTerminal(terminalRun);
+            },
+            props.deploymentId,
+            created.runId,
+          ),
         () => setPhase("error"),
       );
     } catch (err) {
       setPhase("error");
       setError(extractMessage(err));
     }
-  }, [props.deploymentId, props.createPayload]);
+  }, [props.deploymentId, props.createPayload, handleRunTerminal]);
+
+  // Sticky action bar bridge — listen for "trigger-generate" events fired by
+  // the floating toolbar and start a run when we're idle/terminal/error.
+  useEffect(() => {
+    const onTrigger = (): void => {
+      if (phase === "idle" || phase === "terminal" || phase === "error") {
+        void startRun();
+      }
+    };
+    window.addEventListener("emotion-tts:trigger-generate", onTrigger);
+    return () => window.removeEventListener("emotion-tts:trigger-generate", onTrigger);
+  }, [phase, startRun]);
 
   const cancel = useCallback(async () => {
     if (!runId) return;
@@ -169,7 +224,7 @@ export function RunPanel(props: Props): JSX.Element {
           disabled={!props.canGenerate || canCancel || !!blockingDiagnostic}
           onClick={startRun}
         >
-          {phase === "running" ? "Running…" : "Generate + Export ZIP"}
+          {phase === "running" ? "Running…" : "Generate"}
         </Button>
         <Button variant="danger" disabled={!canCancel} onClick={cancel}>
           Cancel

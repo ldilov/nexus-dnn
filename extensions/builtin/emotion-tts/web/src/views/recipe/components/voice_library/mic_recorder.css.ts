@@ -1,5 +1,22 @@
-import { style } from "@vanilla-extract/css";
+import { keyframes, style } from "@vanilla-extract/css";
 import { vars } from "../../../../theme/tokens.css";
+
+const recordPulse = keyframes({
+  "0%, 100%": { transform: "scale(1)", opacity: 0.85 },
+  "50%": { transform: "scale(1.18)", opacity: 1 },
+});
+
+const ringPulse = keyframes({
+  "0%": {
+    boxShadow: "0 0 0 0 color-mix(in oklab, var(--etts-danger, #ef4444) 45%, transparent)",
+  },
+  "70%": {
+    boxShadow: "0 0 0 16px color-mix(in oklab, var(--etts-danger, #ef4444) 0%, transparent)",
+  },
+  "100%": {
+    boxShadow: "0 0 0 0 color-mix(in oklab, var(--etts-danger, #ef4444) 0%, transparent)",
+  },
+});
 
 export const backdrop = style({
   position: "fixed",
@@ -55,8 +72,13 @@ export const recordOrb = style({
     "&[data-state='recording']": {
       borderColor: vars.color.danger,
       color: vars.color.danger,
-      boxShadow: `0 0 0 8px color-mix(in oklab, ${vars.color.danger} 18%, transparent)`,
-      animation: "etts-record-pulse 1.4s ease-in-out infinite",
+      animation: `${ringPulse} 1.4s ease-in-out infinite`,
+      "@media": {
+        "(prefers-reduced-motion: reduce)": {
+          animation: "none",
+          boxShadow: `0 0 0 8px color-mix(in oklab, ${vars.color.danger} 18%, transparent)`,
+        },
+      },
     },
     "&[data-state='ready']": {
       borderColor: `color-mix(in oklab, ${vars.color.accent} 60%, transparent)`,
@@ -152,6 +174,33 @@ export const elapsed = style({
 
 export const audioPreview = style({
   width: "100%",
+});
+
+export const redDot = style({
+  display: "inline-block",
+  width: "10px",
+  height: "10px",
+  borderRadius: "50%",
+  background: vars.color.danger,
+  flexShrink: 0,
+  selectors: {
+    '[data-active="true"] &': {
+      animation: `${recordPulse} 1.2s ease-in-out infinite`,
+      "@media": {
+        "(prefers-reduced-motion: reduce)": {
+          animation: "none",
+        },
+      },
+    },
+  },
+});
+
+export const stopSquare = style({
+  display: "inline-block",
+  width: "10px",
+  height: "10px",
+  background: "currentColor",
+  flexShrink: 0,
 });
 
 export const footer = style({

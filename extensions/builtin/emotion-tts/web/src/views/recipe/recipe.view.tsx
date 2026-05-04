@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData } from "react-router";
 import { Toaster, toast } from "sonner";
 import {
@@ -7,6 +7,7 @@ import {
   type EditChain,
 } from "../../services/audio_edit_client";
 import type { Deployment } from "../../services/deployments_client";
+import { apiFetch } from "../../services/http";
 import {
   createMapping,
   deactivateMapping,
@@ -85,6 +86,20 @@ export function RecipeView(): JSX.Element {
   const [activeCastCharacter, setActiveCastCharacter] = useState<string | null>(null);
   const [sliderState, setSliderState] = useState<DirectModSliderState>(IDENTITY_SLIDER_STATE);
 
+  const seededOverrides = useMemo(
+    () =>
+      deployment.defaultGenerationOverridesJson
+        ? safeParseGeneration(deployment.defaultGenerationOverridesJson)
+        : {},
+    [deployment.defaultGenerationOverridesJson],
+  );
+  const seededRecipeMeta = useMemo(() => {
+    const meta = seededOverrides["__recipe"];
+    return typeof meta === "object" && meta !== null
+      ? (meta as Record<string, unknown>)
+      : {};
+  }, [seededOverrides]);
+
   const [script, setScript] = useState("");
   const [outputFormat, setOutputFormat] = useState<OutputFormat>(
     (deployment.defaultOutputFormat as OutputFormat) ?? "mp3",
@@ -95,17 +110,23 @@ export function RecipeView(): JSX.Element {
     emotionAlpha: 1.0,
   });
   const [generation, setGeneration] = useState<Record<string, unknown>>(() => {
-    const seeded = deployment.defaultGenerationOverridesJson
-      ? safeParseGeneration(deployment.defaultGenerationOverridesJson)
-      : {};
+    // Strip the namespaced `__recipe` blob — it's a sidecar for UI settings,
+    // not part of the actual generation overrides sent to the worker.
+    const { __recipe: _ignored, ...rest } = seededOverrides;
+    void _ignored;
     return {
       temperature: 0.8,
       top_p: 0.8,
       seed: 42,
-      ...seeded,
+      ...rest,
     };
   });
-  const [cachePolicy, setCachePolicy] = useState<CachePolicy>("use_cache");
+  const [cachePolicy, setCachePolicy] = useState<CachePolicy>(() => {
+    const v = seededRecipeMeta["cachePolicy"];
+    return v === "use_cache" || v === "force_regenerate" || v === "read_only_cache"
+      ? v
+      : "use_cache";
+  });
   // Mirror the deployment's default-voice id locally so `QuickVoicePicker`
   // updates propagate without a full loader refetch. `useLoaderData` only
   // re-runs on route revalidation; until then the picker would persist a
@@ -114,7 +135,11 @@ export function RecipeView(): JSX.Element {
   const [defaultVoiceAssetId, setDefaultVoiceAssetId] = useState<string | null>(
     deployment.defaultVoiceAssetId ?? null,
   );
-  const [quickMode, setQuickMode] = useState(deployment.defaultVoiceAssetId != null);
+  const [quickMode, setQuickMode] = useState(() => {
+    const v = seededRecipeMeta["quickMode"];
+    if (typeof v === "boolean") return v;
+    return deployment.defaultVoiceAssetId != null;
+  });
   const [performance, setPerformance] = useState<PerformanceSlidersValue>(PERFORMANCE_DEFAULTS);
 
   useEffect(() => {
@@ -133,6 +158,44 @@ export function RecipeView(): JSX.Element {
       cancelled = true;
     };
   }, [deployment.deploymentId]);
+
+  // Debounced PATCH: persist recipe-level settings (output format, speed,
+  // generation overrides, plus the namespaced `__recipe` sidecar holding
+  // quickMode + cachePolicy) so reloading the page rehydrates the user's
+  // last-known choices. Skips the very first run to avoid bouncing the
+  // loader-seeded values back to the server.
+  const isFirstPersistRef = useRef(true);
+  useEffect(() => {
+    if (isFirstPersistRef.current) {
+      isFirstPersistRef.current = false;
+      return undefined;
+    }
+    const handle = window.setTimeout(() => {
+      const overrides = {
+        ...generation,
+        __recipe: {
+          quickMode,
+          cachePolicy,
+        },
+      };
+      void apiFetch(`/deployments/${deployment.deploymentId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          defaultOutputFormat: outputFormat,
+          defaultSpeedFactor: speedFactor,
+          defaultGenerationOverrides: overrides,
+        }),
+      }).catch(() => undefined);
+    }, 600);
+    return () => window.clearTimeout(handle);
+  }, [
+    deployment.deploymentId,
+    outputFormat,
+    speedFactor,
+    cachePolicy,
+    quickMode,
+    generation,
+  ]);
 
   const parsedLines = useMemo(() => parseDialogue(script), [script]);
   const characters = useMemo(() => uniqueCharacters(parsedLines), [parsedLines]);
@@ -369,6 +432,7 @@ export function RecipeView(): JSX.Element {
       <Toaster position="bottom-right" richColors theme="dark" />
       <RecipeUi
       deployment={deployment}
+      canGenerate={script.trim().length > 0}
       workflowCustomised={workflow.workflow.customised}
       unmappableFields={workflow.unmappableFields}
       hero={<DeploymentHeader deployment={deployment} />}
