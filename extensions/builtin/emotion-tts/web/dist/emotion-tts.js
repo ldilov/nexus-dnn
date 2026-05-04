@@ -21015,24 +21015,21 @@ function JD(t) {
       )
     ] }),
     /* @__PURE__ */ d.jsx(ZD, { visible: o, canGenerate: u }),
-    typeof document < "u" && (() => {
-      const h = document.querySelector("emotion-tts-app") ?? document.body;
-      return Lh.createPortal(
-        /* @__PURE__ */ d.jsx(
-          "button",
-          {
-            type: "button",
-            className: YC,
-            "data-visible": o ? "true" : "false",
-            "aria-label": "Scroll to top",
-            title: "Scroll to top",
-            onClick: V3,
-            children: "↑"
-          }
-        ),
-        h
-      );
-    })()
+    typeof document < "u" && Lh.createPortal(
+      /* @__PURE__ */ d.jsx(
+        "button",
+        {
+          type: "button",
+          className: YC,
+          "data-visible": o ? "true" : "false",
+          "aria-label": "Scroll to top",
+          title: "Scroll to top",
+          onClick: V3,
+          children: "↑"
+        }
+      ),
+      document.body
+    )
   ] });
 }
 function WD(t, a) {
