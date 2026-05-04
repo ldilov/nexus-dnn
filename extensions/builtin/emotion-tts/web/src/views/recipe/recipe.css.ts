@@ -1,4 +1,4 @@
-import { style } from "@vanilla-extract/css";
+import { globalStyle, style } from "@vanilla-extract/css";
 import { vars } from "../../theme/tokens.css";
 
 export const shell = style({
@@ -126,6 +126,9 @@ export const sectionHeader = style({
 });
 
 export const sectionEyebrow = style({
+  display: "inline-flex",
+  alignItems: "baseline",
+  gap: "0.4em",
   fontFamily: vars.font.mono,
   fontSize: vars.text.caption,
   textTransform: "uppercase",
@@ -171,6 +174,25 @@ export const sectionToggle = style({
   },
 });
 
+export const sectionEyebrowNumber = style({
+  color: vars.color.accent,
+  fontWeight: 700,
+  transition: `letter-spacing ${vars.motion.fast}, color ${vars.motion.fast}`,
+  selectors: {
+    [`${sectionToggle}:hover &`]: {
+      letterSpacing: "0.04em",
+    },
+  },
+});
+
+export const sectionEyebrowSlash = style({
+  color: vars.color.textFaint,
+});
+
+export const sectionEyebrowLabel = style({
+  color: vars.color.textMuted,
+});
+
 export const sectionChevron = style({
   marginLeft: "auto",
   fontSize: vars.text.subhead,
@@ -184,6 +206,7 @@ export const sectionChevron = style({
 });
 
 export const quickActions = style({
+  position: "relative",
   display: "flex",
   flexWrap: "wrap",
   gap: vars.space.md,
@@ -192,12 +215,34 @@ export const quickActions = style({
   borderRadius: vars.radius.lg,
   background: `color-mix(in oklab, ${vars.color.accent} 6%, ${vars.color.surfaceMuted})`,
   boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.accent} 20%, transparent)`,
+  overflow: "hidden",
+  selectors: {
+    /* soft accent halo cohesion with the run-panel card */
+    "&::before": {
+      content: '""',
+      position: "absolute",
+      inset: 0,
+      pointerEvents: "none",
+      background: `radial-gradient(420px 160px at 0% 0%, color-mix(in oklab, ${vars.color.accent} 12%, transparent), transparent 70%)`,
+    },
+  },
 });
 
+/* Lift direct children above the ::before halo so content reads cleanly. */
+globalStyle(`${quickActions} > *`, {
+  position: "relative",
+});
+
+/* Scroll-up button — sits clear of the host's bottom dock and any
+   scrollbar overlap. The `bottom` offset combines a token-driven base
+   plus an extra 32px safe-area; `right` adds 8px to clear the
+   right-side scrollbar gutter. */
 export const scrollTopBtn = style({
   position: "fixed",
-  bottom: vars.space.xl,
-  right: vars.space.xl,
+  // audit-allow: px — bottom safe-area clearance for host dock + scrollbar
+  bottom: `calc(${vars.space.xl} + 40px + env(safe-area-inset-bottom, 0px))`,
+  // audit-allow: px — clear right-side scrollbar gutter
+  right: `calc(${vars.space.xl} + 8px)`,
   width: "44px",
   height: "44px",
   borderRadius: vars.radius.pill,
@@ -210,8 +255,8 @@ export const scrollTopBtn = style({
   fontSize: vars.text.head,
   lineHeight: 1,
   cursor: "pointer",
-  boxShadow: vars.shadow.raised,
-  zIndex: 50,
+  boxShadow: `${vars.shadow.raised}, inset 0 1px 0 0 color-mix(in oklab, white 14%, transparent)`,
+  zIndex: 60,
   opacity: 0,
   pointerEvents: "none",
   transform: "translateY(8px)",
@@ -223,7 +268,8 @@ export const scrollTopBtn = style({
       transform: "translateY(0)",
     },
     "&:hover": {
-      boxShadow: `${vars.shadow.raised}, ${vars.shadow.glow}`,
+      boxShadow: `${vars.shadow.raised}, ${vars.shadow.glow}, inset 0 1px 0 0 color-mix(in oklab, white 24%, transparent)`,
+      transform: "translateY(-2px)",
     },
     "&:focus-visible": {
       outline: `2px solid ${vars.color.accent}`,
