@@ -1,7 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { createMemoryRouter, RouterProvider } from "react-router";
+
+type MemoryRouter = ReturnType<typeof createMemoryRouter>;
 import { buildRoutes } from "./routes";
+import { attachActionBridge, INTERNAL_NAVIGATE } from "./host_action_bridge";
 import "./theme/tokens.css";
 
 const TAG = "emotion-tts-app";
@@ -38,6 +41,10 @@ class EmotionTtsAppElement extends HTMLElement {
   private root: Root | null = null;
   private ctx: HostContext | null = null;
   private observer: MutationObserver | null = null;
+  private actionBridge: { dispose: () => void } | null = null;
+  private actionBridgeDeploymentId: string | null = null;
+  private router: MemoryRouter | null = null;
+  private navigateListener: ((event: Event) => void) | null = null;
 
   static get observedAttributes(): string[] {
     return ["route", "deployment-id"];
@@ -47,11 +54,14 @@ class EmotionTtsAppElement extends HTMLElement {
     this.root = createRoot(this);
     this.syncTweaksFromBody();
     this.observeBodyTweaks();
+    this.installNavigateListener();
     this.paint();
+    this.refreshActionBridge();
   }
 
   attributeChangedCallback(): void {
     this.paint();
+    this.refreshActionBridge();
   }
 
   disconnectedCallback(): void {
@@ -59,6 +69,39 @@ class EmotionTtsAppElement extends HTMLElement {
     this.root = null;
     this.observer?.disconnect();
     this.observer = null;
+    this.actionBridge?.dispose();
+    this.actionBridge = null;
+    this.actionBridgeDeploymentId = null;
+    if (this.navigateListener) {
+      this.removeEventListener(INTERNAL_NAVIGATE, this.navigateListener);
+      this.navigateListener = null;
+    }
+    this.router = null;
+  }
+
+  private refreshActionBridge(): void {
+    const deploymentId = this.getAttribute("deployment-id");
+    if (deploymentId && deploymentId !== this.actionBridgeDeploymentId) {
+      this.actionBridge?.dispose();
+      this.actionBridge = attachActionBridge(this, deploymentId);
+      this.actionBridgeDeploymentId = deploymentId;
+    } else if (!deploymentId && this.actionBridge) {
+      this.actionBridge.dispose();
+      this.actionBridge = null;
+      this.actionBridgeDeploymentId = null;
+    }
+  }
+
+  private installNavigateListener(): void {
+    if (this.navigateListener) return;
+    const listener = (event: Event) => {
+      const path = (event as CustomEvent<{ path?: string }>).detail?.path;
+      if (path && this.router) {
+        void this.router.navigate(path);
+      }
+    };
+    this.navigateListener = listener;
+    this.addEventListener(INTERNAL_NAVIGATE, listener);
   }
 
   private syncTweaksFromBody(): void {
@@ -95,6 +138,7 @@ class EmotionTtsAppElement extends HTMLElement {
     if (!this.root || !this.isConnected) return;
     const route = this.resolveInitialEntry();
     const router = createMemoryRouter(buildRoutes(), { initialEntries: [route] });
+    this.router = router;
     this.root.render(
       <StrictMode>
         <RouterProvider router={router} />
