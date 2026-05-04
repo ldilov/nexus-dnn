@@ -21,6 +21,8 @@ interface RunStateDetail {
 
 const HEALTH_POLL_MS = 4000;
 
+type StatusTone = "ready" | "busy" | "off";
+
 /**
  * Floating quick-action toolbar. Lives inside the recipe view and talks to
  * the host runtime directly via the extension's runtime client; dispatches
@@ -94,6 +96,11 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
       : "Start runtime";
   const runtimeDisabled = runtimeBusy || isStarting;
   const runtimeShowSpinner = runtimeBusy || isStarting;
+  const runtimeState = runtimeShowSpinner
+    ? "transitioning"
+    : isRunning
+      ? "running"
+      : "stopped";
 
   const generateDisabled = !canGenerate || generateBusy || !runtimeReady;
   const generateLabel = !runtimeReady
@@ -103,6 +110,22 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
       : generateBusy
         ? "Generating…"
         : "Generate";
+  const generateReady = runtimeReady && canGenerate && !generateBusy;
+
+  // Status pill text + tone — keeps the bar communicative when collapsed.
+  const statusTone: StatusTone = isRunning
+    ? "ready"
+    : isStarting || runtimeBusy
+      ? "busy"
+      : "off";
+  const statusText = isRunning
+    ? "Runtime ready"
+    : isStarting
+      ? "Starting…"
+      : runtimeBusy
+        ? "Working…"
+        : "Runtime off";
+  const statusPulse = statusTone === "busy";
 
   if (typeof document === "undefined") return <></>;
   return createPortal(
@@ -120,44 +143,68 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
         top: "auto",
       }}
     >
-      <button
-        type="button"
-        className={css.runBtn}
-        data-state={isRunning ? "running" : "stopped"}
-        onClick={onRunClick}
-        disabled={runtimeDisabled}
-        title={runtimeLabel}
-        aria-label={runtimeLabel}
+      <span
+        className={css.statusPill}
+        data-tone={statusTone}
+        aria-live="polite"
       >
-        {runtimeShowSpinner ? (
-          <span className={css.spinner} aria-hidden="true" />
-        ) : isRunning ? (
-          <span className={css.glyph} aria-hidden="true">
-            ◼
-          </span>
-        ) : (
-          <span className={css.glyph} aria-hidden="true">
-            ⏻
-          </span>
-        )}
-      </button>
+        <span
+          className={css.statusDot}
+          data-pulse={statusPulse ? "true" : "false"}
+          aria-hidden="true"
+        />
+        {statusText}
+      </span>
       <span className={css.divider} aria-hidden="true" />
-      <button
-        type="button"
-        className={css.generateBtn}
-        onClick={onGenerate}
-        disabled={generateDisabled}
-        title={generateLabel}
-        aria-label={generateLabel}
-      >
-        {generateBusy ? (
-          <span className={css.spinner} aria-hidden="true" />
-        ) : (
-          <span className={css.glyph} aria-hidden="true">
-            ▶
+      <span className={css.tooltipWrap}>
+        <button
+          type="button"
+          className={css.runBtn}
+          data-state={runtimeState}
+          onClick={onRunClick}
+          disabled={runtimeDisabled}
+          aria-label={runtimeLabel}
+        >
+          {runtimeShowSpinner ? (
+            <span className={css.spinner} aria-hidden="true" />
+          ) : isRunning ? (
+            <span className={css.glyph} aria-hidden="true">
+              ◼
+            </span>
+          ) : (
+            <span className={css.glyph} aria-hidden="true">
+              ⏻
+            </span>
+          )}
+        </button>
+        <span className={css.tooltip} role="tooltip">
+          {runtimeLabel}
+        </span>
+      </span>
+      <span className={css.tooltipWrap}>
+        <button
+          type="button"
+          className={css.generateBtn}
+          data-ready={generateReady ? "true" : "false"}
+          onClick={onGenerate}
+          disabled={generateDisabled}
+          aria-label={generateLabel}
+        >
+          {generateBusy ? (
+            <span className={css.spinner} aria-hidden="true" />
+          ) : (
+            <span className={css.glyph} aria-hidden="true">
+              ▶
+            </span>
+          )}
+          <span className={css.generateLabel}>
+            {generateBusy ? "Running" : "Generate"}
           </span>
-        )}
-      </button>
+        </button>
+        <span className={css.tooltip} role="tooltip">
+          {generateLabel}
+        </span>
+      </span>
     </div>,
     document.body,
   );

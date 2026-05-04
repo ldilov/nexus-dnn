@@ -141,13 +141,6 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
             aria-label="Scroll to top"
             title="Scroll to top"
             onClick={scrollToTop}
-            style={{
-              position: "fixed",
-              bottom: "24px",
-              right: "24px",
-              top: "auto",
-              left: "auto",
-            }}
           >
             ↑
           </button>,
@@ -267,7 +260,11 @@ function RecipeSection({
           onClick={() => setCollapsed((c) => !c)}
         >
           <span className={css.sectionEyebrow}>
-            {number} / {title}
+            <span className={css.sectionEyebrowNumber}>{number}</span>
+            <span className={css.sectionEyebrowSlash} aria-hidden="true">
+              /
+            </span>
+            <span className={css.sectionEyebrowLabel}>{title}</span>
           </span>
           <h2 id={id} className={css.sectionTitle}>
             {title}
