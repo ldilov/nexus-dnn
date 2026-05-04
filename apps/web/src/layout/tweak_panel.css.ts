@@ -10,7 +10,6 @@ export const triggerButton = style({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  // WCAG 2.5.5 minimum touch target: 44×44 (use the heightLg token).
   width: vars.control.heightLg,
   height: vars.control.heightLg,
   padding: 0,
@@ -55,11 +54,11 @@ export const popover = style({
   top: "calc(100% + var(--d-2))",
   right: 0,
   zIndex: 50,
-  width: 320,
-  padding: "var(--d-4)",
+  width: 360,
+  padding: "var(--d-5)",
   display: "flex",
   flexDirection: "column",
-  gap: "var(--d-3)",
+  gap: "var(--d-4)",
   background: vars.card.bg,
   borderRadius: vars.radius.panel,
   boxShadow: vars.shadow.lg,
@@ -71,8 +70,6 @@ export const popover = style({
       forcedColorAdjust: "none",
       background: "Canvas",
       color: "CanvasText",
-      // Forced-colors removes box-shadow → use a hairline to keep the
-      // popover distinguishable from the topbar behind it.
       border: "1px solid CanvasText",
     },
   },
@@ -82,12 +79,22 @@ export const popoverHeader = style({
   display: "flex",
   flexDirection: "column",
   gap: "var(--d-1)",
+  paddingBottom: "var(--d-3)",
+  borderBottom: `1px solid ${vars.color.outline.variant}`,
+});
+
+export const popoverHeaderRow = style({
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "var(--d-2)",
 });
 
 export const popoverTitle = style({
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.bodyLg,
   fontWeight: 600,
+  letterSpacing: "-0.01em",
   color: vars.color.text.primary,
 });
 
@@ -95,20 +102,10 @@ export const popoverHint = style({
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.caption,
   color: vars.color.text.muted,
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
-});
-
-export const popoverHeaderRow = style({
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "baseline",
-  gap: "var(--d-2)",
+  letterSpacing: "0.01em",
 });
 
 export const triggerHotkey = style({
-  // Mirrors the topbar searchHotkey treatment so the two affordances
-  // read as siblings — both icon-button surfaces with a tiny mono kbd.
   fontFamily: vars.font.code,
   fontSize: vars.font.size.kbd,
   letterSpacing: "0.05em",
@@ -116,7 +113,8 @@ export const triggerHotkey = style({
   paddingInline: "var(--d-2)",
   paddingBlock: "1px",
   borderRadius: vars.radius.control,
-  background: vars.color.bg.hover,
+  background: vars.color.bg.lowest,
+  border: `1px solid ${vars.color.outline.variant}`,
 });
 
 export const fieldLabel = style({
@@ -129,6 +127,7 @@ export const fieldHeader = style({
   display: "flex",
   justifyContent: "space-between",
   alignItems: "baseline",
+  gap: "var(--d-2)",
 });
 
 export const fieldName = style({
@@ -139,23 +138,20 @@ export const fieldName = style({
 });
 
 export const fieldValue = style({
-  // Word labels (e.g. "Spacious") render in UI font, not mono — mono is
-  // reserved for IDs/counts/timestamps per the design-system rule.
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.caption,
   color: vars.color.text.muted,
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
 });
 
 export const segmentedRoot = style({
-  display: "inline-grid",
+  display: "grid",
   gridAutoFlow: "column",
   gridAutoColumns: "1fr",
-  gap: 0,
+  gap: 2,
   background: vars.color.bg.lowest,
+  border: `1px solid ${vars.color.outline.variant}`,
   borderRadius: vars.radius.control,
-  padding: 2,
+  padding: 3,
 });
 
 export const segmentedOption = style({
@@ -163,19 +159,22 @@ export const segmentedOption = style({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  // WCAG 2.5.5 minimum touch target: bumped from heightSm to heightMd.
   height: vars.control.heightMd,
-  padding: "0 var(--d-3)",
+  paddingInline: "var(--d-2)",
   background: "transparent",
   color: vars.color.text.secondary,
   border: "none",
-  borderRadius: vars.radius.control,
+  borderRadius: `calc(${vars.radius.control} - 2px)`,
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.bodySm,
   fontWeight: 500,
   cursor: "pointer",
-  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  textOverflow: "ellipsis",
+  overflow: "hidden",
+  whiteSpace: "nowrap",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}, transform ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {
+    background: vars.color.bg.hover,
     color: vars.color.text.primary,
   },
   ":focus-visible": {
@@ -191,13 +190,12 @@ export const segmentedOption = style({
 });
 
 export const segmentedOptionActive = style({
-  // Match the design-system active treatment used by `pillActive` in
-  // `components/base/pill.css.ts` — accent gradient with on-color text.
   background: `linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%)`,
   color: vars.color.onColor.primary,
   fontWeight: 600,
   boxShadow: vars.shadow.sm,
   ":hover": {
+    background: `linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%)`,
     color: vars.color.onColor.primary,
   },
   "@media": {
@@ -212,7 +210,8 @@ export const segmentedOptionActive = style({
 export const resetRow = style({
   display: "flex",
   justifyContent: "flex-end",
-  marginTop: "var(--d-1)",
+  paddingTop: "var(--d-3)",
+  borderTop: `1px solid ${vars.color.outline.variant}`,
 });
 
 export const resetButton = style({
@@ -220,18 +219,19 @@ export const resetButton = style({
   alignItems: "center",
   gap: "var(--d-1)",
   height: vars.control.heightMd,
-  padding: "0 var(--d-3)",
+  paddingInline: "var(--d-3)",
   background: "transparent",
-  // Recovery affordance — quieter than a primary CTA.
   color: vars.color.text.muted,
   border: "none",
   borderRadius: vars.radius.control,
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.bodySm,
-  fontWeight: 600,
+  fontWeight: 500,
   cursor: "pointer",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   ":hover": {
-    color: "var(--accent)",
+    background: vars.color.bg.hover,
+    color: vars.color.text.primary,
   },
   ":focus-visible": {
     outline: `${vars.focus.ringWidth} solid var(--accent)`,
