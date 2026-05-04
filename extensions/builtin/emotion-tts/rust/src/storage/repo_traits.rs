@@ -254,6 +254,15 @@ pub trait VoiceAssetsRepo: Send + Sync {
     async fn get(&self, id: &VoiceAssetId) -> RepoResult<Option<VoiceAssetRow>>;
     async fn list_by_deployment(&self, dep: &DeploymentId) -> RepoResult<Vec<VoiceAssetRow>>;
     async fn deactivate(&self, id: &VoiceAssetId) -> RepoResult<()>;
+    /// Spec 038 — rename a voice asset by replacing the `display_name` column.
+    /// `display_name` is treated as user-visible cosmetic metadata; nothing
+    /// joins on it, so a rename does not invalidate caches or chain digests.
+    /// Returns Err on missing-id (validation) and propagates SQL errors.
+    async fn update_display_name(
+        &self,
+        id: &VoiceAssetId,
+        display_name: &str,
+    ) -> RepoResult<()>;
     /// Spec 034 US1 / T038 — persist the preprocessing outcome against an
     /// existing voice-asset row. Passing `None` clears the fields (used when
     /// the user re-uploads and we invalidate any stale preprocessed artifact).

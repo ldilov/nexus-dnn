@@ -50,7 +50,10 @@ pub fn router(
                 .get(list)
                 .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT_BYTES)),
         )
-        .route("/{voice_asset_id}", get(fetch).delete(deactivate))
+        .route(
+            "/{voice_asset_id}",
+            get(fetch).delete(deactivate).patch(rename),
+        )
         .route("/{voice_asset_id}/preprocess", post(preprocess))
         .route("/probe", post(probe))
         .merge(crate::router::audio_edit::routes())
@@ -241,6 +244,65 @@ async fn deactivate(
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => err.into_response(),
     }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RenameBody {
+    display_name: String,
+}
+
+pub const MAX_DISPLAY_NAME_LEN: usize = 200;
+
+async fn rename(
+    State(state): State<Arc<VoiceAssetsState>>,
+    Path(id): Path<String>,
+    Query(query): Query<ScopedQuery>,
+    Json(body): Json<RenameBody>,
+) -> Response {
+    match rename_impl(&state, &id, &query.deployment_id, body).await {
+        Ok(value) => (StatusCode::OK, Json(value)).into_response(),
+        Err(err) => err.into_response(),
+    }
+}
+
+async fn rename_impl(
+    state: &VoiceAssetsState,
+    raw_id: &str,
+    claimed_deployment_id: &str,
+    body: RenameBody,
+) -> Result<Value> {
+    let trimmed = body.display_name.trim();
+    if trimmed.is_empty() {
+        return Err(EmotionTtsError::validation("displayName must not be empty"));
+    }
+    if trimmed.chars().count() > MAX_DISPLAY_NAME_LEN {
+        return Err(EmotionTtsError::validation(format!(
+            "displayName must be ≤ {MAX_DISPLAY_NAME_LEN} chars"
+        )));
+    }
+    let asset_id = VoiceAssetId::try_from(raw_id)?;
+    let row = state
+        .repos
+        .voice_assets
+        .get(&asset_id)
+        .await?
+        .ok_or_else(|| EmotionTtsError::not_found(format!("voice asset {asset_id}")))?;
+    guard::assert_deployment_match(row.deployment_id.as_str(), claimed_deployment_id, || {
+        format!("voice asset {asset_id}")
+    })?;
+    state
+        .repos
+        .voice_assets
+        .update_display_name(&asset_id, trimmed)
+        .await?;
+    let updated = state
+        .repos
+        .voice_assets
+        .get(&asset_id)
+        .await?
+        .ok_or_else(|| EmotionTtsError::internal("voice asset vanished after rename"))?;
+    Ok(voice_asset_json(&updated))
 }
 
 async fn upload(State(state): State<Arc<VoiceAssetsState>>, multipart: Multipart) -> Response {
