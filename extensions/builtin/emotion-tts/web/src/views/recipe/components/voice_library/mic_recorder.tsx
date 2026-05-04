@@ -60,6 +60,34 @@ export function MicRecorder({
   const elapsedTimerRef = useRef<number | null>(null);
   const fileRef = useRef<File | null>(null);
   const mimeRef = useRef<{ mime: string; ext: string }>({ mime: "audio/webm", ext: "webm" });
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const recordButtonRef = useRef<HTMLButtonElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  // When the dialog opens: stash the previously-focused element, scroll the
+  // dialog into view, and focus the primary action so keyboard users land on
+  // it. On close, restore focus to wherever the trigger lived.
+  useEffect(() => {
+    if (!open) return undefined;
+    previousFocusRef.current = (document.activeElement as HTMLElement) ?? null;
+    requestAnimationFrame(() => {
+      dialogRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      recordButtonRef.current?.focus();
+    });
+    return () => {
+      previousFocusRef.current?.focus?.();
+    };
+  }, [open]);
+
+  // Escape key closes the dialog when open.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   const stopTracks = useCallback((): void => {
     if (streamRef.current) {
@@ -178,11 +206,13 @@ export function MicRecorder({
   return (
     <div className={css.backdrop} role="presentation" onClick={onClose}>
       <div
+        ref={dialogRef}
         className={css.dialog}
         role="dialog"
         aria-modal="true"
         aria-labelledby="mic-recorder-heading"
         onClick={(e) => e.stopPropagation()}
+        tabIndex={-1}
       >
         <h2 id="mic-recorder-heading" className={css.heading}>
           Record reference audio
@@ -207,6 +237,7 @@ export function MicRecorder({
         <div className={css.transport}>
           {(state === "idle" || state === "denied" || state === "error") && (
             <button
+              ref={recordButtonRef}
               type="button"
               className={css.btn}
               data-tone="danger"
