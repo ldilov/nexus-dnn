@@ -91,6 +91,57 @@ globalStyle("button", {
   fontSize: "inherit",
 });
 
+/* ── Scrollbars ────────────────────────────────────────────────────
+ * Restrained, design-system-aligned scrollbars across the app shell.
+ * Track is fully transparent so it disappears against any surface;
+ * thumb uses outline tokens at low opacity, brightening on hover. The
+ * thin width (10px) keeps it from competing with content. Firefox uses
+ * its own properties (scrollbar-width, scrollbar-color) — both surfaces
+ * are styled together so the look is consistent.
+ *
+ * Applies to every scroll container in the host. The EmotionTTS bundle
+ * mirrors the same contract on its custom-element root (see
+ * extensions/builtin/emotion-tts/web/src/theme/tokens.css.ts).
+ */
+globalStyle("*", {
+  scrollbarWidth: "thin",
+  scrollbarColor: `${vars.color.outline.variant} transparent`,
+});
+
+globalStyle("::-webkit-scrollbar", {
+  // audit-allow: px — scrollbar dimensions are intentionally fixed
+  width: "10px",
+  // audit-allow: px — scrollbar dimensions are intentionally fixed
+  height: "10px",
+});
+
+globalStyle("::-webkit-scrollbar-track", {
+  background: "transparent",
+});
+
+globalStyle("::-webkit-scrollbar-thumb", {
+  background: vars.color.outline.variant,
+  borderRadius: vars.radius.full,
+  // audit-allow: px — inset padding around the thumb to inset it from the track
+  border: "2px solid transparent",
+  backgroundClip: "padding-box",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+});
+
+globalStyle("::-webkit-scrollbar-thumb:hover", {
+  background: vars.color.outline.base,
+  backgroundClip: "padding-box",
+});
+
+globalStyle("::-webkit-scrollbar-thumb:active", {
+  background: vars.color.accent.primary,
+  backgroundClip: "padding-box",
+});
+
+globalStyle("::-webkit-scrollbar-corner", {
+  background: "transparent",
+});
+
 globalStyle(".material-symbols-outlined", {
   fontFamily: "'Material Symbols Outlined'",
   fontWeight: "normal",
