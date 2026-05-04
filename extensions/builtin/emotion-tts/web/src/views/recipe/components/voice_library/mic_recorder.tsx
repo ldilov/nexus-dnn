@@ -214,7 +214,8 @@ export function MicRecorder({
                 void handleStart();
               }}
             >
-              ● Record
+              <span className={css.redDot} aria-hidden="true" />
+              Record
             </button>
           )}
           {state === "preparing" && (
@@ -223,8 +224,15 @@ export function MicRecorder({
             </button>
           )}
           {state === "recording" && (
-            <button type="button" className={css.btn} data-tone="danger" onClick={handleStop}>
-              ■ Stop
+            <button
+              type="button"
+              className={css.btn}
+              data-tone="danger"
+              data-active="true"
+              onClick={handleStop}
+            >
+              <span className={css.redDot} aria-hidden="true" />
+              Stop
             </button>
           )}
           {state === "ready" && (

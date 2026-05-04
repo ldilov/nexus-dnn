@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
+use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, Multipart, Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
 use axum::Router;
@@ -9,6 +10,7 @@ use chrono::Utc;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use tokio_util::io::ReaderStream;
 
 use crate::backend_client::LeaseProvider;
 use crate::domain::{DeploymentId, EmotionTtsError, Result, VoiceAssetId};
@@ -54,6 +56,7 @@ pub fn router(
             "/{voice_asset_id}",
             get(fetch).delete(deactivate).patch(rename),
         )
+        .route("/{voice_asset_id}/audio", get(stream_audio))
         .route("/{voice_asset_id}/preprocess", post(preprocess))
         .route("/probe", post(probe))
         .merge(crate::router::audio_edit::routes())
@@ -212,6 +215,70 @@ async fn fetch(
         }
         Ok(None) => EmotionTtsError::not_found(format!("voice asset {id}")).into_response(),
         Err(err) => err.into_response(),
+    }
+}
+
+async fn stream_audio(
+    State(state): State<Arc<VoiceAssetsState>>,
+    Path(id): Path<String>,
+    Query(query): Query<ScopedQuery>,
+) -> Response {
+    match stream_audio_impl(&state, &id, &query.deployment_id).await {
+        Ok(resp) => resp,
+        Err(err) => err.into_response(),
+    }
+}
+
+async fn stream_audio_impl(
+    state: &VoiceAssetsState,
+    raw_id: &str,
+    claimed_deployment_id: &str,
+) -> Result<Response> {
+    let asset_id = VoiceAssetId::try_from(raw_id)?;
+    let row = state
+        .repos
+        .voice_assets
+        .get(&asset_id)
+        .await?
+        .ok_or_else(|| EmotionTtsError::not_found(format!("voice asset {asset_id}")))?;
+    guard::assert_deployment_match(row.deployment_id.as_str(), claimed_deployment_id, || {
+        format!("voice asset {asset_id}")
+    })?;
+    let abs_path = state
+        .artifact_store
+        .resolve_path(&row.audio_artifact_ref)
+        .await?;
+    let file = tokio::fs::File::open(&abs_path)
+        .await
+        .map_err(|e| EmotionTtsError::internal(format!("open voice audio '{abs_path}': {e}")))?;
+    let stream = ReaderStream::new(file);
+    let body = Body::from_stream(stream);
+    let content_type = content_type_for_audio(&row.audio_artifact_ref);
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CACHE_CONTROL, "private, max-age=300")
+        .header(header::ACCEPT_RANGES, "bytes")
+        .body(body)
+        .map_err(|e| EmotionTtsError::internal(format!("response builder: {e}")))
+}
+
+fn content_type_for_audio(reference: &str) -> &'static str {
+    let lower = reference.to_lowercase();
+    if lower.ends_with(".wav") {
+        "audio/wav"
+    } else if lower.ends_with(".mp3") {
+        "audio/mpeg"
+    } else if lower.ends_with(".flac") {
+        "audio/flac"
+    } else if lower.ends_with(".ogg") || lower.ends_with(".opus") {
+        "audio/ogg"
+    } else if lower.ends_with(".m4a") || lower.ends_with(".mp4") {
+        "audio/mp4"
+    } else if lower.ends_with(".webm") {
+        "audio/webm"
+    } else {
+        "application/octet-stream"
     }
 }
 
