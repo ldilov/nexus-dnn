@@ -1,4 +1,4 @@
-import { Link, useLoaderData } from "react-router";
+import { useLoaderData } from "react-router";
 import type { Deployment } from "../../services/deployments_client";
 import { EmptyState } from "../../components/empty_state";
 import { Panel } from "../../components/panel";
@@ -7,6 +7,46 @@ import * as css from "./deployments_index.css";
 
 interface LoaderData {
   deployments: Deployment[];
+}
+
+const NEXUS_HOST_NAVIGATE = "nexus-host-navigate";
+
+interface DeploymentDetailNavigateDetail {
+  readonly kind: "deployment-detail";
+  readonly deploymentId: string;
+}
+
+function buildHostDeploymentHref(deploymentId: string): string {
+  return `#/deployments/${encodeURIComponent(deploymentId)}`;
+}
+
+function navigateToHostDeployment(
+  event: React.MouseEvent<HTMLAnchorElement>,
+  deploymentId: string,
+): void {
+  if (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  ) {
+    return;
+  }
+  event.preventDefault();
+  const detail: DeploymentDetailNavigateDetail = {
+    kind: "deployment-detail",
+    deploymentId,
+  };
+  const dispatched = window.dispatchEvent(
+    new CustomEvent<DeploymentDetailNavigateDetail>(NEXUS_HOST_NAVIGATE, {
+      detail,
+    }),
+  );
+  if (!dispatched) {
+    window.location.href = buildHostDeploymentHref(deploymentId);
+  }
 }
 
 export function DeploymentsIndexView(): JSX.Element {
@@ -50,7 +90,11 @@ export function DeploymentsIndexView(): JSX.Element {
           <ul className={css.list}>
             {deployments.map((d) => (
               <li key={d.deploymentId}>
-                <Link to={`/${d.deploymentId}/recipe`} className={css.card}>
+                <a
+                  href={buildHostDeploymentHref(d.deploymentId)}
+                  onClick={(e) => navigateToHostDeployment(e, d.deploymentId)}
+                  className={css.card}
+                >
                   <span className={css.cardInitial} aria-hidden="true">
                     {initialOf(d.displayName)}
                   </span>
@@ -61,7 +105,7 @@ export function DeploymentsIndexView(): JSX.Element {
                   <span className={css.chevron} aria-hidden="true">
                     →
                   </span>
-                </Link>
+                </a>
               </li>
             ))}
           </ul>
