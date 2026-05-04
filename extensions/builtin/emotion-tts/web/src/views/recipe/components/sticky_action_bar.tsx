@@ -128,6 +128,30 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
   const statusPulse = statusTone === "busy";
 
   if (typeof document === "undefined") return <></>;
+
+  // Inline-style fallbacks. Vanilla-extract `vars.color.*` values resolve via
+  // `var(--name, fallback)` at runtime; when we portal outside the
+  // `emotion-tts-app` token scope, browsers occasionally drop the fallback
+  // chain or the host's own `--accent` wins. Explicit hex on the visible
+  // surface guarantees the pill, the icon button, and the accent CTA all
+  // read as designed regardless of where the portal lands.
+  // audit-allow: hex/rgba — sticky-bar visual fallback (out-of-scope portal target).
+  const BAR_BG = "rgba(28, 30, 34, 0.94)";
+  // audit-allow: hex/rgba — sticky-bar visual fallback.
+  const ACCENT = "#ba9eff";
+  // audit-allow: hex/rgba — sticky-bar visual fallback.
+  const ACCENT_DIM = "#8455ef";
+  // audit-allow: hex/rgba — sticky-bar visual fallback.
+  const ACCENT_ON = "#1a0a3a";
+  // audit-allow: hex/rgba — sticky-bar visual fallback.
+  const SURFACE_INK = "#f0f0f3";
+  // audit-allow: hex/rgba — sticky-bar visual fallback.
+  const SURFACE_MUTED = "#aaabae";
+  // audit-allow: hex/rgba — sticky-bar visual fallback.
+  const SUCCESS = "#22c55e";
+
+  const runIcon = isRunning ? "◼" : "⏻";
+
   return createPortal(
     <div
       className={css.bar}
@@ -141,15 +165,17 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
         left: "50%",
         right: "auto",
         top: "auto",
-        maxWidth: "min(640px, calc(100vw - 32px))",
-        // Hardcoded fallbacks so the pill renders with proper depth even when
-        // portaled outside the `emotion-tts-app` token scope. The CSS class
-        // applies var()-based values on top; these are the safety net.
-        // audit-allow: hex/rgba — sticky-bar fallback when portaled outside token scope.
-        background: "rgba(45, 48, 52, 0.94)",
-        // audit-allow: hex/rgba — sticky-bar fallback shadow + accent ring.
+        transform: visible
+          ? "translate(-50%, 0)"
+          : "translate(-50%, 12px)",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "8px",
+        paddingInline: "8px",
+        paddingBlock: "8px",
+        background: BAR_BG,
         boxShadow:
-          "0 18px 44px -12px rgba(0, 0, 0, 0.7), 0 6px 18px -6px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(186, 158, 255, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.09)",
+          "0 18px 44px -12px rgba(0, 0, 0, 0.7), 0 6px 18px -6px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(186, 158, 255, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.06)",
         backdropFilter: "blur(20px) saturate(1.7)",
         WebkitBackdropFilter: "blur(20px) saturate(1.7)",
         borderRadius: "999px",
@@ -160,15 +186,56 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
         className={css.statusPill}
         data-tone={statusTone}
         aria-live="polite"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "8px",
+          paddingInline: "14px",
+          height: "36px",
+          borderRadius: "999px",
+          fontFamily:
+            'var(--font-mono, "JetBrains Mono", ui-monospace, monospace)',
+          fontSize: "11px",
+          fontWeight: 600,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          color:
+            statusTone === "ready"
+              ? SUCCESS
+              : statusTone === "busy"
+                ? ACCENT
+                : SURFACE_MUTED,
+          background: "rgba(255, 255, 255, 0.04)",
+          boxShadow: `inset 0 0 0 1px ${
+            statusTone === "ready"
+              ? "rgba(34, 197, 94, 0.4)"
+              : statusTone === "busy"
+                ? "rgba(186, 158, 255, 0.42)"
+                : "rgba(255, 255, 255, 0.08)"
+          }`,
+          whiteSpace: "nowrap",
+        }}
       >
         <span
           className={css.statusDot}
           data-pulse={statusPulse ? "true" : "false"}
           aria-hidden="true"
+          style={{
+            width: "6px",
+            height: "6px",
+            borderRadius: "999px",
+            background: "currentColor",
+            boxShadow:
+              statusTone === "ready"
+                ? `0 0 8px ${SUCCESS}`
+                : statusTone === "busy"
+                  ? `0 0 8px ${ACCENT}`
+                  : "none",
+            flexShrink: 0,
+          }}
         />
         {statusText}
       </span>
-      <span className={css.divider} aria-hidden="true" />
       <span className={css.tooltipWrap}>
         <button
           type="button"
@@ -177,17 +244,35 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
           onClick={onRunClick}
           disabled={runtimeDisabled}
           aria-label={runtimeLabel}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "36px",
+            height: "36px",
+            border: "none",
+            borderRadius: "999px",
+            background:
+              runtimeState === "running"
+                ? "rgba(34, 197, 94, 0.18)"
+                : "rgba(255, 255, 255, 0.05)",
+            color: runtimeState === "running" ? SUCCESS : SURFACE_INK,
+            fontSize: "16px",
+            cursor: runtimeDisabled ? "not-allowed" : "pointer",
+            opacity: runtimeDisabled ? 0.6 : 1,
+            boxShadow: `inset 0 0 0 1px ${
+              runtimeState === "running"
+                ? "rgba(34, 197, 94, 0.42)"
+                : "rgba(255, 255, 255, 0.08)"
+            }`,
+            transition:
+              "background 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms ease",
+          }}
         >
           {runtimeShowSpinner ? (
             <span className={css.spinner} aria-hidden="true" />
-          ) : isRunning ? (
-            <span className={css.glyph} aria-hidden="true">
-              ◼
-            </span>
           ) : (
-            <span className={css.glyph} aria-hidden="true">
-              ⏻
-            </span>
+            <span aria-hidden="true">{runIcon}</span>
           )}
         </button>
         <span className={css.tooltip} role="tooltip">
@@ -202,17 +287,40 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
           onClick={onGenerate}
           disabled={generateDisabled}
           aria-label={generateLabel}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+            paddingInline: "18px",
+            height: "36px",
+            border: "none",
+            borderRadius: "999px",
+            background: generateDisabled
+              ? "rgba(186, 158, 255, 0.18)"
+              : `linear-gradient(180deg, ${ACCENT} 0%, ${ACCENT_DIM} 100%)`,
+            color: generateDisabled ? SURFACE_MUTED : ACCENT_ON,
+            fontFamily:
+              'var(--font-ui, "Inter", system-ui, -apple-system, sans-serif)',
+            fontSize: "13px",
+            fontWeight: 600,
+            letterSpacing: "0.02em",
+            cursor: generateDisabled ? "not-allowed" : "pointer",
+            boxShadow: generateDisabled
+              ? "none"
+              : "0 6px 20px -6px rgba(132, 85, 239, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.18)",
+            transition:
+              "transform 160ms ease, box-shadow 160ms ease, color 160ms ease",
+            whiteSpace: "nowrap",
+          }}
         >
           {generateBusy ? (
             <span className={css.spinner} aria-hidden="true" />
           ) : (
-            <span className={css.glyph} aria-hidden="true">
+            <span style={{ fontSize: "11px" }} aria-hidden="true">
               ▶
             </span>
           )}
-          <span className={css.generateLabel}>
-            {generateBusy ? "Running" : "Generate"}
-          </span>
+          <span>{generateBusy ? "Running" : "Generate"}</span>
         </button>
         <span className={css.tooltip} role="tooltip">
           {generateLabel}
