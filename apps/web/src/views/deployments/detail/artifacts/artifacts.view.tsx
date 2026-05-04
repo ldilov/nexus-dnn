@@ -22,12 +22,17 @@ function buildArtifactPath(extensionId: string, deploymentId: string, suffix = "
  * query param as an OPT-IN filter on the existing bulk endpoints — when it
  * is absent the operation acts on the full deployment, preserving the
  * "delete all / download all" semantics.
+ *
+ * IDs are constrained to `[A-Za-z0-9\-_]` server-side so plain `,`-joined
+ * concatenation is safe — `URLSearchParams.toString()` would percent-encode
+ * commas as `%2C`, and a transparent proxy that re-encodes once more would
+ * silently break the split on the receiving end.
  */
 function appendIdsParam(url: string, ids: ReadonlySet<string>): string {
   if (ids.size === 0) return url;
-  const params = new URLSearchParams();
-  params.set("utteranceIds", Array.from(ids).join(","));
-  return `${url}${url.includes("?") ? "&" : "?"}${params.toString()}`;
+  const joined = Array.from(ids).join(",");
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}utteranceIds=${joined}`;
 }
 
 async function fetchArtifacts(path: string): Promise<ArtifactsResponse> {

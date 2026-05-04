@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import { Button } from "../../../../components/base/button";
 import * as s from "./artifacts.css";
 
@@ -73,6 +73,16 @@ export function ArtifactsUI({
   const allSelected = total > 0 && selectedCount === total;
   const someSelected = selectedCount > 0 && !allSelected;
   const hasSelection = selectedCount > 0;
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  // Re-apply `indeterminate` AFTER React's reconciliation has written
+  // `checked`. Setting it via a callback ref races browser-specific
+  // DOM ordering (Safari / Firefox can reset indeterminate when checked
+  // is assigned via property), so we own the order explicitly here.
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSelected;
+    }
+  }, [someSelected, allSelected]);
 
   if (error) {
     return <div className={s.error}>{error}</div>;
@@ -125,8 +135,8 @@ export function ArtifactsUI({
       {hasSelection && (
         <div
           className={s.selectionBanner}
-          role="region"
-          aria-label="Bulk actions"
+          role="toolbar"
+          aria-label="Bulk artifact actions"
         >
           <div className={s.selectionLeft}>
             <span className={s.selectionCount}>{selectedCount}</span>
@@ -182,17 +192,19 @@ export function ArtifactsUI({
               <tr>
                 <th className={s.checkboxHeader} scope="col">
                   <input
+                    ref={selectAllRef}
                     type="checkbox"
                     className={s.checkbox}
                     checked={allSelected}
-                    ref={(el) => {
-                      if (el) el.indeterminate = someSelected;
-                    }}
                     onChange={() =>
                       hasSelection ? onClearSelection() : onSelectAll()
                     }
                     aria-label={
-                      hasSelection ? "Clear selection" : "Select all artifacts"
+                      allSelected
+                        ? "Deselect all artifacts"
+                        : someSelected
+                          ? "Clear partial selection"
+                          : "Select all artifacts"
                     }
                   />
                 </th>
