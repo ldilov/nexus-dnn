@@ -185,15 +185,17 @@ export const splitColumn = style({
 export const scriptShell = style({
   position: "relative",
   width: "100%",
-  // audit-allow: px — fixed layout breakpoint
-  minHeight: "320px",
+  display: "flex",
+  flexDirection: "column",
+  // audit-allow: px — fluid clamp anchors for editor min-height
+  minHeight: "clamp(360px, 36vh, 520px)",
   borderRadius: vars.radius.md,
-  background: vars.color.surface,
-  boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
-  transition: `box-shadow ${vars.motion.fast}`,
+  background: "transparent",
+  transition: `box-shadow ${vars.motion.fast}, background ${vars.motion.fast}`,
   selectors: {
     "&:focus-within": {
-      boxShadow: `inset 0 0 0 1px ${vars.color.accent}, ${vars.shadow.glow}`,
+      background: `color-mix(in oklab, ${vars.color.accent} 4%, transparent)`,
+      boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.accent} 45%, transparent)`,
     },
   },
 });
@@ -201,8 +203,8 @@ export const scriptShell = style({
 const scriptShared = {
   fontFamily: vars.font.mono,
   fontSize: vars.text.body,
-  lineHeight: 1.55,
-  padding: vars.space.md,
+  lineHeight: 1.65,
+  padding: `${vars.space.lg} ${vars.space.lg}`,
   border: "none",
   outline: "none",
   background: "transparent",
@@ -210,6 +212,7 @@ const scriptShared = {
   wordWrap: "break-word" as const,
   margin: 0,
   letterSpacing: 0,
+  tabSize: 2,
 };
 
 export const scriptOverlay = style({
@@ -227,13 +230,16 @@ export const scriptTextarea = style({
   width: "100%",
   display: "block",
   boxSizing: "border-box",
+  flex: "1 1 auto",
   color: "transparent",
-  caretColor: vars.color.text,
-  resize: "vertical",
+  caretColor: vars.color.accent,
+  resize: "none",
   selectors: {
     "&::placeholder": {
       color: vars.color.textFaint,
       fontFamily: vars.font.mono,
+      fontStyle: "italic",
+      opacity: 0.6,
     },
     "&::selection": {
       background: `color-mix(in oklab, ${vars.color.accent} 35%, transparent)`,
