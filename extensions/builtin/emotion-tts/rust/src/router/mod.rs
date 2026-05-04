@@ -4,6 +4,7 @@
 //! `runs` (the US1 MVP surface); other families remain 501 stubs until
 //! their owning user story lands.
 
+pub mod artifacts;
 pub mod audio_edit;
 pub mod audit;
 pub mod deployments;
@@ -71,8 +72,13 @@ pub fn build_router_with_families(
         artifact_store: artifact_store.clone(),
         lease_provider: provider.clone(),
     };
+    let artifacts_state = artifacts::ArtifactsState {
+        repos: repos.clone(),
+        artifact_store: artifact_store.clone(),
+    };
     let mut router = Router::new()
         .merge(runs::router(runs_state))
+        .merge(artifacts::router(artifacts_state))
         .nest(
             "/deployments",
             deployments::router_with_families(repos.clone(), family_registry.clone()),
