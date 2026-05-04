@@ -1,4 +1,4 @@
-import { style } from "@vanilla-extract/css";
+import { keyframes, style } from "@vanilla-extract/css";
 import { vars } from "../../../theme/contract.css";
 
 export const root = style({
@@ -138,6 +138,32 @@ export const actions = style({
 export const actionIcon = style({
   // audit-allow: px — icon size, no density token at this step
   fontSize: "18px",
+});
+
+// Inline spinner for actions in `state: "loading"` — borderless,
+// accent-tinted, sized to the button label baseline. Honors
+// prefers-reduced-motion by halving rotation speed (still indicates
+// activity without strobing).
+const actionSpin = keyframes({
+  to: { transform: "rotate(360deg)" },
+});
+
+export const actionSpinner = style({
+  // audit-allow: px — fixed 14px disc tuned to the action button label
+  width: "14px",
+  // audit-allow: px — fixed 14px disc tuned to the action button label
+  height: "14px",
+  borderRadius: "50%",
+  // audit-allow: px — hairline ring
+  border: `2px solid ${vars.color.outline.variant}`,
+  borderTopColor: vars.color.accent.accent,
+  animation: `${actionSpin} 0.9s linear infinite`,
+  flexShrink: 0,
+  "@media": {
+    "(prefers-reduced-motion: reduce)": {
+      animationDuration: "1.8s",
+    },
+  },
 });
 
 /* ─── Underlined tab strip ─────────────────────────────────────── */
