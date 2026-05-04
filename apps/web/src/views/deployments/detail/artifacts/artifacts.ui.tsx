@@ -20,10 +20,16 @@ export interface ArtifactsUIProps {
   readonly loading: boolean;
   readonly error: string | null;
   readonly playingId: string | null;
+  readonly selected: ReadonlySet<string>;
   readonly onPlayToggle: (utteranceId: string) => void;
   readonly onDelete: (utteranceId: string) => void;
   readonly onDeleteAll: () => void;
   readonly onDownloadZip: () => void;
+  readonly onToggleSelect: (utteranceId: string) => void;
+  readonly onSelectAll: () => void;
+  readonly onClearSelection: () => void;
+  readonly onDeleteSelected: () => void;
+  readonly onDownloadSelected: () => void;
   readonly buildDownloadUrl: (utteranceId: string) => string;
 }
 
@@ -50,13 +56,23 @@ export function ArtifactsUI({
   loading,
   error,
   playingId,
+  selected,
   onPlayToggle,
   onDelete,
   onDeleteAll,
   onDownloadZip,
+  onToggleSelect,
+  onSelectAll,
+  onClearSelection,
+  onDeleteSelected,
+  onDownloadSelected,
   buildDownloadUrl,
 }: ArtifactsUIProps) {
   const total = artifacts.length;
+  const selectedCount = selected.size;
+  const allSelected = total > 0 && selectedCount === total;
+  const someSelected = selectedCount > 0 && !allSelected;
+  const hasSelection = selectedCount > 0;
 
   if (error) {
     return <div className={s.error}>{error}</div>;
@@ -106,6 +122,52 @@ export function ArtifactsUI({
         </div>
       </div>
 
+      {hasSelection && (
+        <div
+          className={s.selectionBanner}
+          role="region"
+          aria-label="Bulk actions"
+        >
+          <div className={s.selectionLeft}>
+            <span className={s.selectionCount}>{selectedCount}</span>
+            <span>
+              {selectedCount === 1 ? "artifact" : "artifacts"} selected
+            </span>
+            <button
+              type="button"
+              className={s.clearLink}
+              onClick={onClearSelection}
+            >
+              Clear
+            </button>
+          </div>
+          <div className={s.selectionActions}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={onDownloadSelected}
+            >
+              <span className="material-symbols-outlined" aria-hidden="true">
+                download
+              </span>
+              Download selected
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              onClick={onDeleteSelected}
+            >
+              <span className="material-symbols-outlined" aria-hidden="true">
+                delete
+              </span>
+              Delete selected
+            </Button>
+          </div>
+        </div>
+      )}
+
       {!loading && total === 0 && (
         <div className={s.empty}>
           No artifacts yet. Run the recipe to produce audio segments — they'll
@@ -118,6 +180,22 @@ export function ArtifactsUI({
           <table className={s.table}>
             <thead>
               <tr>
+                <th className={s.checkboxHeader} scope="col">
+                  <input
+                    type="checkbox"
+                    className={s.checkbox}
+                    checked={allSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someSelected;
+                    }}
+                    onChange={() =>
+                      hasSelection ? onClearSelection() : onSelectAll()
+                    }
+                    aria-label={
+                      hasSelection ? "Clear selection" : "Select all artifacts"
+                    }
+                  />
+                </th>
                 <th className={s.th}>Time</th>
                 <th className={s.th}>Run</th>
                 <th className={s.th}>Idx</th>
@@ -133,9 +211,19 @@ export function ArtifactsUI({
             <tbody>
               {artifacts.map((a) => {
                 const isPlaying = playingId === a.utteranceId;
+                const isSelected = selected.has(a.utteranceId);
                 return (
                   <Fragment key={a.utteranceId}>
-                    <tr className={s.row}>
+                    <tr className={isSelected ? `${s.row} ${s.rowSelected}` : s.row}>
+                      <td className={s.checkboxCell}>
+                        <input
+                          type="checkbox"
+                          className={s.checkbox}
+                          checked={isSelected}
+                          onChange={() => onToggleSelect(a.utteranceId)}
+                          aria-label={`Select artifact ${a.filename}`}
+                        />
+                      </td>
                       <td className={s.tdMono}>{formatTime(a.finishedAt)}</td>
                       <td className={s.tdMono}>{shortRunId(a.runId)}</td>
                       <td className={s.tdMono}>{a.globalIndex}</td>
@@ -201,7 +289,7 @@ export function ArtifactsUI({
                     </tr>
                     {isPlaying && (
                       <tr className={s.row}>
-                        <td colSpan={8} className={s.td}>
+                        <td colSpan={9} className={s.td}>
                           <div className={s.player}>
                             <span className={s.playerLabel}>
                               {a.filename}
