@@ -5,6 +5,7 @@ import { Button } from "../../../components/base/button";
 import { StatusChip, type StatusKind } from "../../../components/base/status_chip";
 import { GraphView } from "../../workflows/components/canvas/graph_view";
 import { ExtensionLayoutView } from "../../extensions/layout/layout.view";
+import { ArtifactsView } from "./artifacts/artifacts.view";
 import {
   EXT_ACTIONS_DECLARE,
   EXT_ACTIONS_REQUEST,
@@ -46,7 +47,7 @@ interface StubCopy {
 }
 
 const STUBS: Record<
-  Exclude<DetailTabId, "recipe" | "graph">,
+  Exclude<DetailTabId, "recipe" | "graph" | "artifacts">,
   StubCopy
 > = {
   stages: {
@@ -59,12 +60,6 @@ const STUBS: Record<
     icon: "timer",
     heading: "Runs & Traces",
     body: "Per-run trace tree, span breakdown, and span-level logs. Selecting a run opens the per-node trace timeline so you can see status, progress, and per-node duration without leaving this page.",
-    hint: "phase 3 · stub",
-  },
-  artifacts: {
-    icon: "inventory_2",
-    heading: "Artifacts",
-    body: "Output artifacts produced by this deployment, browsable and downloadable. Lets you pick up yesterday's output without remembering which run produced it.",
     hint: "phase 3 · stub",
   },
   settings: {
@@ -96,6 +91,11 @@ export interface DeploymentDetailUIProps {
   workflow: Workflow | null;
   workflowLoading: boolean;
   extensionLayout: LayoutSummary | null;
+  /** The owning extension id for the deployment, when bound to one. Drives the
+   * generic `/api/v1/extensions/{ext-id}/...` mount path for extension-owned
+   * surfaces (artifacts list/download/zip/delete). The host shell stays opaque
+   * about which extension this is. */
+  extensionId: string | null;
   /** Callback to surface a delete confirmation. When omitted, the Delete
    * button is hidden (e.g. for soft-deleted/already-purged states the
    * caller may suppress this affordance). */
@@ -206,6 +206,7 @@ export function DeploymentDetailUI({
   workflow,
   workflowLoading,
   extensionLayout,
+  extensionId,
   onRequestDelete,
 }: DeploymentDetailUIProps) {
   const name = displayName ?? "Deployment detail";
@@ -483,7 +484,22 @@ export function DeploymentDetailUI({
           </section>
         )}
 
-        {tab !== "recipe" && tab !== "graph" && (
+        {tab === "artifacts" && (
+          <section
+            id="panel-artifacts"
+            className={s.panelLive}
+            role="tabpanel"
+            aria-labelledby="tab-artifacts"
+            tabIndex={0}
+          >
+            <ArtifactsView
+              deploymentId={deploymentId}
+              extensionId={extensionId}
+            />
+          </section>
+        )}
+
+        {tab !== "recipe" && tab !== "graph" && tab !== "artifacts" && (
           <section
             id={`panel-${tab}`}
             className={s.stub}
