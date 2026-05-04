@@ -268,17 +268,17 @@ export function DeploymentDetailUI({
   // button. The host knows nothing about what the actions DO — that
   // contract is opaque per `apps/web/src/types/extension_actions.ts`.
   const [actions, setActions] = useState<ExtensionActionSet | null>(null);
-  const elementRef = useRef<HTMLElement | null>(null);
+  const [hostEl, setHostEl] = useState<HTMLElement | null>(null);
 
   const handleElementRef = useCallback((el: HTMLElement | null) => {
-    elementRef.current = el;
+    setHostEl(el);
     if (!el) {
       setActions(null);
     }
   }, []);
 
   useEffect(() => {
-    const el = elementRef.current;
+    const el = hostEl;
     if (!el) return;
 
     const handleDeclare = (event: Event) => {
@@ -305,16 +305,15 @@ export function DeploymentDetailUI({
       el.removeEventListener(EXT_ACTIONS_DECLARE, handleDeclare);
       el.removeEventListener(EXT_ACTION_STATE, handleState);
     };
-  }, [extensionLayout?.id]);
+  }, [hostEl, extensionLayout?.id]);
 
   const handleInvoke = useCallback((id: string) => {
-    const el = elementRef.current;
-    if (!el) return;
+    if (!hostEl) return;
     const detail: ExtActionInvokeDetail = { id };
-    el.dispatchEvent(
+    hostEl.dispatchEvent(
       new CustomEvent(EXT_ACTION_INVOKE, { detail, bubbles: false }),
     );
-  }, []);
+  }, [hostEl]);
 
   return (
     <div className={s.root}>
