@@ -29,8 +29,9 @@ export const buttonRecipe = recipe({
     variant: {
       primary: {
         background: vars.color.accent.primary,
-        color: vars.color.text.primary,
+        color: vars.color.onColor.primary,
         fontWeight: vars.font.weight.semibold,
+        transition: `color ${vars.motion.durationFast} ${vars.motion.easingDefault}, background ${vars.motion.durationFast} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
         ":hover": {
           background: vars.color.accent.primaryHover,
           color: vars.color.text.primary,
