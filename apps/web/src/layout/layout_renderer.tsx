@@ -13,12 +13,23 @@ type LayoutRendererProps = {
    * landing page.
    */
   rootAttrs?: Record<string, string>;
+  /**
+   * Callback that receives the underlying ROOT custom element node once
+   * mounted (and `null` on unmount). The deployment-detail shell uses
+   * this to dispatch the per-extension action contract — see
+   * `apps/web/src/types/extension_actions.ts`.
+   */
+  rootElementRef?: (el: HTMLElement | null) => void;
 };
 
-export function LayoutRenderer({ layout, rootAttrs }: LayoutRendererProps) {
+export function LayoutRenderer({ layout, rootAttrs, rootElementRef }: LayoutRendererProps) {
   return (
     <div className={styles.rendererRoot}>
-      <LayoutNodeRenderer node={layout.root} injectAttrs={rootAttrs} />
+      <LayoutNodeRenderer
+        node={layout.root}
+        injectAttrs={rootAttrs}
+        elementRef={rootElementRef}
+      />
     </div>
   );
 }
@@ -31,9 +42,14 @@ type LayoutNodeRendererProps = {
    * their own YAML-declared props untouched.
    */
   injectAttrs?: Record<string, string>;
+  /**
+   * Forwarded to the root custom element so callers (e.g. the deployment
+   * shell) can attach event listeners. Only the root node receives this.
+   */
+  elementRef?: (el: HTMLElement | null) => void;
 };
 
-function LayoutNodeRenderer({ node, injectAttrs }: LayoutNodeRendererProps) {
+function LayoutNodeRenderer({ node, injectAttrs, elementRef }: LayoutNodeRendererProps) {
   const renderer = getComponentRenderer(node.type);
 
   const children = (node.children ?? []).map((child, i) => (
@@ -50,7 +66,7 @@ function LayoutNodeRenderer({ node, injectAttrs }: LayoutNodeRendererProps) {
       ...(injectAttrs ?? {}),
     };
     return (
-      <ExtensionCustomElement tag={node.type} props={merged}>
+      <ExtensionCustomElement tag={node.type} props={merged} elementRef={elementRef}>
         {children}
       </ExtensionCustomElement>
     );

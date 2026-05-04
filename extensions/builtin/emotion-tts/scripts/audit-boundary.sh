@@ -33,6 +33,7 @@ GRANDFATHERED_FIXTURES=(
   "$REPO_ROOT/crates/nexus-extension-deps/tests/boundary_test.rs"
   "$REPO_ROOT/crates/nexus-core/Cargo.toml"
   "$REPO_ROOT/crates/nexus-core/src/app.rs"
+  "$REPO_ROOT/crates/nexus-api/tests/draft_suggestions/boundary_audit_test.rs"
 )
 
 violations=0

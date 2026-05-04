@@ -63,26 +63,3 @@ export const params = style({
   textOverflow: "ellipsis",
 });
 
-export const removeButton = style({
-  background: "transparent",
-  border: "none",
-  color: vars.color.textMuted,
-  fontFamily: vars.font.mono,
-  fontSize: vars.text.body,
-  lineHeight: 1,
-  cursor: "pointer",
-  padding: vars.space.xs,
-  borderRadius: vars.radius.sm,
-  selectors: {
-    "&:hover": {
-      color: vars.color.danger,
-      background: `color-mix(in oklab, ${vars.color.danger} 14%, transparent)`,
-    },
-    "&:focus-visible": {
-      // audit-allow: px — below minimum token granularity (sub-10px)
-      outline: `2px solid ${vars.color.accent}`,
-      // audit-allow: px — below minimum token granularity (sub-10px)
-      outlineOffset: "2px",
-    },
-  },
-});

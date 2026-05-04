@@ -16,6 +16,10 @@ globalStyle("html, body, #root", {
   lineHeight: vars.font.lineHeight.normal,
   WebkitFontSmoothing: "antialiased",
   MozOsxFontSmoothing: "grayscale",
+  // Shell (`shell.css.ts`) and each page own their own scroll container.
+  // Body-level scrolling is forbidden — do not introduce content that
+  // expects the viewport itself to scroll, or it will be clipped.
+  overflow: "hidden",
 });
 
 globalStyle("a", {

@@ -14,9 +14,15 @@ export interface ExtensionLayoutViewProps {
    * back to its index landing page.
    */
   deploymentId?: string;
+  /**
+   * Receives the root custom element once mounted. The deployment shell
+   * uses this to dispatch / listen for the per-extension action contract
+   * (see `apps/web/src/types/extension_actions.ts`).
+   */
+  rootElementRef?: (el: HTMLElement | null) => void;
 }
 
-export function ExtensionLayoutView({ layoutId, deploymentId }: ExtensionLayoutViewProps) {
+export function ExtensionLayoutView({ layoutId, deploymentId, rootElementRef }: ExtensionLayoutViewProps) {
   const [state, setState] = useState<LayoutViewState>({ status: "loading" });
 
   const load = useCallback(() => {
@@ -34,5 +40,12 @@ export function ExtensionLayoutView({ layoutId, deploymentId }: ExtensionLayoutV
   }, [load]);
 
   const rootAttrs = deploymentId ? { "deployment-id": deploymentId } : undefined;
-  return <ExtensionLayoutUI state={state} onRetry={load} rootAttrs={rootAttrs} />;
+  return (
+    <ExtensionLayoutUI
+      state={state}
+      onRetry={load}
+      rootAttrs={rootAttrs}
+      rootElementRef={rootElementRef}
+    />
+  );
 }
