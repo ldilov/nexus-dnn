@@ -50,7 +50,7 @@ async fn request_id_middleware(mut req: Request, next: Next) -> Response {
     );
 
     let started = std::time::Instant::now();
-    tracing::info!(target: "nexus_api::request", "started");
+    tracing::debug!(target: "nexus_api::request", "started");
     let mut response = async move { next.run(req).await }.instrument(span.clone()).await;
     let elapsed_ms = started.elapsed().as_millis() as u64;
 
@@ -61,6 +61,12 @@ async fn request_id_middleware(mut req: Request, next: Next) -> Response {
 
     let _enter = span.enter();
     let status = response.status();
+    // Threshold above which a 2xx is interesting enough to deserve `info`.
+    // Anything faster is per-second polling chatter (`/metrics`,
+    // `/operators`, `/backend-runtime-leases`, `/llm/backends`, etc.) and
+    // floods the terminal with no analytic value — drop to `debug` so the
+    // operator can opt back in with `RUST_LOG=nexus_api::request=debug`.
+    const SLOW_2XX_MS: u64 = 100;
     if status.is_server_error() {
         tracing::error!(target: "nexus_api::request",
             status = %status.as_u16(),
@@ -73,8 +79,14 @@ async fn request_id_middleware(mut req: Request, next: Next) -> Response {
             elapsed_ms,
             "completed (4xx)"
         );
-    } else {
+    } else if elapsed_ms >= SLOW_2XX_MS {
         tracing::info!(target: "nexus_api::request",
+            status = %status.as_u16(),
+            elapsed_ms,
+            "completed (slow)"
+        );
+    } else {
+        tracing::debug!(target: "nexus_api::request",
             status = %status.as_u16(),
             elapsed_ms,
             "completed"

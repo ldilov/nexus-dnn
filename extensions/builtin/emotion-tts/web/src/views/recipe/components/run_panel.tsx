@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
+import { toast } from "sonner";
 import { ExtensionApiError } from "../../../services/http";
 import { cancelRun, createRun, getRun, resumeRun, subscribeRunProgress } from "../../../services/runs_client";
 import type { CreateRunRequest, ProgressEvent, Run } from "../../../services/types";
+import {
+  STICKY_BAR_THRESHOLD,
+  useScrollPastThreshold,
+} from "../hooks/use_scroll_past_threshold";
+import {
+  dispatchRunState,
+  subscribeTriggerGenerate,
+} from "../lib/run_events";
 import * as css from "../recipe.css";
+import * as panel from "./run_panel.css";
 import { Banner } from "../../../components/banner";
 import { Button } from "../../../components/button";
 import {
@@ -49,6 +59,34 @@ export function RunPanel(props: Props): JSX.Element {
     };
   }, []);
 
+  // Notify any sticky/floating action bar of the current phase so it can
+  // disable Generate while a run is in flight.
+  useEffect(() => {
+    dispatchRunState({ busy: phase === "starting" || phase === "running" });
+  }, [phase]);
+
+  const handleRunTerminal = useCallback(
+    (terminalRun: Run): void => {
+      const status = terminalRun.status;
+      if (status === "completed" || status === "partial") {
+        toast.success(
+          status === "completed"
+            ? "Run complete — open the Artifacts tab to download"
+            : "Partial run — open the Artifacts tab for what was produced",
+          {
+            action: {
+              label: "Artifacts",
+              onClick: () => {
+                navigate(`/${props.deploymentId}?tab=artifacts`);
+              },
+            },
+          },
+        );
+      }
+    },
+    [navigate, props.deploymentId],
+  );
+
   const startRun = useCallback(async () => {
     setPhase("starting");
     setError(null);
@@ -62,14 +100,35 @@ export function RunPanel(props: Props): JSX.Element {
       unsubscribeRef.current = subscribeRunProgress(
         props.deploymentId,
         created.runId,
-        (event) => handleEvent(event, setSegments, setPhase, setRun, props.deploymentId, created.runId),
+        (event) =>
+          handleEvent(
+            event,
+            setSegments,
+            setPhase,
+            (terminalRun) => {
+              setRun(terminalRun);
+              handleRunTerminal(terminalRun);
+            },
+            props.deploymentId,
+            created.runId,
+          ),
         () => setPhase("error"),
       );
     } catch (err) {
       setPhase("error");
       setError(extractMessage(err));
     }
-  }, [props.deploymentId, props.createPayload]);
+  }, [props.deploymentId, props.createPayload, handleRunTerminal]);
+
+  // Sticky action bar bridge — listen for "trigger-generate" events fired by
+  // the floating toolbar and start a run when we're idle/terminal/error.
+  useEffect(() => {
+    return subscribeTriggerGenerate(() => {
+      if (phase === "idle" || phase === "terminal" || phase === "error") {
+        void startRun();
+      }
+    });
+  }, [phase, startRun]);
 
   const cancel = useCallback(async () => {
     if (!runId) return;
@@ -83,6 +142,10 @@ export function RunPanel(props: Props): JSX.Element {
   const segmentList = Array.from(segments.values()).sort((a, b) => a.globalIndex - b.globalIndex);
   const canCancel = phase === "starting" || phase === "running";
   const isPartial = run?.status === "partial";
+  const inFlightCount = segmentList.filter((s) => s.status === "running").length;
+  const completedCount = segmentList.filter((s) => s.status === "completed").length;
+  const showQueueChip =
+    phase === "starting" || phase === "running" || segmentList.length > 0;
 
   const failedSegments = segmentList.filter((s) => s.status === "failed");
   const dominantFailure = (() => {
@@ -123,19 +186,105 @@ export function RunPanel(props: Props): JSX.Element {
   const diagnostics = props.diagnostics ?? [];
   const blockingDiagnostic = diagnostics.find((d) => d.status === "fail");
 
+  const generateLabel =
+    phase === "starting"
+      ? "Starting…"
+      : phase === "running"
+        ? "Generating…"
+        : "Generate";
+  const generateDisabled = !props.canGenerate || canCancel || !!blockingDiagnostic;
+  const isRunning = phase === "starting" || phase === "running";
+  // "idle" (breathing halo) only when we're truly ready to fire — otherwise
+  // the static disabled style applies.
+  const generateState =
+    isRunning
+      ? "running"
+      : !generateDisabled
+        ? "idle"
+        : "blocked";
+
+  // Single-Generate-CTA gate (I-3a). Once the floating sticky toolbar shows
+  // (user scrolled past STICKY_BAR_THRESHOLD) the in-page Generate button
+  // collapses to a quiet status line — the toolbar's Generate is now the
+  // single visible primary action. Cancel + run-in-progress still render
+  // the inline Cancel button so the user can abort without scrolling back.
+  const stickyVisible = useScrollPastThreshold(STICKY_BAR_THRESHOLD);
+  const showInlineGenerate = !stickyVisible || isRunning;
+
   return (
-    <div>
-      {diagnostics.length > 0 && (
-        <ul className={css.preflightList} aria-label="Pre-flight checks">
-          {diagnostics.map((d) => (
-            <li key={d.label} className={css.preflightItem}>
-              <StatusPill tone={preflightTone(d.status)}>{preflightGlyph(d.status)}</StatusPill>
-              <span className={css.preflightLabel}>{d.label}</span>
-              {d.detail && <span className={css.preflightDetail}>{d.detail}</span>}
-            </li>
-          ))}
-        </ul>
-      )}
+    <div className={panel.root}>
+      <div className={panel.card}>
+        <div className={panel.diagnostics}>
+          <span className={panel.diagnosticsLabel}>
+            <span className={panel.numeral} aria-hidden="true">
+              01
+            </span>
+            Pre-flight
+            {showQueueChip && (
+              <span className={panel.queueChip}>
+                <span className={panel.queueDot} aria-hidden="true" />
+                {inFlightCount > 0
+                  ? `${inFlightCount} in flight`
+                  : `${completedCount} done`}
+              </span>
+            )}
+          </span>
+          {diagnostics.length > 0 ? (
+            <ul className={panel.diagList} aria-label="Pre-flight checks">
+              {diagnostics.map((d) => (
+                <li key={d.label} className={panel.diagItem}>
+                  <span
+                    className={panel.diagDot}
+                    data-status={d.status}
+                    aria-hidden="true"
+                  />
+                  <span className={panel.diagLabel}>{d.label}</span>
+                  {d.detail && (
+                    <span className={panel.diagDetail}>{d.detail}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className={panel.diagDetail}>Ready when you are.</span>
+          )}
+        </div>
+
+        <div className={panel.cta} data-state={generateState}>
+          {showInlineGenerate ? (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={startRun}
+              disabled={generateDisabled}
+              loading={isRunning}
+            >
+              {!isRunning && (
+                <span className={panel.ctaIcon} aria-hidden="true">
+                  ▶
+                </span>
+              )}
+              {generateLabel}
+            </Button>
+          ) : (
+            <span className={panel.stickyHandoff} aria-hidden="true">
+              Generate available in toolbar
+              <span className={panel.stickyHandoffArrow}>↑</span>
+            </span>
+          )}
+          {canCancel && (
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={cancel}
+              aria-label="Cancel current run"
+            >
+              Cancel
+            </Button>
+          )}
+        </div>
+      </div>
+
       {error && (
         <Banner
           severity="error"
@@ -160,17 +309,6 @@ export function RunPanel(props: Props): JSX.Element {
         </Banner>
       )}
 
-      <div className={css.controlRow}>
-        <Button
-          disabled={!props.canGenerate || canCancel || !!blockingDiagnostic}
-          onClick={startRun}
-        >
-          {phase === "running" ? "Running…" : "Generate + Export ZIP"}
-        </Button>
-        <Button variant="danger" disabled={!canCancel} onClick={cancel}>
-          Cancel
-        </Button>
-      </div>
 
       {dominantFailure && (
         <Banner severity="error" style={{ flexDirection: "column", alignItems: "flex-start" }}>
@@ -185,6 +323,7 @@ export function RunPanel(props: Props): JSX.Element {
       )}
 
       {run?.exportArtifactRef && (
+        // audit-allow: download anchor — Button primitive lacks <a> polymorphic
         <a
           href={`/api/v1/extensions/nexus.audio.emotiontts/exports/${run.exportArtifactRef}/download`}
           download
@@ -314,28 +453,6 @@ function toneFor(status: SegmentState["status"]): "success" | "accent" | "danger
       return "danger";
     default:
       return "neutral";
-  }
-}
-
-function preflightTone(status: DiagnosticItem["status"]): "success" | "warning" | "danger" {
-  switch (status) {
-    case "ok":
-      return "success";
-    case "warn":
-      return "warning";
-    case "fail":
-      return "danger";
-  }
-}
-
-function preflightGlyph(status: DiagnosticItem["status"]): string {
-  switch (status) {
-    case "ok":
-      return "ok";
-    case "warn":
-      return "warn";
-    case "fail":
-      return "stop";
   }
 }
 

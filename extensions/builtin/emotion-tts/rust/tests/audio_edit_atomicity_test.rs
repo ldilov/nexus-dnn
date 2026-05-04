@@ -130,6 +130,7 @@ async fn audit_failure_rolls_back_chain_write() {
         new_digest.clone(),
         chain.operation_count(),
         "system".to_string(),
+        None,
     );
     let outcome = commit_voice_asset_apply(
         &pool,
@@ -169,6 +170,7 @@ async fn audit_failure_rolls_back_chain_write() {
         second_digest.clone(),
         second_chain.operation_count(),
         "system".to_string(),
+        None,
     );
 
     let pre_chain_json = read_persisted_chain_json(&pool, asset_id).await;
@@ -216,6 +218,7 @@ async fn audit_failure_rolls_back_chain_write() {
         second_digest.clone(),
         second_chain.operation_count(),
         "system".to_string(),
+        None,
     );
     let outcome = commit_voice_asset_apply(
         &pool,
@@ -254,6 +257,7 @@ async fn cas_guard_returns_stale_digest_when_persisted_state_changed() {
         digest_v1.clone(),
         chain_v1.operation_count(),
         "system".to_string(),
+        None,
     );
     commit_voice_asset_apply(
         &pool,
@@ -283,6 +287,7 @@ async fn cas_guard_returns_stale_digest_when_persisted_state_changed() {
         digest_v2.clone(),
         chain_v2.operation_count(),
         "system".to_string(),
+        None,
     );
     let outcome = commit_voice_asset_apply(
         &pool,

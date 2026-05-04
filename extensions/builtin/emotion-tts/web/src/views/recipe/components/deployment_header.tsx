@@ -1,19 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { useEffect, useState } from "react";
 import type { Deployment } from "../../../services/deployments_client";
 import { ExtensionApiError } from "../../../services/http";
-import { INDEXTTS_FAMILY_ID, startModelDownload } from "../../../services/model_store_client";
 import {
   badgeLabel,
   getRuntimeHealth,
-  restartRuntime,
-  startRuntime,
-  stopRuntime,
   type RuntimeHealth,
 } from "../../../services/runtime_client";
 import * as css from "../recipe.css";
 import { Banner } from "../../../components/banner";
-import { Button } from "../../../components/button";
 import { StatusPill } from "../../../components/status_pill";
 
 interface Props {
@@ -23,10 +17,8 @@ interface Props {
 const HEALTH_POLL_MS = 4000;
 
 export function DeploymentHeader({ deployment }: Props): JSX.Element {
-  const navigate = useNavigate();
   const [health, setHealth] = useState<RuntimeHealth | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,54 +41,7 @@ export function DeploymentHeader({ deployment }: Props): JSX.Element {
     };
   }, []);
 
-  const install = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await startRuntime();
-    } catch (err) {
-      setError(extract(err));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
-  const stop = useCallback(async () => {
-    setBusy(true);
-    try {
-      await stopRuntime();
-    } catch (err) {
-      setError(extract(err));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
-  const restart = useCallback(async () => {
-    setBusy(true);
-    try {
-      await restartRuntime();
-    } catch (err) {
-      setError(extract(err));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
-  const downloadModel = useCallback(async () => {
-    setBusy(true);
-    try {
-      await startModelDownload(INDEXTTS_FAMILY_ID);
-    } catch (err) {
-      setError(extract(err));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
   const badge = health?.badge ?? "not_installed";
-  const isStopped = badge === "stopped" || badge === "not_installed";
-  const isRunning = badge === "ready" || badge === "running" || badge === "starting";
   const modelMissing = error?.includes("model_missing") ?? false;
 
   return (
@@ -119,35 +64,6 @@ export function DeploymentHeader({ deployment }: Props): JSX.Element {
           </span>
         </>
       )}
-
-      {isStopped && (
-        <Button disabled={busy} onClick={install}>
-          Install / Start runtime
-        </Button>
-      )}
-      {isRunning && (
-        <>
-          <Button variant="danger" disabled={busy} onClick={stop}>
-            Stop backend
-          </Button>
-          <Button variant="secondary" disabled={busy} onClick={restart}>
-            Restart
-          </Button>
-        </>
-      )}
-      {modelMissing && (
-        <Button disabled={busy} onClick={downloadModel}>
-          Download IndexTTS-2 model
-        </Button>
-      )}
-
-      <Button
-        variant="secondary"
-        onClick={() => navigate(`/${deployment.deploymentId}/mappings`)}
-        title="Manage character → voice mappings (upload voice samples, edit emotion defaults)"
-      >
-        Mappings
-      </Button>
 
       {error && !modelMissing && <Banner severity="error">{error}</Banner>}
     </output>

@@ -22,6 +22,13 @@ import {
   EditSurfaceActions,
   EditSurfaceHeader,
 } from "../../../components/edit_surface";
+import { DirectModSliderStrip } from "../../recipe/components/direct_mod_slider_strip";
+import {
+  deriveSliderEffectsFromChain,
+  IDENTITY_SLIDER_STATE,
+  mergeSliderEffectsIntoChain,
+  type DirectModSliderState,
+} from "../../recipe/lib/slider_chain";
 
 export interface PerUtteranceEditProps {
   deploymentId: string;
@@ -42,6 +49,8 @@ export function PerUtteranceEdit(props: PerUtteranceEditProps): JSX.Element {
   const sourceDurationMs = utterance.durationMs ?? 0;
 
   const [chain, setChain] = useState<EditChain>(() => initialChainFor(sourceDurationMs));
+  const [sliderState, setSliderState] = useState<DirectModSliderState>(IDENTITY_SLIDER_STATE);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [normalizeOn, setNormalizeOn] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [applyInFlight, setApplyInFlight] = useState(false);
@@ -51,11 +60,18 @@ export function PerUtteranceEdit(props: PerUtteranceEditProps): JSX.Element {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: utterance.utteranceId is the reset trigger when the user picks a different utterance
   useEffect(() => {
-    setChain(initialChainFor(sourceDurationMs));
+    const fresh = initialChainFor(sourceDurationMs);
+    setChain(fresh);
+    setSliderState(deriveSliderEffectsFromChain(fresh));
     setNormalizeOn(false);
     setValidationError(null);
     persistedDigestRef.current = null;
   }, [utterance.utteranceId, sourceDurationMs]);
+
+  const handleSliderChange = useCallback((next: DirectModSliderState) => {
+    setSliderState(next);
+    setChain((prev) => mergeSliderEffectsIntoChain(prev, next));
+  }, []);
 
   useEffect(() => {
     return () => applyControllerRef.current?.abort();
@@ -189,7 +205,23 @@ export function PerUtteranceEdit(props: PerUtteranceEditProps): JSX.Element {
             />
             <span>Normalize to {DEFAULT_LUFS.toFixed(0)} LUFS (broadcast-friendly)</span>
           </label>
+          <button
+            type="button"
+            className={css.advancedDisclosure}
+            onClick={() => setShowAdvanced((s) => !s)}
+            aria-expanded={showAdvanced}
+          >
+            {showAdvanced ? "▾" : "▸"} Advanced effects · gain · eq · pitch · fade · silence trim
+          </button>
         </div>
+
+        {showAdvanced && (
+          <DirectModSliderStrip
+            state={sliderState}
+            onChange={handleSliderChange}
+            supportsSynthSpeed={false}
+          />
+        )}
 
         <EditSurfaceActions>
           <Button size="sm" onClick={() => void handleApply()} disabled={applyInFlight}>
