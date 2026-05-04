@@ -5,7 +5,15 @@ import { vars } from "../../../theme/tokens.css";
    The bar lifts off the page with a saturated backdrop blur and a soft
    inner accent ring. Left side carries a status pill (mono caps) so the
    bar communicates state even when collapsed; right side is the labeled
-   Generate CTA which breathes a slow accent halo when ready. */
+   Generate CTA which breathes a slow accent halo when ready.
+
+   ── Carve-out: pill shape ───────────────────────────────────────────
+   This component intentionally uses a fully rounded pill shape for both
+   the bar surface AND its inner buttons. That violates the canonical
+   Button contract (rounded-rect, vars.radius.md). It is allowed because
+   a floating-capsule toolbar is a single composed widget — not a row of
+   individual buttons — and the pill shape IS the design intent of the
+   capsule pattern. Do NOT copy this pattern for regular row affordances. */
 
 export const bar = style({
   position: "fixed",

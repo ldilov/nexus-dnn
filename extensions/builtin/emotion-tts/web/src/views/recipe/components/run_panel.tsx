@@ -239,33 +239,30 @@ export function RunPanel(props: Props): JSX.Element {
           )}
         </div>
 
-        <div className={panel.cta}>
-          <button
-            type="button"
-            className={panel.generateBtn}
-            data-state={generateState}
+        <div className={panel.cta} data-state={generateState}>
+          <Button
+            variant="primary"
+            size="lg"
             onClick={startRun}
             disabled={generateDisabled}
-            aria-busy={isRunning || undefined}
+            loading={isRunning}
           >
-            {isRunning ? (
-              <span className={panel.spinner} aria-hidden="true" />
-            ) : (
+            {!isRunning && (
               <span className={panel.ctaIcon} aria-hidden="true">
                 ▶
               </span>
             )}
             {generateLabel}
-          </button>
+          </Button>
           {canCancel && (
-            <button
-              type="button"
-              className={panel.cancelBtn}
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={cancel}
               aria-label="Cancel current run"
             >
               Cancel
-            </button>
+            </Button>
           )}
         </div>
       </div>
