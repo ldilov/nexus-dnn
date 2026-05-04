@@ -476,6 +476,24 @@ async fn upload_impl(state: &VoiceAssetsState, mut multipart: Multipart) -> Resu
     };
 
     let now = Utc::now().timestamp();
+
+    // Auto-trim: IndexTTS works best with 10-30s clips; longer references drift
+    // off-distribution and produce muddier output. Rather than shipping a
+    // destructive cut, seed the voice asset with a single trim op {0, 30000}
+    // — the user can extend or remove it via the edit panel without losing
+    // the original audio. Threshold is the same 30_000 ms ceiling the worker
+    // recommends.
+    const AUTO_TRIM_MS: i64 = 30_000;
+    let duration_ms = probe.as_ref().map(|p| p.duration_ms);
+    let edit_chain_json = match duration_ms {
+        Some(d) if d > AUTO_TRIM_MS => Some(format!(
+            r#"{{"version":1,"ops":[{{"id":"{op_id}","mode":"trim","start_ms":0,"end_ms":{end}}}]}}"#,
+            op_id = crate::domain::audio_edit::OperationId::new().as_str(),
+            end = AUTO_TRIM_MS,
+        )),
+        _ => None,
+    };
+
     let row = VoiceAssetRow {
         voice_asset_id: VoiceAssetId::new(),
         deployment_id: dep,
@@ -485,13 +503,13 @@ async fn upload_impl(state: &VoiceAssetsState, mut multipart: Multipart) -> Resu
         content_sha256,
         reference_text,
         sample_rate: probe.as_ref().and_then(|p| p.sample_rate),
-        duration_ms: probe.as_ref().map(|p| p.duration_ms),
+        duration_ms,
         source_type: "upload".into(),
         notes: None,
         is_active: true,
         preprocessed_artifact_ref: None,
         preprocessing_report_json: None,
-        edit_chain_json: None,
+        edit_chain_json,
         derived_artifact_ref: None,
         created_at: now,
         updated_at: now,
