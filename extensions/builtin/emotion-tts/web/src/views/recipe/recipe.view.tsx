@@ -369,6 +369,14 @@ export function RecipeView(): JSX.Element {
       workflowCustomised={workflow.workflow.customised}
       unmappableFields={workflow.unmappableFields}
       hero={<DeploymentHeader deployment={deployment} />}
+      quickActions={
+        <RunPanel
+          deploymentId={deployment.deploymentId}
+          createPayload={createPayload}
+          canGenerate={script.trim().length > 0}
+          diagnostics={legacyDiagnostics}
+        />
+      }
       scriptSection={
         <ScriptSection
           quickMode={quickMode}
@@ -449,12 +457,6 @@ export function RecipeView(): JSX.Element {
             onCachePolicyChange={setCachePolicy}
             generation={generation}
             onGenerationChange={setGeneration}
-          />
-          <RunPanel
-            deploymentId={deployment.deploymentId}
-            createPayload={createPayload}
-            canGenerate={script.trim().length > 0}
-            diagnostics={legacyDiagnostics}
           />
         </>
       }
