@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import {
@@ -61,14 +62,46 @@ function joinClasses(...parts: Array<string | false | undefined>): string {
   return parts.filter(Boolean).join(" ");
 }
 
+interface PopoverPosition {
+  top: number;
+  right: number;
+}
+
 export function TweakPanel() {
   const [open, setOpen] = useState(false);
   const [settings, setSettings] = useState<TweakSettings>(() => loadTweakSettings());
   const [announcement, setAnnouncement] = useState("");
+  const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
   const storageWarningEmitted = useRef(false);
   const reducedMotion = useReducedMotion();
+
+  // Portal positioning: compute the popover anchor from the trigger's
+  // bounding rect on every open + on resize/scroll while open. Anchoring
+  // via document.body escapes the workspace shell's `overflow: hidden`
+  // (which was clipping the popover to a thin sliver against the right
+  // viewport edge). Right-aligned to the trigger; 8px gap below.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const update = (): void => {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      setPopoverPosition({
+        top: rect.bottom + 8,
+        right: window.innerWidth - rect.right,
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open]);
 
   // Functional-updater pattern: avoids stale-closure bugs when multiple
   // setters fire in the same React batch. Stable identity (no deps).
@@ -148,6 +181,9 @@ export function TweakPanel() {
       if (target && !document.contains(target)) return;
       if (!wrapperRef.current) return;
       if (target && wrapperRef.current.contains(target)) return;
+      // Popover is portaled to document.body — clicks inside it are not
+      // children of the wrapper, so check the popover ref separately.
+      if (target && popoverRef.current && popoverRef.current.contains(target)) return;
       setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
@@ -183,12 +219,21 @@ export function TweakPanel() {
           tune
         </span>
       </button>
-      {open && (
+      {open && popoverPosition && typeof document !== "undefined" &&
+        createPortal(
         <LazyMotion features={domAnimation} strict>
           <m.div
+            ref={popoverRef}
             className={styles.popover}
             aria-label="Tweak panel"
             data-testid="tweak-panel"
+            style={{
+              position: "fixed",
+              top: popoverPosition.top,
+              right: popoverPosition.right,
+              left: "auto",
+              bottom: "auto",
+            }}
             initial={reducedMotion ? { opacity: 1 } : { opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{
@@ -248,7 +293,8 @@ export function TweakPanel() {
             {announcement}
           </div>
           </m.div>
-        </LazyMotion>
+        </LazyMotion>,
+        document.body,
       )}
     </div>
   );
