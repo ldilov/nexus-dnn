@@ -212,3 +212,44 @@ globalStyle("emotion-tts-app *", {
     },
   },
 });
+
+/* Scrollbars — mirror the host's contract so the look stays consistent
+ * when the user crosses from host shell into the extension surface. */
+globalStyle("emotion-tts-app *", {
+  scrollbarWidth: "thin",
+  scrollbarColor: `${vars.color.borderGhost} transparent`,
+});
+
+globalStyle("emotion-tts-app *::-webkit-scrollbar", {
+  // audit-allow: px — scrollbar dimensions are intentionally fixed
+  width: "10px",
+  // audit-allow: px — scrollbar dimensions are intentionally fixed
+  height: "10px",
+});
+
+globalStyle("emotion-tts-app *::-webkit-scrollbar-track", {
+  background: "transparent",
+});
+
+globalStyle("emotion-tts-app *::-webkit-scrollbar-thumb", {
+  background: vars.color.borderGhost,
+  borderRadius: vars.radius.pill,
+  // audit-allow: px — inset padding to float the thumb inside the track
+  border: "2px solid transparent",
+  backgroundClip: "padding-box",
+  transition: `background ${vars.motion.fast}`,
+});
+
+globalStyle("emotion-tts-app *::-webkit-scrollbar-thumb:hover", {
+  background: `color-mix(in oklab, var(--outline-variant, #46484a) 100%, transparent)`,
+  backgroundClip: "padding-box",
+});
+
+globalStyle("emotion-tts-app *::-webkit-scrollbar-thumb:active", {
+  background: vars.color.accent,
+  backgroundClip: "padding-box",
+});
+
+globalStyle("emotion-tts-app *::-webkit-scrollbar-corner", {
+  background: "transparent",
+});
