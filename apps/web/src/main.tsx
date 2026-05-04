@@ -17,7 +17,7 @@ import {
 
 rehydrateTweaks();
 
-window.addEventListener(NEXUS_HOST_NAVIGATE, (event) => {
+function handleHostNavigate(event: Event): void {
   const detail = (event as CustomEvent<NexusHostNavigateDetail>).detail;
   if (!detail) return;
   switch (detail.kind) {
@@ -29,7 +29,19 @@ window.addEventListener(NEXUS_HOST_NAVIGATE, (event) => {
     default:
       return;
   }
-});
+}
+
+window.addEventListener(NEXUS_HOST_NAVIGATE, handleHostNavigate);
+
+interface ViteHotMeta {
+  readonly hot?: { dispose(cb: () => void): void };
+}
+const viteMeta = import.meta as ImportMeta & ViteHotMeta;
+if (viteMeta.hot) {
+  viteMeta.hot.dispose(() => {
+    window.removeEventListener(NEXUS_HOST_NAVIGATE, handleHostNavigate);
+  });
+}
 
 const root = document.getElementById("root")!;
 root.classList.add(darkTheme);
