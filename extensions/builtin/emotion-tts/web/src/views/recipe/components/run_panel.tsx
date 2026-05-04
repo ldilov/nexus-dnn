@@ -190,12 +190,22 @@ export function RunPanel(props: Props): JSX.Element {
         ? "Generating…"
         : "Generate";
   const generateDisabled = !props.canGenerate || canCancel || !!blockingDiagnostic;
+  const isRunning = phase === "starting" || phase === "running";
+  // "idle" (breathing halo) only when we're truly ready to fire — otherwise
+  // the static disabled style applies.
   const generateState =
-    phase === "starting" || phase === "running" ? "running" : "idle";
+    isRunning
+      ? "running"
+      : !generateDisabled
+        ? "idle"
+        : "blocked";
 
   return (
     <div className={panel.root}>
       <div className={panel.card}>
+        <span className={panel.numeral} aria-hidden="true">
+          01
+        </span>
         <div className={panel.diagnostics}>
           <span className={panel.diagnosticsLabel}>
             Pre-flight
@@ -236,9 +246,9 @@ export function RunPanel(props: Props): JSX.Element {
             data-state={generateState}
             onClick={startRun}
             disabled={generateDisabled}
-            aria-busy={generateState === "running" || undefined}
+            aria-busy={isRunning || undefined}
           >
-            {generateState === "running" ? (
+            {isRunning ? (
               <span className={panel.spinner} aria-hidden="true" />
             ) : (
               <span className={panel.ctaIcon} aria-hidden="true">
@@ -247,15 +257,16 @@ export function RunPanel(props: Props): JSX.Element {
             )}
             {generateLabel}
           </button>
-          <button
-            type="button"
-            className={panel.cancelBtn}
-            onClick={cancel}
-            disabled={!canCancel}
-            aria-label="Cancel current run"
-          >
-            Cancel
-          </button>
+          {canCancel && (
+            <button
+              type="button"
+              className={panel.cancelBtn}
+              onClick={cancel}
+              aria-label="Cancel current run"
+            >
+              Cancel
+            </button>
+          )}
         </div>
       </div>
 
