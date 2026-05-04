@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 import { ConfirmDialog } from "../../../../components/base/confirm_dialog";
@@ -9,12 +9,25 @@ interface ArtifactsResponse {
   readonly total: number;
 }
 
-interface DeleteAllResponse {
+interface DeleteResponse {
   readonly deleted: number;
 }
 
 function buildArtifactPath(extensionId: string, deploymentId: string, suffix = ""): string {
   return `/api/v1/extensions/${extensionId}/deployments/${deploymentId}/artifacts${suffix}`;
+}
+
+/**
+ * Subset filter for bulk operations. The backend treats the `utteranceIds`
+ * query param as an OPT-IN filter on the existing bulk endpoints — when it
+ * is absent the operation acts on the full deployment, preserving the
+ * "delete all / download all" semantics.
+ */
+function appendIdsParam(url: string, ids: ReadonlySet<string>): string {
+  if (ids.size === 0) return url;
+  const params = new URLSearchParams();
+  params.set("utteranceIds", Array.from(ids).join(","));
+  return `${url}${url.includes("?") ? "&" : "?"}${params.toString()}`;
 }
 
 async function fetchArtifacts(path: string): Promise<ArtifactsResponse> {
@@ -43,6 +56,9 @@ export function ArtifactsView({ deploymentId, extensionId }: ArtifactsViewProps)
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [confirmDeleteAllOpen, setConfirmDeleteAllOpen] = useState(false);
   const [deleteAllBusy, setDeleteAllBusy] = useState(false);
+  const [confirmDeleteSelectedOpen, setConfirmDeleteSelectedOpen] = useState(false);
+  const [deleteSelectedBusy, setDeleteSelectedBusy] = useState(false);
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
 
   const swrKey = extensionId ? buildArtifactPath(extensionId, deploymentId) : null;
   const { data, error, isLoading, mutate } = useSWR<ArtifactsResponse>(
@@ -50,6 +66,37 @@ export function ArtifactsView({ deploymentId, extensionId }: ArtifactsViewProps)
     fetchArtifacts,
     { revalidateOnFocus: false },
   );
+
+  const artifacts = data?.artifacts ?? [];
+
+  // Drop selection IDs that no longer exist in the latest artifact list
+  // (e.g. after a single delete or a server-side prune). Pure derivation —
+  // no extra effects needed.
+  const visibleSelected = useMemo(() => {
+    if (selected.size === 0) return selected;
+    const present = new Set<string>();
+    for (const a of artifacts) {
+      if (selected.has(a.utteranceId)) present.add(a.utteranceId);
+    }
+    return present.size === selected.size ? selected : present;
+  }, [artifacts, selected]);
+
+  const handleToggleSelect = useCallback((utteranceId: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(utteranceId)) next.delete(utteranceId);
+      else next.add(utteranceId);
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    setSelected(new Set(artifacts.map((a) => a.utteranceId)));
+  }, [artifacts]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelected(new Set());
+  }, []);
 
   const handleDelete = useCallback(
     async (utteranceId: string) => {
@@ -69,6 +116,12 @@ export function ArtifactsView({ deploymentId, extensionId }: ArtifactsViewProps)
         }
         toast.success("Artifact deleted");
         if (playingId === utteranceId) setPlayingId(null);
+        setSelected((prev) => {
+          if (!prev.has(utteranceId)) return prev;
+          const next = new Set(prev);
+          next.delete(utteranceId);
+          return next;
+        });
         await mutate();
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Delete failed");
@@ -89,7 +142,7 @@ export function ArtifactsView({ deploymentId, extensionId }: ArtifactsViewProps)
           detail?.message ?? `Failed to delete all (HTTP ${resp.status})`,
         );
       }
-      const body = (await resp.json()) as DeleteAllResponse;
+      const body = (await resp.json()) as DeleteResponse;
       toast.success(
         body.deleted > 0
           ? `Deleted ${body.deleted} artifact${body.deleted === 1 ? "" : "s"}`
@@ -97,6 +150,7 @@ export function ArtifactsView({ deploymentId, extensionId }: ArtifactsViewProps)
       );
       setConfirmDeleteAllOpen(false);
       setPlayingId(null);
+      setSelected(new Set());
       await mutate();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Delete-all failed");
@@ -105,11 +159,52 @@ export function ArtifactsView({ deploymentId, extensionId }: ArtifactsViewProps)
     }
   }, [deploymentId, extensionId, mutate]);
 
+  const handleConfirmDeleteSelected = useCallback(async () => {
+    if (!extensionId || visibleSelected.size === 0) return;
+    setDeleteSelectedBusy(true);
+    const path = appendIdsParam(
+      buildArtifactPath(extensionId, deploymentId),
+      visibleSelected,
+    );
+    try {
+      const resp = await fetch(path, { method: "DELETE" });
+      if (!resp.ok) {
+        const detail = await safeJson(resp);
+        throw new Error(
+          detail?.message ?? `Failed to delete selection (HTTP ${resp.status})`,
+        );
+      }
+      const body = (await resp.json()) as DeleteResponse;
+      toast.success(
+        body.deleted > 0
+          ? `Deleted ${body.deleted} artifact${body.deleted === 1 ? "" : "s"}`
+          : "Nothing to delete",
+      );
+      setConfirmDeleteSelectedOpen(false);
+      if (playingId && visibleSelected.has(playingId)) setPlayingId(null);
+      setSelected(new Set());
+      await mutate();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete-selected failed");
+    } finally {
+      setDeleteSelectedBusy(false);
+    }
+  }, [deploymentId, extensionId, mutate, playingId, visibleSelected]);
+
   const handleDownloadZip = useCallback(() => {
     if (!extensionId) return;
     const path = buildArtifactPath(extensionId, deploymentId, ".zip");
     window.location.href = path;
   }, [deploymentId, extensionId]);
+
+  const handleDownloadSelected = useCallback(() => {
+    if (!extensionId || visibleSelected.size === 0) return;
+    const path = appendIdsParam(
+      buildArtifactPath(extensionId, deploymentId, ".zip"),
+      visibleSelected,
+    );
+    window.location.href = path;
+  }, [deploymentId, extensionId, visibleSelected]);
 
   const buildDownloadUrl = useCallback(
     (utteranceId: string) =>
@@ -120,6 +215,7 @@ export function ArtifactsView({ deploymentId, extensionId }: ArtifactsViewProps)
   );
 
   if (!extensionId) {
+    const noop = () => {};
     return (
       <ArtifactsUI
         artifacts={[]}
@@ -128,10 +224,16 @@ export function ArtifactsView({ deploymentId, extensionId }: ArtifactsViewProps)
           "This deployment isn't bound to an extension — artifacts are only produced by extension-driven runs."
         }
         playingId={null}
-        onPlayToggle={() => {}}
-        onDelete={() => {}}
-        onDeleteAll={() => {}}
-        onDownloadZip={() => {}}
+        selected={new Set()}
+        onPlayToggle={noop}
+        onDelete={noop}
+        onDeleteAll={noop}
+        onDownloadZip={noop}
+        onToggleSelect={noop}
+        onSelectAll={noop}
+        onClearSelection={noop}
+        onDeleteSelected={noop}
+        onDownloadSelected={noop}
         buildDownloadUrl={() => ""}
       />
     );
@@ -140,14 +242,20 @@ export function ArtifactsView({ deploymentId, extensionId }: ArtifactsViewProps)
   return (
     <>
       <ArtifactsUI
-        artifacts={data?.artifacts ?? []}
+        artifacts={artifacts}
         loading={isLoading}
         error={error instanceof Error ? error.message : null}
         playingId={playingId}
+        selected={visibleSelected}
         onPlayToggle={(id) => setPlayingId((prev) => (prev === id ? null : id))}
         onDelete={handleDelete}
         onDeleteAll={() => setConfirmDeleteAllOpen(true)}
         onDownloadZip={handleDownloadZip}
+        onToggleSelect={handleToggleSelect}
+        onSelectAll={handleSelectAll}
+        onClearSelection={handleClearSelection}
+        onDeleteSelected={() => setConfirmDeleteSelectedOpen(true)}
+        onDownloadSelected={handleDownloadSelected}
         buildDownloadUrl={buildDownloadUrl}
       />
       <ConfirmDialog
@@ -166,6 +274,24 @@ export function ArtifactsView({ deploymentId, extensionId }: ArtifactsViewProps)
         onConfirm={handleConfirmDeleteAll}
         onCancel={() => {
           if (!deleteAllBusy) setConfirmDeleteAllOpen(false);
+        }}
+      />
+      <ConfirmDialog
+        open={confirmDeleteSelectedOpen}
+        eyebrow="Destructive action"
+        title={`Delete ${visibleSelected.size} selected artifact${visibleSelected.size === 1 ? "" : "s"}?`}
+        description="Selected audio artifacts will be detached from the listing. The underlying run rows are kept so you can still see what was generated."
+        impactLines={[
+          `${visibleSelected.size} artifact reference${visibleSelected.size === 1 ? " is" : "s are"} cleared.`,
+          "Other artifacts in this deployment are untouched.",
+          "Run history and per-utterance metadata stay.",
+        ]}
+        confirmLabel={`Delete ${visibleSelected.size}`}
+        destructive
+        busy={deleteSelectedBusy}
+        onConfirm={handleConfirmDeleteSelected}
+        onCancel={() => {
+          if (!deleteSelectedBusy) setConfirmDeleteSelectedOpen(false);
         }}
       />
     </>

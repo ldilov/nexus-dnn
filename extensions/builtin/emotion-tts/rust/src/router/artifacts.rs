@@ -94,6 +94,32 @@ fn default_limit() -> i64 {
     200
 }
 
+/// Optional subset filter for bulk operations (`DELETE /artifacts` and
+/// `GET /artifacts.zip`). When `utteranceIds` is absent the operation
+/// targets the entire deployment — preserving the original "delete all"
+/// / "download all" semantics. When present it is a comma-separated list
+/// of utterance ids; only those rows are affected. Empty / whitespace
+/// entries are skipped, and unknown ids are silently ignored (404 would
+/// be misleading when the row was already detached).
+#[derive(Debug, Default, Deserialize)]
+pub struct BulkSelectionQuery {
+    #[serde(rename = "utteranceIds", default)]
+    pub utterance_ids: Option<String>,
+}
+
+impl BulkSelectionQuery {
+    fn parsed_ids(&self) -> Vec<UtteranceId> {
+        let Some(raw) = self.utterance_ids.as_deref() else {
+            return Vec::new();
+        };
+        raw.split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .filter_map(|s| UtteranceId::try_from(s).ok())
+            .collect()
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ArtifactRow {
     utterance_id: String,
@@ -391,21 +417,46 @@ async fn delete_artifact(
 async fn delete_all_artifacts(
     State(state): State<ArtifactsState>,
     Path(deployment_id): Path<String>,
+    Query(selection): Query<BulkSelectionQuery>,
 ) -> Response {
     let dep = match DeploymentId::try_from(deployment_id.as_str()) {
         Ok(v) => v,
         Err(err) => return EmotionTtsError::from(err).into_response(),
     };
-    let result = sqlx::query(
+
+    let selected_ids = selection.parsed_ids();
+    let has_filter = selection.utterance_ids.is_some();
+
+    // An explicit-but-empty selection would otherwise translate to "delete
+    // everything"; treat it as a no-op so the UI bug "user clicked Delete
+    // selected with nothing valid checked" never wipes the whole deployment.
+    if has_filter && selected_ids.is_empty() {
+        return (StatusCode::OK, Json(json!({ "deleted": 0 }))).into_response();
+    }
+
+    let mut sql = String::from(
         "UPDATE ext_emotion_tts__utterances \
          SET audio_artifact_ref = NULL, derived_artifact_ref = NULL, \
              updated_at = strftime('%s', 'now') \
          WHERE run_id IN (SELECT run_id FROM ext_emotion_tts__runs WHERE deployment_id = ?) \
            AND audio_artifact_ref IS NOT NULL",
-    )
-    .bind(dep.as_str())
-    .execute(&state.repos.pool)
-    .await;
+    );
+    if !selected_ids.is_empty() {
+        sql.push_str(" AND utterance_id IN (");
+        for i in 0..selected_ids.len() {
+            if i > 0 {
+                sql.push(',');
+            }
+            sql.push('?');
+        }
+        sql.push(')');
+    }
+
+    let mut q = sqlx::query(&sql).bind(dep.as_str());
+    for id in &selected_ids {
+        q = q.bind(id.as_str());
+    }
+    let result = q.execute(&state.repos.pool).await;
 
     match result {
         Ok(res) => (
@@ -420,14 +471,34 @@ async fn delete_all_artifacts(
 async fn download_zip(
     State(state): State<ArtifactsState>,
     Path(deployment_id): Path<String>,
+    Query(selection): Query<BulkSelectionQuery>,
 ) -> Response {
     let Some(store) = state.artifact_store.as_ref().cloned() else {
         return not_configured_response();
     };
 
+    let selected_ids = selection.parsed_ids();
+    let has_filter = selection.utterance_ids.is_some();
+    if has_filter && selected_ids.is_empty() {
+        return EmotionTtsError::not_found(format!(
+            "no matching artifacts for deployment {deployment_id}"
+        ))
+        .into_response();
+    }
+
     let rows = match fetch_artifacts(&state, &deployment_id, 10_000).await {
         Ok(r) => r,
         Err(err) => return err.into_response(),
+    };
+
+    let rows: Vec<ArtifactRow> = if selected_ids.is_empty() {
+        rows
+    } else {
+        let allow: std::collections::HashSet<&str> =
+            selected_ids.iter().map(|id| id.as_str()).collect();
+        rows.into_iter()
+            .filter(|r| allow.contains(r.utterance_id.as_str()))
+            .collect()
     };
 
     if rows.is_empty() {
