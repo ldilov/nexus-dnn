@@ -1,7 +1,6 @@
 import { useCallback, useEffect } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import { LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
-import { Link } from "react-router";
 import { useSuggestionStream, type UseSuggestionStreamOptions } from "./ai_suggestion_stream";
 import * as styles from "./ai_suggestion_pill.css";
 
@@ -72,7 +71,7 @@ export function AiSuggestionPill({
     return () => window.removeEventListener("keydown", onKey, { capture: true });
   }, [state.phase, handleAccept, handleDismiss]);
 
-  if (state.phase === "idle" || state.phase === "dismissed") return null;
+  if (state.phase === "idle" || state.phase === "dismissed" || state.phase === "no_backend") return null;
 
   const isError = state.phase === "error";
   return (
@@ -159,25 +158,6 @@ function PillBody({ state, onAccept, onDismiss, onRetry }: PillBodyProps) {
           </div>
         </>
       );
-    case "no_backend":
-      return (
-        <>
-          <Eyebrow label="AI · Offline" />
-          <div className={styles.body}>
-            <span className={`${styles.text} ${styles.muted}`}>
-              {state.errorMessage ??
-                "No AI backend is currently configured. Add one to enable inline suggestions."}
-            </span>
-            <Actions>
-              <CtaLink
-                href={state.noBackendCta?.href ?? "/backends"}
-                label={state.noBackendCta?.label ?? "Configure backend"}
-              />
-              <DismissButton onClick={onDismiss} />
-            </Actions>
-          </div>
-        </>
-      );
     case "error":
       return (
         <>
@@ -246,22 +226,3 @@ function preventBubble(e: KeyboardEvent<HTMLElement>) {
   }
 }
 
-function CtaLink({ href, label }: { href: string; label: string }) {
-  // Use SPA <Link> for in-app routes so the running draft state survives
-  // navigation (sessionStorage persists, but in-flight motion/abort state
-  // would otherwise be torn down on full reload). Fall back to a plain
-  // <a> for any href that isn't an in-app route (external CTAs).
-  const isInApp = href.startsWith("/");
-  if (isInApp) {
-    return (
-      <Link className={styles.ctaLink} to={href}>
-        {label} →
-      </Link>
-    );
-  }
-  return (
-    <a className={styles.ctaLink} href={href}>
-      {label} →
-    </a>
-  );
-}
