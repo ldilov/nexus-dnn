@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import {
@@ -7,16 +7,16 @@ import {
   stopRuntime,
   type RuntimeHealth,
 } from "../../../services/runtime_client";
+import {
+  dispatchTriggerGenerate,
+  subscribeRunState,
+} from "../lib/run_events";
 import * as css from "./sticky_action_bar.css";
 
 interface Props {
   visible: boolean;
   /** True when the script has content + Generate is otherwise eligible. */
   canGenerate: boolean;
-}
-
-interface RunStateDetail {
-  busy: boolean;
 }
 
 const HEALTH_POLL_MS = 4000;
@@ -33,13 +33,20 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
   const [health, setHealth] = useState<RuntimeHealth | null>(null);
   const [runtimeBusy, setRuntimeBusy] = useState(false);
   const [generateBusy, setGenerateBusy] = useState(false);
+  // Health updates every 4s; reading it from a ref inside `onRunClick`
+  // means the callback closure stays stable and always sees the most recent
+  // badge — no flicker when a click lands between polls (I-4).
+  const healthRef = useRef<RuntimeHealth | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const poll = async (): Promise<void> => {
       try {
         const h = await getRuntimeHealth();
-        if (!cancelled) setHealth(h);
+        if (!cancelled) {
+          healthRef.current = h;
+          setHealth(h);
+        }
       } catch {
         // ignore — overlay is best-effort
       }
@@ -55,16 +62,13 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
   // Listen to RunPanel's broadcast so our Generate button reflects the
   // current run phase without lifting state up.
   useEffect(() => {
-    const onState = (event: Event): void => {
-      const detail = (event as CustomEvent<RunStateDetail>).detail;
-      setGenerateBusy(Boolean(detail?.busy));
-    };
-    window.addEventListener("emotion-tts:run-state", onState);
-    return () => window.removeEventListener("emotion-tts:run-state", onState);
+    return subscribeRunState((detail) => {
+      setGenerateBusy(Boolean(detail.busy));
+    });
   }, []);
 
   const onGenerate = useCallback((): void => {
-    window.dispatchEvent(new CustomEvent("emotion-tts:trigger-generate"));
+    dispatchTriggerGenerate();
   }, []);
 
   const badge = health?.badge ?? "not_installed";
@@ -73,9 +77,15 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
   const runtimeReady = isRunning;
 
   const onRunClick = useCallback(async (): Promise<void> => {
+    // Re-derive intent from the ref at click-time so we never act on a stale
+    // `isRunning` captured at render. Keeps the callback dep-free and avoids
+    // mid-flight label flicker when the health poll fires between two clicks.
+    const currentBadge = healthRef.current?.badge ?? "not_installed";
+    const currentlyRunning =
+      currentBadge === "ready" || currentBadge === "running";
     setRuntimeBusy(true);
     try {
-      if (isRunning) {
+      if (currentlyRunning) {
         await stopRuntime();
         toast.success("Runtime stopped");
       } else {
@@ -87,7 +97,7 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
     } finally {
       setRuntimeBusy(false);
     }
-  }, [isRunning]);
+  }, []);
 
   const runtimeLabel = isRunning
     ? "Stop runtime"

@@ -19,13 +19,13 @@ export const root = style({
 
 export const card = style({
   position: "relative",
-  display: "grid",
-  gridTemplateColumns: "auto minmax(0, 1fr) auto",
-  gap: vars.space.lg,
+  display: "flex",
   alignItems: "center",
-  paddingBlock: vars.space.md,
-  paddingInline: vars.space.lg,
-  borderRadius: vars.radius.lg,
+  flexWrap: "wrap",
+  gap: vars.space.md,
+  paddingBlock: vars.space.sm,
+  paddingInline: vars.space.md,
+  borderRadius: vars.radius.md,
   background: `linear-gradient(135deg,
     color-mix(in oklab, ${vars.color.accent} 8%, ${vars.color.surfaceMuted}) 0%,
     ${vars.color.surfaceMuted} 60%)`,
@@ -37,73 +37,50 @@ export const card = style({
       position: "absolute",
       inset: 0,
       pointerEvents: "none",
-      background: `radial-gradient(620px 200px at 100% 0%, color-mix(in oklab, ${vars.color.accent} 14%, transparent), transparent 70%)`,
-    },
-  },
-  "@media": {
-    "(max-width: 720px)": {
-      gridTemplateColumns: "minmax(0, 1fr)",
-      gap: vars.space.lg,
-      paddingInline: vars.space.lg,
+      background: `radial-gradient(620px 200px at 100% 0%, color-mix(in oklab, ${vars.color.accent} 12%, transparent), transparent 70%)`,
     },
   },
 });
 
-/* Editorial anchor — mono numeral, soft accent. */
+/* Tiny mono numeral — sits inline with the eyebrow label, no longer a
+   separate column. Keeps editorial anchor without dominating the row. */
 export const numeral = style({
-  position: "relative",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: "32px",
   fontFamily: vars.font.mono,
-  fontSize: "1.5rem",
-  fontWeight: 600,
-  letterSpacing: "-0.02em",
-  lineHeight: 1,
-  color: `color-mix(in oklab, ${vars.color.accent} 70%, transparent)`,
-  selectors: {
-    "&::after": {
-      content: '""',
-      position: "absolute",
-      right: "-12px",
-      top: "10%",
-      bottom: "10%",
-      width: "1px",
-      background: `linear-gradient(to bottom, transparent, ${vars.color.borderGhost} 30%, ${vars.color.borderGhost} 70%, transparent)`,
-    },
-  },
-  "@media": {
-    "(max-width: 720px)": {
-      display: "none",
-    },
-  },
+  fontSize: vars.text.caption,
+  fontWeight: 700,
+  letterSpacing: vars.tracking.label,
+  color: vars.color.accent,
+  textTransform: "uppercase",
 });
 
+/* Diagnostics — single row, label and chips inline with the CTA. */
 export const diagnostics = style({
   position: "relative",
   display: "flex",
-  flexDirection: "column",
+  alignItems: "center",
+  flexWrap: "wrap",
   gap: vars.space.sm,
+  flex: "1 1 auto",
   minWidth: 0,
 });
 
 export const diagnosticsLabel = style({
   display: "inline-flex",
   alignItems: "center",
-  gap: vars.space.sm,
+  gap: vars.space.xs,
   fontFamily: vars.font.mono,
   fontSize: vars.text.micro,
   textTransform: "uppercase",
   letterSpacing: vars.tracking.label,
   color: vars.color.textFaint,
   fontWeight: 600,
+  whiteSpace: "nowrap",
 });
 
 export const diagList = style({
-  display: "flex",
+  display: "inline-flex",
   flexWrap: "wrap",
-  gap: vars.space.sm,
+  gap: vars.space.xs,
   listStyle: "none",
   padding: 0,
   margin: 0,
@@ -112,8 +89,9 @@ export const diagList = style({
 export const diagItem = style({
   display: "inline-flex",
   alignItems: "center",
-  gap: vars.space.sm,
+  gap: vars.space.xs,
   paddingInline: vars.space.sm,
+  // 28px chip aligns with 32px Generate button (sm) on the same baseline.
   height: "28px",
   borderRadius: vars.radius.pill,
   background: vars.color.surface,
@@ -215,6 +193,29 @@ export const ctaIcon = style({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+});
+
+/* When the floating sticky toolbar takes over the Generate CTA, the in-page
+   button collapses to a quiet status line so the user has exactly one
+   visible primary action per spec I-3. */
+export const stickyHandoff = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.space.xs,
+  paddingInline: vars.space.md,
+  paddingBlock: vars.space.sm,
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.caption,
+  letterSpacing: vars.tracking.label,
+  textTransform: "uppercase",
+  color: vars.color.textMuted,
+  borderRadius: vars.radius.pill,
+  background: `color-mix(in oklab, ${vars.color.surfaceHigh} 85%, transparent)`,
+  whiteSpace: "nowrap",
+});
+
+export const stickyHandoffArrow = style({
+  color: vars.color.accent,
 });
 
 export const queueChip = style({
