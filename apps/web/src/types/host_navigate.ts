@@ -33,10 +33,12 @@ export type NexusHostNavigateDetail = DeploymentDetailNavigate;
 
 /**
  * Convenience helper for in-host code that wants to fire the same event a
- * remote extension would (e.g. tests, dev tools, the gallery). Returns the
- * raw `dispatchEvent` value but note: the event is intentionally NOT
- * `cancelable`, so the return value is always `true` and is NOT a
- * "did-anyone-handle-this" signal. Callers cannot use it as a fallback gate.
+ * remote extension would (e.g. tests, dev tools, the gallery).
+ *
+ * Returns `true` if dispatched (browser context), `false` only when there
+ * is no `window` (SSR / non-browser test runner). The event is intentionally
+ * NOT `cancelable`, so the return value is NOT a "did-anyone-handle-this"
+ * signal. Callers must not use it as a fallback gate.
  */
 export function dispatchHostNavigate(detail: NexusHostNavigateDetail): boolean {
   if (typeof window === "undefined") return false;
