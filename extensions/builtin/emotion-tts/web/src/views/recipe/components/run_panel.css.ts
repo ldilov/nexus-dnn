@@ -163,82 +163,48 @@ export const diagDetail = style({
   color: vars.color.textMuted,
 });
 
+/* CTA slot — wraps the canonical Button primitive. The breathing halo
+ * around the Generate button is rendered by `cta::before` when
+ * `data-state="idle"` so the Button itself stays a vanilla primary md
+ * shape and pulls every visual rule from the design system. */
+const ctaBreath = keyframes({
+  "0%, 100%": {
+    opacity: 0.35,
+    transform: "scale(1)",
+  },
+  "50%": {
+    opacity: 0.7,
+    transform: "scale(1.05)",
+  },
+});
+
 export const cta = style({
   position: "relative",
   display: "flex",
   alignItems: "center",
   gap: vars.space.md,
   flexShrink: 0,
-});
-
-const ctaPulse = keyframes({
-  "0%, 100%": {
-    boxShadow: `0 8px 24px -8px color-mix(in oklab, ${vars.color.accent} 60%, transparent), 0 0 0 0 color-mix(in oklab, ${vars.color.accent} 60%, transparent), inset 0 1px 0 0 color-mix(in oklab, white 14%, transparent)`,
-  },
-  "50%": {
-    boxShadow: `0 12px 32px -8px color-mix(in oklab, ${vars.color.accent} 80%, transparent), 0 0 0 8px color-mix(in oklab, ${vars.color.accent} 0%, transparent), inset 0 1px 0 0 color-mix(in oklab, white 22%, transparent)`,
-  },
-});
-
-const ctaBreath = keyframes({
-  "0%, 100%": {
-    boxShadow: `0 8px 24px -8px color-mix(in oklab, ${vars.color.accent} 60%, transparent), 0 0 0 0 color-mix(in oklab, ${vars.color.accent} 0%, transparent), inset 0 1px 0 0 color-mix(in oklab, white 14%, transparent)`,
-  },
-  "50%": {
-    boxShadow: `0 14px 38px -8px color-mix(in oklab, ${vars.color.accent} 85%, transparent), 0 0 0 8px color-mix(in oklab, ${vars.color.accent} 0%, transparent), inset 0 1px 0 0 color-mix(in oklab, white 22%, transparent), ${vars.shadow.glow}`,
-  },
-});
-
-export const generateBtn = style({
-  appearance: "none",
-  display: "inline-flex",
-  alignItems: "center",
-  gap: vars.space.sm,
-  height: "40px",
-  paddingInline: vars.space.lg,
-  border: "none",
-  borderRadius: vars.radius.md,
-  background: vars.color.accent,
-  color: vars.color.accentOn,
-  fontFamily: vars.font.body,
-  fontSize: vars.text.body,
-  fontWeight: 600,
-  letterSpacing: "-0.005em",
-  cursor: "pointer",
-  boxShadow: `0 8px 24px -8px color-mix(in oklab, ${vars.color.accent} 60%, transparent), inset 0 1px 0 0 color-mix(in oklab, white 14%, transparent)`,
-  transition: `transform ${vars.motion.fast}, box-shadow ${vars.motion.fast}, color ${vars.motion.fast}, background ${vars.motion.fast}`,
   selectors: {
-    /* When pre-flight is green and runtime is ready, breathe a slow halo. */
-    '&[data-state="idle"]:not(:disabled)': {
+    "&::before": {
+      content: '""',
+      position: "absolute",
+      // audit-allow: px — halo overshoot beyond Button bounds.
+      inset: "-6px",
+      borderRadius: vars.radius.lg,
+      background: `radial-gradient(closest-side, color-mix(in oklab, ${vars.color.accent} 35%, transparent), transparent 70%)`,
+      opacity: 0,
+      pointerEvents: "none",
+      transition: `opacity ${vars.motion.normal}`,
+    },
+    '&[data-state="idle"]::before': {
       animation: `${ctaBreath} 3.6s ease-in-out infinite`,
-    },
-    "&:hover:not(:disabled)": {
-      color: vars.color.text,
-      transform: "translateY(-1px) scale(1.015)",
-      animation: "none",
-      boxShadow: `0 14px 36px -8px color-mix(in oklab, ${vars.color.accent} 90%, transparent), ${vars.shadow.glow}, inset 0 1px 0 0 color-mix(in oklab, white 28%, transparent)`,
-    },
-    "&:active:not(:disabled)": {
-      transform: "translateY(0) scale(0.99)",
-    },
-    "&:focus-visible": {
-      outline: `2px solid ${vars.color.accent}`,
-      outlineOffset: "3px",
-    },
-    '&[data-state="running"]': {
-      animation: `${ctaPulse} 1.6s ease-in-out infinite`,
-    },
-    "&:disabled": {
-      cursor: "not-allowed",
-      opacity: 0.55,
-      filter: "saturate(0.6)",
-      boxShadow: "none",
-      animation: "none",
     },
   },
   "@media": {
     "(prefers-reduced-motion: reduce)": {
-      animation: "none",
+      selectors: {
+        "&::before": { animation: "none" },
+      },
     },
   },
 });
@@ -249,59 +215,6 @@ export const ctaIcon = style({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-});
-
-/* Cancel demoted to ghost-text. Hover surfaces danger tint. */
-export const cancelBtn = style({
-  appearance: "none",
-  display: "inline-flex",
-  alignItems: "center",
-  height: "32px",
-  paddingInline: vars.space.md,
-  border: "none",
-  borderRadius: vars.radius.sm,
-  background: "transparent",
-  color: vars.color.textMuted,
-  fontFamily: vars.font.mono,
-  fontSize: vars.text.micro,
-  fontWeight: 600,
-  letterSpacing: vars.tracking.label,
-  textTransform: "uppercase",
-  cursor: "pointer",
-  transition: `background ${vars.motion.fast}, color ${vars.motion.fast}`,
-  selectors: {
-    "&:hover:not(:disabled)": {
-      background: `color-mix(in oklab, ${vars.color.danger} 14%, transparent)`,
-      color: vars.color.danger,
-    },
-    "&:focus-visible": {
-      outline: `2px solid ${vars.color.danger}`,
-      outlineOffset: "2px",
-    },
-    "&:disabled": {
-      opacity: 0.35,
-      cursor: "not-allowed",
-    },
-  },
-});
-
-const spinKeyframes = keyframes({
-  to: { transform: "rotate(360deg)" },
-});
-
-export const spinner = style({
-  display: "inline-block",
-  width: "16px",
-  height: "16px",
-  borderRadius: "50%",
-  border: `2px solid color-mix(in oklab, currentColor 25%, transparent)`,
-  borderTopColor: "currentColor",
-  animation: `${spinKeyframes} 0.8s linear infinite`,
-  "@media": {
-    "(prefers-reduced-motion: reduce)": {
-      animation: "none",
-    },
-  },
 });
 
 export const queueChip = style({
