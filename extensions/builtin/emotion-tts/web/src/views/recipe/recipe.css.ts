@@ -480,3 +480,7 @@ export const preflightDetail = style({
   fontSize: vars.text.micro,
   color: vars.color.textMuted,
 });
+
+export const castListItem = style({
+  listStyle: "none",
+});

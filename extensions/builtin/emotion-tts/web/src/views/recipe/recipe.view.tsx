@@ -22,8 +22,7 @@ import type {
   RunSummary,
 } from "../../services/types";
 import { listVoiceAssets, uploadVoiceAsset, type VoiceAsset } from "../../services/voice_assets_client";
-import { Popover } from "../../components/popover";
-import * as popoverCss from "../../components/popover.css";
+import { castListItem as castListItemClass } from "./recipe.css";
 import { VoiceLibrary } from "./components/voice_library/voice_library";
 import { listPresets, type VectorPreset } from "../../services/presets_client";
 import type { WorkflowResponse } from "../../services/workflows_client";
@@ -35,11 +34,11 @@ import { EmotionStudio } from "./components/emotion_studio";
 import { GenerationSettingsPanel } from "./components/generation_settings_panel";
 import { ParsedDialogue } from "./components/parsed_dialogue";
 import { PerformanceSliders, PERFORMANCE_DEFAULTS, type PerformanceSlidersValue } from "./components/performance_sliders";
-import { PreFlightBlock, type PreFlightCheck } from "./components/pre_flight_block";
-import { QuickVoicePicker } from "./components/quick_voice_picker";
+import { PreFlightBlock } from "./components/pre_flight_block";
 import { RecentRuns } from "./components/recent_runs";
 import { RunPanel } from "./components/run_panel";
-import { ScriptEditor } from "./components/script_editor";
+import { ScriptSection } from "./components/script_section/script_section";
+import { buildDiagnostics } from "./lib/build_diagnostics";
 import {
   assignCharacterColors,
   lineCountByCharacter,
@@ -61,6 +60,8 @@ const notify = {
   },
 };
 
+const RECIPE_META_KEY = "__recipe";
+
 function safeParseGeneration(json: string): Record<string, unknown> {
   try {
     const v = JSON.parse(json) as unknown;
@@ -68,6 +69,21 @@ function safeParseGeneration(json: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function stripRecipeMeta(
+  overrides: Record<string, unknown>,
+): Record<string, unknown> {
+  // The namespaced `__recipe` blob is a sidecar for UI settings (quickMode,
+  // cachePolicy) and must not bleed into the generation-overrides payload
+  // sent to the worker. Build a fresh object excluding that key without
+  // tripping the unused-binding lint.
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(overrides)) {
+    if (key === RECIPE_META_KEY) continue;
+    out[key] = overrides[key];
+  }
+  return out;
 }
 
 interface LoaderData {
@@ -94,7 +110,7 @@ export function RecipeView(): JSX.Element {
     [deployment.defaultGenerationOverridesJson],
   );
   const seededRecipeMeta = useMemo(() => {
-    const meta = seededOverrides["__recipe"];
+    const meta = seededOverrides[RECIPE_META_KEY];
     return typeof meta === "object" && meta !== null
       ? (meta as Record<string, unknown>)
       : {};
@@ -109,18 +125,12 @@ export function RecipeView(): JSX.Element {
     mode: "none",
     emotionAlpha: 1.0,
   });
-  const [generation, setGeneration] = useState<Record<string, unknown>>(() => {
-    // Strip the namespaced `__recipe` blob — it's a sidecar for UI settings,
-    // not part of the actual generation overrides sent to the worker.
-    const { __recipe: _ignored, ...rest } = seededOverrides;
-    void _ignored;
-    return {
-      temperature: 0.8,
-      top_p: 0.8,
-      seed: 42,
-      ...rest,
-    };
-  });
+  const [generation, setGeneration] = useState<Record<string, unknown>>(() => ({
+    temperature: 0.8,
+    top_p: 0.8,
+    seed: 42,
+    ...stripRecipeMeta(seededOverrides),
+  }));
   const [cachePolicy, setCachePolicy] = useState<CachePolicy>(() => {
     const v = seededRecipeMeta["cachePolicy"];
     return v === "use_cache" || v === "force_regenerate" || v === "read_only_cache"
@@ -173,7 +183,7 @@ export function RecipeView(): JSX.Element {
     const handle = window.setTimeout(() => {
       const overrides = {
         ...generation,
-        __recipe: {
+        [RECIPE_META_KEY]: {
           quickMode,
           cachePolicy,
         },
@@ -431,381 +441,123 @@ export function RecipeView(): JSX.Element {
     <>
       <Toaster position="bottom-right" richColors theme="dark" />
       <RecipeUi
-      deployment={deployment}
-      canGenerate={script.trim().length > 0}
-      workflowCustomised={workflow.workflow.customised}
-      unmappableFields={workflow.unmappableFields}
-      hero={<DeploymentHeader deployment={deployment} />}
-      quickActions={
-        <RunPanel
-          deploymentId={deployment.deploymentId}
-          createPayload={createPayload}
-          canGenerate={script.trim().length > 0}
-          diagnostics={legacyDiagnostics}
-        />
-      }
-      scriptSection={
-        <ScriptSection
-          quickMode={quickMode}
-          onToggleQuickMode={setQuickMode}
-          deployment={deployment}
-          script={script}
-          onScriptChange={setScript}
-          outputFormat={outputFormat}
-          mappingsByLower={mappingsByLower}
-          defaultVoiceAssetId={defaultVoiceAssetId}
-          onDefaultVoiceAssetIdChange={setDefaultVoiceAssetId}
-        />
-      }
-      parsedDialogueSection={
-        <ParsedDialogue lines={parsedLines} characterColors={characterColors} />
-      }
-      voiceLibrarySection={
-        <VoiceLibrary
-          deploymentId={deployment.deploymentId}
-          voiceAssets={voiceAssets}
-          mappings={mappings}
-          characterColors={characterColors}
-          onVoiceAssetsChange={setVoiceAssets}
-        />
-      }
-      castSection={
-        <CastSection unmappedCount={unmappedCount} totalCount={characters.length}>
-          {characters.map((name) => {
-            const mapping = mappingsByLower.get(name.toLowerCase()) ?? null;
-            // audit-allow: hex — neon decorative palette per design lang
-            const color = characterColors[name] ?? "#ba9eff";
-            return (
-              <li key={name} style={{ listStyle: "none" }}>
-                <CastRow
-                  characterName={name}
-                  color={color}
-                  lineCount={lineCounts[name] ?? 0}
-                  mapping={mapping}
-                  voiceAssets={voiceAssets}
-                  presets={vectorPresets}
-                  active={activeCastCharacter === name}
-                  onToggle={() =>
-                    setActiveCastCharacter((c) => (c === name ? null : name))
-                  }
-                  onAssignVoiceAsset={(voiceAssetId) =>
-                    upsertMapping(name, { speakerVoiceAssetId: voiceAssetId })
-                  }
-                  onAssignPreset={(presetId) =>
-                    upsertMapping(name, { defaultVectorPresetId: presetId })
-                  }
-                  onUploadFile={(file) => handleUploadAndMap(name, file)}
-                  onClearMapping={() => handleClearMapping(name)}
-                />
-              </li>
-            );
-          })}
-        </CastSection>
-      }
-      emotionSection={
-        <EmotionStudio
-          value={globalEmotion}
-          onChange={setGlobalEmotion}
-          deploymentId={deployment.deploymentId}
-        />
-      }
-      performanceSection={
-        <>
-          <PerformanceSliders
-            value={{ ...performance, pace: speedFactor }}
-            onChange={(next) => {
-              setPerformance(next);
-              if (next.pace !== speedFactor) setSpeedFactor(next.pace);
-            }}
+        deployment={deployment}
+        canGenerate={script.trim().length > 0}
+        workflowCustomised={workflow.workflow.customised}
+        unmappableFields={workflow.unmappableFields}
+        hero={<DeploymentHeader deployment={deployment} />}
+        quickActions={
+          <RunPanel
+            deploymentId={deployment.deploymentId}
+            createPayload={createPayload}
+            canGenerate={script.trim().length > 0}
+            diagnostics={legacyDiagnostics}
           />
-          <DirectModSliderStrip
-            state={sliderState}
-            onChange={handleSliderChange}
-            supportsSynthSpeed={false}
-          />
-          <PreFlightBlock checks={diagnostics} />
-          <GenerationSettingsPanel
+        }
+        scriptSection={
+          <ScriptSection
+            quickMode={quickMode}
+            onToggleQuickMode={setQuickMode}
+            deployment={deployment}
+            script={script}
+            onScriptChange={setScript}
             outputFormat={outputFormat}
-            onOutputFormatChange={setOutputFormat}
-            speedFactor={speedFactor}
-            onSpeedFactorChange={setSpeedFactor}
-            cachePolicy={cachePolicy}
-            onCachePolicyChange={setCachePolicy}
-            generation={generation}
-            onGenerationChange={setGeneration}
+            mappingsByLower={mappingsByLower}
+            defaultVoiceAssetId={defaultVoiceAssetId}
+            onDefaultVoiceAssetIdChange={setDefaultVoiceAssetId}
           />
-        </>
-      }
-      recentRunsSection={
-        <RecentRuns runs={runs} deploymentId={deployment.deploymentId} />
-      }
-      auditSection={
-        <AuditHistoryPanel
-          deploymentId={deployment.deploymentId}
-          targets={auditTargets}
-          onRevertToIdentity={handleRevertAudit}
-          onRevertToChain={handleRevertAuditToChain}
-        />
-      }
+        }
+        parsedDialogueSection={
+          <ParsedDialogue lines={parsedLines} characterColors={characterColors} />
+        }
+        voiceLibrarySection={
+          <VoiceLibrary
+            deploymentId={deployment.deploymentId}
+            voiceAssets={voiceAssets}
+            mappings={mappings}
+            characterColors={characterColors}
+            onVoiceAssetsChange={setVoiceAssets}
+          />
+        }
+        castSection={
+          <CastSection unmappedCount={unmappedCount} totalCount={characters.length}>
+            {characters.map((name) => {
+              const mapping = mappingsByLower.get(name.toLowerCase()) ?? null;
+              // audit-allow: hex — neon decorative palette per design lang
+              const color = characterColors[name] ?? "#ba9eff";
+              return (
+                <li key={name} className={castListItemClass}>
+                  <CastRow
+                    characterName={name}
+                    color={color}
+                    lineCount={lineCounts[name] ?? 0}
+                    mapping={mapping}
+                    voiceAssets={voiceAssets}
+                    presets={vectorPresets}
+                    active={activeCastCharacter === name}
+                    onToggle={() =>
+                      setActiveCastCharacter((c) => (c === name ? null : name))
+                    }
+                    onAssignVoiceAsset={(voiceAssetId) =>
+                      upsertMapping(name, { speakerVoiceAssetId: voiceAssetId })
+                    }
+                    onAssignPreset={(presetId) =>
+                      upsertMapping(name, { defaultVectorPresetId: presetId })
+                    }
+                    onUploadFile={(file) => handleUploadAndMap(name, file)}
+                    onClearMapping={() => handleClearMapping(name)}
+                  />
+                </li>
+              );
+            })}
+          </CastSection>
+        }
+        emotionSection={
+          <EmotionStudio
+            value={globalEmotion}
+            onChange={setGlobalEmotion}
+            deploymentId={deployment.deploymentId}
+          />
+        }
+        performanceSection={
+          <>
+            <PerformanceSliders
+              value={{ ...performance, pace: speedFactor }}
+              onChange={(next) => {
+                setPerformance(next);
+                if (next.pace !== speedFactor) setSpeedFactor(next.pace);
+              }}
+            />
+            <DirectModSliderStrip
+              state={sliderState}
+              onChange={handleSliderChange}
+              supportsSynthSpeed={false}
+            />
+            <PreFlightBlock checks={diagnostics} />
+            <GenerationSettingsPanel
+              outputFormat={outputFormat}
+              onOutputFormatChange={setOutputFormat}
+              speedFactor={speedFactor}
+              onSpeedFactorChange={setSpeedFactor}
+              cachePolicy={cachePolicy}
+              onCachePolicyChange={setCachePolicy}
+              generation={generation}
+              onGenerationChange={setGeneration}
+            />
+          </>
+        }
+        recentRunsSection={
+          <RecentRuns runs={runs} deploymentId={deployment.deploymentId} />
+        }
+        auditSection={
+          <AuditHistoryPanel
+            deploymentId={deployment.deploymentId}
+            targets={auditTargets}
+            onRevertToIdentity={handleRevertAudit}
+            onRevertToChain={handleRevertAuditToChain}
+          />
+        }
       />
     </>
   );
-}
-
-interface ScriptSectionProps {
-  quickMode: boolean;
-  onToggleQuickMode: (v: boolean) => void;
-  deployment: Deployment;
-  script: string;
-  onScriptChange: (v: string) => void;
-  outputFormat: OutputFormat;
-  mappingsByLower: Map<string, CharacterMapping>;
-  defaultVoiceAssetId: string | null;
-  onDefaultVoiceAssetIdChange: (id: string | null) => void;
-}
-
-function ScriptSection({
-  quickMode,
-  onToggleQuickMode,
-  deployment,
-  script,
-  onScriptChange,
-  outputFormat,
-  mappingsByLower,
-  defaultVoiceAssetId,
-  onDefaultVoiceAssetIdChange,
-}: ScriptSectionProps): JSX.Element {
-  const charCount = script.length;
-  const wordCount = script.trim() ? script.trim().split(/\s+/).length : 0;
-  const lineCount = script.trim() ? script.trim().split(/\r?\n/).filter((l) => l.trim()).length : 0;
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 16,
-          flexWrap: "wrap",
-        }}
-      >
-        <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-          <input
-            type="checkbox"
-            checked={quickMode}
-            onChange={(e) => onToggleQuickMode(e.target.checked)}
-          />
-          Quick mode (no character mapping required)
-        </label>
-        {quickMode && (
-          <QuickVoicePicker
-            deploymentId={deployment.deploymentId}
-            initialVoiceAssetId={defaultVoiceAssetId}
-            onChange={onDefaultVoiceAssetIdChange}
-          />
-        )}
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 16,
-            fontFamily: "var(--font-mono)",
-            fontSize: 12,
-            color: "var(--on-surface-variant)",
-            marginLeft: "auto",
-          }}
-          aria-live="polite"
-        >
-          <span>
-            <strong style={{ color: "var(--accent)", fontFamily: "var(--font-mono)" }}>
-              {charCount.toString().padStart(3, "0")}
-            </strong>{" "}
-            chars
-          </span>
-          <span>
-            <strong style={{ color: "var(--accent)", fontFamily: "var(--font-mono)" }}>
-              {lineCount.toString().padStart(2, "0")}
-            </strong>{" "}
-            lines
-          </span>
-          <span>
-            <strong style={{ color: "var(--accent)", fontFamily: "var(--font-mono)" }}>
-              {wordCount.toString().padStart(3, "0")}
-            </strong>{" "}
-            words
-          </span>
-          <ScriptSyntaxPopover />
-        </div>
-      </div>
-      <ScriptEditor
-        value={script}
-        onChange={onScriptChange}
-        outputFormat={outputFormat}
-        mappings={mappingsByLower}
-        deploymentId={deployment.deploymentId}
-      />
-      <ScriptSyntaxLegend />
-    </div>
-  );
-}
-
-function ScriptSyntaxPopover(): JSX.Element {
-  return (
-    <Popover label="Syntax" glyph="?">
-      <h3 className={popoverCss.heading}>Script syntax</h3>
-      <ul className={popoverCss.itemList}>
-        <li className={popoverCss.item}>
-          <code className={popoverCss.itemSyntax}>[Char] line text</code>
-          <span className={popoverCss.itemHelp}>
-            Plain line — uses the speaker's mapped voice.
-          </span>
-        </li>
-        <li className={popoverCss.item}>
-          <code className={popoverCss.itemSyntax}>[Char|emotion_vector:happy=0.7]</code>
-          <span className={popoverCss.itemHelp}>
-            Per-line 8-axis emotion override. Combine axes with commas.
-          </span>
-        </li>
-        <li className={popoverCss.item}>
-          <code className={popoverCss.itemSyntax}>[Char|qwen:Friendly teen]</code>
-          <span className={popoverCss.itemHelp}>
-            Send a free-text mood prompt — the Qwen helper turns it into an emotion vector.
-          </span>
-        </li>
-        <li className={popoverCss.item}>
-          <code className={popoverCss.itemSyntax}>[Char|preset:Bittersweet]</code>
-          <span className={popoverCss.itemHelp}>Apply a saved preset by name.</span>
-        </li>
-        <li className={popoverCss.item}>
-          <code className={popoverCss.itemSyntax}>[Char|audio:slow_breath.wav]</code>
-          <span className={popoverCss.itemHelp}>
-            Use a reference audio clip as the emotion source.
-          </span>
-        </li>
-      </ul>
-      <p className={popoverCss.note}>
-        <span className={popoverCss.noteStrong}>Quick mode</span>: when enabled no [Char] tags
-        are required — every line uses the deployment's default voice. Toggle it above the editor.
-      </p>
-      <p className={popoverCss.note}>
-        <span className={popoverCss.noteStrong}>Mappings</span>: assign characters to voices in
-        the Cast section below. Unmapped characters in non-quick mode trigger a pre-flight warning.
-      </p>
-    </Popover>
-  );
-}
-
-function ScriptSyntaxLegend(): JSX.Element {
-  return (
-    <ul
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        gap: 16,
-        padding: 0,
-        margin: 0,
-        listStyle: "none",
-        fontFamily: "var(--font-mono)",
-        fontSize: 11,
-        color: "var(--on-surface-variant)",
-      }}
-    >
-      <li>
-        <code style={{ color: "var(--accent)" }}>[Char]</code> plain line
-      </li>
-      <li>
-        <code style={{ color: "var(--accent)" }}>[Char|emotion_vector:happy=0.7]</code> per-line vector
-      </li>
-      <li>
-        <code style={{ color: "var(--secondary)" }}>[Char|qwen:warm]</code> AI prompt mapping
-      </li>
-      <li>
-        <code style={{ color: "var(--tertiary)" }}>[Char|preset:Bittersweet]</code> saved preset
-      </li>
-      <li>
-        <code style={{ color: "var(--acid-green)" }}>[Char|audio:slow_breath.wav]</code> audio reference
-      </li>
-    </ul>
-  );
-}
-
-interface BuildDiagnosticsArgs {
-  script: string;
-  quickMode: boolean;
-  defaultVoiceAssetId: string | null | undefined;
-  characters: readonly string[];
-  unmappedCount: number;
-  globalEmotion: GlobalEmotion;
-  performance: PerformanceSlidersValue;
-}
-
-function buildDiagnostics({
-  script,
-  quickMode,
-  defaultVoiceAssetId,
-  characters,
-  unmappedCount,
-  globalEmotion,
-  performance,
-}: BuildDiagnosticsArgs): PreFlightCheck[] {
-  const checks: PreFlightCheck[] = [];
-  const trimmed = script.trim();
-  if (!trimmed) {
-    checks.push({ id: "script", status: "warn", label: "Script", detail: "empty" });
-  } else {
-    const lineCount = trimmed.split(/\r?\n/).filter((l) => l.trim()).length;
-    checks.push({
-      id: "script",
-      status: "ok",
-      label: "Script",
-      detail: `${lineCount} lines · ${trimmed.length} chars`,
-    });
-  }
-
-  if (quickMode) {
-    checks.push({
-      id: "voice",
-      status: defaultVoiceAssetId ? "ok" : "warn",
-      label: "Quick voice",
-      detail: defaultVoiceAssetId ? "default voice set" : "no default voice",
-    });
-  } else if (characters.length === 0) {
-    checks.push({ id: "cast", status: "info", label: "Cast", detail: "no characters detected" });
-  } else if (unmappedCount === 0) {
-    checks.push({ id: "cast", status: "ok", label: "Cast", detail: `${characters.length} mapped` });
-  } else {
-    checks.push({
-      id: "cast",
-      status: "warn",
-      label: "Cast",
-      detail: `${unmappedCount} unmapped`,
-    });
-  }
-
-  if (globalEmotion.mode === "qwen_template" && !globalEmotion.qwenTemplate?.trim()) {
-    checks.push({ id: "emotion", status: "warn", label: "Emotion", detail: "Qwen template empty" });
-  } else if (globalEmotion.mode === "emotion_vector") {
-    const v = globalEmotion.vector;
-    const hasNonZero = Array.isArray(v) && v.some((n) => Math.abs(n) > 0.01);
-    checks.push({
-      id: "emotion",
-      status: hasNonZero ? "ok" : "info",
-      label: "Emotion",
-      detail: hasNonZero ? "8-axis vector" : "neutral vector",
-    });
-  } else if (globalEmotion.mode === "audio_ref") {
-    checks.push({ id: "emotion", status: "ok", label: "Emotion", detail: "audio reference" });
-  } else {
-    checks.push({ id: "emotion", status: "info", label: "Emotion", detail: "neutral" });
-  }
-
-  checks.push({
-    id: "performance",
-    status: "info",
-    label: "Performance",
-    detail: `intensity ${Math.round(performance.intensity * 100)}% · pace ${performance.pace.toFixed(2)}× · pitch ${performance.pitchSt >= 0 ? "+" : ""}${performance.pitchSt.toFixed(1)}st`,
-  });
-
-  return checks;
 }

@@ -4,6 +4,14 @@ import { toast } from "sonner";
 import { ExtensionApiError } from "../../../services/http";
 import { cancelRun, createRun, getRun, resumeRun, subscribeRunProgress } from "../../../services/runs_client";
 import type { CreateRunRequest, ProgressEvent, Run } from "../../../services/types";
+import {
+  STICKY_BAR_THRESHOLD,
+  useScrollPastThreshold,
+} from "../hooks/use_scroll_past_threshold";
+import {
+  dispatchRunState,
+  subscribeTriggerGenerate,
+} from "../lib/run_events";
 import * as css from "../recipe.css";
 import * as panel from "./run_panel.css";
 import { Banner } from "../../../components/banner";
@@ -54,10 +62,7 @@ export function RunPanel(props: Props): JSX.Element {
   // Notify any sticky/floating action bar of the current phase so it can
   // disable Generate while a run is in flight.
   useEffect(() => {
-    const detail: { busy: boolean } = {
-      busy: phase === "starting" || phase === "running",
-    };
-    window.dispatchEvent(new CustomEvent("emotion-tts:run-state", { detail }));
+    dispatchRunState({ busy: phase === "starting" || phase === "running" });
   }, [phase]);
 
   const handleRunTerminal = useCallback(
@@ -118,13 +123,11 @@ export function RunPanel(props: Props): JSX.Element {
   // Sticky action bar bridge — listen for "trigger-generate" events fired by
   // the floating toolbar and start a run when we're idle/terminal/error.
   useEffect(() => {
-    const onTrigger = (): void => {
+    return subscribeTriggerGenerate(() => {
       if (phase === "idle" || phase === "terminal" || phase === "error") {
         void startRun();
       }
-    };
-    window.addEventListener("emotion-tts:trigger-generate", onTrigger);
-    return () => window.removeEventListener("emotion-tts:trigger-generate", onTrigger);
+    });
   }, [phase, startRun]);
 
   const cancel = useCallback(async () => {
@@ -200,14 +203,22 @@ export function RunPanel(props: Props): JSX.Element {
         ? "idle"
         : "blocked";
 
+  // Single-Generate-CTA gate (I-3a). Once the floating sticky toolbar shows
+  // (user scrolled past STICKY_BAR_THRESHOLD) the in-page Generate button
+  // collapses to a quiet status line — the toolbar's Generate is now the
+  // single visible primary action. Cancel + run-in-progress still render
+  // the inline Cancel button so the user can abort without scrolling back.
+  const stickyVisible = useScrollPastThreshold(STICKY_BAR_THRESHOLD);
+  const showInlineGenerate = !stickyVisible || isRunning;
+
   return (
     <div className={panel.root}>
       <div className={panel.card}>
-        <span className={panel.numeral} aria-hidden="true">
-          01
-        </span>
         <div className={panel.diagnostics}>
           <span className={panel.diagnosticsLabel}>
+            <span className={panel.numeral} aria-hidden="true">
+              01
+            </span>
             Pre-flight
             {showQueueChip && (
               <span className={panel.queueChip}>
@@ -240,24 +251,31 @@ export function RunPanel(props: Props): JSX.Element {
         </div>
 
         <div className={panel.cta} data-state={generateState}>
-          <Button
-            variant="primary"
-            size="md"
-            onClick={startRun}
-            disabled={generateDisabled}
-            loading={isRunning}
-          >
-            {!isRunning && (
-              <span className={panel.ctaIcon} aria-hidden="true">
-                ▶
-              </span>
-            )}
-            {generateLabel}
-          </Button>
+          {showInlineGenerate ? (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={startRun}
+              disabled={generateDisabled}
+              loading={isRunning}
+            >
+              {!isRunning && (
+                <span className={panel.ctaIcon} aria-hidden="true">
+                  ▶
+                </span>
+              )}
+              {generateLabel}
+            </Button>
+          ) : (
+            <span className={panel.stickyHandoff} aria-hidden="true">
+              Generate available in toolbar
+              <span className={panel.stickyHandoffArrow}>↑</span>
+            </span>
+          )}
           {canCancel && (
             <Button
               variant="ghost"
-              size="sm"
+              size="xs"
               onClick={cancel}
               aria-label="Cancel current run"
             >
@@ -305,6 +323,7 @@ export function RunPanel(props: Props): JSX.Element {
       )}
 
       {run?.exportArtifactRef && (
+        // audit-allow: download anchor — Button primitive lacks <a> polymorphic
         <a
           href={`/api/v1/extensions/nexus.audio.emotiontts/exports/${run.exportArtifactRef}/download`}
           download
@@ -434,28 +453,6 @@ function toneFor(status: SegmentState["status"]): "success" | "accent" | "danger
       return "danger";
     default:
       return "neutral";
-  }
-}
-
-function preflightTone(status: DiagnosticItem["status"]): "success" | "warning" | "danger" {
-  switch (status) {
-    case "ok":
-      return "success";
-    case "warn":
-      return "warning";
-    case "fail":
-      return "danger";
-  }
-}
-
-function preflightGlyph(status: DiagnosticItem["status"]): string {
-  switch (status) {
-    case "ok":
-      return "ok";
-    case "warn":
-      return "warn";
-    case "fail":
-      return "stop";
   }
 }
 

@@ -1,10 +1,15 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import * as css from "./recipe.css";
 import { Banner } from "../../components/banner";
 import type { Deployment } from "../../services/deployments_client";
 import type { RecipeField } from "../../services/workflows_client";
 import { StickyActionBar } from "./components/sticky_action_bar";
+import {
+  STICKY_BAR_THRESHOLD,
+  scrollToTop,
+  useScrollPastThreshold,
+} from "./hooks/use_scroll_past_threshold";
 
 export interface RecipeUiProps {
   deployment: Deployment;
@@ -28,7 +33,7 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
   const customised = props.workflowCustomised ?? false;
   const unmappable = props.unmappableFields ?? [];
   const heroTitle = resolveHeroTitle(props.deployment.displayName, props.deployment.deploymentId);
-  const showScrollTop = useScrollPastThreshold(360);
+  const showScrollTop = useScrollPastThreshold(STICKY_BAR_THRESHOLD);
   const canGenerate = props.canGenerate ?? false;
 
   return (
@@ -148,78 +153,6 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
         )}
     </div>
   );
-}
-
-function useScrollPastThreshold(threshold: number): boolean {
-  const [past, setPast] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const targets = collectScrollTargets();
-
-    const update = (): void => {
-      const maxScroll = targets.reduce<number>((acc, t) => {
-        const v = readScrollTop(t);
-        return v > acc ? v : acc;
-      }, 0);
-      setPast(maxScroll > threshold);
-    };
-
-    update();
-    const opts: AddEventListenerOptions = { passive: true };
-    for (const t of targets) {
-      t.addEventListener("scroll", update, opts);
-    }
-    return () => {
-      for (const t of targets) {
-        t.removeEventListener("scroll", update, opts);
-      }
-    };
-  }, [threshold]);
-  return past;
-}
-
-type ScrollTarget = Window | HTMLElement;
-
-function readScrollTop(target: ScrollTarget): number {
-  if (target === window) {
-    return window.scrollY || document.documentElement.scrollTop || 0;
-  }
-  return (target as HTMLElement).scrollTop;
-}
-
-/**
- * Returns every ancestor whose computed `overflow-y` could host a
- * scrollbar — plus `window`. The recipe lives inside a stack of host
- * panels (custom element → panel iframe → app_canvasContent) and any of
- * them could own the active scrollbar depending on layout. Listening on
- * all of them is robust to host shell changes.
- */
-function collectScrollTargets(): ScrollTarget[] {
-  const out: ScrollTarget[] = [window];
-  if (typeof document === "undefined") return out;
-  let el: HTMLElement | null = document.querySelector("emotion-tts-app");
-  while (el) {
-    const style = window.getComputedStyle(el);
-    if (/(auto|scroll|overlay)/.test(style.overflowY) || /(auto|scroll|overlay)/.test(style.overflow)) {
-      out.push(el);
-    }
-    el = el.parentElement;
-  }
-  return out;
-}
-
-function scrollToTop(): void {
-  if (typeof window === "undefined") return;
-  // Try every plausible scroll container; whichever actually owns the
-  // scrollbar will move. window is included for the trivial document case.
-  const targets = collectScrollTargets();
-  for (const t of targets) {
-    if (t === window) {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } else {
-      (t as HTMLElement).scrollTo({ top: 0, behavior: "smooth" });
-    }
-  }
 }
 
 function resolveHeroTitle(displayName: string, deploymentId: string): string {
