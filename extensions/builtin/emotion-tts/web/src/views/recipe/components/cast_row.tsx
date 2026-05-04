@@ -1,5 +1,6 @@
 import { useState } from "react";
 import * as css from "./cast_row.css";
+import { Button } from "../../../components/button";
 import type { CharacterMapping } from "../../../services/mappings_client";
 import type { VoiceAsset } from "../../../services/voice_assets_client";
 import type { VectorPreset } from "../../../services/presets_client";
@@ -181,9 +182,9 @@ export function CastRow({
             </div>
           )}
           {isMapped && onClearMapping && (
-            <button type="button" className={css.clearButton} onClick={onClearMapping}>
+            <Button variant="ghost" size="sm" onClick={onClearMapping}>
               Clear mapping →
-            </button>
+            </Button>
           )}
         </div>
       )}

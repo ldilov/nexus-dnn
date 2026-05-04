@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import * as css from "./voice_library.css";
 import { VoiceCard, type UsedByEntry } from "./voice_card";
 import { MicRecorder } from "./mic_recorder";
+import { Button } from "../../../../components/button";
 import {
   deactivateVoiceAsset,
   renameVoiceAsset,
@@ -229,14 +230,14 @@ export function VoiceLibrary({
             </button>
           </div>
         </div>
-        <button
-          type="button"
-          className={css.dropCta}
+        <Button
+          variant="primary"
+          size="md"
           disabled={busy}
           onClick={() => fileInputRef.current?.click()}
         >
           + Upload
-        </button>
+        </Button>
         <input
           ref={fileInputRef}
           type="file"

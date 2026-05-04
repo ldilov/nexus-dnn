@@ -214,29 +214,10 @@ export const actions = style({
   gap: vars.space.xs,
 });
 
-export const iconBtn = style({
-  appearance: "none",
-  width: "30px",
-  height: "30px",
-  borderRadius: vars.radius.sm,
-  background: "transparent",
-  border: `1px solid transparent`,
-  color: vars.color.textMuted,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  cursor: "pointer",
-  fontSize: "0.875rem",
-  transition: `color ${vars.motion.fast}, background ${vars.motion.fast}, border-color ${vars.motion.fast}`,
+export const deleteIcon = style({
   selectors: {
-    "&:hover": {
-      color: vars.color.text,
-      background: vars.color.surfaceMuted,
-      borderColor: vars.color.borderSubtle,
-    },
-    "&[data-tone='danger']:hover": {
+    "&:hover:not(:disabled)": {
       color: vars.color.danger,
-      borderColor: `color-mix(in oklab, ${vars.color.danger} 50%, transparent)`,
     },
   },
 });

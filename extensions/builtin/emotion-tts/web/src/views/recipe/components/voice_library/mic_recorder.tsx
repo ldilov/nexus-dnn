@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as css from "./mic_recorder.css";
+import { Button } from "../../../../components/button";
 
 type RecorderState = "idle" | "preparing" | "recording" | "ready" | "denied" | "error";
 
@@ -296,20 +297,20 @@ export function MicRecorder({
         {errorMsg && <div className={css.error}>{errorMsg}</div>}
 
         <div className={css.footer}>
-          <button type="button" className={css.btn} onClick={onClose} disabled={submitting}>
+          <Button variant="ghost" size="md" onClick={onClose} disabled={submitting}>
             Cancel
-          </button>
-          <button
-            type="button"
-            className={css.btn}
-            data-tone="accent"
+          </Button>
+          <Button
+            variant="primary"
+            size="md"
             onClick={() => {
               void handleSubmit();
             }}
             disabled={state !== "ready" || submitting}
+            loading={submitting}
           >
             {submitting ? "Saving…" : "Save voice"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
