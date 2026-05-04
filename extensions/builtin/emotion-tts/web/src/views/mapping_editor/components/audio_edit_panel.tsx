@@ -22,6 +22,7 @@ import { WaveformCanvas } from "./waveform_canvas";
 import * as css from "./audio_edit_panel.css";
 import { Banner } from "../../../components/banner";
 import { Button } from "../../../components/button";
+import { HelpDot } from "../../../components/tooltip";
 import {
   EditSurface,
   EditSurfaceActions,
@@ -361,7 +362,13 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
       />
 
       <div className={css.labelRow}>
-        <span>Trim region</span>
+        <span className={css.labelLeft}>
+          <span>Trim region</span>
+          <HelpDot
+            label="trim"
+            content="Cuts the start and end of the clip so only the middle plays. Non-destructive — drag the handles on the waveform to change it later, or remove the trim op entirely."
+          />
+        </span>
         <span className={css.numericLabel}>
           {formatMs(startMs)} → {formatMs(endMs)} · {formatMs(endMs - startMs)}
         </span>
@@ -370,7 +377,13 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
       <div className={css.controls}>
         <div className={css.controlBlock}>
           <span className={css.labelRow}>
-            <span>Normalize loudness</span>
+            <span className={css.labelLeft}>
+              <span>Normalize loudness</span>
+              <HelpDot
+                label="loudness normalization"
+                content="Rescales the whole clip so it lands on a target perceived loudness (LUFS — the broadcast / streaming standard). −16 LUFS is a comfortable spoken-word level; lower numbers are louder."
+              />
+            </span>
             {normalizeOn && normalize && (
               <span className={css.lufsLabel}>
                 target {normalize.target_lufs.toFixed(1)} LUFS
@@ -402,7 +415,16 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
         </div>
 
         <div className={css.controlBlock}>
-          <span className={css.labelRow}>Operations · {chain.ops.length}</span>
+          <span className={css.labelRow}>
+            <span className={css.labelLeft}>
+              <span>Operations</span>
+              <HelpDot
+                label="operations"
+                content="The ordered list of edits applied to this voice asset. They run top-to-bottom each time the clip is rendered. Click × on any row to remove it."
+              />
+            </span>
+            <span className={css.numericLabel}>{chain.ops.length}</span>
+          </span>
           <EditChainList chain={chain} onRemoveOp={removeOp} />
         </div>
 
@@ -413,7 +435,31 @@ export function AudioEditPanel(props: AudioEditPanelProps): JSX.Element {
             onClick={() => setShowAdvanced((s) => !s)}
             aria-expanded={showAdvanced}
           >
-            {showAdvanced ? "▾" : "▸"} Advanced effects · gain · eq · pitch · fade · silence trim
+            <span className={css.advancedCaret} aria-hidden="true">
+              {showAdvanced ? "▾" : "▸"}
+            </span>
+            <span>Advanced effects</span>
+            <span className={css.advancedSummary}>
+              gain · EQ · pitch · fade · silence trim
+            </span>
+            <HelpDot
+              label="advanced effects"
+              content={
+                <>
+                  Fine-tune the voice without re-recording.
+                  <br />
+                  <strong>Gain</strong>: makes the whole clip louder/quieter.
+                  <br />
+                  <strong>EQ</strong>: boosts low (bass), mid (vowels), or high (consonants) bands.
+                  <br />
+                  <strong>Pitch</strong>: shifts the perceived voice up/down in semitones.
+                  <br />
+                  <strong>Fade</strong>: smooth volume ramp at the start/end (no clicks).
+                  <br />
+                  <strong>Silence trim</strong>: removes quiet gaps below a dB threshold.
+                </>
+              }
+            />
           </button>
           {showAdvanced && (
             <DirectModSliderStrip
