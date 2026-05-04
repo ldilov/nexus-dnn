@@ -138,19 +138,22 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
       </div>
       <StickyActionBar visible={showScrollTop} canGenerate={canGenerate} />
       {typeof document !== "undefined" &&
-        createPortal(
-          <button
-            type="button"
-            className={css.scrollTopBtn}
-            data-visible={showScrollTop ? "true" : "false"}
-            aria-label="Scroll to top"
-            title="Scroll to top"
-            onClick={scrollToTop}
-          >
-            ↑
-          </button>,
-          document.body,
-        )}
+        (() => {
+          const target = document.querySelector("emotion-tts-app") ?? document.body;
+          return createPortal(
+            <button
+              type="button"
+              className={css.scrollTopBtn}
+              data-visible={showScrollTop ? "true" : "false"}
+              aria-label="Scroll to top"
+              title="Scroll to top"
+              onClick={scrollToTop}
+            >
+              ↑
+            </button>,
+            target,
+          );
+        })()}
     </div>
   );
 }
