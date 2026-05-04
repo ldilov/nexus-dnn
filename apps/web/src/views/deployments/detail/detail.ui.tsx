@@ -1,11 +1,22 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { toast } from "sonner";
 import type { LayoutSummary, Workflow } from "../../../api/client";
 import { Button } from "../../../components/base/button";
 import { StatusChip, type StatusKind } from "../../../components/base/status_chip";
 import { GraphView } from "../../workflows/components/canvas/graph_view";
 import { ExtensionLayoutView } from "../../extensions/layout/layout.view";
+import {
+  EXT_ACTIONS_DECLARE,
+  EXT_ACTIONS_REQUEST,
+  EXT_ACTION_INVOKE,
+  EXT_ACTION_STATE,
+  type ExtActionInvokeDetail,
+  type ExtActionStateDetail,
+  type ExtActionsDeclareDetail,
+  type ExtensionActionDeclaration,
+  type ExtensionActionSet,
+  type ExtensionActionTone,
+} from "../../../types/extension_actions";
 import * as s from "./detail.css";
 
 export type DetailTabId =
@@ -119,6 +130,69 @@ function buildTitleAriaLabel(moduleName: string | null, name: string): string {
   return `${moduleName} ${name}`;
 }
 
+// Merge a single-action update from `ext-action-state` into the live
+// action set. The slot (primary vs. secondary) is identified by id —
+// extensions own their action ids and may not change them after the
+// initial declaration.
+function mergeActionState(
+  prev: ExtensionActionSet | null,
+  updated: ExtensionActionDeclaration,
+): ExtensionActionSet | null {
+  if (!prev) return prev;
+  if (prev.primary.id === updated.id) {
+    return { ...prev, primary: { ...prev.primary, ...updated } };
+  }
+  if (prev.secondary && prev.secondary.id === updated.id) {
+    return { ...prev, secondary: { ...prev.secondary, ...updated } };
+  }
+  return prev;
+}
+
+const TONE_TO_VARIANT: Record<ExtensionActionTone, "primary" | "secondary" | "danger"> = {
+  primary: "primary",
+  secondary: "secondary",
+  danger: "danger",
+};
+
+interface ExtensionActionButtonProps {
+  action: ExtensionActionDeclaration;
+  fallbackVariant: "primary" | "secondary";
+  onInvoke: (id: string) => void;
+}
+
+// Renders a single extension-declared action as a host shell button.
+// The host applies its own theme (variant + size) — `tone` is only a
+// hint. `state: "loading"` → inline spinner + disabled. `state:
+// "disabled"` → disabled without spinner.
+function ExtensionActionButton({ action, fallbackVariant, onInvoke }: ExtensionActionButtonProps) {
+  const variant = action.tone ? TONE_TO_VARIANT[action.tone] : fallbackVariant;
+  const loading = action.state === "loading";
+  const disabled = loading || action.state === "disabled";
+  return (
+    <Button
+      type="button"
+      variant={variant}
+      size="sm"
+      disabled={disabled}
+      aria-busy={loading || undefined}
+      title={action.tooltip}
+      onClick={() => onInvoke(action.id)}
+    >
+      {loading ? (
+        <span className={s.actionSpinner} aria-hidden="true" />
+      ) : action.icon ? (
+        <span
+          className={`material-symbols-outlined ${s.actionIcon}`}
+          aria-hidden="true"
+        >
+          {action.icon}
+        </span>
+      ) : null}
+      {action.label}
+    </Button>
+  );
+}
+
 export function DeploymentDetailUI({
   deploymentId,
   displayName,
@@ -186,24 +260,61 @@ export function DeploymentDetailUI({
   );
 
   const handleHistory = () => onTabChange("runs");
-  // TODO(host↔extension run-trigger contract): replace with a custom-event
-  // dispatch on the extension custom element once the contract is defined.
-  // See spec 038 — currently no host-driven validation surface exists.
-  const handleValidate = () => {
-    toast("Validation hook coming soon", {
-      description: "Deployment-level validation is not wired yet.",
-    });
-  };
-  // TODO(host↔extension run-trigger contract): the Run flow currently lives
-  // inside the extension iframe (Recipe tab → Generate). Wire this to a
-  // CustomEvent on the extension custom element when the contract lands.
-  // See spec 038.
-  const handleRun = () => {
-    toast("Open the Recipe tab and use the Generate button", {
-      description: "Host-driven Run requires a future host↔extension contract.",
-    });
-    onTabChange("recipe");
-  };
+
+  // ── Per-extension action contract ────────────────────────────────
+  // The host shell is generic. It listens on the embedded extension
+  // custom element for `ext-actions-declare` / `ext-action-state` events
+  // and dispatches `ext-action-invoke` when the user clicks a host shell
+  // button. The host knows nothing about what the actions DO — that
+  // contract is opaque per `apps/web/src/types/extension_actions.ts`.
+  const [actions, setActions] = useState<ExtensionActionSet | null>(null);
+  const elementRef = useRef<HTMLElement | null>(null);
+
+  const handleElementRef = useCallback((el: HTMLElement | null) => {
+    elementRef.current = el;
+    if (!el) {
+      setActions(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    const el = elementRef.current;
+    if (!el) return;
+
+    const handleDeclare = (event: Event) => {
+      const detail = (event as CustomEvent<ExtActionsDeclareDetail>).detail;
+      setActions(detail?.actions ?? null);
+    };
+    const handleState = (event: Event) => {
+      const detail = (event as CustomEvent<ExtActionStateDetail>).detail;
+      const updated = detail?.action;
+      if (!updated) return;
+      setActions((prev) => mergeActionState(prev, updated));
+    };
+
+    el.addEventListener(EXT_ACTIONS_DECLARE, handleDeclare);
+    el.addEventListener(EXT_ACTION_STATE, handleState);
+
+    // Ask for the current action set. Extensions that don't implement
+    // the contract simply won't reply — slots stay empty.
+    el.dispatchEvent(
+      new CustomEvent(EXT_ACTIONS_REQUEST, { bubbles: false }),
+    );
+
+    return () => {
+      el.removeEventListener(EXT_ACTIONS_DECLARE, handleDeclare);
+      el.removeEventListener(EXT_ACTION_STATE, handleState);
+    };
+  }, [extensionLayout?.id]);
+
+  const handleInvoke = useCallback((id: string) => {
+    const el = elementRef.current;
+    if (!el) return;
+    const detail: ExtActionInvokeDetail = { id };
+    el.dispatchEvent(
+      new CustomEvent(EXT_ACTION_INVOKE, { detail, bubbles: false }),
+    );
+  }, []);
 
   return (
     <div className={s.root}>
@@ -258,34 +369,20 @@ export function DeploymentDetailUI({
               </span>
               History
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={handleValidate}
-            >
-              <span
-                className={`material-symbols-outlined ${s.actionIcon}`}
-                aria-hidden="true"
-              >
-                verified
-              </span>
-              Validate
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              onClick={handleRun}
-            >
-              <span
-                className={`material-symbols-outlined ${s.actionIcon}`}
-                aria-hidden="true"
-              >
-                play_arrow
-              </span>
-              Run
-            </Button>
+            {actions?.secondary && (
+              <ExtensionActionButton
+                action={actions.secondary}
+                fallbackVariant="secondary"
+                onInvoke={handleInvoke}
+              />
+            )}
+            {actions?.primary && (
+              <ExtensionActionButton
+                action={actions.primary}
+                fallbackVariant="primary"
+                onInvoke={handleInvoke}
+              />
+            )}
             {onRequestDelete && (
               <Button
                 type="button"
@@ -348,6 +445,7 @@ export function DeploymentDetailUI({
                 <ExtensionLayoutView
                   layoutId={extensionLayout.id}
                   deploymentId={deploymentId}
+                  rootElementRef={handleElementRef}
                 />
               </div>
             ) : (
