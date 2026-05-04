@@ -185,15 +185,15 @@ export function RunDetailView(): JSX.Element {
                         {u.status}
                       </StatusPill>
                       {canEdit && (
-                        <button
-                          type="button"
-                          className={css.editButton}
+                        <Button
+                          variant="ghost"
+                          size="xs"
                           onClick={() => handleEditClick(u.utteranceId)}
                           aria-expanded={isEditing}
                           aria-label={isEditing ? "Close segment editor" : "Edit segment"}
                         >
                           {isEditing ? "Close" : "Edit"}
-                        </button>
+                        </Button>
                       )}
                     </span>
                   </div>
@@ -239,15 +239,15 @@ function renderExportFooter(run: Run, isStale: boolean): JSX.Element | null {
       {isStale ? (
         <div className={css.rebuildBlock}>
           <p className={css.rebuildHint}>{hint}</p>
-          <button
-            type="button"
-            className={css.rebuildButton}
+          <Button
+            variant="secondary"
+            size="md"
             disabled
             aria-disabled="true"
             title="Rebuild required (backend rebuild endpoint pending)"
           >
             Rebuild required <span className={css.exportArrow}>↻</span>
-          </button>
+          </Button>
         </div>
       ) : run.exportArtifactRef ? (
         <a

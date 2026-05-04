@@ -249,9 +249,9 @@ export function EmotionStudio({
             </div>
             <EttsAxisBars vec={vec} onChange={setVec} readOnly={readOnly} />
             <div className={css.barsActions}>
-              <button
-                type="button"
-                className={css.resetButton}
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={resetVec}
                 disabled={readOnly || mag < 0.001}
                 aria-label="Reset emotion vector"
@@ -281,7 +281,7 @@ export function EmotionStudio({
                   />
                 </svg>
                 Reset
-              </button>
+              </Button>
             </div>
           </div>
         </div>

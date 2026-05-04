@@ -141,14 +141,17 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
         left: "50%",
         right: "auto",
         top: "auto",
+        maxWidth: "min(640px, calc(100vw - 32px))",
         // Hardcoded fallbacks so the pill renders with proper depth even when
         // portaled outside the `emotion-tts-app` token scope. The CSS class
         // applies var()-based values on top; these are the safety net.
-        background: "rgba(35, 38, 41, 0.78)",
+        // audit-allow: hex/rgba — sticky-bar fallback when portaled outside token scope.
+        background: "rgba(45, 48, 52, 0.94)",
+        // audit-allow: hex/rgba — sticky-bar fallback shadow + accent ring.
         boxShadow:
-          "0 12px 32px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(186, 158, 255, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.06)",
-        backdropFilter: "blur(18px) saturate(1.6)",
-        WebkitBackdropFilter: "blur(18px) saturate(1.6)",
+          "0 18px 44px -12px rgba(0, 0, 0, 0.7), 0 6px 18px -6px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(186, 158, 255, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.09)",
+        backdropFilter: "blur(20px) saturate(1.7)",
+        WebkitBackdropFilter: "blur(20px) saturate(1.7)",
         borderRadius: "999px",
         zIndex: 60,
       }}

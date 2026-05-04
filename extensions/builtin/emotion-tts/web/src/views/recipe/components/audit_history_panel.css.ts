@@ -45,31 +45,6 @@ export const actionRow = style({
   alignItems: "center",
 });
 
-export const link = style({
-  fontFamily: vars.font.mono,
-  fontSize: vars.text.caption,
-  color: vars.color.accent,
-  textTransform: "uppercase",
-  letterSpacing: vars.tracking.label,
-  textDecoration: "none",
-  border: "none",
-  background: "transparent",
-  cursor: "pointer",
-  padding: `${vars.space.xs} ${vars.space.sm}`,
-  borderRadius: vars.radius.sm,
-  transition: `background ${vars.motion.fast}`,
-  ":hover": {
-    background: `color-mix(in oklab, ${vars.color.accent} 10%, transparent)`,
-  },
-});
-
-export const dangerLink = style({
-  color: vars.color.danger,
-  ":hover": {
-    background: `color-mix(in oklab, ${vars.color.danger} 10%, transparent)`,
-  },
-});
-
 export const list = style({
   display: "flex",
   flexDirection: "column",

@@ -102,27 +102,6 @@ export const params = style({
   textOverflow: "ellipsis",
 });
 
-export const removeButton = style({
-  background: "transparent",
-  border: "none",
-  color: vars.color.textMuted,
-  fontFamily: vars.font.mono,
-  fontSize: vars.text.body,
-  cursor: "pointer",
-  padding: vars.space.xs,
-  borderRadius: vars.radius.sm,
-  selectors: {
-    "&:hover": {
-      color: vars.color.danger,
-      background: `color-mix(in oklab, ${vars.color.danger} 14%, transparent)`,
-    },
-    "&:focus-visible": {
-      outline: "none",
-      boxShadow: vars.shadow.focusRing,
-    },
-  },
-});
-
 export const builderRow = style({
   display: "flex",
   alignItems: "flex-start",
