@@ -25,7 +25,6 @@ import { listPresets, type VectorPreset } from "../../services/presets_client";
 import type { WorkflowResponse } from "../../services/workflows_client";
 import { AuditHistoryPanel, type AuditTargetOption } from "./components/audit_history_panel";
 import { CastRow, CastSection } from "./components/cast_row";
-import { DepRecipeBanner } from "./components/dep_recipe_banner";
 import { DeploymentHeader } from "./components/deployment_header";
 import { DirectModSliderStrip } from "./components/direct_mod_slider_strip";
 import { EmotionStudio } from "./components/emotion_studio";
@@ -369,19 +368,7 @@ export function RecipeView(): JSX.Element {
       deployment={deployment}
       workflowCustomised={workflow.workflow.customised}
       unmappableFields={workflow.unmappableFields}
-      hero={
-        <>
-          <DeploymentHeader deployment={deployment} />
-          <DepRecipeBanner
-            runtimeId={deployment.backendRuntimePreference ?? "indextts.python"}
-            device={null}
-            sampleRateHz={null}
-            lineCount={parsedLines.length}
-            charCount={script.length}
-            estimatedDurationS={parsedLines.length * 4}
-          />
-        </>
-      }
+      hero={<DeploymentHeader deployment={deployment} />}
       scriptSection={
         <ScriptSection
           quickMode={quickMode}
