@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import * as css from "./mic_recorder.css";
 import { Button } from "../../../../components/button";
 
@@ -22,7 +28,7 @@ function pickMimeType(): { mime: string; ext: string } {
     { mime: "audio/mp4", ext: "m4a" },
   ];
   for (const c of candidates) {
-    if (MediaRecorder.isTypeSupported?.(c.mime)) return c;
+    if (MediaRecorder.isTypeSupported(c.mime)) return c;
   }
   return { mime: "", ext: "webm" };
 }
@@ -89,6 +95,37 @@ export function MicRecorder({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  // Focus trap: Tab/Shift-Tab cycles within the dialog's focusable elements
+  // so keyboard users can't escape into the obscured background. Computed
+  // on each keypress so dynamically-rendered controls (Stop/Re-record/Save)
+  // stay in the cycle without explicit list refresh.
+  const onDialogKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+      if (event.key !== "Tab") return;
+      const root = dialogRef.current;
+      if (!root) return;
+      const focusable = root.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      const active = document.activeElement as HTMLElement | null;
+      if (event.shiftKey) {
+        if (active === first || active === root) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (active === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    },
+    [],
+  );
 
   const stopTracks = useCallback((): void => {
     if (streamRef.current) {
@@ -213,6 +250,7 @@ export function MicRecorder({
         aria-modal="true"
         aria-labelledby="mic-recorder-heading"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={onDialogKeyDown}
         tabIndex={-1}
       >
         <h2 id="mic-recorder-heading" className={css.heading}>
