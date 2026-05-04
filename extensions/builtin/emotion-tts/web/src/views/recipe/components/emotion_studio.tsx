@@ -102,7 +102,7 @@ export function EmotionStudio({
   };
 
   const setAlpha = (next: number): void => {
-    const clamped = Math.max(0, Math.min(1, Number.isFinite(next) ? next : 1));
+    const clamped = Math.max(0, Math.min(10, Number.isFinite(next) ? next : 1));
     onChange({ ...value, emotionAlpha: clamped });
   };
 
@@ -298,11 +298,11 @@ export function EmotionStudio({
             <input
               type="range"
               min={0}
-              max={1}
+              max={10}
               step={0.01}
               value={alpha}
               className={css.range}
-              style={{ "--fill": `${alpha * 100}%` } as React.CSSProperties}
+              style={{ "--fill": `${alpha * 10}%` } as React.CSSProperties}
               onChange={(e) => setAlpha(Number(e.target.value))}
               aria-label="Emotion alpha"
             />
@@ -373,11 +373,11 @@ export function EmotionStudio({
           <input
             type="range"
             min={0}
-            max={1}
+            max={10}
             step={0.01}
             value={alpha}
             className={css.range}
-            style={{ "--fill": `${alpha * 100}%` } as React.CSSProperties}
+            style={{ "--fill": `${alpha * 10}%` } as React.CSSProperties}
             onChange={(e) => setAlpha(Number(e.target.value))}
             aria-label="Emotion alpha"
           />
