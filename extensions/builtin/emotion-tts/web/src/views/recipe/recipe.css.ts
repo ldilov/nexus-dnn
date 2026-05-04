@@ -147,6 +147,91 @@ export const sectionMeta = style({
   color: vars.color.textMuted,
 });
 
+export const sectionToggle = style({
+  appearance: "none",
+  background: "transparent",
+  border: "none",
+  display: "flex",
+  alignItems: "baseline",
+  gap: vars.space.md,
+  width: "100%",
+  padding: 0,
+  cursor: "pointer",
+  textAlign: "left",
+  color: "inherit",
+  selectors: {
+    "&:hover": {
+      color: vars.color.text,
+    },
+    "&:focus-visible": {
+      outline: `2px solid ${vars.color.accent}`,
+      outlineOffset: "4px",
+      borderRadius: vars.radius.sm,
+    },
+  },
+});
+
+export const sectionChevron = style({
+  marginLeft: "auto",
+  fontSize: vars.text.subhead,
+  color: vars.color.textMuted,
+  transition: `transform ${vars.motion.fast}`,
+  selectors: {
+    '&[data-collapsed="true"]': {
+      transform: "rotate(-90deg)",
+    },
+  },
+});
+
+export const quickActions = style({
+  display: "flex",
+  flexWrap: "wrap",
+  gap: vars.space.md,
+  alignItems: "center",
+  padding: vars.space.lg,
+  borderRadius: vars.radius.lg,
+  background: `color-mix(in oklab, ${vars.color.accent} 6%, ${vars.color.surfaceMuted})`,
+  boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.accent} 20%, transparent)`,
+});
+
+export const scrollTopBtn = style({
+  position: "fixed",
+  insetBlockEnd: vars.space.xl,
+  insetInlineEnd: vars.space.xl,
+  width: "44px",
+  height: "44px",
+  borderRadius: vars.radius.pill,
+  background: vars.color.accent,
+  color: vars.color.accentOn,
+  border: "none",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: vars.text.head,
+  lineHeight: 1,
+  cursor: "pointer",
+  boxShadow: vars.shadow.raised,
+  zIndex: 50,
+  opacity: 0,
+  pointerEvents: "none",
+  transform: "translateY(8px)",
+  transition: `opacity ${vars.motion.normal}, transform ${vars.motion.normal}, box-shadow ${vars.motion.fast}`,
+  selectors: {
+    '&[data-visible="true"]': {
+      opacity: 1,
+      pointerEvents: "auto",
+      transform: "translateY(0)",
+    },
+    "&:hover": {
+      boxShadow: `${vars.shadow.raised}, ${vars.shadow.glow}`,
+    },
+    "&:focus-visible": {
+      outline: `2px solid ${vars.color.accent}`,
+      outlineOffset: "3px",
+    },
+  },
+});
+
 export const sectionBody = style({
   display: "flex",
   flexDirection: "column",
