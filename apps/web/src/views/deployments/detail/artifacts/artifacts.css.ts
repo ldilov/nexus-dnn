@@ -195,3 +195,82 @@ export const error = style({
   color: vars.color.error.text,
   fontSize: vars.font.size.bodySm,
 });
+
+export const checkboxCell = style([
+  td,
+  {
+    width: "1px",
+    paddingRight: 0,
+  },
+]);
+
+export const checkboxHeader = style([
+  th,
+  {
+    width: "1px",
+    paddingRight: 0,
+  },
+]);
+
+export const checkbox = style({
+  // audit-allow: px — Button-equivalent touch-target square.
+  width: "18px",
+  // audit-allow: px — Button-equivalent touch-target square.
+  height: "18px",
+  cursor: "pointer",
+  accentColor: vars.color.accent.accent,
+});
+
+export const rowSelected = style({
+  background: vars.color.bg.hover,
+});
+
+export const selectionBanner = style({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: vars.space.gapMd,
+  padding: `${vars.space.insetSm} ${vars.space.insetMd}`,
+  background: vars.color.bg.panel,
+  borderRadius: vars.radius.control,
+  border: `1px solid ${vars.color.outline.variant}`,
+  flexWrap: "wrap",
+});
+
+export const selectionLeft = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.gapSm,
+  fontSize: vars.font.size.bodySm,
+  color: vars.color.text.primary,
+});
+
+export const selectionCount = style({
+  fontFamily: vars.font.code,
+  fontVariantNumeric: "tabular-nums",
+  color: vars.color.text.primary,
+  fontWeight: vars.font.weight.semibold,
+});
+
+export const selectionActions = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.gapSm,
+});
+
+export const clearLink = style({
+  background: "transparent",
+  border: "none",
+  color: vars.color.text.muted,
+  fontSize: vars.font.size.caption,
+  cursor: "pointer",
+  padding: `4px 8px`,
+  borderRadius: vars.radius.control,
+  selectors: {
+    "&:hover": { color: vars.color.text.primary },
+    "&:focus-visible": {
+      outline: `${vars.focus.ringWidth} solid ${vars.color.accent.accent}`,
+      outlineOffset: vars.focus.offset,
+    },
+  },
+});
