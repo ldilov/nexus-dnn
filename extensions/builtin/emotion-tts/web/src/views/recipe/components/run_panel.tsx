@@ -5,6 +5,7 @@ import { ExtensionApiError } from "../../../services/http";
 import { cancelRun, createRun, getRun, resumeRun, subscribeRunProgress } from "../../../services/runs_client";
 import type { CreateRunRequest, ProgressEvent, Run } from "../../../services/types";
 import * as css from "../recipe.css";
+import * as panel from "./run_panel.css";
 import { Banner } from "../../../components/banner";
 import { Button } from "../../../components/button";
 import {
@@ -182,19 +183,82 @@ export function RunPanel(props: Props): JSX.Element {
   const diagnostics = props.diagnostics ?? [];
   const blockingDiagnostic = diagnostics.find((d) => d.status === "fail");
 
+  const generateLabel =
+    phase === "starting"
+      ? "Starting…"
+      : phase === "running"
+        ? "Generating…"
+        : "Generate";
+  const generateDisabled = !props.canGenerate || canCancel || !!blockingDiagnostic;
+  const generateState =
+    phase === "starting" || phase === "running" ? "running" : "idle";
+
   return (
-    <div>
-      {diagnostics.length > 0 && (
-        <ul className={css.preflightList} aria-label="Pre-flight checks">
-          {diagnostics.map((d) => (
-            <li key={d.label} className={css.preflightItem}>
-              <StatusPill tone={preflightTone(d.status)}>{preflightGlyph(d.status)}</StatusPill>
-              <span className={css.preflightLabel}>{d.label}</span>
-              {d.detail && <span className={css.preflightDetail}>{d.detail}</span>}
-            </li>
-          ))}
-        </ul>
-      )}
+    <div className={panel.root}>
+      <div className={panel.card}>
+        <div className={panel.diagnostics}>
+          <span className={panel.diagnosticsLabel}>
+            Pre-flight
+            {showQueueChip && (
+              <span className={panel.queueChip}>
+                <span className={panel.queueDot} aria-hidden="true" />
+                {inFlightCount > 0
+                  ? `${inFlightCount} in flight`
+                  : `${completedCount} done`}
+              </span>
+            )}
+          </span>
+          {diagnostics.length > 0 ? (
+            <ul className={panel.diagList} aria-label="Pre-flight checks">
+              {diagnostics.map((d) => (
+                <li key={d.label} className={panel.diagItem}>
+                  <span
+                    className={panel.diagDot}
+                    data-status={d.status}
+                    aria-hidden="true"
+                  />
+                  <span className={panel.diagLabel}>{d.label}</span>
+                  {d.detail && (
+                    <span className={panel.diagDetail}>{d.detail}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className={panel.diagDetail}>Ready when you are.</span>
+          )}
+        </div>
+
+        <div className={panel.cta}>
+          <button
+            type="button"
+            className={panel.generateBtn}
+            data-state={generateState}
+            onClick={startRun}
+            disabled={generateDisabled}
+            aria-busy={generateState === "running" || undefined}
+          >
+            {generateState === "running" ? (
+              <span className={panel.spinner} aria-hidden="true" />
+            ) : (
+              <span className={panel.ctaIcon} aria-hidden="true">
+                ▶
+              </span>
+            )}
+            {generateLabel}
+          </button>
+          <button
+            type="button"
+            className={panel.cancelBtn}
+            onClick={cancel}
+            disabled={!canCancel}
+            aria-label="Cancel current run"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+
       {error && (
         <Banner
           severity="error"
@@ -219,54 +283,6 @@ export function RunPanel(props: Props): JSX.Element {
         </Banner>
       )}
 
-      <div className={css.controlRow}>
-        <Button
-          disabled={!props.canGenerate || canCancel || !!blockingDiagnostic}
-          onClick={startRun}
-        >
-          {phase === "running" ? "Running…" : "Generate"}
-        </Button>
-        <Button variant="danger" disabled={!canCancel} onClick={cancel}>
-          Cancel
-        </Button>
-        {showQueueChip && (
-          <div
-            role="status"
-            aria-live="polite"
-            style={{
-              marginLeft: "auto",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 12,
-              opacity: 0.85,
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            <span
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background:
-                  phase === "running" || phase === "starting"
-                    ? "#a78bfa"
-                    : "#94a3b8",
-                animation:
-                  phase === "running" || phase === "starting"
-                    ? "pulse 1.4s ease-in-out infinite"
-                    : undefined,
-              }}
-              aria-hidden="true"
-            />
-            <span>
-              Queue:&nbsp;
-              <strong>{inFlightCount}</strong> in flight ·{" "}
-              <strong>{completedCount}</strong>/{segmentList.length} done
-            </span>
-          </div>
-        )}
-      </div>
 
       {dominantFailure && (
         <Banner severity="error" style={{ flexDirection: "column", alignItems: "flex-start" }}>
