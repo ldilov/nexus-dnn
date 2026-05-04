@@ -86,11 +86,7 @@ export function ArtifactsUI({
             onClick={onDownloadZip}
             disabled={total === 0}
           >
-            <span
-              className="material-symbols-outlined"
-              aria-hidden="true"
-              style={{ fontSize: "16px", marginRight: "6px" }}
-            >
+            <span className="material-symbols-outlined" aria-hidden="true">
               folder_zip
             </span>
             Download as ZIP
@@ -102,11 +98,7 @@ export function ArtifactsUI({
             onClick={onDeleteAll}
             disabled={total === 0}
           >
-            <span
-              className="material-symbols-outlined"
-              aria-hidden="true"
-              style={{ fontSize: "16px", marginRight: "6px" }}
-            >
+            <span className="material-symbols-outlined" aria-hidden="true">
               delete_sweep
             </span>
             Delete all
@@ -161,9 +153,10 @@ export function ArtifactsUI({
                         {formatDuration(a.durationMs)}
                       </td>
                       <td className={s.actionsCell}>
-                        <button
-                          type="button"
-                          className={s.iconButton}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          iconOnly
                           aria-label={
                             isPlaying ? "Hide player" : "Play artifact"
                           }
@@ -173,13 +166,12 @@ export function ArtifactsUI({
                           <span
                             className="material-symbols-outlined"
                             aria-hidden="true"
-                            style={{ fontSize: "18px" }}
                           >
                             {isPlaying ? "stop_circle" : "play_circle"}
                           </span>
-                        </button>
+                        </Button>
                         <a
-                          className={s.iconButton}
+                          className={s.iconLink}
                           href={buildDownloadUrl(a.utteranceId)}
                           download={a.filename}
                           aria-label="Download artifact"
@@ -187,25 +179,24 @@ export function ArtifactsUI({
                           <span
                             className="material-symbols-outlined"
                             aria-hidden="true"
-                            style={{ fontSize: "18px" }}
                           >
                             download
                           </span>
                         </a>
-                        <button
-                          type="button"
-                          className={s.iconButtonDanger}
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          iconOnly
                           aria-label="Delete artifact"
                           onClick={() => onDelete(a.utteranceId)}
                         >
                           <span
                             className="material-symbols-outlined"
                             aria-hidden="true"
-                            style={{ fontSize: "18px" }}
                           >
                             delete
                           </span>
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                     {isPlaying && (
