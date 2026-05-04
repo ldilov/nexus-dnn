@@ -92,37 +92,6 @@ export const linkBtn = style({
   },
 });
 
-export const dropCta = style({
-  appearance: "none",
-  display: "inline-flex",
-  alignItems: "center",
-  gap: vars.space.xs,
-  padding: `${vars.space.sm} ${vars.space.lg}`,
-  borderRadius: vars.radius.pill,
-  background: vars.color.accent,
-  color: vars.color.accentOn,
-  border: "none",
-  fontFamily: vars.font.body,
-  fontSize: vars.text.caption,
-  fontWeight: 600,
-  letterSpacing: vars.tracking.label,
-  textTransform: "uppercase",
-  cursor: "pointer",
-  transition: `box-shadow ${vars.motion.fast}, transform ${vars.motion.fast}`,
-  selectors: {
-    "&:hover": {
-      boxShadow: vars.shadow.glow,
-    },
-    "&:active": {
-      transform: "translateY(1px)",
-    },
-    "&[disabled]": {
-      opacity: 0.5,
-      cursor: "not-allowed",
-    },
-  },
-});
-
 export const toolbar = style({
   display: "flex",
   alignItems: "center",

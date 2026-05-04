@@ -229,12 +229,10 @@ export function AuditHistoryPanel({
                       : "update"}
                 </span>
                 {canRevert && (
-                  <button
-                    type="button"
-                    className={css.link}
-                    disabled={
-                      reverting || rowRevertingId !== null
-                    }
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    disabled={reverting || rowRevertingId !== null}
                     onClick={async () => {
                       if (!selected || !entry.chain_snapshot_json) return;
                       if (rowRevertingId !== null || reverting) return;
@@ -263,7 +261,7 @@ export function AuditHistoryPanel({
                     }}
                   >
                     {rowRevertingId === entry.entry_id ? "Reverting…" : "Revert →"}
-                  </button>
+                  </Button>
                 )}
               </li>
             );

@@ -108,36 +108,6 @@ export const barsActions = style({
   boxShadow: `inset 0 1px 0 0 ${vars.color.borderSubtle}`,
 });
 
-export const resetButton = style({
-  display: "inline-flex",
-  alignItems: "center",
-  gap: vars.space.xs,
-  padding: `${vars.space.xs} ${vars.space.sm}`,
-  background: "transparent",
-  border: "none",
-  borderRadius: vars.radius.sm,
-  fontFamily: vars.font.body,
-  fontSize: vars.text.caption,
-  fontWeight: 500,
-  color: vars.color.textMuted,
-  cursor: "pointer",
-  transition: `background ${vars.motion.fast}, color ${vars.motion.fast}`,
-  ":hover": {
-    background: vars.color.surfaceMuted,
-    color: vars.color.text,
-  },
-  selectors: {
-    "&:disabled": {
-      cursor: "not-allowed",
-      opacity: 0.4,
-    },
-    "&:focus-visible": {
-      outline: "none",
-      boxShadow: vars.shadow.focusRing,
-    },
-  },
-});
-
 export const resetIcon = style({
   display: "inline-block",
   flexShrink: 0,

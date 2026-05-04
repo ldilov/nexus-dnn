@@ -189,15 +189,16 @@ export function EditChainPanel(props: EditChainPanelProps): JSX.Element {
               <span className={css.modeLabel}>{modeLabel(op.mode)}</span>
               <span className={css.params}>{paramsSummary(op)}</span>
               {readOnly ? null : (
-                <button
-                  type="button"
-                  className={css.removeButton}
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  iconOnly
                   onClick={() => onRemoveOp(op.id)}
                   aria-label={`Remove ${modeLabel(op.mode)}`}
                   title="Remove operation"
                 >
                   ×
-                </button>
+                </Button>
               )}
             </li>
           ))}

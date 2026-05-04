@@ -1,5 +1,6 @@
 import type { EditChain, EditOp } from "../../../services/audio_edit_client";
 import * as css from "./edit_chain_list.css";
+import { Button } from "../../../components/button";
 
 export interface EditChainListProps {
   chain: EditChain;
@@ -26,15 +27,16 @@ export function EditChainList({ chain, onRemoveOp }: EditChainListProps): JSX.El
             <span className={css.modeLabel}>{modeLabel(op)}</span>
             <span className={css.params}>{paramsSummary(op)}</span>
           </span>
-          <button
-            type="button"
-            className={css.removeButton}
+          <Button
+            variant="ghost"
+            size="xs"
+            iconOnly
             onClick={() => onRemoveOp(op.id)}
             aria-label={`Remove ${modeLabel(op)} (position ${index + 1})`}
             title="Remove operation"
           >
             ×
-          </button>
+          </Button>
         </li>
       ))}
     </ol>
