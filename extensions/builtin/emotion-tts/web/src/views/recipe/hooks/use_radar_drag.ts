@@ -39,6 +39,21 @@ const KEYBOARD_PAGE = 0.2;
 const INFLUENCE_CONE_DEG = 22;
 /** How long the surface-click ping stays mounted before auto-clearing. */
 const SURFACE_PING_LIFETIME_MS = 320;
+/** Visual axis tips render at (size/2) * AXIS_RADIUS_FRACTION (matches etts_radar.tsx). */
+const AXIS_RADIUS_FRACTION = 0.78;
+
+/** Project (dx, dy) onto the unit vector at axisAngleRad and normalise by axisRadius. */
+function projectAxisValue(dx: number, dy: number, axisAngleRad: number, axisRadius: number): number {
+  const ux = Math.cos(axisAngleRad);
+  const uy = Math.sin(axisAngleRad);
+  const proj = dx * ux + dy * uy;
+  return Math.max(0, Math.min(1, proj / axisRadius));
+}
+
+function axisAngleFor(axis: AxisKey): number {
+  const i = AXIS_KEYS.indexOf(axis);
+  return (i / AXIS_KEYS.length) * Math.PI * 2 - Math.PI / 2;
+}
 
 export function useRadarDrag(options: UseRadarDragOptions): UseRadarDragResult {
   const { vec, onChange, size, reduceMotion = false } = options;
@@ -80,9 +95,8 @@ export function useRadarDrag(options: UseRadarDragOptions): UseRadarDragResult {
       if (reduceMotionRef.current) return;
       const dx = event.clientX - drag.centerX;
       const dy = event.clientY - drag.centerY;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      const radius = size / 2;
-      const value = Math.max(0, Math.min(1, distance / radius));
+      const axisRadius = (size / 2) * AXIS_RADIUS_FRACTION;
+      const value = projectAxisValue(dx, dy, drag.angle, axisRadius);
       const next = { ...liveVecRef.current, [drag.axis]: value };
       updateLive(next);
     },
@@ -99,9 +113,8 @@ export function useRadarDrag(options: UseRadarDragOptions): UseRadarDragResult {
       if (reduceMotionRef.current) {
         const dx = event.clientX - drag.centerX;
         const dy = event.clientY - drag.centerY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const radius = size / 2;
-        const value = Math.max(0, Math.min(1, distance / radius));
+        const axisRadius = (size / 2) * AXIS_RADIUS_FRACTION;
+        const value = projectAxisValue(dx, dy, drag.angle, axisRadius);
         const final = { ...liveVecRef.current, [drag.axis]: value };
         draggingRef.current = null;
         commit(final);
@@ -163,9 +176,8 @@ export function useRadarDrag(options: UseRadarDragOptions): UseRadarDragResult {
       if (initialClientX !== undefined && initialClientY !== undefined) {
         const dx = initialClientX - centerX;
         const dy = initialClientY - centerY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const radius = size / 2;
-        const value = Math.max(0, Math.min(1, distance / radius));
+        const axisRadius = (size / 2) * AXIS_RADIUS_FRACTION;
+        const value = projectAxisValue(dx, dy, angle, axisRadius);
         const next = { ...liveVecRef.current, [axis]: value };
         if (reduceMotionRef.current) {
           commit(next);
