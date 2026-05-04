@@ -178,6 +178,11 @@ export const tabs = style({
   marginBottom: "-1px",
   overflowX: "auto",
   scrollbarWidth: "none",
+  // The detail page root is `display: flex; flex-direction: column`. Without
+  // an explicit shrink-disable, this strip gets flex-squeezed to ~1px tall
+  // when the body content is taller than the viewport — which made the
+  // tabs invisible on long Recipe Studio pages.
+  flexShrink: 0,
   selectors: {
     "&::-webkit-scrollbar": { display: "none" },
   },
