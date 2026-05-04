@@ -10,6 +10,7 @@ export interface RecipeUiProps {
   quickActions?: ReactNode;
   scriptSection: ReactNode;
   parsedDialogueSection: ReactNode;
+  voiceLibrarySection?: ReactNode;
   castSection: ReactNode;
   emotionSection: ReactNode;
   performanceSection: ReactNode;
@@ -71,8 +72,18 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
         >
           {props.parsedDialogueSection}
         </RecipeSection>
+        {props.voiceLibrarySection && (
+          <RecipeSection
+            number="03"
+            title="Voice library"
+            id="recipe-section-voice-library"
+            variant="default"
+          >
+            {props.voiceLibrarySection}
+          </RecipeSection>
+        )}
         <RecipeSection
-          number="03"
+          number={props.voiceLibrarySection ? "04" : "03"}
           title="Cast"
           id="recipe-section-cast"
           variant="default"
@@ -80,7 +91,7 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
           {props.castSection}
         </RecipeSection>
         <RecipeSection
-          number="04"
+          number={props.voiceLibrarySection ? "05" : "04"}
           title="Emotion"
           id="recipe-section-emotion"
           variant="split"
@@ -88,7 +99,7 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
           {props.emotionSection}
         </RecipeSection>
         <RecipeSection
-          number="05"
+          number={props.voiceLibrarySection ? "06" : "05"}
           title="Performance"
           id="recipe-section-performance"
           variant="default"
@@ -96,7 +107,7 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
           {props.performanceSection}
         </RecipeSection>
         <RecipeSection
-          number="06"
+          number={props.voiceLibrarySection ? "07" : "06"}
           title="Recent runs"
           id="recipe-section-runs"
           variant="default"
@@ -105,7 +116,7 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
         </RecipeSection>
         {props.auditSection && (
           <RecipeSection
-            number="07"
+            number={props.voiceLibrarySection ? "08" : "07"}
             title="Edit history"
             id="recipe-section-audit"
             variant="default"
