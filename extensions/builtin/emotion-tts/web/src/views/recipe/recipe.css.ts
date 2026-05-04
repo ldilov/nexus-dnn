@@ -233,34 +233,47 @@ globalStyle(`${quickActions} > *`, {
   position: "relative",
 });
 
-/* Scroll-up button — sits clear of the host's bottom dock and any
-   scrollbar overlap. The `bottom` offset combines a token-driven base
-   plus an extra 32px safe-area; `right` adds 8px to clear the
-   right-side scrollbar gutter. */
+/* Scroll-up FAB — must satisfy two competing constraints:
+ *   1. `position: fixed` needs to be relative to the viewport, not the
+ *      transformed ancestor (route-transition wrapper / panel motion
+ *      container). That means portaling to document.body, NOT into the
+ *      <emotion-tts-app> custom element.
+ *   2. But emotion-tts CSS vars only resolve INSIDE <emotion-tts-app>.
+ *      Portaled to body, every `vars.color.*` resolves to empty string
+ *      and the FAB renders transparent-on-transparent.
+ *
+ * Resolution: portal to body AND hardcode the visuals (matches the
+ * sticky-toolbar fix in commit 4258e67). Spectral-Graphite violet
+ * accent + near-white glyph + raised shadow.
+ *
+ * audit-allow: hex — established escape-hatch for body-portaled
+ * extension UI per 4258e67. */
 export const scrollTopBtn = style({
   position: "fixed",
   // audit-allow: px — bottom safe-area clearance for host dock + scrollbar
-  bottom: `calc(${vars.space.xl} + 40px + env(safe-area-inset-bottom, 0px))`,
+  bottom: "72px",
   // audit-allow: px — clear right-side scrollbar gutter
-  right: `calc(${vars.space.xl} + 8px)`,
+  right: "40px",
   width: "44px",
   height: "44px",
-  borderRadius: vars.radius.pill,
-  background: vars.color.accent,
-  color: vars.color.accentOn,
+  borderRadius: "50%",
+  background: "#8455ef",
+  color: "#f0f0f3",
   border: "none",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  fontSize: vars.text.head,
+  fontSize: "20px",
   lineHeight: 1,
   cursor: "pointer",
-  boxShadow: `${vars.shadow.raised}, inset 0 1px 0 0 color-mix(in oklab, white 14%, transparent)`,
+  boxShadow:
+    "0 8px 24px rgba(0, 0, 0, 0.32), inset 0 1px 0 0 rgba(255, 255, 255, 0.14)",
   zIndex: 60,
   opacity: 0,
   pointerEvents: "none",
   transform: "translateY(8px)",
-  transition: `opacity ${vars.motion.normal}, transform ${vars.motion.normal}, box-shadow ${vars.motion.fast}`,
+  transition:
+    "opacity 200ms ease, transform 200ms ease, box-shadow 120ms ease, background 120ms ease",
   selectors: {
     '&[data-visible="true"]': {
       opacity: 1,
@@ -268,11 +281,13 @@ export const scrollTopBtn = style({
       transform: "translateY(0)",
     },
     "&:hover": {
-      boxShadow: `${vars.shadow.raised}, ${vars.shadow.glow}, inset 0 1px 0 0 color-mix(in oklab, white 24%, transparent)`,
+      background: "#9b6ffa",
+      boxShadow:
+        "0 12px 28px rgba(132, 85, 239, 0.36), inset 0 1px 0 0 rgba(255, 255, 255, 0.24)",
       transform: "translateY(-2px)",
     },
     "&:focus-visible": {
-      outline: `2px solid ${vars.color.accent}`,
+      outline: "2px solid #ba9eff",
       outlineOffset: "3px",
     },
   },
