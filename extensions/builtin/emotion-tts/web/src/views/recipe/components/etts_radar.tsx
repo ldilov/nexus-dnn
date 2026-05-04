@@ -4,10 +4,7 @@ import { useRadarDrag } from "../hooks/use_radar_drag";
 import {
   AXIS_KEYS,
   AXIS_LABELS,
-  type AxisKey,
   type EmotionVec,
-  dominantAxis,
-  magnitude,
 } from "../lib/preset_naming";
 
 const RING_LEVELS = [0.25, 0.5, 0.75, 1.0];
@@ -42,9 +39,6 @@ export function EttsRadar({
       return `${cx + (a.dx * value)},${cy + (a.dy * value)}`;
     }).join(" ");
   }, [axisCoords, cx, cy, drag.liveVec]);
-
-  const dominant = dominantAxis(drag.liveVec);
-  const mag = magnitude(drag.liveVec);
 
   return (
     <div className={css.root}>
@@ -159,37 +153,6 @@ export function EttsRadar({
               );
             })}
         </svg>
-      </div>
-      <div className={css.dominantBlock}>
-        <span className={css.dominantValue}>
-          {dominant ? AXIS_LABELS[dominant].toLowerCase() : "neutral"}
-        </span>
-        <span className={css.dominantSub}>
-          ‖v‖ = {mag.toFixed(2)}
-        </span>
-      </div>
-      <div className={css.axisChips} role="group" aria-label="Axis values">
-        {AXIS_KEYS.map((axis) => {
-          const value = clamp(drag.liveVec[axis]);
-          const isActive = drag.activeAxis === axis;
-          return (
-            <button
-              key={axis}
-              type="button"
-              className={`${css.axisChip}${isActive ? ` ${css.axisChipActive}` : ""}`}
-              onClick={() =>
-                onChange({
-                  ...drag.liveVec,
-                  [axis]: value > 0.05 ? 0 : 0.5,
-                })
-              }
-              aria-pressed={value > 0.05}
-            >
-              {AXIS_LABELS[axis].toLowerCase()}
-              <span className={css.axisChipValue}>{value.toFixed(2)}</span>
-            </button>
-          );
-        })}
       </div>
     </div>
   );
