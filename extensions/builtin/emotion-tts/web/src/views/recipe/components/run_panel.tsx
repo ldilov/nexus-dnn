@@ -242,7 +242,7 @@ export function RunPanel(props: Props): JSX.Element {
         <div className={panel.cta} data-state={generateState}>
           <Button
             variant="primary"
-            size="lg"
+            size="md"
             onClick={startRun}
             disabled={generateDisabled}
             loading={isRunning}

@@ -272,31 +272,6 @@ export const editChip = style({
   letterSpacing: "0.02em",
 });
 
-export const editButton = style({
-  background: "transparent",
-  border: "none",
-  color: vars.color.textMuted,
-  fontFamily: vars.font.mono,
-  fontSize: vars.text.micro,
-  letterSpacing: vars.tracking.label,
-  textTransform: "uppercase",
-  cursor: "pointer",
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  padding: "2px 8px",
-  borderRadius: vars.radius.pill,
-  transition: `background ${vars.motion.fast}, color ${vars.motion.fast}`,
-  selectors: {
-    "&:hover:not(:disabled)": {
-      background: vars.color.surfaceHigh,
-      color: vars.color.text,
-    },
-    "&:disabled": {
-      opacity: 0.5,
-      cursor: "not-allowed",
-    },
-  },
-});
-
 export const uttIndex = style({
   fontFamily: vars.font.mono,
   fontSize: vars.text.caption,
@@ -402,22 +377,6 @@ export const rebuildHint = style({
   letterSpacing: vars.tracking.label,
   textTransform: "uppercase",
   margin: 0,
-});
-
-export const rebuildButton = style({
-  display: "inline-flex",
-  alignItems: "center",
-  gap: vars.space.sm,
-  padding: `${vars.space.sm} ${vars.space.lg}`,
-  borderRadius: vars.radius.sm,
-  fontFamily: vars.font.body,
-  fontSize: vars.text.body,
-  fontWeight: 600,
-  color: vars.color.warning,
-  background: `color-mix(in oklab, ${vars.color.warning} 14%, transparent)`,
-  border: "none",
-  cursor: "not-allowed",
-  boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.warning} 45%, transparent)`,
 });
 
 export const inlineToast = style({

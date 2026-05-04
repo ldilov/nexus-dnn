@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as css from "./voice_card.css";
+import { Button } from "../../../../components/button";
 import type { VoiceAsset } from "../../../../services/voice_assets_client";
 import { getVoiceAssetStreamUrl } from "../../../../services/voice_assets_client";
 
@@ -196,35 +197,38 @@ export function VoiceCard({
           <span className={css.usedBy}>unassigned</span>
         )}
         <span className={css.actions}>
-          <button
-            type="button"
-            className={css.iconBtn}
+          <Button
+            variant="ghost"
+            size="xs"
+            iconOnly
             title="Rename"
             aria-label="Rename voice"
             onClick={() => setRenaming(true)}
           >
             ✎
-          </button>
-          <button
-            type="button"
-            className={css.iconBtn}
+          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            iconOnly
             title="Copy name"
             aria-label="Copy voice name"
             onClick={onCopyName}
           >
             ⧉
-          </button>
+          </Button>
           {onDelete && (
-            <button
-              type="button"
-              className={css.iconBtn}
-              data-tone="danger"
+            <Button
+              variant="ghost"
+              size="xs"
+              iconOnly
+              className={css.deleteIcon}
               title="Delete"
               aria-label="Delete voice"
               onClick={onDelete}
             >
               ✕
-            </button>
+            </Button>
           )}
         </span>
       </footer>
