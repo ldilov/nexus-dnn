@@ -32,9 +32,11 @@ export interface DeploymentDetailNavigate {
 export type NexusHostNavigateDetail = DeploymentDetailNavigate;
 
 /**
- * Convenience helper for extension code. Dispatches the event on `window`.
- * Returns true if any listener handled it (always true when the host is
- * mounted; false in standalone preview contexts).
+ * Convenience helper for in-host code that wants to fire the same event a
+ * remote extension would (e.g. tests, dev tools, the gallery). Returns the
+ * raw `dispatchEvent` value but note: the event is intentionally NOT
+ * `cancelable`, so the return value is always `true` and is NOT a
+ * "did-anyone-handle-this" signal. Callers cannot use it as a fallback gate.
  */
 export function dispatchHostNavigate(detail: NexusHostNavigateDetail): boolean {
   if (typeof window === "undefined") return false;
