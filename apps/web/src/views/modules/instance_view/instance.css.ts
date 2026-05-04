@@ -291,13 +291,14 @@ export const sectionNumber = style({
 
 export const aboutLead = style({
   color: vars.color.onSurface,
-  lineHeight: 1.15,
+  lineHeight: 1.4,
   fontWeight: 500,
-  fontSize: "clamp(1.5rem, 1rem + 1.5vw, 2rem)",
+  fontSize: "clamp(0.95rem, 0.85rem + 0.4vw, 1.125rem)",
   letterSpacing: vars.tracking.tight,
   margin: 0,
-  marginBottom: vars.space.lg,
+  marginBottom: vars.space.md,
   fontFamily: vars.font.ui,
+  maxWidth: "60ch",
 });
 
 export const aboutLeadAccent = style({
@@ -313,11 +314,11 @@ export const aboutLeadAccent = style({
 
 export const aboutSub = style({
   color: vars.color.onSurfaceVariant,
-  lineHeight: 1.55,
-  fontSize: vars.text.bodyL,
-  fontWeight: 300,
+  lineHeight: 1.5,
+  fontSize: vars.text.bodyS,
+  fontWeight: 400,
   margin: 0,
-  marginBottom: vars.space["2xl"],
+  marginBottom: vars.space.xl,
   maxWidth: "60ch",
 });
 
