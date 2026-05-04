@@ -29,12 +29,21 @@ export const buttonRecipe = recipe({
     variant: {
       primary: {
         background: vars.color.accent.primary,
-        color: vars.color.onColor.primary,
+        color: vars.color.text.primary,
         fontWeight: vars.font.weight.semibold,
         ":hover": {
           background: vars.color.accent.primaryHover,
+          color: vars.color.text.primary,
           // audit-allow: px — sub-token spacing value, no density token at this step
           boxShadow: `0 0 12px 0 color-mix(in oklab, ${vars.color.accent.primaryDim} 40%, transparent)`,
+        },
+        ":active": {
+          color: vars.color.text.primary,
+        },
+        selectors: {
+          "&[aria-busy='true']": {
+            color: vars.color.text.primary,
+          },
         },
       },
       secondary: {
