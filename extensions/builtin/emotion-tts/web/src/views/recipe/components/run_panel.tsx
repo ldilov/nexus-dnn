@@ -83,6 +83,10 @@ export function RunPanel(props: Props): JSX.Element {
   const segmentList = Array.from(segments.values()).sort((a, b) => a.globalIndex - b.globalIndex);
   const canCancel = phase === "starting" || phase === "running";
   const isPartial = run?.status === "partial";
+  const inFlightCount = segmentList.filter((s) => s.status === "running").length;
+  const completedCount = segmentList.filter((s) => s.status === "completed").length;
+  const showQueueChip =
+    phase === "starting" || phase === "running" || segmentList.length > 0;
 
   const failedSegments = segmentList.filter((s) => s.status === "failed");
   const dominantFailure = (() => {
@@ -170,6 +174,43 @@ export function RunPanel(props: Props): JSX.Element {
         <Button variant="danger" disabled={!canCancel} onClick={cancel}>
           Cancel
         </Button>
+        {showQueueChip && (
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              marginLeft: "auto",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 12,
+              opacity: 0.85,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background:
+                  phase === "running" || phase === "starting"
+                    ? "#a78bfa"
+                    : "#94a3b8",
+                animation:
+                  phase === "running" || phase === "starting"
+                    ? "pulse 1.4s ease-in-out infinite"
+                    : undefined,
+              }}
+              aria-hidden="true"
+            />
+            <span>
+              Queue:&nbsp;
+              <strong>{inFlightCount}</strong> in flight ·{" "}
+              <strong>{completedCount}</strong>/{segmentList.length} done
+            </span>
+          </div>
+        )}
       </div>
 
       {dominantFailure && (

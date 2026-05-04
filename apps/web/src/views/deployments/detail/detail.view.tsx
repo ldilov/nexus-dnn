@@ -151,6 +151,7 @@ export function DeploymentDetailPlaceholder({
         workflow={workflow ?? null}
         workflowLoading={workflowLoading}
         extensionLayout={extensionLayout}
+        extensionId={deployment?.source_extension_id ?? null}
         onRequestDelete={() => setDeleteOpen(true)}
       />
       <ConfirmDialog
