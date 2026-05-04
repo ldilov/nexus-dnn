@@ -75,20 +75,18 @@ export async function renameVoiceAsset(
 }
 
 /**
- * Build a stream URL the browser can hand to a `<audio>` element. Falls back
- * to the public artifact endpoint if a voice asset stores its audio under a
- * recognised `artifact://` URI scheme; for `file://` or unknown schemes
- * returns null so the caller can render a "preview unavailable" affordance
- * rather than a broken audio element.
+ * Build a stream URL the browser can hand to a `<audio>` element. The
+ * extension's GET `/voice-assets/{id}/audio` endpoint streams the underlying
+ * audio regardless of the host's chosen storage scheme (file://, artifact://,
+ * cloud blob, etc.) — so the browser never needs to know how it's stored.
+ *
+ * Returns `null` only when the asset has no `audioArtifactRef` (genuinely
+ * unavailable) so callers can render a "preview unavailable" affordance.
  */
 export function getVoiceAssetStreamUrl(asset: VoiceAsset): string | null {
-  const ref = asset.audioArtifactRef;
-  if (!ref) return null;
-  if (ref.startsWith("http://") || ref.startsWith("https://")) return ref;
-  if (ref.startsWith("artifact://")) {
-    return `/api/v1/artifacts/${encodeURIComponent(ref.slice("artifact://".length))}`;
-  }
-  return null;
+  if (!asset.audioArtifactRef) return null;
+  const params = new URLSearchParams({ deploymentId: asset.deploymentId });
+  return `${EXTENSION_PREFIX}/voice-assets/${encodeURIComponent(asset.voiceAssetId)}/audio?${params.toString()}`;
 }
 
 export async function probeVoiceAsset(artifactRef: string): Promise<ProbeResult> {
