@@ -60,6 +60,37 @@ export async function deactivateVoiceAsset(
   );
 }
 
+export async function renameVoiceAsset(
+  deploymentId: string,
+  voiceAssetId: string,
+  displayName: string,
+): Promise<VoiceAsset> {
+  return apiFetch<VoiceAsset>(
+    `/voice-assets/${voiceAssetId}?deploymentId=${encodeURIComponent(deploymentId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ displayName }),
+    },
+  );
+}
+
+/**
+ * Build a stream URL the browser can hand to a `<audio>` element. Falls back
+ * to the public artifact endpoint if a voice asset stores its audio under a
+ * recognised `artifact://` URI scheme; for `file://` or unknown schemes
+ * returns null so the caller can render a "preview unavailable" affordance
+ * rather than a broken audio element.
+ */
+export function getVoiceAssetStreamUrl(asset: VoiceAsset): string | null {
+  const ref = asset.audioArtifactRef;
+  if (!ref) return null;
+  if (ref.startsWith("http://") || ref.startsWith("https://")) return ref;
+  if (ref.startsWith("artifact://")) {
+    return `/api/v1/artifacts/${encodeURIComponent(ref.slice("artifact://".length))}`;
+  }
+  return null;
+}
+
 export async function probeVoiceAsset(artifactRef: string): Promise<ProbeResult> {
   return apiFetch("/voice-assets/probe", {
     method: "POST",

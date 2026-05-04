@@ -106,6 +106,24 @@ impl VoiceAssetsRepo for SqliteVoiceAssetsRepo {
         Ok(())
     }
 
+    async fn update_display_name(
+        &self,
+        id: &VoiceAssetId,
+        display_name: &str,
+    ) -> RepoResult<()> {
+        sqlx::query(
+            "UPDATE ext_emotion_tts__voice_assets \
+             SET display_name = ?, updated_at = strftime('%s', 'now') \
+             WHERE voice_asset_id = ?",
+        )
+        .bind(display_name)
+        .bind(id.as_str())
+        .execute(&self.pool)
+        .await
+        .map_err(to_err)?;
+        Ok(())
+    }
+
     async fn set_preprocessed(
         &self,
         id: &VoiceAssetId,
