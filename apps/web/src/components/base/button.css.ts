@@ -76,6 +76,7 @@ export const buttonRecipe = recipe({
         selectors: {
           "&:hover:not(:disabled)": {
             background: vars.color.accent.primaryHover,
+            color: vars.color.text.primary,
           },
         },
       },
@@ -116,6 +117,7 @@ export const buttonRecipe = recipe({
         selectors: {
           "&:hover:not(:disabled)": {
             backgroundColor: vars.color.accent.tertiaryDim,
+            color: vars.color.text.primary,
           },
         },
       },
