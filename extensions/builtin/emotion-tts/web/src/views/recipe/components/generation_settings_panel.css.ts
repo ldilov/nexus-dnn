@@ -226,6 +226,61 @@ export const divider = style({
   marginBlock: vars.space.sm,
 });
 
+export const seedRow = style({
+  // Compact row: [Fixed | Random] segmented + value input. Value swaps to a
+  // muted "rolls each run" hint when Random is selected.
+  flexWrap: "wrap",
+  gap: vars.space.sm,
+});
+
+export const seedModeBtn = style({
+  appearance: "none",
+  height: "32px",
+  paddingInline: vars.space.md,
+  background: "transparent",
+  color: vars.color.textMuted,
+  border: "none",
+  borderRadius: vars.radius.sm,
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.caption,
+  letterSpacing: vars.tracking.label,
+  textTransform: "uppercase",
+  cursor: "pointer",
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+  transition: "background 160ms, color 160ms, box-shadow 160ms",
+  selectors: {
+    "&:hover": {
+      color: vars.color.text,
+      boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
+    },
+    "&:focus-visible": {
+      outline: `2px solid ${vars.color.accent}`,
+      outlineOffset: "2px",
+    },
+  },
+});
+
+export const seedModeBtnActive = style({
+  background: `color-mix(in oklab, ${vars.color.accent} 14%, transparent)`,
+  color: vars.color.accent,
+  boxShadow: `inset 0 0 0 1px ${vars.color.accent}`,
+  selectors: {
+    "&:hover": {
+      color: vars.color.accent,
+      boxShadow: `inset 0 0 0 1px ${vars.color.accent}`,
+    },
+  },
+});
+
+export const seedRandomHint = style({
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.caption,
+  color: vars.color.textMuted,
+  letterSpacing: 0,
+  textTransform: "none",
+  paddingInline: vars.space.sm,
+});
+
 export const sectionLabel = style({
   fontFamily: vars.font.mono,
   fontSize: vars.text.micro,
