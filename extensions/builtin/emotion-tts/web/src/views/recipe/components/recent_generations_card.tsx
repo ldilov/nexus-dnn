@@ -1,18 +1,20 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type ReactElement,
 } from "react";
 import { LazyMotion, AnimatePresence, domAnimation, m, useReducedMotion } from "motion/react";
+import { EXTENSION_PREFIX } from "../../../services/http";
 import { listVoiceAssets, type VoiceAsset } from "../../../services/voice_assets_client";
 import { subscribeRunState } from "../lib/run_events";
 import * as css from "./recent_generations_card.css";
 
-const EXTENSION_ID = "nexus.audio.emotiontts";
 const LIMIT = 5;
+// Two consecutive `1.0` slider readouts can sit ε apart in float space, so
+// treat anything inside this tolerance as "the default speed".
+const SPEED_EPSILON = 0.005;
 
 interface ArtifactRow {
   readonly utteranceId: string;
@@ -25,6 +27,13 @@ interface ArtifactRow {
   readonly finishedAt: number | null;
   readonly filename: string;
   readonly edited: boolean;
+  /** Voice asset chosen by the dispatcher's resolver for this utterance.
+   * Already stored on the utterance row server-side; the artifacts endpoint
+   * surfaces it so the recent-generations card can label each row with the
+   * actual voice used. Null when the utterance fell through to a hard-coded
+   * path. Optional in the type so the frontend handles older API responses
+   * that pre-date this field gracefully. */
+  readonly voiceAssetId?: string | null;
 }
 
 interface ArtifactsResponse {
@@ -33,7 +42,7 @@ interface ArtifactsResponse {
 }
 
 function buildArtifactPath(deploymentId: string, suffix = ""): string {
-  return `/api/v1/extensions/${EXTENSION_ID}/deployments/${deploymentId}/artifacts${suffix}`;
+  return `${EXTENSION_PREFIX}/deployments/${deploymentId}/artifacts${suffix}`;
 }
 
 interface UseRecentResult {
@@ -43,7 +52,11 @@ interface UseRecentResult {
   readonly refetch: () => void;
 }
 
-function useRecentUtterances(deploymentId: string): UseRecentResult {
+interface UseRecentResultWithTick extends UseRecentResult {
+  readonly tick: number;
+}
+
+function useRecentUtterances(deploymentId: string): UseRecentResultWithTick {
   const [rows, setRows] = useState<readonly ArtifactRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,15 +106,17 @@ function useRecentUtterances(deploymentId: string): UseRecentResult {
     });
   }, [refetch]);
 
-  return { rows, loading, error, refetch };
+  return { rows, loading, error, refetch, tick };
 }
 
-function useVoicesByRun(deploymentId: string): Map<string, string> {
-  // Best-effort `runId → voice display name` map. We don't have a direct
-  // run→voice association from the artifacts endpoint, so we fall back to
-  // showing the voice asset's display name when there's only one voice in
-  // the deployment, otherwise we leave the field blank. The cost of being
-  // wrong here is purely visual (mislabelled meta), so a soft guess is OK.
+function useVoicesByRun(deploymentId: string, refetchTick: number): Map<string, string> {
+  // `voiceAssetId → display name` lookup for the recent-generations card.
+  // The artifacts endpoint already returns each utterance's resolved voice
+  // id (see `recipe.view`'s server contract); this map is purely a
+  // client-side denormalisation so we can render a name without a separate
+  // request per row. Refreshed alongside the artifacts refetch
+  // (busy → idle transitions, manual Refresh) so a freshly-uploaded voice
+  // is labelable without a page reload.
   const [byId, setById] = useState<Map<string, string>>(() => new Map());
   useEffect(() => {
     let cancelled = false;
@@ -120,7 +135,7 @@ function useVoicesByRun(deploymentId: string): Map<string, string> {
     return () => {
       cancelled = true;
     };
-  }, [deploymentId]);
+  }, [deploymentId, refetchTick]);
   return byId;
 }
 
@@ -135,12 +150,21 @@ export function RecentGenerationsCard({
   deploymentId,
   speedFactor,
 }: RecentGenerationsCardProps): ReactElement | null {
-  const { rows, loading, error, refetch } = useRecentUtterances(deploymentId);
-  const voicesById = useVoicesByRun(deploymentId);
+  const { rows, loading, error, refetch, tick } = useRecentUtterances(deploymentId);
+  const voicesById = useVoicesByRun(deploymentId, tick);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const reducedMotion = useReducedMotion();
 
-  const displayRows = useMemo(() => rows.slice(0, LIMIT), [rows]);
+  // Drop the playing row when refresh starts a new fetch — if the previously
+  // playing utterance is gone after refresh, the <audio> would otherwise
+  // unmount mid-play with a stale id sitting in state.
+  const handleRefresh = useCallback((): void => {
+    setPlayingId(null);
+    refetch();
+  }, [refetch]);
+
+  // `rows` is already capped to LIMIT in the fetch handler — see useRecentUtterances.
+  const displayRows = rows;
 
   if (!loading && !error && displayRows.length === 0) {
     return null; // Hidden until the user has at least one generation.
@@ -158,7 +182,7 @@ export function RecentGenerationsCard({
           <button
             type="button"
             className={css.refresh}
-            onClick={refetch}
+            onClick={handleRefresh}
             aria-label="Refresh"
             title="Refresh"
           >
@@ -167,7 +191,7 @@ export function RecentGenerationsCard({
         </span>
       </header>
 
-      {error && displayRows.length === 0 && (
+      {error && (
         <div className={css.error} role="alert">
           {error}
         </div>
@@ -182,8 +206,8 @@ export function RecentGenerationsCard({
                 deploymentId,
                 `/${row.utteranceId}/download`,
               );
-              const voiceName = voicesById.size > 0
-                ? Array.from(voicesById.values())[0]
+              const rowVoiceName = row.voiceAssetId
+                ? voicesById.get(row.voiceAssetId) ?? null
                 : null;
               return (
                 <m.li
@@ -206,7 +230,7 @@ export function RecentGenerationsCard({
                         prev === row.utteranceId ? null : row.utteranceId,
                       )
                     }
-                    aria-label={isPlaying ? "Stop preview" : "Play preview"}
+                    aria-label="Preview"
                     aria-pressed={isPlaying}
                   >
                     {isPlaying ? "■" : "▶"}
@@ -215,11 +239,7 @@ export function RecentGenerationsCard({
                   <div className={css.body}>
                     <div className={css.bodyTop}>
                       <span className={css.character}>{row.characterDisplay}</span>
-                      <span
-                        className={css.text}
-                        title={row.text}
-                        data-tooltip={row.text}
-                      >
+                      <span className={css.text} title={row.text}>
                         {row.text}
                       </span>
                     </div>
@@ -227,12 +247,12 @@ export function RecentGenerationsCard({
                       <span className={css.metaSeg}>
                         {formatRelativeDate(row.finishedAt)}
                       </span>
-                      {voiceName && (
+                      {rowVoiceName && (
                         <>
                           <span className={css.metaDot} aria-hidden="true">
                             ·
                           </span>
-                          <span className={css.metaVoice}>{voiceName}</span>
+                          <span className={css.metaVoice}>{rowVoiceName}</span>
                         </>
                       )}
                       <span className={css.metaDot} aria-hidden="true">
@@ -241,16 +261,17 @@ export function RecentGenerationsCard({
                       <span className={css.metaDuration}>
                         {formatDuration(row.durationMs)}
                       </span>
-                      {speedFactor !== undefined && speedFactor !== 1 && (
-                        <>
-                          <span className={css.metaDot} aria-hidden="true">
-                            ·
-                          </span>
-                          <span className={css.metaSpeed}>
-                            {speedFactor.toFixed(2)}×
-                          </span>
-                        </>
-                      )}
+                      {speedFactor !== undefined &&
+                        Math.abs(speedFactor - 1) > SPEED_EPSILON && (
+                          <>
+                            <span className={css.metaDot} aria-hidden="true">
+                              ·
+                            </span>
+                            <span className={css.metaSpeed}>
+                              {speedFactor.toFixed(2)}×
+                            </span>
+                          </>
+                        )}
                     </div>
                   </div>
 

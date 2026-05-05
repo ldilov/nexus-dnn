@@ -68,14 +68,14 @@ export function ScriptEditor(props: Props): JSX.Element {
 
   return (
     <div>
-      <div className={`${css.scriptShell} ${quickMode ? css.scriptShellQuick : ""}`}>
+      <div className={quickMode ? css.scriptShellQuick : css.scriptShell}>
         {!quickMode && (
           <div ref={overlayRef} className={css.scriptOverlay} aria-hidden="true">
             {tokens.map((tok, idx) => renderToken(tok, idx, characterColor))}
           </div>
         )}
         <textarea
-          className={`${css.scriptTextarea} ${quickMode ? css.scriptTextareaQuick : ""}`}
+          className={quickMode ? css.scriptTextareaQuick : css.scriptTextarea}
           value={props.value}
           onChange={(e) => props.onChange(e.currentTarget.value)}
           onScroll={quickMode ? undefined : handleScroll}

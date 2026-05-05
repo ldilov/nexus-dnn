@@ -56,14 +56,19 @@ export const refresh = style({
   appearance: "none",
   background: "transparent",
   border: "none",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
   // audit-allow: px — touch-target square
   width: "26px",
   // audit-allow: px — touch-target square
   height: "26px",
+  padding: 0,
   borderRadius: vars.radius.pill,
   color: vars.color.textMuted,
   fontFamily: vars.font.mono,
   fontSize: vars.text.body,
+  lineHeight: 1,
   cursor: "pointer",
   transition: "color 120ms, background 120ms",
   selectors: {
@@ -182,42 +187,11 @@ export const text = style({
   textOverflow: "ellipsis",
   flex: "1 1 auto",
   minWidth: 0,
-  // Hover surface for the floating tooltip below.
-  position: "relative",
-  cursor: "default",
-  selectors: {
-    "&::before": {
-      content: "attr(data-tooltip)",
-      position: "absolute",
-      // audit-allow: px — anchor offset below text
-      top: "calc(100% + 6px)",
-      left: 0,
-      // audit-allow: px — readable line cap
-      maxWidth: "min(640px, 60ch)",
-      width: "max-content",
-      padding: `${vars.space.sm} ${vars.space.md}`,
-      background: vars.color.surfaceRaised,
-      color: vars.color.text,
-      fontFamily: vars.font.body,
-      fontSize: vars.text.caption,
-      lineHeight: 1.45,
-      whiteSpace: "normal",
-      textOverflow: "clip",
-      overflow: "visible",
-      borderRadius: vars.radius.md,
-      border: `1px solid ${vars.color.borderSubtle}`,
-      boxShadow: vars.shadow.raised,
-      opacity: 0,
-      pointerEvents: "none",
-      transform: "translateY(-2px)",
-      transition: "opacity 160ms, transform 160ms",
-      zIndex: 10,
-    },
-    "&:hover::before, &:focus-visible::before": {
-      opacity: 1,
-      transform: "translateY(0)",
-    },
-  },
+  // The full text is exposed via the native `title` attribute on the
+  // element. Browsers render the OS-level tooltip on pointer hover and
+  // expose it to assistive tech. A CSS-pseudo tooltip would not be
+  // announced by screen readers and could not be reached via keyboard
+  // (the span is non-interactive), so we deliberately avoid one.
 });
 
 export const meta = style({
