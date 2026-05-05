@@ -144,7 +144,15 @@ pub(crate) async fn prepare(
         "raw_text" => ParserMode::RawText,
         "advanced_tagged" => ParserMode::AdvancedTagged,
         "story" => ParserMode::Story,
-        _ => ParserMode::Dialogue,
+        "dialogue" | "" => ParserMode::Dialogue,
+        unknown => {
+            tracing::warn!(
+                run_id = %run_id.as_str(),
+                parser_mode = %unknown,
+                "unknown parser_mode; falling back to Dialogue"
+            );
+            ParserMode::Dialogue
+        }
     };
     let parsed = parse_script(&run.script_snapshot, parser_mode);
 
@@ -582,7 +590,7 @@ fn encode_inline_vector(vector: &[f64; 8]) -> String {
 }
 
 fn format_inline_num(n: f64) -> String {
-    let rounded = (n * 1000.0).round() / 1000.0;
+    let rounded = (n * 1_000_000.0).round() / 1_000_000.0;
     if (rounded - rounded.trunc()).abs() < f64::EPSILON {
         format!("{rounded:.1}")
     } else {

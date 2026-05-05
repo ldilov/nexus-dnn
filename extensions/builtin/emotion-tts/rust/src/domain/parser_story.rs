@@ -2,11 +2,34 @@ use std::collections::BTreeMap;
 
 use crate::domain::parser::{ParsePlan, ParseReport, ParsedUtterance, ParserMode, NARRATOR};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
+struct CharacterName(String);
+
+impl CharacterName {
+    fn new(raw: String) -> Option<Self> {
+        if raw.is_empty() {
+            None
+        } else {
+            Some(Self(raw))
+        }
+    }
+
+    fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+#[derive(Debug, PartialEq)]
 enum Token {
-    Character { name: String, line: i64 },
+    Character { name: CharacterName, line: i64 },
     Emotion { name: String, line: i64 },
     Text { value: String, line: i64 },
+}
+
+impl PartialEq for CharacterName {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
 }
 
 #[must_use]
@@ -61,13 +84,13 @@ fn tokenise(script: &str) -> Vec<Token> {
                     break;
                 }
             }
-            if !name.is_empty() {
+            if let Some(name_value) = CharacterName::new(name) {
                 flush(&mut buffer, buffer_start_line, &mut tokens);
                 buffer_start_line = current_line;
                 if ch == '@' {
-                    tokens.push(Token::Character { name, line: current_line });
+                    tokens.push(Token::Character { name: name_value, line: current_line });
                 } else {
-                    tokens.push(Token::Emotion { name, line: current_line });
+                    tokens.push(Token::Emotion { name: name_value.into_inner(), line: current_line });
                 }
                 i = j;
                 continue;
@@ -94,7 +117,7 @@ fn walk(tokens: Vec<Token>, script: &str) -> ParsePlan {
     }
 
     let mut utterances: Vec<ParsedUtterance> = Vec::new();
-    let mut current_character: Option<String> = None;
+    let mut current_character: Option<CharacterName> = None;
     let mut current_emotion: Option<String> = None;
     let mut buffer = String::new();
     let mut buffer_line: i64 = 1;
@@ -102,13 +125,13 @@ fn walk(tokens: Vec<Token>, script: &str) -> ParsePlan {
     for token in tokens {
         match token {
             Token::Character { name, line } => {
-                emit(&mut utterances, &mut buffer, buffer_line, &current_character, &current_emotion, &mut report);
+                emit(&mut utterances, &mut buffer, buffer_line, current_character.as_ref(), &current_emotion);
                 current_character = Some(name);
                 current_emotion = None;
                 buffer_line = line;
             }
             Token::Emotion { name, line } => {
-                emit(&mut utterances, &mut buffer, buffer_line, &current_character, &current_emotion, &mut report);
+                emit(&mut utterances, &mut buffer, buffer_line, current_character.as_ref(), &current_emotion);
                 current_emotion = Some(name);
                 buffer_line = line;
             }
@@ -121,7 +144,7 @@ fn walk(tokens: Vec<Token>, script: &str) -> ParsePlan {
         }
     }
 
-    emit(&mut utterances, &mut buffer, buffer_line, &current_character, &current_emotion, &mut report);
+    emit(&mut utterances, &mut buffer, buffer_line, current_character.as_ref(), &current_emotion);
 
     report.tagged_count = utterances
         .iter()
@@ -143,9 +166,8 @@ fn emit(
     utterances: &mut Vec<ParsedUtterance>,
     buffer: &mut String,
     line: i64,
-    character: &Option<String>,
+    character: Option<&CharacterName>,
     emotion: &Option<String>,
-    _report: &mut ParseReport,
 ) {
     let raw = std::mem::take(buffer);
     let normalised = normalise_text(&raw);
@@ -153,10 +175,7 @@ fn emit(
         return;
     }
 
-    let display = character
-        .as_deref()
-        .map_or_else(|| NARRATOR.to_string(), str::to_string);
-    debug_assert!(!display.is_empty(), "tokenise() guarantees non-empty character names");
+    let display = character.map_or_else(|| NARRATOR.to_string(), |c| c.0.clone());
 
     let mut overrides: BTreeMap<String, String> = BTreeMap::new();
     if let Some(emotion_name) = emotion.as_deref() {
