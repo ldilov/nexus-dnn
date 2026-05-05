@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { toast } from "sonner";
 import {
   getRuntimeHealth,
-  startRuntime,
-  stopRuntime,
   type RuntimeHealth,
 } from "../../../services/runtime_client";
 import {
@@ -12,6 +9,28 @@ import {
   subscribeRunState,
 } from "../lib/run_events";
 import * as css from "./sticky_action_bar.css";
+
+// Mirrors `host_action_bridge.ts` — invoking the bridge instead of calling
+// startRuntime/stopRuntime directly keeps the host shell's "Start runtime"
+// button and this floating toolbar in sync. The bridge is the single source
+// of truth for runtime lifecycle: it flips `inFlightLifecycle = true` and
+// dispatches `ext-action-state` to the host shell on click, then again when
+// the lifecycle settles.
+const EXT_ACTION_INVOKE = "ext-action-invoke";
+const ACTION_RUN = "emotion-tts.run";
+
+function invokeRuntimeAction(): boolean {
+  if (typeof document === "undefined") return false;
+  const host = document.querySelector("emotion-tts-app");
+  if (!host) return false;
+  host.dispatchEvent(
+    new CustomEvent(EXT_ACTION_INVOKE, {
+      detail: { id: ACTION_RUN },
+      bubbles: false,
+    }),
+  );
+  return true;
+}
 
 interface Props {
   visible: boolean;
@@ -73,30 +92,33 @@ export function StickyActionBar({ visible, canGenerate }: Props): JSX.Element {
 
   const badge = health?.badge ?? "not_installed";
   const isRunning = badge === "ready" || badge === "running";
-  const isStarting = badge === "starting" || badge === "installing";
+  const isStarting =
+    badge === "starting" || badge === "installing" || badge === "stopping";
   const runtimeReady = isRunning;
 
-  const onRunClick = useCallback(async (): Promise<void> => {
-    // Re-derive intent from the ref at click-time so we never act on a stale
-    // `isRunning` captured at render. Keeps the callback dep-free and avoids
-    // mid-flight label flicker when the health poll fires between two clicks.
-    const currentBadge = healthRef.current?.badge ?? "not_installed";
-    const currentlyRunning =
-      currentBadge === "ready" || currentBadge === "running";
-    setRuntimeBusy(true);
-    try {
-      if (currentlyRunning) {
-        await stopRuntime();
-        toast.success("Runtime stopped");
-      } else {
-        await startRuntime();
-        toast.success("Runtime starting…");
-      }
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "runtime action failed");
-    } finally {
+  // Clear the optimistic spinner once the next health poll has observed a
+  // lifecycle-transition badge (starting / installing / stopping). At that
+  // point the badge-driven spinner takes over, so we don't double-render
+  // the loading state if the bridge resolves before the poll lands.
+  useEffect(() => {
+    if (runtimeBusy && (isStarting || isRunning)) {
       setRuntimeBusy(false);
     }
+  }, [runtimeBusy, isStarting, isRunning]);
+
+  const onRunClick = useCallback((): void => {
+    // Delegate to the host action bridge so the host shell's "Start runtime"
+    // button and this toolbar reflect the same in-flight state instantly —
+    // the bridge dispatches `ext-action-state` synchronously on click,
+    // before the network call resolves. The bridge owns the actual
+    // start/stop request; we just optimistically flash the local spinner so
+    // the user gets immediate feedback before the next health poll lands.
+    setRuntimeBusy(true);
+    invokeRuntimeAction();
+    // Clear the local optimistic flag once the next health poll observes
+    // the lifecycle transition (badge moves into starting/installing/running
+    // /stopping/stopped — anything other than the click-time state). The
+    // existing health-poll effect handles the actual badge updates.
   }, []);
 
   const runtimeLabel = isRunning
