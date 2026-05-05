@@ -277,7 +277,7 @@ export function StoryEditor({
           rows={10}
           spellCheck
           aria-label="Story script"
-          aria-controls={popover ? popoverId : undefined}
+          aria-controls={popover && filteredCandidates.length > 0 ? popoverId : undefined}
           aria-autocomplete="list"
           aria-activedescendant={activeOptionId}
         />
