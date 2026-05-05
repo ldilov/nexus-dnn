@@ -71,6 +71,25 @@ export function GenerationSettingsPanel({
     onGenerationChange({ ...generation, [key]: value });
   };
 
+  // Seed mode is derived from the presence of `seed` in the generation
+  // record. `undefined` → random (worker rolls fresh each run); a number →
+  // fixed (worker seeds RNGs deterministically). Switching modes preserves
+  // the last-known fixed value so flipping back doesn't lose it.
+  const seedMode: "fixed" | "random" =
+    generation["seed"] === undefined || generation["seed"] === null ? "random" : "fixed";
+
+  const setSeedMode = (mode: "fixed" | "random"): void => {
+    if (mode === seedMode) return;
+    if (mode === "random") {
+      const next = { ...generation };
+      delete next["seed"];
+      onGenerationChange(next);
+    } else {
+      const lastFixed = readNumber(generation, "seed", SEED_DEFAULT);
+      onGenerationChange({ ...generation, seed: lastFixed });
+    }
+  };
+
   const activePolicy =
     CACHE_POLICIES.find((p) => p.id === cachePolicy) ?? CACHE_POLICIES[0]!;
   const speedPct = ((speedFactor - SPEED_MIN) / (SPEED_MAX - SPEED_MIN)) * 100;
@@ -184,18 +203,52 @@ export function GenerationSettingsPanel({
       </div>
 
       <div className={css.row}>
-        <label htmlFor={seedId} className={css.label}>
+        <span className={css.label} id={`${seedId}-label`}>
           Seed
-        </label>
-        <div className={css.control}>
-          <input
-            id={seedId}
-            type="number"
-            className={css.numberInput}
-            step={1}
-            value={seed}
-            onChange={(e) => update("seed", Math.trunc(Number(e.currentTarget.value)))}
-          />
+        </span>
+        <div
+          className={`${css.control} ${css.seedRow}`}
+          role="radiogroup"
+          aria-labelledby={`${seedId}-label`}
+        >
+          <button
+            type="button"
+            role="radio"
+            aria-checked={seedMode === "fixed"}
+            className={`${css.seedModeBtn} ${
+              seedMode === "fixed" ? css.seedModeBtnActive : ""
+            }`}
+            onClick={() => setSeedMode("fixed")}
+          >
+            Fixed
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={seedMode === "random"}
+            className={`${css.seedModeBtn} ${
+              seedMode === "random" ? css.seedModeBtnActive : ""
+            }`}
+            onClick={() => setSeedMode("random")}
+            title="A fresh seed is rolled for every run — output varies"
+          >
+            Random
+          </button>
+          {seedMode === "fixed" ? (
+            <input
+              id={seedId}
+              type="number"
+              className={css.numberInput}
+              step={1}
+              value={seed}
+              onChange={(e) => update("seed", Math.trunc(Number(e.currentTarget.value)))}
+              aria-label="Fixed seed value"
+            />
+          ) : (
+            <span className={css.seedRandomHint} aria-live="polite">
+              auto · rolls each run
+            </span>
+          )}
         </div>
       </div>
     </div>
