@@ -39,7 +39,13 @@ import { RecentRuns } from "./components/recent_runs";
 import { RecentGenerationsCard } from "./components/recent_generations_card";
 import { RunPanel } from "./components/run_panel";
 import { ScriptSection } from "./components/script_section/script_section";
+import type { EditorMode } from "./components/editor_mode_toggle/editor_mode_toggle";
 import { buildDiagnostics } from "./lib/build_diagnostics";
+import {
+  newEmptyRow,
+  serialiseRowsToScript,
+  type PerCharacterRow,
+} from "./lib/serialise_rows";
 import {
   assignCharacterColors,
   lineCountByCharacter,
@@ -146,11 +152,17 @@ export function RecipeView(): JSX.Element {
   const [defaultVoiceAssetId, setDefaultVoiceAssetId] = useState<string | null>(
     deployment.defaultVoiceAssetId ?? null,
   );
-  const [quickMode, setQuickMode] = useState(() => {
-    const v = seededRecipeMeta["quickMode"];
-    if (typeof v === "boolean") return v;
-    return deployment.defaultVoiceAssetId != null;
+  const [editorMode, setEditorMode] = useState<EditorMode>(() => {
+    const persisted = seededRecipeMeta["editorMode"];
+    if (persisted === "quick" || persisted === "rows" || persisted === "story") {
+      return persisted;
+    }
+    const legacyQuick = seededRecipeMeta["quickMode"];
+    if (typeof legacyQuick === "boolean") return legacyQuick ? "quick" : "rows";
+    return deployment.defaultVoiceAssetId != null ? "quick" : "rows";
   });
+  const quickMode = editorMode === "quick";
+  const [rows, setRows] = useState<PerCharacterRow[]>(() => [newEmptyRow()]);
   const [performance, setPerformance] = useState<PerformanceSlidersValue>(PERFORMANCE_DEFAULTS);
 
   useEffect(() => {
@@ -185,6 +197,7 @@ export function RecipeView(): JSX.Element {
       const overrides = {
         ...generation,
         [RECIPE_META_KEY]: {
+          editorMode,
           quickMode,
           cachePolicy,
         },
@@ -204,11 +217,16 @@ export function RecipeView(): JSX.Element {
     outputFormat,
     speedFactor,
     cachePolicy,
+    editorMode,
     quickMode,
     generation,
   ]);
 
-  const parsedLines = useMemo(() => parseDialogue(script), [script]);
+  const effectiveScript = useMemo(
+    () => (editorMode === "rows" ? serialiseRowsToScript(rows, vectorPresets) : script),
+    [editorMode, rows, vectorPresets, script],
+  );
+  const parsedLines = useMemo(() => parseDialogue(effectiveScript), [effectiveScript]);
   const characters = useMemo(() => uniqueCharacters(parsedLines), [parsedLines]);
   const characterColors = useMemo(() => assignCharacterColors(characters), [characters]);
   const lineCounts = useMemo(() => lineCountByCharacter(parsedLines), [parsedLines]);
@@ -402,20 +420,20 @@ export function RecipeView(): JSX.Element {
 
   const createPayload: CreateRunRequest = useMemo(
     () => ({
-      script,
-      parserMode: quickMode ? "raw_text" : "dialogue",
+      script: effectiveScript,
+      parserMode: editorMode === "quick" ? "raw_text" : "dialogue",
       outputFormat,
       speedFactor,
       globalEmotion: { ...globalEmotion, emotionAlpha: performance.intensity },
       generation,
       cachePolicy,
     }),
-    [script, quickMode, outputFormat, speedFactor, performance.intensity, globalEmotion, generation, cachePolicy],
+    [effectiveScript, editorMode, outputFormat, speedFactor, performance.intensity, globalEmotion, generation, cachePolicy],
   );
 
   const diagnostics = useMemo(
     () => buildDiagnostics({
-      script,
+      script: effectiveScript,
       quickMode,
       defaultVoiceAssetId,
       characters,
@@ -423,7 +441,7 @@ export function RecipeView(): JSX.Element {
       globalEmotion,
       performance,
     }),
-    [script, quickMode, defaultVoiceAssetId, characters, unmappedCount, globalEmotion, performance],
+    [effectiveScript, quickMode, defaultVoiceAssetId, characters, unmappedCount, globalEmotion, performance],
   );
 
   const legacyDiagnostics = useMemo(
@@ -443,7 +461,7 @@ export function RecipeView(): JSX.Element {
       <Toaster position="bottom-right" richColors theme="dark" />
       <RecipeUi
         deployment={deployment}
-        canGenerate={script.trim().length > 0}
+        canGenerate={effectiveScript.trim().length > 0}
         workflowCustomised={workflow.workflow.customised}
         unmappableFields={workflow.unmappableFields}
         hero={<DeploymentHeader deployment={deployment} />}
@@ -451,7 +469,7 @@ export function RecipeView(): JSX.Element {
           <RunPanel
             deploymentId={deployment.deploymentId}
             createPayload={createPayload}
-            canGenerate={script.trim().length > 0}
+            canGenerate={effectiveScript.trim().length > 0}
             diagnostics={legacyDiagnostics}
           />
         }
@@ -463,15 +481,18 @@ export function RecipeView(): JSX.Element {
         }
         scriptSection={
           <ScriptSection
-            quickMode={quickMode}
-            onToggleQuickMode={setQuickMode}
+            editorMode={editorMode}
+            onEditorModeChange={setEditorMode}
             deployment={deployment}
             script={script}
             onScriptChange={setScript}
+            rows={rows}
+            onRowsChange={setRows}
             outputFormat={outputFormat}
             mappingsByLower={mappingsByLower}
             defaultVoiceAssetId={defaultVoiceAssetId}
             onDefaultVoiceAssetIdChange={setDefaultVoiceAssetId}
+            presets={vectorPresets}
           />
         }
         parsedDialogueSection={
