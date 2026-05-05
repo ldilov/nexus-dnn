@@ -18,8 +18,6 @@ export const quickBar = style({
   gap: vars.space.md,
   // audit-allow: px — design-system-spec'd toolbar inset
   padding: "10px 12px",
-  // audit-allow: px — sub-token vertical rhythm
-  marginBottom: "12px",
   background: vars.color.surfaceMuted,
   borderRadius: vars.radius.md,
   borderLeft: `2px solid ${vars.color.borderGhost}`,
