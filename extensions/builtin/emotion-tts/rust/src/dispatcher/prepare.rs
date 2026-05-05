@@ -123,10 +123,19 @@ pub(crate) async fn prepare(
                 .map(|v| (p.preset_id.as_str().to_string(), v))
         })
         .collect();
+    let preset_vectors_by_name_ci: HashMap<String, [f64; 8]> = presets
+        .iter()
+        .filter_map(|p| {
+            serde_json::from_str::<[f64; 8]>(&p.vector_json)
+                .ok()
+                .map(|v| (p.preset_name.to_lowercase(), v))
+        })
+        .collect();
 
     let parser_mode = match run.parser_mode.as_str() {
         "raw_text" => ParserMode::RawText,
         "advanced_tagged" => ParserMode::AdvancedTagged,
+        "story" => ParserMode::Story,
         _ => ParserMode::Dialogue,
     };
     let parsed = parse_script(&run.script_snapshot, parser_mode);
@@ -214,7 +223,8 @@ pub(crate) async fn prepare(
         // audio_ref is resolved by `parse_global_emotion`. The original
         // map is left untouched; only the value passed to
         // `InlineOverrides::from_map` is normalised.
-        let inline = build_inline_overrides(&r.utterance.inline_overrides, cfg);
+        let inline =
+            build_inline_overrides(&r.utterance.inline_overrides, cfg, &preset_vectors_by_name_ci);
         let utterance_emotion =
             resolve_emotion(&inline, None, mapping_defaults.as_ref(), &global_emotion).payload;
 
@@ -502,22 +512,74 @@ fn build_mapping_defaults(
 /// and any future additions) are forwarded verbatim — `from_map` parses
 /// the values it understands and ignores the rest.
 const INLINE_AUDIO_REF_KEY: &str = "emotion_audio_ref";
+const INLINE_PRESET_KEY: &str = "emotion_preset";
+const INLINE_VECTOR_KEY: &str = "emotion_vector";
+const VECTOR_KEYS: [&str; 8] = [
+    "happy",
+    "angry",
+    "sad",
+    "afraid",
+    "disgusted",
+    "melancholic",
+    "surprised",
+    "calm",
+];
 
-fn build_inline_overrides(raw: &BTreeMap<String, String>, cfg: &PrepareConfig) -> InlineOverrides {
+fn build_inline_overrides(
+    raw: &BTreeMap<String, String>,
+    cfg: &PrepareConfig,
+    presets_by_name_ci: &HashMap<String, [f64; 8]>,
+) -> InlineOverrides {
     if raw.is_empty() {
         return InlineOverrides::default();
     }
-    // Defer the clone until we actually need to rewrite. The
-    // `emotion_audio_ref` key is uncommon in practice — most utterances
-    // use `emotion_vector`, which is forwarded verbatim — so the borrow
-    // path saves a per-utterance heap allocation in the hot loop.
-    let Some(ref_id) = raw.get(INLINE_AUDIO_REF_KEY) else {
+
+    let needs_preset_lower = raw.contains_key(INLINE_PRESET_KEY) && !raw.contains_key(INLINE_VECTOR_KEY);
+    let needs_audio_ref_resolve = raw.contains_key(INLINE_AUDIO_REF_KEY);
+
+    if !needs_preset_lower && !needs_audio_ref_resolve {
         return InlineOverrides::from_map(raw);
-    };
-    let resolved = (cfg.voice_path_resolver)(ref_id).unwrap_or_else(|| ref_id.clone());
+    }
+
     let mut normalised: BTreeMap<String, String> = raw.clone();
-    normalised.insert(INLINE_AUDIO_REF_KEY.to_string(), resolved);
+
+    if needs_preset_lower {
+        if let Some(preset_name) = raw.get(INLINE_PRESET_KEY) {
+            if let Some(vector) = presets_by_name_ci.get(&preset_name.to_lowercase()) {
+                normalised.insert(INLINE_VECTOR_KEY.to_string(), encode_inline_vector(vector));
+            }
+        }
+    }
+
+    if needs_audio_ref_resolve {
+        if let Some(ref_id) = raw.get(INLINE_AUDIO_REF_KEY) {
+            let resolved = (cfg.voice_path_resolver)(ref_id).unwrap_or_else(|| ref_id.clone());
+            normalised.insert(INLINE_AUDIO_REF_KEY.to_string(), resolved);
+        }
+    }
+
     InlineOverrides::from_map(&normalised)
+}
+
+fn encode_inline_vector(vector: &[f64; 8]) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for (i, &v) in vector.iter().enumerate() {
+        if v.abs() < 1e-3 {
+            continue;
+        }
+        let clamped = v.clamp(0.0, 1.0);
+        parts.push(format!("{}={}", VECTOR_KEYS[i], format_inline_num(clamped)));
+    }
+    parts.join(",")
+}
+
+fn format_inline_num(n: f64) -> String {
+    let rounded = (n * 1000.0).round() / 1000.0;
+    if (rounded - rounded.trunc()).abs() < f64::EPSILON {
+        format!("{rounded:.1}")
+    } else {
+        format!("{rounded}")
+    }
 }
 
 /// Stable string representation of a generation-param value for cache-key
@@ -580,6 +642,54 @@ mod tests {
             default_voice_asset_id: None,
             runtime_meta: None,
         }
+    }
+
+    #[test]
+    fn encode_inline_vector_omits_zeros_and_uses_canonical_keys() {
+        let v: [f64; 8] = [0.7, 0.0, 0.0, 0.0, 0.0, 0.2, 0.0, 0.3];
+        assert_eq!(
+            encode_inline_vector(&v),
+            "happy=0.7,melancholic=0.2,calm=0.3"
+        );
+    }
+
+    #[test]
+    fn build_inline_overrides_lowers_emotion_preset_to_emotion_vector() {
+        let cfg = cfg_with_resolver_returning_path("/abs/x.wav");
+        let mut presets = HashMap::new();
+        presets.insert("happy".to_string(), [0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3]);
+        let mut raw = BTreeMap::new();
+        raw.insert("emotion_preset".to_string(), "Happy".to_string());
+        let inline = build_inline_overrides(&raw, &cfg, &presets);
+        assert_eq!(
+            inline.emotion_vector.as_deref(),
+            Some("happy=0.7,calm=0.3")
+        );
+    }
+
+    #[test]
+    fn build_inline_overrides_preset_does_not_override_explicit_vector() {
+        let cfg = cfg_with_resolver_returning_path("/abs/x.wav");
+        let mut presets = HashMap::new();
+        presets.insert("happy".to_string(), [0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3]);
+        let mut raw = BTreeMap::new();
+        raw.insert("emotion_preset".to_string(), "Happy".to_string());
+        raw.insert(
+            "emotion_vector".to_string(),
+            "sad=0.5".to_string(),
+        );
+        let inline = build_inline_overrides(&raw, &cfg, &presets);
+        assert_eq!(inline.emotion_vector.as_deref(), Some("sad=0.5"));
+    }
+
+    #[test]
+    fn build_inline_overrides_unknown_preset_silently_ignored() {
+        let cfg = cfg_with_resolver_returning_path("/abs/x.wav");
+        let presets = HashMap::new();
+        let mut raw = BTreeMap::new();
+        raw.insert("emotion_preset".to_string(), "no_such".to_string());
+        let inline = build_inline_overrides(&raw, &cfg, &presets);
+        assert!(inline.emotion_vector.is_none());
     }
 
     #[test]
