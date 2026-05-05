@@ -55,5 +55,5 @@ export const modeCaption = style({
   fontSize: vars.text.micro,
   letterSpacing: vars.tracking.label,
   textTransform: "uppercase",
-  color: vars.color.textFaint,
+  color: vars.color.textMuted,
 });

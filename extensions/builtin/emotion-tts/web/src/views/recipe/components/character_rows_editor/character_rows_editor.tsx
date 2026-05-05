@@ -131,6 +131,7 @@ export function CharacterRowsEditor({
       if (idx < 0) return;
       const removed = rows[idx];
       if (!removed) return;
+      const anchorBeforeId = idx > 0 ? rows[idx - 1]?.id ?? null : null;
       const next = rows.filter((r) => r.id !== id);
       onRowsChange(next);
       const labelChar = removed.character.trim() || `Line ${idx + 1}`;
@@ -141,7 +142,10 @@ export function CharacterRowsEditor({
             const current = rowsRef.current;
             if (current.some((r) => r.id === removed.id)) return;
             const restored = [...current];
-            const insertAt = Math.min(idx, restored.length);
+            const anchorIdx = anchorBeforeId
+              ? current.findIndex((r) => r.id === anchorBeforeId)
+              : -1;
+            const insertAt = anchorIdx >= 0 ? anchorIdx + 1 : 0;
             restored.splice(insertAt, 0, removed);
             onRowsChange(restored);
           },
@@ -195,7 +199,8 @@ export function CharacterRowsEditor({
       next[target] = a;
       onRowsChange(next);
       const label = a.character.trim() || `Line ${idx + 1}`;
-      setLiveMessage(`Moved ${label} to position ${target + 1} of ${next.length}`);
+      const msg = `Moved ${label} to position ${target + 1} of ${next.length}`;
+      setLiveMessage((prev) => (prev === msg ? `${msg}​` : msg));
     },
     [rows, onRowsChange],
   );
@@ -245,7 +250,8 @@ export function CharacterRowsEditor({
       next.splice(targetIdx, 0, moved);
       onRowsChange(next);
       const label = moved.character.trim() || `Line ${sourceIdx + 1}`;
-      setLiveMessage(`Moved ${label} to position ${targetIdx + 1} of ${next.length}`);
+      const msg = `Moved ${label} to position ${targetIdx + 1} of ${next.length}`;
+      setLiveMessage((prev) => (prev === msg ? `${msg}​` : msg));
     },
     [rows, onRowsChange, draggingId],
   );
@@ -269,7 +275,12 @@ export function CharacterRowsEditor({
   return (
     <section className={css.root} aria-labelledby={headerId}>
       <header className={css.header}>
-        <span className={css.headerEyebrow} id={headerId}>02 / Per-character lines</span>
+        <span className={css.headerEyebrow} id={headerId}>
+          02 / Per-character lines
+          {rows.length > 1 && (
+            <span className={css.headerEyebrowHint}>· Alt+↑↓ to reorder</span>
+          )}
+        </span>
         <span className={css.counter} aria-live="polite">
           <span className={css.counterValue}>{totalLines.toString().padStart(2, "0")}</span> lines
           {unmappedCount > 0 && (
