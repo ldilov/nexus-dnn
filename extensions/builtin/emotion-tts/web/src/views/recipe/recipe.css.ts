@@ -396,14 +396,21 @@ export const scriptTextarea = style({
 
 /* Quick mode treatment — anchors the textarea with an accent left-rail
  * (mirrors the toolbar above) and switches typography from mono syntax
- * to readable UI prose. The user is writing prose, not script. */
+ * to readable UI prose. Standalone class (no compose-with-base) so the
+ * non-Quick scriptTextarea's `color: transparent` can never bleed in;
+ * any layout property the textarea needs must therefore live HERE. */
 export const scriptShellQuick = style({
+  position: "relative",
+  width: "100%",
+  display: "flex",
+  flexDirection: "column",
   background: vars.color.surface,
   borderRadius: vars.radius.md,
   borderLeft: `2px solid ${vars.color.accent}`,
   boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
   // audit-allow: px — design-system-spec'd minimum prose height
   minHeight: "240px",
+  transition: `box-shadow ${vars.motion.fast}, background ${vars.motion.fast}`,
   selectors: {
     "&:focus-within": {
       background: vars.color.surface,
@@ -413,10 +420,21 @@ export const scriptShellQuick = style({
 });
 
 export const scriptTextareaQuick = style({
+  display: "block",
+  width: "100%",
+  boxSizing: "border-box",
+  flex: "1 1 auto",
+  margin: 0,
+  border: "none",
+  outline: "none",
+  background: "transparent",
   fontFamily: vars.font.body,
   // audit-allow: px — design-system-spec'd prose body size
   fontSize: "15px",
   lineHeight: 1.7,
+  letterSpacing: 0,
+  whiteSpace: "pre-wrap",
+  wordWrap: "break-word",
   color: vars.color.text,
   caretColor: vars.color.accent,
   // audit-allow: px — design-system-spec'd prose padding (more breathing room than the syntax editor)
