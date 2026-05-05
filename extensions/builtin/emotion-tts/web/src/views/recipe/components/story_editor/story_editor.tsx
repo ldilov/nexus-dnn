@@ -43,35 +43,57 @@ export function StoryEditor({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const popoverId = useId();
+  const optionIdPrefix = `${popoverId}-opt`;
   const [popover, setPopover] = useState<PopoverState | null>(null);
 
   const tokens = useMemo(() => tokeniseStory(value), [value]);
 
   const characterSuggestions = useMemo(() => {
-    const out = new Set<string>();
-    mappingsByLower.forEach((m) => out.add(m.characterName));
-    for (const c of characters) out.add(c);
-    return Array.from(out).sort((a, b) => a.localeCompare(b));
+    const out = new Map<string, string>();
+    mappingsByLower.forEach((m) => out.set(m.characterName.toLowerCase(), m.characterName));
+    for (const c of characters) {
+      const key = c.toLowerCase();
+      if (!out.has(key)) out.set(key, c);
+    }
+    return Array.from(out.values()).sort((a, b) => a.localeCompare(b));
   }, [characters, mappingsByLower]);
 
   const filteredCandidates = useMemo(() => {
     if (!popover) return [] as { value: string; hint?: string }[];
     const q = popover.query.toLowerCase();
     if (popover.kind === "character") {
-      const items = characterSuggestions
+      return characterSuggestions
         .filter((c) => c.toLowerCase().includes(q))
         .slice(0, 8)
         .map((c) => {
           const mapping = mappingsByLower.get(c.toLowerCase());
           return { value: c, hint: mapping ? "mapped" : "unmapped" };
         });
-      return items;
     }
-    return presets
-      .filter((p) => p.presetName.toLowerCase().includes(q))
-      .slice(0, 8)
-      .map((p) => ({ value: p.presetName, hint: "vector" }));
+    const seen = new Set<string>();
+    const out: { value: string; hint?: string }[] = [];
+    for (const p of presets) {
+      const key = p.presetName.toLowerCase();
+      if (!key.includes(q)) continue;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ value: p.presetName, hint: "vector" });
+      if (out.length >= 8) break;
+    }
+    return out;
   }, [popover, characterSuggestions, mappingsByLower, presets]);
+
+  const computePopoverFor = useCallback((nextValue: string, caret: number, prev: PopoverState | null): PopoverState | null => {
+    if (caret < 0) return null;
+    const trigger = activeTriggerAt(nextValue, caret);
+    if (!trigger) return null;
+    return {
+      triggerStart: trigger.start,
+      query: trigger.query,
+      kind: trigger.kind,
+      selected: prev && prev.kind === trigger.kind ? prev.selected : 0,
+    };
+  }, []);
 
   const updatePopoverFromSelection = useCallback(() => {
     const ta = textareaRef.current;
@@ -84,24 +106,17 @@ export function StoryEditor({
       setPopover(null);
       return;
     }
-    const trigger = activeTriggerAt(value, caret);
-    if (!trigger) {
+    setPopover((prev) => computePopoverFor(value, caret, prev));
+  }, [value, computePopoverFor]);
+
+  useEffect(() => {
+    if (!popover) return;
+    if (filteredCandidates.length === 0) {
       setPopover(null);
       return;
     }
-    setPopover((prev) => ({
-      triggerStart: trigger.start,
-      query: trigger.query,
-      kind: trigger.kind,
-      selected: prev && prev.kind === trigger.kind ? Math.min(prev.selected, 0) : 0,
-    }));
-  }, [value]);
-
-  useEffect(() => {
-    if (popover && filteredCandidates.length === 0) {
-      setPopover(null);
-    } else if (popover && popover.selected >= filteredCandidates.length) {
-      setPopover({ ...popover, selected: 0 });
+    if (popover.selected >= filteredCandidates.length) {
+      setPopover({ ...popover, selected: filteredCandidates.length - 1 });
     }
   }, [popover, filteredCandidates]);
 
@@ -113,12 +128,33 @@ export function StoryEditor({
     overlay.scrollLeft = ta.scrollLeft;
   });
 
+  useEffect(() => {
+    const ta = textareaRef.current;
+    const overlay = overlayRef.current;
+    if (!ta || !overlay) return;
+    const sync = (): void => {
+      overlay.scrollTop = ta.scrollTop;
+      overlay.scrollLeft = ta.scrollLeft;
+    };
+    ta.addEventListener("scroll", sync, { passive: true });
+    return () => ta.removeEventListener("scroll", sync);
+  }, []);
+
   const handleChange = useCallback(
     (event: ChangeEvent<HTMLTextAreaElement>) => {
-      onChange(event.target.value);
-      requestAnimationFrame(updatePopoverFromSelection);
+      const nextValue = event.target.value;
+      onChange(nextValue);
+      const ta = event.target;
+      requestAnimationFrame(() => {
+        const caret = ta.selectionStart;
+        if (caret !== ta.selectionEnd) {
+          setPopover(null);
+          return;
+        }
+        setPopover((prev) => computePopoverFor(nextValue, caret, prev));
+      });
     },
-    [onChange, updatePopoverFromSelection],
+    [onChange, computePopoverFor],
   );
 
   const handleSelect = useCallback(() => {
@@ -126,9 +162,8 @@ export function StoryEditor({
   }, [updatePopoverFromSelection]);
 
   const insertCompletion = useCallback(
-    (replacement: string) => {
-      const ta = textareaRef.current;
-      if (!ta || !popover) return;
+    (replacement: string, opts: { advanceFocus: boolean }) => {
+      if (!popover) return;
       const sigil = popover.kind === "character" ? "@" : "/";
       const tokenEnd = popover.triggerStart + 1 + popover.query.length;
       const before = value.slice(0, popover.triggerStart);
@@ -137,13 +172,15 @@ export function StoryEditor({
       const next = `${before}${insertion}${after}`;
       onChange(next);
       const caretPos = before.length + insertion.length;
-      requestAnimationFrame(() => {
-        if (textareaRef.current) {
-          textareaRef.current.focus();
-          textareaRef.current.setSelectionRange(caretPos, caretPos);
-        }
-      });
       setPopover(null);
+      if (!opts.advanceFocus) {
+        requestAnimationFrame(() => {
+          if (textareaRef.current) {
+            textareaRef.current.focus();
+            textareaRef.current.setSelectionRange(caretPos, caretPos);
+          }
+        });
+      }
     },
     [popover, value, onChange],
   );
@@ -159,11 +196,16 @@ export function StoryEditor({
         setPopover((p) =>
           p ? { ...p, selected: (p.selected - 1 + filteredCandidates.length) % filteredCandidates.length } : p,
         );
-      } else if (event.key === "Enter" || event.key === "Tab") {
+      } else if (event.key === "Enter") {
         const choice = filteredCandidates[popover.selected];
         if (choice) {
           event.preventDefault();
-          insertCompletion(choice.value);
+          insertCompletion(choice.value, { advanceFocus: false });
+        }
+      } else if (event.key === "Tab") {
+        const choice = filteredCandidates[popover.selected];
+        if (choice) {
+          insertCompletion(choice.value, { advanceFocus: true });
         }
       } else if (event.key === "Escape") {
         event.preventDefault();
@@ -174,6 +216,14 @@ export function StoryEditor({
   );
 
   const popoverHeader = popover?.kind === "character" ? "Character" : "Emotion preset";
+  const activeOptionId =
+    popover && filteredCandidates.length > 0
+      ? `${optionIdPrefix}-${popover.selected}`
+      : undefined;
+  const popoverEmptyHint =
+    popover?.kind === "emotion" && presets.length === 0
+      ? "No emotion presets yet — create one in Mappings."
+      : null;
 
   return (
     <div className={css.root}>
@@ -195,41 +245,54 @@ export function StoryEditor({
           aria-controls={popover ? popoverId : undefined}
           aria-expanded={popover ? true : undefined}
           aria-autocomplete="list"
+          aria-activedescendant={activeOptionId}
         />
-        {popover && filteredCandidates.length > 0 && (
-          <ul
-            id={popoverId}
-            role="listbox"
-            aria-label={popoverHeader}
-            className={css.popover}
-            style={{ left: "1rem", bottom: "1rem" }}
-          >
-            <li className={css.popoverHeader} aria-hidden="true">
+        {popover && (filteredCandidates.length > 0 || popoverEmptyHint) && (
+          <div className={css.popover}>
+            <div className={css.popoverHeader} aria-hidden="true">
               {popoverHeader}
-            </li>
-            {filteredCandidates.map((c, idx) => (
-              <li
-                key={c.value}
-                role="option"
-                aria-selected={idx === popover.selected}
-                data-active={idx === popover.selected || undefined}
-                className={css.popoverItem}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  insertCompletion(c.value);
-                }}
+            </div>
+            {filteredCandidates.length > 0 ? (
+              <ul
+                id={popoverId}
+                role="listbox"
+                aria-label={popoverHeader}
+                className={css.popoverList}
               >
-                <span>{c.value}</span>
-                {c.hint && <span className={css.popoverItemHint}>{c.hint}</span>}
-              </li>
-            ))}
-          </ul>
+                {filteredCandidates.map((c, idx) => {
+                  const id = `${optionIdPrefix}-${idx}`;
+                  const isActive = idx === popover.selected;
+                  return (
+                    <li
+                      id={id}
+                      key={`${c.value}-${idx}`}
+                      role="option"
+                      aria-selected={isActive}
+                      data-active={isActive || undefined}
+                      className={css.popoverItem}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        insertCompletion(c.value, { advanceFocus: false });
+                      }}
+                    >
+                      <span>{c.value}</span>
+                      {c.hint && <span className={css.popoverItemHint}>{c.hint}</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <div id={popoverId} role="status" className={css.popoverEmpty}>
+                {popoverEmptyHint}
+              </div>
+            )}
+          </div>
         )}
       </div>
       <p className={css.helpRow}>
-        Type <span className={css.helpKbd}>@</span> for a character,{" "}
-        <span className={css.helpKbd}>/</span> for an emotion. Newlines do not split lines —
-        a new <span className={css.helpKbd}>@</span> does.
+        Type <kbd className={css.helpKbd}>@</kbd> for a character,{" "}
+        <kbd className={css.helpKbd}>/</kbd> for an emotion. Newlines do not split lines —
+        a new <kbd className={css.helpKbd}>@</kbd> does.
       </p>
     </div>
   );
@@ -239,14 +302,14 @@ function renderOverlay(tokens: readonly StoryToken[]): JSX.Element[] {
   return tokens.map((t, idx) => {
     if (t.kind === "character") {
       return (
-        <span key={`${t.start}-${idx}`} className={css.characterBadge}>
+        <span key={`${t.start}-${idx}`} className={css.characterBadge} data-token="character">
           @{t.value}
         </span>
       );
     }
     if (t.kind === "emotion") {
       return (
-        <span key={`${t.start}-${idx}`} className={css.emotionBadge}>
+        <span key={`${t.start}-${idx}`} className={css.emotionBadge} data-token="emotion">
           /{t.value}
         </span>
       );

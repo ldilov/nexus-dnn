@@ -20,6 +20,12 @@ export const stage = style({
       background: vars.color.surfaceRaised,
     },
   },
+  "@media": {
+    "(forced-colors: active)": {
+      border: "1px solid CanvasText",
+      boxShadow: "none",
+    },
+  },
 });
 
 const sharedSurface = style({
@@ -68,12 +74,20 @@ export const tokenText = style({
 export const characterBadge = style({
   display: "inline",
   padding: `0 ${vars.space.xs}`,
-  borderRadius: vars.radius.sm,
+  borderRadius: vars.radius.pill,
   fontFamily: vars.font.body,
   fontWeight: 600,
   color: vars.color.accentOn,
   background: vars.color.accent,
   boxShadow: `0 0 0 1px ${vars.color.accentDim}`,
+  "@media": {
+    "(forced-colors: active)": {
+      background: "Highlight",
+      color: "HighlightText",
+      border: "1px solid HighlightText",
+      forcedColorAdjust: "none",
+    },
+  },
 });
 
 export const emotionBadge = style({
@@ -85,6 +99,14 @@ export const emotionBadge = style({
   color: vars.color.text,
   background: `color-mix(in oklab, ${vars.color.tertiary} 22%, ${vars.color.surfaceHigh})`,
   boxShadow: `0 0 0 1px ${vars.color.tertiary}`,
+  "@media": {
+    "(forced-colors: active)": {
+      background: "Canvas",
+      color: "CanvasText",
+      border: "2px dashed CanvasText",
+      forcedColorAdjust: "none",
+    },
+  },
 });
 
 export const popoverPop = keyframes({
@@ -129,6 +151,7 @@ export const popoverItem = style({
   alignItems: "center",
   justifyContent: "space-between",
   gap: vars.space.sm,
+  minHeight: "1.75rem",
   padding: `${vars.space.xs} ${vars.space.sm}`,
   borderRadius: vars.radius.sm,
   cursor: "pointer",
@@ -144,6 +167,17 @@ export const popoverItem = style({
     },
     "&:hover": {
       background: `color-mix(in oklab, ${vars.color.accent} 12%, transparent)`,
+    },
+  },
+  "@media": {
+    "(forced-colors: active)": {
+      selectors: {
+        "&[data-active='true']": {
+          background: "Highlight",
+          color: "HighlightText",
+          forcedColorAdjust: "none",
+        },
+      },
     },
   },
 });
@@ -183,4 +217,10 @@ export const helpKbd = style({
   boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
   color: vars.color.text,
   fontFamily: vars.font.mono,
+  "@media": {
+    "(forced-colors: active)": {
+      border: "1px solid CanvasText",
+      boxShadow: "none",
+    },
+  },
 });
