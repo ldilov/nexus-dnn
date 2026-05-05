@@ -51,8 +51,9 @@ export const counterValue = style({
 export const modeCaption = style({
   margin: 0,
   paddingLeft: vars.space.sm,
-  fontFamily: vars.font.body,
-  fontSize: vars.text.caption,
-  color: vars.color.textMuted,
-  fontStyle: "italic",
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.micro,
+  letterSpacing: vars.tracking.label,
+  textTransform: "uppercase",
+  color: vars.color.textFaint,
 });
