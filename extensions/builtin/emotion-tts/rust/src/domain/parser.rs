@@ -27,6 +27,7 @@ pub const RESERVED_OVERRIDE_KEYS: &[&str] = &[
     "emotion_vector",
     "emotion_audio_ref",
     "emotion_alpha",
+    "emotion_preset",
     "qwen",
     "speed",
     "seed",
@@ -50,6 +51,7 @@ pub enum ParserMode {
     Dialogue,
     RawText,
     AdvancedTagged,
+    Story,
 }
 
 impl ParserMode {
@@ -59,6 +61,7 @@ impl ParserMode {
             Self::Dialogue => "dialogue",
             Self::RawText => "raw_text",
             Self::AdvancedTagged => "advanced_tagged",
+            Self::Story => "story",
         }
     }
 }
@@ -109,6 +112,7 @@ pub fn parse_script(script: &str, mode: ParserMode) -> ParsePlan {
     match mode {
         ParserMode::Dialogue | ParserMode::AdvancedTagged => parse_dialogue(script, mode),
         ParserMode::RawText => parse_raw_text(script),
+        ParserMode::Story => crate::domain::parser_story::parse_story(script),
     }
 }
 
