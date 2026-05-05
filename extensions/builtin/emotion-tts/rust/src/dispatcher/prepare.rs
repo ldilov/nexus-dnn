@@ -123,14 +123,22 @@ pub(crate) async fn prepare(
                 .map(|v| (p.preset_id.as_str().to_string(), v))
         })
         .collect();
-    let preset_vectors_by_name_ci: HashMap<String, [f64; 8]> = presets
-        .iter()
-        .filter_map(|p| {
-            serde_json::from_str::<[f64; 8]>(&p.vector_json)
-                .ok()
-                .map(|v| (p.preset_name.to_lowercase(), v))
-        })
-        .collect();
+    let mut sorted_presets: Vec<&_> = presets.iter().collect();
+    sorted_presets.sort_by(|a, b| a.preset_name.cmp(&b.preset_name));
+    let mut preset_vectors_by_name_ci: HashMap<String, [f64; 8]> =
+        HashMap::with_capacity(sorted_presets.len());
+    for p in sorted_presets {
+        if let Ok(v) = serde_json::from_str::<[f64; 8]>(&p.vector_json) {
+            let key = p.preset_name.to_lowercase();
+            if let Some(_existing) = preset_vectors_by_name_ci.insert(key.clone(), v) {
+                tracing::warn!(
+                    deployment_id = %dep.as_str(),
+                    preset_name_lower = %key,
+                    "preset name case-collision; later entry overrides earlier (sort-stable)"
+                );
+            }
+        }
+    }
 
     let parser_mode = match run.parser_mode.as_str() {
         "raw_text" => ParserMode::RawText,
