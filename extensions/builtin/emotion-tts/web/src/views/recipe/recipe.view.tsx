@@ -208,7 +208,7 @@ export function RecipeView(): JSX.Element {
             const countLines = (s: string): number =>
               s.split(/\r?\n/).filter((l) => l.trim().length > 0).length;
             const count = result.rows !== undefined
-              ? result.rows.filter((r) => r.text.trim().length > 0).length
+              ? result.rows.length
               : result.script !== undefined
                 ? countLines(result.script)
                 : result.storyText !== undefined
