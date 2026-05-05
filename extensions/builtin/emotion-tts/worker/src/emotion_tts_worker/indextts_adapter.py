@@ -333,6 +333,15 @@ class IndexTtsAdapter:
         started = time.time()
         try:
             infer_kwargs = dict(kwargs)
+
+            # Apply `seed` to every RNG before the generate call instead of
+            # forwarding it as a kwarg — recent transformers reject unknown
+            # `model.generate()` kwargs.
+            seed_value = infer_kwargs.pop("__seed__", None)
+            if seed_value is not None:
+                self._apply_seed(seed_value)
+                _ckpt(f"seed applied — value={seed_value}")
+
             if hasattr(self._model, "set_cancel_callback"):
                 self._model.set_cancel_callback(token.as_on_step())
                 _ckpt("set_cancel_callback installed")
@@ -384,8 +393,13 @@ class IndexTtsAdapter:
             kwargs["emo_text"] = segment.emotion_qwen_template.replace("{seg}", segment.text)
             kwargs["emo_alpha"] = segment.emotion_alpha
 
+        # `seed` is consumed at infer-time by `_apply_seed`, NOT forwarded
+        # to upstream. Recent transformers versions strictly validate
+        # `model.generate()` kwargs and reject `seed`, so the value must
+        # be drained from `gen` here and applied as a torch / numpy /
+        # python RNG seed before the generate call.
         if "seed" in gen:
-            kwargs["seed"] = gen.pop("seed")
+            kwargs["__seed__"] = gen.pop("seed")
         if "interval_silence" in gen:
             kwargs["interval_silence"] = gen.pop("interval_silence")
         if "max_text_tokens_per_segment" in gen:
@@ -395,6 +409,37 @@ class IndexTtsAdapter:
         kwargs["stream_return"] = False
         kwargs.update(gen)
         return kwargs
+
+    @staticmethod
+    def _apply_seed(seed: Any) -> None:
+        """Set every RNG IndexTTS2's generate() pipeline samples from.
+
+        Replaces forwarding `seed=` to `model.infer()` (rejected by recent
+        HuggingFace transformers via `_validate_model_kwargs`). Python's
+        `random`, NumPy, and torch (CPU + CUDA) all participate in TTS
+        sampling, so each gets the same seed for deterministic output.
+        """
+        try:
+            seed_int = int(seed)
+        except (TypeError, ValueError):
+            return
+
+        import random
+
+        random.seed(seed_int)
+        try:
+            import numpy as np  # type: ignore[import-not-found]
+            np.random.seed(seed_int)
+        except ImportError:
+            pass
+        try:
+            import torch  # type: ignore[import-not-found]
+
+            torch.manual_seed(seed_int)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed_int)
+        except ImportError:
+            pass
 
     @staticmethod
     def speaker_cache_key(path: str) -> str:
