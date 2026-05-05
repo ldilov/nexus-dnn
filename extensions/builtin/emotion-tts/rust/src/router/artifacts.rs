@@ -132,6 +132,13 @@ struct ArtifactRow {
     finished_at: Option<i64>,
     audio_artifact_ref: String,
     derived_artifact_ref: Option<String>,
+    /// Voice asset chosen by the dispatcher's resolver for this utterance.
+    /// Already stored on the utterance row by the prepare phase
+    /// (`resolved_speaker_voice_asset_id`); surfacing it here lets the
+    /// frontend label each generation with the actual voice used —
+    /// not a deployment-wide guess. NULL when the utterance fell through
+    /// to a hard-coded path.
+    voice_asset_id: Option<String>,
 }
 
 impl ArtifactRow {
@@ -154,6 +161,7 @@ impl ArtifactRow {
             "finishedAt": self.finished_at,
             "filename": filename,
             "edited": self.derived_artifact_ref.is_some(),
+            "voiceAssetId": self.voice_asset_id,
         })
     }
 }
@@ -184,6 +192,7 @@ async fn fetch_artifacts(
     let rows = sqlx::query(
         "SELECT u.utterance_id, u.run_id, u.global_index, u.character_display, u.text, \
                 u.duration_ms, u.finished_at, u.audio_artifact_ref, u.derived_artifact_ref, \
+                u.resolved_speaker_voice_asset_id, \
                 r.output_format \
          FROM ext_emotion_tts__utterances u \
          INNER JOIN ext_emotion_tts__runs r ON r.run_id = u.run_id \
@@ -216,6 +225,9 @@ async fn fetch_artifacts(
         let derived_artifact_ref: Option<String> = row
             .try_get("derived_artifact_ref")
             .map_err(EmotionTtsError::from)?;
+        let voice_asset_id: Option<String> = row
+            .try_get("resolved_speaker_voice_asset_id")
+            .map_err(EmotionTtsError::from)?;
         let output_format: String = row.try_get("output_format").map_err(EmotionTtsError::from)?;
         out.push(ArtifactRow {
             utterance_id,
@@ -228,6 +240,7 @@ async fn fetch_artifacts(
             finished_at,
             audio_artifact_ref,
             derived_artifact_ref,
+            voice_asset_id,
         });
     }
     Ok(out)
@@ -264,6 +277,7 @@ async fn fetch_one(
     let row = sqlx::query(
         "SELECT u.utterance_id, u.run_id, u.global_index, u.character_display, u.text, \
                 u.duration_ms, u.finished_at, u.audio_artifact_ref, u.derived_artifact_ref, \
+                u.resolved_speaker_voice_asset_id, \
                 r.output_format \
          FROM ext_emotion_tts__utterances u \
          INNER JOIN ext_emotion_tts__runs r ON r.run_id = u.run_id \
@@ -304,6 +318,9 @@ async fn fetch_one(
     let derived_artifact_ref: Option<String> = row
         .try_get("derived_artifact_ref")
         .map_err(EmotionTtsError::from)?;
+    let voice_asset_id: Option<String> = row
+        .try_get("resolved_speaker_voice_asset_id")
+        .map_err(EmotionTtsError::from)?;
     let output_format: String = row.try_get("output_format").map_err(EmotionTtsError::from)?;
 
     Ok(ArtifactRow {
@@ -317,6 +334,7 @@ async fn fetch_one(
         finished_at,
         audio_artifact_ref: audio_ref,
         derived_artifact_ref,
+        voice_asset_id,
     })
 }
 
