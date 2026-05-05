@@ -1,5 +1,5 @@
 export type OutputFormat = "wav" | "mp3" | "flac";
-export type ParserMode = "dialogue" | "raw_text" | "advanced_tagged";
+export type ParserMode = "dialogue" | "raw_text" | "advanced_tagged" | "story";
 export type SeedStrategy = "fixed" | "increment_per_line" | "random_per_line";
 export type CachePolicy = "use_cache" | "force_regenerate" | "read_only_cache";
 export type SpeedMode = "preserve_pitch" | "disabled";
