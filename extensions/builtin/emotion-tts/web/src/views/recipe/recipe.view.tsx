@@ -157,8 +157,9 @@ export function RecipeView(): JSX.Element {
     if (persisted === "quick" || persisted === "rows" || persisted === "story") {
       return persisted;
     }
-    const legacyQuick = seededRecipeMeta["quickMode"];
-    if (typeof legacyQuick === "boolean") return legacyQuick ? "quick" : "rows";
+    if (typeof seededRecipeMeta["quickMode"] === "boolean") {
+      return "quick";
+    }
     return deployment.defaultVoiceAssetId != null ? "quick" : "rows";
   });
   const quickMode = editorMode === "quick";

@@ -22,6 +22,14 @@ describe("serialiseRowsToScript", () => {
     expect(serialiseRowsToScript(rows, [])).toBe("[Bob] hello");
   });
 
+  it("omits emotion_alpha when alpha is the default 1.0 even with preset", () => {
+    const rows = [
+      { ...newEmptyRow(), character: "Bob", presetId: "p_happy", alpha: 1.0, text: "hi" },
+    ];
+    const out = serialiseRowsToScript(rows, [happyPreset]);
+    expect(out).toBe("[Bob|emotion_vector:happy=0.7,calm=0.3] hi");
+  });
+
   it("emits emotion_vector + alpha when preset selected", () => {
     const rows = [
       { ...newEmptyRow(), character: "Bob", presetId: "p_happy", alpha: 0.5, text: "hi" },
