@@ -165,10 +165,24 @@ export function RecipeView(): JSX.Element {
   });
   const quickMode = editorMode === "quick";
   const [rows, setRows] = useState<PerCharacterRow[]>(() => [newEmptyRow()]);
-  const [storyText, setStoryText] = useState<string>(() => {
+  const STORY_TEXT_SOFT_CAP = 100_000;
+  const [storyText, setStoryTextRaw] = useState<string>(() => {
     const persisted = seededRecipeMeta["storyText"];
     return typeof persisted === "string" ? persisted : "";
   });
+  const storyCapWarnedRef = useRef(false);
+  const setStoryText = useCallback((next: string) => {
+    if (next.length > STORY_TEXT_SOFT_CAP && !storyCapWarnedRef.current) {
+      storyCapWarnedRef.current = true;
+      notify.error(
+        `Story text is over ${Math.round(STORY_TEXT_SOFT_CAP / 1000)} KB — large scripts may slow down save and rendering.`,
+      );
+    }
+    if (next.length <= STORY_TEXT_SOFT_CAP) {
+      storyCapWarnedRef.current = false;
+    }
+    setStoryTextRaw(next);
+  }, []);
   const [performance, setPerformance] = useState<PerformanceSlidersValue>(PERFORMANCE_DEFAULTS);
 
   useEffect(() => {
