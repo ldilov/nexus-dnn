@@ -132,9 +132,11 @@ export const alphaWrap = style({
 
 export const alphaSlider = style({
   width: "100%",
-  height: "0.25rem",
+  paddingTop: vars.space.xs,
+  paddingBottom: vars.space.xs,
   accentColor: vars.color.accent,
   cursor: "pointer",
+  background: "transparent",
 });
 
 export const alphaValue = style({
@@ -156,8 +158,8 @@ export const textInput = style([inputBase, {
 
 export const removeButton = style({
   appearance: "none",
-  width: "1.75rem",
-  height: "1.75rem",
+  width: "2rem",
+  height: "2rem",
   padding: 0,
   background: "transparent",
   color: vars.color.textFaint,
@@ -179,6 +181,9 @@ export const removeButton = style({
   },
   "@media": {
     "(max-width: 960px)": { gridArea: "rm" },
+    "(forced-colors: active)": {
+      border: "1px solid CanvasText",
+    },
   },
 });
 
@@ -229,12 +234,14 @@ export const unmappedBadge = style({
   display: "inline-flex",
   alignItems: "center",
   gap: vars.space.xs,
-  padding: `0 ${vars.space.xs}`,
-  height: "1.25rem",
+  padding: `0 ${vars.space.sm}`,
+  height: "1.5rem",
   marginLeft: vars.space.xs,
-  background: `color-mix(in oklab, ${vars.color.warning} 18%, transparent)`,
-  color: vars.color.warning,
+  background: `color-mix(in oklab, ${vars.color.warning} 32%, ${vars.color.surfaceMuted})`,
+  color: vars.color.text,
   fontFamily: vars.font.mono,
   fontSize: vars.text.micro,
+  fontWeight: 600,
   borderRadius: vars.radius.sm,
+  boxShadow: `inset 0 0 0 1px ${vars.color.warning}`,
 });
