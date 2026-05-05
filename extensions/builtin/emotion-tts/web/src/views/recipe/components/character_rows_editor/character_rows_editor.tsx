@@ -1,4 +1,14 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type KeyboardEvent,
+} from "react";
+import { toast } from "sonner";
 import type { CharacterMapping } from "../../../../services/mappings_client";
 import type { VectorPreset } from "../../../../services/presets_client";
 import { newEmptyRow, type PerCharacterRow } from "../../lib/serialise_rows";
@@ -19,10 +29,17 @@ export function CharacterRowsEditor({
 }: CharacterRowsEditorProps): JSX.Element {
   const datalistId = useId();
   const headerId = useId();
+  const unmappedPopoverId = useId();
   const addRowButtonRef = useRef<HTMLButtonElement | null>(null);
   const textInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
   const removeButtonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
-  const [pendingFocus, setPendingFocus] = useState<{ kind: "text" | "remove" | "addBtn"; rowId?: string } | null>(null);
+  const characterInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const [pendingFocus, setPendingFocus] = useState<{ kind: "text" | "remove" | "addBtn" | "character"; rowId?: string } | null>(null);
+  const [unmappedOpen, setUnmappedOpen] = useState(false);
+  const unmappedAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const unmappedPopoverRef = useRef<HTMLDivElement | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!pendingFocus) return;
@@ -32,21 +49,25 @@ export function CharacterRowsEditor({
       textInputRefs.current.get(pendingFocus.rowId)?.focus();
     } else if (pendingFocus.kind === "remove" && pendingFocus.rowId) {
       removeButtonRefs.current.get(pendingFocus.rowId)?.focus();
+    } else if (pendingFocus.kind === "character" && pendingFocus.rowId) {
+      characterInputRefs.current.get(pendingFocus.rowId)?.focus();
     }
     setPendingFocus(null);
   }, [pendingFocus]);
 
   const totalLines = rows.filter((r) => r.text.trim().length > 0).length;
-  const unmappedCount = useMemo(() => {
-    const seen = new Set<string>();
+  const unmappedNames = useMemo(() => {
+    const seen = new Map<string, string>();
     for (const r of rows) {
-      const lower = r.character.trim().toLowerCase();
+      const display = r.character.trim();
+      const lower = display.toLowerCase();
       if (!lower || lower === "narrator") continue;
       if (mappingsByLower.has(lower)) continue;
-      seen.add(lower);
+      if (!seen.has(lower)) seen.set(lower, display);
     }
-    return seen.size;
+    return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
   }, [rows, mappingsByLower]);
+  const unmappedCount = unmappedNames.length;
 
   const prevUnmappedRef = useRef(unmappedCount);
   const [nudgeKey, setNudgeKey] = useState(0);
@@ -54,6 +75,30 @@ export function CharacterRowsEditor({
     if (unmappedCount > prevUnmappedRef.current) setNudgeKey((k) => k + 1);
     prevUnmappedRef.current = unmappedCount;
   }, [unmappedCount]);
+
+  useEffect(() => {
+    if (!unmappedOpen) return;
+    const onMouseDown = (event: MouseEvent): void => {
+      if (!unmappedPopoverRef.current || !unmappedAnchorRef.current) return;
+      const target = event.target as Node;
+      if (
+        unmappedPopoverRef.current.contains(target) ||
+        unmappedAnchorRef.current.contains(target)
+      ) {
+        return;
+      }
+      setUnmappedOpen(false);
+    };
+    const onKey = (event: KeyboardEvent | globalThis.KeyboardEvent): void => {
+      if (event.key === "Escape") setUnmappedOpen(false);
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKey as EventListener);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKey as EventListener);
+    };
+  }, [unmappedOpen]);
 
   const characterSuggestions = useMemo(() => {
     const out = new Set<string>();
@@ -68,12 +113,31 @@ export function CharacterRowsEditor({
     [rows, onRowsChange],
   );
 
+  const removeRowUndoableRef = useRef<{ row: PerCharacterRow; index: number } | null>(null);
   const removeRow = useCallback(
     (id: string) => {
       const idx = rows.findIndex((r) => r.id === id);
       if (idx < 0) return;
+      const removed = rows[idx];
+      if (!removed) return;
       const next = rows.filter((r) => r.id !== id);
+      removeRowUndoableRef.current = { row: removed, index: idx };
       onRowsChange(next);
+      const labelChar = removed.character.trim() || `Line ${idx + 1}`;
+      toast(`Removed ${labelChar}`, {
+        action: {
+          label: "Undo",
+          onClick: () => {
+            const snap = removeRowUndoableRef.current;
+            if (!snap) return;
+            const restored = [...rows];
+            restored.splice(snap.index, 0, snap.row);
+            onRowsChange(restored);
+            removeRowUndoableRef.current = null;
+          },
+        },
+        duration: 5000,
+      });
       if (next.length === 0) {
         setPendingFocus({ kind: "addBtn" });
       } else {
@@ -107,14 +171,85 @@ export function CharacterRowsEditor({
     [rows, onRowsChange],
   );
 
+  const moveRow = useCallback(
+    (id: string, direction: -1 | 1) => {
+      const idx = rows.findIndex((r) => r.id === id);
+      if (idx < 0) return;
+      const target = idx + direction;
+      if (target < 0 || target >= rows.length) return;
+      const next = [...rows];
+      const a = next[idx];
+      const b = next[target];
+      if (!a || !b) return;
+      next[idx] = b;
+      next[target] = a;
+      onRowsChange(next);
+    },
+    [rows, onRowsChange],
+  );
+
   const handleTextKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>, rowId: string) => {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
         addRow(rowId);
+      } else if (event.altKey && event.key === "ArrowUp") {
+        event.preventDefault();
+        moveRow(rowId, -1);
+      } else if (event.altKey && event.key === "ArrowDown") {
+        event.preventDefault();
+        moveRow(rowId, 1);
       }
     },
-    [addRow],
+    [addRow, moveRow],
+  );
+
+  const handleDragStart = useCallback((event: DragEvent<HTMLElement>, id: string) => {
+    setDraggingId(id);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", id);
+  }, []);
+
+  const handleDragOver = useCallback((event: DragEvent<HTMLLIElement>, id: string) => {
+    if (!draggingId) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (dragOverId !== id) setDragOverId(id);
+  }, [draggingId, dragOverId]);
+
+  const handleDrop = useCallback(
+    (event: DragEvent<HTMLLIElement>, targetId: string) => {
+      event.preventDefault();
+      const sourceId = draggingId ?? event.dataTransfer.getData("text/plain");
+      setDraggingId(null);
+      setDragOverId(null);
+      if (!sourceId || sourceId === targetId) return;
+      const sourceIdx = rows.findIndex((r) => r.id === sourceId);
+      const targetIdx = rows.findIndex((r) => r.id === targetId);
+      if (sourceIdx < 0 || targetIdx < 0) return;
+      const next = [...rows];
+      const [moved] = next.splice(sourceIdx, 1);
+      if (!moved) return;
+      next.splice(targetIdx, 0, moved);
+      onRowsChange(next);
+    },
+    [rows, onRowsChange, draggingId],
+  );
+
+  const handleDragEnd = useCallback(() => {
+    setDraggingId(null);
+    setDragOverId(null);
+  }, []);
+
+  const handleUnmappedClick = useCallback(
+    (name: string) => {
+      const target = rows.find((r) => r.character.trim().toLowerCase() === name.toLowerCase());
+      if (target) {
+        setPendingFocus({ kind: "character", rowId: target.id });
+      }
+      setUnmappedOpen(false);
+    },
+    [rows],
   );
 
   return (
@@ -124,12 +259,46 @@ export function CharacterRowsEditor({
         <span className={css.counter} aria-live="polite">
           <span className={css.counterValue}>{totalLines.toString().padStart(2, "0")}</span> lines
           {unmappedCount > 0 && (
-            <span
-              key={nudgeKey}
-              className={css.unmappedBadge}
-              title="Characters without a mapping will fail at run time"
-            >
-              ⚠ {unmappedCount} unmapped
+            <span className={css.unmappedAnchor}>
+              <button
+                ref={unmappedAnchorRef}
+                key={nudgeKey}
+                type="button"
+                className={css.unmappedBadge}
+                aria-haspopup="dialog"
+                aria-expanded={unmappedOpen}
+                aria-controls={unmappedPopoverId}
+                title="Click to see unmapped characters"
+                onClick={() => setUnmappedOpen((v) => !v)}
+              >
+                ⚠ {unmappedCount} unmapped
+              </button>
+              {unmappedOpen && (
+                <div
+                  ref={unmappedPopoverRef}
+                  id={unmappedPopoverId}
+                  role="dialog"
+                  aria-label="Unmapped characters"
+                  className={css.unmappedPopover}
+                >
+                  <p className={css.unmappedPopoverHint}>
+                    These characters have no voice mapping. Click a name to jump to its row.
+                  </p>
+                  <ul className={css.unmappedList}>
+                    {unmappedNames.map((name) => (
+                      <li key={name}>
+                        <button
+                          type="button"
+                          className={css.unmappedListItem}
+                          onClick={() => handleUnmappedClick(name)}
+                        >
+                          {name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </span>
           )}
         </span>
@@ -144,12 +313,46 @@ export function CharacterRowsEditor({
           {rows.map((row, idx) => {
             const characterLabel = row.character.trim() || `line ${idx + 1}`;
             const isMapped = mappingsByLower.has(row.character.trim().toLowerCase());
+            const isDragging = draggingId === row.id;
+            const isDragOver = dragOverId === row.id && draggingId !== row.id;
             return (
-              <li key={row.id} className={css.row} data-mapped={isMapped || undefined}>
+              <li
+                key={row.id}
+                className={css.row}
+                data-mapped={isMapped || undefined}
+                data-dragging={isDragging || undefined}
+                data-drag-over={isDragOver || undefined}
+                onDragOver={(e) => handleDragOver(e, row.id)}
+                onDrop={(e) => handleDrop(e, row.id)}
+                onDragEnd={handleDragEnd}
+              >
+                <button
+                  type="button"
+                  className={css.dragHandle}
+                  draggable
+                  aria-label={`Drag to reorder ${characterLabel}. Use Alt+ArrowUp / Alt+ArrowDown for keyboard reorder.`}
+                  title="Drag to reorder · Alt+↑ / Alt+↓"
+                  onDragStart={(e) => handleDragStart(e, row.id)}
+                  onKeyDown={(e) => {
+                    if (e.altKey && e.key === "ArrowUp") {
+                      e.preventDefault();
+                      moveRow(row.id, -1);
+                    } else if (e.altKey && e.key === "ArrowDown") {
+                      e.preventDefault();
+                      moveRow(row.id, 1);
+                    }
+                  }}
+                >
+                  ⋮⋮
+                </button>
                 <span className={css.ordinal} aria-hidden="true">
                   {(idx + 1).toString().padStart(2, "0")}
                 </span>
                 <input
+                  ref={(el) => {
+                    if (el) characterInputRefs.current.set(row.id, el);
+                    else characterInputRefs.current.delete(row.id);
+                  }}
                   type="text"
                   value={row.character}
                   onChange={(e) => updateRow(row.id, { character: e.target.value })}
@@ -220,6 +423,16 @@ export function CharacterRowsEditor({
                   onClick={() => removeRow(row.id)}
                 >
                   ✕
+                </button>
+                <button
+                  type="button"
+                  className={css.interRowAdd}
+                  aria-label={`Insert line after ${characterLabel}`}
+                  title="Insert line below"
+                  onClick={() => addRow(row.id)}
+                  tabIndex={-1}
+                >
+                  <span aria-hidden="true">＋</span>
                 </button>
               </li>
             );
