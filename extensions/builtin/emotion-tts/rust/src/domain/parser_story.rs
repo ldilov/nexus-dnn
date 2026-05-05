@@ -374,6 +374,13 @@ mod tests {
     }
 
     #[test]
+    fn leading_whitespace_in_text_buffer_is_swallowed() {
+        let plan = parse("@bob   hello world");
+        assert_eq!(plan.utterances.len(), 1);
+        assert_eq!(plan.utterances[0].text, "hello world");
+    }
+
+    #[test]
     fn at_sign_after_multibyte_char_is_text() {
         let plan = parse("さん@bob hello");
         assert_eq!(plan.utterances.len(), 1);
