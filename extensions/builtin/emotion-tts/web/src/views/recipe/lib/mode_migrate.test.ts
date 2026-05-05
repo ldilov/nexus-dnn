@@ -75,22 +75,31 @@ describe("migrate rows → story", () => {
     const result = migrate("rows", "story", { script: "", rows, storyText: "" }, [happy]);
     expect(result?.storyText).toBe("@Bob /Happy hi\n@Alice there");
   });
-  it("falls back to Narrator on blank character", () => {
+  it("omits @character prefix when row character is blank", () => {
     const rows = [{ ...newEmptyRow(), text: "untagged" }];
     const result = migrate("rows", "story", { script: "", rows, storyText: "" }, []);
-    expect(result?.storyText).toBe("@Narrator untagged");
+    expect(result?.storyText).toBe("untagged");
   });
 });
 
 describe("migrate story → quick", () => {
-  it("pastes storyText verbatim", () => {
+  it("strips @character and /preset markers, keeping spoken text only", () => {
     const result = migrate(
       "story",
       "quick",
-      { script: "", rows: [], storyText: "@bob hi" },
+      { script: "", rows: [], storyText: "@bob /happy hi @alice there" },
+      [happy],
+    );
+    expect(result?.script).toBe("hi there");
+  });
+  it("preserves untagged prefix text", () => {
+    const result = migrate(
+      "story",
+      "quick",
+      { script: "", rows: [], storyText: "narration first @bob hi" },
       [],
     );
-    expect(result?.script).toBe("@bob hi");
+    expect(result?.script).toBe("narration first hi");
   });
 });
 
