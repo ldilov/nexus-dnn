@@ -157,18 +157,28 @@ pub(crate) async fn prepare(
     let chain_digests =
         build_voice_chain_digest_map(repos, &mappings, cfg.default_voice_asset_id.as_ref()).await?;
 
-    let mappings_by_id: HashMap<String, &CharacterMappingRow> = mappings
-        .iter()
-        .map(|m| (m.mapping_id.as_str().to_string(), m))
-        .collect();
+    let mut mappings_by_id: HashMap<String, &CharacterMappingRow> =
+        HashMap::with_capacity(mappings.len());
+    for m in &mappings {
+        let key = m.mapping_id.as_str().to_string();
+        if mappings_by_id.insert(key.clone(), m).is_some() {
+            return Err(EmotionTtsError::internal(format!(
+                "duplicate mapping_id {key} in deployment slice"
+            )));
+        }
+    }
 
     let mut segments = Vec::with_capacity(resolved.resolved.len());
     let mut plans = Vec::with_capacity(resolved.resolved.len());
     for (idx, r) in resolved.resolved.iter().enumerate() {
-        let mapping_opt = r
-            .mapping_id
-            .as_deref()
-            .and_then(|id| mappings_by_id.get(id).copied());
+        let mapping_opt = match r.mapping_id.as_deref() {
+            Some(id) => Some(mappings_by_id.get(id).copied().ok_or_else(|| {
+                EmotionTtsError::internal(format!(
+                    "resolved mapping_id {id} not found in prepare slice"
+                ))
+            })?),
+            None => None,
+        };
 
         let speaker_voice_id = match (mapping_opt, &cfg.default_voice_asset_id) {
             (Some(m), _) => m.speaker_voice_asset_id.clone(),
