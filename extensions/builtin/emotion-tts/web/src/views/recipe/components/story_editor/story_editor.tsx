@@ -111,12 +111,9 @@ export function StoryEditor({
 
   useEffect(() => {
     if (!popover) return;
-    if (filteredCandidates.length === 0) {
-      setPopover(null);
-      return;
-    }
     if (popover.selected >= filteredCandidates.length) {
-      setPopover({ ...popover, selected: filteredCandidates.length - 1 });
+      const next = filteredCandidates.length === 0 ? 0 : filteredCandidates.length - 1;
+      setPopover({ ...popover, selected: next });
     }
   }, [popover, filteredCandidates]);
 
@@ -187,7 +184,13 @@ export function StoryEditor({
 
   const handleKey = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (!popover || filteredCandidates.length === 0) return;
+      if (!popover) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setPopover(null);
+        return;
+      }
+      if (filteredCandidates.length === 0) return;
       if (event.key === "ArrowDown") {
         event.preventDefault();
         setPopover((p) => (p ? { ...p, selected: (p.selected + 1) % filteredCandidates.length } : p));
@@ -207,9 +210,6 @@ export function StoryEditor({
         if (choice) {
           insertCompletion(choice.value, { advanceFocus: true });
         }
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        setPopover(null);
       }
     },
     [popover, filteredCandidates, insertCompletion],
@@ -220,16 +220,24 @@ export function StoryEditor({
     popover && filteredCandidates.length > 0
       ? `${optionIdPrefix}-${popover.selected}`
       : undefined;
-  const popoverEmptyHint =
-    popover?.kind === "emotion" && presets.length === 0
-      ? "No emotion presets yet — create one in Mappings."
-      : null;
+  const popoverEmptyHint = (() => {
+    if (!popover || filteredCandidates.length > 0) return null;
+    if (popover.kind === "emotion") {
+      return presets.length === 0
+        ? "No emotion presets yet — create one in Mappings."
+        : `No preset matches "${popover.query}". Type a different name or pick from Mappings.`;
+    }
+    if (popover.query.length === 0) {
+      return "Type a name — we'll create a new character on the fly.";
+    }
+    return `No character "${popover.query}" yet — keep typing to define a new one.`;
+  })();
 
   return (
     <div className={css.root}>
       <div className={css.stage}>
         <div ref={overlayRef} className={css.overlay} aria-hidden="true">
-          {renderOverlay(tokens)}
+          {renderOverlay(tokens, popover?.triggerStart ?? null)}
         </div>
         <textarea
           ref={textareaRef}
@@ -290,26 +298,38 @@ export function StoryEditor({
         )}
       </div>
       <p className={css.helpRow}>
-        Type <kbd className={css.helpKbd}>@</kbd> for a character,{" "}
-        <kbd className={css.helpKbd}>/</kbd> for an emotion. Newlines do not split lines —
-        a new <kbd className={css.helpKbd}>@</kbd> does.
+        <span><kbd className={css.helpKbd}>@</kbd> character</span>
+        <span><kbd className={css.helpKbd}>/</kbd> emotion</span>
+        <span><kbd className={css.helpKbd}>⏎</kbd> commits</span>
+        <span><kbd className={css.helpKbd}>⇥</kbd> commits + advance</span>
       </p>
     </div>
   );
 }
 
-function renderOverlay(tokens: readonly StoryToken[]): JSX.Element[] {
+function renderOverlay(tokens: readonly StoryToken[], activeStart: number | null): JSX.Element[] {
   return tokens.map((t, idx) => {
+    const isActive = activeStart !== null && t.start === activeStart;
     if (t.kind === "character") {
       return (
-        <span key={`${t.start}-${idx}`} className={css.characterBadge} data-token="character">
+        <span
+          key={`${t.start}-${idx}`}
+          className={css.characterBadge}
+          data-token="character"
+          data-active={isActive ? "true" : undefined}
+        >
           @{t.value}
         </span>
       );
     }
     if (t.kind === "emotion") {
       return (
-        <span key={`${t.start}-${idx}`} className={css.emotionBadge} data-token="emotion">
+        <span
+          key={`${t.start}-${idx}`}
+          className={css.emotionBadge}
+          data-token="emotion"
+          data-active={isActive ? "true" : undefined}
+        >
           /{t.value}
         </span>
       );

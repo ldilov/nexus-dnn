@@ -48,6 +48,13 @@ export function CharacterRowsEditor({
     return seen.size;
   }, [rows, mappingsByLower]);
 
+  const prevUnmappedRef = useRef(unmappedCount);
+  const [nudgeKey, setNudgeKey] = useState(0);
+  useEffect(() => {
+    if (unmappedCount > prevUnmappedRef.current) setNudgeKey((k) => k + 1);
+    prevUnmappedRef.current = unmappedCount;
+  }, [unmappedCount]);
+
   const characterSuggestions = useMemo(() => {
     const out = new Set<string>();
     mappingsByLower.forEach((m) => out.add(m.characterName));
@@ -114,10 +121,14 @@ export function CharacterRowsEditor({
     <section className={css.root} aria-labelledby={headerId}>
       <header className={css.header}>
         <span className={css.headerEyebrow} id={headerId}>02 / Per-character lines</span>
-        <span className={css.counter}>
+        <span className={css.counter} aria-live="polite">
           <span className={css.counterValue}>{totalLines.toString().padStart(2, "0")}</span> lines
           {unmappedCount > 0 && (
-            <span className={css.unmappedBadge} title="Characters without a mapping will fail at run time">
+            <span
+              key={nudgeKey}
+              className={css.unmappedBadge}
+              title="Characters without a mapping will fail at run time"
+            >
               ⚠ {unmappedCount} unmapped
             </span>
           )}
@@ -132,8 +143,9 @@ export function CharacterRowsEditor({
         <ul className={css.list}>
           {rows.map((row, idx) => {
             const characterLabel = row.character.trim() || `line ${idx + 1}`;
+            const isMapped = mappingsByLower.has(row.character.trim().toLowerCase());
             return (
-              <li key={row.id} className={css.row}>
+              <li key={row.id} className={css.row} data-mapped={isMapped || undefined}>
                 <span className={css.ordinal} aria-hidden="true">
                   {(idx + 1).toString().padStart(2, "0")}
                 </span>
@@ -175,7 +187,11 @@ export function CharacterRowsEditor({
                     aria-label={`Emotion intensity for ${characterLabel}`}
                     aria-valuetext={`${Math.round(row.alpha * 100)} percent`}
                   />
-                  <span className={css.alphaValue} aria-hidden="true">
+                  <span
+                    className={css.alphaValue}
+                    aria-hidden="true"
+                    data-hot={row.alpha >= 0.85 || undefined}
+                  >
                     {(Math.round(row.alpha * 100) / 100).toFixed(2)}
                   </span>
                 </span>
