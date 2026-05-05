@@ -394,6 +394,48 @@ export const scriptTextarea = style({
   },
 });
 
+/* Quick mode treatment — anchors the textarea with an accent left-rail
+ * (mirrors the toolbar above) and switches typography from mono syntax
+ * to readable UI prose. The user is writing prose, not script. */
+export const scriptShellQuick = style({
+  background: vars.color.surface,
+  borderRadius: vars.radius.md,
+  borderLeft: `2px solid ${vars.color.accent}`,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+  // audit-allow: px — design-system-spec'd minimum prose height
+  minHeight: "240px",
+  selectors: {
+    "&:focus-within": {
+      background: vars.color.surface,
+      boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}, inset 4px 0 0 -2px var(--accent-glow, rgba(132, 85, 239, 0.55))`,
+    },
+  },
+});
+
+export const scriptTextareaQuick = style({
+  fontFamily: vars.font.body,
+  // audit-allow: px — design-system-spec'd prose body size
+  fontSize: "15px",
+  lineHeight: 1.7,
+  color: vars.color.text,
+  caretColor: vars.color.accent,
+  // audit-allow: px — design-system-spec'd prose padding (more breathing room than the syntax editor)
+  padding: "18px 20px",
+  resize: "vertical",
+  selectors: {
+    "&::placeholder": {
+      color: vars.color.textMuted,
+      fontStyle: "italic",
+      opacity: 0.55,
+      fontFamily: vars.font.body,
+    },
+    "&::selection": {
+      background: `color-mix(in oklab, ${vars.color.accent} 35%, transparent)`,
+      color: vars.color.text,
+    },
+  },
+});
+
 export const scriptCharacter = style({});
 
 export const scriptText = style({

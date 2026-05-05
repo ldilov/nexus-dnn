@@ -36,6 +36,7 @@ import { ParsedDialogue } from "./components/parsed_dialogue";
 import { PerformanceSliders, PERFORMANCE_DEFAULTS, type PerformanceSlidersValue } from "./components/performance_sliders";
 import { PreFlightBlock } from "./components/pre_flight_block";
 import { RecentRuns } from "./components/recent_runs";
+import { RecentGenerationsCard } from "./components/recent_generations_card";
 import { RunPanel } from "./components/run_panel";
 import { ScriptSection } from "./components/script_section/script_section";
 import { buildDiagnostics } from "./lib/build_diagnostics";
@@ -452,6 +453,12 @@ export function RecipeView(): JSX.Element {
             createPayload={createPayload}
             canGenerate={script.trim().length > 0}
             diagnostics={legacyDiagnostics}
+          />
+        }
+        recentGenerations={
+          <RecentGenerationsCard
+            deploymentId={deployment.deploymentId}
+            speedFactor={speedFactor}
           />
         }
         scriptSection={
