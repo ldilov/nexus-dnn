@@ -1,5 +1,16 @@
-import { style } from "@vanilla-extract/css";
+import { globalStyle, keyframes, style } from "@vanilla-extract/css";
 import { vars } from "../../../../theme/tokens.css";
+
+const rowSettle = keyframes({
+  "0%": { opacity: 0, transform: "translateY(-6px)" },
+  "100%": { opacity: 1, transform: "translateY(0)" },
+});
+
+const nudge = keyframes({
+  "0%, 100%": { transform: "translateX(0)" },
+  "30%": { transform: "translateX(-3px)" },
+  "60%": { transform: "translateX(3px)" },
+});
 
 export const root = style({
   display: "flex",
@@ -24,18 +35,25 @@ export const headerEyebrow = style({
 
 export const counter = style({
   fontFamily: vars.font.mono,
-  fontSize: vars.text.caption,
-  color: vars.color.textMuted,
+  fontSize: vars.text.micro,
+  letterSpacing: vars.tracking.label,
+  textTransform: "uppercase",
+  color: vars.color.textFaint,
+  display: "inline-flex",
+  alignItems: "baseline",
+  gap: vars.space.xs,
 });
 
 export const counterValue = style({
+  fontSize: vars.text.body,
   color: vars.color.accent,
+  fontVariantNumeric: "tabular-nums",
 });
 
 export const list = style({
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.xs,
+  gap: vars.space.sm,
   margin: 0,
   padding: 0,
   listStyle: "none",
@@ -47,18 +65,27 @@ export const row = style({
   gridTemplateColumns: "auto 160px 160px 120px 1fr auto",
   alignItems: "center",
   gap: vars.space.sm,
-  padding: `${vars.space.sm} ${vars.space.md}`,
+  padding: vars.space.md,
   background: vars.color.surfaceMuted,
   borderRadius: vars.radius.md,
-  borderLeft: `2px solid ${vars.color.borderGhost}`,
-  transition: `border-color ${vars.motion.fast}, background ${vars.motion.fast}, box-shadow ${vars.motion.fast}`,
+  animation: `${rowSettle} 200ms cubic-bezier(0.16, 1, 0.3, 1)`,
+  transition: [
+    `background ${vars.motion.fast}`,
+    `box-shadow ${vars.motion.normal}`,
+    `transform ${vars.motion.fast}`,
+  ].join(", "),
   selectors: {
     "&:hover": {
       background: vars.color.surfaceRaised,
+      transform: "translateY(-1px)",
+      boxShadow: vars.shadow.subtle,
+    },
+    "&[data-mapped]": {
+      boxShadow: `inset 2px 0 0 ${vars.color.accentDim}`,
     },
     "&:focus-within": {
-      borderLeftColor: vars.color.accent,
-      boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.accent} 22%, transparent)`,
+      background: vars.color.surfaceRaised,
+      boxShadow: `inset 2px 0 0 ${vars.color.accent}, 0 0 0 1px color-mix(in oklab, ${vars.color.accent} 18%, transparent), 0 8px 24px -12px ${vars.color.accentGlow}`,
     },
   },
   "@media": {
@@ -74,15 +101,42 @@ export const row = style({
 });
 
 export const ordinal = style({
+  position: "relative",
   fontFamily: vars.font.mono,
-  fontSize: vars.text.micro,
+  fontSize: vars.text.body,
+  fontWeight: 500,
+  letterSpacing: "-0.01em",
   color: vars.color.textFaint,
-  width: "1.5rem",
+  width: "2.5rem",
   textAlign: "right",
+  paddingRight: vars.space.sm,
+  fontVariantNumeric: "tabular-nums",
   userSelect: "none",
+  transition: `color ${vars.motion.fast}`,
+  selectors: {
+    "&::after": {
+      content: '""',
+      position: "absolute",
+      right: 0,
+      top: "50%",
+      width: vars.space.sm,
+      height: "1px",
+      background: vars.color.borderGhost,
+      transform: "translateY(-0.5px)",
+      transition: `background ${vars.motion.fast}`,
+    },
+  },
   "@media": {
     "(max-width: 960px)": { gridArea: "ord" },
   },
+});
+
+globalStyle(`${row}:focus-within ${ordinal}`, {
+  color: vars.color.accent,
+});
+
+globalStyle(`${row}:focus-within ${ordinal}::after`, {
+  background: vars.color.accent,
 });
 
 const inputBase = style({
@@ -134,17 +188,24 @@ export const alphaSlider = style({
   width: "100%",
   paddingTop: vars.space.xs,
   paddingBottom: vars.space.xs,
-  accentColor: vars.color.accent,
+  accentColor: vars.color.tertiary,
   cursor: "pointer",
   background: "transparent",
 });
 
 export const alphaValue = style({
   fontFamily: vars.font.mono,
-  fontSize: vars.text.micro,
+  fontSize: vars.text.caption,
+  fontVariantNumeric: "tabular-nums",
   color: vars.color.textMuted,
-  minWidth: "2.25rem",
+  minWidth: "2.5rem",
   textAlign: "right",
+  transition: `color ${vars.motion.fast}`,
+  selectors: {
+    '&[data-hot="true"]': {
+      color: vars.color.tertiary,
+    },
+  },
 });
 
 export const textInput = style([inputBase, {
@@ -208,15 +269,21 @@ export const addRowButton = style({
   selectors: {
     "&:hover": {
       background: vars.color.surfaceMuted,
-      boxShadow: `inset 0 0 0 1px ${vars.color.accent}`,
+      boxShadow: `inset 0 0 0 1px ${vars.color.accent}, ${vars.shadow.glow}`,
     },
     "&:active": { transform: "translateY(1px)" },
   },
 });
 
 export const addGlyph = style({
+  display: "inline-block",
   fontFamily: vars.font.mono,
   color: vars.color.accent,
+  transition: `transform ${vars.motion.normal}`,
+});
+
+globalStyle(`${addRowButton}:hover ${addGlyph}`, {
+  transform: "rotate(90deg)",
 });
 
 export const emptyHint = style({
@@ -237,11 +304,12 @@ export const unmappedBadge = style({
   padding: `0 ${vars.space.sm}`,
   height: "1.5rem",
   marginLeft: vars.space.xs,
-  background: `color-mix(in oklab, ${vars.color.warning} 32%, ${vars.color.surfaceMuted})`,
-  color: vars.color.text,
+  background: `color-mix(in oklab, ${vars.color.warning} 18%, ${vars.color.surfaceMuted})`,
+  color: vars.color.warning,
   fontFamily: vars.font.mono,
   fontSize: vars.text.micro,
   fontWeight: 600,
   borderRadius: vars.radius.sm,
-  boxShadow: `inset 0 0 0 1px ${vars.color.warning}`,
+  boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.warning} 60%, transparent)`,
+  animation: `${nudge} 200ms cubic-bezier(0.2, 0, 0, 1)`,
 });
