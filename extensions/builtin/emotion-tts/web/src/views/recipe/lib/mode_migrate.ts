@@ -50,9 +50,10 @@ export function migrate(
     for (const row of source.rows) {
       const text = row.text.trim();
       if (!text) continue;
-      const character = row.character.trim() || "Narrator";
+      const character = row.character.trim();
       const preset = row.presetId ? presetsById.get(row.presetId) : null;
-      const segments: string[] = [`@${sanitiseToken(character)}`];
+      const segments: string[] = [];
+      if (character) segments.push(`@${sanitiseToken(character)}`);
       if (preset) segments.push(`/${sanitiseToken(preset.presetName)}`);
       segments.push(text);
       lines.push(segments.join(" "));
@@ -61,7 +62,13 @@ export function migrate(
   }
 
   if (from === "story" && to === "quick") {
-    return { script: source.storyText };
+    const tokens = tokeniseStory(source.storyText);
+    const out: string[] = [];
+    for (const t of tokens) {
+      if (t.kind === "text") out.push(t.value);
+    }
+    const stripped = out.join("").replace(/\s+/g, " ").trim();
+    return { script: stripped };
   }
 
   if (from === "story" && to === "rows") {

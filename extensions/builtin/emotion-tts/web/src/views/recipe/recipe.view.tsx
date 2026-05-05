@@ -201,11 +201,21 @@ export function RecipeView(): JSX.Element {
             if (result.rows !== undefined) setRows(result.rows);
             if (result.storyText !== undefined) setStoryText(result.storyText);
             const labelMap: Record<EditorMode, string> = {
-              quick: "Quick mode",
-              rows: "Per-character mode",
-              story: "Story mode",
+              quick: "Quick",
+              rows: "Per-character",
+              story: "Story",
             };
-            toast(`Migrated content into ${labelMap[next]}`, {
+            const countLines = (s: string): number =>
+              s.split(/\r?\n/).filter((l) => l.trim().length > 0).length;
+            const count = result.rows !== undefined
+              ? result.rows.filter((r) => r.text.trim().length > 0).length
+              : result.script !== undefined
+                ? countLines(result.script)
+                : result.storyText !== undefined
+                  ? countLines(result.storyText)
+                  : 0;
+            const detail = count > 0 ? ` (${count} ${count === 1 ? "line" : "lines"})` : "";
+            toast(`Switched to ${labelMap[next]}${detail} — content kept`, {
               action: {
                 label: "Undo",
                 onClick: () => {
