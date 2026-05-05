@@ -111,7 +111,7 @@ export const row = style({
 
 export const dragHandle = style({
   appearance: "none",
-  width: "1.25rem",
+  width: "1.5rem",
   height: "1.5rem",
   padding: 0,
   background: "transparent",
@@ -357,7 +357,7 @@ export const unmappedPopover = style({
   padding: vars.space.md,
   background: vars.color.surfaceHighest,
   borderRadius: vars.radius.md,
-  boxShadow: `${vars.shadow.raised}, 0 0 0 1px ${vars.color.borderGhost}`,
+  boxShadow: `${vars.shadow.raised}, 0 0 0 1px ${vars.color.borderGhost}, inset 0 2px 0 ${vars.color.warning}`,
   zIndex: 10,
 });
 
@@ -454,6 +454,18 @@ export const emptyHint = style({
   textAlign: "center",
   background: vars.color.surfaceMuted,
   borderRadius: vars.radius.md,
+});
+
+export const srOnly = style({
+  position: "absolute",
+  width: "1px",
+  height: "1px",
+  padding: 0,
+  margin: "-1px",
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  whiteSpace: "nowrap",
+  border: 0,
 });
 
 export const unmappedBadge = style({
