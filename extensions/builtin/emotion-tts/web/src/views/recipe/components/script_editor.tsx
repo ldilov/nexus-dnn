@@ -12,6 +12,10 @@ interface Props {
   outputFormat: OutputFormat;
   mappings: Map<string, CharacterMapping>;
   deploymentId: string;
+  /** When true, the editor styles itself as a plain-prose textarea
+   * (accent left-rail, no syntax highlighting overlay). Optional so
+   * existing call sites remain valid. */
+  quickMode?: boolean;
 }
 
 interface LineToken {
@@ -60,18 +64,26 @@ export function ScriptEditor(props: Props): JSX.Element {
     overlay.scrollLeft = event.currentTarget.scrollLeft;
   };
 
+  const quickMode = props.quickMode === true;
+
   return (
     <div>
-      <div className={css.scriptShell}>
-        <div ref={overlayRef} className={css.scriptOverlay} aria-hidden="true">
-          {tokens.map((tok, idx) => renderToken(tok, idx, characterColor))}
-        </div>
+      <div className={`${css.scriptShell} ${quickMode ? css.scriptShellQuick : ""}`}>
+        {!quickMode && (
+          <div ref={overlayRef} className={css.scriptOverlay} aria-hidden="true">
+            {tokens.map((tok, idx) => renderToken(tok, idx, characterColor))}
+          </div>
+        )}
         <textarea
-          className={css.scriptTextarea}
+          className={`${css.scriptTextarea} ${quickMode ? css.scriptTextareaQuick : ""}`}
           value={props.value}
           onChange={(e) => props.onChange(e.currentTarget.value)}
-          onScroll={handleScroll}
-          placeholder={"[Bob] Hey there\n[Alice] Hello\n..."}
+          onScroll={quickMode ? undefined : handleScroll}
+          placeholder={
+            quickMode
+              ? "Type or paste plain text. The selected voice will read every word."
+              : "[Bob] Hey there\n[Alice] Hello\n..."
+          }
           aria-label="Dialogue script"
           spellCheck={false}
         />

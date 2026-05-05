@@ -15,6 +15,10 @@ export interface RecipeUiProps {
   deployment: Deployment;
   hero: ReactNode;
   quickActions?: ReactNode;
+  /** Card surfaced ABOVE the section stack — last-N generated audios with
+   * inline play / download. Optional: when not provided the recipe shell
+   * renders without the recent-generations strip. */
+  recentGenerations?: ReactNode;
   scriptSection: ReactNode;
   parsedDialogueSection: ReactNode;
   voiceLibrarySection?: ReactNode;
@@ -65,6 +69,7 @@ export function RecipeUi(props: RecipeUiProps): JSX.Element {
           {props.quickActions}
         </div>
       )}
+      {props.recentGenerations}
       <div className={css.sectionStack}>
         <RecipeSection
           number="01"
