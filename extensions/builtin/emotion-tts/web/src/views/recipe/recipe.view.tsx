@@ -46,6 +46,7 @@ import {
   serialiseRowsToScript,
   type PerCharacterRow,
 } from "./lib/serialise_rows";
+import { tokeniseStory } from "./lib/story_tokens";
 import {
   assignCharacterColors,
   lineCountByCharacter,
@@ -164,6 +165,10 @@ export function RecipeView(): JSX.Element {
   });
   const quickMode = editorMode === "quick";
   const [rows, setRows] = useState<PerCharacterRow[]>(() => [newEmptyRow()]);
+  const [storyText, setStoryText] = useState<string>(() => {
+    const persisted = seededRecipeMeta["storyText"];
+    return typeof persisted === "string" ? persisted : "";
+  });
   const [performance, setPerformance] = useState<PerformanceSlidersValue>(PERFORMANCE_DEFAULTS);
 
   useEffect(() => {
@@ -201,6 +206,7 @@ export function RecipeView(): JSX.Element {
           editorMode,
           quickMode,
           cachePolicy,
+          storyText,
         },
       };
       void apiFetch(`/deployments/${deployment.deploymentId}`, {
@@ -220,15 +226,28 @@ export function RecipeView(): JSX.Element {
     cachePolicy,
     editorMode,
     quickMode,
+    storyText,
     generation,
   ]);
 
-  const effectiveScript = useMemo(
-    () => (editorMode === "rows" ? serialiseRowsToScript(rows, vectorPresets) : script),
-    [editorMode, rows, vectorPresets, script],
-  );
+  const effectiveScript = useMemo(() => {
+    if (editorMode === "rows") return serialiseRowsToScript(rows, vectorPresets);
+    if (editorMode === "story") return storyText;
+    return script;
+  }, [editorMode, rows, vectorPresets, script, storyText]);
   const parsedLines = useMemo(() => parseDialogue(effectiveScript), [effectiveScript]);
-  const characters = useMemo(() => uniqueCharacters(parsedLines), [parsedLines]);
+  const characters = useMemo(() => {
+    if (editorMode !== "story") return uniqueCharacters(parsedLines);
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+    for (const tok of tokeniseStory(storyText)) {
+      if (tok.kind !== "character") continue;
+      if (seen.has(tok.value)) continue;
+      seen.add(tok.value);
+      ordered.push(tok.value);
+    }
+    return ordered;
+  }, [editorMode, parsedLines, storyText]);
   const characterColors = useMemo(() => assignCharacterColors(characters), [characters]);
   const lineCounts = useMemo(() => lineCountByCharacter(parsedLines), [parsedLines]);
 
@@ -422,7 +441,12 @@ export function RecipeView(): JSX.Element {
   const createPayload: CreateRunRequest = useMemo(
     () => ({
       script: effectiveScript,
-      parserMode: editorMode === "quick" ? "raw_text" : "dialogue",
+      parserMode:
+        editorMode === "quick"
+          ? "raw_text"
+          : editorMode === "story"
+            ? "story"
+            : "dialogue",
       outputFormat,
       speedFactor,
       globalEmotion: { ...globalEmotion, emotionAlpha: performance.intensity },
@@ -489,6 +513,9 @@ export function RecipeView(): JSX.Element {
             onScriptChange={setScript}
             rows={rows}
             onRowsChange={setRows}
+            storyText={storyText}
+            onStoryTextChange={setStoryText}
+            storyCharacters={characters}
             outputFormat={outputFormat}
             mappingsByLower={mappingsByLower}
             defaultVoiceAssetId={defaultVoiceAssetId}

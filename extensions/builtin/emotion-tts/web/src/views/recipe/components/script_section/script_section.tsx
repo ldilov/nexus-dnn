@@ -6,6 +6,7 @@ import { QuickVoicePicker } from "../quick_voice_picker";
 import { ScriptEditor } from "../script_editor";
 import { CharacterRowsEditor } from "../character_rows_editor/character_rows_editor";
 import { EditorModeToggle, type EditorMode } from "../editor_mode_toggle/editor_mode_toggle";
+import { StoryEditor } from "../story_editor/story_editor";
 import type { PerCharacterRow } from "../../lib/serialise_rows";
 import * as css from "./script_section.css";
 import { ScriptSyntaxLegend, ScriptSyntaxPopover } from "./script_syntax_legend";
@@ -18,6 +19,9 @@ interface ScriptSectionProps {
   onScriptChange: (v: string) => void;
   rows: PerCharacterRow[];
   onRowsChange: (rows: PerCharacterRow[]) => void;
+  storyText: string;
+  onStoryTextChange: (v: string) => void;
+  storyCharacters: readonly string[];
   outputFormat: OutputFormat;
   mappingsByLower: Map<string, CharacterMapping>;
   defaultVoiceAssetId: string | null;
@@ -33,6 +37,9 @@ export function ScriptSection({
   onScriptChange,
   rows,
   onRowsChange,
+  storyText,
+  onStoryTextChange,
+  storyCharacters,
   outputFormat,
   mappingsByLower,
   defaultVoiceAssetId,
@@ -41,13 +48,18 @@ export function ScriptSection({
 }: ScriptSectionProps): JSX.Element {
   const isQuick = editorMode === "quick";
   const isRows = editorMode === "rows";
-  const charCount = isRows ? rows.reduce((acc, r) => acc + r.text.length, 0) : script.length;
-  const wordSource = isRows ? rows.map((r) => r.text).join(" ") : script;
+  const isStory = editorMode === "story";
+  const charCount = isRows
+    ? rows.reduce((acc, r) => acc + r.text.length, 0)
+    : isStory
+      ? storyText.length
+      : script.length;
+  const wordSource = isRows ? rows.map((r) => r.text).join(" ") : isStory ? storyText : script;
   const wordCount = wordSource.trim() ? wordSource.trim().split(/\s+/).length : 0;
   const lineCount = isRows
     ? rows.filter((r) => r.text.trim().length > 0).length
-    : script.trim()
-      ? script.trim().split(/\r?\n/).filter((l) => l.trim()).length
+    : (isStory ? storyText : script).trim()
+      ? (isStory ? storyText : script).trim().split(/\r?\n/).filter((l) => l.trim()).length
       : 0;
 
   return (
@@ -56,7 +68,7 @@ export function ScriptSection({
         className={`${css.quickBar} ${isQuick ? css.quickBarOn : ""}`}
         data-quick-on={isQuick || undefined}
       >
-        <EditorModeToggle value={editorMode} onChange={onEditorModeChange} storyDisabled />
+        <EditorModeToggle value={editorMode} onChange={onEditorModeChange} />
         {isQuick && (
           <QuickVoicePicker
             deploymentId={deployment.deploymentId}
@@ -93,6 +105,14 @@ export function ScriptSection({
           presets={presets}
           mappingsByLower={mappingsByLower}
         />
+      ) : isStory ? (
+        <StoryEditor
+          value={storyText}
+          onChange={onStoryTextChange}
+          characters={storyCharacters}
+          presets={presets}
+          mappingsByLower={mappingsByLower}
+        />
       ) : (
         <ScriptEditor
           value={script}
@@ -103,7 +123,7 @@ export function ScriptSection({
           quickMode={isQuick}
         />
       )}
-      {!isQuick && !isRows && <ScriptSyntaxLegend />}
+      {!isQuick && !isRows && !isStory && <ScriptSyntaxLegend />}
     </div>
   );
 }
