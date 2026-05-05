@@ -164,6 +164,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn three_lines_three_voices_round_trip() {
+        let op = MappingResolveOperator;
+        let bob = mapping("Bob");
+        let alice = mapping("Alice");
+        let bob_voice = bob.speaker_voice_asset_id.as_str().to_string();
+        let alice_voice = alice.speaker_voice_asset_id.as_str().to_string();
+        let out = op
+            .execute(Input {
+                utterances: vec![utt("Bob", 1), utt("Bob", 2), utt("Alice", 3), utt("Bob", 4)],
+                mappings: vec![bob, alice],
+            })
+            .await
+            .unwrap();
+        assert_eq!(out.resolved.len(), 4);
+        assert_eq!(out.resolved[0].speaker_voice_asset_id.as_ref(), Some(&bob_voice));
+        assert_eq!(out.resolved[0].character_index, 1);
+        assert_eq!(out.resolved[1].speaker_voice_asset_id.as_ref(), Some(&bob_voice));
+        assert_eq!(out.resolved[1].character_index, 2);
+        assert_eq!(out.resolved[2].speaker_voice_asset_id.as_ref(), Some(&alice_voice));
+        assert_eq!(out.resolved[2].character_index, 1);
+        assert_eq!(out.resolved[3].speaker_voice_asset_id.as_ref(), Some(&bob_voice));
+        assert_eq!(out.resolved[3].character_index, 3);
+        assert!(out.unresolved_characters.is_empty());
+    }
+
+    #[tokio::test]
     async fn case_insensitive_match() {
         let op = MappingResolveOperator;
         let out = op
