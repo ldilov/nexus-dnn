@@ -157,28 +157,28 @@ pub(crate) async fn prepare(
     let chain_digests =
         build_voice_chain_digest_map(repos, &mappings, cfg.default_voice_asset_id.as_ref()).await?;
 
+    let mappings_by_id: HashMap<String, &CharacterMappingRow> = mappings
+        .iter()
+        .map(|m| (m.mapping_id.as_str().to_string(), m))
+        .collect();
+
     let mut segments = Vec::with_capacity(resolved.resolved.len());
     let mut plans = Vec::with_capacity(resolved.resolved.len());
     for (idx, r) in resolved.resolved.iter().enumerate() {
-        // The mapping lookup key is the display name lowercased — same
-        // logic `MappingResolveOperator` uses internally.
-        // Pass 1: look for an explicit character mapping.
-        // Pass 2: fall back to the deployment's default voice (raw_text mode).
-        let mapping_opt = mappings
-            .iter()
-            .find(|m| m.character_name_lower == r.utterance.character_display.to_lowercase());
+        let mapping_opt = r
+            .mapping_id
+            .as_deref()
+            .and_then(|id| mappings_by_id.get(id).copied());
 
-        let speaker_voice_id = match mapping_opt {
-            Some(m) => m.speaker_voice_asset_id.clone(),
-            None => match &cfg.default_voice_asset_id {
-                Some(id) => id.clone(),
-                None => {
-                    return Err(EmotionTtsError::Conflict(format!(
-                        "no mapping for character '{}' and no default voice set",
-                        r.utterance.character_display
-                    )))
-                }
-            },
+        let speaker_voice_id = match (mapping_opt, &cfg.default_voice_asset_id) {
+            (Some(m), _) => m.speaker_voice_asset_id.clone(),
+            (None, Some(id)) => id.clone(),
+            (None, None) => {
+                return Err(EmotionTtsError::Conflict(format!(
+                    "no mapping for character '{}' and no default voice set",
+                    r.utterance.character_display
+                )))
+            }
         };
 
         let speaker_path =

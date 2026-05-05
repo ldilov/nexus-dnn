@@ -26,6 +26,7 @@ pub const NARRATOR: &str = "Narrator";
 pub const RESERVED_OVERRIDE_KEYS: &[&str] = &[
     "emotion_vector",
     "emotion_audio_ref",
+    "emotion_alpha",
     "qwen",
     "speed",
     "seed",
@@ -402,6 +403,17 @@ mod tests {
             u.inline_overrides.get("emotion_vector"),
             Some(&"happy=0.7,surprised=0.2".to_string())
         );
+        assert!(plan.report.warnings.is_empty());
+    }
+
+    #[test]
+    fn inline_emotion_alpha_override_preserved() {
+        let plan = parse_script(
+            "[Bob|emotion_vector:happy=0.7|emotion_alpha:0.5] Hi",
+            ParserMode::Dialogue,
+        );
+        let u = &plan.utterances[0];
+        assert_eq!(u.inline_overrides.get("emotion_alpha"), Some(&"0.5".to_string()));
         assert!(plan.report.warnings.is_empty());
     }
 
