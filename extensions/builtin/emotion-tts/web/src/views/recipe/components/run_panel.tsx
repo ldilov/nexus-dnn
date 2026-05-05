@@ -16,7 +16,6 @@ import * as css from "../recipe.css";
 import * as panel from "./run_panel.css";
 import { Banner } from "../../../components/banner";
 import { Button } from "../../../components/button";
-import { RecentGenerations } from "./recent_generations";
 import {
   sizeStyle as buttonSize,
   variantStyle as buttonVariant,
@@ -283,7 +282,6 @@ export function RunPanel(props: Props): JSX.Element {
               Cancel
             </Button>
           )}
-          <RecentGenerations deploymentId={props.deploymentId} />
         </div>
       </div>
 

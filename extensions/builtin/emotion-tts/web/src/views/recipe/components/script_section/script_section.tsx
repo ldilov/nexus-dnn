@@ -1,6 +1,7 @@
 import type { Deployment } from "../../../../services/deployments_client";
 import type { CharacterMapping } from "../../../../services/mappings_client";
 import type { OutputFormat } from "../../../../services/types";
+import { Checkbox } from "../../../../components/checkbox";
 import { QuickVoicePicker } from "../quick_voice_picker";
 import { ScriptEditor } from "../script_editor";
 import * as css from "./script_section.css";
@@ -37,15 +38,17 @@ export function ScriptSection({
 
   return (
     <div className={css.root}>
-      <div className={css.headerRow}>
-        <label className={css.quickToggle}>
-          <input
-            type="checkbox"
-            checked={quickMode}
-            onChange={(e) => onToggleQuickMode(e.target.checked)}
-          />
-          Quick mode (no character mapping required)
-        </label>
+      <div
+        className={`${css.quickBar} ${quickMode ? css.quickBarOn : ""}`}
+        data-quick-on={quickMode || undefined}
+      >
+        <Checkbox
+          checked={quickMode}
+          onChange={onToggleQuickMode}
+          emphasis
+          label="Quick mode"
+          hint="single voice · plain prose · no character syntax"
+        />
         {quickMode && (
           <QuickVoicePicker
             deploymentId={deployment.deploymentId}
@@ -81,8 +84,9 @@ export function ScriptSection({
         outputFormat={outputFormat}
         mappings={mappingsByLower}
         deploymentId={deployment.deploymentId}
+        quickMode={quickMode}
       />
-      <ScriptSyntaxLegend />
+      {!quickMode && <ScriptSyntaxLegend />}
     </div>
   );
 }
