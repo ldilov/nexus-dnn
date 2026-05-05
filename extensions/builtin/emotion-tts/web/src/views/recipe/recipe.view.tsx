@@ -47,6 +47,7 @@ import {
   type PerCharacterRow,
 } from "./lib/serialise_rows";
 import { tokeniseStory } from "./lib/story_tokens";
+import { hasContentForMode, migrate } from "./lib/mode_migrate";
 import {
   assignCharacterColors,
   lineCountByCharacter,
@@ -184,6 +185,45 @@ export function RecipeView(): JSX.Element {
     setStoryTextRaw(next);
   }, []);
   const [performance, setPerformance] = useState<PerformanceSlidersValue>(PERFORMANCE_DEFAULTS);
+
+  const requestEditorModeChange = useCallback(
+    (next: EditorMode) => {
+      setEditorMode((current) => {
+        if (next === current) return current;
+        const source = { script, rows, storyText };
+        const targetHasContent = hasContentForMode(next, source);
+        const sourceHasContent = hasContentForMode(current, source);
+        if (!targetHasContent && sourceHasContent) {
+          const result = migrate(current, next, source, vectorPresets);
+          if (result) {
+            const snapshot = { script, rows, storyText };
+            if (result.script !== undefined) setScript(result.script);
+            if (result.rows !== undefined) setRows(result.rows);
+            if (result.storyText !== undefined) setStoryText(result.storyText);
+            const labelMap: Record<EditorMode, string> = {
+              quick: "Quick mode",
+              rows: "Per-character mode",
+              story: "Story mode",
+            };
+            toast(`Migrated content into ${labelMap[next]}`, {
+              action: {
+                label: "Undo",
+                onClick: () => {
+                  setScript(snapshot.script);
+                  setRows(snapshot.rows);
+                  setStoryText(snapshot.storyText);
+                  setEditorMode(current);
+                },
+              },
+              duration: 6000,
+            });
+          }
+        }
+        return next;
+      });
+    },
+    [script, rows, storyText, vectorPresets, setStoryText],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -521,7 +561,7 @@ export function RecipeView(): JSX.Element {
         scriptSection={
           <ScriptSection
             editorMode={editorMode}
-            onEditorModeChange={setEditorMode}
+            onEditorModeChange={requestEditorModeChange}
             deployment={deployment}
             script={script}
             onScriptChange={setScript}
