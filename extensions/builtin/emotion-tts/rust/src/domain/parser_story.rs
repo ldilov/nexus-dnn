@@ -1,8 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::domain::parser::{
-    ParsePlan, ParseReport, ParseWarning, ParseWarningKind, ParsedUtterance, ParserMode, NARRATOR,
-};
+use crate::domain::parser::{ParsePlan, ParseReport, ParsedUtterance, ParserMode, NARRATOR};
 
 #[derive(Debug, Clone, PartialEq)]
 enum Token {
@@ -147,7 +145,7 @@ fn emit(
     line: i64,
     character: &Option<String>,
     emotion: &Option<String>,
-    report: &mut ParseReport,
+    _report: &mut ParseReport,
 ) {
     let raw = std::mem::take(buffer);
     let normalised = normalise_text(&raw);
@@ -158,15 +156,7 @@ fn emit(
     let display = character
         .as_deref()
         .map_or_else(|| NARRATOR.to_string(), str::to_string);
-
-    if display.is_empty() {
-        report.warnings.push(ParseWarning {
-            line_number: line,
-            kind: ParseWarningKind::EmptyCharacterName,
-            detail: "story command had empty character name".to_string(),
-        });
-        return;
-    }
+    debug_assert!(!display.is_empty(), "tokenise() guarantees non-empty character names");
 
     let mut overrides: BTreeMap<String, String> = BTreeMap::new();
     if let Some(emotion_name) = emotion.as_deref() {
@@ -196,7 +186,10 @@ fn normalise_text(raw: &str) -> String {
             prev_space = false;
         }
     }
-    out.trim().to_string()
+    if out.ends_with(' ') {
+        out.pop();
+    }
+    out
 }
 
 #[cfg(test)]
@@ -378,6 +371,14 @@ mod tests {
         assert_eq!(plan.utterances.len(), 1);
         assert_eq!(plan.utterances[0].character_display, NARRATOR);
         assert_eq!(plan.utterances[0].text, "user@example.com");
+    }
+
+    #[test]
+    fn at_sign_after_multibyte_char_is_text() {
+        let plan = parse("さん@bob hello");
+        assert_eq!(plan.utterances.len(), 1);
+        assert_eq!(plan.utterances[0].character_display, NARRATOR);
+        assert_eq!(plan.utterances[0].text, "さん@bob hello");
     }
 
     #[test]
