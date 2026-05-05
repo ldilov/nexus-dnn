@@ -222,6 +222,7 @@ export function RecentGenerationsCard({
                   }}
                   data-playing={isPlaying || undefined}
                 >
+                  <div className={css.rowMain}>
                   <button
                     type="button"
                     className={css.playButton}
@@ -284,6 +285,7 @@ export function RecentGenerationsCard({
                   >
                     ↓
                   </a>
+                  </div>
 
                   {isPlaying && (
                     <audio

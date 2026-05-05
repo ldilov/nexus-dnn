@@ -92,27 +92,35 @@ export const list = style({
   listStyle: "none",
 });
 
+/* Row layout — flex column with an inner flex row for the main content
+ * (play | body | download) and an optional audio element below when
+ * playing. Replaces the previous grid-template-areas approach which only
+ * defined the named areas in the playing state, causing children's
+ * gridArea references to fall back to auto-placement and stack weirdly. */
 export const row = style({
-  display: "grid",
-  gridTemplateColumns: "auto 1fr auto",
-  alignItems: "center",
-  gap: vars.space.md,
+  display: "flex",
+  flexDirection: "column",
+  // audit-allow: px — sub-token vertical rhythm between row + inline audio
+  gap: "8px",
   // audit-allow: px — design-system-spec'd row inset
   padding: "10px 12px",
   borderRadius: vars.radius.sm,
   transition: "background 140ms",
-  position: "relative",
   selectors: {
     "&:hover": {
       background: vars.color.surfaceMuted,
     },
     "&[data-playing]": {
       background: `color-mix(in oklab, ${vars.color.accent} 8%, transparent)`,
-      gridTemplateAreas: `"play body download" "audio audio audio"`,
-      gridTemplateColumns: "auto 1fr auto",
-      rowGap: vars.space.sm,
     },
   },
+});
+
+export const rowMain = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.md,
+  minWidth: 0,
 });
 
 export const playButton = style({
@@ -121,7 +129,7 @@ export const playButton = style({
   width: "32px",
   // audit-allow: px — touch-target square
   height: "32px",
-  flexShrink: 0,
+  flex: "0 0 32px",
   background: `color-mix(in oklab, ${vars.color.accent} 14%, transparent)`,
   color: vars.color.accent,
   border: "none",
@@ -133,8 +141,9 @@ export const playButton = style({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+  padding: 0,
+  lineHeight: 1,
   transition: "background 120ms, transform 120ms",
-  gridArea: "play",
   selectors: {
     "&:hover": {
       background: `color-mix(in oklab, ${vars.color.accent} 24%, transparent)`,
@@ -159,8 +168,8 @@ export const body = style({
   flexDirection: "column",
   // audit-allow: px — sub-token line spacing within row
   gap: "2px",
+  flex: "1 1 auto",
   minWidth: 0,
-  gridArea: "body",
 });
 
 export const bodyTop = style({
@@ -229,7 +238,7 @@ export const metaSpeed = style({
 });
 
 export const download = style({
-  flexShrink: 0,
+  flex: "0 0 30px",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -238,16 +247,20 @@ export const download = style({
   // audit-allow: px — touch-target square
   height: "30px",
   borderRadius: vars.radius.pill,
-  color: vars.color.textMuted,
+  color: vars.color.text,
+  background: vars.color.surfaceMuted,
+  border: `1px solid ${vars.color.borderSubtle}`,
   textDecoration: "none",
   fontFamily: vars.font.mono,
-  fontSize: vars.text.body,
-  gridArea: "download",
-  transition: "color 120ms, background 120ms",
+  // audit-allow: px — readable glyph weight
+  fontSize: "16px",
+  lineHeight: 1,
+  transition: "color 120ms, background 120ms, border-color 120ms",
   selectors: {
     "&:hover": {
       color: vars.color.accent,
       background: `color-mix(in oklab, ${vars.color.accent} 14%, transparent)`,
+      borderColor: vars.color.accent,
     },
     "&:focus-visible": {
       outline: `2px solid ${vars.color.accent}`,
@@ -260,7 +273,6 @@ export const audio = style({
   width: "100%",
   // audit-allow: px — compact inline audio height
   height: "32px",
-  gridArea: "audio",
 });
 
 export const error = style({
