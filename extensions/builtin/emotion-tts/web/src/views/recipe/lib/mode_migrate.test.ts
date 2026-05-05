@@ -101,6 +101,15 @@ describe("migrate story → quick", () => {
     );
     expect(result?.script).toBe("narration first hi");
   });
+  it("preserves paragraph breaks across newlines", () => {
+    const result = migrate(
+      "story",
+      "quick",
+      { script: "", rows: [], storyText: "@bob Line one.\n\n@alice Line two." },
+      [],
+    );
+    expect(result?.script).toBe("Line one.\nLine two.");
+  });
 });
 
 describe("migrate story → rows", () => {
@@ -119,15 +128,30 @@ describe("migrate story → rows", () => {
     expect(result?.rows?.[1]?.presetId).toBeNull();
     expect(result?.rows?.[1]?.text).toBe("there");
   });
-  it("untagged-leading text becomes Narrator row", () => {
+  it("untagged-leading text becomes a row with empty character", () => {
     const result = migrate(
       "story",
       "rows",
       { script: "", rows: [], storyText: "narration first @bob hi" },
       [],
     );
-    expect(result?.rows?.[0]?.character).toBe("Narrator");
+    expect(result?.rows?.[0]?.character).toBe("");
     expect(result?.rows?.[0]?.text).toBe("narration first");
+  });
+  it("splits multi-line buffer into a row per non-empty line under same speaker", () => {
+    const result = migrate(
+      "story",
+      "rows",
+      { script: "", rows: [], storyText: "@Bob Hi\nnarration\n@Alice Bye" },
+      [],
+    );
+    expect(result?.rows?.length).toBe(3);
+    expect(result?.rows?.[0]?.character).toBe("Bob");
+    expect(result?.rows?.[0]?.text).toBe("Hi");
+    expect(result?.rows?.[1]?.character).toBe("");
+    expect(result?.rows?.[1]?.text).toBe("narration");
+    expect(result?.rows?.[2]?.character).toBe("Alice");
+    expect(result?.rows?.[2]?.text).toBe("Bye");
   });
   it("returns a single empty row when the story is just whitespace", () => {
     const result = migrate(

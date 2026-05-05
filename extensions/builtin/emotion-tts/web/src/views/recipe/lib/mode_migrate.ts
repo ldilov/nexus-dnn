@@ -67,7 +67,12 @@ export function migrate(
     for (const t of tokens) {
       if (t.kind === "text") out.push(t.value);
     }
-    const stripped = out.join("").replace(/\s+/g, " ").trim();
+    const stripped = out
+      .join("")
+      .split(/\r?\n/)
+      .map((line) => line.replace(/[ \t]+/g, " ").trim())
+      .filter((line) => line.length > 0)
+      .join("\n");
     return { script: stripped };
   }
 
@@ -76,22 +81,37 @@ export function migrate(
     const presetsByLowerName = new Map<string, VectorPreset>();
     for (const p of presets) presetsByLowerName.set(p.presetName.toLowerCase(), p);
     const rows: PerCharacterRow[] = [];
-    let currentCharacter = "Narrator";
+    let currentCharacter = "";
     let currentPresetId: string | null = null;
     let buffer = "";
     let started = false;
     const flush = (): void => {
-      const text = buffer.replace(/\s+/g, " ").trim();
-      if (text.length > 0) {
+      const segments = buffer
+        .split(/\r?\n/)
+        .map((s) => s.replace(/[ \t]+/g, " ").trim())
+        .filter((s) => s.length > 0);
+      buffer = "";
+      if (segments.length === 0) return;
+      const first = segments[0];
+      if (first === undefined) return;
+      rows.push({
+        ...newEmptyRow(),
+        character: currentCharacter,
+        presetId: currentPresetId,
+        alpha: 1,
+        text: first,
+      });
+      for (let i = 1; i < segments.length; i += 1) {
+        const orphan = segments[i];
+        if (orphan === undefined) continue;
         rows.push({
           ...newEmptyRow(),
-          character: currentCharacter,
-          presetId: currentPresetId,
+          character: "",
+          presetId: null,
           alpha: 1,
-          text,
+          text: orphan,
         });
       }
-      buffer = "";
     };
     for (const t of tokens) {
       if (t.kind === "character") {
