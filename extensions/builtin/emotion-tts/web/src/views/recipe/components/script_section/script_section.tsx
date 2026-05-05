@@ -5,7 +5,11 @@ import type { OutputFormat } from "../../../../services/types";
 import { QuickVoicePicker } from "../quick_voice_picker";
 import { ScriptEditor } from "../script_editor";
 import { CharacterRowsEditor } from "../character_rows_editor/character_rows_editor";
-import { EditorModeToggle, type EditorMode } from "../editor_mode_toggle/editor_mode_toggle";
+import {
+  EDITOR_MODE_OPTIONS,
+  EditorModeToggle,
+  type EditorMode,
+} from "../editor_mode_toggle/editor_mode_toggle";
 import { StoryEditor } from "../story_editor/story_editor";
 import type { PerCharacterRow } from "../../lib/serialise_rows";
 import * as css from "./script_section.css";
@@ -49,6 +53,7 @@ export function ScriptSection({
   const isQuick = editorMode === "quick";
   const isRows = editorMode === "rows";
   const isStory = editorMode === "story";
+  const activeModeDescription = EDITOR_MODE_OPTIONS.find((o) => o.id === editorMode)?.description ?? "";
   const charCount = isRows
     ? rows.reduce((acc, r) => acc + r.text.length, 0)
     : isStory
@@ -98,6 +103,7 @@ export function ScriptSection({
           {!isRows && <ScriptSyntaxPopover />}
         </div>
       </div>
+      <p className={css.modeCaption} aria-live="polite">{activeModeDescription}</p>
       {isRows ? (
         <CharacterRowsEditor
           rows={rows}
