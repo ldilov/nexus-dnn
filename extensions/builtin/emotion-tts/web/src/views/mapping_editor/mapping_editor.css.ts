@@ -41,6 +41,32 @@ export const sidebar = style({
   minWidth: 0,
 });
 
+export const backLink = style({
+  alignSelf: "flex-start",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.space.xs,
+  background: "transparent",
+  border: "none",
+  color: vars.color.textMuted,
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.caption,
+  letterSpacing: vars.tracking.label,
+  textTransform: "uppercase",
+  cursor: "pointer",
+  // audit-allow: px — sub-token inset matched to other inline anchors
+  padding: "4px 0",
+  transition: `color ${vars.motion.fast}`,
+  selectors: {
+    "&:hover": { color: vars.color.accent },
+    "&:focus-visible": {
+      outline: `2px solid ${vars.color.accent}`,
+      outlineOffset: "2px",
+      borderRadius: vars.radius.sm,
+    },
+  },
+});
+
 export const sidebarHeader = style({
   display: "flex",
   alignItems: "baseline",
@@ -214,6 +240,25 @@ export const fieldLabel = style({
   textTransform: "uppercase",
   letterSpacing: "0.05em",
   fontWeight: 600,
+});
+
+export const fieldLabelRow = style({
+  display: "flex",
+  alignItems: "baseline",
+  justifyContent: "space-between",
+  gap: vars.space.sm,
+});
+
+export const savedHint = style({
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.caption,
+  color: vars.color.accent,
+  letterSpacing: 0,
+  textTransform: "none",
+  // Soft tonal fade so the chip doesn't jump in. Renders for ~1.6s
+  // before the parent un-renders it.
+  opacity: 0.92,
+  transition: "opacity 160ms",
 });
 
 export const field = style({

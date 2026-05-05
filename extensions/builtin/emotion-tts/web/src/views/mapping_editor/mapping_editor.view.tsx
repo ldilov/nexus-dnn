@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLoaderData } from "react-router";
+import { useLoaderData, useNavigate } from "react-router";
 import { AnimatePresence, LazyMotion, domAnimation, m } from "motion/react";
 import type { Deployment } from "../../services/deployments_client";
 import type {
@@ -42,6 +42,7 @@ interface LoaderData {
 export function MappingEditorView(): JSX.Element {
   const { deployment, mappings: initialMappings, voiceAssets: initialVoices } =
     useLoaderData() as LoaderData;
+  const navigate = useNavigate();
 
   const [mappings, setMappings] = useState<CharacterMapping[]>(initialMappings);
   const [voiceAssets, setVoiceAssets] = useState<VoiceAsset[]>(initialVoices);
@@ -52,6 +53,23 @@ export function MappingEditorView(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
+  // The mapping id whose name was just saved — drives the brief inline
+  // "Saved ✓" pulse in the detail header. Cleared after 1.6s.
+  const [savedHintFor, setSavedHintFor] = useState<string | null>(null);
+  // Trigger that auto-focuses the character name input. Bumped after every
+  // "+ Add" so the user lands ready to type a new name + Enter to save.
+  const [autoFocusNonce, setAutoFocusNonce] = useState(0);
+
+  const handleBackToRecipe = useCallback((): void => {
+    navigate(`/${deployment.deploymentId}/recipe`);
+  }, [navigate, deployment.deploymentId]);
+
+  const flashSavedHint = useCallback((mappingId: string): void => {
+    setSavedHintFor(mappingId);
+    window.setTimeout(() => {
+      setSavedHintFor((prev) => (prev === mappingId ? null : prev));
+    }, 1600);
+  }, []);
 
   const voiceById = useMemo(() => {
     const map = new Map<string, VoiceAsset>();
@@ -103,6 +121,12 @@ export function MappingEditorView(): JSX.Element {
       try {
         const next = await patchMapping(deployment.deploymentId, selected.mappingId, patch);
         setMappings((prev) => prev.map((m) => (m.mappingId === next.mappingId ? next : m)));
+        // Surface a brief inline confirmation specifically when the rename
+        // landed — the field auto-saves on blur and Enter, but without a
+        // signal users (rightfully) suspect nothing happened.
+        if (Object.prototype.hasOwnProperty.call(patch, "characterName")) {
+          flashSavedHint(next.mappingId);
+        }
       } catch (err) {
         setMappings((prev) =>
           prev.map((m) => (m.mappingId === snapshot.mappingId ? snapshot : m)),
@@ -110,7 +134,7 @@ export function MappingEditorView(): JSX.Element {
         setError(extract(err));
       }
     },
-    [selected, deployment.deploymentId],
+    [selected, deployment.deploymentId, flashSavedHint],
   );
 
   const addMapping = useCallback(async () => {
@@ -127,6 +151,7 @@ export function MappingEditorView(): JSX.Element {
       });
       setMappings((prev) => [...prev, created]);
       setSelectedId(created.mappingId);
+      setAutoFocusNonce((n) => n + 1);
     } catch (err) {
       setError(extract(err));
     }
@@ -243,6 +268,13 @@ export function MappingEditorView(): JSX.Element {
   return (
     <div className={css.shell}>
       <aside className={css.sidebar} aria-labelledby="mapping-sidebar-heading">
+        <button
+          type="button"
+          className={css.backLink}
+          onClick={handleBackToRecipe}
+        >
+          ← Back to recipe
+        </button>
         <header className={css.sidebarHeader}>
           <div>
             <h1 id="mapping-sidebar-heading" className={css.sidebarTitle}>
@@ -351,11 +383,17 @@ export function MappingEditorView(): JSX.Element {
             onNameChange={(name) => {
               updateSelected({ characterName: name });
             }}
-            onNameBlur={(name) => {
-              if (name !== selected.characterName && name.trim()) {
-                void persistSelected({ characterName: name.trim() });
-              }
+            onNameSave={(name) => {
+              const trimmed = name.trim();
+              if (!trimmed) return;
+              // Comparing against `selected.characterName` would be a no-op
+              // because `onNameChange` already mutated it. Always persist
+              // the trimmed value — the backend patch is idempotent, so
+              // saving the same name twice is harmless.
+              void persistSelected({ characterName: trimmed });
             }}
+            savedHint={savedHintFor === selected.mappingId}
+            autoFocusNonce={autoFocusNonce}
             onSpeakerChange={(id) => {
               updateSelected({ speakerVoiceAssetId: id });
               void persistSelected({ speakerVoiceAssetId: id });
@@ -427,7 +465,9 @@ interface MappingDetailProps {
   voiceAssets: VoiceAsset[];
   allMappings: CharacterMapping[];
   onNameChange: (name: string) => void;
-  onNameBlur: (name: string) => void;
+  onNameSave: (name: string) => void;
+  savedHint: boolean;
+  autoFocusNonce: number;
   onSpeakerChange: (id: string) => void;
   onDelete: () => void;
   onUploadVoice: (
@@ -461,6 +501,7 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
   const [testStatus, setTestStatus] = useState<TestLineStatus>("idle");
   const [testError, setTestError] = useState<string | null>(null);
   const cancelRef = useRef(false);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     cancelRef.current = false;
@@ -468,6 +509,16 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
       cancelRef.current = true;
     };
   }, []);
+
+  // Auto-focus + select the name input every time the nonce changes
+  // (parent bumps it after "+ Add" so the user lands ready to type).
+  useEffect(() => {
+    if (props.autoFocusNonce === 0) return;
+    const el = nameInputRef.current;
+    if (!el) return;
+    el.focus();
+    el.select();
+  }, [props.autoFocusNonce]);
 
   const handleTestLine = useCallback(async () => {
     cancelRef.current = false;
@@ -571,12 +622,33 @@ function MappingDetail(props: MappingDetailProps): JSX.Element {
             01 / Identity
           </h3>
           <label className={css.field}>
-            <span className={css.fieldLabel}>Character name</span>
+            <span className={css.fieldLabelRow}>
+              <span className={css.fieldLabel}>Character name</span>
+              {props.savedHint && (
+                <span
+                  className={css.savedHint}
+                  role="status"
+                  aria-live="polite"
+                >
+                  ✓ Saved
+                </span>
+              )}
+            </span>
             <input
+              ref={nameInputRef}
               className={css.input}
               value={mapping.characterName}
               onChange={(e) => props.onNameChange(e.currentTarget.value)}
-              onBlur={(e) => props.onNameBlur(e.currentTarget.value)}
+              onBlur={(e) => props.onNameSave(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  // Blur fires the save path; explicit dispatch lets
+                  // pressing Enter without leaving the field also commit.
+                  e.currentTarget.blur();
+                }
+              }}
+              placeholder="Type a name and press Enter"
             />
           </label>
 
