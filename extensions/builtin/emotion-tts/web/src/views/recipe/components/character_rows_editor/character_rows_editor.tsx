@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useRef, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { CharacterMapping } from "../../../../services/mappings_client";
 import type { VectorPreset } from "../../../../services/presets_client";
 import { newEmptyRow, type PerCharacterRow } from "../../lib/serialise_rows";
@@ -18,7 +18,23 @@ export function CharacterRowsEditor({
   mappingsByLower,
 }: CharacterRowsEditorProps): JSX.Element {
   const datalistId = useId();
-  const lastRowTextRef = useRef<HTMLInputElement | null>(null);
+  const headerId = useId();
+  const addRowButtonRef = useRef<HTMLButtonElement | null>(null);
+  const textInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const removeButtonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const [pendingFocus, setPendingFocus] = useState<{ kind: "text" | "remove" | "addBtn"; rowId?: string } | null>(null);
+
+  useEffect(() => {
+    if (!pendingFocus) return;
+    if (pendingFocus.kind === "addBtn") {
+      addRowButtonRef.current?.focus();
+    } else if (pendingFocus.kind === "text" && pendingFocus.rowId) {
+      textInputRefs.current.get(pendingFocus.rowId)?.focus();
+    } else if (pendingFocus.kind === "remove" && pendingFocus.rowId) {
+      removeButtonRefs.current.get(pendingFocus.rowId)?.focus();
+    }
+    setPendingFocus(null);
+  }, [pendingFocus]);
 
   const totalLines = rows.filter((r) => r.text.trim().length > 0).length;
   const unmappedCount = useMemo(() => {
@@ -47,7 +63,21 @@ export function CharacterRowsEditor({
 
   const removeRow = useCallback(
     (id: string) => {
-      onRowsChange(rows.filter((r) => r.id !== id));
+      const idx = rows.findIndex((r) => r.id === id);
+      if (idx < 0) return;
+      const next = rows.filter((r) => r.id !== id);
+      onRowsChange(next);
+      if (next.length === 0) {
+        setPendingFocus({ kind: "addBtn" });
+      } else {
+        const focusIdx = idx < next.length ? idx : next.length - 1;
+        const focusRow = next[focusIdx];
+        if (focusRow) {
+          setPendingFocus({ kind: "remove", rowId: focusRow.id });
+        } else {
+          setPendingFocus({ kind: "addBtn" });
+        }
+      }
     },
     [rows, onRowsChange],
   );
@@ -55,14 +85,17 @@ export function CharacterRowsEditor({
   const addRow = useCallback(
     (afterId: string | null) => {
       const next = newEmptyRow();
+      let newRows: PerCharacterRow[];
       if (afterId === null) {
-        onRowsChange([...rows, next]);
+        newRows = [...rows, next];
       } else {
         const idx = rows.findIndex((r) => r.id === afterId);
-        if (idx < 0) onRowsChange([...rows, next]);
-        else onRowsChange([...rows.slice(0, idx + 1), next, ...rows.slice(idx + 1)]);
+        newRows = idx < 0
+          ? [...rows, next]
+          : [...rows.slice(0, idx + 1), next, ...rows.slice(idx + 1)];
       }
-      requestAnimationFrame(() => lastRowTextRef.current?.focus());
+      onRowsChange(newRows);
+      setPendingFocus({ kind: "text", rowId: next.id });
     },
     [rows, onRowsChange],
   );
@@ -78,9 +111,9 @@ export function CharacterRowsEditor({
   );
 
   return (
-    <section className={css.root} aria-label="Per-character lines">
+    <section className={css.root} aria-labelledby={headerId}>
       <header className={css.header}>
-        <span className={css.headerEyebrow}>02 / Per-character lines</span>
+        <span className={css.headerEyebrow} id={headerId}>02 / Per-character lines</span>
         <span className={css.counter}>
           <span className={css.counterValue}>{totalLines.toString().padStart(2, "0")}</span> lines
           {unmappedCount > 0 && (
@@ -97,77 +130,94 @@ export function CharacterRowsEditor({
         </p>
       ) : (
         <ul className={css.list}>
-          {rows.map((row, idx) => (
-            <li key={row.id} className={css.row}>
-              <span className={css.ordinal} aria-hidden="true">
-                {(idx + 1).toString().padStart(2, "0")}
-              </span>
-              <input
-                type="text"
-                value={row.character}
-                onChange={(e) => updateRow(row.id, { character: e.target.value })}
-                placeholder="Character"
-                className={css.characterInput}
-                aria-label={`Character for line ${idx + 1}`}
-                list={characterSuggestions.length > 0 ? datalistId : undefined}
-                spellCheck={false}
-              />
-              <select
-                value={row.presetId ?? ""}
-                onChange={(e) =>
-                  updateRow(row.id, { presetId: e.target.value === "" ? null : e.target.value })
-                }
-                className={css.presetSelect}
-                aria-label={`Emotion preset for line ${idx + 1}`}
-              >
-                <option value="">No emotion</option>
-                {presets.map((p) => (
-                  <option key={p.presetId} value={p.presetId}>
-                    {p.presetName}
-                  </option>
-                ))}
-              </select>
-              <span className={css.alphaWrap}>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={row.alpha}
-                  onChange={(e) => updateRow(row.id, { alpha: Number.parseFloat(e.target.value) })}
-                  className={css.alphaSlider}
-                  aria-label={`Emotion intensity for line ${idx + 1}`}
-                  disabled={!row.presetId && Math.abs(row.alpha - 1) < 0.001}
-                />
-                <span className={css.alphaValue} aria-live="polite">
-                  {(Math.round(row.alpha * 100) / 100).toFixed(2)}
+          {rows.map((row, idx) => {
+            const characterLabel = row.character.trim() || `line ${idx + 1}`;
+            return (
+              <li key={row.id} className={css.row}>
+                <span className={css.ordinal} aria-hidden="true">
+                  {(idx + 1).toString().padStart(2, "0")}
                 </span>
-              </span>
-              <input
-                ref={idx === rows.length - 1 ? lastRowTextRef : null}
-                type="text"
-                value={row.text}
-                onChange={(e) => updateRow(row.id, { text: e.target.value })}
-                onKeyDown={(e) => handleTextKeyDown(e, row.id)}
-                placeholder="Line text…"
-                className={css.textInput}
-                aria-label={`Line text for line ${idx + 1}`}
-              />
-              <button
-                type="button"
-                className={css.removeButton}
-                aria-label={`Remove line ${idx + 1}`}
-                title="Remove this line"
-                onClick={() => removeRow(row.id)}
-              >
-                ✕
-              </button>
-            </li>
-          ))}
+                <input
+                  type="text"
+                  value={row.character}
+                  onChange={(e) => updateRow(row.id, { character: e.target.value })}
+                  placeholder="Character"
+                  className={css.characterInput}
+                  aria-label={`Character name for ${characterLabel}`}
+                  list={characterSuggestions.length > 0 ? datalistId : undefined}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <select
+                  value={row.presetId ?? ""}
+                  onChange={(e) =>
+                    updateRow(row.id, { presetId: e.target.value === "" ? null : e.target.value })
+                  }
+                  className={css.presetSelect}
+                  aria-label={`Emotion preset for ${characterLabel}`}
+                >
+                  <option value="">No emotion</option>
+                  {presets.map((p) => (
+                    <option key={p.presetId} value={p.presetId}>
+                      {p.presetName}
+                    </option>
+                  ))}
+                </select>
+                <span className={css.alphaWrap}>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={row.alpha}
+                    onChange={(e) => updateRow(row.id, { alpha: Number.parseFloat(e.target.value) })}
+                    className={css.alphaSlider}
+                    aria-label={`Emotion intensity for ${characterLabel}`}
+                    aria-valuetext={`${Math.round(row.alpha * 100)} percent`}
+                  />
+                  <span className={css.alphaValue} aria-hidden="true">
+                    {(Math.round(row.alpha * 100) / 100).toFixed(2)}
+                  </span>
+                </span>
+                <input
+                  ref={(el) => {
+                    if (el) textInputRefs.current.set(row.id, el);
+                    else textInputRefs.current.delete(row.id);
+                  }}
+                  type="text"
+                  value={row.text}
+                  onChange={(e) => updateRow(row.id, { text: e.target.value })}
+                  onKeyDown={(e) => handleTextKeyDown(e, row.id)}
+                  placeholder="Line text…"
+                  className={css.textInput}
+                  aria-label={`Line text for ${characterLabel}`}
+                />
+                <button
+                  ref={(el) => {
+                    if (el) removeButtonRefs.current.set(row.id, el);
+                    else removeButtonRefs.current.delete(row.id);
+                  }}
+                  type="button"
+                  className={css.removeButton}
+                  aria-label={`Remove ${characterLabel}`}
+                  title="Remove this line"
+                  onClick={() => removeRow(row.id)}
+                >
+                  ✕
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
 
-      <button type="button" className={css.addRowButton} onClick={() => addRow(null)}>
+      <button
+        ref={addRowButtonRef}
+        type="button"
+        className={css.addRowButton}
+        onClick={() => addRow(null)}
+        aria-label="Add character line"
+      >
         <span className={css.addGlyph} aria-hidden="true">＋</span>
         Add line
       </button>

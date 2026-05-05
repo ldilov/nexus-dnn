@@ -15,6 +15,7 @@ const segmentBase = style({
   display: "inline-flex",
   alignItems: "center",
   gap: vars.space.xs,
+  minHeight: "2rem",
   padding: `${vars.space.xs} ${vars.space.md}`,
   borderRadius: vars.radius.sm,
   border: "none",
@@ -27,13 +28,18 @@ const segmentBase = style({
   cursor: "pointer",
   transition: `background ${vars.motion.fast}, color ${vars.motion.fast}, transform ${vars.motion.fast}`,
   selectors: {
-    "&:hover:not([aria-pressed='true']):not(:disabled)": {
+    "&:hover:not([aria-checked='true']):not([aria-disabled='true'])": {
       color: vars.color.text,
       background: vars.color.surfaceHigh,
     },
-    "&:disabled": {
+    "&[aria-disabled='true']": {
       cursor: "not-allowed",
       opacity: 0.45,
+    },
+  },
+  "@media": {
+    "(forced-colors: active)": {
+      borderRadius: 0,
     },
   },
 });
@@ -46,6 +52,13 @@ export const segment = styleVariants({
       color: vars.color.accentOn,
       background: vars.color.accent,
       boxShadow: `0 1px 0 ${vars.color.accentDim}`,
+      "@media": {
+        "(forced-colors: active)": {
+          background: "Highlight",
+          color: "HighlightText",
+          forcedColorAdjust: "none",
+        },
+      },
     },
   ],
 });

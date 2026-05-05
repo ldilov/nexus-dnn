@@ -25,6 +25,13 @@ function sanitiseCharacterName(raw: string): string {
   return raw.replace(/[\[\]|\r\n]/g, "").trim();
 }
 
+function makeRowId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `row_${crypto.randomUUID()}`;
+  }
+  return `row_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
+}
+
 function sanitiseText(raw: string): string {
   return raw.replace(/[\r\n]/g, " ").trim();
 }
@@ -69,10 +76,7 @@ export function rowToLine(
     }
   }
   const alpha = clamp01(row.alpha);
-  const alphaIsDefault = Math.abs(alpha - 1) < VECTOR_EPS && overrides.length === 0;
-  if (!alphaIsDefault && overrides.length > 0) {
-    overrides.push(`emotion_alpha:${formatNum(alpha)}`);
-  } else if (overrides.length === 0 && Math.abs(alpha - 1) >= VECTOR_EPS) {
+  if (Math.abs(alpha - 1) >= VECTOR_EPS) {
     overrides.push(`emotion_alpha:${formatNum(alpha)}`);
   }
 
@@ -99,7 +103,7 @@ export function serialiseRowsToScript(
 
 export function newEmptyRow(): PerCharacterRow {
   return {
-    id: `row_${Math.random().toString(36).slice(2, 10)}`,
+    id: makeRowId(),
     character: "",
     presetId: null,
     alpha: 1.0,
