@@ -13,6 +13,7 @@ pub mod filenames;
 pub mod ids;
 pub mod manifest;
 pub mod parser;
+pub mod parser_story;
 pub mod reference_selection;
 
 pub use audio_edit::{EditChain, EditOp, OperationId};
