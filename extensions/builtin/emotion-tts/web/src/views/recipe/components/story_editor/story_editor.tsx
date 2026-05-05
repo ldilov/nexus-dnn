@@ -11,6 +11,7 @@ import {
 } from "react";
 import type { CharacterMapping } from "../../../../services/mappings_client";
 import type { VectorPreset } from "../../../../services/presets_client";
+import { caretCoordsInTextarea } from "../../lib/caret_position";
 import { activeTriggerAt, tokeniseStory, type StoryToken } from "../../lib/story_tokens";
 import * as css from "./story_editor.css";
 
@@ -27,6 +28,9 @@ interface PopoverState {
   query: string;
   kind: "character" | "emotion";
   selected: number;
+  caretTop: number;
+  caretLeft: number;
+  caretHeight: number;
 }
 
 const PLACEHOLDER =
@@ -87,11 +91,16 @@ export function StoryEditor({
     if (caret < 0) return null;
     const trigger = activeTriggerAt(nextValue, caret);
     if (!trigger) return null;
+    const ta = textareaRef.current;
+    const coords = ta ? caretCoordsInTextarea(ta, caret) : { top: 0, left: 0, height: 0 };
     return {
       triggerStart: trigger.start,
       query: trigger.query,
       kind: trigger.kind,
       selected: prev && prev.kind === trigger.kind ? prev.selected : 0,
+      caretTop: coords.top,
+      caretLeft: coords.left,
+      caretHeight: coords.height,
     };
   }, []);
 
@@ -256,7 +265,13 @@ export function StoryEditor({
           aria-activedescendant={activeOptionId}
         />
         {popover && (filteredCandidates.length > 0 || popoverEmptyHint) && (
-          <div className={css.popover}>
+          <div
+            className={css.popover}
+            style={{
+              top: `${popover.caretTop + popover.caretHeight + 6}px`,
+              left: `${Math.max(0, popover.caretLeft)}px`,
+            }}
+          >
             <div className={css.popoverHeader} aria-hidden="true">
               {popoverHeader}
             </div>

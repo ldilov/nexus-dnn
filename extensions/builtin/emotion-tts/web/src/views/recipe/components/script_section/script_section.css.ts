@@ -47,3 +47,12 @@ export const counterValue = style({
   color: vars.color.accent,
   fontFamily: vars.font.mono,
 });
+
+export const modeCaption = style({
+  margin: 0,
+  paddingLeft: vars.space.sm,
+  fontFamily: vars.font.body,
+  fontSize: vars.text.caption,
+  color: vars.color.textMuted,
+  fontStyle: "italic",
+});
