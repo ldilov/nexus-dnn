@@ -406,6 +406,26 @@ mod tests {
     }
 
     #[test]
+    fn trailing_emotion_command_at_eof_dropped() {
+        let plan = parse("@bob hi /happy");
+        assert_eq!(plan.utterances.len(), 1);
+        let u = &plan.utterances[0];
+        assert_eq!(u.character_display, "bob");
+        assert_eq!(u.text, "hi");
+        assert!(u.inline_overrides.get("emotion_preset").is_none());
+    }
+
+    #[test]
+    fn repeated_same_character_command_splits_into_two_utterances() {
+        let plan = parse("@bob hello @bob world");
+        assert_eq!(plan.utterances.len(), 2);
+        assert_eq!(plan.utterances[0].character_display, "bob");
+        assert_eq!(plan.utterances[0].text, "hello");
+        assert_eq!(plan.utterances[1].character_display, "bob");
+        assert_eq!(plan.utterances[1].text, "world");
+    }
+
+    #[test]
     fn no_command_between_two_lines_means_one_utterance() {
         let plan = parse("@alice anyway\nthe end");
         assert_eq!(plan.utterances.len(), 1);
