@@ -34,12 +34,13 @@ export function CharacterRowsEditor({
   const textInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
   const removeButtonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const characterInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
-  const [pendingFocus, setPendingFocus] = useState<{ kind: "text" | "remove" | "addBtn" | "character"; rowId?: string } | null>(null);
+  const [pendingFocus, setPendingFocus] = useState<{ kind: "text" | "remove" | "addBtn" | "character" | "unmappedFirstItem"; rowId?: string } | null>(null);
   const [unmappedOpen, setUnmappedOpen] = useState(false);
   const unmappedAnchorRef = useRef<HTMLButtonElement | null>(null);
   const unmappedPopoverRef = useRef<HTMLDivElement | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [liveMessage, setLiveMessage] = useState("");
 
   useEffect(() => {
     if (!pendingFocus) return;
@@ -51,6 +52,9 @@ export function CharacterRowsEditor({
       removeButtonRefs.current.get(pendingFocus.rowId)?.focus();
     } else if (pendingFocus.kind === "character" && pendingFocus.rowId) {
       characterInputRefs.current.get(pendingFocus.rowId)?.focus();
+    } else if (pendingFocus.kind === "unmappedFirstItem") {
+      const firstItem = unmappedPopoverRef.current?.querySelector<HTMLButtonElement>("button");
+      firstItem?.focus();
     }
     setPendingFocus(null);
   }, [pendingFocus]);
@@ -78,6 +82,7 @@ export function CharacterRowsEditor({
 
   useEffect(() => {
     if (!unmappedOpen) return;
+    setPendingFocus({ kind: "unmappedFirstItem" });
     const onMouseDown = (event: MouseEvent): void => {
       if (!unmappedPopoverRef.current || !unmappedAnchorRef.current) return;
       const target = event.target as Node;
@@ -90,7 +95,10 @@ export function CharacterRowsEditor({
       setUnmappedOpen(false);
     };
     const onKey = (event: KeyboardEvent | globalThis.KeyboardEvent): void => {
-      if (event.key === "Escape") setUnmappedOpen(false);
+      if (event.key === "Escape") {
+        setUnmappedOpen(false);
+        unmappedAnchorRef.current?.focus();
+      }
     };
     document.addEventListener("mousedown", onMouseDown);
     document.addEventListener("keydown", onKey as EventListener);
@@ -113,7 +121,10 @@ export function CharacterRowsEditor({
     [rows, onRowsChange],
   );
 
-  const removeRowUndoableRef = useRef<{ row: PerCharacterRow; index: number } | null>(null);
+  const rowsRef = useRef(rows);
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
   const removeRow = useCallback(
     (id: string) => {
       const idx = rows.findIndex((r) => r.id === id);
@@ -121,19 +132,18 @@ export function CharacterRowsEditor({
       const removed = rows[idx];
       if (!removed) return;
       const next = rows.filter((r) => r.id !== id);
-      removeRowUndoableRef.current = { row: removed, index: idx };
       onRowsChange(next);
       const labelChar = removed.character.trim() || `Line ${idx + 1}`;
       toast(`Removed ${labelChar}`, {
         action: {
           label: "Undo",
           onClick: () => {
-            const snap = removeRowUndoableRef.current;
-            if (!snap) return;
-            const restored = [...rows];
-            restored.splice(snap.index, 0, snap.row);
+            const current = rowsRef.current;
+            if (current.some((r) => r.id === removed.id)) return;
+            const restored = [...current];
+            const insertAt = Math.min(idx, restored.length);
+            restored.splice(insertAt, 0, removed);
             onRowsChange(restored);
-            removeRowUndoableRef.current = null;
           },
         },
         duration: 5000,
@@ -184,6 +194,8 @@ export function CharacterRowsEditor({
       next[idx] = b;
       next[target] = a;
       onRowsChange(next);
+      const label = a.character.trim() || `Line ${idx + 1}`;
+      setLiveMessage(`Moved ${label} to position ${target + 1} of ${next.length}`);
     },
     [rows, onRowsChange],
   );
@@ -232,6 +244,8 @@ export function CharacterRowsEditor({
       if (!moved) return;
       next.splice(targetIdx, 0, moved);
       onRowsChange(next);
+      const label = moved.character.trim() || `Line ${sourceIdx + 1}`;
+      setLiveMessage(`Moved ${label} to position ${targetIdx + 1} of ${next.length}`);
     },
     [rows, onRowsChange, draggingId],
   );
@@ -424,16 +438,18 @@ export function CharacterRowsEditor({
                 >
                   ✕
                 </button>
-                <button
-                  type="button"
-                  className={css.interRowAdd}
-                  aria-label={`Insert line after ${characterLabel}`}
-                  title="Insert line below"
-                  onClick={() => addRow(row.id)}
-                  tabIndex={-1}
-                >
-                  <span aria-hidden="true">＋</span>
-                </button>
+                {idx < rows.length - 1 && (
+                  <button
+                    type="button"
+                    className={css.interRowAdd}
+                    aria-label={`Insert line after ${characterLabel}`}
+                    title="Insert line below"
+                    onClick={() => addRow(row.id)}
+                    tabIndex={-1}
+                  >
+                    <span aria-hidden="true">＋</span>
+                  </button>
+                )}
               </li>
             );
           })}
@@ -458,6 +474,10 @@ export function CharacterRowsEditor({
           ))}
         </datalist>
       )}
+
+      <div className={css.srOnly} role="status" aria-live="polite" aria-atomic="true">
+        {liveMessage}
+      </div>
     </section>
   );
 }

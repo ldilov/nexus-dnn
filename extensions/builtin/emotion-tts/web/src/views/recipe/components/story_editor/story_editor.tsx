@@ -224,6 +224,24 @@ export function StoryEditor({
     [popover, filteredCandidates, insertCompletion],
   );
 
+  const popoverElRef = useRef<HTMLDivElement | null>(null);
+  const [clampedLeft, setClampedLeft] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    if (!popover) {
+      setClampedLeft(null);
+      return;
+    }
+    const popoverEl = popoverElRef.current;
+    const ta = textareaRef.current;
+    if (!popoverEl || !ta) return;
+    const popoverWidth = popoverEl.offsetWidth;
+    const stageWidth = ta.clientWidth;
+    const maxLeft = Math.max(0, stageWidth - popoverWidth - 8);
+    const desiredLeft = Math.max(0, popover.caretLeft);
+    setClampedLeft(Math.min(desiredLeft, maxLeft));
+  }, [popover]);
+
   const popoverHeader = popover?.kind === "character" ? "Character" : "Emotion preset";
   const activeOptionId =
     popover && filteredCandidates.length > 0
@@ -260,16 +278,16 @@ export function StoryEditor({
           spellCheck
           aria-label="Story script"
           aria-controls={popover ? popoverId : undefined}
-          aria-expanded={popover ? true : undefined}
           aria-autocomplete="list"
           aria-activedescendant={activeOptionId}
         />
         {popover && (filteredCandidates.length > 0 || popoverEmptyHint) && (
           <div
+            ref={popoverElRef}
             className={css.popover}
             style={{
               top: `${popover.caretTop + popover.caretHeight + 6}px`,
-              left: `${Math.max(0, popover.caretLeft)}px`,
+              left: `${clampedLeft ?? Math.max(0, popover.caretLeft)}px`,
             }}
           >
             <div className={css.popoverHeader} aria-hidden="true">
