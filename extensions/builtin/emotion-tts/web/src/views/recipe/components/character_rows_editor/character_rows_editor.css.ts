@@ -62,10 +62,11 @@ export const list = style({
 export const row = style({
   position: "relative",
   display: "grid",
-  gridTemplateColumns: "auto 160px 160px 120px 1fr auto",
+  gridTemplateColumns: "auto auto 160px 160px 120px 1fr auto",
   alignItems: "center",
   gap: vars.space.sm,
   padding: vars.space.md,
+  paddingBottom: `calc(${vars.space.md} + 4px)`,
   background: vars.color.surfaceMuted,
   borderRadius: vars.radius.md,
   animation: `${rowSettle} 200ms cubic-bezier(0.16, 1, 0.3, 1)`,
@@ -73,6 +74,7 @@ export const row = style({
     `background ${vars.motion.fast}`,
     `box-shadow ${vars.motion.normal}`,
     `transform ${vars.motion.fast}`,
+    `opacity ${vars.motion.fast}`,
   ].join(", "),
   selectors: {
     "&:hover": {
@@ -87,17 +89,101 @@ export const row = style({
       background: vars.color.surfaceRaised,
       boxShadow: `inset 2px 0 0 ${vars.color.accent}, 0 0 0 1px color-mix(in oklab, ${vars.color.accent} 18%, transparent), 0 8px 24px -12px ${vars.color.accentGlow}`,
     },
+    "&[data-dragging]": {
+      opacity: 0.4,
+      transform: "scale(0.99)",
+    },
+    "&[data-drag-over]": {
+      boxShadow: `0 -2px 0 ${vars.color.accent}, ${vars.shadow.subtle}`,
+    },
   },
   "@media": {
     "(max-width: 960px)": {
-      gridTemplateColumns: "auto 1fr 1fr auto",
+      gridTemplateColumns: "auto auto 1fr 1fr auto",
       gridTemplateAreas: `
-        "ord char preset rm"
-        "alpha alpha alpha alpha"
-        "text text text text"
+        "drag ord char preset rm"
+        "alpha alpha alpha alpha alpha"
+        "text text text text text"
       `,
     },
   },
+});
+
+export const dragHandle = style({
+  appearance: "none",
+  width: "1.25rem",
+  height: "1.5rem",
+  padding: 0,
+  background: "transparent",
+  color: vars.color.textFaint,
+  border: "none",
+  borderRadius: vars.radius.sm,
+  cursor: "grab",
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.body,
+  lineHeight: 1,
+  letterSpacing: "-0.05em",
+  opacity: 0.4,
+  transition: `opacity ${vars.motion.fast}, color ${vars.motion.fast}`,
+  selectors: {
+    "&:hover": {
+      opacity: 1,
+      color: vars.color.accent,
+    },
+    "&:focus-visible": {
+      opacity: 1,
+      color: vars.color.accent,
+    },
+    "&:active": {
+      cursor: "grabbing",
+    },
+  },
+  "@media": {
+    "(max-width: 960px)": { gridArea: "drag" },
+  },
+});
+
+globalStyle(`${row}:hover ${dragHandle}`, {
+  opacity: 1,
+});
+
+export const interRowAdd = style({
+  position: "absolute",
+  bottom: "-12px",
+  left: "50%",
+  transform: "translateX(-50%)",
+  width: "1.5rem",
+  height: "1.5rem",
+  padding: 0,
+  background: vars.color.surfaceHigh,
+  color: vars.color.accent,
+  border: "none",
+  borderRadius: vars.radius.pill,
+  boxShadow: `0 0 0 1px ${vars.color.borderGhost}, ${vars.shadow.subtle}`,
+  fontFamily: vars.font.mono,
+  fontSize: vars.text.caption,
+  lineHeight: 1,
+  cursor: "pointer",
+  opacity: 0,
+  pointerEvents: "none",
+  zIndex: 2,
+  transition: `opacity ${vars.motion.fast}, transform ${vars.motion.fast}, box-shadow ${vars.motion.fast}`,
+  selectors: {
+    "&:hover": {
+      transform: "translateX(-50%) scale(1.1)",
+      boxShadow: `0 0 0 1px ${vars.color.accent}, ${vars.shadow.glow}`,
+    },
+  },
+  "@media": {
+    "(max-width: 960px)": {
+      display: "none",
+    },
+  },
+});
+
+globalStyle(`${row}:hover ${interRowAdd}, ${row}:focus-within ${interRowAdd}`, {
+  opacity: 1,
+  pointerEvents: "auto",
 });
 
 export const ordinal = style({
@@ -230,7 +316,8 @@ export const removeButton = style({
   fontFamily: vars.font.body,
   fontSize: vars.text.body,
   lineHeight: 1,
-  transition: `background ${vars.motion.fast}, color ${vars.motion.fast}`,
+  opacity: 0,
+  transition: `background ${vars.motion.fast}, color ${vars.motion.fast}, opacity ${vars.motion.fast}`,
   selectors: {
     "&:hover": {
       color: vars.color.danger,
@@ -238,12 +325,84 @@ export const removeButton = style({
     },
     "&:focus-visible": {
       color: vars.color.danger,
+      opacity: 1,
     },
   },
   "@media": {
     "(max-width: 960px)": { gridArea: "rm" },
     "(forced-colors: active)": {
       border: "1px solid CanvasText",
+      opacity: 1,
+    },
+  },
+});
+
+globalStyle(`${row}:hover ${removeButton}, ${row}:focus-within ${removeButton}`, {
+  opacity: 1,
+});
+
+export const unmappedAnchor = style({
+  position: "relative",
+  display: "inline-flex",
+  alignItems: "center",
+  marginLeft: vars.space.xs,
+});
+
+export const unmappedPopover = style({
+  position: "absolute",
+  top: "calc(100% + 6px)",
+  right: 0,
+  minWidth: "16rem",
+  maxWidth: "22rem",
+  padding: vars.space.md,
+  background: vars.color.surfaceHighest,
+  borderRadius: vars.radius.md,
+  boxShadow: `${vars.shadow.raised}, 0 0 0 1px ${vars.color.borderGhost}`,
+  zIndex: 10,
+});
+
+export const unmappedPopoverHint = style({
+  margin: 0,
+  marginBottom: vars.space.sm,
+  fontFamily: vars.font.body,
+  fontSize: vars.text.caption,
+  color: vars.color.textMuted,
+});
+
+export const unmappedList = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.xs,
+  margin: 0,
+  padding: 0,
+  listStyle: "none",
+  maxHeight: "12rem",
+  overflowY: "auto",
+});
+
+export const unmappedListItem = style({
+  appearance: "none",
+  display: "block",
+  width: "100%",
+  padding: `${vars.space.xs} ${vars.space.sm}`,
+  background: "transparent",
+  border: "none",
+  borderRadius: vars.radius.sm,
+  fontFamily: vars.font.body,
+  fontSize: vars.text.caption,
+  color: vars.color.text,
+  textAlign: "left",
+  cursor: "pointer",
+  transition: `background ${vars.motion.fast}, box-shadow ${vars.motion.fast}`,
+  selectors: {
+    "&:hover": {
+      background: `color-mix(in oklab, ${vars.color.accent} 12%, transparent)`,
+      boxShadow: `inset 2px 0 0 ${vars.color.accent}`,
+    },
+    "&:focus-visible": {
+      background: `color-mix(in oklab, ${vars.color.accent} 18%, transparent)`,
+      boxShadow: `inset 2px 0 0 ${vars.color.accent}`,
+      outline: "none",
     },
   },
 });
