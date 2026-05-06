@@ -266,7 +266,11 @@ export function RecipeView(): JSX.Element {
       .catch(() => undefined);
     listPresets(deployment.deploymentId)
       .then((r) => {
-        if (!cancelled) setVectorPresets(r.presets);
+        if (!cancelled) {
+          setVectorPresets(
+            [...r.presets].sort((a, b) => b.updatedAt - a.updatedAt),
+          );
+        }
       })
       .catch(() => undefined);
     return () => {
@@ -677,6 +681,8 @@ export function RecipeView(): JSX.Element {
             value={globalEmotion}
             onChange={setGlobalEmotion}
             deploymentId={deployment.deploymentId}
+            presets={vectorPresets}
+            onPresetsChange={setVectorPresets}
           />
         }
         performanceSection={
