@@ -104,5 +104,11 @@ storage:
         path: "storage/migrations/004_run_history.sql"
       - id: "005_profile_expansion"
         path: "storage/migrations/005_profile_expansion.sql"
+      - id: "006_model_hyperparameters"
+        path: "storage/migrations/006_model_hyperparameters.sql"
+      - id: "007_generation_settings"
+        path: "storage/migrations/007_generation_settings.sql"
+      - id: "008_chat_history_persistence"
+        path: "storage/migrations/008_chat_history_persistence.sql"
   sql_profile:
     profile: "nexus_sqlite_v1"
