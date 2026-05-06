@@ -12,7 +12,14 @@ import {
 import type { CharacterMapping } from "../../../../services/mappings_client";
 import type { VectorPreset } from "../../../../services/presets_client";
 import { caretCoordsInTextarea } from "../../lib/caret_position";
-import { activeTriggerAt, tokeniseStory, type StoryToken } from "../../lib/story_tokens";
+import {
+  SIGIL_FOR_KIND,
+  activeTriggerAt,
+  sanitizeTokenName,
+  tokeniseStory,
+  type StoryPillKind,
+  type StoryToken,
+} from "../../lib/story_tokens";
 import * as css from "./story_editor.css";
 
 interface StoryEditorProps {
@@ -171,11 +178,12 @@ export function StoryEditor({
   const insertCompletion = useCallback(
     (replacement: string, opts: { advanceFocus: boolean }) => {
       if (!popover) return;
-      const sigil = popover.kind === "character" ? "@" : "/";
+      const sigil = SIGIL_FOR_KIND[popover.kind];
       const tokenEnd = popover.triggerStart + 1 + popover.query.length;
       const before = value.slice(0, popover.triggerStart);
       const after = value.slice(tokenEnd);
-      const safeName = replacement.replace(/[^\p{L}\p{N}_-]+/gu, "_").replace(/^_+|_+$/g, "");
+      const safeName = sanitizeTokenName(replacement);
+      if (!safeName) return;
       const insertion = `${sigil}${safeName} `;
       const next = `${before}${insertion}${after}`;
       onChange(next);
@@ -344,35 +352,26 @@ export function StoryEditor({
 
 function renderOverlay(tokens: readonly StoryToken[], activeStart: number | null): JSX.Element[] {
   return tokens.map((t, idx) => {
+    if (t.kind === "text") {
+      return (
+        <span key={`${t.start}-${idx}`} className={css.tokenText}>
+          {t.value}
+        </span>
+      );
+    }
+    const kind: StoryPillKind = t.kind;
     const isActive = activeStart !== null && t.start === activeStart;
     const display = t.value.replace(/_/g, " ");
-    if (t.kind === "character") {
-      return (
-        <span
-          key={`${t.start}-${idx}`}
-          className={css.characterBadge}
-          data-token="character"
-          data-active={isActive ? "true" : undefined}
-        >
-          <span className={css.badgeSigil}>@</span>{display}
-        </span>
-      );
-    }
-    if (t.kind === "emotion") {
-      return (
-        <span
-          key={`${t.start}-${idx}`}
-          className={css.emotionBadge}
-          data-token="emotion"
-          data-active={isActive ? "true" : undefined}
-        >
-          <span className={css.badgeSigil}>/</span>{display}
-        </span>
-      );
-    }
     return (
-      <span key={`${t.start}-${idx}`} className={css.tokenText}>
-        {t.value}
+      <span
+        key={`${t.start}-${idx}`}
+        className={css.storyPill}
+        data-kind={kind}
+        data-token={kind}
+        data-active={isActive ? "true" : undefined}
+      >
+        <span className={css.badgeSigil}>{SIGIL_FOR_KIND[kind]}</span>
+        {display}
       </span>
     );
   });
