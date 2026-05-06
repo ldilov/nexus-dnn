@@ -175,7 +175,7 @@ export function StoryEditor({
       const tokenEnd = popover.triggerStart + 1 + popover.query.length;
       const before = value.slice(0, popover.triggerStart);
       const after = value.slice(tokenEnd);
-      const safeName = replacement.replace(/\s+/g, "_");
+      const safeName = replacement.replace(/[^\p{L}\p{N}_-]+/gu, "_").replace(/^_+|_+$/g, "");
       const insertion = `${sigil}${safeName} `;
       const next = `${before}${insertion}${after}`;
       onChange(next);

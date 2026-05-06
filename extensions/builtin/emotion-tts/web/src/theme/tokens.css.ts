@@ -184,6 +184,11 @@ globalStyle("emotion-tts-app *, emotion-tts-app *::before, emotion-tts-app *::af
   boxSizing: "border-box",
 });
 
+globalStyle("emotion-tts-app ::selection", {
+  background: `color-mix(in oklab, ${vars.color.accent} 38%, transparent)`,
+  color: vars.color.text,
+});
+
 globalStyle("emotion-tts-app code, emotion-tts-app pre", {
   fontFamily: vars.font.mono,
 });
