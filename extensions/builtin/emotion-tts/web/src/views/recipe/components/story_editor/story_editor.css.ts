@@ -84,9 +84,10 @@ export const textarea = style([sharedSurface, {
   selectors: {
     "&::placeholder": { color: vars.color.textFaint, WebkitTextFillColor: vars.color.textFaint },
     "&::selection": {
-      background: `color-mix(in oklab, ${vars.color.accent} 30%, transparent)`,
-      color: "transparent",
-      WebkitTextFillColor: "transparent",
+      background: `color-mix(in oklab, ${vars.color.accent} 45%, transparent)`,
+    },
+    "&::-moz-selection": {
+      background: `color-mix(in oklab, ${vars.color.accent} 45%, transparent)`,
     },
   },
 }]);
