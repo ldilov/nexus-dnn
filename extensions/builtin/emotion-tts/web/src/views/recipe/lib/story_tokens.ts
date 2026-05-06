@@ -1,5 +1,5 @@
 export type StoryTokenKind = "text" | "character" | "emotion";
-export type StoryPillKind = "character" | "emotion";
+export type StoryPillKind = Exclude<StoryTokenKind, "text">;
 
 export interface StoryToken {
   kind: StoryTokenKind;

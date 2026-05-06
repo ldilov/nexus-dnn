@@ -101,6 +101,7 @@ describe("sanitizeTokenName", () => {
     expect(sanitizeTokenName("Sad + afraid")).toBe("Sad_afraid");
     expect(sanitizeTokenName("Sad_+_afraid")).toBe("Sad_afraid");
     expect(sanitizeTokenName("a   b")).toBe("a_b");
+    expect(sanitizeTokenName("a_+b")).toBe("a_b");
   });
 
   it("trims leading and trailing underscores or hyphens", () => {
