@@ -15,10 +15,10 @@
 
 use std::sync::Arc;
 
-use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use axum::Json;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
@@ -146,6 +146,52 @@ pub struct RuntimeTuning {
     pub cache_type_k: Option<String>,
     #[serde(default)]
     pub cache_type_v: Option<String>,
+    #[serde(default)]
+    pub mmap: Option<bool>,
+    #[serde(default)]
+    pub mlock: Option<bool>,
+    #[serde(default)]
+    pub n_batch: Option<u32>,
+    #[serde(default)]
+    pub n_ubatch: Option<u32>,
+    #[serde(default)]
+    pub n_parallel: Option<u32>,
+    #[serde(default)]
+    pub cont_batching: Option<bool>,
+    #[serde(default)]
+    pub seed: Option<i64>,
+}
+
+impl RuntimeTuning {
+    pub fn sensible_defaults(layer_count: Option<u32>, has_cuda: bool) -> Self {
+        let threads = std::thread::available_parallelism()
+            .map(|n| n.get() as u32 / 2)
+            .unwrap_or(4)
+            .max(1);
+        Self {
+            n_gpu_layers: layer_count.map(|n| if has_cuda { n } else { 0 }),
+            threads: Some(threads),
+            flash_attn: Some(has_cuda),
+            ctx_size: Some(4096),
+            cache_type_k: Some(if has_cuda {
+                "q8_0".into()
+            } else {
+                "fp16".into()
+            }),
+            cache_type_v: Some(if has_cuda {
+                "q8_0".into()
+            } else {
+                "fp16".into()
+            }),
+            mmap: Some(true),
+            mlock: Some(false),
+            n_batch: Some(512),
+            n_ubatch: Some(128),
+            n_parallel: Some(1),
+            cont_batching: Some(true),
+            seed: None,
+        }
+    }
 }
 
 fn runtime_to_args(tuning: &RuntimeTuning) -> Vec<String> {
@@ -179,6 +225,33 @@ fn runtime_to_args(tuning: &RuntimeTuning) -> Vec<String> {
             args.push("--cache-type-v".into());
             args.push(v.clone());
         }
+    }
+    match tuning.mmap {
+        Some(true) => args.push("--mmap".into()),
+        Some(false) => args.push("--no-mmap".into()),
+        None => {}
+    }
+    if let Some(true) = tuning.mlock {
+        args.push("--mlock".into());
+    }
+    if let Some(b) = tuning.n_batch {
+        args.push("--batch-size".into());
+        args.push(b.to_string());
+    }
+    if let Some(ub) = tuning.n_ubatch {
+        args.push("--ubatch-size".into());
+        args.push(ub.to_string());
+    }
+    if let Some(p) = tuning.n_parallel {
+        args.push("--parallel".into());
+        args.push(p.to_string());
+    }
+    if let Some(true) = tuning.cont_batching {
+        args.push("--cont-batching".into());
+    }
+    if let Some(s) = tuning.seed {
+        args.push("--seed".into());
+        args.push(s.to_string());
     }
     args
 }
@@ -383,12 +456,11 @@ pub async fn get_generation_settings(
         return ApiResponse::<()>::internal(format!("schema: {e}")).into_response();
     }
 
-    let row = sqlx::query(
-        "SELECT generation_settings FROM ext_local_llm_chat_threads WHERE id = ?1",
-    )
-    .bind(&thread_id)
-    .fetch_optional(pool)
-    .await;
+    let row =
+        sqlx::query("SELECT generation_settings FROM ext_local_llm_chat_threads WHERE id = ?1")
+            .bind(&thread_id)
+            .fetch_optional(pool)
+            .await;
     match row {
         Ok(Some(r)) => {
             let raw: Option<String> = r.try_get("generation_settings").unwrap_or(None);
@@ -483,8 +555,7 @@ pub async fn get_active_model(
                             };
                             ApiResponse::ok(Some(binding)).into_response()
                         }
-                        None => ApiResponse::<Option<ActiveModelBinding>>::ok(None)
-                            .into_response(),
+                        None => ApiResponse::<Option<ActiveModelBinding>>::ok(None).into_response(),
                     }
                 }
                 _ => ApiResponse::<Option<ActiveModelBinding>>::ok(None).into_response(),
@@ -538,8 +609,7 @@ pub async fn set_active_model(
     };
     let installed = install_map.list_all(500).await.unwrap_or_default();
     let matched = installed.into_iter().find(|r| {
-        r.family_id == body.family_id
-            && r.variant_id.as_deref() == Some(body.variant_id.as_str())
+        r.family_id == body.family_id && r.variant_id.as_deref() == Some(body.variant_id.as_str())
     });
     let record = match matched {
         Some(r) => r,
@@ -564,10 +634,8 @@ pub async fn set_active_model(
     let orchestrator = match res.download_orchestrator.as_ref() {
         Some(o) => o,
         None => {
-            return ApiResponse::<()>::internal(
-                "download_orchestrator unavailable".to_string(),
-            )
-            .into_response();
+            return ApiResponse::<()>::internal("download_orchestrator unavailable".to_string())
+                .into_response();
         }
     };
     let abs_path = orchestrator
@@ -575,47 +643,40 @@ pub async fn set_active_model(
         .join(&record.job_id)
         .join(&record.filename);
 
-    let runtime_row = match runtime_installs_store::resolve_dependency(
-        pool,
-        LLAMA_CPP_FAMILY,
-        None,
-        &[],
-    )
-    .await
-    {
-        Ok(Some(r)) => r,
-        Ok(None) => {
-            let reason = format!(
-                "no installed {LLAMA_CPP_FAMILY} runtime — install it via Backends first"
-            );
-            emit_session_state(
-                &res.backend_event_publisher,
-                &thread_id,
-                "model_load_failed",
-                serde_json::json!({
-                    "family_id": body.family_id,
-                    "variant_id": body.variant_id,
-                    "reason": reason.clone(),
-                    "remediation": "install_runtime",
-                    "runtime_family": LLAMA_CPP_FAMILY,
-                }),
-            );
-            return (
-                StatusCode::CONFLICT,
-                ApiResponse::<()>::err(
+    let runtime_row =
+        match runtime_installs_store::resolve_dependency(pool, LLAMA_CPP_FAMILY, None, &[]).await {
+            Ok(Some(r)) => r,
+            Ok(None) => {
+                let reason = format!(
+                    "no installed {LLAMA_CPP_FAMILY} runtime — install it via Backends first"
+                );
+                emit_session_state(
+                    &res.backend_event_publisher,
+                    &thread_id,
+                    "model_load_failed",
+                    serde_json::json!({
+                        "family_id": body.family_id,
+                        "variant_id": body.variant_id,
+                        "reason": reason.clone(),
+                        "remediation": "install_runtime",
+                        "runtime_family": LLAMA_CPP_FAMILY,
+                    }),
+                );
+                return (
                     StatusCode::CONFLICT,
-                    "RUNTIME_NOT_INSTALLED",
-                    "state",
-                    reason,
-                ),
-            )
-                .into_response();
-        }
-        Err(e) => {
-            return ApiResponse::<()>::internal(format!("runtime lookup: {e}"))
-                .into_response();
-        }
-    };
+                    ApiResponse::<()>::err(
+                        StatusCode::CONFLICT,
+                        "RUNTIME_NOT_INSTALLED",
+                        "state",
+                        reason,
+                    ),
+                )
+                    .into_response();
+            }
+            Err(e) => {
+                return ApiResponse::<()>::internal(format!("runtime lookup: {e}")).into_response();
+            }
+        };
 
     let binding = ActiveModelBinding {
         family_id: record.family_id.clone(),
@@ -671,8 +732,7 @@ pub async fn set_active_model(
                     "reason": reason,
                 }),
             );
-            return ApiResponse::<()>::internal("spawner unavailable".to_string())
-                .into_response();
+            return ApiResponse::<()>::internal("spawner unavailable".to_string()).into_response();
         }
     };
 
@@ -979,9 +1039,7 @@ pub struct AvailableModelsDto {
     pub models: Vec<AvailableModelDto>,
 }
 
-pub async fn list_available_models(
-    State(res): State<Arc<ChatHandlerResources>>,
-) -> Response {
+pub async fn list_available_models(State(res): State<Arc<ChatHandlerResources>>) -> Response {
     let Some(install_map) = res.install_map.as_ref() else {
         return ApiResponse::ok(AvailableModelsDto { models: Vec::new() }).into_response();
     };
@@ -995,7 +1053,8 @@ pub async fn list_available_models(
         .into_iter()
         .filter(|row| row.format.eq_ignore_ascii_case("gguf"))
         .map(|row| {
-            let label = derive_model_label(&row.family_id, row.variant_id.as_deref(), &row.filename);
+            let label =
+                derive_model_label(&row.family_id, row.variant_id.as_deref(), &row.filename);
             AvailableModelDto {
                 family_id: row.family_id,
                 variant_id: row.variant_id,
@@ -1261,5 +1320,166 @@ mod tests {
         assert_eq!(s.top_k, 40);
         assert_eq!(s.max_tokens, 4096);
         assert_eq!(s.repeat_penalty.to_bits(), 1.1f32.to_bits());
+    }
+}
+
+#[cfg(test)]
+mod runtime_tuning_tests {
+    use super::*;
+
+    fn pos(args: &[String], flag: &str) -> Option<usize> {
+        args.iter().position(|s| s == flag)
+    }
+
+    fn contains(args: &[String], flag: &str) -> bool {
+        pos(args, flag).is_some()
+    }
+
+    #[test]
+    fn runtime_to_args_includes_all_extended_knobs() {
+        let tuning = RuntimeTuning {
+            n_gpu_layers: Some(40),
+            threads: Some(8),
+            flash_attn: Some(true),
+            ctx_size: Some(8192),
+            cache_type_k: Some("q8_0".into()),
+            cache_type_v: Some("q8_0".into()),
+            mmap: Some(true),
+            mlock: Some(true),
+            n_batch: Some(512),
+            n_ubatch: Some(128),
+            n_parallel: Some(4),
+            cont_batching: Some(true),
+            seed: Some(42),
+        };
+        let args = runtime_to_args(&tuning);
+
+        assert!(contains(&args, "--mmap"));
+        assert!(contains(&args, "--mlock"));
+        assert!(contains(&args, "--cont-batching"));
+
+        let bs = pos(&args, "--batch-size").expect("--batch-size present");
+        assert_eq!(args[bs + 1], "512");
+
+        let ubs = pos(&args, "--ubatch-size").expect("--ubatch-size present");
+        assert_eq!(args[ubs + 1], "128");
+
+        let par = pos(&args, "--parallel").expect("--parallel present");
+        assert_eq!(args[par + 1], "4");
+
+        let seed = pos(&args, "--seed").expect("--seed present");
+        assert_eq!(args[seed + 1], "42");
+    }
+
+    #[test]
+    fn runtime_to_args_emits_no_mmap_when_false() {
+        let tuning = RuntimeTuning {
+            mmap: Some(false),
+            ..Default::default()
+        };
+        let args = runtime_to_args(&tuning);
+        assert!(contains(&args, "--no-mmap"));
+        assert!(!contains(&args, "--mmap"));
+    }
+
+    #[test]
+    fn runtime_to_args_omits_mmap_when_none() {
+        let tuning = RuntimeTuning {
+            mmap: None,
+            ..Default::default()
+        };
+        let args = runtime_to_args(&tuning);
+        assert!(!contains(&args, "--mmap"));
+        assert!(!contains(&args, "--no-mmap"));
+    }
+
+    #[test]
+    fn runtime_to_args_omits_mlock_when_false_or_none() {
+        let none_tuning = RuntimeTuning {
+            mlock: None,
+            ..Default::default()
+        };
+        assert!(!contains(&runtime_to_args(&none_tuning), "--mlock"));
+
+        let false_tuning = RuntimeTuning {
+            mlock: Some(false),
+            ..Default::default()
+        };
+        assert!(!contains(&runtime_to_args(&false_tuning), "--mlock"));
+    }
+
+    #[test]
+    fn runtime_to_args_omits_cont_batching_when_false_or_none() {
+        let none_tuning = RuntimeTuning {
+            cont_batching: None,
+            ..Default::default()
+        };
+        assert!(!contains(&runtime_to_args(&none_tuning), "--cont-batching"));
+
+        let false_tuning = RuntimeTuning {
+            cont_batching: Some(false),
+            ..Default::default()
+        };
+        assert!(!contains(
+            &runtime_to_args(&false_tuning),
+            "--cont-batching"
+        ));
+    }
+
+    #[test]
+    fn runtime_to_args_preserves_existing_cache_type_validation() {
+        let tuning = RuntimeTuning {
+            cache_type_k: Some("garbage".into()),
+            cache_type_v: Some("also-bad".into()),
+            ..Default::default()
+        };
+        let args = runtime_to_args(&tuning);
+        assert!(!contains(&args, "--cache-type-k"));
+        assert!(!contains(&args, "--cache-type-v"));
+    }
+
+    #[test]
+    fn sensible_defaults_for_cuda_enables_flash_attn_and_q8_kv() {
+        let d = RuntimeTuning::sensible_defaults(Some(40), true);
+        assert_eq!(d.n_gpu_layers, Some(40));
+        assert_eq!(d.flash_attn, Some(true));
+        assert_eq!(d.cache_type_k.as_deref(), Some("q8_0"));
+        assert_eq!(d.cache_type_v.as_deref(), Some("q8_0"));
+    }
+
+    #[test]
+    fn sensible_defaults_for_cpu_zeros_gpu_layers_and_uses_fp16() {
+        let d = RuntimeTuning::sensible_defaults(Some(40), false);
+        assert_eq!(d.n_gpu_layers, Some(0));
+        assert_eq!(d.flash_attn, Some(false));
+        assert_eq!(d.cache_type_k.as_deref(), Some("fp16"));
+        assert_eq!(d.cache_type_v.as_deref(), Some("fp16"));
+    }
+
+    #[test]
+    fn runtime_tuning_deserializes_with_extended_fields() {
+        let json = r#"{"mmap": true, "n_batch": 512, "seed": 42}"#;
+        let parsed: RuntimeTuning = serde_json::from_str(json).expect("parses");
+        assert_eq!(parsed.mmap, Some(true));
+        assert_eq!(parsed.n_batch, Some(512));
+        assert_eq!(parsed.seed, Some(42));
+        assert_eq!(parsed.mlock, None);
+        assert_eq!(parsed.n_ubatch, None);
+        assert_eq!(parsed.n_parallel, None);
+        assert_eq!(parsed.cont_batching, None);
+    }
+
+    #[test]
+    fn runtime_tuning_deserializes_when_extended_fields_omitted() {
+        let json = r#"{"n_gpu_layers": 26}"#;
+        let parsed: RuntimeTuning = serde_json::from_str(json).expect("parses");
+        assert_eq!(parsed.n_gpu_layers, Some(26));
+        assert_eq!(parsed.mmap, None);
+        assert_eq!(parsed.mlock, None);
+        assert_eq!(parsed.n_batch, None);
+        assert_eq!(parsed.n_ubatch, None);
+        assert_eq!(parsed.n_parallel, None);
+        assert_eq!(parsed.cont_batching, None);
+        assert_eq!(parsed.seed, None);
     }
 }
