@@ -25012,7 +25012,7 @@ function EL(t, a) {
   }
   return null;
 }
-var NL = "_1d2ofoy1", TL = "_1d2ofoy2", CL = "_1d2ofoy4 _1d2ofoy3", RL = "_1d2ofoy5 _1d2ofoy3", ML = "_1d2ofoy6", _L = "_1d2ofoy7", AL = "_1d2ofoy8", DL = "_1d2ofoya", kL = "_1d2ofoyb", zL = "_1d2ofoyc", OL = "_1d2ofoyd", LL = "_1d2ofoye", UL = "_1d2ofoyf", ec = "_1d2ofoyg", $L = "_1d2ofoyh";
+var NL = "_1d2ofoy0", TL = "_1d2ofoy1", CL = "_1d2ofoy3 _1d2ofoy2", RL = "_1d2ofoy4 _1d2ofoy2", ML = "_1d2ofoy5", _L = "_1d2ofoy6", AL = "_1d2ofoy7", DL = "_1d2ofoy9", kL = "_1d2ofoya", zL = "_1d2ofoyb", OL = "_1d2ofoyc", LL = "_1d2ofoyd", UL = "_1d2ofoye", ec = "_1d2ofoyf", $L = "_1d2ofoyg";
 const BL = `Type @character to set the speaker, /emotion to set the emotion preset.
 
 @bob /happy I love mornings!
