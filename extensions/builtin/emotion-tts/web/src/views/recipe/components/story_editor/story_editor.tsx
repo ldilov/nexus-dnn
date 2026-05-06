@@ -175,7 +175,8 @@ export function StoryEditor({
       const tokenEnd = popover.triggerStart + 1 + popover.query.length;
       const before = value.slice(0, popover.triggerStart);
       const after = value.slice(tokenEnd);
-      const insertion = `${sigil}${replacement} `;
+      const safeName = replacement.replace(/\s+/g, "_");
+      const insertion = `${sigil}${safeName} `;
       const next = `${before}${insertion}${after}`;
       onChange(next);
       const caretPos = before.length + insertion.length;
@@ -344,6 +345,7 @@ export function StoryEditor({
 function renderOverlay(tokens: readonly StoryToken[], activeStart: number | null): JSX.Element[] {
   return tokens.map((t, idx) => {
     const isActive = activeStart !== null && t.start === activeStart;
+    const display = t.value.replace(/_/g, " ");
     if (t.kind === "character") {
       return (
         <span
@@ -352,7 +354,7 @@ function renderOverlay(tokens: readonly StoryToken[], activeStart: number | null
           data-token="character"
           data-active={isActive ? "true" : undefined}
         >
-          @{t.value}
+          @{display}
         </span>
       );
     }
@@ -364,7 +366,7 @@ function renderOverlay(tokens: readonly StoryToken[], activeStart: number | null
           data-token="emotion"
           data-active={isActive ? "true" : undefined}
         >
-          /{t.value}
+          /{display}
         </span>
       );
     }
