@@ -65,13 +65,22 @@ export function setGenerationSettings(
   );
 }
 
+export type KvCacheKind = "fp16" | "q8_0" | "q4_0";
+
 export interface RuntimeTuning {
   n_gpu_layers?: number;
   threads?: number;
   flash_attn?: boolean;
   ctx_size?: number;
-  cache_type_k?: "fp16" | "q8_0" | "q4_0";
-  cache_type_v?: "fp16" | "q8_0" | "q4_0";
+  cache_type_k?: KvCacheKind;
+  cache_type_v?: KvCacheKind;
+  mmap?: boolean;
+  mlock?: boolean;
+  n_batch?: number;
+  n_ubatch?: number;
+  n_parallel?: number;
+  cont_batching?: boolean;
+  seed?: number;
 }
 
 export interface RuntimeDefaults {
