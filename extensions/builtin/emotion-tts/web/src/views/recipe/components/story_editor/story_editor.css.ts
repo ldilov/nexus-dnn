@@ -66,6 +66,8 @@ export const overlay = style([sharedSurface, {
   position: "absolute",
   inset: 0,
   pointerEvents: "none",
+  userSelect: "none",
+  WebkitUserSelect: "none",
   color: "transparent",
 }]);
 
@@ -96,24 +98,31 @@ export const tokenText = style({
   color: vars.color.text,
 });
 
-export const characterBadge = style({
+const badgeBase = {
   display: "inline",
   padding: 0,
   margin: 0,
   border: "none",
   fontFamily: vars.font.body,
   fontSize: "1em",
-  fontWeight: 600,
+  fontWeight: "inherit",
   fontStyle: "inherit",
   letterSpacing: "inherit",
-  color: vars.color.accent,
-  background: `color-mix(in oklab, ${vars.color.accent} 16%, transparent)`,
-  borderRadius: "3px",
-  boxShadow: `inset 0 -1px 0 ${vars.color.accent}`,
-  transition: `background ${vars.motion.fast}`,
+  borderRadius: "999px",
+  WebkitBoxDecorationBreak: "clone",
+  boxDecorationBreak: "clone",
+  transition: `box-shadow ${vars.motion.fast}, text-shadow ${vars.motion.fast}`,
+} as const;
+
+export const characterBadge = style({
+  ...badgeBase,
+  color: vars.color.accentOn,
+  background: vars.color.accent,
+  boxShadow: `0 0 0 1px ${vars.color.accent}, inset 0 0 0 1px color-mix(in oklab, white 22%, transparent)`,
   selectors: {
     '&[data-active="true"]': {
-      background: `color-mix(in oklab, ${vars.color.accent} 28%, transparent)`,
+      boxShadow: `0 0 0 1px ${vars.color.accent}, 0 0 0 3px color-mix(in oklab, ${vars.color.accentGlow} 60%, transparent), inset 0 0 0 1px color-mix(in oklab, white 38%, transparent)`,
+      textShadow: `0 0 6px color-mix(in oklab, ${vars.color.accentOn} 40%, transparent)`,
     },
   },
   "@media": {
@@ -127,23 +136,14 @@ export const characterBadge = style({
 });
 
 export const emotionBadge = style({
-  display: "inline",
-  padding: 0,
-  margin: 0,
-  border: "none",
-  fontFamily: vars.font.body,
-  fontSize: "1em",
-  fontWeight: 600,
-  fontStyle: "inherit",
-  letterSpacing: "inherit",
-  color: vars.color.tertiary,
-  background: `color-mix(in oklab, ${vars.color.tertiary} 14%, transparent)`,
-  borderRadius: "3px",
-  boxShadow: `inset 0 -1px 0 ${vars.color.tertiary}`,
-  transition: `background ${vars.motion.fast}`,
+  ...badgeBase,
+  color: "#1a0a00",
+  background: vars.color.tertiary,
+  boxShadow: `0 0 0 1px ${vars.color.tertiary}, inset 0 0 0 1px color-mix(in oklab, white 24%, transparent)`,
   selectors: {
     '&[data-active="true"]': {
-      background: `color-mix(in oklab, ${vars.color.tertiary} 26%, transparent)`,
+      boxShadow: `0 0 0 1px ${vars.color.tertiary}, 0 0 0 3px color-mix(in oklab, ${vars.color.tertiary} 35%, transparent), inset 0 0 0 1px color-mix(in oklab, white 42%, transparent)`,
+      textShadow: "0 0 6px rgba(26, 10, 0, 0.45)",
     },
   },
   "@media": {
@@ -151,10 +151,13 @@ export const emotionBadge = style({
       background: "Canvas",
       color: "CanvasText",
       forcedColorAdjust: "none",
-      boxShadow: "inset 0 -2px 0 CanvasText",
+      boxShadow: "inset 0 0 0 1px CanvasText",
     },
   },
 });
+
+// Contrast: character #39008c on #ba9eff = 6.46:1 (WCAG AA). emotion #1a0a00 on #ff8439 = 8.27:1 (AAA).
+// Both badges are opaque, so surfaceMuted (#111416) only meets the badge at the rounded edges (>3:1, anti-alias safe).
 
 export const popoverPop = keyframes({
   "0%": { opacity: 0, transform: "translateY(-4px)" },
