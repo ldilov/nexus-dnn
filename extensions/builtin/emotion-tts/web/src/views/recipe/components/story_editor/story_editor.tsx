@@ -367,7 +367,6 @@ function renderOverlay(tokens: readonly StoryToken[], activeStart: number | null
         key={`${t.start}-${idx}`}
         className={css.storyPill}
         data-kind={kind}
-        data-token={kind}
         data-active={isActive ? "true" : undefined}
       >
         <span className={css.badgeSigil}>{SIGIL_FOR_KIND[kind]}</span>
