@@ -1,5 +1,9 @@
-import { globalStyle, keyframes, style } from "@vanilla-extract/css";
+import { createVar, globalStyle, keyframes, style } from "@vanilla-extract/css";
 import { vars } from "../../../../theme/tokens.css";
+
+const pillColor = createVar();
+const pillFg = createVar();
+const pillGlow = createVar();
 
 export const root = style({
   position: "relative",
@@ -120,29 +124,41 @@ export const badgeSigil = style({
   fontWeight: "inherit",
 });
 
-export const characterBadge = style({
+export const storyPill = style({
   ...badgeBase,
-  color: vars.color.accentOn,
-  background: `linear-gradient(180deg, color-mix(in oklab, ${vars.color.accent} 88%, white 12%) 0%, ${vars.color.accent} 55%, color-mix(in oklab, ${vars.color.accent} 92%, black 8%) 100%)`,
+  vars: {
+    [pillColor]: vars.color.accent,
+    [pillFg]: vars.color.accentOn,
+    [pillGlow]: vars.color.accentGlow,
+  },
+  color: pillFg,
+  background: `linear-gradient(180deg, color-mix(in oklab, ${pillColor} 88%, white 12%) 0%, ${pillColor} 55%, color-mix(in oklab, ${pillColor} 92%, black 8%) 100%)`,
   boxShadow: [
     `inset 0 1px 0 0 color-mix(in oklab, white 32%, transparent)`,
     `inset 0 -1px 0 0 color-mix(in oklab, black 18%, transparent)`,
-    `0 0 0 0.5px color-mix(in oklab, ${vars.color.accent} 60%, black 40%)`,
+    `0 0 0 0.5px color-mix(in oklab, ${pillColor} 60%, black 40%)`,
     `0 1px 2px -0.5px color-mix(in oklab, black 55%, transparent)`,
-    `0 0 14px -3px color-mix(in oklab, ${vars.color.accent} 38%, transparent)`,
+    `0 0 14px -3px color-mix(in oklab, ${pillColor} 38%, transparent)`,
   ].join(", "),
   selectors: {
+    '&[data-kind="emotion"]': {
+      vars: {
+        [pillColor]: vars.color.tertiary,
+        [pillFg]: "#1a0a00",
+        [pillGlow]: `color-mix(in oklab, ${vars.color.tertiary} 60%, transparent)`,
+      },
+    },
     '&[data-active="true"]': {
-      background: `linear-gradient(180deg, color-mix(in oklab, ${vars.color.accent} 76%, white 24%) 0%, ${vars.color.accent} 55%, color-mix(in oklab, ${vars.color.accent} 92%, black 8%) 100%)`,
+      background: `linear-gradient(180deg, color-mix(in oklab, ${pillColor} 76%, white 24%) 0%, ${pillColor} 55%, color-mix(in oklab, ${pillColor} 92%, black 8%) 100%)`,
       boxShadow: [
         `inset 0 1px 0 0 color-mix(in oklab, white 44%, transparent)`,
         `inset 0 -1px 0 0 color-mix(in oklab, black 18%, transparent)`,
-        `0 0 0 0.5px color-mix(in oklab, ${vars.color.accent} 60%, black 40%)`,
+        `0 0 0 0.5px color-mix(in oklab, ${pillColor} 60%, black 40%)`,
         `0 1px 2px -0.5px color-mix(in oklab, black 55%, transparent)`,
-        `0 0 0 3px color-mix(in oklab, ${vars.color.accentGlow} 65%, transparent)`,
-        `0 0 22px -2px color-mix(in oklab, ${vars.color.accent} 55%, transparent)`,
+        `0 0 0 3px color-mix(in oklab, ${pillGlow} 65%, transparent)`,
+        `0 0 22px -2px color-mix(in oklab, ${pillColor} 55%, transparent)`,
       ].join(", "),
-      textShadow: `0 0 6px color-mix(in oklab, ${vars.color.accentOn} 35%, transparent)`,
+      textShadow: `0 0 6px color-mix(in oklab, ${pillFg} 35%, transparent)`,
     },
   },
   "@media": {
@@ -154,44 +170,6 @@ export const characterBadge = style({
     },
   },
 });
-
-export const emotionBadge = style({
-  ...badgeBase,
-  color: "#1a0a00",
-  background: `linear-gradient(180deg, color-mix(in oklab, ${vars.color.tertiary} 86%, white 14%) 0%, ${vars.color.tertiary} 55%, color-mix(in oklab, ${vars.color.tertiary} 92%, black 8%) 100%)`,
-  boxShadow: [
-    `inset 0 1px 0 0 color-mix(in oklab, white 32%, transparent)`,
-    `inset 0 -1px 0 0 color-mix(in oklab, black 18%, transparent)`,
-    `0 0 0 0.5px color-mix(in oklab, ${vars.color.tertiary} 65%, black 35%)`,
-    `0 1px 2px -0.5px color-mix(in oklab, black 55%, transparent)`,
-    `0 0 14px -3px color-mix(in oklab, ${vars.color.tertiary} 32%, transparent)`,
-  ].join(", "),
-  selectors: {
-    '&[data-active="true"]': {
-      background: `linear-gradient(180deg, color-mix(in oklab, ${vars.color.tertiary} 74%, white 26%) 0%, ${vars.color.tertiary} 55%, color-mix(in oklab, ${vars.color.tertiary} 92%, black 8%) 100%)`,
-      boxShadow: [
-        `inset 0 1px 0 0 color-mix(in oklab, white 44%, transparent)`,
-        `inset 0 -1px 0 0 color-mix(in oklab, black 18%, transparent)`,
-        `0 0 0 0.5px color-mix(in oklab, ${vars.color.tertiary} 65%, black 35%)`,
-        `0 1px 2px -0.5px color-mix(in oklab, black 55%, transparent)`,
-        `0 0 0 3px color-mix(in oklab, ${vars.color.tertiary} 38%, transparent)`,
-        `0 0 22px -2px color-mix(in oklab, ${vars.color.tertiary} 50%, transparent)`,
-      ].join(", "),
-      textShadow: "0 0 6px rgba(26, 10, 0, 0.4)",
-    },
-  },
-  "@media": {
-    "(forced-colors: active)": {
-      background: "Canvas",
-      color: "CanvasText",
-      forcedColorAdjust: "none",
-      boxShadow: "inset 0 0 0 1px CanvasText",
-    },
-  },
-});
-
-// Contrast: character #39008c on #ba9eff = 6.46:1 (WCAG AA). emotion #1a0a00 on #ff8439 = 8.27:1 (AAA).
-// Both badges are opaque, so surfaceMuted (#111416) only meets the badge at the rounded edges (>3:1, anti-alias safe).
 
 export const popoverPop = keyframes({
   "0%": { opacity: 0, transform: "translateY(-4px)" },

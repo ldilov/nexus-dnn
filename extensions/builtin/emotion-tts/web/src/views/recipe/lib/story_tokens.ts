@@ -1,4 +1,5 @@
 export type StoryTokenKind = "text" | "character" | "emotion";
+export type StoryPillKind = "character" | "emotion";
 
 export interface StoryToken {
   kind: StoryTokenKind;
@@ -7,11 +8,25 @@ export interface StoryToken {
   value: string;
 }
 
-const SEPARATORS = new Set([" ", "\t", "\n", "\r"]);
+export const SIGIL_FOR_KIND: Readonly<Record<StoryPillKind, "@" | "/">> = {
+  character: "@",
+  emotion: "/",
+};
 
-function isNameChar(ch: string): boolean {
-  if (ch === "_" || ch === "-") return true;
-  return /\p{L}|\p{N}/u.test(ch);
+const SEPARATORS = new Set([" ", "\t", "\n", "\r"]);
+const NAME_CHAR_PATTERN = /[\p{L}\p{N}_-]/u;
+const NON_NAME_RUN = /[^\p{L}\p{N}_-]+/gu;
+
+export function isNameChar(ch: string): boolean {
+  if (!ch) return false;
+  return NAME_CHAR_PATTERN.test(ch);
+}
+
+export function sanitizeTokenName(input: string): string {
+  return input
+    .replace(NON_NAME_RUN, "_")
+    .replace(/_+/g, "_")
+    .replace(/^[_-]+|[_-]+$/g, "");
 }
 
 function codePointLength(input: string, byteIndex: number): number {

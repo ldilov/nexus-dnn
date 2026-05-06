@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { activeTriggerAt, tokeniseStory } from "./story_tokens";
+import {
+  activeTriggerAt,
+  sanitizeTokenName,
+  tokeniseStory,
+} from "./story_tokens";
 
 describe("tokeniseStory", () => {
   it("captures @character + text", () => {
@@ -79,5 +83,41 @@ describe("activeTriggerAt", () => {
   it("empty query right after the symbol", () => {
     const trig = activeTriggerAt("@", 1);
     expect(trig).toEqual({ kind: "character", start: 0, query: "" });
+  });
+});
+
+describe("sanitizeTokenName", () => {
+  it("keeps valid name chars unchanged", () => {
+    expect(sanitizeTokenName("Angry")).toBe("Angry");
+    expect(sanitizeTokenName("very-happy")).toBe("very-happy");
+    expect(sanitizeTokenName("ヒロイン")).toBe("ヒロイン");
+  });
+
+  it("replaces + with _ so preset names tokenize as one pill", () => {
+    expect(sanitizeTokenName("Angry+Happy")).toBe("Angry_Happy");
+  });
+
+  it("collapses runs of non-name chars and surrounding underscores", () => {
+    expect(sanitizeTokenName("Sad + afraid")).toBe("Sad_afraid");
+    expect(sanitizeTokenName("Sad_+_afraid")).toBe("Sad_afraid");
+    expect(sanitizeTokenName("a   b")).toBe("a_b");
+  });
+
+  it("trims leading and trailing underscores or hyphens", () => {
+    expect(sanitizeTokenName("_hello_")).toBe("hello");
+    expect(sanitizeTokenName("--mix--")).toBe("mix");
+  });
+
+  it("returns empty string when nothing usable remains", () => {
+    expect(sanitizeTokenName("+++")).toBe("");
+    expect(sanitizeTokenName("   ")).toBe("");
+  });
+
+  it("output round-trips through the tokenizer as a single pill", () => {
+    const safe = sanitizeTokenName("Angry+Happy");
+    const tokens = tokeniseStory(`/${safe}`);
+    expect(tokens).toEqual([
+      { kind: "emotion", start: 0, end: safe.length + 1, value: safe },
+    ]);
   });
 });
