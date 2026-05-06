@@ -120,9 +120,10 @@ export function StoryEditor({
 
   useEffect(() => {
     if (!popover) return;
-    if (popover.selected >= filteredCandidates.length) {
-      const next = filteredCandidates.length === 0 ? 0 : filteredCandidates.length - 1;
-      setPopover({ ...popover, selected: next });
+    const max = filteredCandidates.length;
+    const desired = max === 0 ? 0 : Math.min(popover.selected, max - 1);
+    if (popover.selected !== desired) {
+      setPopover({ ...popover, selected: desired });
     }
   }, [popover, filteredCandidates]);
 
