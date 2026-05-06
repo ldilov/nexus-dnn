@@ -152,6 +152,8 @@ export function CharacterRowsEditor({
         },
         duration: 5000,
       });
+      const removeMsg = `Removed line ${idx + 1}, now ${next.length} ${next.length === 1 ? "line" : "lines"}`;
+      setLiveMessage((prev) => (prev === removeMsg ? `${removeMsg}​` : removeMsg));
       if (next.length === 0) {
         setPendingFocus({ kind: "addBtn" });
       } else {
