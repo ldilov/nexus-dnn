@@ -107,8 +107,8 @@ export const tokenText = style({
 const badgeBase = {
   display: "inline",
   paddingBlock: "0.12em",
-  paddingInline: "0.42em",
-  marginInline: "-0.42em",
+  paddingInline: "0.55em",
+  marginInline: "-0.55em",
   border: "none",
   fontFamily: vars.font.body,
   fontSize: "1em",
