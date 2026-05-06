@@ -9,7 +9,6 @@ import "./theme/density.css";
 import { darkTheme } from "./theme/dark.css";
 import { rehydrateTweaks } from "./layout/tweak_storage";
 import { router } from "./routes";
-import { ModelPicker } from "./components/layout/model_picker";
 import {
   NEXUS_HOST_NAVIGATE,
   type NexusHostNavigateDetail,
@@ -55,7 +54,6 @@ createRoot(root).render(
       }}
     >
       <RouterProvider router={router} />
-      <ModelPicker />
       <Toaster
         theme="dark"
         position="bottom-right"
