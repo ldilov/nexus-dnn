@@ -5,7 +5,6 @@ import { ExtensionApiError } from "../../../services/http";
 import {
   createPreset,
   deletePreset,
-  listPresets,
   type VectorPreset,
 } from "../../../services/presets_client";
 import type { EmotionMode, GlobalEmotion } from "../../../services/types";
@@ -33,6 +32,8 @@ export interface EmotionStudioProps {
   value: GlobalEmotion;
   onChange: (next: GlobalEmotion) => void;
   deploymentId: string;
+  presets: readonly VectorPreset[];
+  onPresetsChange: (next: VectorPreset[]) => void;
 }
 
 const MODES: readonly { id: EmotionMode; label: string }[] = [
@@ -46,12 +47,13 @@ export function EmotionStudio({
   value,
   onChange,
   deploymentId,
+  presets,
+  onPresetsChange,
 }: EmotionStudioProps): JSX.Element {
   const mode: EmotionMode = value.mode ?? "none";
   const vec = useMemo(() => normaliseVec(value.vector), [value.vector]);
   const alpha = value.emotionAlpha ?? 1.0;
 
-  const [presets, setPresets] = useState<VectorPreset[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [activePresetId, setActivePresetId] = useState<string | null>(null);
@@ -65,20 +67,6 @@ export function EmotionStudio({
       mounted.current = false;
     };
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    listPresets(deploymentId)
-      .then((r) => {
-        if (!cancelled) setPresets(sortByRecent(r.presets));
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(describe(err));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [deploymentId]);
 
   useEffect(() => {
     if (!nameTouched) setPresetName(suggestPresetName(vec));
@@ -114,8 +102,8 @@ export function EmotionStudio({
     try {
       const created = await createPreset(deploymentId, trimmed, vecToPresetVector(vec));
       if (!mounted.current) return;
-      setPresets((prev) =>
-        sortByRecent([created, ...prev.filter((p) => p.presetId !== created.presetId)]),
+      onPresetsChange(
+        sortByRecent([created, ...presets.filter((p) => p.presetId !== created.presetId)]),
       );
       setActivePresetId(created.presetId);
       setNameTouched(false);
@@ -127,14 +115,14 @@ export function EmotionStudio({
   };
 
   const handleDeletePreset = async (presetId: string): Promise<void> => {
-    const snapshot = presets;
-    setPresets((prev) => prev.filter((p) => p.presetId !== presetId));
+    const snapshot = [...presets];
+    onPresetsChange(presets.filter((p) => p.presetId !== presetId));
     if (activePresetId === presetId) setActivePresetId(null);
     try {
       await deletePreset(deploymentId, presetId);
     } catch (err: unknown) {
       if (mounted.current) {
-        setPresets(snapshot);
+        onPresetsChange(snapshot);
         setError(describe(err));
       }
     }
