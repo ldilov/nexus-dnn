@@ -186,17 +186,33 @@ export function RecipeView(): JSX.Element {
   }, []);
   const [performance, setPerformance] = useState<PerformanceSlidersValue>(PERFORMANCE_DEFAULTS);
 
+  const scriptRef = useRef(script);
+  const rowsRefMode = useRef(rows);
+  const storyTextRef = useRef(storyText);
+  const vectorPresetsRef = useRef(vectorPresets);
+  useEffect(() => { scriptRef.current = script; }, [script]);
+  useEffect(() => { rowsRefMode.current = rows; }, [rows]);
+  useEffect(() => { storyTextRef.current = storyText; }, [storyText]);
+  useEffect(() => { vectorPresetsRef.current = vectorPresets; }, [vectorPresets]);
+
+  const [migrationLiveMessage, setMigrationLiveMessage] = useState("");
+
   const requestEditorModeChange = useCallback(
     (next: EditorMode) => {
       setEditorMode((current) => {
         if (next === current) return current;
-        const source = { script, rows, storyText };
+        const source = {
+          script: scriptRef.current,
+          rows: rowsRefMode.current,
+          storyText: storyTextRef.current,
+        };
         const targetHasContent = hasContentForMode(next, source);
         const sourceHasContent = hasContentForMode(current, source);
         if (!targetHasContent && sourceHasContent) {
-          const result = migrate(current, next, source, vectorPresets);
+          const result = migrate(current, next, source, vectorPresetsRef.current);
           if (result) {
-            const snapshot = { script, rows, storyText };
+            const snapshot = { ...source };
+            const previouslyFocused = document.activeElement as HTMLElement | null;
             if (result.script !== undefined) setScript(result.script);
             if (result.rows !== undefined) setRows(result.rows);
             if (result.storyText !== undefined) setStoryText(result.storyText);
@@ -214,25 +230,31 @@ export function RecipeView(): JSX.Element {
                 : result.storyText !== undefined
                   ? countLines(result.storyText)
                   : 0;
-            const detail = count > 0 ? ` (${count} ${count === 1 ? "line" : "lines"})` : "";
+            const unit = count === 1 ? "line" : "lines";
+            const detail = count > 0 ? ` (${count} ${unit})` : "";
+            const liveMsg = `Switched to ${labelMap[next]} mode${count > 0 ? `, ${count} ${unit}` : ""}.`;
+            setMigrationLiveMessage((prev) => (prev === liveMsg ? `${liveMsg}​` : liveMsg));
             toast(`Switched to ${labelMap[next]}${detail} — content kept`, {
               action: {
                 label: "Undo",
                 onClick: () => {
                   setScript(snapshot.script);
-                  setRows(snapshot.rows);
+                  setRows([...snapshot.rows]);
                   setStoryText(snapshot.storyText);
                   setEditorMode(current);
+                  if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+                    requestAnimationFrame(() => previouslyFocused.focus());
+                  }
                 },
               },
-              duration: 6000,
+              duration: 5000,
             });
           }
         }
         return next;
       });
     },
-    [script, rows, storyText, vectorPresets, setStoryText],
+    [setStoryText],
   );
 
   useEffect(() => {
@@ -548,6 +570,24 @@ export function RecipeView(): JSX.Element {
   return (
     <>
       <Toaster position="bottom-right" richColors theme="dark" />
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        style={{
+          position: "absolute",
+          width: 1,
+          height: 1,
+          padding: 0,
+          margin: -1,
+          overflow: "hidden",
+          clipPath: "inset(50%)",
+          whiteSpace: "nowrap",
+          border: 0,
+        }}
+      >
+        {migrationLiveMessage}
+      </div>
       <RecipeUi
         deployment={deployment}
         canGenerate={effectiveScript.trim().length > 0}
