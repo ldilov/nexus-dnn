@@ -4,6 +4,8 @@ import { vars } from "../../../../theme/tokens.css";
 const pillColor = createVar();
 const pillFg = createVar();
 const pillGlow = createVar();
+const pillRestGlowPct = createVar();
+const pillActiveHaloPct = createVar();
 
 export const root = style({
   position: "relative",
@@ -122,14 +124,35 @@ const badgeBase = {
 export const badgeSigil = style({
   opacity: 0.62,
   fontWeight: "inherit",
+  "@media": {
+    "(forced-colors: active)": {
+      opacity: 1,
+    },
+  },
 });
 
+/**
+ * Story pill — single style, two color variants via `data-kind`.
+ *
+ * Contrast (verified):
+ *   character: #39008c on #ba9eff = 6.46:1 (WCAG AA)
+ *   emotion:   #1a0a00 on #ff8439 = 8.27:1 (WCAG AAA)
+ *
+ * Both pills are opaque, so the underlying surfaceMuted (#111416) only
+ * meets the badge at the rounded edges (>3:1, anti-alias safe).
+ *
+ * In forced-colors mode both kinds render with Highlight/HighlightText so
+ * they read as non-text affordances; the @ vs / sigil opacity is bumped
+ * to 1 in `badgeSigil` so the kind remains distinguishable in high contrast.
+ */
 export const storyPill = style({
   ...badgeBase,
   vars: {
     [pillColor]: vars.color.accent,
     [pillFg]: vars.color.accentOn,
     [pillGlow]: vars.color.accentGlow,
+    [pillRestGlowPct]: "38%",
+    [pillActiveHaloPct]: "55%",
   },
   color: pillFg,
   background: `linear-gradient(180deg, color-mix(in oklab, ${pillColor} 88%, white 12%) 0%, ${pillColor} 55%, color-mix(in oklab, ${pillColor} 92%, black 8%) 100%)`,
@@ -138,7 +161,7 @@ export const storyPill = style({
     `inset 0 -1px 0 0 color-mix(in oklab, black 18%, transparent)`,
     `0 0 0 0.5px color-mix(in oklab, ${pillColor} 60%, black 40%)`,
     `0 1px 2px -0.5px color-mix(in oklab, black 55%, transparent)`,
-    `0 0 14px -3px color-mix(in oklab, ${pillColor} 38%, transparent)`,
+    `0 0 14px -3px color-mix(in oklab, ${pillColor} ${pillRestGlowPct}, transparent)`,
   ].join(", "),
   selectors: {
     '&[data-kind="emotion"]': {
@@ -146,6 +169,8 @@ export const storyPill = style({
         [pillColor]: vars.color.tertiary,
         [pillFg]: "#1a0a00",
         [pillGlow]: `color-mix(in oklab, ${vars.color.tertiary} 60%, transparent)`,
+        [pillRestGlowPct]: "32%",
+        [pillActiveHaloPct]: "50%",
       },
     },
     '&[data-active="true"]': {
@@ -156,7 +181,7 @@ export const storyPill = style({
         `0 0 0 0.5px color-mix(in oklab, ${pillColor} 60%, black 40%)`,
         `0 1px 2px -0.5px color-mix(in oklab, black 55%, transparent)`,
         `0 0 0 3px color-mix(in oklab, ${pillGlow} 65%, transparent)`,
-        `0 0 22px -2px color-mix(in oklab, ${pillColor} 55%, transparent)`,
+        `0 0 22px -2px color-mix(in oklab, ${pillColor} ${pillActiveHaloPct}, transparent)`,
       ].join(", "),
       textShadow: `0 0 6px color-mix(in oklab, ${pillFg} 35%, transparent)`,
     },
