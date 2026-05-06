@@ -1,12 +1,6 @@
 import { globalStyle, keyframes, style } from "@vanilla-extract/css";
 import { vars } from "../../../../theme/tokens.css";
 
-const sigilPulse = keyframes({
-  "0%": { boxShadow: `0 0 0 0 ${vars.color.accentGlow}` },
-  "60%": { boxShadow: `0 0 0 6px transparent` },
-  "100%": { boxShadow: `0 0 0 0 transparent` },
-});
-
 export const root = style({
   position: "relative",
   display: "flex",
@@ -84,10 +78,16 @@ export const textarea = style([sharedSurface, {
   display: "block",
   resize: "vertical",
   outline: "none",
-  color: vars.color.text,
+  color: "transparent",
   caretColor: vars.color.accent,
+  WebkitTextFillColor: "transparent",
   selectors: {
-    "&::placeholder": { color: vars.color.textFaint },
+    "&::placeholder": { color: vars.color.textFaint, WebkitTextFillColor: vars.color.textFaint },
+    "&::selection": {
+      background: `color-mix(in oklab, ${vars.color.accent} 30%, transparent)`,
+      color: "transparent",
+      WebkitTextFillColor: "transparent",
+    },
   },
 }]);
 
@@ -97,52 +97,60 @@ export const tokenText = style({
 
 export const characterBadge = style({
   display: "inline",
-  padding: `0 ${vars.space.sm}`,
-  borderRadius: vars.radius.pill,
+  padding: 0,
+  margin: 0,
+  border: "none",
   fontFamily: vars.font.body,
+  fontSize: "1em",
   fontWeight: 600,
-  fontSize: "0.92em",
-  color: vars.color.accentOn,
-  background: vars.color.accent,
-  boxShadow: `0 0 0 1px ${vars.color.accentDim}, 0 0 18px -6px ${vars.color.accentGlow}`,
+  fontStyle: "inherit",
+  letterSpacing: "inherit",
+  color: vars.color.accent,
+  background: `color-mix(in oklab, ${vars.color.accent} 16%, transparent)`,
+  borderRadius: "3px",
+  boxShadow: `inset 0 -1px 0 ${vars.color.accent}`,
+  transition: `background ${vars.motion.fast}`,
   selectors: {
     '&[data-active="true"]': {
-      animation: `${sigilPulse} 360ms cubic-bezier(0.16, 1, 0.3, 1) 1`,
+      background: `color-mix(in oklab, ${vars.color.accent} 28%, transparent)`,
     },
   },
   "@media": {
     "(forced-colors: active)": {
       background: "Highlight",
       color: "HighlightText",
-      border: "1px solid HighlightText",
       forcedColorAdjust: "none",
+      boxShadow: "none",
     },
   },
 });
 
 export const emotionBadge = style({
   display: "inline",
-  padding: `0 ${vars.space.xs} 0 0.55rem`,
-  borderRadius: `0 ${vars.radius.sm} ${vars.radius.sm} 0`,
-  clipPath: "polygon(0.35rem 0, 100% 0, 100% 100%, 0.35rem 100%, 0 50%)",
-  fontFamily: vars.font.mono,
-  fontSize: "0.88em",
+  padding: 0,
+  margin: 0,
+  border: "none",
+  fontFamily: vars.font.body,
+  fontSize: "1em",
   fontWeight: 600,
+  fontStyle: "inherit",
+  letterSpacing: "inherit",
   color: vars.color.tertiary,
-  background: `color-mix(in oklab, ${vars.color.tertiary} 28%, ${vars.color.surfaceHigh})`,
-  boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.tertiary} 55%, transparent)`,
+  background: `color-mix(in oklab, ${vars.color.tertiary} 14%, transparent)`,
+  borderRadius: "3px",
+  boxShadow: `inset 0 -1px 0 ${vars.color.tertiary}`,
+  transition: `background ${vars.motion.fast}`,
   selectors: {
     '&[data-active="true"]': {
-      animation: `${sigilPulse} 360ms cubic-bezier(0.16, 1, 0.3, 1) 1`,
+      background: `color-mix(in oklab, ${vars.color.tertiary} 26%, transparent)`,
     },
   },
   "@media": {
     "(forced-colors: active)": {
       background: "Canvas",
       color: "CanvasText",
-      border: "2px dashed CanvasText",
       forcedColorAdjust: "none",
-      clipPath: "none",
+      boxShadow: "inset 0 -2px 0 CanvasText",
     },
   },
 });
