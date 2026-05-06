@@ -111,18 +111,37 @@ const badgeBase = {
   borderRadius: "999px",
   WebkitBoxDecorationBreak: "clone",
   boxDecorationBreak: "clone",
-  transition: `box-shadow ${vars.motion.fast}, text-shadow ${vars.motion.fast}`,
+  transition: `box-shadow ${vars.motion.normal}, background ${vars.motion.normal}, text-shadow ${vars.motion.fast}`,
 } as const;
+
+export const badgeSigil = style({
+  opacity: 0.62,
+  fontWeight: "inherit",
+});
 
 export const characterBadge = style({
   ...badgeBase,
   color: vars.color.accentOn,
-  background: vars.color.accent,
-  boxShadow: `0 0 0 1px ${vars.color.accent}, inset 0 0 0 1px color-mix(in oklab, white 22%, transparent)`,
+  background: `linear-gradient(180deg, color-mix(in oklab, ${vars.color.accent} 88%, white 12%) 0%, ${vars.color.accent} 55%, color-mix(in oklab, ${vars.color.accent} 92%, black 8%) 100%)`,
+  boxShadow: [
+    `inset 0 1px 0 0 color-mix(in oklab, white 32%, transparent)`,
+    `inset 0 -1px 0 0 color-mix(in oklab, black 18%, transparent)`,
+    `0 0 0 0.5px color-mix(in oklab, ${vars.color.accent} 60%, black 40%)`,
+    `0 1px 2px -0.5px color-mix(in oklab, black 55%, transparent)`,
+    `0 0 14px -3px color-mix(in oklab, ${vars.color.accent} 38%, transparent)`,
+  ].join(", "),
   selectors: {
     '&[data-active="true"]': {
-      boxShadow: `0 0 0 1px ${vars.color.accent}, 0 0 0 3px color-mix(in oklab, ${vars.color.accentGlow} 60%, transparent), inset 0 0 0 1px color-mix(in oklab, white 38%, transparent)`,
-      textShadow: `0 0 6px color-mix(in oklab, ${vars.color.accentOn} 40%, transparent)`,
+      background: `linear-gradient(180deg, color-mix(in oklab, ${vars.color.accent} 76%, white 24%) 0%, ${vars.color.accent} 55%, color-mix(in oklab, ${vars.color.accent} 92%, black 8%) 100%)`,
+      boxShadow: [
+        `inset 0 1px 0 0 color-mix(in oklab, white 44%, transparent)`,
+        `inset 0 -1px 0 0 color-mix(in oklab, black 18%, transparent)`,
+        `0 0 0 0.5px color-mix(in oklab, ${vars.color.accent} 60%, black 40%)`,
+        `0 1px 2px -0.5px color-mix(in oklab, black 55%, transparent)`,
+        `0 0 0 3px color-mix(in oklab, ${vars.color.accentGlow} 65%, transparent)`,
+        `0 0 22px -2px color-mix(in oklab, ${vars.color.accent} 55%, transparent)`,
+      ].join(", "),
+      textShadow: `0 0 6px color-mix(in oklab, ${vars.color.accentOn} 35%, transparent)`,
     },
   },
   "@media": {
@@ -138,12 +157,26 @@ export const characterBadge = style({
 export const emotionBadge = style({
   ...badgeBase,
   color: "#1a0a00",
-  background: vars.color.tertiary,
-  boxShadow: `0 0 0 1px ${vars.color.tertiary}, inset 0 0 0 1px color-mix(in oklab, white 24%, transparent)`,
+  background: `linear-gradient(180deg, color-mix(in oklab, ${vars.color.tertiary} 86%, white 14%) 0%, ${vars.color.tertiary} 55%, color-mix(in oklab, ${vars.color.tertiary} 92%, black 8%) 100%)`,
+  boxShadow: [
+    `inset 0 1px 0 0 color-mix(in oklab, white 32%, transparent)`,
+    `inset 0 -1px 0 0 color-mix(in oklab, black 18%, transparent)`,
+    `0 0 0 0.5px color-mix(in oklab, ${vars.color.tertiary} 65%, black 35%)`,
+    `0 1px 2px -0.5px color-mix(in oklab, black 55%, transparent)`,
+    `0 0 14px -3px color-mix(in oklab, ${vars.color.tertiary} 32%, transparent)`,
+  ].join(", "),
   selectors: {
     '&[data-active="true"]': {
-      boxShadow: `0 0 0 1px ${vars.color.tertiary}, 0 0 0 3px color-mix(in oklab, ${vars.color.tertiary} 35%, transparent), inset 0 0 0 1px color-mix(in oklab, white 42%, transparent)`,
-      textShadow: "0 0 6px rgba(26, 10, 0, 0.45)",
+      background: `linear-gradient(180deg, color-mix(in oklab, ${vars.color.tertiary} 74%, white 26%) 0%, ${vars.color.tertiary} 55%, color-mix(in oklab, ${vars.color.tertiary} 92%, black 8%) 100%)`,
+      boxShadow: [
+        `inset 0 1px 0 0 color-mix(in oklab, white 44%, transparent)`,
+        `inset 0 -1px 0 0 color-mix(in oklab, black 18%, transparent)`,
+        `0 0 0 0.5px color-mix(in oklab, ${vars.color.tertiary} 65%, black 35%)`,
+        `0 1px 2px -0.5px color-mix(in oklab, black 55%, transparent)`,
+        `0 0 0 3px color-mix(in oklab, ${vars.color.tertiary} 38%, transparent)`,
+        `0 0 22px -2px color-mix(in oklab, ${vars.color.tertiary} 50%, transparent)`,
+      ].join(", "),
+      textShadow: "0 0 6px rgba(26, 10, 0, 0.4)",
     },
   },
   "@media": {
