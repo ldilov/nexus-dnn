@@ -354,7 +354,7 @@ function renderOverlay(tokens: readonly StoryToken[], activeStart: number | null
           data-token="character"
           data-active={isActive ? "true" : undefined}
         >
-          @{display}
+          <span className={css.badgeSigil}>@</span>{display}
         </span>
       );
     }
@@ -366,7 +366,7 @@ function renderOverlay(tokens: readonly StoryToken[], activeStart: number | null
           data-token="emotion"
           data-active={isActive ? "true" : undefined}
         >
-          /{display}
+          <span className={css.badgeSigil}>/</span>{display}
         </span>
       );
     }
