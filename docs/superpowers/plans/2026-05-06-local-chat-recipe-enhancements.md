@@ -752,6 +752,16 @@ await streamMessage({ port, messages, systemPrompt, ... });
 git commit -am "feat(local-llm): system-prompt editor with debounced persistence"
 ```
 
+### Tasks 4.1 + 4.2 review follow-ups (logged 2026-05-07)
+
+Code review on commits `89bc35f` + `2dc392c` + `107cd02` flagged two narrow races. The first was mitigated inline (sync-reset `generationSettings` to `DEFAULT_GENERATION_PARAMS` at the top of the thread-switch effect). The remaining items defer to a single follow-up sprint:
+
+- **FU-ADAPTER-A — Stale-fetch overwrite of in-progress edit.** Race: thread mounts → `fetchGenerationSettings` fires → user types into the textarea before fetch resolves → fetch resolution unconditionally calls `setGenerationSettings_(params)` and clobbers the user's draft. Mitigation: track a `userEditedSinceFetchRef` (or capture a pre-fetch snapshot of `generationSettings` and skip the apply if state changed during the fetch). Test the typing-during-fetch case explicitly.
+
+- **FU-ADAPTER-B — Hook extraction sprint.** Bundle `use_model_loading.ts` (originally deferred from Task 3.3) and a new `use_generation_settings.ts` together. Both share the same shape (controller + thread-keyed fetch + ref-guarded persist). The extraction should drop `chat_panel_adapter.tsx` from ~543 LOC to ~300 LOC. While extracting, also include a thread-id stamp on debounced writes so the persist effect refuses to write if `activeId` drifted between debounce-capture and timer-fire. Add tests for thread A→B→A switching during a pending debounce.
+
+- **FU-ADAPTER-C — Token-counter precision (Minor).** `Math.ceil(value.length / 4)` heuristic drifts ~2× low for CJK and code-heavy prompts. Optional polish: load a real BPE counter (e.g., `gpt-tokenizer`) when prompt-length actually drives a cost/budget display.
+
 ---
 
 ## Phase 5 — Context-Window Tracking
