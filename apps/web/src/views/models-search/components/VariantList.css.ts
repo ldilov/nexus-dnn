@@ -119,6 +119,7 @@ export const size = style({
   fontFamily: vars.font.code,
   fontSize: vars.font.size.kbd,
   color: vars.color.text.muted,
+  fontVariantNumeric: "tabular-nums",
 });
 
 export const recommended = style({
@@ -185,6 +186,7 @@ export const progress = style({
   color: vars.color.accent.secondary,
   marginLeft: "auto",
   whiteSpace: "nowrap",
+  fontVariantNumeric: "tabular-nums",
 });
 
 export const progressBar = style({

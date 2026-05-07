@@ -17,6 +17,8 @@ const model: AvailableModel = {
   format: "gguf",
   size_bytes: 4_500_000_000,
   max_context: 262_144,
+  is_moe: false,
+  expert_layer_count: null,
 };
 
 const cudaDefaults: RuntimeDefaults = {
@@ -68,7 +70,7 @@ describe("RuntimeTuningForm", () => {
     );
     expect(screen.getByLabelText(/context length/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/gpu offload/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/kv cache/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^kv cache$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/flash attention/i)).toBeInTheDocument();
   });
 
@@ -143,7 +145,7 @@ describe("RuntimeTuningForm", () => {
         onChange={onChange}
       />,
     );
-    const select = screen.getByLabelText(/kv cache/i) as HTMLSelectElement;
+    const select = screen.getByLabelText(/^kv cache$/i) as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "q4_0" } });
     expect(onChange).toHaveBeenCalled();
     const next = onChange.mock.calls[onChange.mock.calls.length - 1]?.[0] as RuntimeTuning;
