@@ -22,6 +22,11 @@ export interface ChatMessage {
   status?: "pending" | "streaming" | "complete" | "failed";
   createdAt?: string;
   isSchemaMismatch?: boolean;
+  authorLabel?: string;
+  authorInitials?: string;
+  tokens?: number;
+  latencyMs?: number;
+  cached?: boolean;
 }
 
 export interface ModelOption {

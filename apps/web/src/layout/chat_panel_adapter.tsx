@@ -67,6 +67,10 @@ interface RuntimeMessage {
   role: "user" | "assistant";
   text: string;
   status: ChatMessage["status"];
+  createdAt: string;
+  tokens?: number;
+  latencyMs?: number;
+  cached?: boolean;
 }
 
 function toThreadSummary(t: ChatThread): ChatThreadSummary {
@@ -427,10 +431,11 @@ export function ChatPanelAdapter({
         role: m.role,
         content: m.text,
       }));
+      const now = new Date().toISOString();
       setMessages((prev) => [
         ...prev,
-        { id: userId, role: "user", text, status: "complete" },
-        { id: assistantId, role: "assistant", text: "", status: "streaming" },
+        { id: userId, role: "user", text, status: "complete", createdAt: now },
+        { id: assistantId, role: "assistant", text: "", status: "streaming", createdAt: now },
       ]);
       setStreamingId(assistantId);
       streamingThreadRef.current = activeId;
@@ -450,7 +455,15 @@ export function ChatPanelAdapter({
           onDone: (stats) => {
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === assistantId ? { ...m, status: "complete" as const } : m,
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      status: "complete" as const,
+                      tokens: stats.completionTokens,
+                      latencyMs: stats.latencyMs,
+                      cached: false,
+                    }
+                  : m,
               ),
             );
             setStreamingId((current) => (current === assistantId ? null : current));
@@ -501,6 +514,8 @@ export function ChatPanelAdapter({
     [threads],
   );
 
+  const assistantAuthorLabel = load.label ?? undefined;
+
   const surfaceMessages = useMemo<ChatMessage[]>(
     () =>
       messages.map((m) => ({
@@ -508,8 +523,14 @@ export function ChatPanelAdapter({
         role: m.role,
         text: m.text,
         status: m.status,
+        createdAt: m.createdAt,
+        authorLabel: m.role === "user" ? "You" : assistantAuthorLabel,
+        authorInitials: m.role === "user" ? "U" : undefined,
+        tokens: m.tokens,
+        latencyMs: m.latencyMs,
+        cached: m.cached,
       })),
-    [messages],
+    [messages, assistantAuthorLabel],
   );
 
   const activeThread = useMemo(
