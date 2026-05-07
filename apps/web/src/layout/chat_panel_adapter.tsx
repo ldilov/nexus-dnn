@@ -34,6 +34,11 @@ import {
 import type { SamplerOverride } from "../components/chat/sampler_panel";
 import { ModelLoadDialog } from "./local_llm/model_load_dialog";
 import { HeaderModelButton } from "./local_llm/header_model_button";
+import {
+  persistDeploymentModel,
+  readDeploymentModel,
+  type StickyModel,
+} from "./local_llm/sticky_model";
 
 // audit-allow: boundary — extension-defined window-event channels consumed by the local-llm extension UI
 const THREAD_SELECTED_EVENT = "local-llm/thread:selected";
@@ -54,6 +59,7 @@ const FALLBACK_DEFAULTS: RuntimeDefaults = {
 export interface ChatPanelAdapterProps {
   welcomeTitle?: string;
   welcomeDescription?: string;
+  deploymentId?: string;
 }
 
 interface RuntimeMessage {
@@ -113,6 +119,7 @@ function persistTuningForFamily(familyId: string, tuning: RuntimeTuning): void {
 export function ChatPanelAdapter({
   welcomeTitle,
   welcomeDescription,
+  deploymentId,
 }: ChatPanelAdapterProps) {
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -132,6 +139,8 @@ export function ChatPanelAdapter({
   const generationSettingsLoadedRef = useRef(false);
   const streamHandle = useRef<{ abort: () => void } | null>(null);
   const streamingThreadRef = useRef<string | null>(null);
+  const stickyModelRef = useRef<StickyModel | null>(readDeploymentModel(deploymentId));
+  const autoBindAttemptedRef = useRef<Set<string>>(new Set());
   const load = useModelLoadState(activeId);
 
   const refreshThreads = useCallback(async () => {
@@ -160,6 +169,11 @@ export function ChatPanelAdapter({
   useEffect(() => {
     void refreshThreads();
   }, [refreshThreads]);
+
+  useEffect(() => {
+    stickyModelRef.current = readDeploymentModel(deploymentId);
+    autoBindAttemptedRef.current = new Set();
+  }, [deploymentId]);
 
   useEffect(() => {
     const onChanged = () => {
@@ -243,6 +257,24 @@ export function ChatPanelAdapter({
       ctrl.abort();
     };
   }, [availableModels]);
+
+  useEffect(() => {
+    if (!activeId) return;
+    if (load.phase !== "idle") return;
+    if (load.familyId) return;
+    const sticky = stickyModelRef.current;
+    if (!sticky) return;
+    const attemptKey = `${activeId}|${sticky.family_id}|${sticky.variant_id}`;
+    if (autoBindAttemptedRef.current.has(attemptKey)) return;
+    autoBindAttemptedRef.current.add(attemptKey);
+    const labelHint = sticky.variant_id
+      ? `${sticky.family_id} · ${sticky.variant_id}`
+      : sticky.family_id;
+    toast.success(`Auto-binding ${labelHint}…`);
+    setActiveModel(activeId, sticky.family_id, sticky.variant_id, sticky.tuning).catch((err) => {
+      toast.error(err instanceof Error ? err.message : "Auto-bind failed");
+    });
+  }, [activeId, load.phase, load.familyId]);
 
   useEffect(() => {
     generationSettingsLoadedRef.current = false;
@@ -353,12 +385,20 @@ export function ChatPanelAdapter({
         setLoadDialogOpen(false);
         persistTuningForFamily(model.family_id, tuning);
         setLastTuningByFamily((prev) => ({ ...prev, [model.family_id]: tuning }));
+        const sticky: StickyModel = {
+          family_id: model.family_id,
+          variant_id: model.variant_id ?? "",
+          tuning,
+          saved_at: new Date().toISOString(),
+        };
+        stickyModelRef.current = sticky;
+        persistDeploymentModel(deploymentId, sticky);
         toast.success(`Loading ${model.label}…`);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Could not load model");
       }
     },
-    [activeId],
+    [activeId, deploymentId],
   );
 
   const handleOpenLoadDialog = useCallback(() => {
@@ -480,6 +520,13 @@ export function ChatPanelAdapter({
 
   const currentModelLabel = useMemo(() => {
     if (load.phase === "ready" && load.label) return load.label;
+    if (load.phase === "loading" && load.label) return load.label;
+    const sticky = stickyModelRef.current;
+    if (sticky) {
+      return sticky.variant_id
+        ? `${sticky.family_id} · ${sticky.variant_id}`
+        : sticky.family_id;
+    }
     return null;
   }, [load.phase, load.label]);
 
