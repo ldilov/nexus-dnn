@@ -87,7 +87,7 @@ export function HelpTooltip({
       <button
         type="button"
         aria-describedby={id}
-        aria-label={title ? `Help: ${title}` : "Help"}
+        aria-label="Help"
         className={styles.trigger}
         onMouseEnter={scheduleOpen}
         onMouseLeave={scheduleClose}

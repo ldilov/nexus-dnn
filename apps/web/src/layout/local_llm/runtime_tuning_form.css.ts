@@ -86,6 +86,12 @@ export const label = style({
   color: vars.color.text.primary,
 });
 
+export const labelCell = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.density.d2,
+});
+
 export const value = style({
   fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,
