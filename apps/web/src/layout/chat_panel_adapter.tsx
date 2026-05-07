@@ -1,19 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ChatSurface, type ChatMessage, type ChatThreadSummary } from "../components/chat";
+import { SamplerPanel } from "../components/chat/sampler_panel";
 import { useModelLoadState } from "../hooks/use_model_load_state";
+import { useDebounce } from "../hooks/use_debounce";
 import {
   cancelInference,
+  DEFAULT_GENERATION_PARAMS,
   fetchAvailableModels,
+  fetchGenerationSettings,
   fetchRuntimeDefaults,
   setActiveModel,
+  setGenerationSettings as setGenerationSettingsApi,
   streamMessage,
   type AvailableModel,
   type ChatTurn,
+  type GenerationParams,
   type RuntimeDefaults,
   type RuntimeTuning,
 // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
 } from "../services/local_llm_chat";
+import { SystemPromptEditor } from "./local_llm/system_prompt_editor";
 import { getModelMetadata, type ModelMetadata } from "../services/host_api";
 import {
   createThread,
@@ -119,6 +126,10 @@ export function ChatPanelAdapter({
     loadStoredTunings(),
   );
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
+  const [generationSettings, setGenerationSettings_] = useState<GenerationParams>(
+    DEFAULT_GENERATION_PARAMS,
+  );
+  const generationSettingsLoadedRef = useRef(false);
   const streamHandle = useRef<{ abort: () => void } | null>(null);
   const streamingThreadRef = useRef<string | null>(null);
   const load = useModelLoadState(activeId);
@@ -233,6 +244,41 @@ export function ChatPanelAdapter({
     };
   }, [availableModels]);
 
+  useEffect(() => {
+    generationSettingsLoadedRef.current = false;
+    if (!activeId) {
+      setGenerationSettings_(DEFAULT_GENERATION_PARAMS);
+      return;
+    }
+    const ctrl = new AbortController();
+    fetchGenerationSettings(activeId, ctrl.signal)
+      .then((params) => {
+        setGenerationSettings_(params);
+        generationSettingsLoadedRef.current = true;
+      })
+      .catch(() => {
+        generationSettingsLoadedRef.current = true;
+      });
+    return () => ctrl.abort();
+  }, [activeId]);
+
+  const debouncedSystemPrompt = useDebounce(generationSettings.system_prompt, 500);
+
+  useEffect(() => {
+    if (!activeId) return;
+    if (!generationSettingsLoadedRef.current) return;
+    const ctrl = new AbortController();
+    setGenerationSettingsApi(
+      activeId,
+      { ...generationSettings, system_prompt: debouncedSystemPrompt },
+      ctrl.signal,
+    ).catch((err) => {
+      if (ctrl.signal.aborted) return;
+      toast.error(err instanceof Error ? err.message : "Could not save system prompt");
+    });
+    return () => ctrl.abort();
+  }, [debouncedSystemPrompt, activeId]);
+
   const handleSelectThread = useCallback((id: string) => {
     setActiveId(id);
     window.dispatchEvent(new CustomEvent(THREAD_SELECTED_EVENT, { detail: { id } }));
@@ -342,7 +388,11 @@ export function ChatPanelAdapter({
       streamingThreadRef.current = activeId;
       const port = load.port;
       const handle = streamMessage(
-        { port, messages: [...turns, { role: "user", content: text }] },
+        {
+          port,
+          messages: [...turns, { role: "user", content: text }],
+          systemPrompt: generationSettings.system_prompt,
+        },
         {
           onToken: (delta) => {
             setMessages((prev) =>
@@ -379,7 +429,7 @@ export function ChatPanelAdapter({
       );
       streamHandle.current = handle;
     },
-    [activeId, load.phase, load.port, messages],
+    [activeId, load.phase, load.port, messages, generationSettings.system_prompt],
   );
 
   const handleCancelStream = useCallback(() => {
@@ -431,6 +481,20 @@ export function ChatPanelAdapter({
           ? `Load failed: ${load.reason ?? "unknown reason"}`
           : undefined;
 
+  const handleSystemPromptChange = useCallback((next: string) => {
+    setGenerationSettings_((prev) => ({ ...prev, system_prompt: next }));
+  }, []);
+
+  const inspectorContent = (
+    <>
+      <SamplerPanel override={surfaceSampler} onUpdate={handleUpdateSamplerOverride} />
+      <SystemPromptEditor
+        value={generationSettings.system_prompt}
+        onChange={handleSystemPromptChange}
+      />
+    </>
+  );
+
   const isStreaming = streamingId !== null;
   const schemaMismatchMessage = schemaMismatch
     ? `Extension version mismatch — stored ${schemaMismatch.stored}, bundled ${schemaMismatch.bundled}. Reload after upgrading.`
@@ -457,6 +521,7 @@ export function ChatPanelAdapter({
         }
         samplerOverride={surfaceSampler}
         onUpdateSamplerOverride={handleUpdateSamplerOverride}
+        inspector={inspectorContent}
         schemaMismatch={schemaMismatch !== null}
         schemaMismatchMessage={schemaMismatchMessage}
         composerPlaceholder={isStreaming ? "Generating…" : "Send a message…"}

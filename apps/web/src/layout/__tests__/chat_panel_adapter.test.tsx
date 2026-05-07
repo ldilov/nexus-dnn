@@ -16,6 +16,19 @@ const setActiveModelMock = vi.fn();
 const fetchAvailableModelsMock = vi.fn();
 const fetchRuntimeDefaultsMock = vi.fn();
 const getModelMetadataMock = vi.fn();
+const fetchGenerationSettingsMock = vi.fn();
+const setGenerationSettingsMock = vi.fn();
+
+const { DEFAULT_GENERATION_PARAMS_FAKE } = vi.hoisted(() => ({
+  DEFAULT_GENERATION_PARAMS_FAKE: {
+    temperature: 0.8,
+    top_p: 0.95,
+    top_k: 40,
+    max_tokens: 4096,
+    repeat_penalty: 1.1,
+    system_prompt: "You are a helpful assistant.",
+  },
+}));
 
 const { FakeSchemaVersionMismatchError } = vi.hoisted(() => {
   class FakeSchemaVersionMismatchError extends Error {
@@ -39,6 +52,9 @@ vi.mock("../../services/local_llm_chat", () => ({
   streamMessage: (...args: unknown[]) => streamMessageMock(...args),
   fetchAvailableModels: (...args: unknown[]) => fetchAvailableModelsMock(...args),
   fetchRuntimeDefaults: (...args: unknown[]) => fetchRuntimeDefaultsMock(...args),
+  fetchGenerationSettings: (...args: unknown[]) => fetchGenerationSettingsMock(...args),
+  setGenerationSettings: (...args: unknown[]) => setGenerationSettingsMock(...args),
+  DEFAULT_GENERATION_PARAMS: DEFAULT_GENERATION_PARAMS_FAKE,
   cancelInference: () => Promise.resolve(),
   setActiveModel: (...args: unknown[]) => setActiveModelMock(...args),
   unloadActiveModel: () => Promise.resolve(),
@@ -96,6 +112,10 @@ beforeEach(() => {
   });
   setActiveModelMock.mockResolvedValue({});
   getModelMetadataMock.mockRejectedValue(new Error("not found"));
+  fetchGenerationSettingsMock.mockReset();
+  setGenerationSettingsMock.mockReset();
+  fetchGenerationSettingsMock.mockResolvedValue(DEFAULT_GENERATION_PARAMS_FAKE);
+  setGenerationSettingsMock.mockResolvedValue(DEFAULT_GENERATION_PARAMS_FAKE);
 });
 
 afterEach(() => {
@@ -284,5 +304,58 @@ describe("ChatPanelAdapter", () => {
     unmount();
 
     expect(abortMock).toHaveBeenCalled();
+  });
+
+  it("forwards systemPrompt from generation settings to streamMessage", async () => {
+    listThreadsMock.mockResolvedValueOnce({
+      threads: [baseThread("t-1", "Alpha")],
+      has_more: false,
+    });
+    fetchGenerationSettingsMock.mockResolvedValueOnce({
+      ...DEFAULT_GENERATION_PARAMS_FAKE,
+      system_prompt: "Be terse.",
+    });
+    streamMessageMock.mockReturnValue({ abort: vi.fn() });
+    useModelLoadStateMock.mockReturnValue({
+      phase: "ready",
+      label: "test-model",
+      port: 12345,
+    } satisfies ModelLoadState);
+
+    render(<ChatPanelAdapter />);
+
+    await waitFor(() => expect(fetchGenerationSettingsMock).toHaveBeenCalledWith("t-1", expect.anything()));
+
+    const composer = await screen.findByPlaceholderText(/send a message/i);
+    fireEvent.change(composer, { target: { value: "hello" } });
+    const sendBtn = screen.getByRole("button", { name: /send message/i });
+    await act(async () => {
+      fireEvent.click(sendBtn);
+    });
+
+    await waitFor(() => expect(streamMessageMock).toHaveBeenCalledTimes(1));
+    const [firstArg] = streamMessageMock.mock.calls[0]!;
+    expect(firstArg.systemPrompt).toBe("Be terse.");
+  });
+
+  it("updates the system prompt when the editor onChange fires", async () => {
+    listThreadsMock.mockResolvedValueOnce({
+      threads: [baseThread("t-1", "Alpha")],
+      has_more: false,
+    });
+
+    render(<ChatPanelAdapter />);
+    await waitFor(() => expect(fetchGenerationSettingsMock).toHaveBeenCalled());
+
+    const editor = (await screen.findByLabelText(/system prompt/i, {
+      selector: "textarea",
+    })) as HTMLTextAreaElement;
+    expect(editor.value).toBe(DEFAULT_GENERATION_PARAMS_FAKE.system_prompt);
+
+    await act(async () => {
+      fireEvent.change(editor, { target: { value: "New prompt." } });
+    });
+
+    expect(editor.value).toBe("New prompt.");
   });
 });
