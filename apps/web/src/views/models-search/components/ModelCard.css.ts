@@ -4,10 +4,11 @@ import { vars } from "../../../theme/contract.css";
 export const card = style({
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.insetXl,
-  // audit-allow: px — card padding 22px is between insetLg(12) and insetXl(16); design spec micro-rhythm value
-  padding: "22px",
-  background: vars.color.bg.panel,
+  gap: vars.density.d4,
+  padding: vars.density.padCard,
+  background: vars.card.bg,
+  boxShadow: vars.card.shadow,
+  backdropFilter: vars.card.backdrop,
   borderRadius: vars.radius.card,
   position: "relative",
   overflow: "hidden",
@@ -30,9 +31,9 @@ export const accentVariants = styleVariants({
         left: 0,
         top: 0,
         bottom: 0,
-        // audit-allow: px — accent stripe width 3px is a fixed decorative border, below token granularity
+        // audit-allow: px — fixed decorative accent stripe width below density token granularity
         width: "3px",
-        background: vars.color.accent.primary,
+        background: vars.color.accent.accent,
       },
     },
   },
@@ -44,7 +45,7 @@ export const accentVariants = styleVariants({
         left: 0,
         top: 0,
         bottom: 0,
-        // audit-allow: px — accent stripe width 3px is a fixed decorative border, below token granularity
+        // audit-allow: px — fixed decorative accent stripe width below density token granularity
         width: "3px",
         background: vars.color.accent.secondary,
       },
@@ -58,7 +59,7 @@ export const accentVariants = styleVariants({
         left: 0,
         right: 0,
         top: 0,
-        // audit-allow: px — accent top stripe height 2px is a fixed decorative border, below token granularity
+        // audit-allow: px — fixed decorative accent stripe height below density token granularity
         height: "2px",
         background: vars.color.accent.tertiary,
       },
@@ -70,20 +71,20 @@ export const header = style({
   display: "flex",
   alignItems: "flex-start",
   justifyContent: "space-between",
-  gap: vars.space.gapMd,
+  gap: vars.density.d3,
 });
 
 export const headerText = style({
   minWidth: 0,
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.gapSm,
+  gap: vars.density.d1,
 });
 
 export const owner = style({
   fontFamily: vars.font.code,
-  fontSize: vars.font.size.kbd,
-  letterSpacing: "0.14em",
+  fontSize: vars.text.eyebrow,
+  letterSpacing: "0.16em",
   textTransform: "uppercase",
   color: vars.color.accent.secondary,
 });
@@ -98,11 +99,11 @@ export const ownerMuted = style({
 
 export const title = style({
   fontFamily: vars.font.headline,
-  // audit-allow: px — model card title 19px is between heading(20) and headingSm(16); design-spec micro-rhythm value
-  fontSize: "19px",
-  lineHeight: 1.15,
-  fontWeight: 700,
+  fontSize: vars.font.size.headingSm,
+  lineHeight: 1.2,
+  fontWeight: vars.font.weight.semibold,
   color: vars.color.text.primary,
+  letterSpacing: "-0.01em",
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
@@ -113,78 +114,79 @@ export const stats = style({
   display: "flex",
   flexDirection: "column",
   alignItems: "flex-end",
-  // audit-allow: px — stats gap 2px is below minimum token granularity (sub-4px)
-  gap: "2px",
+  gap: vars.density.d1,
   flexShrink: 0,
 });
 
 export const stat = style({
   display: "inline-flex",
   alignItems: "center",
-  gap: vars.space.gapSm,
+  gap: vars.density.d1,
   fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,
   color: vars.color.text.muted,
+  fontVariantNumeric: "tabular-nums",
 });
 
 export const statIcon = style({
-  fontSize: vars.font.size.bodySm,
+  fontSize: vars.icon.sm,
 });
 
 export const chipsRow = style({
   display: "flex",
   flexWrap: "wrap",
-  gap: vars.space.insetSm,
+  gap: vars.density.d2,
 });
 
 export const chip = style({
   display: "inline-flex",
   alignItems: "center",
-  gap: vars.space.gapSm,
-  // audit-allow: px — chip vertical padding 2px is below minimum token granularity (sub-4px)
-  padding: "2px 8px",
+  gap: vars.density.d1,
+  paddingInline: vars.density.d2,
+  // audit-allow: px — chip vertical padding 2px is below minimum density token granularity
+  paddingBlock: "2px",
   borderRadius: vars.radius.control,
   background: vars.color.bg.elevated,
   fontFamily: vars.font.code,
-  // audit-allow: px — chip font 9px is below minimum font token (kbd=10px); intentional dense label
-  fontSize: "9px",
-  fontWeight: 600,
-  letterSpacing: "0.06em",
+  fontSize: vars.font.size.kbd,
+  fontWeight: vars.font.weight.semibold,
+  letterSpacing: "0.08em",
   textTransform: "uppercase",
   color: vars.color.text.secondary,
 });
 
 export const chipPrimary = style({
-  background: vars.color.accent.primaryDim,
+  background: `color-mix(in oklch, ${vars.color.accent.primary} 16%, transparent)`,
   color: vars.color.accent.primary,
 });
 
 export const description = style({
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.bodySm,
-  lineHeight: 1.5,
+  lineHeight: vars.font.lineHeight.relaxed,
   color: vars.color.text.secondary,
   display: "-webkit-box",
   WebkitLineClamp: 2,
   WebkitBoxOrient: "vertical",
   overflow: "hidden",
+  margin: 0,
 });
 
 export const precisionRow = style({
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  gap: vars.space.gapMd,
-  // audit-allow: px — design-grid micro-rhythm value, no token between gapSm(4) and gapMd(12)
-  padding: "10px 12px",
+  gap: vars.density.d3,
+  paddingBlock: vars.density.d2,
+  paddingInline: vars.density.d3,
   background: vars.color.bg.lowest,
   borderRadius: vars.radius.control,
 });
 
 export const precisionLabel = style({
   fontFamily: vars.font.code,
-  fontSize: vars.font.size.kbd,
-  letterSpacing: "0.1em",
+  fontSize: vars.text.eyebrow,
+  letterSpacing: "0.14em",
   textTransform: "uppercase",
   color: vars.color.text.muted,
 });
@@ -193,20 +195,21 @@ export const precisionValue = style({
   fontFamily: vars.font.code,
   fontSize: vars.font.size.bodySm,
   color: vars.color.text.primary,
-  fontWeight: 600,
+  fontWeight: vars.font.weight.semibold,
+  fontVariantNumeric: "tabular-nums",
 });
 
 export const precisionAssumed = style({
   color: vars.color.text.muted,
   fontStyle: "italic",
-  fontWeight: 500,
+  fontWeight: vars.font.weight.medium,
 });
 
 export const actions = style({
   display: "flex",
-  gap: vars.space.insetMd,
+  gap: vars.density.d2,
   marginTop: "auto",
-  paddingTop: vars.space.gapSm,
+  paddingTop: vars.density.d2,
 });
 
 export const actionPrimary = style({
@@ -214,26 +217,26 @@ export const actionPrimary = style({
   border: "none",
   cursor: "pointer",
   flex: 1,
-  // audit-allow: px — design-grid micro-rhythm value, no token between gapSm(4) and gapMd(12)
-  padding: "10px 14px",
+  height: vars.control.heightLg,
+  paddingInline: vars.density.d4,
   borderRadius: vars.radius.control,
-  background: vars.color.accent.primary,
-  color: vars.color.onColor.primary,
+  background: vars.color.accent.tertiary,
+  color: vars.color.onColor.tertiary,
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.kbd,
-  fontWeight: 700,
+  fontWeight: vars.font.weight.bold,
   letterSpacing: "0.1em",
   textTransform: "uppercase",
-  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, transform ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   selectors: {
-    "&:hover": { background: vars.color.accent.primaryHover },
-    "&:focus-visible": {
-      // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
-      outline: `2px solid ${vars.color.accent.primary}`,
-      // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
-      outlineOffset: "2px",
+    "&:hover": {
+      transform: "translateY(-1px)",
     },
-    "&:disabled": { opacity: 0.4, cursor: "not-allowed" },
+    "&:focus-visible": {
+      outline: `${vars.focus.ringWidth} solid ${vars.color.accent.tertiary}`,
+      outlineOffset: vars.focus.offset,
+    },
+    "&:disabled": { opacity: 0.4, cursor: "not-allowed", transform: "none" },
   },
 });
 
@@ -243,7 +246,11 @@ export const actionSecondary = style([
     background: vars.color.bg.elevated,
     color: vars.color.text.primary,
     selectors: {
-      "&:hover": { background: vars.color.bg.bright },
+      "&:hover": { background: vars.color.bg.bright, transform: "translateY(-1px)" },
+      "&:focus-visible": {
+        outline: `${vars.focus.ringWidth} solid ${vars.color.accent.accent}`,
+        outlineOffset: vars.focus.offset,
+      },
     },
   },
 ]);
@@ -257,6 +264,11 @@ export const actionGhost = style([
       "&:hover": {
         background: vars.color.bg.elevated,
         color: vars.color.text.primary,
+        transform: "translateY(-1px)",
+      },
+      "&:focus-visible": {
+        outline: `${vars.focus.ringWidth} solid ${vars.color.accent.accent}`,
+        outlineOffset: vars.focus.offset,
       },
     },
   },
@@ -265,10 +277,9 @@ export const actionGhost = style([
 export const authOverlay = style({
   display: "flex",
   alignItems: "center",
-  // audit-allow: px — design-grid micro-rhythm value, no token between gapSm(4) and gapMd(12)
-  gap: "10px",
-  padding: vars.space.insetLg,
-  background: vars.color.bg.lowest,
+  gap: vars.density.d3,
+  padding: vars.density.d3,
+  background: `color-mix(in oklch, ${vars.color.accent.tertiary} 10%, transparent)`,
   borderRadius: vars.radius.control,
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.bodySm,
@@ -277,8 +288,7 @@ export const authOverlay = style({
 
 export const authIcon = style({
   color: vars.color.accent.tertiary,
-  // audit-allow: px — auth icon glyph 18px is between icon.md(16) and icon.lg(20); design spec value
-  fontSize: "18px",
+  fontSize: vars.icon.lg,
 });
 
 export const authButton = style({
@@ -286,22 +296,21 @@ export const authButton = style({
   border: "none",
   cursor: "pointer",
   marginLeft: "auto",
-  padding: `${vars.space.insetSm} ${vars.density.d2}`,
-  borderRadius: vars.radius.control,
+  height: vars.control.heightSm,
+  paddingInline: vars.density.d3,
+  borderRadius: vars.radius.full,
   background: vars.color.accent.tertiary,
   color: vars.color.onColor.tertiary,
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.kbd,
-  fontWeight: 700,
+  fontWeight: vars.font.weight.bold,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
   selectors: {
     "&:hover": { opacity: 0.9 },
     "&:focus-visible": {
-      // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
-      outline: `2px solid ${vars.color.accent.tertiary}`,
-      // audit-allow: px — WCAG 2.2 focus ring uses 2px width + 2px offset per design contract
-      outlineOffset: "2px",
+      outline: `${vars.focus.ringWidth} solid ${vars.color.accent.tertiary}`,
+      outlineOffset: vars.focus.offset,
     },
   },
 });
