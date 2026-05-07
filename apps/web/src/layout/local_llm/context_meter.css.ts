@@ -34,11 +34,13 @@ export const value = style({
   fontSize: vars.font.size.caption,
   color: vars.color.text.primary,
   letterSpacing: "0.04em",
+  fontVariantNumeric: "tabular-nums",
 });
 
 export const pct = style({
   color: vars.color.text.muted,
   marginInlineStart: vars.density.d1,
+  fontVariantNumeric: "tabular-nums",
 });
 
 export const track = style({

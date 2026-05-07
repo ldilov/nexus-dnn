@@ -39,17 +39,18 @@ export function ExtensionLayoutUI({
 }: ExtensionLayoutUIProps) {
   if (state.status === "loading") {
     return (
-      <div className={styles.loadingContainer}>
-        <div className={styles.spinner} />
-        <span className={styles.loadingText}>Loading layout...</span>
+      <div className={styles.stateShell} role="status" aria-live="polite">
+        <div className={styles.spinner} aria-hidden="true" />
+        <span className={styles.stateEyebrow}>Loading layout</span>
       </div>
     );
   }
   if (state.status === "error") {
     return (
-      <div className={styles.errorContainer}>
-        <span className={styles.errorTitle}>Failed to load layout</span>
-        <span className={styles.errorMessage}>{state.message}</span>
+      <div className={styles.stateShell} role="alert">
+        <span className={styles.stateEyebrow}>Layout unavailable</span>
+        <h2 className={styles.errorTitle}>Failed to load layout</h2>
+        <p className={styles.stateMessage}>{state.message}</p>
         <Button variant="secondary" size="md" onClick={onRetry}>
           Retry
         </Button>
