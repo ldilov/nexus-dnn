@@ -76,6 +76,34 @@ pub fn write_synthetic_gguf(
     Ok(())
 }
 
+/// Synthesize a minimal GGUF v3 file with architecture metadata plus an
+/// explicit `<arch>.expert_count` KV. Used to exercise the MoE detection
+/// path that prefers the GGUF metadata key over architecture-name fallback.
+pub fn write_synthetic_gguf_with_expert_count(
+    path: &Path,
+    arch: &str,
+    block_count: u32,
+    ctx_len: u32,
+    embd: u32,
+    expert_count: u32,
+) -> std::io::Result<()> {
+    let mut buf: Vec<u8> = Vec::new();
+
+    buf.write_all(GGUF_MAGIC)?;
+    buf.write_u32::<LittleEndian>(GGUF_VERSION)?;
+    buf.write_u64::<LittleEndian>(0)?;
+    buf.write_u64::<LittleEndian>(5)?;
+
+    write_kv_string(&mut buf, "general.architecture", arch)?;
+    write_kv_u32(&mut buf, &format!("{arch}.block_count"), block_count)?;
+    write_kv_u32(&mut buf, &format!("{arch}.context_length"), ctx_len)?;
+    write_kv_u32(&mut buf, &format!("{arch}.embedding_length"), embd)?;
+    write_kv_u32(&mut buf, &format!("{arch}.expert_count"), expert_count)?;
+
+    std::fs::write(path, &buf)?;
+    Ok(())
+}
+
 /// Synthesize a GGUF file whose architecture key is present but not one of
 /// the known family names the extractor maps to a `<arch>.block_count` key.
 ///

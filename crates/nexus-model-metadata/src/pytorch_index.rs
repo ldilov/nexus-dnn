@@ -129,6 +129,8 @@ fn build_partial(install_id: &str, layer_count: Option<u32>) -> ExtractedMetadat
         max_context: None,
         architecture: None,
         hidden_size: None,
+        is_moe: None,
+        expert_layer_count: None,
         extraction_status: ExtractionStatus::Partial,
         extracted_at: now_millis(),
     }
@@ -157,6 +159,8 @@ fn build_ok(
         max_context,
         architecture,
         hidden_size,
+        is_moe: None,
+        expert_layer_count: None,
         extraction_status: ExtractionStatus::Ok,
         extracted_at: now_millis(),
     }

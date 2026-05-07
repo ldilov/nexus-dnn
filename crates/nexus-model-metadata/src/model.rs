@@ -29,6 +29,8 @@ pub struct ExtractedMetadata {
     pub max_context: Option<u32>,
     pub architecture: Option<String>,
     pub hidden_size: Option<u32>,
+    pub is_moe: Option<bool>,
+    pub expert_layer_count: Option<u32>,
     pub extraction_status: ExtractionStatus,
     pub extracted_at: i64,
 }
@@ -42,6 +44,8 @@ impl Default for ExtractedMetadata {
             max_context: None,
             architecture: None,
             hidden_size: None,
+            is_moe: None,
+            expert_layer_count: None,
             extraction_status: ExtractionStatus::Failed,
             extracted_at: 0,
         }
