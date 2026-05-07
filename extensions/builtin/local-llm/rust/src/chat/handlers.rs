@@ -1024,6 +1024,13 @@ pub async fn get_active_model_status(
     }
 }
 
+pub async fn get_runtime_status(State(res): State<Arc<ChatHandlerResources>>) -> Response {
+    match res.model_load_registry.find_ready().await {
+        Some(state) => ApiResponse::ok(ActiveModelStatus { state }).into_response(),
+        None => ApiResponse::ok(serde_json::json!({ "status": "idle" })).into_response(),
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct AvailableModelDto {
     pub family_id: String,

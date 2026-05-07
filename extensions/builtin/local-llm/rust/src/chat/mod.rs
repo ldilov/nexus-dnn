@@ -53,5 +53,9 @@ pub fn build_chat_router(resources: Arc<ChatHandlerResources>) -> Router {
             "/chat/available_models",
             get(handlers::list_available_models),
         )
+        .route(
+            "/chat/runtime_status",
+            get(handlers::get_runtime_status),
+        )
         .with_state(resources)
 }
