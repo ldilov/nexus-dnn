@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import { cleanup, fireEvent, render, screen, act } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
+import { MemoryRouter } from "react-router";
 import { ModelLoadDialog } from "../model_load_dialog";
 import type {
   AvailableModel,
@@ -197,15 +198,21 @@ describe("ModelLoadDialog", () => {
 
   it("renders_empty_state_when_no_models", () => {
     render(
-      <ModelLoadDialog
-        open
-        models={[]}
-        defaults={cudaDefaults}
-        onLoad={() => {}}
-        onClose={() => {}}
-      />,
+      <MemoryRouter>
+        <ModelLoadDialog
+          open
+          models={[]}
+          defaults={cudaDefaults}
+          onLoad={() => {}}
+          onClose={() => {}}
+        />
+      </MemoryRouter>,
     );
-    expect(screen.getByText(/no downloaded gguf models/i)).toBeInTheDocument();
+    expect(screen.getByText(/no gguf models downloaded/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /open models search/i })).toHaveAttribute(
+      "href",
+      "/models-search",
+    );
   });
 
   it("restores_focus_to_trigger_on_close", () => {

@@ -16,6 +16,7 @@ import type { ModelMetadata } from "../../services/host_api";
 import { Button } from "../../components/base/button";
 import { defaultTuningFor } from "./default_tuning";
 import { RuntimeTuningForm } from "./runtime_tuning_form";
+import { SelectedModelSummary } from "./selected_model_summary";
 import * as styles from "./model_load_dialog.css";
 
 interface ModelLoadDialogProps {
@@ -271,13 +272,21 @@ export function ModelLoadDialog({
       );
     }
     return (
-      <RuntimeTuningForm
-        model={selected}
-        value={tuning}
-        defaults={defaults}
-        modelMetadata={selectedMetadata}
-        onChange={setTuning}
-      />
+      <>
+        <SelectedModelSummary
+          model={selected}
+          tuning={tuning}
+          metadata={selectedMetadata}
+          hostVramBytes={defaults.host_vram_bytes ?? null}
+        />
+        <RuntimeTuningForm
+          model={selected}
+          value={tuning}
+          defaults={defaults}
+          modelMetadata={selectedMetadata}
+          onChange={setTuning}
+        />
+      </>
     );
   };
 
