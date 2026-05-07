@@ -73,6 +73,8 @@ export interface ChatSurfaceProps {
   showCodeBlocks?: boolean;
   showSendShortcutHint?: boolean;
 
+  emptyState?: ReactNode;
+
   schemaMismatch?: boolean;
   schemaMismatchMessage?: ReactNode;
 
@@ -122,6 +124,7 @@ export function ChatSurface(props: ChatSurfaceProps) {
     composerDisabled,
     composerDisabledReason,
     showSendShortcutHint = true,
+    emptyState,
     ariaLabel = "Chat surface",
     testId,
   } = props;
@@ -189,14 +192,18 @@ export function ChatSurface(props: ChatSurfaceProps) {
         ) : null}
 
         <div className={styles.messages} role="log" aria-live={isStreaming ? "off" : "polite"}>
-          {messages.map((m) => (
-            <MessageBubble
-              key={m.id}
-              message={m}
-              isStreamingTail={isStreaming && m.id === lastAssistantId && m.status !== "complete"}
-              onRetry={onRetryMessage}
-            />
-          ))}
+          {messages.length === 0 && emptyState ? (
+            <div className={styles.emptyState}>{emptyState}</div>
+          ) : (
+            messages.map((m) => (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                isStreamingTail={isStreaming && m.id === lastAssistantId && m.status !== "complete"}
+                onRetry={onRetryMessage}
+              />
+            ))
+          )}
         </div>
 
         <div role="status" aria-live="polite" style={visuallyHidden as CSSProperties}>
