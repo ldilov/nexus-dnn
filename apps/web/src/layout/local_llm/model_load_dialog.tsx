@@ -277,7 +277,6 @@ export function ModelLoadDialog({
           model={selected}
           tuning={tuning}
           metadata={selectedMetadata}
-          hostVramBytes={defaults.host_vram_bytes ?? null}
         />
         <RuntimeTuningForm
           model={selected}
