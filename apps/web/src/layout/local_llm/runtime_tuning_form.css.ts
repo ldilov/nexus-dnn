@@ -102,16 +102,23 @@ export const summaryHint = style({
 
 export const row = style({
   display: "grid",
-  gridTemplateColumns: "112px 1fr 64px",
+  gridTemplateColumns: "minmax(160px, max-content) 1fr 64px",
   alignItems: "center",
   gap: vars.density.d4,
 });
 
 export const rowFull = style({
   display: "grid",
-  gridTemplateColumns: "112px 1fr",
+  gridTemplateColumns: "minmax(160px, max-content) 1fr",
   alignItems: "center",
   gap: vars.density.d4,
+});
+
+export const toggleRow = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.density.d2,
+  paddingBlock: vars.density.d1,
 });
 
 export const label = style({

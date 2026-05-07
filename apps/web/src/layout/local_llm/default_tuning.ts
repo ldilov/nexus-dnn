@@ -24,7 +24,7 @@ export function defaultTuningFor(
   return {
     n_gpu_layers: hasCuda ? layerCount : 0,
     threads: defaults.threads_default,
-    flash_attn: hasCuda,
+    flash_attn: "auto",
     ctx_size: ctxSize,
     cache_type_k: kv,
     cache_type_v: kv,
@@ -35,5 +35,7 @@ export function defaultTuningFor(
     n_parallel: DEFAULT_N_PARALLEL,
     cont_batching: true,
     seed: undefined,
+    kv_unified: true,
+    lookup_decoding: true,
   };
 }
