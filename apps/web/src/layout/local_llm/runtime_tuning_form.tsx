@@ -10,6 +10,7 @@ import {
   GPU_LAYERS_FALLBACK_MAX,
   defaultTuningFor,
 } from "./default_tuning";
+import { HelpTooltip } from "./help_tooltip";
 import * as styles from "./runtime_tuning_form.css";
 
 const KV_OPTIONS: ReadonlyArray<KvCacheKind> = ["fp16", "q8_0", "q4_0"];
@@ -53,6 +54,20 @@ export function RuntimeTuningForm({
     mlock: useId(),
     contBatching: useId(),
     seed: useId(),
+  };
+  const helpIds = {
+    ctx: `${ids.ctx}-help`,
+    gpu: `${ids.gpu}-help`,
+    threads: `${ids.threads}-help`,
+    kv: `${ids.kv}-help`,
+    fa: `${ids.fa}-help`,
+    batch: `${ids.batch}-help`,
+    ubatch: `${ids.ubatch}-help`,
+    parallel: `${ids.parallel}-help`,
+    mmap: `${ids.mmap}-help`,
+    mlock: `${ids.mlock}-help`,
+    contBatching: `${ids.contBatching}-help`,
+    seed: `${ids.seed}-help`,
   };
 
   const gpuMax = modelMetadata?.layer_count ?? GPU_LAYERS_FALLBACK_MAX;
@@ -105,9 +120,17 @@ export function RuntimeTuningForm({
         </h3>
 
         <div className={styles.row}>
-          <label htmlFor={ids.ctx} className={styles.label}>
-            Context length
-          </label>
+          <span className={styles.labelCell}>
+            <label htmlFor={ids.ctx} className={styles.label}>
+              Context length
+            </label>
+            <HelpTooltip
+              id={helpIds.ctx}
+              title="Context length"
+              description="Maximum tokens the model can see at once (prompt + history + response). Doubling this roughly doubles VRAM used by the KV cache."
+              recommended="4096–8192 for chat; up to 32K for long documents; above 32K only if you have headroom"
+            />
+          </span>
           <input
             id={ids.ctx}
             type="range"
@@ -116,15 +139,24 @@ export function RuntimeTuningForm({
             step={512}
             value={ctxValue}
             className={styles.slider}
+            aria-describedby={helpIds.ctx}
             onChange={(e) => update({ ctx_size: Number(e.target.value) })}
           />
           <span className={styles.value}>{ctxValue.toLocaleString()}</span>
         </div>
 
         <div className={styles.row}>
-          <label htmlFor={ids.gpu} className={styles.label}>
-            GPU offload
-          </label>
+          <span className={styles.labelCell}>
+            <label htmlFor={ids.gpu} className={styles.label}>
+              GPU offload
+            </label>
+            <HelpTooltip
+              id={helpIds.gpu}
+              title="GPU offload"
+              description="How many model layers to load onto the GPU. Higher = more VRAM but faster. The slider's max is the model's exact layer count."
+              recommended="max if it fits in VRAM; reduce until the model loads if you OOM"
+            />
+          </span>
           <input
             id={ids.gpu}
             type="range"
@@ -134,6 +166,7 @@ export function RuntimeTuningForm({
             disabled={gpuDisabled}
             value={gpuValue}
             className={styles.slider}
+            aria-describedby={helpIds.gpu}
             onChange={(e) =>
               update({ n_gpu_layers: Number(e.target.value) })
             }
@@ -157,14 +190,23 @@ export function RuntimeTuningForm({
         )}
 
         <div className={styles.rowFull}>
-          <label htmlFor={ids.kv} className={styles.label}>
-            KV cache
-          </label>
+          <span className={styles.labelCell}>
+            <label htmlFor={ids.kv} className={styles.label}>
+              KV cache
+            </label>
+            <HelpTooltip
+              id={helpIds.kv}
+              title="KV cache"
+              description="Quantization for the key/value cache that holds attention state. q8_0 cuts cache memory ~50% with negligible quality loss. q4_0 is half again at the cost of measurable quality regression — use only when desperate for VRAM."
+              recommended="q8_0 with Flash Attention on"
+            />
+          </span>
           <select
             id={ids.kv}
             className={styles.select}
             disabled={kvDisabled}
             value={value.cache_type_k ?? "q8_0"}
+            aria-describedby={helpIds.kv}
             onChange={(e) => {
               const next = readKvKind(e.target.value);
               update({ cache_type_k: next, cache_type_v: next });
@@ -179,24 +221,33 @@ export function RuntimeTuningForm({
         </div>
 
         <div className={styles.rowFull}>
-          <label
-            htmlFor={ids.fa}
-            className={
-              faDisabled
-                ? `${styles.checkboxRow} ${styles.checkboxRowDisabled}`
-                : styles.checkboxRow
-            }
-          >
-            <input
-              id={ids.fa}
-              type="checkbox"
-              className={styles.checkbox}
-              disabled={faDisabled}
-              checked={value.flash_attn ?? false}
-              onChange={(e) => update({ flash_attn: e.target.checked })}
+          <span className={styles.labelCell}>
+            <label
+              htmlFor={ids.fa}
+              className={
+                faDisabled
+                  ? `${styles.checkboxRow} ${styles.checkboxRowDisabled}`
+                  : styles.checkboxRow
+              }
+            >
+              <input
+                id={ids.fa}
+                type="checkbox"
+                className={styles.checkbox}
+                disabled={faDisabled}
+                checked={value.flash_attn ?? false}
+                aria-describedby={helpIds.fa}
+                onChange={(e) => update({ flash_attn: e.target.checked })}
+              />
+              <span className={styles.label}>Flash Attention</span>
+            </label>
+            <HelpTooltip
+              id={helpIds.fa}
+              title="Flash Attention"
+              description="Faster, more memory-efficient attention math. Required for KV cache quantization beyond fp16. Some older or small models may show numerical drift; if outputs degrade, turn it off."
+              recommended="ON for CUDA"
             />
-            <span className={styles.label}>Flash Attention</span>
-          </label>
+          </span>
         </div>
       </section>
 
@@ -209,9 +260,17 @@ export function RuntimeTuningForm({
         </summary>
 
         <div className={styles.row}>
-          <label htmlFor={ids.threads} className={styles.label}>
-            Threads
-          </label>
+          <span className={styles.labelCell}>
+            <label htmlFor={ids.threads} className={styles.label}>
+              Threads
+            </label>
+            <HelpTooltip
+              id={helpIds.threads}
+              title="Threads"
+              description="CPU threads used for prompt processing and any layers running on CPU. More threads = faster prompt evaluation, up to a point."
+              recommended="half your physical core count (not logical/SMT count)"
+            />
+          </span>
           <input
             id={ids.threads}
             type="range"
@@ -220,6 +279,7 @@ export function RuntimeTuningForm({
             step={1}
             value={threadsValue}
             className={styles.slider}
+            aria-describedby={helpIds.threads}
             onChange={(e) => update({ threads: Number(e.target.value) })}
           />
           <span className={styles.value}>
@@ -228,9 +288,17 @@ export function RuntimeTuningForm({
         </div>
 
         <div className={styles.rowFull}>
-          <label htmlFor={ids.batch} className={styles.label}>
-            Batch size
-          </label>
+          <span className={styles.labelCell}>
+            <label htmlFor={ids.batch} className={styles.label}>
+              Batch size
+            </label>
+            <HelpTooltip
+              id={helpIds.batch}
+              title="Batch size"
+              description="Tokens processed in parallel during prompt evaluation. Larger = faster prompt processing, more VRAM during prefill."
+              recommended="512 for typical models; 1024 if you have spare VRAM"
+            />
+          </span>
           <input
             id={ids.batch}
             type="number"
@@ -239,14 +307,23 @@ export function RuntimeTuningForm({
             step={32}
             value={value.n_batch ?? 512}
             className={styles.number}
+            aria-describedby={helpIds.batch}
             onChange={(e) => update({ n_batch: Number(e.target.value) })}
           />
         </div>
 
         <div className={styles.rowFull}>
-          <label htmlFor={ids.ubatch} className={styles.label}>
-            uBatch size
-          </label>
+          <span className={styles.labelCell}>
+            <label htmlFor={ids.ubatch} className={styles.label}>
+              uBatch size
+            </label>
+            <HelpTooltip
+              id={helpIds.ubatch}
+              title="uBatch size"
+              description="Micro-batch size — splits the batch for memory efficiency. Should divide evenly into Batch size."
+              recommended="128 for typical setups; match Batch size on small models"
+            />
+          </span>
           <input
             id={ids.ubatch}
             type="number"
@@ -255,14 +332,23 @@ export function RuntimeTuningForm({
             step={8}
             value={value.n_ubatch ?? 128}
             className={styles.number}
+            aria-describedby={helpIds.ubatch}
             onChange={(e) => update({ n_ubatch: Number(e.target.value) })}
           />
         </div>
 
         <div className={styles.row}>
-          <label htmlFor={ids.parallel} className={styles.label}>
-            Parallel slots
-          </label>
+          <span className={styles.labelCell}>
+            <label htmlFor={ids.parallel} className={styles.label}>
+              Parallel slots
+            </label>
+            <HelpTooltip
+              id={helpIds.parallel}
+              title="Parallel slots"
+              description="Concurrent request slots. Each slot duplicates the KV cache, multiplying VRAM use."
+              recommended="1 for chat; 2–4 only if you serve multiple users/agents"
+            />
+          </span>
           <input
             id={ids.parallel}
             type="range"
@@ -271,62 +357,98 @@ export function RuntimeTuningForm({
             step={1}
             value={value.n_parallel ?? 1}
             className={styles.slider}
+            aria-describedby={helpIds.parallel}
             onChange={(e) => update({ n_parallel: Number(e.target.value) })}
           />
           <span className={styles.value}>{value.n_parallel ?? 1}</span>
         </div>
 
         <div className={styles.rowFull}>
-          <label htmlFor={ids.mmap} className={styles.checkboxRow}>
-            <input
-              id={ids.mmap}
-              type="checkbox"
-              className={styles.checkbox}
-              checked={value.mmap ?? true}
-              onChange={(e) => update({ mmap: e.target.checked })}
+          <span className={styles.labelCell}>
+            <label htmlFor={ids.mmap} className={styles.checkboxRow}>
+              <input
+                id={ids.mmap}
+                type="checkbox"
+                className={styles.checkbox}
+                checked={value.mmap ?? true}
+                aria-describedby={helpIds.mmap}
+                onChange={(e) => update({ mmap: e.target.checked })}
+              />
+              <span className={styles.label}>mmap</span>
+            </label>
+            <HelpTooltip
+              id={helpIds.mmap}
+              title="mmap"
+              description="Memory-map the model file instead of loading it into RAM. Lets the OS page model weights on demand."
+              recommended="ON unless you're hitting page-cache thrash on a small machine"
             />
-            <span className={styles.label}>mmap</span>
-          </label>
+          </span>
         </div>
 
         <div className={styles.rowFull}>
-          <label htmlFor={ids.mlock} className={styles.checkboxRow}>
-            <input
-              id={ids.mlock}
-              type="checkbox"
-              className={styles.checkbox}
-              checked={value.mlock ?? false}
-              onChange={(e) => update({ mlock: e.target.checked })}
+          <span className={styles.labelCell}>
+            <label htmlFor={ids.mlock} className={styles.checkboxRow}>
+              <input
+                id={ids.mlock}
+                type="checkbox"
+                className={styles.checkbox}
+                checked={value.mlock ?? false}
+                aria-describedby={helpIds.mlock}
+                onChange={(e) => update({ mlock: e.target.checked })}
+              />
+              <span className={styles.label}>mlock</span>
+            </label>
+            <HelpTooltip
+              id={helpIds.mlock}
+              title="mlock"
+              description="Lock the model in RAM, preventing the OS from paging it out. Costs RAM but eliminates pause spikes when the model is needed. Requires elevated privileges on Linux."
+              recommended="ON only if you have plenty of RAM and need consistent latency"
             />
-            <span className={styles.label}>mlock</span>
-          </label>
+          </span>
         </div>
 
         <div className={styles.rowFull}>
-          <label htmlFor={ids.contBatching} className={styles.checkboxRow}>
-            <input
-              id={ids.contBatching}
-              type="checkbox"
-              className={styles.checkbox}
-              checked={value.cont_batching ?? true}
-              onChange={(e) =>
-                update({ cont_batching: e.target.checked })
-              }
+          <span className={styles.labelCell}>
+            <label htmlFor={ids.contBatching} className={styles.checkboxRow}>
+              <input
+                id={ids.contBatching}
+                type="checkbox"
+                className={styles.checkbox}
+                checked={value.cont_batching ?? true}
+                aria-describedby={helpIds.contBatching}
+                onChange={(e) =>
+                  update({ cont_batching: e.target.checked })
+                }
+              />
+              <span className={styles.label}>Continuous batching</span>
+            </label>
+            <HelpTooltip
+              id={helpIds.contBatching}
+              title="Continuous batching"
+              description="Process multiple requests as they arrive instead of waiting for a full batch. Significantly better throughput for chat with negligible downside."
+              recommended="ON"
             />
-            <span className={styles.label}>Continuous batching</span>
-          </label>
+          </span>
         </div>
 
         <div className={styles.rowFull}>
-          <label htmlFor={ids.seed} className={styles.label}>
-            Seed
-          </label>
+          <span className={styles.labelCell}>
+            <label htmlFor={ids.seed} className={styles.label}>
+              Seed
+            </label>
+            <HelpTooltip
+              id={helpIds.seed}
+              title="Seed"
+              description="Random seed for sampling. Set a number for reproducible outputs (same prompt = same response). Leave empty for normal random sampling."
+            />
+          </span>
           <input
             id={ids.seed}
             type="number"
             placeholder="random"
             value={seedValue}
             className={styles.number}
+            aria-describedby={helpIds.seed}
             onChange={(e) => {
               const raw = e.target.value;
               if (raw === "") {
