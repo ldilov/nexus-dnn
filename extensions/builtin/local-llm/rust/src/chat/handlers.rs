@@ -1078,6 +1078,8 @@ pub struct AvailableModelDto {
     pub format: String,
     pub size_bytes: Option<u64>,
     pub max_context: Option<u32>,
+    pub is_moe: bool,
+    pub expert_layer_count: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1108,6 +1110,8 @@ pub async fn list_available_models(State(res): State<Arc<ChatHandlerResources>>)
                 format: row.format,
                 size_bytes: row.size_bytes,
                 max_context: row.max_context,
+                is_moe: row.is_moe.unwrap_or(false),
+                expert_layer_count: row.expert_layer_count,
             }
         })
         .collect();
