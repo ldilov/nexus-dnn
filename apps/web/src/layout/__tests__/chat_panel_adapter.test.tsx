@@ -10,6 +10,7 @@ const patchThreadMock = vi.fn();
 const deleteThreadMock = vi.fn();
 const streamMessageMock = vi.fn();
 const useModelLoadStateMock = vi.fn();
+const useLocalLlmRuntimeStatusMock = vi.fn();
 const toastErrorMock = vi.fn();
 const toastSuccessMock = vi.fn();
 const setActiveModelMock = vi.fn();
@@ -69,6 +70,10 @@ vi.mock("../../hooks/use_model_load_state", () => ({
   useModelLoadState: (...args: unknown[]) => useModelLoadStateMock(...args),
 }));
 
+vi.mock("../local_llm/use_runtime_status", () => ({
+  useLocalLlmRuntimeStatus: () => useLocalLlmRuntimeStatusMock(),
+}));
+
 vi.mock("sonner", () => ({
   toast: {
     error: (...args: unknown[]) => toastErrorMock(...args),
@@ -103,6 +108,8 @@ beforeEach(() => {
   fetchRuntimeDefaultsMock.mockReset();
   getModelMetadataMock.mockReset();
   useModelLoadStateMock.mockReturnValue(idleLoadState);
+  useLocalLlmRuntimeStatusMock.mockReset();
+  useLocalLlmRuntimeStatusMock.mockReturnValue(idleLoadState);
   fetchAvailableModelsMock.mockResolvedValue([]);
   fetchRuntimeDefaultsMock.mockResolvedValue({
     hardware_concurrency: 16,
@@ -710,6 +717,85 @@ describe("ChatPanelAdapter", () => {
         expect(parsed["dep-B"].family_id).toBe("meta/llama");
         expect(parsed["dep-B"].variant_id).toBe("Q4");
       });
+    });
+  });
+
+  describe("global runtime status", () => {
+    it("display_uses_global_runtime_when_per_thread_is_idle", async () => {
+      const storage: Record<string, string> = {
+        "local-llm:deployment-active-model": JSON.stringify({
+          "dep-G": {
+            family_id: "meta/llama",
+            variant_id: "Q4",
+            tuning: { ctx_size: 8192 },
+            saved_at: "2026-05-07T00:00:00Z",
+          },
+        }),
+      };
+      const previous = window.localStorage;
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        value: {
+          getItem: (key: string) => storage[key] ?? null,
+          setItem: (key: string, value: string) => {
+            storage[key] = value;
+          },
+          removeItem: (key: string) => {
+            delete storage[key];
+          },
+          clear: () => {
+            for (const k of Object.keys(storage)) delete storage[k];
+          },
+          key: (i: number) => Object.keys(storage)[i] ?? null,
+          get length() {
+            return Object.keys(storage).length;
+          },
+        },
+      });
+      try {
+        listThreadsMock.mockResolvedValueOnce({
+          threads: [baseThread("t-fresh", "Fresh")],
+          has_more: false,
+        });
+        useModelLoadStateMock.mockReturnValue(idleLoadState);
+        useLocalLlmRuntimeStatusMock.mockReturnValue({
+          phase: "ready",
+          familyId: "meta/llama",
+          variantId: "Q4",
+          label: "Llama Q4",
+          port: 12345,
+        } satisfies ModelLoadState);
+
+        render(<ChatPanelAdapter deploymentId="dep-G" />);
+
+        await waitFor(() => expect(screen.getByText("Fresh")).toBeInTheDocument());
+
+        const composer = await screen.findByPlaceholderText(/send a message/i);
+        expect(composer).not.toBeDisabled();
+        expect(screen.queryByText(/choose a model/i)).toBeNull();
+        expect(screen.queryByText(/loading/i)).toBeNull();
+      } finally {
+        Object.defineProperty(window, "localStorage", {
+          configurable: true,
+          value: previous,
+        });
+      }
+    });
+
+    it("display_falls_through_when_global_is_idle", async () => {
+      listThreadsMock.mockResolvedValueOnce({
+        threads: [baseThread("t-1", "Alpha")],
+        has_more: false,
+      });
+      useModelLoadStateMock.mockReturnValue(idleLoadState);
+      useLocalLlmRuntimeStatusMock.mockReturnValue(idleLoadState);
+
+      render(<ChatPanelAdapter />);
+
+      await waitFor(() => expect(screen.getByText("Alpha")).toBeInTheDocument());
+      expect(
+        screen.getByText(/choose a model to enable the composer/i),
+      ).toBeInTheDocument();
     });
   });
 });
