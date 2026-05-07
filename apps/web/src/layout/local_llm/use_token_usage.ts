@@ -29,6 +29,7 @@ export function useTokenUsage(
   }, [threadId]);
 
   const record = useCallback((stats: TokenUsageRecord) => {
+    if (stats.promptTokens === undefined && stats.completionTokens === undefined) return;
     const used = (stats.promptTokens ?? 0) + (stats.completionTokens ?? 0);
     setState({ tokensUsed: used, lastTps: stats.tokensPerSec ?? 0 });
   }, []);

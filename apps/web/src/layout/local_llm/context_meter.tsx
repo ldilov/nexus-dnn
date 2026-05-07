@@ -1,8 +1,8 @@
 import * as styles from "./context_meter.css";
 
-export type ContextTone = "ok" | "warn" | "danger";
+type ContextTone = "ok" | "warn" | "danger";
 
-export function toneFor(pct: number): ContextTone {
+function toneFor(pct: number): ContextTone {
   if (pct >= 0.85) return "danger";
   if (pct >= 0.6) return "warn";
   return "ok";
