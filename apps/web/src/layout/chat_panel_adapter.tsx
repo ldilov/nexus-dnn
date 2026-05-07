@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ChatSurface, type ChatMessage, type ChatThreadSummary } from "../components/chat";
-import { SamplerPanel } from "../components/chat/sampler_panel";
 import { useModelLoadState } from "../hooks/use_model_load_state";
 import { useDebounce } from "../hooks/use_debounce";
 import {
@@ -20,9 +19,8 @@ import {
   type RuntimeTuning,
 // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
 } from "../services/local_llm_chat";
-import { SystemPromptEditor } from "./local_llm/system_prompt_editor";
 import { useTokenUsage } from "./local_llm/use_token_usage";
-import { ContextMeter } from "./local_llm/context_meter";
+import { InspectorPanel } from "./local_llm/inspector_panel";
 import { getModelMetadata, type ModelMetadata } from "../services/host_api";
 import {
   createThread,
@@ -262,22 +260,23 @@ export function ChatPanelAdapter({
     return () => ctrl.abort();
   }, [activeId]);
 
-  const debouncedSystemPrompt = useDebounce(generationSettings.system_prompt, 500);
+  const debouncedSettingsKey = useDebounce(
+    `${generationSettings.temperature}|${generationSettings.top_p}|${generationSettings.max_tokens}|${generationSettings.system_prompt}`,
+    500,
+  );
 
   useEffect(() => {
     if (!activeId) return;
     if (!generationSettingsLoadedRef.current) return;
+    void debouncedSettingsKey;
     const ctrl = new AbortController();
-    setGenerationSettingsApi(
-      activeId,
-      { ...generationSettings, system_prompt: debouncedSystemPrompt },
-      ctrl.signal,
-    ).catch((err) => {
+    setGenerationSettingsApi(activeId, generationSettings, ctrl.signal).catch((err) => {
       if (ctrl.signal.aborted) return;
-      toast.error(err instanceof Error ? err.message : "Could not save system prompt");
+      toast.error(err instanceof Error ? err.message : "Could not save chat settings");
     });
     return () => ctrl.abort();
-  }, [debouncedSystemPrompt, activeId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSettingsKey, activeId]);
 
   const handleSelectThread = useCallback((id: string) => {
     setActiveId(id);
@@ -374,11 +373,8 @@ export function ChatPanelAdapter({
     if (!load.familyId) return 0;
     const tuning = lastTuningByFamily[load.familyId];
     if (tuning?.ctx_size && tuning.ctx_size > 0) return tuning.ctx_size;
-    const model = availableModels.find(
-      (m) => m.family_id === load.familyId && (m.variant_id ?? "") === (load.variantId ?? ""),
-    );
-    return model?.max_context ?? 0;
-  }, [load.familyId, load.variantId, lastTuningByFamily, availableModels]);
+    return 0;
+  }, [load.familyId, lastTuningByFamily]);
 
   const tokenUsage = useTokenUsage(activeId, activeMaxContext);
 
@@ -502,17 +498,48 @@ export function ChatPanelAdapter({
     setGenerationSettings_((prev) => ({ ...prev, system_prompt: next }));
   }, []);
 
+  const inspectorSampler = useMemo(
+    () => ({
+      temperature: generationSettings.temperature,
+      topP: generationSettings.top_p,
+      maxTokens: generationSettings.max_tokens,
+    }),
+    [generationSettings.temperature, generationSettings.top_p, generationSettings.max_tokens],
+  );
+
+  const handleInspectorSamplerChange = useCallback(
+    (next: { temperature: number; topP: number; maxTokens: number }) => {
+      setGenerationSettings_((prev) => ({
+        ...prev,
+        temperature: next.temperature,
+        top_p: next.topP,
+        max_tokens: next.maxTokens,
+      }));
+    },
+    [],
+  );
+
+  const systemPromptInherited =
+    !generationSettings.system_prompt ||
+    generationSettings.system_prompt === DEFAULT_GENERATION_PARAMS.system_prompt;
+
+  const inspectorModelSub = load.familyId
+    ? `${load.familyId}${load.variantId ? ` · ${load.variantId}` : ""}`
+    : undefined;
+
   const inspectorContent = (
-    <>
-      <SamplerPanel override={surfaceSampler} onUpdate={handleUpdateSamplerOverride} />
-      <SystemPromptEditor
-        value={generationSettings.system_prompt}
-        onChange={handleSystemPromptChange}
-      />
-      {activeMaxContext > 0 ? (
-        <ContextMeter used={tokenUsage.tokensUsed} max={activeMaxContext} />
-      ) : null}
-    </>
+    <InspectorPanel
+      modelLabel={load.label ?? null}
+      modelSub={inspectorModelSub}
+      loadPhase={load.phase}
+      contextUsed={tokenUsage.tokensUsed}
+      contextMax={activeMaxContext}
+      sampler={inspectorSampler}
+      onSamplerChange={handleInspectorSamplerChange}
+      systemPromptInherited={systemPromptInherited}
+      systemPrompt={generationSettings.system_prompt}
+      onSystemPromptChange={handleSystemPromptChange}
+    />
   );
 
   const isStreaming = streamingId !== null;
