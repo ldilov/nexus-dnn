@@ -247,6 +247,9 @@ export interface StreamRequest {
   top_k?: number;
   max_tokens?: number;
   repeat_penalty?: number;
+  deploymentId?: string;
+  threadId?: string;
+  requestId?: string;
 }
 
 export function streamMessage(
@@ -260,28 +263,28 @@ export function streamMessage(
     trimmedSystemPrompt.length > 0
       ? [{ role: "system" as const, content: req.systemPrompt as string }, ...req.messages]
       : req.messages;
-  const body = {
-    messages: fullMessages,
+  const samplerParams = {
     temperature: req.temperature ?? 0.8,
     top_p: req.top_p ?? 0.95,
     top_k: req.top_k ?? 40,
     max_tokens: req.max_tokens ?? 4096,
     repeat_penalty: req.repeat_penalty ?? 1.1,
+  };
+  const body: Record<string, unknown> = {
+    messages: fullMessages,
+    ...samplerParams,
     stream: true,
     stream_options: { include_usage: true },
   };
+  if (req.deploymentId) body.deployment_id = req.deploymentId;
+  if (req.threadId) body.thread_id = req.threadId;
+  if (req.requestId) body.request_id = req.requestId;
 
   const startTs = performance.now();
   let firstTokenTs: number | null = null;
   const stats: StreamStats = {
     latencyMs: 0,
-    params: {
-      temperature: body.temperature,
-      top_p: body.top_p,
-      top_k: body.top_k,
-      max_tokens: body.max_tokens,
-      repeat_penalty: body.repeat_penalty,
-    },
+    params: { ...samplerParams },
   };
 
   let doneFired = false;

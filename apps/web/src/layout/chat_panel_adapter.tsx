@@ -691,11 +691,15 @@ export function ChatPanelAdapter({
         });
 
       const port = displayedLoad.port;
+      const requestId = `${threadId}::${assistantId}`;
       const handle = streamMessage(
         {
           port,
           messages: [...turns, { role: "user", content: text }],
           systemPrompt: generationSettings.system_prompt,
+          deploymentId: deploymentId ?? undefined,
+          threadId,
+          requestId,
         },
         {
           onToken: (delta) => {
@@ -780,6 +784,7 @@ export function ChatPanelAdapter({
       tokenUsage.record,
       activeMaxContext,
       draft,
+      deploymentId,
     ],
   );
 
