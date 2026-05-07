@@ -38,9 +38,9 @@ export const dialog = style({
     "linear-gradient(180deg, rgba(30,33,38,0.98) 0%, rgba(15,17,20,0.98) 100%)",
   borderRadius: "20px",
   boxShadow: [
-    "0 40px 120px rgba(0,0,0,0.6)",
-    "0 0 0 1px rgba(186,158,255,0.10)",
-    "inset 0 1px 0 rgba(255,255,255,0.04)",
+    `0 40px 120px ${vars.color.scrim}`,
+    `0 0 0 1px color-mix(in oklch, ${vars.color.accent.primary} 10%, transparent)`,
+    `inset 0 1px 0 ${vars.color.outline.variant}`,
   ].join(", "),
   display: "grid",
   gridTemplateRows: "auto 1fr auto",
@@ -58,7 +58,7 @@ export const header = style({
   alignItems: "center",
   justifyContent: "space-between",
   padding: `${vars.density.d4} ${vars.density.d5}`,
-  boxShadow: "0 1px 0 rgba(255,255,255,0.05)",
+  boxShadow: `0 1px 0 ${vars.color.outline.variant}`,
 });
 
 export const title = style({
@@ -80,7 +80,7 @@ export const closeButton = style({
   borderRadius: vars.radius.control,
   transition: `background ${vars.motion.durationFast} ease, color ${vars.motion.durationFast} ease`,
   ":hover": {
-    background: "rgba(255,255,255,0.06)",
+    background: `color-mix(in oklch, ${vars.color.text.primary} 6%, transparent)`,
     color: vars.color.text.primary,
   },
 });
@@ -95,7 +95,7 @@ export const body = style({
 export const listColumn = style({
   display: "flex",
   flexDirection: "column",
-  borderRight: "1px solid rgba(255,255,255,0.05)",
+  borderRight: `1px solid ${vars.color.outline.variant}`,
   minHeight: 0,
 });
 
@@ -109,14 +109,14 @@ export const search = style({
   fontSize: vars.font.size.bodySm,
   fontFamily: vars.font.ui,
   color: vars.color.text.primary,
-  background: "rgba(255,255,255,0.035)",
+  background: `color-mix(in oklch, ${vars.color.text.primary} 3.5%, transparent)`,
   border: "none",
   borderRadius: vars.radius.control,
   outline: "none",
-  boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
+  boxShadow: `inset 0 0 0 1px ${vars.color.outline.variant}`,
   ":focus": {
-    background: "rgba(186,158,255,0.06)",
-    boxShadow: "inset 0 0 0 1.5px rgba(186,158,255,0.45)",
+    background: `color-mix(in oklch, ${vars.color.accent.primary} 6%, transparent)`,
+    boxShadow: `inset 0 0 0 1.5px color-mix(in oklch, ${vars.color.accent.primary} 45%, transparent)`,
   },
   "::placeholder": { color: vars.color.text.secondary },
 });
@@ -145,13 +145,13 @@ export const option = style({
   transition:
     `background ${vars.motion.durationFast} ease, box-shadow 200ms ease`,
   ":hover": {
-    background: "rgba(186,158,255,0.06)",
+    background: `color-mix(in oklch, ${vars.color.accent.primary} 6%, transparent)`,
   },
 });
 
 export const optionSelected = style({
-  background: "rgba(186,158,255,0.12)",
-  boxShadow: "0 0 0 1px rgba(186,158,255,0.38)",
+  background: `color-mix(in oklch, ${vars.color.accent.primary} 12%, transparent)`,
+  boxShadow: `0 0 0 1px color-mix(in oklch, ${vars.color.accent.primary} 38%, transparent)`,
 });
 
 export const optionRowTop = style({
@@ -219,7 +219,7 @@ export const footer = style({
   alignItems: "center",
   gap: vars.density.d3,
   padding: `${vars.density.d4} ${vars.density.d5}`,
-  boxShadow: "0 -1px 0 rgba(255,255,255,0.05)",
+  boxShadow: `0 -1px 0 ${vars.color.outline.variant}`,
 });
 
 export const cancelButton = style({
@@ -235,7 +235,7 @@ export const cancelButton = style({
   fontWeight: 500,
   transition: `background ${vars.motion.durationFast} ease, color ${vars.motion.durationFast} ease`,
   ":hover": {
-    background: "rgba(255,255,255,0.06)",
+    background: `color-mix(in oklch, ${vars.color.text.primary} 6%, transparent)`,
     color: vars.color.text.primary,
   },
 });
@@ -252,13 +252,11 @@ export const loadButton = style({
   color: vars.color.text.inverse,
   background:
     "linear-gradient(180deg, rgba(196,170,255,1) 0%, rgba(159,127,247,1) 100%)",
-  boxShadow:
-    "0 6px 16px rgba(140,100,240,0.25), inset 0 1px 0 rgba(255,255,255,0.4)",
+  boxShadow: `0 6px 16px color-mix(in oklch, ${vars.color.accent.primary} 25%, transparent), inset 0 1px 0 color-mix(in oklch, ${vars.color.text.primary} 40%, transparent)`,
   transition: `transform ${vars.motion.durationFast} ease, box-shadow ${vars.motion.durationFast} ease, opacity ${vars.motion.durationFast} ease`,
   ":hover": {
     transform: "translateY(-1px)",
-    boxShadow:
-      "0 10px 22px rgba(140,100,240,0.32), inset 0 1px 0 rgba(255,255,255,0.5)",
+    boxShadow: `0 10px 22px color-mix(in oklch, ${vars.color.accent.primary} 32%, transparent), inset 0 1px 0 color-mix(in oklch, ${vars.color.text.primary} 50%, transparent)`,
   },
   ":disabled": {
     opacity: 0.45,
