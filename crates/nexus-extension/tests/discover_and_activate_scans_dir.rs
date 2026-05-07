@@ -70,6 +70,32 @@ async fn scans_new_extension() {
 }
 
 #[tokio::test]
+async fn empty_subdirectories_without_manifest_are_skipped_silently() {
+    let tmp = TempDir::new().unwrap();
+    write_extension(tmp.path(), "ext.real");
+    std::fs::create_dir_all(tmp.path().join("ext.empty")).unwrap();
+    std::fs::create_dir_all(tmp.path().join("nexus.audio.emotiontts")).unwrap();
+    std::fs::create_dir_all(tmp.path().join("local-llm")).unwrap();
+
+    let (registry, report) =
+        InMemoryExtensionRegistry::from_directory(tmp.path(), &host_version(), &protocol_version())
+            .await
+            .unwrap();
+
+    assert!(
+        report.invalid.is_empty(),
+        "empty dirs without a manifest must NOT be flagged as invalid; got {:?}",
+        report.invalid,
+    );
+    assert!(
+        report.activated.iter().any(|id| id == "ext.real"),
+        "ext.real should still be activated: {:?}",
+        report.activated,
+    );
+    assert_eq!(registry.list_extensions().len(), 1);
+}
+
+#[tokio::test]
 async fn idempotent_re_invocation() {
     let tmp = TempDir::new().unwrap();
     write_extension(tmp.path(), "ext.a");

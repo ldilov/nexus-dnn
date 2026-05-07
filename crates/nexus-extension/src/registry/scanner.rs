@@ -108,9 +108,14 @@ fn read_extension_dirs(extensions_dir: &Path) -> Result<Vec<PathBuf>, ExtensionE
     let read_dir = std::fs::read_dir(extensions_dir)?;
     for entry in read_dir {
         let entry = entry?;
-        if entry.file_type()?.is_dir() {
-            dirs.push(entry.path());
+        if !entry.file_type()?.is_dir() {
+            continue;
         }
+        let path = entry.path();
+        if !path.join("manifest.yaml").is_file() {
+            continue;
+        }
+        dirs.push(path);
     }
     dirs.sort();
     Ok(dirs)
