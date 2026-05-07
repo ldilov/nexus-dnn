@@ -72,6 +72,34 @@ describe("MessageBubble", () => {
     expect(screen.getByText(/0\.9s/)).toBeInTheDocument();
   });
 
+  it("renders tokens-per-second when provided", () => {
+    const message = build({
+      text: "hello",
+      tokens: 994,
+      latencyMs: 3400,
+      tokensPerSec: 292,
+    });
+    render(<MessageBubble message={message} isStreamingTail={false} />);
+    expect(screen.getByText(/994 tok/)).toBeInTheDocument();
+    expect(screen.getByText(/3\.4s/)).toBeInTheDocument();
+    expect(screen.getByText(/292\.0 t\/s/)).toBeInTheDocument();
+  });
+
+  it("renders the context capacity chip with formatted size and progressbar", () => {
+    const message = build({
+      text: "hello",
+      contextUsed: 1240,
+      contextMax: 8192,
+    });
+    render(<MessageBubble message={message} isStreamingTail={false} />);
+    expect(screen.getByText(/ctx 1\.2k \/ 8\.2k/)).toBeInTheDocument();
+    const bar = screen.getByRole("progressbar", { name: /context capacity/i });
+    expect(bar).toBeInTheDocument();
+    const valueNow = Number(bar.getAttribute("aria-valuenow"));
+    expect(valueNow).toBeGreaterThanOrEqual(14);
+    expect(valueNow).toBeLessThanOrEqual(16);
+  });
+
   it("does not render the copy footer for user messages", () => {
     const message = build({ role: "user", text: "hi", authorLabel: "You" });
     render(<MessageBubble message={message} isStreamingTail={false} />);

@@ -27,6 +27,9 @@ export interface ChatMessage {
   tokens?: number;
   latencyMs?: number;
   cached?: boolean;
+  tokensPerSec?: number;
+  contextUsed?: number;
+  contextMax?: number;
 }
 
 export interface ModelOption {
