@@ -197,13 +197,6 @@ export const paramInput = style({
   },
 });
 
-export const paramValueText = style({
-  fontFamily: vars.font.code,
-  fontSize: vars.font.size.caption,
-  color: vars.color.text.primary,
-  letterSpacing: "0.04em",
-});
-
 export const promptIndicatorInherited = style({
   fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,
