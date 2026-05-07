@@ -21,6 +21,7 @@ pub struct ChatHistoryStoreSqlx {
 
 impl ChatHistoryStoreSqlx {
     pub async fn new(pool: SqlitePool, host: Arc<dyn HostDeploymentsClient>) -> Result<Self> {
+        ensure_schema(&pool).await?;
         let stored = read_stored_version(&pool).await?;
         let mode = classify_mode(stored, BUNDLED_SCHEMA_VERSION);
         Ok(Self { pool, host, mode })
@@ -40,6 +41,72 @@ impl ChatHistoryStoreSqlx {
         }
         Ok(())
     }
+}
+
+async fn ensure_schema(pool: &SqlitePool) -> std::result::Result<(), sqlx::Error> {
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS ext_local_llm_chat_threads (
+            id TEXT PRIMARY KEY NOT NULL,
+            title TEXT,
+            system_prompt TEXT,
+            message_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            archived_at TEXT
+        )",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS ext_local_llm_chat_messages (
+            id TEXT PRIMARY KEY NOT NULL,
+            thread_id TEXT NOT NULL,
+            ordinal INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            content_text TEXT NOT NULL,
+            metadata_json TEXT,
+            retry_of_message_id TEXT,
+            is_partial INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (thread_id) REFERENCES ext_local_llm_chat_threads(id)
+        )",
+    )
+    .execute(pool)
+    .await?;
+
+    for stmt in [
+        "ALTER TABLE ext_local_llm_chat_threads ADD COLUMN deployment_id    TEXT",
+        "ALTER TABLE ext_local_llm_chat_threads ADD COLUMN install_id       TEXT",
+        "ALTER TABLE ext_local_llm_chat_threads ADD COLUMN sampler_override TEXT",
+        "ALTER TABLE ext_local_llm_chat_threads ADD COLUMN title_auto       TEXT",
+        "ALTER TABLE ext_local_llm_chat_messages ADD COLUMN sampler_effective TEXT",
+    ] {
+        if let Err(e) = sqlx::query(stmt).execute(pool).await {
+            let msg = e.to_string();
+            if !msg.contains("duplicate column") {
+                return Err(e);
+            }
+        }
+    }
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS ext_local_llm_idx_threads_deploy
+            ON ext_local_llm_chat_threads(deployment_id)",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS ext_local_llm_meta (
+            key   TEXT PRIMARY KEY NOT NULL,
+            value TEXT NOT NULL
+        )",
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }
 
 fn ts_now() -> String {
@@ -464,5 +531,180 @@ impl ChatHistoryStore for ChatHistoryStoreSqlx {
             has_more,
             next_after_ordinal,
         })
+    }
+}
+
+#[cfg(test)]
+mod ensure_schema_tests {
+    use super::*;
+    use crate::host_client::HostDeploymentsClient;
+    use crate::ids::DeploymentId;
+    use async_trait::async_trait;
+
+    struct StubHostClient;
+
+    #[async_trait]
+    impl HostDeploymentsClient for StubHostClient {
+        async fn current_deployment(&self) -> Result<Option<DeploymentId>> {
+            Ok(None)
+        }
+
+        async fn known_deployments(&self) -> Result<Vec<DeploymentId>> {
+            Ok(Vec::new())
+        }
+    }
+
+    async fn column_exists(pool: &SqlitePool, table: &str, column: &str) -> bool {
+        let rows = sqlx::query(&format!("PRAGMA table_info({table})"))
+            .fetch_all(pool)
+            .await
+            .expect("PRAGMA table_info must succeed");
+        rows.iter().any(|row| {
+            let name: String = row.try_get("name").unwrap_or_default();
+            name == column
+        })
+    }
+
+    #[tokio::test]
+    async fn ensure_schema_creates_tables_on_empty_pool() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        ensure_schema(&pool)
+            .await
+            .expect("ensure_schema must succeed on empty pool");
+
+        assert!(column_exists(&pool, "ext_local_llm_chat_threads", "id").await);
+        assert!(column_exists(&pool, "ext_local_llm_chat_threads", "deployment_id").await);
+        assert!(column_exists(&pool, "ext_local_llm_chat_threads", "install_id").await);
+        assert!(column_exists(&pool, "ext_local_llm_chat_threads", "sampler_override").await);
+        assert!(column_exists(&pool, "ext_local_llm_chat_threads", "title_auto").await);
+        assert!(column_exists(&pool, "ext_local_llm_chat_messages", "id").await);
+        assert!(column_exists(&pool, "ext_local_llm_chat_messages", "sampler_effective").await);
+        assert!(column_exists(&pool, "ext_local_llm_meta", "key").await);
+    }
+
+    #[tokio::test]
+    async fn ensure_schema_adds_missing_columns_when_table_exists_without_them() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query(
+            "CREATE TABLE ext_local_llm_chat_threads (
+                id TEXT PRIMARY KEY NOT NULL,
+                title TEXT,
+                system_prompt TEXT,
+                message_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                archived_at TEXT
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "CREATE TABLE ext_local_llm_chat_messages (
+                id TEXT PRIMARY KEY NOT NULL,
+                thread_id TEXT NOT NULL,
+                ordinal INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content_text TEXT NOT NULL,
+                metadata_json TEXT,
+                retry_of_message_id TEXT,
+                is_partial INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        assert!(!column_exists(&pool, "ext_local_llm_chat_threads", "deployment_id").await);
+        assert!(!column_exists(&pool, "ext_local_llm_chat_threads", "install_id").await);
+        assert!(!column_exists(&pool, "ext_local_llm_chat_threads", "sampler_override").await);
+        assert!(!column_exists(&pool, "ext_local_llm_chat_threads", "title_auto").await);
+        assert!(!column_exists(&pool, "ext_local_llm_chat_messages", "sampler_effective").await);
+
+        ensure_schema(&pool)
+            .await
+            .expect("ensure_schema must heal partial schema");
+
+        assert!(column_exists(&pool, "ext_local_llm_chat_threads", "deployment_id").await);
+        assert!(column_exists(&pool, "ext_local_llm_chat_threads", "install_id").await);
+        assert!(column_exists(&pool, "ext_local_llm_chat_threads", "sampler_override").await);
+        assert!(column_exists(&pool, "ext_local_llm_chat_threads", "title_auto").await);
+        assert!(column_exists(&pool, "ext_local_llm_chat_messages", "sampler_effective").await);
+    }
+
+    #[tokio::test]
+    async fn ensure_schema_is_idempotent_when_columns_already_present() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        ensure_schema(&pool).await.expect("first call must succeed");
+        ensure_schema(&pool)
+            .await
+            .expect("second call must be a no-op (no duplicate column error)");
+    }
+
+    #[tokio::test]
+    async fn ensure_schema_propagates_errors_from_closed_pool() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        pool.close().await;
+        let result = ensure_schema(&pool).await;
+        assert!(
+            result.is_err(),
+            "ensure_schema must propagate an error when pool is closed"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_thread_succeeds_after_ensure_schema_on_partial_db() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query(
+            "CREATE TABLE ext_local_llm_chat_threads (
+                id TEXT PRIMARY KEY NOT NULL,
+                title TEXT,
+                system_prompt TEXT,
+                message_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                archived_at TEXT
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "CREATE TABLE ext_local_llm_chat_messages (
+                id TEXT PRIMARY KEY NOT NULL,
+                thread_id TEXT NOT NULL,
+                ordinal INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content_text TEXT NOT NULL,
+                metadata_json TEXT,
+                retry_of_message_id TEXT,
+                is_partial INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let host: Arc<dyn HostDeploymentsClient> = Arc::new(StubHostClient);
+        let store = ChatHistoryStoreSqlx::new(pool, host)
+            .await
+            .expect("new() must heal partial schema and succeed");
+
+        let input = CreateThreadInput {
+            deployment_id: None,
+            install_id: None,
+            title: Some("Hello".to_owned()),
+            system_prompt: None,
+            sampler_override: None,
+        };
+        let thread = store
+            .create_thread(input)
+            .await
+            .expect("create_thread must succeed against healed schema");
+        assert_eq!(thread.title.as_deref(), Some("Hello"));
+        assert!(thread.deployment_id.is_none());
+        assert!(thread.install_id.is_none());
     }
 }
