@@ -34,6 +34,8 @@ import {
 import type { SamplerOverride } from "../components/chat/sampler_panel";
 import { ModelLoadDialog } from "./local_llm/model_load_dialog";
 import { HeaderModelButton } from "./local_llm/header_model_button";
+import { prettyModelLabel, modelOrgFromLabel } from "./local_llm/model_label";
+import { EmptyChatState } from "./local_llm/empty_chat_state";
 import {
   persistDeploymentModel,
   readDeploymentModel,
@@ -591,13 +593,17 @@ export function ChatPanelAdapter({
     !generationSettings.system_prompt ||
     generationSettings.system_prompt === DEFAULT_GENERATION_PARAMS.system_prompt;
 
+  const inspectorModelDisplayLabel = load.label
+    ? prettyModelLabel(load.label)
+    : null;
   const inspectorModelSub = load.familyId
-    ? `${load.familyId}${load.variantId ? ` · ${load.variantId}` : ""}`
+    ? modelOrgFromLabel(load.label) ??
+      `${load.familyId}${load.variantId ? ` · ${load.variantId}` : ""}`
     : undefined;
 
   const inspectorContent = (
     <InspectorPanel
-      modelLabel={load.label ?? null}
+      modelLabel={inspectorModelDisplayLabel}
       modelSub={inspectorModelSub}
       loadPhase={load.phase}
       contextUsed={tokenUsage.tokensUsed}
@@ -619,7 +625,7 @@ export function ChatPanelAdapter({
     <>
       <ChatSurface
         surfaceTitle={welcomeTitle ?? "Local LLM"}
-        surfaceMeta={welcomeDescription ? <span>{welcomeDescription}</span> : undefined}
+        emptyState={<EmptyChatState description={welcomeDescription} />}
         threads={surfaceThreads}
         activeThreadId={activeId}
         onSelectThread={handleSelectThread}
