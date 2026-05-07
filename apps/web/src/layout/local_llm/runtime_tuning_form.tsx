@@ -1,4 +1,4 @@
-import { useId, useMemo } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type {
   AvailableModel,
   KvCacheKind,
@@ -11,12 +11,30 @@ import {
   defaultTuningFor,
 } from "./default_tuning";
 import { HelpTooltip } from "./help_tooltip";
+import { isKnownBrokenForCacheReuse } from "./known_broken_models";
+import { computeVramBudget } from "./vram_budget";
+import { activeWarnings } from "./warning_rules";
+import { SAMPLER_PRESETS, type SamplerPresetId } from "./sampler_presets";
 import * as styles from "./runtime_tuning_form.css";
 
 const KV_OPTIONS: ReadonlyArray<KvCacheKind> = ["fp16", "q8_0", "q4_0"];
 
 const HARD_CTX_CEIL = 131072;
 const CTX_WARN_THRESHOLD = 8192;
+const CACHE_REUSE_DEFAULT = 256;
+const CACHE_REUSE_MIN = 64;
+const CACHE_REUSE_MAX = 2048;
+const CRAM_MB_DEFAULT = 1024;
+const CRAM_MB_MIN = 256;
+const CRAM_MB_MAX = 32768;
+const CHECKPOINT_DEFAULT = 8192;
+const CHECKPOINT_MIN = 1024;
+const CHECKPOINT_MAX = 65536;
+const MOE_FALLBACK_MAX = 64;
+const MOE_AUTO_BUMP_BATCH = 2048;
+const MOE_AUTO_BUMP_UBATCH = 2048;
+const DRY_BASE_DEFAULT = 1.75;
+const DRY_ALLOWED_LENGTH_DEFAULT = 2;
 
 interface RuntimeTuningFormProps {
   model: AvailableModel;
@@ -57,6 +75,17 @@ export function RuntimeTuningForm({
     mlock: useId(),
     contBatching: useId(),
     seed: useId(),
+    cacheReuse: useId(),
+    cacheReuseChunk: useId(),
+    cacheReuseOverride: useId(),
+    cram: useId(),
+    cramSize: useId(),
+    checkpointEvery: useId(),
+    moeOffload: useId(),
+    minP: useId(),
+    dryMultiplier: useId(),
+    dryBase: useId(),
+    dryAllowedLength: useId(),
   };
   const helpIds = {
     ctx: `${ids.ctx}-help`,
@@ -71,7 +100,67 @@ export function RuntimeTuningForm({
     mlock: `${ids.mlock}-help`,
     contBatching: `${ids.contBatching}-help`,
     seed: `${ids.seed}-help`,
+    cacheReuse: `${ids.cacheReuse}-help`,
+    cram: `${ids.cram}-help`,
+    moeOffload: `${ids.moeOffload}-help`,
+    minP: `${ids.minP}-help`,
+    dryMultiplier: `${ids.dryMultiplier}-help`,
   };
+
+  const brokenVerdict = isKnownBrokenForCacheReuse(model.family_id);
+  const [cacheReuseOverride, setCacheReuseOverride] = useState(false);
+  const [activePreset, setActivePreset] = useState<SamplerPresetId | null>(null);
+  const cacheReuseEnabled =
+    typeof value.cache_reuse === "number" && value.cache_reuse > 0;
+  const cacheReuseLocked = brokenVerdict.broken && !cacheReuseOverride;
+  const cramEnabled =
+    typeof value.cram_mb === "number" && value.cram_mb > 0;
+  const moeOffload = value.n_cpu_moe ?? 0;
+  const moeMax = model.expert_layer_count ?? MOE_FALLBACK_MAX;
+  const moeFallbackInUse = model.is_moe && model.expert_layer_count == null;
+
+  const prevMoeRef = useRef<number>(moeOffload);
+  useEffect(() => {
+    if (prevMoeRef.current === 0 && moeOffload > 0) {
+      const patch: Partial<RuntimeTuning> = {};
+      const currentBatch = value.n_batch ?? 0;
+      const currentUbatch = value.n_ubatch ?? 0;
+      if (currentBatch < MOE_AUTO_BUMP_BATCH) {
+        patch.n_batch = MOE_AUTO_BUMP_BATCH;
+      }
+      if (currentUbatch < MOE_AUTO_BUMP_UBATCH) {
+        patch.n_ubatch = MOE_AUTO_BUMP_UBATCH;
+      }
+      if (Object.keys(patch).length > 0) {
+        onChange({ ...value, ...patch });
+      }
+    }
+    prevMoeRef.current = moeOffload;
+  }, [moeOffload]);
+
+  useEffect(() => {
+    if (!brokenVerdict.broken) {
+      setCacheReuseOverride(false);
+    }
+  }, [brokenVerdict.broken, model.family_id]);
+
+  useEffect(() => {
+    const shouldEmit =
+      brokenVerdict.broken && cacheReuseOverride && cacheReuseEnabled;
+    const current = value.swa_full ?? false;
+    if (shouldEmit && !current) {
+      onChange({ ...value, swa_full: true });
+    } else if (!shouldEmit && value.swa_full !== undefined) {
+      const next = { ...value };
+      next.swa_full = undefined;
+      onChange(next);
+    }
+  }, [brokenVerdict.broken, cacheReuseOverride, cacheReuseEnabled]);
+
+  const warnings = useMemo(
+    () => activeWarnings({ form: value, model }),
+    [value, model],
+  );
 
   const gpuMax = modelMetadata?.layer_count ?? GPU_LAYERS_FALLBACK_MAX;
   const metadataCtxMax = model.max_context ?? 0;
@@ -81,6 +170,25 @@ export function RuntimeTuningForm({
   const kvDisabled = !value.flash_attn;
 
   const gpuValue = clamp(value.n_gpu_layers ?? 0, 0, gpuMax);
+  const totalLayers = modelMetadata?.layer_count ?? gpuMax;
+  const vramBudget = useMemo(
+    () =>
+      computeVramBudget({
+        modelSizeBytes: model.size_bytes ?? 0,
+        nGpuLayers: gpuValue,
+        totalLayers,
+        nCpuMoe: moeOffload,
+        expertLayerCount: model.expert_layer_count ?? 0,
+        hostVramBytes: null,
+      }),
+    [
+      model.size_bytes,
+      gpuValue,
+      totalLayers,
+      moeOffload,
+      model.expert_layer_count,
+    ],
+  );
   const ctxValue = clamp(value.ctx_size ?? 8192, 1024, ctxMax);
   const threadsValue = clamp(
     value.threads ?? defaults.threads_default,
@@ -123,6 +231,28 @@ export function RuntimeTuningForm({
 
   return (
     <div className={styles.root}>
+      {warnings.length > 0 && (
+        <div className={styles.warnings} role="status" aria-live="polite">
+          {warnings.map((rule) => (
+            <div
+              key={rule.id}
+              className={styles.warningChip}
+              data-severity={rule.severity}
+            >
+              <span className={styles.warningCopy}>{rule.copy}</span>
+              {rule.action && (
+                <button
+                  type="button"
+                  className={styles.warningAction}
+                  onClick={() => update(rule.action!.apply(value))}
+                >
+                  {rule.action.label}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       <section className={styles.section} aria-labelledby={`${ids.ctx}-title`}>
         <h3 id={`${ids.ctx}-title`} className={styles.sectionTitle}>
           Memory
@@ -273,6 +403,82 @@ export function RuntimeTuningForm({
             />
           </span>
         </div>
+
+        <div className={styles.rowFull}>
+          <span className={styles.labelCell}>
+            <label htmlFor={ids.cacheReuse} className={styles.checkboxRow}>
+              <input
+                id={ids.cacheReuse}
+                type="checkbox"
+                className={styles.checkbox}
+                disabled={cacheReuseLocked}
+                checked={cacheReuseEnabled}
+                aria-describedby={helpIds.cacheReuse}
+                onChange={(e) =>
+                  update({
+                    cache_reuse: e.target.checked
+                      ? CACHE_REUSE_DEFAULT
+                      : undefined,
+                  })
+                }
+              />
+              <span className={styles.label}>Reuse KV cache</span>
+            </label>
+            <HelpTooltip
+              id={helpIds.cacheReuse}
+              title="Reuse KV cache"
+              description="Reuses prefilled KV state across turns when the prompt prefix is unchanged. Skips the dominant cost of inference (prefill) on follow-up turns of the same chat thread."
+              recommended="ON for chat workloads; min-chunk 256 is a safe default"
+            />
+          </span>
+        </div>
+        {cacheReuseLocked && (
+          <div className={styles.warningChip} data-severity="warning">
+            <span className={styles.warningCopy}>{brokenVerdict.reason}</span>
+            <button
+              type="button"
+              className={styles.warningAction}
+              onClick={() => setCacheReuseOverride(true)}
+            >
+              Enable anyway
+            </button>
+          </div>
+        )}
+        {brokenVerdict.broken && cacheReuseOverride && cacheReuseEnabled && (
+          <div className={styles.note}>
+            --swa-full will be added automatically to mitigate the SWA regression on this model family.
+          </div>
+        )}
+        {cacheReuseEnabled && (
+          <div className={styles.row}>
+            <span className={styles.labelCell}>
+              <label htmlFor={ids.cacheReuseChunk} className={styles.label}>
+                Min chunk
+              </label>
+            </span>
+            <input
+              id={ids.cacheReuseChunk}
+              type="number"
+              min={CACHE_REUSE_MIN}
+              max={CACHE_REUSE_MAX}
+              step={32}
+              value={value.cache_reuse ?? CACHE_REUSE_DEFAULT}
+              className={styles.number}
+              onChange={(e) => {
+                const parsed = Number(e.target.value);
+                if (Number.isFinite(parsed)) {
+                  update({
+                    cache_reuse: clamp(
+                      parsed,
+                      CACHE_REUSE_MIN,
+                      CACHE_REUSE_MAX,
+                    ),
+                  });
+                }
+              }}
+            />
+          </div>
+        )}
       </section>
 
       <details className={styles.advanced}>
@@ -483,6 +689,238 @@ export function RuntimeTuningForm({
               if (Number.isFinite(parsed)) update({ seed: parsed });
             }}
           />
+        </div>
+
+        <div className={styles.rowFull}>
+          <span className={styles.labelCell}>
+            <label htmlFor={ids.cram} className={styles.checkboxRow}>
+              <input
+                id={ids.cram}
+                type="checkbox"
+                className={styles.checkbox}
+                checked={cramEnabled}
+                aria-describedby={helpIds.cram}
+                onChange={(e) =>
+                  update({
+                    cram_mb: e.target.checked ? CRAM_MB_DEFAULT : undefined,
+                    checkpoint_every_n_tokens: e.target.checked
+                      ? CHECKPOINT_DEFAULT
+                      : undefined,
+                  })
+                }
+              />
+              <span className={styles.label}>Persist prompt cache to RAM</span>
+            </label>
+            <HelpTooltip
+              id={helpIds.cram}
+              title="Persist prompt cache to RAM"
+              description="Caches prefilled prompt state in host memory. Repeat requests with the same prefix skip prefill almost entirely — up to ~93% TTFT reduction on cached requests in upstream benchmarks."
+              recommended="ON for RAG-style workloads with stable system prompts"
+            />
+          </span>
+        </div>
+        {cramEnabled && (
+          <>
+            <div className={styles.rowFull}>
+              <span className={styles.labelCell}>
+                <label htmlFor={ids.cramSize} className={styles.label}>
+                  Cache size (MB)
+                </label>
+              </span>
+              <input
+                id={ids.cramSize}
+                type="number"
+                min={CRAM_MB_MIN}
+                max={CRAM_MB_MAX}
+                step={256}
+                value={value.cram_mb ?? CRAM_MB_DEFAULT}
+                className={styles.number}
+                onChange={(e) => {
+                  const parsed = Number(e.target.value);
+                  if (Number.isFinite(parsed)) {
+                    update({
+                      cram_mb: clamp(parsed, CRAM_MB_MIN, CRAM_MB_MAX),
+                    });
+                  }
+                }}
+              />
+            </div>
+            <div className={styles.rowFull}>
+              <span className={styles.labelCell}>
+                <label htmlFor={ids.checkpointEvery} className={styles.label}>
+                  Checkpoint every (tokens)
+                </label>
+              </span>
+              <input
+                id={ids.checkpointEvery}
+                type="number"
+                min={CHECKPOINT_MIN}
+                max={CHECKPOINT_MAX}
+                step={1024}
+                value={value.checkpoint_every_n_tokens ?? CHECKPOINT_DEFAULT}
+                className={styles.number}
+                onChange={(e) => {
+                  const parsed = Number(e.target.value);
+                  if (Number.isFinite(parsed)) {
+                    update({
+                      checkpoint_every_n_tokens: clamp(
+                        parsed,
+                        CHECKPOINT_MIN,
+                        CHECKPOINT_MAX,
+                      ),
+                    });
+                  }
+                }}
+              />
+            </div>
+          </>
+        )}
+
+        {model.is_moe && (
+          <>
+            <div className={styles.row}>
+              <span className={styles.labelCell}>
+                <label htmlFor={ids.moeOffload} className={styles.label}>
+                  MoE offload
+                </label>
+                <HelpTooltip
+                  id={helpIds.moeOffload}
+                  title="MoE offload (--n-cpu-moe)"
+                  description="Pushes expert FFN tensors to CPU RAM while keeping attention on GPU. The only practical way to run 100B+ MoE models on consumer cards. Auto-bumps batch sizes to 2048 to avoid the GGML_OP_OFFLOAD_MIN_BATCH=32 prefill collapse."
+                  recommended="RTX 3090: try 28 for GPT-OSS-120B; RTX 4090: try 16; 48GB+: 0 (full GPU)"
+                />
+              </span>
+              <input
+                id={ids.moeOffload}
+                type="range"
+                min={0}
+                max={moeMax}
+                step={1}
+                value={moeOffload}
+                className={styles.slider}
+                onChange={(e) =>
+                  update({ n_cpu_moe: Number(e.target.value) })
+                }
+              />
+              <span className={styles.value}>
+                {moeOffload}/{moeMax}
+              </span>
+            </div>
+            {moeFallbackInUse && (
+              <div className={styles.note}>
+                Exact expert layer count unknown — using fallback maximum.
+              </div>
+            )}
+            <div className={styles.note}>
+              ~ {(vramBudget.gpuBytesUsed / 1_000_000_000).toFixed(1)} GB GPU
+              used (estimated)
+            </div>
+            {moeOffload > 0 && (
+              <div className={styles.note}>
+                Bumped batch and uBatch to ≥ 2048 for MoE offload.
+              </div>
+            )}
+          </>
+        )}
+
+        <div className={styles.row}>
+          <span className={styles.labelCell}>
+            <label htmlFor={ids.minP} className={styles.label}>
+              min-p
+            </label>
+            <HelpTooltip
+              id={helpIds.minP}
+              title="min-p"
+              description="Modern nucleus sampler — keeps tokens whose probability ≥ min-p × top-token probability. Recommended replacement for top-p in 2025+ guides."
+              recommended="0.05 chat; 0.10 code/factual; 0.02 creative"
+            />
+          </span>
+          <input
+            id={ids.minP}
+            type="number"
+            min={0}
+            max={1}
+            step={0.01}
+            value={value.min_p ?? 0}
+            className={styles.number}
+            onChange={(e) => {
+              const parsed = Number(e.target.value);
+              if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 1) {
+                update({ min_p: parsed > 0 ? parsed : undefined });
+              }
+            }}
+          />
+        </div>
+
+        <div className={styles.row}>
+          <span className={styles.labelCell}>
+            <label htmlFor={ids.dryMultiplier} className={styles.label}>
+              DRY multiplier
+            </label>
+            <HelpTooltip
+              id={helpIds.dryMultiplier}
+              title="DRY (Don't Repeat Yourself)"
+              description="Exponential repetition penalty that targets only actual repeating sequences, not natural recurrence. Strictly better than the classic --repeat-penalty for chat repetition control."
+              recommended="0.8 multiplier with base 1.75 + allowed-length 2"
+            />
+          </span>
+          <input
+            id={ids.dryMultiplier}
+            type="number"
+            min={0}
+            max={5}
+            step={0.1}
+            value={value.dry_multiplier ?? 0}
+            className={styles.number}
+            onChange={(e) => {
+              const parsed = Number(e.target.value);
+              if (!Number.isFinite(parsed) || parsed < 0) return;
+              if (parsed > 0) {
+                update({
+                  dry_multiplier: parsed,
+                  dry_base: value.dry_base ?? DRY_BASE_DEFAULT,
+                  dry_allowed_length:
+                    value.dry_allowed_length ?? DRY_ALLOWED_LENGTH_DEFAULT,
+                });
+              } else {
+                update({
+                  dry_multiplier: undefined,
+                  dry_base: undefined,
+                  dry_allowed_length: undefined,
+                });
+              }
+            }}
+          />
+        </div>
+
+        <div className={styles.presets}>
+          <span className={styles.label}>Sampler preset</span>
+          {(["chat", "code", "creative"] as SamplerPresetId[]).map(
+            (presetId) => (
+              <button
+                key={presetId}
+                type="button"
+                className={styles.presetChip}
+                data-active={activePreset === presetId ? "true" : undefined}
+                onClick={() => {
+                  const preset = SAMPLER_PRESETS[presetId];
+                  setActivePreset(presetId);
+                  const next: Partial<RuntimeTuning> = { ...preset.tuning };
+                  if (preset.tuning.dry_multiplier === undefined) {
+                    next.dry_base = undefined;
+                    next.dry_allowed_length = undefined;
+                  }
+                  update(next);
+                }}
+              >
+                {presetId === "chat"
+                  ? "Chat"
+                  : presetId === "code"
+                  ? "Code & factual"
+                  : "Creative"}
+              </button>
+            ),
+          )}
         </div>
       </details>
 
