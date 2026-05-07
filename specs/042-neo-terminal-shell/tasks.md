@@ -36,12 +36,12 @@ This spec lands across:
 
 **Purpose**: Workspace plumbing, dep additions, and the Test Strategy spec amendment that closes the Constitution VI carve-out.
 
-- [ ] T001 Add `crates/nexus-run-events` and `crates/nexus-desktop-shell` and `apps/web/src-tauri` as workspace members in the root `Cargo.toml`
-- [ ] T002 [P] Verify Tauri CLI 2.x is installed (`cargo install tauri-cli --version "^2"`); document in `apps/web/README.md` if not already
-- [ ] T003 [P] Add new frontend dependencies in `apps/web/package.json`: `@tauri-apps/api@^2`, `@tauri-apps/cli@^2` (devDependency), `idb@^8`. Run `pnpm install` to refresh lockfile.
-- [ ] T004 [P] Scaffold `apps/web/src-tauri/` directory: empty `Cargo.toml` (member-of-workspace), placeholder `tauri.conf.json`, `build.rs`, `src/main.rs`, `src/lib.rs`, `capabilities/default.json`
-- [ ] T005 [P] Add `tauri.conf.json` minimal config with `decorations: false`, `titleBarStyle: "Overlay"`, `transparent: true`, `hiddenTitle: true`, and `beforeDevCommand: "pnpm --filter web dev"` per research.md R1
-- [ ] T006 Add a "Test strategy" section to `specs/042-neo-terminal-shell/spec.md` invoking the Constitution VI v1.1.2 design-heavy UI carve-out — closes the action item flagged in plan.md's Constitution Check
+- [X] T001 Add `crates/nexus-run-events` and `crates/nexus-desktop-shell` and `apps/web/src-tauri` as workspace members in the root `Cargo.toml`
+- [X] T002 [P] Verify Tauri CLI 2.x is installed (`cargo install tauri-cli --version "^2"`); document in `apps/web/README.md` if not already
+- [X] T003 [P] Add new frontend dependencies in `apps/web/package.json`: `@tauri-apps/api@^2`, `@tauri-apps/cli@^2` (devDependency), `idb@^8`. Run `pnpm install` to refresh lockfile.
+- [X] T004 [P] Scaffold `apps/web/src-tauri/` directory: empty `Cargo.toml` (member-of-workspace), placeholder `tauri.conf.json`, `build.rs`, `src/main.rs`, `src/lib.rs`, `capabilities/default.json`
+- [X] T005 [P] Add `tauri.conf.json` minimal config with `decorations: false`, `titleBarStyle: "Overlay"`, `transparent: true`, `hiddenTitle: true`, and `beforeDevCommand: "pnpm --filter web dev"` per research.md R1
+- [X] T006 Add a "Test strategy" section to `specs/042-neo-terminal-shell/spec.md` invoking the Constitution VI v1.1.2 design-heavy UI carve-out — closes the action item flagged in plan.md's Constitution Check
 
 **Checkpoint**: Workspace builds clean (`cargo check --workspace`), frontend lockfile current, spec.md amended.
 

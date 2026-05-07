@@ -11,6 +11,23 @@ pnpm build       # production build under dist/ + runs scan:cdn
 pnpm typecheck   # tsc --noEmit
 ```
 
+## Desktop build (Tauri 2.x — spec 042)
+
+The desktop app wraps this frontend with a native window + system tray + embedded host. Prerequisites beyond the standard frontend deps:
+
+```
+cargo install tauri-cli --version "^2"   # one-time, ~3-5 min build
+```
+
+Then from this directory (`apps/web/`, NOT the workspace root — Tauri issue #2643):
+
+```
+pnpm tauri dev    # launches Vite + builds the Rust shell + opens the desktop window
+pnpm tauri build  # produces platform bundles under target/release/bundle/
+```
+
+The browser dev workflow (`pnpm dev` above) continues to work unchanged for non-desktop iterations. The frontend's `services/ipc_adapter.ts` runtime-detects `window.isTauri` and routes IPC to either Tauri commands (desktop) or the existing axum HTTP/SSE endpoints (browser dev).
+
 ## Spectral Graphite theme (spec 019 FR-032 / FR-T03)
 
 All colors, typography, elevation, and motion tokens live under
