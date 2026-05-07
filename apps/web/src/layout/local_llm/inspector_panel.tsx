@@ -23,6 +23,7 @@ export interface InspectorPanelProps {
   systemPromptInherited: boolean;
   systemPrompt: string;
   onSystemPromptChange: (next: string) => void;
+  onUnload?: () => void;
 }
 
 const phaseLabel: Record<LoadPhase, string> = {
@@ -65,6 +66,7 @@ export function InspectorPanel({
   systemPromptInherited,
   systemPrompt,
   onSystemPromptChange,
+  onUnload,
 }: Readonly<InspectorPanelProps>) {
   const onTempChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -114,8 +116,20 @@ export function InspectorPanel({
             )}
             {modelSub ? <span className={styles.modelSub}>{modelSub}</span> : null}
           </div>
-          <span className={chipClass} aria-label={`Model status: ${phaseLabel[loadPhase]}`}>
-            {phaseLabel[loadPhase]}
+          <span className={styles.modelMeta}>
+            <span className={chipClass} aria-label={`Model status: ${phaseLabel[loadPhase]}`}>
+              {phaseLabel[loadPhase]}
+            </span>
+            {loadPhase === "ready" && onUnload ? (
+              <button
+                type="button"
+                className={styles.unloadBtn}
+                onClick={onUnload}
+                aria-label="Unload model"
+              >
+                Unload
+              </button>
+            ) : null}
           </span>
         </div>
         {contextMax > 0 ? (
