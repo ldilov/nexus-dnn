@@ -75,6 +75,7 @@ impl LocalLlmRouterProvider {
             "/chat/threads/{thread_id}/active_model/status".into(),
             "/chat/threads/{thread_id}/inference/cancel".into(),
             "/chat/available_models".into(),
+            "/chat/runtime_status".into(),
         ]
     }
 
