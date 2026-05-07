@@ -5,6 +5,7 @@ import { Stack } from "../components/layout/stack";
 import { TabsLayout } from "../components/layout/tabs_layout";
 import { CardLayout } from "../components/layout/card_layout";
 import { ChatPanelAdapter } from "./chat_panel_adapter";
+import { useLayoutContext } from "./layout_context";
 import { DataTable } from "../components/layout/data_table";
 import { LayoutForm } from "../components/layout/form";
 import { FileBrowser } from "../components/layout/file_browser";
@@ -33,6 +34,22 @@ type ComponentRenderer = (node: LayoutNode, children: ReactNode[]) => ReactNode;
 
 function toProps(node: LayoutNode): Record<string, unknown> {
   return node.props ?? {};
+}
+
+interface ChatPanelRegistryEntryProps {
+  welcomeTitle?: string;
+  welcomeDescription?: string;
+}
+
+function ChatPanelRegistryEntry({ welcomeTitle, welcomeDescription }: ChatPanelRegistryEntryProps) {
+  const { deploymentId } = useLayoutContext();
+  return (
+    <ChatPanelAdapter
+      welcomeTitle={welcomeTitle}
+      welcomeDescription={welcomeDescription}
+      deploymentId={deploymentId}
+    />
+  );
 }
 
 const registry: Record<string, ComponentRenderer> = {
@@ -74,7 +91,7 @@ const registry: Record<string, ComponentRenderer> = {
   chat_panel: (node, _children) => {
     const props = toProps(node);
     return (
-      <ChatPanelAdapter
+      <ChatPanelRegistryEntry
         welcomeTitle={props.welcomeTitle as string | undefined}
         welcomeDescription={props.welcomeDescription as string | undefined}
       />
