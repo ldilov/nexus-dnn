@@ -70,4 +70,78 @@ impl ModelLoadRegistry {
             _ => None,
         }
     }
+
+    pub async fn find_ready(&self) -> Option<LoadState> {
+        self.inner
+            .read()
+            .await
+            .values()
+            .find(|state| matches!(state, LoadState::Ready { .. }))
+            .cloned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chat::handlers::ActiveModelBinding;
+
+    fn ready_state(family: &str) -> LoadState {
+        LoadState::Ready {
+            binding: ActiveModelBinding {
+                family_id: family.to_string(),
+                variant_id: "v1".to_string(),
+                artifact_id: format!("{family}-artifact"),
+                absolute_path: "/tmp/model.gguf".to_string(),
+                label: format!("{family} label"),
+            },
+            lease_id: None,
+            port: 8080,
+        }
+    }
+
+    fn loading_state(family: &str) -> LoadState {
+        LoadState::Loading {
+            family_id: family.to_string(),
+            variant_id: "v1".to_string(),
+            label: format!("{family} label"),
+        }
+    }
+
+    fn failed_state(family: &str) -> LoadState {
+        LoadState::Failed {
+            family_id: family.to_string(),
+            variant_id: "v1".to_string(),
+            reason: "bad".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn find_ready_returns_none_when_empty() {
+        let registry = ModelLoadRegistry::new();
+        assert!(registry.find_ready().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn find_ready_returns_first_ready_entry() {
+        let registry = ModelLoadRegistry::new();
+        registry.set("thread-loading", loading_state("alpha")).await;
+        registry.set("thread-ready", ready_state("beta")).await;
+
+        let found = registry.find_ready().await.expect("should find a ready entry");
+        match found {
+            LoadState::Ready { binding, .. } => {
+                assert_eq!(binding.family_id, "beta");
+            }
+            other => panic!("expected Ready, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn find_ready_skips_failed_and_idle() {
+        let registry = ModelLoadRegistry::new();
+        registry.set("thread-failed", failed_state("alpha")).await;
+        registry.set("thread-loading", loading_state("beta")).await;
+        assert!(registry.find_ready().await.is_none());
+    }
 }
