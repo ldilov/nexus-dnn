@@ -1,4 +1,8 @@
-import type { AvailableModel, RuntimeTuning } from "../../services/local_llm_chat";
+import {
+  isFlashAttnEffectivelyOn,
+  type AvailableModel,
+  type RuntimeTuning,
+} from "../../services/local_llm_chat";
 
 export type WarningSeverity = "info" | "warning" | "error";
 
@@ -34,7 +38,7 @@ export const WARNING_RULES: WarningRule[] = [
       "Flash Attention + Q8 KV is known to collapse Gemma 3 GPU utilization (drops to 20-30%). Recommend FP16 KV.",
     predicate: ({ form, model }) =>
       isGemma3(model) &&
-      form.flash_attn === true &&
+      isFlashAttnEffectivelyOn(form.flash_attn) &&
       (form.cache_type_k === "q8_0" || form.cache_type_v === "q8_0"),
     action: {
       label: "Force FP16 KV",

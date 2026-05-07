@@ -67,10 +67,20 @@ export function setGenerationSettings(
 
 export type KvCacheKind = "fp16" | "q8_0" | "q4_0";
 
+export type FlashAttnMode = "auto" | "on" | "off";
+
+export function isFlashAttnEffectivelyOn(
+  mode: FlashAttnMode | boolean | undefined,
+): boolean {
+  if (mode === undefined) return false;
+  if (typeof mode === "boolean") return mode;
+  return mode === "auto" || mode === "on";
+}
+
 export interface RuntimeTuning {
   n_gpu_layers?: number;
   threads?: number;
-  flash_attn?: boolean;
+  flash_attn?: FlashAttnMode | boolean;
   ctx_size?: number;
   cache_type_k?: KvCacheKind;
   cache_type_v?: KvCacheKind;
@@ -91,6 +101,9 @@ export interface RuntimeTuning {
   dry_allowed_length?: number;
   dry_penalty_last_n?: number;
   swa_full?: boolean;
+  kv_unified?: boolean;
+  lookup_decoding?: boolean;
+  experts_per_token?: number;
 }
 
 export interface RuntimeDefaults {
