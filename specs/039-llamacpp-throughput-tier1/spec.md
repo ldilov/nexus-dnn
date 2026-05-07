@@ -146,8 +146,8 @@ The deep-research report identified seven counter-intuitive pitfalls in the llam
 
 A reviewer audits the change. They confirm by grep that:
 
-- All Rust changes live under `extensions/builtin/local-llm/` and any host-side migration touches the artifact store via the extension boundary, not by editing host crates directly.
-- All frontend changes live under `apps/web/src/layout/local_llm/`. The generic `apps/web/src/components/chat/` directory is unmodified.
+- All extension-specific Rust changes live under `extensions/builtin/local-llm/`. The two host crates whose generic surfaces are extended — `crates/nexus-model-metadata/` (GGUF MoE indicators) and `crates/nexus-models-store/` (`InstalledArtifact` row + DTO surface) — and host migration `migrations/021_installed_artifact_moe_metadata.sql` are intentional generic-data extensions (the `model_store_installed_artifacts` table is host-owned per migrations 014/015 from spec 028; the new columns serve any future model-loading extension). Per Principle XIII.4, these host crates and the migration MUST remain free of extension-id literals (`local-llm`, `nexus.local-llm`).
+- All frontend changes live under `apps/web/src/layout/local_llm/` and the extension's `services/local_llm_chat.ts` interface mirror. The generic `apps/web/src/components/chat/` directory is unmodified.
 - No raw hex / rgba CSS values are introduced; the new tooltip and warning chips use existing `vars.*` design tokens with `color-mix(in oklch, ...)` for transparency.
 - No inline `//` code comments are added in new code; no AI-attribution markers anywhere.
 
@@ -155,7 +155,8 @@ A reviewer audits the change. They confirm by grep that:
 
 **Independent Test**: After implementation, run:
 
-- `git diff main..HEAD --stat | grep -v '^extensions/builtin/local-llm\|^apps/web/src/layout/local_llm\|^apps/web/src/services/local_llm_chat\|^specs/039\|^docs/'` — must be empty (no out-of-scope files touched).
+- `git diff main..HEAD --stat | grep -v '^extensions/builtin/local-llm\|^apps/web/src/layout/local_llm\|^apps/web/src/services/local_llm_chat\|^crates/nexus-model-metadata\|^crates/nexus-models-store\|^migrations/021\|^specs/039\|^docs/'` — must be empty (no out-of-scope files touched). The host-crate and migration paths are explicitly permitted because the new columns + DTO fields are generic; their boundary discipline is enforced by the next bullet.
+- `grep -rn 'local-llm\|local_llm\|nexus.local-llm' crates/nexus-model-metadata/ crates/nexus-models-store/ migrations/021_installed_artifact_moe_metadata.sql` — must remain empty (Principle XIII.1: host-side surfaces stay generic).
 - `grep -rn 'local-llm\|local_llm' apps/web/src/components/chat/` — must remain empty.
 - `grep -rnE 'rgba\(|#[0-9a-fA-F]{3,8}\b' apps/web/src/layout/local_llm/runtime_tuning_form.css.ts` — every match must be inside a `color-mix(...)` or `linear-gradient(...)` / `radial-gradient(...)` string.
 
@@ -163,7 +164,9 @@ A reviewer audits the change. They confirm by grep that:
 
 ## Functional Requirements
 
-### Backend (Rust, inside `extensions/builtin/local-llm/`)
+### Backend (Rust)
+
+Most backend work lives inside `extensions/builtin/local-llm/` (RuntimeTuning struct, `runtime_to_args` mapping, AvailableModelDto). The GGUF-metadata fields described in FR-004 / FR-005 / FR-006 / FR-007 land in the host crates `crates/nexus-model-metadata/` (extraction) and `crates/nexus-models-store/` (`InstalledArtifact` row + storage I/O) plus a new host migration `migrations/021_installed_artifact_moe_metadata.sql`, because the `model_store_installed_artifacts` table is host-owned (migrations 014/015 from spec 028) and the new columns are generic enough to serve any future model-loading extension. Both host crates remain free of extension-id literals per Principle XIII.1.
 
 - **FR-001 — RuntimeTuning struct fields.** The `RuntimeTuning` struct gains four optional fields, all `serde(default)` and serde-skipped when `None`:
   - `cache_reuse: Option<u32>`
