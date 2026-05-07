@@ -175,13 +175,15 @@ export function InspectorPanel({
               aria-label="Max tokens"
             />
           </label>
-          <div className={styles.paramRow} aria-hidden="true">
+          <div className={styles.paramRow}>
             <span className={styles.paramLabel}>System prompt</span>
-            {systemPromptInherited ? (
-              <span className={styles.promptIndicatorInherited}>inherits</span>
-            ) : (
-              <span className={styles.promptIndicatorOverridden}>overridden</span>
-            )}
+            <span aria-hidden="true">
+              {systemPromptInherited ? (
+                <span className={styles.promptIndicatorInherited}>inherits</span>
+              ) : (
+                <span className={styles.promptIndicatorOverridden}>overridden</span>
+              )}
+            </span>
           </div>
         </div>
       </Section>

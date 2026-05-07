@@ -3,7 +3,7 @@ import { act, renderHook } from "@testing-library/react";
 import { useTokenUsage } from "../use_token_usage";
 
 describe("useTokenUsage", () => {
-  it("accumulates_prompt_plus_completion_tokens_from_latest_record", () => {
+  it("replaces_with_latest_snapshot_from_each_record", () => {
     const { result } = renderHook(() => useTokenUsage("t1", 8192));
 
     act(() => {
