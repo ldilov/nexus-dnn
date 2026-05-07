@@ -15,8 +15,8 @@ export const section = style({
   gap: vars.density.d3,
   padding: `${vars.density.d3} ${vars.density.d4}`,
   borderRadius: vars.radius.card,
-  background: "rgba(255,255,255,0.025)",
-  boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.04)",
+  background: `color-mix(in oklch, ${vars.color.text.primary} 2.5%, transparent)`,
+  boxShadow: `inset 0 0 0 1px ${vars.color.outline.variant}`,
 });
 
 export const sectionTitle = style({
@@ -34,8 +34,8 @@ export const advanced = style({
   gap: vars.density.d3,
   padding: `${vars.density.d3} ${vars.density.d4}`,
   borderRadius: vars.radius.card,
-  background: "rgba(255,255,255,0.025)",
-  boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.04)",
+  background: `color-mix(in oklch, ${vars.color.text.primary} 2.5%, transparent)`,
+  boxShadow: `inset 0 0 0 1px ${vars.color.outline.variant}`,
 });
 
 export const advancedSummary = style({
@@ -144,15 +144,15 @@ export const select = style({
   padding: "6px 10px",
   fontSize: vars.font.size.bodySm,
   fontFamily: vars.font.ui,
-  background: "rgba(255,255,255,0.04)",
+  background: `color-mix(in oklch, ${vars.color.text.primary} 4%, transparent)`,
   color: vars.color.text.primary,
   border: "none",
   borderRadius: vars.radius.control,
-  boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
+  boxShadow: `inset 0 0 0 1px ${vars.color.outline.variant}`,
   outline: "none",
   cursor: "pointer",
   ":focus": {
-    boxShadow: "inset 0 0 0 1.5px rgba(186,158,255,0.5)",
+    boxShadow: `inset 0 0 0 1.5px color-mix(in oklch, ${vars.color.accent.primary} 50%, transparent)`,
   },
   selectors: {
     "&:disabled": {
@@ -167,14 +167,14 @@ export const number = style({
   padding: "6px 10px",
   fontSize: vars.font.size.bodySm,
   fontFamily: vars.font.code,
-  background: "rgba(255,255,255,0.04)",
+  background: `color-mix(in oklch, ${vars.color.text.primary} 4%, transparent)`,
   color: vars.color.text.primary,
   border: "none",
   borderRadius: vars.radius.control,
-  boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
+  boxShadow: `inset 0 0 0 1px ${vars.color.outline.variant}`,
   outline: "none",
   ":focus": {
-    boxShadow: "inset 0 0 0 1.5px rgba(186,158,255,0.5)",
+    boxShadow: `inset 0 0 0 1.5px color-mix(in oklch, ${vars.color.accent.primary} 50%, transparent)`,
   },
 });
 
@@ -224,6 +224,6 @@ export const reset = style({
   transition: `color ${vars.motion.durationFast} ease, background ${vars.motion.durationFast} ease`,
   ":hover": {
     color: vars.color.accent.primary,
-    background: "rgba(186,158,255,0.08)",
+    background: `color-mix(in oklch, ${vars.color.accent.primary} 8%, transparent)`,
   },
 });
