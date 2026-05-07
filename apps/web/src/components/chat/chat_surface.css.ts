@@ -90,6 +90,18 @@ export const messages = style({
   gap: vars.density.d4,
 });
 
+export const emptyState = style({
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: vars.density.d3,
+  flex: "1 1 auto",
+  paddingBlock: vars.density.d8,
+  textAlign: "center",
+  color: vars.color.text.secondary,
+});
+
 export const composerSlot = style({
   flex: "0 0 auto",
   paddingInline: vars.density.d6,
