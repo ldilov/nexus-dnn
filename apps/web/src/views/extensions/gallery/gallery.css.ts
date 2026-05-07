@@ -1,129 +1,146 @@
-// audit-allow: px — sub-token spacing value, no density token at this step
-// audit-allow: px — below minimum token granularity (sub-10px)
-// audit-allow: hex — pure-white contrast anchor
 import { style, globalStyle, keyframes } from "@vanilla-extract/css";
 import { vars } from "../../../theme/contract.css";
 
 export const root = style({
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.gapXl,
-  padding: vars.space.insetLg,
+  gap: vars.density.padSection,
+  paddingBlock: vars.density.padSection,
+  // audit-allow: px — fixed layout breakpoint matches Deployments-Index reference
+  maxWidth: "1400px",
+  marginInline: "auto",
+  width: "100%",
 });
 
-export const section = style({
+export const summaryGrid = style({
+  display: "grid",
+  // audit-allow: px — fixed minimum width breakpoint, matches Deployments-Index reference
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: vars.density.gapCard,
+});
+
+export const summaryStat = style({
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.insetLg,
+  gap: vars.density.d2,
+  padding: vars.density.padCard,
+  borderRadius: vars.radius.card,
+  background: vars.card.bg,
 });
 
-export const sectionHeader = style({
-  display: "flex",
-  alignItems: "center",
-  gap: vars.space.insetMd,
-});
-
-export const sectionTitle = style({
-  fontFamily: vars.font.ui,
-  fontSize: vars.font.size.caption,
-  fontWeight: vars.font.weight.semibold,
-  color: vars.color.text.muted,
-  textTransform: "uppercase",
-  letterSpacing: "0.12em",
-});
-
-export const sectionCount = style({
+export const summaryStatLabel = style({
   fontFamily: vars.font.code,
-  fontSize: vars.font.size.caption,
+  fontSize: vars.text.eyebrow,
   fontWeight: vars.font.weight.semibold,
-  color: vars.color.accent.primary,
-  background: vars.color.bg.elevated,
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  padding: `2px ${vars.space.insetSm}`,
-  borderRadius: vars.radius.control,
+  letterSpacing: "0.16em",
+  textTransform: "uppercase",
+  color: vars.color.text.muted,
+});
+
+export const summaryStatValue = style({
+  fontFamily: vars.font.code,
+  // audit-allow: px — fluid clamp display value, matches Deployments-Index summaryStatValue
+  fontSize: "clamp(28px, 1.6vw + 18px, 44px)",
+  fontWeight: vars.font.weight.regular,
+  color: vars.color.text.primary,
+  lineHeight: 1,
+  letterSpacing: "-0.02em",
+  fontVariantNumeric: "tabular-nums",
 });
 
 export const grid = style({
   display: "grid",
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-  gap: vars.space.gapLg,
-});
-
-export const card = style({
-  display: "flex",
-  flexDirection: "column",
-  gap: vars.space.insetMd,
-  padding: vars.space.insetLg,
-  background: vars.color.bg.panel,
-  borderRadius: vars.radius.card,
-  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, transform ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
-  selectors: {
-    "&:hover": {
-      background: vars.color.bg.elevated,
+  // audit-allow: px — minimum card width before reflow
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: vars.density.gapCard,
+  listStyle: "none",
+  padding: 0,
+  margin: 0,
+  "@media": {
+    // audit-allow: px — Spectral Graphite responsive breakpoint per design brief §2.3
+    "(min-width: 1280px)": {
+      gridTemplateColumns: "repeat(3, 1fr)",
+    },
+    // audit-allow: px — Spectral Graphite responsive breakpoint per design brief §2.3
+    "(min-width: 960px) and (max-width: 1279px)": {
+      gridTemplateColumns: "repeat(2, 1fr)",
     },
   },
 });
 
+export const card = style({
+  position: "relative",
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.density.d3,
+  padding: vars.density.padCard,
+  borderRadius: vars.radius.card,
+  background: vars.card.bg,
+  boxShadow: vars.card.shadow,
+  backdropFilter: vars.card.backdrop,
+  textAlign: "left",
+  border: "none",
+  transition: `transform ${vars.motion.durationFast} ${vars.motion.easingDefault}, background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  ":hover": {
+    background: vars.color.bg.hover,
+    transform: "translateY(-1px)",
+  },
+});
+
 export const cardDisabled = style({
-  opacity: 0.72,
+  opacity: 0.7,
 });
 
 export const cardHead = style({
   display: "flex",
   alignItems: "flex-start",
-  gap: vars.space.insetMd,
+  gap: vars.density.d3,
 });
 
 export const iconTile = style({
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  width: "40px",
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  height: "40px",
+  width: vars.control.heightLg,
+  height: vars.control.heightLg,
   flexShrink: 0,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   borderRadius: vars.radius.control,
-  background: vars.color.accent.secondaryContainer,
+  background: `color-mix(in oklch, ${vars.color.accent.primary} 14%, transparent)`,
   color: vars.color.accent.primary,
   fontFamily: vars.font.code,
-  fontSize: vars.font.size.headingSm,
+  fontSize: vars.font.size.bodyLg,
   fontWeight: vars.font.weight.bold,
+  letterSpacing: "0.02em",
 });
 
 export const headText = style({
   flex: 1,
   display: "flex",
   flexDirection: "column",
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  gap: "2px",
+  gap: vars.density.d1,
   minWidth: 0,
 });
 
 export const titleRow = style({
   display: "flex",
   alignItems: "center",
-  gap: vars.space.gapXs,
+  gap: vars.density.d2,
   flexWrap: "wrap",
 });
 
-export const title = style({
-  fontFamily: vars.font.ui,
-  fontSize: vars.font.size.bodyLg,
+const titleBase = style({
+  fontFamily: vars.font.headline,
+  fontSize: vars.font.size.headingSm,
   fontWeight: vars.font.weight.semibold,
   color: vars.color.text.primary,
-  lineHeight: vars.font.lineHeight.tight,
+  letterSpacing: "-0.01em",
+  margin: 0,
 });
 
-/**
- * Title rendered as a link to the extension settings page. Visually
- * indistinguishable from the static title until hover, where the accent color
- * reveals affordance. Discoverable second entry point alongside the footer
- * Settings button.
- */
+export const title = titleBase;
+
 export const titleLink = style([
-  title,
+  titleBase,
   {
     textDecoration: "none",
     cursor: "pointer",
@@ -131,93 +148,52 @@ export const titleLink = style([
     selectors: {
       "&:hover": { color: vars.color.accent.primary },
       "&:focus-visible": {
-        // audit-allow: px — below minimum token granularity (sub-10px)
-        outline: `2px solid ${vars.color.accent.primary}`,
-        // audit-allow: px — below minimum token granularity (sub-10px)
-        outlineOffset: "2px",
-        // audit-allow: px — below minimum token granularity (sub-10px)
-        borderRadius: "2px",
+        outline: `${vars.focus.ringWidth} solid ${vars.color.accent.accent}`,
+        outlineOffset: vars.focus.offset,
+        borderRadius: vars.radius.control,
       },
     },
   },
 ]);
 
 export const sourceChip = style({
-  fontFamily: vars.font.ui,
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  fontSize: "9px",
-  fontWeight: vars.font.weight.bold,
-  letterSpacing: "0.12em",
-  textTransform: "uppercase",
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  padding: `2px 6px`,
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  borderRadius: "3px",
-  background: vars.color.bg.hover,
-  color: vars.color.text.secondary,
-});
-
-export const statusPill = style({
-  display: "inline-flex",
-  alignItems: "center",
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  gap: "6px",
-  fontFamily: vars.font.ui,
+  fontFamily: vars.font.code,
   fontSize: vars.font.size.kbd,
   fontWeight: vars.font.weight.semibold,
-  letterSpacing: "0.08em",
+  letterSpacing: "0.12em",
   textTransform: "uppercase",
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  padding: `2px ${vars.space.insetSm}`,
+  paddingInline: vars.density.d2,
+  // audit-allow: px — chip vertical padding 2px is below minimum density token granularity
+  paddingBlock: "2px",
   borderRadius: vars.radius.full,
   background: vars.color.bg.hover,
   color: vars.color.text.secondary,
-});
-
-export const statusDot = style({
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  width: "6px",
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  height: "6px",
-  borderRadius: vars.radius.full,
-  flexShrink: 0,
-});
-
-export const statusDotActive = style({
-  background: vars.color.success.base,
-});
-
-export const statusDotDisabled = style({
-  background: vars.color.warning.base,
-});
-
-export const statusDotInvalid = style({
-  background: vars.color.error.base,
 });
 
 export const meta = style({
   fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,
   color: vars.color.text.muted,
+  letterSpacing: "0.02em",
 });
 
 export const capabilityRow = style({
   display: "flex",
   flexWrap: "wrap",
-  gap: vars.space.gapXs,
+  gap: vars.density.d1,
 });
 
 export const capability = style({
   display: "inline-flex",
   alignItems: "center",
-  gap: vars.density.d1,
-  fontFamily: vars.font.ui,
+  fontFamily: vars.font.code,
   fontSize: vars.font.size.kbd,
   fontWeight: vars.font.weight.medium,
   letterSpacing: "0.06em",
   textTransform: "uppercase",
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  padding: `3px ${vars.space.insetSm}`,
+  paddingInline: vars.density.d2,
+  // audit-allow: px — chip vertical padding 3px sits below the d1 token (4px) for compact density
+  paddingBlock: "3px",
   borderRadius: vars.radius.control,
   background: vars.color.bg.hover,
   color: vars.color.text.secondary,
@@ -226,16 +202,21 @@ export const capability = style({
 export const metrics = style({
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
-  gap: vars.space.insetMd,
-  paddingTop: vars.space.insetSm,
+  gap: vars.density.d3,
+  paddingTop: vars.density.d2,
+});
+
+export const metricCell = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.density.d1,
 });
 
 export const metricLabel = style({
-  fontFamily: vars.font.ui,
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  fontSize: "9px",
+  fontFamily: vars.font.code,
+  fontSize: vars.text.eyebrow,
   fontWeight: vars.font.weight.semibold,
-  letterSpacing: "0.12em",
+  letterSpacing: "0.14em",
   textTransform: "uppercase",
   color: vars.color.text.muted,
 });
@@ -243,10 +224,9 @@ export const metricLabel = style({
 export const metricValue = style({
   fontFamily: vars.font.code,
   fontSize: vars.font.size.bodyLg,
-  fontWeight: vars.font.weight.bold,
+  fontWeight: vars.font.weight.semibold,
   color: vars.color.text.primary,
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  marginTop: "2px",
+  fontVariantNumeric: "tabular-nums",
 });
 
 export const metricValueMuted = style({
@@ -258,25 +238,24 @@ export const footer = style({
   alignItems: "center",
   justifyContent: "space-between",
   marginTop: "auto",
-  paddingTop: vars.space.insetMd,
+  paddingTop: vars.density.d3,
+  gap: vars.density.d3,
 });
 
 export const footerActions = style({
   display: "flex",
   alignItems: "center",
-  gap: vars.space.gapXs,
+  gap: vars.density.d1,
 });
 
 export const iconButton = style({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  width: "28px",
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  height: "28px",
+  width: vars.control.heightSm,
+  height: vars.control.heightSm,
   border: "none",
-  borderRadius: vars.radius.control,
+  borderRadius: vars.radius.full,
   background: "transparent",
   color: vars.color.text.muted,
   cursor: "pointer",
@@ -285,6 +264,10 @@ export const iconButton = style({
     "&:hover": {
       background: vars.color.bg.hover,
       color: vars.color.text.primary,
+    },
+    "&:focus-visible": {
+      outline: `${vars.focus.ringWidth} solid ${vars.color.accent.accent}`,
+      outlineOffset: vars.focus.offset,
     },
     "&:disabled": {
       opacity: 0.4,
@@ -296,15 +279,11 @@ export const iconButton = style({
 export const iconButtonDanger = style({
   selectors: {
     "&:hover": {
-      color: vars.color.error.base,
+      color: vars.color.error.text,
     },
   },
 });
 
-/**
- * Anchor-styled variant of `iconButton` for `<Link>` usage so React Router
- * can navigate without dropping the icon button's affordance.
- */
 export const iconButtonLink = style([
   iconButton,
   {
@@ -312,186 +291,185 @@ export const iconButtonLink = style([
   },
 ]);
 
-// ---------- Toggle switch ----------
+export const iconGlyph = style({
+  fontSize: vars.icon.sm,
+  lineHeight: 1,
+});
+
 export const toggle = style({
   position: "relative",
-  // audit-allow: px — sub-token spacing value, no density token at this step
+  // audit-allow: px — fixed switch geometry, no density token at this granularity
   width: "36px",
-  // audit-allow: px — sub-token spacing value, no density token at this step
+  // audit-allow: px — fixed switch geometry, no density token at this granularity
   height: "20px",
   border: "none",
   borderRadius: vars.radius.full,
   background: vars.color.bg.hover,
   cursor: "pointer",
   padding: 0,
-  transition: `background ${vars.motion.durationNormal} ${vars.motion.easingDefault}`,
+  flexShrink: 0,
+  transition: `background ${vars.motion.durationNormal} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationNormal} ${vars.motion.easingDefault}`,
   selectors: {
     "&:disabled": {
       opacity: 0.5,
       cursor: "not-allowed",
+    },
+    "&:focus-visible": {
+      outline: `${vars.focus.ringWidth} solid ${vars.color.accent.accent}`,
+      outlineOffset: vars.focus.offset,
     },
   },
 });
 
 export const toggleOn = style({
   background: vars.color.accent.primary,
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  boxShadow: `0 0 10px 0 ${vars.color.accent.primaryDim}66`,
+  boxShadow: `0 0 16px ${vars.color.accent.accentGlow}`,
 });
 
 export const toggleKnob = style({
   position: "absolute",
-  // audit-allow: px — below minimum token granularity (sub-10px)
+  // audit-allow: px — sub-density alignment for the 36×20 switch geometry
   top: "2px",
-  // audit-allow: px — below minimum token granularity (sub-10px)
+  // audit-allow: px — sub-density alignment for the 36×20 switch geometry
   left: "2px",
-  // audit-allow: px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-density knob geometry, no density token at this granularity
   width: "16px",
-  // audit-allow: px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-density knob geometry, no density token at this granularity
   height: "16px",
   borderRadius: vars.radius.full,
-  // audit-allow: hex — pure-white contrast anchor
-  background: "#ffffff",
+  background: vars.color.text.primary,
   transition: `transform ${vars.motion.durationNormal} ${vars.motion.easingDefault}`,
 });
 
 export const toggleKnobOn = style({
-  // audit-allow: px — sub-token spacing value, no density token at this step
+  // audit-allow: px — sub-density knob travel matches 36×20 track geometry
   transform: "translateX(16px)",
 });
 
-// ---------- Install drop zone ----------
 export const installCard = style({
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
-  gap: vars.space.insetSm,
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  minHeight: "220px",
+  gap: vars.density.d2,
+  // audit-allow: px — install card minimum height matches the visual height of a populated card row
+  minHeight: "240px",
   borderRadius: vars.radius.card,
-  background: vars.color.bg.panel,
+  background: vars.card.bg,
   color: vars.color.text.muted,
   cursor: "pointer",
   outline: `1px dashed ${vars.color.outline.variant}`,
   outlineOffset: "-1px",
   transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}, outline-color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   selectors: {
-    "&:hover": {
-      background: vars.color.bg.elevated,
+    "&:hover, &:focus-visible": {
+      background: vars.color.bg.hover,
       color: vars.color.accent.primary,
       outlineColor: vars.color.accent.primary,
+    },
+    "&:focus-visible": {
+      outline: `${vars.focus.ringWidth} solid ${vars.color.accent.accent}`,
+      outlineOffset: vars.focus.offset,
     },
   },
 });
 
-export const installIcon = style({
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  width: "48px",
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  height: "48px",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  borderRadius: vars.radius.full,
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  fontSize: "28px",
+export const installGlyph = style({
+  fontFamily: "Material Symbols Outlined",
+  // audit-allow: px — display glyph size for empty install affordance
+  fontSize: "40px",
   lineHeight: 1,
+  color: vars.color.accent.primary,
 });
 
 export const installTitle = style({
   fontFamily: vars.font.ui,
-  fontSize: vars.font.size.caption,
+  fontSize: vars.font.size.bodySm,
   fontWeight: vars.font.weight.semibold,
-  letterSpacing: "0.1em",
-  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: vars.color.text.primary,
 });
 
 export const installHint = style({
   fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,
   color: vars.color.text.muted,
-});
-
-export const emptyState = style({
-  padding: vars.space.insetLg,
-  color: vars.color.text.muted,
-  fontFamily: vars.font.ui,
-  fontSize: vars.font.size.bodySm,
+  letterSpacing: "0.04em",
 });
 
 export const errorState = style({
-  padding: vars.space.insetLg,
-  color: vars.color.error.base,
-  fontFamily: vars.font.ui,
+  padding: vars.density.padCard,
+  borderRadius: vars.radius.card,
+  background: vars.card.bg,
+  color: vars.color.error.text,
   fontSize: vars.font.size.bodySm,
 });
 
-// Make sure hidden file input doesn't take visual space
-globalStyle(`.${installCard} input[type="file"]`, {
-  display: "none",
-});
-
-// Spec 035 — "Setup required" badge + CTA on the extension card.
-export const setupBadge = style({
-  display: "inline-flex",
-  alignItems: "center",
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  gap: "6px",
-  fontFamily: vars.font.ui,
-  fontSize: vars.font.size.kbd,
-  fontWeight: vars.font.weight.bold,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  padding: `2px ${vars.space.insetSm}`,
-  borderRadius: vars.radius.full,
-  background: vars.color.accent.tertiary,
-  color: vars.color.onColor.tertiary,
-});
-
-export const setupBadgeDot = keyframes({
+const setupBadgeDot = keyframes({
   "0%": { transform: "scale(1)", opacity: 1 },
   "50%": { transform: "scale(1.6)", opacity: 0.6 },
   "100%": { transform: "scale(1)", opacity: 1 },
 });
 
+export const setupBadge = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.density.d1,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.kbd,
+  fontWeight: vars.font.weight.bold,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  paddingInline: vars.density.d2,
+  // audit-allow: px — chip vertical padding 2px is below minimum density token granularity
+  paddingBlock: "2px",
+  borderRadius: vars.radius.full,
+  background: vars.color.accent.tertiary,
+  color: vars.color.onColor.tertiary,
+});
+
 export const setupBadgePulse = style({
-  // audit-allow: px — below minimum token granularity (sub-10px)
+  // audit-allow: px — sub-density pulse dot, sits below d1
   width: "6px",
-  // audit-allow: px — below minimum token granularity (sub-10px)
+  // audit-allow: px — sub-density pulse dot, sits below d1
   height: "6px",
   borderRadius: vars.radius.full,
   background: vars.color.onColor.tertiary,
   animation: `${setupBadgeDot} 1.6s ease-in-out infinite`,
+  "@media": {
+    "(prefers-reduced-motion: reduce)": {
+      animation: "none",
+    },
+  },
 });
 
 export const setupCta = style({
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.bodySm,
   fontWeight: vars.font.weight.semibold,
-  color: vars.color.accent.primary,
-  background: vars.color.accent.secondaryContainer,
+  color: vars.color.onColor.tertiary,
+  background: vars.color.accent.tertiary,
   border: "none",
   cursor: "pointer",
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  padding: `8px ${vars.space.insetLg}`,
-  borderRadius: vars.radius.control,
+  paddingInline: vars.density.d4,
+  paddingBlock: vars.density.d2,
+  borderRadius: vars.radius.full,
   textDecoration: "none",
   display: "inline-flex",
   alignItems: "center",
-  justifyContent: "center",
+  gap: vars.density.d1,
   transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, transform ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   selectors: {
     "&:hover": {
-      background: vars.color.accent.primary,
-      color: vars.color.onColor.primary,
+      transform: "translateY(-1px)",
     },
     "&:focus-visible": {
-      // audit-allow: px — below minimum token granularity (sub-10px)
-      outline: `2px solid ${vars.color.accent.primary}`,
-      // audit-allow: px — below minimum token granularity (sub-10px)
-      outlineOffset: "2px",
+      outline: `${vars.focus.ringWidth} solid ${vars.color.accent.tertiary}`,
+      outlineOffset: vars.focus.offset,
     },
   },
+});
+
+globalStyle(`.${installCard} input[type="file"]`, {
+  display: "none",
 });

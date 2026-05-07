@@ -132,7 +132,7 @@ pub struct SetActiveModelBody {
     pub runtime: Option<RuntimeTuning>,
 }
 
-#[derive(Debug, Deserialize, Default, Clone)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct RuntimeTuning {
     #[serde(default)]
     pub n_gpu_layers: Option<u32>,
@@ -160,6 +160,26 @@ pub struct RuntimeTuning {
     pub cont_batching: Option<bool>,
     #[serde(default)]
     pub seed: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_reuse: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cram_mb: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_every_n_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub n_cpu_moe: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_p: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dry_multiplier: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dry_base: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dry_allowed_length: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dry_penalty_last_n: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub swa_full: Option<bool>,
 }
 
 impl RuntimeTuning {
@@ -190,6 +210,16 @@ impl RuntimeTuning {
             n_parallel: Some(1),
             cont_batching: Some(true),
             seed: None,
+            cache_reuse: None,
+            cram_mb: None,
+            checkpoint_every_n_tokens: None,
+            n_cpu_moe: None,
+            min_p: None,
+            dry_multiplier: None,
+            dry_base: None,
+            dry_allowed_length: None,
+            dry_penalty_last_n: None,
+            swa_full: None,
         }
     }
 }
@@ -253,7 +283,65 @@ fn runtime_to_args(tuning: &RuntimeTuning) -> Vec<String> {
         args.push("--seed".into());
         args.push(s.to_string());
     }
+    append_throughput_args(tuning, &mut args);
+    append_sampler_args(tuning, &mut args);
+    append_mitigation_args(tuning, &mut args);
     args
+}
+
+fn append_throughput_args(tuning: &RuntimeTuning, args: &mut Vec<String>) {
+    if let Some(n) = tuning.cache_reuse {
+        args.push("--cache-reuse".into());
+        args.push(n.to_string());
+    }
+    if let Some(mb) = tuning.cram_mb {
+        args.push("--cram".into());
+        args.push(mb.to_string());
+    }
+    if let Some(n) = tuning.checkpoint_every_n_tokens {
+        args.push("--checkpoint-every-n-tokens".into());
+        args.push(n.to_string());
+    }
+    if let Some(n) = tuning.n_cpu_moe {
+        if n > 0 {
+            args.push("--n-cpu-moe".into());
+            args.push(n.to_string());
+        }
+    }
+}
+
+fn append_sampler_args(tuning: &RuntimeTuning, args: &mut Vec<String>) {
+    if let Some(p) = tuning.min_p {
+        if p > 0.0 {
+            args.push("--min-p".into());
+            args.push(format!("{p}"));
+        }
+    }
+    let dry_active = matches!(tuning.dry_multiplier, Some(m) if m > 0.0);
+    if dry_active {
+        if let Some(m) = tuning.dry_multiplier {
+            args.push("--dry-multiplier".into());
+            args.push(format!("{m}"));
+        }
+        if let Some(b) = tuning.dry_base {
+            args.push("--dry-base".into());
+            args.push(format!("{b}"));
+        }
+        if let Some(n) = tuning.dry_allowed_length {
+            args.push("--dry-allowed-length".into());
+            args.push(n.to_string());
+        }
+        if let Some(n) = tuning.dry_penalty_last_n {
+            args.push("--dry-penalty-last-n".into());
+            args.push(n.to_string());
+        }
+    }
+}
+
+fn append_mitigation_args(tuning: &RuntimeTuning, args: &mut Vec<String>) {
+    if let Some(true) = tuning.swa_full {
+        args.push("--swa-full".into());
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -1039,6 +1127,8 @@ pub struct AvailableModelDto {
     pub format: String,
     pub size_bytes: Option<u64>,
     pub max_context: Option<u32>,
+    pub is_moe: bool,
+    pub expert_layer_count: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1069,6 +1159,8 @@ pub async fn list_available_models(State(res): State<Arc<ChatHandlerResources>>)
                 format: row.format,
                 size_bytes: row.size_bytes,
                 max_context: row.max_context,
+                is_moe: row.is_moe.unwrap_or(false),
+                expert_layer_count: row.expert_layer_count,
             }
         })
         .collect();
@@ -1333,6 +1425,7 @@ mod tests {
 #[cfg(test)]
 mod runtime_tuning_tests {
     use super::*;
+    use std::collections::BTreeSet;
 
     fn pos(args: &[String], flag: &str) -> Option<usize> {
         args.iter().position(|s| s == flag)
@@ -1340,6 +1433,33 @@ mod runtime_tuning_tests {
 
     fn contains(args: &[String], flag: &str) -> bool {
         pos(args, flag).is_some()
+    }
+
+    const NEW_RUNTIME_TUNING_FIELDS: [&str; 10] = [
+        "cache_reuse",
+        "cram_mb",
+        "checkpoint_every_n_tokens",
+        "n_cpu_moe",
+        "min_p",
+        "dry_multiplier",
+        "dry_base",
+        "dry_allowed_length",
+        "dry_penalty_last_n",
+        "swa_full",
+    ];
+
+    fn runtime_tuning_schema_properties() -> BTreeSet<String> {
+        let schema: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../../../specs/039-llamacpp-throughput-tier1/contracts/runtime_tuning.schema.json",
+        ))
+        .expect("schema parses");
+        schema
+            .get("properties")
+            .and_then(serde_json::Value::as_object)
+            .expect("schema has properties")
+            .keys()
+            .cloned()
+            .collect()
     }
 
     #[test]
@@ -1358,6 +1478,7 @@ mod runtime_tuning_tests {
             n_parallel: Some(4),
             cont_batching: Some(true),
             seed: Some(42),
+            ..Default::default()
         };
         let args = runtime_to_args(&tuning);
 
@@ -1464,6 +1585,32 @@ mod runtime_tuning_tests {
     }
 
     #[test]
+    fn sensible_defaults_does_not_populate_new_fields() {
+        let defaults = RuntimeTuning::sensible_defaults(Some(40), true);
+        assert_eq!(defaults.cache_reuse, None);
+        assert_eq!(defaults.cram_mb, None);
+        assert_eq!(defaults.checkpoint_every_n_tokens, None);
+        assert_eq!(defaults.n_cpu_moe, None);
+        assert_eq!(defaults.min_p, None);
+        assert_eq!(defaults.dry_multiplier, None);
+        assert_eq!(defaults.dry_base, None);
+        assert_eq!(defaults.dry_allowed_length, None);
+        assert_eq!(defaults.dry_penalty_last_n, None);
+        assert_eq!(defaults.swa_full, None);
+
+        let serialized = serde_json::to_value(&defaults).expect("defaults serialize");
+        let object = serialized
+            .as_object()
+            .expect("defaults serialize to object");
+        for field in NEW_RUNTIME_TUNING_FIELDS {
+            assert!(
+                !object.contains_key(field),
+                "{field} should be omitted when None"
+            );
+        }
+    }
+
+    #[test]
     fn runtime_tuning_deserializes_with_extended_fields() {
         let json = r#"{"mmap": true, "n_batch": 512, "seed": 42}"#;
         let parsed: RuntimeTuning = serde_json::from_str(json).expect("parses");
@@ -1488,5 +1635,200 @@ mod runtime_tuning_tests {
         assert_eq!(parsed.n_parallel, None);
         assert_eq!(parsed.cont_batching, None);
         assert_eq!(parsed.seed, None);
+    }
+
+    #[test]
+    fn runtime_tuning_dto_matches_schema() {
+        let tuning = RuntimeTuning {
+            n_gpu_layers: Some(40),
+            threads: Some(8),
+            flash_attn: Some(true),
+            ctx_size: Some(8192),
+            cache_type_k: Some("q8_0".into()),
+            cache_type_v: Some("bf16".into()),
+            mmap: Some(true),
+            mlock: Some(true),
+            n_batch: Some(512),
+            n_ubatch: Some(128),
+            n_parallel: Some(4),
+            cont_batching: Some(true),
+            seed: Some(42),
+            cache_reuse: Some(256),
+            cram_mb: Some(1024),
+            checkpoint_every_n_tokens: Some(8192),
+            n_cpu_moe: Some(8),
+            min_p: Some(0.1),
+            dry_multiplier: Some(0.8),
+            dry_base: Some(1.75),
+            dry_allowed_length: Some(2),
+            dry_penalty_last_n: Some(-1),
+            swa_full: Some(true),
+        };
+
+        let serialized = serde_json::to_value(&tuning).expect("dto serializes");
+        let object = serialized.as_object().expect("dto serializes to object");
+        let actual_keys: BTreeSet<String> = object.keys().cloned().collect();
+
+        assert_eq!(actual_keys, runtime_tuning_schema_properties());
+    }
+
+    fn arg_value(args: &[String], flag: &str) -> Option<String> {
+        let i = pos(args, flag)?;
+        args.get(i + 1).cloned()
+    }
+
+    #[test]
+    fn runtime_to_args_emits_cache_reuse_when_set() {
+        let tuning = RuntimeTuning {
+            cache_reuse: Some(256),
+            ..Default::default()
+        };
+        let args = runtime_to_args(&tuning);
+        assert_eq!(arg_value(&args, "--cache-reuse").as_deref(), Some("256"));
+    }
+
+    #[test]
+    fn runtime_to_args_omits_cache_reuse_when_none() {
+        let tuning = RuntimeTuning::default();
+        let args = runtime_to_args(&tuning);
+        assert!(!contains(&args, "--cache-reuse"));
+    }
+
+    #[test]
+    fn runtime_to_args_emits_cram_when_set() {
+        let tuning = RuntimeTuning {
+            cram_mb: Some(1024),
+            ..Default::default()
+        };
+        let args = runtime_to_args(&tuning);
+        assert_eq!(arg_value(&args, "--cram").as_deref(), Some("1024"));
+    }
+
+    #[test]
+    fn runtime_to_args_omits_cram_when_none() {
+        let tuning = RuntimeTuning::default();
+        let args = runtime_to_args(&tuning);
+        assert!(!contains(&args, "--cram"));
+    }
+
+    #[test]
+    fn runtime_to_args_emits_checkpoint_every_n_tokens_when_set() {
+        let tuning = RuntimeTuning {
+            checkpoint_every_n_tokens: Some(8192),
+            ..Default::default()
+        };
+        let args = runtime_to_args(&tuning);
+        assert_eq!(
+            arg_value(&args, "--checkpoint-every-n-tokens").as_deref(),
+            Some("8192")
+        );
+    }
+
+    #[test]
+    fn runtime_to_args_omits_checkpoint_every_n_tokens_when_none() {
+        let tuning = RuntimeTuning::default();
+        let args = runtime_to_args(&tuning);
+        assert!(!contains(&args, "--checkpoint-every-n-tokens"));
+    }
+
+    #[test]
+    fn runtime_to_args_emits_n_cpu_moe_when_positive() {
+        let tuning = RuntimeTuning {
+            n_cpu_moe: Some(28),
+            ..Default::default()
+        };
+        let args = runtime_to_args(&tuning);
+        assert_eq!(arg_value(&args, "--n-cpu-moe").as_deref(), Some("28"));
+    }
+
+    #[test]
+    fn runtime_to_args_omits_n_cpu_moe_when_zero() {
+        let tuning = RuntimeTuning {
+            n_cpu_moe: Some(0),
+            ..Default::default()
+        };
+        let args = runtime_to_args(&tuning);
+        assert!(!contains(&args, "--n-cpu-moe"));
+    }
+
+    #[test]
+    fn runtime_to_args_omits_n_cpu_moe_when_none() {
+        let tuning = RuntimeTuning::default();
+        let args = runtime_to_args(&tuning);
+        assert!(!contains(&args, "--n-cpu-moe"));
+    }
+
+    #[test]
+    fn runtime_to_args_emits_min_p_when_positive() {
+        let tuning = RuntimeTuning {
+            min_p: Some(0.1),
+            ..Default::default()
+        };
+        let args = runtime_to_args(&tuning);
+        assert!(contains(&args, "--min-p"));
+    }
+
+    #[test]
+    fn runtime_to_args_omits_min_p_when_zero_or_none() {
+        let tuning_zero = RuntimeTuning {
+            min_p: Some(0.0),
+            ..Default::default()
+        };
+        assert!(!contains(&runtime_to_args(&tuning_zero), "--min-p"));
+        let tuning_none = RuntimeTuning::default();
+        assert!(!contains(&runtime_to_args(&tuning_none), "--min-p"));
+    }
+
+    #[test]
+    fn runtime_to_args_emits_dry_quartet_when_multiplier_positive() {
+        let tuning = RuntimeTuning {
+            dry_multiplier: Some(0.8),
+            dry_base: Some(1.75),
+            dry_allowed_length: Some(2),
+            dry_penalty_last_n: Some(-1),
+            ..Default::default()
+        };
+        let args = runtime_to_args(&tuning);
+        assert!(contains(&args, "--dry-multiplier"));
+        assert!(contains(&args, "--dry-base"));
+        assert!(contains(&args, "--dry-allowed-length"));
+        assert!(contains(&args, "--dry-penalty-last-n"));
+    }
+
+    #[test]
+    fn runtime_to_args_omits_all_dry_flags_when_multiplier_zero() {
+        let tuning = RuntimeTuning {
+            dry_multiplier: Some(0.0),
+            dry_base: Some(1.75),
+            dry_allowed_length: Some(2),
+            dry_penalty_last_n: Some(-1),
+            ..Default::default()
+        };
+        let args = runtime_to_args(&tuning);
+        assert!(!contains(&args, "--dry-multiplier"));
+        assert!(!contains(&args, "--dry-base"));
+        assert!(!contains(&args, "--dry-allowed-length"));
+        assert!(!contains(&args, "--dry-penalty-last-n"));
+    }
+
+    #[test]
+    fn runtime_to_args_emits_swa_full_when_true() {
+        let tuning = RuntimeTuning {
+            swa_full: Some(true),
+            ..Default::default()
+        };
+        let args = runtime_to_args(&tuning);
+        assert!(contains(&args, "--swa-full"));
+    }
+
+    #[test]
+    fn runtime_to_args_omits_swa_full_when_false_or_none() {
+        let tuning_false = RuntimeTuning {
+            swa_full: Some(false),
+            ..Default::default()
+        };
+        assert!(!contains(&runtime_to_args(&tuning_false), "--swa-full"));
+        let tuning_none = RuntimeTuning::default();
+        assert!(!contains(&runtime_to_args(&tuning_none), "--swa-full"));
     }
 }

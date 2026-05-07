@@ -11,12 +11,22 @@ export const wrap = style({
   color: vars.color.text.secondary,
 });
 
+export const eyebrow = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.text.eyebrow,
+  letterSpacing: "0.16em",
+  textTransform: "uppercase",
+  fontWeight: vars.font.weight.semibold,
+  color: vars.color.accent.secondary,
+});
+
 export const sparkle = style({
   fontFamily: "Material Symbols Outlined",
+  // audit-allow: px — display glyph at 32px sits above icon.lg (20px)
   fontSize: "32px",
   lineHeight: 1,
-  color: vars.color.accent.primary,
-  filter: `drop-shadow(0 0 12px color-mix(in oklch, ${vars.color.accent.primary} 50%, transparent))`,
+  color: vars.color.accent.secondary,
+  filter: `drop-shadow(0 0 12px color-mix(in oklch, ${vars.color.accent.secondary} 50%, transparent))`,
 });
 
 export const heading = style({
@@ -30,6 +40,7 @@ export const heading = style({
 
 export const description = style({
   margin: 0,
+  // audit-allow: px — readable measure cap for the description copy
   maxWidth: "420px",
   fontSize: vars.font.size.bodySm,
   lineHeight: vars.font.lineHeight.relaxed,

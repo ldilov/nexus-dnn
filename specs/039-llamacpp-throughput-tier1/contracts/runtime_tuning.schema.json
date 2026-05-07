@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus-dnn.local/specs/039/runtime_tuning.schema.json",
+  "title": "RuntimeTuning",
+  "description": "Per-load tuning DTO for the Local-LLM extension's llama-server adapter. Mirrors the Rust struct at extensions/builtin/local-llm/rust/src/chat/handlers.rs::RuntimeTuning and the TS interface at apps/web/src/services/local_llm_chat.ts::RuntimeTuning. Spec 039 adds 10 optional fields (cache_reuse, cram_mb, checkpoint_every_n_tokens, n_cpu_moe, min_p, dry_multiplier, dry_base, dry_allowed_length, dry_penalty_last_n, swa_full).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "n_gpu_layers":  { "type": ["integer", "null"], "minimum": 0, "maximum": 1024 },
+    "threads":       { "type": ["integer", "null"], "minimum": 1, "maximum": 256 },
+    "flash_attn":    { "type": ["boolean", "null"] },
+    "ctx_size":      { "type": ["integer", "null"], "minimum": 256, "maximum": 1048576 },
+    "cache_type_k":  { "type": ["string",  "null"], "enum": ["fp16", "fp32", "bf16", "q8_0", "q4_0", null] },
+    "cache_type_v":  { "type": ["string",  "null"], "enum": ["fp16", "fp32", "bf16", "q8_0", "q4_0", null] },
+    "mmap":          { "type": ["boolean", "null"] },
+    "mlock":         { "type": ["boolean", "null"] },
+    "n_batch":       { "type": ["integer", "null"], "minimum": 1, "maximum": 65536 },
+    "n_ubatch":      { "type": ["integer", "null"], "minimum": 1, "maximum": 65536 },
+    "n_parallel":    { "type": ["integer", "null"], "minimum": 1, "maximum": 32 },
+    "cont_batching": { "type": ["boolean", "null"] },
+    "seed":          { "type": ["integer", "null"], "minimum": -1, "maximum": 9223372036854775807 },
+
+    "cache_reuse": {
+      "type": ["integer", "null"],
+      "minimum": 64,
+      "maximum": 2048,
+      "description": "When set, llama-server runs with --cache-reuse N. Default form value when toggle on: 256."
+    },
+    "cram_mb": {
+      "type": ["integer", "null"],
+      "minimum": 256,
+      "maximum": 32768,
+      "description": "When set, llama-server runs with --cram MB. Default form value when toggle on: 1024."
+    },
+    "checkpoint_every_n_tokens": {
+      "type": ["integer", "null"],
+      "minimum": 1024,
+      "maximum": 65536,
+      "description": "When set, llama-server runs with --checkpoint-every-n-tokens N. Default form value when toggle on: 8192."
+    },
+    "n_cpu_moe": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "maximum": 256,
+      "description": "When set and > 0, llama-server runs with --n-cpu-moe N. Some(0) and None both treated as off (no flag emitted). Form-emitted values are bounded by AvailableModel.expert_layer_count (or 64 fallback when unknown); the schema's 256 cap is a permissive backstop for direct API callers — no released model has more transformer blocks than this."
+    },
+
+    "min_p": {
+      "type": ["number", "null"],
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "When > 0.0, llama-server runs with --min-p p. Some(0.0) suppresses the flag. Default per Creative preset: 0.02; per Code preset: 0.10."
+    },
+    "dry_multiplier": {
+      "type": ["number", "null"],
+      "minimum": 0.0,
+      "maximum": 5.0,
+      "description": "When > 0.0, llama-server runs with --dry-multiplier m AND emits the rest of the DRY quartet. Some(0.0) suppresses ALL DRY flags. Creative preset default: 0.8."
+    },
+    "dry_base": {
+      "type": ["number", "null"],
+      "minimum": 1.0,
+      "maximum": 5.0,
+      "description": "Emitted with --dry-base only when dry_multiplier is positive. Creative preset default: 1.75."
+    },
+    "dry_allowed_length": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "maximum": 16,
+      "description": "Emitted with --dry-allowed-length only when dry_multiplier is positive. Creative preset default: 2."
+    },
+    "dry_penalty_last_n": {
+      "type": ["integer", "null"],
+      "minimum": -1,
+      "maximum": 8192,
+      "description": "Emitted with --dry-penalty-last-n only when dry_multiplier is positive. -1 means use ctx_size."
+    },
+
+    "swa_full": {
+      "type": ["boolean", "null"],
+      "description": "When true, llama-server runs with --swa-full. Set automatically by the form when cache_reuse override is on for known-broken families (FR-029)."
+    }
+  }
+}

@@ -225,7 +225,7 @@ describe("ChatPanelAdapter", () => {
       threads: [baseThread("t-1", "Alpha")],
       has_more: false,
     });
-    fetchAvailableModelsMock.mockResolvedValueOnce([
+    fetchAvailableModelsMock.mockResolvedValue([
       {
         family_id: "meta/llama",
         variant_id: "Q4",
@@ -256,7 +256,7 @@ describe("ChatPanelAdapter", () => {
       threads: [baseThread("t-1", "Alpha")],
       has_more: false,
     });
-    fetchAvailableModelsMock.mockResolvedValueOnce([
+    fetchAvailableModelsMock.mockResolvedValue([
       {
         family_id: "meta/llama",
         variant_id: "Q4",
@@ -392,7 +392,7 @@ describe("ChatPanelAdapter", () => {
       threads: [baseThread("t-1", "Alpha")],
       has_more: false,
     });
-    fetchAvailableModelsMock.mockResolvedValueOnce([
+    fetchAvailableModelsMock.mockResolvedValue([
       {
         family_id: "meta/llama",
         variant_id: "Q4",
@@ -887,7 +887,7 @@ describe("ChatPanelAdapter", () => {
           threads: [baseThread("t-1", "Alpha")],
           has_more: false,
         });
-        fetchAvailableModelsMock.mockResolvedValueOnce([
+        fetchAvailableModelsMock.mockResolvedValue([
           {
             family_id: "meta/llama",
             variant_id: "Q4",

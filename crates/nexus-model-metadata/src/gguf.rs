@@ -175,6 +175,16 @@ fn read_value<R: Read>(reader: &mut R, type_tag: u32) -> Result<MetaValue, Extra
     }
 }
 
+const MOE_ARCHITECTURES: &[&str] = &[
+    "mixtral",
+    "qwen2moe",
+    "qwen3moe",
+    "deepseek2",
+    "dbrx",
+    "gptoss",
+    "glm4_moe",
+];
+
 fn build_metadata(
     install_id: &str,
     architecture: Option<String>,
@@ -197,6 +207,12 @@ fn build_metadata(
     let layer_count = lookup_u32(unsigned_fields, &block_key);
     let max_context = lookup_u32(unsigned_fields, &ctx_key);
     let hidden_size = lookup_u32(unsigned_fields, &embd_key);
+    let is_moe = detect_moe(&arch, unsigned_fields);
+    let expert_layer_count = if is_moe == Some(true) {
+        layer_count
+    } else {
+        None
+    };
 
     let status = if layer_count.is_some() && max_context.is_some() && hidden_size.is_some() {
         ExtractionStatus::Ok
@@ -211,9 +227,22 @@ fn build_metadata(
         max_context,
         architecture: Some(arch),
         hidden_size,
+        is_moe,
+        expert_layer_count,
         extraction_status: status,
         extracted_at: now_millis(),
     })
+}
+
+fn detect_moe(arch: &str, unsigned_fields: &[(String, u64)]) -> Option<bool> {
+    let expert_count_key = format!("{arch}.expert_count");
+    if let Some(count) = lookup_u32(unsigned_fields, &expert_count_key) {
+        return Some(count > 0);
+    }
+    if MOE_ARCHITECTURES.iter().any(|name| *name == arch) {
+        return Some(true);
+    }
+    Some(false)
 }
 
 fn lookup_u32(fields: &[(String, u64)], key: &str) -> Option<u32> {

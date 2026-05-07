@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus-dnn.local/specs/039/available_model.schema.json",
+  "title": "AvailableModel",
+  "description": "Per-installed-artifact DTO returned by GET /api/v1/extensions/nexus.local-llm/chat/available_models. Mirrors AvailableModelDto in extensions/builtin/local-llm/rust/src/chat/handlers.rs and AvailableModel in apps/web/src/services/local_llm_chat.ts. Spec 039 adds is_moe and expert_layer_count.",
+  "type": "object",
+  "required": ["family_id", "label", "format", "is_moe"],
+  "additionalProperties": false,
+  "properties": {
+    "family_id":          { "type": "string", "minLength": 1 },
+    "variant_id":         { "type": ["string", "null"] },
+    "label":              { "type": "string", "minLength": 1 },
+    "format":             { "type": "string", "minLength": 1 },
+    "size_bytes":         { "type": ["integer", "null"], "minimum": 0 },
+    "max_context":        { "type": ["integer", "null"], "minimum": 1 },
+    "is_moe": {
+      "type": "boolean",
+      "description": "True when the GGUF metadata indicates this is a Mixture-of-Experts model. Derived from <arch>.expert_count > 0 OR architecture-name match. The host row may store NULL but the wire surface is bool (NULL coerces to false at the extension boundary in list_available_models)."
+    },
+    "expert_layer_count": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "description": "Number of transformer blocks containing MoE experts. NULL when is_moe is false OR when layer_count is also NULL. In practice equals layer_count for mainstream MoE GGUFs (Mixtral, GPT-OSS, Qwen3-MoE, DeepSeek-V2, DBRX). Frontend uses this as the upper bound of the --n-cpu-moe slider; falls back to 64 when null."
+    }
+  }
+}
