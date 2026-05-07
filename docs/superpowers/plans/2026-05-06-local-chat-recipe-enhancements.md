@@ -855,6 +855,16 @@ test("renders percentage and warns at 80%", () => {
 git commit -am "feat(local-llm): ContextMeter with tonal thresholds (ok/warn/danger)"
 ```
 
+### Tasks 5.1 + 5.2 review follow-ups (logged 2026-05-07)
+
+Code review on commits `5e81744` + `2574d54` + `c93ecdf` flagged three items. The cheap ones (record-no-op guard, un-export `toneFor`, depend on `record` not whole `tokenUsage` object) were applied inline. The remaining items defer to Task 6.1 / Phase 7:
+
+- **FU-METER-A — Plumb actual loaded `ctx_size` through `useModelLoadState` (Important).** Today `activeMaxContext` falls back to the model's theoretical `max_context` (e.g. 262144) when `lastTuningByFamily` is empty, even though the runtime may have been loaded with a much smaller `ctx_size` (e.g. 4096). The meter then reads "X / 262144 — 0%" while the runtime is 50% full. Defeats the entire warn-before-OOM goal on cold start. Fix: extend the lease/load-state DTO so the frontend can read the actually-bound `ctx_size`. Until plumbed, prefer rendering nothing (return null from the meter) over the wrong number. Task 6.1 should consume the lease's `ctx_size` directly.
+
+- **FU-METER-B — Move meter to top of inspector (Minor).** Prototype mockup places the MODEL card with usage bars at the TOP of the inspector. Current implementation stacks `<SamplerPanel>` → `<SystemPromptEditor>` → `<ContextMeter>` (meter last). Task 6.1's full inspector redesign reorders to `MODEL/ContextMeter` → `PARAMETERS/SamplerPanel` → `SYSTEM PROMPT/SystemPromptEditor` per mockup.
+
+- **FU-METER-C — ARIA severity hint (Minor).** `aria-valuenow` conveys raw percentage; the *meaning* (warn/danger) is only signaled visually. Add a visually-hidden severity word ("Warning"/"Critical") when `tone !== "ok"` so screen-reader users get the same urgency cue. Low priority; will surface in `audit:redesign`.
+
 ---
 
 ## Phase 6 — Inspector Redesign (Spectral-Graphite + Mockup Parity)
