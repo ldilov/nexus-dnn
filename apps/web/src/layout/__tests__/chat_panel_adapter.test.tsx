@@ -456,4 +456,164 @@ describe("ChatPanelAdapter", () => {
 
     expect(editor.value).toBe("New prompt.");
   });
+
+  describe("sticky model per deployment", () => {
+    function withLocalStorage(seed: Record<string, string>, run: () => Promise<void>) {
+      const storage: Record<string, string> = { ...seed };
+      const previous = window.localStorage;
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        value: {
+          getItem: (key: string) => storage[key] ?? null,
+          setItem: (key: string, value: string) => {
+            storage[key] = value;
+          },
+          removeItem: (key: string) => {
+            delete storage[key];
+          },
+          clear: () => {
+            for (const k of Object.keys(storage)) delete storage[k];
+          },
+          key: (i: number) => Object.keys(storage)[i] ?? null,
+          get length() {
+            return Object.keys(storage).length;
+          },
+        },
+      });
+      return run().finally(() => {
+        Object.defineProperty(window, "localStorage", {
+          configurable: true,
+          value: previous,
+        });
+      });
+    }
+
+    it("auto-binds the sticky model when the active thread is idle", async () => {
+      const sticky = {
+        family_id: "meta/llama",
+        variant_id: "Q4",
+        tuning: { ctx_size: 8192, threads: 4 },
+        saved_at: "2026-05-07T00:00:00Z",
+      };
+      await withLocalStorage(
+        {
+          "local-llm:deployment-active-model": JSON.stringify({ "dep-A": sticky }),
+        },
+        async () => {
+          listThreadsMock.mockResolvedValueOnce({
+            threads: [baseThread("t-1", "Alpha")],
+            has_more: false,
+          });
+          useModelLoadStateMock.mockReturnValue({ phase: "idle" });
+
+          render(<ChatPanelAdapter deploymentId="dep-A" />);
+
+          await waitFor(() => expect(setActiveModelMock).toHaveBeenCalled());
+          const [threadId, familyId, variantId, runtime] = setActiveModelMock.mock.calls[0]!;
+          expect(threadId).toBe("t-1");
+          expect(familyId).toBe("meta/llama");
+          expect(variantId).toBe("Q4");
+          expect(runtime).toEqual(sticky.tuning);
+        },
+      );
+    });
+
+    it("does not auto-bind when the load state already has a model", async () => {
+      const sticky = {
+        family_id: "meta/llama",
+        variant_id: "Q4",
+        tuning: { ctx_size: 8192 },
+        saved_at: "2026-05-07T00:00:00Z",
+      };
+      await withLocalStorage(
+        {
+          "local-llm:deployment-active-model": JSON.stringify({ "dep-A": sticky }),
+        },
+        async () => {
+          listThreadsMock.mockResolvedValueOnce({
+            threads: [baseThread("t-1", "Alpha")],
+            has_more: false,
+          });
+          useModelLoadStateMock.mockReturnValue({
+            phase: "ready",
+            label: "Llama Q4",
+            familyId: "meta/llama",
+            variantId: "Q4",
+            port: 12345,
+          });
+
+          render(<ChatPanelAdapter deploymentId="dep-A" />);
+
+          await waitFor(() => expect(listThreadsMock).toHaveBeenCalled());
+          await new Promise((r) => setTimeout(r, 50));
+          expect(setActiveModelMock).not.toHaveBeenCalled();
+        },
+      );
+    });
+
+    it("does not auto-bind when no sticky model is stored for the deployment", async () => {
+      await withLocalStorage({}, async () => {
+        listThreadsMock.mockResolvedValueOnce({
+          threads: [baseThread("t-1", "Alpha")],
+          has_more: false,
+        });
+        useModelLoadStateMock.mockReturnValue({ phase: "idle" });
+
+        render(<ChatPanelAdapter deploymentId="dep-A" />);
+
+        await waitFor(() => expect(listThreadsMock).toHaveBeenCalled());
+        await new Promise((r) => setTimeout(r, 50));
+        expect(setActiveModelMock).not.toHaveBeenCalled();
+      });
+    });
+
+    it("persists the chosen model to deployment-active-model on successful load", async () => {
+      await withLocalStorage({}, async () => {
+        listThreadsMock.mockResolvedValueOnce({
+          threads: [baseThread("t-1", "Alpha")],
+          has_more: false,
+        });
+        fetchAvailableModelsMock.mockResolvedValueOnce([
+          {
+            family_id: "meta/llama",
+            variant_id: "Q4",
+            label: "Llama Q4",
+            format: "gguf",
+            size_bytes: 1024,
+            max_context: 8192,
+          },
+        ]);
+        useModelLoadStateMock.mockReturnValue({ phase: "idle" });
+
+        render(<ChatPanelAdapter deploymentId="dep-B" />);
+        await waitFor(() => expect(fetchAvailableModelsMock).toHaveBeenCalled());
+
+        await act(async () => {
+          window.dispatchEvent(new CustomEvent("local-llm/model-load-dialog:open"));
+        });
+
+        await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+
+        const listbox = await screen.findByRole("listbox", { name: /downloaded models/i });
+        const option = listbox.querySelector('[role="option"]') as HTMLElement;
+        await act(async () => {
+          fireEvent.click(option);
+        });
+
+        const loadBtn = screen.getByRole("button", { name: /load model/i });
+        await act(async () => {
+          fireEvent.click(loadBtn);
+        });
+
+        await waitFor(() => expect(setActiveModelMock).toHaveBeenCalled());
+
+        const stored = window.localStorage.getItem("local-llm:deployment-active-model");
+        expect(stored).not.toBeNull();
+        const parsed = JSON.parse(stored!);
+        expect(parsed["dep-B"]).toBeDefined();
+        expect(parsed["dep-B"].family_id).toBe("meta/llama");
+        expect(parsed["dep-B"].variant_id).toBe("Q4");
+      });
+    });
+  });
 });
