@@ -55,41 +55,41 @@ This spec lands across:
 
 ### Visual system (XII.8 "Frame the interface first")
 
-- [ ] T007 Implement the `terminal.css.ts` design-token group at `apps/web/src/styles/tokens/terminal.css.ts` exposing `cursor.*`, `phosphor.*`, `block.*`, `lattice.*`, `pulseFloor.*`, `state.*`, `type.*`, `motion.*` per data-model.md and the brainstorm doc's token preview. Tokens are role-named (`state.resident` etc.), not hue-named. Include `@font-face` declaration for JetBrains Mono per research.md R5. Include `prefers-reduced-motion` media-query overrides for `cursor.*`, `lattice.breathCycle`, and `motion.*` cycles. **Constitution XII.8 — Frame the interface first.**
+- [X] T007 Implement the `terminal.css.ts` design-token group at `apps/web/src/styles/tokens/terminal.css.ts` exposing `cursor.*`, `phosphor.*`, `block.*`, `lattice.*`, `pulseFloor.*`, `state.*`, `type.*`, `motion.*` per data-model.md and the brainstorm doc's token preview. Tokens are role-named (`state.resident` etc.), not hue-named. Include `@font-face` declaration for JetBrains Mono per research.md R5. Include `prefers-reduced-motion` media-query overrides for `cursor.*`, `lattice.breathCycle`, and `motion.*` cycles. **Constitution XII.8 — Frame the interface first.**
 
 ### Rust event substrate (`nexus-run-events`)
 
-- [ ] T008 [P] Create `crates/nexus-run-events/Cargo.toml` with deps `serde`, `thiserror`, `chrono` (for `ts_ms` helpers). Author crate-level `src/lib.rs` doc comment (`//!`) describing the event protocol's role.
-- [ ] T009 Implement newtypes (`SeqNum`, `RunId`, `SourceId`, `LayerIndex`) in `crates/nexus-run-events/src/ids.rs` per data-model.md. Each newtype derives standard traits and provides validating constructors where appropriate.
-- [ ] T010 Implement the `RunEventItem` discriminated-union enum + every supporting enum (`PhaseName`, `PhaseState`, `AllocationTarget`, `MetricUnit`, `ErrorReason`, `GapReason`, `LineStream`, `Severity`, `WidgetKind`, `TensorGroup`, `SchemaVersion`) in `crates/nexus-run-events/src/lib.rs`. Mark every enum `#[non_exhaustive]` per Principle V. Add `EventBatch` transport struct.
-- [ ] T011 Implement schema-roundtrip backend contract test at `crates/nexus-run-events/tests/schema_compat.rs`: every `RunEventItem` variant serialises to JSON matching `specs/042-neo-terminal-shell/contracts/run-event.schema.json` and deserialises back with a `JsonSchema`-validated round-trip. Forward-compat: deserialiser tolerates unknown enum variants per `#[non_exhaustive]` semantics.
-- [ ] T012 [P] Implement `WorkerScraper` trait in `crates/nexus-run-events/src/store/mod.rs` with the contract from data-model.md (`id`, `ingest_line`, `flush`).
+- [X] T008 [P] Create `crates/nexus-run-events/Cargo.toml` with deps `serde`, `thiserror`, `chrono` (for `ts_ms` helpers). Author crate-level `src/lib.rs` doc comment (`//!`) describing the event protocol's role.
+- [X] T009 Implement newtypes (`SeqNum`, `RunId`, `SourceId`, `LayerIndex`) in `crates/nexus-run-events/src/ids.rs` per data-model.md. Each newtype derives standard traits and provides validating constructors where appropriate.
+- [X] T010 Implement the `RunEventItem` discriminated-union enum + every supporting enum (`PhaseName`, `PhaseState`, `AllocationTarget`, `MetricUnit`, `ErrorReason`, `GapReason`, `LineStream`, `Severity`, `WidgetKind`, `TensorGroup`, `SchemaVersion`) in `crates/nexus-run-events/src/lib.rs`. Mark every enum `#[non_exhaustive]` per Principle V. Add `EventBatch` transport struct.
+- [X] T011 Implement schema-roundtrip backend contract test at `crates/nexus-run-events/tests/schema_compat.rs`: every `RunEventItem` variant serialises to JSON matching `specs/042-neo-terminal-shell/contracts/run-event.schema.json` and deserialises back with a `JsonSchema`-validated round-trip. Forward-compat: deserialiser tolerates unknown enum variants per `#[non_exhaustive]` semantics.
+- [X] T012 [P] Implement `WorkerScraper` trait in `crates/nexus-run-events/src/store/mod.rs` with the contract from data-model.md (`id`, `ingest_line`, `flush`).
 
 ### Frontend event substrate
 
-- [ ] T013 Implement `services/ipc_adapter.ts` at `apps/web/src/services/ipc_adapter.ts`: runtime branch on `window.isTauri`, lazy-import `tauri_transport.ts` or `http_transport.ts`, expose typed RPC surface per contracts/ipc-commands.md. Export `rpc.runEvents.subscribe`, `rpc.runEvents.queryWindow`, `rpc.runEvents.bucketed`, `rpc.runtimeTuning.patch`, `rpc.block.registerMnemonic`, `rpc.pulseFloor.metricsSubscribe`, `rpc.tray.setState`, `rpc.window.setTitlebarBreadcrumb`, `rpc.window.show/hide/focus`. Constitution XII.4: this is the only I/O boundary.
-- [ ] T014 [P] Implement `services/tauri_transport.ts` (Tauri-side `invoke` + `Channel<EventBatch>`) at `apps/web/src/services/tauri_transport.ts`
-- [ ] T015 [P] Implement `services/http_transport.ts` (browser-dev `fetch` + `EventSource` fallback) at `apps/web/src/services/http_transport.ts`
-- [ ] T016 Implement `services/run_events.ts` event store at `apps/web/src/services/run_events.ts`: hot ring buffer (in-memory, ~2k items per active run), gap detection on seq breaks, rAF-batched fan-out to subscribers. Subscribers register by `RunId`. Rolls over on capacity.
-- [ ] T017 Add IndexedDB warm tier in `apps/web/src/services/run_events_warm.ts` using `idb@^8`: object store `run_events` keyed by `[run_id, seq]`, secondary index `[run_id, ts_ms]`, eviction policy at ~50 MB across all runs.
-- [ ] T018 [P] Implement `hooks/use_run_events.ts` at `apps/web/src/hooks/use_run_events.ts` exposing `useRunEvents(runId)` and `useRunEventsForRange(runId, range)` hooks consuming the store.
+- [X] T013 Implement `services/ipc_adapter.ts` at `apps/web/src/services/ipc_adapter.ts`: runtime branch on `window.isTauri`, lazy-import `tauri_transport.ts` or `http_transport.ts`, expose typed RPC surface per contracts/ipc-commands.md. Export `rpc.runEvents.subscribe`, `rpc.runEvents.queryWindow`, `rpc.runEvents.bucketed`, `rpc.runtimeTuning.patch`, `rpc.block.registerMnemonic`, `rpc.pulseFloor.metricsSubscribe`, `rpc.tray.setState`, `rpc.window.setTitlebarBreadcrumb`, `rpc.window.show/hide/focus`. Constitution XII.4: this is the only I/O boundary.
+- [X] T014 [P] Implement `services/tauri_transport.ts` (Tauri-side `invoke` + `Channel<EventBatch>`) at `apps/web/src/services/tauri_transport.ts`
+- [X] T015 [P] Implement `services/http_transport.ts` (browser-dev `fetch` + `EventSource` fallback) at `apps/web/src/services/http_transport.ts`
+- [X] T016 Implement `services/run_events.ts` event store at `apps/web/src/services/run_events.ts`: hot ring buffer (in-memory, ~2k items per active run), gap detection on seq breaks, rAF-batched fan-out to subscribers. Subscribers register by `RunId`. Rolls over on capacity.
+- [X] T017 Add IndexedDB warm tier in `apps/web/src/services/run_events_warm.ts` using `idb@^8`: object store `run_events` keyed by `[run_id, seq]`, secondary index `[run_id, ts_ms]`, eviction policy at ~50 MB across all runs.
+- [X] T018 [P] Implement `hooks/use_run_events.ts` at `apps/web/src/hooks/use_run_events.ts` exposing `useRunEvents(runId)` and `useRunEventsForRange(runId, range)` hooks consuming the store.
 
 ### Block primitive + Cursor primitive (foundational UI atoms)
 
-- [ ] T019 [P] Implement `Block` component at `apps/web/src/components/blocks/block.tsx` + `block.css.ts` + `block_header.tsx`. Props per data-model.md `BlockProps`. Implements: prompt-style header rendering, collapsed-state inline 4px sparkline, focus-driven inset phosphor glow (consumes `phosphor.*` tokens), keyboard-driven collapse toggle. Accept `mnemonic` prop and call `rpc.block.registerMnemonic` on mount.
-- [ ] T020 [P] Implement `Cursor` singleton at `apps/web/src/components/cursor/cursor.tsx` + `cursor.css.ts`. Mounts once at app root. Reads focus state from a global focus context; reads activity level from `useSystemActivity()` (TBD in T058 — until then, default to rest pulse). Honors `prefers-reduced-motion`.
+- [X] T019 [P] Implement `Block` component at `apps/web/src/components/blocks/block.tsx` + `block.css.ts` + `block_header.tsx`. Props per data-model.md `BlockProps`. Implements: prompt-style header rendering, collapsed-state inline 4px sparkline, focus-driven inset phosphor glow (consumes `phosphor.*` tokens), keyboard-driven collapse toggle. Accept `mnemonic` prop and call `rpc.block.registerMnemonic` on mount.
+- [X] T020 [P] Implement `Cursor` singleton at `apps/web/src/components/cursor/cursor.tsx` + `cursor.css.ts`. Mounts once at app root. Reads focus state from a global focus context; reads activity level from `useSystemActivity()` (TBD in T058 — until then, default to rest pulse). Honors `prefers-reduced-motion`.
 
 ### Tauri shell skeleton
 
-- [ ] T021 [P] Author `crates/nexus-desktop-shell/Cargo.toml` with deps `tauri`, `serde`, `anyhow`, `nexus-api` (path), `nexus-run-events` (path). Crate-level docs.
-- [ ] T022 Implement `crates/nexus-desktop-shell/src/lib.rs` `pub fn run() -> tauri::Result<()>` per research.md R1: builds Tauri with `tray-icon` feature, registers commands, sets up window event handler, starts the embedded host axum server bound on `127.0.0.1:0`, exposes the chosen port to commands.
-- [ ] T023 Implement `crates/nexus-desktop-shell/src/ipc/mod.rs` as the generic dispatcher module + child `ipc/run_events.rs`, `ipc/runtime_tuning.rs`, `ipc/window.rs`, `ipc/tray.rs`, `ipc/block.rs`, `ipc/pulse_floor.rs` stubs (one file per command group). Each child module exports a `register(builder)` function called from `lib.rs`.
-- [ ] T024 [P] Author `apps/web/src-tauri/src/main.rs` and `src/lib.rs` (the actual Tauri binary entry). `main.rs` is one line: `app_lib::run()`. `lib.rs` calls `nexus_desktop_shell::run()`.
-- [ ] T025 Author `apps/web/src-tauri/capabilities/default.json`: `core:default`, `core:window:default`, `core:window:allow-start-dragging`, `core:window:allow-show/hide/set-focus/toggle-maximize/minimize/close`, `core:event:default`, `core:tray:default`, plus the custom command list.
+- [X] T021 [P] Author `crates/nexus-desktop-shell/Cargo.toml` with deps `tauri`, `serde`, `anyhow`, `nexus-api` (path), `nexus-run-events` (path). Crate-level docs.
+- [X] T022 Implement `crates/nexus-desktop-shell/src/lib.rs` `pub fn run() -> tauri::Result<()>` per research.md R1: builds Tauri with `tray-icon` feature, registers commands, sets up window event handler, starts the embedded host axum server bound on `127.0.0.1:0`, exposes the chosen port to commands.
+- [X] T023 Implement `crates/nexus-desktop-shell/src/ipc/mod.rs` as the generic dispatcher module + child `ipc/run_events.rs`, `ipc/runtime_tuning.rs`, `ipc/window.rs`, `ipc/tray.rs`, `ipc/block.rs`, `ipc/pulse_floor.rs` stubs (one file per command group). Each child module exports a `register(builder)` function called from `lib.rs`.
+- [X] T024 [P] Author `apps/web/src-tauri/src/main.rs` and `src/lib.rs` (the actual Tauri binary entry). `main.rs` is one line: `app_lib::run()`. `lib.rs` calls `nexus_desktop_shell::run()`.
+- [X] T025 Author `apps/web/src-tauri/capabilities/default.json`: `core:default`, `core:window:default`, `core:window:allow-start-dragging`, `core:window:allow-show/hide/set-focus/toggle-maximize/minimize/close`, `core:event:default`, `core:tray:default`, plus the custom command list.
 
 ### Boundary baseline
 
-- [ ] T026 Author `crates/nexus-run-events/scripts/boundary_audit.sh` (or `.ps1` for parity with project) that greps the new crate paths for any extension-id literals (`local-llm`, `nexus.local-llm`, `rag`, `emotion-tts`, etc.). Run it; capture the baseline (must be zero matches). Wire into root README's audit-script table.
+- [X] T026 Author `crates/nexus-run-events/scripts/boundary_audit.sh` (or `.ps1` for parity with project) that greps the new crate paths for any extension-id literals (`local-llm`, `nexus.local-llm`, `rag`, `emotion-tts`, etc.). Run it; capture the baseline (must be zero matches). Wire into root README's audit-script table.
 
 **Checkpoint**: `cargo check --workspace` clean. `pnpm tsc --noEmit` clean. Token group renders. Block + Cursor primitives mountable in isolation. Tauri shell launches an empty window. Event substrate compiles end-to-end. Boundary audit passes.
 
