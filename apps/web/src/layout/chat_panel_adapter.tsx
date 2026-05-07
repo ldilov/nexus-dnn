@@ -12,6 +12,7 @@ import {
   setActiveModel,
   setGenerationSettings as setGenerationSettingsApi,
   streamMessage,
+  unloadActiveModel,
   type AvailableModel,
   type ChatTurn,
   type GenerationParams,
@@ -37,6 +38,7 @@ import { HeaderModelButton } from "./local_llm/header_model_button";
 import { prettyModelLabel, modelOrgFromLabel } from "./local_llm/model_label";
 import { EmptyChatState } from "./local_llm/empty_chat_state";
 import {
+  clearDeploymentModel,
   persistDeploymentModel,
   readDeploymentModel,
   type StickyModel,
@@ -415,6 +417,25 @@ export function ChatPanelAdapter({
     setLoadDialogOpen(false);
   }, []);
 
+  const handleUnload = useCallback(async () => {
+    if (!activeId) return;
+    try {
+      await unloadActiveModel(activeId);
+      clearDeploymentModel(deploymentId ?? null);
+      stickyModelRef.current = null;
+      setLastTuningByFamily((prev) => {
+        if (!load.familyId) return prev;
+        if (!(load.familyId in prev)) return prev;
+        const next = { ...prev };
+        delete next[load.familyId];
+        return next;
+      });
+      toast.success("Model unloaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not unload model");
+    }
+  }, [activeId, deploymentId, load.familyId]);
+
   const activeMaxContext = useMemo(() => {
     if (!load.familyId) return 0;
     const tuning = lastTuningByFamily[load.familyId];
@@ -613,6 +634,7 @@ export function ChatPanelAdapter({
       systemPromptInherited={systemPromptInherited}
       systemPrompt={generationSettings.system_prompt}
       onSystemPromptChange={handleSystemPromptChange}
+      onUnload={handleUnload}
     />
   );
 

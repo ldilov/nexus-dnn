@@ -92,4 +92,30 @@ describe("InspectorPanel", () => {
     rerender(<InspectorPanel {...makeProps({ systemPromptInherited: false })} />);
     expect(screen.getByText(/overridden/i)).toBeInTheDocument();
   });
+
+  it("unload_button_hidden_when_loadPhase_not_ready", () => {
+    render(
+      <InspectorPanel
+        {...makeProps({ loadPhase: "idle", onUnload: vi.fn() })}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /unload model/i })).toBeNull();
+  });
+
+  it("unload_button_hidden_when_onUnload_not_provided", () => {
+    render(<InspectorPanel {...makeProps({ loadPhase: "ready" })} />);
+    expect(screen.queryByRole("button", { name: /unload model/i })).toBeNull();
+  });
+
+  it("unload_button_calls_onUnload_when_clicked", () => {
+    const onUnload = vi.fn();
+    render(
+      <InspectorPanel
+        {...makeProps({ loadPhase: "ready", onUnload })}
+      />,
+    );
+    const btn = screen.getByRole("button", { name: /unload model/i });
+    fireEvent.click(btn);
+    expect(onUnload).toHaveBeenCalledTimes(1);
+  });
 });
