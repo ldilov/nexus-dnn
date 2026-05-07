@@ -23,6 +23,8 @@ const modelA: AvailableModel = {
   format: "gguf",
   size_bytes: 4_500_000_000,
   max_context: 131_072,
+  is_moe: false,
+  expert_layer_count: null,
 };
 
 const modelB: AvailableModel = {
@@ -32,6 +34,8 @@ const modelB: AvailableModel = {
   format: "gguf",
   size_bytes: 5_200_000_000,
   max_context: 32_768,
+  is_moe: false,
+  expert_layer_count: null,
 };
 
 afterEach(() => cleanup());
