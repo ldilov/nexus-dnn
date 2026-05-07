@@ -1,9 +1,19 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability set for nexus-dnn-desktop. Spec 042 phase-2 task T025 expands this with the full window + tray + IPC command surface.",
+  "description": "Default capability set for nexus-dnn-desktop. Grants the window/tray/event permissions required by the custom titlebar + close-to-tray + system-tray menu, plus every cmd_* declared in nexus-desktop-shell::ipc.",
   "windows": ["main"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "core:window:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-set-focus",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-minimize",
+    "core:window:allow-close",
+    "core:event:default",
+    "core:tray:default"
   ]
 }
