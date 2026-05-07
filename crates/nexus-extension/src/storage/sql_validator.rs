@@ -1,6 +1,6 @@
 use sqlparser::ast::{
     AlterTableOperation, ColumnDef, ColumnOption, ColumnOptionDef, ObjectType, ReferentialAction,
-    Statement, TableConstraint,
+    Statement, TableConstraint, TableObject,
 };
 use sqlparser::dialect::SQLiteDialect;
 use sqlparser::parser::Parser;
@@ -196,6 +196,17 @@ fn validate_statement(stmt: &Statement, effective_prefix: &str, report: &mut Sql
                 }
             }
         }
+        Statement::Insert(insert) => match &insert.table {
+            TableObject::TableName(name) => {
+                let table_name = object_name_to_string(name);
+                validate_prefix(&table_name, effective_prefix, report);
+            }
+            TableObject::TableFunction(_) => {
+                report
+                    .errors
+                    .push("INSERT into a table function is not allowed".to_owned());
+            }
+        },
         other => {
             report.errors.push(format!(
                 "statement type not allowed: {}",
@@ -321,11 +332,40 @@ mod tests {
     }
 
     #[test]
-    fn insert_rejected() {
-        let sql = "INSERT INTO ext_chat_llama_threads (id) VALUES ('1');";
+    fn insert_into_prefixed_table_allowed() {
+        let sql = "INSERT INTO ext_chat_llama_meta (key, value) VALUES ('schema_version', '8');";
+        let report = validate_sql(sql, PREFIX);
+        assert!(
+            report.errors.is_empty(),
+            "INSERT into prefixed table should pass: {:?}",
+            report.errors,
+        );
+    }
+
+    #[test]
+    fn insert_or_replace_into_prefixed_table_allowed() {
+        let sql = "INSERT OR REPLACE INTO ext_chat_llama_meta (key, value) VALUES ('k', 'v');";
+        let report = validate_sql(sql, PREFIX);
+        assert!(
+            report.errors.is_empty(),
+            "INSERT OR REPLACE into prefixed table should pass: {:?}",
+            report.errors,
+        );
+    }
+
+    #[test]
+    fn insert_into_unprefixed_table_rejected() {
+        let sql = "INSERT INTO some_other_table (id) VALUES ('1');";
         let report = validate_sql(sql, PREFIX);
         assert!(!report.errors.is_empty());
-        assert!(report.errors[0].contains("not allowed"));
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("does not start with")),
+            "expected prefix violation: {:?}",
+            report.errors,
+        );
     }
 
     #[test]
