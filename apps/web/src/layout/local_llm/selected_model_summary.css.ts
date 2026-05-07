@@ -32,9 +32,12 @@ export const title = style({
   fontWeight: vars.font.weight.semibold,
   color: vars.color.text.primary,
   letterSpacing: "-0.005em",
-  whiteSpace: "nowrap",
+  lineHeight: 1.25,
+  display: "-webkit-box",
+  WebkitBoxOrient: "vertical",
+  WebkitLineClamp: 2,
   overflow: "hidden",
-  textOverflow: "ellipsis",
+  wordBreak: "break-word",
   minWidth: 0,
 });
 

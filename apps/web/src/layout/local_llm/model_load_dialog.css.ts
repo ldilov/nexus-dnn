@@ -118,6 +118,8 @@ export const listColumn = style({
   flexDirection: "column",
   borderRight: `1px solid ${vars.color.outline.variant}`,
   minHeight: 0,
+  minWidth: 0,
+  overflow: "hidden",
 });
 
 export const searchWrap = style({
@@ -217,6 +219,8 @@ export const option = style({
   cursor: "pointer",
   outline: "none",
   background: "transparent",
+  minWidth: 0,
+  overflow: "hidden",
   transition:
     `background ${vars.motion.durationFast} ease, box-shadow 200ms ease`,
   ":hover": {

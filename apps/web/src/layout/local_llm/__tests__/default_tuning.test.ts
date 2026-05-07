@@ -43,19 +43,23 @@ const metadata: ModelMetadata = {
 };
 
 describe("defaultTuningFor", () => {
-  it("defaults_for_cuda_uses_q8_kv_and_flash_attn", () => {
+  it("defaults_for_cuda_uses_q8_kv_and_flash_attn_auto", () => {
     const result = defaultTuningFor(baseModel, cudaDefaults, metadata);
     expect(result.cache_type_k).toBe("q8_0");
     expect(result.cache_type_v).toBe("q8_0");
-    expect(result.flash_attn).toBe(true);
+    expect(result.flash_attn).toBe("auto");
+    expect(result.kv_unified).toBe(true);
+    expect(result.lookup_decoding).toBe(true);
   });
 
   it("defaults_for_cpu_uses_fp16_and_zero_gpu_layers", () => {
     const result = defaultTuningFor(baseModel, cpuDefaults, metadata);
     expect(result.cache_type_k).toBe("fp16");
     expect(result.cache_type_v).toBe("fp16");
-    expect(result.flash_attn).toBe(false);
+    expect(result.flash_attn).toBe("auto");
     expect(result.n_gpu_layers).toBe(0);
+    expect(result.kv_unified).toBe(true);
+    expect(result.lookup_decoding).toBe(true);
   });
 
   it("defaults_clamp_ctx_to_model_max", () => {
