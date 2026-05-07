@@ -15,6 +15,9 @@ import * as styles from "./runtime_tuning_form.css";
 
 const KV_OPTIONS: ReadonlyArray<KvCacheKind> = ["fp16", "q8_0", "q4_0"];
 
+const HARD_CTX_CEIL = 131072;
+const CTX_WARN_THRESHOLD = 8192;
+
 interface RuntimeTuningFormProps {
   model: AvailableModel;
   value: RuntimeTuning;
@@ -71,13 +74,14 @@ export function RuntimeTuningForm({
   };
 
   const gpuMax = modelMetadata?.layer_count ?? GPU_LAYERS_FALLBACK_MAX;
-  const ctxMax = model.max_context ?? 8192;
+  const metadataCtxMax = model.max_context ?? 0;
+  const ctxMax = Math.max(metadataCtxMax, HARD_CTX_CEIL);
   const gpuDisabled = !defaults.supports_cuda;
   const faDisabled = !defaults.supports_cuda;
   const kvDisabled = !value.flash_attn;
 
   const gpuValue = clamp(value.n_gpu_layers ?? 0, 0, gpuMax);
-  const ctxValue = clamp(value.ctx_size ?? 8192, 512, ctxMax);
+  const ctxValue = clamp(value.ctx_size ?? 8192, 1024, ctxMax);
   const threadsValue = clamp(
     value.threads ?? defaults.threads_default,
     1,
@@ -112,6 +116,11 @@ export function RuntimeTuningForm({
     value.seed,
   ]);
 
+  const ctxAboveWarn = ctxValue > CTX_WARN_THRESHOLD;
+  const ctxMultiplier = Math.round((ctxValue / CTX_WARN_THRESHOLD) * 100) / 100;
+  const ctxOverridesMetadata =
+    metadataCtxMax > 0 && metadataCtxMax < ctxValue;
+
   return (
     <div className={styles.root}>
       <section className={styles.section} aria-labelledby={`${ids.ctx}-title`}>
@@ -134,9 +143,9 @@ export function RuntimeTuningForm({
           <input
             id={ids.ctx}
             type="range"
-            min={512}
+            min={1024}
             max={ctxMax}
-            step={512}
+            step={1024}
             value={ctxValue}
             className={styles.slider}
             aria-describedby={helpIds.ctx}
@@ -144,6 +153,21 @@ export function RuntimeTuningForm({
           />
           <span className={styles.value}>{ctxValue.toLocaleString()}</span>
         </div>
+        {ctxOverridesMetadata ? (
+          <span className={styles.ctxOverride}>
+            Above this model's reported max ({metadataCtxMax.toLocaleString()})
+          </span>
+        ) : null}
+        {ctxAboveWarn ? (
+          <div className={styles.ctxWarn} role="status">
+            <span className={styles.ctxWarnIcon} aria-hidden="true">⚠</span>
+            <span>
+              Above 8K context significantly increases KV-cache VRAM use (
+              <span className={styles.ctxWarnMultiplier}>{ctxMultiplier}×</span>{" "}
+              the 8K baseline). Reduce KV cache to q8_0 or q4_0 if you OOM.
+            </span>
+          </div>
+        ) : null}
 
         <div className={styles.row}>
           <span className={styles.labelCell}>
