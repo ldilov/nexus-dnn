@@ -341,10 +341,28 @@ export function ChatPanelAdapter({
     const ctrl = new AbortController();
     fetchAvailableModels(ctrl.signal)
       .then((models) => setAvailableModels(models))
-      .catch(() => {
-        /* picker keeps the active-model fallback */
-      });
+      .catch(() => {});
     return () => ctrl.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!loadDialogOpen) return;
+    const ctrl = new AbortController();
+    fetchAvailableModels(ctrl.signal)
+      .then((models) => setAvailableModels(models))
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, [loadDialogOpen]);
+
+  useEffect(() => {
+    const onFocus = () => {
+      const ctrl = new AbortController();
+      fetchAvailableModels(ctrl.signal)
+        .then((models) => setAvailableModels(models))
+        .catch(() => {});
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, []);
 
   useEffect(() => {
