@@ -159,7 +159,7 @@ impl<T: Serialize> IntoResponse for ApiResponse<T> {
             }
         } else if status.is_client_error() {
             if let Some(payload) = self.error.as_ref() {
-                tracing::warn!(
+                tracing::debug!(
                     target: "nexus_api::handler",
                     status = %status,
                     code = %payload.code,
