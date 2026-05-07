@@ -1,9 +1,7 @@
 /// <reference lib="webworker" />
 
-import { openDB, type IDBPDatabase } from "idb";
+import { openNexusDb } from "../services/idb/db";
 
-const DB_NAME = "nexus-dnn";
-const DB_VERSION = 1;
 const STREAM_DELTAS_STORE = "nexus-stream-deltas";
 const BROADCAST_TOPIC = "nexus-sse-broker";
 
@@ -20,6 +18,7 @@ interface BrokerSlot {
   readonly key: BrokerKey;
   readonly broadcast: BroadcastChannel;
   readonly subscribers: Set<ReadableStreamDefaultController<Uint8Array>>;
+  readonly decoder: TextDecoder;
   upstreamController: AbortController;
   sequenceNumber: number;
   lastSeenAt: number;
@@ -31,7 +30,7 @@ type BrokerMessage =
   | { type: "done"; topic: string }
   | { type: "error"; topic: string; message: string };
 
-const slots: Map<string, BrokerSlot> = new Map();
+const slots: Map<string, Promise<BrokerSlot>> = new Map();
 
 function topicKey(key: BrokerKey): string {
   return `${key.deploymentId}::${key.threadId}::${key.requestId}`;
@@ -41,21 +40,13 @@ function topicChannel(key: BrokerKey): string {
   return `${BROADCAST_TOPIC}::${topicKey(key)}`;
 }
 
-let dbPromise: Promise<IDBPDatabase> | null = null;
-function getDb(): Promise<IDBPDatabase> {
-  if (!dbPromise) {
-    dbPromise = openDB(DB_NAME, DB_VERSION);
-  }
-  return dbPromise;
-}
-
 async function persistDelta(
   key: BrokerKey,
   sequenceNumber: number,
   chunk: string,
 ): Promise<void> {
   try {
-    const db = await getDb();
+    const db = await openNexusDb();
     await db.put(STREAM_DELTAS_STORE, {
       deploymentId: key.deploymentId,
       threadId: key.threadId,
@@ -72,20 +63,24 @@ async function persistDelta(
 
 async function markCompleted(key: BrokerKey): Promise<void> {
   try {
-    const db = await getDb();
+    const db = await openNexusDb();
     const tx = db.transaction(STREAM_DELTAS_STORE, "readwrite");
-    const lower = [key.deploymentId, key.threadId, key.requestId, 0] as const;
-    const upper = [
+    const lower: [string, string, string, number] = [
       key.deploymentId,
       key.threadId,
       key.requestId,
-      Number.MAX_SAFE_INTEGER,
-    ] as const;
+      0,
+    ];
+    const upper: [string, string, string, number] = [
+      key.deploymentId,
+      key.threadId,
+      key.requestId,
+      Number.POSITIVE_INFINITY,
+    ];
     const range = IDBKeyRange.bound(lower, upper, false, false);
     let cursor = await tx.store.openCursor(range);
     while (cursor) {
-      const value = cursor.value as { status?: string };
-      if (value.status === "in_progress") {
+      if (cursor.value.status === "in_progress") {
         await cursor.update({ ...cursor.value, status: "completed" });
       }
       cursor = await cursor.continue();
@@ -149,9 +144,12 @@ export async function handleBrokerFetch(request: Request): Promise<Response> {
   const tk = topicKey(key);
   const existing = slots.get(tk);
   if (existing) {
-    return attachSubscriberToSlot(existing).response;
+    const slot = await existing;
+    return attachSubscriberToSlot(slot).response;
   }
-  const slot = await openSlot(key, request);
+  const slotPromise = openSlot(key, request);
+  slots.set(tk, slotPromise);
+  const slot = await slotPromise;
   return attachSubscriberToSlot(slot).response;
 }
 
@@ -161,12 +159,12 @@ async function openSlot(key: BrokerKey, request: Request): Promise<BrokerSlot> {
     key,
     broadcast,
     subscribers: new Set(),
+    decoder: new TextDecoder(),
     upstreamController: new AbortController(),
     sequenceNumber: 0,
     lastSeenAt: Date.now(),
     closed: false,
   };
-  slots.set(topicKey(key), slot);
 
   const upstreamInit: RequestInit = {
     method: request.method,
@@ -205,9 +203,15 @@ async function runUpstream(
       if (done) break;
       slot.lastSeenAt = Date.now();
       slot.sequenceNumber += 1;
-      const chunk = new TextDecoder().decode(value, { stream: true });
+      const chunk = slot.decoder.decode(value, { stream: true });
       await persistDelta(slot.key, slot.sequenceNumber, chunk);
       publishDelta(slot, chunk);
+    }
+    const tail = slot.decoder.decode();
+    if (tail.length > 0) {
+      slot.sequenceNumber += 1;
+      await persistDelta(slot.key, slot.sequenceNumber, tail);
+      publishDelta(slot, tail);
     }
   } catch (err) {
     publishError(slot, err);
@@ -296,19 +300,25 @@ function publishError(slot: BrokerSlot, err: unknown): void {
 function closeSlot(slot: BrokerSlot): void {
   if (slot.closed) return;
   slot.closed = true;
+  try {
+    slot.upstreamController.abort();
+  } catch {
+    /* already aborted */
+  }
   slot.broadcast.close();
   slots.delete(topicKey(slot.key));
 }
 
-export function __resetBrokerForTests(): void {
-  for (const slot of slots.values()) {
+export async function __resetBrokerForTests(): Promise<void> {
+  const pending = Array.from(slots.values());
+  slots.clear();
+  for (const promise of pending) {
     try {
+      const slot = await promise;
       slot.upstreamController.abort();
       slot.broadcast.close();
     } catch {
       /* swallow */
     }
   }
-  slots.clear();
-  dbPromise = null;
 }
