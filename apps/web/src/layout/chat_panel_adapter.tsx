@@ -25,8 +25,10 @@ import { useLocalLlmRuntimeStatus } from "./local_llm/use_runtime_status";
 import { InspectorPanel } from "./local_llm/inspector_panel";
 import { getModelMetadata, type ModelMetadata } from "../services/host_api";
 import {
+  appendMessage,
   createThread,
   deleteThread,
+  listMessages,
   listThreads,
   patchThread,
   SchemaVersionMismatchError,
@@ -159,7 +161,13 @@ export function ChatPanelAdapter({
   const generationSettingsLoadedRef = useRef(false);
   const streamHandle = useRef<{ abort: () => void } | null>(null);
   const streamingThreadRef = useRef<string | null>(null);
+  const messagesRef = useRef<RuntimeMessage[]>([]);
   const stickyModelRef = useRef<StickyModel | null>(readDeploymentModel(deploymentId));
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   const autoBindAttemptedRef = useRef<Set<string>>(new Set());
   const liveRuntimeRef = useRef<LiveRuntimeSnapshot | null>(null);
   const load = useModelLoadState(activeId);
@@ -295,7 +303,6 @@ export function ChatPanelAdapter({
   }, []);
 
   useEffect(() => {
-    setMessages([]);
     streamHandle.current?.abort();
     const lastStreaming = streamingThreadRef.current;
     if (lastStreaming && lastStreaming !== activeId) {
@@ -304,6 +311,30 @@ export function ChatPanelAdapter({
     streamHandle.current = null;
     streamingThreadRef.current = null;
     setStreamingId(null);
+    setMessages([]);
+
+    if (!activeId) return;
+
+    const ctrl = new AbortController();
+    listMessages(activeId, { limit: 200 }, ctrl.signal)
+      .then((page) => {
+        if (ctrl.signal.aborted) return;
+        const loaded: RuntimeMessage[] = page.messages
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({
+            id: m.message_id,
+            role: m.role as "user" | "assistant",
+            text: m.content,
+            status: m.is_partial ? "failed" : "complete",
+            createdAt: m.created_at,
+          }));
+        setMessages(loaded);
+      })
+      .catch((err) => {
+        if (ctrl.signal.aborted) return;
+        toast.error(err instanceof Error ? err.message : "Could not load chat history");
+      });
+    return () => ctrl.abort();
   }, [activeId]);
 
   useEffect(() => {
@@ -538,7 +569,8 @@ export function ChatPanelAdapter({
   const handleSend = useCallback(
     async (text: string) => {
       if (!activeId || displayedLoad.phase !== "ready" || displayedLoad.port === undefined) return;
-      const userId = `u-${Date.now()}`;
+      const threadId = activeId;
+      const optimisticUserId = `u-${Date.now()}`;
       const assistantId = `a-${Date.now()}`;
       const turns: ChatTurn[] = messages.map((m) => ({
         role: m.role,
@@ -547,11 +579,26 @@ export function ChatPanelAdapter({
       const now = new Date().toISOString();
       setMessages((prev) => [
         ...prev,
-        { id: userId, role: "user", text, status: "complete", createdAt: now },
+        { id: optimisticUserId, role: "user", text, status: "complete", createdAt: now },
         { id: assistantId, role: "assistant", text: "", status: "streaming", createdAt: now },
       ]);
       setStreamingId(assistantId);
-      streamingThreadRef.current = activeId;
+      streamingThreadRef.current = threadId;
+
+      appendMessage(threadId, { role: "user", content: text })
+        .then((persisted) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === optimisticUserId
+                ? { ...m, id: persisted.message_id, createdAt: persisted.created_at }
+                : m,
+            ),
+          );
+        })
+        .catch((err) => {
+          toast.error(err instanceof Error ? err.message : "Could not save user message");
+        });
+
       const port = displayedLoad.port;
       const handle = streamMessage(
         {
@@ -568,6 +615,8 @@ export function ChatPanelAdapter({
           onDone: (stats) => {
             const usedNow =
               (stats.promptTokens ?? 0) + (stats.completionTokens ?? 0);
+            const finalText =
+              messagesRef.current.find((m) => m.id === assistantId)?.text ?? "";
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
@@ -592,6 +641,24 @@ export function ChatPanelAdapter({
               completionTokens: stats.completionTokens,
               tokensPerSec: stats.tokensPerSec,
             });
+
+            if (finalText.length > 0) {
+              appendMessage(threadId, { role: "assistant", content: finalText })
+                .then((persisted) => {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantId
+                        ? { ...m, id: persisted.message_id, createdAt: persisted.created_at }
+                        : m,
+                    ),
+                  );
+                })
+                .catch((err) => {
+                  toast.error(
+                    err instanceof Error ? err.message : "Could not save assistant reply",
+                  );
+                });
+            }
           },
           onError: (err) => {
             setMessages((prev) =>
