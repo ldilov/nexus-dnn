@@ -49,11 +49,14 @@ export interface ChatSurfaceProps {
   onCancelStream?: () => void;
   onRetryMessage?: (id: string) => void;
 
-  models: ModelOption[];
-  activeModelId: string | null;
+  models?: ModelOption[];
+  activeModelId?: string | null;
   onSelectModel?: (id: string) => Promise<void>;
   modelPickerStatus?: "ready" | "loading" | "unavailable";
   onOpenBackends?: () => void;
+
+  headerSlot?: ReactNode;
+  inspector?: ReactNode;
 
   samplerOverride?: SamplerOverride;
   onUpdateSamplerOverride?: (next: SamplerOverride) => Promise<void>;
@@ -104,6 +107,8 @@ export function ChatSurface(props: ChatSurfaceProps) {
     onSelectModel,
     modelPickerStatus,
     onOpenBackends,
+    headerSlot,
+    inspector,
     schemaMismatch,
     schemaMismatchMessage,
     samplerOverride,
@@ -160,13 +165,15 @@ export function ChatSurface(props: ChatSurfaceProps) {
             {surfaceMeta ? <div className={styles.titleMeta}>{surfaceMeta}</div> : null}
           </div>
           <div className={styles.headerRight}>
-            <ModelPicker
-              models={models}
-              activeModelId={activeModelId}
-              onSelect={onSelectModel}
-              status={modelPickerStatus}
-              onOpenBackends={onOpenBackends}
-            />
+            {headerSlot ?? (
+              <ModelPicker
+                models={models ?? []}
+                activeModelId={activeModelId ?? null}
+                onSelect={onSelectModel}
+                status={modelPickerStatus}
+                onOpenBackends={onOpenBackends}
+              />
+            )}
           </div>
         </header>
 
@@ -205,7 +212,9 @@ export function ChatSurface(props: ChatSurfaceProps) {
       </div>
 
       <aside className={styles.inspector} aria-label="Chat settings">
-        <SamplerPanel override={samplerOverride} onUpdate={onUpdateSamplerOverride} />
+        {inspector ?? (
+          <SamplerPanel override={samplerOverride} onUpdate={onUpdateSamplerOverride} />
+        )}
       </aside>
     </section>
   );
