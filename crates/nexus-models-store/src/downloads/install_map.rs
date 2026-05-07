@@ -57,6 +57,8 @@ pub struct InstalledArtifactRow {
     pub max_context: Option<u32>,
     pub architecture: Option<String>,
     pub hidden_size: Option<u32>,
+    pub is_moe: Option<bool>,
+    pub expert_layer_count: Option<u32>,
     pub extraction_status: Option<String>,
     pub extracted_at: Option<i64>,
 }
@@ -147,6 +149,7 @@ impl InstallMap {
                     source_provider, source_repo, source_revision,
                     filename, job_id, sha256, size_bytes, installed_at,
                     layer_count, max_context, architecture, hidden_size,
+                    is_moe, expert_layer_count,
                     extraction_status, extracted_at
              FROM model_store_installed_artifacts
              WHERE artifact_id = ?1",
@@ -166,6 +169,7 @@ impl InstallMap {
                     source_provider, source_repo, source_revision,
                     filename, job_id, sha256, size_bytes, installed_at,
                     layer_count, max_context, architecture, hidden_size,
+                    is_moe, expert_layer_count,
                     extraction_status, extracted_at
              FROM model_store_installed_artifacts
              ORDER BY installed_at DESC, artifact_id ASC
@@ -191,14 +195,18 @@ impl InstallMap {
                  max_context = ?2,
                  architecture = ?3,
                  hidden_size = ?4,
-                 extraction_status = ?5,
-                 extracted_at = ?6
-             WHERE artifact_id = ?7",
+                 is_moe = ?5,
+                 expert_layer_count = ?6,
+                 extraction_status = ?7,
+                 extracted_at = ?8
+             WHERE artifact_id = ?9",
         )
         .bind(metadata.layer_count.map(i64::from))
         .bind(metadata.max_context.map(i64::from))
         .bind(metadata.architecture.as_deref())
         .bind(metadata.hidden_size.map(i64::from))
+        .bind(metadata.is_moe.map(i64::from))
+        .bind(metadata.expert_layer_count.map(i64::from))
         .bind(extraction_status_str(metadata.extraction_status))
         .bind(metadata.extracted_at)
         .bind(artifact_id.as_str())
@@ -216,6 +224,7 @@ impl InstallMap {
                     source_provider, source_repo, source_revision,
                     filename, job_id, sha256, size_bytes, installed_at,
                     layer_count, max_context, architecture, hidden_size,
+                    is_moe, expert_layer_count,
                     extraction_status, extracted_at
              FROM model_store_installed_artifacts
              WHERE family_id = ?1
@@ -256,6 +265,10 @@ fn parse_row(r: sqlx::sqlite::SqliteRow) -> InstalledArtifactRow {
         hidden_size: r
             .get::<Option<i64>, _>("hidden_size")
             .map(|v| v as u32),
+        is_moe: r.get::<Option<i64>, _>("is_moe").map(|v| v != 0),
+        expert_layer_count: r
+            .get::<Option<i64>, _>("expert_layer_count")
+            .map(|v| v as u32),
         extraction_status: r.get("extraction_status"),
         extracted_at: r.get("extracted_at"),
     }
@@ -282,6 +295,17 @@ mod tests {
         .unwrap();
         for stmt in include_str!(
             "../../../../migrations/015_installed_artifact_extraction_metadata.sql"
+        )
+        .split(';')
+        {
+            let trimmed = stmt.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            sqlx::query(trimmed).execute(&pool).await.unwrap();
+        }
+        for stmt in include_str!(
+            "../../../../migrations/021_installed_artifact_moe_metadata.sql"
         )
         .split(';')
         {
@@ -402,6 +426,50 @@ mod tests {
         assert_eq!(row.hidden_size, Some(4096));
         assert_eq!(row.extraction_status.as_deref(), Some("ok"));
         assert_eq!(row.extracted_at, Some(1_700_000_000_000));
+    }
+
+    #[tokio::test]
+    async fn update_extraction_metadata_persists_moe_fields() {
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        map.record(sample("hf:a/mixtral#file", "hf:a/mixtral", Some("hf:a/mixtral@Q4")))
+            .await
+            .unwrap();
+        let mut meta = nexus_model_metadata::ExtractedMetadata::ok(
+            "hf:a/mixtral#file",
+            nexus_model_metadata::ArtifactFormat::Gguf,
+        );
+        meta.layer_count = Some(32);
+        meta.architecture = Some("mixtral".to_string());
+        meta.is_moe = Some(true);
+        meta.expert_layer_count = Some(32);
+        meta.extracted_at = 1_700_000_000_000;
+        map.update_extraction_metadata(&ArtifactId::from("hf:a/mixtral#file"), &meta)
+            .await
+            .unwrap();
+        let row = map
+            .find_by_artifact(&ArtifactId::from("hf:a/mixtral#file"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.is_moe, Some(true));
+        assert_eq!(row.expert_layer_count, Some(32));
+    }
+
+    #[tokio::test]
+    async fn moe_fields_default_null_before_update() {
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        map.record(sample("hf:a/dense#file", "hf:a/dense", None))
+            .await
+            .unwrap();
+        let row = map
+            .find_by_artifact(&ArtifactId::from("hf:a/dense#file"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.is_moe, None);
+        assert_eq!(row.expert_layer_count, None);
     }
 
     #[tokio::test]
