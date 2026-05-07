@@ -92,6 +92,39 @@ export const labelCell = style({
   gap: vars.density.d2,
 });
 
+export const ctxWarn = style({
+  display: "flex",
+  alignItems: "flex-start",
+  gap: vars.density.d2,
+  marginTop: vars.density.d2,
+  padding: `${vars.density.d2} ${vars.density.d3}`,
+  borderRadius: vars.radius.control,
+  background: `color-mix(in oklch, ${vars.color.warning.base} 8%, transparent)`,
+  boxShadow: `inset 0 0 0 1px color-mix(in oklch, ${vars.color.warning.base} 24%, transparent)`,
+  color: vars.color.warning.text,
+  fontSize: vars.font.size.caption,
+  lineHeight: 1.4,
+});
+
+export const ctxWarnIcon = style({
+  flexShrink: 0,
+  color: vars.color.warning.base,
+  fontFamily: vars.font.code,
+});
+
+export const ctxWarnMultiplier = style({
+  fontFamily: vars.font.code,
+  color: vars.color.warning.base,
+});
+
+export const ctxOverride = style({
+  display: "block",
+  marginTop: vars.density.d1,
+  fontSize: vars.font.size.caption,
+  fontFamily: vars.font.code,
+  color: vars.color.text.muted,
+});
+
 export const value = style({
   fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,

@@ -255,6 +255,94 @@ describe("RuntimeTuningForm", () => {
     expect(slider.max).toBe("16");
   });
 
+  it("ctx_slider_max_is_at_least_128k_when_metadata_low", () => {
+    const lowModel: AvailableModel = { ...model, max_context: 4096 };
+    const value: RuntimeTuning = { ...buildValue(cudaDefaults, metadata, lowModel) };
+    render(
+      <RuntimeTuningForm
+        model={lowModel}
+        value={value}
+        defaults={cudaDefaults}
+        modelMetadata={metadata}
+        onChange={() => {}}
+      />,
+    );
+    const slider = screen.getByLabelText(/context length/i) as HTMLInputElement;
+    expect(slider.max).toBe("131072");
+  });
+
+  it("ctx_slider_max_uses_metadata_when_higher", () => {
+    const value = buildValue(cudaDefaults, metadata);
+    render(
+      <RuntimeTuningForm
+        model={model}
+        value={value}
+        defaults={cudaDefaults}
+        modelMetadata={metadata}
+        onChange={() => {}}
+      />,
+    );
+    const slider = screen.getByLabelText(/context length/i) as HTMLInputElement;
+    expect(slider.max).toBe("262144");
+  });
+
+  it("vram_warning_appears_above_8k", () => {
+    const value: RuntimeTuning = {
+      ...buildValue(cudaDefaults, metadata),
+      ctx_size: 16384,
+    };
+    render(
+      <RuntimeTuningForm
+        model={model}
+        value={value}
+        defaults={cudaDefaults}
+        modelMetadata={metadata}
+        onChange={() => {}}
+      />,
+    );
+    expect(
+      screen.getByText(/Above 8K context significantly increases KV-cache VRAM use/i),
+    ).toBeInTheDocument();
+  });
+
+  it("vram_warning_hidden_at_or_below_8k", () => {
+    const value: RuntimeTuning = {
+      ...buildValue(cudaDefaults, metadata),
+      ctx_size: 8192,
+    };
+    render(
+      <RuntimeTuningForm
+        model={model}
+        value={value}
+        defaults={cudaDefaults}
+        modelMetadata={metadata}
+        onChange={() => {}}
+      />,
+    );
+    expect(
+      screen.queryByText(/Above 8K context significantly increases KV-cache VRAM use/i),
+    ).toBeNull();
+  });
+
+  it("metadata_override_note_appears_when_value_exceeds_metadata", () => {
+    const lowModel: AvailableModel = { ...model, max_context: 4096 };
+    const value: RuntimeTuning = {
+      ...buildValue(cudaDefaults, metadata, lowModel),
+      ctx_size: 16384,
+    };
+    render(
+      <RuntimeTuningForm
+        model={lowModel}
+        value={value}
+        defaults={cudaDefaults}
+        modelMetadata={metadata}
+        onChange={() => {}}
+      />,
+    );
+    const noteText = document.body.textContent ?? "";
+    expect(noteText).toMatch(/Above this model.s reported max \(4,?096\)/i);
+  });
+
   it("reset_button_emits_default_tuning", () => {
     const value: RuntimeTuning = {
       ...buildValue(cudaDefaults, metadata),
