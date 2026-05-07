@@ -177,11 +177,13 @@ export const paramLabel = style({
 });
 
 export const paramInput = style({
+  // audit-allow: px — fixed numeric input width keeps the param column aligned
   width: "96px",
   appearance: "none",
   padding: `${vars.density.d1} ${vars.density.d2}`,
   fontFamily: vars.font.code,
   fontSize: vars.font.size.bodySm,
+  fontVariantNumeric: "tabular-nums",
   textAlign: "right",
   color: vars.color.text.primary,
   background: `color-mix(in oklch, ${vars.color.bg.canvas} 80%, transparent)`,
@@ -192,7 +194,10 @@ export const paramInput = style({
   transition: `box-shadow ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   selectors: {
     "&:focus": {
-      boxShadow: `inset 0 0 0 1.5px ${vars.color.accent.primary}`,
+      boxShadow: `inset 0 0 0 1.5px ${vars.color.accent.tertiary}`,
+    },
+    "&[data-role=\"manual\"]:focus": {
+      boxShadow: `inset 0 0 0 1.5px ${vars.color.accent.tertiary}`,
     },
   },
 });

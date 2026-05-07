@@ -77,6 +77,8 @@ impl MetadataExtractor for SafetensorsExtractor {
             max_context,
             architecture,
             hidden_size,
+            is_moe: None,
+            expert_layer_count: None,
             extraction_status,
             extracted_at: now_millis(),
         })
