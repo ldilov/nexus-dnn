@@ -6,12 +6,12 @@ import {
   shouldIntercept,
 } from "../sse_broker";
 
-beforeEach(() => {
-  __resetBrokerForTests();
+beforeEach(async () => {
+  await __resetBrokerForTests();
 });
 
-afterEach(() => {
-  __resetBrokerForTests();
+afterEach(async () => {
+  await __resetBrokerForTests();
   vi.restoreAllMocks();
 });
 
@@ -29,9 +29,9 @@ describe("shouldIntercept", () => {
     expect(shouldIntercept(req)).toBe(true);
   });
 
-  it("matches the host-mounted local-llm inference stream route", () => {
+  it("matches the host-mounted /inference/stream route for any extension", () => {
     const req = makeRequest(
-      "https://nexus.example/api/v1/extensions/nexus.local-llm/inference/stream",
+      "https://nexus.example/api/v1/extensions/some.extension/inference/stream",
       {},
     );
     expect(shouldIntercept(req)).toBe(true);
