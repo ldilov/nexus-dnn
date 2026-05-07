@@ -50,6 +50,7 @@ import {
   invalidateCachedThread,
   loadCachedMessages,
   loadCachedThreadsForDeployment,
+  loadInterruptedReply,
   persistMessagesCache,
   persistThreadsCache,
 } from "./local_llm/chat_history_cache";
@@ -377,6 +378,31 @@ export function ChatPanelAdapter({
               createdAt: m.createdAt,
             }));
           void persistMessagesCache(deploymentId, activeId, cacheable);
+          void loadInterruptedReply(deploymentId, activeId).then((interrupted) => {
+            if (!interrupted || interrupted.text.length === 0) return;
+            setMessages((prev) => {
+              const tail = prev[prev.length - 1];
+              if (
+                tail &&
+                tail.role === "assistant" &&
+                tail.text.length >= interrupted.text.length
+              ) {
+                return prev;
+              }
+              const interruptedId = `interrupted-${interrupted.requestId}`;
+              if (prev.some((m) => m.id === interruptedId)) return prev;
+              return [
+                ...prev,
+                {
+                  id: interruptedId,
+                  role: "assistant" as const,
+                  text: interrupted.text,
+                  status: "failed" as const,
+                  createdAt: new Date(interrupted.lastTimestamp).toISOString(),
+                },
+              ];
+            });
+          });
         }
       })
       .catch((err) => {
