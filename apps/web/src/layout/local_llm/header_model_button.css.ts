@@ -6,8 +6,8 @@ export const button = style({
   display: "inline-flex",
   alignItems: "center",
   gap: vars.density.d2,
-  padding: "6px 12px",
-  background: "rgba(255,255,255,0.04)",
+  padding: `${vars.density.d2} ${vars.density.d3}`,
+  background: vars.color.bg.elevated,
   color: vars.color.text.primary,
   border: "none",
   borderRadius: vars.radius.control,
@@ -15,16 +15,16 @@ export const button = style({
   fontSize: vars.font.size.bodySm,
   fontWeight: 500,
   cursor: "pointer",
-  boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
+  boxShadow: `inset 0 0 0 1px ${vars.color.outline.variant}`,
   transition:
     `background ${vars.motion.durationFast} ease, box-shadow ${vars.motion.durationFast} ease, color ${vars.motion.durationFast} ease`,
   ":hover": {
-    background: "rgba(186,158,255,0.10)",
-    boxShadow: "inset 0 0 0 1px rgba(186,158,255,0.32)",
+    background: `color-mix(in oklch, ${vars.color.accent.primary} 10%, transparent)`,
+    boxShadow: `inset 0 0 0 1px color-mix(in oklch, ${vars.color.accent.primary} 32%, transparent)`,
   },
   ":focus-visible": {
     outline: "none",
-    boxShadow: "inset 0 0 0 1.5px rgba(186,158,255,0.55)",
+    boxShadow: `inset 0 0 0 1.5px color-mix(in oklch, ${vars.color.accent.primary} 55%, transparent)`,
   },
 });
 

@@ -12,6 +12,7 @@ export function HeaderModelButton({ label, onClick }: Readonly<HeaderModelButton
       type="button"
       className={styles.button}
       onClick={onClick}
+      aria-haspopup="dialog"
       aria-label={hasLabel ? `Active model: ${label}. Open model load dialog.` : "Open model load dialog"}
     >
       <span className={hasLabel ? undefined : styles.placeholder}>
