@@ -61,17 +61,6 @@ export function useComposerDraft(
   const [initialValue, setInitialValue] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancelledRef = useRef(false);
-
-  useEffect(() => {
-    cancelledRef.current = false;
-    return () => {
-      cancelledRef.current = true;
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     setHydrated(false);
@@ -99,6 +88,10 @@ export function useComposerDraft(
       });
     return () => {
       cancelled = true;
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
     };
   }, [deploymentId, threadId]);
 
