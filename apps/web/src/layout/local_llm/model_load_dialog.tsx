@@ -20,7 +20,7 @@ interface ModelLoadDialogProps {
   open: boolean;
   models: AvailableModel[];
   defaults: RuntimeDefaults;
-  metadataByInstallId?: Record<string, ModelMetadata>;
+  metadataByKey?: Record<string, ModelMetadata>;
   initialTuningByFamily?: Record<string, RuntimeTuning>;
   onLoad: (model: AvailableModel, tuning: RuntimeTuning) => void | Promise<void>;
   onClose: () => void;
@@ -56,7 +56,7 @@ export function ModelLoadDialog({
   open,
   models,
   defaults,
-  metadataByInstallId,
+  metadataByKey,
   initialTuningByFamily,
   onLoad,
   onClose,
@@ -86,7 +86,7 @@ export function ModelLoadDialog({
   }, [filtered, selectedKey]);
 
   const selectedMetadata = selected
-    ? metadataByInstallId?.[selected.family_id]
+    ? metadataByKey?.[selected.family_id]
     : undefined;
 
   useEffect(() => {
@@ -109,9 +109,7 @@ export function ModelLoadDialog({
     return () => {
       const restore = previousFocusRef.current;
       previousFocusRef.current = null;
-      if (restore && typeof restore.focus === "function") {
-        restore.focus();
-      }
+      restore?.focus();
     };
   }, [open]);
 
@@ -121,13 +119,13 @@ export function ModelLoadDialog({
       const stored = initialTuningByFamily?.[m.family_id];
       const seed = stored
         ? {
-            ...defaultTuningFor(m, defaults, metadataByInstallId?.[m.family_id]),
+            ...defaultTuningFor(m, defaults, metadataByKey?.[m.family_id]),
             ...stored,
           }
-        : defaultTuningFor(m, defaults, metadataByInstallId?.[m.family_id]);
+        : defaultTuningFor(m, defaults, metadataByKey?.[m.family_id]);
       setTuning(seed);
     },
-    [defaults, initialTuningByFamily, metadataByInstallId],
+    [defaults, initialTuningByFamily, metadataByKey],
   );
 
   const handleLoad = useCallback(async () => {

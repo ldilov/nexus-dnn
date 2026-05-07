@@ -277,7 +277,7 @@ describe("ModelLoadDialog", () => {
         open
         models={[modelA]}
         defaults={cudaDefaults}
-        metadataByInstallId={{
+        metadataByKey={{
           [modelA.family_id]: {
             install_id: modelA.family_id,
             format: "gguf",

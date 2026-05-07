@@ -468,7 +468,7 @@ export function ChatPanelAdapter({
         open={loadDialogOpen}
         models={availableModels}
         defaults={runtimeDefaults ?? FALLBACK_DEFAULTS}
-        metadataByInstallId={metadataByKey}
+        metadataByKey={metadataByKey}
         initialTuningByFamily={lastTuningByFamily}
         onLoad={handleLoadModel}
         onClose={handleCloseLoadDialog}
