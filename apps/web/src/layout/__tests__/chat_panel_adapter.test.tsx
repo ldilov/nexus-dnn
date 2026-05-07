@@ -362,6 +362,7 @@ describe("ChatPanelAdapter", () => {
         },
       },
     });
+    try {
     listThreadsMock.mockResolvedValueOnce({
       threads: [baseThread("t-1", "Alpha")],
       has_more: false,
@@ -427,10 +428,12 @@ describe("ChatPanelAdapter", () => {
     const wrap = bar.parentElement;
     expect(wrap?.textContent ?? "").toContain("700");
     expect(wrap?.textContent ?? "").toContain("8,192");
-    Object.defineProperty(window, "localStorage", {
-      configurable: true,
-      value: previousLocalStorage,
-    });
+    } finally {
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        value: previousLocalStorage,
+      });
+    }
   });
 
   it("updates the system prompt when the editor onChange fires", async () => {
