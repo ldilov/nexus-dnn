@@ -244,14 +244,14 @@ export const loadButton = style({
   appearance: "none",
   border: "none",
   cursor: "pointer",
+  // audit-allow: px — sub-density button padding tuned to the dialog footer rhythm
   padding: "8px 16px",
   borderRadius: vars.radius.control,
   fontSize: vars.font.size.bodySm,
   fontFamily: vars.font.ui,
-  fontWeight: 600,
-  color: vars.color.text.inverse,
-  background:
-    "linear-gradient(180deg, rgba(196,170,255,1) 0%, rgba(159,127,247,1) 100%)",
+  fontWeight: vars.font.weight.semibold,
+  color: vars.color.onColor.primary,
+  background: `linear-gradient(180deg, color-mix(in oklch, ${vars.color.accent.primary} 88%, white) 0%, ${vars.color.accent.primary} 100%)`,
   boxShadow: `0 6px 16px color-mix(in oklch, ${vars.color.accent.primary} 25%, transparent), inset 0 1px 0 color-mix(in oklch, ${vars.color.text.primary} 40%, transparent)`,
   transition: `transform ${vars.motion.durationFast} ease, box-shadow ${vars.motion.durationFast} ease, opacity ${vars.motion.durationFast} ease`,
   ":hover": {

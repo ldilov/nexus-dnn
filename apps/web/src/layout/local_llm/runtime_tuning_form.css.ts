@@ -164,9 +164,11 @@ export const select = style({
 
 export const number = style({
   width: "100%",
+  // audit-allow: px — sub-density numeric input padding, no token at this granularity
   padding: "6px 10px",
   fontSize: vars.font.size.bodySm,
   fontFamily: vars.font.code,
+  fontVariantNumeric: "tabular-nums",
   background: `color-mix(in oklch, ${vars.color.text.primary} 4%, transparent)`,
   color: vars.color.text.primary,
   border: "none",
@@ -174,7 +176,7 @@ export const number = style({
   boxShadow: `inset 0 0 0 1px ${vars.color.outline.variant}`,
   outline: "none",
   ":focus": {
-    boxShadow: `inset 0 0 0 1.5px color-mix(in oklch, ${vars.color.accent.primary} 50%, transparent)`,
+    boxShadow: `inset 0 0 0 1.5px color-mix(in oklch, ${vars.color.accent.tertiary} 55%, transparent)`,
   },
 });
 
