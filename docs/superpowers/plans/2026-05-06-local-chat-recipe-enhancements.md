@@ -936,6 +936,14 @@ pnpm --filter @nexus/web test:visual -- chat-deployment
 
 - [ ] **Step 4: Commit baselines** if they look right.
 
+### Task 6.1 review follow-ups (logged 2026-05-07)
+
+Code review on commits `44fee9e` + `ba915c2` flagged Important items I-1 (NaN guard), I-4 (test polyfill leak), and the cosmetic M-1/M-7/M-8 — all applied inline. Two Important items defer for a single follow-up sprint:
+
+- **FU-INSPECTOR-A — Persist effect race across the four generation settings (I-2).** Today a single 500ms debounce window covers all four fields. If the user edits the system prompt textarea AND a numeric input at overlapping times, the debounce fires once with the latest state of both — possibly committing a half-typed prompt because the user happened to twiddle a slider mid-flight. Mitigations: split the persist effect into two — one for the sampler tuple, one for the system prompt — each on its own debounce; or document the latest-value-wins semantics inline. Worth bundling with the FU-ADAPTER-B hook extraction when it lands.
+
+- **FU-INSPECTOR-B — Two sampler surfaces with no merge contract (I-3).** The header tray's per-thread `sampler_override` (temperature + top_p only, persisted via `patchThread`) and the InspectorPanel sampler (writes to `generationSettings.{temperature, top_p, max_tokens}`, persisted via `setGenerationSettingsApi`) are now independent. At inference time, `streamMessage` body construction in `handleSend` does NOT forward sampler params explicitly — they are read backend-side from generation settings. The inspector sampler is therefore the authoritative surface today; the header tray's override is currently inert at request time. Action: either delete the header tray override (since InspectorPanel covers more), OR define a merge order at request-time and document it. Track alongside FU-INSPECTOR-A.
+
 ---
 
 ## Phase 7 — Verification

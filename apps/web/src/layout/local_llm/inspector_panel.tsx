@@ -26,10 +26,10 @@ export interface InspectorPanelProps {
 }
 
 const phaseLabel: Record<LoadPhase, string> = {
-  idle: "idle",
-  loading: "loading",
-  ready: "ready",
-  failed: "failed",
+  idle: "Idle",
+  loading: "Loading",
+  ready: "Ready",
+  failed: "Failed",
 };
 
 interface SectionProps {
@@ -68,7 +68,8 @@ export function InspectorPanel({
 }: Readonly<InspectorPanelProps>) {
   const onTempChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const next = e.target.value === "" ? 0 : Number(e.target.value);
+      const parsed = e.target.value === "" ? 0 : Number(e.target.value);
+      const next = Number.isFinite(parsed) ? parsed : sampler.temperature;
       onSamplerChange({ ...sampler, temperature: next });
     },
     [sampler, onSamplerChange],
@@ -76,7 +77,8 @@ export function InspectorPanel({
 
   const onTopPChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const next = e.target.value === "" ? 0 : Number(e.target.value);
+      const parsed = e.target.value === "" ? 0 : Number(e.target.value);
+      const next = Number.isFinite(parsed) ? parsed : sampler.topP;
       onSamplerChange({ ...sampler, topP: next });
     },
     [sampler, onSamplerChange],
@@ -84,7 +86,8 @@ export function InspectorPanel({
 
   const onMaxTokensChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const next = e.target.value === "" ? 1 : Math.max(1, Math.floor(Number(e.target.value)));
+      const parsed = e.target.value === "" ? 1 : Math.floor(Number(e.target.value));
+      const next = Number.isFinite(parsed) ? Math.max(1, parsed) : sampler.maxTokens;
       onSamplerChange({ ...sampler, maxTokens: next });
     },
     [sampler, onSamplerChange],
@@ -172,7 +175,7 @@ export function InspectorPanel({
               aria-label="Max tokens"
             />
           </label>
-          <div className={styles.paramRow}>
+          <div className={styles.paramRow} aria-hidden="true">
             <span className={styles.paramLabel}>System prompt</span>
             {systemPromptInherited ? (
               <span className={styles.promptIndicatorInherited}>inherits</span>
