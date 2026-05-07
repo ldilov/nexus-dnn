@@ -112,14 +112,14 @@ Write FIRST and confirm they FAIL before implementation.
 
 ### Implementation for User Story 1
 
-- [ ] T033 [US1] Emit `--cache-reuse <n>` from `append_throughput_args` in `extensions/builtin/local-llm/rust/src/chat/handlers.rs` when `cache_reuse: Some(n)` (FR-002)
-- [ ] T034 [P] [US1] Create `apps/web/src/layout/local_llm/known_broken_models.ts` exporting `isKnownBrokenForCacheReuse(familyId: string): KnownBrokenVerdict` per `data-model.md` § KnownBrokenModelMatcher (curated list: `gemma-3-*` prefix + `qwen3-next` substring, case-insensitive)
-- [ ] T035 [US1] Add **Reuse KV cache** toggle + min-chunk numeric input to the **Memory** section of `apps/web/src/layout/local_llm/runtime_tuning_form.tsx` (default 256, range [64, 2048]); HelpTooltip copy from `quickstart.md` Scenario A (FR-012)
-- [ ] T036 [US1] Wire gating logic in `runtime_tuning_form.tsx` — when `isKnownBrokenForCacheReuse(activeModel.family_id).broken === true`, disable the toggle by default and render an inline amber warning chip with the issue link; an "enable anyway" affordance unlocks the toggle and persists `cache_reuse_override = true` in form-local state (FR-012)
-- [ ] T037 [US1] When the override path is active for a known-broken family, set `swa_full = true` in the emitted `RuntimeTuning` payload; render an inline note next to the override checkbox: `--swa-full will be added automatically to mitigate the SWA regression on this model family.` (FR-029, research.md R8/R9)
+- [x] T033 [US1] Emit `--cache-reuse <n>` from `append_throughput_args` in `extensions/builtin/local-llm/rust/src/chat/handlers.rs` when `cache_reuse: Some(n)` (FR-002)
+- [x] T034 [P] [US1] Create `apps/web/src/layout/local_llm/known_broken_models.ts` exporting `isKnownBrokenForCacheReuse(familyId: string): KnownBrokenVerdict` per `data-model.md` § KnownBrokenModelMatcher (curated list: `gemma-3-*` prefix + `qwen3-next` substring, case-insensitive)
+- [x] T035 [US1] Add **Reuse KV cache** toggle + min-chunk numeric input to the **Memory** section of `apps/web/src/layout/local_llm/runtime_tuning_form.tsx` (default 256, range [64, 2048]); HelpTooltip copy from `quickstart.md` Scenario A (FR-012)
+- [x] T036 [US1] Wire gating logic in `runtime_tuning_form.tsx` — when `isKnownBrokenForCacheReuse(activeModel.family_id).broken === true`, disable the toggle by default and render an inline amber warning chip with the issue link; an "enable anyway" affordance unlocks the toggle and persists `cache_reuse_override = true` in form-local state (FR-012)
+- [x] T037 [US1] When the override path is active for a known-broken family, set `swa_full = true` in the emitted `RuntimeTuning` payload; render an inline note next to the override checkbox: `--swa-full will be added automatically to mitigate the SWA regression on this model family.` (FR-029, research.md R8/R9)
 - [ ] T038 [P] [US1] Extend tokens-only styles for the new toggle + chip + override row in `apps/web/src/layout/local_llm/runtime_tuning_form.css.ts`; vanilla-extract `vars.*` only; raw rgba/hex permitted only inside `color-mix(in oklch, ...)` (Principle XII.5)
-- [ ] T039 [US1] Run `cargo test --manifest-path extensions/builtin/local-llm/rust/Cargo.toml --test handlers_tests cache_reuse` — green
-- [ ] T040 [US1] Run `pnpm vitest run apps/web/src/layout/local_llm/__tests__/runtime_tuning_form.test.tsx apps/web/src/layout/local_llm/__tests__/known_broken_models.test.ts` — green
+- [x] T039 [US1] Run `cargo test --manifest-path extensions/builtin/local-llm/rust/Cargo.toml --test handlers_tests cache_reuse` — green
+- [x] T040 [US1] Run `pnpm vitest run apps/web/src/layout/local_llm/__tests__/runtime_tuning_form.test.tsx apps/web/src/layout/local_llm/__tests__/known_broken_models.test.ts` — green
 
 **Checkpoint**: US1 fully functional. Cache-reuse toggle works for safe models; Gemma 3 / Qwen3-Next path locked behind override with auto-`--swa-full`.
 
@@ -140,11 +140,11 @@ Write FIRST and confirm they FAIL before implementation.
 
 ### Implementation for User Story 2
 
-- [ ] T045 [US2] Emit `--cram <n>` and `--checkpoint-every-n-tokens <n>` from `append_throughput_args` in `extensions/builtin/local-llm/rust/src/chat/handlers.rs` when each `Some(n)` (FR-002)
-- [ ] T046 [US2] Add **Persist prompt cache to RAM** toggle + two numeric inputs (Cache size MB + Checkpoint every tokens) to the **Performance / Advanced** collapsible details element in `apps/web/src/layout/local_llm/runtime_tuning_form.tsx` (defaults 1024 / 8192; ranges per FR-013); HelpTooltip copy from `quickstart.md` Scenario B
+- [x] T045 [US2] Emit `--cram <n>` and `--checkpoint-every-n-tokens <n>` from `append_throughput_args` in `extensions/builtin/local-llm/rust/src/chat/handlers.rs` when each `Some(n)` (FR-002)
+- [x] T046 [US2] Add **Persist prompt cache to RAM** toggle + two numeric inputs (Cache size MB + Checkpoint every tokens) to the **Performance / Advanced** collapsible details element in `apps/web/src/layout/local_llm/runtime_tuning_form.tsx` (defaults 1024 / 8192; ranges per FR-013); HelpTooltip copy from `quickstart.md` Scenario B
 - [ ] T047 [P] [US2] Extend tokens-only styles for the new cram block in `apps/web/src/layout/local_llm/runtime_tuning_form.css.ts`
-- [ ] T048 [US2] Run `cargo test --manifest-path extensions/builtin/local-llm/rust/Cargo.toml --test handlers_tests cram checkpoint` — green
-- [ ] T049 [US2] Run `pnpm vitest run apps/web/src/layout/local_llm/__tests__/runtime_tuning_form.test.tsx -t "prompt_cache"` — green
+- [x] T048 [US2] Run `cargo test --manifest-path extensions/builtin/local-llm/rust/Cargo.toml --test handlers_tests cram checkpoint` — green
+- [x] T049 [US2] Run `pnpm vitest run apps/web/src/layout/local_llm/__tests__/runtime_tuning_form.test.tsx -t "prompt_cache"` — green
 
 **Checkpoint**: US2 fully functional. Cram toggle ships independent of US1.
 
@@ -166,13 +166,13 @@ Write FIRST and confirm they FAIL before implementation.
 
 ### Implementation for User Story 3
 
-- [ ] T055 [US3] Emit `--n-cpu-moe <n>` from `append_throughput_args` in `extensions/builtin/local-llm/rust/src/chat/handlers.rs` ONLY when `n_cpu_moe: Some(n)` AND `n > 0` (FR-002)
-- [ ] T056 [P] [US3] Create `apps/web/src/layout/local_llm/vram_budget.ts` exporting pure `computeVramBudget(inputs: VramBudgetInputs): VramBudgetEstimate` per `data-model.md` § VramBudgetEstimate (no React, no I/O, `MOE_FRACTION_OF_MODEL = 0.85` constant with citation)
-- [ ] T057 [US3] Add **MoE offload** slider + VRAM-budget chip to the **Performance / Advanced** section of `apps/web/src/layout/local_llm/runtime_tuning_form.tsx`; gated on `activeModel.is_moe === true`; max = `expert_layer_count ?? 64` with "exact layer count unknown" note in the fallback path; HelpTooltip copy from `quickstart.md` Scenario C (FR-014, FR-015)
-- [ ] T058 [US3] Implement the auto-bump effect in `runtime_tuning_form.tsx` — when `n_cpu_moe` crosses `0 → positive`, set `n_batch = max(current, 2048)` and `n_ubatch = max(current, 2048)`; render an inline "Bumped to 2048 for MoE offload" callout near the batch controls; callout disappears when slider returns to 0 OR when manual values exceed 2048 (FR-017)
+- [x] T055 [US3] Emit `--n-cpu-moe <n>` from `append_throughput_args` in `extensions/builtin/local-llm/rust/src/chat/handlers.rs` ONLY when `n_cpu_moe: Some(n)` AND `n > 0` (FR-002)
+- [x] T056 [P] [US3] Create `apps/web/src/layout/local_llm/vram_budget.ts` exporting pure `computeVramBudget(inputs: VramBudgetInputs): VramBudgetEstimate` per `data-model.md` § VramBudgetEstimate (no React, no I/O, `MOE_FRACTION_OF_MODEL = 0.85` constant with citation)
+- [x] T057 [US3] Add **MoE offload** slider + VRAM-budget chip to the **Performance / Advanced** section of `apps/web/src/layout/local_llm/runtime_tuning_form.tsx`; gated on `activeModel.is_moe === true`; max = `expert_layer_count ?? 64` with "exact layer count unknown" note in the fallback path; HelpTooltip copy from `quickstart.md` Scenario C (FR-014, FR-015)
+- [x] T058 [US3] Implement the auto-bump effect in `runtime_tuning_form.tsx` — when `n_cpu_moe` crosses `0 → positive`, set `n_batch = max(current, 2048)` and `n_ubatch = max(current, 2048)`; render an inline "Bumped to 2048 for MoE offload" callout near the batch controls; callout disappears when slider returns to 0 OR when manual values exceed 2048 (FR-017)
 - [ ] T059 [P] [US3] Extend tokens-only styles for the slider + read-out chip + auto-bump callout in `apps/web/src/layout/local_llm/runtime_tuning_form.css.ts`
-- [ ] T060 [US3] Run `cargo test --manifest-path extensions/builtin/local-llm/rust/Cargo.toml --test handlers_tests n_cpu_moe` — green
-- [ ] T061 [US3] Run `pnpm vitest run apps/web/src/layout/local_llm/__tests__/vram_budget.test.ts apps/web/src/layout/local_llm/__tests__/runtime_tuning_form.test.tsx -t "moe_slider|auto_bump"` — green
+- [x] T060 [US3] Run `cargo test --manifest-path extensions/builtin/local-llm/rust/Cargo.toml --test handlers_tests n_cpu_moe` — green
+- [x] T061 [US3] Run `pnpm vitest run apps/web/src/layout/local_llm/__tests__/vram_budget.test.ts apps/web/src/layout/local_llm/__tests__/runtime_tuning_form.test.tsx -t "moe_slider|auto_bump"` — green
 
 **Checkpoint**: US3 functional. MoE offload now usable without command-line invocation; the `GGML_OP_OFFLOAD_MIN_BATCH=32` footgun is hidden behind the auto-bump.
 
@@ -195,14 +195,14 @@ Write FIRST and confirm they FAIL before implementation.
 
 ### Implementation for User Story 5
 
-- [ ] T068 [US5] Emit `--min-p <p>` from `append_sampler_args` in `extensions/builtin/local-llm/rust/src/chat/handlers.rs` when `min_p: Some(p)` AND `p > 0.0` (FR-022)
-- [ ] T069 [US5] Emit DRY quartet (`--dry-multiplier`, `--dry-base`, `--dry-allowed-length`, `--dry-penalty-last-n`) from `append_sampler_args` in `extensions/builtin/local-llm/rust/src/chat/handlers.rs` when `dry_multiplier: Some(m)` AND `m > 0.0`; suppress all four when `dry_multiplier` is None or 0.0 (FR-022)
-- [ ] T070 [P] [US5] Create `apps/web/src/layout/local_llm/sampler_presets.ts` exporting `SamplerPresetId` type, `SAMPLER_PRESETS` value-map, and a `presetIsModified(form, presetId)` pure helper per `data-model.md` § SamplerPreset
-- [ ] T071 [US5] Add **Sampler quality** group to the **Performance / Advanced** section of `apps/web/src/layout/local_llm/runtime_tuning_form.tsx` — three preset chips (Chat / Code & factual / Creative) plus per-knob inputs (DRY multiplier/base/allowed-length, min-p) below; chip click writes `setForm({...form, ...preset})` and sets local `activePreset` flag (FR-023)
+- [x] T068 [US5] Emit `--min-p <p>` from `append_sampler_args` in `extensions/builtin/local-llm/rust/src/chat/handlers.rs` when `min_p: Some(p)` AND `p > 0.0` (FR-022)
+- [x] T069 [US5] Emit DRY quartet (`--dry-multiplier`, `--dry-base`, `--dry-allowed-length`, `--dry-penalty-last-n`) from `append_sampler_args` in `extensions/builtin/local-llm/rust/src/chat/handlers.rs` when `dry_multiplier: Some(m)` AND `m > 0.0`; suppress all four when `dry_multiplier` is None or 0.0 (FR-022)
+- [x] T070 [P] [US5] Create `apps/web/src/layout/local_llm/sampler_presets.ts` exporting `SamplerPresetId` type, `SAMPLER_PRESETS` value-map, and a `presetIsModified(form, presetId)` pure helper per `data-model.md` § SamplerPreset
+- [x] T071 [US5] Add **Sampler quality** group to the **Performance / Advanced** section of `apps/web/src/layout/local_llm/runtime_tuning_form.tsx` — three preset chips (Chat / Code & factual / Creative) plus per-knob inputs (DRY multiplier/base/allowed-length, min-p) below; chip click writes `setForm({...form, ...preset})` and sets local `activePreset` flag (FR-023)
 - [ ] T072 [US5] Implement modified-dot indicator + confirm dialog in `runtime_tuning_form.tsx` — when `presetIsModified(form, activePreset)`, render a small dot on the active chip; clicking the active chip while modified opens a confirm dialog that re-applies the preset on confirm; clicking a different chip while modified switches without confirm (FR-023)
 - [ ] T073 [P] [US5] Extend tokens-only styles for the Sampler quality group, chip primitives, modified-dot, and confirm dialog in `apps/web/src/layout/local_llm/runtime_tuning_form.css.ts`
-- [ ] T074 [US5] Run `cargo test --manifest-path extensions/builtin/local-llm/rust/Cargo.toml --test handlers_tests min_p dry` — green
-- [ ] T075 [US5] Run `pnpm vitest run apps/web/src/layout/local_llm/__tests__/runtime_tuning_form.test.tsx -t "preset"` — green
+- [x] T074 [US5] Run `cargo test --manifest-path extensions/builtin/local-llm/rust/Cargo.toml --test handlers_tests min_p dry` — green
+- [x] T075 [US5] Run `pnpm vitest run apps/web/src/layout/local_llm/__tests__/runtime_tuning_form.test.tsx -t "preset"` — green
 
 **Checkpoint**: US5 functional. Sampler quality additions ship independent of all throughput-knob stories.
 
@@ -226,14 +226,14 @@ Write FIRST and confirm they FAIL before implementation.
 
 ### Implementation for User Story 6
 
-- [ ] T083 [US6] Emit `--swa-full` (presence-only flag) from `append_mitigation_args` in `extensions/builtin/local-llm/rust/src/chat/handlers.rs` when `swa_full: Some(true)` (FR-029, contracts/llama_server_argv.md)
-- [ ] T084 [P] [US6] Create `apps/web/src/layout/local_llm/warning_rules.ts` exporting the `WARNING_RULES` registry with the four UI-side rules (`gemma3-flash-q8`, `top-k-zero`, `n-parallel-advisory`, `cpu-batch-regression`) per `data-model.md` § WarningRule (FR-026, FR-028, FR-030)
-- [ ] T085 [US6] Wire the warning-rule iterator into `apps/web/src/layout/local_llm/runtime_tuning_form.tsx` — for each rule whose predicate matches, render a chip (severity → token mapping) with the action button (when present); the iterator is rule-driven, not `if/else`-driven, so adding a future pitfall is one line in `warning_rules.ts` (FR-026, complexity tracking note)
+- [x] T083 [US6] Emit `--swa-full` (presence-only flag) from `append_mitigation_args` in `extensions/builtin/local-llm/rust/src/chat/handlers.rs` when `swa_full: Some(true)` (FR-029, contracts/llama_server_argv.md)
+- [x] T084 [P] [US6] Create `apps/web/src/layout/local_llm/warning_rules.ts` exporting the `WARNING_RULES` registry with the four UI-side rules (`gemma3-flash-q8`, `top-k-zero`, `n-parallel-advisory`, `cpu-batch-regression`) per `data-model.md` § WarningRule (FR-026, FR-028, FR-030)
+- [x] T085 [US6] Wire the warning-rule iterator into `apps/web/src/layout/local_llm/runtime_tuning_form.tsx` — for each rule whose predicate matches, render a chip (severity → token mapping) with the action button (when present); the iterator is rule-driven, not `if/else`-driven, so adding a future pitfall is one line in `warning_rules.ts` (FR-026, complexity tracking note)
 - [ ] T086 [US6] Implement `top_k` clamp behaviour in `runtime_tuning_form.tsx` — input minimum is `40` by default; typing `0` or below snaps to `40` and surfaces a transient info chip; an explicit "I know what I'm doing" toggle (off by default) unlocks values below 40 (FR-027)
-- [ ] T087 [US6] Wire the **Force FP16 KV** action button (from the `gemma3-flash-q8` rule) — clicking it sets `cache_type_k = 'fp16'` AND `cache_type_v = 'fp16'` in form state (FR-026 § action)
+- [x] T087 [US6] Wire the **Force FP16 KV** action button (from the `gemma3-flash-q8` rule) — clicking it sets `cache_type_k = 'fp16'` AND `cache_type_v = 'fp16'` in form state (FR-026 § action)
 - [ ] T088 [P] [US6] Extend tokens-only styles for warning-chip variants (info / warning / error severity) and the Force-FP16 button in `apps/web/src/layout/local_llm/runtime_tuning_form.css.ts`
-- [ ] T089 [US6] Run `cargo test --manifest-path extensions/builtin/local-llm/rust/Cargo.toml --test handlers_tests swa_full` — green
-- [ ] T090 [US6] Run `pnpm vitest run apps/web/src/layout/local_llm/__tests__/runtime_tuning_form.test.tsx -t "warning|clamp|swa_full|force_fp16|n_parallel|cpu_only"` — green
+- [x] T089 [US6] Run `cargo test --manifest-path extensions/builtin/local-llm/rust/Cargo.toml --test handlers_tests swa_full` — green
+- [x] T090 [US6] Run `pnpm vitest run apps/web/src/layout/local_llm/__tests__/runtime_tuning_form.test.tsx -t "warning|clamp|swa_full|force_fp16|n_parallel|cpu_only"` — green
 
 **Checkpoint**: US6 functional. Six pitfalls now surface inline; the operator no longer has to read upstream issue trackers to discover the regressions.
 
@@ -247,11 +247,11 @@ Write FIRST and confirm they FAIL before implementation.
 
 ### Implementation for User Story 7
 
-- [ ] T091 [US7] Create or extend `extensions/builtin/local-llm/scripts/audit-boundary.sh` (or `.ps1` for Windows-compatible) that greps `apps/web/src/components/chat/` for `local-llm` / `local_llm` literals; exits non-zero on any match; passes per-spec-039 expectation (XIII.7)
-- [ ] T092 [US7] Run `git diff main..HEAD --stat | grep -v '^extensions/builtin/local-llm\|^apps/web/src/layout/local_llm\|^apps/web/src/services/local_llm_chat\|^crates/nexus-model-metadata\|^crates/nexus-models-store\|^migrations/021\|^specs/039\|^docs/'` — must be empty (spec User Story 7 grep #1, expanded to include host crates touched by US4)
-- [ ] T093 [US7] Run `grep -rn 'local-llm\|local_llm' apps/web/src/components/chat/` — must be empty (spec User Story 7 grep #2, SC-006)
-- [ ] T094 [US7] Run `grep -rnE 'rgba\(|#[0-9a-fA-F]{3,8}\b' apps/web/src/layout/local_llm/runtime_tuning_form.css.ts` — every match must be inside a `color-mix(...)` or `linear-gradient(...)` / `radial-gradient(...)` string (spec User Story 7 grep #3, Principle XII.5)
-- [ ] T095 [US7] Run `grep -rn 'local-llm\|local_llm\|nexus.local-llm' crates/nexus-model-metadata/ crates/nexus-models-store/ migrations/021_installed_artifact_moe_metadata.sql` — must be empty (Principle XIII.1; the new host-side surfaces stay generic)
+- [x] T091 [US7] Create or extend `extensions/builtin/local-llm/scripts/audit-boundary.sh` (or `.ps1` for Windows-compatible) that greps `apps/web/src/components/chat/` for `local-llm` / `local_llm` literals; exits non-zero on any match; passes per-spec-039 expectation (XIII.7)
+- [x] T092 [US7] Run `git diff main..HEAD --stat | grep -v '^extensions/builtin/local-llm\|^apps/web/src/layout/local_llm\|^apps/web/src/services/local_llm_chat\|^crates/nexus-model-metadata\|^crates/nexus-models-store\|^migrations/021\|^specs/039\|^docs/'` — must be empty (spec User Story 7 grep #1, expanded to include host crates touched by US4)
+- [x] T093 [US7] Run `grep -rn 'local-llm\|local_llm' apps/web/src/components/chat/` — must be empty (spec User Story 7 grep #2, SC-006)
+- [x] T094 [US7] Run `grep -rnE 'rgba\(|#[0-9a-fA-F]{3,8}\b' apps/web/src/layout/local_llm/runtime_tuning_form.css.ts` — every match must be inside a `color-mix(...)` or `linear-gradient(...)` / `radial-gradient(...)` string (spec User Story 7 grep #3, Principle XII.5)
+- [x] T095 [US7] Run `grep -rn 'local-llm\|local_llm\|nexus.local-llm' crates/nexus-model-metadata/ crates/nexus-models-store/ migrations/021_installed_artifact_moe_metadata.sql` — must be empty (Principle XIII.1; the new host-side surfaces stay generic)
 
 **Checkpoint**: Boundary clean. Spec 039 complies with Principles XII + XIII; CI gate ready for merge.
 
@@ -267,10 +267,10 @@ Write FIRST and confirm they FAIL before implementation.
 - [ ] T099 [P] Add a one-line bullet to `extensions/builtin/local-llm/README.md` listing the new flags + the gates (cache-reuse override, MoE auto-bump, swa-full auto-application) — Principle VIII Living Documentation
 - [ ] T100 [P] Add a one-line note to `crates/nexus-model-metadata/README.md` and `crates/nexus-models-store/README.md` documenting the two new metadata fields — Principle VIII
 - [ ] T101 Update root `README.md` if the workspace shape changed; spec 039 does not add or rename crates, so this is likely a no-op — verify per Principle VIII
-- [ ] T102 Run full `cargo test --workspace` from repo root — 0 failures, 0 unauthorised ignores (Principle IX bisectability)
-- [ ] T103 Run full `pnpm test` from `apps/web/` — green (excluding the 6 pre-existing failures noted in `checkpoint_2026_05_07_local_chat_session_close.md`; if any new failure appears, it MUST be fixed before merge)
-- [ ] T104 Run `pnpm build` from `apps/web/` — green
-- [ ] T105 Run `pnpm tsc --noEmit` from `apps/web/` — 0 new errors (the 3 pre-existing component_registry errors are tracked separately)
+- [x] T102 Run full `cargo test --workspace` from repo root — 0 failures, 0 unauthorised ignores (Principle IX bisectability)
+- [x] T103 Run full `pnpm test` from `apps/web/` — green (excluding the 6 pre-existing failures noted in `checkpoint_2026_05_07_local_chat_session_close.md`; if any new failure appears, it MUST be fixed before merge)
+- [x] T104 Run `pnpm build` from `apps/web/` — green
+- [x] T105 Run `pnpm tsc --noEmit` from `apps/web/` — 0 new errors (the 3 pre-existing component_registry errors are tracked separately)
 - [ ] T106 Run `cargo clippy --workspace --all-targets -- -D warnings` on touched code — no new warnings
 - [ ] T107 Run `cargo fmt --all --check` — clean
 - [ ] T108 Walk through `quickstart.md` Scenarios A through E manually against a running local host — confirm each success signal (TTFT delta where measurable, slider visibility, argv contents in host log)
