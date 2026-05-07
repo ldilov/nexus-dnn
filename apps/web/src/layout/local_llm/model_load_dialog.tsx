@@ -6,12 +6,14 @@ import {
   useRef,
   useState,
 } from "react";
+import { Link } from "react-router";
 import type {
   AvailableModel,
   RuntimeDefaults,
   RuntimeTuning,
 } from "../../services/local_llm_chat";
 import type { ModelMetadata } from "../../services/host_api";
+import { Button } from "../../components/base/button";
 import { defaultTuningFor } from "./default_tuning";
 import { RuntimeTuningForm } from "./runtime_tuning_form";
 import * as styles from "./model_load_dialog.css";
@@ -67,7 +69,12 @@ export function ModelLoadDialog({
   const [submitting, setSubmitting] = useState(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const titleId = useId();
+  const hotkeyLabel = useMemo<string>(() => {
+    if (typeof navigator === "undefined") return "Ctrl F";
+    return /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘ F" : "Ctrl F";
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -145,6 +152,19 @@ export function ModelLoadDialog({
         onClose();
         return;
       }
+      if (e.key === "f" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+        return;
+      }
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        if (selected && tuning && !submitting) {
+          e.preventDefault();
+          void handleLoad();
+        }
+        return;
+      }
       if (e.key !== "Tab") return;
       const dialog = dialogRef.current;
       if (!dialog) return;
@@ -169,7 +189,7 @@ export function ModelLoadDialog({
         }
       }
     },
-    [onClose],
+    [onClose, selected, tuning, submitting, handleLoad],
   );
 
   if (!open) return null;
@@ -178,16 +198,38 @@ export function ModelLoadDialog({
     if (models.length === 0) {
       return (
         <div className={styles.empty}>
-          No downloaded GGUF models yet.
+          <span className={styles.emptyGlyph} aria-hidden="true">
+            0
+          </span>
+          <p className={styles.emptyTitle}>No GGUF models downloaded</p>
+          <span className={styles.emptyHint}>Download one to load it here</span>
+          <Link
+            to="/models-search"
+            className={styles.emptyCta}
+            onClick={onClose}
+          >
+            <span className="material-symbols-outlined" aria-hidden="true">
+              search
+            </span>
+            Open Models Search
+          </Link>
         </div>
       );
     }
     if (filtered.length === 0) {
-      return <div className={styles.empty}>No models match "{query}"</div>;
+      return (
+        <div className={styles.empty}>
+          <span className={styles.emptyGlyph} aria-hidden="true">
+            0
+          </span>
+          <p className={styles.emptyTitle}>No matches for "{query}"</p>
+          <span className={styles.emptyHint}>Try a shorter query</span>
+        </div>
+      );
     }
     return (
       <ul className={styles.list} role="listbox" aria-label="Downloaded models">
-        {filtered.map((m, i) => {
+        {filtered.map((m) => {
           const key = modelKey(m);
           const isSel = selectedKey === key;
           const sizeLabel = formatBytes(m.size_bytes);
@@ -204,17 +246,14 @@ export function ModelLoadDialog({
               onClick={() => pickModel(m)}
             >
               <div className={styles.optionRowTop}>
-                <span className={styles.optionIndex}>
-                  {String(i + 1).padStart(2, "0")}
-                </span>
                 <span className={styles.optionLabel} title={m.family_id}>
                   {m.label}
                 </span>
-              </div>
-              <div className={styles.optionMeta}>
-                <span>{variantLabel}</span>
-                <span>·</span>
-                <span>{sizeLabel}</span>
+                <span className={styles.optionMetaInline}>
+                  <span>{variantLabel}</span>
+                  <span>·</span>
+                  <span>{sizeLabel}</span>
+                </span>
               </div>
             </li>
           );
@@ -260,9 +299,14 @@ export function ModelLoadDialog({
         onKeyDown={onKeyDown}
       >
         <div className={styles.header}>
-          <h2 id={titleId} className={styles.title}>
-            Load Model
-          </h2>
+          <div className={styles.headerLeft}>
+            <h2 id={titleId} className={styles.title}>
+              Load Model
+            </h2>
+            <span className={styles.countChip} aria-label={`${models.length} models available`}>
+              {models.length} available
+            </span>
+          </div>
           <button
             type="button"
             aria-label="Close"
@@ -277,7 +321,11 @@ export function ModelLoadDialog({
           <div className={styles.listColumn}>
             {models.length > 0 && (
               <div className={styles.searchWrap}>
+                <span className={styles.searchGlyph} aria-hidden="true">
+                  search
+                </span>
                 <input
+                  ref={searchInputRef}
                   type="text"
                   className={styles.search}
                   placeholder="Search models…"
@@ -286,6 +334,25 @@ export function ModelLoadDialog({
                   aria-label="Filter models"
                   autoComplete="off"
                 />
+                {query.length > 0 ? (
+                  <button
+                    type="button"
+                    className={styles.searchClear}
+                    aria-label="Clear search"
+                    onClick={() => {
+                      setQuery("");
+                      searchInputRef.current?.focus();
+                    }}
+                  >
+                    <span className="material-symbols-outlined" aria-hidden="true">
+                      close
+                    </span>
+                  </button>
+                ) : (
+                  <span className={styles.searchHotkey} aria-hidden="true">
+                    {hotkeyLabel}
+                  </span>
+                )}
               </div>
             )}
             {renderList()}
@@ -294,23 +361,26 @@ export function ModelLoadDialog({
         </div>
 
         <div className={styles.footer}>
-          <button
-            type="button"
-            className={styles.cancelButton}
-            onClick={onClose}
-          >
+          <Button variant="ghost" size="md" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="button"
-            className={styles.loadButton}
-            disabled={!selected || !tuning || submitting}
+            <span className={styles.kbdHint} aria-hidden="true">
+              Esc
+            </span>
+          </Button>
+          <Button
+            variant="primary"
+            size="md"
+            loading={submitting}
+            disabled={!selected || !tuning}
             onClick={() => {
               void handleLoad();
             }}
           >
             {submitting ? "Loading…" : "Load Model"}
-          </button>
+            <span className={styles.kbdHint} aria-hidden="true">
+              ⌘ Enter
+            </span>
+          </Button>
         </div>
       </div>
     </div>
