@@ -72,6 +72,9 @@ export interface ChatSurfaceProps {
   composerPlaceholder?: string;
   composerDisabled?: boolean;
   composerDisabledReason?: ReactNode;
+  composerInitialValue?: string;
+  composerKey?: string;
+  onComposerValueChange?: (value: string) => void;
 
   showCodeBlocks?: boolean;
   showSendShortcutHint?: boolean;
@@ -126,6 +129,9 @@ export function ChatSurface(props: ChatSurfaceProps) {
     composerPlaceholder,
     composerDisabled,
     composerDisabledReason,
+    composerInitialValue,
+    composerKey,
+    onComposerValueChange,
     showSendShortcutHint = true,
     emptyState,
     ariaLabel = "Chat surface",
@@ -215,11 +221,14 @@ export function ChatSurface(props: ChatSurfaceProps) {
 
         <div className={styles.composerSlot}>
           <Composer
+            key={composerKey ?? activeThreadId ?? "composer"}
             placeholder={composerPlaceholder}
             disabled={composerDisabled}
             disabledReason={composerDisabledReason}
             isStreaming={isStreaming}
             showShortcutHint={showSendShortcutHint}
+            initialValue={composerInitialValue}
+            onValueChange={onComposerValueChange}
             onSend={onSendMessage}
             onCancelStream={onCancelStream}
           />
