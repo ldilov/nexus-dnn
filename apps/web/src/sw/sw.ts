@@ -1,5 +1,7 @@
 /// <reference lib="webworker" />
 
+import { handleBrokerFetch, shouldIntercept } from "./sse_broker";
+
 declare const self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: ReadonlyArray<{ revision: string | null; url: string }>;
 };
@@ -21,5 +23,11 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener("fetch", (event) => {
+  const request = event.request;
+  if (!shouldIntercept(request)) return;
+  event.respondWith(handleBrokerFetch(request));
 });
 
