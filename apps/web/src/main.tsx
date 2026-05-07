@@ -9,12 +9,15 @@ import "./theme/density.css";
 import { darkTheme } from "./theme/dark.css";
 import { rehydrateTweaks } from "./layout/tweak_storage";
 import { router } from "./routes";
+import { registerServiceWorker } from "./services/sw_registration";
 import {
   NEXUS_HOST_NAVIGATE,
   type NexusHostNavigateDetail,
 } from "./types/host_navigate";
 
 rehydrateTweaks();
+
+void registerServiceWorker();
 
 function handleHostNavigate(event: Event): void {
   const detail = (event as CustomEvent<NexusHostNavigateDetail>).detail;
