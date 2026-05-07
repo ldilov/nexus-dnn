@@ -1,5 +1,39 @@
-import { style } from "@vanilla-extract/css";
+import { keyframes, style } from "@vanilla-extract/css";
 import { vars } from "../../theme/contract.css";
+
+const reconcilePulseAnim = keyframes({
+  "0%, 100%": { opacity: 0.55 },
+  "50%": { opacity: 1 },
+});
+
+export const reconcilePulse = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.density.d1,
+  marginInlineStart: "auto",
+  marginInlineEnd: vars.density.d2,
+  paddingInline: vars.density.d2,
+  paddingBlock: 0,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  letterSpacing: "0.06em",
+  color: vars.color.accent.primary,
+  textTransform: "uppercase",
+  animation: `${reconcilePulseAnim} 1400ms ${vars.motion.easingDefault} infinite`,
+  "@media": {
+    "(prefers-reduced-motion: reduce)": {
+      animation: "none",
+      opacity: 0.85,
+    },
+  },
+});
+
+export const reconcileDot = style({
+  width: "6px",
+  height: "6px",
+  borderRadius: vars.radius.full,
+  background: vars.color.accent.primary,
+});
 
 export const rail = style({
   display: "flex",

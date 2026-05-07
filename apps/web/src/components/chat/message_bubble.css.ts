@@ -81,6 +81,11 @@ export const bubbleFailed = style({
   borderColor: `color-mix(in oklab, ${vars.color.error.base} 42%, transparent)`,
 });
 
+export const bubbleInterrupted = style({
+  background: `color-mix(in oklab, ${vars.color.warning.base} 10%, ${vars.color.bg.elevated})`,
+  borderColor: `color-mix(in oklab, ${vars.color.warning.base} 38%, transparent)`,
+});
+
 export const header = style({
   display: "flex",
   alignItems: "center",
@@ -154,6 +159,10 @@ export const statusChip = style({
     '&[data-tone="failed"]': {
       background: `color-mix(in oklab, ${vars.color.error.base} 16%, transparent)`,
       color: vars.color.error.text,
+    },
+    '&[data-tone="interrupted"]': {
+      background: `color-mix(in oklab, ${vars.color.warning.base} 16%, transparent)`,
+      color: vars.color.warning.text,
     },
   },
 });

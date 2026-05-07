@@ -101,7 +101,11 @@ export function MessageBubble({ message, isStreamingTail, onRetry }: MessageBubb
   const isSystem = message.role === "system";
   const isAssistant = !isUser && !isSystem;
   const isFailed = message.status === "failed";
+  const isInterrupted = message.status === "interrupted";
   const isMismatch = !!message.isSchemaMismatch;
+  const interruptedAtFormatted = isInterrupted
+    ? formatTimestamp(message.interruptedAt ?? message.createdAt)
+    : null;
 
   const rowCls = [
     styles.row,
@@ -113,6 +117,7 @@ export function MessageBubble({ message, isStreamingTail, onRetry }: MessageBubb
     isUser ? styles.bubbleUser : isSystem ? styles.bubbleSystem : styles.bubbleAssistant,
     isMismatch ? styles.bubbleSchemaMismatch : "",
     isFailed ? styles.bubbleFailed : "",
+    isInterrupted ? styles.bubbleInterrupted : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -181,6 +186,13 @@ export function MessageBubble({ message, isStreamingTail, onRetry }: MessageBubb
               <span className={styles.statusChip} data-tone="failed" role="status">
                 <span className={styles.statusDot} aria-hidden="true" />
                 failed
+              </span>
+            ) : isInterrupted ? (
+              <span className={styles.statusChip} data-tone="interrupted" role="status">
+                <span className={styles.statusDot} aria-hidden="true" />
+                {interruptedAtFormatted
+                  ? `interrupted · ${interruptedAtFormatted}`
+                  : "interrupted"}
               </span>
             ) : formattedTime ? (
               <time className={styles.timestamp} dateTime={message.createdAt}>
@@ -256,13 +268,13 @@ export function MessageBubble({ message, isStreamingTail, onRetry }: MessageBubb
               </span>
             )}
             {showFooterStats && <span className={styles.stats}>{statsStr}</span>}
-            {isFailed && onRetry && (
+            {(isFailed || isInterrupted) && onRetry && (
               <button
                 type="button"
                 className={styles.retryBtn}
                 onClick={() => onRetry(message.id)}
               >
-                Retry
+                {isInterrupted ? "Resume" : "Retry"}
               </button>
             )}
           </footer>
@@ -271,13 +283,13 @@ export function MessageBubble({ message, isStreamingTail, onRetry }: MessageBubb
       {showMetaRow && (
         <div className={styles.meta}>
           {message.createdAt ? <time dateTime={message.createdAt}>{message.createdAt}</time> : null}
-          {isFailed && onRetry ? (
+          {(isFailed || isInterrupted) && onRetry ? (
             <button
               type="button"
               className={styles.retryBtn}
               onClick={() => onRetry(message.id)}
             >
-              Retry
+              {isInterrupted ? "Resume" : "Retry"}
             </button>
           ) : null}
         </div>
