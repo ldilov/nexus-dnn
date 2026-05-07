@@ -76,6 +76,9 @@ interface RuntimeMessage {
   tokens?: number;
   latencyMs?: number;
   cached?: boolean;
+  tokensPerSec?: number;
+  contextUsed?: number;
+  contextMax?: number;
 }
 
 interface LiveRuntimeSnapshot {
@@ -563,6 +566,8 @@ export function ChatPanelAdapter({
             );
           },
           onDone: (stats) => {
+            const usedNow =
+              (stats.promptTokens ?? 0) + (stats.completionTokens ?? 0);
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
@@ -572,6 +577,9 @@ export function ChatPanelAdapter({
                       tokens: stats.completionTokens,
                       latencyMs: stats.latencyMs,
                       cached: false,
+                      tokensPerSec: stats.tokensPerSec,
+                      contextUsed: usedNow > 0 ? usedNow : undefined,
+                      contextMax: activeMaxContext > 0 ? activeMaxContext : undefined,
                     }
                   : m,
               ),
@@ -605,7 +613,15 @@ export function ChatPanelAdapter({
       );
       streamHandle.current = handle;
     },
-    [activeId, displayedLoad.phase, displayedLoad.port, messages, generationSettings.system_prompt, tokenUsage.record],
+    [
+      activeId,
+      displayedLoad.phase,
+      displayedLoad.port,
+      messages,
+      generationSettings.system_prompt,
+      tokenUsage.record,
+      activeMaxContext,
+    ],
   );
 
   const handleCancelStream = useCallback(() => {
@@ -639,6 +655,9 @@ export function ChatPanelAdapter({
         tokens: m.tokens,
         latencyMs: m.latencyMs,
         cached: m.cached,
+        tokensPerSec: m.tokensPerSec,
+        contextUsed: m.contextUsed,
+        contextMax: m.contextMax,
       })),
     [messages, assistantAuthorLabel],
   );
@@ -754,7 +773,13 @@ export function ChatPanelAdapter({
         inspector={inspectorContent}
         schemaMismatch={schemaMismatch !== null}
         schemaMismatchMessage={schemaMismatchMessage}
-        composerPlaceholder={isStreaming ? "Generating…" : "Send a message…"}
+        composerPlaceholder={
+          isStreaming
+            ? "Generating…"
+            : currentModelLabel
+              ? `Message ${prettyModelLabel(currentModelLabel).split(" · ")[0] ?? "the model"}…`
+              : "Message the model…"
+        }
         composerDisabled={composerDisabled}
         composerDisabledReason={disabledReason}
         ariaLabel="Local LLM chat surface"
