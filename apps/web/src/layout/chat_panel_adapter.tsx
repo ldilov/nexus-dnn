@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ChatSurface, type ChatMessage, type ChatThreadSummary } from "../components/chat";
-import { useModelLoadState } from "../hooks/use_model_load_state";
+import { useModelLoadState, type ModelLoadState } from "../hooks/use_model_load_state";
 import { useDebounce } from "../hooks/use_debounce";
 import {
   cancelInference,
@@ -77,6 +77,14 @@ interface RuntimeMessage {
   cached?: boolean;
 }
 
+interface LiveRuntimeSnapshot {
+  familyId: string;
+  variantId?: string;
+  label?: string;
+  port?: number;
+  capturedAt: number;
+}
+
 function toThreadSummary(t: ChatThread): ChatThreadSummary {
   return {
     id: t.thread_id,
@@ -149,7 +157,39 @@ export function ChatPanelAdapter({
   const streamingThreadRef = useRef<string | null>(null);
   const stickyModelRef = useRef<StickyModel | null>(readDeploymentModel(deploymentId));
   const autoBindAttemptedRef = useRef<Set<string>>(new Set());
+  const liveRuntimeRef = useRef<LiveRuntimeSnapshot | null>(null);
   const load = useModelLoadState(activeId);
+
+  useEffect(() => {
+    if (load.phase === "ready" && load.familyId) {
+      liveRuntimeRef.current = {
+        familyId: load.familyId,
+        variantId: load.variantId,
+        label: load.label,
+        port: load.port,
+        capturedAt: Date.now(),
+      };
+    }
+  }, [load.phase, load.familyId, load.variantId, load.label, load.port]);
+
+  const displayedLoad = useMemo<ModelLoadState>(() => {
+    const sticky = stickyModelRef.current;
+    const live = liveRuntimeRef.current;
+    if (!live || !sticky) return load;
+    const stickyMatchesLive =
+      sticky.family_id === live.familyId &&
+      (sticky.variant_id ?? "") === (live.variantId ?? "");
+    if (!stickyMatchesLive) return load;
+    if (load.phase === "ready") return load;
+    if (load.phase === "loading" && load.familyId) return load;
+    return {
+      phase: "ready",
+      familyId: live.familyId,
+      variantId: live.variantId,
+      label: live.label,
+      port: live.port,
+    };
+  }, [load]);
 
   const refreshThreads = useCallback(async () => {
     try {
@@ -422,32 +462,35 @@ export function ChatPanelAdapter({
     try {
       await unloadActiveModel(activeId);
       clearDeploymentModel(deploymentId ?? null);
+      const unloadedFamily = displayedLoad.familyId ?? load.familyId;
       stickyModelRef.current = null;
+      liveRuntimeRef.current = null;
       setLastTuningByFamily((prev) => {
-        if (!load.familyId) return prev;
-        if (!(load.familyId in prev)) return prev;
+        if (!unloadedFamily) return prev;
+        if (!(unloadedFamily in prev)) return prev;
         const next = { ...prev };
-        delete next[load.familyId];
+        delete next[unloadedFamily];
         return next;
       });
       toast.success("Model unloaded");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not unload model");
     }
-  }, [activeId, deploymentId, load.familyId]);
+  }, [activeId, deploymentId, displayedLoad.familyId, load.familyId]);
 
   const activeMaxContext = useMemo(() => {
-    if (!load.familyId) return 0;
-    const tuning = lastTuningByFamily[load.familyId];
+    const familyId = displayedLoad.familyId;
+    if (!familyId) return 0;
+    const tuning = lastTuningByFamily[familyId];
     if (tuning?.ctx_size && tuning.ctx_size > 0) return tuning.ctx_size;
     return 0;
-  }, [load.familyId, lastTuningByFamily]);
+  }, [displayedLoad.familyId, lastTuningByFamily]);
 
   const tokenUsage = useTokenUsage(activeId, activeMaxContext);
 
   const handleSend = useCallback(
     async (text: string) => {
-      if (!activeId || load.phase !== "ready" || load.port === undefined) return;
+      if (!activeId || displayedLoad.phase !== "ready" || displayedLoad.port === undefined) return;
       const userId = `u-${Date.now()}`;
       const assistantId = `a-${Date.now()}`;
       const turns: ChatTurn[] = messages.map((m) => ({
@@ -462,7 +505,7 @@ export function ChatPanelAdapter({
       ]);
       setStreamingId(assistantId);
       streamingThreadRef.current = activeId;
-      const port = load.port;
+      const port = displayedLoad.port;
       const handle = streamMessage(
         {
           port,
@@ -518,7 +561,7 @@ export function ChatPanelAdapter({
       );
       streamHandle.current = handle;
     },
-    [activeId, load.phase, load.port, messages, generationSettings.system_prompt, tokenUsage.record],
+    [activeId, displayedLoad.phase, displayedLoad.port, messages, generationSettings.system_prompt, tokenUsage.record],
   );
 
   const handleCancelStream = useCallback(() => {
@@ -537,7 +580,7 @@ export function ChatPanelAdapter({
     [threads],
   );
 
-  const assistantAuthorLabel = load.label ?? undefined;
+  const assistantAuthorLabel = displayedLoad.label ?? undefined;
 
   const surfaceMessages = useMemo<ChatMessage[]>(
     () =>
@@ -563,8 +606,8 @@ export function ChatPanelAdapter({
   const surfaceSampler = toSamplerOverrideView(activeThread?.sampler_override);
 
   const currentModelLabel = useMemo(() => {
-    if (load.phase === "ready" && load.label) return load.label;
-    if (load.phase === "loading" && load.label) return load.label;
+    if (displayedLoad.phase === "ready" && displayedLoad.label) return displayedLoad.label;
+    if (displayedLoad.phase === "loading" && displayedLoad.label) return displayedLoad.label;
     const sticky = stickyModelRef.current;
     if (sticky) {
       return sticky.variant_id
@@ -572,17 +615,17 @@ export function ChatPanelAdapter({
         : sticky.family_id;
     }
     return null;
-  }, [load.phase, load.label]);
+  }, [displayedLoad.phase, displayedLoad.label]);
 
-  const composerDisabled = !activeId || load.phase !== "ready";
+  const composerDisabled = !activeId || displayedLoad.phase !== "ready";
   const disabledReason = !activeId
     ? "Create or pick a session to begin."
-    : load.phase === "idle"
+    : displayedLoad.phase === "idle"
       ? "Choose a model to enable the composer."
-      : load.phase === "loading"
-        ? `Loading ${load.label ?? "model"}…`
-        : load.phase === "failed"
-          ? `Load failed: ${load.reason ?? "unknown reason"}`
+      : displayedLoad.phase === "loading"
+        ? `Loading ${displayedLoad.label ?? "model"}…`
+        : displayedLoad.phase === "failed"
+          ? `Load failed: ${displayedLoad.reason ?? "unknown reason"}`
           : undefined;
 
   const handleSystemPromptChange = useCallback((next: string) => {
@@ -614,19 +657,19 @@ export function ChatPanelAdapter({
     !generationSettings.system_prompt ||
     generationSettings.system_prompt === DEFAULT_GENERATION_PARAMS.system_prompt;
 
-  const inspectorModelDisplayLabel = load.label
-    ? prettyModelLabel(load.label)
+  const inspectorModelDisplayLabel = displayedLoad.label
+    ? prettyModelLabel(displayedLoad.label)
     : null;
-  const inspectorModelSub = load.familyId
-    ? modelOrgFromLabel(load.label) ??
-      `${load.familyId}${load.variantId ? ` · ${load.variantId}` : ""}`
+  const inspectorModelSub = displayedLoad.familyId
+    ? modelOrgFromLabel(displayedLoad.label) ??
+      `${displayedLoad.familyId}${displayedLoad.variantId ? ` · ${displayedLoad.variantId}` : ""}`
     : undefined;
 
   const inspectorContent = (
     <InspectorPanel
       modelLabel={inspectorModelDisplayLabel}
       modelSub={inspectorModelSub}
-      loadPhase={load.phase}
+      loadPhase={displayedLoad.phase}
       contextUsed={tokenUsage.tokensUsed}
       contextMax={activeMaxContext}
       sampler={inspectorSampler}
