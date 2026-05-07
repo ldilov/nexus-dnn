@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode, type KeyboardEvent } from "react";
+import { toast } from "sonner";
 import * as styles from "./composer.css";
 
 const MAX_COMPOSER_LINES = 6;
@@ -73,6 +74,24 @@ export function Composer({
           placeholder={placeholder}
           aria-label="Message"
         />
+        <button
+          type="button"
+          className={styles.secondaryBtn}
+          onClick={() => toast.message("Attach not yet supported")}
+          aria-label="Attach file"
+          title="Attach file"
+        >
+          <span className="material-symbols-outlined" aria-hidden="true">attach_file</span>
+        </button>
+        <button
+          type="button"
+          className={styles.secondaryBtn}
+          onClick={() => toast.message("Voice not yet supported")}
+          aria-label="Record voice"
+          title="Record voice"
+        >
+          <span className="material-symbols-outlined" aria-hidden="true">mic</span>
+        </button>
         {isStreaming && onCancelStream ? (
           <button
             type="button"
@@ -80,7 +99,8 @@ export function Composer({
             onClick={onCancelStream}
             aria-label="Cancel stream"
           >
-            Stop
+            <span className="material-symbols-outlined" aria-hidden="true">stop</span>
+            <span>Stop</span>
           </button>
         ) : (
           <button
@@ -91,9 +111,8 @@ export function Composer({
             aria-label="Send message"
             title="Send"
           >
-            <span className="material-symbols-outlined" aria-hidden="true">
-              arrow_upward
-            </span>
+            <span className="material-symbols-outlined" aria-hidden="true">arrow_upward</span>
+            <span>Send</span>
           </button>
         )}
       </div>
