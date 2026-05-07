@@ -16,6 +16,7 @@ export interface UseComposerDraftOptions {
 export interface UseComposerDraftResult {
   readonly initialValue: string;
   readonly hydrated: boolean;
+  readonly hadStoredDraft: boolean;
   readonly notifyValueChange: (value: string) => void;
   readonly clear: () => Promise<void>;
 }
@@ -60,11 +61,13 @@ export function useComposerDraft(
   const debounceMs = options.debounceMs ?? DEBOUNCE_MS;
   const [initialValue, setInitialValue] = useState("");
   const [hydrated, setHydrated] = useState(false);
+  const [hadStoredDraft, setHadStoredDraft] = useState(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setHydrated(false);
     setInitialValue("");
+    setHadStoredDraft(false);
     if (!deploymentId || !threadId) {
       setHydrated(true);
       return;
@@ -74,14 +77,19 @@ export function useComposerDraft(
     void getDraft(deploymentId, threadId)
       .then((row) => {
         if (cancelled) return;
-        if (row) {
+        if (row && row.text.length > 0) {
           setInitialValue(row.text);
-        } else if (fallback) {
+          setHadStoredDraft(true);
+        } else if (fallback && fallback.length > 0) {
           setInitialValue(fallback);
+          setHadStoredDraft(true);
         }
       })
       .catch(() => {
-        if (!cancelled && fallback) setInitialValue(fallback);
+        if (!cancelled && fallback && fallback.length > 0) {
+          setInitialValue(fallback);
+          setHadStoredDraft(true);
+        }
       })
       .finally(() => {
         if (!cancelled) setHydrated(true);
@@ -134,6 +142,7 @@ export function useComposerDraft(
   return {
     initialValue,
     hydrated,
+    hadStoredDraft,
     notifyValueChange,
     clear,
   };

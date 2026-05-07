@@ -1,5 +1,63 @@
-import { style } from "@vanilla-extract/css";
+import { keyframes, style } from "@vanilla-extract/css";
 import { vars } from "../../theme/contract.css";
+
+const fadeSlideIn = keyframes({
+  from: { opacity: 0, transform: "translateY(4px)" },
+  to: { opacity: 1, transform: "translateY(0)" },
+});
+
+export const restoredHint = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.density.d2,
+  marginBottom: vars.density.d2,
+  paddingBlock: vars.density.d1,
+  paddingInline: vars.density.d3,
+  borderRadius: vars.radius.full,
+  background: `color-mix(in oklch, ${vars.color.accent.primary} 10%, transparent)`,
+  color: vars.color.text.secondary,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  letterSpacing: "0.04em",
+  animation: `${fadeSlideIn} 220ms ${vars.motion.easingDefault}`,
+  "@media": {
+    "(prefers-reduced-motion: reduce)": {
+      animation: "none",
+    },
+  },
+});
+
+export const restoredHintGlyph = style({
+  fontSize: "14px",
+  lineHeight: 1,
+  color: vars.color.accent.primary,
+});
+
+export const restoredHintDismiss = style({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  marginInlineStart: vars.density.d1,
+  width: "16px",
+  height: "16px",
+  padding: 0,
+  background: "transparent",
+  color: vars.color.text.muted,
+  border: "none",
+  borderRadius: vars.radius.full,
+  cursor: "pointer",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  ":hover": {
+    background: vars.color.bg.hover,
+    color: vars.color.text.primary,
+  },
+  selectors: {
+    "& > .material-symbols-outlined": {
+      fontSize: "14px",
+      lineHeight: 1,
+    },
+  },
+});
 
 export const wrap = style({
   display: "flex",
