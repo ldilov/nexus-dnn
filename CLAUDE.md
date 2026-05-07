@@ -1,6 +1,6 @@
 ﻿# nexus-dnn Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-05-07
+Auto-generated from all feature plans. Last updated: 2026-05-08
 
 ## Active Technologies
 - SQLite via `nexus-storage`. One new migration `012_extensions_primary_refs.sql` adds two additive nullable columns — `extensions.primary_recipe_id` (TEXT) and `extensions.default_workflow_id` (TEXT) — plus non-durable mirroring of the manifest-icon contract on extension upsert (icon stored inside the registry record, not a new column; see data-model.md). No other schema changes. (main)
@@ -23,6 +23,8 @@ Auto-generated from all feature plans. Last updated: 2026-05-07
 - Browser `localStorage` for tweak settings (`nexus.tweaks.accent`, `nexus.tweaks.density`, `nexus.tweaks.card`). No host SQLite migrations introduced by this feature. No IndexedDB. No service worker. (037-spectral-graphite-redesign)
 - Rust 1.84 (workspace MSRV) for host + extension Rust crates; TypeScript 5.x / React 19 / Vite 6 / Node ≥ 20 for the frontend. + existing — `axum`, `serde`, `sqlx`, `tracing` on the Rust side; `react-router@^7.14`, `swr@^2.4`, `@vanilla-extract/css`, `motion/react`, `sonner` on the frontend. The `gguf` reader path inside `crates/nexus-model-metadata/` already handles header parsing for spec 028 metadata; this spec adds two GGUF metadata key reads (`*.expert_count`, `*.expert_used_count` and architecture-name MoE detection). **No new workspace dependencies.** (039-llamacpp-throughput-tier1)
 - SQLite via `nexus-storage`. ONE new host migration `021_installed_artifact_moe_metadata.sql` adds two nullable columns to the existing host-owned `model_store_installed_artifacts` table — `is_moe INTEGER` and `expert_layer_count INTEGER`. The local-llm extension's own `extensions/builtin/local-llm/storage/migrations/` series is NOT touched (latest there remains 008; spec 029 territory). (039-llamacpp-throughput-tier1)
+- Rust 1.84 (workspace MSRV) for host crates; TypeScript 5.x / React 19 / Vite 6 / Node ≥ 20 for the frontend. + NEW — `tauri@^2` + `@tauri-apps/api@^2` (desktop wrapper), `idb@^8` (IndexedDB warm tier for event store). EXISTING — `axum`, `serde`, `sqlx`, `tracing` on the Rust side; `react-router@^7`, `swr@^2.4` (live polling only), `@vanilla-extract/css@^1.17`, `motion@^12` (`motion/react` import path), `sonner@^2`, `@xyflow/react@^12`. No other new workspace dependencies. (042-neo-terminal-shell)
+- SQLite via `nexus-storage` for the cold tier (existing — no new tables, no new migrations). Browser `IndexedDB` for the warm tier (per-run event windows). In-memory ring buffers for the hot tier (last ~2,000 items per active run). (042-neo-terminal-shell)
 
 ## Project Structure
 
@@ -40,9 +42,9 @@ cargo test; cargo clippy
 Rust 1.84 (workspace MSRV per existing crates): Follow standard conventions
 
 ## Recent Changes
+- 042-neo-terminal-shell: Added Rust 1.84 (workspace MSRV) for host crates; TypeScript 5.x / React 19 / Vite 6 / Node ≥ 20 for the frontend. + NEW — `tauri@^2` + `@tauri-apps/api@^2` (desktop wrapper), `idb@^8` (IndexedDB warm tier for event store). EXISTING — `axum`, `serde`, `sqlx`, `tracing` on the Rust side; `react-router@^7`, `swr@^2.4` (live polling only), `@vanilla-extract/css@^1.17`, `motion@^12` (`motion/react` import path), `sonner@^2`, `@xyflow/react@^12`. No other new workspace dependencies.
 - 039-llamacpp-throughput-tier1: Added Rust 1.84 (workspace MSRV) for host + extension Rust crates; TypeScript 5.x / React 19 / Vite 6 / Node ≥ 20 for the frontend. + existing — `axum`, `serde`, `sqlx`, `tracing` on the Rust side; `react-router@^7.14`, `swr@^2.4`, `@vanilla-extract/css`, `motion/react`, `sonner` on the frontend. The `gguf` reader path inside `crates/nexus-model-metadata/` already handles header parsing for spec 028 metadata; this spec adds two GGUF metadata key reads (`*.expert_count`, `*.expert_used_count` and architecture-name MoE detection). **No new workspace dependencies.**
 - 037-spectral-graphite-redesign: Added TypeScript 5.x + React 19 + Node ≥ 20 (frontend); Rust 1.84 workspace MSRV (host crates for the new draft suggestion handler).
-- 036-audio-editing: EmotionTTS audio editing — non-destructive edit chains on voice assets and run-output utterances. Worker `audio_edit/` subpackage on existing deps (`ffmpeg-python`, `soundfile`, `pyloudnorm`, `numpy`). 3 SQL migrations (015–017) including `ext_emotion_tts__audio_edit_log`. Rust `router/{audio_edit,utterance_edit,audit}.rs` (5 routes). Frontend `audio_edit_panel` + `waveform_canvas` + `edit_chain_list` + `audit_history_panel` + `per_utterance_edit` (Web Audio API + Canvas, Spectral-Graphite). Cache-key invalidation via `ChainDigest` (SHA-256 canonical chain JSON). Boundary audit + extension-side `boundary_test.rs` enforce zero host-tree references to `ext_emotion_tts__audio_edit_log`, `audio.edit`, `audio.edit.preview`.
 
 
 <!-- MANUAL ADDITIONS START -->
