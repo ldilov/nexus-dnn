@@ -735,6 +735,40 @@ describe("ChatPanelAdapter", () => {
       );
     });
 
+    it("does_not_auto_bind_when_live_runtime_already_matches_sticky", async () => {
+      const sticky = {
+        family_id: "meta/llama",
+        variant_id: "Q4",
+        tuning: { ctx_size: 8192, threads: 4 },
+        saved_at: "2026-05-07T00:00:00Z",
+      };
+      await withLocalStorage(
+        {
+          "local-llm:deployment-active-model": JSON.stringify({ "dep-A": sticky }),
+        },
+        async () => {
+          listThreadsMock.mockResolvedValueOnce({
+            threads: [baseThread("t-1", "Alpha")],
+            has_more: false,
+          });
+          useModelLoadStateMock.mockReturnValue({ phase: "idle" });
+          useLocalLlmRuntimeStatusMock.mockReturnValue({
+            phase: "ready",
+            label: "Llama Q4",
+            familyId: "meta/llama",
+            variantId: "Q4",
+            port: 12345,
+          });
+
+          render(<ChatPanelAdapter deploymentId="dep-A" />);
+
+          await waitFor(() => expect(listThreadsMock).toHaveBeenCalled());
+          await new Promise((r) => setTimeout(r, 50));
+          expect(setActiveModelMock).not.toHaveBeenCalled();
+        },
+      );
+    });
+
     it("does not auto-bind when no sticky model is stored for the deployment", async () => {
       await withLocalStorage({}, async () => {
         listThreadsMock.mockResolvedValueOnce({
