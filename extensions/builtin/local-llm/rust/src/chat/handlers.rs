@@ -295,7 +295,7 @@ fn append_throughput_args(tuning: &RuntimeTuning, args: &mut Vec<String>) {
         args.push(n.to_string());
     }
     if let Some(mb) = tuning.cram_mb {
-        args.push("--cram".into());
+        args.push("--cache-ram".into());
         args.push(mb.to_string());
     }
     if let Some(n) = tuning.checkpoint_every_n_tokens {
@@ -1701,14 +1701,14 @@ mod runtime_tuning_tests {
             ..Default::default()
         };
         let args = runtime_to_args(&tuning);
-        assert_eq!(arg_value(&args, "--cram").as_deref(), Some("1024"));
+        assert_eq!(arg_value(&args, "--cache-ram").as_deref(), Some("1024"));
     }
 
     #[test]
     fn runtime_to_args_omits_cram_when_none() {
         let tuning = RuntimeTuning::default();
         let args = runtime_to_args(&tuning);
-        assert!(!contains(&args, "--cram"));
+        assert!(!contains(&args, "--cache-ram"));
     }
 
     #[test]
