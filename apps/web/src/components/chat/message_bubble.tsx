@@ -144,23 +144,21 @@ export function MessageBubble({ message, isStreamingTail, onRetry }: MessageBubb
           <header className={styles.header}>
             <Avatar role={message.role} initials={message.authorInitials} />
             <span className={styles.name}>{authorLabel}</span>
-            {isStreamingTail && !isFailed && (
+            {isStreamingTail && !isFailed ? (
               <span className={styles.statusChip} data-tone="streaming" aria-live="polite">
                 <span className={styles.statusDot} aria-hidden="true" />
                 generating
               </span>
-            )}
-            {isFailed && (
+            ) : isFailed ? (
               <span className={styles.statusChip} data-tone="failed" role="status">
                 <span className={styles.statusDot} aria-hidden="true" />
                 failed
               </span>
-            )}
-            {formattedTime && (
+            ) : formattedTime ? (
               <time className={styles.timestamp} dateTime={message.createdAt}>
                 {formattedTime}
               </time>
-            )}
+            ) : null}
           </header>
         )}
 

@@ -4,7 +4,7 @@ import { vars } from "../../theme/contract.css";
 export const wrap = style({
   display: "flex",
   alignItems: "flex-end",
-  gap: vars.density.d3,
+  gap: vars.density.d2,
   paddingBlock: vars.density.d3,
   paddingInline: vars.density.d4,
   background: vars.color.bg.lowest,
@@ -13,9 +13,9 @@ export const wrap = style({
 
 export const textarea = style({
   flex: "1 1 auto",
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  minHeight: "32px",
+  minHeight: "48px",
   maxHeight: "8rem",
+  paddingBlock: vars.density.d2,
   resize: "none",
   background: "transparent",
   color: vars.color.text.primary,
@@ -27,19 +27,51 @@ export const textarea = style({
   "::placeholder": { color: vars.color.text.muted },
 });
 
-export const sendBtn = style({
-  height: vars.control.heightMd,
-  width: vars.control.heightMd,
+export const secondaryBtn = style({
+  height: "48px",
+  width: "48px",
+  flex: "0 0 auto",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  borderRadius: vars.radius.full,
-  background: vars.color.accent.tertiary,
-  color: vars.color.onColor.tertiary,
+  borderRadius: vars.radius.control,
+  background: vars.color.bg.elevated,
+  color: vars.color.text.secondary,
+  border: `1px solid ${vars.color.outline.variant}`,
+  cursor: "pointer",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}, border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  ":hover": {
+    color: vars.color.text.primary,
+    background: vars.color.bg.hover,
+    borderColor: `color-mix(in oklch, ${vars.color.accent.primary} 30%, ${vars.color.outline.variant})`,
+  },
+  ":focus-visible": {
+    outline: `${vars.focus.ringWidth} solid ${vars.color.accent.primary}`,
+    outlineOffset: vars.focus.offset,
+  },
+});
+
+export const sendBtn = style({
+  height: "48px",
+  paddingInline: vars.density.d4,
+  flex: "0 0 auto",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.density.d2,
+  borderRadius: vars.radius.control,
+  background: vars.color.accent.primary,
+  color: vars.color.onColor.primary,
   border: "none",
   cursor: "pointer",
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
+  fontWeight: vars.font.weight.semibold,
   transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, opacity ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
-  ":hover": { background: vars.color.accent.tertiaryDim },
+  ":hover": { background: vars.color.accent.primaryHover },
+  ":focus-visible": {
+    outline: `${vars.focus.ringWidth} solid ${vars.color.accent.primary}`,
+    outlineOffset: vars.focus.offset,
+  },
   ":disabled": {
     opacity: 0.4,
     cursor: "not-allowed",
@@ -47,9 +79,13 @@ export const sendBtn = style({
 });
 
 export const cancelBtn = style({
-  height: vars.control.heightMd,
-  paddingInline: vars.density.d3,
-  borderRadius: vars.radius.full,
+  height: "48px",
+  paddingInline: vars.density.d4,
+  flex: "0 0 auto",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.density.d2,
+  borderRadius: vars.radius.control,
   background: "transparent",
   color: vars.color.text.secondary,
   border: `1px solid ${vars.color.outline.variant}`,
@@ -58,6 +94,10 @@ export const cancelBtn = style({
   fontSize: vars.font.size.caption,
   textTransform: "uppercase",
   letterSpacing: "0.06em",
+  ":hover": {
+    color: vars.color.text.primary,
+    background: vars.color.bg.hover,
+  },
 });
 
 export const hint = style({
