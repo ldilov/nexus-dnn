@@ -393,6 +393,16 @@ export function ChatPanelAdapter({
     const attemptKey = `${activeId}|${sticky.family_id}|${sticky.variant_id}`;
     if (autoBindAttemptedRef.current.has(attemptKey)) return;
     autoBindAttemptedRef.current.add(attemptKey);
+
+    const live = liveRuntimeRef.current;
+    const liveMatchesSticky =
+      live !== null &&
+      live.familyId === sticky.family_id &&
+      (live.variantId ?? "") === (sticky.variant_id ?? "");
+    if (liveMatchesSticky) {
+      return;
+    }
+
     const labelHint = sticky.variant_id
       ? `${sticky.family_id} · ${sticky.variant_id}`
       : sticky.family_id;
