@@ -18,6 +18,7 @@ interface ComposerProps {
   isStreaming: boolean;
   showShortcutHint?: boolean;
   initialValue?: string;
+  draftRestored?: boolean;
   onValueChange?: (value: string) => void;
   onSend: (text: string) => Promise<void>;
   onCancelStream?: () => void;
@@ -30,12 +31,14 @@ export function Composer({
   isStreaming,
   showShortcutHint = true,
   initialValue = "",
+  draftRestored = false,
   onValueChange,
   onSend,
   onCancelStream,
 }: ComposerProps) {
   const [value, setValue] = useState(initialValue);
   const [busy, setBusy] = useState(false);
+  const [showRestoredHint, setShowRestoredHint] = useState(draftRestored);
   const onValueChangeRef = useRef(onValueChange);
   useEffect(() => {
     onValueChangeRef.current = onValueChange;
@@ -43,6 +46,15 @@ export function Composer({
   useEffect(() => {
     onValueChangeRef.current?.(value);
   }, [value]);
+  useEffect(() => {
+    if (!draftRestored) {
+      setShowRestoredHint(false);
+      return;
+    }
+    setShowRestoredHint(true);
+    const timer = setTimeout(() => setShowRestoredHint(false), 3000);
+    return () => clearTimeout(timer);
+  }, [draftRestored]);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -80,6 +92,27 @@ export function Composer({
 
   return (
     <div>
+      {showRestoredHint && (
+        <div className={styles.restoredHint} role="status" aria-live="polite">
+          <span
+            className={`material-symbols-outlined ${styles.restoredHintGlyph}`}
+            aria-hidden="true"
+          >
+            history
+          </span>
+          Restored draft from last session
+          <button
+            type="button"
+            className={styles.restoredHintDismiss}
+            onClick={() => setShowRestoredHint(false)}
+            aria-label="Dismiss draft restored hint"
+          >
+            <span className="material-symbols-outlined" aria-hidden="true">
+              close
+            </span>
+          </button>
+        </div>
+      )}
       <div className={styles.wrap}>
         <textarea
           ref={ref}

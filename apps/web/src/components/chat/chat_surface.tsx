@@ -19,7 +19,8 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
   text: string;
-  status?: "pending" | "streaming" | "complete" | "failed";
+  status?: "pending" | "streaming" | "complete" | "failed" | "interrupted";
+  interruptedAt?: string;
   createdAt?: string;
   isSchemaMismatch?: boolean;
   authorLabel?: string;
@@ -73,8 +74,10 @@ export interface ChatSurfaceProps {
   composerDisabled?: boolean;
   composerDisabledReason?: ReactNode;
   composerInitialValue?: string;
+  composerDraftRestored?: boolean;
   composerKey?: string;
   onComposerValueChange?: (value: string) => void;
+  threadsReconciling?: boolean;
 
   showCodeBlocks?: boolean;
   showSendShortcutHint?: boolean;
@@ -130,8 +133,10 @@ export function ChatSurface(props: ChatSurfaceProps) {
     composerDisabled,
     composerDisabledReason,
     composerInitialValue,
+    composerDraftRestored,
     composerKey,
     onComposerValueChange,
+    threadsReconciling,
     showSendShortcutHint = true,
     emptyState,
     ariaLabel = "Chat surface",
@@ -172,6 +177,7 @@ export function ChatSurface(props: ChatSurfaceProps) {
         onCreate={onCreateThread}
         onRename={onRenameThread}
         onDelete={onDeleteThread}
+        reconciling={threadsReconciling}
       />
 
       <div className={styles.center}>
@@ -228,6 +234,7 @@ export function ChatSurface(props: ChatSurfaceProps) {
             isStreaming={isStreaming}
             showShortcutHint={showSendShortcutHint}
             initialValue={composerInitialValue}
+            draftRestored={composerDraftRestored}
             onValueChange={onComposerValueChange}
             onSend={onSendMessage}
             onCancelStream={onCancelStream}

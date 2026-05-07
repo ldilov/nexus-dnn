@@ -9,6 +9,7 @@ interface ThreadRailProps {
   onCreate: () => void;
   onRename?: (id: string, nextTitle: string) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
+  reconciling?: boolean;
 }
 
 interface ThreadRowProps {
@@ -117,11 +118,22 @@ function ThreadRow({ thread, active, onSelect, onRename, onDelete }: ThreadRowPr
   );
 }
 
-export function ThreadRail({ threads, activeThreadId, onSelect, onCreate, onRename, onDelete }: ThreadRailProps) {
+export function ThreadRail({ threads, activeThreadId, onSelect, onCreate, onRename, onDelete, reconciling }: ThreadRailProps) {
   return (
     <nav className={styles.rail} aria-label="Chat threads">
       <div className={styles.railHeader}>
         <span>Threads</span>
+        {reconciling ? (
+          <span
+            className={styles.reconcilePulse}
+            role="status"
+            aria-live="polite"
+            title="Syncing with backend"
+          >
+            <span className={styles.reconcileDot} aria-hidden="true" />
+            syncing
+          </span>
+        ) : null}
         <button
           type="button"
           className={styles.newThreadBtn}

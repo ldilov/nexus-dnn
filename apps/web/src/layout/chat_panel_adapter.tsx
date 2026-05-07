@@ -264,6 +264,7 @@ export function ChatPanelAdapter({
       const page = await listThreads({ limit: 50 });
       setSchemaMismatch(null);
       setThreads(page.threads);
+      setThreadsReconciling(false);
       if (deploymentId) {
         void persistThreadsCache(deploymentId, page.threads);
       }
@@ -278,19 +279,29 @@ export function ChatPanelAdapter({
       if (err instanceof SchemaVersionMismatchError) {
         setSchemaMismatch({ stored: err.stored, bundled: err.bundled });
         setThreads([]);
+        setThreadsReconciling(false);
         return;
       }
       setThreads([]);
+      setThreadsReconciling(false);
       toast.error(err instanceof Error ? err.message : "Could not load chat sessions");
     }
   }, [activeId, deploymentId]);
+
+  const [threadsReconciling, setThreadsReconciling] = useState(false);
 
   useEffect(() => {
     if (!deploymentId) return;
     let cancelled = false;
     void loadCachedThreadsForDeployment(deploymentId).then((cached) => {
       if (cancelled || cached.length === 0) return;
-      setThreads((current) => (current.length === 0 ? cached : current));
+      setThreads((current) => {
+        if (current.length === 0) {
+          setThreadsReconciling(true);
+          return cached;
+        }
+        return current;
+      });
     });
     return () => {
       cancelled = true;
@@ -391,14 +402,17 @@ export function ChatPanelAdapter({
               }
               const interruptedId = `interrupted-${interrupted.requestId}`;
               if (prev.some((m) => m.id === interruptedId)) return prev;
+              const interruptedAt = new Date(
+                interrupted.lastTimestamp,
+              ).toISOString();
               return [
                 ...prev,
                 {
                   id: interruptedId,
                   role: "assistant" as const,
                   text: interrupted.text,
-                  status: "failed" as const,
-                  createdAt: new Date(interrupted.lastTimestamp).toISOString(),
+                  status: "interrupted" as const,
+                  createdAt: interruptedAt,
                 },
               ];
             });
@@ -840,6 +854,7 @@ export function ChatPanelAdapter({
         text: m.text,
         status: m.status,
         createdAt: m.createdAt,
+        interruptedAt: m.status === "interrupted" ? m.createdAt : undefined,
         authorLabel: m.role === "user" ? "You" : assistantAuthorLabel,
         authorInitials: m.role === "user" ? "U" : undefined,
         tokens: m.tokens,
@@ -974,7 +989,9 @@ export function ChatPanelAdapter({
         composerDisabledReason={disabledReason}
         composerKey={`${deploymentId ?? "no-deploy"}:${activeId ?? "no-thread"}:${draft.hydrated ? "h" : "p"}`}
         composerInitialValue={draft.initialValue}
+        composerDraftRestored={draft.hydrated && draft.hadStoredDraft}
         onComposerValueChange={draft.notifyValueChange}
+        threadsReconciling={threadsReconciling}
         ariaLabel="Local LLM chat surface"
       />
       <ModelLoadDialog
