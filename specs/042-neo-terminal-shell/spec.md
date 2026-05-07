@@ -224,3 +224,30 @@ A new layer of design tokens captures the four locked aesthetic axes (Bloomberg-
 - **Spec 037 — Spectral Graphite Redesign** (DONE): provides the base design system, dual typography, glassmorphism for floats, and the no-borders rule that this feature inherits.
 - **Spec 041 — Host Search Palette** (in progress): provides the ⌘K command palette into which Block mnemonics register.
 - **Spec 039 — llama.cpp Throughput Tier-1** (in progress): provides the runtime tuning fields surfaced by the Lattice idle-state Edit tab; the scraper introduced here parses the same stderr surface that 039 instruments.
+
+## Test strategy
+
+This spec invokes the **Constitution VI v1.1.2 design-heavy UI carve-out** (recorded in `.specify/memory/constitution.md`). Several user stories — US2 (Lattice), US3 (Pulse-Floor), US4 (Cursor), US5 (Aesthetic tokens) — are predominantly visual integration with no new business logic invariants beyond those already covered by backend contract tests. Per the carve-out:
+
+**Mandatory test surface (in scope, must ship with the implementation)**:
+
+- **Backend contract tests for the event protocol** — `crates/nexus-run-events/tests/schema_compat.rs` covering every `RunEventItem` variant against the JSON schema in `contracts/run-event.schema.json`. Round-trip + forward-compat (unknown enum variant tolerance per `#[non_exhaustive]`).
+- **llama.cpp scraper fixture suite** — `crates/nexus-backend-runtimes/tests/llamacpp_scraper_fixtures/` with eight real captured stderr fixtures (happy path, mixed offload, MoE, OOM, cancelled, corrupt, hybrid Mamba, ROCm variant) and their expected `RunEventItem[]` JSON outputs. **This is the primary correctness safety net for spec 042 — the regex+state-machine scraper is where the real invariants live.**
+- **Boundary audit** — `crates/nexus-run-events/scripts/boundary_audit.sh` greps the new crates for any extension-id literals; PASS state is a Principle XIII merge gate per Appendix G/H.
+- **Quality gates** — `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings` (no new warnings on touched code), `cargo test --workspace` green, `pnpm tsc --noEmit` green, `pnpm build` green, `pnpm scan:theme` / `scan:terminology` / `scan:cdn` / `scan:noop` clean.
+
+**Deferred test surface (carve-out invocation, tracked as follow-up)**:
+
+- **Per-component vitest** for Block, Cursor, Lattice cells, Pulse-Floor traces, Inspector drawer, Ladder slider — deferred because these surfaces will iterate substantially during the design-iteration window. Per-component vitest written against an iterating UI is high-rewrite-cost without proportional invariant value.
+- **Playwright visual baseline** for the Lattice happy-path + each failure mode rendering, plus the Pulse-Floor anomaly state. Visual regression harness wiring exists from spec 037; the new baselines are deferred to the follow-up sprint.
+- **Cross-browser desktop matrix** (Tauri on macOS, Windows, Linux) — desktop quickstart smoke (T034 / T057 / T079) covers the active development OS; full cross-platform matrix tests deferred.
+
+**Visual safety net during the deferral window**:
+
+- **Manual quickstart smoke** at three checkpoints (per-phase T034 + T057 + final T079).
+- **CI scanners** continue to enforce token discipline, terminology consistency, no remote CDN, no no-op handlers.
+- **The token-coverage scan** added as part of US5 (T069/T070) catches any hardcoded color/spacing/duration leak in the new component tree.
+
+**Follow-up tracking**: A `specs/042-neo-terminal-shell/followups.md` (created in T081) lists every deferred test as an explicit follow-up sprint commitment. The carve-out is not free — the deferred coverage MUST be tracked, even if not implemented in this spec's window.
+
+**Cite**: Constitution VI v1.1.2 design-heavy UI carve-out (`.specify/memory/constitution.md` line ~273); first invocation spec 019 (`specs/019-extension-modules/spec.md` § Test strategy).
