@@ -299,7 +299,7 @@ describe("ChatPanelAdapter", () => {
 
     await waitFor(() => expect(screen.getByText("Alpha")).toBeInTheDocument());
 
-    const composer = screen.getByPlaceholderText(/send a message/i);
+    const composer = screen.getByPlaceholderText(/message /i);
     fireEvent.change(composer, { target: { value: "hello" } });
     const sendBtn = screen.getByRole("button", { name: /send message/i });
     await act(async () => {
@@ -333,7 +333,7 @@ describe("ChatPanelAdapter", () => {
 
     await waitFor(() => expect(fetchGenerationSettingsMock).toHaveBeenCalledWith("t-1", expect.anything()));
 
-    const composer = await screen.findByPlaceholderText(/send a message/i);
+    const composer = await screen.findByPlaceholderText(/message /i);
     fireEvent.change(composer, { target: { value: "hello" } });
     const sendBtn = screen.getByRole("button", { name: /send message/i });
     await act(async () => {
@@ -402,7 +402,7 @@ describe("ChatPanelAdapter", () => {
     await waitFor(() => expect(fetchAvailableModelsMock).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByText("Alpha")).toBeInTheDocument());
 
-    const composer = await screen.findByPlaceholderText(/send a message/i);
+    const composer = await screen.findByPlaceholderText(/message /i);
     fireEvent.change(composer, { target: { value: "hello" } });
     const sendBtn = screen.getByRole("button", { name: /send message/i });
     await act(async () => {
@@ -614,7 +614,7 @@ describe("ChatPanelAdapter", () => {
 
           await waitFor(() => expect(useModelLoadStateMock).toHaveBeenCalledWith("t-2"));
 
-          const composer = await screen.findByPlaceholderText(/send a message/i);
+          const composer = await screen.findByPlaceholderText(/message /i);
           expect(composer).not.toBeDisabled();
           expect(screen.queryByText(/choose a model/i)).toBeNull();
           expect(screen.queryByText(/loading/i)).toBeNull();
@@ -663,7 +663,7 @@ describe("ChatPanelAdapter", () => {
           await waitFor(() => expect(useModelLoadStateMock).toHaveBeenCalledWith("t-2"));
 
           await waitFor(() => {
-            expect(screen.queryByPlaceholderText(/send a message/i)).toBeNull();
+            expect(screen.queryByPlaceholderText(/message /i)).toBeNull();
           });
           expect(screen.getByText(/choose a model to enable the composer/i)).toBeInTheDocument();
         },
@@ -770,7 +770,7 @@ describe("ChatPanelAdapter", () => {
 
         await waitFor(() => expect(screen.getByText("Fresh")).toBeInTheDocument());
 
-        const composer = await screen.findByPlaceholderText(/send a message/i);
+        const composer = await screen.findByPlaceholderText(/message /i);
         expect(composer).not.toBeDisabled();
         expect(screen.queryByText(/choose a model/i)).toBeNull();
         expect(screen.queryByText(/loading/i)).toBeNull();
