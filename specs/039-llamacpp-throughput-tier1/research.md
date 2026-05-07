@@ -63,3 +63,79 @@ The full deep-research report (3 parallel agents + synthesis) was generated 2026
 - [HackMD: Spec-decode MoE regression on Qwen3.6-35B-A3B](https://hackmd.io/ODXuOQNzSiyUITz7g9mtBw)
 - [Issue #4055: Multi-GPU split discussion](https://github.com/ggml-org/llama.cpp/issues/4055) (deferred to future spec)
 - [PR #10994: Per-request LoRA selection](https://github.com/ggml-org/llama.cpp/pull/10994) (deferred)
+
+## Phase 0 — Plan-time resolutions (2026-05-07)
+
+The `/speckit-plan` invocation surfaced nine open questions at the boundary between the spec text and the actual codebase. Each is resolved below; the resolutions are reflected in `plan.md` § Technical Context, § Project Structure, and `data-model.md`.
+
+### R1 — Migration belongs to host's `migrations/`, not extension's
+
+**Decision**: New migration is `migrations/021_installed_artifact_moe_metadata.sql` (host-owned, top-level `migrations/` folder).
+
+**Rationale**: `model_store_installed_artifacts` was introduced by host migration `014_model_store_installed_artifacts.sql` and extended by `015_installed_artifact_extraction_metadata.sql` (spec 028). It is a host-owned table consumed today only by the local-llm extension but designed to serve any model-loading extension generically. Per Principle XIII.4, only `ext_<id_slug>__<table>` tables live in extension migrations. The columns added here (`is_moe`, `expert_layer_count`) are derived from generic GGUF metadata, not from extension-specific business logic, so they belong on the host-owned row.
+
+**Alternatives considered**:
+- Putting the migration under `extensions/builtin/local-llm/storage/migrations/` — rejected because (a) it would mean an extension migration writing into a host-owned table (XIII.4 violation), (b) it forecloses on future extensions consuming the same fields, (c) it confuses the migration ID space (extension's own series is at 008; the host's is at 020).
+
+### R2 — GGUF MoE detection key
+
+**Decision**: Read `<arch>.expert_count` from the GGUF header. Non-zero → `is_moe = true`. If absent, fall back to architecture-name string match against a curated list (`mixtral`, `qwen2moe`, `qwen3moe`, `deepseek2`, `dbrx`, `gptoss`, `glm4_moe`). If neither indicates MoE, write `is_moe = NULL` (frontend treats `NULL` as "unknown" → fallback path per FR-014).
+
+**Rationale**: The `expert_count` key is the canonical indicator across modern MoE GGUFs. Architecture-name fallback handles GGUFs that omit `expert_count`. The curated list is small (≤ 10 names) and lives next to the GGUF reader; adding a new MoE family is a one-line change.
+
+**Alternatives considered**:
+- Pattern-matching against tensor names (`*.ffn_gate_inp.weight` etc.) — rejected because the reader would need to walk the tensor list, which is more expensive and the metadata-key path is reliable for files produced by `convert_hf_to_gguf.py` post-2025.
+- Treating `expert_used_count` as the trigger — rejected because that key represents active-experts-per-token (e.g. 2 for Mixtral 8x7B), not whether the model is MoE.
+
+### R3 — `expert_layer_count` semantics + computation
+
+**Decision**: `expert_layer_count` is the number of transformer blocks containing MoE experts. In practice, when `is_moe = true` and `layer_count` is known (already extracted by spec 028), set `expert_layer_count = layer_count`. The field is `NULL` when `is_moe = false` OR when `layer_count` is also `NULL`.
+
+**Rationale**: Mainstream MoE GGUFs (Mixtral, GPT-OSS, Qwen3-MoE, DeepSeek-V2, DBRX) apply experts to every transformer block. Mixed dense / MoE blocks (Granite-MoE, some DeepSeek variants) exist but are rare; the spec's FR-014 fallback (slider max=64 with "exact layer count unknown" note) covers them. A sharper estimator (counting non-zero `expert_feed_forward_length` blocks) is deferred to a future spec if operator-reported breakage materialises.
+
+### R4 — `runtime_to_args` helper extraction
+
+**Decision**: Extract `append_throughput_args(&RuntimeTuning, &mut Vec<String>)`, `append_sampler_args(...)`, and `append_mitigation_args(...)`. The top-level `runtime_to_args` becomes a sequence of helper calls. Each helper ≤ 25 lines per Principle III.
+
+**Rationale**: The existing `runtime_to_args` is ~120 lines covering 13 fields. Adding 10 new fields without restructuring would push the function past Principle III's 25-line soft limit for any single logical block. Helper extraction is mechanical, preserves CQS (each helper mutates the out-param `Vec<String>` and returns `()`), and keeps each emission group co-located with its tests.
+
+**Alternatives considered**: Inline emission in one big function — rejected on Principle III; a fluent builder API — rejected on YAGNI (the function is called once per load, by one caller, with one input shape).
+
+### R5 — Form re-render budget on chip click
+
+**Decision**: Sampler-preset chip click writes ~6 form-state fields in a single `setForm({...form, ...preset})` call. Budget < 1 ms confirmed by existing form vitest harness.
+
+**Rationale**: React 19 batches the state update; chip click is one paint cycle. The `presetModified` flag is computed via `useMemo` from `(form, activePreset)` so it does not require a separate state-write.
+
+### R6 — VRAM-budget formula constants
+
+**Decision**: `moeFractionOfModel = 0.85` for MoE models (constant in `vram_budget.ts`, doc-commented with citation). Formula: `gpuBytesUsed ≈ modelSizeBytes × (nGpuLayers / totalLayers) × (1 − (nCpuMoe / max(1, expertLayerCount)) × 0.85)`. Returns `gpuBytesRemaining = hostVramBytes − gpuBytesUsed` when `hostVramBytes` is known; `null` otherwise.
+
+**Rationale**: Published Mixtral and GPT-OSS-120B parameter-count breakdowns show ~85 % of weights are in expert FFN tensors (the part that moves to CPU when `--n-cpu-moe > 0`). The formula is approximate by design — the read-out copy uses a `~` prefix and the HelpTooltip says "Estimated; not a driver-level measurement." Golden tests pin three (input → output) cases representing typical operator scenarios.
+
+**Alternatives considered**: Real driver probe (CUDA / Metal `cudaMemGetInfo`-equivalent) — rejected as out of scope; would require a host endpoint, per-platform code, and a non-trivial frontend-to-host roundtrip on slider drag.
+
+### R7 — Idempotent re-probe for pre-upgrade rows
+
+**Decision**: On read of a `model_store_installed_artifacts` row with `is_moe IS NULL` AND `extraction_status = 'success'`, the host's `nexus-models-store` schedules a one-shot async re-probe via `nexus-model-metadata`; the result is written back; subsequent reads hit the cached values.
+
+**Rationale**: FR-007 mandates idempotent re-probe. The existing spec-028 codepath already supports lazy first-read extraction (ref. `extraction_status` column added in migration 015), so this is an additive use of the same mechanism — no new infrastructure.
+
+### R8 — `--swa-full` is a flag, not a permission
+
+**Decision**: Add `swa_full: Option<bool>` to `RuntimeTuning`. `runtime_to_args` emits `--swa-full` when `swa_full == Some(true)`. No host-runtime permission, no new endpoint.
+
+**Rationale**: `--swa-full` is a generic llama-server CLI flag at the same layer as `--cache-reuse` and `--cram`. The form sets it to `Some(true)` only via the cache-reuse override path on known-broken families (FR-029). All other paths leave it `None`.
+
+### R9 — `swa_full` persistence is derived, not standalone
+
+**Decision**: The form does NOT expose a standalone `swa_full` toggle. Persistence ties it to the cache-reuse override: `lastTuningByFamily[familyId].cache_reuse_override === true` AND `KnownBrokenModelMatcher(familyId).broken === true` implies `swa_full = true`. Re-opening the dialog for the same family replays the override state and the form re-derives `swa_full`.
+
+**Rationale**: POLA — operators who hit the override path see one consequence (the inline "auto-applied --swa-full" note) and one persisted state (the override flag). Adding a separate `swa_full` toggle would surface a flag that's only useful in conjunction with cache-reuse override, violating Principle II's KISS clause.
+
+## Open follow-ups (not blocking Phase 1)
+
+- **VRAM-budget formula refinement**: future spec may add a real driver probe via a generic `/api/host/gpu_facts` endpoint. Out of scope for spec 039.
+- **Mixed dense/MoE expert-layer-count**: if operator-reported breakage on Granite-MoE-style architectures materialises, sharpen `expert_layer_count` extraction to count non-zero `expert_feed_forward_length` blocks. Tracked as a follow-up; the FR-014 fallback path (slider max=64, "exact layer count unknown") handles the failure mode meanwhile.
+- **Containerized-Metal warning**: noted Out of Scope; documented here for awareness in case a future spec introduces a runtime-environment probe.
+
