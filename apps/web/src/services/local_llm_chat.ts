@@ -81,6 +81,16 @@ export interface RuntimeTuning {
   n_parallel?: number;
   cont_batching?: boolean;
   seed?: number;
+  cache_reuse?: number;
+  cram_mb?: number;
+  checkpoint_every_n_tokens?: number;
+  n_cpu_moe?: number;
+  min_p?: number;
+  dry_multiplier?: number;
+  dry_base?: number;
+  dry_allowed_length?: number;
+  dry_penalty_last_n?: number;
+  swa_full?: boolean;
 }
 
 export interface RuntimeDefaults {
@@ -172,6 +182,8 @@ export interface AvailableModel {
   format: string;
   size_bytes: number | null;
   max_context: number | null;
+  is_moe: boolean;
+  expert_layer_count: number | null;
 }
 
 interface AvailableModelsResponse {
