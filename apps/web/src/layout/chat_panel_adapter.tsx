@@ -46,6 +46,14 @@ import {
   readDeploymentModel,
   type StickyModel,
 } from "./local_llm/sticky_model";
+import {
+  invalidateCachedThread,
+  loadCachedMessages,
+  loadCachedThreadsForDeployment,
+  persistMessagesCache,
+  persistThreadsCache,
+} from "./local_llm/chat_history_cache";
+import { useComposerDraft } from "./local_llm/use_composer_draft";
 
 // audit-allow: boundary — extension-defined window-event channels consumed by the local-llm extension UI
 const THREAD_SELECTED_EVENT = "local-llm/thread:selected";
@@ -145,6 +153,10 @@ export function ChatPanelAdapter({
 }: ChatPanelAdapterProps) {
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const draft = useComposerDraft({
+    deploymentId: deploymentId ?? null,
+    threadId: activeId,
+  });
   const [messages, setMessages] = useState<RuntimeMessage[]>([]);
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [schemaMismatch, setSchemaMismatch] = useState<{ stored: number; bundled: number } | null>(null);
@@ -251,6 +263,9 @@ export function ChatPanelAdapter({
       const page = await listThreads({ limit: 50 });
       setSchemaMismatch(null);
       setThreads(page.threads);
+      if (deploymentId) {
+        void persistThreadsCache(deploymentId, page.threads);
+      }
       if (!activeId && page.threads.length > 0) {
         const first = page.threads[0]!;
         setActiveId(first.thread_id);
@@ -267,7 +282,19 @@ export function ChatPanelAdapter({
       setThreads([]);
       toast.error(err instanceof Error ? err.message : "Could not load chat sessions");
     }
-  }, [activeId]);
+  }, [activeId, deploymentId]);
+
+  useEffect(() => {
+    if (!deploymentId) return;
+    let cancelled = false;
+    void loadCachedThreadsForDeployment(deploymentId).then((cached) => {
+      if (cancelled || cached.length === 0) return;
+      setThreads((current) => (current.length === 0 ? cached : current));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [deploymentId]);
 
   useEffect(() => {
     void refreshThreads();
@@ -315,6 +342,13 @@ export function ChatPanelAdapter({
 
     if (!activeId) return;
 
+    if (deploymentId) {
+      void loadCachedMessages(deploymentId, activeId).then((cached) => {
+        if (cached.length === 0) return;
+        setMessages((current) => (current.length === 0 ? cached : current));
+      });
+    }
+
     const ctrl = new AbortController();
     listMessages(activeId, { limit: 200 }, ctrl.signal)
       .then((page) => {
@@ -329,13 +363,28 @@ export function ChatPanelAdapter({
             createdAt: m.created_at,
           }));
         setMessages(loaded);
+        if (deploymentId) {
+          const cacheable = loaded
+            .filter(
+              (m): m is RuntimeMessage & { status: "complete" | "pending" | "failed" } =>
+                m.status === "complete" || m.status === "pending" || m.status === "failed",
+            )
+            .map((m) => ({
+              id: m.id,
+              role: m.role,
+              text: m.text,
+              status: m.status,
+              createdAt: m.createdAt,
+            }));
+          void persistMessagesCache(deploymentId, activeId, cacheable);
+        }
       })
       .catch((err) => {
         if (ctrl.signal.aborted) return;
         toast.error(err instanceof Error ? err.message : "Could not load chat history");
       });
     return () => ctrl.abort();
-  }, [activeId]);
+  }, [activeId, deploymentId]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -506,10 +555,13 @@ export function ChatPanelAdapter({
       await deleteThread(id);
       setThreads((prev) => prev.filter((t) => t.thread_id !== id));
       if (activeId === id) setActiveId(null);
+      if (deploymentId) {
+        void invalidateCachedThread(deploymentId, id);
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Delete failed");
     }
-  }, [activeId]);
+  }, [activeId, deploymentId]);
 
   const handleAttachToDeployment = useCallback(
     async (id: string, _deploymentId: string) => {
@@ -607,6 +659,7 @@ export function ChatPanelAdapter({
   const handleSend = useCallback(
     async (text: string) => {
       if (!activeId || displayedLoad.phase !== "ready" || displayedLoad.port === undefined) return;
+      void draft.clear();
       const threadId = activeId;
       const optimisticUserId = `u-${Date.now()}`;
       const assistantId = `a-${Date.now()}`;
@@ -726,6 +779,7 @@ export function ChatPanelAdapter({
       generationSettings.system_prompt,
       tokenUsage.record,
       activeMaxContext,
+      draft,
     ],
   );
 
@@ -887,6 +941,9 @@ export function ChatPanelAdapter({
         }
         composerDisabled={composerDisabled}
         composerDisabledReason={disabledReason}
+        composerKey={`${deploymentId ?? "no-deploy"}:${activeId ?? "no-thread"}:${draft.hydrated ? "h" : "p"}`}
+        composerInitialValue={draft.initialValue}
+        onComposerValueChange={draft.notifyValueChange}
         ariaLabel="Local LLM chat surface"
       />
       <ModelLoadDialog

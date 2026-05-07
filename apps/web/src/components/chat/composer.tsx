@@ -17,6 +17,8 @@ interface ComposerProps {
   disabledReason?: ReactNode;
   isStreaming: boolean;
   showShortcutHint?: boolean;
+  initialValue?: string;
+  onValueChange?: (value: string) => void;
   onSend: (text: string) => Promise<void>;
   onCancelStream?: () => void;
 }
@@ -27,11 +29,20 @@ export function Composer({
   disabledReason,
   isStreaming,
   showShortcutHint = true,
+  initialValue = "",
+  onValueChange,
   onSend,
   onCancelStream,
 }: ComposerProps) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initialValue);
   const [busy, setBusy] = useState(false);
+  const onValueChangeRef = useRef(onValueChange);
+  useEffect(() => {
+    onValueChangeRef.current = onValueChange;
+  }, [onValueChange]);
+  useEffect(() => {
+    onValueChangeRef.current?.(value);
+  }, [value]);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
