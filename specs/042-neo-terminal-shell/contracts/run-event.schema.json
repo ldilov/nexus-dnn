@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus-dnn.example/specs/042/run-event.schema.json",
+  "title": "RunEventItem v1",
+  "description": "Versioned discriminated-union event emitted by every nexus-dnn worker scraper. The single canonical event shape that drives all UI surfaces in spec 042.",
+  "type": "object",
+  "required": ["schema", "kind", "seq", "ts_ms", "run_id", "source"],
+  "properties": {
+    "schema": {
+      "const": "nexus.run-event.v1",
+      "description": "Schema version identifier. Increment to v2 only on backward-incompatible changes."
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["line", "phase", "metric", "tensor_allocate", "artifact", "widget", "error", "gap", "scraper_unknown"]
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Worker-side monotonic sequence number. Authoritative for ordering."
+    },
+    "ts_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Worker-side wall-clock timestamp in milliseconds since Unix epoch. Advisory only; collisions occur under bursty stdout."
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._-]+$",
+      "description": "Logical source within the run (e.g., 'llamacpp.scraper', 'tts.synth.worker')."
+    }
+  },
+  "oneOf": [
+    {
+      "title": "Line",
+      "type": "object",
+      "required": ["kind", "stream", "severity", "text"],
+      "properties": {
+        "kind": { "const": "line" },
+        "stream": { "type": "string", "enum": ["stdout", "stderr"] },
+        "severity": { "type": "string", "enum": ["trace", "debug", "info", "warn", "error"] },
+        "text": { "type": "string" },
+        "spans": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/AnsiSpan" }
+        }
+      }
+    },
+    {
+      "title": "Phase",
+      "type": "object",
+      "required": ["kind", "phase", "state"],
+      "properties": {
+        "kind": { "const": "phase" },
+        "phase": { "type": "string", "enum": ["discover", "print_meta", "tensors", "kv_reserve", "context_build", "warmup", "ready"] },
+        "state": { "type": "string", "enum": ["started", "in_progress", "completed", "failed"] },
+        "progress": { "type": "number", "minimum": 0, "maximum": 1 },
+        "summary": { "type": "string" }
+      }
+    },
+    {
+      "title": "Metric",
+      "type": "object",
+      "required": ["kind", "name", "value", "unit", "labels"],
+      "properties": {
+        "kind": { "const": "metric" },
+        "name": { "type": "string", "minLength": 1 },
+        "value": { "type": "number" },
+        "unit": { "type": "string", "enum": ["bytes", "bytes_per_second", "tokens", "tokens_per_second", "milliseconds", "percent", "count", "other"] },
+        "labels": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "window_ms": { "type": "integer", "minimum": 0 }
+      }
+    },
+    {
+      "title": "TensorAllocate",
+      "type": "object",
+      "required": ["kind", "group", "bytes", "target"],
+      "properties": {
+        "kind": { "const": "tensor_allocate" },
+        "layer": { "type": "integer", "minimum": 0 },
+        "group": { "type": "string", "enum": ["embed", "attn", "ffn", "norm", "kv_cache", "output", "other"] },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "target": {
+          "oneOf": [
+            { "type": "object", "required": ["kind", "device"], "properties": { "kind": { "const": "gpu" }, "device": { "type": "integer", "minimum": 0 } } },
+            { "type": "object", "required": ["kind"], "properties": { "kind": { "const": "cpu" } } },
+            { "type": "object", "required": ["kind"], "properties": { "kind": { "const": "cpu_mmap" } } },
+            { "type": "object", "required": ["kind"], "properties": { "kind": { "const": "pinned" } } },
+            { "type": "object", "required": ["kind"], "properties": { "kind": { "const": "mixed" } } }
+          ]
+        },
+        "tensor_name": { "type": "string" },
+        "dtype": { "type": "string" }
+      }
+    },
+    {
+      "title": "Artifact",
+      "type": "object",
+      "required": ["kind", "path", "mime"],
+      "properties": {
+        "kind": { "const": "artifact" },
+        "path": { "type": "string", "minLength": 1 },
+        "mime": { "type": "string", "minLength": 1 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "digest_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    {
+      "title": "Widget",
+      "type": "object",
+      "required": ["kind", "widget", "props"],
+      "properties": {
+        "kind": { "const": "widget" },
+        "widget": { "type": "string", "enum": ["lattice", "download", "kv_cache", "token_rate", "file_tree", "json_rpc", "other"] },
+        "props": {}
+      }
+    },
+    {
+      "title": "Error",
+      "type": "object",
+      "required": ["kind", "reason", "message"],
+      "properties": {
+        "kind": { "const": "error" },
+        "reason": {
+          "type": "string",
+          "enum": ["vram_oom", "ram_oom", "file_not_found", "gguf_parse", "corruption_suspected", "quantization_mismatch", "backend_init", "kv_cache_init", "alloc_failure_partial", "user_cancelled", "other"]
+        },
+        "layer": { "type": "integer", "minimum": 0 },
+        "group": { "type": "string", "enum": ["embed", "attn", "ffn", "norm", "kv_cache", "output", "other"] },
+        "device": { "type": "string" },
+        "message": { "type": "string" },
+        "suggestion": { "type": "string" }
+      }
+    },
+    {
+      "title": "Gap",
+      "type": "object",
+      "required": ["kind", "from_seq", "to_seq", "reason"],
+      "properties": {
+        "kind": { "const": "gap" },
+        "from_seq": { "type": "integer", "minimum": 0 },
+        "to_seq": { "type": "integer", "minimum": 0 },
+        "reason": {
+          "type": "string",
+          "enum": ["n_layer_missing", "tensor_histogram_missing", "transport_drop", "scraper_lag", "worker_crash", "other"]
+        }
+      }
+    },
+    {
+      "title": "ScraperUnknown",
+      "type": "object",
+      "required": ["kind", "raw_line", "scraper"],
+      "properties": {
+        "kind": { "const": "scraper_unknown" },
+        "raw_line": { "type": "string" },
+        "scraper": { "type": "string" }
+      }
+    }
+  ],
+  "$defs": {
+    "AnsiSpan": {
+      "type": "object",
+      "required": ["text"],
+      "properties": {
+        "text": { "type": "string" },
+        "fg": { "type": "string", "description": "Foreground color hint, e.g. 'red', 'cyan', '#abc'" },
+        "bg": { "type": "string" },
+        "bold": { "type": "boolean" },
+        "dim": { "type": "boolean" },
+        "italic": { "type": "boolean" }
+      }
+    }
+  }
+}
