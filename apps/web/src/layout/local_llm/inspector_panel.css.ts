@@ -211,3 +211,35 @@ export const promptIndicatorOverridden = style({
   letterSpacing: "0.04em",
   fontWeight: 600,
 });
+
+export const modelMeta = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.density.d2,
+});
+
+export const unloadBtn = style({
+  appearance: "none",
+  background: "transparent",
+  border: "none",
+  padding: `${vars.density.d1} ${vars.density.d2}`,
+  borderRadius: vars.radius.control,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.kbd,
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.1em",
+  color: vars.color.text.muted,
+  cursor: "pointer",
+  outline: "none",
+  transition: `color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  selectors: {
+    "&:hover": {
+      color: vars.color.error.base,
+      textDecoration: "underline",
+    },
+    "&:focus-visible": {
+      boxShadow: `0 0 0 2px color-mix(in oklch, ${vars.color.error.base} 55%, transparent)`,
+    },
+  },
+});
