@@ -140,6 +140,35 @@ impl ApiResponse<()> {
 impl<T: Serialize> IntoResponse for ApiResponse<T> {
     fn into_response(self) -> Response {
         let status = self.status;
+        if status.is_server_error() {
+            if let Some(payload) = self.error.as_ref() {
+                tracing::error!(
+                    target: "nexus_api::handler",
+                    status = %status,
+                    code = %payload.code,
+                    category = %payload.category,
+                    message = %payload.message,
+                    "handler returned {status}",
+                );
+            } else {
+                tracing::error!(
+                    target: "nexus_api::handler",
+                    status = %status,
+                    "handler returned {status} with no error payload",
+                );
+            }
+        } else if status.is_client_error() {
+            if let Some(payload) = self.error.as_ref() {
+                tracing::warn!(
+                    target: "nexus_api::handler",
+                    status = %status,
+                    code = %payload.code,
+                    category = %payload.category,
+                    message = %payload.message,
+                    "handler returned {status}",
+                );
+            }
+        }
         (status, axum::Json(self)).into_response()
     }
 }
