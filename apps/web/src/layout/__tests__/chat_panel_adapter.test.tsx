@@ -11,6 +11,11 @@ const deleteThreadMock = vi.fn();
 const streamMessageMock = vi.fn();
 const useModelLoadStateMock = vi.fn();
 const toastErrorMock = vi.fn();
+const toastSuccessMock = vi.fn();
+const setActiveModelMock = vi.fn();
+const fetchAvailableModelsMock = vi.fn();
+const fetchRuntimeDefaultsMock = vi.fn();
+const getModelMetadataMock = vi.fn();
 
 const { FakeSchemaVersionMismatchError } = vi.hoisted(() => {
   class FakeSchemaVersionMismatchError extends Error {
@@ -32,10 +37,16 @@ vi.mock("../../services/extension_chat", () => ({
 
 vi.mock("../../services/local_llm_chat", () => ({
   streamMessage: (...args: unknown[]) => streamMessageMock(...args),
-  fetchAvailableModels: () => Promise.resolve([]),
+  fetchAvailableModels: (...args: unknown[]) => fetchAvailableModelsMock(...args),
+  fetchRuntimeDefaults: (...args: unknown[]) => fetchRuntimeDefaultsMock(...args),
   cancelInference: () => Promise.resolve(),
-  setActiveModel: () => Promise.resolve({}),
+  setActiveModel: (...args: unknown[]) => setActiveModelMock(...args),
   unloadActiveModel: () => Promise.resolve(),
+}));
+
+vi.mock("../../services/host_api", () => ({
+  getModelMetadata: (...args: unknown[]) => getModelMetadataMock(...args),
+  ModelNotFoundError: class ModelNotFoundError extends Error {},
 }));
 
 vi.mock("../../hooks/use_model_load_state", () => ({
@@ -45,6 +56,7 @@ vi.mock("../../hooks/use_model_load_state", () => ({
 vi.mock("sonner", () => ({
   toast: {
     error: (...args: unknown[]) => toastErrorMock(...args),
+    success: (...args: unknown[]) => toastSuccessMock(...args),
   },
 }));
 
@@ -69,7 +81,21 @@ beforeEach(() => {
   streamMessageMock.mockReset();
   useModelLoadStateMock.mockReset();
   toastErrorMock.mockReset();
+  toastSuccessMock.mockReset();
+  setActiveModelMock.mockReset();
+  fetchAvailableModelsMock.mockReset();
+  fetchRuntimeDefaultsMock.mockReset();
+  getModelMetadataMock.mockReset();
   useModelLoadStateMock.mockReturnValue(idleLoadState);
+  fetchAvailableModelsMock.mockResolvedValue([]);
+  fetchRuntimeDefaultsMock.mockResolvedValue({
+    hardware_concurrency: 16,
+    threads_default: 8,
+    supports_cuda: true,
+    platform: "windows",
+  });
+  setActiveModelMock.mockResolvedValue({});
+  getModelMetadataMock.mockRejectedValue(new Error("not found"));
 });
 
 afterEach(() => {
@@ -147,6 +173,86 @@ describe("ChatPanelAdapter", () => {
     });
 
     await waitFor(() => expect(listThreadsMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("opens the load dialog when local-llm/model-load-dialog:open fires", async () => {
+    listThreadsMock.mockResolvedValueOnce({
+      threads: [baseThread("t-1", "Alpha")],
+      has_more: false,
+    });
+    fetchAvailableModelsMock.mockResolvedValueOnce([
+      {
+        family_id: "meta/llama",
+        variant_id: "Q4",
+        label: "Llama Q4",
+        format: "gguf",
+        size_bytes: 1024,
+        max_context: 8192,
+      },
+    ]);
+
+    render(<ChatPanelAdapter />);
+    await waitFor(() => expect(listThreadsMock).toHaveBeenCalled());
+    await waitFor(() => expect(fetchAvailableModelsMock).toHaveBeenCalled());
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("local-llm/model-load-dialog:open"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+  });
+
+  it("handleLoadModel calls setActiveModel with the runtime tuning", async () => {
+    listThreadsMock.mockResolvedValueOnce({
+      threads: [baseThread("t-1", "Alpha")],
+      has_more: false,
+    });
+    fetchAvailableModelsMock.mockResolvedValueOnce([
+      {
+        family_id: "meta/llama",
+        variant_id: "Q4",
+        label: "Llama Q4",
+        format: "gguf",
+        size_bytes: 1024,
+        max_context: 8192,
+      },
+    ]);
+
+    render(<ChatPanelAdapter />);
+    await waitFor(() => expect(fetchAvailableModelsMock).toHaveBeenCalled());
+    await waitFor(() => expect(fetchRuntimeDefaultsMock).toHaveBeenCalled());
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("local-llm/model-load-dialog:open"));
+    });
+
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+
+    const listbox = await screen.findByRole("listbox", { name: /downloaded models/i });
+    const option = listbox.querySelector('[role="option"]') as HTMLElement;
+    await act(async () => {
+      fireEvent.click(option);
+    });
+
+    const loadBtn = screen.getByRole("button", { name: /load model/i });
+    await act(async () => {
+      fireEvent.click(loadBtn);
+    });
+
+    await waitFor(() => expect(setActiveModelMock).toHaveBeenCalled());
+    const [threadId, familyId, variantId, runtime] = setActiveModelMock.mock.calls[0]!;
+    expect(threadId).toBe("t-1");
+    expect(familyId).toBe("meta/llama");
+    expect(variantId).toBe("Q4");
+    expect(runtime).toBeDefined();
+    expect(runtime.ctx_size).toBeDefined();
+    expect(runtime.cache_type_k).toBeDefined();
+
+    expect(toastSuccessMock).toHaveBeenCalled();
   });
 
   it("aborts the active stream on unmount", async () => {

@@ -26,6 +26,16 @@ interface ModelLoadDialogProps {
   onClose: () => void;
 }
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function focusableElementsIn(root: HTMLElement | null): HTMLElement[] {
+  if (!root) return [];
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (el) => !el.hasAttribute("disabled") && el.tabIndex !== -1,
+  );
+}
+
 function formatBytes(size: number | null | undefined): string {
   if (!size || size <= 0) return "—";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -56,6 +66,7 @@ export function ModelLoadDialog({
   const [tuning, setTuning] = useState<RuntimeTuning | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
 
   const filtered = useMemo(() => {
@@ -89,7 +100,19 @@ export function ModelLoadDialog({
 
   useEffect(() => {
     if (!open) return;
-    dialogRef.current?.focus();
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const focusables = focusableElementsIn(dialog);
+    const first = focusables[0] ?? dialog;
+    first.focus();
+    return () => {
+      const restore = previousFocusRef.current;
+      previousFocusRef.current = null;
+      if (restore && typeof restore.focus === "function") {
+        restore.focus();
+      }
+    };
   }, [open]);
 
   const pickModel = useCallback(
@@ -122,6 +145,30 @@ export function ModelLoadDialog({
       if (e.key === "Escape") {
         e.preventDefault();
         onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusables = focusableElementsIn(dialog);
+      if (focusables.length === 0) {
+        e.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusables[0]!;
+      const last = focusables[focusables.length - 1]!;
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey) {
+        if (active === first || !dialog.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (active === last || !dialog.contains(active)) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     },
     [onClose],

@@ -2,17 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ChatSurface, type ChatMessage, type ChatThreadSummary } from "../components/chat";
 import { useModelLoadState } from "../hooks/use_model_load_state";
-// audit-allow: boundary — adapter bridges the YAML "chat_panel" entry to the generic ChatSurface
 import {
   cancelInference,
   fetchAvailableModels,
+  fetchRuntimeDefaults,
   setActiveModel,
   streamMessage,
-  unloadActiveModel,
   type AvailableModel,
   type ChatTurn,
+  type RuntimeDefaults,
+  type RuntimeTuning,
 // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
 } from "../services/local_llm_chat";
+import { getModelMetadata, type ModelMetadata } from "../services/host_api";
 import {
   createThread,
   deleteThread,
@@ -23,11 +25,24 @@ import {
   type SamplerOverride as RawSamplerOverride,
 } from "../services/extension_chat";
 import type { SamplerOverride } from "../components/chat/sampler_panel";
+import { ModelLoadDialog } from "./local_llm/model_load_dialog";
+import { HeaderModelButton } from "./local_llm/header_model_button";
 
 // audit-allow: boundary — extension-defined window-event channels consumed by the local-llm extension UI
 const THREAD_SELECTED_EVENT = "local-llm/thread:selected";
 // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
 const THREAD_CHANGED_EVENT = "local-llm/thread:changed";
+// audit-allow: boundary — extension-defined window-event channel for opening the load dialog
+const MODEL_LOAD_DIALOG_OPEN_EVENT = "local-llm/model-load-dialog:open";
+
+const TUNING_STORAGE_KEY = "local-llm:runtime-tuning";
+
+const FALLBACK_DEFAULTS: RuntimeDefaults = {
+  hardware_concurrency: 8,
+  threads_default: 8,
+  supports_cuda: false,
+  platform: "linux",
+};
 
 export interface ChatPanelAdapterProps {
   welcomeTitle?: string;
@@ -64,8 +79,28 @@ function fromSamplerOverrideView(next: SamplerOverride): RawSamplerOverride {
   };
 }
 
-function buildModelId(m: AvailableModel): string {
-  return m.variant_id ? `${m.family_id}:${m.variant_id}` : m.family_id;
+function loadStoredTunings(): Record<string, RuntimeTuning> {
+  try {
+    const raw = window.localStorage.getItem(TUNING_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object") {
+      return parsed as Record<string, RuntimeTuning>;
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+function persistTuningForFamily(familyId: string, tuning: RuntimeTuning): void {
+  try {
+    const all = loadStoredTunings();
+    all[familyId] = tuning;
+    window.localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(all));
+  } catch {
+    /* ignore quota / private-mode errors */
+  }
 }
 
 export function ChatPanelAdapter({
@@ -78,6 +113,12 @@ export function ChatPanelAdapter({
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [schemaMismatch, setSchemaMismatch] = useState<{ stored: number; bundled: number } | null>(null);
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
+  const [runtimeDefaults, setRuntimeDefaults] = useState<RuntimeDefaults | null>(null);
+  const [metadataByKey, setMetadataByKey] = useState<Record<string, ModelMetadata>>({});
+  const [lastTuningByFamily, setLastTuningByFamily] = useState<Record<string, RuntimeTuning>>(() =>
+    loadStoredTunings(),
+  );
+  const [loadDialogOpen, setLoadDialogOpen] = useState(false);
   const streamHandle = useRef<{ abort: () => void } | null>(null);
   const streamingThreadRef = useRef<string | null>(null);
   const load = useModelLoadState(activeId);
@@ -118,6 +159,12 @@ export function ChatPanelAdapter({
   }, [refreshThreads]);
 
   useEffect(() => {
+    const onOpenDialog = () => setLoadDialogOpen(true);
+    window.addEventListener(MODEL_LOAD_DIALOG_OPEN_EVENT, onOpenDialog);
+    return () => window.removeEventListener(MODEL_LOAD_DIALOG_OPEN_EVENT, onOpenDialog);
+  }, []);
+
+  useEffect(() => {
     return () => {
       streamHandle.current?.abort();
       const lastStreaming = streamingThreadRef.current;
@@ -148,6 +195,43 @@ export function ChatPanelAdapter({
       });
     return () => ctrl.abort();
   }, []);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetchRuntimeDefaults(ctrl.signal)
+      .then((d) => setRuntimeDefaults(d))
+      .catch(() => {
+        /* fall back to FALLBACK_DEFAULTS until resolved */
+      });
+    return () => ctrl.abort();
+  }, []);
+
+  useEffect(() => {
+    if (availableModels.length === 0) return;
+    const ctrl = new AbortController();
+    let cancelled = false;
+    Promise.allSettled(
+      availableModels.map(async (m) => {
+        const meta = await getModelMetadata(m.family_id, ctrl.signal);
+        return { key: m.family_id, meta };
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      const next: Record<string, ModelMetadata> = {};
+      for (const r of results) {
+        if (r.status === "fulfilled") {
+          next[r.value.key] = r.value.meta;
+        }
+      }
+      if (Object.keys(next).length > 0) {
+        setMetadataByKey((prev) => ({ ...prev, ...next }));
+      }
+    });
+    return () => {
+      cancelled = true;
+      ctrl.abort();
+    };
+  }, [availableModels]);
 
   const handleSelectThread = useCallback((id: string) => {
     setActiveId(id);
@@ -213,30 +297,32 @@ export function ChatPanelAdapter({
     [activeId],
   );
 
-  const handleOpenBackends = useCallback(() => {
-    window.location.assign("/backends");
-  }, []);
-
-  const handleSelectModel = useCallback(
-    async (modelId: string | null) => {
-      if (!activeId) return;
+  const handleLoadModel = useCallback(
+    async (model: AvailableModel, tuning: RuntimeTuning) => {
+      if (!activeId) {
+        toast.error("Select a chat session before loading a model");
+        return;
+      }
       try {
-        if (!modelId) {
-          await unloadActiveModel(activeId);
-          return;
-        }
-        const target = availableModels.find((m) => buildModelId(m) === modelId);
-        if (!target) {
-          toast.error("Model not found in installed list");
-          return;
-        }
-        await setActiveModel(activeId, target.family_id, target.variant_id ?? "");
+        await setActiveModel(activeId, model.family_id, model.variant_id ?? "", tuning);
+        setLoadDialogOpen(false);
+        persistTuningForFamily(model.family_id, tuning);
+        setLastTuningByFamily((prev) => ({ ...prev, [model.family_id]: tuning }));
+        toast.success(`Loading ${model.label}…`);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Could not switch model");
+        toast.error(err instanceof Error ? err.message : "Could not load model");
       }
     },
-    [activeId, availableModels],
+    [activeId],
   );
+
+  const handleOpenLoadDialog = useCallback(() => {
+    setLoadDialogOpen(true);
+  }, []);
+
+  const handleCloseLoadDialog = useCallback(() => {
+    setLoadDialogOpen(false);
+  }, []);
 
   const handleSend = useCallback(
     async (text: string) => {
@@ -329,24 +415,10 @@ export function ChatPanelAdapter({
   );
   const surfaceSampler = toSamplerOverrideView(activeThread?.sampler_override);
 
-  const surfaceModels = useMemo(() => {
-    if (availableModels.length === 0) {
-      return load.label ? [{ id: "active", label: load.label, badge: "local" }] : [];
-    }
-    return availableModels.map((m) => ({
-      id: buildModelId(m),
-      label: m.label,
-      badge: m.format,
-    }));
-  }, [availableModels, load.label]);
-
-  const surfaceActiveModelId = useMemo(() => {
-    if (load.phase !== "ready") return null;
-    if (availableModels.length === 0) return load.label ? "active" : null;
-    if (!load.familyId) return null;
-    const id = load.variantId ? `${load.familyId}:${load.variantId}` : load.familyId;
-    return availableModels.some((m) => buildModelId(m) === id) ? id : null;
-  }, [availableModels, load.phase, load.label, load.familyId, load.variantId]);
+  const currentModelLabel = useMemo(() => {
+    if (load.phase === "ready" && load.label) return load.label;
+    return null;
+  }, [load.phase, load.label]);
 
   const composerDisabled = !activeId || load.phase !== "ready";
   const disabledReason = !activeId
@@ -365,39 +437,42 @@ export function ChatPanelAdapter({
     : undefined;
 
   return (
-    <ChatSurface
-      surfaceTitle={welcomeTitle ?? "Local LLM"}
-      surfaceMeta={welcomeDescription ? <span>{welcomeDescription}</span> : undefined}
-      threads={surfaceThreads}
-      activeThreadId={activeId}
-      onSelectThread={handleSelectThread}
-      onCreateThread={() => void handleCreateThread()}
-      onRenameThread={handleRenameThread}
-      onDeleteThread={handleDeleteThread}
-      onAttachThreadToDeployment={handleAttachToDeployment}
-      messages={surfaceMessages}
-      isStreaming={isStreaming}
-      onSendMessage={handleSend}
-      onCancelStream={handleCancelStream}
-      models={surfaceModels}
-      activeModelId={surfaceActiveModelId}
-      onSelectModel={handleSelectModel}
-      modelPickerStatus={
-        load.phase === "loading"
-          ? "loading"
-          : surfaceModels.length > 0
-            ? "ready"
-            : "unavailable"
-      }
-      onOpenBackends={handleOpenBackends}
-      samplerOverride={surfaceSampler}
-      onUpdateSamplerOverride={handleUpdateSamplerOverride}
-      schemaMismatch={schemaMismatch !== null}
-      schemaMismatchMessage={schemaMismatchMessage}
-      composerPlaceholder={isStreaming ? "Generating…" : "Send a message…"}
-      composerDisabled={composerDisabled}
-      composerDisabledReason={disabledReason}
-      ariaLabel="Local LLM chat surface"
-    />
+    <>
+      <ChatSurface
+        surfaceTitle={welcomeTitle ?? "Local LLM"}
+        surfaceMeta={welcomeDescription ? <span>{welcomeDescription}</span> : undefined}
+        threads={surfaceThreads}
+        activeThreadId={activeId}
+        onSelectThread={handleSelectThread}
+        onCreateThread={() => void handleCreateThread()}
+        onRenameThread={handleRenameThread}
+        onDeleteThread={handleDeleteThread}
+        onAttachThreadToDeployment={handleAttachToDeployment}
+        messages={surfaceMessages}
+        isStreaming={isStreaming}
+        onSendMessage={handleSend}
+        onCancelStream={handleCancelStream}
+        headerSlot={
+          <HeaderModelButton label={currentModelLabel} onClick={handleOpenLoadDialog} />
+        }
+        samplerOverride={surfaceSampler}
+        onUpdateSamplerOverride={handleUpdateSamplerOverride}
+        schemaMismatch={schemaMismatch !== null}
+        schemaMismatchMessage={schemaMismatchMessage}
+        composerPlaceholder={isStreaming ? "Generating…" : "Send a message…"}
+        composerDisabled={composerDisabled}
+        composerDisabledReason={disabledReason}
+        ariaLabel="Local LLM chat surface"
+      />
+      <ModelLoadDialog
+        open={loadDialogOpen}
+        models={availableModels}
+        defaults={runtimeDefaults ?? FALLBACK_DEFAULTS}
+        metadataByInstallId={metadataByKey}
+        initialTuningByFamily={lastTuningByFamily}
+        onLoad={handleLoadModel}
+        onClose={handleCloseLoadDialog}
+      />
+    </>
   );
 }

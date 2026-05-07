@@ -42,9 +42,9 @@ async function newLocalLlmThread(): Promise<void> {
   }
 }
 
-function openModelPicker(): void {
-  // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
-  window.dispatchEvent(new CustomEvent("local-llm/model-picker:open"));
+function openModelLoadDialog(): void {
+  // audit-allow: boundary — extension-defined window-event channel for opening the load dialog
+  window.dispatchEvent(new CustomEvent("local-llm/model-load-dialog:open"));
 }
 
 export async function dispatchLayoutAction(action: string): Promise<void> {
@@ -53,7 +53,7 @@ export async function dispatchLayoutAction(action: string): Promise<void> {
       await newLocalLlmThread();
       return;
     case "llm.open_model_browser":
-      openModelPicker();
+      openModelLoadDialog();
       return;
     default:
       toast.message(`Unknown action: ${action}`);

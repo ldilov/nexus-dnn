@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
+import { cleanup, fireEvent, render, screen, act } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { ModelLoadDialog } from "../model_load_dialog";
 import type {
@@ -201,6 +202,72 @@ describe("ModelLoadDialog", () => {
       />,
     );
     expect(screen.getByText(/no downloaded gguf models/i)).toBeInTheDocument();
+  });
+
+  it("restores_focus_to_trigger_on_close", () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <div>
+          <button
+            type="button"
+            data-testid="trigger"
+            onClick={() => setOpen(true)}
+          >
+            Open
+          </button>
+          <ModelLoadDialog
+            open={open}
+            models={[modelA]}
+            defaults={cudaDefaults}
+            onLoad={() => {}}
+            onClose={() => setOpen(false)}
+          />
+        </div>
+      );
+    }
+    render(<Harness />);
+    const trigger = screen.getByTestId("trigger");
+    trigger.focus();
+    expect(document.activeElement).toBe(trigger);
+    act(() => {
+      fireEvent.click(trigger);
+    });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    act(() => {
+      fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    });
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("tab_cycles_within_dialog", () => {
+    render(
+      <ModelLoadDialog
+        open
+        models={[modelA, modelB]}
+        defaults={cudaDefaults}
+        onLoad={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const dialog = screen.getByRole("dialog");
+    const focusables = dialog.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+    const first = focusables[0]!;
+    const last = focusables[focusables.length - 1]!;
+    last.focus();
+    expect(document.activeElement).toBe(last);
+    act(() => {
+      fireEvent.keyDown(dialog, { key: "Tab" });
+    });
+    expect(document.activeElement).toBe(first);
+
+    first.focus();
+    act(() => {
+      fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    });
+    expect(document.activeElement).toBe(last);
   });
 
   it("metadata_by_install_id_passes_to_form", () => {
