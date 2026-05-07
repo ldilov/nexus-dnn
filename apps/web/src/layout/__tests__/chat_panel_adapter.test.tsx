@@ -8,6 +8,8 @@ const listThreadsMock = vi.fn();
 const createThreadMock = vi.fn();
 const patchThreadMock = vi.fn();
 const deleteThreadMock = vi.fn();
+const listMessagesMock = vi.fn();
+const appendMessageMock = vi.fn();
 const streamMessageMock = vi.fn();
 const useModelLoadStateMock = vi.fn();
 const useLocalLlmRuntimeStatusMock = vi.fn();
@@ -46,6 +48,8 @@ vi.mock("../../services/extension_chat", () => ({
   createThread: (...args: unknown[]) => createThreadMock(...args),
   patchThread: (...args: unknown[]) => patchThreadMock(...args),
   deleteThread: (...args: unknown[]) => deleteThreadMock(...args),
+  listMessages: (...args: unknown[]) => listMessagesMock(...args),
+  appendMessage: (...args: unknown[]) => appendMessageMock(...args),
   SchemaVersionMismatchError: FakeSchemaVersionMismatchError,
 }));
 
@@ -99,6 +103,20 @@ beforeEach(() => {
   createThreadMock.mockReset();
   patchThreadMock.mockReset();
   deleteThreadMock.mockReset();
+  listMessagesMock.mockReset();
+  appendMessageMock.mockReset();
+  listMessagesMock.mockResolvedValue({ messages: [], has_more: false, next_after_ordinal: null });
+  appendMessageMock.mockImplementation((threadId: string, input: { role: string; content: string }) =>
+    Promise.resolve({
+      message_id: `m-${Math.random().toString(36).slice(2, 8)}`,
+      thread_id: threadId,
+      ordinal: 0,
+      role: input.role,
+      content: input.content,
+      is_partial: false,
+      created_at: new Date().toISOString(),
+    }),
+  );
   streamMessageMock.mockReset();
   useModelLoadStateMock.mockReset();
   toastErrorMock.mockReset();
@@ -462,6 +480,165 @@ describe("ChatPanelAdapter", () => {
     });
 
     expect(editor.value).toBe("New prompt.");
+  });
+
+  describe("thread history persistence", () => {
+    it("loads_thread_history_on_thread_select", async () => {
+      listThreadsMock.mockResolvedValueOnce({
+        threads: [baseThread("t-1", "Alpha")],
+        has_more: false,
+      });
+      listMessagesMock.mockResolvedValueOnce({
+        messages: [
+          {
+            message_id: "m-1",
+            thread_id: "t-1",
+            ordinal: 0,
+            role: "user",
+            content: "Hello there",
+            is_partial: false,
+            created_at: "2026-05-07T12:00:00Z",
+          },
+          {
+            message_id: "m-2",
+            thread_id: "t-1",
+            ordinal: 1,
+            role: "assistant",
+            content: "Hi back",
+            is_partial: false,
+            created_at: "2026-05-07T12:00:01Z",
+          },
+        ],
+        has_more: false,
+        next_after_ordinal: null,
+      });
+
+      render(<ChatPanelAdapter />);
+
+      await waitFor(() => expect(listMessagesMock).toHaveBeenCalledWith("t-1", { limit: 200 }, expect.anything()));
+      await waitFor(() => {
+        expect(screen.getByText("Hello there")).toBeInTheDocument();
+        expect(screen.getByText("Hi back")).toBeInTheDocument();
+      });
+    });
+
+    it("persists_user_and_assistant_messages_on_send", async () => {
+      listThreadsMock.mockResolvedValueOnce({
+        threads: [baseThread("t-1", "Alpha")],
+        has_more: false,
+      });
+      let capturedHandlers: { onDone?: (stats: unknown) => void } | null = null;
+      streamMessageMock.mockImplementation((_req: unknown, handlers: unknown) => {
+        capturedHandlers = handlers as { onDone?: (stats: unknown) => void; onToken?: (s: string) => void };
+        return { abort: vi.fn() };
+      });
+      useModelLoadStateMock.mockReturnValue({
+        phase: "ready",
+        label: "test-model",
+        port: 12345,
+      } satisfies ModelLoadState);
+
+      render(<ChatPanelAdapter />);
+
+      await waitFor(() => expect(screen.getByText("Alpha")).toBeInTheDocument());
+
+      const composer = await screen.findByPlaceholderText(/message /i);
+      fireEvent.change(composer, { target: { value: "hello" } });
+      const sendBtn = screen.getByRole("button", { name: /send message/i });
+      await act(async () => {
+        fireEvent.click(sendBtn);
+      });
+
+      await waitFor(() => expect(streamMessageMock).toHaveBeenCalledTimes(1));
+      await waitFor(() =>
+        expect(appendMessageMock).toHaveBeenCalledWith("t-1", { role: "user", content: "hello" }),
+      );
+
+      expect(capturedHandlers).not.toBeNull();
+      const handlers = capturedHandlers as unknown as {
+        onToken?: (s: string) => void;
+        onDone?: (stats: unknown) => void;
+      };
+      await act(async () => {
+        handlers.onToken?.("Hi user");
+      });
+      await act(async () => {
+        handlers.onDone?.({
+          latencyMs: 50,
+          promptTokens: 10,
+          completionTokens: 5,
+          tokensPerSec: 25,
+          params: {},
+        });
+      });
+
+      await waitFor(() =>
+        expect(appendMessageMock).toHaveBeenCalledWith("t-1", { role: "assistant", content: "Hi user" }),
+      );
+    });
+
+    it("switching_threads_loads_each_thread_history_independently", async () => {
+      listThreadsMock.mockResolvedValue({
+        threads: [baseThread("t-1", "Alpha"), baseThread("t-2", "Beta")],
+        has_more: false,
+      });
+
+      const t1Page = {
+        messages: [
+          {
+            message_id: "m-1",
+            thread_id: "t-1",
+            ordinal: 0,
+            role: "user" as const,
+            content: "Alpha question",
+            is_partial: false,
+            created_at: "2026-05-07T12:00:00Z",
+          },
+        ],
+        has_more: false,
+        next_after_ordinal: null,
+      };
+      const t2Page = {
+        messages: [
+          {
+            message_id: "m-9",
+            thread_id: "t-2",
+            ordinal: 0,
+            role: "assistant" as const,
+            content: "Beta answer",
+            is_partial: false,
+            created_at: "2026-05-07T12:01:00Z",
+          },
+        ],
+        has_more: false,
+        next_after_ordinal: null,
+      };
+      listMessagesMock.mockImplementation((threadId: string) => {
+        if (threadId === "t-1") return Promise.resolve(t1Page);
+        if (threadId === "t-2") return Promise.resolve(t2Page);
+        return Promise.resolve({ messages: [], has_more: false, next_after_ordinal: null });
+      });
+
+      render(<ChatPanelAdapter />);
+
+      await waitFor(() => expect(screen.getByText("Alpha question")).toBeInTheDocument());
+
+      const beta = screen.getByText("Beta");
+      await act(async () => {
+        fireEvent.click(beta);
+      });
+
+      await waitFor(() => expect(screen.getByText("Beta answer")).toBeInTheDocument());
+      expect(screen.queryByText("Alpha question")).not.toBeInTheDocument();
+
+      const alpha = screen.getByText("Alpha");
+      await act(async () => {
+        fireEvent.click(alpha);
+      });
+
+      await waitFor(() => expect(screen.getByText("Alpha question")).toBeInTheDocument());
+      expect(screen.queryByText("Beta answer")).not.toBeInTheDocument();
+    });
   });
 
   describe("sticky model per deployment", () => {
