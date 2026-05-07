@@ -446,7 +446,7 @@ export function ChatPanelAdapter({
       );
       streamHandle.current = handle;
     },
-    [activeId, load.phase, load.port, messages, generationSettings.system_prompt, tokenUsage],
+    [activeId, load.phase, load.port, messages, generationSettings.system_prompt, tokenUsage.record],
   );
 
   const handleCancelStream = useCallback(() => {
