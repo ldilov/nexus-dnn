@@ -12,6 +12,7 @@ export const row = style({
   gap: vars.density.d2,
   width: "100%",
   maxWidth: "720px",
+  alignSelf: "center",
   animation: `${fadeRise} 200ms ${vars.motion.easingDefault}`,
   "@media": {
     "(prefers-reduced-motion: reduce)": {
@@ -20,10 +21,9 @@ export const row = style({
   },
 });
 
-export const rowUser = style({ alignSelf: "flex-end" });
-export const rowAssistant = style({ alignSelf: "flex-start" });
+export const rowUser = style({});
+export const rowAssistant = style({});
 export const rowSystem = style({
-  alignSelf: "stretch",
   maxWidth: "100%",
 });
 
@@ -92,7 +92,7 @@ export const avatar = style({
   flex: "0 0 auto",
   width: "24px",
   height: "24px",
-  borderRadius: vars.radius.full,
+  borderRadius: "6px",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -140,6 +140,7 @@ export const statusChip = style({
   gap: vars.density.d1,
   paddingInline: vars.density.d2,
   paddingBlock: vars.density.d1,
+  marginInlineStart: "auto",
   borderRadius: vars.radius.full,
   fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,
