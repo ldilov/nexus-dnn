@@ -70,7 +70,7 @@ describe("RuntimeTuningForm", () => {
     );
     expect(screen.getByLabelText(/context length/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/gpu offload/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/kv cache/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^kv cache$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/flash attention/i)).toBeInTheDocument();
   });
 
@@ -145,7 +145,7 @@ describe("RuntimeTuningForm", () => {
         onChange={onChange}
       />,
     );
-    const select = screen.getByLabelText(/kv cache/i) as HTMLSelectElement;
+    const select = screen.getByLabelText(/^kv cache$/i) as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "q4_0" } });
     expect(onChange).toHaveBeenCalled();
     const next = onChange.mock.calls[onChange.mock.calls.length - 1]?.[0] as RuntimeTuning;
