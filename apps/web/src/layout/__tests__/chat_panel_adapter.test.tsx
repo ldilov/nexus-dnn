@@ -339,6 +339,29 @@ describe("ChatPanelAdapter", () => {
   });
 
   it("streamMessage onDone records token usage and renders the ContextMeter", async () => {
+    const storage: Record<string, string> = {
+      "local-llm:runtime-tuning": JSON.stringify({ "meta/llama": { ctx_size: 8192 } }),
+    };
+    const previousLocalStorage = window.localStorage;
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (key: string) => storage[key] ?? null,
+        setItem: (key: string, value: string) => {
+          storage[key] = value;
+        },
+        removeItem: (key: string) => {
+          delete storage[key];
+        },
+        clear: () => {
+          for (const k of Object.keys(storage)) delete storage[k];
+        },
+        key: (i: number) => Object.keys(storage)[i] ?? null,
+        get length() {
+          return Object.keys(storage).length;
+        },
+      },
+    });
     listThreadsMock.mockResolvedValueOnce({
       threads: [baseThread("t-1", "Alpha")],
       has_more: false,
@@ -404,6 +427,10 @@ describe("ChatPanelAdapter", () => {
     const wrap = bar.parentElement;
     expect(wrap?.textContent ?? "").toContain("700");
     expect(wrap?.textContent ?? "").toContain("8,192");
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: previousLocalStorage,
+    });
   });
 
   it("updates the system prompt when the editor onChange fires", async () => {
