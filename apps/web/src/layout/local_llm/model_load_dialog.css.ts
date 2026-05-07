@@ -249,7 +249,7 @@ export const loadButton = style({
   fontSize: vars.font.size.bodySm,
   fontFamily: vars.font.ui,
   fontWeight: 600,
-  color: "#0e0d14",
+  color: vars.color.text.inverse,
   background:
     "linear-gradient(180deg, rgba(196,170,255,1) 0%, rgba(159,127,247,1) 100%)",
   boxShadow:
