@@ -1,7 +1,19 @@
+import { useMemo, type ReactNode } from "react";
 import type { LayoutDefinition, LayoutNode as LayoutNodeType } from "../api/client";
 import { ExtensionCustomElement } from "../components/layout/extension_custom_element";
 import { getComponentRenderer } from "./component_registry";
+import { LayoutContext, type LayoutContextValue } from "./layout_context";
 import * as styles from "./layout_renderer.css";
+
+interface LayoutContextProviderProps {
+  deploymentId?: string;
+  children: ReactNode;
+}
+
+function LayoutContextProvider({ deploymentId, children }: LayoutContextProviderProps) {
+  const value = useMemo<LayoutContextValue>(() => ({ deploymentId }), [deploymentId]);
+  return <LayoutContext.Provider value={value}>{children}</LayoutContext.Provider>;
+}
 
 type LayoutRendererProps = {
   layout: LayoutDefinition;
@@ -20,17 +32,26 @@ type LayoutRendererProps = {
    * `apps/web/src/types/extension_actions.ts`.
    */
   rootElementRef?: (el: HTMLElement | null) => void;
+  /**
+   * Deployment context exposed to native registry renderers via
+   * `useLayoutContext()`. Mirrors the `deployment-id` attribute carried
+   * to extension custom elements through `rootAttrs`.
+   */
+  deploymentId?: string;
 };
 
-export function LayoutRenderer({ layout, rootAttrs, rootElementRef }: LayoutRendererProps) {
+export function LayoutRenderer({ layout, rootAttrs, rootElementRef, deploymentId }: LayoutRendererProps) {
+  const resolvedDeploymentId = deploymentId ?? rootAttrs?.["deployment-id"];
   return (
-    <div className={styles.rendererRoot}>
-      <LayoutNodeRenderer
-        node={layout.root}
-        injectAttrs={rootAttrs}
-        elementRef={rootElementRef}
-      />
-    </div>
+    <LayoutContextProvider deploymentId={resolvedDeploymentId}>
+      <div className={styles.rendererRoot}>
+        <LayoutNodeRenderer
+          node={layout.root}
+          injectAttrs={rootAttrs}
+          elementRef={rootElementRef}
+        />
+      </div>
+    </LayoutContextProvider>
   );
 }
 

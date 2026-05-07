@@ -46,6 +46,7 @@ export function ExtensionLayoutView({ layoutId, deploymentId, rootElementRef }: 
       onRetry={load}
       rootAttrs={rootAttrs}
       rootElementRef={rootElementRef}
+      deploymentId={deploymentId}
     />
   );
 }

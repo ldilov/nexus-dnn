@@ -23,9 +23,20 @@ export interface ExtensionLayoutUIProps {
    * deployment shell to wire the extension-action contract.
    */
   rootElementRef?: (el: HTMLElement | null) => void;
+  /**
+   * Deployment id surfaced to native registry renderers via
+   * `LayoutContext`. Mirrors `rootAttrs["deployment-id"]`.
+   */
+  deploymentId?: string;
 }
 
-export function ExtensionLayoutUI({ state, onRetry, rootAttrs, rootElementRef }: ExtensionLayoutUIProps) {
+export function ExtensionLayoutUI({
+  state,
+  onRetry,
+  rootAttrs,
+  rootElementRef,
+  deploymentId,
+}: ExtensionLayoutUIProps) {
   if (state.status === "loading") {
     return (
       <div className={styles.loadingContainer}>
@@ -47,7 +58,12 @@ export function ExtensionLayoutUI({ state, onRetry, rootAttrs, rootElementRef }:
   }
   return (
     <div className={styles.container}>
-      <LayoutRenderer layout={state.layout} rootAttrs={rootAttrs} rootElementRef={rootElementRef} />
+      <LayoutRenderer
+        layout={state.layout}
+        rootAttrs={rootAttrs}
+        rootElementRef={rootElementRef}
+        deploymentId={deploymentId}
+      />
     </div>
   );
 }
