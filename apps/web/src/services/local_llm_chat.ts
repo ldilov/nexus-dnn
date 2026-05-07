@@ -219,6 +219,7 @@ export interface ChatTurn {
 export interface StreamRequest {
   port: number;
   messages: ChatTurn[];
+  systemPrompt?: string;
   temperature?: number;
   top_p?: number;
   top_k?: number;
@@ -232,8 +233,13 @@ export function streamMessage(
 ): { abort: () => void } {
   const controller = new AbortController();
   const url = `http://127.0.0.1:${req.port}/v1/chat/completions`;
+  const trimmedSystemPrompt = req.systemPrompt?.trim() ?? "";
+  const fullMessages: ChatTurn[] =
+    trimmedSystemPrompt.length > 0
+      ? [{ role: "system" as const, content: req.systemPrompt as string }, ...req.messages]
+      : req.messages;
   const body = {
-    messages: req.messages,
+    messages: fullMessages,
     temperature: req.temperature ?? 0.8,
     top_p: req.top_p ?? 0.95,
     top_k: req.top_k ?? 40,
