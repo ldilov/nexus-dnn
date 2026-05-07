@@ -10,6 +10,7 @@ export function EmptyChatState({ description }: Readonly<EmptyChatStateProps>) {
       <span className={styles.sparkle} aria-hidden="true">
         auto_awesome
       </span>
+      <span className={styles.eyebrow}>AI · Local LLM</span>
       <h3 className={styles.heading}>Start a conversation</h3>
       {description ? <p className={styles.description}>{description}</p> : null}
     </div>
