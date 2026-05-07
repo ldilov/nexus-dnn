@@ -246,10 +246,8 @@ export function ChatPanelAdapter({
 
   useEffect(() => {
     generationSettingsLoadedRef.current = false;
-    if (!activeId) {
-      setGenerationSettings_(DEFAULT_GENERATION_PARAMS);
-      return;
-    }
+    setGenerationSettings_(DEFAULT_GENERATION_PARAMS);
+    if (!activeId) return;
     const ctrl = new AbortController();
     fetchGenerationSettings(activeId, ctrl.signal)
       .then((params) => {
