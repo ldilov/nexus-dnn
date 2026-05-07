@@ -5,6 +5,12 @@ import * as styles from "./composer.css";
 const MAX_COMPOSER_LINES = 6;
 const LINE_HEIGHT_PX = 24;
 
+function formatCharCount(n: number): string {
+  if (n < 1000) return String(n);
+  const inK = n / 1000;
+  return Number.isInteger(inK) ? `${inK}k` : `${inK.toFixed(1)}k`;
+}
+
 interface ComposerProps {
   placeholder?: string;
   disabled?: boolean;
@@ -74,6 +80,11 @@ export function Composer({
           placeholder={placeholder}
           aria-label="Message"
         />
+        {value.length > 0 && (
+          <span className={styles.charCount} aria-hidden="true">
+            {formatCharCount(value.length)}
+          </span>
+        )}
         <button
           type="button"
           className={styles.secondaryBtn}
