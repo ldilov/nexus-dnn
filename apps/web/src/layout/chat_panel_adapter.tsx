@@ -354,15 +354,25 @@ export function ChatPanelAdapter({
     return () => ctrl.abort();
   }, [loadDialogOpen]);
 
+  const focusFetchRef = useRef<AbortController | null>(null);
   useEffect(() => {
     const onFocus = () => {
+      focusFetchRef.current?.abort();
       const ctrl = new AbortController();
+      focusFetchRef.current = ctrl;
       fetchAvailableModels(ctrl.signal)
-        .then((models) => setAvailableModels(models))
+        .then((models) => {
+          if (focusFetchRef.current === ctrl) {
+            setAvailableModels(models);
+          }
+        })
         .catch(() => {});
     };
     window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      focusFetchRef.current?.abort();
+    };
   }, []);
 
   useEffect(() => {
