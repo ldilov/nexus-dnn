@@ -159,4 +159,21 @@ describe("ChatSurface", () => {
     fireEvent.change(tempInput, { target: { value: "0.9" } });
     expect(onUpdateSamplerOverride).toHaveBeenCalledWith({ temperature: 0.9 });
   });
+
+  it("renders headerSlot when provided instead of ModelPicker", () => {
+    renderSurface({
+      headerSlot: <button type="button">Custom Header Action</button>,
+    });
+    expect(screen.getByText("Custom Header Action")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Model picker")).toBeNull();
+  });
+
+  it("renders inspector when provided instead of SamplerPanel", () => {
+    renderSurface({
+      inspector: <div data-testid="custom-inspector">Custom Inspector</div>,
+      samplerOverride: { temperature: 0.5 },
+    });
+    expect(screen.getByTestId("custom-inspector")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/temperature/i)).toBeNull();
+  });
 });
