@@ -34,10 +34,12 @@ function chatThreadToRow(
   };
 }
 
+const LOCAL_LLM_EXTENSION_ID = "nexus.local-llm";
+
 function rowToChatThread(row: ChatThreadCacheRow, deploymentId: string): ChatThread {
   return {
     thread_id: row.threadId,
-    extension_id: "nexus.local-llm",
+    extension_id: LOCAL_LLM_EXTENSION_ID,
     deployment_id: deploymentId,
     install_id: null,
     title: row.title || null,

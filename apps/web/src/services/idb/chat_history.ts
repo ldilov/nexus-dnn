@@ -5,8 +5,10 @@ export async function getCachedThreads(
   deploymentId: string,
 ): Promise<ChatThreadCacheRow[]> {
   const db = await openNexusDb();
-  const all = await db.getAll("nexus-chat-threads");
-  return all.filter((row) => row.deploymentId === deploymentId);
+  const lower: [string, string] = [deploymentId, ""];
+  const upper: [string, string] = [deploymentId, "￿"];
+  const range = IDBKeyRange.bound(lower, upper, false, false);
+  return db.getAll("nexus-chat-threads", range);
 }
 
 export async function putCachedThreads(
