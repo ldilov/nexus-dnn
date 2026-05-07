@@ -155,6 +155,16 @@ export function fetchActiveModelStatus(
   );
 }
 
+export function fetchRuntimeStatus(
+  signal?: AbortSignal,
+): Promise<ActiveModelStatusPayload | null> {
+  return apiFetch<ActiveModelStatusPayload | null>(
+    // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
+    "/extensions/nexus.local-llm/chat/runtime_status",
+    { signal },
+  );
+}
+
 export interface AvailableModel {
   family_id: string;
   variant_id: string | null;

@@ -21,6 +21,7 @@ import {
 // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
 } from "../services/local_llm_chat";
 import { useTokenUsage } from "./local_llm/use_token_usage";
+import { useLocalLlmRuntimeStatus } from "./local_llm/use_runtime_status";
 import { InspectorPanel } from "./local_llm/inspector_panel";
 import { getModelMetadata, type ModelMetadata } from "../services/host_api";
 import {
@@ -159,6 +160,7 @@ export function ChatPanelAdapter({
   const autoBindAttemptedRef = useRef<Set<string>>(new Set());
   const liveRuntimeRef = useRef<LiveRuntimeSnapshot | null>(null);
   const load = useModelLoadState(activeId);
+  const globalRuntime = useLocalLlmRuntimeStatus();
 
   useEffect(() => {
     if (load.phase === "ready" && load.familyId) {
@@ -172,9 +174,44 @@ export function ChatPanelAdapter({
     }
   }, [load.phase, load.familyId, load.variantId, load.label, load.port]);
 
+  useEffect(() => {
+    if (globalRuntime.phase === "ready" && globalRuntime.familyId) {
+      liveRuntimeRef.current = {
+        familyId: globalRuntime.familyId,
+        variantId: globalRuntime.variantId,
+        label: globalRuntime.label,
+        port: globalRuntime.port,
+        capturedAt: Date.now(),
+      };
+    } else if (globalRuntime.phase === "idle") {
+      liveRuntimeRef.current = null;
+    }
+  }, [
+    globalRuntime.phase,
+    globalRuntime.familyId,
+    globalRuntime.variantId,
+    globalRuntime.label,
+    globalRuntime.port,
+  ]);
+
   const displayedLoad = useMemo<ModelLoadState>(() => {
     const sticky = stickyModelRef.current;
     const live = liveRuntimeRef.current;
+    if (globalRuntime.phase === "ready" && globalRuntime.familyId) {
+      const globalMatchesSticky =
+        !sticky ||
+        (sticky.family_id === globalRuntime.familyId &&
+          (sticky.variant_id ?? "") === (globalRuntime.variantId ?? ""));
+      if (globalMatchesSticky && load.phase !== "loading" && load.phase !== "failed") {
+        return {
+          phase: "ready",
+          familyId: globalRuntime.familyId,
+          variantId: globalRuntime.variantId,
+          label: globalRuntime.label,
+          port: globalRuntime.port,
+        };
+      }
+    }
     if (!live || !sticky) return load;
     const stickyMatchesLive =
       sticky.family_id === live.familyId &&
@@ -189,7 +226,14 @@ export function ChatPanelAdapter({
       label: live.label,
       port: live.port,
     };
-  }, [load]);
+  }, [
+    load,
+    globalRuntime.phase,
+    globalRuntime.familyId,
+    globalRuntime.variantId,
+    globalRuntime.label,
+    globalRuntime.port,
+  ]);
 
   const refreshThreads = useCallback(async () => {
     try {
