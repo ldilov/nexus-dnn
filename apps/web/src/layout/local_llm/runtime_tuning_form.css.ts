@@ -20,12 +20,50 @@ export const section = style({
 });
 
 export const sectionTitle = style({
+  display: "inline-flex",
+  alignItems: "baseline",
+  gap: vars.density.d2,
+  margin: 0,
+  fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,
   fontWeight: 600,
   textTransform: "uppercase",
-  letterSpacing: "0.1em",
-  color: vars.color.text.secondary,
-  margin: 0,
+  letterSpacing: "0.12em",
+});
+
+export const sectionIndex = style({
+  fontFamily: vars.font.code,
+  fontVariantNumeric: "tabular-nums",
+  color: vars.color.accent.primary,
+});
+
+export const sectionDivider = style({
+  color: vars.color.text.muted,
+  opacity: 0.6,
+});
+
+export const sectionName = style({
+  color: vars.color.text.primary,
+});
+
+export const summaryLabel = style({
+  display: "inline-flex",
+  alignItems: "baseline",
+  gap: vars.density.d2,
+});
+
+export const subSectionLabel = style({
+  display: "inline-flex",
+  alignItems: "baseline",
+  gap: vars.density.d2,
+  marginTop: vars.density.d3,
+  paddingTop: vars.density.d3,
+  borderTop: `1px solid ${vars.color.outline.variant}`,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.12em",
 });
 
 export const advanced = style({
@@ -40,15 +78,11 @@ export const advanced = style({
 
 export const advancedSummary = style({
   display: "flex",
-  alignItems: "center",
+  alignItems: "baseline",
   justifyContent: "space-between",
   cursor: "pointer",
   listStyle: "none",
   userSelect: "none",
-  fontSize: vars.font.size.caption,
-  fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.1em",
   color: vars.color.text.secondary,
   transition: `color ${vars.motion.durationFast} ease`,
   selectors: {

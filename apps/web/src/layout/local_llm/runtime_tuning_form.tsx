@@ -255,7 +255,9 @@ export function RuntimeTuningForm({
       )}
       <section className={styles.section} aria-labelledby={`${ids.ctx}-title`}>
         <h3 id={`${ids.ctx}-title`} className={styles.sectionTitle}>
-          Memory
+          <span className={styles.sectionIndex}>01</span>
+          <span className={styles.sectionDivider} aria-hidden="true">/</span>
+          <span className={styles.sectionName}>Memory</span>
         </h3>
 
         <div className={styles.row}>
@@ -483,7 +485,11 @@ export function RuntimeTuningForm({
 
       <details className={styles.advanced}>
         <summary className={styles.advancedSummary}>
-          <span>Performance / Advanced</span>
+          <span className={styles.summaryLabel}>
+            <span className={styles.sectionIndex}>02</span>
+            <span className={styles.sectionDivider} aria-hidden="true">/</span>
+            <span className={styles.sectionName}>Performance & Sampler</span>
+          </span>
           <span className={styles.summaryHint}>
             {advancedHint || "defaults"}
           </span>
@@ -822,6 +828,12 @@ export function RuntimeTuningForm({
             )}
           </>
         )}
+
+        <div className={styles.subSectionLabel} aria-hidden="true">
+          <span className={styles.sectionIndex}>03</span>
+          <span className={styles.sectionDivider}>/</span>
+          <span className={styles.sectionName}>Sampler</span>
+        </div>
 
         <div className={styles.row}>
           <span className={styles.labelCell}>
