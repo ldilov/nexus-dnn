@@ -330,6 +330,57 @@ export const stats = style({
   letterSpacing: "0.02em",
 });
 
+export const contextChip = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.density.d2,
+  paddingInline: vars.density.d2,
+  paddingBlock: "2px",
+  borderRadius: vars.radius.full,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  color: vars.color.text.muted,
+  letterSpacing: "0.02em",
+  selectors: {
+    '&[data-tone="warn"]': {
+      color: vars.color.warning.text,
+    },
+    '&[data-tone="danger"]': {
+      color: vars.color.error.text,
+    },
+  },
+});
+
+export const contextLabel = style({
+  whiteSpace: "nowrap",
+});
+
+export const contextBar = style({
+  display: "inline-block",
+  position: "relative",
+  width: "60px",
+  height: "4px",
+  borderRadius: vars.radius.full,
+  background: `color-mix(in oklch, ${vars.color.text.primary} 8%, transparent)`,
+  overflow: "hidden",
+});
+
+export const contextFill = style({
+  display: "block",
+  height: "100%",
+  borderRadius: vars.radius.full,
+  background: `color-mix(in oklch, ${vars.color.accent.primary} 60%, transparent)`,
+  transition: `width ${vars.motion.durationNormal} ${vars.motion.easingDefault}`,
+  selectors: {
+    '&[data-tone="warn"]': {
+      background: `color-mix(in oklab, ${vars.color.warning.base} 70%, transparent)`,
+    },
+    '&[data-tone="danger"]': {
+      background: `color-mix(in oklab, ${vars.color.error.base} 75%, transparent)`,
+    },
+  },
+});
+
 export const meta = style({
   display: "flex",
   alignItems: "center",

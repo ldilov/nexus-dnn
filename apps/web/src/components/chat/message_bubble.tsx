@@ -27,6 +27,12 @@ function formatTimestamp(value: string | undefined): string | null {
   return TIME_FORMATTER.format(date);
 }
 
+function formatContextSize(n: number): string {
+  if (n < 1000) return String(n);
+  const inK = n / 1000;
+  return Number.isInteger(inK) ? `${inK}k` : `${inK.toFixed(1)}k`;
+}
+
 function defaultAuthorLabel(role: ChatMessage["role"]): string {
   if (role === "user") return "You";
   if (role === "assistant") return "Assistant";
@@ -131,8 +137,30 @@ export function MessageBubble({ message, isStreamingTail, onRetry }: MessageBubb
     }
   }, [message.text]);
 
-  const showFooterStats =
-    isAssistant && !isStreamingTail && (message.tokens != null || message.latencyMs != null || message.cached);
+  const statsItems = [
+    message.tokens != null ? `${message.tokens} tok` : null,
+    message.latencyMs != null ? `${(message.latencyMs / 1000).toFixed(1)}s` : null,
+    message.tokensPerSec != null && message.tokensPerSec > 0
+      ? `${message.tokensPerSec.toFixed(1)} t/s`
+      : null,
+    message.cached ? "cached" : null,
+  ];
+  const statsStr = statsItems.filter(Boolean).join(" · ");
+  const showFooterStats = isAssistant && !isStreamingTail && statsStr.length > 0;
+
+  const hasContextChip =
+    isAssistant &&
+    !isStreamingTail &&
+    message.contextUsed != null &&
+    message.contextMax != null &&
+    message.contextMax > 0;
+  const ctxRatio = hasContextChip
+    ? Math.min(1, Math.max(0, (message.contextUsed ?? 0) / (message.contextMax ?? 1)))
+    : 0;
+  const ctxPct = Math.round(ctxRatio * 100);
+  const ctxTone: "danger" | "warn" | "ok" =
+    ctxPct > 85 ? "danger" : ctxPct > 60 ? "warn" : "ok";
+
   const showFooter = isAssistant && !isStreamingTail && !isMismatch;
 
   const showMetaRow = isMismatch;
@@ -201,17 +229,33 @@ export function MessageBubble({ message, isStreamingTail, onRetry }: MessageBubb
               </span>
             </button>
             <span className={styles.spacer} />
-            {showFooterStats && (
-              <span className={styles.stats}>
-                {[
-                  message.tokens != null ? `${message.tokens} tok` : null,
-                  message.latencyMs != null ? `${(message.latencyMs / 1000).toFixed(1)}s` : null,
-                  message.cached ? "cached" : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
+            {hasContextChip && (
+              <span
+                className={styles.contextChip}
+                data-tone={ctxTone}
+                title={`Context: ${message.contextUsed} / ${message.contextMax} tokens`}
+              >
+                <span className={styles.contextLabel}>
+                  ctx {formatContextSize(message.contextUsed ?? 0)} /{" "}
+                  {formatContextSize(message.contextMax ?? 0)}
+                </span>
+                <span
+                  className={styles.contextBar}
+                  role="progressbar"
+                  aria-label="Context capacity"
+                  aria-valuenow={ctxPct}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  <span
+                    className={styles.contextFill}
+                    data-tone={ctxTone}
+                    style={{ width: `${ctxPct}%` }}
+                  />
+                </span>
               </span>
             )}
+            {showFooterStats && <span className={styles.stats}>{statsStr}</span>}
             {isFailed && onRetry && (
               <button
                 type="button"
