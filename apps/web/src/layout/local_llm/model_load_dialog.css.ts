@@ -32,8 +32,8 @@ export const backdrop = style({
 });
 
 export const dialog = style({
-  width: "min(720px, 100%)",
-  height: "min(640px, 90vh)",
+  width: "min(880px, 100%)",
+  height: "min(720px, 92vh)",
   background:
     "linear-gradient(180deg, rgba(30,33,38,0.98) 0%, rgba(15,17,20,0.98) 100%)",
   borderRadius: "20px",
@@ -61,11 +61,32 @@ export const header = style({
   boxShadow: `0 1px 0 ${vars.color.outline.variant}`,
 });
 
+export const headerLeft = style({
+  display: "flex",
+  alignItems: "baseline",
+  gap: vars.density.d3,
+});
+
 export const title = style({
   fontSize: vars.font.size.headingSm,
   fontWeight: 600,
   margin: 0,
   letterSpacing: "-0.01em",
+});
+
+export const countChip = style({
+  display: "inline-flex",
+  alignItems: "center",
+  height: vars.control.heightSm,
+  paddingInline: vars.density.d3,
+  borderRadius: vars.radius.full,
+  background: `color-mix(in oklch, ${vars.color.accent.primary} 12%, transparent)`,
+  color: vars.color.accent.primary,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+  fontVariantNumeric: "tabular-nums",
 });
 
 export const closeButton = style({
@@ -87,7 +108,7 @@ export const closeButton = style({
 
 export const body = style({
   display: "grid",
-  gridTemplateColumns: "280px 1fr",
+  gridTemplateColumns: "320px 1fr",
   minHeight: 0,
   overflow: "hidden",
 });
@@ -100,12 +121,14 @@ export const listColumn = style({
 });
 
 export const searchWrap = style({
+  position: "relative",
   padding: `${vars.density.d3} ${vars.density.d4}`,
 });
 
 export const search = style({
   width: "100%",
-  padding: "8px 12px",
+  // audit-allow: px — sub-density input padding tuned to leading glyph
+  padding: "8px 36px 8px 36px",
   fontSize: vars.font.size.bodySm,
   fontFamily: vars.font.ui,
   color: vars.color.text.primary,
@@ -119,6 +142,59 @@ export const search = style({
     boxShadow: `inset 0 0 0 1.5px color-mix(in oklch, ${vars.color.accent.primary} 45%, transparent)`,
   },
   "::placeholder": { color: vars.color.text.secondary },
+});
+
+export const searchGlyph = style({
+  position: "absolute",
+  left: `calc(${vars.density.d4} + 12px)`,
+  top: "50%",
+  transform: "translateY(-50%)",
+  fontFamily: "Material Symbols Outlined",
+  fontSize: "16px",
+  lineHeight: 1,
+  color: vars.color.text.muted,
+  pointerEvents: "none",
+});
+
+export const searchClear = style({
+  position: "absolute",
+  right: `calc(${vars.density.d4} + 8px)`,
+  top: "50%",
+  transform: "translateY(-50%)",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "20px",
+  height: "20px",
+  padding: 0,
+  background: "transparent",
+  color: vars.color.text.muted,
+  border: "none",
+  borderRadius: vars.radius.full,
+  cursor: "pointer",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  ":hover": {
+    background: vars.color.bg.hover,
+    color: vars.color.text.primary,
+  },
+  selectors: {
+    "& > .material-symbols-outlined": {
+      fontSize: "14px",
+      lineHeight: 1,
+    },
+  },
+});
+
+export const searchHotkey = style({
+  position: "absolute",
+  right: `calc(${vars.density.d4} + 12px)`,
+  top: "50%",
+  transform: "translateY(-50%)",
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  letterSpacing: "0.06em",
+  color: vars.color.text.muted,
+  pointerEvents: "none",
 });
 
 export const list = style({
@@ -157,14 +233,8 @@ export const optionSelected = style({
 export const optionRowTop = style({
   display: "flex",
   alignItems: "baseline",
+  justifyContent: "space-between",
   gap: vars.density.d2,
-});
-
-export const optionIndex = style({
-  fontFamily: vars.font.code,
-  fontSize: vars.font.size.caption,
-  color: vars.color.text.secondary,
-  minWidth: "1.5em",
 });
 
 export const optionLabel = style({
@@ -175,16 +245,18 @@ export const optionLabel = style({
   overflow: "hidden",
   textOverflow: "ellipsis",
   flex: 1,
+  minWidth: 0,
 });
 
-export const optionMeta = style({
-  display: "flex",
-  alignItems: "center",
+export const optionMetaInline = style({
+  flex: "0 0 auto",
+  display: "inline-flex",
+  alignItems: "baseline",
   gap: vars.density.d2,
   fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,
   color: vars.color.text.secondary,
-  paddingLeft: "1.7em",
+  fontVariantNumeric: "tabular-nums",
 });
 
 export const detailColumn = style({
@@ -207,10 +279,60 @@ export const placeholder = style({
 });
 
 export const empty = style({
-  padding: `${vars.density.d6} ${vars.density.d4}`,
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: vars.density.d3,
+  padding: `${vars.density.d7} ${vars.density.d4}`,
   textAlign: "center",
   color: vars.color.text.secondary,
   fontSize: vars.font.size.bodySm,
+});
+
+export const emptyGlyph = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.headingLg,
+  fontWeight: vars.font.weight.semibold,
+  color: vars.color.text.muted,
+  fontVariantNumeric: "tabular-nums",
+  letterSpacing: "0.04em",
+});
+
+export const emptyTitle = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
+  fontWeight: vars.font.weight.semibold,
+  color: vars.color.text.primary,
+  margin: 0,
+});
+
+export const emptyHint = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+  color: vars.color.text.muted,
+});
+
+export const emptyCta = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.density.d2,
+  height: vars.control.heightMd,
+  paddingInline: vars.density.d4,
+  borderRadius: vars.radius.control,
+  background: vars.color.accent.primary,
+  color: vars.color.onColor.primary,
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.bodySm,
+  fontWeight: vars.font.weight.semibold,
+  border: "none",
+  cursor: "pointer",
+  textDecoration: "none",
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  ":hover": {
+    background: vars.color.accent.primaryHover,
+  },
 });
 
 export const footer = style({
@@ -222,46 +344,19 @@ export const footer = style({
   boxShadow: `0 -1px 0 ${vars.color.outline.variant}`,
 });
 
-export const cancelButton = style({
-  appearance: "none",
-  background: "transparent",
-  color: vars.color.text.secondary,
-  border: "none",
-  cursor: "pointer",
-  padding: "8px 14px",
+export const kbdHint = style({
+  display: "inline-flex",
+  alignItems: "center",
+  marginInlineStart: vars.density.d2,
+  paddingInline: vars.density.d2,
+  paddingBlock: 0,
+  // audit-allow: px — sub-density kbd hint height tuned to footer button line-height
+  height: "18px",
   borderRadius: vars.radius.control,
-  fontSize: vars.font.size.bodySm,
-  fontFamily: vars.font.ui,
-  fontWeight: 500,
-  transition: `background ${vars.motion.durationFast} ease, color ${vars.motion.durationFast} ease`,
-  ":hover": {
-    background: `color-mix(in oklch, ${vars.color.text.primary} 6%, transparent)`,
-    color: vars.color.text.primary,
-  },
-});
-
-export const loadButton = style({
-  appearance: "none",
-  border: "none",
-  cursor: "pointer",
-  // audit-allow: px — sub-density button padding tuned to the dialog footer rhythm
-  padding: "8px 16px",
-  borderRadius: vars.radius.control,
-  fontSize: vars.font.size.bodySm,
-  fontFamily: vars.font.ui,
-  fontWeight: vars.font.weight.semibold,
-  color: vars.color.onColor.primary,
-  background: `linear-gradient(180deg, color-mix(in oklch, ${vars.color.accent.primary} 88%, white) 0%, ${vars.color.accent.primary} 100%)`,
-  boxShadow: `0 6px 16px color-mix(in oklch, ${vars.color.accent.primary} 25%, transparent), inset 0 1px 0 color-mix(in oklch, ${vars.color.text.primary} 40%, transparent)`,
-  transition: `transform ${vars.motion.durationFast} ease, box-shadow ${vars.motion.durationFast} ease, opacity ${vars.motion.durationFast} ease`,
-  ":hover": {
-    transform: "translateY(-1px)",
-    boxShadow: `0 10px 22px color-mix(in oklch, ${vars.color.accent.primary} 32%, transparent), inset 0 1px 0 color-mix(in oklch, ${vars.color.text.primary} 50%, transparent)`,
-  },
-  ":disabled": {
-    opacity: 0.45,
-    cursor: "not-allowed",
-    transform: "none",
-    boxShadow: "none",
-  },
+  background: `color-mix(in oklch, currentColor 8%, transparent)`,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  letterSpacing: "0.04em",
+  fontWeight: vars.font.weight.regular,
+  opacity: 0.8,
 });
