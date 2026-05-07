@@ -5,9 +5,12 @@ import {
   putCachedThreads,
   removeCachedThread,
 } from "../../services/idb/chat_history";
+import { getDeltasByRequest } from "../../services/idb/stream_deltas";
+import { openNexusDb } from "../../services/idb/db";
 import type {
   ChatMessageCacheRow,
   ChatThreadCacheRow,
+  StreamDeltaRow,
 } from "../../services/idb/schemas";
 import type { ChatThread } from "../../services/extension_chat";
 
@@ -155,5 +158,94 @@ export async function invalidateCachedThread(
     await removeCachedThread(deploymentId, threadId);
   } catch {
     /* IDB unavailable — non-fatal */
+  }
+}
+
+export interface InterruptedReply {
+  readonly requestId: string;
+  readonly text: string;
+  readonly lastTimestamp: number;
+}
+
+function extractDeltaContent(rawSseFrame: string): string {
+  let out = "";
+  for (const line of rawSseFrame.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const payload = trimmed.slice(5).trim();
+    if (payload === "[DONE]" || payload.length === 0) continue;
+    try {
+      const json = JSON.parse(payload) as {
+        choices?: Array<{ delta?: { content?: string } }>;
+      };
+      const delta = json.choices?.[0]?.delta?.content;
+      if (typeof delta === "string") out += delta;
+    } catch {
+      /* skip malformed frame */
+    }
+  }
+  return out;
+}
+
+export async function loadInterruptedReply(
+  deploymentId: string,
+  threadId: string,
+): Promise<InterruptedReply | null> {
+  try {
+    const db = await openNexusDb();
+    const lower: [string, string, string, number] = [
+      deploymentId,
+      threadId,
+      "",
+      0,
+    ];
+    const upper: [string, string, string, number] = [
+      deploymentId,
+      threadId,
+      "￿",
+      Number.POSITIVE_INFINITY,
+    ];
+    const range = IDBKeyRange.bound(lower, upper, false, false);
+    const rows = (await db.getAll(
+      "nexus-stream-deltas",
+      range,
+    )) as StreamDeltaRow[];
+    if (rows.length === 0) return null;
+    const groups = new Map<string, StreamDeltaRow[]>();
+    for (const row of rows) {
+      const list = groups.get(row.requestId) ?? [];
+      list.push(row);
+      groups.set(row.requestId, list);
+    }
+    let best: InterruptedReply | null = null;
+    for (const [requestId, group] of groups) {
+      const isInProgress = group.some((r) => r.status === "in_progress");
+      if (!isInProgress) continue;
+      const sorted = [...group].sort(
+        (a, b) => a.sequenceNumber - b.sequenceNumber,
+      );
+      const lastTimestamp = sorted[sorted.length - 1]!.timestamp;
+      const text = sorted.map((r) => extractDeltaContent(r.chunk)).join("");
+      if (text.length === 0) continue;
+      if (!best || lastTimestamp > best.lastTimestamp) {
+        best = { requestId, text, lastTimestamp };
+      }
+    }
+    return best;
+  } catch {
+    return null;
+  }
+}
+
+export async function loadDeltasForRequest(
+  deploymentId: string,
+  threadId: string,
+  requestId: string,
+): Promise<string> {
+  try {
+    const rows = await getDeltasByRequest(deploymentId, threadId, requestId);
+    return rows.map((r) => extractDeltaContent(r.chunk)).join("");
+  } catch {
+    return "";
   }
 }
