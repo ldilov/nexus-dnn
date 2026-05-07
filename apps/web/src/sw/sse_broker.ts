@@ -310,6 +310,7 @@ function closeSlot(slot: BrokerSlot): void {
 }
 
 export async function __resetBrokerForTests(): Promise<void> {
+  if (!import.meta.env.TEST) return;
   const pending = Array.from(slots.values());
   slots.clear();
   for (const promise of pending) {
