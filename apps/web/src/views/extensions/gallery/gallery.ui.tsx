@@ -3,6 +3,9 @@ import { Link } from "react-router";
 import type { Extension } from "../../../api/client";
 import { InstallExtensionDrawer } from "../../../components/install/install_extension_drawer";
 import { PageHero } from "../../../components/base/page_hero";
+import { Section } from "../../../components/base/section";
+import { StatusChip, type StatusKind } from "../../../components/base/status_chip";
+import { EmptyState } from "../../../components/layout/empty_state";
 import * as s from "./gallery.css";
 
 export interface GalleryActionState {
@@ -25,6 +28,20 @@ export interface ExtensionsGalleryUIProps {
   setupRequired?: Record<string, boolean>;
 }
 
+function statusKindFor(status: string): StatusKind {
+  if (status === "active") return "live";
+  if (status === "invalid") return "failed";
+  if (status === "disabled") return "idle";
+  return "idle";
+}
+
+function statusLabelFor(status: string): string {
+  if (status === "active") return "Active";
+  if (status === "invalid") return "Invalid";
+  if (status === "disabled") return "Disabled";
+  return status;
+}
+
 export function ExtensionsGalleryUI({
   builtins,
   externals,
@@ -38,6 +55,13 @@ export function ExtensionsGalleryUI({
   onInstalled,
   setupRequired,
 }: ExtensionsGalleryUIProps) {
+  const setupCount = setupRequired
+    ? Object.values(setupRequired).filter(Boolean).length
+    : 0;
+  const activeCount = [...builtins, ...externals].filter(
+    (ext) => ext.status === "active",
+  ).length;
+
   return (
     <div className={s.root}>
       <PageHero
@@ -50,32 +74,49 @@ export function ExtensionsGalleryUI({
           </span>
         }
       />
+
       {errorMessage ? (
-        <div className={s.errorState}>{errorMessage}</div>
+        <div className={s.errorState} role="alert">
+          {errorMessage}
+        </div>
       ) : (
         <>
-          <ExtensionSection
-            label="Built-in Extensions"
-            count={builtins.length}
-            items={builtins}
-            action={action}
-            onToggle={onToggle}
-            showDelete={false}
-            setupRequired={setupRequired}
-          />
-          <ExtensionSection
-            label="External Extensions"
-            count={externals.length}
-            items={externals}
-            action={action}
-            onToggle={onToggle}
-            showDelete
-            trailing={<InstallCard onClick={onOpenDrawer} />}
-            setupRequired={setupRequired}
-          />
-          {totalCount === 0 && (
-            <div className={s.emptyState}>No extensions loaded</div>
+          <div className={s.summaryGrid}>
+            <SummaryStat label="Total" value={totalCount} />
+            <SummaryStat label="Active" value={activeCount} />
+            <SummaryStat label="Setup required" value={setupCount} />
+          </div>
+
+          {totalCount === 0 ? (
+            <EmptyState
+              count="0"
+              line="No extensions are loaded. Install one from the gallery, or drop a NEXUS-DNN extension package onto the install dropzone below."
+              primaryAction={{ label: "Install extension", onClick: onOpenDrawer }}
+            />
+          ) : (
+            <>
+              <ExtensionSection
+                eyebrow="01"
+                label="Built-in"
+                items={builtins}
+                action={action}
+                onToggle={onToggle}
+                showDelete={false}
+                setupRequired={setupRequired}
+              />
+              <ExtensionSection
+                eyebrow="02"
+                label="External"
+                items={externals}
+                action={action}
+                onToggle={onToggle}
+                showDelete
+                trailing={<InstallCard onClick={onOpenDrawer} />}
+                setupRequired={setupRequired}
+              />
+            </>
           )}
+
           <InstallExtensionDrawer
             open={drawerOpen}
             onClose={onCloseDrawer}
@@ -87,9 +128,23 @@ export function ExtensionsGalleryUI({
   );
 }
 
-interface ExtensionSectionProps {
+interface SummaryStatProps {
   label: string;
-  count: number;
+  value: number;
+}
+
+function SummaryStat({ label, value }: SummaryStatProps) {
+  return (
+    <div className={s.summaryStat}>
+      <span className={s.summaryStatLabel}>{label}</span>
+      <span className={s.summaryStatValue}>{value}</span>
+    </div>
+  );
+}
+
+interface ExtensionSectionProps {
+  eyebrow: string;
+  label: string;
   items: Extension[];
   action: GalleryActionState;
   onToggle: (id: string, enable: boolean) => void;
@@ -99,8 +154,8 @@ interface ExtensionSectionProps {
 }
 
 function ExtensionSection({
+  eyebrow,
   label,
-  count,
   items,
   action,
   onToggle,
@@ -108,26 +163,26 @@ function ExtensionSection({
   trailing,
   setupRequired,
 }: ExtensionSectionProps) {
+  if (items.length === 0 && !trailing) {
+    return null;
+  }
   return (
-    <section className={s.section}>
-      <header className={s.sectionHeader}>
-        <h2 className={s.sectionTitle}>{label}</h2>
-        <span className={s.sectionCount}>{count.toString().padStart(2, "0")}</span>
-      </header>
-      <div className={s.grid}>
+    <Section number={eyebrow} title={label}>
+      <ul className={s.grid}>
         {items.map((ext) => (
-          <ExtensionCard
-            key={ext.id}
-            extension={ext}
-            busy={action.loading && action.targetId === ext.id}
-            onToggle={onToggle}
-            showDelete={showDelete}
-            needsSetup={Boolean(setupRequired?.[ext.id])}
-          />
+          <li key={ext.id}>
+            <ExtensionCard
+              extension={ext}
+              busy={action.loading && action.targetId === ext.id}
+              onToggle={onToggle}
+              showDelete={showDelete}
+              needsSetup={Boolean(setupRequired?.[ext.id])}
+            />
+          </li>
         ))}
-        {trailing}
-      </div>
-    </section>
+        {trailing ? <li>{trailing}</li> : null}
+      </ul>
+    </Section>
   );
 }
 
@@ -139,7 +194,13 @@ interface ExtensionCardProps {
   needsSetup?: boolean;
 }
 
-function ExtensionCard({ extension, busy, onToggle, showDelete, needsSetup }: ExtensionCardProps) {
+function ExtensionCard({
+  extension,
+  busy,
+  onToggle,
+  showDelete,
+  needsSetup,
+}: ExtensionCardProps) {
   const active = extension.status === "active";
   const invalid = extension.status === "invalid";
   const displayName = extension.name ?? extension.id;
@@ -170,7 +231,11 @@ function ExtensionCard({ extension, busy, onToggle, showDelete, needsSetup }: Ex
             <span className={s.sourceChip}>
               {extension.source === "builtin" ? "Core" : "External"}
             </span>
-            <StatusPill status={extension.status} />
+            <StatusChip
+              kind={statusKindFor(extension.status)}
+              label={statusLabelFor(extension.status)}
+              pulse={extension.status === "active"}
+            />
             {needsSetup && (
               <span className={s.setupBadge} aria-label="Dependency setup required">
                 <span className={s.setupBadgePulse} aria-hidden="true" />
@@ -196,13 +261,13 @@ function ExtensionCard({ extension, busy, onToggle, showDelete, needsSetup }: Ex
       )}
 
       <div className={s.metrics}>
-        <div>
-          <div className={s.metricLabel}>Peak Memory</div>
-          <div className={`${s.metricValue} ${s.metricValueMuted}`}>—</div>
+        <div className={s.metricCell}>
+          <span className={s.metricLabel}>Peak memory</span>
+          <span className={`${s.metricValue} ${s.metricValueMuted}`}>—</span>
         </div>
-        <div>
-          <div className={s.metricLabel}>Avg Latency</div>
-          <div className={`${s.metricValue} ${s.metricValueMuted}`}>—</div>
+        <div className={s.metricCell}>
+          <span className={s.metricLabel}>Avg latency</span>
+          <span className={`${s.metricValue} ${s.metricValueMuted}`}>—</span>
         </div>
       </div>
 
@@ -212,16 +277,35 @@ function ExtensionCard({ extension, busy, onToggle, showDelete, needsSetup }: Ex
             className={s.iconButtonLink}
             to={`/extensions/${encodeURIComponent(extension.id)}/settings`}
             aria-label="Extension settings"
-            title="Settings — Overview, Dependencies, Reinstall"
+            title="Settings"
           >
-            <SettingsIcon />
+            <span
+              className={`material-symbols-outlined ${s.iconGlyph}`}
+              aria-hidden="true"
+            >
+              settings
+            </span>
           </Link>
           <IconButton label="Open extension folder" onClick={() => undefined}>
-            <FolderIcon />
+            <span
+              className={`material-symbols-outlined ${s.iconGlyph}`}
+              aria-hidden="true"
+            >
+              folder_open
+            </span>
           </IconButton>
           {showDelete && (
-            <IconButton label="Uninstall extension" danger onClick={() => undefined}>
-              <TrashIcon />
+            <IconButton
+              label="Uninstall extension"
+              danger
+              onClick={() => undefined}
+            >
+              <span
+                className={`material-symbols-outlined ${s.iconGlyph}`}
+                aria-hidden="true"
+              >
+                delete
+              </span>
             </IconButton>
           )}
         </div>
@@ -230,6 +314,12 @@ function ExtensionCard({ extension, busy, onToggle, showDelete, needsSetup }: Ex
             className={s.setupCta}
             to={`/extensions/${encodeURIComponent(extension.id)}/settings?tab=dependencies`}
           >
+            <span
+              className={`material-symbols-outlined ${s.iconGlyph}`}
+              aria-hidden="true"
+            >
+              build
+            </span>
             Set up
           </Link>
         ) : (
@@ -241,29 +331,6 @@ function ExtensionCard({ extension, busy, onToggle, showDelete, needsSetup }: Ex
         )}
       </div>
     </article>
-  );
-}
-
-function StatusPill({ status }: { status: string }) {
-  const dotClass =
-    status === "active"
-      ? s.statusDotActive
-      : status === "invalid"
-        ? s.statusDotInvalid
-        : s.statusDotDisabled;
-  const label =
-    status === "active"
-      ? "Active"
-      : status === "invalid"
-        ? "Invalid"
-        : status === "disabled"
-          ? "Disabled"
-          : status;
-  return (
-    <span className={s.statusPill}>
-      <span className={`${s.statusDot} ${dotClass}`} />
-      {label}
-    </span>
   );
 }
 
@@ -327,71 +394,13 @@ function InstallCard({ onClick }: { onClick: () => void }) {
           onClick();
         }
       }}
+      aria-label="Install new extension"
     >
-      <div className={s.installIcon} aria-hidden="true">
-        +
-      </div>
-      <div className={s.installTitle}>Install new extension</div>
-      <div className={s.installHint}>Open ZIP installer</div>
+      <span className={s.installGlyph} aria-hidden="true">
+        add_box
+      </span>
+      <span className={s.installTitle}>Install new extension</span>
+      <span className={s.installHint}>Open ZIP installer</span>
     </div>
-  );
-}
-
-function SettingsIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-    </svg>
-  );
-}
-
-function FolderIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M3 6h18" />
-      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-      <path d="M10 11v6" />
-      <path d="M14 11v6" />
-    </svg>
   );
 }

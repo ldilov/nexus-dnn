@@ -65,6 +65,12 @@ export function DeploymentHeader({ deployment }: Props): JSX.Element {
         </>
       )}
 
+      {modelMissing && (
+        <Banner severity="warning">
+          <strong>IndexTTS-2 model is not installed.</strong>{" "}
+          Open <em>Settings → Dependencies → Install all</em> to download the required artifacts, then retry.
+        </Banner>
+      )}
       {error && !modelMissing && <Banner severity="error">{error}</Banner>}
     </output>
   );

@@ -164,9 +164,11 @@ export const select = style({
 
 export const number = style({
   width: "100%",
+  // audit-allow: px — sub-density numeric input padding, no token at this granularity
   padding: "6px 10px",
   fontSize: vars.font.size.bodySm,
   fontFamily: vars.font.code,
+  fontVariantNumeric: "tabular-nums",
   background: `color-mix(in oklch, ${vars.color.text.primary} 4%, transparent)`,
   color: vars.color.text.primary,
   border: "none",
@@ -174,7 +176,7 @@ export const number = style({
   boxShadow: `inset 0 0 0 1px ${vars.color.outline.variant}`,
   outline: "none",
   ":focus": {
-    boxShadow: `inset 0 0 0 1.5px color-mix(in oklch, ${vars.color.accent.primary} 50%, transparent)`,
+    boxShadow: `inset 0 0 0 1.5px color-mix(in oklch, ${vars.color.accent.tertiary} 55%, transparent)`,
   },
 });
 
@@ -225,5 +227,92 @@ export const reset = style({
   ":hover": {
     color: vars.color.accent.primary,
     background: `color-mix(in oklch, ${vars.color.accent.primary} 8%, transparent)`,
+  },
+});
+
+export const warnings = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.density.d2,
+});
+
+export const warningChip = style({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: vars.density.d3,
+  padding: `${vars.density.d2} ${vars.density.d3}`,
+  borderRadius: vars.radius.control,
+  fontSize: vars.font.size.caption,
+  lineHeight: 1.4,
+  background: `color-mix(in oklch, ${vars.color.accent.tertiary} 12%, transparent)`,
+  color: vars.color.text.primary,
+  selectors: {
+    '&[data-severity="info"]': {
+      background: `color-mix(in oklch, ${vars.color.accent.secondary} 10%, transparent)`,
+    },
+    '&[data-severity="error"]': {
+      background: `color-mix(in oklch, ${vars.color.error.base} 14%, transparent)`,
+    },
+  },
+});
+
+export const warningCopy = style({
+  flex: 1,
+  textAlign: "left",
+});
+
+export const warningAction = style({
+  appearance: "none",
+  background: vars.color.accent.primary,
+  color: vars.color.text.inverse,
+  border: "none",
+  borderRadius: vars.radius.control,
+  cursor: "pointer",
+  padding: `4px 10px`,
+  fontSize: vars.font.size.caption,
+  fontWeight: 600,
+  whiteSpace: "nowrap",
+  transition: `background ${vars.motion.durationFast} ease`,
+  ":hover": {
+    background: vars.color.accent.primaryHover,
+  },
+});
+
+export const note = style({
+  fontSize: vars.font.size.caption,
+  color: vars.color.text.secondary,
+  lineHeight: 1.4,
+  fontStyle: "italic",
+});
+
+export const presets = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.density.d2,
+  flexWrap: "wrap",
+});
+
+export const presetChip = style({
+  appearance: "none",
+  background: "transparent",
+  color: vars.color.text.secondary,
+  border: `1px solid ${vars.color.outline.variant}`,
+  borderRadius: vars.radius.control,
+  cursor: "pointer",
+  padding: `4px 12px`,
+  fontSize: vars.font.size.caption,
+  fontWeight: 500,
+  transition: `color ${vars.motion.durationFast} ease, background ${vars.motion.durationFast} ease, border-color ${vars.motion.durationFast} ease`,
+  ":hover": {
+    color: vars.color.accent.primary,
+    borderColor: vars.color.accent.primary,
+  },
+  selectors: {
+    '&[data-active="true"]': {
+      color: vars.color.accent.primary,
+      borderColor: vars.color.accent.primary,
+      background: `color-mix(in oklch, ${vars.color.accent.primary} 8%, transparent)`,
+    },
   },
 });
