@@ -567,6 +567,102 @@ describe("ChatPanelAdapter", () => {
       });
     });
 
+    it("does_not_flash_loading_on_thread_switch_when_runtime_already_matches_sticky", async () => {
+      const sticky = {
+        family_id: "meta/llama",
+        variant_id: "Q4",
+        tuning: { ctx_size: 8192 },
+        saved_at: "2026-05-07T00:00:00Z",
+      };
+      await withLocalStorage(
+        {
+          "local-llm:deployment-active-model": JSON.stringify({ "dep-A": sticky }),
+        },
+        async () => {
+          listThreadsMock.mockResolvedValue({
+            threads: [baseThread("t-1", "Alpha"), baseThread("t-2", "Beta")],
+            has_more: false,
+          });
+          useModelLoadStateMock.mockImplementation((threadId: string | null) => {
+            if (threadId === "t-1") {
+              return {
+                phase: "ready",
+                label: "Llama Q4",
+                familyId: "meta/llama",
+                variantId: "Q4",
+                port: 12345,
+              } satisfies ModelLoadState;
+            }
+            return { phase: "idle" } satisfies ModelLoadState;
+          });
+
+          render(<ChatPanelAdapter deploymentId="dep-A" />);
+
+          await waitFor(() => expect(screen.getByText("Beta")).toBeInTheDocument());
+
+          const beta = screen.getByText("Beta");
+          await act(async () => {
+            fireEvent.click(beta);
+          });
+
+          await waitFor(() => expect(useModelLoadStateMock).toHaveBeenCalledWith("t-2"));
+
+          const composer = await screen.findByPlaceholderText(/send a message/i);
+          expect(composer).not.toBeDisabled();
+          expect(screen.queryByText(/choose a model/i)).toBeNull();
+          expect(screen.queryByText(/loading/i)).toBeNull();
+        },
+      );
+    });
+
+    it("still_shows_loading_when_sticky_mismatches_live_runtime", async () => {
+      const sticky = {
+        family_id: "meta/llama",
+        variant_id: "Q4",
+        tuning: { ctx_size: 8192 },
+        saved_at: "2026-05-07T00:00:00Z",
+      };
+      await withLocalStorage(
+        {
+          "local-llm:deployment-active-model": JSON.stringify({ "dep-A": sticky }),
+        },
+        async () => {
+          listThreadsMock.mockResolvedValue({
+            threads: [baseThread("t-1", "Alpha"), baseThread("t-2", "Beta")],
+            has_more: false,
+          });
+          useModelLoadStateMock.mockImplementation((threadId: string | null) => {
+            if (threadId === "t-1") {
+              return {
+                phase: "ready",
+                label: "Mistral 7B",
+                familyId: "mistral",
+                variantId: "Q5",
+                port: 12345,
+              } satisfies ModelLoadState;
+            }
+            return { phase: "idle" } satisfies ModelLoadState;
+          });
+
+          render(<ChatPanelAdapter deploymentId="dep-A" />);
+
+          await waitFor(() => expect(screen.getByText("Beta")).toBeInTheDocument());
+
+          const beta = screen.getByText("Beta");
+          await act(async () => {
+            fireEvent.click(beta);
+          });
+
+          await waitFor(() => expect(useModelLoadStateMock).toHaveBeenCalledWith("t-2"));
+
+          await waitFor(() => {
+            expect(screen.queryByPlaceholderText(/send a message/i)).toBeNull();
+          });
+          expect(screen.getByText(/choose a model to enable the composer/i)).toBeInTheDocument();
+        },
+      );
+    });
+
     it("persists the chosen model to deployment-active-model on successful load", async () => {
       await withLocalStorage({}, async () => {
         listThreadsMock.mockResolvedValueOnce({
