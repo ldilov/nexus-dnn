@@ -1,9 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import type {
-  AvailableModel,
-  KvCacheKind,
-  RuntimeDefaults,
-  RuntimeTuning,
+import {
+  isFlashAttnEffectivelyOn,
+  type AvailableModel,
+  type KvCacheKind,
+  type RuntimeDefaults,
+  type RuntimeTuning,
 } from "../../services/local_llm_chat";
 import type { ModelMetadata } from "../../services/host_api";
 import {
@@ -82,6 +83,7 @@ export function RuntimeTuningForm({
     cramSize: useId(),
     checkpointEvery: useId(),
     moeOffload: useId(),
+    expertsPerToken: useId(),
     minP: useId(),
     dryMultiplier: useId(),
     dryBase: useId(),
@@ -103,6 +105,7 @@ export function RuntimeTuningForm({
     cacheReuse: `${ids.cacheReuse}-help`,
     cram: `${ids.cram}-help`,
     moeOffload: `${ids.moeOffload}-help`,
+    expertsPerToken: `${ids.expertsPerToken}-help`,
     minP: `${ids.minP}-help`,
     dryMultiplier: `${ids.dryMultiplier}-help`,
   };
@@ -167,7 +170,8 @@ export function RuntimeTuningForm({
   const ctxMax = Math.max(metadataCtxMax, HARD_CTX_CEIL);
   const gpuDisabled = !defaults.supports_cuda;
   const faDisabled = !defaults.supports_cuda;
-  const kvDisabled = !value.flash_attn;
+  const flashAttnOn = isFlashAttnEffectivelyOn(value.flash_attn);
+  const kvDisabled = !flashAttnOn;
 
   const gpuValue = clamp(value.n_gpu_layers ?? 0, 0, gpuMax);
   const totalLayers = modelMetadata?.layer_count ?? gpuMax;
@@ -376,63 +380,61 @@ export function RuntimeTuningForm({
           </select>
         </div>
 
-        <div className={styles.rowFull}>
-          <span className={styles.labelCell}>
-            <label
-              htmlFor={ids.fa}
-              className={
-                faDisabled
-                  ? `${styles.checkboxRow} ${styles.checkboxRowDisabled}`
-                  : styles.checkboxRow
+        <div className={styles.toggleRow}>
+          <label
+            htmlFor={ids.fa}
+            className={
+              faDisabled
+                ? `${styles.checkboxRow} ${styles.checkboxRowDisabled}`
+                : styles.checkboxRow
+            }
+          >
+            <input
+              id={ids.fa}
+              type="checkbox"
+              className={styles.checkbox}
+              disabled={faDisabled}
+              checked={flashAttnOn}
+              aria-describedby={helpIds.fa}
+              onChange={(e) =>
+                update({ flash_attn: e.target.checked ? "auto" : "off" })
               }
-            >
-              <input
-                id={ids.fa}
-                type="checkbox"
-                className={styles.checkbox}
-                disabled={faDisabled}
-                checked={value.flash_attn ?? false}
-                aria-describedby={helpIds.fa}
-                onChange={(e) => update({ flash_attn: e.target.checked })}
-              />
-              <span className={styles.label}>Flash Attention</span>
-            </label>
-            <HelpTooltip
-              id={helpIds.fa}
-              title="Flash Attention"
-              description="Faster, more memory-efficient attention math. Required for KV cache quantization beyond fp16. Some older or small models may show numerical drift; if outputs degrade, turn it off."
-              recommended="ON for CUDA"
             />
-          </span>
+            <span className={styles.label}>Flash Attention</span>
+          </label>
+          <HelpTooltip
+            id={helpIds.fa}
+            title="Flash Attention"
+            description="Faster, more memory-efficient attention math. Required for KV cache quantization beyond fp16. Defaults to auto — llama-server picks the safe choice per model architecture, avoiding the Gemma 3 + Q8 KV pitfall. Uncheck to force off."
+            recommended="Auto for CUDA"
+          />
         </div>
 
-        <div className={styles.rowFull}>
-          <span className={styles.labelCell}>
-            <label htmlFor={ids.cacheReuse} className={styles.checkboxRow}>
-              <input
-                id={ids.cacheReuse}
-                type="checkbox"
-                className={styles.checkbox}
-                disabled={cacheReuseLocked}
-                checked={cacheReuseEnabled}
-                aria-describedby={helpIds.cacheReuse}
-                onChange={(e) =>
-                  update({
-                    cache_reuse: e.target.checked
-                      ? CACHE_REUSE_DEFAULT
-                      : undefined,
-                  })
-                }
-              />
-              <span className={styles.label}>Reuse KV cache</span>
-            </label>
-            <HelpTooltip
-              id={helpIds.cacheReuse}
-              title="Reuse KV cache"
-              description="Reuses prefilled KV state across turns when the prompt prefix is unchanged. Skips the dominant cost of inference (prefill) on follow-up turns of the same chat thread."
-              recommended="ON for chat workloads; min-chunk 256 is a safe default"
+        <div className={styles.toggleRow}>
+          <label htmlFor={ids.cacheReuse} className={styles.checkboxRow}>
+            <input
+              id={ids.cacheReuse}
+              type="checkbox"
+              className={styles.checkbox}
+              disabled={cacheReuseLocked}
+              checked={cacheReuseEnabled}
+              aria-describedby={helpIds.cacheReuse}
+              onChange={(e) =>
+                update({
+                  cache_reuse: e.target.checked
+                    ? CACHE_REUSE_DEFAULT
+                    : undefined,
+                })
+              }
             />
-          </span>
+            <span className={styles.label}>Reuse KV cache</span>
+          </label>
+          <HelpTooltip
+            id={helpIds.cacheReuse}
+            title="Reuse KV cache"
+            description="Reuses prefilled KV state across turns when the prompt prefix is unchanged. Skips the dominant cost of inference (prefill) on follow-up turns of the same chat thread."
+            recommended="ON for chat workloads; min-chunk 256 is a safe default"
+          />
         </div>
         {cacheReuseLocked && (
           <div className={styles.warningChip} data-severity="warning">
@@ -599,72 +601,64 @@ export function RuntimeTuningForm({
           <span className={styles.value}>{value.n_parallel ?? 1}</span>
         </div>
 
-        <div className={styles.rowFull}>
-          <span className={styles.labelCell}>
-            <label htmlFor={ids.mmap} className={styles.checkboxRow}>
-              <input
-                id={ids.mmap}
-                type="checkbox"
-                className={styles.checkbox}
-                checked={value.mmap ?? true}
-                aria-describedby={helpIds.mmap}
-                onChange={(e) => update({ mmap: e.target.checked })}
-              />
-              <span className={styles.label}>mmap</span>
-            </label>
-            <HelpTooltip
-              id={helpIds.mmap}
-              title="mmap"
-              description="Memory-map the model file instead of loading it into RAM. Lets the OS page model weights on demand."
-              recommended="ON unless you're hitting page-cache thrash on a small machine"
+        <div className={styles.toggleRow}>
+          <label htmlFor={ids.mmap} className={styles.checkboxRow}>
+            <input
+              id={ids.mmap}
+              type="checkbox"
+              className={styles.checkbox}
+              checked={value.mmap ?? true}
+              aria-describedby={helpIds.mmap}
+              onChange={(e) => update({ mmap: e.target.checked })}
             />
-          </span>
+            <span className={styles.label}>mmap</span>
+          </label>
+          <HelpTooltip
+            id={helpIds.mmap}
+            title="mmap"
+            description="Memory-map the model file instead of loading it into RAM. Lets the OS page model weights on demand."
+            recommended="ON unless you're hitting page-cache thrash on a small machine"
+          />
         </div>
 
-        <div className={styles.rowFull}>
-          <span className={styles.labelCell}>
-            <label htmlFor={ids.mlock} className={styles.checkboxRow}>
-              <input
-                id={ids.mlock}
-                type="checkbox"
-                className={styles.checkbox}
-                checked={value.mlock ?? false}
-                aria-describedby={helpIds.mlock}
-                onChange={(e) => update({ mlock: e.target.checked })}
-              />
-              <span className={styles.label}>mlock</span>
-            </label>
-            <HelpTooltip
-              id={helpIds.mlock}
-              title="mlock"
-              description="Lock the model in RAM, preventing the OS from paging it out. Costs RAM but eliminates pause spikes when the model is needed. Requires elevated privileges on Linux."
-              recommended="ON only if you have plenty of RAM and need consistent latency"
+        <div className={styles.toggleRow}>
+          <label htmlFor={ids.mlock} className={styles.checkboxRow}>
+            <input
+              id={ids.mlock}
+              type="checkbox"
+              className={styles.checkbox}
+              checked={value.mlock ?? false}
+              aria-describedby={helpIds.mlock}
+              onChange={(e) => update({ mlock: e.target.checked })}
             />
-          </span>
+            <span className={styles.label}>mlock</span>
+          </label>
+          <HelpTooltip
+            id={helpIds.mlock}
+            title="mlock"
+            description="Lock the model in RAM, preventing the OS from paging it out. Costs RAM but eliminates pause spikes when the model is needed. Requires elevated privileges on Linux."
+            recommended="ON only if you have plenty of RAM and need consistent latency"
+          />
         </div>
 
-        <div className={styles.rowFull}>
-          <span className={styles.labelCell}>
-            <label htmlFor={ids.contBatching} className={styles.checkboxRow}>
-              <input
-                id={ids.contBatching}
-                type="checkbox"
-                className={styles.checkbox}
-                checked={value.cont_batching ?? true}
-                aria-describedby={helpIds.contBatching}
-                onChange={(e) =>
-                  update({ cont_batching: e.target.checked })
-                }
-              />
-              <span className={styles.label}>Continuous batching</span>
-            </label>
-            <HelpTooltip
-              id={helpIds.contBatching}
-              title="Continuous batching"
-              description="Process multiple requests as they arrive instead of waiting for a full batch. Significantly better throughput for chat with negligible downside."
-              recommended="ON"
+        <div className={styles.toggleRow}>
+          <label htmlFor={ids.contBatching} className={styles.checkboxRow}>
+            <input
+              id={ids.contBatching}
+              type="checkbox"
+              className={styles.checkbox}
+              checked={value.cont_batching ?? true}
+              aria-describedby={helpIds.contBatching}
+              onChange={(e) => update({ cont_batching: e.target.checked })}
             />
-          </span>
+            <span className={styles.label}>Continuous batching</span>
+          </label>
+          <HelpTooltip
+            id={helpIds.contBatching}
+            title="Continuous batching"
+            description="Process multiple requests as they arrive instead of waiting for a full batch. Significantly better throughput for chat with negligible downside."
+            recommended="ON"
+          />
         </div>
 
         <div className={styles.rowFull}>
@@ -697,33 +691,31 @@ export function RuntimeTuningForm({
           />
         </div>
 
-        <div className={styles.rowFull}>
-          <span className={styles.labelCell}>
-            <label htmlFor={ids.cram} className={styles.checkboxRow}>
-              <input
-                id={ids.cram}
-                type="checkbox"
-                className={styles.checkbox}
-                checked={cramEnabled}
-                aria-describedby={helpIds.cram}
-                onChange={(e) =>
-                  update({
-                    cram_mb: e.target.checked ? CRAM_MB_DEFAULT : undefined,
-                    checkpoint_every_n_tokens: e.target.checked
-                      ? CHECKPOINT_DEFAULT
-                      : undefined,
-                  })
-                }
-              />
-              <span className={styles.label}>Persist prompt cache to RAM</span>
-            </label>
-            <HelpTooltip
-              id={helpIds.cram}
-              title="Persist prompt cache to RAM"
-              description="Caches prefilled prompt state in host memory. Repeat requests with the same prefix skip prefill almost entirely — up to ~93% TTFT reduction on cached requests in upstream benchmarks."
-              recommended="ON for RAG-style workloads with stable system prompts"
+        <div className={styles.toggleRow}>
+          <label htmlFor={ids.cram} className={styles.checkboxRow}>
+            <input
+              id={ids.cram}
+              type="checkbox"
+              className={styles.checkbox}
+              checked={cramEnabled}
+              aria-describedby={helpIds.cram}
+              onChange={(e) =>
+                update({
+                  cram_mb: e.target.checked ? CRAM_MB_DEFAULT : undefined,
+                  checkpoint_every_n_tokens: e.target.checked
+                    ? CHECKPOINT_DEFAULT
+                    : undefined,
+                })
+              }
             />
-          </span>
+            <span className={styles.label}>Persist prompt cache to RAM</span>
+          </label>
+          <HelpTooltip
+            id={helpIds.cram}
+            title="Persist prompt cache to RAM"
+            description="Caches prefilled prompt state in host memory. Repeat requests with the same prefix skip prefill almost entirely — up to ~93% TTFT reduction on cached requests in upstream benchmarks."
+            recommended="ON for RAG-style workloads with stable system prompts"
+          />
         </div>
         {cramEnabled && (
           <>
@@ -826,6 +818,46 @@ export function RuntimeTuningForm({
                 Bumped batch and uBatch to ≥ 2048 for MoE offload.
               </div>
             )}
+            <div className={styles.row}>
+              <span className={styles.labelCell}>
+                <label
+                  htmlFor={ids.expertsPerToken}
+                  className={styles.label}
+                >
+                  Experts per token
+                </label>
+                <HelpTooltip
+                  id={helpIds.expertsPerToken}
+                  title="Experts per token (--override-kv *.expert_used_count)"
+                  description="Overrides the model-default active experts per token. Lowering speeds up inference proportionally but costs quality (e.g. Mixtral 8×7B 2→1 nearly doubles throughput). Raising slows decode for marginal quality gain. Leave blank to use the model's default."
+                  recommended="Leave blank unless explicitly tuning a quality/speed tradeoff"
+                />
+              </span>
+              <input
+                id={ids.expertsPerToken}
+                type="number"
+                min={1}
+                max={64}
+                step={1}
+                placeholder="model default"
+                value={value.experts_per_token ?? ""}
+                className={styles.number}
+                aria-describedby={helpIds.expertsPerToken}
+                onChange={(e) => {
+                  const raw = e.target.value.trim();
+                  if (raw === "") {
+                    update({ experts_per_token: undefined });
+                  } else {
+                    const parsed = Number(raw);
+                    if (Number.isFinite(parsed) && parsed >= 1) {
+                      update({
+                        experts_per_token: Math.min(64, Math.floor(parsed)),
+                      });
+                    }
+                  }
+                }}
+              />
+            </div>
           </>
         )}
 

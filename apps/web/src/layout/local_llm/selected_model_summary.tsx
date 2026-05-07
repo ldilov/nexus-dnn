@@ -33,6 +33,23 @@ function formatContextSize(n: number | null | undefined): string {
   return Number.isInteger(inK) ? `${inK}K` : `${inK.toFixed(1)}K`;
 }
 
+function friendlyModelLabel(raw: string): string {
+  if (!raw) return raw;
+  const stripped = raw.replace(/^huggingface:/, "");
+  const beforeQuant = stripped.split("@")[0] ?? stripped;
+  const lastSegment = beforeQuant.split("/").pop() ?? beforeQuant;
+  return lastSegment;
+}
+
+function compactVariant(
+  variantId: string | null,
+  format: string,
+): string {
+  if (!variantId) return format.toUpperCase();
+  const afterAt = variantId.includes("@") ? variantId.split("@").pop()! : variantId;
+  return afterAt.toUpperCase();
+}
+
 export function SelectedModelSummary({
   model,
   tuning,
@@ -51,13 +68,14 @@ export function SelectedModelSummary({
     hostVramBytes: hostVramBytes ?? null,
   });
   const ctxValue = tuning.ctx_size ?? model.max_context ?? 0;
-  const variantLabel = model.variant_id ?? model.format;
+  const variantLabel = compactVariant(model.variant_id, model.format);
+  const displayLabel = friendlyModelLabel(model.label);
 
   return (
     <header className={styles.root} aria-label="Selected model summary">
       <div className={styles.titleRow}>
-        <h3 className={styles.title} title={model.family_id}>
-          {model.label}
+        <h3 className={styles.title} title={model.label}>
+          {displayLabel}
         </h3>
         <div className={styles.chips}>
           {model.is_moe ? (

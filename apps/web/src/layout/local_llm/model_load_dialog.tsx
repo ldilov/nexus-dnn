@@ -55,6 +55,20 @@ function modelKey(m: AvailableModel): string {
   return `${m.family_id}::${m.variant_id ?? ""}`;
 }
 
+function friendlyModelLabel(raw: string): string {
+  if (!raw) return raw;
+  const stripped = raw.replace(/^huggingface:/, "");
+  const beforeQuant = stripped.split("@")[0] ?? stripped;
+  const lastSegment = beforeQuant.split("/").pop() ?? beforeQuant;
+  return lastSegment;
+}
+
+function compactVariant(variantId: string | null, format: string): string {
+  if (!variantId) return format.toUpperCase();
+  const afterAt = variantId.includes("@") ? variantId.split("@").pop()! : variantId;
+  return afterAt.toUpperCase();
+}
+
 export function ModelLoadDialog({
   open,
   models,
@@ -234,7 +248,8 @@ export function ModelLoadDialog({
           const key = modelKey(m);
           const isSel = selectedKey === key;
           const sizeLabel = formatBytes(m.size_bytes);
-          const variantLabel = m.variant_id ?? m.format;
+          const variantLabel = compactVariant(m.variant_id, m.format);
+          const friendlyLabel = friendlyModelLabel(m.label);
           return (
             <li
               key={key}
@@ -247,8 +262,8 @@ export function ModelLoadDialog({
               onClick={() => pickModel(m)}
             >
               <div className={styles.optionRowTop}>
-                <span className={styles.optionLabel} title={m.family_id}>
-                  {m.label}
+                <span className={styles.optionLabel} title={m.label}>
+                  {friendlyLabel}
                 </span>
                 <span className={styles.optionMetaInline}>
                   <span>{variantLabel}</span>
