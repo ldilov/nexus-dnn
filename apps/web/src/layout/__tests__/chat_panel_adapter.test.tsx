@@ -338,6 +338,74 @@ describe("ChatPanelAdapter", () => {
     expect(firstArg.systemPrompt).toBe("Be terse.");
   });
 
+  it("streamMessage onDone records token usage and renders the ContextMeter", async () => {
+    listThreadsMock.mockResolvedValueOnce({
+      threads: [baseThread("t-1", "Alpha")],
+      has_more: false,
+    });
+    fetchAvailableModelsMock.mockResolvedValueOnce([
+      {
+        family_id: "meta/llama",
+        variant_id: "Q4",
+        label: "Llama Q4",
+        format: "gguf",
+        size_bytes: 1024,
+        max_context: 8192,
+      },
+    ]);
+    let capturedHandlers: { onDone?: (stats: unknown) => void } | null = null;
+    streamMessageMock.mockImplementation((_req: unknown, handlers: unknown) => {
+      capturedHandlers = handlers as { onDone?: (stats: unknown) => void };
+      return { abort: vi.fn() };
+    });
+    useModelLoadStateMock.mockReturnValue({
+      phase: "ready",
+      label: "Llama Q4",
+      port: 12345,
+      familyId: "meta/llama",
+      variantId: "Q4",
+    } satisfies ModelLoadState);
+
+    render(<ChatPanelAdapter />);
+
+    await waitFor(() => expect(fetchAvailableModelsMock).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText("Alpha")).toBeInTheDocument());
+
+    const composer = await screen.findByPlaceholderText(/send a message/i);
+    fireEvent.change(composer, { target: { value: "hello" } });
+    const sendBtn = screen.getByRole("button", { name: /send message/i });
+    await act(async () => {
+      fireEvent.click(sendBtn);
+    });
+
+    await waitFor(() => expect(streamMessageMock).toHaveBeenCalledTimes(1));
+    expect(capturedHandlers).not.toBeNull();
+
+    await act(async () => {
+      capturedHandlers!.onDone?.({
+        latencyMs: 100,
+        promptTokens: 500,
+        completionTokens: 200,
+        tokensPerSec: 25,
+        params: {
+          temperature: 0.8,
+          top_p: 0.95,
+          top_k: 40,
+          max_tokens: 4096,
+          repeat_penalty: 1.1,
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("progressbar", { name: /context used/i })).toBeInTheDocument();
+    });
+    const bar = screen.getByRole("progressbar", { name: /context used/i });
+    const wrap = bar.parentElement;
+    expect(wrap?.textContent ?? "").toContain("700");
+    expect(wrap?.textContent ?? "").toContain("8,192");
+  });
+
   it("updates the system prompt when the editor onChange fires", async () => {
     listThreadsMock.mockResolvedValueOnce({
       threads: [baseThread("t-1", "Alpha")],

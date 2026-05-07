@@ -21,6 +21,8 @@ import {
 // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
 } from "../services/local_llm_chat";
 import { SystemPromptEditor } from "./local_llm/system_prompt_editor";
+import { useTokenUsage } from "./local_llm/use_token_usage";
+import { ContextMeter } from "./local_llm/context_meter";
 import { getModelMetadata, type ModelMetadata } from "../services/host_api";
 import {
   createThread,
@@ -368,6 +370,18 @@ export function ChatPanelAdapter({
     setLoadDialogOpen(false);
   }, []);
 
+  const activeMaxContext = useMemo(() => {
+    if (!load.familyId) return 0;
+    const tuning = lastTuningByFamily[load.familyId];
+    if (tuning?.ctx_size && tuning.ctx_size > 0) return tuning.ctx_size;
+    const model = availableModels.find(
+      (m) => m.family_id === load.familyId && (m.variant_id ?? "") === (load.variantId ?? ""),
+    );
+    return model?.max_context ?? 0;
+  }, [load.familyId, load.variantId, lastTuningByFamily, availableModels]);
+
+  const tokenUsage = useTokenUsage(activeId, activeMaxContext);
+
   const handleSend = useCallback(
     async (text: string) => {
       if (!activeId || load.phase !== "ready" || load.port === undefined) return;
@@ -397,7 +411,7 @@ export function ChatPanelAdapter({
               prev.map((m) => (m.id === assistantId ? { ...m, text: m.text + delta } : m)),
             );
           },
-          onDone: () => {
+          onDone: (stats) => {
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId ? { ...m, status: "complete" as const } : m,
@@ -406,6 +420,11 @@ export function ChatPanelAdapter({
             setStreamingId((current) => (current === assistantId ? null : current));
             streamHandle.current = null;
             streamingThreadRef.current = null;
+            tokenUsage.record({
+              promptTokens: stats.promptTokens,
+              completionTokens: stats.completionTokens,
+              tokensPerSec: stats.tokensPerSec,
+            });
           },
           onError: (err) => {
             setMessages((prev) =>
@@ -427,7 +446,7 @@ export function ChatPanelAdapter({
       );
       streamHandle.current = handle;
     },
-    [activeId, load.phase, load.port, messages, generationSettings.system_prompt],
+    [activeId, load.phase, load.port, messages, generationSettings.system_prompt, tokenUsage],
   );
 
   const handleCancelStream = useCallback(() => {
@@ -490,6 +509,9 @@ export function ChatPanelAdapter({
         value={generationSettings.system_prompt}
         onChange={handleSystemPromptChange}
       />
+      {activeMaxContext > 0 ? (
+        <ContextMeter used={tokenUsage.tokensUsed} max={activeMaxContext} />
+      ) : null}
     </>
   );
 
