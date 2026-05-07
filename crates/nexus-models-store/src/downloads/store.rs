@@ -223,7 +223,7 @@ fn parse_state(s: &str) -> DownloadState {
 /// these onto appropriate status codes.
 #[derive(Debug, thiserror::Error)]
 pub enum JobStoreError {
-    #[error("database error")]
+    #[error("database error: {0}")]
     Db(#[from] sqlx::Error),
     #[error("job not found: {0}")]
     NotFound(String),
