@@ -1,4 +1,4 @@
-import { keyframes, style } from "@vanilla-extract/css";
+import { globalStyle, keyframes, style } from "@vanilla-extract/css";
 import { vars } from "../../theme/contract.css";
 
 const fadeIn = keyframes({
@@ -177,12 +177,11 @@ export const searchClear = style({
     background: vars.color.bg.hover,
     color: vars.color.text.primary,
   },
-  selectors: {
-    "& > .material-symbols-outlined": {
-      fontSize: "14px",
-      lineHeight: 1,
-    },
-  },
+});
+
+globalStyle(`${searchClear} > .material-symbols-outlined`, {
+  fontSize: "14px",
+  lineHeight: 1,
 });
 
 export const searchHotkey = style({

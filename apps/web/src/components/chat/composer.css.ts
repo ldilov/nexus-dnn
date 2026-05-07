@@ -1,4 +1,4 @@
-import { keyframes, style } from "@vanilla-extract/css";
+import { globalStyle, keyframes, style } from "@vanilla-extract/css";
 import { vars } from "../../theme/contract.css";
 
 const fadeSlideIn = keyframes({
@@ -51,12 +51,11 @@ export const restoredHintDismiss = style({
     background: vars.color.bg.hover,
     color: vars.color.text.primary,
   },
-  selectors: {
-    "& > .material-symbols-outlined": {
-      fontSize: "14px",
-      lineHeight: 1,
-    },
-  },
+});
+
+globalStyle(`${restoredHintDismiss} > .material-symbols-outlined`, {
+  fontSize: "14px",
+  lineHeight: 1,
 });
 
 export const wrap = style({
