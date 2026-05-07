@@ -7,6 +7,7 @@ export const button = style({
   alignItems: "center",
   gap: vars.density.d2,
   padding: `${vars.density.d2} ${vars.density.d3}`,
+  maxWidth: "260px",
   background: vars.color.bg.elevated,
   color: vars.color.text.primary,
   border: "none",
@@ -28,6 +29,13 @@ export const button = style({
   },
 });
 
+export const labelText = style({
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  minWidth: 0,
+});
+
 export const placeholder = style({
   color: vars.color.text.secondary,
   fontStyle: "italic",
@@ -38,4 +46,5 @@ export const chevron = style({
   color: vars.color.text.secondary,
   fontSize: vars.font.size.caption,
   marginLeft: "2px",
+  flex: "0 0 auto",
 });
