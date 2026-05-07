@@ -1,0 +1,19 @@
+[package]
+name = "nexus-desktop-shell"
+version = "0.1.0"
+edition = "2021"
+description = "Generic Tauri 2.x shell — window lifecycle, system tray, and IPC dispatcher for the nexus-dnn desktop binary (spec 042)."
+publish = false
+
+[lib]
+name = "nexus_desktop_shell"
+path = "src/lib.rs"
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+anyhow = "1"
+tokio = { workspace = true }
