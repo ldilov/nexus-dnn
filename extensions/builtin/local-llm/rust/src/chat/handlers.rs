@@ -132,7 +132,7 @@ pub struct SetActiveModelBody {
     pub runtime: Option<RuntimeTuning>,
 }
 
-#[derive(Debug, Deserialize, Default, Clone)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct RuntimeTuning {
     #[serde(default)]
     pub n_gpu_layers: Option<u32>,
@@ -160,6 +160,26 @@ pub struct RuntimeTuning {
     pub cont_batching: Option<bool>,
     #[serde(default)]
     pub seed: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_reuse: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cram_mb: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_every_n_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub n_cpu_moe: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_p: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dry_multiplier: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dry_base: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dry_allowed_length: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dry_penalty_last_n: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub swa_full: Option<bool>,
 }
 
 impl RuntimeTuning {
@@ -190,6 +210,16 @@ impl RuntimeTuning {
             n_parallel: Some(1),
             cont_batching: Some(true),
             seed: None,
+            cache_reuse: None,
+            cram_mb: None,
+            checkpoint_every_n_tokens: None,
+            n_cpu_moe: None,
+            min_p: None,
+            dry_multiplier: None,
+            dry_base: None,
+            dry_allowed_length: None,
+            dry_penalty_last_n: None,
+            swa_full: None,
         }
     }
 }
@@ -253,8 +283,17 @@ fn runtime_to_args(tuning: &RuntimeTuning) -> Vec<String> {
         args.push("--seed".into());
         args.push(s.to_string());
     }
+    append_throughput_args(tuning, &mut args);
+    append_sampler_args(tuning, &mut args);
+    append_mitigation_args(tuning, &mut args);
     args
 }
+
+fn append_throughput_args(_tuning: &RuntimeTuning, _args: &mut Vec<String>) {}
+
+fn append_sampler_args(_tuning: &RuntimeTuning, _args: &mut Vec<String>) {}
+
+fn append_mitigation_args(_tuning: &RuntimeTuning, _args: &mut Vec<String>) {}
 
 #[derive(Debug, Deserialize)]
 pub struct SendMessageBody {
@@ -1333,6 +1372,7 @@ mod tests {
 #[cfg(test)]
 mod runtime_tuning_tests {
     use super::*;
+    use std::collections::BTreeSet;
 
     fn pos(args: &[String], flag: &str) -> Option<usize> {
         args.iter().position(|s| s == flag)
@@ -1340,6 +1380,33 @@ mod runtime_tuning_tests {
 
     fn contains(args: &[String], flag: &str) -> bool {
         pos(args, flag).is_some()
+    }
+
+    const NEW_RUNTIME_TUNING_FIELDS: [&str; 10] = [
+        "cache_reuse",
+        "cram_mb",
+        "checkpoint_every_n_tokens",
+        "n_cpu_moe",
+        "min_p",
+        "dry_multiplier",
+        "dry_base",
+        "dry_allowed_length",
+        "dry_penalty_last_n",
+        "swa_full",
+    ];
+
+    fn runtime_tuning_schema_properties() -> BTreeSet<String> {
+        let schema: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../../../specs/039-llamacpp-throughput-tier1/contracts/runtime_tuning.schema.json",
+        ))
+        .expect("schema parses");
+        schema
+            .get("properties")
+            .and_then(serde_json::Value::as_object)
+            .expect("schema has properties")
+            .keys()
+            .cloned()
+            .collect()
     }
 
     #[test]
@@ -1358,6 +1425,7 @@ mod runtime_tuning_tests {
             n_parallel: Some(4),
             cont_batching: Some(true),
             seed: Some(42),
+            ..Default::default()
         };
         let args = runtime_to_args(&tuning);
 
@@ -1464,6 +1532,32 @@ mod runtime_tuning_tests {
     }
 
     #[test]
+    fn sensible_defaults_does_not_populate_new_fields() {
+        let defaults = RuntimeTuning::sensible_defaults(Some(40), true);
+        assert_eq!(defaults.cache_reuse, None);
+        assert_eq!(defaults.cram_mb, None);
+        assert_eq!(defaults.checkpoint_every_n_tokens, None);
+        assert_eq!(defaults.n_cpu_moe, None);
+        assert_eq!(defaults.min_p, None);
+        assert_eq!(defaults.dry_multiplier, None);
+        assert_eq!(defaults.dry_base, None);
+        assert_eq!(defaults.dry_allowed_length, None);
+        assert_eq!(defaults.dry_penalty_last_n, None);
+        assert_eq!(defaults.swa_full, None);
+
+        let serialized = serde_json::to_value(&defaults).expect("defaults serialize");
+        let object = serialized
+            .as_object()
+            .expect("defaults serialize to object");
+        for field in NEW_RUNTIME_TUNING_FIELDS {
+            assert!(
+                !object.contains_key(field),
+                "{field} should be omitted when None"
+            );
+        }
+    }
+
+    #[test]
     fn runtime_tuning_deserializes_with_extended_fields() {
         let json = r#"{"mmap": true, "n_batch": 512, "seed": 42}"#;
         let parsed: RuntimeTuning = serde_json::from_str(json).expect("parses");
@@ -1488,5 +1582,40 @@ mod runtime_tuning_tests {
         assert_eq!(parsed.n_parallel, None);
         assert_eq!(parsed.cont_batching, None);
         assert_eq!(parsed.seed, None);
+    }
+
+    #[test]
+    fn runtime_tuning_dto_matches_schema() {
+        let tuning = RuntimeTuning {
+            n_gpu_layers: Some(40),
+            threads: Some(8),
+            flash_attn: Some(true),
+            ctx_size: Some(8192),
+            cache_type_k: Some("q8_0".into()),
+            cache_type_v: Some("bf16".into()),
+            mmap: Some(true),
+            mlock: Some(true),
+            n_batch: Some(512),
+            n_ubatch: Some(128),
+            n_parallel: Some(4),
+            cont_batching: Some(true),
+            seed: Some(42),
+            cache_reuse: Some(256),
+            cram_mb: Some(1024),
+            checkpoint_every_n_tokens: Some(8192),
+            n_cpu_moe: Some(8),
+            min_p: Some(0.1),
+            dry_multiplier: Some(0.8),
+            dry_base: Some(1.75),
+            dry_allowed_length: Some(2),
+            dry_penalty_last_n: Some(-1),
+            swa_full: Some(true),
+        };
+
+        let serialized = serde_json::to_value(&tuning).expect("dto serializes");
+        let object = serialized.as_object().expect("dto serializes to object");
+        let actual_keys: BTreeSet<String> = object.keys().cloned().collect();
+
+        assert_eq!(actual_keys, runtime_tuning_schema_properties());
     }
 }
