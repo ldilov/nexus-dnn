@@ -10,21 +10,21 @@ use std::collections::BTreeMap;
 use std::convert::Infallible;
 use std::time::Duration;
 
+use axum::Json;
 use axum::extract::{Path, Query};
 use axum::http::StatusCode;
-use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::IntoResponse;
-use axum::Json;
+use axum::response::sse::{Event, KeepAlive, Sse};
 use futures_util::stream::Stream;
 use nexus_run_events::broker;
 use nexus_run_events::{
-    event_severity_bucket, event_ts_ms, EventBatch, RunEventBroker, RunEventItem, RunId,
-    SeqNum, SeverityBucket,
+    EventBatch, RunEventBroker, RunEventItem, RunId, SeqNum, SeverityBucket, event_severity_bucket,
+    event_ts_ms,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::ReceiverStream;
 
 #[derive(Debug, Deserialize)]
 pub struct EventsQuery {
@@ -58,12 +58,7 @@ fn build_event_stream(
     let (tx, rx) = mpsc::channel::<EventBatch>(256);
     if let Some(start) = starting_from {
         for run in &runs {
-            let events = broker.query_window(
-                run,
-                start,
-                SeqNum::new(u64::MAX),
-                allow.as_deref(),
-            );
+            let events = broker.query_window(run, start, SeqNum::new(u64::MAX), allow.as_deref());
             if events.is_empty() {
                 continue;
             }
@@ -265,11 +260,12 @@ pub struct MetricAggregate {
 }
 
 /// Aggregate hot-tier history into time buckets.
-pub async fn get_run_events_buckets(
-    Query(query): Query<BucketsQuery>,
-) -> impl IntoResponse {
+pub async fn get_run_events_buckets(Query(query): Query<BucketsQuery>) -> impl IntoResponse {
     if query.bucket_ms < 100 {
-        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "bucket_ms must be >= 100"})))
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "bucket_ms must be >= 100"})),
+        )
             .into_response();
     }
     let broker = broker::global();

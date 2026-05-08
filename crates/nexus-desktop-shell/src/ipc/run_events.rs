@@ -12,8 +12,8 @@ use crate::errors::{IpcError, IpcResult};
 use crate::ipc::SCHEMA_V1;
 use nexus_run_events::broker;
 use nexus_run_events::{
-    event_severity_bucket, event_ts_ms, EventBatch, GapReason, RunEventBroker, RunEventItem,
-    RunId, SeqNum, SeverityBucket,
+    event_severity_bucket, event_ts_ms, EventBatch, GapReason, RunEventBroker, RunEventItem, RunId,
+    SeqNum, SeverityBucket,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
@@ -91,8 +91,7 @@ fn replay_window(
         run_ids.to_vec()
     };
     for run in runs {
-        let events =
-            broker.query_window(&run, start, SeqNum::new(u64::MAX), source_filter);
+        let events = broker.query_window(&run, start, SeqNum::new(u64::MAX), source_filter);
         if events.is_empty() {
             continue;
         }
