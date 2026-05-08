@@ -7,3 +7,4 @@
 
 pub mod cpu_cores;
 pub mod models_metadata;
+pub mod run_events;

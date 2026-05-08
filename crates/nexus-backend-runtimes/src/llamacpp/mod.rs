@@ -1,8 +1,19 @@
+//! Llama.cpp backend adapter.
+//!
+//! Spec 042 requires every spawned `llama-server` process to run with
+//! `--log-verbosity 1`. That setting unlocks the per-tensor histogram
+//! and per-layer KV-cache info lines that
+//! [`scraper_patterns::LlamacppScraperV1`] depends on for the
+//! Model-load Lattice. The flag is added to
+//! [`LaunchSpec::base_args`] inside `launch_spec` below; it is host-
+//! managed and is not subject to extension parameter passthrough.
+
 pub mod channel_builder;
 mod install_ctx;
 pub mod install_pipeline;
 pub mod installs_store;
 pub mod probe;
+pub mod scraper_patterns;
 
 use async_trait::async_trait;
 use camino::Utf8PathBuf;
@@ -278,11 +289,95 @@ impl BackendAdapter for LlamaCppAdapter {
         } else {
             candidate
         };
+        let base_env = build_base_env_for_gpu_arch().await;
         Ok(LaunchSpec {
             binary,
-            base_args: Vec::new(),
-            base_env: BTreeMap::new(),
+            base_args: vec!["--log-verbosity".into(), "1".into()],
+            base_env,
             working_dir: None,
         })
+    }
+}
+
+/// Process-lifetime cache for the host's max GPU compute capability major.
+/// Detected once via `nvidia-smi --query-gpu=compute_cap` and reused for every
+/// subsequent spawn so we don't pay the ~50ms subprocess cost per launch.
+static COMPUTE_CAP_MAJOR_CACHE: tokio::sync::OnceCell<Option<u8>> =
+    tokio::sync::OnceCell::const_new();
+
+async fn cached_compute_cap_major() -> Option<u8> {
+    *COMPUTE_CAP_MAJOR_CACHE
+        .get_or_init(crate::resolver::detect_gpu_compute_cap_major)
+        .await
+}
+
+/// Inject `GGML_CUDA_FORCE_CUBLAS=1` when the host has a Blackwell-or-newer GPU
+/// (compute_cap_major >= 10). On those architectures the cuBLAS path tends to
+/// outperform MMQ for quantized matmul (Blackwell B100/B200 sm_100 + RTX 50
+/// series sm_120). Pre-Blackwell cards keep the MMQ default by emitting no
+/// override.
+async fn build_base_env_for_gpu_arch() -> BTreeMap<String, String> {
+    base_env_for_compute_cap(cached_compute_cap_major().await)
+}
+
+fn base_env_for_compute_cap(compute_cap_major: Option<u8>) -> BTreeMap<String, String> {
+    let mut env = BTreeMap::new();
+    if matches!(compute_cap_major, Some(major) if major >= 10) {
+        env.insert("GGML_CUDA_FORCE_CUBLAS".to_string(), "1".to_string());
+    }
+    env
+}
+
+#[cfg(test)]
+mod base_env_tests {
+    use super::base_env_for_compute_cap;
+
+    #[test]
+    fn no_compute_cap_emits_empty_env() {
+        let env = base_env_for_compute_cap(None);
+        assert!(env.is_empty());
+    }
+
+    #[test]
+    fn ada_lovelace_keeps_mmq_default() {
+        // sm_89 / Ada Lovelace (RTX 4090) — MMQ path is faster, no override.
+        let env = base_env_for_compute_cap(Some(8));
+        assert!(!env.contains_key("GGML_CUDA_FORCE_CUBLAS"));
+    }
+
+    #[test]
+    fn hopper_keeps_mmq_default() {
+        // sm_90 / Hopper (H100) — major == 9, still under threshold.
+        let env = base_env_for_compute_cap(Some(9));
+        assert!(!env.contains_key("GGML_CUDA_FORCE_CUBLAS"));
+    }
+
+    #[test]
+    fn blackwell_datacenter_forces_cublas() {
+        // sm_100 / Blackwell (B100/B200).
+        let env = base_env_for_compute_cap(Some(10));
+        assert_eq!(
+            env.get("GGML_CUDA_FORCE_CUBLAS").map(String::as_str),
+            Some("1")
+        );
+    }
+
+    #[test]
+    fn blackwell_consumer_forces_cublas() {
+        // sm_120 / consumer Blackwell (RTX 50 series).
+        let env = base_env_for_compute_cap(Some(12));
+        assert_eq!(
+            env.get("GGML_CUDA_FORCE_CUBLAS").map(String::as_str),
+            Some("1")
+        );
+    }
+
+    #[test]
+    fn future_archs_keep_cublas_override() {
+        let env = base_env_for_compute_cap(Some(15));
+        assert_eq!(
+            env.get("GGML_CUDA_FORCE_CUBLAS").map(String::as_str),
+            Some("1")
+        );
     }
 }
