@@ -47,3 +47,22 @@ following commands (one module per command group):
 Bodies are stubbed (`IpcError::not_implemented`) in Phase 2 (T021–T025) — full
 implementations land in Phase 3 (US1) when the embedded `nexus-api` host is
 linked in (T032).
+
+## Capability requirements
+
+The Tauri binary at [`apps/web/src-tauri/`](../../apps/web/src-tauri/) declares
+the capabilities consumed by this shell in
+[`capabilities/default.json`](../../apps/web/src-tauri/capabilities/default.json).
+
+Required permissions:
+
+- `core:default` (baseline)
+- `core:window:default` plus `allow-start-dragging`, `allow-show`, `allow-hide`,
+  `allow-set-focus`, `allow-toggle-maximize`, `allow-minimize`, `allow-close`
+  (custom-titlebar drag region + window controls)
+- `core:event:default` (event channel for streamed `RunEvent` batches)
+- `core:tray:default` (system-tray menu)
+- The custom `cmd_*` allowlist enumerated above
+
+Adding a new IPC command implies extending both the dispatcher (this crate)
+**and** the capability file — they must stay in sync.

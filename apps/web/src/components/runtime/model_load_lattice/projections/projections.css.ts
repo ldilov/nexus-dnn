@@ -33,9 +33,9 @@ export const eyebrow = style({
 export const bytesBar = style({
   position: "relative",
   width: "100%",
-  height: "4px",
+  height: terminal.lattice.bytesBarHeight,
   backgroundColor: vars.color.bg.lowest,
-  borderRadius: "1px",
+  borderRadius: terminal.lattice.cellRadius,
   overflow: "hidden",
 });
 
@@ -53,7 +53,7 @@ export const bytesMarker = style({
   position: "absolute",
   top: 0,
   bottom: 0,
-  width: "1px",
+  width: terminal.lattice.bytesMarkerWidth,
   backgroundColor: terminal.state.activeGlow,
   opacity: 0.4,
 });
@@ -78,7 +78,7 @@ export const phaseChipBase = style({
   alignItems: "center",
   gap: vars.density.d1,
   padding: `${vars.density.d1} ${vars.density.d3}`,
-  borderRadius: "1px",
+  borderRadius: terminal.lattice.cellRadius,
   fontSize: terminal.type.monoCompact,
   letterSpacing: "0.06em",
   textTransform: "uppercase",
@@ -93,7 +93,7 @@ export const phaseChipState = styleVariants({
   },
   active: {
     color: vars.color.text.primary,
-    boxShadow: `inset 0 0 0 1px ${terminal.state.activeGlow}`,
+    boxShadow: `inset 0 0 0 ${terminal.lattice.cellOutlineWidth} ${terminal.state.activeGlow}`,
     animationName: pulse,
     animationDuration: terminal.motion.ambientSlow,
     animationIterationCount: "infinite",
@@ -117,7 +117,7 @@ export const phaseChipState = styleVariants({
 });
 
 export const phaseIndex = style({
-  fontSize: "10px",
+  fontSize: terminal.lattice.indexFontSize,
   opacity: 0.7,
 });
 

@@ -66,7 +66,7 @@ export const auxBlock = style({
   flexDirection: "column",
   gap: vars.density.d2,
   paddingBottom: vars.density.d2,
-  borderBottom: `1px dashed ${vars.color.outline.variant}`,
+  borderBottom: `${terminal.lattice.cellOutlineWidth} dashed ${vars.color.outline.variant}`,
 });
 
 export const auxLabel = style({
@@ -115,7 +115,7 @@ export const layerLabel = style({
 export const cellBase = style({
   width: terminal.lattice.cellSize,
   height: terminal.lattice.cellSize,
-  borderRadius: "1px",
+  borderRadius: terminal.lattice.cellRadius,
   backgroundColor: terminal.state.pending,
   cursor: "pointer",
   transition: `background-color ${terminal.motion.snapTransition} ${terminal.motion.ease}, box-shadow ${terminal.motion.snapTransition} ${terminal.motion.ease}`,
@@ -123,12 +123,12 @@ export const cellBase = style({
   border: "none",
   padding: 0,
   ":focus-visible": {
-    boxShadow: `inset 0 0 0 1px ${terminal.state.activeGlow}`,
+    boxShadow: `inset 0 0 0 ${terminal.lattice.cellOutlineWidth} ${terminal.state.activeGlow}`,
   },
 });
 
 export const cellAux = style({
-  height: "9px",
+  height: terminal.lattice.cellAuxHeight,
   opacity: 0.85,
 });
 
@@ -168,17 +168,17 @@ export const cellPhase = styleVariants({
   },
   error: {
     backgroundColor: terminal.state.error,
-    boxShadow: `inset 0 0 0 1px ${terminal.state.error}`,
+    boxShadow: `inset 0 0 0 ${terminal.lattice.cellOutlineWidth} ${terminal.state.error}`,
   },
 });
 
 export const cellTrail = style({
-  boxShadow: `inset 0 0 0 1px ${terminal.state.activeGlow}`,
+  boxShadow: `inset 0 0 0 ${terminal.lattice.cellOutlineWidth} ${terminal.state.activeGlow}`,
   transition: `box-shadow ${terminal.motion.persistFade} ${terminal.motion.ease}`,
 });
 
 export const cellSelected = style({
-  boxShadow: `inset 0 0 0 1px ${terminal.state.activeGlow}, inset 0 0 4px ${terminal.state.activeGlow}`,
+  boxShadow: `inset 0 0 0 ${terminal.lattice.cellOutlineWidth} ${terminal.state.activeGlow}, inset 0 0 ${terminal.lattice.cellSelectedHaloRadius} ${terminal.state.activeGlow}`,
 });
 
 export const ladderColumn = style({
@@ -187,7 +187,7 @@ export const ladderColumn = style({
   alignItems: "stretch",
   gap: vars.density.d2,
   paddingLeft: vars.density.d3,
-  borderLeft: `1px solid ${vars.color.outline.variant}`,
+  borderLeft: `${terminal.lattice.cellOutlineWidth} solid ${vars.color.outline.variant}`,
 });
 
 export const projectionsHost = style({

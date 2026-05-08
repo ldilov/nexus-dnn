@@ -22,9 +22,9 @@ export const root = style({
 export const indicator = style({
   position: "absolute",
   left: 0,
-  width: "2px",
+  width: terminal.lattice.indicatorWidth,
   backgroundColor: terminal.state.activeGlow,
-  borderRadius: "1px",
+  borderRadius: terminal.lattice.indicatorRadius,
   pointerEvents: "none",
   transition: `transform ${terminal.motion.snapTransition} ${terminal.motion.ease}`,
 });
@@ -44,24 +44,24 @@ export const rung = style({
   letterSpacing: "0.06em",
   textAlign: "left",
   cursor: "pointer",
-  borderRadius: "2px",
+  borderRadius: terminal.lattice.rungBorderRadius,
   transition: `color ${terminal.motion.snapTransition} ${terminal.motion.ease}, background ${terminal.motion.snapTransition} ${terminal.motion.ease}`,
   ":hover": {
     color: vars.color.text.primary,
   },
   ":focus-visible": {
-    outline: `1px solid ${terminal.state.activeGlow}`,
-    outlineOffset: "1px",
+    outline: `${terminal.lattice.rungOutlineWidth} solid ${terminal.state.activeGlow}`,
+    outlineOffset: terminal.lattice.rungOutlineOffset,
   },
 });
 
 export const rungActive = style({
   color: vars.color.text.primary,
-  boxShadow: `inset 0 0 0 1px ${terminal.state.activeGlow}`,
+  boxShadow: `inset 0 0 0 ${terminal.lattice.cellOutlineWidth} ${terminal.state.activeGlow}`,
 });
 
 export const rungIndex = style({
-  fontSize: "10px",
+  fontSize: terminal.lattice.indexFontSize,
   color: vars.color.text.muted,
   fontVariantNumeric: "tabular-nums",
   width: "2ch",
@@ -73,8 +73,8 @@ export const rungLabel = style({
 });
 
 export const rungSize = styleVariants({
-  bytes: { fontSize: "10px" },
-  tensors: { fontSize: "11px" },
-  phases: { fontSize: "12px", fontWeight: 600 },
-  story: { fontSize: "11px" },
+  bytes: { fontSize: terminal.lattice.rungBytesFontSize },
+  tensors: { fontSize: terminal.lattice.rungTensorsFontSize },
+  phases: { fontSize: terminal.lattice.rungPhasesFontSize, fontWeight: 600 },
+  story: { fontSize: terminal.lattice.rungStoryFontSize },
 });
