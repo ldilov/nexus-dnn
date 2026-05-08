@@ -2,9 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use nexus_run_events::store::WorkerScraper;
-use nexus_run_events::{
-    EventBatch, RunEventBroker, RunEventItem, RunId, SeqNum, SCHEMA_V1,
-};
+use nexus_run_events::{EventBatch, RunEventBroker, RunEventItem, RunId, SCHEMA_V1, SeqNum};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::Mutex as TokioMutex;
@@ -107,8 +105,7 @@ where
                 ctx.publisher.publish(event).await;
                 if let Some(scraper) = ctx.scraper.as_ref() {
                     let mut s = scraper.lock().await;
-                    let new_events =
-                        s.ingest_line(&trimmed, nexus_run_events::LineStream::Stderr);
+                    let new_events = s.ingest_line(&trimmed, nexus_run_events::LineStream::Stderr);
                     drop(s);
                     batch_buffer.extend(new_events);
                     if last_flush.elapsed() >= coalesce && !batch_buffer.is_empty() {

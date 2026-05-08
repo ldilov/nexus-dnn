@@ -14,7 +14,7 @@ use crate::errors::{IpcError, IpcResult};
 use crate::ipc::SCHEMA_V1;
 use crate::tray::TRAY_ID;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Runtime};
 
 #[derive(Debug, Deserialize)]
 pub struct TrayStateInput {

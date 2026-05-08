@@ -14,7 +14,7 @@ export const drawer = style({
   top: vars.density.d4,
   right: vars.density.d4,
   bottom: vars.density.d4,
-  width: "min(420px, 90vw)",
+  width: terminal.lattice.inspectorWidth,
   display: "flex",
   flexDirection: "column",
   gap: vars.density.d3,
@@ -22,7 +22,7 @@ export const drawer = style({
   background: vars.card.bg,
   backdropFilter: vars.card.backdrop,
   WebkitBackdropFilter: vars.card.backdrop,
-  border: `1px solid ${vars.color.outline.variant}`,
+  border: `${terminal.lattice.inspectorBorderWidth} solid ${vars.color.outline.variant}`,
   borderRadius: vars.radius.panel,
   boxShadow: vars.shadow.lg,
   zIndex: vars.z.drawer,
@@ -78,7 +78,7 @@ export const fieldRow = style({
   fontSize: terminal.type.monoCompact,
   paddingTop: vars.density.d1,
   paddingBottom: vars.density.d1,
-  borderBottom: `1px dashed ${vars.color.outline.variant}`,
+  borderBottom: `${terminal.lattice.inspectorBorderWidth} dashed ${vars.color.outline.variant}`,
 });
 
 export const fieldKey = style({
@@ -106,8 +106,8 @@ export const actionBtn = style({
   gap: vars.density.d1,
   padding: `${vars.density.d2} ${vars.density.d3}`,
   background: "transparent",
-  border: `1px solid ${vars.color.outline.variant}`,
-  borderRadius: "2px",
+  border: `${terminal.lattice.inspectorBorderWidth} solid ${vars.color.outline.variant}`,
+  borderRadius: terminal.lattice.inspectorActionRadius,
   color: vars.color.text.primary,
   fontFamily: terminal.type.mono,
   fontSize: terminal.type.monoCompact,

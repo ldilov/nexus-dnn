@@ -379,9 +379,7 @@ fn spawn_runtime_log_pipes(
     let scraper_for_family = build_llamacpp_scraper(&family, &lease_id);
     let build_ctx =
         |namespace: &str,
-         scraper: Option<
-            Arc<tokio::sync::Mutex<dyn nexus_run_events::store::WorkerScraper>>,
-        >,
+         scraper: Option<Arc<tokio::sync::Mutex<dyn nexus_run_events::store::WorkerScraper>>>,
          run_id: Option<nexus_run_events::RunId>|
          -> Arc<LogPipelineContext> {
             Arc::new(LogPipelineContext {

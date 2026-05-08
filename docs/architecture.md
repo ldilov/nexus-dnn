@@ -144,6 +144,53 @@ The handler implements policy "any lease that supports text completion with ≥ 
 
 ---
 
+## 🖥️ Spec 042 — Neo-Terminal Desktop Shell
+
+### Block primitive — the new UI atom
+
+Spec 042 introduces the **Block** as the canonical UI atom for every actionable surface that hosts dense telemetry, transient operations, or live data streams. A Block is a prompt-style container that packages four concerns into one focusable element: a mono-numbered prompt header, a 4-letter mnemonic chip (registered with the host search palette so any Block is reachable by short-circuit), a collapsed-state inline sparkline that previews the underlying signal without expanding, and an inset-only phosphor focus glow that signals activation without reaching into outer-halo territory.
+
+Source: [`apps/web/src/components/blocks/`](../apps/web/src/components/blocks/) (`block.tsx`, `block_header.tsx`, `block.css.ts`).
+
+The Block's design constraints derive from the Bloomberg-dense / Kinetic Observatory aesthetic locked in [`docs/brainstorms/2026-05-08-terminal-on-steroids-lattice.md`](brainstorms/2026-05-08-terminal-on-steroids-lattice.md):
+
+- **4 px base spacing**, JetBrains Mono throughout, `font-variant-numeric: tabular-nums` on every metric so digits never jitter.
+- **Inset-only phosphor glow** — focus state lives inside the element via `box-shadow: inset`, never an outer halo.
+- **Mnemonic-first navigation** — the 4-letter chip is the call-to-action contract for the host's `cmd_block_register_mnemonic` IPC command, defined in [`specs/042-neo-terminal-shell/contracts/ipc-commands.md`](../specs/042-neo-terminal-shell/contracts/ipc-commands.md). Duplicates resolve to a conflict response, never silently overwrite.
+- **No hard-coded visual quantities** — every length, duration, opacity, and color reads from the [`terminal.*`](../apps/web/src/styles/tokens/terminal.css.ts) semantic-role token group, enforced by the [`scan-terminal-tokens.mjs`](../apps/web/scripts/scan-terminal-tokens.mjs) lint scan (`pnpm scan:terminal-tokens`).
+
+The Block exists as a primitive precisely so screens like the model-load Lattice, the recipe runner, and the chat thread list can compose dense interactive surfaces without re-deriving the prompt-style header / focus glow / sparkline contract per surface. Spec 042 ships the primitive; subsequent consumers wire it into their views without further design work.
+
+### RunEventItem event substrate
+
+The same spec introduces a generic, versioned, sequence-numbered structured event protocol that decouples worker telemetry from UI rendering. Every nexus-dnn worker scraper (model loader, dependency installer, GGUF probe, future surfaces) emits a stream of `RunEventItem` records that the frontend's tiered store ingests and the UI surfaces project into the Lattice, the Pulse-Floor, the Block sparkline, and the inspector drawer.
+
+Source: [`crates/nexus-run-events/`](../crates/nexus-run-events/) on the Rust side; [`apps/web/src/services/run_events.ts`](../apps/web/src/services/run_events.ts) (hot ring buffer + rAF-batched fan-out) and [`apps/web/src/services/run_events_warm.ts`](../apps/web/src/services/run_events_warm.ts) (IndexedDB warm tier) on the frontend side.
+
+```text
+worker stderr/stdout
+        |
+        v
+  WorkerScraper trait  ── ingest_line / flush ──> Vec<RunEventItem>
+        |
+        v
+  EventBatch transport ── seq, ts_ms, source, kind ──> hot ring buffer (~2k items per run)
+        |                                              ──> warm tier (IndexedDB, capped ~50 MB)
+        v
+  rAF-batched fan-out ──> Lattice cells / Pulse-Floor traces / Block sparkline / inspector drawer
+```
+
+Key contract guarantees (full schema in [`specs/042-neo-terminal-shell/contracts/run-event.schema.json`](../specs/042-neo-terminal-shell/contracts/run-event.schema.json)):
+
+- **Versioned**: `SCHEMA_V1 = "nexus.run-event.v1"`. Additive enum variants and additive optional fields ride the same version; breaking changes mint `v2`. Unknown variants deserialise via `#[non_exhaustive]` semantics, never panic.
+- **Sequence-numbered**: monotonic `seq` per `(run_id, source)` pair so the frontend can detect gaps and emit `Gap` markers when the warm tier rolls a window.
+- **Generic**: every variant is shape-driven, never extension-named. `Phase`, `Metric`, `TensorAllocate`, `Error`, `LineStream`, and `ScraperUnknown` are the cross-cutting kinds; no `kind: "local_llm_thing"` exists.
+- **Tested**: schema-roundtrip contract test at [`crates/nexus-run-events/tests/schema_compat.rs`](../crates/nexus-run-events/tests/schema_compat.rs); boundary audit at [`crates/nexus-run-events/scripts/boundary_audit.ps1`](../crates/nexus-run-events/scripts/boundary_audit.ps1) gates every merge.
+
+Adding a new worker scraper means implementing `WorkerScraper`, returning a stable `id()`, and translating raw lines into typed events in `ingest_line`. The frontend gains the new telemetry for free — every Block / Lattice / Pulse-Floor consumer subscribes by `RunId`, not by extension or scraper identity.
+
+---
+
 ## 🔗 Related Documentation
 
 | Document | Description |

@@ -16,13 +16,10 @@ import { style } from "@vanilla-extract/css";
 import { vars } from "../../styles/theme.css";
 import { terminal } from "../../styles/tokens/terminal.css";
 
-const STRIP_HEIGHT = "32px";
-const MAC_TRAFFIC_LIGHT_INSET = "78px";
-
 export const titlebar = style({
   display: "flex",
   alignItems: "center",
-  height: STRIP_HEIGHT,
+  height: terminal.titlebar.stripHeight,
   paddingInline: terminal.block.gapInline,
   background: vars.color.surface,
   color: vars.color.onSurface,
@@ -31,7 +28,7 @@ export const titlebar = style({
   userSelect: "none",
   selectors: {
     '&[data-platform="darwin"]': {
-      paddingLeft: MAC_TRAFFIC_LIGHT_INSET,
+      paddingLeft: terminal.titlebar.macTrafficLightInset,
     },
   },
 });

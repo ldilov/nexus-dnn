@@ -287,8 +287,8 @@ fn run_fixture(name: &str) {
         .unwrap_or_else(|e| panic!("missing fixture {txt_path:?}: {e}"));
     let raw = std::fs::read_to_string(&json_path)
         .unwrap_or_else(|e| panic!("missing expected {json_path:?}: {e}"));
-    let expected: Expected = serde_json::from_str(&raw)
-        .unwrap_or_else(|e| panic!("malformed {json_path:?}: {e}"));
+    let expected: Expected =
+        serde_json::from_str(&raw).unwrap_or_else(|e| panic!("malformed {json_path:?}: {e}"));
     let actual = canonicalize(&replay_fixture(&input));
     assert_must_contain(&actual, &expected, name);
 }
