@@ -46,9 +46,7 @@ impl SchemaVersion {
 pub const SCHEMA_V1: SchemaVersion = SchemaVersion::new("nexus.run-event.v1");
 
 /// Stream that produced a `Line` event.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum LineStream {
@@ -59,9 +57,7 @@ pub enum LineStream {
 }
 
 /// Severity level for log lines.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Severity {
@@ -73,9 +69,7 @@ pub enum Severity {
 }
 
 /// Named phase of a run lifecycle.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum PhaseName {
@@ -89,9 +83,7 @@ pub enum PhaseName {
 }
 
 /// Lifecycle state of a phase.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum PhaseState {
@@ -102,9 +94,7 @@ pub enum PhaseState {
 }
 
 /// Logical group a tensor belongs to within a model.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum TensorGroup {
@@ -118,9 +108,7 @@ pub enum TensorGroup {
 }
 
 /// Memory destination of a tensor allocation.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum AllocationTarget {
@@ -137,9 +125,7 @@ pub enum AllocationTarget {
 }
 
 /// Unit of a metric value.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum MetricUnit {
