@@ -22,6 +22,7 @@ import {
 } from "./views/extensions/extensions.routes";
 import { RunsPlaceholderRoute } from "./views/runs/runs.route";
 import { ArtifactsPlaceholderRoute } from "./views/artifacts/artifacts.route";
+import { RuntimeLatticeRoute } from "./views/runtime_lattice/lattice.view";
 
 export const router = createHashRouter([
   {
@@ -69,8 +70,10 @@ export const router = createHashRouter([
       },
       { path: "extensions/:layoutId", Component: ExtensionLayoutRoute },
       { path: "runs", Component: RunsPlaceholderRoute },
+      { path: "runtime/load/:runId", Component: RuntimeLatticeRoute },
       { path: "artifacts", Component: ArtifactsPlaceholderRoute },
       { path: "dev/components", lazy: () => import("./views/dev-components") },
+      { path: "dev/lattice", lazy: () => import("./views/_dev/lattice_storybook") },
       { path: "*", loader: () => redirect("/") },
     ],
   },

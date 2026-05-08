@@ -178,6 +178,9 @@ async fn spawn_and_probe(
         deployment_id: None,
         publisher: publisher.clone(),
         backend: crate::family::RuntimeFamily::LLAMA_CPP.into(),
+        scraper: None,
+        run_id: None,
+        broker: None,
     });
     if let Some(out) = stdout {
         let ctx_clone = ctx.clone();

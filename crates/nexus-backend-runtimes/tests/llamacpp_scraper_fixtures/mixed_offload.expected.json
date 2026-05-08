@@ -1,0 +1,10 @@
+{
+  "must_contain": [
+    { "kind": "metric", "name": "model.n_layer" },
+    { "kind": "tensor_allocate", "layer": 0, "group": "attn", "target": "gpu:0" },
+    { "kind": "tensor_allocate", "layer": 50, "group": "ffn", "target": "cpu" },
+    { "kind": "phase", "phase": "tensors", "state": "in_progress" },
+    { "kind": "metric", "name": "buffer.bytes", "labels": { "device": "CUDA0", "kind": "model" } },
+    { "kind": "metric", "name": "buffer.bytes", "labels": { "device": "CPU", "kind": "model" } }
+  ]
+}

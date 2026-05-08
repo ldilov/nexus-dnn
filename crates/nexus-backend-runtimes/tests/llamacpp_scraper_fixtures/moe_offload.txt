@@ -1,0 +1,8 @@
+llama_model_loader: loaded meta data with 21 key-value pairs from mixtral-8x7b.gguf
+llama_model_loader: - tensor split  0:                blk.0.attn_q.weight q4_K     [  4096,  4096,     1,     1 ]    9.00 MiB
+llama_model_loader: - tensor split  1:                blk.31.ffn_up.weight q4_K     [  4096, 11008,     1,     1 ]   24.00 MiB
+llm_load_print_meta: n_layer               = 32
+llm_load_tensors: offloading 32 repeating layers to GPU
+llm_load_tensors: offloaded 32/32 layers to GPU
+llm_load_tensors: offloading 1 expert layers to CPU (n-cpu-moe)
+llama_kv_cache: size = 512.00 MiB (4096 cells, 32 layers, 1/1 seqs), K (f16):  256.00 MiB, V (f16):  256.00 MiB

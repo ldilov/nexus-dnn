@@ -55,16 +55,41 @@ export const terminal = createGlobalTheme(":root", {
     gapInline: "8px",
     headerHeight: "24px",
     sparklineHeight: "4px",
+    sparklineWidth: "80px",
     mnemonicLength: "4",
   },
 
   lattice: {
     cellSize: "13px",
     cellGap: "4px",
+    cellAuxHeight: "9px",
+    cellRadius: "1px",
+    cellOutlineWidth: "1px",
+    cellSelectedHaloRadius: "4px",
     breathCycle: "2000ms",
     breathAmplitudeMin: "0.90",
     breathAmplitudeMax: "1.00",
     sweepFade: "600ms",
+    indexFontSize: "10px",
+    rungBytesFontSize: "10px",
+    rungTensorsFontSize: "11px",
+    rungPhasesFontSize: "12px",
+    rungStoryFontSize: "11px",
+    indicatorWidth: "2px",
+    indicatorRadius: "1px",
+    bytesBarHeight: "4px",
+    bytesMarkerWidth: "1px",
+    inspectorWidth: "min(420px, 90vw)",
+    inspectorActionRadius: "2px",
+    inspectorBorderWidth: "1px",
+    rungBorderRadius: "2px",
+    rungOutlineWidth: "1px",
+    rungOutlineOffset: "1px",
+  },
+
+  titlebar: {
+    stripHeight: "32px",
+    macTrafficLightInset: "78px",
   },
 
   pulseFloor: {
@@ -73,6 +98,7 @@ export const terminal = createGlobalTheme(":root", {
     leadingGlowOpacity: "0.70",
     anomalyBoost: "1.80",
     anomalySustainMs: "1000ms",
+    leadingGlowBlur: "2px",
   },
 
   state: {
