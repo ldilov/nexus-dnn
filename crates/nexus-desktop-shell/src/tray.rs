@@ -15,6 +15,12 @@ const MENU_OPEN: &str = "open";
 const MENU_QUIT: &str = "quit";
 const MAIN_WINDOW_LABEL: &str = "main";
 
+/// Stable id for the application's tray icon.
+///
+/// Looked up by [`crate::ipc::tray::cmd_tray_set_state`] when updating the
+/// tooltip in response to host activity.
+pub const TRAY_ID: &str = "nexus-dnn-tray";
+
 /// Install the system tray on the given `AppHandle`.
 ///
 /// Called from `setup()` in [`crate::run`]. Returns a `tauri::Result` so
@@ -24,12 +30,15 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let quit_item = MenuItem::with_id(app, MENU_QUIT, "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open_item, &quit_item])?;
 
-    TrayIconBuilder::with_id("nexus-dnn-tray")
+    let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip("nexus-dnn")
         .menu(&menu)
         .show_menu_on_left_click(true)
-        .on_menu_event(handle_menu_event)
-        .build(app)?;
+        .on_menu_event(handle_menu_event);
+    if let Some(icon) = app.default_window_icon().cloned() {
+        builder = builder.icon(icon);
+    }
+    builder.build(app)?;
 
     Ok(())
 }
