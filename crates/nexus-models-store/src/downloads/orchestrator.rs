@@ -30,13 +30,14 @@ use reqwest::StatusCode;
 use reqwest::header::{HeaderMap, HeaderValue, RANGE};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore, watch};
+use tokio_util::sync::CancellationToken;
 
+use crate::downloads::MAX_CONCURRENT_DOWNLOADS;
 use crate::downloads::auth::TokenStore;
 use crate::downloads::install_map::{InstallMap, InstalledArtifactRecord};
 use crate::downloads::store::{
     JobStore, JobStoreError, PersistedJob, PersistedTarget, RequestedKind, TargetState,
 };
-use crate::downloads::MAX_CONCURRENT_DOWNLOADS;
 use crate::ids::{JobId, VariantId};
 use crate::normalize::classify::classify_format;
 use crate::types::DownloadState;
@@ -55,6 +56,7 @@ struct Inner {
     http: reqwest::Client,
     tokens: TokenStore,
     pause_signals: Mutex<HashMap<JobId, watch::Sender<bool>>>,
+    cancel: CancellationToken,
 }
 
 /// RAII permit guard — drops the semaphore permit when the job worker
@@ -74,6 +76,18 @@ impl DownloadOrchestrator {
         http: reqwest::Client,
         tokens: TokenStore,
     ) -> Self {
+        Self::with_cancel(store, install_map, sink_root, http, tokens, CancellationToken::new())
+    }
+
+    #[must_use]
+    pub fn with_cancel(
+        store: JobStore,
+        install_map: InstallMap,
+        sink_root: PathBuf,
+        http: reqwest::Client,
+        tokens: TokenStore,
+        cancel: CancellationToken,
+    ) -> Self {
         let this = Self {
             inner: Arc::new(Inner {
                 store,
@@ -84,6 +98,7 @@ impl DownloadOrchestrator {
                 http,
                 tokens,
                 pause_signals: Mutex::new(HashMap::new()),
+                cancel,
             }),
         };
         this.spawn_token_listener();
@@ -96,11 +111,20 @@ impl DownloadOrchestrator {
     fn spawn_token_listener(&self) {
         let mut rx = self.inner.tokens.subscribe();
         let orch = self.clone();
+        let cancel = self.inner.cancel.clone();
         tokio::spawn(async move {
-            while let Ok(event) = rx.recv().await {
-                tracing::info!(?event, "token event; invalidating auth_required jobs");
-                if let Err(e) = orch.invalidate_auth_required().await {
-                    tracing::warn!(error = %e, "auth_required invalidation failed");
+            loop {
+                tokio::select! {
+                    _ = cancel.cancelled() => break,
+                    event = rx.recv() => match event {
+                        Ok(ev) => {
+                            tracing::info!(?ev, "token event; invalidating auth_required jobs");
+                            if let Err(e) = orch.invalidate_auth_required().await {
+                                tracing::warn!(error = %e, "auth_required invalidation failed");
+                            }
+                        }
+                        Err(_) => break,
+                    }
                 }
             }
         });
@@ -110,7 +134,11 @@ impl DownloadOrchestrator {
     /// Safe to call multiple times; `enqueue` will simply no-op once
     /// every slot is busy. Exposed `pub` for tests.
     pub async fn invalidate_auth_required(&self) -> Result<(), JobStoreError> {
-        let ids = self.inner.store.list_by_state(DownloadState::AuthRequired).await?;
+        let ids = self
+            .inner
+            .store
+            .list_by_state(DownloadState::AuthRequired)
+            .await?;
         for id in ids {
             self.inner
                 .store
@@ -292,11 +320,7 @@ impl DownloadOrchestrator {
                     let _ = self
                         .inner
                         .store
-                        .update_target_state(
-                            &job.job_id,
-                            &target.artifact_id,
-                            TargetState::Queued,
-                        )
+                        .update_target_state(&job.job_id, &target.artifact_id, TargetState::Queued)
                         .await;
                     return Err(TargetFailure::Paused);
                 }
@@ -304,11 +328,7 @@ impl DownloadOrchestrator {
                     let _ = self
                         .inner
                         .store
-                        .update_target_state(
-                            &job.job_id,
-                            &target.artifact_id,
-                            TargetState::Failed,
-                        )
+                        .update_target_state(&job.job_id, &target.artifact_id, TargetState::Failed)
                         .await;
                     return Err(failure);
                 }
@@ -329,7 +349,11 @@ impl DownloadOrchestrator {
             let _ = tokio::fs::create_dir_all(parent).await;
         }
 
-        let disk_len = tokio::fs::metadata(&path).await.ok().map(|m| m.len()).unwrap_or(0);
+        let disk_len = tokio::fs::metadata(&path)
+            .await
+            .ok()
+            .map(|m| m.len())
+            .unwrap_or(0);
         let mut resume_from = target.downloaded_bytes.min(disk_len);
         if disk_len != resume_from {
             truncate_to(&path, resume_from).await?;
@@ -448,12 +472,11 @@ impl DownloadOrchestrator {
     /// and the mapping can be rebuilt by a future backfill if needed.
     async fn record_install(&self, job: &PersistedJob, target: &PersistedTarget) {
         let variant_id = match job.requested_kind {
-            RequestedKind::Variant => {
-                job.targets
-                    .iter()
-                    .find(|t| t.artifact_id == target.artifact_id)
-                    .and_then(|_| variant_id_from_job(job))
-            }
+            RequestedKind::Variant => job
+                .targets
+                .iter()
+                .find(|t| t.artifact_id == target.artifact_id)
+                .and_then(|_| variant_id_from_job(job)),
             RequestedKind::Primary | RequestedKind::Bundle => None,
         };
         let record = InstalledArtifactRecord {
@@ -482,8 +505,7 @@ impl DownloadOrchestrator {
         let artifact_id = target.artifact_id.clone();
         let artifact_path = resolve_artifact_path(&self.inner, job, target);
         tokio::spawn(async move {
-            let metadata =
-                nexus_model_metadata::extract_any(&artifact_path, artifact_id.as_str());
+            let metadata = nexus_model_metadata::extract_any(&artifact_path, artifact_id.as_str());
             if let Err(e) = install_map
                 .update_extraction_metadata(&artifact_id, &metadata)
                 .await
@@ -519,9 +541,14 @@ fn variant_id_from_job(job: &PersistedJob) -> Option<VariantId> {
     let hash_at = rest.find('#')?;
     let filename = rest.get(hash_at + 1..)?;
     let base = filename.rsplit('/').next()?;
-    let stem = base.strip_suffix(".gguf").or_else(|| base.strip_suffix(".ggml"))?;
+    let stem = base
+        .strip_suffix(".gguf")
+        .or_else(|| base.strip_suffix(".ggml"))?;
     let quant = stem.rsplit(['.', '-']).next()?;
-    Some(VariantId::from(format!("{fam}@{}", quant.to_ascii_uppercase())))
+    Some(VariantId::from(format!(
+        "{fam}@{}",
+        quant.to_ascii_uppercase()
+    )))
 }
 
 async fn truncate_to(path: &Path, size: u64) -> Result<(), TargetFailure> {
