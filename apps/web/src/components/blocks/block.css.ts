@@ -148,7 +148,7 @@ export const blockSummaryMetric = style({
 
 export const blockSparkline = style({
   display: "inline-block",
-  width: "80px",
+  width: terminal.block.sparklineWidth,
   height: terminal.block.sparklineHeight,
   marginLeft: terminal.block.gapInline,
   flexShrink: 0,

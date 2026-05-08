@@ -28,6 +28,8 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 futures-util = "0.3"
 async-trait = "0.1"
 nexus-protocol = { path = "../nexus-protocol" }
+nexus-run-events = { path = "../nexus-run-events" }
+regex = "1"
 rust-embed = { workspace = true }
 sysinfo = { version = "0.32", default-features = false, features = ["system"] }
 
