@@ -1,0 +1,3 @@
+llama_model_loader: loaded meta data with 21 key-value pairs from llama-3-70b.gguf
+llm_load_print_meta: n_layer               = 70
+llama_load_model_from_file: cancelled model load

@@ -1,0 +1,7 @@
+{
+  "must_contain": [
+    { "kind": "metric", "name": "model.n_layer" },
+    { "kind": "metric", "name": "kv.bytes", "labels": { "kind": "K" } },
+    { "kind": "phase", "phase": "kv_reserve", "state": "in_progress" }
+  ]
+}

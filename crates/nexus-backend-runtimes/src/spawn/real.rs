@@ -376,26 +376,55 @@ fn spawn_runtime_log_pipes(
     lease_id: String,
     publisher: SharedPublisher,
 ) {
-    // Same `LogPipelineContext` shape the probe phase uses. `source` is the
-    // log-console filter bucket the UI groups by; `namespace` separates
-    // stdout vs stderr at the row level for operators debugging which stream
-    // a crash came out of.
-    let build_ctx = |namespace: &str| -> Arc<LogPipelineContext> {
-        Arc::new(LogPipelineContext {
-            source: family.clone(),
-            namespace: namespace.to_string(),
-            runtime_id: Some(lease_id.clone()),
-            deployment_id: None,
-            publisher: publisher.clone(),
-            backend: family.clone(),
-        })
-    };
+    let scraper_for_family = build_llamacpp_scraper(&family, &lease_id);
+    let build_ctx =
+        |namespace: &str,
+         scraper: Option<
+            Arc<tokio::sync::Mutex<dyn nexus_run_events::store::WorkerScraper>>,
+        >,
+         run_id: Option<nexus_run_events::RunId>|
+         -> Arc<LogPipelineContext> {
+            Arc::new(LogPipelineContext {
+                source: family.clone(),
+                namespace: namespace.to_string(),
+                runtime_id: Some(lease_id.clone()),
+                deployment_id: None,
+                publisher: publisher.clone(),
+                backend: family.clone(),
+                scraper,
+                run_id,
+                broker: None,
+            })
+        };
     if let Some(out) = child.stdout.take() {
-        let ctx = build_ctx("runtime.stdout");
+        let ctx = build_ctx("runtime.stdout", None, None);
         tokio::spawn(async move { log_pipeline::pipe_stream(ctx, out).await });
     }
     if let Some(err) = child.stderr.take() {
-        let ctx = build_ctx("runtime.stderr");
+        let (scraper, run_id) = match scraper_for_family.clone() {
+            Some(pair) => (Some(pair.0), Some(pair.1)),
+            None => (None, None),
+        };
+        let ctx = build_ctx("runtime.stderr", scraper, run_id);
         tokio::spawn(async move { log_pipeline::pipe_stream(ctx, err).await });
     }
+}
+
+#[allow(clippy::type_complexity)]
+fn build_llamacpp_scraper(
+    family: &str,
+    lease_id: &str,
+) -> Option<(
+    Arc<tokio::sync::Mutex<dyn nexus_run_events::store::WorkerScraper>>,
+    nexus_run_events::RunId,
+)> {
+    if family != crate::family::RuntimeFamily::LLAMA_CPP {
+        return None;
+    }
+    let run_id = nexus_run_events::RunId::try_new(lease_id).ok()?;
+    let scraper: Arc<tokio::sync::Mutex<dyn nexus_run_events::store::WorkerScraper>> =
+        Arc::new(tokio::sync::Mutex::new(
+            crate::llamacpp::scraper_patterns::LlamacppScraperV1::new(run_id.clone()),
+        ));
+    Some((scraper, run_id))
 }

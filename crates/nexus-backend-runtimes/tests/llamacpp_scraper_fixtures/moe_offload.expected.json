@@ -1,0 +1,8 @@
+{
+  "must_contain": [
+    { "kind": "metric", "name": "model.n_layer" },
+    { "kind": "tensor_allocate", "layer": 0, "group": "attn", "target": "gpu:0" },
+    { "kind": "tensor_allocate", "layer": 31, "group": "ffn", "target": "cpu" },
+    { "kind": "phase", "phase": "tensors", "state": "in_progress" }
+  ]
+}

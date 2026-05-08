@@ -1,0 +1,4 @@
+llama_model_loader: loaded meta data with 21 key-value pairs from mamba-2.gguf
+llm_load_print_meta: n_layer               = 64
+llm_load_tensors: offloaded 64/64 layers to GPU
+llama_kv_cache: size = 256.00 MiB (4096 cells, 32 layers, 1/1 seqs), K (f16):  128.00 MiB, V (f16):  128.00 MiB

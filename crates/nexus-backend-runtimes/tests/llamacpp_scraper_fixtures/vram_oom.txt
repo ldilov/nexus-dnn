@@ -1,0 +1,6 @@
+llama_model_loader: loaded meta data with 21 key-value pairs from llama-3-70b.gguf
+llm_load_print_meta: n_layer               = 70
+llm_load_tensors: offloading 70 repeating layers to GPU
+ggml_cuda_host_malloc: allocating 12450.00 MiB on device 0: cudaMalloc failed: out of memory
+ggml_gallocr_reserve_n: failed to allocate CUDA0 buffer of size 13063061504
+llama_new_context_with_model: failed to allocate compute buffers
