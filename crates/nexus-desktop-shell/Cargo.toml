@@ -17,3 +17,4 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 anyhow = "1"
 tokio = { workspace = true }
+nexus-run-events = { path = "../nexus-run-events" }
