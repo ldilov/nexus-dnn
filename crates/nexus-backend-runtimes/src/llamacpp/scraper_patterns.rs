@@ -29,8 +29,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use nexus_run_events::store::WorkerScraper;
 use nexus_run_events::{
     AllocationTarget, ErrorReason, GapReason, LayerIndex, LineStream, MetricUnit, PhaseName,
-    PhaseState, RunEventItem, RunId, SchemaVersion, SeqNum, Severity, SourceId, TensorGroup,
-    SCHEMA_V1,
+    PhaseState, RunEventItem, RunId, SCHEMA_V1, SchemaVersion, SeqNum, Severity, SourceId,
+    TensorGroup,
 };
 use regex::Regex;
 
@@ -214,7 +214,12 @@ impl LlamacppScraperV1 {
         SourceId::try_new(SOURCE).expect("static source id")
     }
 
-    fn emit_phase(&mut self, phase: PhaseName, state: PhaseState, summary: Option<String>) -> RunEventItem {
+    fn emit_phase(
+        &mut self,
+        phase: PhaseName,
+        state: PhaseState,
+        summary: Option<String>,
+    ) -> RunEventItem {
         let seq = self.next_seq();
         RunEventItem::Phase {
             schema: self.schema(),
@@ -322,11 +327,7 @@ impl LlamacppScraperV1 {
         }
     }
 
-    fn classify_phase_transition(
-        &mut self,
-        family: FuncFamily,
-        out: &mut Vec<RunEventItem>,
-    ) {
+    fn classify_phase_transition(&mut self, family: FuncFamily, out: &mut Vec<RunEventItem>) {
         let next_phase = match family_phase(family) {
             Some(p) => p,
             None => return,
@@ -335,7 +336,12 @@ impl LlamacppScraperV1 {
             return;
         }
         if let Some(prev) = self.current_phase {
-            if needs_gap_check(prev, &mut self.n_layer_gap_emitted, self.n_layer.is_none(), GapPredicate::NLayer) {
+            if needs_gap_check(
+                prev,
+                &mut self.n_layer_gap_emitted,
+                self.n_layer.is_none(),
+                GapPredicate::NLayer,
+            ) {
                 let ev = self.emit_gap(GapReason::NLayerMissing);
                 out.push(ev);
             }
@@ -402,7 +408,10 @@ impl LlamacppScraperV1 {
             tensor_name: name,
             dtype,
         };
-        let key = (alloc.layer.map(|l| l.value()), tensor_group_key(alloc.group));
+        let key = (
+            alloc.layer.map(|l| l.value()),
+            tensor_group_key(alloc.group),
+        );
         let ev = self.emit_tensor_allocate(&alloc, AllocationTarget::Mixed);
         self.pending_allocations.insert(key, alloc);
         out.push(ev);
@@ -526,22 +535,12 @@ impl LlamacppScraperV1 {
         let mut k_labels = BTreeMap::new();
         k_labels.insert("kind".to_owned(), "K".to_owned());
         k_labels.insert("dtype".to_owned(), k_dtype.clone());
-        let ev_k = self.emit_metric(
-            "kv.bytes",
-            k_mib * 1_048_576.0,
-            MetricUnit::Bytes,
-            k_labels,
-        );
+        let ev_k = self.emit_metric("kv.bytes", k_mib * 1_048_576.0, MetricUnit::Bytes, k_labels);
         out.push(ev_k);
         let mut v_labels = BTreeMap::new();
         v_labels.insert("kind".to_owned(), "V".to_owned());
         v_labels.insert("dtype".to_owned(), v_dtype.clone());
-        let ev_v = self.emit_metric(
-            "kv.bytes",
-            v_mib * 1_048_576.0,
-            MetricUnit::Bytes,
-            v_labels,
-        );
+        let ev_v = self.emit_metric("kv.bytes", v_mib * 1_048_576.0, MetricUnit::Bytes, v_labels);
         out.push(ev_v);
         let summary = format!(
             "KV cache: {total_mib} MiB across {layers} layers, K ({k_dtype}) {k_mib}, V ({v_dtype}) {v_mib}"
@@ -552,13 +551,13 @@ impl LlamacppScraperV1 {
             && layers < n
         {
             let hybrid = self.emit_phase(
-                    PhaseName::KvReserve,
-                    PhaseState::InProgress,
-                    Some(format!(
-                        "{} layers without KV cache (hybrid model)",
-                        n - layers
-                    )),
-                );
+                PhaseName::KvReserve,
+                PhaseState::InProgress,
+                Some(format!(
+                    "{} layers without KV cache (hybrid model)",
+                    n - layers
+                )),
+            );
             out.push(hybrid);
         }
         true
@@ -591,8 +590,11 @@ impl LlamacppScraperV1 {
         out.push(ev);
         if key == "graph" || key == "graph_splits" {
             let summary = format!("{raw} graph splits");
-            let phase_event =
-                self.emit_phase(PhaseName::ContextBuild, PhaseState::Completed, Some(summary));
+            let phase_event = self.emit_phase(
+                PhaseName::ContextBuild,
+                PhaseState::Completed,
+                Some(summary),
+            );
             out.push(phase_event);
         }
         true
@@ -947,19 +949,35 @@ mod tests {
     fn parses_n_layer() {
         let mut s = LlamacppScraperV1::new(run());
         let evs = s.ingest_line("llm_load_print_meta: n_layer = 32", LineStream::Stderr);
-        assert!(evs
-            .iter()
-            .any(|e| matches!(e, RunEventItem::Metric { name, .. } if name == "model.n_layer")));
+        assert!(
+            evs.iter()
+                .any(|e| matches!(e, RunEventItem::Metric { name, .. } if name == "model.n_layer"))
+        );
         assert_eq!(s.n_layer, Some(32));
     }
 
     #[test]
     fn classifies_tensor_groups() {
-        assert!(matches!(parse_tensor_name("blk.0.attn_q.weight").1, TensorGroup::Attn));
-        assert!(matches!(parse_tensor_name("blk.5.ffn_up.weight").1, TensorGroup::Ffn));
-        assert!(matches!(parse_tensor_name("blk.7.attn_norm.weight").1, TensorGroup::Norm));
-        assert!(matches!(parse_tensor_name("token_embd.weight").1, TensorGroup::Embed));
-        assert!(matches!(parse_tensor_name("output.weight").1, TensorGroup::Output));
+        assert!(matches!(
+            parse_tensor_name("blk.0.attn_q.weight").1,
+            TensorGroup::Attn
+        ));
+        assert!(matches!(
+            parse_tensor_name("blk.5.ffn_up.weight").1,
+            TensorGroup::Ffn
+        ));
+        assert!(matches!(
+            parse_tensor_name("blk.7.attn_norm.weight").1,
+            TensorGroup::Norm
+        ));
+        assert!(matches!(
+            parse_tensor_name("token_embd.weight").1,
+            TensorGroup::Embed
+        ));
+        assert!(matches!(
+            parse_tensor_name("output.weight").1,
+            TensorGroup::Output
+        ));
     }
 
     #[test]
@@ -969,9 +987,13 @@ mod tests {
             "llm_load_tensors:        FOOBAR model buffer size =   234.50 MiB",
             LineStream::Stderr,
         );
-        assert!(evs
-            .iter()
-            .any(|e| matches!(e, RunEventItem::Metric { name, .. } if name == "buffer.bytes")));
-        assert!(evs.iter().any(|e| matches!(e, RunEventItem::ScraperUnknown { .. })));
+        assert!(
+            evs.iter()
+                .any(|e| matches!(e, RunEventItem::Metric { name, .. } if name == "buffer.bytes"))
+        );
+        assert!(
+            evs.iter()
+                .any(|e| matches!(e, RunEventItem::ScraperUnknown { .. }))
+        );
     }
 }

@@ -51,6 +51,8 @@ nexus-dnn provides a developer-grade runtime that treats generative workflows as
 | `nexus-deployments` | Deployments domain (spec 018): named, append-only, reloadable execution-context snapshots over canonical workflows/recipes. Save / load / execute / validate / clone / export / import services. |
 | `nexus-huggingface` | Host-level Hugging Face capability — search, repo detail, resumable downloads |
 | `nexus-local-llm-worker` | Builtin local-LLM extension worker (Rust sidecar). Consumes host model-store and backend-runtime registries via JSON-RPC; holds `RuntimeLease`s and proxies OpenAI-compatible HTTP to leased `llama-server` children. No Python runtime in the extension. |
+| `nexus-run-events` | **Spec 042** — versioned, sequence-numbered structured event protocol emitted by every nexus-dnn worker scraper (model load, dependency install, GGUF probe, ...). Generic by design: `RunEventItem` + `WorkerScraper` trait + `EventBatch` transport. Feeds the Lattice / Pulse-Floor / Block surfaces in the desktop shell. See [crate README](crates/nexus-run-events/README.md). |
+| `nexus-desktop-shell` | **Spec 042** — Tauri 2.x shell crate. Owns window lifecycle (close-to-tray, `RunEvent::ExitRequested` intercept), system-tray menu, custom titlebar helpers, and the IPC command dispatcher. Generic dispatcher routes by command name, not by extension. See [crate README](crates/nexus-desktop-shell/README.md). |
 
 ## Quick Start
 
@@ -107,6 +109,29 @@ Spec 037 ships a unified **Spectral Graphite** design language — dark graphite
 
 - **Generic `ChatSurface`** at [`apps/web/src/components/chat/`](apps/web/src/components/chat/) — a single chat shell shared by Local LLM and any deployment with chat context. Replaced four files of grandfathered host-extension boundary debt.
 - **Draft AI suggestion stream** at `/api/v1/modules/drafts/{draft_id}/suggestions` (POST + cancel endpoint) — extension-agnostic SSE handler family in [`crates/nexus-api/src/handlers/draft_suggestions/`](crates/nexus-api/src/handlers/draft_suggestions/) that streams indigo per-line suggestions into the Module Draft view from any leasable text-completion backend.
+
+### Spec 042 — Neo-Terminal Desktop Shell
+
+A native desktop wrapper plus three terminal-aesthetic UI primitives that turn opaque worker telemetry into legible, tunable surfaces. Two new host crates ([`nexus-run-events`](crates/nexus-run-events/) + [`nexus-desktop-shell`](crates/nexus-desktop-shell/)) plus a Tauri sub-crate at [`apps/web/src-tauri/`](apps/web/src-tauri/).
+
+User-facing features:
+
+- **Block primitive** at [`apps/web/src/components/blocks/`](apps/web/src/components/blocks/) — the new prompt-style UI atom that wraps every actionable surface with a mnemonic chip, a collapsed-state inline sparkline, and an inset-only phosphor focus glow.
+- **Model-load Lattice** at [`apps/web/src/components/runtime/model_load_lattice/`](apps/web/src/components/runtime/model_load_lattice/) — a Bloomberg-dense grid that visualises per-layer × per-tensor-group state during a llama.cpp model load (pending → discovered → assigned → reserved → ready, plus error / cpu_offloaded). Failure modes (VRAM OOM red point, n-cpu-moe amber column, cancelled load gap markers) are recognisable spatially without reading logs.
+- **Pulse-Floor** at the bottom of every page — a 4 px telemetry band carrying VRAM / RAM / leases / tok-s. Quiet during health, dramatically bright during anomaly.
+- **Single phosphor block cursor** as eye-anchor — pulse rate encodes system load (1 Hz rest → 2 Hz inference → 3 Hz model load).
+
+#### Desktop launch
+
+The desktop shell launches via the Tauri 2.x CLI. Per Tauri issue [#2643](https://github.com/tauri-apps/tauri/issues/2643), the CLI must be invoked from `apps/web/`, not from the workspace root.
+
+```bash
+cd apps/web
+pnpm tauri dev          # dev build with hot-reload
+pnpm tauri build        # platform bundles into target/release/bundle/
+```
+
+See [`specs/042-neo-terminal-shell/quickstart.md`](specs/042-neo-terminal-shell/quickstart.md) for the full walkthrough including the model-load smoke test, system-tray persistence verification, and anomaly-recognition exercise.
 
 ### Builtin extensions
 

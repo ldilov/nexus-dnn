@@ -218,6 +218,7 @@ A new layer of design tokens captures the four locked aesthetic axes (Bloomberg-
 - System-tray presence on macOS and Windows is in scope; Linux varies by desktop environment and is delivered via the desktop wrapper's abstraction with documented degraded behavior where the platform lacks the affordance.
 - Anomaly thresholds for Pulse-Floor traces (e.g., "VRAM > 92%") are configurable defaults; the exact values can be tuned during implementation without spec change.
 - This spec does not deliver Scope Capture (auto-error-recording oscilloscope), cinematic milestone cards, mnemonic-only navigation, or sound design — these are explicitly deferred to follow-up specs once the substrate is in place.
+- **Production-headless Linux deployment is out of scope.** The dual-transport architecture (Tauri Channel + axum HTTP/SSE) already supports three deployment modes — GUI desktop (Tauri), dev-time browser headless (`cargo run -p nexus-api` + browser tab pointed at the host), and pure-API daemon (HTTP API consumed by external systems). However, production-grade hardening (Docker packaging, systemd unit, `--bind 0.0.0.0` non-localhost flag, auth gate, TLS termination guidance) is tracked as a separate follow-up spec (043+). The architecture in spec 042 remains correct under that future spec; only deployment-time concerns and an auth layer need to be added.
 
 ## Dependencies
 

@@ -20,7 +20,8 @@
     "scan:constitution": "node scripts/scan-constitution.mjs",
     "scan:bundle-size": "node scripts/bundle-size-check.mjs",
     "scan:components": "node scripts/scan-components.mjs",
-    "scan:all": "pnpm scan:theme && pnpm scan:terminology && pnpm scan:noop && pnpm scan:constitution && pnpm scan:components",
+    "scan:terminal-tokens": "node scripts/scan-terminal-tokens.mjs",
+    "scan:all": "pnpm scan:theme && pnpm scan:terminology && pnpm scan:noop && pnpm scan:constitution && pnpm scan:components && pnpm scan:terminal-tokens",
     "audit:redesign": "node scripts/audit_redesign.mjs"
   },
   "dependencies": {
