@@ -13,11 +13,13 @@ import { Sidebar, type SidebarVariant } from "./layout/sidebar";
 import { RightInspector } from "./layout/right_inspector";
 import { TweakPanel } from "./layout/tweak_panel";
 import { Tabs } from "./components/base/tabs";
+import { PulseFloor } from "./components/pulse_floor/pulse_floor";
+import { CursorRoot } from "./components/cursor/cursor_root";
+import { FocusedBlockProvider } from "./hooks/use_focused_block";
 import { sweepStaleDrafts } from "./views/modules/draft/draft_envelope";
 import { useOperatorSpecs } from "./hooks/use_operator_specs";
 import { useEventStream } from "./hooks/use_event_stream";
 import { usePollingMetrics } from "./hooks/use_polling_metrics";
-import { useRuntimeStatus } from "./hooks/use_runtime_status";
 import { fetchLayouts } from "./services/layouts";
 import { createRun } from "./services/runs";
 import type {
@@ -158,7 +160,6 @@ export default function RootLayout() {
   const { events } = useEventStream();
   const nodeProgress = latestProgressByNode(events);
   const { metrics, connected: metricsConnected } = usePollingMetrics();
-  const runtime = useRuntimeStatus();
 
   const refreshLayouts = useCallback(() => {
     fetchLayouts()
@@ -252,58 +253,61 @@ export default function RootLayout() {
   );
 
   return (
-    <Shell
-      topBar={
-        <TopBar
-          breadcrumbs={breadcrumbs}
-          runtime={runtime}
-          onOpenSearch={notYetWired("Search")}
-          onOpenNotifications={notYetWired("Notifications")}
-          onOpenProfile={notYetWired("Profile")}
-          tweakPanel={<TweakPanel />}
-        />
-      }
-      sidebar={
-        <Sidebar
-          variant={sidebarVariant}
-          onTogglePin={() => setSidebarPinned((p) => !p)}
-          extensionNavItems={extensionNavItems}
-        />
-      }
-      sidebarPinned={sidebarPinned}
-      canvas={
-        <div className={styles.canvasColumn}>
-          <div className={styles.canvasContent}>
-            <div
-              key={location.pathname}
-              className={styles.routeTransitionWrapper}
-            >
-              <Outlet context={outletContext} />
+    <FocusedBlockProvider>
+      <Shell
+        topBar={
+          <TopBar
+            breadcrumbs={breadcrumbs}
+            onOpenSearch={notYetWired("Search")}
+            onOpenNotifications={notYetWired("Notifications")}
+            onOpenProfile={notYetWired("Profile")}
+            tweakPanel={<TweakPanel />}
+          />
+        }
+        sidebar={
+          <Sidebar
+            variant={sidebarVariant}
+            onTogglePin={() => setSidebarPinned((p) => !p)}
+            extensionNavItems={extensionNavItems}
+          />
+        }
+        sidebarPinned={sidebarPinned}
+        canvas={
+          <div className={styles.canvasColumn}>
+            <div className={styles.canvasContent}>
+              <div
+                key={location.pathname}
+                className={styles.routeTransitionWrapper}
+              >
+                <Outlet context={outletContext} />
+              </div>
             </div>
           </div>
-        </div>
-      }
-      inspector={
-        <RightInspector
-          selectedNode={selectedNode}
-          selectedSpec={
-            selectedNode ? operatorSpecs.get(selectedNode.operator) ?? null : null
-          }
-          nodeStatus={selectedNode ? nodeProgress[selectedNode.id]?.status : undefined}
-        />
-      }
-      bottomDrawer={
-        <div className={styles.drawerContent}>
-          <Tabs
-            items={BOTTOM_TABS}
-            activeId={activeBottomTab}
-            onSelect={setActiveBottomTab}
-            variant="underline"
+        }
+        inspector={
+          <RightInspector
+            selectedNode={selectedNode}
+            selectedSpec={
+              selectedNode ? operatorSpecs.get(selectedNode.operator) ?? null : null
+            }
+            nodeStatus={selectedNode ? nodeProgress[selectedNode.id]?.status : undefined}
           />
-        </div>
-      }
-      inspectorVisible={inspectorVisible}
-    />
+        }
+        bottomDrawer={
+          <div className={styles.drawerContent}>
+            <Tabs
+              items={BOTTOM_TABS}
+              activeId={activeBottomTab}
+              onSelect={setActiveBottomTab}
+              variant="underline"
+            />
+          </div>
+        }
+        inspectorVisible={inspectorVisible}
+      />
+      <CursorRoot />
+      <PulseFloor />
+    </FocusedBlockProvider>
   );
 }
 

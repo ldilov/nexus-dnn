@@ -1,0 +1,6 @@
+{
+  "must_contain": [
+    { "kind": "metric", "name": "model.n_layer" },
+    { "kind": "error", "reason": "user_cancelled" }
+  ]
+}

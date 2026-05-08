@@ -1,0 +1,5 @@
+{
+  "must_contain": [
+    { "kind": "error", "reason": "corruption_suspected" }
+  ]
+}
