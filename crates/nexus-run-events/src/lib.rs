@@ -12,9 +12,11 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+pub mod broker;
 pub mod ids;
 pub mod store;
 
+pub use broker::{event_severity_bucket, event_ts_ms, RunEventBroker, SeverityBucket};
 pub use ids::{IdError, LayerIndex, RunId, SeqNum, SourceId};
 
 /// Schema version identifier carried by every event on the wire.

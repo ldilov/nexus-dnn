@@ -532,7 +532,13 @@ pub fn build(state: AppState) -> Router {
             "/models/{*rest}",
             get(host::models_metadata::get_installed_model_metadata),
         )
-        .route("/cpu/cores", get(host::cpu_cores::get_cpu_cores));
+        .route("/cpu/cores", get(host::cpu_cores::get_cpu_cores))
+        .route("/runs/events", get(host::run_events::stream_run_events))
+        .route(
+            "/runs/{run_id}/events",
+            get(host::run_events::get_run_events_window),
+        )
+        .route("/runs/buckets", get(host::run_events::get_run_events_buckets));
 
     Router::new()
         .nest("/api/v1", api_v1)
