@@ -1,0 +1,16 @@
+{
+  "must_contain": [
+    { "kind": "phase", "phase": "discover", "state": "started" },
+    { "kind": "phase", "phase": "print_meta", "state": "started" },
+    { "kind": "metric", "name": "model.n_layer" },
+    { "kind": "phase", "phase": "tensors", "state": "started" },
+    { "kind": "tensor_allocate", "group": "attn", "target": "mixed" },
+    { "kind": "tensor_allocate", "group": "ffn", "target": "mixed" },
+    { "kind": "metric", "name": "buffer.bytes", "labels": { "device": "CUDA0", "kind": "model" } },
+    { "kind": "phase", "phase": "kv_reserve", "state": "started" },
+    { "kind": "metric", "name": "kv.bytes", "labels": { "kind": "K", "dtype": "f16" } },
+    { "kind": "metric", "name": "kv.bytes", "labels": { "kind": "V", "dtype": "f16" } },
+    { "kind": "phase", "phase": "kv_reserve", "state": "completed" },
+    { "kind": "phase", "phase": "context_build", "state": "started" }
+  ]
+}
