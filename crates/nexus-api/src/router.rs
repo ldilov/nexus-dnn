@@ -51,7 +51,9 @@ async fn request_id_middleware(mut req: Request, next: Next) -> Response {
 
     let started = std::time::Instant::now();
     tracing::debug!(target: "nexus_api::request", "started");
-    let mut response = async move { next.run(req).await }.instrument(span.clone()).await;
+    let mut response = async move { next.run(req).await }
+        .instrument(span.clone())
+        .await;
     let elapsed_ms = started.elapsed().as_millis() as u64;
 
     // Stamp the id onto the response for client-side correlation.
@@ -490,23 +492,22 @@ pub fn build(state: AppState) -> Router {
     let catalog_repo: std::sync::Arc<
         dyn nexus_backend_runtimes::generic::catalog::BackendRuntimeCatalogRepo,
     > = std::sync::Arc::new(
-        nexus_backend_runtimes::generic::catalog::SqliteCatalogRepo::new(
-            state.db.pool().clone(),
-        ),
+        nexus_backend_runtimes::generic::catalog::SqliteCatalogRepo::new(state.db.pool().clone()),
     );
     let installs_repo: std::sync::Arc<
         dyn nexus_backend_runtimes::generic::installs::BackendRuntimeInstallsRepo,
     > = std::sync::Arc::new(
-        nexus_backend_runtimes::generic::installs::SqliteInstallsRepo::new(
-            state.db.pool().clone(),
-        ),
+        nexus_backend_runtimes::generic::installs::SqliteInstallsRepo::new(state.db.pool().clone()),
     );
-    let draft_suggestions_provider: std::sync::Arc<dyn draft_suggestions::SuggestionStreamProvider> =
-        std::sync::Arc::new(draft_suggestions::LeaseBackedStreamProvider::from_components(
+    let draft_suggestions_provider: std::sync::Arc<
+        dyn draft_suggestions::SuggestionStreamProvider,
+    > = std::sync::Arc::new(
+        draft_suggestions::LeaseBackedStreamProvider::from_components(
             catalog_repo,
             installs_repo,
             state.lease_manager.clone(),
-        ));
+        ),
+    );
     let draft_suggestions_router: Router<AppState> =
         draft_suggestions::router::<AppState>(draft_suggestions_provider);
     let api_v1 = api_v1
@@ -538,7 +539,11 @@ pub fn build(state: AppState) -> Router {
             "/runs/{run_id}/events",
             get(host::run_events::get_run_events_window),
         )
-        .route("/runs/buckets", get(host::run_events::get_run_events_buckets));
+        .route(
+            "/runs/buckets",
+            get(host::run_events::get_run_events_buckets),
+        )
+        .route("/metrics/stream", get(host::metrics_stream::stream_metrics));
 
     Router::new()
         .nest("/api/v1", api_v1)

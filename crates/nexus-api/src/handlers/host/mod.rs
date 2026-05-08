@@ -6,5 +6,6 @@
 //! defaults in extension UIs.
 
 pub mod cpu_cores;
+pub mod metrics_stream;
 pub mod models_metadata;
 pub mod run_events;
