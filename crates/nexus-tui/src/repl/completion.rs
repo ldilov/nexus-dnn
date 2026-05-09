@@ -1,13 +1,25 @@
 //! Reedline tab completion for slash commands.
 //!
-//! Suggests:
+//! Static suggestions:
 //! - leading `/<name>` — slash command names
 //! - second word after `/level ` — log levels
-//! - second word after `/source ` — known source-category prefixes
+//!
+//! Live, ring-buffer-driven suggestions:
+//! - second word after `/source ` — source-category prefixes + every
+//!   distinct source label observed in the current session
+//! - second word after `/follow ` — `run:<id>`, `deploy:<id>`,
+//!   `ext:<id>` shapes pulled from observed event correlations
+//!
+//! Fallback to static prefixes only when no `RingBuffer` handle is wired
+//! (e.g. unit tests).
+
+use std::collections::BTreeSet;
+use std::sync::{Arc, Mutex};
 
 use reedline::{Completer, Span, Suggestion};
 
 use crate::repl::slash::{level_argument_values, slash_command_names};
+use crate::stream::ring_buffer::RingBuffer;
 
 const SOURCE_CATEGORY_PREFIXES: &[&str] = &[
     "host.*",
@@ -20,11 +32,61 @@ const SOURCE_CATEGORY_PREFIXES: &[&str] = &[
     "backend.*",
 ];
 
-pub struct SlashCompleter;
+const MAX_LIVE_SUGGESTIONS: usize = 24;
+const RING_SCAN_DEPTH: usize = 2_000;
 
-impl Default for SlashCompleter {
-    fn default() -> Self {
-        Self
+#[derive(Default)]
+pub struct SlashCompleter {
+    ring: Option<Arc<Mutex<RingBuffer>>>,
+}
+
+impl SlashCompleter {
+    pub fn new() -> Self {
+        Self { ring: None }
+    }
+
+    pub fn with_ring(ring: Arc<Mutex<RingBuffer>>) -> Self {
+        Self { ring: Some(ring) }
+    }
+
+    /// Distinct source labels observed in the most recent
+    /// [`RING_SCAN_DEPTH`] events. Returned in lexicographic order so
+    /// the suggestion list is stable across calls.
+    fn observed_sources(&self) -> Vec<String> {
+        let Some(ring) = &self.ring else {
+            return Vec::new();
+        };
+        let Ok(buf) = ring.lock() else {
+            return Vec::new();
+        };
+        let mut seen = BTreeSet::new();
+        for line in buf.iter().rev().take(RING_SCAN_DEPTH) {
+            seen.insert(line.source.clone());
+        }
+        seen.into_iter().collect()
+    }
+
+    /// Recent correlation identifiers in `kind:value` form for `/follow`.
+    fn observed_follow_targets(&self) -> Vec<String> {
+        let Some(ring) = &self.ring else {
+            return Vec::new();
+        };
+        let Ok(buf) = ring.lock() else {
+            return Vec::new();
+        };
+        let mut seen = BTreeSet::new();
+        for line in buf.iter().rev().take(RING_SCAN_DEPTH) {
+            if let Some(id) = &line.correlation.run_id {
+                seen.insert(format!("run:{id}"));
+            }
+            if let Some(id) = &line.correlation.deployment_id {
+                seen.insert(format!("deploy:{id}"));
+            }
+            if let Some(id) = &line.correlation.extension_id {
+                seen.insert(format!("ext:{id}"));
+            }
+        }
+        seen.into_iter().collect()
     }
 }
 
@@ -42,8 +104,16 @@ impl Completer for SlashCompleter {
                 let arg_start = head.len() - arg_so_far.len();
                 let span = Span::new(arg_start, head.len());
                 match first {
-                    "/level" => suggest(level_argument_values(), arg_so_far, span),
-                    "/source" => suggest(SOURCE_CATEGORY_PREFIXES, arg_so_far, span),
+                    "/level" => suggest_static(level_argument_values(), arg_so_far, span),
+                    "/source" => {
+                        let sources = self.observed_sources();
+                        suggest_combined(SOURCE_CATEGORY_PREFIXES, &sources, arg_so_far, span)
+                    }
+                    "/follow" => {
+                        let targets = self.observed_follow_targets();
+                        let static_shapes: &[&str] = &["run:", "deploy:", "ext:"];
+                        suggest_combined(static_shapes, &targets, arg_so_far, span)
+                    }
                     _ => Vec::new(),
                 }
             }
@@ -68,7 +138,7 @@ fn suggest_command_names(first: &str, end: usize) -> Vec<Suggestion> {
         .collect()
 }
 
-fn suggest(options: &[&str], arg: &str, span: Span) -> Vec<Suggestion> {
+fn suggest_static(options: &[&str], arg: &str, span: Span) -> Vec<Suggestion> {
     options
         .iter()
         .filter(|opt| opt.starts_with(arg))
@@ -81,6 +151,43 @@ fn suggest(options: &[&str], arg: &str, span: Span) -> Vec<Suggestion> {
             append_whitespace: true,
         })
         .collect()
+}
+
+fn suggest_combined(
+    static_options: &[&str],
+    live_options: &[String],
+    arg: &str,
+    span: Span,
+) -> Vec<Suggestion> {
+    let mut out: Vec<Suggestion> = Vec::new();
+    for opt in static_options {
+        if opt.starts_with(arg) {
+            out.push(Suggestion {
+                value: (*opt).to_string(),
+                description: None,
+                style: None,
+                extra: None,
+                span,
+                append_whitespace: true,
+            });
+        }
+    }
+    for opt in live_options {
+        if out.len() >= MAX_LIVE_SUGGESTIONS {
+            break;
+        }
+        if opt.starts_with(arg) && !out.iter().any(|s| s.value == *opt) {
+            out.push(Suggestion {
+                value: opt.clone(),
+                description: Some("recent".into()),
+                style: None,
+                extra: None,
+                span,
+                append_whitespace: true,
+            });
+        }
+    }
+    out
 }
 
 const FILE_COMPLETE_PREFIX: &str = "@file:";

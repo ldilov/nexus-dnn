@@ -332,13 +332,14 @@ fn with_prompt(handles: &ControllerHandles, mutator: impl FnOnce(&mut PromptStat
 }
 
 fn update_filter_indicator(handles: &ControllerHandles) {
-    let active = handles
+    let (active, count) = handles
         .filter
         .read()
-        .map(|f| f.has_active_filters())
-        .unwrap_or(false);
+        .map(|f| (f.has_active_filters(), f.active_filter_count()))
+        .unwrap_or((false, 0));
     if let Ok(mut state) = handles.prompt.lock() {
         state.filter_active = active;
+        state.filter_count = count;
     }
 }
 
