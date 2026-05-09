@@ -39,16 +39,16 @@ fn only_host_log(bus: &BroadcastEventBus) -> NexusEvent {
     events.remove(0)
 }
 
-fn expect_host_log(
-    event: NexusEvent,
-) -> (
+type HostLogFields = (
     String,
     String,
     String,
     BTreeMap<String, String>,
     Option<Vec<String>>,
     i64,
-) {
+);
+
+fn expect_host_log(event: NexusEvent) -> HostLogFields {
     match event {
         NexusEvent::HostLog {
             level,

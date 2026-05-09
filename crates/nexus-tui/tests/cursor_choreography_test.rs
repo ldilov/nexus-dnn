@@ -1,7 +1,7 @@
 //! T117 — cursor save/move/clear/restore choreography for ambient lines.
 
 use nexus_tui::render::cursor::{
-    clear_prompt_area, render_ambient_above_prompt, CursorChoreography,
+    CursorChoreography, clear_prompt_area, render_ambient_above_prompt,
 };
 
 #[test]
@@ -12,8 +12,14 @@ fn ambient_render_includes_save_and_restore() {
     let output = String::from_utf8(buf).unwrap();
     assert!(output.contains('\u{1b}'), "must emit ANSI escapes");
     assert!(output.contains("hello"));
-    assert!(output.contains("[s") || output.contains("7"), "save-cursor expected");
-    assert!(output.contains("[u") || output.contains("8"), "restore-cursor expected");
+    assert!(
+        output.contains("[s") || output.contains("7"),
+        "save-cursor expected"
+    );
+    assert!(
+        output.contains("[u") || output.contains("8"),
+        "restore-cursor expected"
+    );
 }
 
 #[test]
@@ -57,5 +63,8 @@ fn clear_prompt_area_emits_one_clear_per_row() {
     clear_prompt_area(&mut buf, &choreo).unwrap();
     let output = String::from_utf8(buf).unwrap();
     let clear_count = output.matches("[2K").count() + output.matches("\u{1b}[K").count();
-    assert!(clear_count >= 2, "expected ≥2 clear ops for 2-row prompt, got {clear_count}");
+    assert!(
+        clear_count >= 2,
+        "expected ≥2 clear ops for 2-row prompt, got {clear_count}"
+    );
 }
