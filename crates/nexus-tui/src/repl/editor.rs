@@ -7,8 +7,8 @@
 use std::path::PathBuf;
 
 use reedline::{
-    ColumnarMenu, Emacs, FileBackedHistory, KeyCode, KeyModifiers, MenuBuilder, Reedline,
-    ReedlineEvent, ReedlineMenu, Signal, default_emacs_keybindings,
+    ColumnarMenu, EditCommand, Emacs, FileBackedHistory, KeyCode, KeyModifiers, MenuBuilder,
+    Reedline, ReedlineEvent, ReedlineMenu, Signal, default_emacs_keybindings,
 };
 
 use crate::repl::completion::SlashCompleter;
@@ -32,6 +32,39 @@ pub fn build_editor() -> anyhow::Result<Reedline> {
         ReedlineEvent::UntilFound(vec![
             ReedlineEvent::Menu(COMPLETION_MENU_NAME.into()),
             ReedlineEvent::MenuNext,
+        ]),
+    );
+    keybindings.add_binding(
+        KeyModifiers::CONTROL,
+        KeyCode::Char('e'),
+        ReedlineEvent::Multiple(vec![
+            ReedlineEvent::Edit(vec![
+                EditCommand::Clear,
+                EditCommand::InsertString("/last 1 error".to_string()),
+            ]),
+            ReedlineEvent::Submit,
+        ]),
+    );
+    keybindings.add_binding(
+        KeyModifiers::CONTROL,
+        KeyCode::Char('g'),
+        ReedlineEvent::Multiple(vec![
+            ReedlineEvent::Edit(vec![
+                EditCommand::Clear,
+                EditCommand::InsertString("/pause".to_string()),
+            ]),
+            ReedlineEvent::Submit,
+        ]),
+    );
+    keybindings.add_binding(
+        KeyModifiers::CONTROL,
+        KeyCode::Char('t'),
+        ReedlineEvent::Multiple(vec![
+            ReedlineEvent::Edit(vec![
+                EditCommand::Clear,
+                EditCommand::InsertString("/where".to_string()),
+            ]),
+            ReedlineEvent::Submit,
         ]),
     );
     let edit_mode = Box::new(Emacs::new(keybindings));

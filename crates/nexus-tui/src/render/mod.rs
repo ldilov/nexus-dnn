@@ -4,6 +4,7 @@
 //! The main loop is responsible for writing to stdout.
 
 pub mod brand;
+pub mod cursor;
 pub mod event_line;
 pub mod gutter;
 pub mod inspector;

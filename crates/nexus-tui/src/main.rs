@@ -25,6 +25,12 @@ struct Cli {
     /// Skip the host reachability probe at startup.
     #[arg(long)]
     no_probe: bool,
+
+    /// Enable cursor save/restore choreography so ambient lines print above
+    /// the prompt without disturbing the input cursor. Default off — some
+    /// terminal emulators handle save/restore inconsistently mid-read.
+    #[arg(long)]
+    cursor_choreography: bool,
 }
 
 #[tokio::main]
@@ -36,6 +42,7 @@ async fn main() -> anyhow::Result<()> {
         ring_buffer_capacity: cli.ring_buffer,
         level_floor,
         probe_host_on_startup: !cli.no_probe,
+        cursor_choreography: cli.cursor_choreography,
     };
 
     let _guard = match TerminalGuard::new() {
