@@ -61,3 +61,8 @@ nexus-extension = { path = "../nexus-extension" }
 nexus-protocol = { path = "../nexus-protocol" }
 nexus-workflow = { path = "../nexus-workflow" }
 nexus-scheduler = { path = "../nexus-scheduler" }
+criterion = { workspace = true }
+
+[[bench]]
+name = "tracing_bridge_bench"
+harness = false
