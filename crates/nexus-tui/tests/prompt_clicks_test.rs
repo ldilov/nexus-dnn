@@ -30,8 +30,12 @@ fn filter_indicator_only_registers_when_filters_active() {
     let _ = prompt.render_prompt_left();
     {
         let reg = registry.lock().unwrap();
-        let any_filter = (0..200).any(|c| matches!(reg.lookup(1, c), Some(ClickTarget::FilterIndicator)));
-        assert!(!any_filter, "FilterIndicator must not register without active filters");
+        let any_filter =
+            (0..200).any(|c| matches!(reg.lookup(1, c), Some(ClickTarget::FilterIndicator)));
+        assert!(
+            !any_filter,
+            "FilterIndicator must not register without active filters"
+        );
     }
 
     {
@@ -41,8 +45,12 @@ fn filter_indicator_only_registers_when_filters_active() {
     }
     let _ = prompt.render_prompt_left();
     let reg = registry.lock().unwrap();
-    let any_filter = (0..200).any(|c| matches!(reg.lookup(1, c), Some(ClickTarget::FilterIndicator)));
-    assert!(any_filter, "FilterIndicator must register when filters are active");
+    let any_filter =
+        (0..200).any(|c| matches!(reg.lookup(1, c), Some(ClickTarget::FilterIndicator)));
+    assert!(
+        any_filter,
+        "FilterIndicator must register when filters are active"
+    );
 }
 
 #[test]
@@ -62,7 +70,8 @@ fn redraw_clears_stale_filter_indicator_when_filters_dropped() {
     }
     let _ = prompt.render_prompt_left();
     let reg = registry.lock().unwrap();
-    let any_filter = (0..200).any(|c| matches!(reg.lookup(1, c), Some(ClickTarget::FilterIndicator)));
+    let any_filter =
+        (0..200).any(|c| matches!(reg.lookup(1, c), Some(ClickTarget::FilterIndicator)));
     assert!(
         !any_filter,
         "stale FilterIndicator entries must be cleared on redraw"
