@@ -37,7 +37,25 @@ CLI flags:
 
 ### One-command workflow
 
-Two equivalent shapes — pick whichever feels right for your terminal habits.
+Workspace-level cargo aliases live in `.cargo/config.toml`:
+
+| Alias | Expands to | What it does |
+|---|---|---|
+| `cargo dev` | `cargo run -p nexus-core --bin nexus-dnn -- --with-tui` | Host primary, spawns TUI as child (recommended) |
+| `cargo dev-tui` | `cargo run -p nexus-tui --bin nexus -- --with-host` | TUI primary, spawns host as child |
+| `cargo host` | `cargo run -p nexus-core --bin nexus-dnn` | Host only, no TUI |
+| `cargo tui` | `cargo run -p nexus-tui --bin nexus` | TUI only, attaches to a running host |
+
+Pass-through args work as expected:
+
+```bash
+cargo dev --port 4000        # host on :4000 with TUI
+cargo dev --log-level debug  # host emits debug-level events
+cargo tui --no-glyphs        # ASCII-only glyph rendering
+```
+
+Two equivalent shapes for the single-command flow — pick whichever feels
+right for your terminal habits.
 
 **Host-orchestrated (recommended):** the host (`nexus-dnn`) is the long-
 lived service; it spawns the TUI as a child after the HTTP server binds.
@@ -50,7 +68,8 @@ terminal:
 cargo build -p nexus-core --bin nexus-dnn -p nexus-tui --bin nexus
 
 # Start everything from the host
-cargo run -p nexus-core --bin nexus-dnn -- --with-tui
+cargo dev
+# (equivalent to: cargo run -p nexus-core --bin nexus-dnn -- --with-tui)
 ```
 
 On `Ctrl+D` / `/quit` in the TUI, the host shuts down too.
@@ -60,7 +79,8 @@ child process and tears it down on TUI exit. Stdout + stderr go to
 `~/.nexus/host.log`:
 
 ```bash
-cargo run -p nexus-tui -- --with-host
+cargo dev-tui
+# (equivalent to: cargo run -p nexus-tui -- --with-host)
 ```
 
 | Direction | Primary binary | Spawns | Host stdout |
