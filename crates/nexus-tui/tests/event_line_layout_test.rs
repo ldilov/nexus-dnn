@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use nexus_tui::EventId;
 use nexus_tui::mouse::targets::ClickTarget;
-use nexus_tui::render::event_line::{render_event_line_with_targets, RenderConfig};
+use nexus_tui::render::event_line::{RenderConfig, render_event_line_with_targets};
 use nexus_tui::repl::ansi::ColorDepth;
 use nexus_tui::stream::event_line::{CorrelationKeys, EventLine, RawPayload};
 use nexus_tui::stream::severity::Severity;
@@ -38,6 +38,7 @@ fn cfg() -> RenderConfig {
     RenderConfig {
         color_depth: ColorDepth::Truecolor,
         critical_border: false,
+        hover_target: None,
     }
 }
 
