@@ -3413,6 +3413,7 @@ dependencies = [
  "chrono",
  "clap",
  "console-subscriber",
+ "criterion",
  "dirs",
  "emotion-tts-extension",
  "nexus-api",
@@ -3496,6 +3497,7 @@ name = "nexus-events"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "criterion",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -3766,6 +3768,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "criterion",
  "crossterm",
  "eventsource-stream",
  "futures-util",

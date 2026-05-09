@@ -37,3 +37,8 @@ nexus-run-events = { path = "../nexus-run-events" }
 [dev-dependencies]
 insta = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+criterion = { workspace = true }
+
+[[bench]]
+name = "cold_start_bench"
+harness = false
