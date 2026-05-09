@@ -2,3 +2,17 @@
 # Per constitution v1.1.0 Appendix D, workspace-wide `-D warnings` ties build
 # correctness to toolchain version. Use `-D warnings` in CI only:
 #   cargo clippy --workspace --all-targets -- -D warnings
+
+[alias]
+# Spec 044 — single-command TUI workflow.
+# `cargo dev`        → host primary, spawns the TUI as a child (recommended)
+# `cargo dev-tui`    → TUI primary, spawns the host as a child
+# `cargo host`       → host only, no TUI
+# `cargo tui`        → TUI only, attaches to a running host
+# Anything after the alias is forwarded to the underlying binary, so
+#   `cargo dev -- --port 4000`
+# becomes `cargo run -p nexus-core --bin nexus-dnn -- --with-tui --port 4000`.
+dev = "run -p nexus-core --bin nexus-dnn -- --with-tui"
+dev-tui = "run -p nexus-tui --bin nexus -- --with-host"
+host = "run -p nexus-core --bin nexus-dnn"
+tui = "run -p nexus-tui --bin nexus"
