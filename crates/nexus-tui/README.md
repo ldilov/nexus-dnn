@@ -15,7 +15,7 @@ ships as a workspace member providing the `nexus` binary and the
 cargo run -p nexus-tui --release
 
 # Or point at a remote / non-default host
-cargo run -p nexus-tui --release -- --host-url http://127.0.0.1:7878 --level info
+cargo run -p nexus-tui --release -- --host-url http://127.0.0.1:3000 --level info
 
 # Skip the startup probe (e.g. when starting nexus alongside the host)
 cargo run -p nexus-tui --release -- --no-probe
@@ -25,10 +25,31 @@ CLI flags:
 
 | Flag | Description | Default |
 |---|---|---|
-| `--host-url` | Base URL of the nexus host. Also reads `NEXUS_HOST_URL`. | `http://127.0.0.1:7878` |
+| `--host-url` | Base URL of the nexus host. Also reads `NEXUS_HOST_URL`. | `http://127.0.0.1:3000` |
 | `--level` | Initial severity floor (`debug`, `info`, `warn`, `error`, `fatal`). | `info` |
 | `--ring-buffer` | In-memory event-history capacity. | `50_000` |
 | `--no-probe` | Skip the host reachability probe at startup. | off |
+| `--with-host` | Spawn `nexus-dnn` as a child process and tear it down on TUI exit. Looks for the binary next to `nexus`; override with `--host-bin`. Stdout + stderr go to `~/.nexus/host.log`. | off |
+| `--host-bin <PATH>` | Override path to the `nexus-dnn` binary used by `--with-host`. | (auto-discover) |
+| `--no-mouse` | Disable SGR 1006 mouse capture (click triage + right-click menu). | off |
+| `--no-glyphs` | Replace Unicode severity + source-category glyphs with ASCII proxies. Box-drawing + Braille glyphs are unaffected. | off |
+| `--cursor-choreography` | Opt into save/restore cursor overlay for above-prompt ambient lines. Default off — fragile across emulators. | off |
+
+### One-command workflow
+
+To run the host + TUI from a single terminal:
+
+```bash
+# Build the host once (after any change to crates/nexus-core/)
+cargo build --bin nexus-dnn
+
+# Start the host as a child of the TUI
+cargo run -p nexus-tui -- --with-host
+```
+
+The TUI spawns `target/debug/nexus-dnn(.exe)`, polls `/api/host/info`, and
+attaches when ready. On `Ctrl+D` / `/quit`, tokio's `kill_on_drop`
+terminates the host child.
 
 ## Slash commands
 

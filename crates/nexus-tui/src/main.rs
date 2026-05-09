@@ -10,8 +10,9 @@ use nexus_tui::terminal::TerminalGuard;
     about = "Streaming terminal console for nexus-dnn host events."
 )]
 struct Cli {
-    /// Base URL of the host (e.g. http://127.0.0.1:7878). May also be set via NEXUS_HOST_URL.
-    #[arg(long, env = "NEXUS_HOST_URL", default_value = "http://127.0.0.1:7878")]
+    /// Base URL of the host (e.g. http://127.0.0.1:3000). Matches
+    /// `nexus-core::config::DEFAULT_PORT`. May also be set via NEXUS_HOST_URL.
+    #[arg(long, env = "NEXUS_HOST_URL", default_value = "http://127.0.0.1:3000")]
     host_url: String,
 
     /// Initial level floor (debug, info, warn, error, fatal).

@@ -81,7 +81,7 @@ pub struct RuntimeConfig {
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
-            host_url: "http://127.0.0.1:7878".into(),
+            host_url: "http://127.0.0.1:3000".into(),
             ring_buffer_capacity: DEFAULT_RING_BUFFER_CAPACITY,
             level_floor: Severity::Info,
             probe_host_on_startup: true,
