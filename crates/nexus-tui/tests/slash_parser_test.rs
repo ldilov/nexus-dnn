@@ -87,3 +87,39 @@ fn ignores_leading_and_trailing_whitespace() {
     let cmd = parse_slash("   /pause   ").unwrap();
     assert!(matches!(cmd, ParsedCommand::Pause));
 }
+
+// U1 spec-044 follow-ups — parser edge cases on trivial input.
+
+#[test]
+fn rejects_bare_slash() {
+    assert!(
+        parse_slash("/").is_err(),
+        "bare slash must be a parse error"
+    );
+}
+
+#[test]
+fn rejects_slash_with_only_whitespace() {
+    assert!(
+        parse_slash("/   ").is_err(),
+        "slash followed by whitespace only must be a parse error"
+    );
+}
+
+#[test]
+fn rejects_slash_with_unknown_token() {
+    assert!(matches!(
+        parse_slash("/foo"),
+        Err(ParseError::UnknownCommand(_))
+    ));
+}
+
+#[test]
+fn rejects_empty_input() {
+    assert!(parse_slash("").is_err());
+}
+
+#[test]
+fn rejects_pure_whitespace_input() {
+    assert!(parse_slash("   ").is_err());
+}

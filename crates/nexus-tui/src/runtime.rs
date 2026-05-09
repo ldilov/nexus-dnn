@@ -67,6 +67,7 @@ pub struct RuntimeConfig {
     pub probe_host_on_startup: bool,
     pub cursor_choreography: bool,
     pub enable_mouse: bool,
+    pub ascii_glyphs: bool,
 }
 
 impl Default for RuntimeConfig {
@@ -78,6 +79,7 @@ impl Default for RuntimeConfig {
             probe_host_on_startup: true,
             cursor_choreography: false,
             enable_mouse: true,
+            ascii_glyphs: false,
         }
     }
 }
@@ -124,6 +126,7 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
         Arc::clone(&hover_state),
         depth,
         cfg.cursor_choreography,
+        cfg.ascii_glyphs,
     ));
     let sparkline_handle =
         tokio::spawn(sparkline_loop(Arc::clone(&prompt_state), shutdown.clone()));
@@ -267,6 +270,7 @@ async fn consumer_loop(
     hover: Arc<HoverState>,
     depth: ColorDepth,
     cursor_choreography: bool,
+    ascii_glyphs: bool,
 ) {
     let mut rate_guard = RateGuard::default();
     let mut second_window_count: u32 = 0;
@@ -332,6 +336,7 @@ async fn consumer_loop(
                                 choreo.as_ref(),
                                 &click_registry,
                                 &hover,
+                                ascii_glyphs,
                             );
                             false
                         }
@@ -373,6 +378,7 @@ fn render_visible(
     choreo: Option<&CursorChoreography>,
     click_registry: &Arc<Mutex<ClickRegistry>>,
     hover: &Arc<HoverState>,
+    ascii_glyphs: bool,
 ) {
     let critical_border = matches!(line.significance, Significance::Critical)
         && now.duration_since(*last_critical_border) >= CRITICAL_BORDER_DEBOUNCE;
@@ -380,7 +386,9 @@ fn render_visible(
         *last_critical_border = now;
     }
     let hover_target = hover.snapshot().1;
-    let cfg = RenderConfig::new(depth, critical_border).with_hover_target(hover_target);
+    let cfg = RenderConfig::new(depth, critical_border)
+        .with_hover_target(hover_target)
+        .with_ascii_glyphs(ascii_glyphs);
     let layout = render_event_line_with_targets(line, &cfg);
     let rendered = render_event_line(line, &cfg);
     match choreo {
