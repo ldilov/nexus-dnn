@@ -161,6 +161,14 @@ async fn endpoint_loop(
     };
     let mut backoff = ReconnectBackoff::default();
     let mut resume = ResumeState::default();
+    // Flap suppression: only emit `Reconnected` / `ConnectionLost`
+    // notices for an endpoint that previously delivered at least one
+    // event in the current session. An endpoint that opens-then-closes
+    // without producing data stays silent, and the backoff is NOT
+    // reset until first event — so flapping endpoints fall back to the
+    // 5 s ceiling instead of spamming at 100 ms intervals.
+    let mut have_announced_active = false;
+    let mut have_emitted_lost = false;
 
     loop {
         if shutdown.is_cancelled() {
@@ -184,10 +192,13 @@ async fn endpoint_loop(
             result = req.send() => match result {
                 Ok(r) => r,
                 Err(err) => {
-                    let _ = sender.send(StreamItem::ConnectionLost {
-                        endpoint: label,
-                        reason: err.to_string(),
-                    }).await;
+                    if have_announced_active && !have_emitted_lost {
+                        let _ = sender.send(StreamItem::ConnectionLost {
+                            endpoint: label,
+                            reason: err.to_string(),
+                        }).await;
+                        have_emitted_lost = true;
+                    }
                     sleep_with_shutdown(backoff.next_delay(), &shutdown).await;
                     continue;
                 }
@@ -195,24 +206,23 @@ async fn endpoint_loop(
         };
 
         if !response.status().is_success() {
-            let _ = sender
-                .send(StreamItem::ConnectionLost {
-                    endpoint: label,
-                    reason: format!("HTTP {}", response.status()),
-                })
-                .await;
+            if have_announced_active && !have_emitted_lost {
+                let _ = sender
+                    .send(StreamItem::ConnectionLost {
+                        endpoint: label,
+                        reason: format!("HTTP {}", response.status()),
+                    })
+                    .await;
+                have_emitted_lost = true;
+            }
             sleep_with_shutdown(backoff.next_delay(), &shutdown).await;
             continue;
         }
 
-        backoff.reset();
-        let _ = sender
-            .send(StreamItem::Reconnected { endpoint: label })
-            .await;
-
         let mut bytes = response.bytes_stream().eventsource();
         let mut first_after_resume = resume.last_event_id_header().is_some();
-        let mut graceful_break = false;
+        let mut received_in_session = false;
+        let error_reason: Option<String>;
         loop {
             let next = tokio::select! {
                 _ = shutdown.cancelled() => return,
@@ -220,6 +230,17 @@ async fn endpoint_loop(
             };
             match next {
                 Some(Ok(event)) => {
+                    if !received_in_session {
+                        received_in_session = true;
+                        backoff.reset();
+                        if !have_announced_active || have_emitted_lost {
+                            let _ = sender
+                                .send(StreamItem::Reconnected { endpoint: label })
+                                .await;
+                            have_announced_active = true;
+                            have_emitted_lost = false;
+                        }
+                    }
                     if !event.id.is_empty() {
                         if first_after_resume {
                             if let Some(prev) = resume.last_event_id()
@@ -243,28 +264,27 @@ async fn endpoint_loop(
                     }
                 }
                 Some(Err(err)) => {
-                    let _ = sender
-                        .send(StreamItem::ConnectionLost {
-                            endpoint: label,
-                            reason: err.to_string(),
-                        })
-                        .await;
+                    error_reason = Some(err.to_string());
                     break;
                 }
                 None => {
-                    graceful_break = true;
+                    error_reason = Some("stream closed".into());
                     break;
                 }
             }
         }
 
-        if graceful_break {
+        if received_in_session
+            && let Some(reason) = error_reason
+            && !have_emitted_lost
+        {
             let _ = sender
                 .send(StreamItem::ConnectionLost {
                     endpoint: label,
-                    reason: "stream closed".into(),
+                    reason,
                 })
                 .await;
+            have_emitted_lost = true;
         }
         sleep_with_shutdown(backoff.next_delay(), &shutdown).await;
     }
