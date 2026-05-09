@@ -217,7 +217,8 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
         shutdown.clone(),
     ));
 
-    let editor_outcome = run_editor_blocking(prompt.clone(), handles, mouse_hooks).await;
+    let editor_outcome =
+        run_editor_blocking(prompt.clone(), handles, mouse_hooks, Arc::clone(&ring)).await;
 
     shutdown.cancel();
     drop(mouse_tx);
@@ -242,8 +243,9 @@ async fn run_editor_blocking(
     prompt: AmbientPrompt,
     handles: ControllerHandles,
     mouse_hooks: Option<MouseHooks>,
+    ring: Arc<Mutex<RingBuffer>>,
 ) -> anyhow::Result<()> {
-    let mut editor_opt: Option<Reedline> = match build_editor_with_mouse(mouse_hooks) {
+    let mut editor_opt: Option<Reedline> = match build_editor_with_mouse(mouse_hooks, Some(ring)) {
         Ok(e) => Some(e),
         Err(err) => {
             eprintln!("nexus: failed to initialise editor: {err}");
@@ -485,8 +487,13 @@ fn print_brand(depth: ColorDepth) -> std::io::Result<()> {
     }
     let _ = execute!(out, Hide);
     out.write_all(render_brand(depth).as_bytes())?;
+    out.write_all(startup_hint().as_bytes())?;
     out.flush()?;
     Ok(())
+}
+
+fn startup_hint() -> &'static str {
+    "\x1b[2m\x1b[38;5;245m  ▸ tab to complete · /help for commands · /level warn to filter · Ctrl+D to exit\x1b[0m\n\n"
 }
 
 async fn probe_host(base: &str) -> Result<(), String> {

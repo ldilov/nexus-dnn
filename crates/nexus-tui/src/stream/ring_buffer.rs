@@ -56,7 +56,7 @@ impl RingBuffer {
         self.items.get(idx)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &EventLine> {
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = &EventLine> {
         self.items.iter()
     }
 

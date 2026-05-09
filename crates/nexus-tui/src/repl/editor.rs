@@ -7,13 +7,17 @@
 use std::path::PathBuf;
 
 use reedline::{
-    ColumnarMenu, EditCommand, EditMode, Emacs, FileBackedHistory, KeyCode, KeyModifiers,
-    MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal, default_emacs_keybindings,
+    ColumnarMenu, DefaultHinter, EditCommand, EditMode, Emacs, FileBackedHistory, KeyCode,
+    KeyModifiers, MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal,
+    default_emacs_keybindings,
 };
+
+use std::sync::{Arc, Mutex};
 
 use crate::repl::completion::SlashCompleter;
 use crate::repl::mouse_edit_mode::{MenuFocus, MenuKey, MouseAwareEditMode};
 use crate::repl::prompt::AmbientPrompt;
+use crate::stream::ring_buffer::RingBuffer;
 use crossterm::event::MouseEvent;
 use tokio::sync::mpsc::Sender as TokioSender;
 
@@ -28,16 +32,22 @@ pub struct MouseHooks {
 }
 
 pub fn build_editor() -> anyhow::Result<Reedline> {
-    build_editor_with_mouse(None)
+    build_editor_with_mouse(None, None)
 }
 
-pub fn build_editor_with_mouse(mouse_hooks: Option<MouseHooks>) -> anyhow::Result<Reedline> {
+pub fn build_editor_with_mouse(
+    mouse_hooks: Option<MouseHooks>,
+    ring: Option<Arc<Mutex<RingBuffer>>>,
+) -> anyhow::Result<Reedline> {
     let history_path = history_path();
     if let Some(parent) = history_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
     let history = FileBackedHistory::with_file(HISTORY_CAPACITY, history_path)?;
-    let completer = Box::<SlashCompleter>::default();
+    let completer: Box<SlashCompleter> = match ring {
+        Some(r) => Box::new(SlashCompleter::with_ring(r)),
+        None => Box::new(SlashCompleter::new()),
+    };
     let menu = ColumnarMenu::default().with_name(COMPLETION_MENU_NAME);
     let mut keybindings = default_emacs_keybindings();
     keybindings.add_binding(
@@ -95,6 +105,7 @@ pub fn build_editor_with_mouse(mouse_hooks: Option<MouseHooks>) -> anyhow::Resul
         .with_history(Box::new(history))
         .with_completer(completer)
         .with_menu(ReedlineMenu::EngineCompleter(Box::new(menu)))
+        .with_hinter(Box::new(DefaultHinter::default()))
         .with_edit_mode(edit_mode);
     Ok(editor)
 }

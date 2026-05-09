@@ -95,11 +95,31 @@ impl FilterState {
     }
 
     pub fn has_active_filters(&self) -> bool {
-        self.level_floor != Severity::default()
-            || self.source_glob.is_some()
-            || self.grep.is_some()
-            || self.follow.is_some()
-            || self.paused
+        self.active_filter_count() > 0
+    }
+
+    /// Count of active filter dimensions for the prompt's `[!N]` badge.
+    /// Each composable axis (level / source / grep / follow / pause)
+    /// contributes at most 1 — equivalent to `has_active_filters` but
+    /// gives the operator at-a-glance scope.
+    pub fn active_filter_count(&self) -> u8 {
+        let mut n: u8 = 0;
+        if self.level_floor != Severity::default() {
+            n += 1;
+        }
+        if self.source_glob.is_some() {
+            n += 1;
+        }
+        if self.grep.is_some() {
+            n += 1;
+        }
+        if self.follow.is_some() {
+            n += 1;
+        }
+        if self.paused {
+            n += 1;
+        }
+        n
     }
 
     pub fn source_glob_text(&self) -> Option<&str> {
