@@ -23,6 +23,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::controller::{ControllerCommand, ControllerConfig, ControllerHandles, run_controller};
 use crate::render::brand::render_brand;
+use crate::render::cursor::{CursorChoreography, render_ambient_above_prompt};
 use crate::render::event_line::{RenderConfig, render_event_line};
 use crate::repl::ansi::{ColorDepth, detect_color_depth};
 use crate::repl::editor::{EditorOutcome, build_editor, read_one};
@@ -54,6 +55,7 @@ pub struct RuntimeConfig {
     pub ring_buffer_capacity: usize,
     pub level_floor: Severity,
     pub probe_host_on_startup: bool,
+    pub cursor_choreography: bool,
 }
 
 impl Default for RuntimeConfig {
@@ -63,6 +65,7 @@ impl Default for RuntimeConfig {
             ring_buffer_capacity: DEFAULT_RING_BUFFER_CAPACITY,
             level_floor: Severity::Info,
             probe_host_on_startup: true,
+            cursor_choreography: false,
         }
     }
 }
@@ -104,6 +107,7 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
         Arc::clone(&filter),
         Arc::clone(&hold_queue),
         depth,
+        cfg.cursor_choreography,
     ));
     let sparkline_handle =
         tokio::spawn(sparkline_loop(Arc::clone(&prompt_state), shutdown.clone()));
@@ -195,6 +199,7 @@ async fn consumer_loop(
     filter: Arc<RwLock<FilterState>>,
     hold_queue: Arc<Mutex<HoldQueue>>,
     depth: ColorDepth,
+    cursor_choreography: bool,
 ) {
     let mut rate_guard = RateGuard::default();
     let mut second_window_count: u32 = 0;
@@ -202,6 +207,11 @@ async fn consumer_loop(
     let mut history: VecDeque<u32> = VecDeque::with_capacity(60);
     let mut last_critical_border = Instant::now() - CRITICAL_BORDER_DEBOUNCE;
     let mut last_condensed_at: Option<Instant> = None;
+    let choreo = if cursor_choreography {
+        Some(CursorChoreography::default())
+    } else {
+        None
+    };
 
     while let Some(item) = rx.recv().await {
         match item {
@@ -247,7 +257,13 @@ async fn consumer_loop(
                     Ok(mut q) => match q.try_enqueue(render_line) {
                         EnqueueResult::Held | EnqueueResult::Overflow => true,
                         EnqueueResult::Passthrough(line) => {
-                            render_visible(&line, depth, now, &mut last_critical_border);
+                            render_visible(
+                                &line,
+                                depth,
+                                now,
+                                &mut last_critical_border,
+                                choreo.as_ref(),
+                            );
                             false
                         }
                     },
@@ -284,6 +300,7 @@ fn render_visible(
     depth: ColorDepth,
     now: Instant,
     last_critical_border: &mut Instant,
+    choreo: Option<&CursorChoreography>,
 ) {
     let critical_border = matches!(line.significance, Significance::Critical)
         && now.duration_since(*last_critical_border) >= CRITICAL_BORDER_DEBOUNCE;
@@ -294,8 +311,17 @@ fn render_visible(
         color_depth: depth,
         critical_border,
     };
-    println!("{}", render_event_line(line, &cfg));
-    let _ = stdout().flush();
+    let rendered = render_event_line(line, &cfg);
+    match choreo {
+        Some(choreo) => {
+            let mut out = stdout().lock();
+            let _ = render_ambient_above_prompt(&mut out, choreo, &rendered);
+        }
+        None => {
+            println!("{rendered}");
+            let _ = stdout().flush();
+        }
+    }
 }
 
 async fn sparkline_loop(prompt: Arc<Mutex<PromptState>>, shutdown: CancellationToken) {
