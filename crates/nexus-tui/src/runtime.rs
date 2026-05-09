@@ -22,9 +22,10 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::controller::{ControllerCommand, ControllerConfig, ControllerHandles, run_controller};
+use crate::mouse::targets::ClickRegistry;
 use crate::render::brand::render_brand;
 use crate::render::cursor::{CursorChoreography, render_ambient_above_prompt};
-use crate::render::event_line::{RenderConfig, render_event_line};
+use crate::render::event_line::{RenderConfig, render_event_line, render_event_line_with_targets};
 use crate::repl::ansi::{ColorDepth, detect_color_depth};
 use crate::repl::editor::{EditorOutcome, build_editor, read_one};
 use crate::repl::prompt::{AmbientPrompt, PromptState};
@@ -91,6 +92,7 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
     initial_filter.set_level_floor(cfg.level_floor);
     let filter = Arc::new(RwLock::new(initial_filter));
     let hold_queue = Arc::new(Mutex::new(HoldQueue::default()));
+    let click_registry = Arc::new(Mutex::new(ClickRegistry::default()));
 
     let (tx, rx) = mpsc::channel::<StreamItem>(1024);
     let shutdown = CancellationToken::new();
@@ -106,6 +108,7 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
         Arc::clone(&prompt_state),
         Arc::clone(&filter),
         Arc::clone(&hold_queue),
+        Arc::clone(&click_registry),
         depth,
         cfg.cursor_choreography,
     ));
@@ -192,12 +195,14 @@ async fn run_editor_blocking(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn consumer_loop(
     mut rx: mpsc::Receiver<StreamItem>,
     ring: Arc<Mutex<RingBuffer>>,
     prompt: Arc<Mutex<PromptState>>,
     filter: Arc<RwLock<FilterState>>,
     hold_queue: Arc<Mutex<HoldQueue>>,
+    click_registry: Arc<Mutex<ClickRegistry>>,
     depth: ColorDepth,
     cursor_choreography: bool,
 ) {
@@ -263,6 +268,7 @@ async fn consumer_loop(
                                 now,
                                 &mut last_critical_border,
                                 choreo.as_ref(),
+                                &click_registry,
                             );
                             false
                         }
@@ -301,6 +307,7 @@ fn render_visible(
     now: Instant,
     last_critical_border: &mut Instant,
     choreo: Option<&CursorChoreography>,
+    click_registry: &Arc<Mutex<ClickRegistry>>,
 ) {
     let critical_border = matches!(line.significance, Significance::Critical)
         && now.duration_since(*last_critical_border) >= CRITICAL_BORDER_DEBOUNCE;
@@ -311,6 +318,7 @@ fn render_visible(
         color_depth: depth,
         critical_border,
     };
+    let layout = render_event_line_with_targets(line, &cfg);
     let rendered = render_event_line(line, &cfg);
     match choreo {
         Some(choreo) => {
@@ -321,6 +329,22 @@ fn render_visible(
             println!("{rendered}");
             let _ = stdout().flush();
         }
+    }
+    register_targets(click_registry, layout.targets);
+}
+
+fn register_targets(
+    click_registry: &Arc<Mutex<ClickRegistry>>,
+    targets: Vec<(crate::mouse::targets::ClickTarget, std::ops::Range<u16>)>,
+) {
+    if targets.is_empty() {
+        return;
+    }
+    let Ok(mut reg) = click_registry.lock() else {
+        return;
+    };
+    for (target, range) in targets {
+        reg.register(0, range, target);
     }
 }
 
