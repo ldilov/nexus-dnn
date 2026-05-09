@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -183,5 +185,13 @@ pub enum NexusEvent {
     DeploymentPurged {
         deployment_id: String,
         purged_at: String,
+    },
+    HostLog {
+        level: String,
+        target: String,
+        message: String,
+        fields: BTreeMap<String, String>,
+        span_path: Option<Vec<String>>,
+        timestamp_ms: i64,
     },
 }

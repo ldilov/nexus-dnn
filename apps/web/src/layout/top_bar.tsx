@@ -9,9 +9,15 @@ export interface BreadcrumbItem {
   onClick?: () => void;
 }
 
+export interface RuntimeBadge {
+  kind: RuntimeChipKind;
+  label: string;
+}
+
 export interface TopBarProps {
   breadcrumbs: ReadonlyArray<BreadcrumbItem>;
-  runtime: { kind: RuntimeChipKind; label: string };
+  host: RuntimeBadge;
+  runtimes: RuntimeBadge;
   onOpenSearch?: () => void;
   onOpenNotifications?: () => void;
   onOpenProfile?: () => void;
@@ -23,7 +29,8 @@ export interface TopBarProps {
 
 export function TopBar({
   breadcrumbs,
-  runtime,
+  host,
+  runtimes,
   onOpenSearch,
   onOpenNotifications,
   onOpenProfile,
@@ -60,9 +67,14 @@ export function TopBar({
 
       <div className={styles.rightZone}>
         <StatusChip
-          kind={runtime.kind === "failed" ? "failed" : runtime.kind === "live" ? "live" : "idle"}
-          label={runtime.label}
-          pulse={runtime.kind === "live"}
+          kind={host.kind === "live" ? "live" : "failed"}
+          label={host.label}
+          pulse={host.kind === "live"}
+        />
+        <StatusChip
+          kind={runtimes.kind === "live" ? "live" : "failed"}
+          label={runtimes.label}
+          pulse={runtimes.kind === "live"}
         />
         <button
           type="button"

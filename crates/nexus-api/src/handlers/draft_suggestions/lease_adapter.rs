@@ -28,16 +28,14 @@ use nexus_backend_runtimes::generic::enums::{InstallStatus, LeaseState};
 use nexus_backend_runtimes::generic::installs::BackendRuntimeInstallsRepo;
 use nexus_backend_runtimes::generic::leases::manager::LeaseManager;
 use nexus_backend_runtimes::generic::leases::text_completion::{
-    CAPABILITY_TAG, CancelParams, DoneNotify, ErrorNotify, METHOD_CANCEL, METHOD_START, NOTIFY_DONE,
-    NOTIFY_ERROR, NOTIFY_TOKEN, StartParams, StartResult, TokenNotify,
+    CAPABILITY_TAG, CancelParams, DoneNotify, ErrorNotify, METHOD_CANCEL, METHOD_START,
+    NOTIFY_DONE, NOTIFY_ERROR, NOTIFY_TOKEN, StartParams, StartResult, TokenNotify,
 };
 use nexus_backend_runtimes::generic::leases::trait_def::BackendRuntimeLease;
 
 use super::errors::DraftSuggestionError;
 use super::prompt_template::PromptPair;
-use super::provider::{
-    CancelFlag, LeaseGuard, StreamHandle, StreamItem, SuggestionStreamProvider,
-};
+use super::provider::{CancelFlag, LeaseGuard, StreamHandle, StreamItem, SuggestionStreamProvider};
 use super::types::SuggestionRequest;
 
 /// Placeholder provider that always reports `NoEligibleBackend` so the
@@ -112,11 +110,7 @@ impl EligibleLeaseFinder for CatalogBackedLeaseFinder {
             .await
             .map_err(|e| DraftSuggestionError::Internal(format!("catalog list: {e}")))?;
         for entry in entries {
-            if !entry
-                .capability_tags
-                .iter()
-                .any(|t| t == CAPABILITY_TAG)
-            {
+            if !entry.capability_tags.iter().any(|t| t == CAPABILITY_TAG) {
                 continue;
             }
             let installs = self
@@ -195,16 +189,14 @@ impl SuggestionStreamProvider for LeaseBackedStreamProvider {
             user: prompt.user,
             max_tokens: request.max_tokens,
         };
-        let start_value = serde_json::to_value(&start_params).map_err(|e| {
-            DraftSuggestionError::Internal(format!("encode start params: {e}"))
-        })?;
+        let start_value = serde_json::to_value(&start_params)
+            .map_err(|e| DraftSuggestionError::Internal(format!("encode start params: {e}")))?;
         let start_resp = lease
             .send_rpc(METHOD_START, start_value)
             .await
             .map_err(|e| DraftSuggestionError::LeaseAcquisitionFailed(format!("start: {e}")))?;
-        let start_result: StartResult = serde_json::from_value(start_resp).map_err(|e| {
-            DraftSuggestionError::Internal(format!("decode start result: {e}"))
-        })?;
+        let start_result: StartResult = serde_json::from_value(start_resp)
+            .map_err(|e| DraftSuggestionError::Internal(format!("decode start result: {e}")))?;
         let stream_id = start_result.stream_id;
 
         let (tx, rx) = mpsc::channel::<StreamItem>(STREAM_CHANNEL_CAPACITY);
@@ -242,7 +234,8 @@ impl SuggestionStreamProvider for LeaseBackedStreamProvider {
 
         Ok(StreamHandle {
             lease_id: lease_id.to_string(),
-            items: Box::pin(ReceiverStream::new(rx)) as Pin<Box<dyn Stream<Item = StreamItem> + Send>>,
+            items: Box::pin(ReceiverStream::new(rx))
+                as Pin<Box<dyn Stream<Item = StreamItem> + Send>>,
             lease_guard,
         })
     }
@@ -357,8 +350,8 @@ fn classify_notification(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::types::{SuggestionContext, SuggestionIntent};
+    use super::*;
     use futures_util::StreamExt;
     use nexus_backend_runtimes::generic::enums::LeaseState;
     use nexus_backend_runtimes::generic::ids::RuntimeLeaseId;
@@ -438,7 +431,9 @@ mod tests {
                 if let Some(r) = self.start_response.lock().unwrap().take() {
                     return r;
                 }
-                return Err(LeaseError::Internal("start_response already consumed".into()));
+                return Err(LeaseError::Internal(
+                    "start_response already consumed".into(),
+                ));
             }
             Ok(serde_json::Value::Null)
         }
@@ -455,9 +450,7 @@ mod tests {
 
     #[async_trait]
     impl EligibleLeaseFinder for StaticFinder {
-        async fn find(
-            &self,
-        ) -> Result<Option<Arc<dyn BackendRuntimeLease>>, DraftSuggestionError> {
+        async fn find(&self) -> Result<Option<Arc<dyn BackendRuntimeLease>>, DraftSuggestionError> {
             Ok(self.0.clone())
         }
     }
@@ -479,7 +472,7 @@ mod tests {
         let start = serde_json::json!({"stream_id": "s-1"});
         let lease = ScriptedLease::new(Ok(start));
         let provider = LeaseBackedStreamProvider::new(Arc::new(StaticFinder(Some(
-            lease.clone() as Arc<dyn BackendRuntimeLease>,
+            lease.clone() as Arc<dyn BackendRuntimeLease>
         ))));
         let handle = provider
             .open_stream(&req(), prompt(), CancelFlag::new())
@@ -546,7 +539,7 @@ mod tests {
         let start = serde_json::json!({"stream_id": "s-1"});
         let lease = ScriptedLease::new(Ok(start));
         let provider = LeaseBackedStreamProvider::new(Arc::new(StaticFinder(Some(
-            lease.clone() as Arc<dyn BackendRuntimeLease>,
+            lease.clone() as Arc<dyn BackendRuntimeLease>
         ))));
         let handle = provider
             .open_stream(&req(), prompt(), CancelFlag::new())
@@ -587,7 +580,7 @@ mod tests {
         let start = serde_json::json!({"stream_id": "s-1"});
         let lease = ScriptedLease::new(Ok(start));
         let provider = LeaseBackedStreamProvider::new(Arc::new(StaticFinder(Some(
-            lease.clone() as Arc<dyn BackendRuntimeLease>,
+            lease.clone() as Arc<dyn BackendRuntimeLease>
         ))));
         let handle = provider
             .open_stream(&req(), prompt(), CancelFlag::new())
@@ -623,7 +616,7 @@ mod tests {
         let start = serde_json::json!({"stream_id": "s-1"});
         let lease = ScriptedLease::new(Ok(start));
         let provider = LeaseBackedStreamProvider::new(Arc::new(StaticFinder(Some(
-            lease.clone() as Arc<dyn BackendRuntimeLease>,
+            lease.clone() as Arc<dyn BackendRuntimeLease>
         ))));
         let handle = provider
             .open_stream(&req(), prompt(), CancelFlag::new())
@@ -666,6 +659,9 @@ mod tests {
         let result = provider
             .open_stream(&req(), prompt(), CancelFlag::new())
             .await;
-        assert!(matches!(result, Err(DraftSuggestionError::NoEligibleBackend)));
+        assert!(matches!(
+            result,
+            Err(DraftSuggestionError::NoEligibleBackend)
+        ));
     }
 }

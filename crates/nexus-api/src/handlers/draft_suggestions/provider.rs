@@ -253,7 +253,9 @@ mod tests {
     #[tokio::test]
     async fn fake_provider_open_error_returns_pre_stream_failure() {
         let provider = FakeStreamProvider::with_open_error(DraftSuggestionError::NoEligibleBackend);
-        let result = provider.open_stream(&req(), prompt(), CancelFlag::new()).await;
+        let result = provider
+            .open_stream(&req(), prompt(), CancelFlag::new())
+            .await;
         match result {
             Err(DraftSuggestionError::NoEligibleBackend) => {}
             _ => panic!("expected NoEligibleBackend"),

@@ -112,10 +112,7 @@ pub async fn list_dependencies(
                     dto.status = StepStatusKind::Ok;
                     dto.satisfied = true;
                     dto.artifact = Some(StepArtifactDto {
-                        path: artifact
-                            .path
-                            .as_ref()
-                            .map(|p| p.display().to_string()),
+                        path: artifact.path.as_ref().map(|p| p.display().to_string()),
                         bytes_placed: artifact.bytes_placed,
                         summary: artifact.summary.clone(),
                     });

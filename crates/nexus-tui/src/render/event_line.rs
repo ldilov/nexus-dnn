@@ -1,0 +1,125 @@
+//! Event-line renderer.
+//!
+//! Produces a single ANSI-coloured line:
+//!
+//! ```text
+//! │ HH:MM:SS  ⚠  WARN  ◈ worker:<id>   summary text here…
+//! ```
+//!
+//! Plus an optional full-width separator line above critical events
+//! (FR-008b). Output is a `String`; the main loop writes to stdout.
+
+use crossterm::style::{Color, ResetColor, SetForegroundColor};
+
+use crate::render::gutter::{ambient_gutter, inspector_gutter};
+use crate::repl::ansi::{
+    ColorDepth, PaletteColor, category_color, render_color, severity_color, source_label_color,
+};
+use crate::stream::event_line::EventLine;
+use crate::stream::severity::Severity;
+use crate::stream::source_category::category_glyph;
+
+#[derive(Debug, Clone, Copy)]
+pub struct RenderConfig {
+    pub color_depth: ColorDepth,
+    pub critical_border: bool,
+}
+
+pub fn render_event_line(line: &EventLine, cfg: &RenderConfig) -> String {
+    let mut out = String::new();
+    if cfg.critical_border {
+        out.push_str(&render_critical_border(cfg.color_depth));
+        out.push('\n');
+    }
+    out.push_str(&render_inner(line, cfg));
+    out
+}
+
+fn render_inner(line: &EventLine, cfg: &RenderConfig) -> String {
+    let timestamp = format_timestamp(line.timestamp_ms);
+    let severity_label = severity_label(line.severity);
+    let severity_glyph = severity_glyph(line.severity);
+    let cat_glyph = category_glyph(line.category);
+    let source_palette = source_label_color(&line.source, line.category);
+    let severity_palette = severity_color(line.severity);
+    let category_palette = category_color(line.category);
+
+    let mut out = String::new();
+    let gutter = if matches!(
+        line.significance,
+        crate::stream::significance::Significance::Critical
+    ) {
+        inspector_gutter()
+    } else {
+        ambient_gutter()
+    };
+    push_colored(&mut out, gutter, category_palette, cfg.color_depth);
+    out.push(' ');
+    out.push_str(&timestamp);
+    out.push(' ');
+    push_colored(
+        &mut out,
+        &format!("{severity_glyph} {severity_label:<5}"),
+        severity_palette,
+        cfg.color_depth,
+    );
+    out.push(' ');
+    push_colored(
+        &mut out,
+        &format!("{cat_glyph} "),
+        category_palette,
+        cfg.color_depth,
+    );
+    push_colored(&mut out, &line.source, source_palette, cfg.color_depth);
+    out.push_str("  ");
+    out.push_str(&line.summary);
+    out
+}
+
+fn render_critical_border(depth: ColorDepth) -> String {
+    let mut s = String::new();
+    push_colored(
+        &mut s,
+        "──────────────────────────────────────────────────────────────",
+        crate::repl::ansi::SEVERITY_FATAL,
+        depth,
+    );
+    s
+}
+
+fn push_colored(out: &mut String, text: &str, palette: PaletteColor, depth: ColorDepth) {
+    let color: Color = render_color(palette, depth);
+    out.push_str(&format!(
+        "{}{text}{}",
+        SetForegroundColor(color),
+        ResetColor
+    ));
+}
+
+fn format_timestamp(ms: i64) -> String {
+    let total_seconds = (ms / 1000).rem_euclid(86_400);
+    let h = (total_seconds / 3600) as u32;
+    let m = ((total_seconds % 3600) / 60) as u32;
+    let s = (total_seconds % 60) as u32;
+    format!("{h:02}:{m:02}:{s:02}")
+}
+
+fn severity_label(severity: Severity) -> &'static str {
+    match severity {
+        Severity::Debug => "DEBUG",
+        Severity::Info => "INFO",
+        Severity::Warn => "WARN",
+        Severity::Error => "ERROR",
+        Severity::Fatal => "FATAL",
+    }
+}
+
+fn severity_glyph(severity: Severity) -> char {
+    match severity {
+        Severity::Debug => '·',
+        Severity::Info => '○',
+        Severity::Warn => '⚠',
+        Severity::Error => '✖',
+        Severity::Fatal => '☠',
+    }
+}

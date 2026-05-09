@@ -109,7 +109,8 @@ fn extract_run_id(event: &nexus_events::types::NexusEvent) -> Option<&str> {
         | ExtensionInstallStepFailed { .. }
         | ExtensionInstallCompleted { .. }
         | DeploymentDeleted { .. }
-        | DeploymentPurged { .. } => None,
+        | DeploymentPurged { .. }
+        | HostLog { .. } => None,
     }
 }
 
@@ -151,5 +152,6 @@ fn extract_event_type(event: &nexus_events::types::NexusEvent) -> &'static str {
         ExtensionInstallCompleted { .. } => "extension_install_completed",
         DeploymentDeleted { .. } => "deployment_deleted",
         DeploymentPurged { .. } => "deployment_purged",
+        HostLog { .. } => "host_log",
     }
 }

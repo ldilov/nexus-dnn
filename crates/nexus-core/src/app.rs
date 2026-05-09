@@ -5,7 +5,7 @@ use anyhow::Context;
 use semver::Version;
 
 use nexus_artifact::FilesystemArtifactStore;
-use nexus_events::bus::{BroadcastEventBus, EventBus};
+use nexus_events::bus::EventBus;
 use nexus_events::types::NexusEvent;
 use nexus_extension::{
     ActivatedExtension, DiscoveryReport, ExtensionRegistry, InMemoryExtensionRegistry,
@@ -36,11 +36,12 @@ pub struct HealthStatus {
 
 pub struct NexusApp {
     pub config: NexusConfig,
+    pub event_bus: Arc<dyn EventBus>,
 }
 
 impl NexusApp {
-    pub fn new(config: NexusConfig) -> Self {
-        Self { config }
+    pub fn new(config: NexusConfig, event_bus: Arc<dyn EventBus>) -> Self {
+        Self { config, event_bus }
     }
 
     pub async fn initialize(&self) -> anyhow::Result<()> {
@@ -92,7 +93,7 @@ impl NexusApp {
 
         let artifact_store = Arc::new(FilesystemArtifactStore::new(self.config.artifacts_dir()));
 
-        let event_bus = Arc::new(BroadcastEventBus::default());
+        let event_bus = self.event_bus.clone();
 
         let extensions_dir = self.config.extensions_dir();
         let host_version = Version::parse(HOST_API_VERSION).context("invalid host api version")?;
@@ -312,8 +313,6 @@ impl NexusApp {
             artifact_store.clone(),
         );
 
-
-
         // Resolve the embedded-Python asset once: env-var override wins, then
         // the spec-032 REGISTRY pin for the host's target triple. The same
         // asset feeds BOTH the legacy backend pipeline (FamilyPythonHandler in
@@ -483,15 +482,13 @@ fn build_extension_router_registry(
     let host_base_url = format!("http://127.0.0.1:{host_port}");
 
     let providers: Vec<Arc<dyn ExtensionRouterProvider>> = vec![
-        Arc::new(
-            nexus_local_llm_chat_history::LocalLlmRouterProvider::new(
-                nexus_local_llm_chat_history::LocalLlmProviderResources::from_host_base_url(
-                    pool.clone(),
-                    host_base_url.clone(),
-                    chat_resources,
-                ),
+        Arc::new(nexus_local_llm_chat_history::LocalLlmRouterProvider::new(
+            nexus_local_llm_chat_history::LocalLlmProviderResources::from_host_base_url(
+                pool.clone(),
+                host_base_url.clone(),
+                chat_resources,
             ),
-        ),
+        )),
         Arc::new(emotion_tts_extension::EmotionTtsRouterProvider::new({
             let mut res = emotion_tts_extension::EmotionTtsProviderResources::new(pool.clone());
             let id = emotion_tts_extension::EXTENSION_ID;
@@ -976,7 +973,15 @@ fn log_discovery_summary(registry: &InMemoryExtensionRegistry) {
         tracing::info!(target: BANNER_TARGET, "    {label}");
         let name_width = extensions
             .iter()
-            .map(|e| e.manifest.extension.name.as_deref().unwrap_or(&e.manifest.extension.id).chars().count())
+            .map(|e| {
+                e.manifest
+                    .extension
+                    .name
+                    .as_deref()
+                    .unwrap_or(&e.manifest.extension.id)
+                    .chars()
+                    .count()
+            })
             .max()
             .unwrap_or(0);
         for ext in &extensions {
