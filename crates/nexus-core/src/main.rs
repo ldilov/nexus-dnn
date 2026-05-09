@@ -1,42 +1,39 @@
-mod app;
-mod config;
-mod diagnostic;
-mod log_format;
-
 use std::io::IsTerminal;
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::Context;
-use clap::Parser;
+use nexus_core::app::NexusApp;
+use nexus_core::config::NexusConfig;
+use nexus_core::log_format::PrettyFormat;
+use nexus_core::tracing_bridge::{TargetFilter, TracingBridgeLayer};
+use nexus_events::bus::{BroadcastEventBus, EventBus};
+use nexus_events::redaction::SensitiveNameAllowlist;
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
-
-use crate::app::NexusApp;
-use crate::config::NexusConfig;
-use crate::log_format::PrettyFormat;
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let config = NexusConfig::parse();
-    // The `_appender_guard` keeps the non-blocking writer alive. Dropping
-    // it would close the channel and silently lose buffered log lines
-    // before they hit disk. Hold it for the lifetime of `main`.
-    let _appender_guard = initialize_tracing(&config);
+    let config = NexusConfig::load()?;
+    let event_bus = Arc::new(BroadcastEventBus::with_capacities(
+        1024,
+        config.tui.ring_buffer_capacity,
+    ));
+    let shared_event_bus: Arc<dyn EventBus> = event_bus.clone();
+    let _appender_guard = initialize_tracing(&config, Some(shared_event_bus.clone()));
 
     tracing::info!("nexus-dnn starting");
 
-    let app = NexusApp::new(config);
+    let app = NexusApp::new(config, shared_event_bus);
     app.run().await.context("nexus-dnn failed")?;
 
     Ok(())
 }
 
-/// Returns the tracing-appender `WorkerGuard` so the caller can keep it
-/// alive — dropping it flushes pending writes and closes the file.
-/// Returns `None` when the console-subscriber owns the dispatcher
-/// (debug-async mode bypasses our layers entirely) or when the logs
-/// directory could not be created (terminal logging continues).
-fn initialize_tracing(config: &NexusConfig) -> Option<WorkerGuard> {
+fn initialize_tracing(
+    config: &NexusConfig,
+    event_bus: Option<Arc<dyn EventBus>>,
+) -> Option<WorkerGuard> {
     if config.debug_async {
         return install_console_subscriber();
     }
@@ -44,18 +41,12 @@ fn initialize_tracing(config: &NexusConfig) -> Option<WorkerGuard> {
     let env_filter = build_env_filter(&config.log_level);
     let logs_dir = config.logs_dir();
     let file_appender_outcome = create_file_appender(&logs_dir);
-
-    // Auto-detect TTY for the terminal layer. Honors `NO_COLOR=1`
-    // (https://no-color.org) for users who want plain text in their
-    // terminal too. The file layer always disables ANSI regardless.
-    let stdout_use_ansi = std::io::stdout().is_terminal()
-        && std::env::var_os("NO_COLOR").is_none();
-    // `with_ansi(...)` controls the FIELD formatter's escape codes
-    // (italic field names, dim `=` separator). Match it to the level's
-    // ANSI mode so a NO_COLOR=1 env or piped-to-file run is fully clean.
+    let stdout_use_ansi = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
     let stdout_layer = fmt::layer()
         .with_ansi(stdout_use_ansi)
-        .event_format(PrettyFormat { use_ansi: stdout_use_ansi });
+        .event_format(PrettyFormat {
+            use_ansi: stdout_use_ansi,
+        });
 
     let file_layer = file_appender_outcome.as_ref().map(|(non_blocking, _)| {
         fmt::layer()
@@ -64,10 +55,30 @@ fn initialize_tracing(config: &NexusConfig) -> Option<WorkerGuard> {
             .event_format(PrettyFormat { use_ansi: false })
     });
 
+    let bridge_layer = if config.tui.tracing_bridge.enabled {
+        event_bus.map(|bus| {
+            TracingBridgeLayer::new(
+                bus,
+                SensitiveNameAllowlist::new(
+                    config
+                        .tui
+                        .tracing_bridge
+                        .extra_sensitive_patterns
+                        .iter()
+                        .cloned(),
+                ),
+                TargetFilter::default(),
+            )
+        })
+    } else {
+        None
+    };
+
     tracing_subscriber::registry()
         .with(stdout_layer)
         .with(file_layer)
         .with(env_filter)
+        .with(bridge_layer)
         .init();
 
     match &file_appender_outcome {
@@ -87,12 +98,6 @@ fn initialize_tracing(config: &NexusConfig) -> Option<WorkerGuard> {
 }
 
 fn build_env_filter(default_level: &str) -> EnvFilter {
-    // RUST_LOG wins when set. Otherwise build a sensible default that:
-    //   - keeps host crates at the configured level (info/debug/...)
-    //   - elevates spec-035 install-flow targets to DEBUG so we never lose the
-    //     download / extract / probe trail
-    //   - silences noisy third-party HTTP/TLS/WS layers that otherwise drown
-    //     out the install logs at DEBUG level
     EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         let directives = [
             default_level,
@@ -119,20 +124,17 @@ fn build_env_filter(default_level: &str) -> EnvFilter {
     })
 }
 
-/// Build a non-blocking, daily-rotating file appender writing to
-/// `<logs_dir>/nexus-dnn.log.YYYY-MM-DD`. Returns the writer and its
-/// `WorkerGuard`; the guard MUST be retained or pending writes are
-/// silently dropped on shutdown.
 fn create_file_appender(
     logs_dir: &Path,
 ) -> Option<(tracing_appender::non_blocking::NonBlocking, WorkerGuard)> {
-    if let Err(e) = std::fs::create_dir_all(logs_dir) {
+    if let Err(error) = std::fs::create_dir_all(logs_dir) {
         eprintln!(
-            "[startup] could not create logs dir {}: {e} — file logging disabled",
+            "[startup] could not create logs dir {}: {error} - file logging disabled",
             logs_dir.display()
         );
         return None;
     }
+
     let file_appender = tracing_appender::rolling::daily(logs_dir, "nexus-dnn.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
     Some((non_blocking, guard))
@@ -141,9 +143,7 @@ fn create_file_appender(
 #[cfg(feature = "console")]
 fn install_console_subscriber() -> Option<WorkerGuard> {
     eprintln!(
-        "[startup] --debug-async: installing console-subscriber. \
-         Compact terminal logs and rotating file output are disabled \
-         until restart without this flag. Connect with `tokio-console`."
+        "[startup] --debug-async: installing console-subscriber. Compact terminal logs and rotating file output are disabled until restart without this flag. Connect with `tokio-console`."
     );
     console_subscriber::init();
     None
@@ -152,16 +152,10 @@ fn install_console_subscriber() -> Option<WorkerGuard> {
 #[cfg(not(feature = "console"))]
 fn install_console_subscriber() -> Option<WorkerGuard> {
     eprintln!(
-        "[startup] --debug-async was passed but `nexus-core` was built \
-         without the `console` feature. Rebuild with \
-         `RUSTFLAGS=\"--cfg tokio_unstable\" cargo build --features console` \
-         to enable. Falling back to env-filter terminal logging — file \
-         rotation is also disabled in this fallback path."
+        "[startup] --debug-async was passed but `nexus-core` was built without the `console` feature. Rebuild with `RUSTFLAGS=\"--cfg tokio_unstable\" cargo build --features console` to enable. Falling back to env-filter terminal logging - file rotation is also disabled in this fallback path."
     );
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
-    let use_ansi = std::io::stdout().is_terminal()
-        && std::env::var_os("NO_COLOR").is_none();
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let use_ansi = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
     tracing_subscriber::registry()
         .with(
             fmt::layer()

@@ -101,15 +101,15 @@ export function DeploymentDetailPlaceholder({
   // surfaced data isn't misread as a per-deployment liveness indicator.
   const runtime = useRuntimeStatus();
   const status: StatusKind =
-    runtime.kind === "live"
+    runtime.host.kind === "live"
       ? "live"
-      : runtime.kind === "failed"
+      : runtime.host.kind === "failed"
         ? "failed"
         : "idle";
   const statusLabel =
-    runtime.kind === "live"
+    runtime.host.kind === "live"
       ? "host runtime · live"
-      : runtime.kind === "failed"
+      : runtime.host.kind === "failed"
         ? "host runtime · failed"
         : "host runtime · idle";
 

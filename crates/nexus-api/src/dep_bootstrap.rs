@@ -470,10 +470,7 @@ impl RealModelStoreClient {
                 artifact_id: ArtifactId::from(format!("{family_id}#{}", f.path)),
                 filename: f.path.clone(),
                 role: DependencyRole::Primary,
-                download_url: format!(
-                    "https://huggingface.co/{repo_id}/resolve/main/{}",
-                    f.path
-                ),
+                download_url: format!("https://huggingface.co/{repo_id}/resolve/main/{}", f.path),
                 expected_bytes: f.size_bytes,
                 sha256: None,
             })
@@ -521,9 +518,10 @@ impl ModelStoreClient for RealModelStoreClient {
         family_id: &str,
         _accelerator: Option<&str>,
     ) -> Result<String, DepError> {
-        let store = self.download_job_store.as_ref().ok_or_else(|| {
-            DepError::Backend("download job store not initialised".into())
-        })?;
+        let store = self
+            .download_job_store
+            .as_ref()
+            .ok_or_else(|| DepError::Backend("download job store not initialised".into()))?;
 
         // Snapshot-download the entire repo. Multi-file ML families keep
         // configs, tokenizers, and additional weights alongside the
@@ -566,9 +564,10 @@ impl ModelStoreClient for RealModelStoreClient {
     }
 
     async fn poll_job(&self, job_id: &str) -> Result<ModelDownloadProgress, DepError> {
-        let store = self.download_job_store.as_ref().ok_or_else(|| {
-            DepError::Backend("download job store not initialised".into())
-        })?;
+        let store = self
+            .download_job_store
+            .as_ref()
+            .ok_or_else(|| DepError::Backend("download job store not initialised".into()))?;
         let uuid = uuid::Uuid::parse_str(job_id)
             .map_err(|e| DepError::Backend(format!("invalid job_id '{job_id}': {e}")))?;
         let id = JobId::from_uuid(uuid);
@@ -604,10 +603,7 @@ impl ModelStoreClient for RealModelStoreClient {
                 // Per-job sink directory contains the downloaded artifact(s).
                 // Downstream steps (validation/worker handshake) and the
                 // probe path (`is_family_installed`) expect this layout.
-                let path = self
-                    .orchestrator
-                    .sink_root()
-                    .join(job.job_id.to_string());
+                let path = self.orchestrator.sink_root().join(job.job_id.to_string());
                 Ok(ModelDownloadProgress::Completed {
                     path,
                     bytes_placed: job.progress_bytes,
@@ -627,8 +623,7 @@ impl ModelStoreClient for RealModelStoreClient {
             }),
             DownloadState::Incompatible => Ok(ModelDownloadProgress::Failed {
                 category: "incompatible".into(),
-                message: "model artifacts are incompatible with this host's accelerators"
-                    .into(),
+                message: "model artifacts are incompatible with this host's accelerators".into(),
             }),
             DownloadState::NotDownloaded => Ok(ModelDownloadProgress::InProgress {
                 current_bytes: 0,
@@ -684,7 +679,10 @@ impl WorkerHandshake for RealWorkerHandshake {
             .map(|(id, art)| {
                 format!(
                     "{id}=>{}",
-                    art.path.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "<no path>".into())
+                    art.path
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "<no path>".into())
                 )
             })
             .collect();
@@ -846,7 +844,10 @@ impl WorkerHandshake for RealWorkerHandshake {
 
         let mut child = cmd.spawn().map_err(|err| HandshakeError {
             category: "worker_spawn_failed".into(),
-            message: format!("failed to spawn '{}' -m {module_name}: {err}", venv_python.display()),
+            message: format!(
+                "failed to spawn '{}' -m {module_name}: {err}",
+                venv_python.display()
+            ),
         })?;
 
         let mut stdin = child.stdin.take().expect("stdin piped");
@@ -876,14 +877,12 @@ impl WorkerHandshake for RealWorkerHandshake {
                 // if the pipe is broken we just kill below.
                 use tokio::io::AsyncWriteExt;
                 let _ = stdin
-                    .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"shutdown\",\"params\":null}\n")
+                    .write_all(
+                        b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"shutdown\",\"params\":null}\n",
+                    )
                     .await;
                 drop(stdin);
-                let _ = tokio::time::timeout(
-                    std::time::Duration::from_secs(2),
-                    child.wait(),
-                )
-                .await;
+                let _ = tokio::time::timeout(std::time::Duration::from_secs(2), child.wait()).await;
                 let _ = child.kill().await;
                 tracing::info!(
                     target: "spec_035::handshake",
@@ -1040,9 +1039,7 @@ async fn run_handshake_protocol(
         // (response). Treat as malformed.
         return Err(HandshakeError {
             category: "handshake_protocol_error".into(),
-            message: format!(
-                "worker frame is neither notification nor response: {parsed}"
-            ),
+            message: format!("worker frame is neither notification nor response: {parsed}"),
         });
     }
 
@@ -1070,9 +1067,7 @@ fn find_python_interpreter(
     None
 }
 
-fn find_venv_root(
-    upstream: &std::collections::HashMap<String, StepArtifact>,
-) -> Option<PathBuf> {
+fn find_venv_root(upstream: &std::collections::HashMap<String, StepArtifact>) -> Option<PathBuf> {
     for artifact in upstream.values() {
         let Some(path) = artifact.path.as_ref() else {
             continue;
@@ -1112,7 +1107,9 @@ fn read_worker_module_from_pyproject(path: &std::path::Path) -> Result<String, S
         .next()
         .ok_or_else(|| format!("script target '{target_str}' has empty module path"))?;
     if package_root.is_empty() {
-        return Err(format!("script target '{target_str}' resolves to empty package"));
+        return Err(format!(
+            "script target '{target_str}' resolves to empty package"
+        ));
     }
     Ok(package_root.to_owned())
 }

@@ -7,6 +7,7 @@
 //! later phases.
 
 pub mod block;
+pub mod desktop_focus;
 pub mod host;
 pub mod pulse_floor;
 pub mod run_events;

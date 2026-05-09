@@ -24,10 +24,7 @@ impl SseEncoder {
     /// `Result<Event, serde_json::Error>` because the JSON serialization
     /// can technically fail; callers should treat that as
     /// `DraftSuggestionError::Internal`.
-    pub fn encode(
-        &self,
-        event: &SuggestionResponseEvent,
-    ) -> Result<Event, serde_json::Error> {
+    pub fn encode(&self, event: &SuggestionResponseEvent) -> Result<Event, serde_json::Error> {
         let name = event.event_name();
         let payload = serde_json::to_string(&json_payload(event))?;
         Ok(Event::default().event(name).data(payload))
@@ -195,7 +192,10 @@ mod tests {
             message: "boom".into(),
             retryable: false,
         };
-        assert_eq!(keys(&json_payload(&err)), vec!["code", "message", "retryable"]);
+        assert_eq!(
+            keys(&json_payload(&err)),
+            vec!["code", "message", "retryable"]
+        );
 
         let cancelled = SuggestionResponseEvent::Cancelled {
             reason: "client_cancelled".into(),
@@ -212,9 +212,7 @@ mod tests {
     fn encode_round_trips_without_serde_error() {
         let enc = SseEncoder::new();
         for ev in [
-            SuggestionResponseEvent::Token {
-                delta: "x".into(),
-            },
+            SuggestionResponseEvent::Token { delta: "x".into() },
             SuggestionResponseEvent::Complete {
                 final_text: "x".into(),
                 tokens_emitted: 1,

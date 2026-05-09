@@ -18,6 +18,7 @@ import { CursorRoot } from "./components/cursor/cursor_root";
 import { FocusedBlockProvider } from "./hooks/use_focused_block";
 import { sweepStaleDrafts } from "./views/modules/draft/draft_envelope";
 import { useOperatorSpecs } from "./hooks/use_operator_specs";
+import { useRuntimeStatus } from "./hooks/use_runtime_status";
 import { useEventStream } from "./hooks/use_event_stream";
 import { usePollingMetrics } from "./hooks/use_polling_metrics";
 import { fetchLayouts } from "./services/layouts";
@@ -243,6 +244,7 @@ export default function RootLayout() {
   };
 
   const sidebarVariant: SidebarVariant = sidebarPinned ? "expanded" : "rail";
+  const runtime = useRuntimeStatus();
   const notYetWired = useCallback(
     (label: string) => () => {
       toast.info(`${label} is not yet wired`, {
@@ -258,6 +260,8 @@ export default function RootLayout() {
         topBar={
           <TopBar
             breadcrumbs={breadcrumbs}
+            host={runtime.host}
+            runtimes={runtime.runtimes}
             onOpenSearch={notYetWired("Search")}
             onOpenNotifications={notYetWired("Notifications")}
             onOpenProfile={notYetWired("Profile")}
