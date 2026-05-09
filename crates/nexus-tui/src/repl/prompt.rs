@@ -49,7 +49,11 @@ impl AmbientPrompt {
         self
     }
 
-    fn register_regions(&self, sparkline_range: std::ops::Range<u16>, filter_range: Option<std::ops::Range<u16>>) {
+    fn register_regions(
+        &self,
+        sparkline_range: std::ops::Range<u16>,
+        filter_range: Option<std::ops::Range<u16>>,
+    ) {
         let Some(registry) = &self.click_registry else {
             return;
         };

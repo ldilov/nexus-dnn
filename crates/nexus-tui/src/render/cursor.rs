@@ -102,10 +102,7 @@ pub fn render_ambient_above_prompt<W: Write>(
 ///
 /// Used by the runtime after resize so a stale prompt at the old
 /// width does not leave residue when the new prompt is drawn.
-pub fn clear_prompt_area<W: Write>(
-    writer: &mut W,
-    choreo: &CursorChoreography,
-) -> io::Result<()> {
+pub fn clear_prompt_area<W: Write>(writer: &mut W, choreo: &CursorChoreography) -> io::Result<()> {
     for _ in 0..choreo.prompt_height {
         queue!(writer, MoveToColumn(0))?;
         queue!(writer, Clear(ClearType::CurrentLine))?;
