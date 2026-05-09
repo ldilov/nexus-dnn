@@ -61,6 +61,11 @@ impl ClickRegistry {
         self.entries.clear();
     }
 
+    pub fn clear_row(&mut self, row: u16) {
+        let row_i32 = row as i32;
+        self.entries.retain(|entry| entry.row != row_i32);
+    }
+
     pub fn len(&self) -> usize {
         self.entries.len()
     }
