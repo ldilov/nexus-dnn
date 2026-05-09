@@ -34,6 +34,14 @@ impl TracingBridgeLayer {
             rate_limiter: PerTargetRateLimiter::new(DEFAULT_EVENTS_PER_SECOND, DEFAULT_IDLE_TTL),
         }
     }
+
+    /// Override the per-target rate-limit capacity (events/sec/target). Defaults to
+    /// 10 000. Useful for benches that want the typical-path cost without rate-limit
+    /// interference, or for ops who need a higher cap on a quiet host.
+    pub fn with_rate_limit(mut self, events_per_second: usize) -> Self {
+        self.rate_limiter = PerTargetRateLimiter::new(events_per_second, DEFAULT_IDLE_TTL);
+        self
+    }
 }
 
 impl<S> Layer<S> for TracingBridgeLayer
