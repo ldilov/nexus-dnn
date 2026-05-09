@@ -4,6 +4,20 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use serde::Deserialize;
 
+/// Runtime-mode flags that do not belong in the persisted config file.
+/// Returned alongside [`NexusConfig`] from [`NexusConfig::load_with_runtime`].
+#[derive(Debug, Clone, Default)]
+pub struct RuntimeMode {
+    /// Spawn the TUI (`nexus`) as a child process after the host is ready.
+    /// Suppresses the stdout tracing layer so the terminal is clean for the
+    /// TUI; structured events still flow via the file appender + tracing
+    /// bridge.
+    pub with_tui: bool,
+    /// Override path to the `nexus` (TUI) binary. Default: discovered next
+    /// to the current `nexus-dnn` executable.
+    pub tui_bin: Option<PathBuf>,
+}
+
 const DEFAULT_PORT: u16 = 3000;
 const DEFAULT_LOG_LEVEL: &str = "info,tower_http=debug";
 const DATA_DIR_NAME: &str = ".nexus";
@@ -20,11 +34,21 @@ pub struct NexusConfig {
 
 impl NexusConfig {
     pub fn load() -> Result<Self> {
+        Self::load_with_runtime().map(|(cfg, _)| cfg)
+    }
+
+    /// Like [`load`] but also returns the runtime-mode flags
+    /// (`--with-tui`, `--tui-bin`).
+    pub fn load_with_runtime() -> Result<(Self, RuntimeMode)> {
         let cli = CliConfig::parse();
+        let runtime = RuntimeMode {
+            with_tui: cli.with_tui,
+            tui_bin: cli.tui_bin.clone(),
+        };
         let file_config = load_file_config(&cli)?;
         let file_tui = file_config.tui.clone().unwrap_or_default();
 
-        Ok(Self {
+        let cfg = Self {
             data_dir: cli.data_dir.or(file_config.data_dir),
             port: cli.port.or(file_config.port).unwrap_or(DEFAULT_PORT),
             log_level: cli
@@ -54,7 +78,8 @@ impl NexusConfig {
                     },
                 },
             },
-        })
+        };
+        Ok((cfg, runtime))
     }
 
     pub fn resolved_data_dir(&self) -> PathBuf {
@@ -159,6 +184,16 @@ struct CliConfig {
         value_delimiter = ','
     )]
     tui_tracing_bridge_extra_sensitive_patterns: Vec<String>,
+
+    /// Spawn the `nexus` TUI as a child process after the host is bound.
+    /// On TUI exit (`Ctrl+D` / `/quit`) the host shuts down too.
+    #[arg(long, default_value_t = false)]
+    with_tui: bool,
+
+    /// Override the path to the `nexus` (TUI) binary used by `--with-tui`.
+    /// Default: discovered next to the running `nexus-dnn` executable.
+    #[arg(long, value_name = "PATH")]
+    tui_bin: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

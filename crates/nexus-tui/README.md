@@ -37,19 +37,36 @@ CLI flags:
 
 ### One-command workflow
 
-To run the host + TUI from a single terminal:
+Two equivalent shapes — pick whichever feels right for your terminal habits.
+
+**Host-orchestrated (recommended):** the host (`nexus-dnn`) is the long-
+lived service; it spawns the TUI as a child after the HTTP server binds.
+The host's stdout tracing layer is suppressed (file logging in
+`~/.nexus/logs/nexus-dnn.log` continues), so the TUI gets a clean
+terminal:
 
 ```bash
-# Build the host once (after any change to crates/nexus-core/)
-cargo build --bin nexus-dnn
+# Build both binaries once (after any change to crates/nexus-core/ or crates/nexus-tui/)
+cargo build -p nexus-core --bin nexus-dnn -p nexus-tui --bin nexus
 
-# Start the host as a child of the TUI
+# Start everything from the host
+cargo run -p nexus-core --bin nexus-dnn -- --with-tui
+```
+
+On `Ctrl+D` / `/quit` in the TUI, the host shuts down too.
+
+**TUI-orchestrated:** the TUI is primary; it spawns `nexus-dnn` as a
+child process and tears it down on TUI exit. Stdout + stderr go to
+`~/.nexus/host.log`:
+
+```bash
 cargo run -p nexus-tui -- --with-host
 ```
 
-The TUI spawns `target/debug/nexus-dnn(.exe)`, polls `/api/host/info`, and
-attaches when ready. On `Ctrl+D` / `/quit`, tokio's `kill_on_drop`
-terminates the host child.
+| Direction | Primary binary | Spawns | Host stdout |
+|---|---|---|---|
+| `--with-tui` | `nexus-dnn` | `nexus` (TUI) as child | Suppressed; file logging in `~/.nexus/logs/` |
+| `--with-host` | `nexus` (TUI) | `nexus-dnn` (host) as child | Captured to `~/.nexus/host.log` |
 
 ## Slash commands
 
