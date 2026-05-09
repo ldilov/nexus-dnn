@@ -11,6 +11,9 @@
 
 use crossterm::style::{Color, ResetColor, SetForegroundColor};
 
+use std::ops::Range;
+
+use crate::mouse::targets::ClickTarget;
 use crate::render::gutter::{ambient_gutter, inspector_gutter};
 use crate::repl::ansi::{
     ColorDepth, PaletteColor, category_color, render_color, severity_color, source_label_color,
@@ -33,6 +36,111 @@ pub fn render_event_line(line: &EventLine, cfg: &RenderConfig) -> String {
     }
     out.push_str(&render_inner(line, cfg));
     out
+}
+
+#[derive(Debug)]
+pub struct EventLineLayout {
+    pub rendered: String,
+    pub targets: Vec<(ClickTarget, Range<u16>)>,
+}
+
+/// Render an event line and emit the visible-column ranges of each
+/// clickable region (event-line body, source label, run-id reference).
+/// Caller registers the ranges with the active `ClickRegistry`.
+pub fn render_event_line_with_targets(line: &EventLine, cfg: &RenderConfig) -> EventLineLayout {
+    let timestamp = format_timestamp(line.timestamp_ms);
+    let severity_label = severity_label(line.severity);
+    let severity_glyph = severity_glyph(line.severity);
+    let cat_glyph = category_glyph(line.category);
+    let source_palette = source_label_color(&line.source, line.category);
+    let severity_palette = severity_color(line.severity);
+    let category_palette = category_color(line.category);
+
+    let mut out = String::new();
+    let mut col: u16 = 0;
+    let body_start = col;
+
+    let gutter = if matches!(
+        line.significance,
+        crate::stream::significance::Significance::Critical
+    ) {
+        inspector_gutter()
+    } else {
+        ambient_gutter()
+    };
+    push_colored(&mut out, gutter, category_palette, cfg.color_depth);
+    col = col.saturating_add(visible_width(gutter));
+    out.push(' ');
+    col = col.saturating_add(1);
+
+    out.push_str(&timestamp);
+    col = col.saturating_add(visible_width(&timestamp));
+    out.push(' ');
+    col = col.saturating_add(1);
+
+    let sev_text = format!("{severity_glyph} {severity_label:<5}");
+    push_colored(&mut out, &sev_text, severity_palette, cfg.color_depth);
+    col = col.saturating_add(visible_width(&sev_text));
+    out.push(' ');
+    col = col.saturating_add(1);
+
+    let cat_text = format!("{cat_glyph} ");
+    push_colored(&mut out, &cat_text, category_palette, cfg.color_depth);
+    col = col.saturating_add(visible_width(&cat_text));
+
+    let source_start = col;
+    push_colored(&mut out, &line.source, source_palette, cfg.color_depth);
+    col = col.saturating_add(visible_width(&line.source));
+    let source_end = col;
+
+    out.push_str("  ");
+    col = col.saturating_add(2);
+
+    let summary_start = col;
+    out.push_str(&line.summary);
+    col = col.saturating_add(visible_width(&line.summary));
+    let body_end = col;
+
+    let mut targets: Vec<(ClickTarget, Range<u16>)> = Vec::new();
+    targets.push((
+        ClickTarget::EventLineBody { event_id: line.id },
+        body_start..body_end,
+    ));
+    targets.push((
+        ClickTarget::SourceLabel {
+            source: line.source.clone(),
+        },
+        source_start..source_end,
+    ));
+    if let Some(run_id) = &line.correlation.run_id {
+        let needle = run_id.as_str();
+        if let Some(rel) = line.summary.find(needle) {
+            let prefix_width = visible_width(&line.summary[..rel]);
+            let id_width = visible_width(needle);
+            let span_start = summary_start.saturating_add(prefix_width);
+            let span_end = span_start.saturating_add(id_width);
+            targets.push((
+                ClickTarget::RunIdReference {
+                    run_id: run_id.clone(),
+                },
+                span_start..span_end,
+            ));
+        }
+    }
+
+    EventLineLayout {
+        rendered: out,
+        targets,
+    }
+}
+
+fn visible_width(s: &str) -> u16 {
+    let count = s.chars().count();
+    if count > u16::MAX as usize {
+        u16::MAX
+    } else {
+        count as u16
+    }
 }
 
 fn render_inner(line: &EventLine, cfg: &RenderConfig) -> String {
