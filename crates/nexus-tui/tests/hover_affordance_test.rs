@@ -39,6 +39,7 @@ fn cfg(target: Option<ClickTarget>) -> RenderConfig {
         color_depth: ColorDepth::Truecolor,
         critical_border: false,
         hover_target: target,
+        ascii_glyphs: false,
     }
 }
 

@@ -37,6 +37,13 @@ struct Cli {
     /// mouse events or you need uninterrupted text-selection.
     #[arg(long = "no-mouse", action = clap::ArgAction::SetTrue)]
     no_mouse: bool,
+
+    /// Replace Unicode severity + source-category glyphs with ASCII proxies
+    /// (e.g. `*`, `>`, `!`, `X`, `#`). Use on terminals that cannot render
+    /// the Unicode set. Box-drawing and Braille sparkline glyphs are NOT
+    /// affected by this flag — see spec 044 FR-008a.
+    #[arg(long = "no-glyphs", action = clap::ArgAction::SetTrue)]
+    no_glyphs: bool,
 }
 
 #[tokio::main]
@@ -50,6 +57,7 @@ async fn main() -> anyhow::Result<()> {
         probe_host_on_startup: !cli.no_probe,
         cursor_choreography: cli.cursor_choreography,
         enable_mouse: !cli.no_mouse,
+        ascii_glyphs: cli.no_glyphs,
     };
 
     let _guard = match TerminalGuard::new() {
