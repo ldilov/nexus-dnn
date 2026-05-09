@@ -59,6 +59,18 @@ fn clear_drops_all_entries() {
 }
 
 #[test]
+fn clear_row_drops_only_that_row() {
+    let mut reg = ClickRegistry::default();
+    reg.register(0, 0..10, ClickTarget::Sparkline);
+    reg.register(1, 0..3, ClickTarget::FilterIndicator);
+    reg.register(0, 20..30, ClickTarget::EventLineBody { event_id: evid(1) });
+    reg.clear_row(0);
+    assert!(reg.lookup(0, 5).is_none());
+    assert!(reg.lookup(0, 25).is_none());
+    assert!(reg.lookup(1, 1).is_some());
+}
+
+#[test]
 fn source_label_target_round_trip() {
     let mut reg = ClickRegistry::default();
     reg.register(

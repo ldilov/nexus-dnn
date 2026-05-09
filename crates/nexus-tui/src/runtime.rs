@@ -81,7 +81,8 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
     let depth = detect_color_depth();
     let _ = print_brand(depth);
 
-    let prompt = AmbientPrompt::new();
+    let click_registry = Arc::new(Mutex::new(ClickRegistry::default()));
+    let prompt = AmbientPrompt::new().with_click_registry(Arc::clone(&click_registry));
     let prompt_state = prompt.handle();
 
     let capacity = RingBufferCapacity::new(cfg.ring_buffer_capacity)
@@ -92,7 +93,6 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
     initial_filter.set_level_floor(cfg.level_floor);
     let filter = Arc::new(RwLock::new(initial_filter));
     let hold_queue = Arc::new(Mutex::new(HoldQueue::default()));
-    let click_registry = Arc::new(Mutex::new(ClickRegistry::default()));
 
     let (tx, rx) = mpsc::channel::<StreamItem>(1024);
     let shutdown = CancellationToken::new();
