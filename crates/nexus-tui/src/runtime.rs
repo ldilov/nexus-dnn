@@ -13,6 +13,7 @@
 
 use std::collections::VecDeque;
 use std::io::{IsTerminal, Write, stdout};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
@@ -68,6 +69,13 @@ pub struct RuntimeConfig {
     pub cursor_choreography: bool,
     pub enable_mouse: bool,
     pub ascii_glyphs: bool,
+    /// When true, spawn the `nexus-dnn` host as a child process before
+    /// attaching the TUI. The child is killed when the TUI exits.
+    pub spawn_host: bool,
+    /// Optional override path to the `nexus-dnn` binary; ignored unless
+    /// `spawn_host` is true. Default behaviour searches for the binary
+    /// alongside the current `nexus` executable.
+    pub host_bin: Option<PathBuf>,
 }
 
 impl Default for RuntimeConfig {
@@ -80,12 +88,35 @@ impl Default for RuntimeConfig {
             cursor_choreography: false,
             enable_mouse: true,
             ascii_glyphs: false,
+            spawn_host: false,
+            host_bin: None,
         }
     }
 }
 
 pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
+    let _host_child = if cfg.spawn_host {
+        match crate::host_child::spawn_host_and_wait(cfg.host_bin.as_deref(), &cfg.host_url).await {
+            Ok(handle) => {
+                eprintln!(
+                    "nexus: host ready at {} — log: {}",
+                    cfg.host_url,
+                    handle.log_path().display()
+                );
+                Some(handle)
+            }
+            Err(err) => {
+                return Ok(ExitReason::HostUnreachable(format!(
+                    "--with-host failed: {err}"
+                )));
+            }
+        }
+    } else {
+        None
+    };
+
     if cfg.probe_host_on_startup
+        && _host_child.is_none()
         && let Err(err) = probe_host(&cfg.host_url).await
     {
         return Ok(ExitReason::HostUnreachable(err));

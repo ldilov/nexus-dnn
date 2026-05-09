@@ -44,6 +44,19 @@ struct Cli {
     /// affected by this flag — see spec 044 FR-008a.
     #[arg(long = "no-glyphs", action = clap::ArgAction::SetTrue)]
     no_glyphs: bool,
+
+    /// Spawn the `nexus-dnn` host as a child process and tear it down on
+    /// TUI exit. Looks for the binary next to `nexus` itself unless
+    /// `--host-bin <PATH>` overrides. Stdout + stderr go to
+    /// `~/.nexus/host.log`; structured events arrive normally via SSE.
+    #[arg(long)]
+    with_host: bool,
+
+    /// Override the path to the `nexus-dnn` host binary used by
+    /// `--with-host`. Useful when running from a release build whose
+    /// `nexus-dnn` lives outside the workspace `target/` tree.
+    #[arg(long, value_name = "PATH")]
+    host_bin: Option<std::path::PathBuf>,
 }
 
 #[tokio::main]
@@ -58,6 +71,8 @@ async fn main() -> anyhow::Result<()> {
         cursor_choreography: cli.cursor_choreography,
         enable_mouse: !cli.no_mouse,
         ascii_glyphs: cli.no_glyphs,
+        spawn_host: cli.with_host,
+        host_bin: cli.host_bin,
     };
 
     let _guard = match TerminalGuard::new() {
