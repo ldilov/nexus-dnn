@@ -26,7 +26,13 @@ async fn lease_revoked_mid_stream_emits_error_terminal() {
         .unwrap();
     assert_eq!(resp.status(), 200, "stream opened, then error mid-flight");
 
-    let body = resp.into_body().collect().await.unwrap().to_bytes().to_vec();
+    let body = resp
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes()
+        .to_vec();
     let events = parse_sse(&body);
 
     assert!(events.len() >= 3); // started + token + error
@@ -53,7 +59,13 @@ async fn provider_error_emits_terminal_error_with_correct_code() {
         .oneshot(build_post_request("draft-1", happy_path_body()))
         .await
         .unwrap();
-    let body = resp.into_body().collect().await.unwrap().to_bytes().to_vec();
+    let body = resp
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes()
+        .to_vec();
     let events = parse_sse(&body);
     let terminal = events.last().expect("terminal");
     assert_eq!(terminal.event, "error");

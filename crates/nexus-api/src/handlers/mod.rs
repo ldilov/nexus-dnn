@@ -3,6 +3,7 @@ pub mod backend_events_ws;
 pub mod backend_runtimes;
 pub mod backends;
 pub mod deployments;
+pub mod desktop;
 pub mod draft_suggestions;
 pub mod errors;
 pub mod extension_dependencies;

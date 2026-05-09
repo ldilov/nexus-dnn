@@ -44,18 +44,23 @@ impl DraftSuggestionError {
     pub fn ui_message(&self) -> String {
         match self {
             Self::NoEligibleBackend => {
-                "No AI backend is currently configured. Open Backends to add one."
-                    .to_string()
+                "No AI backend is currently configured. Open Backends to add one.".to_string()
             }
             Self::LeaseAcquisitionFailed(_) => {
                 "Could not acquire an inference backend right now. Try again in a moment."
                     .to_string()
             }
             Self::LeaseRevoked(_) => "The inference backend was released mid-stream.".to_string(),
-            Self::ModelUnavailable(_) => "The model is unavailable. Pick a different model.".to_string(),
-            Self::PromptTooLong(_) => "The current draft exceeds the model's prompt limit.".to_string(),
+            Self::ModelUnavailable(_) => {
+                "The model is unavailable. Pick a different model.".to_string()
+            }
+            Self::PromptTooLong(_) => {
+                "The current draft exceeds the model's prompt limit.".to_string()
+            }
             Self::Validation(msg) => msg.clone(),
-            Self::Internal(_) => "An internal error occurred while generating the suggestion.".to_string(),
+            Self::Internal(_) => {
+                "An internal error occurred while generating the suggestion.".to_string()
+            }
         }
     }
 
@@ -102,7 +107,10 @@ mod tests {
             "no_backend_leasable"
         );
         assert_eq!(ErrorCode::LeaseRevoked.as_wire_str(), "lease_revoked");
-        assert_eq!(ErrorCode::ModelUnavailable.as_wire_str(), "model_unavailable");
+        assert_eq!(
+            ErrorCode::ModelUnavailable.as_wire_str(),
+            "model_unavailable"
+        );
         assert_eq!(ErrorCode::PromptTooLong.as_wire_str(), "prompt_too_long");
         assert_eq!(ErrorCode::ValidationError.as_wire_str(), "validation_error");
         assert_eq!(ErrorCode::Internal.as_wire_str(), "internal");

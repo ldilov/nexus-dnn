@@ -45,8 +45,8 @@ pub use types::{
     SuggestionResponseEvent,
 };
 
-use axum::{Extension, Router};
 use axum::routing::post;
+use axum::{Extension, Router};
 use std::sync::Arc;
 
 /// Generic router builder for the Draft AI suggestion stream endpoint
