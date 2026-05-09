@@ -15,9 +15,9 @@
 //! Each check resolves to one of:
 //!   - `Status::Ok`   — fact captured, no action needed
 //!   - `Status::Warn` — fact suggests degraded behavior (e.g. nvcc
-//!                     missing → BigVGAN custom kernel disabled)
+//!     missing → BigVGAN custom kernel disabled)
 //!   - `Status::Info` — neutral fact (a path, a count) without
-//!                     pass/fail semantics
+//!     pass/fail semantics
 //!
 //! Emits via `target: BANNER_TARGET` so the formatter drops the
 //! standard timestamp/icon/level prefix per line.
