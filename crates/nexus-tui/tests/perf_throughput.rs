@@ -105,6 +105,7 @@ impl PipelineHarness {
                 color_depth: ColorDepth::Truecolor,
                 critical_border: false,
                 hover_target: None,
+                ascii_glyphs: false,
             },
             saw_critical_border: false,
         }

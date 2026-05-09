@@ -37,6 +37,25 @@ pub fn category_glyph(category: SourceCategory) -> char {
     }
 }
 
+/// ASCII fallback for `--no-glyphs` (FR-008a) on terminals that cannot
+/// render the Unicode source-category glyphs above. Each ASCII proxy is
+/// chosen to be visually distinguishable from its neighbours within the
+/// 16-character Latin-1 alphabet.
+pub fn category_glyph_ascii(category: SourceCategory) -> char {
+    match category {
+        SourceCategory::Runtime => '*',
+        SourceCategory::Worker => '+',
+        SourceCategory::Deploy => '#',
+        SourceCategory::Extension => 'X',
+        SourceCategory::Run => '>',
+        SourceCategory::Host => '@',
+        SourceCategory::Storage => '=',
+        SourceCategory::Model => '~',
+        SourceCategory::Backend => '%',
+        SourceCategory::Other => '?',
+    }
+}
+
 pub fn classify_nexus_event(event: &NexusEvent) -> SourceCategory {
     use NexusEvent::*;
     match event {
