@@ -303,7 +303,11 @@ mod tests {
             max_tokens: 96,
         };
         let violations = req.validate().expect_err("should fail");
-        assert!(violations.iter().any(|(f, _)| *f == "context.preceding_lines"));
+        assert!(
+            violations
+                .iter()
+                .any(|(f, _)| *f == "context.preceding_lines")
+        );
     }
 
     #[test]
@@ -333,7 +337,10 @@ mod tests {
 
     #[test]
     fn cancel_reason_wire_strings_match_contract() {
-        assert_eq!(CancelReason::ClientCancelled.as_wire_str(), "client_cancelled");
+        assert_eq!(
+            CancelReason::ClientCancelled.as_wire_str(),
+            "client_cancelled"
+        );
         assert_eq!(
             CancelReason::ClientDisconnected.as_wire_str(),
             "client_disconnected"

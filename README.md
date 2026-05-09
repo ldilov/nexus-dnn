@@ -67,6 +67,22 @@ One command builds the Rust host runtime and the React web UI into a single bina
 
 > See the full [Getting Started tutorial](docs/getting-started.md) for a complete walkthrough.
 
+## Terminal Console
+
+`nexus-tui` is a streaming terminal console for the running host — ambient
+event flow, slash-command filters, structured event inspection, snapshot
+artifacts, and one-key handoff to the desktop UI. It connects via SSE and
+mirrors host activity in real time.
+
+```bash
+cargo run -p nexus-tui --release
+```
+
+See [`crates/nexus-tui/README.md`](crates/nexus-tui/README.md) for the full
+command reference and architecture, or
+[spec 044](specs/044-tui-streaming-console/spec.md) for the product
+contract.
+
 ## Development
 
 ```bash

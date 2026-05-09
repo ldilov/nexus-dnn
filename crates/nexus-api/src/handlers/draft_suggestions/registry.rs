@@ -41,7 +41,12 @@ impl StreamRegistry {
     /// Idempotent. Returns true if a stream was present and got
     /// signalled; false otherwise (already finished or unknown).
     pub fn cancel(&self, id: &StreamId) -> bool {
-        let flag = self.inner.lock().expect("registry mutex poisoned").get(id).cloned();
+        let flag = self
+            .inner
+            .lock()
+            .expect("registry mutex poisoned")
+            .get(id)
+            .cloned();
         if let Some(f) = flag {
             f.cancel();
             true

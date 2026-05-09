@@ -34,9 +34,7 @@ use super::prompt_template::{PromptInputs, build_prompt};
 use super::provider::{CancelFlag, StreamHandle, StreamItem, SuggestionStreamProvider};
 use super::registry::StreamRegistry;
 use super::sse::SseEncoder;
-use super::types::{
-    CancelReason, DraftId, StreamId, SuggestionRequest, SuggestionResponseEvent,
-};
+use super::types::{CancelReason, DraftId, StreamId, SuggestionRequest, SuggestionResponseEvent};
 
 /// Channel buffer for outbound SSE events. Small — the stream is
 /// ordered and slower than the producer; back-pressure is desired.
@@ -242,16 +240,8 @@ fn pre_stream_error_response(err: &DraftSuggestionError) -> Response {
             None,
         ),
         PromptTooLong(_) => (StatusCode::BAD_REQUEST, ErrorCode::PromptTooLong, None),
-        Internal(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            ErrorCode::Internal,
-            None,
-        ),
-        LeaseRevoked(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            ErrorCode::Internal,
-            None,
-        ),
+        Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::Internal, None),
+        LeaseRevoked(_) => (StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::Internal, None),
     };
     let body = match cta {
         Some(cta) => json!({

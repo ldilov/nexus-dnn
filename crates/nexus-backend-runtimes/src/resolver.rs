@@ -81,6 +81,21 @@ fn parse_driver_major(text: &str) -> Option<u32> {
     text.trim().split('.').next()?.trim().parse::<u32>().ok()
 }
 
+pub async fn detect_gpu_compute_cap_major() -> Option<u8> {
+    let output = Command::new("nvidia-smi")
+        .args(["--query-gpu=compute_cap", "--format=csv,noheader"])
+        .output()
+        .await
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    text.lines()
+        .filter_map(|line| line.trim().split('.').next()?.trim().parse::<u8>().ok())
+        .max()
+}
+
 pub fn resolve_runtime_asset<'a>(
     descriptor: &MachineDescriptor,
     manifest: &'a VersionManifest,

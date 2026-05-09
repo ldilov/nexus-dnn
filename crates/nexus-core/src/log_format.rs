@@ -35,8 +35,8 @@ use std::fmt;
 
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::fmt::{
-    format::{FormatEvent, FormatFields, Writer},
     FmtContext,
+    format::{FormatEvent, FormatFields, Writer},
 };
 use tracing_subscriber::registry::LookupSpan;
 
@@ -96,7 +96,11 @@ where
         // 2. Icon + level word, colored by severity.
         let (icon, level_color) = level_glyph_and_color(*meta.level());
         if self.use_ansi {
-            write!(writer, "{level_color}{icon} {:<5}{RESET} ", meta.level().as_str())?;
+            write!(
+                writer,
+                "{level_color}{icon} {:<5}{RESET} ",
+                meta.level().as_str()
+            )?;
         } else {
             write!(writer, "{icon} {:<5} ", meta.level().as_str())?;
         }
@@ -105,7 +109,11 @@ where
         //    for everything else. Uncolored when ANSI is disabled.
         let target = meta.target();
         if self.use_ansi {
-            let target_color = if target == "worker.stderr" { DIM_GREY } else { CYAN };
+            let target_color = if target == "worker.stderr" {
+                DIM_GREY
+            } else {
+                CYAN
+            };
             write!(writer, "{target_color}{target}{RESET}: ")?;
         } else {
             write!(writer, "{target}: ")?;
@@ -192,10 +200,10 @@ fn level_glyph_and_color(level: Level) -> (&'static str, &'static str) {
     // ANSI 8-color palette is universal. Avoid 256-color codes for max
     // compatibility (Windows cmd.exe still gets the colors right).
     match level {
-        Level::ERROR => ("✗", "\x1b[31m"),     // red
-        Level::WARN => ("⚠", "\x1b[33m"),      // yellow
-        Level::INFO => ("●", "\x1b[32m"),      // green
-        Level::DEBUG => ("·", "\x1b[36m"),     // cyan
-        Level::TRACE => ("·", DIM_GREY),       // dim grey, same glyph
+        Level::ERROR => ("✗", "\x1b[31m"), // red
+        Level::WARN => ("⚠", "\x1b[33m"),  // yellow
+        Level::INFO => ("●", "\x1b[32m"),  // green
+        Level::DEBUG => ("·", "\x1b[36m"), // cyan
+        Level::TRACE => ("·", DIM_GREY),   // dim grey, same glyph
     }
 }

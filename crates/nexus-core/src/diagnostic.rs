@@ -94,8 +94,7 @@ fn check_data_dir(config: &NexusConfig) -> Check {
 
 fn check_data_dir_writable(dir: &Path) -> Check {
     let probe = dir.join(".nexus-write-probe");
-    let writable = std::fs::create_dir_all(dir).is_ok()
-        && std::fs::write(&probe, b"1").is_ok();
+    let writable = std::fs::create_dir_all(dir).is_ok() && std::fs::write(&probe, b"1").is_ok();
     let _ = std::fs::remove_file(&probe);
     Check {
         status: if writable { Status::Ok } else { Status::Warn },
@@ -146,9 +145,8 @@ fn check_ffmpeg() -> Check {
         None => Check {
             status: Status::Warn,
             name: "ffmpeg",
-            detail:
-                "not on PATH — extensions needing it must bundle their own (EmotionTTS does)"
-                    .to_string(),
+            detail: "not on PATH — extensions needing it must bundle their own (EmotionTTS does)"
+                .to_string(),
         },
     }
 }
@@ -165,10 +163,9 @@ fn check_nvcc() -> Check {
         None => Check {
             status: Status::Warn,
             name: "nvcc",
-            detail:
-                "not on PATH (CUDA Toolkit missing; BigVGAN custom kernel disabled — \
+            detail: "not on PATH (CUDA Toolkit missing; BigVGAN custom kernel disabled — \
                  vocoder uses torch fallback, ~10-30% slower)"
-                    .to_string(),
+                .to_string(),
         },
     }
 }
