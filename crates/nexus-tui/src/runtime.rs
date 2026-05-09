@@ -22,17 +22,26 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::controller::{ControllerCommand, ControllerConfig, ControllerHandles, run_controller};
-use crate::mouse::targets::ClickRegistry;
+use crate::mouse::capture::{
+    MouseSupport, disable_mouse_capture, enable_mouse_capture, should_bypass,
+};
+use crate::mouse::dispatch::{ClickAction, left_click_action, right_click_action};
+use crate::mouse::hover::HoverState;
+use crate::mouse::menu::{MenuChoice, render_menu};
+use crate::mouse::menu_controller::{MenuController, NavOutcome, OpenMenu};
+use crate::mouse::targets::{ClickRegistry, ClickTarget};
 use crate::render::brand::render_brand;
 use crate::render::cursor::{CursorChoreography, render_ambient_above_prompt};
 use crate::render::event_line::{RenderConfig, render_event_line, render_event_line_with_targets};
 use crate::repl::ansi::{ColorDepth, detect_color_depth};
-use crate::repl::editor::{EditorOutcome, build_editor, read_one};
+use crate::repl::editor::{EditorOutcome, MouseHooks, build_editor_with_mouse, read_one};
+use crate::repl::mouse_edit_mode::{MenuFocus, MenuKey};
 use crate::repl::prompt::{AmbientPrompt, PromptState};
-use crate::repl::slash::parse_slash;
+use crate::repl::slash::{ParsedCommand, parse_slash};
 use crate::stream::client::{SseClientConfig, StreamItem, spawn_endpoint_loop};
 use crate::stream::event_id::RingBufferCapacity;
 use crate::stream::filter::FilterState;
+use crate::stream::filter::FollowTarget;
 use crate::stream::hold_queue::{EnqueueResult, HoldQueue};
 use crate::stream::rate_guard::{RateGuard, RateGuardDecision};
 use crate::stream::ring_buffer::RingBuffer;
@@ -57,6 +66,7 @@ pub struct RuntimeConfig {
     pub level_floor: Severity,
     pub probe_host_on_startup: bool,
     pub cursor_choreography: bool,
+    pub enable_mouse: bool,
 }
 
 impl Default for RuntimeConfig {
@@ -67,6 +77,7 @@ impl Default for RuntimeConfig {
             level_floor: Severity::Info,
             probe_host_on_startup: true,
             cursor_choreography: false,
+            enable_mouse: true,
         }
     }
 }
@@ -82,6 +93,7 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
     let _ = print_brand(depth);
 
     let click_registry = Arc::new(Mutex::new(ClickRegistry::default()));
+    let hover_state = Arc::new(HoverState::new());
     let prompt = AmbientPrompt::new().with_click_registry(Arc::clone(&click_registry));
     let prompt_state = prompt.handle();
 
@@ -109,6 +121,7 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
         Arc::clone(&filter),
         Arc::clone(&hold_queue),
         Arc::clone(&click_registry),
+        Arc::clone(&hover_state),
         depth,
         cfg.cursor_choreography,
     ));
@@ -130,12 +143,59 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
         run_controller(controller_cfg, controller_handles, controller_rx).await;
     });
 
-    let editor_outcome = run_editor_blocking(prompt.clone(), handles).await;
+    let mouse_focus = MenuFocus::new();
+    let (mouse_tx, mouse_rx) = mpsc::channel::<crossterm::event::MouseEvent>(256);
+    let (menu_key_tx, menu_key_rx) = mpsc::channel::<MenuKey>(32);
+    let mouse_hooks = if cfg.enable_mouse {
+        Some(MouseHooks {
+            mouse_tx: mouse_tx.clone(),
+            menu_focus: mouse_focus.clone(),
+            menu_key_tx: menu_key_tx.clone(),
+        })
+    } else {
+        None
+    };
+
+    let mouse_support = if cfg.enable_mouse {
+        let mut out = stdout().lock();
+        match enable_mouse_capture(&mut out) {
+            Ok(support) => support,
+            Err(err) => {
+                eprintln!("·· mouse capture unavailable: {err}");
+                MouseSupport::Disabled
+            }
+        }
+    } else {
+        MouseSupport::Disabled
+    };
+    if mouse_support == MouseSupport::UnknownTerminal {
+        eprintln!("·· mouse capture: TERM looks multiplexed (screen/tmux); keyboard fallback only");
+    }
+
+    let mouse_dispatch_handle = tokio::spawn(mouse_dispatcher_loop(
+        mouse_rx,
+        menu_key_rx,
+        mouse_focus.clone(),
+        Arc::clone(&click_registry),
+        Arc::clone(&hover_state),
+        Arc::clone(&filter),
+        handles.command_tx.clone(),
+        shutdown.clone(),
+    ));
+
+    let editor_outcome = run_editor_blocking(prompt.clone(), handles, mouse_hooks).await;
 
     shutdown.cancel();
+    drop(mouse_tx);
+    drop(menu_key_tx);
     let _ = render_handle.await;
     let _ = sparkline_handle.await;
     let _ = controller_handle.await;
+    let _ = mouse_dispatch_handle.await;
+    if mouse_support == MouseSupport::Enabled {
+        let mut out = stdout().lock();
+        let _ = disable_mouse_capture(&mut out);
+    }
     let _ = execute!(stdout(), Show);
 
     match editor_outcome {
@@ -147,8 +207,9 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
 async fn run_editor_blocking(
     prompt: AmbientPrompt,
     handles: ControllerHandles,
+    mouse_hooks: Option<MouseHooks>,
 ) -> anyhow::Result<()> {
-    let mut editor_opt: Option<Reedline> = match build_editor() {
+    let mut editor_opt: Option<Reedline> = match build_editor_with_mouse(mouse_hooks) {
         Ok(e) => Some(e),
         Err(err) => {
             eprintln!("nexus: failed to initialise editor: {err}");
@@ -203,6 +264,7 @@ async fn consumer_loop(
     filter: Arc<RwLock<FilterState>>,
     hold_queue: Arc<Mutex<HoldQueue>>,
     click_registry: Arc<Mutex<ClickRegistry>>,
+    hover: Arc<HoverState>,
     depth: ColorDepth,
     cursor_choreography: bool,
 ) {
@@ -269,6 +331,7 @@ async fn consumer_loop(
                                 &mut last_critical_border,
                                 choreo.as_ref(),
                                 &click_registry,
+                                &hover,
                             );
                             false
                         }
@@ -301,6 +364,7 @@ async fn consumer_loop(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_visible(
     line: &crate::stream::event_line::EventLine,
     depth: ColorDepth,
@@ -308,16 +372,15 @@ fn render_visible(
     last_critical_border: &mut Instant,
     choreo: Option<&CursorChoreography>,
     click_registry: &Arc<Mutex<ClickRegistry>>,
+    hover: &Arc<HoverState>,
 ) {
     let critical_border = matches!(line.significance, Significance::Critical)
         && now.duration_since(*last_critical_border) >= CRITICAL_BORDER_DEBOUNCE;
     if critical_border {
         *last_critical_border = now;
     }
-    let cfg = RenderConfig {
-        color_depth: depth,
-        critical_border,
-    };
+    let hover_target = hover.snapshot().1;
+    let cfg = RenderConfig::new(depth, critical_border).with_hover_target(hover_target);
     let layout = render_event_line_with_targets(line, &cfg);
     let rendered = render_event_line(line, &cfg);
     match choreo {
@@ -401,3 +464,191 @@ async fn probe_host(base: &str) -> Result<(), String> {
 }
 
 use reedline::Reedline;
+
+#[allow(clippy::too_many_arguments)]
+async fn mouse_dispatcher_loop(
+    mut mouse_rx: mpsc::Receiver<crossterm::event::MouseEvent>,
+    mut menu_key_rx: mpsc::Receiver<MenuKey>,
+    menu_focus: MenuFocus,
+    click_registry: Arc<Mutex<ClickRegistry>>,
+    hover_state: Arc<HoverState>,
+    filter: Arc<RwLock<FilterState>>,
+    command_tx: mpsc::Sender<ControllerCommand>,
+    shutdown: CancellationToken,
+) {
+    use crossterm::event::{MouseButton, MouseEventKind};
+
+    let mut menu_controller = MenuController::default();
+
+    loop {
+        tokio::select! {
+            _ = shutdown.cancelled() => break,
+            maybe_event = mouse_rx.recv() => {
+                let Some(event) = maybe_event else { break };
+                if should_bypass(&event) {
+                    if let Ok(reg) = click_registry.lock() {
+                        hover_state.observe(event.row, event.column, &reg);
+                    }
+                    continue;
+                }
+                match event.kind {
+                    MouseEventKind::Moved | MouseEventKind::Drag(_) => {
+                        if let Ok(reg) = click_registry.lock() {
+                            hover_state.observe(event.row, event.column, &reg);
+                        }
+                    }
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        let target = lookup_target(&click_registry, event.row, event.column);
+                        if let Some(target) = target {
+                            let current_source = current_source_filter(&filter);
+                            let action = left_click_action(&target, current_source.as_deref());
+                            dispatch_action(action, &command_tx).await;
+                        }
+                    }
+                    MouseEventKind::Down(MouseButton::Right) => {
+                        if menu_focus.is_open() {
+                            close_menu(&mut menu_controller, &menu_focus);
+                        }
+                        if let Some(target) = lookup_target(&click_registry, event.row, event.column) {
+                            let action = right_click_action(&target);
+                            if let ClickAction::OpenContextMenu(t) = action {
+                                let opened = menu_controller
+                                    .open(t, (event.row, event.column))
+                                    .cloned();
+                                if let Some(open) = opened {
+                                    menu_focus.open();
+                                    print_menu_block(&open, 0);
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            maybe_key = menu_key_rx.recv() => {
+                let Some(key) = maybe_key else { break };
+                if !menu_focus.is_open() {
+                    continue;
+                }
+                let prev_height = menu_controller
+                    .snapshot()
+                    .map(|m| m.items.len())
+                    .unwrap_or(0);
+                match key {
+                    MenuKey::Up => {
+                        menu_controller.move_up();
+                        if let Some(open) = menu_controller.snapshot().cloned() {
+                            print_menu_block(&open, prev_height);
+                        }
+                    }
+                    MenuKey::Down => {
+                        menu_controller.move_down();
+                        if let Some(open) = menu_controller.snapshot().cloned() {
+                            print_menu_block(&open, prev_height);
+                        }
+                    }
+                    MenuKey::Enter => {
+                        let outcome = menu_controller.confirm();
+                        clear_menu_block(prev_height);
+                        menu_focus.close();
+                        if let NavOutcome::Selected(choice, target) = outcome {
+                            let cmd = menu_choice_to_command(&choice, &target, &filter);
+                            if let Some(parsed) = cmd {
+                                let _ = command_tx
+                                    .send(ControllerCommand::Submit(parsed))
+                                    .await;
+                            }
+                        }
+                    }
+                    MenuKey::Esc => {
+                        menu_controller.cancel();
+                        clear_menu_block(prev_height);
+                        menu_focus.close();
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn lookup_target(registry: &Arc<Mutex<ClickRegistry>>, row: u16, col: u16) -> Option<ClickTarget> {
+    let reg = registry.lock().ok()?;
+    reg.lookup(row, col)
+}
+
+fn current_source_filter(filter: &Arc<RwLock<FilterState>>) -> Option<String> {
+    filter
+        .read()
+        .ok()
+        .and_then(|f| f.source_glob_text().map(str::to_string))
+}
+
+async fn dispatch_action(action: ClickAction, command_tx: &mpsc::Sender<ControllerCommand>) {
+    match action {
+        ClickAction::Command(parsed) => {
+            let _ = command_tx.send(ControllerCommand::Submit(parsed)).await;
+        }
+        ClickAction::OpenContextMenu(_) | ClickAction::Noop => {}
+    }
+}
+
+fn close_menu(controller: &mut MenuController, focus: &MenuFocus) {
+    let height = controller.snapshot().map(|m| m.items.len()).unwrap_or(0);
+    controller.cancel();
+    clear_menu_block(height);
+    focus.close();
+}
+
+fn print_menu_block(open: &OpenMenu, prev_height: usize) {
+    let mut out = stdout().lock();
+    if prev_height > 0 {
+        for _ in 0..prev_height {
+            let _ = write!(out, "\x1b[F\x1b[2K");
+        }
+    }
+    let rendered = render_menu(&open.items, open.selected);
+    let _ = out.write_all(rendered.as_bytes());
+    let _ = out.flush();
+}
+
+fn clear_menu_block(prev_height: usize) {
+    if prev_height == 0 {
+        return;
+    }
+    let mut out = stdout().lock();
+    for _ in 0..prev_height {
+        let _ = write!(out, "\x1b[F\x1b[2K");
+    }
+    let _ = out.flush();
+}
+
+fn menu_choice_to_command(
+    choice: &MenuChoice,
+    target: &ClickTarget,
+    filter: &Arc<RwLock<FilterState>>,
+) -> Option<ParsedCommand> {
+    match (choice, target) {
+        (MenuChoice::Inspect, ClickTarget::EventLineBody { event_id })
+        | (MenuChoice::Inspect, ClickTarget::InspectorHeading { event_id }) => {
+            Some(ParsedCommand::Inspect(format!("{event_id}")))
+        }
+        (MenuChoice::FilterToSource, ClickTarget::SourceLabel { source }) => {
+            let current = current_source_filter(filter);
+            if current.as_deref() == Some(source.as_str()) {
+                Some(ParsedCommand::ClearFilter)
+            } else {
+                Some(ParsedCommand::Source(source.clone()))
+            }
+        }
+        (MenuChoice::FilterToSource, _) => None,
+        (MenuChoice::FollowRun, ClickTarget::RunIdReference { run_id }) => {
+            Some(ParsedCommand::Follow(FollowTarget::Run(run_id.clone())))
+        }
+        (MenuChoice::FollowRun, _) => None,
+        (MenuChoice::ClearFilter, _) => Some(ParsedCommand::ClearFilter),
+        (MenuChoice::OpenInDesktop, _) => None,
+        (MenuChoice::CopyLine | MenuChoice::CopyRawPayload, _) => None,
+        (MenuChoice::Cancel, _) => None,
+        (MenuChoice::Inspect, _) => None,
+    }
+}

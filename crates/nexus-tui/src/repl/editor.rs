@@ -7,17 +7,31 @@
 use std::path::PathBuf;
 
 use reedline::{
-    ColumnarMenu, EditCommand, Emacs, FileBackedHistory, KeyCode, KeyModifiers, MenuBuilder,
-    Reedline, ReedlineEvent, ReedlineMenu, Signal, default_emacs_keybindings,
+    ColumnarMenu, EditCommand, EditMode, Emacs, FileBackedHistory, KeyCode, KeyModifiers,
+    MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal, default_emacs_keybindings,
 };
 
 use crate::repl::completion::SlashCompleter;
+use crate::repl::mouse_edit_mode::{MenuFocus, MenuKey, MouseAwareEditMode};
 use crate::repl::prompt::AmbientPrompt;
+use crossterm::event::MouseEvent;
+use tokio::sync::mpsc::Sender as TokioSender;
 
 const HISTORY_CAPACITY: usize = 1000;
 const COMPLETION_MENU_NAME: &str = "completion_menu";
 
+#[derive(Clone)]
+pub struct MouseHooks {
+    pub mouse_tx: TokioSender<MouseEvent>,
+    pub menu_focus: MenuFocus,
+    pub menu_key_tx: TokioSender<MenuKey>,
+}
+
 pub fn build_editor() -> anyhow::Result<Reedline> {
+    build_editor_with_mouse(None)
+}
+
+pub fn build_editor_with_mouse(mouse_hooks: Option<MouseHooks>) -> anyhow::Result<Reedline> {
     let history_path = history_path();
     if let Some(parent) = history_path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -67,7 +81,16 @@ pub fn build_editor() -> anyhow::Result<Reedline> {
             ReedlineEvent::Submit,
         ]),
     );
-    let edit_mode = Box::new(Emacs::new(keybindings));
+    let emacs: Box<dyn EditMode> = Box::new(Emacs::new(keybindings));
+    let edit_mode: Box<dyn EditMode> = match mouse_hooks {
+        Some(hooks) => Box::new(MouseAwareEditMode::new(
+            emacs,
+            hooks.mouse_tx,
+            hooks.menu_focus,
+            hooks.menu_key_tx,
+        )),
+        None => emacs,
+    };
     let editor = Reedline::create()
         .with_history(Box::new(history))
         .with_completer(completer)
