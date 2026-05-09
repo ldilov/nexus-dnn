@@ -20,7 +20,7 @@ use crate::repl::ansi::{
 };
 use crate::stream::event_line::EventLine;
 use crate::stream::severity::Severity;
-use crate::stream::source_category::category_glyph;
+use crate::stream::source_category::{category_glyph, category_glyph_ascii};
 
 #[derive(Debug, Clone)]
 pub struct RenderConfig {
@@ -29,6 +29,10 @@ pub struct RenderConfig {
     /// Spec 044 T100 — when set, apply the hover affordance (underline /
     /// bold) to the matching click region within this rendered line.
     pub hover_target: Option<ClickTarget>,
+    /// Spec 044 FR-008a — when true, swap severity + source-category
+    /// Unicode glyphs to ASCII proxies for terminals that cannot render
+    /// the Unicode set. Box-drawing and Braille glyphs are out of scope.
+    pub ascii_glyphs: bool,
 }
 
 impl RenderConfig {
@@ -37,11 +41,17 @@ impl RenderConfig {
             color_depth,
             critical_border,
             hover_target: None,
+            ascii_glyphs: false,
         }
     }
 
     pub fn with_hover_target(mut self, target: Option<ClickTarget>) -> Self {
         self.hover_target = target;
+        self
+    }
+
+    pub fn with_ascii_glyphs(mut self, ascii: bool) -> Self {
+        self.ascii_glyphs = ascii;
         self
     }
 }
@@ -68,8 +78,12 @@ pub struct EventLineLayout {
 pub fn render_event_line_with_targets(line: &EventLine, cfg: &RenderConfig) -> EventLineLayout {
     let timestamp = format_timestamp(line.timestamp_ms);
     let severity_label = severity_label(line.severity);
-    let severity_glyph = severity_glyph(line.severity);
-    let cat_glyph = category_glyph(line.category);
+    let severity_glyph = severity_glyph_for(line.severity, cfg.ascii_glyphs);
+    let cat_glyph = if cfg.ascii_glyphs {
+        category_glyph_ascii(line.category)
+    } else {
+        category_glyph(line.category)
+    };
     let source_palette = source_label_color(&line.source, line.category);
     let severity_palette = severity_color(line.severity);
     let category_palette = category_color(line.category);
@@ -195,8 +209,12 @@ fn visible_width(s: &str) -> u16 {
 fn render_inner(line: &EventLine, cfg: &RenderConfig) -> String {
     let timestamp = format_timestamp(line.timestamp_ms);
     let severity_label = severity_label(line.severity);
-    let severity_glyph = severity_glyph(line.severity);
-    let cat_glyph = category_glyph(line.category);
+    let severity_glyph = severity_glyph_for(line.severity, cfg.ascii_glyphs);
+    let cat_glyph = if cfg.ascii_glyphs {
+        category_glyph_ascii(line.category)
+    } else {
+        category_glyph(line.category)
+    };
     let source_palette = source_label_color(&line.source, line.category);
     let severity_palette = severity_color(line.severity);
     let category_palette = category_color(line.category);
@@ -278,5 +296,23 @@ fn severity_glyph(severity: Severity) -> char {
         Severity::Warn => '⚠',
         Severity::Error => '✖',
         Severity::Fatal => '☠',
+    }
+}
+
+fn severity_glyph_ascii(severity: Severity) -> char {
+    match severity {
+        Severity::Debug => '.',
+        Severity::Info => 'i',
+        Severity::Warn => '!',
+        Severity::Error => 'X',
+        Severity::Fatal => '!',
+    }
+}
+
+fn severity_glyph_for(severity: Severity, ascii: bool) -> char {
+    if ascii {
+        severity_glyph_ascii(severity)
+    } else {
+        severity_glyph(severity)
     }
 }
