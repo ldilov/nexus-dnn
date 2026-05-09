@@ -22,10 +22,28 @@ use crate::stream::event_line::EventLine;
 use crate::stream::severity::Severity;
 use crate::stream::source_category::category_glyph;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct RenderConfig {
     pub color_depth: ColorDepth,
     pub critical_border: bool,
+    /// Spec 044 T100 — when set, apply the hover affordance (underline /
+    /// bold) to the matching click region within this rendered line.
+    pub hover_target: Option<ClickTarget>,
+}
+
+impl RenderConfig {
+    pub fn new(color_depth: ColorDepth, critical_border: bool) -> Self {
+        Self {
+            color_depth,
+            critical_border,
+            hover_target: None,
+        }
+    }
+
+    pub fn with_hover_target(mut self, target: Option<ClickTarget>) -> Self {
+        self.hover_target = target;
+        self
+    }
 }
 
 pub fn render_event_line(line: &EventLine, cfg: &RenderConfig) -> String {
@@ -89,7 +107,17 @@ pub fn render_event_line_with_targets(line: &EventLine, cfg: &RenderConfig) -> E
     col = col.saturating_add(visible_width(&cat_text));
 
     let source_start = col;
+    let hover_source = matches!(
+        &cfg.hover_target,
+        Some(ClickTarget::SourceLabel { source }) if source == &line.source
+    );
+    if hover_source {
+        out.push_str("\x1b[4m");
+    }
     push_colored(&mut out, &line.source, source_palette, cfg.color_depth);
+    if hover_source {
+        out.push_str("\x1b[24m");
+    }
     col = col.saturating_add(visible_width(&line.source));
     let source_end = col;
 
@@ -97,7 +125,28 @@ pub fn render_event_line_with_targets(line: &EventLine, cfg: &RenderConfig) -> E
     col = col.saturating_add(2);
 
     let summary_start = col;
-    out.push_str(&line.summary);
+    let mut hover_run_id: Option<&str> = None;
+    if let (Some(ClickTarget::RunIdReference { run_id }), Some(line_run_id)) = (
+        cfg.hover_target.as_ref(),
+        line.correlation.run_id.as_deref(),
+    ) && run_id == line_run_id
+    {
+        hover_run_id = Some(line_run_id);
+    }
+    if let Some(needle) = hover_run_id
+        && let Some(rel) = line.summary.find(needle)
+    {
+        let prefix = &line.summary[..rel];
+        let middle = &line.summary[rel..rel + needle.len()];
+        let suffix = &line.summary[rel + needle.len()..];
+        out.push_str(prefix);
+        out.push_str("\x1b[1m");
+        out.push_str(middle);
+        out.push_str("\x1b[22m");
+        out.push_str(suffix);
+    } else {
+        out.push_str(&line.summary);
+    }
     col = col.saturating_add(visible_width(&line.summary));
     let body_end = col;
 

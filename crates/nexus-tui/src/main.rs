@@ -31,6 +31,12 @@ struct Cli {
     /// terminal emulators handle save/restore inconsistently mid-read.
     #[arg(long)]
     cursor_choreography: bool,
+
+    /// Disable mouse capture (SGR 1006 click triage + right-click menu).
+    /// Default: enabled. Use `--no-mouse` if your terminal mishandles
+    /// mouse events or you need uninterrupted text-selection.
+    #[arg(long = "no-mouse", action = clap::ArgAction::SetTrue)]
+    no_mouse: bool,
 }
 
 #[tokio::main]
@@ -43,6 +49,7 @@ async fn main() -> anyhow::Result<()> {
         level_floor,
         probe_host_on_startup: !cli.no_probe,
         cursor_choreography: cli.cursor_choreography,
+        enable_mouse: !cli.no_mouse,
     };
 
     let _guard = match TerminalGuard::new() {

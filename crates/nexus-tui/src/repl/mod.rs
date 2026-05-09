@@ -7,6 +7,7 @@ pub mod ansi;
 pub mod completion;
 pub mod editor;
 pub mod inspect;
+pub mod mouse_edit_mode;
 pub mod prompt;
 pub mod queue;
 pub mod slash;
