@@ -10,6 +10,7 @@
 use std::io::{self, Write};
 
 pub mod controller;
+pub mod host_child;
 pub mod inspector;
 pub mod mouse;
 pub mod render;
