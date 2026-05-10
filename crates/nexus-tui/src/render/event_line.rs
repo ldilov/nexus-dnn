@@ -278,11 +278,11 @@ fn render_critical_border(depth: ColorDepth) -> String {
 }
 
 fn push_colored_dim(out: &mut String, text: &str, _depth: ColorDepth) {
-    // Dim style — keeps timestamps visually quiet so they don't compete
-    // with severity / source colour. ANSI 2 = faint.
-    out.push_str("\x1b[2m");
+    // Soft slate (252) — readable as a metadata token without the dim
+    // attribute that some terminals render as low-contrast washout.
+    out.push_str("\x1b[38;5;252m");
     out.push_str(text);
-    out.push_str("\x1b[22m");
+    out.push_str("\x1b[0m");
 }
 
 fn push_colored(out: &mut String, text: &str, palette: PaletteColor, depth: ColorDepth) {

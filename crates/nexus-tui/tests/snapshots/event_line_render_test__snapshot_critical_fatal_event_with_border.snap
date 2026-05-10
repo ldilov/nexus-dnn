@@ -4,4 +4,4 @@ assertion_line: 106
 expression: "render_event_line(&evt, &cfg)"
 ---
 [38;2;255;31;31m──────────────────────────────────────────────────────────────[0m
-[38;2;95;135;175m┃[0m [38;2;255;31;31m▎[0m [2m03:33:20[22m [38;2;255;31;31m☠ FATAL[0m [38;2;95;135;175m▦ [0m[38;2;113;147;199mstorage:ext.example[0m  storage integrity drift in chat: 4 object(s)
+[38;2;95;135;175m┃[0m [38;2;255;31;31m▎[0m [38;5;252m03:33:20[0m [38;2;255;31;31m☠ FATAL[0m [38;2;95;135;175m▦ [0m[38;2;113;147;199mstorage:ext.example[0m  storage integrity drift in chat: 4 object(s)

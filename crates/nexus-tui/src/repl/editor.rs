@@ -53,19 +53,27 @@ pub fn build_editor_with_mouse(
         .with_name(COMPLETION_MENU_NAME)
         .with_marker("  › ")
         .with_column_padding(2)
-        .with_text_style(NuStyle::new().fg(NuColor::Fixed(245)))
+        // Inactive rows: full-saturation graphite blue so they read as
+        // available actions, not as muted noise.
+        .with_text_style(NuStyle::new().fg(NuColor::Fixed(75)).bold())
+        // Active row: bright white on graphite-blue background for max
+        // contrast against the surrounding stream.
         .with_selected_text_style(
             NuStyle::new()
-                .fg(NuColor::Black)
-                .on(NuColor::Fixed(75))
+                .fg(NuColor::White)
+                .on(NuColor::Fixed(33))
                 .bold(),
         )
-        .with_description_text_style(NuStyle::new().fg(NuColor::Fixed(141)).italic())
-        .with_match_text_style(NuStyle::new().fg(NuColor::Fixed(75)).underline())
+        // Tooltips ("set severity floor", etc.): readable light gray
+        // rather than dim italic which most terminals render unreadably.
+        .with_description_text_style(NuStyle::new().fg(NuColor::Fixed(252)))
+        // Match underline picks up an attention-grabbing amber so the
+        // typed prefix is easy to track.
+        .with_match_text_style(NuStyle::new().fg(NuColor::Fixed(215)).bold().underline())
         .with_selected_match_text_style(
             NuStyle::new()
-                .fg(NuColor::Black)
-                .on(NuColor::Fixed(75))
+                .fg(NuColor::Fixed(215))
+                .on(NuColor::Fixed(33))
                 .bold()
                 .underline(),
         );
