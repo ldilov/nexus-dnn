@@ -9,3 +9,4 @@ pub mod event_line;
 pub mod gutter;
 pub mod inspector;
 pub mod sparkline;
+pub mod status_ribbon;
