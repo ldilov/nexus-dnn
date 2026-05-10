@@ -1,10 +1,11 @@
 ---
 source: crates/nexus-tui/tests/event_line_render_test.rs
+assertion_line: 74
 expression: render_all_depths(&evt)
 ---
 --- Truecolor ---
-[38;2;144;147;255m│[0m 03:33:20 [38;2;110;118;130m○ INFO [0m [38;2;144;147;255m▶ [0m[38;2;168;165;255mrun:run_7f2a[0m  run state queued → running
+[38;2;144;147;255m│[0m [38;2;110;118;130m▎[0m [2m03:33:20[22m [38;2;110;118;130m○ INFO [0m [38;2;144;147;255m▶ [0m[38;2;168;165;255mrun:run_7f2a[0m  run state queued → running
 --- Color256 ---
-[38;5;105m│[0m 03:33:20 [38;5;243m○ INFO [0m [38;5;105m▶ [0m[38;5;105mrun:run_7f2a[0m  run state queued → running
+[38;5;105m│[0m [38;5;243m▎[0m [2m03:33:20[22m [38;5;243m○ INFO [0m [38;5;105m▶ [0m[38;5;105mrun:run_7f2a[0m  run state queued → running
 --- Color16 ---
-[38;5;12m│[0m 03:33:20 [38;5;7m○ INFO [0m [38;5;12m▶ [0m[38;5;12mrun:run_7f2a[0m  run state queued → running
+[38;5;12m│[0m [38;5;7m▎[0m [2m03:33:20[22m [38;5;7m○ INFO [0m [38;5;12m▶ [0m[38;5;12mrun:run_7f2a[0m  run state queued → running
