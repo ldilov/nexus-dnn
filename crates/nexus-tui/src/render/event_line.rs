@@ -29,6 +29,10 @@ pub struct RenderConfig {
     /// Spec 044 T100 — when set, apply the hover affordance (underline /
     /// bold) to the matching click region within this rendered line.
     pub hover_target: Option<ClickTarget>,
+    /// Spec 044 Phase 3 — when true, prepend a lavender `╰─` indent
+    /// so the event reads as a continuation of an earlier thread on
+    /// the same correlation key.
+    pub thread_leaf: bool,
     /// Spec 044 FR-008a — when true, swap severity + source-category
     /// Unicode glyphs to ASCII proxies for terminals that cannot render
     /// the Unicode set. Box-drawing and Braille glyphs are out of scope.
@@ -41,12 +45,18 @@ impl RenderConfig {
             color_depth,
             critical_border,
             hover_target: None,
+            thread_leaf: false,
             ascii_glyphs: false,
         }
     }
 
     pub fn with_hover_target(mut self, target: Option<ClickTarget>) -> Self {
         self.hover_target = target;
+        self
+    }
+
+    pub fn with_thread_leaf(mut self, leaf: bool) -> Self {
+        self.thread_leaf = leaf;
         self
     }
 
@@ -90,6 +100,19 @@ pub fn render_event_line_with_targets(line: &EventLine, cfg: &RenderConfig) -> E
 
     let mut out = String::new();
     let mut col: u16 = 0;
+
+    // Thread-leaf indent — when this event continues an earlier
+    // thread, prefix `  ╰─ ` in lavender. The visible columns the
+    // indent occupies shift every subsequent click target right by
+    // the same amount, so the registry stays accurate.
+    if cfg.thread_leaf {
+        let indent = thread_indent_prefix();
+        out.push_str(THREAD_LEAF_ANSI_OPEN);
+        out.push_str(indent);
+        out.push_str(THREAD_LEAF_ANSI_CLOSE);
+        col = col.saturating_add(visible_width(indent));
+    }
+
     let body_start = col;
 
     let gutter = if matches!(
@@ -228,6 +251,11 @@ fn render_inner(line: &EventLine, cfg: &RenderConfig) -> String {
     let category_palette = category_color(line.category);
 
     let mut out = String::new();
+    if cfg.thread_leaf {
+        out.push_str(THREAD_LEAF_ANSI_OPEN);
+        out.push_str(thread_indent_prefix());
+        out.push_str(THREAD_LEAF_ANSI_CLOSE);
+    }
     let gutter = if matches!(
         line.significance,
         crate::stream::significance::Significance::Critical
@@ -265,6 +293,16 @@ fn render_inner(line: &EventLine, cfg: &RenderConfig) -> String {
 fn severity_bar(ascii: bool) -> &'static str {
     if ascii { "|" } else { "▎" }
 }
+
+/// Indent prefix for thread continuations. Two leading spaces + a
+/// lavender corner-arc + en-space — reads as "this belongs under the
+/// previous line" without occupying visual weight.
+fn thread_indent_prefix() -> &'static str {
+    "  ╰─ "
+}
+
+const THREAD_LEAF_ANSI_OPEN: &str = "\x1b[38;5;183m";
+const THREAD_LEAF_ANSI_CLOSE: &str = "\x1b[0m";
 
 fn render_critical_border(depth: ColorDepth) -> String {
     let mut s = String::new();
