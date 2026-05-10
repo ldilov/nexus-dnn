@@ -24,6 +24,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 reedline = { workspace = true }
 crossterm = { workspace = true }
+nu-ansi-term = "0.50"
 eventsource-stream = { workspace = true }
 rustc-hash = { workspace = true }
 ulid = { workspace = true }
