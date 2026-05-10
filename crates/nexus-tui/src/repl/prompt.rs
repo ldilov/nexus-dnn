@@ -137,14 +137,30 @@ impl Prompt for AmbientPrompt {
         left.push_str(ANSI_RESET);
         col = col.saturating_add(3);
 
-        // Sparkline (Braille block characters; preserved as-is — colouring
-        // every cell would distract from rate-shape readability).
-        left.push_str(ANSI_ACCENT_DIM);
+        // Sparkline OR state-aware placeholder. When the stream is idle
+        // (no events sampled yet, or every sample is 0) the 8-cell
+        // braille bar collapses to a row of blank-glyphs that reads as
+        // a void — replace it with a short text token tied to
+        // connection health so the operator always knows what's going
+        // on at a glance.
         let sparkline_start = col;
-        left.push_str(&bar);
-        col = col.saturating_add(visible_width(&bar));
+        if snapshot.sparkline.is_idle() {
+            let (placeholder, placeholder_color) = match snapshot.connection_health {
+                ConnectionHealth::Healthy => ("· idle ·", ANSI_ACCENT_DIM),
+                ConnectionHealth::Connecting => ("◐ connecting…", ANSI_ACCENT_AMBER),
+                ConnectionHealth::Disconnected => ("◯ offline", ANSI_ACCENT_RED),
+            };
+            left.push_str(placeholder_color);
+            left.push_str(placeholder);
+            left.push_str(ANSI_RESET);
+            col = col.saturating_add(visible_width(placeholder));
+        } else {
+            left.push_str(ANSI_ACCENT_DIM);
+            left.push_str(&bar);
+            col = col.saturating_add(visible_width(&bar));
+            left.push_str(ANSI_RESET);
+        }
         let sparkline_end = col;
-        left.push_str(ANSI_RESET);
 
         if snapshot.condensing {
             left.push(' ');

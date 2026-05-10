@@ -32,6 +32,13 @@ impl SparklineSamples {
     pub fn is_empty(&self) -> bool {
         self.counts.is_empty()
     }
+
+    /// True when no events have been sampled yet OR every sample is 0.
+    /// The prompt swaps the bar for a state-aware placeholder in this
+    /// case so the operator does not stare at a row of blank braille.
+    pub fn is_idle(&self) -> bool {
+        self.counts.is_empty() || self.counts.iter().all(|n| *n == 0)
+    }
 }
 
 pub fn render_sparkline(samples: &SparklineSamples) -> String {
