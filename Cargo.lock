@@ -3776,6 +3776,7 @@ dependencies = [
  "insta",
  "nexus-events",
  "nexus-run-events",
+ "nu-ansi-term",
  "reedline",
  "regex",
  "reqwest 0.12.28",

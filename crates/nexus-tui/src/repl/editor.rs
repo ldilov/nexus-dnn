@@ -6,6 +6,7 @@
 
 use std::path::PathBuf;
 
+use nu_ansi_term::{Color as NuColor, Style as NuStyle};
 use reedline::{
     ColumnarMenu, DefaultHinter, EditCommand, EditMode, Emacs, FileBackedHistory, KeyCode,
     KeyModifiers, MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal,
@@ -48,7 +49,26 @@ pub fn build_editor_with_mouse(
         Some(r) => Box::new(SlashCompleter::with_ring(r)),
         None => Box::new(SlashCompleter::new()),
     };
-    let menu = ColumnarMenu::default().with_name(COMPLETION_MENU_NAME);
+    let menu = ColumnarMenu::default()
+        .with_name(COMPLETION_MENU_NAME)
+        .with_marker("  › ")
+        .with_column_padding(2)
+        .with_text_style(NuStyle::new().fg(NuColor::Fixed(245)))
+        .with_selected_text_style(
+            NuStyle::new()
+                .fg(NuColor::Black)
+                .on(NuColor::Fixed(75))
+                .bold(),
+        )
+        .with_description_text_style(NuStyle::new().fg(NuColor::Fixed(141)).italic())
+        .with_match_text_style(NuStyle::new().fg(NuColor::Fixed(75)).underline())
+        .with_selected_match_text_style(
+            NuStyle::new()
+                .fg(NuColor::Black)
+                .on(NuColor::Fixed(75))
+                .bold()
+                .underline(),
+        );
     let mut keybindings = default_emacs_keybindings();
     keybindings.add_binding(
         KeyModifiers::NONE,
