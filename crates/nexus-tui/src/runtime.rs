@@ -48,6 +48,9 @@ use crate::stream::rate_guard::{RateGuard, RateGuardDecision};
 use crate::stream::ring_buffer::RingBuffer;
 use crate::stream::severity::Severity;
 use crate::stream::significance::Significance;
+use crate::stream::startup_phase::{
+    BootDisplayDecision, BootState, SettleReport, decide as startup_decide, maybe_settle_on_quiet,
+};
 
 const DEFAULT_RING_BUFFER_CAPACITY: usize = 50_000;
 const SPARKLINE_TICK: Duration = Duration::from_secs(1);
@@ -311,13 +314,35 @@ async fn consumer_loop(
     let mut history: VecDeque<u32> = VecDeque::with_capacity(60);
     let mut last_critical_border = Instant::now() - CRITICAL_BORDER_DEBOUNCE;
     let mut last_condensed_at: Option<Instant> = None;
+    let mut startup_phase = BootState::new(Instant::now());
     let choreo = if cursor_choreography {
         Some(CursorChoreography::default())
     } else {
         None
     };
 
-    while let Some(item) = rx.recv().await {
+    loop {
+        let item = tokio::select! {
+            biased;
+            item = rx.recv() => match item {
+                Some(item) => item,
+                None => return,
+            },
+            _ = tokio::time::sleep(Duration::from_millis(500)),
+                if startup_phase.is_booting() =>
+            {
+                let now = Instant::now();
+                if matches!(
+                    maybe_settle_on_quiet(&startup_phase, now),
+                    Some(BootDisplayDecision::SettleOnly)
+                ) && let Some(report) = startup_phase.settle(now)
+                    && report.folded > 0
+                {
+                    print_curtain_line(&report);
+                }
+                continue;
+            }
+        };
         match item {
             StreamItem::Line(line) => {
                 if let Ok(mut state) = prompt.lock() {
@@ -327,6 +352,23 @@ async fn consumer_loop(
                     let mut buf = ring.lock().unwrap_or_else(|p| p.into_inner());
                     buf.push(line.clone());
                 }
+
+                // Curtain Up — capture boot-phase noise without scrolling
+                // it onto the operator's screen.
+                let now_for_phase = Instant::now();
+                match startup_decide(&line, &startup_phase) {
+                    BootDisplayDecision::Suppress => {
+                        startup_phase.record_event(now_for_phase);
+                        continue;
+                    }
+                    BootDisplayDecision::SettleAndRender => {
+                        if let Some(report) = startup_phase.settle(now_for_phase) {
+                            print_curtain_line(&report);
+                        }
+                    }
+                    BootDisplayDecision::Render | BootDisplayDecision::SettleOnly => {}
+                }
+
                 let visible = filter.read().map(|f| f.is_visible(&line)).unwrap_or(false);
                 if !visible {
                     continue;
@@ -417,6 +459,34 @@ async fn consumer_loop(
             }
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+/// Emit the single "curtain rises" line that summarises the boot
+/// events folded out of the ambient stream. Skip rendering if there
+/// were no folded events (i.e., host came up fully silent).
+fn print_curtain_line(report: &SettleReport) {
+    let ms = report.duration.as_millis();
+    let duration = if ms < 1_000 {
+        format!("{ms}ms")
+    } else {
+        format!("{:.1}s", ms as f64 / 1000.0)
+    };
+    // Palette: graphite dim brackets + bold blue title + violet count +
+    // soft slate duration. ANSI 256 colour codes degrade gracefully on
+    // older terminals; the line stays readable even without colour.
+    let line = format!(
+        "\x1b[38;5;245m╾───\x1b[0m \
+         \x1b[1;38;5;75m✦ boot complete\x1b[0m \
+         \x1b[38;5;245m·\x1b[0m \
+         \x1b[1;38;5;141m{folded} events folded\x1b[0m \
+         \x1b[38;5;245m·\x1b[0m \
+         \x1b[38;5;252m{duration}\x1b[0m \
+         \x1b[38;5;245m───╼\x1b[0m",
+        folded = report.folded,
+        duration = duration,
+    );
+    println!("{line}");
 }
 
 #[allow(clippy::too_many_arguments)]
