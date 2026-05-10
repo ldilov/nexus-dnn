@@ -19,3 +19,4 @@ pub mod ring_buffer;
 pub mod severity;
 pub mod significance;
 pub mod source_category;
+pub mod startup_phase;
