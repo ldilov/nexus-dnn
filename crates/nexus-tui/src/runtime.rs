@@ -337,13 +337,13 @@ async fn consumer_loop(
                     RateGuardDecision::Render => Some(line.clone()),
                     RateGuardDecision::Repeat { count, summary } => {
                         eprintln!(
-                            "\x1b[2;38;5;141m·· repeat ×{count}\x1b[0m  \x1b[38;5;245m{summary}\x1b[0m"
+                            "\x1b[1;38;5;141m·· repeat ×{count}\x1b[0m  \x1b[38;5;252m{summary}\x1b[0m"
                         );
                         None
                     }
                     RateGuardDecision::Condensed { source, dropped } => {
                         eprintln!(
-                            "\x1b[1;38;5;215m≫\x1b[0m \x1b[38;5;215m{source}\x1b[0m  \x1b[2m{dropped} event(s) condensed\x1b[0m"
+                            "\x1b[1;38;5;215m≫\x1b[0m \x1b[1;38;5;215m{source}\x1b[0m  \x1b[38;5;252m{dropped} event(s) condensed\x1b[0m"
                         );
                         last_condensed_at = Some(now);
                         if let Ok(mut state) = prompt.lock() {
@@ -398,19 +398,19 @@ async fn consumer_loop(
                 skipped_after,
             } => {
                 println!(
-                    "\x1b[38;5;215m⚠ gap\x1b[0m \x1b[2mon {endpoint} after id {skipped_after}\x1b[0m"
+                    "\x1b[1;38;5;215m⚠ gap\x1b[0m \x1b[38;5;252mon {endpoint} after id {skipped_after}\x1b[0m"
                 );
             }
             StreamItem::ConnectionLost { endpoint, reason } => {
                 eprintln!(
-                    "\x1b[1;38;5;203m◯ {endpoint}\x1b[0m \x1b[2mdisconnected — {reason}\x1b[0m"
+                    "\x1b[1;38;5;203m◯ {endpoint}\x1b[0m \x1b[38;5;252mdisconnected — {reason}\x1b[0m"
                 );
                 if let Ok(mut state) = prompt.lock() {
                     state.connection_health = ConnectionHealth::Disconnected;
                 }
             }
             StreamItem::Reconnected { endpoint } => {
-                eprintln!("\x1b[1;38;5;84m● {endpoint}\x1b[0m \x1b[2mstream open\x1b[0m");
+                eprintln!("\x1b[1;38;5;84m● {endpoint}\x1b[0m \x1b[38;5;252mstream open\x1b[0m");
                 if let Ok(mut state) = prompt.lock() {
                     state.connection_health = ConnectionHealth::Healthy;
                 }

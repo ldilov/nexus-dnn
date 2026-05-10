@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 
 use reedline::{Completer, Span, Suggestion};
 
-use crate::repl::slash::{level_argument_values, slash_command_names};
+use crate::repl::slash::{level_argument_values, slash_command_description, slash_command_names};
 use crate::stream::ring_buffer::RingBuffer;
 
 const SOURCE_CATEGORY_PREFIXES: &[&str] = &[
@@ -129,7 +129,7 @@ fn suggest_command_names(first: &str, end: usize) -> Vec<Suggestion> {
         .filter(|name| name.starts_with(prefix))
         .map(|name| Suggestion {
             value: format!("/{name}"),
-            description: None,
+            description: slash_command_description(name).map(String::from),
             style: None,
             extra: None,
             span,
