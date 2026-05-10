@@ -110,6 +110,7 @@ fn run_first_event(
         color_depth: depth,
         critical_border: false,
         hover_target: None,
+        thread_leaf: false,
         ascii_glyphs: false,
     };
     let mut q = hold_queue.lock().expect("hold queue poisoned");
