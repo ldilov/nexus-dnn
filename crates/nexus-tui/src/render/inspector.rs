@@ -174,12 +174,26 @@ fn severity_label(severity: Severity) -> &'static str {
 
 fn push_section(out: &mut String, title: &str, depth: ColorDepth) {
     let palette = SPECTRAL_PRIMARY;
+    let icon = section_icon(title);
     out.push_str(&format!(
-        "{gutter} {title_open}{title}{title_close}\n",
+        "{gutter} {open}\x1b[1m{icon} {title}\x1b[22m{close}\n",
         gutter = colorize(inspector_gutter(), category_color_for_section(), depth),
-        title_open = SetForegroundColor(render_color(palette, depth)),
-        title_close = ResetColor,
+        open = SetForegroundColor(render_color(palette, depth)),
+        close = ResetColor,
     ));
+}
+
+fn section_icon(title: &str) -> &'static str {
+    match title {
+        "header" => "▾",
+        "metadata" => "◐",
+        "fields" => "▦",
+        "correlation keys" | "correlation tree" => "◉",
+        "recent context" => "↺",
+        "suggestions" => "✦",
+        "raw payload" => "{ }",
+        _ => "▾",
+    }
 }
 
 fn push_target_header(out: &mut String, target: &EventLine, depth: ColorDepth) {

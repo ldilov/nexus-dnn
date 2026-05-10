@@ -19,8 +19,31 @@ const ANSI_DIM: &str = "\x1b[2m";
 const ANSI_ACCENT_CYAN: &str = "\x1b[38;5;75m"; // graphite blue
 const ANSI_ACCENT_VIOLET: &str = "\x1b[38;5;141m";
 const ANSI_ACCENT_AMBER: &str = "\x1b[38;5;215m";
+const ANSI_ACCENT_GREEN: &str = "\x1b[38;5;84m";
+const ANSI_ACCENT_RED: &str = "\x1b[38;5;203m";
 const ANSI_ACCENT_DIM: &str = "\x1b[38;5;245m";
 const ANSI_BOLD: &str = "\x1b[1m";
+
+fn current_clock_hhmm() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let total = (secs % 86_400) as u32;
+    let h = total / 3600;
+    let m = (total % 3600) / 60;
+    format!("{h:02}:{m:02}")
+}
+
+/// Stream connection health surfaced in the prompt right-margin dot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ConnectionHealth {
+    #[default]
+    Connecting,
+    Healthy,
+    Disconnected,
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct PromptState {
@@ -33,6 +56,8 @@ pub struct PromptState {
     /// provided (preserves pre-spec-044 behaviour for tests).
     pub filter_count: u8,
     pub condensing: bool,
+    /// Stream connection health for the right-margin dot indicator.
+    pub connection_health: ConnectionHealth,
 }
 
 #[derive(Clone)]
@@ -50,6 +75,7 @@ impl AmbientPrompt {
             filter_active: false,
             filter_count: 0,
             condensing: false,
+            connection_health: ConnectionHealth::Connecting,
         };
         Self {
             state: Arc::new(Mutex::new(state)),
@@ -161,7 +187,16 @@ impl Prompt for AmbientPrompt {
     }
 
     fn render_prompt_right(&self) -> Cow<'_, str> {
-        Cow::Borrowed("")
+        let snapshot = self.state.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        let (dot, dot_color) = match snapshot.connection_health {
+            ConnectionHealth::Healthy => ("●", ANSI_ACCENT_GREEN),
+            ConnectionHealth::Connecting => ("◐", ANSI_ACCENT_AMBER),
+            ConnectionHealth::Disconnected => ("◯", ANSI_ACCENT_RED),
+        };
+        let clock = current_clock_hhmm();
+        Cow::Owned(format!(
+            "{dot_color}{dot}{ANSI_RESET} {ANSI_DIM}{clock}{ANSI_RESET}"
+        ))
     }
 
     fn render_prompt_indicator(&self, _edit_mode: PromptEditMode) -> Cow<'_, str> {
