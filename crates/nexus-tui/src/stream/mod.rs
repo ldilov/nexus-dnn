@@ -10,6 +10,7 @@
 //! All members are pure data + pure functions. No I/O, no globals.
 
 pub mod client;
+pub mod correlation_threader;
 pub mod event_id;
 pub mod event_line;
 pub mod filter;
