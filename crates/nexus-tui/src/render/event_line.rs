@@ -105,7 +105,15 @@ pub fn render_event_line_with_targets(line: &EventLine, cfg: &RenderConfig) -> E
     out.push(' ');
     col = col.saturating_add(1);
 
-    out.push_str(&timestamp);
+    // Severity left-bar — colored vertical block adds vertical rhythm
+    // between gutter and timestamp. ASCII fallback uses a pipe.
+    let bar = severity_bar(cfg.ascii_glyphs);
+    push_colored(&mut out, bar, severity_palette, cfg.color_depth);
+    col = col.saturating_add(visible_width(bar));
+    out.push(' ');
+    col = col.saturating_add(1);
+
+    push_colored_dim(&mut out, &timestamp, cfg.color_depth);
     col = col.saturating_add(visible_width(&timestamp));
     out.push(' ');
     col = col.saturating_add(1);
@@ -230,7 +238,10 @@ fn render_inner(line: &EventLine, cfg: &RenderConfig) -> String {
     };
     push_colored(&mut out, gutter, category_palette, cfg.color_depth);
     out.push(' ');
-    out.push_str(&timestamp);
+    let bar = severity_bar(cfg.ascii_glyphs);
+    push_colored(&mut out, bar, severity_palette, cfg.color_depth);
+    out.push(' ');
+    push_colored_dim(&mut out, &timestamp, cfg.color_depth);
     out.push(' ');
     push_colored(
         &mut out,
@@ -251,6 +262,10 @@ fn render_inner(line: &EventLine, cfg: &RenderConfig) -> String {
     out
 }
 
+fn severity_bar(ascii: bool) -> &'static str {
+    if ascii { "|" } else { "▎" }
+}
+
 fn render_critical_border(depth: ColorDepth) -> String {
     let mut s = String::new();
     push_colored(
@@ -260,6 +275,14 @@ fn render_critical_border(depth: ColorDepth) -> String {
         depth,
     );
     s
+}
+
+fn push_colored_dim(out: &mut String, text: &str, _depth: ColorDepth) {
+    // Dim style — keeps timestamps visually quiet so they don't compete
+    // with severity / source colour. ANSI 2 = faint.
+    out.push_str("\x1b[2m");
+    out.push_str(text);
+    out.push_str("\x1b[22m");
 }
 
 fn push_colored(out: &mut String, text: &str, palette: PaletteColor, depth: ColorDepth) {
