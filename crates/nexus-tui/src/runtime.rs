@@ -34,6 +34,7 @@ use crate::mouse::targets::{ClickRegistry, ClickTarget};
 use crate::render::brand::render_brand;
 use crate::render::cursor::{CursorChoreography, render_ambient_above_prompt};
 use crate::render::event_line::{RenderConfig, render_event_line, render_event_line_with_targets};
+use crate::render::status_ribbon::emit_status_ribbon;
 use crate::repl::ansi::{ColorDepth, detect_color_depth};
 use crate::repl::editor::{EditorOutcome, MouseHooks, build_editor_with_mouse, read_one};
 use crate::repl::mouse_edit_mode::{MenuFocus, MenuKey};
@@ -339,6 +340,7 @@ async fn consumer_loop(
                     && report.folded > 0
                 {
                     print_curtain_line(&report);
+                    emit_status_ribbon(&filter, &prompt);
                 }
                 continue;
             }
@@ -364,6 +366,7 @@ async fn consumer_loop(
                     BootDisplayDecision::SettleAndRender => {
                         if let Some(report) = startup_phase.settle(now_for_phase) {
                             print_curtain_line(&report);
+                            emit_status_ribbon(&filter, &prompt);
                         }
                     }
                     BootDisplayDecision::Render | BootDisplayDecision::SettleOnly => {}
@@ -444,17 +447,31 @@ async fn consumer_loop(
                 );
             }
             StreamItem::ConnectionLost { endpoint, reason } => {
+                let was_healthy = prompt
+                    .lock()
+                    .map(|s| s.connection_health == ConnectionHealth::Healthy)
+                    .unwrap_or(false);
                 eprintln!(
                     "\x1b[1;38;5;203m◯ {endpoint}\x1b[0m \x1b[38;5;252mdisconnected — {reason}\x1b[0m"
                 );
                 if let Ok(mut state) = prompt.lock() {
                     state.connection_health = ConnectionHealth::Disconnected;
                 }
+                if was_healthy {
+                    emit_status_ribbon(&filter, &prompt);
+                }
             }
             StreamItem::Reconnected { endpoint } => {
+                let was_disconnected = prompt
+                    .lock()
+                    .map(|s| s.connection_health == ConnectionHealth::Disconnected)
+                    .unwrap_or(false);
                 eprintln!("\x1b[1;38;5;84m● {endpoint}\x1b[0m \x1b[38;5;252mstream open\x1b[0m");
                 if let Ok(mut state) = prompt.lock() {
                     state.connection_health = ConnectionHealth::Healthy;
+                }
+                if was_disconnected {
+                    emit_status_ribbon(&filter, &prompt);
                 }
             }
         }
