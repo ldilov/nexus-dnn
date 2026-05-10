@@ -41,6 +41,7 @@ use crate::repl::mouse_edit_mode::{MenuFocus, MenuKey};
 use crate::repl::prompt::{AmbientPrompt, ConnectionHealth, PromptState};
 use crate::repl::slash::{ParsedCommand, parse_slash};
 use crate::stream::client::{SseClientConfig, StreamItem, spawn_endpoint_loop};
+use crate::stream::correlation_threader::{CorrelationThreader, ThreadRelation};
 use crate::stream::event_id::RingBufferCapacity;
 use crate::stream::filter::FilterState;
 use crate::stream::filter::FollowTarget;
@@ -316,6 +317,7 @@ async fn consumer_loop(
     let mut last_critical_border = Instant::now() - CRITICAL_BORDER_DEBOUNCE;
     let mut last_condensed_at: Option<Instant> = None;
     let mut startup_phase = BootState::new(Instant::now());
+    let mut threader = CorrelationThreader::default();
     let choreo = if cursor_choreography {
         Some(CursorChoreography::default())
     } else {
@@ -422,6 +424,7 @@ async fn consumer_loop(
                                 &click_registry,
                                 &hover,
                                 ascii_glyphs,
+                                &mut threader,
                             );
                             false
                         }
@@ -516,6 +519,7 @@ fn render_visible(
     click_registry: &Arc<Mutex<ClickRegistry>>,
     hover: &Arc<HoverState>,
     ascii_glyphs: bool,
+    threader: &mut CorrelationThreader,
 ) {
     let critical_border = matches!(line.significance, Significance::Critical)
         && now.duration_since(*last_critical_border) >= CRITICAL_BORDER_DEBOUNCE;
@@ -523,8 +527,13 @@ fn render_visible(
         *last_critical_border = now;
     }
     let hover_target = hover.snapshot().1;
+    let thread_leaf = matches!(
+        threader.relationship(line, now),
+        ThreadRelation::Leaf { .. }
+    );
     let cfg = RenderConfig::new(depth, critical_border)
         .with_hover_target(hover_target)
+        .with_thread_leaf(thread_leaf)
         .with_ascii_glyphs(ascii_glyphs);
     let layout = render_event_line_with_targets(line, &cfg);
     let rendered = render_event_line(line, &cfg);
@@ -539,6 +548,7 @@ fn render_visible(
         }
     }
     register_targets(click_registry, layout.targets);
+    threader.note_rendered(line, now);
 }
 
 fn register_targets(

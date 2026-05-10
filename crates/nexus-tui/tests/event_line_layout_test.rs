@@ -39,6 +39,7 @@ fn cfg() -> RenderConfig {
         color_depth: ColorDepth::Truecolor,
         critical_border: false,
         hover_target: None,
+        thread_leaf: false,
         ascii_glyphs: false,
     }
 }

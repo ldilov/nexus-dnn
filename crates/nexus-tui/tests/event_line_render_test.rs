@@ -52,6 +52,7 @@ fn render_all_depths(line: &EventLine) -> String {
             color_depth: depth,
             critical_border: false,
             hover_target: None,
+            thread_leaf: false,
             ascii_glyphs: false,
         };
         out.push_str(&format!("--- {:?} ---\n", depth));
@@ -101,6 +102,7 @@ fn snapshot_critical_fatal_event_with_border() {
         color_depth: ColorDepth::Truecolor,
         critical_border: true,
         hover_target: None,
+        thread_leaf: false,
         ascii_glyphs: false,
     };
     insta::assert_snapshot!(render_event_line(&evt, &cfg));
