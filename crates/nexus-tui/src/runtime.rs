@@ -37,7 +37,7 @@ use crate::render::event_line::{RenderConfig, render_event_line, render_event_li
 use crate::repl::ansi::{ColorDepth, detect_color_depth};
 use crate::repl::editor::{EditorOutcome, MouseHooks, build_editor_with_mouse, read_one};
 use crate::repl::mouse_edit_mode::{MenuFocus, MenuKey};
-use crate::repl::prompt::{AmbientPrompt, PromptState};
+use crate::repl::prompt::{AmbientPrompt, ConnectionHealth, PromptState};
 use crate::repl::slash::{ParsedCommand, parse_slash};
 use crate::stream::client::{SseClientConfig, StreamItem, spawn_endpoint_loop};
 use crate::stream::event_id::RingBufferCapacity;
@@ -320,6 +320,9 @@ async fn consumer_loop(
     while let Some(item) = rx.recv().await {
         match item {
             StreamItem::Line(line) => {
+                if let Ok(mut state) = prompt.lock() {
+                    state.connection_health = ConnectionHealth::Healthy;
+                }
                 {
                     let mut buf = ring.lock().unwrap_or_else(|p| p.into_inner());
                     buf.push(line.clone());
@@ -394,9 +397,15 @@ async fn consumer_loop(
             }
             StreamItem::ConnectionLost { endpoint, reason } => {
                 eprintln!("·· {endpoint} disconnected: {reason}");
+                if let Ok(mut state) = prompt.lock() {
+                    state.connection_health = ConnectionHealth::Disconnected;
+                }
             }
             StreamItem::Reconnected { endpoint } => {
                 eprintln!("·· {endpoint} stream open");
+                if let Ok(mut state) = prompt.lock() {
+                    state.connection_health = ConnectionHealth::Healthy;
+                }
             }
         }
     }

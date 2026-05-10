@@ -359,18 +359,192 @@ async fn render_where(cfg: &ControllerConfig, http: &reqwest::Client, handles: &
 
 fn render_help(handles: &ControllerHandles) {
     set_holding(handles, true);
-    println!("┃ slash commands");
-    println!("┃   /level <debug|info|warn|error|fatal>   — set severity floor");
-    println!("┃   /grep <regex>                          — display grep on summary");
-    println!("┃   /source <glob>                         — source-glob filter");
-    println!("┃   /follow run:<id>|deploy:<id>|ext:<id>  — narrow to a target");
-    println!("┃   /clear-filter                          — drop all filters");
-    println!("┃   /pause /resume                         — toggle ambient display");
-    println!("┃   /where                                 — host context summary");
-    println!("┃   /help                                  — this menu");
-    println!("┃   /quit                                  — clean exit");
+    print!("{}", render_help_block());
     set_holding(handles, false);
     flush_hold(handles);
+}
+
+const HELP_ACCENT: &str = "\x1b[38;5;75m"; // graphite blue
+const HELP_GROUP: &str = "\x1b[38;5;141m"; // violet section heading
+const HELP_DIM: &str = "\x1b[2m";
+const HELP_BOLD: &str = "\x1b[1m";
+const HELP_RESET: &str = "\x1b[0m";
+
+struct HelpItem {
+    icon: &'static str,
+    command: &'static str,
+    description: &'static str,
+}
+
+struct HelpGroup {
+    title: &'static str,
+    items: &'static [HelpItem],
+}
+
+const HELP_GROUPS: &[HelpGroup] = &[
+    HelpGroup {
+        title: "Filter",
+        items: &[
+            HelpItem {
+                icon: "▣",
+                command: "/level <debug|info|warn|error|fatal>",
+                description: "set severity floor",
+            },
+            HelpItem {
+                icon: "◉",
+                command: "/grep <regex>",
+                description: "display grep on summary text",
+            },
+            HelpItem {
+                icon: "◧",
+                command: "/source <glob>",
+                description: "filter by source label",
+            },
+            HelpItem {
+                icon: "▶",
+                command: "/follow run:<id>|deploy:<id>|ext:<id>",
+                description: "narrow to a single target",
+            },
+            HelpItem {
+                icon: "◯",
+                command: "/clear-filter",
+                description: "drop all filters",
+            },
+        ],
+    },
+    HelpGroup {
+        title: "Inspect",
+        items: &[
+            HelpItem {
+                icon: "◎",
+                command: "/inspect <event-id>",
+                description: "drill into a specific event",
+            },
+            HelpItem {
+                icon: "↺",
+                command: "/last [N] [level]",
+                description: "recent events from the ring buffer",
+            },
+            HelpItem {
+                icon: "⊟",
+                command: "/snapshot <path>",
+                description: "write a debug artifact",
+            },
+            HelpItem {
+                icon: "↗",
+                command: "/open <route>",
+                description: "focus the desktop UI",
+            },
+        ],
+    },
+    HelpGroup {
+        title: "Lifecycle",
+        items: &[
+            HelpItem {
+                icon: "⏸",
+                command: "/pause · /resume",
+                description: "toggle ambient display",
+            },
+            HelpItem {
+                icon: "●",
+                command: "/where",
+                description: "host context summary",
+            },
+            HelpItem {
+                icon: "?",
+                command: "/help",
+                description: "this menu",
+            },
+            HelpItem {
+                icon: "⏻",
+                command: "/quit",
+                description: "clean exit",
+            },
+        ],
+    },
+];
+
+fn render_help_block() -> String {
+    let cmd_width = HELP_GROUPS
+        .iter()
+        .flat_map(|g| g.items.iter())
+        .map(|i| i.command.chars().count())
+        .max()
+        .unwrap_or(0);
+
+    let mut out = String::new();
+
+    out.push_str(HELP_ACCENT);
+    out.push_str(HELP_BOLD);
+    out.push_str("┃ ╭─");
+    let title = " Nexus TUI · slash commands ";
+    out.push_str(title);
+    let pad = 56_usize.saturating_sub(title.chars().count() + 2);
+    for _ in 0..pad {
+        out.push('─');
+    }
+    out.push('╮');
+    out.push_str(HELP_RESET);
+    out.push('\n');
+
+    for (idx, group) in HELP_GROUPS.iter().enumerate() {
+        out.push_str(HELP_ACCENT);
+        out.push_str("┃ ");
+        out.push_str(HELP_RESET);
+        out.push_str(HELP_GROUP);
+        out.push_str(HELP_BOLD);
+        out.push_str("▾ ");
+        out.push_str(group.title);
+        out.push_str(HELP_RESET);
+        out.push('\n');
+
+        for item in group.items {
+            out.push_str(HELP_ACCENT);
+            out.push_str("┃   ");
+            out.push_str(HELP_RESET);
+            out.push_str(HELP_ACCENT);
+            out.push_str(item.icon);
+            out.push_str(HELP_RESET);
+            out.push(' ');
+            out.push_str(HELP_BOLD);
+            out.push_str(item.command);
+            out.push_str(HELP_RESET);
+            let pad = cmd_width.saturating_sub(item.command.chars().count());
+            for _ in 0..pad {
+                out.push(' ');
+            }
+            out.push_str("  ");
+            out.push_str(HELP_DIM);
+            out.push_str(item.description);
+            out.push_str(HELP_RESET);
+            out.push('\n');
+        }
+        if idx + 1 < HELP_GROUPS.len() {
+            out.push_str(HELP_ACCENT);
+            out.push('┃');
+            out.push_str(HELP_RESET);
+            out.push('\n');
+        }
+    }
+
+    out.push_str(HELP_ACCENT);
+    out.push_str("┃ ");
+    out.push_str(HELP_RESET);
+    out.push_str(HELP_DIM);
+    out.push_str("tab — complete · ↑/↓ — history · right-arrow — accept hint · Ctrl+D — exit");
+    out.push_str(HELP_RESET);
+    out.push('\n');
+
+    out.push_str(HELP_ACCENT);
+    out.push_str("┃ ╰");
+    for _ in 0..58 {
+        out.push('─');
+    }
+    out.push('╯');
+    out.push_str(HELP_RESET);
+    out.push('\n');
+
+    out
 }
 
 fn set_holding(handles: &ControllerHandles, holding: bool) {
@@ -407,5 +581,48 @@ fn describe(cmd: &ParsedCommand) -> String {
         ParsedCommand::Last { .. } => "/last".into(),
         ParsedCommand::Snapshot(_) => "/snapshot".into(),
         ParsedCommand::Open(_) => "/open".into(),
+    }
+}
+
+#[cfg(test)]
+mod help_render_tests {
+    use super::*;
+
+    #[test]
+    fn help_block_contains_every_command() {
+        let out = render_help_block();
+        for group in HELP_GROUPS {
+            for item in group.items {
+                assert!(
+                    out.contains(item.command),
+                    "missing {} in help block",
+                    item.command
+                );
+                assert!(
+                    out.contains(item.description),
+                    "missing description {} in help block",
+                    item.description
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn help_block_renders_section_headings() {
+        let out = render_help_block();
+        for group in HELP_GROUPS {
+            assert!(
+                out.contains(group.title),
+                "missing section heading {} in help block",
+                group.title
+            );
+        }
+    }
+
+    #[test]
+    fn help_block_starts_and_ends_with_box_corners() {
+        let out = render_help_block();
+        assert!(out.contains("┃ ╭"), "missing top-left corner");
+        assert!(out.contains("┃ ╰"), "missing bottom-left corner");
     }
 }
