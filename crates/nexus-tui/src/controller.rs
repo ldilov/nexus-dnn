@@ -13,6 +13,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::render::inspector::{InspectorRenderConfig, render_inspector_block};
+use crate::render::status_ribbon::emit_status_ribbon;
 use crate::repl::ansi::{detect_color_depth, osc8_hyperlink};
 use crate::repl::inspect::{find_event_by_id_str, last_n_at_or_above};
 use crate::repl::prompt::PromptState;
@@ -126,6 +127,16 @@ async fn execute(
     handles: &ControllerHandles,
     http: &reqwest::Client,
 ) {
+    let mutates_filter_state = matches!(
+        cmd,
+        ParsedCommand::Level(_)
+            | ParsedCommand::Grep(_)
+            | ParsedCommand::Source(_)
+            | ParsedCommand::ClearFilter
+            | ParsedCommand::Pause
+            | ParsedCommand::Resume
+            | ParsedCommand::Follow(_)
+    );
     match cmd {
         ParsedCommand::Level(level) => with_filter(handles, |f| f.set_level_floor(*level)),
         ParsedCommand::Grep(pattern) => {
@@ -159,6 +170,9 @@ async fn execute(
         ParsedCommand::Last { count, level } => render_last(handles, *count, *level),
         ParsedCommand::Snapshot(path) => run_snapshot(cfg, handles, path),
         ParsedCommand::Open(target) => render_open(cfg, http, handles, target).await,
+    }
+    if mutates_filter_state {
+        emit_status_ribbon(&handles.filter, &handles.prompt);
     }
 }
 
