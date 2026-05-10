@@ -136,22 +136,50 @@ pub fn parse_slash(input: &str) -> Result<ParsedCommand, ParseError> {
 }
 
 pub fn slash_command_names() -> &'static [&'static str] {
-    &[
-        "level",
-        "grep",
-        "source",
-        "clear-filter",
-        "pause",
-        "resume",
-        "follow",
-        "where",
-        "help",
-        "quit",
-        "inspect",
-        "last",
-        "snapshot",
-        "open",
-    ]
+    SLASH_COMMAND_NAMES
+}
+
+const SLASH_COMMAND_NAMES: &[&str] = &[
+    "level",
+    "grep",
+    "source",
+    "clear-filter",
+    "pause",
+    "resume",
+    "follow",
+    "where",
+    "help",
+    "quit",
+    "inspect",
+    "last",
+    "snapshot",
+    "open",
+];
+
+/// Single source of truth for command descriptions used both by the
+/// completion-menu tooltip and the in-app `/help` block.
+pub const SLASH_COMMAND_TABLE: &[(&str, &str)] = &[
+    ("level", "set severity floor (debug/info/warn/error/fatal)"),
+    ("grep", "filter by regex on the summary text"),
+    ("source", "filter by source label or glob"),
+    ("clear-filter", "drop all active filters"),
+    ("pause", "freeze the ambient stream"),
+    ("resume", "thaw the ambient stream"),
+    ("follow", "narrow to run/deploy/extension target"),
+    ("where", "host context summary"),
+    ("help", "show all slash commands"),
+    ("quit", "exit cleanly"),
+    ("inspect", "drill into a specific event by id"),
+    ("last", "recent events from the ring buffer"),
+    ("snapshot", "write a debug artifact to disk"),
+    ("open", "focus the desktop UI on a route"),
+];
+
+pub fn slash_command_description(name: &str) -> Option<&'static str> {
+    SLASH_COMMAND_TABLE
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, d)| *d)
 }
 
 pub fn level_argument_values() -> &'static [&'static str] {
