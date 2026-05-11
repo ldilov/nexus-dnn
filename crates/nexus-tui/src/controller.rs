@@ -22,6 +22,8 @@ use crate::repl::slash::{ParseError, ParsedCommand};
 use crate::snapshot::{SnapshotInputs, write_snapshot};
 use crate::stream::filter::FilterState;
 use crate::stream::hold_queue::HoldQueue;
+use crate::stream::muted_sources::MutedSources;
+use crate::stream::pinned_correlations::{PinKey, PinnedSet};
 use crate::stream::rate_guard::RateGuardSnapshot;
 use crate::stream::ring_buffer::RingBuffer;
 use crate::stream::severity::Severity;
@@ -43,17 +45,24 @@ pub struct ControllerHandles {
     /// Cluster-A — Updated once per second by the consumer-loop tick.
     /// Read by `/pressure` to render the per-source backpressure drawer.
     pub rate_snapshot: Arc<Mutex<RateGuardSnapshot>>,
+    /// Cluster-B — pinned correlation keys; bypass filters during render.
+    pub pinned: Arc<RwLock<PinnedSet>>,
+    /// Cluster-B — muted source labels / globs; hide from ambient.
+    pub muted: Arc<RwLock<MutedSources>>,
     pub command_tx: mpsc::Sender<ControllerCommand>,
     pub shutdown: CancellationToken,
 }
 
 impl ControllerHandles {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         filter: Arc<RwLock<FilterState>>,
         hold_queue: Arc<Mutex<HoldQueue>>,
         prompt: Arc<Mutex<PromptState>>,
         ring: Arc<Mutex<RingBuffer>>,
         rate_snapshot: Arc<Mutex<RateGuardSnapshot>>,
+        pinned: Arc<RwLock<PinnedSet>>,
+        muted: Arc<RwLock<MutedSources>>,
         shutdown: CancellationToken,
     ) -> (Self, mpsc::Receiver<ControllerCommand>) {
         let (tx, rx) = mpsc::channel(16);
@@ -63,6 +72,8 @@ impl ControllerHandles {
             prompt,
             ring,
             rate_snapshot,
+            pinned,
+            muted,
             command_tx: tx,
             shutdown,
         };
@@ -178,6 +189,11 @@ async fn execute(
         ParsedCommand::Open(target) => render_open(cfg, http, handles, target).await,
         ParsedCommand::Pressure => render_pressure(handles),
         ParsedCommand::Scrub => render_scrub(handles),
+        ParsedCommand::Pin(arg) => run_pin(handles, arg),
+        ParsedCommand::Unpin(arg) => run_unpin(handles, arg),
+        ParsedCommand::Mute(arg) => run_mute(handles, arg),
+        ParsedCommand::Unmute(arg) => run_unmute(handles, arg),
+        ParsedCommand::Mixer => render_mixer(handles),
     }
     if mutates_filter_state {
         emit_status_ribbon(&handles.filter, &handles.prompt);
@@ -605,7 +621,102 @@ fn describe(cmd: &ParsedCommand) -> String {
         ParsedCommand::Open(_) => "/open".into(),
         ParsedCommand::Pressure => "/pressure".into(),
         ParsedCommand::Scrub => "/scrub".into(),
+        ParsedCommand::Pin(_) => "/pin".into(),
+        ParsedCommand::Unpin(_) => "/unpin".into(),
+        ParsedCommand::Mute(_) => "/mute".into(),
+        ParsedCommand::Unmute(_) => "/unmute".into(),
+        ParsedCommand::Mixer => "/mixer".into(),
     }
+}
+
+fn run_pin(handles: &ControllerHandles, arg: &str) {
+    match arg.parse::<PinKey>() {
+        Ok(key) => {
+            let mut pinned = match handles.pinned.write() {
+                Ok(p) => p,
+                Err(_) => return,
+            };
+            match pinned.pin(key.clone()) {
+                Some(_color) => {
+                    println!(
+                        "\x1b[1;38;5;141m📌 pinned {key}\x1b[0m \x1b[38;5;245m· bypasses filters · /unpin {key} to remove\x1b[0m"
+                    );
+                }
+                None => {
+                    println!("\x1b[38;5;245m· {key} is already pinned\x1b[0m");
+                }
+            }
+        }
+        Err(err) => eprintln!("\x1b[38;5;203mnexus: /pin: {err}\x1b[0m"),
+    }
+}
+
+fn run_unpin(handles: &ControllerHandles, arg: &str) {
+    match arg.parse::<PinKey>() {
+        Ok(key) => {
+            let mut pinned = match handles.pinned.write() {
+                Ok(p) => p,
+                Err(_) => return,
+            };
+            if pinned.unpin(&key) {
+                println!("\x1b[1;38;5;141m📌 unpinned {key}\x1b[0m");
+            } else {
+                println!("\x1b[38;5;245m· {key} was not pinned\x1b[0m");
+            }
+        }
+        Err(err) => eprintln!("\x1b[38;5;203mnexus: /unpin: {err}\x1b[0m"),
+    }
+}
+
+fn run_mute(handles: &ControllerHandles, arg: &str) {
+    let mut muted = match handles.muted.write() {
+        Ok(m) => m,
+        Err(_) => return,
+    };
+    match muted.mute(arg) {
+        Ok(true) => println!(
+            "\x1b[1;38;5;215m🔇 muted {arg}\x1b[0m \x1b[38;5;245m· /unmute {arg} to restore\x1b[0m"
+        ),
+        Ok(false) => println!("\x1b[38;5;245m· {arg} is already muted\x1b[0m"),
+        Err(err) => eprintln!("\x1b[38;5;203mnexus: /mute: {err}\x1b[0m"),
+    }
+}
+
+fn run_unmute(handles: &ControllerHandles, arg: &str) {
+    let mut muted = match handles.muted.write() {
+        Ok(m) => m,
+        Err(_) => return,
+    };
+    if muted.unmute(arg) {
+        println!("\x1b[1;38;5;215m🔇 unmuted {arg}\x1b[0m");
+    } else {
+        println!("\x1b[38;5;245m· {arg} was not muted\x1b[0m");
+    }
+}
+
+fn render_mixer(handles: &ControllerHandles) {
+    set_holding(handles, true);
+    let snap = handles
+        .rate_snapshot
+        .lock()
+        .map(|s| s.clone())
+        .unwrap_or_default();
+    let muted_guard = handles.muted.read().ok();
+    let pinned_guard = handles.pinned.read().ok();
+    let default_muted = crate::stream::muted_sources::MutedSources::new();
+    let default_pinned = crate::stream::pinned_correlations::PinnedSet::new();
+    let block = crate::render::source_mixer::render_mixer_drawer(
+        &crate::render::source_mixer::MixerRenderInput {
+            snapshot: &snap,
+            muted: muted_guard.as_deref().unwrap_or(&default_muted),
+            pinned: pinned_guard.as_deref().unwrap_or(&default_pinned),
+            max_rows: 30,
+            now: std::time::Instant::now(),
+        },
+    );
+    print!("{block}");
+    set_holding(handles, false);
+    flush_hold(handles);
 }
 
 fn render_pressure(handles: &ControllerHandles) {
