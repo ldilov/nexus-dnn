@@ -12,6 +12,7 @@ use crate::stream::source_category::SourceCategory;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColorDepth {
+    NoColor,
     Truecolor,
     Color256,
     Color16,
@@ -60,7 +61,7 @@ impl ColorBasic {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PaletteColor {
     pub truecolor: (u8, u8, u8),
     pub color256: u8,
@@ -172,6 +173,7 @@ pub fn render_color(color: PaletteColor, depth: ColorDepth) -> Color {
         }
         ColorDepth::Color256 => Color::AnsiValue(color.color256),
         ColorDepth::Color16 => color.color16.to_crossterm(),
+        ColorDepth::NoColor => Color::Reset,
     }
 }
 
