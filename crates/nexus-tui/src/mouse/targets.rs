@@ -26,7 +26,7 @@ impl ClickTarget {
             ClickTarget::RunIdReference { .. } => "[click: follow run | esc: clear]",
             ClickTarget::FilterIndicator => "[click: toggle | shift-click: invert | drag: brush]",
             ClickTarget::Sparkline => "[click: pause | drag: time-scrub]",
-            ClickTarget::InspectorHeading { .. } => "[enter: expand | esc: collapse]",
+            ClickTarget::InspectorHeading { .. } => "[click: re-inspect event]",
         }
     }
 
@@ -36,7 +36,7 @@ impl ClickTarget {
             ClickTarget::FilterIndicator => Some("Ctrl+F"),
             ClickTarget::Sparkline => Some("Ctrl+G"),
             ClickTarget::SourceLabel { .. } | ClickTarget::RunIdReference { .. } => None,
-            ClickTarget::InspectorHeading { .. } => Some("Enter"),
+            ClickTarget::InspectorHeading { .. } => Some("/inspect <id>"),
         }
     }
 }
