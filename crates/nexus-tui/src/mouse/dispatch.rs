@@ -24,6 +24,12 @@ pub fn left_click_action(target: &ClickTarget, current_source_filter: Option<&st
         ClickTarget::InspectorHeading { event_id } => {
             ClickAction::Command(ParsedCommand::Inspect(format!("{event_id}")))
         }
+        ClickTarget::InspectorSection { event_id, section } => {
+            ClickAction::Command(ParsedCommand::InspectorToggle {
+                event_id: format!("{event_id}"),
+                section: *section,
+            })
+        }
         ClickTarget::SourceLabel { source } => {
             if current_source_filter == Some(source.as_str()) {
                 ClickAction::Command(ParsedCommand::ClearFilter)

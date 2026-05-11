@@ -10,12 +10,24 @@ use crate::EventId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClickTarget {
-    EventLineBody { event_id: EventId },
-    SourceLabel { source: String },
-    RunIdReference { run_id: String },
+    EventLineBody {
+        event_id: EventId,
+    },
+    SourceLabel {
+        source: String,
+    },
+    RunIdReference {
+        run_id: String,
+    },
     FilterIndicator,
     Sparkline,
-    InspectorHeading { event_id: EventId },
+    InspectorHeading {
+        event_id: EventId,
+    },
+    InspectorSection {
+        event_id: EventId,
+        section: crate::render::inspector::InspectorSection,
+    },
 }
 
 impl ClickTarget {
@@ -27,6 +39,7 @@ impl ClickTarget {
             ClickTarget::FilterIndicator => "[click: toggle | shift-click: invert | drag: brush]",
             ClickTarget::Sparkline => "[click: pause | drag: time-scrub]",
             ClickTarget::InspectorHeading { .. } => "[click: re-inspect event]",
+            ClickTarget::InspectorSection { .. } => "[click: toggle section open/closed]",
         }
     }
 
@@ -37,6 +50,7 @@ impl ClickTarget {
             ClickTarget::Sparkline => Some("Ctrl+G"),
             ClickTarget::SourceLabel { .. } | ClickTarget::RunIdReference { .. } => None,
             ClickTarget::InspectorHeading { .. } => Some("/inspect <id>"),
+            ClickTarget::InspectorSection { .. } => Some("/section <slug>"),
         }
     }
 }

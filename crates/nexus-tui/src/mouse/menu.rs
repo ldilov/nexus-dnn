@@ -89,6 +89,16 @@ pub fn menu_items_for(target: &ClickTarget) -> Vec<MenuItem> {
                 choice: MenuChoice::Cancel,
             });
         }
+        ClickTarget::InspectorSection { .. } => {
+            items.push(MenuItem {
+                label: "Toggle section",
+                choice: MenuChoice::Inspect,
+            });
+            items.push(MenuItem {
+                label: "Cancel",
+                choice: MenuChoice::Cancel,
+            });
+        }
     }
     items
 }

@@ -91,6 +91,7 @@ fn build_runtime_components() -> RuntimeParts {
         pinned,
         muted,
         brush,
+        Arc::clone(&click_registry),
         shutdown,
     );
 
