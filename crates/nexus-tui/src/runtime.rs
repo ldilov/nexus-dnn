@@ -459,6 +459,10 @@ async fn consumer_loop(
                     Ok(mut q) => match q.try_enqueue(render_line) {
                         EnqueueResult::Held | EnqueueResult::Overflow => true,
                         EnqueueResult::Passthrough(line) => {
+                            let grep_pattern = filter
+                                .read()
+                                .ok()
+                                .and_then(|f| f.grep_text().map(|s| s.to_string()));
                             render_visible(
                                 &line,
                                 depth,
@@ -469,6 +473,7 @@ async fn consumer_loop(
                                 &hover,
                                 ascii_glyphs,
                                 &mut threader,
+                                grep_pattern,
                             );
                             false
                         }
@@ -568,6 +573,7 @@ fn render_visible(
     hover: &Arc<HoverState>,
     ascii_glyphs: bool,
     threader: &mut CorrelationThreader,
+    grep_pattern: Option<String>,
 ) {
     let critical_border = matches!(line.significance, Significance::Critical)
         && now.duration_since(*last_critical_border) >= CRITICAL_BORDER_DEBOUNCE;
@@ -582,7 +588,8 @@ fn render_visible(
     let cfg = RenderConfig::new(depth, critical_border)
         .with_hover_target(hover_target)
         .with_thread_leaf(thread_leaf)
-        .with_ascii_glyphs(ascii_glyphs);
+        .with_ascii_glyphs(ascii_glyphs)
+        .with_grep_highlight(grep_pattern);
     let layout = render_event_line_with_targets(line, &cfg);
     let rendered = render_event_line(line, &cfg);
     let old_row = cursor_row();

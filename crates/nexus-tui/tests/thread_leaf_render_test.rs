@@ -32,6 +32,7 @@ fn cfg(leaf: bool) -> RenderConfig {
         ascii_glyphs: false,
         correlation_depth: 0,
         luminance_ladder: false,
+        grep_highlight: None,
     }
 }
 
