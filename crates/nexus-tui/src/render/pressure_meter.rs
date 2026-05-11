@@ -1,11 +1,15 @@
 //! Cluster-A — `/pressure` drawer renderer.
 //!
 //! Inspector-style block (`┃` heavy gutter) summarising the rate-guard
-//! and hold-queue state since session start. Pure-fn: takes a snapshot
-//! plus an optional hold-queue depth, returns a coloured String.
+//! and hold-queue state since session start. Two stacked tables:
+//!   1. **Totals** — held / dropped / observed across the whole session.
+//!   2. **Per source** — every active source sorted by `total_dropped`
+//!      DESC then `total_observed` DESC. Includes a density bar
+//!      visualising relative volume.
 
 use std::time::Instant;
 
+use crate::render::table::{Align, Cell, Column, Row, TableSpec, fmt_thousands, render_table};
 use crate::stream::rate_guard::RateGuardSnapshot;
 
 const ANSI_RESET: &str = "\x1b[0m";
@@ -15,9 +19,7 @@ const ANSI_VIOLET: &str = "\x1b[38;5;141m";
 const ANSI_AMBER: &str = "\x1b[38;5;215m";
 const ANSI_GREEN: &str = "\x1b[38;5;84m";
 const ANSI_RED: &str = "\x1b[38;5;203m";
-const ANSI_SLATE: &str = "\x1b[38;5;252m";
 const ANSI_GRAPHITE_DIM: &str = "\x1b[38;5;245m";
-const GUTTER: &str = "┃";
 
 #[derive(Debug, Clone)]
 pub struct PressureRenderInput<'a> {
@@ -30,128 +32,160 @@ pub struct PressureRenderInput<'a> {
 pub fn render_pressure_drawer(input: &PressureRenderInput<'_>) -> String {
     let mut out = String::new();
 
-    // Header.
-    push(&mut out, GUTTER, ANSI_GRAPHITE_BLUE);
-    out.push(' ');
-    push(
-        &mut out,
-        "▾ pressure",
-        &format!("{ANSI_BOLD}{ANSI_GRAPHITE_BLUE}"),
-    );
-    out.push('\n');
-
-    // Totals row.
-    push(&mut out, GUTTER, ANSI_GRAPHITE_BLUE);
-    out.push_str("   ");
-    push(&mut out, "held=", ANSI_SLATE);
+    // Totals table.
+    let totals_columns = &[
+        Column {
+            header: "held",
+            min_width: 6,
+            align: Align::Right,
+        },
+        Column {
+            header: "dropped",
+            min_width: 8,
+            align: Align::Right,
+        },
+        Column {
+            header: "observed",
+            min_width: 10,
+            align: Align::Right,
+        },
+    ];
     let held_color = if input.held > 0 {
         ANSI_AMBER
     } else {
         ANSI_GRAPHITE_DIM
     };
-    push(
-        &mut out,
-        &format!("{ANSI_BOLD}{}{ANSI_RESET}", input.held),
-        held_color,
-    );
-    out.push_str("  ");
-    push(&mut out, "dropped=", ANSI_SLATE);
     let drop_color = if input.snapshot.cumulative_dropped > 0 {
         ANSI_RED
     } else {
         ANSI_GRAPHITE_DIM
     };
-    push(
-        &mut out,
-        &format!(
-            "{ANSI_BOLD}{}{ANSI_RESET}",
-            input.snapshot.cumulative_dropped
+    let totals_row = Row::new(vec![
+        Cell::colored(bold(&fmt_thousands(u64::from(input.held))), held_color),
+        Cell::colored(
+            bold(&fmt_thousands(input.snapshot.cumulative_dropped)),
+            drop_color,
         ),
-        drop_color,
-    );
-    out.push_str("  ");
-    push(&mut out, "observed=", ANSI_SLATE);
-    push(
-        &mut out,
-        &format!(
-            "{ANSI_BOLD}{}{ANSI_RESET}",
-            input.snapshot.cumulative_observed
+        Cell::colored(
+            bold(&fmt_thousands(input.snapshot.cumulative_observed)),
+            ANSI_VIOLET,
         ),
-        ANSI_VIOLET,
-    );
-    out.push('\n');
+    ]);
+    out.push_str(&render_table(
+        &TableSpec {
+            title: Some("pressure · totals"),
+            columns: totals_columns,
+            indent: 3,
+            show_density: false,
+        },
+        &[totals_row],
+    ));
 
-    // Per-source table heading.
-    push(&mut out, GUTTER, ANSI_GRAPHITE_BLUE);
-    out.push(' ');
-    push(
-        &mut out,
-        "▾ per source",
-        &format!("{ANSI_BOLD}{ANSI_GRAPHITE_BLUE}"),
-    );
-    out.push('\n');
+    // Per-source table.
+    let per_columns = &[
+        Column {
+            header: "source",
+            min_width: 22,
+            align: Align::Left,
+        },
+        Column {
+            header: "obs",
+            min_width: 7,
+            align: Align::Right,
+        },
+        Column {
+            header: "drop",
+            min_width: 6,
+            align: Align::Right,
+        },
+        Column {
+            header: "rate",
+            min_width: 6,
+            align: Align::Right,
+        },
+        Column {
+            header: "last",
+            min_width: 5,
+            align: Align::Right,
+        },
+    ];
 
     if input.snapshot.per_source.is_empty() {
-        push(&mut out, GUTTER, ANSI_GRAPHITE_BLUE);
-        out.push_str("   ");
-        push(&mut out, "(no sources observed yet)", ANSI_GRAPHITE_DIM);
-        out.push('\n');
-    } else {
-        // Sort by dropped DESC then observed DESC — busiest at the top.
-        let mut rows: Vec<_> = input.snapshot.per_source.iter().collect();
-        rows.sort_by(|(_, a), (_, b)| {
-            b.total_dropped
-                .cmp(&a.total_dropped)
-                .then_with(|| b.total_observed.cmp(&a.total_observed))
-        });
-        for (source, snap) in rows.iter().take(input.max_rows) {
-            push(&mut out, GUTTER, ANSI_GRAPHITE_BLUE);
-            out.push_str("   ");
-            push(
-                &mut out,
-                &format!("{source:<28}"),
-                &format!("{ANSI_BOLD}{ANSI_GRAPHITE_BLUE}"),
-            );
-            push(&mut out, "  ", ANSI_RESET);
-            push(&mut out, "obs ", ANSI_SLATE);
-            push(
-                &mut out,
-                &format!("{:>6}", snap.total_observed),
-                ANSI_VIOLET,
-            );
-            push(&mut out, "  drop ", ANSI_SLATE);
+        // Render a stub row so the operator sees the empty state, not
+        // a header floating alone.
+        let stub = Row::new(vec![
+            Cell::colored("(no sources observed yet)", ANSI_GRAPHITE_DIM),
+            Cell::plain(""),
+            Cell::plain(""),
+            Cell::plain(""),
+            Cell::plain(""),
+        ]);
+        out.push_str(&render_table(
+            &TableSpec {
+                title: Some("per source"),
+                columns: per_columns,
+                indent: 3,
+                show_density: false,
+            },
+            &[stub],
+        ));
+        return out;
+    }
+
+    let mut rows: Vec<_> = input.snapshot.per_source.iter().collect();
+    rows.sort_by(|(_, a), (_, b)| {
+        b.total_dropped
+            .cmp(&a.total_dropped)
+            .then_with(|| b.total_observed.cmp(&a.total_observed))
+    });
+    let visible: Vec<_> = rows.iter().take(input.max_rows).collect();
+    let rendered_rows: Vec<Row> = visible
+        .iter()
+        .map(|(source, snap)| {
             let drop_color = if snap.total_dropped > 0 {
                 ANSI_RED
             } else {
                 ANSI_GRAPHITE_DIM
             };
-            push(&mut out, &format!("{:>6}", snap.total_dropped), drop_color);
-            push(&mut out, "  rate ", ANSI_SLATE);
-            push(
-                &mut out,
-                &format!("{:>5}/s", snap.current_second_count),
-                ANSI_GREEN,
-            );
-            push(&mut out, "  last ", ANSI_SLATE);
             let age = input
                 .now
                 .checked_duration_since(snap.last_seen)
                 .unwrap_or_default();
-            push(&mut out, &format_age(age), ANSI_GRAPHITE_DIM);
-            out.push('\n');
-        }
-        if rows.len() > input.max_rows {
-            push(&mut out, GUTTER, ANSI_GRAPHITE_BLUE);
-            out.push_str("   ");
-            push(
-                &mut out,
-                &format!("(+{} more sources)", rows.len() - input.max_rows),
-                ANSI_GRAPHITE_DIM,
-            );
-            out.push('\n');
-        }
+            Row::new(vec![
+                Cell::colored(source.as_str(), ANSI_GRAPHITE_BLUE),
+                Cell::colored(fmt_thousands(snap.total_observed), ANSI_VIOLET),
+                Cell::colored(fmt_thousands(snap.total_dropped), drop_color),
+                Cell::colored(format!("{}/s", snap.current_second_count), ANSI_GREEN),
+                Cell::colored(format_age(age), ANSI_GRAPHITE_DIM),
+            ])
+            .with_density(snap.total_observed)
+        })
+        .collect();
+    out.push_str(&render_table(
+        &TableSpec {
+            title: Some("per source"),
+            columns: per_columns,
+            indent: 3,
+            show_density: true,
+        },
+        &rendered_rows,
+    ));
+
+    if rows.len() > input.max_rows {
+        out.push_str(ANSI_GRAPHITE_BLUE);
+        out.push('┃');
+        out.push_str(ANSI_RESET);
+        out.push_str("   ");
+        out.push_str(ANSI_GRAPHITE_DIM);
+        out.push_str(&format!("(+{} more sources)", rows.len() - input.max_rows));
+        out.push_str(ANSI_RESET);
+        out.push('\n');
     }
     out
+}
+
+fn bold(text: &str) -> String {
+    format!("{ANSI_BOLD}{text}{ANSI_RESET}")
 }
 
 fn format_age(d: std::time::Duration) -> String {
@@ -163,12 +197,6 @@ fn format_age(d: std::time::Duration) -> String {
     } else {
         format!("{}h{:02}m", s / 3600, (s % 3600) / 60)
     }
-}
-
-fn push(out: &mut String, text: &str, color: &str) {
-    out.push_str(color);
-    out.push_str(text);
-    out.push_str(ANSI_RESET);
 }
 
 #[cfg(test)]
@@ -207,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn renders_header_and_totals() {
+    fn renders_totals_table_with_thousands_separators() {
         let snap = fixture_snapshot();
         let out = render_pressure_drawer(&PressureRenderInput {
             snapshot: &snap,
@@ -215,17 +243,17 @@ mod tests {
             max_rows: 20,
             now: Instant::now(),
         });
-        assert!(out.contains("▾ pressure"));
-        assert!(out.contains("held="));
+        assert!(out.contains("▾ pressure · totals"));
+        assert!(
+            out.contains("11,233"),
+            "observed must use thousands sep: {out}"
+        );
         assert!(out.contains("42"));
-        assert!(out.contains("dropped="));
         assert!(out.contains("234"));
-        assert!(out.contains("observed="));
-        assert!(out.contains("11233"));
     }
 
     #[test]
-    fn renders_sources_sorted_by_dropped() {
+    fn renders_per_source_table_sorted_by_dropped() {
         let snap = fixture_snapshot();
         let out = render_pressure_drawer(&PressureRenderInput {
             snapshot: &snap,
@@ -239,6 +267,20 @@ mod tests {
             banner_idx < scheduler_idx,
             "host.banner (more drops) must appear before host.scheduler"
         );
+    }
+
+    #[test]
+    fn renders_density_column_with_bars() {
+        let snap = fixture_snapshot();
+        let out = render_pressure_drawer(&PressureRenderInput {
+            snapshot: &snap,
+            held: 0,
+            max_rows: 20,
+            now: Instant::now(),
+        });
+        assert!(out.contains("density"));
+        // At least one bar glyph must be present.
+        assert!(out.contains('█') || out.contains('▇'));
     }
 
     #[test]

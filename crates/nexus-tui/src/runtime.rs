@@ -154,6 +154,10 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
 
     let rate_snapshot: Arc<Mutex<crate::stream::rate_guard::RateGuardSnapshot>> =
         Arc::new(Mutex::new(Default::default()));
+    let pinned: Arc<RwLock<crate::stream::pinned_correlations::PinnedSet>> =
+        Arc::new(RwLock::new(Default::default()));
+    let muted: Arc<RwLock<crate::stream::muted_sources::MutedSources>> =
+        Arc::new(RwLock::new(Default::default()));
     let render_handle = tokio::spawn(consumer_loop(
         rx,
         Arc::clone(&ring),
@@ -163,6 +167,8 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
         Arc::clone(&click_registry),
         Arc::clone(&hover_state),
         Arc::clone(&rate_snapshot),
+        Arc::clone(&pinned),
+        Arc::clone(&muted),
         depth,
         cfg.cursor_choreography,
         cfg.ascii_glyphs,
@@ -176,6 +182,8 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
         Arc::clone(&prompt_state),
         Arc::clone(&ring),
         Arc::clone(&rate_snapshot),
+        Arc::clone(&pinned),
+        Arc::clone(&muted),
         shutdown.clone(),
     );
     let controller_cfg = ControllerConfig {
@@ -311,6 +319,8 @@ async fn consumer_loop(
     click_registry: Arc<Mutex<ClickRegistry>>,
     hover: Arc<HoverState>,
     rate_snapshot: Arc<Mutex<crate::stream::rate_guard::RateGuardSnapshot>>,
+    pinned: Arc<RwLock<crate::stream::pinned_correlations::PinnedSet>>,
+    muted: Arc<RwLock<crate::stream::muted_sources::MutedSources>>,
     depth: ColorDepth,
     cursor_choreography: bool,
     ascii_glyphs: bool,
@@ -379,9 +389,17 @@ async fn consumer_loop(
                     BootDisplayDecision::Render | BootDisplayDecision::SettleOnly => {}
                 }
 
-                let visible = filter.read().map(|f| f.is_visible(&line)).unwrap_or(false);
-                if !visible {
-                    continue;
+                // Cluster-B precedence: pin > mute > filter.
+                let is_pinned = pinned.read().map(|p| p.matches(&line)).unwrap_or(false);
+                if !is_pinned {
+                    let is_muted = muted.read().map(|m| m.matches(&line)).unwrap_or(false);
+                    if is_muted {
+                        continue;
+                    }
+                    let visible = filter.read().map(|f| f.is_visible(&line)).unwrap_or(false);
+                    if !visible {
+                        continue;
+                    }
                 }
                 let now = Instant::now();
                 let decision = rate_guard.observe(&line.source, &line.summary, now);

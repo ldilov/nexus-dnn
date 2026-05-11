@@ -73,12 +73,20 @@ fn build_runtime_components() -> RuntimeParts {
     let rate_snapshot = Arc::new(Mutex::new(
         nexus_tui::stream::rate_guard::RateGuardSnapshot::default(),
     ));
+    let pinned = Arc::new(std::sync::RwLock::new(
+        nexus_tui::stream::pinned_correlations::PinnedSet::default(),
+    ));
+    let muted = Arc::new(std::sync::RwLock::new(
+        nexus_tui::stream::muted_sources::MutedSources::default(),
+    ));
     let (handles, _rx) = ControllerHandles::new(
         Arc::clone(&filter),
         Arc::clone(&hold_queue),
         Arc::clone(&prompt_state),
         Arc::clone(&ring),
         rate_snapshot,
+        pinned,
+        muted,
         shutdown,
     );
 

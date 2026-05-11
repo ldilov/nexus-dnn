@@ -15,6 +15,8 @@ pub mod event_id;
 pub mod event_line;
 pub mod filter;
 pub mod hold_queue;
+pub mod muted_sources;
+pub mod pinned_correlations;
 pub mod rate_guard;
 pub mod ring_buffer;
 pub mod severity;
