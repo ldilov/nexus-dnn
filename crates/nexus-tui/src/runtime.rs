@@ -76,6 +76,7 @@ pub struct RuntimeConfig {
     pub ascii_glyphs: bool,
     pub motion_disabled: bool,
     pub accessible: bool,
+    pub verbosity: crate::repl::verbosity::VerbosityLevel,
     /// When true, spawn the `nexus-dnn` host as a child process before
     /// attaching the TUI. The child is killed when the TUI exits.
     pub spawn_host: bool,
@@ -97,6 +98,7 @@ impl Default for RuntimeConfig {
             ascii_glyphs: false,
             motion_disabled: false,
             accessible: false,
+            verbosity: crate::repl::verbosity::VerbosityLevel::default(),
             spawn_host: false,
             host_bin: None,
         }
@@ -149,7 +151,8 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
     let prompt = AmbientPrompt::new()
         .with_click_registry(Arc::clone(&click_registry))
         .with_mouse_enabled(cfg.enable_mouse)
-        .with_color_depth(depth);
+        .with_color_depth(depth)
+        .with_verbosity(cfg.verbosity);
     let prompt_state = prompt.handle();
 
     let capacity = RingBufferCapacity::new(cfg.ring_buffer_capacity)

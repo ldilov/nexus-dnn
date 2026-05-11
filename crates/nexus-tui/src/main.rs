@@ -1,7 +1,19 @@
 use clap::Parser;
+use nexus_tui::repl::verbosity::VerbosityLevel;
 use nexus_tui::runtime::{ExitReason, RuntimeConfig, run};
 use nexus_tui::stream::severity::Severity;
 use nexus_tui::terminal::TerminalGuard;
+
+fn parse_verbosity_arg(value: &str) -> VerbosityLevel {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "silent" => VerbosityLevel::Silent,
+        "quiet" => VerbosityLevel::Quiet,
+        "default" => VerbosityLevel::Default,
+        "verbose" => VerbosityLevel::Verbose,
+        "debug" => VerbosityLevel::Debug,
+        _ => VerbosityLevel::Default,
+    }
+}
 
 #[derive(Debug, Parser)]
 #[command(
@@ -64,12 +76,21 @@ struct Cli {
     /// for screen-reader users and minimal terminals.
     #[arg(long, action = clap::ArgAction::SetTrue)]
     accessible: bool,
+
+    /// Initial UI density: silent|quiet|default|verbose|debug.
+    /// `silent` hides every drawer; `quiet` keeps sparkline + ribbon only;
+    /// `default` is the standard rich experience; `verbose` opens all
+    /// drawers; `debug` enables full motion budget. Change at runtime
+    /// via /verbosity <level>.
+    #[arg(long, default_value = "default")]
+    verbosity: String,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let level_floor = cli.level.parse::<Severity>().unwrap_or(Severity::Info);
+    let verbosity = parse_verbosity_arg(&cli.verbosity);
     let mut cfg = RuntimeConfig {
         host_url: cli.host_url,
         ring_buffer_capacity: cli.ring_buffer,
@@ -80,6 +101,7 @@ async fn main() -> anyhow::Result<()> {
         ascii_glyphs: cli.no_glyphs,
         motion_disabled: false,
         accessible: cli.accessible,
+        verbosity,
         spawn_host: cli.with_host,
         host_bin: cli.host_bin,
     };

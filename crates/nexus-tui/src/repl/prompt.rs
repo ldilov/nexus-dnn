@@ -10,6 +10,7 @@ use crate::render::sparkline::{
     SparklineSamples, render_sparkline, render_sparkline_with_gradient,
 };
 use crate::repl::ansi::{ColorDepth, SPECTRAL_PRIMARY, SPECTRAL_SECONDARY};
+use crate::repl::verbosity::VerbosityLevel;
 
 /// Query the terminal for the current cursor row. Returns `None` when
 /// the terminal refuses the query (pipe, dumb terminal, transient
@@ -94,6 +95,7 @@ pub struct PromptState {
     /// and feed the `/pressure` drawer command.
     pub pressure: PressureSnapshot,
     pub hover_hint: Option<String>,
+    pub verbosity: VerbosityLevel,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -136,6 +138,7 @@ impl AmbientPrompt {
             connection_health: ConnectionHealth::Connecting,
             pressure: PressureSnapshot::default(),
             hover_hint: None,
+            verbosity: VerbosityLevel::default(),
         };
         Self {
             state: Arc::new(Mutex::new(state)),
@@ -153,6 +156,13 @@ impl AmbientPrompt {
 
     pub fn with_color_depth(mut self, depth: ColorDepth) -> Self {
         self.color_depth = depth;
+        self
+    }
+
+    pub fn with_verbosity(self, level: VerbosityLevel) -> Self {
+        if let Ok(mut state) = self.state.lock() {
+            state.verbosity = level;
+        }
         self
     }
 
@@ -215,7 +225,10 @@ impl Default for AmbientPrompt {
 impl Prompt for AmbientPrompt {
     fn render_prompt_left(&self) -> Cow<'_, str> {
         let snapshot = self.state.lock().unwrap_or_else(|p| p.into_inner()).clone();
-        let bar = if matches!(self.color_depth, ColorDepth::Truecolor) {
+        let preset = snapshot.verbosity.preset();
+        let bar = if !preset.sparkline_visible {
+            String::new()
+        } else if matches!(self.color_depth, ColorDepth::Truecolor) {
             render_sparkline_with_gradient(
                 &snapshot.sparkline,
                 SPECTRAL_PRIMARY,
@@ -314,7 +327,8 @@ impl Prompt for AmbientPrompt {
             ConnectionHealth::Disconnected => ("◯", ANSI_ACCENT_RED),
         };
         let clock = current_clock_hhmm();
-        let pressure = if snapshot.pressure.is_active() {
+        let preset = snapshot.verbosity.preset();
+        let pressure = if preset.pressure_meter_visible && snapshot.pressure.is_active() {
             let badge = format_pressure_badge(&snapshot.pressure);
             format!("{ANSI_ACCENT_AMBER}⚡{badge}{ANSI_RESET}  ")
         } else {

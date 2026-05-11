@@ -193,6 +193,14 @@ pub fn snapshot_from(
 /// Build + render + print to stdout. Convenience entry-point for the
 /// controller / consumer-loop call-sites.
 pub fn emit_status_ribbon(filter: &Arc<RwLock<FilterState>>, prompt: &Arc<Mutex<PromptState>>) {
+    let ribbon_visible = prompt
+        .lock()
+        .ok()
+        .map(|p| p.verbosity.preset().ribbon_visible)
+        .unwrap_or(true);
+    if !ribbon_visible {
+        return;
+    }
     let snap = snapshot_from(filter, prompt);
     println!("{}", render_ribbon(&snap));
 }
