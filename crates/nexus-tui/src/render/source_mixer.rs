@@ -73,7 +73,7 @@ pub fn render_mixer_drawer(input: &MixerRenderInput<'_>) -> String {
         ]);
         out.push_str(&render_table(
             &TableSpec {
-                title: Some("mixer · sources"),
+                title: Some("⫶ mixer · sources"),
                 columns,
                 indent: 3,
                 show_density: false,
@@ -124,7 +124,7 @@ pub fn render_mixer_drawer(input: &MixerRenderInput<'_>) -> String {
         .collect();
     out.push_str(&render_table(
         &TableSpec {
-            title: Some("mixer · sources"),
+            title: Some("⫶ mixer · sources"),
             columns,
             indent: 3,
             show_density: true,
@@ -268,7 +268,7 @@ mod tests {
             now: Instant::now(),
         });
         let stripped = strip_ansi(&out);
-        assert!(stripped.contains("mixer · sources"));
+        assert!(stripped.contains("⫶ mixer · sources"));
         assert!(stripped.contains("no sources observed"));
         assert!(stripped.contains("muted="));
         assert!(stripped.contains("pinned="));

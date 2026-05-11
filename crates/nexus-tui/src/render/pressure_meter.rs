@@ -73,7 +73,7 @@ pub fn render_pressure_drawer(input: &PressureRenderInput<'_>) -> String {
     ]);
     out.push_str(&render_table(
         &TableSpec {
-            title: Some("pressure · totals"),
+            title: Some("⚡ pressure · totals"),
             columns: totals_columns,
             indent: 3,
             show_density: false,
@@ -122,7 +122,7 @@ pub fn render_pressure_drawer(input: &PressureRenderInput<'_>) -> String {
         ]);
         out.push_str(&render_table(
             &TableSpec {
-                title: Some("per source"),
+                title: Some("◈ per source"),
                 columns: per_columns,
                 indent: 3,
                 show_density: false,
@@ -163,7 +163,7 @@ pub fn render_pressure_drawer(input: &PressureRenderInput<'_>) -> String {
         .collect();
     out.push_str(&render_table(
         &TableSpec {
-            title: Some("per source"),
+            title: Some("◈ per source"),
             columns: per_columns,
             indent: 3,
             show_density: true,
@@ -243,7 +243,7 @@ mod tests {
             max_rows: 20,
             now: Instant::now(),
         });
-        assert!(out.contains("▾ pressure · totals"));
+        assert!(out.contains("⚡ pressure · totals"));
         assert!(
             out.contains("11,233"),
             "observed must use thousands sep: {out}"
