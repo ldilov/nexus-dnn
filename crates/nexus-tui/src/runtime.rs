@@ -158,6 +158,8 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
         Arc::new(RwLock::new(Default::default()));
     let muted: Arc<RwLock<crate::stream::muted_sources::MutedSources>> =
         Arc::new(RwLock::new(Default::default()));
+    let brush: Arc<RwLock<crate::stream::brush_selection::BrushSelection>> =
+        Arc::new(RwLock::new(Default::default()));
     let render_handle = tokio::spawn(consumer_loop(
         rx,
         Arc::clone(&ring),
@@ -184,6 +186,7 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
         Arc::clone(&rate_snapshot),
         Arc::clone(&pinned),
         Arc::clone(&muted),
+        Arc::clone(&brush),
         shutdown.clone(),
     );
     let controller_cfg = ControllerConfig {

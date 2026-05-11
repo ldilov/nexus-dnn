@@ -51,6 +51,16 @@ pub enum ParsedCommand {
     /// Cluster-B — show the source-mixer drawer (rate-guard + mute
     /// state + pinned summary).
     Mixer,
+    /// Cluster-C — show the brush drawer (selected events + inferred
+    /// filter preview).
+    Brush,
+    /// Cluster-C — add an event id to the brush selection.
+    BrushAdd(String),
+    /// Cluster-C — empty the brush selection.
+    BrushClear,
+    /// Cluster-C — apply the inferred filter from the current brush
+    /// selection (auto-runs the corresponding /source /level /grep).
+    Yank,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -136,6 +146,15 @@ pub fn parse_slash(input: &str) -> Result<ParsedCommand, ParseError> {
             Ok(ParsedCommand::Unmute(arg.to_string()))
         }
         "mixer" => Ok(ParsedCommand::Mixer),
+        "brush" => Ok(ParsedCommand::Brush),
+        "brush-add" => {
+            let arg = arg.ok_or(ParseError::MissingArgument {
+                command: "brush-add",
+            })?;
+            Ok(ParsedCommand::BrushAdd(arg.to_string()))
+        }
+        "brush-clear" => Ok(ParsedCommand::BrushClear),
+        "yank" => Ok(ParsedCommand::Yank),
         "quit" => Ok(ParsedCommand::Quit),
         "inspect" => {
             let arg = arg.ok_or(ParseError::MissingArgument { command: "inspect" })?;
@@ -200,6 +219,10 @@ const SLASH_COMMAND_NAMES: &[&str] = &[
     "mute",
     "unmute",
     "mixer",
+    "brush",
+    "brush-add",
+    "brush-clear",
+    "yank",
 ];
 
 /// Single source of truth for command descriptions used both by the
@@ -229,6 +252,10 @@ pub const SLASH_COMMAND_TABLE: &[(&str, &str)] = &[
     ("mute", "hide a source label or glob from ambient stream"),
     ("unmute", "remove a muted source pattern"),
     ("mixer", "show source-mixer drawer (mutes + pins)"),
+    ("brush", "show brush selection + inferred filter preview"),
+    ("brush-add", "add an event id to the brush selection"),
+    ("brush-clear", "drop all brushed events"),
+    ("yank", "apply the inferred filter from the brush selection"),
 ];
 
 pub fn slash_command_description(name: &str) -> Option<&'static str> {

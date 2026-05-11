@@ -20,7 +20,9 @@ use crate::repl::prompt::PromptState;
 use crate::repl::queue::{CommandQueue, CtrlCOutcome};
 use crate::repl::slash::{ParseError, ParsedCommand};
 use crate::snapshot::{SnapshotInputs, write_snapshot};
+use crate::stream::brush_selection::BrushSelection;
 use crate::stream::filter::FilterState;
+use crate::stream::filter_inference::infer_from;
 use crate::stream::hold_queue::HoldQueue;
 use crate::stream::muted_sources::MutedSources;
 use crate::stream::pinned_correlations::{PinKey, PinnedSet};
@@ -49,6 +51,9 @@ pub struct ControllerHandles {
     pub pinned: Arc<RwLock<PinnedSet>>,
     /// Cluster-B — muted source labels / globs; hide from ambient.
     pub muted: Arc<RwLock<MutedSources>>,
+    /// Cluster-C — brush selection of example event ids; consumed by
+    /// `/yank` to infer + apply a filter.
+    pub brush: Arc<RwLock<BrushSelection>>,
     pub command_tx: mpsc::Sender<ControllerCommand>,
     pub shutdown: CancellationToken,
 }
@@ -63,6 +68,7 @@ impl ControllerHandles {
         rate_snapshot: Arc<Mutex<RateGuardSnapshot>>,
         pinned: Arc<RwLock<PinnedSet>>,
         muted: Arc<RwLock<MutedSources>>,
+        brush: Arc<RwLock<BrushSelection>>,
         shutdown: CancellationToken,
     ) -> (Self, mpsc::Receiver<ControllerCommand>) {
         let (tx, rx) = mpsc::channel(16);
@@ -74,6 +80,7 @@ impl ControllerHandles {
             rate_snapshot,
             pinned,
             muted,
+            brush,
             command_tx: tx,
             shutdown,
         };
@@ -194,6 +201,10 @@ async fn execute(
         ParsedCommand::Mute(arg) => run_mute(handles, arg),
         ParsedCommand::Unmute(arg) => run_unmute(handles, arg),
         ParsedCommand::Mixer => render_mixer(handles),
+        ParsedCommand::Brush => render_brush(handles),
+        ParsedCommand::BrushAdd(arg) => run_brush_add(handles, arg),
+        ParsedCommand::BrushClear => run_brush_clear(handles),
+        ParsedCommand::Yank => run_yank(handles),
     }
     if mutates_filter_state {
         emit_status_ribbon(&handles.filter, &handles.prompt);
@@ -626,6 +637,137 @@ fn describe(cmd: &ParsedCommand) -> String {
         ParsedCommand::Mute(_) => "/mute".into(),
         ParsedCommand::Unmute(_) => "/unmute".into(),
         ParsedCommand::Mixer => "/mixer".into(),
+        ParsedCommand::Brush => "/brush".into(),
+        ParsedCommand::BrushAdd(_) => "/brush-add".into(),
+        ParsedCommand::BrushClear => "/brush-clear".into(),
+        ParsedCommand::Yank => "/yank".into(),
+    }
+}
+
+fn render_brush(handles: &ControllerHandles) {
+    set_holding(handles, true);
+    let block = match (handles.brush.read(), handles.ring.lock()) {
+        (Ok(brush), Ok(ring)) => crate::render::brush_drawer::render_brush_drawer(
+            &crate::render::brush_drawer::BrushRenderInput {
+                selection: &brush,
+                ring: &ring,
+                max_rows: 20,
+                now: std::time::Instant::now(),
+            },
+        ),
+        _ => "·· /brush: shared state lock poisoned".to_string(),
+    };
+    print!("{block}");
+    set_holding(handles, false);
+    flush_hold(handles);
+}
+
+fn run_brush_add(handles: &ControllerHandles, arg: &str) {
+    let id = match handles.ring.lock() {
+        Ok(buf) => match crate::repl::inspect::find_event_by_id_str(&buf, arg) {
+            Some(line) => line.id,
+            None => {
+                eprintln!(
+                    "\x1b[38;5;203mnexus: /brush-add: no event matching '{arg}' in ring buffer\x1b[0m"
+                );
+                return;
+            }
+        },
+        Err(_) => return,
+    };
+    let added = match handles.brush.write() {
+        Ok(mut b) => b.add(id),
+        Err(_) => false,
+    };
+    if added {
+        println!(
+            "\x1b[1;38;5;141m✚ brushed {arg}\x1b[0m \x1b[38;5;245m· /brush to preview · /yank to apply\x1b[0m"
+        );
+    } else {
+        println!("\x1b[38;5;245m· {arg} is already in the brush selection\x1b[0m");
+    }
+}
+
+fn run_brush_clear(handles: &ControllerHandles) {
+    let n = match handles.brush.write() {
+        Ok(mut b) => b.clear(),
+        Err(_) => return,
+    };
+    println!("\x1b[1;38;5;141m✚ brush cleared\x1b[0m \x1b[38;5;245m· {n} event(s) removed\x1b[0m");
+}
+
+fn run_yank(handles: &ControllerHandles) {
+    let inferred = {
+        let brush = match handles.brush.read() {
+            Ok(b) => b,
+            Err(_) => return,
+        };
+        let ring = match handles.ring.lock() {
+            Ok(r) => r,
+            Err(_) => return,
+        };
+        let resolved: Vec<&crate::stream::event_line::EventLine> = brush
+            .as_slice()
+            .iter()
+            .filter_map(|id| ring.inspect_by_id(*id))
+            .collect();
+        if resolved.is_empty() {
+            eprintln!(
+                "\x1b[38;5;245m· /yank: brush is empty — try /brush-add <event-id> first\x1b[0m"
+            );
+            return;
+        }
+        infer_from(&resolved)
+    };
+
+    if inferred.is_empty() {
+        eprintln!(
+            "\x1b[38;5;245m· /yank: no common shape across brushed events — narrow the selection\x1b[0m"
+        );
+        return;
+    }
+
+    // Apply each inferred matcher directly to the filter state.
+    let mut applied: Vec<String> = Vec::new();
+    if let Some(source) = inferred.source.clone()
+        && let Ok(mut f) = handles.filter.write()
+        && f.set_source_glob(Some(&source)).is_ok()
+    {
+        applied.push(format!("/source {source}"));
+    }
+    if let Some(level) = inferred.level_floor
+        && let Ok(mut f) = handles.filter.write()
+    {
+        f.set_level_floor(level);
+        applied.push(format!(
+            "/level {}",
+            match level {
+                Severity::Debug => "debug",
+                Severity::Info => "info",
+                Severity::Warn => "warn",
+                Severity::Error => "error",
+                Severity::Fatal => "fatal",
+            }
+        ));
+    }
+    if let Some(grep) = inferred.grep.clone()
+        && let Ok(mut f) = handles.filter.write()
+        && f.set_grep(Some(&grep)).is_ok()
+    {
+        applied.push(format!("/grep {grep}"));
+    }
+
+    update_filter_indicator(handles);
+    emit_status_ribbon(&handles.filter, &handles.prompt);
+    if applied.is_empty() {
+        eprintln!(
+            "\x1b[38;5;203m· /yank: every inferred matcher was rejected by the filter\x1b[0m"
+        );
+    } else {
+        println!(
+            "\x1b[1;38;5;141m✚ yanked filter\x1b[0m \x1b[38;5;245m· applied: {}\x1b[0m",
+            applied.join(", ")
+        );
     }
 }
 
