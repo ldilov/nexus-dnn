@@ -65,6 +65,10 @@ pub enum ParsedCommand {
     Verbosity(crate::repl::verbosity::VerbosityLevel),
     VerbosityRaise,
     VerbosityLower,
+    InspectorToggle {
+        event_id: String,
+        section: crate::render::inspector::InspectorSection,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]

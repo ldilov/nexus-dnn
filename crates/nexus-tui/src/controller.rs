@@ -54,6 +54,15 @@ pub struct ControllerHandles {
     /// Cluster-C — brush selection of example event ids; consumed by
     /// `/yank` to infer + apply a filter.
     pub brush: Arc<RwLock<BrushSelection>>,
+    pub inspector_collapsed: Arc<
+        Mutex<
+            std::collections::HashMap<
+                crate::EventId,
+                std::collections::BTreeSet<crate::render::inspector::InspectorSection>,
+            >,
+        >,
+    >,
+    pub click_registry: Arc<Mutex<crate::mouse::targets::ClickRegistry>>,
     pub command_tx: mpsc::Sender<ControllerCommand>,
     pub shutdown: CancellationToken,
 }
@@ -69,6 +78,7 @@ impl ControllerHandles {
         pinned: Arc<RwLock<PinnedSet>>,
         muted: Arc<RwLock<MutedSources>>,
         brush: Arc<RwLock<BrushSelection>>,
+        click_registry: Arc<Mutex<crate::mouse::targets::ClickRegistry>>,
         shutdown: CancellationToken,
     ) -> (Self, mpsc::Receiver<ControllerCommand>) {
         let (tx, rx) = mpsc::channel(16);
@@ -81,6 +91,8 @@ impl ControllerHandles {
             pinned,
             muted,
             brush,
+            inspector_collapsed: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            click_registry,
             command_tx: tx,
             shutdown,
         };
@@ -198,6 +210,15 @@ async fn execute(
         ParsedCommand::VerbosityLower => {
             let current = current_verbosity(handles);
             apply_verbosity(handles, current.lower())
+        }
+        ParsedCommand::InspectorToggle { event_id, section } => {
+            let resolved = match handles.ring.lock() {
+                Ok(buf) => find_event_by_id_str(&buf, event_id).map(|line| line.id),
+                Err(_) => None,
+            };
+            if let Some(id) = resolved {
+                toggle_inspector_section(handles, id, *section);
+            }
         }
         ParsedCommand::Quit => handles.shutdown.cancel(),
         ParsedCommand::Inspect(id) => render_inspect(handles, id),
@@ -323,30 +344,70 @@ fn resolve_snapshot_path(arg: &str) -> std::path::PathBuf {
 fn render_inspect(handles: &ControllerHandles, id: &str) {
     set_holding(handles, true);
     let depth = detect_color_depth();
-    let cfg = InspectorRenderConfig {
-        color_depth: depth,
-        recent_context_count: 5,
-        correlation_depth: 3,
-    };
     let rendered = match handles.ring.lock() {
         Ok(buf) => find_event_by_id_str(&buf, id).map(|target| {
+            let collapsed = handles
+                .inspector_collapsed
+                .lock()
+                .ok()
+                .and_then(|m| m.get(&target.id).cloned())
+                .unwrap_or_default();
+            let cfg = InspectorRenderConfig {
+                color_depth: depth,
+                recent_context_count: 5,
+                correlation_depth: 3,
+                collapsed,
+            };
             let banner = filter_mismatch_banner(handles, target);
-            let block = render_inspector_block(&buf, target, &cfg);
-            (banner, block)
+            let layout = crate::render::inspector::render_inspector_layout(&buf, target, &cfg);
+            (banner, layout, target.id)
         }),
         Err(_) => None,
     };
     match rendered {
-        Some((banner, block)) => {
+        Some((banner, layout, event_id)) => {
+            let banner_rows = banner
+                .as_ref()
+                .map(|b| b.lines().count() as u16)
+                .unwrap_or(0);
             if let Some(banner) = banner {
                 print!("{banner}");
             }
-            print!("{block}");
+            let start_row = crossterm::cursor::position().ok().map(|(_, r)| r);
+            print!("{}", layout.rendered);
+            if let (Some(start), Ok(mut reg)) = (start_row, handles.click_registry.lock()) {
+                let _ = banner_rows;
+                for (section, offset) in &layout.section_rows {
+                    let row = start.saturating_add(*offset);
+                    reg.register(
+                        row,
+                        0..u16::MAX,
+                        crate::mouse::targets::ClickTarget::InspectorSection {
+                            event_id,
+                            section: *section,
+                        },
+                    );
+                }
+            }
         }
         None => eprintln!("·· no event found for '{id}'"),
     }
     set_holding(handles, false);
     flush_hold(handles);
+}
+
+pub fn toggle_inspector_section(
+    handles: &ControllerHandles,
+    event_id: crate::EventId,
+    section: crate::render::inspector::InspectorSection,
+) {
+    if let Ok(mut map) = handles.inspector_collapsed.lock() {
+        let set = map.entry(event_id).or_default();
+        if !set.remove(&section) {
+            set.insert(section);
+        }
+    }
+    render_inspect(handles, &format!("{event_id}"));
 }
 
 fn filter_mismatch_banner(
@@ -387,6 +448,7 @@ fn render_last(handles: &ControllerHandles, count: usize, level: Severity) {
         color_depth: detect_color_depth(),
         recent_context_count: 5,
         correlation_depth: 3,
+        collapsed: std::collections::BTreeSet::new(),
     };
     let blocks: Vec<String> = match handles.ring.lock() {
         Ok(buf) => {
@@ -803,6 +865,7 @@ fn describe(cmd: &ParsedCommand) -> String {
         ParsedCommand::Verbosity(_) => "/verbosity".into(),
         ParsedCommand::VerbosityRaise => "/verbosity +".into(),
         ParsedCommand::VerbosityLower => "/verbosity -".into(),
+        ParsedCommand::InspectorToggle { .. } => "/section".into(),
     }
 }
 

@@ -55,6 +55,7 @@ fn snapshot_inspector_block_with_correlation_and_heuristic() {
         color_depth: ColorDepth::Truecolor,
         recent_context_count: 5,
         correlation_depth: 3,
+        collapsed: std::collections::BTreeSet::new(),
     };
     let rendered = render_inspector_block(&buf, &target, &cfg);
     insta::assert_snapshot!(rendered);
