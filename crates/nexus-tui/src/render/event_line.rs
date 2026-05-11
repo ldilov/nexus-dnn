@@ -39,6 +39,7 @@ pub struct RenderConfig {
     pub ascii_glyphs: bool,
     pub correlation_depth: u8,
     pub luminance_ladder: bool,
+    pub grep_highlight: Option<String>,
 }
 
 impl RenderConfig {
@@ -51,7 +52,13 @@ impl RenderConfig {
             ascii_glyphs: false,
             correlation_depth: 0,
             luminance_ladder: false,
+            grep_highlight: None,
         }
+    }
+
+    pub fn with_grep_highlight(mut self, pattern: Option<String>) -> Self {
+        self.grep_highlight = pattern;
+        self
     }
 
     pub fn with_hover_target(mut self, target: Option<ClickTarget>) -> Self {
@@ -204,19 +211,20 @@ pub fn render_event_line_with_targets(line: &EventLine, cfg: &RenderConfig) -> E
     {
         hover_run_id = Some(line_run_id);
     }
+    let highlighted_summary = apply_grep_highlight(&line.summary, cfg.grep_highlight.as_deref());
     if let Some(needle) = hover_run_id
         && let Some(rel) = line.summary.find(needle)
     {
         let prefix = &line.summary[..rel];
         let middle = &line.summary[rel..rel + needle.len()];
         let suffix = &line.summary[rel + needle.len()..];
-        out.push_str(prefix);
+        out.push_str(&apply_grep_highlight(prefix, cfg.grep_highlight.as_deref()));
         out.push_str("\x1b[1m");
-        out.push_str(middle);
+        out.push_str(&apply_grep_highlight(middle, cfg.grep_highlight.as_deref()));
         out.push_str("\x1b[22m");
-        out.push_str(suffix);
+        out.push_str(&apply_grep_highlight(suffix, cfg.grep_highlight.as_deref()));
     } else {
-        out.push_str(&line.summary);
+        out.push_str(&highlighted_summary);
     }
     col = col.saturating_add(visible_width(&line.summary));
     let body_end = col;
@@ -401,5 +409,90 @@ fn severity_glyph_for(severity: Severity, ascii: bool) -> char {
         severity_glyph_ascii(severity)
     } else {
         severity_glyph(severity)
+    }
+}
+
+const GREP_HIGHLIGHT_OPEN: &str = "\x1b[43;30m";
+const GREP_HIGHLIGHT_CLOSE: &str = "\x1b[0m";
+
+fn apply_grep_highlight(text: &str, pattern: Option<&str>) -> String {
+    let Some(pattern) = pattern else {
+        return text.to_string();
+    };
+    if pattern.is_empty() {
+        return text.to_string();
+    }
+    let Ok(regex) = regex::Regex::new(&format!("(?i){pattern}")) else {
+        return text.to_string();
+    };
+    let mut last = 0;
+    let mut out = String::with_capacity(text.len());
+    for m in regex.find_iter(text) {
+        if m.start() < last {
+            continue;
+        }
+        out.push_str(&text[last..m.start()]);
+        out.push_str(GREP_HIGHLIGHT_OPEN);
+        out.push_str(m.as_str());
+        out.push_str(GREP_HIGHLIGHT_CLOSE);
+        last = m.end();
+    }
+    out.push_str(&text[last..]);
+    out
+}
+
+#[cfg(test)]
+mod grep_highlight_tests {
+    use super::*;
+
+    #[test]
+    fn no_pattern_returns_unchanged_text() {
+        assert_eq!(apply_grep_highlight("hello world", None), "hello world");
+    }
+
+    #[test]
+    fn empty_pattern_returns_unchanged_text() {
+        assert_eq!(apply_grep_highlight("hello world", Some("")), "hello world");
+    }
+
+    #[test]
+    fn literal_match_is_wrapped_in_yellow_background() {
+        let out = apply_grep_highlight("an embed event", Some("embed"));
+        assert!(out.contains("\x1b[43;30membed\x1b[0m"));
+    }
+
+    #[test]
+    fn match_is_case_insensitive() {
+        let out = apply_grep_highlight("EMBED was logged", Some("embed"));
+        assert!(out.contains("\x1b[43;30mEMBED\x1b[0m"));
+    }
+
+    #[test]
+    fn multiple_matches_are_all_wrapped() {
+        let out = apply_grep_highlight("embed embed embed", Some("embed"));
+        assert_eq!(out.matches(GREP_HIGHLIGHT_OPEN).count(), 3);
+    }
+
+    #[test]
+    fn no_match_returns_unchanged_text() {
+        assert_eq!(
+            apply_grep_highlight("hello world", Some("embed")),
+            "hello world"
+        );
+    }
+
+    #[test]
+    fn invalid_regex_returns_unchanged_text() {
+        assert_eq!(
+            apply_grep_highlight("hello world", Some("[invalid")),
+            "hello world"
+        );
+    }
+
+    #[test]
+    fn regex_metacharacter_matches_are_wrapped() {
+        let out = apply_grep_highlight("embed_v1 plus extra", Some("embed.*"));
+        assert!(out.contains(GREP_HIGHLIGHT_OPEN));
+        assert!(out.contains(GREP_HIGHLIGHT_CLOSE));
     }
 }

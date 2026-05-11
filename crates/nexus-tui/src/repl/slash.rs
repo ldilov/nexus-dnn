@@ -61,6 +61,7 @@ pub enum ParsedCommand {
     /// Cluster-C — apply the inferred filter from the current brush
     /// selection (auto-runs the corresponding /source /level /grep).
     Yank,
+    Glossary,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -103,7 +104,7 @@ pub fn parse_slash(input: &str) -> Result<ParsedCommand, ParseError> {
             let arg = arg.ok_or(ParseError::MissingArgument { command: "source" })?;
             Ok(ParsedCommand::Source(arg.to_string()))
         }
-        "clear-filter" => Ok(ParsedCommand::ClearFilter),
+        "clear-filter" | "clear" | "reset" => Ok(ParsedCommand::ClearFilter),
         "pause" => Ok(ParsedCommand::Pause),
         "resume" => Ok(ParsedCommand::Resume),
         "follow" => {
@@ -155,6 +156,7 @@ pub fn parse_slash(input: &str) -> Result<ParsedCommand, ParseError> {
         }
         "brush-clear" => Ok(ParsedCommand::BrushClear),
         "yank" => Ok(ParsedCommand::Yank),
+        "glossary" => Ok(ParsedCommand::Glossary),
         "quit" => Ok(ParsedCommand::Quit),
         "inspect" => {
             let arg = arg.ok_or(ParseError::MissingArgument { command: "inspect" })?;
@@ -201,7 +203,9 @@ const SLASH_COMMAND_NAMES: &[&str] = &[
     "level",
     "grep",
     "source",
+    "clear",
     "clear-filter",
+    "reset",
     "pause",
     "resume",
     "follow",
@@ -223,6 +227,7 @@ const SLASH_COMMAND_NAMES: &[&str] = &[
     "brush-add",
     "brush-clear",
     "yank",
+    "glossary",
 ];
 
 /// Single source of truth for command descriptions used both by the
@@ -256,6 +261,7 @@ pub const SLASH_COMMAND_TABLE: &[(&str, &str)] = &[
     ("brush-add", "add an event id to the brush selection"),
     ("brush-clear", "drop all brushed events"),
     ("yank", "apply the inferred filter from the brush selection"),
+    ("glossary", "explain the UI elements (brush, pressure, mixer, ...)"),
 ];
 
 pub fn slash_command_description(name: &str) -> Option<&'static str> {
