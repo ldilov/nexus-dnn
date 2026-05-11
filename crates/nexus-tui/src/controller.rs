@@ -22,6 +22,7 @@ use crate::repl::slash::{ParseError, ParsedCommand};
 use crate::snapshot::{SnapshotInputs, write_snapshot};
 use crate::stream::filter::FilterState;
 use crate::stream::hold_queue::HoldQueue;
+use crate::stream::rate_guard::RateGuardSnapshot;
 use crate::stream::ring_buffer::RingBuffer;
 use crate::stream::severity::Severity;
 
@@ -39,6 +40,9 @@ pub struct ControllerHandles {
     pub hold_queue: Arc<Mutex<HoldQueue>>,
     pub prompt: Arc<Mutex<PromptState>>,
     pub ring: Arc<Mutex<RingBuffer>>,
+    /// Cluster-A — Updated once per second by the consumer-loop tick.
+    /// Read by `/pressure` to render the per-source backpressure drawer.
+    pub rate_snapshot: Arc<Mutex<RateGuardSnapshot>>,
     pub command_tx: mpsc::Sender<ControllerCommand>,
     pub shutdown: CancellationToken,
 }
@@ -49,6 +53,7 @@ impl ControllerHandles {
         hold_queue: Arc<Mutex<HoldQueue>>,
         prompt: Arc<Mutex<PromptState>>,
         ring: Arc<Mutex<RingBuffer>>,
+        rate_snapshot: Arc<Mutex<RateGuardSnapshot>>,
         shutdown: CancellationToken,
     ) -> (Self, mpsc::Receiver<ControllerCommand>) {
         let (tx, rx) = mpsc::channel(16);
@@ -57,6 +62,7 @@ impl ControllerHandles {
             hold_queue,
             prompt,
             ring,
+            rate_snapshot,
             command_tx: tx,
             shutdown,
         };
@@ -170,6 +176,8 @@ async fn execute(
         ParsedCommand::Last { count, level } => render_last(handles, *count, *level),
         ParsedCommand::Snapshot(path) => run_snapshot(cfg, handles, path),
         ParsedCommand::Open(target) => render_open(cfg, http, handles, target).await,
+        ParsedCommand::Pressure => render_pressure(handles),
+        ParsedCommand::Scrub => render_scrub(handles),
     }
     if mutates_filter_state {
         emit_status_ribbon(&handles.filter, &handles.prompt);
@@ -595,7 +603,48 @@ fn describe(cmd: &ParsedCommand) -> String {
         ParsedCommand::Last { .. } => "/last".into(),
         ParsedCommand::Snapshot(_) => "/snapshot".into(),
         ParsedCommand::Open(_) => "/open".into(),
+        ParsedCommand::Pressure => "/pressure".into(),
+        ParsedCommand::Scrub => "/scrub".into(),
     }
+}
+
+fn render_pressure(handles: &ControllerHandles) {
+    set_holding(handles, true);
+    let held = handles
+        .hold_queue
+        .lock()
+        .map(|q| q.pending() as u32)
+        .unwrap_or(0);
+    let snap = handles
+        .rate_snapshot
+        .lock()
+        .map(|s| s.clone())
+        .unwrap_or_default();
+    let block = crate::render::pressure_meter::render_pressure_drawer(
+        &crate::render::pressure_meter::PressureRenderInput {
+            snapshot: &snap,
+            held,
+            max_rows: 20,
+            now: std::time::Instant::now(),
+        },
+    );
+    print!("{block}");
+    set_holding(handles, false);
+    flush_hold(handles);
+}
+
+fn render_scrub(handles: &ControllerHandles) {
+    set_holding(handles, true);
+    let block = match handles.ring.lock() {
+        Ok(buf) => crate::render::timeline::render_timeline_block(
+            &buf,
+            crate::render::timeline::DEFAULT_BUCKET_COUNT,
+        ),
+        Err(_) => "·· /scrub: ring buffer lock poisoned".to_string(),
+    };
+    print!("{block}");
+    set_holding(handles, false);
+    flush_hold(handles);
 }
 
 #[cfg(test)]

@@ -8,5 +8,7 @@ pub mod cursor;
 pub mod event_line;
 pub mod gutter;
 pub mod inspector;
+pub mod pressure_meter;
 pub mod sparkline;
 pub mod status_ribbon;
+pub mod timeline;

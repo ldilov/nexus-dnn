@@ -28,9 +28,16 @@ pub enum ParsedCommand {
     Help,
     Quit,
     Inspect(String),
-    Last { count: usize, level: Severity },
+    Last {
+        count: usize,
+        level: Severity,
+    },
     Snapshot(String),
     Open(String),
+    /// Cluster-A — show held / dropped / per-source backpressure drawer.
+    Pressure,
+    /// Cluster-A — render a one-shot ring-buffer time histogram.
+    Scrub,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -97,6 +104,8 @@ pub fn parse_slash(input: &str) -> Result<ParsedCommand, ParseError> {
         }
         "where" => Ok(ParsedCommand::Where),
         "help" => Ok(ParsedCommand::Help),
+        "pressure" => Ok(ParsedCommand::Pressure),
+        "scrub" => Ok(ParsedCommand::Scrub),
         "quit" => Ok(ParsedCommand::Quit),
         "inspect" => {
             let arg = arg.ok_or(ParseError::MissingArgument { command: "inspect" })?;
@@ -154,6 +163,8 @@ const SLASH_COMMAND_NAMES: &[&str] = &[
     "last",
     "snapshot",
     "open",
+    "pressure",
+    "scrub",
 ];
 
 /// Single source of truth for command descriptions used both by the
@@ -173,6 +184,8 @@ pub const SLASH_COMMAND_TABLE: &[(&str, &str)] = &[
     ("last", "recent events from the ring buffer"),
     ("snapshot", "write a debug artifact to disk"),
     ("open", "focus the desktop UI on a route"),
+    ("pressure", "show held / dropped / per-source backpressure"),
+    ("scrub", "render a time histogram of the ring buffer"),
 ];
 
 pub fn slash_command_description(name: &str) -> Option<&'static str> {
