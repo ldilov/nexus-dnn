@@ -39,3 +39,15 @@ fn empty_history_renders_without_panic() {
     let output = render_sparkline(&samples);
     assert!(!output.is_empty());
 }
+
+#[test]
+fn short_history_smaller_than_bar_cells_does_not_panic() {
+    for n in 1..=7 {
+        let samples = SparklineSamples::from_per_second(vec![1u32; n]);
+        let output = render_sparkline(&samples);
+        assert!(
+            !output.is_empty(),
+            "render_sparkline panicked or returned empty for history len {n}"
+        );
+    }
+}
