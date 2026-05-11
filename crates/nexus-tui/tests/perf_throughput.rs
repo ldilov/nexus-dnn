@@ -109,6 +109,7 @@ impl PipelineHarness {
                 ascii_glyphs: false,
                 correlation_depth: 0,
                 luminance_ladder: false,
+                grep_highlight: None,
             },
             saw_critical_border: false,
         }
