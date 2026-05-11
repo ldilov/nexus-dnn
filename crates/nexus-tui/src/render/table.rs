@@ -84,7 +84,9 @@ pub struct TableSpec<'a> {
 pub fn render_table(spec: &TableSpec<'_>, rows: &[Row]) -> String {
     let mut out = String::new();
 
-    // Header line (optional).
+    // Header line (optional). Caller passes a fully-composed title
+    // including any leading icon (`⚡ pressure · totals`, `✎ brush`,
+    // etc.) — table.rs does NOT auto-prepend any tree-style glyph.
     if let Some(title) = spec.title {
         out.push_str(ANSI_GRAPHITE_BLUE);
         out.push_str(GUTTER);
@@ -92,7 +94,6 @@ pub fn render_table(spec: &TableSpec<'_>, rows: &[Row]) -> String {
         out.push(' ');
         out.push_str(ANSI_BOLD);
         out.push_str(ANSI_GRAPHITE_BLUE);
-        out.push_str("▾ ");
         out.push_str(title);
         out.push_str(ANSI_RESET);
         out.push('\n');
@@ -323,14 +324,14 @@ mod tests {
         ];
         let out = render_table(
             &TableSpec {
-                title: Some("test"),
+                title: Some("✦ test"),
                 columns,
                 indent: 3,
                 show_density: false,
             },
             &rows,
         );
-        assert!(out.contains("▾ test"));
+        assert!(out.contains("✦ test"));
         assert!(out.contains("source"));
         assert!(out.contains("count"));
         assert!(out.contains("─"));

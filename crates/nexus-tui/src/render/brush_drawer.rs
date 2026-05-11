@@ -36,7 +36,7 @@ pub fn render_brush_drawer(input: &BrushRenderInput<'_>) -> String {
         out.push(' ');
         out.push_str("\x1b[1m");
         out.push_str(ANSI_GRAPHITE_BLUE);
-        out.push_str("▾ brush · empty");
+        out.push_str("✎ brush · empty");
         out.push_str(ANSI_RESET);
         out.push('\n');
         out.push_str(ANSI_GRAPHITE_BLUE);
@@ -110,7 +110,7 @@ pub fn render_brush_drawer(input: &BrushRenderInput<'_>) -> String {
 
     out.push_str(&render_table(
         &TableSpec {
-            title: Some(&format!("brush · {} selected", input.selection.len())),
+            title: Some(&format!("✎ brush · {} selected", input.selection.len())),
             columns,
             indent: 3,
             show_density: false,
@@ -140,7 +140,7 @@ pub fn render_brush_drawer(input: &BrushRenderInput<'_>) -> String {
     out.push(' ');
     out.push_str("\x1b[1m");
     out.push_str(ANSI_GRAPHITE_BLUE);
-    out.push_str("▾ inferred filter");
+    out.push_str("⌖ inferred filter");
     out.push_str(ANSI_RESET);
     out.push('\n');
 
@@ -263,7 +263,7 @@ mod tests {
             max_rows: 20,
             now: Instant::now(),
         });
-        assert!(out.contains("brush · empty"));
+        assert!(out.contains("✎ brush · empty"));
         assert!(out.contains("/brush-add"));
         assert!(out.contains("/yank"));
     }
@@ -282,8 +282,8 @@ mod tests {
             max_rows: 20,
             now: Instant::now(),
         });
-        assert!(out.contains("brush · 2 selected"));
-        assert!(out.contains("inferred filter"));
+        assert!(out.contains("✎ brush · 2 selected"));
+        assert!(out.contains("⌖ inferred filter"));
         assert!(out.contains("/source host.scheduler"));
         assert!(out.contains("/grep deployment"));
     }

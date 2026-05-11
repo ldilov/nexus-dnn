@@ -121,7 +121,7 @@ pub fn render_timeline_block(ring: &RingBuffer, bucket_count: usize) -> String {
     out.push(' ');
     push(
         &mut out,
-        "▾ scrub",
+        "⏱ scrub",
         &format!("{ANSI_BOLD}{ANSI_GRAPHITE_BLUE}"),
     );
     out.push(' ');
@@ -380,7 +380,7 @@ mod tests {
     fn render_includes_header_count_and_axis() {
         let ring = fill_buffer(20);
         let out = render_timeline_block(&ring, 60);
-        assert!(out.contains("▾ scrub"));
+        assert!(out.contains("⏱ scrub"));
         assert!(out.contains("20 events"));
         assert!(out.contains("peak "));
     }
