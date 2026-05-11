@@ -17,3 +17,13 @@ dev-tui = "run -p nexus-tui --bin nexus -- --with-host"
 host = "run -p nexus-core --bin nexus-dnn"
 tui = "run -p nexus-tui --bin nexus"
 xtask = "run -p xtask --"
+
+# Spec 045 — verbosity-aware launchers. Each one spawns the host as a
+# child of the TUI (same as `dev-tui`) and pins the initial UI density.
+# Pass through extra TUI flags after `--`, e.g.
+#   `cargo quiet -- --no-mouse`
+quiet = "run -p nexus-tui --bin nexus -- --with-host --verbosity quiet"
+silent = "run -p nexus-tui --bin nexus -- --with-host --verbosity silent"
+verbose = "run -p nexus-tui --bin nexus -- --with-host --verbosity verbose"
+debug-ui = "run -p nexus-tui --bin nexus -- --with-host --verbosity debug"
+accessible = "run -p nexus-tui --bin nexus -- --with-host --accessible"
