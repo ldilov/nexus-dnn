@@ -79,6 +79,9 @@ fn build_runtime_components() -> RuntimeParts {
     let muted = Arc::new(std::sync::RwLock::new(
         nexus_tui::stream::muted_sources::MutedSources::default(),
     ));
+    let brush = Arc::new(std::sync::RwLock::new(
+        nexus_tui::stream::brush_selection::BrushSelection::default(),
+    ));
     let (handles, _rx) = ControllerHandles::new(
         Arc::clone(&filter),
         Arc::clone(&hold_queue),
@@ -87,6 +90,7 @@ fn build_runtime_components() -> RuntimeParts {
         rate_snapshot,
         pinned,
         muted,
+        brush,
         shutdown,
     );
 
