@@ -18,6 +18,29 @@ pub enum ClickTarget {
     InspectorHeading { event_id: EventId },
 }
 
+impl ClickTarget {
+    pub fn whisper_hint(&self) -> &'static str {
+        match self {
+            ClickTarget::EventLineBody { .. } => "[f: spotlight | i: inspect | b: bookmark]",
+            ClickTarget::SourceLabel { .. } => "[click: filter to source | shift-click: invert]",
+            ClickTarget::RunIdReference { .. } => "[click: follow run | esc: clear]",
+            ClickTarget::FilterIndicator => "[click: toggle | shift-click: invert | drag: brush]",
+            ClickTarget::Sparkline => "[click: pause | drag: time-scrub]",
+            ClickTarget::InspectorHeading { .. } => "[enter: expand | esc: collapse]",
+        }
+    }
+
+    pub fn keyboard_shortcut(&self) -> Option<&'static str> {
+        match self {
+            ClickTarget::EventLineBody { .. } => Some("f / i / b"),
+            ClickTarget::FilterIndicator => Some("Ctrl+F"),
+            ClickTarget::Sparkline => Some("Ctrl+G"),
+            ClickTarget::SourceLabel { .. } | ClickTarget::RunIdReference { .. } => None,
+            ClickTarget::InspectorHeading { .. } => Some("Enter"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Entry {
     row: i32,

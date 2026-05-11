@@ -18,7 +18,9 @@ pub mod repl;
 pub mod runtime;
 pub mod snapshot;
 pub mod stream;
+pub mod term_caps;
 pub mod terminal;
+pub mod theme;
 
 pub use stream::event_id::{EventId, RingBufferCapacity};
 pub use stream::event_line::{CorrelationKeys, EventLine, RawPayload};

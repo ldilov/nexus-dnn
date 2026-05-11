@@ -58,13 +58,19 @@ struct Cli {
     /// `nexus-dnn` lives outside the workspace `target/` tree.
     #[arg(long, value_name = "PATH")]
     host_bin: Option<std::path::PathBuf>,
+
+    /// Composite accessibility switch: disables mouse capture, cursor
+    /// choreography, and motion budget; forces ASCII glyphs. Designed
+    /// for screen-reader users and minimal terminals.
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    accessible: bool,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let level_floor = cli.level.parse::<Severity>().unwrap_or(Severity::Info);
-    let cfg = RuntimeConfig {
+    let mut cfg = RuntimeConfig {
         host_url: cli.host_url,
         ring_buffer_capacity: cli.ring_buffer,
         level_floor,
@@ -72,9 +78,17 @@ async fn main() -> anyhow::Result<()> {
         cursor_choreography: cli.cursor_choreography,
         enable_mouse: !cli.no_mouse,
         ascii_glyphs: cli.no_glyphs,
+        motion_disabled: false,
+        accessible: cli.accessible,
         spawn_host: cli.with_host,
         host_bin: cli.host_bin,
     };
+    if cli.accessible {
+        if cfg.cursor_choreography {
+            eprintln!("nexus: --accessible overrides --cursor-choreography (forced off)");
+        }
+        cfg.apply_accessible_overrides();
+    }
 
     let _guard = match TerminalGuard::new() {
         Ok(g) => Some(g),

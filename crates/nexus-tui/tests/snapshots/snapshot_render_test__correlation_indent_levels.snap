@@ -1,0 +1,9 @@
+---
+source: crates/nexus-tui/tests/snapshot_render_test.rs
+expression: output
+---
+depth=0 bytes=0
+depth=1 bytes=2
+depth=2 bytes=4
+depth=3 bytes=6
+depth=4 bytes=6
