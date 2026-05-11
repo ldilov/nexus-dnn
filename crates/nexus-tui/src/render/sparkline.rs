@@ -68,3 +68,30 @@ pub fn render_sparkline(samples: &SparklineSamples) -> String {
     }
     out
 }
+
+pub fn render_sparkline_with_gradient(
+    samples: &SparklineSamples,
+    start: crate::repl::ansi::PaletteColor,
+    end: crate::repl::ansi::PaletteColor,
+    depth: crate::repl::ansi::ColorDepth,
+) -> String {
+    let bar = render_sparkline(samples);
+    if !crate::render::gradient::supports_truecolor_gradient(depth) {
+        return bar;
+    }
+    let chars: Vec<char> = bar.chars().collect();
+    let total = chars.len();
+    if total == 0 {
+        return bar;
+    }
+    let mut out = String::with_capacity(bar.len() + total * 12);
+    let denominator = (total - 1).max(1) as f32;
+    for (idx, ch) in chars.into_iter().enumerate() {
+        let t = idx as f32 / denominator;
+        let rgb = crate::render::gradient::interpolate(start, end, t);
+        out.push_str(&crate::render::gradient::ansi_rgb(rgb));
+        out.push(ch);
+    }
+    out.push_str("\x1b[0m");
+    out
+}

@@ -54,6 +54,8 @@ fn render_all_depths(line: &EventLine) -> String {
             hover_target: None,
             thread_leaf: false,
             ascii_glyphs: false,
+            correlation_depth: 0,
+            luminance_ladder: false,
         };
         out.push_str(&format!("--- {:?} ---\n", depth));
         out.push_str(&render_event_line(line, &cfg));
@@ -104,6 +106,8 @@ fn snapshot_critical_fatal_event_with_border() {
         hover_target: None,
         thread_leaf: false,
         ascii_glyphs: false,
+        correlation_depth: 0,
+        luminance_ladder: false,
     };
     insta::assert_snapshot!(render_event_line(&evt, &cfg));
 }

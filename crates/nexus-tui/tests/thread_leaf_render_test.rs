@@ -30,6 +30,8 @@ fn cfg(leaf: bool) -> RenderConfig {
         hover_target: None,
         thread_leaf: leaf,
         ascii_glyphs: false,
+        correlation_depth: 0,
+        luminance_ladder: false,
     }
 }
 

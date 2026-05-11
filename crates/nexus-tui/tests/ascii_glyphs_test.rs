@@ -32,6 +32,8 @@ fn cfg(ascii: bool) -> RenderConfig {
         hover_target: None,
         thread_leaf: false,
         ascii_glyphs: ascii,
+        correlation_depth: 0,
+        luminance_ladder: false,
     }
 }
 

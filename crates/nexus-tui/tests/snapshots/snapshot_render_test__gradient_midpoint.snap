@@ -1,0 +1,6 @@
+---
+source: crates/nexus-tui/tests/snapshot_render_test.rs
+expression: "format!(\"{mid:?}\\n{ansi}\")"
+---
+(136, 96, 56)
+[38;2;136;96;56m

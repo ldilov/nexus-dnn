@@ -74,6 +74,8 @@ pub struct RuntimeConfig {
     pub cursor_choreography: bool,
     pub enable_mouse: bool,
     pub ascii_glyphs: bool,
+    pub motion_disabled: bool,
+    pub accessible: bool,
     /// When true, spawn the `nexus-dnn` host as a child process before
     /// attaching the TUI. The child is killed when the TUI exits.
     pub spawn_host: bool,
@@ -93,9 +95,21 @@ impl Default for RuntimeConfig {
             cursor_choreography: false,
             enable_mouse: true,
             ascii_glyphs: false,
+            motion_disabled: false,
+            accessible: false,
             spawn_host: false,
             host_bin: None,
         }
+    }
+}
+
+impl RuntimeConfig {
+    pub fn apply_accessible_overrides(&mut self) {
+        self.accessible = true;
+        self.enable_mouse = false;
+        self.cursor_choreography = false;
+        self.ascii_glyphs = true;
+        self.motion_disabled = true;
     }
 }
 
@@ -132,7 +146,10 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
 
     let click_registry = Arc::new(Mutex::new(ClickRegistry::default()));
     let hover_state = Arc::new(HoverState::new());
-    let prompt = AmbientPrompt::new().with_click_registry(Arc::clone(&click_registry));
+    let prompt = AmbientPrompt::new()
+        .with_click_registry(Arc::clone(&click_registry))
+        .with_mouse_enabled(cfg.enable_mouse)
+        .with_color_depth(depth);
     let prompt_state = prompt.handle();
 
     let capacity = RingBufferCapacity::new(cfg.ring_buffer_capacity)
@@ -233,6 +250,7 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
         Arc::clone(&click_registry),
         Arc::clone(&hover_state),
         Arc::clone(&filter),
+        Arc::clone(&prompt_state),
         handles.command_tx.clone(),
         shutdown.clone(),
     ));
@@ -697,6 +715,7 @@ async fn mouse_dispatcher_loop(
     click_registry: Arc<Mutex<ClickRegistry>>,
     hover_state: Arc<HoverState>,
     filter: Arc<RwLock<FilterState>>,
+    prompt_state: Arc<Mutex<PromptState>>,
     command_tx: mpsc::Sender<ControllerCommand>,
     shutdown: CancellationToken,
 ) {
@@ -713,6 +732,7 @@ async fn mouse_dispatcher_loop(
                     if let Ok(reg) = click_registry.lock() {
                         hover_state.observe(event.row, event.column, &reg);
                     }
+                    sync_hover_hint(&hover_state, &prompt_state);
                     continue;
                 }
                 match event.kind {
@@ -720,6 +740,7 @@ async fn mouse_dispatcher_loop(
                         if let Ok(reg) = click_registry.lock() {
                             hover_state.observe(event.row, event.column, &reg);
                         }
+                        sync_hover_hint(&hover_state, &prompt_state);
                     }
                     MouseEventKind::Down(MouseButton::Left) => {
                         let target = lookup_target(&click_registry, event.row, event.column);
@@ -874,5 +895,36 @@ fn menu_choice_to_command(
         (MenuChoice::CopyLine | MenuChoice::CopyRawPayload, _) => None,
         (MenuChoice::Cancel, _) => None,
         (MenuChoice::Inspect, _) => None,
+    }
+}
+
+fn sync_hover_hint(hover_state: &Arc<HoverState>, prompt_state: &Arc<Mutex<PromptState>>) {
+    let (_, target) = hover_state.snapshot();
+    let hint = target.as_ref().map(|t| t.whisper_hint().to_string());
+    if let Ok(mut state) = prompt_state.lock() {
+        state.hover_hint = hint;
+    }
+}
+
+#[cfg(test)]
+mod accessible_tests {
+    use super::*;
+
+    #[test]
+    fn apply_accessible_overrides_forces_safe_defaults() {
+        let mut cfg = RuntimeConfig {
+            enable_mouse: true,
+            cursor_choreography: true,
+            ascii_glyphs: false,
+            motion_disabled: false,
+            accessible: false,
+            ..Default::default()
+        };
+        cfg.apply_accessible_overrides();
+        assert!(cfg.accessible);
+        assert!(!cfg.enable_mouse);
+        assert!(!cfg.cursor_choreography);
+        assert!(cfg.ascii_glyphs);
+        assert!(cfg.motion_disabled);
     }
 }

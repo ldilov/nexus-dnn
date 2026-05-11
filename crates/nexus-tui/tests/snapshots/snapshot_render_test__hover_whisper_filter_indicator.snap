@@ -1,0 +1,5 @@
+---
+source: crates/nexus-tui/tests/snapshot_render_test.rs
+expression: rendered
+---
+[click: toggle | shift-click: invert | drag: brush]
