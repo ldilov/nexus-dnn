@@ -28,7 +28,7 @@ use crate::stream::event_line::EventLine;
 /// runs that reuse a deploy slug or extension id.
 pub const DEFAULT_THREAD_TTL: Duration = Duration::from_secs(30);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum CorrelationKind {
     Run,
     Deploy,
