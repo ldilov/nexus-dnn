@@ -207,6 +207,7 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
         Arc::clone(&pinned),
         Arc::clone(&muted),
         Arc::clone(&brush),
+        Arc::clone(&click_registry),
         shutdown.clone(),
     );
     let controller_cfg = ControllerConfig {
