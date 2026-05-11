@@ -92,7 +92,7 @@ pub fn render_inspector_block(
         push_line(&mut out, "  (no correlation keys)", depth);
     }
 
-    push_section(&mut out, "recent context", depth);
+    push_section(&mut out, "recent same-source events (unfiltered)", depth);
     if recent.is_empty() {
         push_line(&mut out, "  (no prior events from this source)", depth);
     } else {
@@ -189,7 +189,7 @@ fn section_icon(title: &str) -> &'static str {
         "metadata" => "◐",
         "fields" => "▦",
         "correlation keys" | "correlation tree" => "◉",
-        "recent context" => "↺",
+        "recent context" | "recent same-source events (unfiltered)" => "↺",
         "suggestions" => "✦",
         "raw payload" => "{ }",
         _ => "▾",
