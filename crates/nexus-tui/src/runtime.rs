@@ -152,6 +152,8 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
     }
     drop(tx);
 
+    let rate_snapshot: Arc<Mutex<crate::stream::rate_guard::RateGuardSnapshot>> =
+        Arc::new(Mutex::new(Default::default()));
     let render_handle = tokio::spawn(consumer_loop(
         rx,
         Arc::clone(&ring),
@@ -160,6 +162,7 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
         Arc::clone(&hold_queue),
         Arc::clone(&click_registry),
         Arc::clone(&hover_state),
+        Arc::clone(&rate_snapshot),
         depth,
         cfg.cursor_choreography,
         cfg.ascii_glyphs,
@@ -172,6 +175,7 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
         Arc::clone(&hold_queue),
         Arc::clone(&prompt_state),
         Arc::clone(&ring),
+        Arc::clone(&rate_snapshot),
         shutdown.clone(),
     );
     let controller_cfg = ControllerConfig {
@@ -306,6 +310,7 @@ async fn consumer_loop(
     hold_queue: Arc<Mutex<HoldQueue>>,
     click_registry: Arc<Mutex<ClickRegistry>>,
     hover: Arc<HoverState>,
+    rate_snapshot: Arc<Mutex<crate::stream::rate_guard::RateGuardSnapshot>>,
     depth: ColorDepth,
     cursor_choreography: bool,
     ascii_glyphs: bool,
@@ -437,6 +442,10 @@ async fn consumer_loop(
                 if second_window_start.elapsed() >= SPARKLINE_TICK {
                     push_history(&mut history, second_window_count);
                     update_prompt_history(&prompt, &history);
+                    update_prompt_pressure(&prompt, &hold_queue, &rate_guard, second_window_count);
+                    if let Ok(mut snap) = rate_snapshot.lock() {
+                        *snap = rate_guard.snapshot();
+                    }
                     second_window_count = 0;
                     second_window_start = Instant::now();
                 }
@@ -592,6 +601,23 @@ fn update_prompt_history(prompt: &Arc<Mutex<PromptState>>, history: &VecDeque<u3
     let samples = crate::render::sparkline::SparklineSamples::from_per_second(snapshot);
     let mut state = prompt.lock().unwrap_or_else(|p| p.into_inner());
     state.sparkline = samples;
+}
+
+fn update_prompt_pressure(
+    prompt: &Arc<Mutex<PromptState>>,
+    hold_queue: &Arc<Mutex<HoldQueue>>,
+    rate_guard: &RateGuard,
+    last_second_count: u32,
+) {
+    let held = hold_queue.lock().map(|q| q.pending() as u32).unwrap_or(0);
+    let snapshot = crate::repl::prompt::PressureSnapshot {
+        held,
+        dropped: rate_guard.cumulative_dropped(),
+        ingest_per_sec: last_second_count as f32,
+    };
+    if let Ok(mut state) = prompt.lock() {
+        state.pressure = snapshot;
+    }
 }
 
 fn print_brand(depth: ColorDepth) -> std::io::Result<()> {
