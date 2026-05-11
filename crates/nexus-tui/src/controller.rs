@@ -329,17 +329,56 @@ fn render_inspect(handles: &ControllerHandles, id: &str) {
         correlation_depth: 3,
     };
     let rendered = match handles.ring.lock() {
-        Ok(buf) => {
-            find_event_by_id_str(&buf, id).map(|target| render_inspector_block(&buf, target, &cfg))
-        }
+        Ok(buf) => find_event_by_id_str(&buf, id).map(|target| {
+            let banner = filter_mismatch_banner(handles, target);
+            let block = render_inspector_block(&buf, target, &cfg);
+            (banner, block)
+        }),
         Err(_) => None,
     };
     match rendered {
-        Some(block) => print!("{block}"),
+        Some((banner, block)) => {
+            if let Some(banner) = banner {
+                print!("{banner}");
+            }
+            print!("{block}");
+        }
         None => eprintln!("·· no event found for '{id}'"),
     }
     set_holding(handles, false);
     flush_hold(handles);
+}
+
+fn filter_mismatch_banner(
+    handles: &ControllerHandles,
+    target: &crate::stream::event_line::EventLine,
+) -> Option<String> {
+    let filter = handles.filter.read().ok()?;
+    if !filter.has_active_filters() {
+        return None;
+    }
+    if filter.is_visible(target) {
+        return None;
+    }
+    let mut reasons: Vec<String> = Vec::new();
+    if let Some(pattern) = filter.grep_text() {
+        reasons.push(format!("/grep {pattern:?}"));
+    }
+    if let Some(source) = filter.source_glob_text() {
+        reasons.push(format!("/source {source:?}"));
+    }
+    if filter.paused() {
+        reasons.push("/pause".into());
+    }
+    let reasons = if reasons.is_empty() {
+        "active filters".into()
+    } else {
+        reasons.join(" + ")
+    };
+    Some(format!(
+        "\x1b[38;5;215m⚠ inspecting an event that does NOT match {reasons}\x1b[0m\n\
+         \x1b[2m  /inspect ignores filters by design — run /clear to drop them.\x1b[0m\n"
+    ))
 }
 
 fn render_last(handles: &ControllerHandles, count: usize, level: Severity) {
