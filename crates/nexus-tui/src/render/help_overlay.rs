@@ -43,6 +43,7 @@ fn target_label(target: &ClickTarget) -> &'static str {
         ClickTarget::FilterIndicator => "filter indicator",
         ClickTarget::Sparkline => "sparkline",
         ClickTarget::InspectorHeading { .. } => "inspector heading",
+        ClickTarget::InspectorSection { .. } => "inspector section",
     }
 }
 
