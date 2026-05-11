@@ -190,6 +190,15 @@ async fn execute(
         ParsedCommand::Where => render_where(cfg, http, handles).await,
         ParsedCommand::Help => render_help(handles),
         ParsedCommand::Glossary => render_glossary(handles),
+        ParsedCommand::Verbosity(level) => apply_verbosity(handles, *level),
+        ParsedCommand::VerbosityRaise => {
+            let current = current_verbosity(handles);
+            apply_verbosity(handles, current.raise())
+        }
+        ParsedCommand::VerbosityLower => {
+            let current = current_verbosity(handles);
+            apply_verbosity(handles, current.lower())
+        }
         ParsedCommand::Quit => handles.shutdown.cancel(),
         ParsedCommand::Inspect(id) => render_inspect(handles, id),
         ParsedCommand::Last { count, level } => render_last(handles, *count, *level),
@@ -752,7 +761,29 @@ fn describe(cmd: &ParsedCommand) -> String {
         ParsedCommand::BrushClear => "/brush-clear".into(),
         ParsedCommand::Yank => "/yank".into(),
         ParsedCommand::Glossary => "/glossary".into(),
+        ParsedCommand::Verbosity(_) => "/verbosity".into(),
+        ParsedCommand::VerbosityRaise => "/verbosity +".into(),
+        ParsedCommand::VerbosityLower => "/verbosity -".into(),
     }
+}
+
+fn current_verbosity(handles: &ControllerHandles) -> crate::repl::verbosity::VerbosityLevel {
+    handles
+        .prompt
+        .lock()
+        .ok()
+        .map(|p| p.verbosity)
+        .unwrap_or_default()
+}
+
+fn apply_verbosity(handles: &ControllerHandles, level: crate::repl::verbosity::VerbosityLevel) {
+    set_holding(handles, true);
+    if let Ok(mut prompt) = handles.prompt.lock() {
+        prompt.verbosity = level;
+    }
+    println!("nexus: verbosity set to {}", level.label());
+    set_holding(handles, false);
+    flush_hold(handles);
 }
 
 fn render_brush(handles: &ControllerHandles) {

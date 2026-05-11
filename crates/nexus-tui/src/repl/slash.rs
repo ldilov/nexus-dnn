@@ -62,6 +62,9 @@ pub enum ParsedCommand {
     /// selection (auto-runs the corresponding /source /level /grep).
     Yank,
     Glossary,
+    Verbosity(crate::repl::verbosity::VerbosityLevel),
+    VerbosityRaise,
+    VerbosityLower,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -157,6 +160,36 @@ pub fn parse_slash(input: &str) -> Result<ParsedCommand, ParseError> {
         "brush-clear" => Ok(ParsedCommand::BrushClear),
         "yank" => Ok(ParsedCommand::Yank),
         "glossary" => Ok(ParsedCommand::Glossary),
+        "verbosity" => {
+            let arg = arg.ok_or(ParseError::MissingArgument {
+                command: "verbosity",
+            })?;
+            match arg {
+                "+" | "up" | "raise" => Ok(ParsedCommand::VerbosityRaise),
+                "-" | "down" | "lower" => Ok(ParsedCommand::VerbosityLower),
+                "silent" => Ok(ParsedCommand::Verbosity(
+                    crate::repl::verbosity::VerbosityLevel::Silent,
+                )),
+                "quiet" => Ok(ParsedCommand::Verbosity(
+                    crate::repl::verbosity::VerbosityLevel::Quiet,
+                )),
+                "default" => Ok(ParsedCommand::Verbosity(
+                    crate::repl::verbosity::VerbosityLevel::Default,
+                )),
+                "verbose" => Ok(ParsedCommand::Verbosity(
+                    crate::repl::verbosity::VerbosityLevel::Verbose,
+                )),
+                "debug" => Ok(ParsedCommand::Verbosity(
+                    crate::repl::verbosity::VerbosityLevel::Debug,
+                )),
+                other => Err(ParseError::InvalidArgument {
+                    command: "verbosity",
+                    reason: format!(
+                        "expected silent|quiet|default|verbose|debug or +/-, got {other:?}"
+                    ),
+                }),
+            }
+        }
         "quit" => Ok(ParsedCommand::Quit),
         "inspect" => {
             let arg = arg.ok_or(ParseError::MissingArgument { command: "inspect" })?;
@@ -228,6 +261,7 @@ const SLASH_COMMAND_NAMES: &[&str] = &[
     "brush-clear",
     "yank",
     "glossary",
+    "verbosity",
 ];
 
 /// Single source of truth for command descriptions used both by the
@@ -262,6 +296,10 @@ pub const SLASH_COMMAND_TABLE: &[(&str, &str)] = &[
     ("brush-clear", "drop all brushed events"),
     ("yank", "apply the inferred filter from the brush selection"),
     ("glossary", "explain the UI elements (brush, pressure, mixer, ...)"),
+    (
+        "verbosity",
+        "set UI density: silent|quiet|default|verbose|debug or +/-",
+    ),
 ];
 
 pub fn slash_command_description(name: &str) -> Option<&'static str> {
