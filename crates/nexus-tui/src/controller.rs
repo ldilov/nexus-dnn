@@ -487,6 +487,76 @@ const HELP_GROUPS: &[HelpGroup] = &[
         ],
     },
     HelpGroup {
+        title: "Pressure & time",
+        items: &[
+            HelpItem {
+                icon: "⚡",
+                command: "/pressure",
+                description: "held + dropped + per-source backpressure",
+            },
+            HelpItem {
+                icon: "⏱",
+                command: "/scrub",
+                description: "time histogram of the ring buffer",
+            },
+        ],
+    },
+    HelpGroup {
+        title: "Attention",
+        items: &[
+            HelpItem {
+                icon: "📌",
+                command: "/pin run:<id>|deploy:<id>|ext:<id>",
+                description: "pin correlation key; bypasses filters",
+            },
+            HelpItem {
+                icon: "—",
+                command: "/unpin <kind>:<id>",
+                description: "remove a pin",
+            },
+            HelpItem {
+                icon: "🔇",
+                command: "/mute <glob>",
+                description: "hide source from ambient (host.*, deploy:*)",
+            },
+            HelpItem {
+                icon: "—",
+                command: "/unmute <glob>",
+                description: "restore a muted source",
+            },
+            HelpItem {
+                icon: "⫶",
+                command: "/mixer",
+                description: "source-mixer drawer (mute + pin state)",
+            },
+        ],
+    },
+    HelpGroup {
+        title: "Brush · paint filters",
+        items: &[
+            HelpItem {
+                icon: "✎",
+                command: "/brush",
+                description: "selection + inferred filter preview",
+            },
+            HelpItem {
+                icon: "✚",
+                command: "/brush-add <event-id>",
+                description: "paint an event into the selection",
+            },
+            HelpItem {
+                icon: "—",
+                command: "/brush-clear",
+                description: "drain the selection",
+            },
+            HelpItem {
+                icon: "⌖",
+                command: "/yank",
+                description: "apply the inferred filter",
+            },
+        ],
+    },
+    HelpGroup {
         title: "Lifecycle",
         items: &[
             HelpItem {
