@@ -10,7 +10,9 @@ use reedline::Prompt;
 #[test]
 fn render_left_registers_sparkline_region() {
     let registry = Arc::new(Mutex::new(ClickRegistry::default()));
-    let prompt = AmbientPrompt::new().with_click_registry(Arc::clone(&registry));
+    let prompt = AmbientPrompt::new()
+        .with_click_registry(Arc::clone(&registry))
+        .with_fixed_row(1);
     let _ = prompt.render_prompt_left();
     let reg = registry.lock().unwrap();
     let mut found = false;
@@ -26,7 +28,9 @@ fn render_left_registers_sparkline_region() {
 #[test]
 fn filter_indicator_only_registers_when_filters_active() {
     let registry = Arc::new(Mutex::new(ClickRegistry::default()));
-    let prompt = AmbientPrompt::new().with_click_registry(Arc::clone(&registry));
+    let prompt = AmbientPrompt::new()
+        .with_click_registry(Arc::clone(&registry))
+        .with_fixed_row(1);
     let _ = prompt.render_prompt_left();
     {
         let reg = registry.lock().unwrap();
@@ -56,7 +60,9 @@ fn filter_indicator_only_registers_when_filters_active() {
 #[test]
 fn redraw_clears_stale_filter_indicator_when_filters_dropped() {
     let registry = Arc::new(Mutex::new(ClickRegistry::default()));
-    let prompt = AmbientPrompt::new().with_click_registry(Arc::clone(&registry));
+    let prompt = AmbientPrompt::new()
+        .with_click_registry(Arc::clone(&registry))
+        .with_fixed_row(1);
     {
         let handle = prompt.handle();
         let mut state = handle.lock().unwrap();
