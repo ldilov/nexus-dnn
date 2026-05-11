@@ -130,6 +130,7 @@ fn run_first_event(
         ascii_glyphs: false,
         correlation_depth: 0,
         luminance_ladder: false,
+        grep_highlight: None,
     };
     let mut q = hold_queue.lock().expect("hold queue poisoned");
     match q.try_enqueue(render_line.clone()) {

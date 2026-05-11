@@ -34,6 +34,7 @@ fn cfg(ascii: bool) -> RenderConfig {
         ascii_glyphs: ascii,
         correlation_depth: 0,
         luminance_ladder: false,
+        grep_highlight: None,
     }
 }
 

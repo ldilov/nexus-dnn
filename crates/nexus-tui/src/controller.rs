@@ -189,6 +189,7 @@ async fn execute(
         }
         ParsedCommand::Where => render_where(cfg, http, handles).await,
         ParsedCommand::Help => render_help(handles),
+        ParsedCommand::Glossary => render_glossary(handles),
         ParsedCommand::Quit => handles.shutdown.cancel(),
         ParsedCommand::Inspect(id) => render_inspect(handles, id),
         ParsedCommand::Last { count, level } => render_last(handles, *count, *level),
@@ -411,6 +412,45 @@ fn render_help(handles: &ControllerHandles) {
     print!("{}", render_help_block());
     set_holding(handles, false);
     flush_hold(handles);
+}
+
+fn render_glossary(handles: &ControllerHandles) {
+    set_holding(handles, true);
+    print!("{}", render_glossary_block());
+    set_holding(handles, false);
+    flush_hold(handles);
+}
+
+pub fn render_glossary_block() -> String {
+    let entries: [(&str, &str); 14] = [
+        ("sparkline", "Braille 8-cell bar at the prompt — recent event rate per second."),
+        ("filter indicator [!N]", "Count of active filters. Click or run /clear to drop them all."),
+        ("pressure badge ⚡N", "Events held or dropped by the rate-guard. Non-zero = backlog."),
+        ("status ribbon ▦", "Single-line cockpit emitted on filter / pause / connection change."),
+        ("severity glyph", "✸ fatal · ● error · ▲ warn · · info/debug. ASCII fallback via --no-glyphs."),
+        ("category glyph", "Domain icon prefixing the source label (host / runtime / storage / ...)."),
+        ("brush", "A persistent selection of events. /brush-add <id>, /brush, /yank to filter to them."),
+        ("pressure (drawer)", "/pressure shows held + dropped + per-source backpressure detail."),
+        ("source mixer", "/mixer shows per-source rate, mutes, and pinned correlations together."),
+        ("pin / mute", "/pin <corr> bypasses filters for matching events; /mute <source> hides them."),
+        ("follow", "/follow run:<id> or deploy:<id> — pin all events sharing that correlation."),
+        ("inspect / re-inspect", "/inspect <id> opens a detail block. Clicking a heading re-runs it."),
+        ("snapshot", "/snapshot writes a redacted JSONL of the ring buffer to disk for sharing."),
+        ("scroll passthrough", "Mouse-wheel temporarily releases capture so native scrollback works."),
+    ];
+    let mut out = String::new();
+    out.push_str(&format!(
+        "{HELP_GROUP}{HELP_BOLD}nexus-tui glossary{HELP_RESET}\n"
+    ));
+    out.push_str(&format!(
+        "{HELP_DIM}(see /help for the full slash command list){HELP_RESET}\n\n"
+    ));
+    for (term, explanation) in entries.iter() {
+        out.push_str(&format!(
+            "  {HELP_ACCENT}{term:<22}{HELP_RESET}  {explanation}\n"
+        ));
+    }
+    out
 }
 
 const HELP_ACCENT: &str = "\x1b[38;5;75m"; // graphite blue
@@ -711,6 +751,7 @@ fn describe(cmd: &ParsedCommand) -> String {
         ParsedCommand::BrushAdd(_) => "/brush-add".into(),
         ParsedCommand::BrushClear => "/brush-clear".into(),
         ParsedCommand::Yank => "/yank".into(),
+        ParsedCommand::Glossary => "/glossary".into(),
     }
 }
 
