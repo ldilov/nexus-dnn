@@ -30,7 +30,7 @@ use crate::mouse::dispatch::{ClickAction, left_click_action, right_click_action}
 use crate::mouse::hover::HoverState;
 use crate::mouse::menu::{MenuChoice, render_menu};
 use crate::mouse::menu_controller::{MenuController, NavOutcome, OpenMenu};
-use crate::mouse::targets::{ClickRegistry, ClickTarget};
+use crate::mouse::targets::{ClickRegistry, ClickRowDecision, ClickTarget, click_row_after_print};
 use crate::render::brand::render_brand;
 use crate::render::cursor::{CursorChoreography, render_ambient_above_prompt};
 use crate::render::event_line::{RenderConfig, render_event_line, render_event_line_with_targets};
@@ -567,6 +567,7 @@ fn render_visible(
         .with_ascii_glyphs(ascii_glyphs);
     let layout = render_event_line_with_targets(line, &cfg);
     let rendered = render_event_line(line, &cfg);
+    let old_row = cursor_row();
     match choreo {
         Some(choreo) => {
             let mut out = stdout().lock();
@@ -577,22 +578,38 @@ fn render_visible(
             let _ = stdout().flush();
         }
     }
-    register_targets(click_registry, layout.targets);
+    let new_row = cursor_row();
+    register_targets(click_registry, old_row, new_row, layout.targets);
     threader.note_rendered(line, now);
+}
+
+fn cursor_row() -> Option<u16> {
+    crossterm::cursor::position().ok().map(|(_, row)| row)
 }
 
 fn register_targets(
     click_registry: &Arc<Mutex<ClickRegistry>>,
+    old_row: Option<u16>,
+    new_row: Option<u16>,
     targets: Vec<(crate::mouse::targets::ClickTarget, std::ops::Range<u16>)>,
 ) {
     if targets.is_empty() {
         return;
     }
+    let decision = click_row_after_print(old_row, new_row);
     let Ok(mut reg) = click_registry.lock() else {
         return;
     };
+    let line_row = match decision {
+        ClickRowDecision::Advanced { line_row } => line_row,
+        ClickRowDecision::Scrolled { line_row } => {
+            reg.shift_rows_up(1);
+            line_row
+        }
+        ClickRowDecision::Unknown => return,
+    };
     for (target, range) in targets {
-        reg.register(0, range, target);
+        reg.register(line_row, range, target);
     }
 }
 
