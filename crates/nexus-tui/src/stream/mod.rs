@@ -9,11 +9,13 @@
 //!
 //! All members are pure data + pure functions. No I/O, no globals.
 
+pub mod brush_selection;
 pub mod client;
 pub mod correlation_threader;
 pub mod event_id;
 pub mod event_line;
 pub mod filter;
+pub mod filter_inference;
 pub mod hold_queue;
 pub mod muted_sources;
 pub mod pinned_correlations;
