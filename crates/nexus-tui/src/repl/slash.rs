@@ -38,6 +38,19 @@ pub enum ParsedCommand {
     Pressure,
     /// Cluster-A — render a one-shot ring-buffer time histogram.
     Scrub,
+    /// Cluster-B — pin a correlation key; pinned events bypass all
+    /// filters and render with a coloured pin glyph.
+    Pin(String),
+    /// Cluster-B — remove a pinned correlation key.
+    Unpin(String),
+    /// Cluster-B — mute a source label or glob; muted events are
+    /// hidden from ambient render but stay in the ring buffer.
+    Mute(String),
+    /// Cluster-B — remove a muted source pattern.
+    Unmute(String),
+    /// Cluster-B — show the source-mixer drawer (rate-guard + mute
+    /// state + pinned summary).
+    Mixer,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -106,6 +119,23 @@ pub fn parse_slash(input: &str) -> Result<ParsedCommand, ParseError> {
         "help" => Ok(ParsedCommand::Help),
         "pressure" => Ok(ParsedCommand::Pressure),
         "scrub" => Ok(ParsedCommand::Scrub),
+        "pin" => {
+            let arg = arg.ok_or(ParseError::MissingArgument { command: "pin" })?;
+            Ok(ParsedCommand::Pin(arg.to_string()))
+        }
+        "unpin" => {
+            let arg = arg.ok_or(ParseError::MissingArgument { command: "unpin" })?;
+            Ok(ParsedCommand::Unpin(arg.to_string()))
+        }
+        "mute" => {
+            let arg = arg.ok_or(ParseError::MissingArgument { command: "mute" })?;
+            Ok(ParsedCommand::Mute(arg.to_string()))
+        }
+        "unmute" => {
+            let arg = arg.ok_or(ParseError::MissingArgument { command: "unmute" })?;
+            Ok(ParsedCommand::Unmute(arg.to_string()))
+        }
+        "mixer" => Ok(ParsedCommand::Mixer),
         "quit" => Ok(ParsedCommand::Quit),
         "inspect" => {
             let arg = arg.ok_or(ParseError::MissingArgument { command: "inspect" })?;
@@ -165,6 +195,11 @@ const SLASH_COMMAND_NAMES: &[&str] = &[
     "open",
     "pressure",
     "scrub",
+    "pin",
+    "unpin",
+    "mute",
+    "unmute",
+    "mixer",
 ];
 
 /// Single source of truth for command descriptions used both by the
@@ -186,6 +221,14 @@ pub const SLASH_COMMAND_TABLE: &[(&str, &str)] = &[
     ("open", "focus the desktop UI on a route"),
     ("pressure", "show held / dropped / per-source backpressure"),
     ("scrub", "render a time histogram of the ring buffer"),
+    (
+        "pin",
+        "pin a correlation key (run:/deploy:/ext:); bypasses filters",
+    ),
+    ("unpin", "remove a pinned correlation key"),
+    ("mute", "hide a source label or glob from ambient stream"),
+    ("unmute", "remove a muted source pattern"),
+    ("mixer", "show source-mixer drawer (mutes + pins)"),
 ];
 
 pub fn slash_command_description(name: &str) -> Option<&'static str> {

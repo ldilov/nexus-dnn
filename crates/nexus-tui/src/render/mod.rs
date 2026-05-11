@@ -9,6 +9,8 @@ pub mod event_line;
 pub mod gutter;
 pub mod inspector;
 pub mod pressure_meter;
+pub mod source_mixer;
 pub mod sparkline;
 pub mod status_ribbon;
+pub mod table;
 pub mod timeline;
