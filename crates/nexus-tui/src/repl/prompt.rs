@@ -24,6 +24,28 @@ const ANSI_ACCENT_RED: &str = "\x1b[38;5;203m";
 const ANSI_ACCENT_DIM: &str = "\x1b[38;5;245m";
 const ANSI_BOLD: &str = "\x1b[1m";
 
+/// Compact pressure summary for the prompt-right badge. Prefers
+/// `held` when in-flight, falls back to `dropped` lifetime count
+/// otherwise. Numbers >999 collapse to `1.2k` form to keep the badge
+/// fixed-width.
+fn format_pressure_badge(p: &PressureSnapshot) -> String {
+    if p.held > 0 {
+        compact_number(u64::from(p.held))
+    } else {
+        format!("·{}", compact_number(p.dropped))
+    }
+}
+
+fn compact_number(n: u64) -> String {
+    if n < 1_000 {
+        n.to_string()
+    } else if n < 1_000_000 {
+        format!("{:.1}k", n as f64 / 1_000.0)
+    } else {
+        format!("{:.1}M", n as f64 / 1_000_000.0)
+    }
+}
+
 fn current_clock_hhmm() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let secs = SystemTime::now()
@@ -58,6 +80,26 @@ pub struct PromptState {
     pub condensing: bool,
     /// Stream connection health for the right-margin dot indicator.
     pub connection_health: ConnectionHealth,
+    /// Cluster-A Queue Pressure — held + dropped + rate counters that
+    /// surface in the prompt-right pressure badge (`⚡N`) when non-zero
+    /// and feed the `/pressure` drawer command.
+    pub pressure: PressureSnapshot,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PressureSnapshot {
+    /// Events currently held by the hold queue (commands in-flight).
+    pub held: u32,
+    /// Cumulative events dropped by the rate-guard since session start.
+    pub dropped: u64,
+    /// Sustained ingest rate (events/second over the trailing window).
+    pub ingest_per_sec: f32,
+}
+
+impl PressureSnapshot {
+    pub fn is_active(&self) -> bool {
+        self.held > 0 || self.dropped > 0
+    }
 }
 
 #[derive(Clone)]
@@ -76,6 +118,7 @@ impl AmbientPrompt {
             filter_count: 0,
             condensing: false,
             connection_health: ConnectionHealth::Connecting,
+            pressure: PressureSnapshot::default(),
         };
         Self {
             state: Arc::new(Mutex::new(state)),
@@ -210,8 +253,14 @@ impl Prompt for AmbientPrompt {
             ConnectionHealth::Disconnected => ("◯", ANSI_ACCENT_RED),
         };
         let clock = current_clock_hhmm();
+        let pressure = if snapshot.pressure.is_active() {
+            let badge = format_pressure_badge(&snapshot.pressure);
+            format!("{ANSI_ACCENT_AMBER}⚡{badge}{ANSI_RESET}  ")
+        } else {
+            String::new()
+        };
         Cow::Owned(format!(
-            "{dot_color}{dot}{ANSI_RESET} {ANSI_DIM}{clock}{ANSI_RESET}"
+            "{pressure}{dot_color}{dot}{ANSI_RESET} {ANSI_DIM}{clock}{ANSI_RESET}"
         ))
     }
 

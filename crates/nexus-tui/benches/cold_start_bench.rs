@@ -70,11 +70,15 @@ fn build_runtime_components() -> RuntimeParts {
     let hold_queue = Arc::new(Mutex::new(HoldQueue::default()));
 
     let shutdown = CancellationToken::new();
+    let rate_snapshot = Arc::new(Mutex::new(
+        nexus_tui::stream::rate_guard::RateGuardSnapshot::default(),
+    ));
     let (handles, _rx) = ControllerHandles::new(
         Arc::clone(&filter),
         Arc::clone(&hold_queue),
         Arc::clone(&prompt_state),
         Arc::clone(&ring),
+        rate_snapshot,
         shutdown,
     );
 
