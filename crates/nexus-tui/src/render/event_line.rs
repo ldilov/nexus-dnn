@@ -37,6 +37,8 @@ pub struct RenderConfig {
     /// Unicode glyphs to ASCII proxies for terminals that cannot render
     /// the Unicode set. Box-drawing and Braille glyphs are out of scope.
     pub ascii_glyphs: bool,
+    pub correlation_depth: u8,
+    pub luminance_ladder: bool,
 }
 
 impl RenderConfig {
@@ -47,6 +49,8 @@ impl RenderConfig {
             hover_target: None,
             thread_leaf: false,
             ascii_glyphs: false,
+            correlation_depth: 0,
+            luminance_ladder: false,
         }
     }
 
@@ -62,6 +66,16 @@ impl RenderConfig {
 
     pub fn with_ascii_glyphs(mut self, ascii: bool) -> Self {
         self.ascii_glyphs = ascii;
+        self
+    }
+
+    pub fn with_correlation_depth(mut self, depth: u8) -> Self {
+        self.correlation_depth = depth;
+        self
+    }
+
+    pub fn with_luminance_ladder(mut self, enabled: bool) -> Self {
+        self.luminance_ladder = enabled;
         self
     }
 }
@@ -100,6 +114,18 @@ pub fn render_event_line_with_targets(line: &EventLine, cfg: &RenderConfig) -> E
 
     let mut out = String::new();
     let mut col: u16 = 0;
+
+    if cfg.luminance_ladder {
+        if let Some(bar) = crate::render::luminance_ladder::error_left_bar(line.severity) {
+            push_colored(&mut out, &bar.to_string(), severity_palette, cfg.color_depth);
+            col = col.saturating_add(1);
+        }
+        let ladder_indent = crate::render::luminance_ladder::correlation_indent(cfg.correlation_depth);
+        if !ladder_indent.is_empty() {
+            out.push_str(&ladder_indent);
+            col = col.saturating_add(ladder_indent.chars().count() as u16);
+        }
+    }
 
     // Thread-leaf indent — when this event continues an earlier
     // thread, prefix `  ╰─ ` in lavender. The visible columns the

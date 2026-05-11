@@ -35,6 +35,26 @@ impl Severity {
             Self::Fatal => "fatal",
         }
     }
+
+    pub fn glyph(self, ascii: bool) -> &'static str {
+        if ascii {
+            match self {
+                Self::Debug => "[DEBUG]",
+                Self::Info => "[INFO]",
+                Self::Warn => "[WARN]",
+                Self::Error => "[ERROR]",
+                Self::Fatal => "[FATAL]",
+            }
+        } else {
+            match self {
+                Self::Debug => "·",
+                Self::Info => "·",
+                Self::Warn => "▲",
+                Self::Error => "●",
+                Self::Fatal => "✸",
+            }
+        }
+    }
 }
 
 impl FromStr for Severity {
@@ -55,5 +75,27 @@ impl FromStr for Severity {
 impl fmt::Display for Severity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+#[cfg(test)]
+mod glyph_tests {
+    use super::*;
+
+    #[test]
+    fn unicode_glyphs_distinguish_severity() {
+        assert_eq!(Severity::Fatal.glyph(false), "✸");
+        assert_eq!(Severity::Error.glyph(false), "●");
+        assert_eq!(Severity::Warn.glyph(false), "▲");
+        assert_eq!(Severity::Info.glyph(false), "·");
+    }
+
+    #[test]
+    fn ascii_glyphs_use_bracketed_labels() {
+        assert_eq!(Severity::Fatal.glyph(true), "[FATAL]");
+        assert_eq!(Severity::Error.glyph(true), "[ERROR]");
+        assert_eq!(Severity::Warn.glyph(true), "[WARN]");
+        assert_eq!(Severity::Info.glyph(true), "[INFO]");
+        assert_eq!(Severity::Debug.glyph(true), "[DEBUG]");
     }
 }

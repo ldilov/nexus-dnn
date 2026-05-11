@@ -56,6 +56,7 @@ fn gradient_at(t: f32, depth: ColorDepth) -> PaletteColor {
         }
         ColorDepth::Color256 => SPECTRAL_PRIMARY,
         ColorDepth::Color16 => SPECTRAL_PRIMARY,
+        ColorDepth::NoColor => SPECTRAL_PRIMARY,
     }
 }
 

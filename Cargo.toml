@@ -5,6 +5,7 @@ members = [
     "extensions/builtin/local-llm/rust",
     "extensions/builtin/emotion-tts/rust",
     "apps/web/src-tauri",
+    "xtask",
 ]
 default-members = ["apps/web/src-tauri"]
 

@@ -107,6 +107,8 @@ impl PipelineHarness {
                 hover_target: None,
                 thread_leaf: false,
                 ascii_glyphs: false,
+                correlation_depth: 0,
+                luminance_ladder: false,
             },
             saw_critical_border: false,
         }

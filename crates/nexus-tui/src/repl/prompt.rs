@@ -6,7 +6,10 @@ use std::sync::{Arc, Mutex};
 use reedline::{Prompt, PromptEditMode, PromptHistorySearch, PromptHistorySearchStatus};
 
 use crate::mouse::targets::{ClickRegistry, ClickTarget};
-use crate::render::sparkline::{SparklineSamples, render_sparkline};
+use crate::render::sparkline::{
+    SparklineSamples, render_sparkline, render_sparkline_with_gradient,
+};
+use crate::repl::ansi::{ColorDepth, SPECTRAL_PRIMARY, SPECTRAL_SECONDARY};
 
 /// Query the terminal for the current cursor row. Returns `None` when
 /// the terminal refuses the query (pipe, dumb terminal, transient
@@ -90,6 +93,7 @@ pub struct PromptState {
     /// surface in the prompt-right pressure badge (`⚡N`) when non-zero
     /// and feed the `/pressure` drawer command.
     pub pressure: PressureSnapshot,
+    pub hover_hint: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -116,6 +120,8 @@ pub struct AmbientPrompt {
     /// querying the live terminal. Only consumed by tests where a
     /// real cursor position is unavailable.
     fixed_row: Option<u16>,
+    mouse_enabled: bool,
+    color_depth: ColorDepth,
 }
 
 impl AmbientPrompt {
@@ -129,12 +135,25 @@ impl AmbientPrompt {
             condensing: false,
             connection_health: ConnectionHealth::Connecting,
             pressure: PressureSnapshot::default(),
+            hover_hint: None,
         };
         Self {
             state: Arc::new(Mutex::new(state)),
             click_registry: None,
             fixed_row: None,
+            mouse_enabled: true,
+            color_depth: ColorDepth::Color256,
         }
+    }
+
+    pub fn with_mouse_enabled(mut self, enabled: bool) -> Self {
+        self.mouse_enabled = enabled;
+        self
+    }
+
+    pub fn with_color_depth(mut self, depth: ColorDepth) -> Self {
+        self.color_depth = depth;
+        self
     }
 
     /// Override the prompt row used for click-target registration.
@@ -170,7 +189,14 @@ impl AmbientPrompt {
         // is the only producer of these target kinds, and previous
         // registrations may now sit at stale rows due to terminal scroll.
         reg.retain_targets(|t| !matches!(t, ClickTarget::Sparkline | ClickTarget::FilterIndicator));
-        let Some(prompt_row) = self.fixed_row.or_else(current_prompt_row) else {
+        let row_lookup = || {
+            if self.mouse_enabled {
+                current_prompt_row()
+            } else {
+                None
+            }
+        };
+        let Some(prompt_row) = self.fixed_row.or_else(row_lookup) else {
             return;
         };
         reg.register(prompt_row, sparkline_range, ClickTarget::Sparkline);
@@ -189,7 +215,16 @@ impl Default for AmbientPrompt {
 impl Prompt for AmbientPrompt {
     fn render_prompt_left(&self) -> Cow<'_, str> {
         let snapshot = self.state.lock().unwrap_or_else(|p| p.into_inner()).clone();
-        let bar = render_sparkline(&snapshot.sparkline);
+        let bar = if matches!(self.color_depth, ColorDepth::Truecolor) {
+            render_sparkline_with_gradient(
+                &snapshot.sparkline,
+                SPECTRAL_PRIMARY,
+                SPECTRAL_SECONDARY,
+                self.color_depth,
+            )
+        } else {
+            render_sparkline(&snapshot.sparkline)
+        };
         let mut left = String::new();
         let mut col: u16 = 0;
 
@@ -285,8 +320,12 @@ impl Prompt for AmbientPrompt {
         } else {
             String::new()
         };
+        let whisper = match snapshot.hover_hint.as_deref() {
+            Some(hint) if !hint.is_empty() => format!("{ANSI_DIM}{hint}{ANSI_RESET}  "),
+            _ => String::new(),
+        };
         Cow::Owned(format!(
-            "{pressure}{dot_color}{dot}{ANSI_RESET} {ANSI_DIM}{clock}{ANSI_RESET}"
+            "{whisper}{pressure}{dot_color}{dot}{ANSI_RESET} {ANSI_DIM}{clock}{ANSI_RESET}"
         ))
     }
 
