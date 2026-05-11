@@ -50,12 +50,17 @@ pub fn render_sparkline(samples: &SparklineSamples) -> String {
         return std::iter::repeat_n(BRAILLE_BLANK, BAR_CELLS).collect();
     }
     let stride = (samples.counts.len() as f32 / BAR_CELLS as f32).max(1.0);
+    let len = samples.counts.len();
     let mut out = String::with_capacity(BAR_CELLS * 4);
     for cell in 0..BAR_CELLS {
-        let start = (cell as f32 * stride) as usize;
+        let start = ((cell as f32 * stride) as usize).min(len);
         let end = (((cell as f32) + 1.0) * stride) as usize;
-        let end = end.min(samples.counts.len());
-        let slice = &samples.counts[start..end.max(start)];
+        let end = end.min(len).max(start);
+        if start == end {
+            out.push(BRAILLE_BLANK);
+            continue;
+        }
+        let slice = &samples.counts[start..end];
         let cell_max = slice.iter().copied().max().unwrap_or(0);
         let level = ((cell_max as f32 / max as f32) * 4.0).round() as usize;
         let level = level.min(BAR_GLYPHS.len() - 1);

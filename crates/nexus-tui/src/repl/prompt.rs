@@ -8,7 +8,13 @@ use reedline::{Prompt, PromptEditMode, PromptHistorySearch, PromptHistorySearchS
 use crate::mouse::targets::{ClickRegistry, ClickTarget};
 use crate::render::sparkline::{SparklineSamples, render_sparkline};
 
-const PROMPT_ROW: u16 = 1;
+/// Query the terminal for the current cursor row. Returns `None` when
+/// the terminal refuses the query (pipe, dumb terminal, transient
+/// error) so callers can skip click-target registration rather than
+/// anchoring to a hard-coded row that won't match real clicks.
+fn current_prompt_row() -> Option<u16> {
+    crossterm::cursor::position().ok().map(|(_, row)| row)
+}
 
 // ANSI colour primitives used by the prompt. Truecolor + 256-colour
 // terminals get the project's Spectral Graphite accents; 16-colour
@@ -106,6 +112,10 @@ impl PressureSnapshot {
 pub struct AmbientPrompt {
     state: Arc<Mutex<PromptState>>,
     click_registry: Option<Arc<Mutex<ClickRegistry>>>,
+    /// When set, click-target registration uses this row instead of
+    /// querying the live terminal. Only consumed by tests where a
+    /// real cursor position is unavailable.
+    fixed_row: Option<u16>,
 }
 
 impl AmbientPrompt {
@@ -123,7 +133,17 @@ impl AmbientPrompt {
         Self {
             state: Arc::new(Mutex::new(state)),
             click_registry: None,
+            fixed_row: None,
         }
+    }
+
+    /// Override the prompt row used for click-target registration.
+    /// Intended for tests that exercise registry side effects without
+    /// a live terminal where `crossterm::cursor::position()` would
+    /// otherwise fail and skip registration.
+    pub fn with_fixed_row(mut self, row: u16) -> Self {
+        self.fixed_row = Some(row);
+        self
     }
 
     pub fn handle(&self) -> Arc<Mutex<PromptState>> {
@@ -146,10 +166,16 @@ impl AmbientPrompt {
         let Ok(mut reg) = registry.lock() else {
             return;
         };
-        reg.clear_row(PROMPT_ROW);
-        reg.register(PROMPT_ROW, sparkline_range, ClickTarget::Sparkline);
+        // Evict every prior prompt entry regardless of row — the prompt
+        // is the only producer of these target kinds, and previous
+        // registrations may now sit at stale rows due to terminal scroll.
+        reg.retain_targets(|t| !matches!(t, ClickTarget::Sparkline | ClickTarget::FilterIndicator));
+        let Some(prompt_row) = self.fixed_row.or_else(current_prompt_row) else {
+            return;
+        };
+        reg.register(prompt_row, sparkline_range, ClickTarget::Sparkline);
         if let Some(range) = filter_range {
-            reg.register(PROMPT_ROW, range, ClickTarget::FilterIndicator);
+            reg.register(prompt_row, range, ClickTarget::FilterIndicator);
         }
     }
 }
