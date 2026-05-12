@@ -251,6 +251,50 @@ export function ModelsSearchView() {
     [jobByFamily],
   );
 
+  // Artifact-keyed lookups for the multi-quantization `ArtifactList`
+  // rendering path. Each `DownloadJob.targets[]` carries `artifact_id`
+  // entries representing the individual files being fetched. Map each
+  // artifact to the job that owns it so the per-file row can render
+  // its own queued / downloading / paused / downloaded state — this is
+  // the missing wiring that left ArtifactList rows stuck on
+  // `not_downloaded` even with a job in flight. Job-level state takes
+  // precedence over `Artifact.install_state` so live progress shows
+  // even before the host confirms the install_state flip.
+  const jobByArtifact = useMemo<Record<string, DownloadJob | undefined>>(
+    () => {
+      const out: Record<string, DownloadJob | undefined> = {};
+      for (const j of Object.values(activeJobs)) {
+        for (const t of j.targets) {
+          out[t.artifact_id] = j;
+        }
+      }
+      return out;
+    },
+    [activeJobs],
+  );
+
+  const jobStateByArtifact = useMemo<Record<string, DownloadState | undefined>>(
+    () => {
+      const out: Record<string, DownloadState | undefined> = {};
+      for (const [artifactId, j] of Object.entries(jobByArtifact)) {
+        if (j) out[artifactId] = j.state;
+      }
+      return out;
+    },
+    [jobByArtifact],
+  );
+
+  const jobIdByArtifact = useMemo<Record<string, string | undefined>>(
+    () => {
+      const out: Record<string, string | undefined> = {};
+      for (const [artifactId, j] of Object.entries(jobByArtifact)) {
+        if (j) out[artifactId] = j.job_id;
+      }
+      return out;
+    },
+    [jobByArtifact],
+  );
+
   const startDownload = useCallback(
     async (family: ModelFamily, target: DownloadKind) => {
       const body = {
@@ -401,6 +445,9 @@ export function ModelsSearchView() {
       jobStateByFamily={jobStateByFamily}
       jobIdByFamily={jobIdByFamily}
       jobByFamily={jobByFamily}
+      jobStateByArtifact={jobStateByArtifact}
+      jobIdByArtifact={jobIdByArtifact}
+      jobByArtifact={jobByArtifact}
       {...handlers}
     />
   );
