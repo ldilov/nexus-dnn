@@ -180,6 +180,50 @@ fn exception_default_expands_stack_trace() {
 }
 
 #[test]
+fn workspace_frame_wraps_in_osc8_hyperlink() {
+    // S5 — workspace stack-trace frames get OSC-8 hyperlinks pointing
+    // at the vscode://file/ scheme so terminals that support OSC-8
+    // can hand off to the IDE. Older terminals strip the escape and
+    // render the bare `file:line:col` text.
+    let msg = "request failed\n   at handler::call (src/lib.rs:1:1)";
+    let evt = host_event(msg, BTreeMap::new());
+    let class = classify(&evt);
+    let (buf, target) = buf_with(evt);
+    let cfg = cfg_for(class);
+    let layout = render_inspector_layout(&buf, &target, &cfg);
+
+    // OSC-8 escape sequence: ESC ]8;;<url>ESC \<label>ESC ]8;;ESC \
+    assert!(
+        layout
+            .rendered
+            .contains("\u{1b}]8;;vscode://file/src/lib.rs:1:1"),
+        "workspace frame must be wrapped in OSC-8 with vscode:// URI; got: {}",
+        layout.rendered
+    );
+}
+
+#[test]
+fn registry_frame_not_wrapped_in_osc8() {
+    let msg = "panic\n   at tokio::runtime::handle (/home/u/.cargo/registry/src/tokio-1.0/handle.rs:42:5)";
+    let evt = host_event(msg, BTreeMap::new());
+    let class = classify(&evt);
+    let (buf, target) = buf_with(evt);
+    let cfg = cfg_for(class);
+    let layout = render_inspector_layout(&buf, &target, &cfg);
+
+    // Non-workspace frames render dim, no OSC-8 wrapping.
+    assert!(
+        !layout
+            .rendered
+            .contains("\u{1b}]8;;vscode://file//home/u/.cargo"),
+        "registry frame must NOT be wrapped in OSC-8; got: {}",
+        layout.rendered
+    );
+    // But the path should still be visible (just plain text).
+    assert!(layout.rendered.contains(".cargo/registry"));
+}
+
+#[test]
 fn missing_response_body_renders_placeholder() {
     let mut f = BTreeMap::new();
     f.insert("http.status_code".into(), "500".into());
