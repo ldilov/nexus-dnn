@@ -27,6 +27,7 @@ import {
   type ParsedSearchParams,
   type SearchPage,
 } from "../../services/model_store";
+import { dispatchModelsChanged } from "../../services/model_events";
 import { ModelsSearchUI } from "./models_search.ui";
 import type { DownloadKind } from "./components/ModelCard";
 
@@ -136,6 +137,15 @@ export function ModelsSearchView() {
         const next = { ...prev };
         for (const job of updates) {
           if (!job) continue;
+          // Detect non-terminal → `downloaded` transition and broadcast
+          // a "models changed" event so listening surfaces (Local
+          // Chat's model picker, etc.) refresh their installed-model
+          // lists immediately, without waiting for a window focus.
+          const wasNonTerminal =
+            prev[job.job_id] && !isTerminalState(prev[job.job_id].state);
+          if (wasNonTerminal && job.state === "downloaded") {
+            dispatchModelsChanged({ family_id: job.family_id });
+          }
           next[job.job_id] = job;
         }
         return next;

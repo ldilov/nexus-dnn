@@ -5,6 +5,7 @@ import type {
   ModelFamily,
   Variant,
 } from "../../../services/model_store";
+import { ArtifactList } from "./ArtifactList";
 import { CompatibilityBadge } from "./CompatibilityBadge";
 import { DependencyStrip } from "./DependencyStrip";
 import {
@@ -106,6 +107,12 @@ export function ModelCard({
   const accent = accentFor(family);
   const cardCls = `${s.card} ${s.accentVariants[accent]}`;
   const showVariants = family.variants.length > 0;
+  // Fallback for upstream registries (e.g. HuggingFace) that ship
+  // multiple quantization / format artifacts but never declared
+  // `Variant` records — surface them as a flat list so the operator
+  // can pick a quantization without having to inspect the registry
+  // manually.
+  const showArtifactList = !showVariants && family.artifacts.length > 1;
   const hasRequiredDeps = family.dependencies.some(
     (d) => d.requirement === "required",
   );
@@ -200,7 +207,26 @@ export function ModelCard({
         />
       )}
 
-      {!showVariants && primary && !unsupported && !gated && (
+      {showArtifactList && !unsupported && !gated && (
+        <ArtifactList
+          artifacts={family.artifacts}
+          jobStateByArtifact={{}}
+          jobIdByArtifact={{}}
+          jobByArtifact={{}}
+          onDownload={(a) =>
+            onDownload(family, { kind: "primary", artifactId: a.artifact_id })
+          }
+          onPause={onPause}
+          onResume={onResume}
+          compatHint={
+            primary?.format === "gguf" || primary?.format === "ggml"
+              ? "llama.cpp compatible"
+              : undefined
+          }
+        />
+      )}
+
+      {!showVariants && !showArtifactList && primary && !unsupported && !gated && (
         <div className={s.precisionRow}>
           <span className={s.precisionLabel}>
             {primary.format.replace("_", " ")}
