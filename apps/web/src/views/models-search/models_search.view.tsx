@@ -141,8 +141,8 @@ export function ModelsSearchView() {
           // a "models changed" event so listening surfaces (Local
           // Chat's model picker, etc.) refresh their installed-model
           // lists immediately, without waiting for a window focus.
-          const wasNonTerminal =
-            prev[job.job_id] && !isTerminalState(prev[job.job_id].state);
+          const prior = prev[job.job_id];
+          const wasNonTerminal = prior && !isTerminalState(prior.state);
           if (wasNonTerminal && job.state === "downloaded") {
             dispatchModelsChanged({ family_id: job.family_id });
           }
