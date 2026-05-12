@@ -38,6 +38,15 @@ pub enum ControllerCommand {
     Quit,
 }
 
+/// Screen-space anchor of the most recent inspector block — terminal row
+/// the block starts at, and how many rows it occupies. Used to MoveTo +
+/// Clear(FromCursorDown) before redrawing so toggles don't stack.
+#[derive(Debug, Clone, Copy)]
+pub struct InspectorBlockAnchor {
+    pub start_row: u16,
+    pub rows: u16,
+}
+
 #[derive(Clone)]
 pub struct ControllerHandles {
     pub filter: Arc<RwLock<FilterState>>,
@@ -62,6 +71,11 @@ pub struct ControllerHandles {
             >,
         >,
     >,
+    /// Position + height of the most recently rendered inspector block.
+    /// Used to clear the previous render before redrawing on toggle, so
+    /// successive `/inspect` or section-toggle clicks don't stack
+    /// duplicate cards down the screen.
+    pub inspector_anchor: Arc<Mutex<Option<InspectorBlockAnchor>>>,
     pub click_registry: Arc<Mutex<crate::mouse::targets::ClickRegistry>>,
     pub command_tx: mpsc::Sender<ControllerCommand>,
     pub shutdown: CancellationToken,
@@ -92,6 +106,7 @@ impl ControllerHandles {
             muted,
             brush,
             inspector_collapsed: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            inspector_anchor: Arc::new(Mutex::new(None)),
             click_registry,
             command_tx: tx,
             shutdown,
@@ -358,25 +373,18 @@ fn render_inspect(handles: &ControllerHandles, id: &str) {
                 correlation_depth: 3,
                 collapsed,
             };
-            let banner = filter_mismatch_banner(handles, target);
             let layout = crate::render::inspector::render_inspector_layout(&buf, target, &cfg);
-            (banner, layout, target.id)
+            (layout, target.id)
         }),
         Err(_) => None,
     };
     match rendered {
-        Some((banner, layout, event_id)) => {
-            let banner_rows = banner
-                .as_ref()
-                .map(|b| b.lines().count() as u16)
-                .unwrap_or(0);
-            if let Some(banner) = banner {
-                print!("{banner}");
-            }
+        Some((layout, event_id)) => {
+            clear_prior_inspector_block(handles);
             let start_row = crossterm::cursor::position().ok().map(|(_, r)| r);
             print!("{}", layout.rendered);
+            remember_inspector_anchor(handles, start_row, layout.total_rows);
             if let (Some(start), Ok(mut reg)) = (start_row, handles.click_registry.lock()) {
-                let _ = banner_rows;
                 for (section, offset) in &layout.section_rows {
                     let row = start.saturating_add(*offset);
                     reg.register(
@@ -410,36 +418,34 @@ pub fn toggle_inspector_section(
     render_inspect(handles, &format!("{event_id}"));
 }
 
-fn filter_mismatch_banner(
-    handles: &ControllerHandles,
-    target: &crate::stream::event_line::EventLine,
-) -> Option<String> {
-    let filter = handles.filter.read().ok()?;
-    if !filter.has_active_filters() {
-        return None;
-    }
-    if filter.is_visible(target) {
-        return None;
-    }
-    let mut reasons: Vec<String> = Vec::new();
-    if let Some(pattern) = filter.grep_text() {
-        reasons.push(format!("/grep {pattern:?}"));
-    }
-    if let Some(source) = filter.source_glob_text() {
-        reasons.push(format!("/source {source:?}"));
-    }
-    if filter.paused() {
-        reasons.push("/pause".into());
-    }
-    let reasons = if reasons.is_empty() {
-        "active filters".into()
-    } else {
-        reasons.join(" + ")
+fn clear_prior_inspector_block(handles: &ControllerHandles) {
+    use crossterm::{
+        QueueableCommand,
+        cursor::MoveTo,
+        terminal::{Clear, ClearType},
     };
-    Some(format!(
-        "\x1b[38;5;215m⚠ inspecting an event that does NOT match {reasons}\x1b[0m\n\
-         \x1b[2m  /inspect ignores filters by design — run /clear to drop them.\x1b[0m\n"
-    ))
+    let prior = {
+        let mut guard = match handles.inspector_anchor.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        guard.take()
+    };
+    let Some(anchor) = prior else { return };
+    if anchor.rows == 0 {
+        return;
+    }
+    let mut out = std::io::stdout();
+    let _ = out.queue(MoveTo(0, anchor.start_row));
+    let _ = out.queue(Clear(ClearType::FromCursorDown));
+    let _ = std::io::Write::flush(&mut out);
+}
+
+fn remember_inspector_anchor(handles: &ControllerHandles, start_row: Option<u16>, rows: u16) {
+    let Some(start_row) = start_row else { return };
+    if let Ok(mut guard) = handles.inspector_anchor.lock() {
+        *guard = Some(InspectorBlockAnchor { start_row, rows });
+    }
 }
 
 fn render_last(handles: &ControllerHandles, count: usize, level: Severity) {
@@ -533,20 +539,62 @@ fn render_glossary(handles: &ControllerHandles) {
 
 pub fn render_glossary_block() -> String {
     let entries: [(&str, &str); 14] = [
-        ("sparkline", "Braille 8-cell bar at the prompt — recent event rate per second."),
-        ("filter indicator [!N]", "Count of active filters. Click or run /clear to drop them all."),
-        ("pressure badge ⚡N", "Events held or dropped by the rate-guard. Non-zero = backlog."),
-        ("status ribbon ▦", "Single-line cockpit emitted on filter / pause / connection change."),
-        ("severity glyph", "✸ fatal · ● error · ▲ warn · · info/debug. ASCII fallback via --no-glyphs."),
-        ("category glyph", "Domain icon prefixing the source label (host / runtime / storage / ...)."),
-        ("brush", "A persistent selection of events. /brush-add <id>, /brush, /yank to filter to them."),
-        ("pressure (drawer)", "/pressure shows held + dropped + per-source backpressure detail."),
-        ("source mixer", "/mixer shows per-source rate, mutes, and pinned correlations together."),
-        ("pin / mute", "/pin <corr> bypasses filters for matching events; /mute <source> hides them."),
-        ("follow", "/follow run:<id> or deploy:<id> — pin all events sharing that correlation."),
-        ("inspect / re-inspect", "/inspect <id> opens a detail block. Clicking a heading re-runs it."),
-        ("snapshot", "/snapshot writes a redacted JSONL of the ring buffer to disk for sharing."),
-        ("scroll passthrough", "Mouse-wheel temporarily releases capture so native scrollback works."),
+        (
+            "sparkline",
+            "Braille 8-cell bar at the prompt — recent event rate per second.",
+        ),
+        (
+            "filter indicator [!N]",
+            "Count of active filters. Click or run /clear to drop them all.",
+        ),
+        (
+            "pressure badge ⚡N",
+            "Events held or dropped by the rate-guard. Non-zero = backlog.",
+        ),
+        (
+            "status ribbon ▦",
+            "Single-line cockpit emitted on filter / pause / connection change.",
+        ),
+        (
+            "severity glyph",
+            "✸ fatal · ● error · ▲ warn · · info/debug. ASCII fallback via --no-glyphs.",
+        ),
+        (
+            "category glyph",
+            "Domain icon prefixing the source label (host / runtime / storage / ...).",
+        ),
+        (
+            "brush",
+            "A persistent selection of events. /brush-add <id>, /brush, /yank to filter to them.",
+        ),
+        (
+            "pressure (drawer)",
+            "/pressure shows held + dropped + per-source backpressure detail.",
+        ),
+        (
+            "source mixer",
+            "/mixer shows per-source rate, mutes, and pinned correlations together.",
+        ),
+        (
+            "pin / mute",
+            "/pin <corr> bypasses filters for matching events; /mute <source> hides them.",
+        ),
+        (
+            "follow",
+            "/follow run:<id> or deploy:<id> — pin all events sharing that correlation.",
+        ),
+        (
+            "inspect / re-inspect",
+            "/inspect <id> opens a detail block. Clicking a heading re-runs it.",
+        ),
+        (
+            "snapshot",
+            "/snapshot writes a redacted JSONL of the ring buffer to disk for sharing.",
+        ),
+        (
+            "scroll passthrough",
+            "Mouse-wheel temporarily releases capture so native scrollback works.",
+        ),
     ];
     let mut out = String::new();
     out.push_str(&format!(

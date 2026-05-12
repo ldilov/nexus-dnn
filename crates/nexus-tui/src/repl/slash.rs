@@ -299,7 +299,10 @@ pub const SLASH_COMMAND_TABLE: &[(&str, &str)] = &[
     ("brush-add", "add an event id to the brush selection"),
     ("brush-clear", "drop all brushed events"),
     ("yank", "apply the inferred filter from the brush selection"),
-    ("glossary", "explain the UI elements (brush, pressure, mixer, ...)"),
+    (
+        "glossary",
+        "explain the UI elements (brush, pressure, mixer, ...)",
+    ),
     (
         "verbosity",
         "set UI density: silent|quiet|default|verbose|debug or +/-",

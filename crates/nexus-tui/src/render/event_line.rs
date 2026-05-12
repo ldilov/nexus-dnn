@@ -124,10 +124,16 @@ pub fn render_event_line_with_targets(line: &EventLine, cfg: &RenderConfig) -> E
 
     if cfg.luminance_ladder {
         if let Some(bar) = crate::render::luminance_ladder::error_left_bar(line.severity) {
-            push_colored(&mut out, &bar.to_string(), severity_palette, cfg.color_depth);
+            push_colored(
+                &mut out,
+                &bar.to_string(),
+                severity_palette,
+                cfg.color_depth,
+            );
             col = col.saturating_add(1);
         }
-        let ladder_indent = crate::render::luminance_ladder::correlation_indent(cfg.correlation_depth);
+        let ladder_indent =
+            crate::render::luminance_ladder::correlation_indent(cfg.correlation_depth);
         if !ladder_indent.is_empty() {
             out.push_str(&ladder_indent);
             col = col.saturating_add(ladder_indent.chars().count() as u16);

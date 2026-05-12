@@ -1,5 +1,5 @@
-use crate::mouse::targets::ClickTarget;
 use crate::EventId;
+use crate::mouse::targets::ClickTarget;
 
 pub fn all_click_target_examples() -> Vec<ClickTarget> {
     vec![
