@@ -489,9 +489,11 @@ fn push_http_sections(
         } else {
             format!("{status}")
         };
+        let safe_status_text = sanitize_for_terminal(&status_text);
+        let safe_duration = sanitize_for_terminal(&duration);
         push_line(
             out,
-            &format!("  {outcome_glyph} {status_text}{duration}"),
+            &format!("  {outcome_glyph} {safe_status_text}{safe_duration}"),
             depth,
         );
         row += 1;
@@ -503,7 +505,9 @@ fn push_http_sections(
     if !collapsed.contains(&InspectorSection::HttpRequest) {
         let method = fields.get("http.method").map(String::as_str).unwrap_or("?");
         let url = fields.get("http.url").map(String::as_str).unwrap_or("?");
-        push_line(out, &format!("  {method} {url}"), depth);
+        let safe_method = sanitize_for_terminal(method);
+        let safe_url = sanitize_for_terminal(url);
+        push_line(out, &format!("  {safe_method} {safe_url}"), depth);
         row += 1;
     }
 
@@ -519,11 +523,12 @@ fn push_http_sections(
             push_line(out, "  (no response body captured)", depth);
             row += 1;
         } else {
-            // Snippet only — first 200 chars + ellipsis. Full body
-            // belongs to a future "expand body" toggle; operators
-            // can copy from raw_payload for the rest.
-            let mut snippet: String = body.chars().take(200).collect();
-            if body.chars().count() > 200 {
+            // Snippet only — first 200 chars + ellipsis. Sanitise
+            // before truncation so multi-byte ESC sequences can't
+            // straddle the boundary.
+            let safe_body = sanitize_for_terminal(body);
+            let mut snippet: String = safe_body.chars().take(200).collect();
+            if safe_body.chars().count() > 200 {
                 snippet.push('…');
             }
             push_line(out, &format!("  {snippet}"), depth);
@@ -575,9 +580,18 @@ fn push_stack_trace_section(
         // workspace code AND we have a file+line. Non-workspace frames
         // stay plain because clicking into a registry/site-packages
         // path is rarely useful — and dimming should remain visible.
+        // The visible LABEL text is sanitised — host-controlled paths
+        // may carry embedded ANSI escapes that would otherwise hijack
+        // the terminal when rendered. The URL passed to OSC-8 is
+        // separately percent-encoded by `build_frame_url`.
+        let safe_file_label: std::borrow::Cow<'_, str> = frame
+            .file
+            .as_deref()
+            .map(sanitize_for_terminal)
+            .unwrap_or(std::borrow::Cow::Borrowed(""));
         let location_plain = match (frame.file.as_deref(), frame.line) {
-            (Some(file), Some(line)) => format!("{file}:{line}"),
-            (Some(file), None) => file.to_string(),
+            (Some(_), Some(line)) => format!("{safe_file_label}:{line}"),
+            (Some(_), None) => safe_file_label.to_string(),
             _ => String::new(),
         };
         let location_styled = match (
@@ -591,10 +605,14 @@ fn push_stack_trace_section(
             }
             _ => location_plain.clone(),
         };
+        let safe_function = sanitize_for_terminal(&frame.function);
         let line_text = if location_plain.is_empty() {
-            format!("  at {}", frame.function)
+            format!("  at {safe_function}")
         } else {
-            format!("  at {}  ·  {}", frame.function, location_styled)
+            // location_styled is either plain text (sanitised below
+            // before URL-encoding) or our own OSC-8 wrap around a
+            // url+label — both safe to interpolate.
+            format!("  at {safe_function}  ·  {location_styled}")
         };
         if frame.is_workspace_frame() {
             push_line(out, &line_text, depth);
@@ -632,10 +650,52 @@ fn build_frame_url(file: &str, line: u32, column: Option<u32>) -> String {
     // Normalize Windows backslashes to forward slashes; vscode:// expects
     // POSIX path separators inside its URI.
     let normalized = file.replace('\\', "/");
+    // Percent-encode every byte that could break out of the URL or
+    // hijack the OSC-8 escape envelope — ESC (0x1B), BEL (0x07), CSI
+    // (0x9B), C0 controls, plus URI-significant characters (space, `?`,
+    // `#`, `"`, `'`, `<`, `>`, backtick) and `%` itself for round-trip
+    // safety. RFC 3986 unreserved characters and the `/` separator are
+    // left intact so paths stay readable.
+    let encoded = percent_encode_path(&normalized);
     match column {
-        Some(c) => format!("vscode://file/{normalized}:{line}:{c}"),
-        None => format!("vscode://file/{normalized}:{line}"),
+        Some(c) => format!("vscode://file/{encoded}:{line}:{c}"),
+        None => format!("vscode://file/{encoded}:{line}"),
     }
+}
+
+fn percent_encode_path(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for &b in s.as_bytes() {
+        let safe = matches!(
+            b,
+            b'A'..=b'Z'
+                | b'a'..=b'z'
+                | b'0'..=b'9'
+                | b'-'
+                | b'_'
+                | b'.'
+                | b'~'
+                | b'/'
+                | b':'
+                | b'@'
+                | b','
+                | b'+'
+                | b'!'
+                | b'$'
+                | b'&'
+                | b'('
+                | b')'
+                | b'*'
+                | b'='
+                | b';'
+        );
+        if safe {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }
 
 fn push_section(
@@ -670,7 +730,7 @@ fn section_icon(section: InspectorSection) -> &'static str {
         InspectorSection::HttpStatus => "⚑",
         InspectorSection::HttpRequest => "→",
         InspectorSection::HttpResponse => "←",
-        InspectorSection::StackTrace => "▦",
+        InspectorSection::StackTrace => "⌁",
     }
 }
 
@@ -683,7 +743,13 @@ fn push_target_header(out: &mut String, target: &EventLine, depth: ColorDepth) {
         cat_palette,
         depth,
     );
-    let summary = format!("{} — {}", target.source, target.summary);
+    // target.source and target.summary are host-controlled — strip any
+    // embedded terminal escape bytes before interpolating, so a
+    // malicious log payload can't clear the screen or rewrite the
+    // terminal title via the inspector echo of its own summary.
+    let safe_source = sanitize_for_terminal(&target.source);
+    let safe_summary = sanitize_for_terminal(&target.summary);
+    let summary = format!("{safe_source} — {safe_summary}");
     let source_colored = colorize(&summary, source_palette, depth);
     out.push_str(&format!(
         "{gutter} {sev}{cat}{reset}{cat_glyph}{source_colored}\n",
@@ -695,12 +761,42 @@ fn push_target_header(out: &mut String, target: &EventLine, depth: ColorDepth) {
 }
 
 fn push_kv(out: &mut String, key: &str, value: &str, depth: ColorDepth) {
+    let safe_key = sanitize_for_terminal(key);
+    let safe_value = sanitize_for_terminal(value);
     out.push_str(&format!(
         "{gutter}   {key_open}{key}{key_close}: {value}\n",
         gutter = colorize(inspector_gutter(), category_color_for_section(), depth),
         key_open = SetForegroundColor(render_color(SPECTRAL_PRIMARY, depth)),
         key_close = ResetColor,
+        key = safe_key,
+        value = safe_value,
     ));
+}
+
+/// Strip terminal control bytes (ESC, BEL, CSI start) from a string
+/// before interpolating it into rendered output. The TUI accepts
+/// arbitrary event-payload text from the host, which may contain
+/// embedded ANSI escapes — without sanitisation a malicious host log
+/// could clear the screen, rewrite the title, or hijack subsequent
+/// OSC sequences. This is the chokepoint for any host-controlled
+/// string reaching `push_kv` / `push_line` / `osc8_hyperlink`.
+///
+/// Returns a `Cow` so the common case (no escapes) skips allocation.
+fn sanitize_for_terminal(s: &str) -> std::borrow::Cow<'_, str> {
+    if s.bytes()
+        .any(|b| b == 0x1b || b == 0x07 || b == 0x9b || (b < 0x20 && b != b'\t' && b != b'\n'))
+    {
+        let cleaned: String = s
+            .chars()
+            .filter(|c| {
+                let b = *c as u32;
+                b != 0x1b && b != 0x07 && b != 0x9b && !(b < 0x20 && b != 0x09 && b != 0x0A)
+            })
+            .collect();
+        std::borrow::Cow::Owned(cleaned)
+    } else {
+        std::borrow::Cow::Borrowed(s)
+    }
 }
 
 fn push_line(out: &mut String, line: &str, depth: ColorDepth) {

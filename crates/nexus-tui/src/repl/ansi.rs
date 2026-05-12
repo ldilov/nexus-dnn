@@ -253,6 +253,21 @@ pub fn source_label_color(source: &str, category: SourceCategory) -> PaletteColo
 /// Wrap `label` in an OSC-8 hyperlink escape pointing to `url`.
 /// Modern terminals render the label as clickable; older terminals
 /// strip the OSC sequence and show the label inline.
+///
+/// Defensive: if either `url` or `label` contains an ESC (0x1B), BEL
+/// (0x07), or CSI (0x9B) byte, we refuse to emit the OSC envelope and
+/// return the bare label instead. Without this guard a malicious host
+/// could send a path containing `\x1b\\evil\x1b]8;;` to terminate the
+/// outer OSC-8 early and hijack the subsequent terminal state. The
+/// caller is responsible for percent-encoding the URL upstream;
+/// this is a final belt-and-braces check.
 pub fn osc8_hyperlink(url: &str, label: &str) -> String {
+    if contains_terminal_control(url) || contains_terminal_control(label) {
+        return label.to_string();
+    }
     format!("\u{1b}]8;;{url}\u{1b}\\{label}\u{1b}]8;;\u{1b}\\")
+}
+
+fn contains_terminal_control(s: &str) -> bool {
+    s.bytes().any(|b| b == 0x1b || b == 0x07 || b == 0x9b)
 }
