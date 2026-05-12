@@ -222,16 +222,21 @@ impl EditMode for MouseAwareEditMode {
             return ReedlineEvent::None;
         }
 
-        // Filter mode — closed: `/` on an empty buffer promotes to a
-        // filter-mode open. The keystroke is consumed (reedline doesn't
-        // see it; no `/` appears in the buffer).
+        // Filter mode — closed: `Ctrl+/` (or `Ctrl+_` on some terminals
+        // that swallow the `/` chord) promotes to filter-mode open.
+        // Bare `/` is RESERVED for slash commands (`/grep`, `/inspect`,
+        // `/follow`, …) — auto-intercepting it broke muscle memory and
+        // the Define Q1 "modal-with-fallback" escape was never fully
+        // designed. The Ctrl chord is unambiguous: it never conflicts
+        // with command sigils or filter regexes.
         if let (Some(focus), Some(tx)) = (&self.filter_focus, &self.filter_key_tx)
             && !focus.is_open()
-            && self.buffer_chars == 0
             && let Event::Key(key_event) = inner_event
             && key_event.kind != KeyEventKind::Release
-            && key_event.modifiers.is_empty()
-            && let KeyCode::Char('/') = key_event.code
+            && key_event.modifiers.contains(KeyModifiers::CONTROL)
+            && (matches!(key_event.code, KeyCode::Char('/'))
+                || matches!(key_event.code, KeyCode::Char('_'))
+                || matches!(key_event.code, KeyCode::Char('f')))
         {
             focus.open();
             // Wake the controller so it can clear the prompt area and
@@ -244,14 +249,11 @@ impl EditMode for MouseAwareEditMode {
             match tx.try_send(FilterKey::Backspace) {
                 Ok(()) | Err(TrySendError::Full(_)) => {}
                 Err(TrySendError::Closed(_)) => {
+                    // Controller is gone — close the flag and swallow
+                    // the chord. We never let it fall through to
+                    // reedline because the chord is a control sequence,
+                    // not printable input.
                     focus.close();
-                    // Let the `/` keystroke fall through to reedline
-                    // as a normal character; user sees `/` in buffer.
-                    self.buffer_chars = self.buffer_chars.saturating_add(1);
-                    match ReedlineRawEvent::convert_from(inner_event) {
-                        Some(raw) => return self.inner.parse_event(raw),
-                        None => return ReedlineEvent::None,
-                    }
                 }
             }
             return ReedlineEvent::None;
@@ -427,36 +429,42 @@ mod tests {
     }
 
     #[test]
-    fn slash_on_empty_buffer_opens_filter_focus() {
+    fn ctrl_slash_opens_filter_focus() {
         let (mut mode, mut filter_rx, focus) = make_filter_mode();
         let evt = mode.parse_event(raw(Event::Key(KeyEvent::new(
             KeyCode::Char('/'),
-            KeyModifiers::NONE,
+            KeyModifiers::CONTROL,
         ))));
         assert!(matches!(evt, ReedlineEvent::None));
-        assert!(
-            focus.is_open(),
-            "FilterFocus must open on `/` first-keystroke"
-        );
-        // Initial wake-up event is sent so the controller redraws.
+        assert!(focus.is_open(), "FilterFocus must open on Ctrl+/");
         assert!(filter_rx.try_recv().is_ok());
     }
 
     #[test]
-    fn slash_after_typing_passes_through() {
+    fn ctrl_f_also_opens_filter_focus() {
+        // Alternate chord for terminals that swallow Ctrl+/.
         let (mut mode, _filter_rx, focus) = make_filter_mode();
-        // User types `g` first — buffer is no longer empty.
         let _ = mode.parse_event(raw(Event::Key(KeyEvent::new(
-            KeyCode::Char('g'),
-            KeyModifiers::NONE,
+            KeyCode::Char('f'),
+            KeyModifiers::CONTROL,
         ))));
+        assert!(focus.is_open(), "Ctrl+F must open filter as fallback");
+    }
+
+    #[test]
+    fn bare_slash_passes_through_to_reedline() {
+        // Slash commands like `/grep`, `/inspect`, `/follow` must reach
+        // reedline; the auto-intercept of plain `/` was reverted.
+        let (mut mode, _filter_rx, focus) = make_filter_mode();
         let evt = mode.parse_event(raw(Event::Key(KeyEvent::new(
             KeyCode::Char('/'),
             KeyModifiers::NONE,
         ))));
-        // Reedline must process the `/` normally — not consumed.
         assert!(!matches!(evt, ReedlineEvent::None));
-        assert!(!focus.is_open(), "FilterFocus must NOT open mid-line");
+        assert!(
+            !focus.is_open(),
+            "bare `/` must NOT open filter — slash commands need it"
+        );
     }
 
     #[test]
@@ -517,63 +525,5 @@ mod tests {
         assert!(focus.is_open());
         focus.close();
         assert!(!focus.is_open());
-    }
-
-    #[test]
-    fn history_recall_then_slash_does_not_hijack_focus() {
-        // Review H2: if the user presses Up to recall a previous
-        // command, the buffer is non-empty (reedline replaced it) but
-        // the mirror would have been 0 — `/` must NOT open filter.
-        let (mut mode, _filter_rx, focus) = make_filter_mode();
-        let _ = mode.parse_event(raw(Event::Key(KeyEvent::new(
-            KeyCode::Up,
-            KeyModifiers::NONE,
-        ))));
-        let evt = mode.parse_event(raw(Event::Key(KeyEvent::new(
-            KeyCode::Char('/'),
-            KeyModifiers::NONE,
-        ))));
-        // `/` falls through to reedline; filter focus stays closed.
-        assert!(!matches!(evt, ReedlineEvent::None));
-        assert!(!focus.is_open(), "Up + / must not open filter mode");
-    }
-
-    #[test]
-    fn ctrl_e_marks_buffer_dirty_so_slash_falls_through() {
-        // Ctrl+E (move-to-EOL) implies the buffer has content; `/` after
-        // it must NOT open filter.
-        let (mut mode, _filter_rx, focus) = make_filter_mode();
-        let _ = mode.parse_event(raw(Event::Key(KeyEvent::new(
-            KeyCode::Char('e'),
-            KeyModifiers::CONTROL,
-        ))));
-        let evt = mode.parse_event(raw(Event::Key(KeyEvent::new(
-            KeyCode::Char('/'),
-            KeyModifiers::NONE,
-        ))));
-        assert!(!matches!(evt, ReedlineEvent::None));
-        assert!(!focus.is_open(), "Ctrl+E + / must not open filter mode");
-    }
-
-    #[test]
-    fn backspace_reduces_mirror_so_slash_can_open() {
-        let (mut mode, _filter_rx, focus) = make_filter_mode();
-        // Type one char then delete it.
-        let _ = mode.parse_event(raw(Event::Key(KeyEvent::new(
-            KeyCode::Char('x'),
-            KeyModifiers::NONE,
-        ))));
-        let _ = mode.parse_event(raw(Event::Key(KeyEvent::new(
-            KeyCode::Backspace,
-            KeyModifiers::NONE,
-        ))));
-        let _ = mode.parse_event(raw(Event::Key(KeyEvent::new(
-            KeyCode::Char('/'),
-            KeyModifiers::NONE,
-        ))));
-        assert!(
-            focus.is_open(),
-            "after typing-then-deleting, `/` should still open filter"
-        );
     }
 }
