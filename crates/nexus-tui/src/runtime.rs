@@ -221,15 +221,36 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
     let mouse_focus = MenuFocus::new();
     let (mouse_tx, mouse_rx) = mpsc::channel::<crossterm::event::MouseEvent>(256);
     let (menu_key_tx, menu_key_rx) = mpsc::channel::<MenuKey>(32);
+    let filter_focus = crate::repl::mouse_edit_mode::FilterFocus::new();
+    let (filter_key_tx, filter_key_rx) =
+        mpsc::channel::<crate::repl::mouse_edit_mode::FilterKey>(64);
     let mouse_hooks = if cfg.enable_mouse {
         Some(MouseHooks {
             mouse_tx: mouse_tx.clone(),
             menu_focus: mouse_focus.clone(),
             menu_key_tx: menu_key_tx.clone(),
+            filter_focus: Some(filter_focus.clone()),
+            filter_key_tx: Some(filter_key_tx.clone()),
         })
     } else {
-        None
+        // Non-mouse build path still gets the filter bridge — the
+        // `/` keystroke is keyboard, not mouse.
+        Some(MouseHooks {
+            mouse_tx: mouse_tx.clone(),
+            menu_focus: mouse_focus.clone(),
+            menu_key_tx: menu_key_tx.clone(),
+            filter_focus: Some(filter_focus.clone()),
+            filter_key_tx: Some(filter_key_tx.clone()),
+        })
     };
+
+    let filter_controller_handle = tokio::spawn(filter_controller_loop(
+        filter_key_rx,
+        filter_focus.clone(),
+        Arc::clone(&filter),
+        Arc::clone(&prompt_state),
+        shutdown.clone(),
+    ));
 
     let mouse_support = if cfg.enable_mouse {
         let mut out = stdout().lock();
@@ -265,10 +286,12 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
     shutdown.cancel();
     drop(mouse_tx);
     drop(menu_key_tx);
+    drop(filter_key_tx);
     let _ = render_handle.await;
     let _ = sparkline_handle.await;
     let _ = controller_handle.await;
     let _ = mouse_dispatch_handle.await;
+    let _ = filter_controller_handle.await;
     if mouse_support == MouseSupport::Enabled {
         let mut out = stdout().lock();
         let _ = disable_mouse_capture(&mut out);
@@ -914,6 +937,102 @@ fn sync_hover_hint(hover_state: &Arc<HoverState>, prompt_state: &Arc<Mutex<Promp
     let hint = target.as_ref().map(|t| t.whisper_hint().to_string());
     if let Ok(mut state) = prompt_state.lock() {
         state.hover_hint = hint;
+    }
+}
+
+/// Spec 044 S2 — Incremental filter bar controller.
+///
+/// Consumes keystrokes routed from [`MouseAwareEditMode`] while the
+/// shared [`FilterFocus`] flag is open. Maintains a local buffer of
+/// what the user has typed and pushes it into [`FilterState::set_grep`]
+/// on every change so the visible stream re-filters live without the
+/// user pressing Enter.
+///
+/// Key semantics:
+/// - Char(c) appends to buffer; Backspace pops; Clear truncates.
+/// - Enter commits the current query (it's already live) and closes
+///   the focus — reedline regains the keyboard and the persisted
+///   `/grep` filter stays in effect.
+/// - Esc clears the filter back to "no /grep" and closes the focus.
+///
+/// `PromptState.filter_query` is kept in sync so the prompt renderer
+/// can show `[/ embed_]` while the user types.
+async fn filter_controller_loop(
+    mut rx: tokio::sync::mpsc::Receiver<crate::repl::mouse_edit_mode::FilterKey>,
+    focus: crate::repl::mouse_edit_mode::FilterFocus,
+    filter: Arc<RwLock<FilterState>>,
+    prompt_state: Arc<Mutex<PromptState>>,
+    shutdown: CancellationToken,
+) {
+    use crate::repl::mouse_edit_mode::FilterKey;
+    let mut buffer = String::new();
+    loop {
+        let key = tokio::select! {
+            biased;
+            _ = shutdown.cancelled() => return,
+            maybe = rx.recv() => match maybe {
+                Some(k) => k,
+                None => return,
+            },
+        };
+        match key {
+            FilterKey::Char(c) => {
+                buffer.push(c);
+                apply_filter_buffer(&filter, &buffer);
+                publish_filter_query(&prompt_state, Some(buffer.clone()));
+            }
+            FilterKey::Backspace => {
+                buffer.pop();
+                apply_filter_buffer(&filter, &buffer);
+                publish_filter_query(&prompt_state, Some(buffer.clone()));
+            }
+            FilterKey::Clear => {
+                buffer.clear();
+                apply_filter_buffer(&filter, &buffer);
+                publish_filter_query(&prompt_state, Some(buffer.clone()));
+            }
+            FilterKey::Enter => {
+                // Commit: the regex is already live; leave it as-is,
+                // just close the focus so reedline gets the keyboard.
+                focus.close();
+                publish_filter_query(&prompt_state, None);
+            }
+            FilterKey::Esc => {
+                // Cancel: clear the regex AND close the focus.
+                buffer.clear();
+                if let Ok(mut f) = filter.write() {
+                    let _ = f.set_grep(None);
+                }
+                focus.close();
+                publish_filter_query(&prompt_state, None);
+            }
+        }
+    }
+}
+
+/// Push the current filter buffer into `FilterState.set_grep`. Empty
+/// buffer means "no regex active" (the user is in filter mode but
+/// hasn't typed anything yet). Invalid regex updates are logged and
+/// dropped — the live UI keeps the previous valid pattern.
+fn apply_filter_buffer(filter: &Arc<RwLock<FilterState>>, buffer: &str) {
+    let Ok(mut f) = filter.write() else { return };
+    let trimmed = buffer.trim();
+    let pattern: Option<&str> = if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    };
+    if let Err(err) = f.set_grep(pattern) {
+        // Don't surface bad regex during typing — the user might be
+        // mid-keystroke (e.g. `(` while typing `(foo|bar)`). The
+        // previous valid pattern is preserved silently.
+        let _ = err;
+    }
+}
+
+fn publish_filter_query(prompt_state: &Arc<Mutex<PromptState>>, query: Option<String>) {
+    if let Ok(mut s) = prompt_state.lock() {
+        s.filter_query = query;
     }
 }
 

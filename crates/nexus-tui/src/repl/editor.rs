@@ -12,7 +12,9 @@ use tokio::sync::mpsc::Sender as TokioSender;
 
 use crate::repl::ansi::ColorDepth;
 use crate::repl::completion::SlashCompleter;
-use crate::repl::mouse_edit_mode::{MenuFocus, MenuKey, MouseAwareEditMode};
+use crate::repl::mouse_edit_mode::{
+    FilterFocus, FilterKey, MenuFocus, MenuKey, MouseAwareEditMode,
+};
 use crate::repl::prompt::AmbientPrompt;
 use crate::stream::ring_buffer::RingBuffer;
 use crate::theme::loader::{ThemePaths, theme_paths};
@@ -26,6 +28,12 @@ pub struct MouseHooks {
     pub mouse_tx: TokioSender<MouseEvent>,
     pub menu_focus: MenuFocus,
     pub menu_key_tx: TokioSender<MenuKey>,
+    /// Spec 044 S2 — incremental filter bar bridge. Reedline-bypass:
+    /// when `/` is pressed on an empty buffer the MouseAwareEditMode
+    /// opens `filter_focus` and forwards every subsequent key event to
+    /// `filter_key_tx` until the focus closes.
+    pub filter_focus: Option<FilterFocus>,
+    pub filter_key_tx: Option<TokioSender<FilterKey>>,
 }
 
 pub fn build_editor() -> anyhow::Result<Reedline> {
@@ -60,12 +68,14 @@ pub fn build_editor_with_theme(
     let keybindings = build_keybindings();
     let emacs: Box<dyn EditMode> = Box::new(Emacs::new(keybindings));
     let edit_mode: Box<dyn EditMode> = match mouse_hooks {
-        Some(hooks) => Box::new(MouseAwareEditMode::new(
-            emacs,
-            hooks.mouse_tx,
-            hooks.menu_focus,
-            hooks.menu_key_tx,
-        )),
+        Some(hooks) => {
+            let mut mode =
+                MouseAwareEditMode::new(emacs, hooks.mouse_tx, hooks.menu_focus, hooks.menu_key_tx);
+            if let (Some(focus), Some(tx)) = (hooks.filter_focus, hooks.filter_key_tx) {
+                mode = mode.with_filter_bridge(focus, tx);
+            }
+            Box::new(mode)
+        }
         None => emacs,
     };
     let editor = Reedline::create()

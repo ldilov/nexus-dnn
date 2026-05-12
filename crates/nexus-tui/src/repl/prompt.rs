@@ -96,6 +96,12 @@ pub struct PromptState {
     pub pressure: PressureSnapshot,
     pub hover_hint: Option<String>,
     pub verbosity: VerbosityLevel,
+    /// Spec 044 S2 — incremental filter mode is currently open and this
+    /// is the live query the user is typing. Rendered as a status-line
+    /// indicator like `[/ embed_] 12 hidden / 87 total`. When `None`,
+    /// filter mode is closed (the persisted `/grep` setting still
+    /// applies via `FilterState`).
+    pub filter_query: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -139,6 +145,7 @@ impl AmbientPrompt {
             pressure: PressureSnapshot::default(),
             hover_hint: None,
             verbosity: VerbosityLevel::default(),
+            filter_query: None,
         };
         Self {
             state: Arc::new(Mutex::new(state)),
@@ -314,6 +321,20 @@ impl Prompt for AmbientPrompt {
         } else {
             None
         };
+
+        // Spec 044 S2 — live incremental filter bar. When the user is
+        // mid-typing a `/`-filter, the buffer text trails the badge as
+        // `[/ embed_]` so the operator can see exactly what regex is
+        // being applied per keystroke.
+        if let Some(query) = snapshot.filter_query.as_deref() {
+            left.push(' ');
+            col = col.saturating_add(1);
+            left.push_str(ANSI_ACCENT_VIOLET);
+            let chip = format!("[/ {query}▏]");
+            left.push_str(&chip);
+            left.push_str(ANSI_RESET);
+            col = col.saturating_add(visible_width(&chip));
+        }
         let _ = col;
         self.register_regions(sparkline_start..sparkline_end, filter_range);
         Cow::Owned(left)
