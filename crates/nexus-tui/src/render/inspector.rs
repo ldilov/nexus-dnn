@@ -571,15 +571,30 @@ fn push_stack_trace_section(
     let total = frames.len();
     let render_count = total.min(TOP_N);
     for frame in frames.iter().take(render_count) {
-        let location = match (frame.file.as_deref(), frame.line) {
+        // Build the location text; wrap in OSC-8 if the frame is
+        // workspace code AND we have a file+line. Non-workspace frames
+        // stay plain because clicking into a registry/site-packages
+        // path is rarely useful — and dimming should remain visible.
+        let location_plain = match (frame.file.as_deref(), frame.line) {
             (Some(file), Some(line)) => format!("{file}:{line}"),
             (Some(file), None) => file.to_string(),
             _ => String::new(),
         };
-        let line_text = if location.is_empty() {
+        let location_styled = match (
+            frame.is_workspace_frame(),
+            frame.file.as_deref(),
+            frame.line,
+        ) {
+            (true, Some(file), Some(line)) => {
+                let url = build_frame_url(file, line, frame.column);
+                crate::repl::ansi::osc8_hyperlink(&url, &location_plain)
+            }
+            _ => location_plain.clone(),
+        };
+        let line_text = if location_plain.is_empty() {
             format!("  at {}", frame.function)
         } else {
-            format!("  at {}  ·  {}", frame.function, location)
+            format!("  at {}  ·  {}", frame.function, location_styled)
         };
         if frame.is_workspace_frame() {
             push_line(out, &line_text, depth);
@@ -601,6 +616,26 @@ fn push_stack_trace_section(
         row += 1;
     }
     row
+}
+
+/// Build the URL embedded in an OSC-8 hyperlink wrapping a stack-trace
+/// file:line reference. The scheme is `vscode://file/<path>:<line>:<col>`
+/// — the de-facto IDE-universal handler. Most modern terminals
+/// (WezTerm, Kitty, iTerm2, Windows Terminal, recent gnome-terminal)
+/// pass `vscode://` URIs to the OS handler; older terminals strip the
+/// OSC sequence entirely so the user just sees the bare label.
+///
+/// The Define-Q5 decision was "accept degradation, no copy hint" — so
+/// terminals without OSC-8 support are not penalised, they just see
+/// the same plain-text `file:line:col` they did before.
+fn build_frame_url(file: &str, line: u32, column: Option<u32>) -> String {
+    // Normalize Windows backslashes to forward slashes; vscode:// expects
+    // POSIX path separators inside its URI.
+    let normalized = file.replace('\\', "/");
+    match column {
+        Some(c) => format!("vscode://file/{normalized}:{line}:{c}"),
+        None => format!("vscode://file/{normalized}:{line}"),
+    }
 }
 
 fn push_section(
