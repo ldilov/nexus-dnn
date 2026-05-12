@@ -4,3 +4,4 @@
 pub mod classifier;
 pub mod correlation;
 pub mod heuristics;
+pub mod stack_trace;
