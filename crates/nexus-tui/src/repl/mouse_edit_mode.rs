@@ -20,7 +20,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, MouseEvent};
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent};
 use reedline::{EditMode, PromptEditMode, ReedlineEvent, ReedlineRawEvent};
 use tokio::sync::mpsc::Sender as TokioSender;
 
@@ -44,6 +44,68 @@ impl MenuFocus {
 
     pub fn is_open(&self) -> bool {
         self.0.load(Ordering::Acquire)
+    }
+}
+
+/// Shared, lock-free flag toggled by the filter controller. While `true`
+/// the incremental filter bar owns the keyboard — reedline is paused and
+/// every key event is forwarded to the filter-key channel.
+///
+/// Opened automatically by `MouseAwareEditMode` when the user presses
+/// `/` on an empty prompt buffer (Define spec 044 Q1: modal-with-fallback).
+/// Closed by the filter controller on Esc / Enter.
+#[derive(Debug, Default, Clone)]
+pub struct FilterFocus(Arc<AtomicBool>);
+
+impl FilterFocus {
+    pub fn new() -> Self {
+        Self(Arc::new(AtomicBool::new(false)))
+    }
+
+    pub fn open(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+
+    pub fn close(&self) {
+        self.0.store(false, Ordering::Release);
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+}
+
+/// A single keystroke routed to the filter controller while
+/// [`FilterFocus`] is open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilterKey {
+    Char(char),
+    Backspace,
+    Enter,
+    Esc,
+    /// Ctrl+U or Ctrl+W — clear the entire filter buffer.
+    Clear,
+}
+
+impl FilterKey {
+    fn from_key_event(evt: &KeyEvent) -> Option<Self> {
+        if evt.kind == KeyEventKind::Release {
+            return None;
+        }
+        if evt.modifiers.contains(KeyModifiers::CONTROL) {
+            return match evt.code {
+                KeyCode::Char('u') | KeyCode::Char('w') => Some(FilterKey::Clear),
+                KeyCode::Char('c') => Some(FilterKey::Esc),
+                _ => None,
+            };
+        }
+        match evt.code {
+            KeyCode::Char(c) => Some(FilterKey::Char(c)),
+            KeyCode::Backspace => Some(FilterKey::Backspace),
+            KeyCode::Enter => Some(FilterKey::Enter),
+            KeyCode::Esc => Some(FilterKey::Esc),
+            _ => None,
+        }
     }
 }
 
@@ -73,11 +135,25 @@ impl MenuKey {
 
 /// Intercepts crossterm mouse events into `mouse_tx` and modal menu keys
 /// into `menu_key_tx` while delegating ordinary keyboard input to `inner`.
+///
+/// Also owns the filter-mode bridge: tracks a best-effort mirror of the
+/// prompt buffer length so that `/` on an empty buffer can be promoted
+/// into a filter-mode open (per spec 044 Define Q1 — `/` opens the
+/// incremental filter bar; modal-with-fallback otherwise).
 pub struct MouseAwareEditMode {
     inner: Box<dyn EditMode>,
     mouse_tx: TokioSender<MouseEvent>,
     menu_focus: MenuFocus,
     menu_key_tx: TokioSender<MenuKey>,
+    filter_focus: Option<FilterFocus>,
+    filter_key_tx: Option<TokioSender<FilterKey>>,
+    /// Best-effort character count of the live prompt buffer. We can't
+    /// query reedline for its buffer, so we count printable Char events
+    /// and decrement on Backspace. Reset to 0 on Enter / Esc. Heuristic
+    /// only — paste, history recall, and other reedline edit actions
+    /// will drift the mirror; that's acceptable per the Define spec
+    /// since the only thing it gates is "is `/` the first keystroke?"
+    buffer_chars: usize,
 }
 
 impl MouseAwareEditMode {
@@ -92,7 +168,25 @@ impl MouseAwareEditMode {
             mouse_tx,
             menu_focus,
             menu_key_tx,
+            filter_focus: None,
+            filter_key_tx: None,
+            buffer_chars: 0,
         }
+    }
+
+    /// Attach the filter-mode bridge. When `focus` is opened by either
+    /// (a) the user pressing `/` on an empty buffer, or (b) an external
+    /// trigger calling `focus.open()`, all subsequent key events are
+    /// converted to [`FilterKey`] and forwarded to `key_tx` until the
+    /// focus closes.
+    pub fn with_filter_bridge(
+        mut self,
+        focus: FilterFocus,
+        key_tx: TokioSender<FilterKey>,
+    ) -> Self {
+        self.filter_focus = Some(focus);
+        self.filter_key_tx = Some(key_tx);
+        self
     }
 }
 
@@ -115,6 +209,45 @@ impl EditMode for MouseAwareEditMode {
             return ReedlineEvent::None;
         }
 
+        // Filter mode — already open: route every key event to the
+        // filter controller, do NOT let reedline see it.
+        if let (Some(focus), Some(tx)) = (&self.filter_focus, &self.filter_key_tx)
+            && focus.is_open()
+            && let Event::Key(key_event) = inner_event
+            && let Some(fk) = FilterKey::from_key_event(&key_event)
+        {
+            let _ = tx.try_send(fk);
+            // Filter Enter/Esc close the focus, but the controller
+            // performs the close — we just relay the keystroke.
+            return ReedlineEvent::None;
+        }
+
+        // Filter mode — closed: `/` on an empty buffer promotes to a
+        // filter-mode open. The keystroke is consumed (reedline doesn't
+        // see it; no `/` appears in the buffer).
+        if let (Some(focus), Some(tx)) = (&self.filter_focus, &self.filter_key_tx)
+            && !focus.is_open()
+            && self.buffer_chars == 0
+            && let Event::Key(key_event) = inner_event
+            && key_event.kind != KeyEventKind::Release
+            && key_event.modifiers.is_empty()
+            && let KeyCode::Char('/') = key_event.code
+        {
+            focus.open();
+            // Wake the controller so it can clear the prompt area and
+            // start rendering the filter bar. Send a no-op Char that
+            // the controller treats as "initial render"; pure
+            // book-keeping otherwise.
+            let _ = tx.try_send(FilterKey::Backspace);
+            return ReedlineEvent::None;
+        }
+
+        if let Event::Key(key_event) = inner_event
+            && key_event.kind != KeyEventKind::Release
+        {
+            self.track_buffer(&key_event);
+        }
+
         match ReedlineRawEvent::convert_from(inner_event) {
             Some(raw) => self.inner.parse_event(raw),
             None => ReedlineEvent::None,
@@ -123,6 +256,27 @@ impl EditMode for MouseAwareEditMode {
 
     fn edit_mode(&self) -> PromptEditMode {
         self.inner.edit_mode()
+    }
+}
+
+impl MouseAwareEditMode {
+    /// Mirror reedline's buffer length to enable empty-buffer detection
+    /// for `/` to promote into filter mode. Best-effort — paste and
+    /// history recall drift the count; that's fine since the only
+    /// gated path is "is this the first keystroke of the line?".
+    fn track_buffer(&mut self, evt: &KeyEvent) {
+        if evt.modifiers.contains(KeyModifiers::CONTROL) {
+            if matches!(evt.code, KeyCode::Char('u') | KeyCode::Char('w')) {
+                self.buffer_chars = 0;
+            }
+            return;
+        }
+        match evt.code {
+            KeyCode::Char(_) => self.buffer_chars = self.buffer_chars.saturating_add(1),
+            KeyCode::Backspace => self.buffer_chars = self.buffer_chars.saturating_sub(1),
+            KeyCode::Enter | KeyCode::Esc => self.buffer_chars = 0,
+            _ => {}
+        }
     }
 }
 
@@ -222,5 +376,131 @@ mod tests {
         assert!(focus.is_open());
         focus.close();
         assert!(!focus.is_open());
+    }
+
+    fn make_filter_mode() -> (MouseAwareEditMode, mpsc::Receiver<FilterKey>, FilterFocus) {
+        let (mouse_tx, _mouse_rx) = mpsc::channel::<MouseEvent>(8);
+        let (menu_tx, _menu_rx) = mpsc::channel::<MenuKey>(8);
+        let (filter_tx, filter_rx) = mpsc::channel::<FilterKey>(16);
+        let focus = FilterFocus::new();
+        let inner: Box<dyn EditMode> = Box::new(Emacs::new(default_emacs_keybindings()));
+        let mode = MouseAwareEditMode::new(inner, mouse_tx, MenuFocus::new(), menu_tx)
+            .with_filter_bridge(focus.clone(), filter_tx);
+        (mode, filter_rx, focus)
+    }
+
+    #[test]
+    fn slash_on_empty_buffer_opens_filter_focus() {
+        let (mut mode, mut filter_rx, focus) = make_filter_mode();
+        let evt = mode.parse_event(raw(Event::Key(KeyEvent::new(
+            KeyCode::Char('/'),
+            KeyModifiers::NONE,
+        ))));
+        assert!(matches!(evt, ReedlineEvent::None));
+        assert!(
+            focus.is_open(),
+            "FilterFocus must open on `/` first-keystroke"
+        );
+        // Initial wake-up event is sent so the controller redraws.
+        assert!(filter_rx.try_recv().is_ok());
+    }
+
+    #[test]
+    fn slash_after_typing_passes_through() {
+        let (mut mode, _filter_rx, focus) = make_filter_mode();
+        // User types `g` first — buffer is no longer empty.
+        let _ = mode.parse_event(raw(Event::Key(KeyEvent::new(
+            KeyCode::Char('g'),
+            KeyModifiers::NONE,
+        ))));
+        let evt = mode.parse_event(raw(Event::Key(KeyEvent::new(
+            KeyCode::Char('/'),
+            KeyModifiers::NONE,
+        ))));
+        // Reedline must process the `/` normally — not consumed.
+        assert!(!matches!(evt, ReedlineEvent::None));
+        assert!(!focus.is_open(), "FilterFocus must NOT open mid-line");
+    }
+
+    #[test]
+    fn typed_keys_route_to_filter_channel_when_focus_open() {
+        let (mut mode, mut filter_rx, focus) = make_filter_mode();
+        focus.open();
+        let _ = mode.parse_event(raw(Event::Key(KeyEvent::new(
+            KeyCode::Char('e'),
+            KeyModifiers::NONE,
+        ))));
+        let _ = mode.parse_event(raw(Event::Key(KeyEvent::new(
+            KeyCode::Char('m'),
+            KeyModifiers::NONE,
+        ))));
+        assert_eq!(filter_rx.try_recv().ok(), Some(FilterKey::Char('e')));
+        assert_eq!(filter_rx.try_recv().ok(), Some(FilterKey::Char('m')));
+    }
+
+    #[test]
+    fn enter_in_filter_mode_routes_as_enter() {
+        let (mut mode, mut filter_rx, focus) = make_filter_mode();
+        focus.open();
+        let evt = mode.parse_event(raw(Event::Key(KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::NONE,
+        ))));
+        assert!(matches!(evt, ReedlineEvent::None));
+        assert_eq!(filter_rx.try_recv().ok(), Some(FilterKey::Enter));
+    }
+
+    #[test]
+    fn esc_in_filter_mode_routes_as_esc() {
+        let (mut mode, mut filter_rx, focus) = make_filter_mode();
+        focus.open();
+        let _ = mode.parse_event(raw(Event::Key(KeyEvent::new(
+            KeyCode::Esc,
+            KeyModifiers::NONE,
+        ))));
+        assert_eq!(filter_rx.try_recv().ok(), Some(FilterKey::Esc));
+    }
+
+    #[test]
+    fn ctrl_u_in_filter_mode_routes_as_clear() {
+        let (mut mode, mut filter_rx, focus) = make_filter_mode();
+        focus.open();
+        let _ = mode.parse_event(raw(Event::Key(KeyEvent::new(
+            KeyCode::Char('u'),
+            KeyModifiers::CONTROL,
+        ))));
+        assert_eq!(filter_rx.try_recv().ok(), Some(FilterKey::Clear));
+    }
+
+    #[test]
+    fn filter_focus_default_closed() {
+        let focus = FilterFocus::new();
+        assert!(!focus.is_open());
+        focus.open();
+        assert!(focus.is_open());
+        focus.close();
+        assert!(!focus.is_open());
+    }
+
+    #[test]
+    fn backspace_reduces_mirror_so_slash_can_open() {
+        let (mut mode, _filter_rx, focus) = make_filter_mode();
+        // Type one char then delete it.
+        let _ = mode.parse_event(raw(Event::Key(KeyEvent::new(
+            KeyCode::Char('x'),
+            KeyModifiers::NONE,
+        ))));
+        let _ = mode.parse_event(raw(Event::Key(KeyEvent::new(
+            KeyCode::Backspace,
+            KeyModifiers::NONE,
+        ))));
+        let _ = mode.parse_event(raw(Event::Key(KeyEvent::new(
+            KeyCode::Char('/'),
+            KeyModifiers::NONE,
+        ))));
+        assert!(
+            focus.is_open(),
+            "after typing-then-deleting, `/` should still open filter"
+        );
     }
 }
