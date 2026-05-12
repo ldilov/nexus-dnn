@@ -48,6 +48,12 @@ const LEVEL_ARG_DESCRIPTIONS: &[(&str, &str)] = &[
 
 const MAX_LIVE_SUGGESTIONS: usize = 24;
 const RING_SCAN_DEPTH: usize = 2_000;
+/// How many recent events to surface when the user tabs after
+/// `/inspect `. Capped so the reedline menu stays usable; the user can
+/// type prefix characters to narrow the list further (ULID prefixes
+/// like `01KR` quickly disambiguate).
+const INSPECT_EVENT_LIMIT: usize = 50;
+const INSPECT_SUMMARY_CHAR_LIMIT: usize = 60;
 
 #[derive(Default)]
 pub struct SlashCompleter {
@@ -78,6 +84,44 @@ impl SlashCompleter {
             seen.insert(line.source.clone());
         }
         seen.into_iter().collect()
+    }
+
+    /// Recent event ids in reverse chronological order, each paired
+    /// with a description shaped like `ERROR run:foo — message`. The
+    /// reedline `Suggestion` machinery uses the description column to
+    /// help operators pick the right event without having to memorise
+    /// the ULID prefix.
+    fn observed_event_ids(&self) -> Vec<(String, String)> {
+        let Some(ring) = &self.ring else {
+            return Vec::new();
+        };
+        let Ok(buf) = ring.lock() else {
+            return Vec::new();
+        };
+        let mut out = Vec::with_capacity(INSPECT_EVENT_LIMIT);
+        for line in buf.iter().rev().take(INSPECT_EVENT_LIMIT) {
+            let id = format!("{}", line.id);
+            let summary: String = line
+                .summary
+                .chars()
+                .take(INSPECT_SUMMARY_CHAR_LIMIT)
+                .collect();
+            let ellipsis = if line.summary.chars().count() > INSPECT_SUMMARY_CHAR_LIMIT {
+                "…"
+            } else {
+                ""
+            };
+            let sev = match line.severity {
+                crate::stream::severity::Severity::Debug => "DEBUG",
+                crate::stream::severity::Severity::Info => "INFO ",
+                crate::stream::severity::Severity::Warn => "WARN ",
+                crate::stream::severity::Severity::Error => "ERROR",
+                crate::stream::severity::Severity::Fatal => "FATAL",
+            };
+            let desc = format!("{sev} {} — {summary}{ellipsis}", line.source);
+            out.push((id, desc));
+        }
+        out
     }
 
     /// Recent correlation identifiers in `kind:value` form for `/follow`.
@@ -154,7 +198,15 @@ impl Completer for SlashCompleter {
                 )
             }
             "/grep" => grep_placeholder_suggestion(arg_so_far, span),
-            "/inspect" => inspect_placeholder_suggestion(arg_so_far, span),
+            "/inspect" => {
+                let events = self.observed_event_ids();
+                let live = inspect_event_suggestions(&events, arg_so_far, span);
+                if live.is_empty() {
+                    inspect_placeholder_suggestion(arg_so_far, span)
+                } else {
+                    live
+                }
+            }
             "/snapshot" => snapshot_placeholder_suggestion(arg_so_far, span),
             "/open" => open_placeholder_suggestion(arg_so_far, span),
             _ => Vec::new(),
@@ -196,6 +248,31 @@ fn inspect_placeholder_suggestion(arg_so_far: &str, span: Span) -> Vec<Suggestio
         span,
         "type an event id (use /last to find recent events)",
     )
+}
+
+/// Build `Suggestion`s from observed recent event ids, optionally
+/// filtered by a typed ULID prefix. The reedline menu sorts by the
+/// order returned here — newest first — and the description column
+/// surfaces severity + source so the operator can scan visually
+/// without resolving each ULID individually.
+fn inspect_event_suggestions(
+    events: &[(String, String)],
+    arg_so_far: &str,
+    span: Span,
+) -> Vec<Suggestion> {
+    let prefix = arg_so_far.trim();
+    events
+        .iter()
+        .filter(|(id, _)| id.starts_with(prefix))
+        .map(|(id, desc)| Suggestion {
+            value: id.clone(),
+            description: Some(desc.clone()),
+            style: None,
+            extra: None,
+            span,
+            append_whitespace: false,
+        })
+        .collect()
 }
 
 fn snapshot_placeholder_suggestion(arg_so_far: &str, span: Span) -> Vec<Suggestion> {
