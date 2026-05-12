@@ -1,0 +1,9 @@
+---
+source: crates/nexus-tui/tests/snapshot_render_test.rs
+expression: output
+---
+Debug: ''
+Info: ''
+Warn: ''
+Error: '▌'
+Fatal: '▌'

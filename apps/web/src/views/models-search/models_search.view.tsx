@@ -27,6 +27,7 @@ import {
   type ParsedSearchParams,
   type SearchPage,
 } from "../../services/model_store";
+import { dispatchModelsChanged } from "../../services/model_events";
 import { ModelsSearchUI } from "./models_search.ui";
 import type { DownloadKind } from "./components/ModelCard";
 
@@ -136,6 +137,15 @@ export function ModelsSearchView() {
         const next = { ...prev };
         for (const job of updates) {
           if (!job) continue;
+          // Detect non-terminal → `downloaded` transition and broadcast
+          // a "models changed" event so listening surfaces (Local
+          // Chat's model picker, etc.) refresh their installed-model
+          // lists immediately, without waiting for a window focus.
+          const prior = prev[job.job_id];
+          const wasNonTerminal = prior && !isTerminalState(prior.state);
+          if (wasNonTerminal && job.state === "downloaded") {
+            dispatchModelsChanged({ family_id: job.family_id });
+          }
           next[job.job_id] = job;
         }
         return next;
@@ -181,6 +191,110 @@ export function ModelsSearchView() {
     [activeJobs, jobVariantMap],
   );
 
+  const jobByFamily = useMemo<Record<string, DownloadJob | undefined>>(
+    () => {
+      const PRIORITY: Record<DownloadState, number> = {
+        downloading: 6,
+        queued: 5,
+        paused: 4,
+        failed: 3,
+        downloaded: 2,
+        not_downloaded: 1,
+        incompatible: 0,
+        auth_required: 0,
+      };
+      const out: Record<string, DownloadJob | undefined> = {};
+      for (const j of Object.values(activeJobs)) {
+        const existing = out[j.family_id];
+        if (!existing) {
+          out[j.family_id] = j;
+          continue;
+        }
+        const nextScore = PRIORITY[j.state] ?? 0;
+        const prevScore = PRIORITY[existing.state] ?? 0;
+        if (nextScore > prevScore) {
+          out[j.family_id] = j;
+          continue;
+        }
+        if (nextScore === prevScore) {
+          const nextTs = j.started_at ?? j.created_at;
+          const prevTs = existing.started_at ?? existing.created_at;
+          if (nextTs > prevTs) {
+            out[j.family_id] = j;
+          }
+        }
+      }
+      return out;
+    },
+    [activeJobs],
+  );
+
+  const jobStateByFamily = useMemo<Record<string, DownloadState | undefined>>(
+    () => {
+      const out: Record<string, DownloadState | undefined> = {};
+      for (const [familyId, j] of Object.entries(jobByFamily)) {
+        if (j) out[familyId] = j.state;
+      }
+      return out;
+    },
+    [jobByFamily],
+  );
+
+  const jobIdByFamily = useMemo<Record<string, string | undefined>>(
+    () => {
+      const out: Record<string, string | undefined> = {};
+      for (const [familyId, j] of Object.entries(jobByFamily)) {
+        if (j) out[familyId] = j.job_id;
+      }
+      return out;
+    },
+    [jobByFamily],
+  );
+
+  // Artifact-keyed lookups for the multi-quantization `ArtifactList`
+  // rendering path. Each `DownloadJob.targets[]` carries `artifact_id`
+  // entries representing the individual files being fetched. Map each
+  // artifact to the job that owns it so the per-file row can render
+  // its own queued / downloading / paused / downloaded state — this is
+  // the missing wiring that left ArtifactList rows stuck on
+  // `not_downloaded` even with a job in flight. Job-level state takes
+  // precedence over `Artifact.install_state` so live progress shows
+  // even before the host confirms the install_state flip.
+  const jobByArtifact = useMemo<Record<string, DownloadJob | undefined>>(
+    () => {
+      const out: Record<string, DownloadJob | undefined> = {};
+      for (const j of Object.values(activeJobs)) {
+        for (const t of j.targets) {
+          out[t.artifact_id] = j;
+        }
+      }
+      return out;
+    },
+    [activeJobs],
+  );
+
+  const jobStateByArtifact = useMemo<Record<string, DownloadState | undefined>>(
+    () => {
+      const out: Record<string, DownloadState | undefined> = {};
+      for (const [artifactId, j] of Object.entries(jobByArtifact)) {
+        if (j) out[artifactId] = j.state;
+      }
+      return out;
+    },
+    [jobByArtifact],
+  );
+
+  const jobIdByArtifact = useMemo<Record<string, string | undefined>>(
+    () => {
+      const out: Record<string, string | undefined> = {};
+      for (const [artifactId, j] of Object.entries(jobByArtifact)) {
+        if (j) out[artifactId] = j.job_id;
+      }
+      return out;
+    },
+    [jobByArtifact],
+  );
+
   const startDownload = useCallback(
     async (family: ModelFamily, target: DownloadKind) => {
       const body = {
@@ -195,17 +309,50 @@ export function ModelsSearchView() {
       };
       try {
         const job = await createDownload(body);
-        setActiveJobs((prev) => ({ ...prev, [job.job_id]: job }));
+        // Defensive: pre-fix versions of the host returned a stub
+        // `{ job_id, existing }` body when a duplicate job existed,
+        // leaving `state` / `family_id` / `targets` undefined. The
+        // host now always returns the full DTO, but a mixed-version
+        // deploy or an older host instance could still trip this.
+        // Guard by re-fetching the canonical job whenever the
+        // response is missing required fields, so the UI state never
+        // contains a partial record.
+        const canonical =
+          typeof job.state === "string" && typeof job.family_id === "string"
+            ? job
+            : await fetchDownloadStatus(job.job_id);
+        setActiveJobs((prev) => ({ ...prev, [canonical.job_id]: canonical }));
         if (target.kind === "variant") {
-          setJobVariantMap((prev) => ({ ...prev, [job.job_id]: target.variantId }));
+          setJobVariantMap((prev) => ({
+            ...prev,
+            [canonical.job_id]: target.variantId,
+          }));
         }
-        toast.success(
+        // `downloadable_but_not_runnable` (the "DOWNLOAD ONLY" chip)
+        // means the file can be fetched but no runtime in the active
+        // backend roster can load it — typically a safetensors LLM
+        // when only llama.cpp / GGUF is enabled. Surface this
+        // up-front in the toast so the user doesn't go looking for
+        // the model in Local Chat after download completes and find
+        // nothing (the chat picker filters to GGUF only). The
+        // "DOWNLOAD ONLY" chip is already visible on the card; the
+        // toast is the moment-of-action reinforcement.
+        const isDownloadOnly = family.compat === "downloadable_but_not_runnable";
+        const baseMessage =
           target.kind === "variant"
-            ? `Queued download`
+            ? "Queued download"
             : target.kind === "bundle"
               ? "Bundle download queued"
-              : "Download queued",
-        );
+              : "Download queued";
+        if (isDownloadOnly) {
+          toast.success(baseMessage, {
+            description:
+              "This format can't run in Local Chat — no compatible backend (need GGUF for llama.cpp).",
+            duration: 7000,
+          });
+        } else {
+          toast.success(baseMessage);
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Download failed";
         toast.error(msg);
@@ -328,6 +475,12 @@ export function ModelsSearchView() {
       jobStateByVariant={jobStateByVariant}
       jobIdByVariant={jobIdByVariant}
       jobByVariant={jobByVariant}
+      jobStateByFamily={jobStateByFamily}
+      jobIdByFamily={jobIdByFamily}
+      jobByFamily={jobByFamily}
+      jobStateByArtifact={jobStateByArtifact}
+      jobIdByArtifact={jobIdByArtifact}
+      jobByArtifact={jobByArtifact}
       {...handlers}
     />
   );

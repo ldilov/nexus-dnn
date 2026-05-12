@@ -11,7 +11,9 @@ use std::sync::Arc;
 use nexus_api::handlers::draft_suggestions::{FakeStreamProvider, StreamItem};
 use tower::ServiceExt;
 
-use super::common::{build_app, build_post_request, collect_body_bytes, happy_path_body, parse_sse};
+use super::common::{
+    build_app, build_post_request, collect_body_bytes, happy_path_body, parse_sse,
+};
 
 #[tokio::test]
 async fn happy_path_emits_started_tokens_then_complete() {
@@ -44,10 +46,17 @@ async fn happy_path_emits_started_tokens_then_complete() {
     let (_, body) = collect_body_bytes(resp).await;
     let events = parse_sse(&body);
 
-    assert!(events.len() >= 4, "expected ≥4 events (started + 2 tokens + complete), got {}", events.len());
+    assert!(
+        events.len() >= 4,
+        "expected ≥4 events (started + 2 tokens + complete), got {}",
+        events.len()
+    );
     assert_eq!(events[0].event, "stream_started");
     assert_eq!(events[0].data["lease_id"], "test-lease-abc");
-    assert!(events[0].data["stream_id"].is_string(), "stream_id should be a UUID string");
+    assert!(
+        events[0].data["stream_id"].is_string(),
+        "stream_id should be a UUID string"
+    );
 
     assert_eq!(events[1].event, "token");
     assert_eq!(events[1].data["delta"], "hello ");
@@ -78,7 +87,10 @@ async fn empty_token_deltas_are_filtered() {
     let events = parse_sse(&body);
 
     let token_count = events.iter().filter(|e| e.event == "token").count();
-    assert_eq!(token_count, 1, "empty deltas must be filtered (contract: forbidden)");
+    assert_eq!(
+        token_count, 1,
+        "empty deltas must be filtered (contract: forbidden)"
+    );
 }
 
 #[tokio::test]

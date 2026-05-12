@@ -116,9 +116,7 @@ fn main() -> ExitCode {
         println!("OK: no drift detected.");
         return ExitCode::SUCCESS;
     }
-    eprintln!(
-        "\nDrift detected. Update docs/api/openapi.yaml AND docs/api/API.md, then re-run."
-    );
+    eprintln!("\nDrift detected. Update docs/api/openapi.yaml AND docs/api/API.md, then re-run.");
     ExitCode::FAILURE
 }
 
@@ -129,8 +127,7 @@ fn locate_workspace_root() -> Result<PathBuf, String> {
             return Ok(workspace.to_path_buf());
         }
     }
-    let exe = std::env::current_exe()
-        .map_err(|e| format!("cannot resolve current exe: {e}"))?;
+    let exe = std::env::current_exe().map_err(|e| format!("cannot resolve current exe: {e}"))?;
     let mut cursor = exe.parent().map(Path::to_path_buf);
     while let Some(dir) = cursor {
         if dir.join("Cargo.lock").exists() && dir.join("crates").exists() {
@@ -278,7 +275,9 @@ fn missing_source_routes(
             if sig.is_empty() {
                 return false;
             }
-            !yaml_signatures.iter().any(|y| y.contains(&sig) || sig.contains(y))
+            !yaml_signatures
+                .iter()
+                .any(|y| y.contains(&sig) || sig.contains(y))
         })
         .cloned()
         .collect()

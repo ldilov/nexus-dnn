@@ -8,9 +8,14 @@ import type { RuntimeChipKind } from "../layout/top_bar";
 
 const POLL_INTERVAL_MS = 5000;
 
-export interface RuntimeStatus {
+export interface BadgeState {
   kind: RuntimeChipKind;
   label: string;
+}
+
+export interface RuntimeStatus {
+  host: BadgeState;
+  runtimes: BadgeState;
   readyCount: number;
   leasedCount: number;
 }
@@ -25,23 +30,23 @@ function isActiveLease(lease: LeaseSummary): boolean {
   return ACTIVE_LEASE_STATES.includes(lease.state);
 }
 
+const INITIAL: RuntimeStatus = {
+  host: { kind: "failed", label: "Host offline" },
+  runtimes: { kind: "failed", label: "No runtimes ready" },
+  readyCount: 0,
+  leasedCount: 0,
+};
+
 export function useRuntimeStatus(): RuntimeStatus {
-  const [status, setStatus] = useState<RuntimeStatus>({
-    kind: "idle",
-    label: "Host offline",
-    readyCount: 0,
-    leasedCount: 0,
-  });
+  const [status, setStatus] = useState<RuntimeStatus>(INITIAL);
 
   useEffect(() => {
     let active = true;
 
     const poll = async () => {
       try {
-        const [backends, leases] = await Promise.all([
-          fetchHostBackends(),
-          fetchLiveLeases().catch(() => [] as LeaseSummary[]),
-        ]);
+        const backends = await fetchHostBackends();
+        const leases = await fetchLiveLeases().catch(() => [] as LeaseSummary[]);
         if (!active) return;
 
         const leasedCount = leases.filter(isActiveLease).length;
@@ -49,41 +54,25 @@ export function useRuntimeStatus(): RuntimeStatus {
           (b) => b.card_state === "ready",
         ).length;
 
-        if (leasedCount > 0) {
-          const label =
-            leasedCount === 1 ? "1 backend leased" : `${leasedCount} backends leased`;
-          setStatus({ kind: "live", label, readyCount, leasedCount });
-          return;
-        }
-        if (backends.summary.issues > 0) {
-          setStatus({
-            kind: "failed",
-            label: `${backends.summary.issues} backend issue${backends.summary.issues === 1 ? "" : "s"}`,
-            readyCount,
-            leasedCount: 0,
-          });
-          return;
-        }
-        if (readyCount > 0) {
-          const label =
-            readyCount === 1 ? "1 runtime ready" : `${readyCount} runtimes ready`;
-          setStatus({ kind: "idle", label, readyCount, leasedCount: 0 });
-          return;
-        }
+        const runtimesReady = readyCount > 0 || leasedCount > 0;
+        const runtimesLabel = leasedCount > 0
+          ? `${leasedCount} leased`
+          : readyCount === 1
+            ? "1 runtime ready"
+            : `${readyCount} runtimes ready`;
+
         setStatus({
-          kind: "idle",
-          label: "No runtime ready",
-          readyCount: 0,
-          leasedCount: 0,
+          host: { kind: "live", label: "Host online" },
+          runtimes: {
+            kind: runtimesReady ? "live" : "failed",
+            label: runtimesReady ? runtimesLabel : "No runtimes ready",
+          },
+          readyCount,
+          leasedCount,
         });
       } catch {
         if (!active) return;
-        setStatus({
-          kind: "idle",
-          label: "Host offline",
-          readyCount: 0,
-          leasedCount: 0,
-        });
+        setStatus(INITIAL);
       }
     };
 

@@ -92,7 +92,11 @@ async fn cancel_unknown_stream_id_returns_204() {
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), 204, "cancel on unknown stream_id MUST be idempotent 204");
+    assert_eq!(
+        resp.status(),
+        204,
+        "cancel on unknown stream_id MUST be idempotent 204"
+    );
 }
 
 #[tokio::test]
@@ -111,7 +115,13 @@ async fn short_script_terminates_with_complete_or_cancelled() {
         .oneshot(build_post_request("draft-1", happy_path_body()))
         .await
         .unwrap();
-    let body_bytes = resp.into_body().collect().await.unwrap().to_bytes().to_vec();
+    let body_bytes = resp
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes()
+        .to_vec();
     let events = parse_sse(&body_bytes);
     let terminal = events.last().expect("terminal event");
     assert!(

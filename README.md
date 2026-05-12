@@ -67,13 +67,54 @@ One command builds the Rust host runtime and the React web UI into a single bina
 
 > See the full [Getting Started tutorial](docs/getting-started.md) for a complete walkthrough.
 
+## Terminal Console
+
+`nexus-tui` is a streaming terminal console for the running host — ambient
+event flow, slash-command filters, structured event inspection, snapshot
+artifacts, and one-key handoff to the desktop UI. It connects via SSE and
+mirrors host activity in real time.
+
+```bash
+cargo dev             # host + TUI in one terminal (recommended)
+```
+
+See [`crates/nexus-tui/README.md`](crates/nexus-tui/README.md) for the full
+command reference and architecture, or
+[spec 044](specs/044-tui-streaming-console/spec.md) for the product
+contract.
+
 ## Development
+
+### Workspace cargo aliases
+
+Defined in [`.cargo/config.toml`](.cargo/config.toml). Run
+`cargo --list | grep alias` at any time to see them inline with the
+built-in cargo subcommands.
+
+| Alias | Expands to | Purpose |
+|---|---|---|
+| `cargo dev` | `cargo run -p nexus-core --bin nexus-dnn -- --with-tui` | Host + TUI, host-orchestrated (recommended) |
+| `cargo dev-tui` | `cargo run -p nexus-tui --bin nexus -- --with-host` | Host + TUI, TUI-orchestrated |
+| `cargo host` | `cargo run -p nexus-core --bin nexus-dnn` | Host only — for browser at [`localhost:3000`](http://localhost:3000) |
+| `cargo tui` | `cargo run -p nexus-tui --bin nexus` | TUI only — attaches to a running host |
+
+Pass-through args work as expected: `cargo dev --port 4000` becomes
+`nexus-dnn --with-tui --port 4000`.
+
+### Standard cargo commands
 
 ```bash
 cargo test            # Run all tests
 cargo clippy          # Lint
 cargo fmt --check     # Format check
-cargo run             # Development mode
+cargo build --release # Production build
+```
+
+### Listing every cargo subcommand (built-ins + aliases)
+
+```bash
+cargo --list                # everything cargo knows about
+cargo --list | grep alias   # only the workspace aliases above
 ```
 
 ### Project Structure

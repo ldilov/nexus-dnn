@@ -41,7 +41,12 @@ cargo test; cargo clippy
 
 Rust 1.84 (workspace MSRV per existing crates): Follow standard conventions
 
+<!-- SPECKIT START -->
+**Active spec**: [044-tui-streaming-console](specs/044-tui-streaming-console/plan.md)
+<!-- SPECKIT END -->
+
 ## Recent Changes
+- 044-tui-streaming-console: Added new Rust binary crate `crates/nexus-tui` (CLI streaming console for host events). New workspace deps: `reedline ^0.36`, `crossterm ^0.28`, `eventsource-stream ^0.2`, `rustc-hash ^2`. Host-side additions: `NexusEvent::HostLog` variant, `nexus-core::tracing_bridge` module, `GET /api/v1/events/sse` SSE adapter, `POST /api/v1/desktop/focus` route. No new tables; two host-config entries for ring-buffer capacity and tracing-bridge sensitive-name allowlist.
 - 042-neo-terminal-shell: Added Rust 1.84 (workspace MSRV) for host crates; TypeScript 5.x / React 19 / Vite 6 / Node ≥ 20 for the frontend. + NEW — `tauri@^2` + `@tauri-apps/api@^2` (desktop wrapper), `idb@^8` (IndexedDB warm tier for event store). EXISTING — `axum`, `serde`, `sqlx`, `tracing` on the Rust side; `react-router@^7`, `swr@^2.4` (live polling only), `@vanilla-extract/css@^1.17`, `motion@^12` (`motion/react` import path), `sonner@^2`, `@xyflow/react@^12`. No other new workspace dependencies.
 - 039-llamacpp-throughput-tier1: Added Rust 1.84 (workspace MSRV) for host + extension Rust crates; TypeScript 5.x / React 19 / Vite 6 / Node ≥ 20 for the frontend. + existing — `axum`, `serde`, `sqlx`, `tracing` on the Rust side; `react-router@^7.14`, `swr@^2.4`, `@vanilla-extract/css`, `motion/react`, `sonner` on the frontend. The `gguf` reader path inside `crates/nexus-model-metadata/` already handles header parsing for spec 028 metadata; this spec adds two GGUF metadata key reads (`*.expert_count`, `*.expert_used_count` and architecture-name MoE detection). **No new workspace dependencies.**
 - 037-spectral-graphite-redesign: Added TypeScript 5.x + React 19 + Node ≥ 20 (frontend); Rust 1.84 workspace MSRV (host crates for the new draft suggestion handler).

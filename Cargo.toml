@@ -1,7 +1,13 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "extensions/builtin/local-llm/rust", "extensions/builtin/emotion-tts/rust", "apps/web/src-tauri"]
-default-members = ["crates/nexus-core"]
+members = [
+    "crates/*",
+    "extensions/builtin/local-llm/rust",
+    "extensions/builtin/emotion-tts/rust",
+    "apps/web/src-tauri",
+    "xtask",
+]
+default-members = ["apps/web/src-tauri"]
 
 [workspace.dependencies]
 tokio = { version = "1.48", features = ["full"] }
@@ -15,3 +21,10 @@ chrono = { version = "0.4", features = ["serde"] }
 semver = { version = "1.0", features = ["serde"] }
 rust-embed = { version = "8", features = ["axum"] }
 mime_guess = "2"
+reedline = "0.36"
+crossterm = "0.28"
+eventsource-stream = "0.2"
+rustc-hash = "2"
+ulid = "1"
+insta = "1.40"
+criterion = { version = "0.5", features = ["html_reports"] }
