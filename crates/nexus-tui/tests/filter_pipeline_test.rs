@@ -87,6 +87,74 @@ fn filters_compose_with_and() {
     assert!(!state.is_visible(&too_low));
 }
 
+/// S1.b — `/grep` widened match surface. Today the regex tests
+/// `summary` first, then `source`, then (for `HostLog` payloads) the
+/// tracing target, every key/value pair in `fields`, and any
+/// `span_path` segment. Pre-S1, only `summary` was tested — which is
+/// why typing `/grep host` showed nothing on a startup line whose
+/// summary was "nexus-dnn api server listening" but whose source was
+/// "host.nexus_core::app".
+#[test]
+fn grep_matches_source_label_not_just_summary() {
+    let mut state = FilterState::default();
+    state.set_grep(Some("nexus_core")).unwrap();
+    let l = line(
+        Severity::Info,
+        "host.nexus_core::app",
+        "nexus-dnn api server listening",
+        None,
+    );
+    assert!(state.is_visible(&l));
+}
+
+#[test]
+fn grep_matches_host_log_target_and_fields() {
+    use std::collections::BTreeMap;
+    let mut fields = BTreeMap::new();
+    fields.insert("port".to_string(), "3000".to_string());
+    fields.insert("backend".to_string(), "llamacpp".to_string());
+    let raw = nexus_events::types::NexusEvent::HostLog {
+        level: "info".into(),
+        target: "nexus_core::http_api".into(),
+        message: "listening".into(),
+        fields,
+        span_path: Some(vec!["app".into(), "boot".into()]),
+        timestamp_ms: 0,
+    };
+    let evt = EventLine {
+        id: EventId::new(),
+        timestamp_ms: 0,
+        severity: Severity::Info,
+        significance: Significance::Normal,
+        category: SourceCategory::Host,
+        source: "host.app".into(),
+        summary: "listening".into(),
+        correlation: CorrelationKeys::default(),
+        raw_payload: Arc::new(RawPayload::NexusEvent(raw)),
+    };
+    let mut state = FilterState::default();
+
+    // target match
+    state.set_grep(Some("http_api")).unwrap();
+    assert!(state.is_visible(&evt), "should match HostLog.target");
+
+    // field value match
+    state.set_grep(Some("llamacpp")).unwrap();
+    assert!(state.is_visible(&evt), "should match a fields value");
+
+    // field key match
+    state.set_grep(Some("^port$")).unwrap();
+    assert!(state.is_visible(&evt), "should match a fields key");
+
+    // span path match
+    state.set_grep(Some("boot")).unwrap();
+    assert!(state.is_visible(&evt), "should match span_path segment");
+
+    // no match — drop
+    state.set_grep(Some("doesnotexist")).unwrap();
+    assert!(!state.is_visible(&evt));
+}
+
 #[test]
 fn clear_filter_resets_all() {
     let mut state = FilterState::default();

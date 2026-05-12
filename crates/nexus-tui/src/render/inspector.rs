@@ -95,6 +95,10 @@ impl Default for InspectorRenderConfig {
 pub struct InspectorBlockLayout {
     pub rendered: String,
     pub section_rows: Vec<(InspectorSection, u16)>,
+    /// Total terminal rows the rendered block occupies. Used by
+    /// the controller to clear the prior block before re-rendering on
+    /// section toggle, preventing duplicate cards from stacking.
+    pub total_rows: u16,
 }
 
 pub fn render_inspector_block(
@@ -264,11 +268,10 @@ pub fn render_inspector_layout(
         }
         row += lines.len() as u16;
     }
-    let _ = row;
-
     InspectorBlockLayout {
         rendered: out,
         section_rows,
+        total_rows: row,
     }
 }
 
@@ -344,7 +347,7 @@ fn push_section(
 
 fn section_icon(section: InspectorSection) -> &'static str {
     match section {
-        InspectorSection::Header => "▾",
+        InspectorSection::Header => "■",
         InspectorSection::Metadata => "◐",
         InspectorSection::Fields => "▦",
         InspectorSection::CorrelationKeys => "◉",

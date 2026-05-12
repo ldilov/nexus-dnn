@@ -147,7 +147,7 @@ impl FilterState {
             return false;
         }
         if let Some(r) = &self.grep
-            && !r.is_match(&line.summary)
+            && !grep_matches(r, line)
         {
             return false;
         }
@@ -158,6 +158,47 @@ impl FilterState {
         }
         true
     }
+}
+
+/// Apply the `/grep` regex across every text surface a user can reasonably
+/// expect to scan: the rendered summary, the source label, and (for
+/// `HostLog` events) the tracing target, every key/value pair in the
+/// structured fields map, and any span path segments. Short-circuits on
+/// the first match — `summary` first because it's the highest-signal
+/// surface and almost always the one users type against.
+fn grep_matches(pattern: &Regex, line: &EventLine) -> bool {
+    if pattern.is_match(&line.summary) {
+        return true;
+    }
+    if pattern.is_match(&line.source) {
+        return true;
+    }
+    use crate::stream::event_line::RawPayload;
+    use nexus_events::types::NexusEvent;
+    if let RawPayload::NexusEvent(NexusEvent::HostLog {
+        target,
+        fields,
+        span_path,
+        ..
+    }) = line.raw_payload.as_ref()
+    {
+        if pattern.is_match(target) {
+            return true;
+        }
+        for (k, v) in fields {
+            if pattern.is_match(k) || pattern.is_match(v) {
+                return true;
+            }
+        }
+        if let Some(path) = span_path {
+            for segment in path {
+                if pattern.is_match(segment) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 fn follow_matches(target: &FollowTarget, line: &EventLine) -> bool {
