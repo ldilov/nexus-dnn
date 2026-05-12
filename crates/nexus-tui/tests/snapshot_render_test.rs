@@ -1,11 +1,11 @@
 use insta::assert_snapshot;
+use nexus_tui::EventId;
+use nexus_tui::Severity;
+use nexus_tui::mouse::targets::ClickTarget;
 use nexus_tui::render::gradient::{ansi_rgb, interpolate};
 use nexus_tui::render::hover_whisper::render_hover_whisper;
 use nexus_tui::render::luminance_ladder::{correlation_indent, error_left_bar};
 use nexus_tui::repl::ansi::{ColorBasic, ColorDepth, PaletteColor};
-use nexus_tui::Severity;
-use nexus_tui::mouse::targets::ClickTarget;
-use nexus_tui::EventId;
 
 #[test]
 fn snapshot_hover_whisper_for_filter_indicator() {

@@ -1,30 +1,30 @@
 ---
 source: crates/nexus-tui/tests/inspector_render_test.rs
-assertion_line: 60
+assertion_line: 61
 expression: rendered
 ---
-[38;2;186;158;255m┃[0m [38;2;186;158;255m[1m▾ header[22m[0m
+[38;2;186;158;255m┃[0m [38;2;186;158;255m[1m▼ ■ header[22m[0m
 [38;2;186;158;255m┃[0m [38;2;255;82;83mERROR[0m[38;2;144;147;255m ▶ [0m[38;2;156;171;255mrun:run_a — node failed inference: cuda alloc failed: out of memory[0m
-[38;2;186;158;255m┃[0m [38;2;186;158;255m[1m◐ metadata[22m[0m
+[38;2;186;158;255m┃[0m [38;2;186;158;255m[1m▼ ◐ metadata[22m[0m
 [38;2;186;158;255m┃[0m   [38;2;186;158;255mid[0m: 00000000000000000000000003
 [38;2;186;158;255m┃[0m   [38;2;186;158;255mtimestamp_ms[0m: 1730000000003
 [38;2;186;158;255m┃[0m   [38;2;186;158;255mseverity[0m: ERROR
 [38;2;186;158;255m┃[0m   [38;2;186;158;255mcategory[0m: Run
 [38;2;186;158;255m┃[0m   [38;2;186;158;255msource[0m: run:run_a
-[38;2;186;158;255m┃[0m [38;2;186;158;255m[1m▦ fields[22m[0m
+[38;2;186;158;255m┃[0m [38;2;186;158;255m[1m▼ ▦ fields[22m[0m
 [38;2;186;158;255m┃[0m   (no structured fields — see raw payload)
-[38;2;186;158;255m┃[0m [38;2;186;158;255m[1m◉ correlation keys[22m[0m
+[38;2;186;158;255m┃[0m [38;2;186;158;255m[1m▼ ◉ correlation keys[22m[0m
 [38;2;186;158;255m┃[0m   [38;2;186;158;255mrun_id[0m: run_a
-[38;2;186;158;255m┃[0m [38;2;186;158;255m[1m↺ recent context[22m[0m
+[38;2;186;158;255m┃[0m [38;2;186;158;255m[1m▼ ↺ recent same-source events (unfiltered)[22m[0m
 [38;2;186;158;255m┃[0m   INFO run created
 [38;2;186;158;255m┃[0m   INFO node started
-[38;2;186;158;255m┃[0m [38;2;186;158;255m[1m▾ correlated events[22m[0m
+[38;2;186;158;255m┃[0m [38;2;186;158;255m[1m▼ ↳ correlated events[22m[0m
 [38;2;186;158;255m┃[0m   ↳ INFO run:run_a run created
 [38;2;186;158;255m┃[0m   ↳ INFO run:run_a node started
-[38;2;186;158;255m┃[0m [38;2;186;158;255m[1m✦ suggestions[22m[0m
+[38;2;186;158;255m┃[0m [38;2;186;158;255m[1m▼ ✦ suggestions[22m[0m
 [38;2;186;158;255m┃[0m   ⚑ CUDA out of memory
 [38;2;186;158;255m┃[0m     Reduce batch size or context length; check `nvidia-smi` for stuck processes.
-[38;2;186;158;255m┃[0m [38;2;186;158;255m[1m{ } raw payload[22m[0m
+[38;2;186;158;255m┃[0m [38;2;186;158;255m[1m▼ { } raw payload[22m[0m
 [38;2;186;158;255m┃[0m   {
 [38;2;186;158;255m┃[0m     "type": "node_failed",
 [38;2;186;158;255m┃[0m     "run_id": "run_a",
