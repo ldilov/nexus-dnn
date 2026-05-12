@@ -58,13 +58,15 @@ foreach ($line in $yamlLines) {
     }
 }
 
+$auditRoots = @($auditRoots + 'crates/nexus-tui/' | Sort-Object -Unique)
+$allFragments = $grandfatheredFragments + $registeredFragments | Sort-Object -Unique
+$seenFiles = New-Object 'System.Collections.Generic.HashSet[string]'
+
 if ($Verbose) {
     Write-Host "Grandfathered fragments: $($grandfatheredFragments -join ', ')"
     Write-Host "Registered fragments:    $($registeredFragments -join ', ')"
     Write-Host "Audit roots:             $($auditRoots -join ', ')"
 }
-
-$allFragments = $grandfatheredFragments + $registeredFragments | Sort-Object -Unique
 
 function Test-PathExcluded {
     param([string]$RelPath, [string[]]$Patterns)
@@ -84,6 +86,7 @@ foreach ($root in $auditRoots) {
     if (-not (Test-Path $rootPath)) { continue }
     $files = Get-ChildItem -Path $rootPath -Recurse -File -ErrorAction SilentlyContinue
     foreach ($file in $files) {
+        if (-not $seenFiles.Add($file.FullName)) { continue }
         $rel = $file.FullName.Substring($RepoRoot.Length).TrimStart('\', '/')
         if (Test-PathExcluded -RelPath $rel -Patterns $skipPaths) { continue }
         if (Test-PathExcluded -RelPath $rel -Patterns $grandfatheredPaths) { continue }

@@ -1,0 +1,41 @@
+name: theme-audit
+
+on:
+  pull_request:
+    paths:
+      - "crates/nexus-tui/**"
+      - "xtask/**"
+      - ".cargo/config.toml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/theme-audit.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/nexus-tui/**"
+      - "xtask/**"
+      - ".cargo/config.toml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/theme-audit.yml"
+
+jobs:
+  theme-audit:
+    name: TUI theme audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: nexus-tui-theme-audit
+
+      - name: Verify xtask tests
+        run: cargo test -p xtask
+
+      - name: Enforce theme-audit baseline
+        run: cargo xtask theme-audit

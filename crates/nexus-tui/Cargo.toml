@@ -1,0 +1,47 @@
+[package]
+name = "nexus-tui"
+version = "0.1.0"
+edition = "2024"
+description = "Streaming terminal console for nexus-dnn host events."
+publish = false
+
+[lib]
+name = "nexus_tui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "nexus"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+reedline = { workspace = true }
+crossterm = { workspace = true }
+nu-ansi-term = "0.50"
+eventsource-stream = { workspace = true }
+rustc-hash = { workspace = true }
+ulid = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
+futures-util = "0.3"
+regex = "1"
+glob = "0.3"
+nexus-events = { path = "../nexus-events" }
+nexus-run-events = { path = "../nexus-run-events" }
+toml = "0.8"
+
+[dev-dependencies]
+insta = "1.39"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+criterion = { workspace = true }
+tempfile = "3"
+
+[[bench]]
+name = "cold_start_bench"
+harness = false

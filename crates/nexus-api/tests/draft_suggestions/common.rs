@@ -42,7 +42,13 @@ pub fn build_post_request(draft_id: &str, body: Value) -> Request<Body> {
 
 pub async fn collect_body_bytes(resp: Response<Body>) -> (axum::http::StatusCode, Vec<u8>) {
     let status = resp.status();
-    let body = resp.into_body().collect().await.unwrap().to_bytes().to_vec();
+    let body = resp
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes()
+        .to_vec();
     (status, body)
 }
 

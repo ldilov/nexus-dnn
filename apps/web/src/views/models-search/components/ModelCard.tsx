@@ -5,8 +5,14 @@ import type {
   ModelFamily,
   Variant,
 } from "../../../services/model_store";
+import { ArtifactList } from "./ArtifactList";
 import { CompatibilityBadge } from "./CompatibilityBadge";
 import { DependencyStrip } from "./DependencyStrip";
+import {
+  DownloadFailed,
+  DownloadProgress,
+  DownloadedChip,
+} from "./DownloadProgress";
 import { VariantList } from "./VariantList";
 import * as s from "./ModelCard.css";
 
@@ -27,6 +33,12 @@ interface ModelCardProps {
   jobStateByVariant: Record<string, DownloadState | undefined>;
   jobIdByVariant: Record<string, string | undefined>;
   jobByVariant: Record<string, DownloadJob | undefined>;
+  jobStateByFamily?: Record<string, DownloadState | undefined>;
+  jobIdByFamily?: Record<string, string | undefined>;
+  jobByFamily?: Record<string, DownloadJob | undefined>;
+  jobStateByArtifact?: Record<string, DownloadState | undefined>;
+  jobIdByArtifact?: Record<string, string | undefined>;
+  jobByArtifact?: Record<string, DownloadJob | undefined>;
   onDownload: (family: ModelFamily, target: DownloadKind) => void;
   onPause: (jobId: string) => void;
   onResume: (jobId: string) => void;
@@ -86,6 +98,12 @@ export function ModelCard({
   jobStateByVariant,
   jobIdByVariant,
   jobByVariant,
+  jobStateByFamily,
+  jobIdByFamily,
+  jobByFamily,
+  jobStateByArtifact,
+  jobIdByArtifact,
+  jobByArtifact,
   onDownload,
   onPause,
   onResume,
@@ -95,6 +113,12 @@ export function ModelCard({
   const accent = accentFor(family);
   const cardCls = `${s.card} ${s.accentVariants[accent]}`;
   const showVariants = family.variants.length > 0;
+  // Fallback for upstream registries (e.g. HuggingFace) that ship
+  // multiple quantization / format artifacts but never declared
+  // `Variant` records — surface them as a flat list so the operator
+  // can pick a quantization without having to inspect the registry
+  // manually.
+  const showArtifactList = !showVariants && family.artifacts.length > 1;
   const hasRequiredDeps = family.dependencies.some(
     (d) => d.requirement === "required",
   );
@@ -189,7 +213,26 @@ export function ModelCard({
         />
       )}
 
-      {!showVariants && primary && !unsupported && !gated && (
+      {showArtifactList && !unsupported && !gated && (
+        <ArtifactList
+          artifacts={family.artifacts}
+          jobStateByArtifact={jobStateByArtifact ?? {}}
+          jobIdByArtifact={jobIdByArtifact ?? {}}
+          jobByArtifact={jobByArtifact ?? {}}
+          onDownload={(a) =>
+            onDownload(family, { kind: "primary", artifactId: a.artifact_id })
+          }
+          onPause={onPause}
+          onResume={onResume}
+          compatHint={
+            primary?.format === "gguf" || primary?.format === "ggml"
+              ? "llama.cpp compatible"
+              : undefined
+          }
+        />
+      )}
+
+      {!showVariants && !showArtifactList && primary && !unsupported && !gated && (
         <div className={s.precisionRow}>
           <span className={s.precisionLabel}>
             {primary.format.replace("_", " ")}
@@ -236,31 +279,42 @@ export function ModelCard({
         ) : (
           <>
             {primary && !showVariants && (
-              <button
-                type="button"
-                className={s.actionPrimary}
-                onClick={() =>
-                  onDownload(family, {
-                    kind: "primary",
-                    artifactId: primary.artifact_id,
-                  })
-                }
-              >
-                Download primary
-              </button>
+              <PrimaryDownloadAction
+                family={family}
+                primaryArtifactId={primary.artifact_id}
+                primarySize={primary.size_bytes}
+                fallbackState={primary.install_state}
+                liveState={jobStateByFamily?.[family.family_id]}
+                liveJobId={jobIdByFamily?.[family.family_id]}
+                liveJob={jobByFamily?.[family.family_id]}
+                onDownload={onDownload}
+                onPause={onPause}
+                onResume={onResume}
+              />
             )}
             {hasRequiredDeps && (
-              <button
-                type="button"
-                className={
-                  showVariants ? s.actionPrimary : s.actionSecondary
+              <BundleDownloadAction
+                family={family}
+                primary={showVariants}
+                liveState={
+                  jobByFamily?.[family.family_id]?.requested_kind === "bundle"
+                    ? jobStateByFamily?.[family.family_id]
+                    : undefined
                 }
-                onClick={() =>
-                  onDownload(family, { kind: "bundle" })
+                liveJobId={
+                  jobByFamily?.[family.family_id]?.requested_kind === "bundle"
+                    ? jobIdByFamily?.[family.family_id]
+                    : undefined
                 }
-              >
-                Download bundle
-              </button>
+                liveJob={
+                  jobByFamily?.[family.family_id]?.requested_kind === "bundle"
+                    ? jobByFamily?.[family.family_id]
+                    : undefined
+                }
+                onDownload={onDownload}
+                onPause={onPause}
+                onResume={onResume}
+              />
             )}
             {!showVariants && !hasRequiredDeps && !primary && (
               <button
@@ -275,5 +329,170 @@ export function ModelCard({
         )}
       </footer>
     </article>
+  );
+}
+
+interface PrimaryDownloadActionProps {
+  family: ModelFamily;
+  primaryArtifactId: string;
+  primarySize: number | null;
+  fallbackState: DownloadState;
+  liveState: DownloadState | undefined;
+  liveJobId: string | undefined;
+  liveJob: DownloadJob | undefined;
+  onDownload: (family: ModelFamily, target: DownloadKind) => void;
+  onPause: (jobId: string) => void;
+  onResume: (jobId: string) => void;
+}
+
+function PrimaryDownloadAction({
+  family,
+  primaryArtifactId,
+  primarySize,
+  fallbackState,
+  liveState,
+  liveJobId,
+  liveJob,
+  onDownload,
+  onPause,
+  onResume,
+}: PrimaryDownloadActionProps) {
+  const state: DownloadState = liveState ?? fallbackState;
+
+  const triggerDownload = () =>
+    onDownload(family, {
+      kind: "primary",
+      artifactId: primaryArtifactId,
+    });
+
+  if (state === "downloaded") {
+    return (
+      <DownloadedChip
+        sizeBytes={primarySize}
+        onReDownload={triggerDownload}
+      />
+    );
+  }
+
+  if (state === "failed") {
+    return (
+      <DownloadFailed
+        errorReason={liveJob?.error_reason ?? null}
+        onRetry={triggerDownload}
+      />
+    );
+  }
+
+  if (state === "queued" || state === "downloading" || state === "paused") {
+    return (
+      <DownloadProgress
+        state={state}
+        progressBytes={liveJob?.progress_bytes ?? 0}
+        totalBytes={liveJob?.total_bytes ?? primarySize}
+        onPause={
+          liveJobId && state === "downloading"
+            ? () => onPause(liveJobId)
+            : undefined
+        }
+        onResume={
+          liveJobId && state === "paused"
+            ? () => onResume(liveJobId)
+            : undefined
+        }
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={s.actionPrimary}
+      onClick={triggerDownload}
+    >
+      Download primary
+    </button>
+  );
+}
+
+// Mirrors `PrimaryDownloadAction` but for the bundle (deps + primary)
+// download path. Caller is responsible for upstream filtering — only
+// passes `liveState` / `liveJob` when the active job's
+// `requested_kind === "bundle"`, so a concurrent primary-only download
+// doesn't make the bundle button appear to be progressing.
+interface BundleDownloadActionProps {
+  family: ModelFamily;
+  /// When `showVariants` is true the bundle button is the operator's
+  /// PRIMARY action (no separate primary button rendered above it);
+  /// styled accordingly. Otherwise it sits secondary to a primary
+  /// download button.
+  primary: boolean;
+  liveState: DownloadState | undefined;
+  liveJobId: string | undefined;
+  liveJob: DownloadJob | undefined;
+  onDownload: (family: ModelFamily, target: DownloadKind) => void;
+  onPause: (jobId: string) => void;
+  onResume: (jobId: string) => void;
+}
+
+function BundleDownloadAction({
+  family,
+  primary,
+  liveState,
+  liveJobId,
+  liveJob,
+  onDownload,
+  onPause,
+  onResume,
+}: BundleDownloadActionProps) {
+  const state: DownloadState = liveState ?? "not_downloaded";
+
+  const triggerDownload = () => onDownload(family, { kind: "bundle" });
+
+  if (state === "downloaded") {
+    return (
+      <DownloadedChip
+        sizeBytes={liveJob?.total_bytes ?? null}
+        onReDownload={triggerDownload}
+      />
+    );
+  }
+
+  if (state === "failed") {
+    return (
+      <DownloadFailed
+        errorReason={liveJob?.error_reason ?? null}
+        onRetry={triggerDownload}
+      />
+    );
+  }
+
+  if (state === "queued" || state === "downloading" || state === "paused") {
+    return (
+      <DownloadProgress
+        state={state}
+        progressBytes={liveJob?.progress_bytes ?? 0}
+        totalBytes={liveJob?.total_bytes ?? null}
+        onPause={
+          liveJobId && state === "downloading"
+            ? () => onPause(liveJobId)
+            : undefined
+        }
+        onResume={
+          liveJobId && state === "paused"
+            ? () => onResume(liveJobId)
+            : undefined
+        }
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={primary ? s.actionPrimary : s.actionSecondary}
+      onClick={triggerDownload}
+    >
+      Download bundle
+    </button>
   );
 }
