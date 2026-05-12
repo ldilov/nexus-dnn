@@ -10,4 +10,5 @@ pub mod dispatch;
 pub mod hover;
 pub mod menu;
 pub mod menu_controller;
+pub mod scrollback;
 pub mod targets;
