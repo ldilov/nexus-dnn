@@ -109,7 +109,8 @@ pub struct EventLineLayout {
 pub fn render_event_line_with_targets(line: &EventLine, cfg: &RenderConfig) -> EventLineLayout {
     let timestamp = format_timestamp(line.timestamp_ms);
     let severity_label = severity_label(line.severity);
-    let severity_glyph = severity_glyph_for(line.severity, cfg.ascii_glyphs);
+    let event_class = crate::inspector::classifier::classify(line);
+    let severity_glyph = severity_glyph_for_class(line.severity, event_class, cfg.ascii_glyphs);
     let cat_glyph = if cfg.ascii_glyphs {
         category_glyph_ascii(line.category)
     } else {
@@ -280,7 +281,8 @@ fn visible_width(s: &str) -> u16 {
 fn render_inner(line: &EventLine, cfg: &RenderConfig) -> String {
     let timestamp = format_timestamp(line.timestamp_ms);
     let severity_label = severity_label(line.severity);
-    let severity_glyph = severity_glyph_for(line.severity, cfg.ascii_glyphs);
+    let event_class = crate::inspector::classifier::classify(line);
+    let severity_glyph = severity_glyph_for_class(line.severity, event_class, cfg.ascii_glyphs);
     let cat_glyph = if cfg.ascii_glyphs {
         category_glyph_ascii(line.category)
     } else {
@@ -415,6 +417,35 @@ fn severity_glyph_for(severity: Severity, ascii: bool) -> char {
         severity_glyph_ascii(severity)
     } else {
         severity_glyph(severity)
+    }
+}
+
+/// Severity glyph with the per-`EventClass` "failure-affordance"
+/// variant applied. For events classified as a failure that nevertheless
+/// log at INFO/WARN severity (HTTP-500 logged at INFO, exception
+/// captured at WARN), swap to a filled glyph so the row reads as louder
+/// than its raw severity would imply. ERROR/FATAL rows already pop —
+/// don't double up there. ASCII mode is unaffected; the fallback set
+/// has no "filled" variant.
+pub fn severity_glyph_for_class(
+    severity: Severity,
+    class: crate::inspector::classifier::EventClass,
+    ascii: bool,
+) -> char {
+    let base = severity_glyph_for(severity, ascii);
+    if ascii {
+        return base;
+    }
+    if !class.is_failure() {
+        return base;
+    }
+    match severity {
+        // INFO `○` → `●` (filled). The classic "this looks fine but
+        // it isn't" affordance.
+        Severity::Info => '●',
+        // WARN `⚠` is already visually loud; don't swap.
+        // ERROR / FATAL already at peak — don't double up.
+        _ => base,
     }
 }
 
