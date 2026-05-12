@@ -30,6 +30,7 @@ use crate::mouse::dispatch::{ClickAction, left_click_action, right_click_action}
 use crate::mouse::hover::HoverState;
 use crate::mouse::menu::{MenuChoice, render_menu};
 use crate::mouse::menu_controller::{MenuController, NavOutcome, OpenMenu};
+use crate::mouse::scrollback::{ScrollbackPassthrough, WATCHDOG_TICK};
 use crate::mouse::targets::{ClickRegistry, ClickRowDecision, ClickTarget, click_row_after_print};
 use crate::render::brand::render_brand;
 use crate::render::cursor::{CursorChoreography, render_ambient_above_prompt};
@@ -210,6 +211,9 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
         Arc::clone(&click_registry),
         shutdown.clone(),
     );
+    let handles = handles.with_grep_history(crate::repl::editor::grep_history_for(
+        &crate::theme::loader::theme_paths(),
+    ));
     let controller_cfg = ControllerConfig {
         host_url: cfg.host_url.clone(),
     };
@@ -268,6 +272,13 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
         eprintln!("·· mouse capture: TERM looks multiplexed (screen/tmux); keyboard fallback only");
     }
 
+    let scrollback_passthrough = Arc::new(ScrollbackPassthrough::default());
+    let scrollback_watchdog_handle = tokio::spawn(scrollback_watchdog_loop(
+        Arc::clone(&scrollback_passthrough),
+        mouse_support,
+        shutdown.clone(),
+    ));
+
     let mouse_dispatch_handle = tokio::spawn(mouse_dispatcher_loop(
         mouse_rx,
         menu_key_rx,
@@ -277,6 +288,8 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
         Arc::clone(&filter),
         Arc::clone(&prompt_state),
         handles.command_tx.clone(),
+        Arc::clone(&scrollback_passthrough),
+        mouse_support,
         shutdown.clone(),
     ));
 
@@ -291,6 +304,7 @@ pub async fn run(cfg: RuntimeConfig) -> anyhow::Result<ExitReason> {
     let _ = sparkline_handle.await;
     let _ = controller_handle.await;
     let _ = mouse_dispatch_handle.await;
+    let _ = scrollback_watchdog_handle.await;
     let _ = filter_controller_handle.await;
     if mouse_support == MouseSupport::Enabled {
         let mut out = stdout().lock();
@@ -751,6 +765,8 @@ async fn mouse_dispatcher_loop(
     filter: Arc<RwLock<FilterState>>,
     prompt_state: Arc<Mutex<PromptState>>,
     command_tx: mpsc::Sender<ControllerCommand>,
+    scrollback: Arc<ScrollbackPassthrough>,
+    mouse_support: MouseSupport,
     shutdown: CancellationToken,
 ) {
     use crossterm::event::{MouseButton, MouseEventKind};
@@ -762,6 +778,10 @@ async fn mouse_dispatcher_loop(
             _ = shutdown.cancelled() => break,
             maybe_event = mouse_rx.recv() => {
                 let Some(event) = maybe_event else { break };
+                if is_shift_wheel(&event) {
+                    handle_shift_wheel(&scrollback, mouse_support, Instant::now());
+                    continue;
+                }
                 if should_bypass(&event) {
                     if let Ok(reg) = click_registry.lock() {
                         hover_state.observe(event.row, event.column, &reg);
@@ -845,6 +865,52 @@ async fn mouse_dispatcher_loop(
                         menu_focus.close();
                     }
                 }
+            }
+        }
+    }
+}
+
+fn is_shift_wheel(event: &crossterm::event::MouseEvent) -> bool {
+    use crossterm::event::{KeyModifiers, MouseEventKind};
+    event.modifiers.contains(KeyModifiers::SHIFT)
+        && matches!(
+            event.kind,
+            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+        )
+}
+
+fn handle_shift_wheel(
+    scrollback: &Arc<ScrollbackPassthrough>,
+    mouse_support: MouseSupport,
+    now: Instant,
+) {
+    let activating = scrollback.record_event(now);
+    if !activating || mouse_support != MouseSupport::Enabled {
+        return;
+    }
+    let mut out = stdout().lock();
+    let _ = disable_mouse_capture(&mut out);
+}
+
+async fn scrollback_watchdog_loop(
+    scrollback: Arc<ScrollbackPassthrough>,
+    mouse_support: MouseSupport,
+    shutdown: CancellationToken,
+) {
+    let mut ticker = tokio::time::interval(WATCHDOG_TICK);
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        tokio::select! {
+            _ = shutdown.cancelled() => break,
+            _ = ticker.tick() => {
+                if !scrollback.should_release(Instant::now()) {
+                    continue;
+                }
+                if mouse_support != MouseSupport::Enabled {
+                    continue;
+                }
+                let mut out = stdout().lock();
+                let _ = enable_mouse_capture(&mut out);
             }
         }
     }
