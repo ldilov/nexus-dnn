@@ -15,6 +15,7 @@ use tokio_util::sync::CancellationToken;
 use crate::render::inspector::{InspectorRenderConfig, render_inspector_block};
 use crate::render::status_ribbon::emit_status_ribbon;
 use crate::repl::ansi::{detect_color_depth, osc8_hyperlink};
+use crate::repl::grep_history::GrepHistory;
 use crate::repl::inspect::{find_event_by_id_str, last_n_at_or_above};
 use crate::repl::prompt::PromptState;
 use crate::repl::queue::{CommandQueue, CtrlCOutcome};
@@ -86,6 +87,11 @@ pub struct ControllerHandles {
     pub click_registry: Arc<Mutex<crate::mouse::targets::ClickRegistry>>,
     pub command_tx: mpsc::Sender<ControllerCommand>,
     pub shutdown: CancellationToken,
+    /// On-disk MRU log of `/grep` patterns. Written when a `/grep`
+    /// command commits a valid regex; read by the slash completer to
+    /// surface recent patterns under `/grep <Tab>`. None when the
+    /// runtime hasn't wired the on-disk path (e.g. unit tests).
+    pub grep_history: Option<GrepHistory>,
 }
 
 impl ControllerHandles {
@@ -118,8 +124,14 @@ impl ControllerHandles {
             click_registry,
             command_tx: tx,
             shutdown,
+            grep_history: None,
         };
         (handles, rx)
+    }
+
+    pub fn with_grep_history(mut self, history: GrepHistory) -> Self {
+        self.grep_history = Some(history);
+        self
     }
 }
 
@@ -209,7 +221,13 @@ async fn execute(
         ParsedCommand::Level(level) => with_filter(handles, |f| f.set_level_floor(*level)),
         ParsedCommand::Grep(pattern) => {
             match with_filter_result(handles, |f| f.set_grep(Some(pattern))) {
-                Ok(()) => {}
+                Ok(()) => {
+                    if let Some(history) = handles.grep_history.as_ref()
+                        && let Err(err) = history.record(pattern)
+                    {
+                        tracing::warn!(error = %err, "grep history append failed");
+                    }
+                }
                 Err(err) => eprintln!("nexus: {err}"),
             }
         }
