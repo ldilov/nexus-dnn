@@ -164,10 +164,7 @@ pub fn load_theme_from_path(path: &Path) -> Result<LoadedTheme, ThemeLoadError> 
     }
 }
 
-fn load_theme_from_str(
-    contents: &str,
-    source: ThemeSource,
-) -> Result<LoadedTheme, ThemeLoadError> {
+fn load_theme_from_str(contents: &str, source: ThemeSource) -> Result<LoadedTheme, ThemeLoadError> {
     let overrides: ThemeOverrides = toml::from_str(contents)
         .map_err(|err| ThemeLoadError::Parse(format!("invalid theme.toml: {err}")))?;
     let theme = overrides.apply_to(SpectralTheme::default())?;
