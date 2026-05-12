@@ -76,6 +76,13 @@ pub struct ControllerHandles {
     /// successive `/inspect` or section-toggle clicks don't stack
     /// duplicate cards down the screen.
     pub inspector_anchor: Arc<Mutex<Option<InspectorBlockAnchor>>>,
+    /// Spec 044 — inspector "session" is active. While true, the
+    /// HoldQueue is kept locked so ambient events do NOT scroll the
+    /// inspector card off-screen — the anchor.start_row stays valid
+    /// across section-toggle clicks. Cleared on the next non-inspector
+    /// command, which dismisses the session and flushes accumulated
+    /// events.
+    pub inspector_session_active: Arc<std::sync::atomic::AtomicBool>,
     pub click_registry: Arc<Mutex<crate::mouse::targets::ClickRegistry>>,
     pub command_tx: mpsc::Sender<ControllerCommand>,
     pub shutdown: CancellationToken,
@@ -107,6 +114,7 @@ impl ControllerHandles {
             brush,
             inspector_collapsed: Arc::new(Mutex::new(std::collections::HashMap::new())),
             inspector_anchor: Arc::new(Mutex::new(None)),
+            inspector_session_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             click_registry,
             command_tx: tx,
             shutdown,
@@ -178,6 +186,15 @@ async fn execute(
     handles: &ControllerHandles,
     http: &reqwest::Client,
 ) {
+    // Inspector-session lifecycle: any command other than Inspect /
+    // InspectorToggle dismisses an in-progress session so the held
+    // ambient events flush before the new command's output prints.
+    if !matches!(
+        cmd,
+        ParsedCommand::Inspect(_) | ParsedCommand::InspectorToggle { .. }
+    ) {
+        dismiss_inspector_session(handles);
+    }
     let mutates_filter_state = matches!(
         cmd,
         ParsedCommand::Level(_)
@@ -403,6 +420,8 @@ fn render_inspect(handles: &ControllerHandles, id: &str) {
             clear_prior_inspector_block(handles);
             let start_row = crossterm::cursor::position().ok().map(|(_, r)| r);
             print!("{}", layout.rendered);
+            use std::io::Write as _;
+            let _ = std::io::stdout().flush();
             remember_inspector_anchor(handles, start_row, layout.total_rows);
             if let (Some(start), Ok(mut reg)) = (start_row, handles.click_registry.lock()) {
                 for (section, offset) in &layout.section_rows {
@@ -417,8 +436,43 @@ fn render_inspect(handles: &ControllerHandles, id: &str) {
                     );
                 }
             }
+            // Mark the inspector session active. The HoldQueue stays
+            // locked (`set_holding(true)` from line 360) so ambient
+            // events buffer behind the inspector card instead of
+            // scrolling it off-screen — which keeps the cached
+            // `inspector_anchor.start_row` valid for the next
+            // toggle-click redraw. The session is dismissed by the
+            // next non-inspector command (see `execute()` prelude).
+            handles
+                .inspector_session_active
+                .store(true, std::sync::atomic::Ordering::Release);
         }
-        None => eprintln!("·· no event found for '{id}'"),
+        None => {
+            eprintln!("·· no event found for '{id}'");
+            set_holding(handles, false);
+            flush_hold(handles);
+        }
+    }
+    // NOTE: on the success path we deliberately do NOT release the hold
+    // — see `inspector_session_active` above.
+}
+
+/// Tear down an active inspector session. Called from `execute()` at
+/// the start of every non-inspector command so the held ambient events
+/// flush to the screen and the inspector card can scroll naturally with
+/// further history. Idempotent — safe to call when no session is open.
+fn dismiss_inspector_session(handles: &ControllerHandles) {
+    use std::sync::atomic::Ordering;
+    if !handles
+        .inspector_session_active
+        .swap(false, Ordering::AcqRel)
+    {
+        return;
+    }
+    // Forget the cached block position — next /inspect will record a
+    // fresh anchor.
+    if let Ok(mut guard) = handles.inspector_anchor.lock() {
+        *guard = None;
     }
     set_holding(handles, false);
     flush_hold(handles);
