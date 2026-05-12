@@ -235,10 +235,25 @@ impl EditMode for MouseAwareEditMode {
         {
             focus.open();
             // Wake the controller so it can clear the prompt area and
-            // start rendering the filter bar. Send a no-op Char that
-            // the controller treats as "initial render"; pure
-            // book-keeping otherwise.
-            let _ = tx.try_send(FilterKey::Backspace);
+            // start rendering the filter bar. If the controller's
+            // receiver is gone (task panicked or shutdown beat us),
+            // roll the focus flag back to closed so reedline keeps
+            // the keyboard — otherwise the prompt would freeze
+            // (review H3 — flag-vs-consumer desync).
+            use tokio::sync::mpsc::error::TrySendError;
+            match tx.try_send(FilterKey::Backspace) {
+                Ok(()) | Err(TrySendError::Full(_)) => {}
+                Err(TrySendError::Closed(_)) => {
+                    focus.close();
+                    // Let the `/` keystroke fall through to reedline
+                    // as a normal character; user sees `/` in buffer.
+                    self.buffer_chars = self.buffer_chars.saturating_add(1);
+                    match ReedlineRawEvent::convert_from(inner_event) {
+                        Some(raw) => return self.inner.parse_event(raw),
+                        None => return ReedlineEvent::None,
+                    }
+                }
+            }
             return ReedlineEvent::None;
         }
 
@@ -261,20 +276,42 @@ impl EditMode for MouseAwareEditMode {
 
 impl MouseAwareEditMode {
     /// Mirror reedline's buffer length to enable empty-buffer detection
-    /// for `/` to promote into filter mode. Best-effort — paste and
-    /// history recall drift the count; that's fine since the only
-    /// gated path is "is this the first keystroke of the line?".
+    /// for `/` to promote into filter mode. Best-effort: we cannot read
+    /// reedline's real buffer, so we approximate by counting Char events
+    /// and decrementing on Backspace. Any event that *might* leave the
+    /// buffer in an unknown state (history recall, cursor jumps that
+    /// usually accompany content replacement, paste-style keys) forces
+    /// the mirror to a defensive HIGH value — this prevents the
+    /// "false-zero" failure mode where the user recalls a previous
+    /// command via Up, then types `/` in the middle and unexpectedly
+    /// captures keyboard into filter mode.
     fn track_buffer(&mut self, evt: &KeyEvent) {
         if evt.modifiers.contains(KeyModifiers::CONTROL) {
-            if matches!(evt.code, KeyCode::Char('u') | KeyCode::Char('w')) {
-                self.buffer_chars = 0;
+            match evt.code {
+                // Ctrl+U / Ctrl+W clear-to-BOL semantics — buffer empty.
+                KeyCode::Char('u') | KeyCode::Char('w') => self.buffer_chars = 0,
+                // Ctrl+A / Ctrl+E (BOL/EOL motion) suggest the user is
+                // operating on an already-populated line — force the
+                // mirror non-zero so `/` here does NOT open filter.
+                KeyCode::Char('a') | KeyCode::Char('e') => {
+                    self.buffer_chars = self.buffer_chars.max(1);
+                }
+                _ => {}
             }
             return;
         }
         match evt.code {
             KeyCode::Char(_) => self.buffer_chars = self.buffer_chars.saturating_add(1),
             KeyCode::Backspace => self.buffer_chars = self.buffer_chars.saturating_sub(1),
+            // Enter / Esc commits / aborts the line — true reset.
             KeyCode::Enter | KeyCode::Esc => self.buffer_chars = 0,
+            // History recall, end-of-line motion, and other navigation
+            // that may have just replaced the buffer with non-empty
+            // content. Force non-zero so `/` after these does NOT
+            // hijack focus into filter mode (review H2).
+            KeyCode::Up | KeyCode::Down | KeyCode::Home | KeyCode::End => {
+                self.buffer_chars = self.buffer_chars.max(1);
+            }
             _ => {}
         }
     }
@@ -480,6 +517,42 @@ mod tests {
         assert!(focus.is_open());
         focus.close();
         assert!(!focus.is_open());
+    }
+
+    #[test]
+    fn history_recall_then_slash_does_not_hijack_focus() {
+        // Review H2: if the user presses Up to recall a previous
+        // command, the buffer is non-empty (reedline replaced it) but
+        // the mirror would have been 0 — `/` must NOT open filter.
+        let (mut mode, _filter_rx, focus) = make_filter_mode();
+        let _ = mode.parse_event(raw(Event::Key(KeyEvent::new(
+            KeyCode::Up,
+            KeyModifiers::NONE,
+        ))));
+        let evt = mode.parse_event(raw(Event::Key(KeyEvent::new(
+            KeyCode::Char('/'),
+            KeyModifiers::NONE,
+        ))));
+        // `/` falls through to reedline; filter focus stays closed.
+        assert!(!matches!(evt, ReedlineEvent::None));
+        assert!(!focus.is_open(), "Up + / must not open filter mode");
+    }
+
+    #[test]
+    fn ctrl_e_marks_buffer_dirty_so_slash_falls_through() {
+        // Ctrl+E (move-to-EOL) implies the buffer has content; `/` after
+        // it must NOT open filter.
+        let (mut mode, _filter_rx, focus) = make_filter_mode();
+        let _ = mode.parse_event(raw(Event::Key(KeyEvent::new(
+            KeyCode::Char('e'),
+            KeyModifiers::CONTROL,
+        ))));
+        let evt = mode.parse_event(raw(Event::Key(KeyEvent::new(
+            KeyCode::Char('/'),
+            KeyModifiers::NONE,
+        ))));
+        assert!(!matches!(evt, ReedlineEvent::None));
+        assert!(!focus.is_open(), "Ctrl+E + / must not open filter mode");
     }
 
     #[test]

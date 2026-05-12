@@ -359,22 +359,32 @@ fn resolve_snapshot_path(arg: &str) -> std::path::PathBuf {
 fn render_inspect(handles: &ControllerHandles, id: &str) {
     set_holding(handles, true);
     let depth = detect_color_depth();
+    // Lock ordering: never hold the `ring` guard while taking the
+    // `inspector_collapsed` guard (review H1 — nested-lock fragility).
+    // Clone the target `EventLine` out of the ring so the ring guard
+    // is released before we touch the collapsed-map. The renderer
+    // needs the ring again for correlation walking; re-acquire it
+    // separately once the collapsed set is known.
+    let target_owned: Option<crate::stream::event_line::EventLine> = match handles.ring.lock() {
+        Ok(buf) => find_event_by_id_str(&buf, id).cloned(),
+        Err(_) => None,
+    };
+    let Some(target_owned) = target_owned else {
+        set_holding(handles, false);
+        flush_hold(handles);
+        eprintln!("·· no event found for '{id}'");
+        return;
+    };
+    let event_class = crate::inspector::classifier::classify(&target_owned);
+    let collapsed = if let Ok(mut map) = handles.inspector_collapsed.lock() {
+        map.entry(target_owned.id)
+            .or_insert_with(|| crate::render::inspector::default_collapsed_for_class(event_class))
+            .clone()
+    } else {
+        std::collections::BTreeSet::new()
+    };
     let rendered = match handles.ring.lock() {
-        Ok(buf) => find_event_by_id_str(&buf, id).map(|target| {
-            let event_class = crate::inspector::classifier::classify(target);
-            // On first inspect of this event, seed the per-event
-            // collapsed set from the class default (Spec 044 S4). If
-            // the user has already toggled sections (entry exists in
-            // the map), prefer their state.
-            let collapsed = if let Ok(mut map) = handles.inspector_collapsed.lock() {
-                map.entry(target.id)
-                    .or_insert_with(|| {
-                        crate::render::inspector::default_collapsed_for_class(event_class)
-                    })
-                    .clone()
-            } else {
-                std::collections::BTreeSet::new()
-            };
+        Ok(buf) => {
             let cfg = InspectorRenderConfig {
                 color_depth: depth,
                 recent_context_count: 5,
@@ -382,9 +392,10 @@ fn render_inspect(handles: &ControllerHandles, id: &str) {
                 collapsed,
                 event_class: Some(event_class),
             };
-            let layout = crate::render::inspector::render_inspector_layout(&buf, target, &cfg);
-            (layout, target.id)
-        }),
+            let layout =
+                crate::render::inspector::render_inspector_layout(&buf, &target_owned, &cfg);
+            Some((layout, target_owned.id))
+        }
         Err(_) => None,
     };
     match rendered {
