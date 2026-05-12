@@ -148,10 +148,15 @@ async fn t_j2_bundle_job_includes_primary_plus_required_deps() {
 }
 
 /// T-J3 — a second POST for the same `(family_id, target)` before the
-/// first terminates is idempotent: returns `{existing: true}` with
-/// the original `job_id` (FR-085).
+/// first terminates is idempotent: returns the FULL DownloadJob DTO
+/// for the existing job (same `job_id`, same `family_id`, populated
+/// `state` field). This is the post-fix contract — the previous stub
+/// response `{ existing: true, job_id }` left the frontend with an
+/// undefined-everywhere DownloadJob that broke the progress-bar
+/// state machine. The host now always returns the canonical DTO so
+/// the client can reconcile state on duplicate posts.
 #[tokio::test]
-async fn t_j3_duplicate_active_request_returns_existing_job_id() {
+async fn t_j3_duplicate_active_request_returns_existing_job_dto() {
     let results = vec![gguf_result("acme/llama", &[("Q4_K_M", 1)])];
     let harness = harness_with(StubHf::with_results(results)).await;
 
@@ -173,8 +178,22 @@ async fn t_j3_duplicate_active_request_returns_existing_job_id() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(second["data"]["existing"], true);
+    // Same job_id as the original — idempotency preserved.
     assert_eq!(second["data"]["job_id"], first_id);
+    // Full DTO shape — these fields are what the frontend relies on
+    // to drive the progress state machine.
+    assert_eq!(
+        second["data"]["family_id"], "huggingface:acme/llama",
+        "duplicate response must carry the canonical family_id"
+    );
+    assert!(
+        second["data"]["state"].is_string(),
+        "duplicate response must carry the current download state"
+    );
+    assert!(
+        second["data"]["targets"].is_array(),
+        "duplicate response must carry the targets array"
+    );
 }
 
 /// I1 — `include_dependencies: true` with `kind=variant` MUST be

@@ -309,9 +309,24 @@ export function ModelsSearchView() {
       };
       try {
         const job = await createDownload(body);
-        setActiveJobs((prev) => ({ ...prev, [job.job_id]: job }));
+        // Defensive: pre-fix versions of the host returned a stub
+        // `{ job_id, existing }` body when a duplicate job existed,
+        // leaving `state` / `family_id` / `targets` undefined. The
+        // host now always returns the full DTO, but a mixed-version
+        // deploy or an older host instance could still trip this.
+        // Guard by re-fetching the canonical job whenever the
+        // response is missing required fields, so the UI state never
+        // contains a partial record.
+        const canonical =
+          typeof job.state === "string" && typeof job.family_id === "string"
+            ? job
+            : await fetchDownloadStatus(job.job_id);
+        setActiveJobs((prev) => ({ ...prev, [canonical.job_id]: canonical }));
         if (target.kind === "variant") {
-          setJobVariantMap((prev) => ({ ...prev, [job.job_id]: target.variantId }));
+          setJobVariantMap((prev) => ({
+            ...prev,
+            [canonical.job_id]: target.variantId,
+          }));
         }
         toast.success(
           target.kind === "variant"
