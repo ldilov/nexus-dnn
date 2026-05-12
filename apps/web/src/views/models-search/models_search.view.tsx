@@ -328,13 +328,31 @@ export function ModelsSearchView() {
             [canonical.job_id]: target.variantId,
           }));
         }
-        toast.success(
+        // `downloadable_but_not_runnable` (the "DOWNLOAD ONLY" chip)
+        // means the file can be fetched but no runtime in the active
+        // backend roster can load it — typically a safetensors LLM
+        // when only llama.cpp / GGUF is enabled. Surface this
+        // up-front in the toast so the user doesn't go looking for
+        // the model in Local Chat after download completes and find
+        // nothing (the chat picker filters to GGUF only). The
+        // "DOWNLOAD ONLY" chip is already visible on the card; the
+        // toast is the moment-of-action reinforcement.
+        const isDownloadOnly = family.compat === "downloadable_but_not_runnable";
+        const baseMessage =
           target.kind === "variant"
-            ? `Queued download`
+            ? "Queued download"
             : target.kind === "bundle"
               ? "Bundle download queued"
-              : "Download queued",
-        );
+              : "Download queued";
+        if (isDownloadOnly) {
+          toast.success(baseMessage, {
+            description:
+              "This format can't run in Local Chat — no compatible backend (need GGUF for llama.cpp).",
+            duration: 7000,
+          });
+        } else {
+          toast.success(baseMessage);
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Download failed";
         toast.error(msg);
