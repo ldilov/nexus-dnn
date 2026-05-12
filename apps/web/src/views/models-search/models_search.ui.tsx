@@ -36,6 +36,9 @@ export interface ModelsSearchUIProps {
   jobStateByFamily: Record<string, DownloadState | undefined>;
   jobIdByFamily: Record<string, string | undefined>;
   jobByFamily: Record<string, DownloadJob | undefined>;
+  jobStateByArtifact: Record<string, DownloadState | undefined>;
+  jobIdByArtifact: Record<string, string | undefined>;
+  jobByArtifact: Record<string, DownloadJob | undefined>;
   onQueryChange: (q: string) => void;
   onToggleFormat: (fmt: Format) => void;
   onToggleBackend: (id: string) => void;
@@ -77,6 +80,9 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
     jobStateByFamily,
     jobIdByFamily,
     jobByFamily,
+    jobStateByArtifact,
+    jobIdByArtifact,
+    jobByArtifact,
     onQueryChange,
     onToggleFormat,
     onToggleBackend,
@@ -198,6 +204,9 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
                 jobStateByFamily={jobStateByFamily}
                 jobIdByFamily={jobIdByFamily}
                 jobByFamily={jobByFamily}
+                jobStateByArtifact={jobStateByArtifact}
+                jobIdByArtifact={jobIdByArtifact}
+                jobByArtifact={jobByArtifact}
                 onDownload={onDownload}
                 onPause={onPause}
                 onResume={onResume}
