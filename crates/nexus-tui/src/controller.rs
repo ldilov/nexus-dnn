@@ -436,12 +436,54 @@ fn render_inspect(handles: &ControllerHandles, id: &str) {
     match rendered {
         Some((layout, event_id)) => {
             clear_prior_inspector_block(handles);
-            let start_row = crossterm::cursor::position().ok().map(|(_, r)| r);
+            // Capture cursor row BEFORE and AFTER print so we can detect
+            // terminal scroll. A 20-row inspector card printed when the
+            // prompt sits near the bottom of the terminal scrolls
+            // pre-existing content up; absolute screen rows the layout
+            // expects no longer match where the rows actually land. The
+            // ambient-render path uses the same pattern (runtime.rs ::
+            // `register_targets` + `click_row_after_print`).
+            let old_row = crossterm::cursor::position().ok().map(|(_, r)| r);
             print!("{}", layout.rendered);
             use std::io::Write as _;
             let _ = std::io::stdout().flush();
-            remember_inspector_anchor(handles, start_row, layout.total_rows);
-            if let (Some(start), Ok(mut reg)) = (start_row, handles.click_registry.lock()) {
+            let new_row = crossterm::cursor::position().ok().map(|(_, r)| r);
+            let total_rows = layout.total_rows;
+            let block_top = compute_block_top(old_row, new_row, total_rows);
+            // Compute scroll delta so any pre-existing registry entries
+            // (older ambient `EventLineBody`s now sitting under the
+            // inspector card) get shifted to their new on-screen rows.
+            if let (Some(old), Some(new)) = (old_row, new_row) {
+                let expected = (old as i32).saturating_add(total_rows as i32);
+                let scroll_delta = (expected - new as i32).max(0) as u16;
+                if scroll_delta > 0
+                    && let Ok(mut reg) = handles.click_registry.lock()
+                {
+                    reg.shift_rows_up(scroll_delta);
+                }
+            }
+            remember_inspector_anchor(handles, block_top, total_rows);
+            if let (Some(start), Ok(mut reg)) = (block_top, handles.click_registry.lock()) {
+                // Evict any prior inspector-section / ambient targets
+                // that overlapped the rows now owned by the new card.
+                // Reverse-iter lookup in ClickRegistry would otherwise
+                // return a stale `EventLineBody` for a click that hit
+                // the new card's text — exactly the "prints something
+                // unrelated" failure mode the user reported.
+                let max_row = start.saturating_add(total_rows);
+                reg.retain_targets(|t| {
+                    !matches!(
+                        t,
+                        crate::mouse::targets::ClickTarget::InspectorSection { .. }
+                    )
+                });
+                let mut rows_to_clear: Vec<u16> = Vec::with_capacity(total_rows as usize);
+                for r in start..max_row {
+                    rows_to_clear.push(r);
+                }
+                for r in rows_to_clear {
+                    reg.clear_row(r);
+                }
                 for (section, offset) in &layout.section_rows {
                     let row = start.saturating_add(*offset);
                     reg.register(
@@ -523,6 +565,20 @@ fn clear_prior_inspector_block(handles: &ControllerHandles) {
         };
         guard.take()
     };
+    // Always evict stale `InspectorSection` click targets — even when
+    // no prior anchor is recorded the registry may still carry entries
+    // from an earlier inspector session that survived a partial wipe.
+    // Without this eviction, a click on the new card's row could
+    // resolve to an old section's target whose rows shifted underneath
+    // it (the "click toggles the wrong section" symptom).
+    if let Ok(mut reg) = handles.click_registry.lock() {
+        reg.retain_targets(|t| {
+            !matches!(
+                t,
+                crate::mouse::targets::ClickTarget::InspectorSection { .. }
+            )
+        });
+    }
     let Some(anchor) = prior else { return };
     if anchor.rows == 0 {
         return;
@@ -537,6 +593,34 @@ fn remember_inspector_anchor(handles: &ControllerHandles, start_row: Option<u16>
     let Some(start_row) = start_row else { return };
     if let Ok(mut guard) = handles.inspector_anchor.lock() {
         *guard = Some(InspectorBlockAnchor { start_row, rows });
+    }
+}
+
+/// Resolve the absolute terminal row at which a multi-line block lives
+/// on screen, given the cursor row before and after `print!` and the
+/// block's row count. Handles three cases:
+///
+/// 1. Both positions known: block top = `new_row - total_rows`
+///    (terminal-bottom-clamped). True regardless of whether the print
+///    scrolled the screen, because `new_row` reflects post-scroll
+///    state.
+/// 2. Either position unknown (pipe / dumb terminal): fall back to
+///    `old_row` if we have it, since the optimistic assumption is "no
+///    scroll happened". This gives a best-effort answer when the
+///    terminal refuses position queries.
+/// 3. Neither known: return `None` and let the caller skip
+///    registration.
+fn compute_block_top(old_row: Option<u16>, new_row: Option<u16>, total_rows: u16) -> Option<u16> {
+    match (old_row, new_row) {
+        (_, Some(new)) => {
+            // After the print, the block occupies rows
+            // `new - total_rows .. new`. Saturating-sub keeps us in
+            // bounds even if the terminal is so small the block
+            // overflows its top edge.
+            Some(new.saturating_sub(total_rows))
+        }
+        (Some(old), None) => Some(old),
+        (None, None) => None,
     }
 }
 
@@ -1325,5 +1409,38 @@ mod help_render_tests {
         let out = render_help_block();
         assert!(out.contains("┃ ╭"), "missing top-left corner");
         assert!(out.contains("┃ ╰"), "missing bottom-left corner");
+    }
+
+    #[test]
+    fn compute_block_top_no_scroll_returns_old_row() {
+        // 10-row block printed from row 5 with no scroll: cursor
+        // advances to row 15. Block top = 15 − 10 = 5 (== old_row).
+        assert_eq!(compute_block_top(Some(5), Some(15), 10), Some(5));
+    }
+
+    #[test]
+    fn compute_block_top_full_scroll_clamps_to_zero() {
+        // 30-row block on a 24-row terminal printed from row 20:
+        // cursor ends at row 23 (terminal-bottom-clamped). Block top
+        // = 23 − 30 = saturating_sub → 0.
+        assert_eq!(compute_block_top(Some(20), Some(23), 30), Some(0));
+    }
+
+    #[test]
+    fn compute_block_top_partial_scroll_returns_new_minus_height() {
+        // 20-row block printed from row 10 on a 24-row terminal:
+        // cursor ends at row 23. Block top = 23 − 20 = 3 (shifted up
+        // by 7 rows of scroll).
+        assert_eq!(compute_block_top(Some(10), Some(23), 20), Some(3));
+    }
+
+    #[test]
+    fn compute_block_top_falls_back_to_old_when_new_missing() {
+        assert_eq!(compute_block_top(Some(5), None, 10), Some(5));
+    }
+
+    #[test]
+    fn compute_block_top_returns_none_when_both_missing() {
+        assert_eq!(compute_block_top(None, None, 10), None);
     }
 }
