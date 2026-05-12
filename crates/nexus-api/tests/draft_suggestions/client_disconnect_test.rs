@@ -100,7 +100,13 @@ async fn second_concurrent_request_succeeds_after_first_disconnects() {
             .await
             .unwrap_or_else(|_| panic!("{label} request must succeed"));
         assert_eq!(resp.status(), 200);
-        let body = resp.into_body().collect().await.unwrap().to_bytes().to_vec();
+        let body = resp
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .to_vec();
         let events = parse_sse(&body);
         let terminal = events.last().expect("terminal");
         assert!(

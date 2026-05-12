@@ -140,10 +140,10 @@ use crate::extension_router;
 use crate::frontend;
 use crate::handlers;
 use crate::handlers::{
-    artifacts, backend_events_ws, backend_runtimes, backends, deployments, draft_suggestions,
-    extension_dependencies, extension_ui, extensions, extensions_install, health, host,
-    huggingface, metrics, modules, recipes, runs, storage_contributions, system, tools,
-    ui_components, ui_contributions, ui_layouts, workflows,
+    artifacts, backend_events_ws, backend_runtimes, backends, deployments, desktop,
+    draft_suggestions, extension_dependencies, extension_ui, extensions, extensions_install,
+    health, host, huggingface, metrics, modules, recipes, runs, storage_contributions, system,
+    tools, ui_components, ui_contributions, ui_layouts, workflows,
 };
 use crate::ws;
 
@@ -292,6 +292,8 @@ pub fn build(state: AppState) -> Router {
         .route("/system/info", get(system::system_info))
         .route("/tools", get(tools::list_tools))
         .route("/events", get(ws::events_ws))
+        .route("/events/sse", get(host::events_sse::stream_events_sse))
+        .route("/desktop/focus", post(desktop::focus::focus))
         .route(
             "/host-models",
             get(backends::list_host_models).post(backends::install_host_model),

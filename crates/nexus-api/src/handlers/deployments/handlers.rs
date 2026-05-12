@@ -6,7 +6,6 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
-use nexus_events::types::NexusEvent;
 use nexus_deployments::DeploymentRepository;
 use nexus_deployments::id::{DeploymentId, DeploymentRevisionId};
 use nexus_deployments::repository::{ListFilter, MetadataPatch};
@@ -18,6 +17,7 @@ use nexus_deployments::service::load::DeploymentLoadService;
 use nexus_deployments::service::save::{DeploymentSaveService, SaveRequest};
 use nexus_deployments::service::validate::DeploymentValidateService;
 use nexus_deployments::sqlite_repo::SqliteDeploymentRepository;
+use nexus_events::types::NexusEvent;
 use nexus_storage::DeploymentMappers;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -33,7 +33,10 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", post(create).get(list))
         .route("/import", post(import))
-        .route("/{id}", get(detail).patch(update_metadata).delete(delete_deployment))
+        .route(
+            "/{id}",
+            get(detail).patch(update_metadata).delete(delete_deployment),
+        )
         .route("/{id}/revisions/{rev}", get(get_revision))
         .route("/{id}/revisions", post(save_new_revision))
         .route("/{id}/validate", post(validate))

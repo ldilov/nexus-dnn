@@ -1,0 +1,5 @@
+---
+source: crates/nexus-tui/tests/sparkline_render_test.rs
+expression: render_sparkline(&samples)
+---
+⠀⠀⠀⠀⠀⠀⠀⠀

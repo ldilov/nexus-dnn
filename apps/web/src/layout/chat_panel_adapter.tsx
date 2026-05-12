@@ -20,6 +20,7 @@ import {
   type RuntimeTuning,
 // audit-allow: boundary — grandfathered local-llm coupling per .claude/rules/host-extension-boundary.md
 } from "../services/local_llm_chat";
+import { subscribeModelsChanged } from "../services/model_events";
 import { useTokenUsage } from "./local_llm/use_token_usage";
 import { useLocalLlmRuntimeStatus } from "./local_llm/use_runtime_status";
 import { InspectorPanel } from "./local_llm/inspector_panel";
@@ -432,6 +433,25 @@ export function ChatPanelAdapter({
       .then((models) => setAvailableModels(models))
       .catch(() => {});
     return () => ctrl.abort();
+  }, []);
+
+  // Refresh the picker the moment a download completes in any view.
+  // The Model Foundry broadcasts a `nexus:models-changed` event when a
+  // `DownloadJob` transitions to `downloaded` — see
+  // `services/model_events.ts`. Without this listener the user has to
+  // refocus the window or reopen the load dialog before the picker
+  // sees the newly-installed model.
+  useEffect(() => {
+    const ctrl = new AbortController();
+    const unsubscribe = subscribeModelsChanged(() => {
+      fetchAvailableModels(ctrl.signal)
+        .then((models) => setAvailableModels(models))
+        .catch(() => {});
+    });
+    return () => {
+      unsubscribe();
+      ctrl.abort();
+    };
   }, []);
 
   useEffect(() => {
