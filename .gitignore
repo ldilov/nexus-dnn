@@ -19,6 +19,9 @@ desktop.ini
 
 # AI / Agent tooling
 .claude/
+.claude-octopus/
+.codex/
+.octopus/
 .specify/
 AGENTS.md
 CLAUDE.md
@@ -26,6 +29,15 @@ CLAUDE.md
 .cursor/
 .aider*
 .copilot/
+
+# Codex worker build artefacts
+**/target-codex/
+
+# Graphify knowledge-graph output (regenerable; not published)
+graphify-out/
+
+# Temporary scratch
+.tmp_*
 
 # Internal working docs (kept local, not published)
 specs/

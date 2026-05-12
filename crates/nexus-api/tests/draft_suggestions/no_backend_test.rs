@@ -38,7 +38,13 @@ async fn no_eligible_backend_returns_503_with_typed_envelope() {
         "503 body MUST be JSON, not SSE; got {content_type:?}"
     );
 
-    let body = resp.into_body().collect().await.unwrap().to_bytes().to_vec();
+    let body = resp
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes()
+        .to_vec();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["code"], "no_backend_leasable");
     assert!(json["message"].is_string());
@@ -60,10 +66,19 @@ async fn lease_acquisition_failed_also_returns_503_no_backend() {
         .unwrap();
     assert_eq!(resp.status(), 503);
 
-    let body = resp.into_body().collect().await.unwrap().to_bytes().to_vec();
+    let body = resp
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes()
+        .to_vec();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["code"], "no_backend_leasable");
     // ui_message MUST NOT leak the internal "connection refused".
     let msg = json["message"].as_str().unwrap_or("");
-    assert!(!msg.contains("connection refused"), "internal detail leaked");
+    assert!(
+        !msg.contains("connection refused"),
+        "internal detail leaked"
+    );
 }
