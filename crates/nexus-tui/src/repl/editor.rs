@@ -12,6 +12,7 @@ use tokio::sync::mpsc::Sender as TokioSender;
 
 use crate::repl::ansi::ColorDepth;
 use crate::repl::completion::SlashCompleter;
+use crate::repl::grep_history::{GREP_HISTORY_FILE_NAME, GrepHistory};
 use crate::repl::mouse_edit_mode::{
     FilterFocus, FilterKey, MenuFocus, MenuKey, MouseAwareEditMode,
 };
@@ -58,12 +59,18 @@ pub fn build_editor_with_theme(
     theme: SpectralTheme,
     color_depth: ColorDepth,
 ) -> anyhow::Result<Reedline> {
-    let history_path = history_path()?;
+    let paths = theme_paths();
+    let history_path = prepare_history_path(&paths)?;
     let history = FileBackedHistory::with_file(HISTORY_CAPACITY, history_path)?;
-    let completer: Box<SlashCompleter> = match ring {
-        Some(r) => Box::new(SlashCompleter::with_ring(r)),
-        None => Box::new(SlashCompleter::new()),
+    let grep_history = grep_history_for(&paths);
+    let mut completer: SlashCompleter = match ring {
+        Some(r) => SlashCompleter::with_ring(r),
+        None => SlashCompleter::new(),
     };
+    completer = completer
+        .with_theme(theme, color_depth)
+        .with_grep_history(grep_history);
+    let completer: Box<SlashCompleter> = Box::new(completer);
     let menu = build_completion_menu(&theme.menu, color_depth);
     let keybindings = build_keybindings();
     let emacs: Box<dyn EditMode> = Box::new(Emacs::new(keybindings));
@@ -157,8 +164,8 @@ fn build_keybindings() -> reedline::Keybindings {
     keybindings
 }
 
-fn history_path() -> std::io::Result<PathBuf> {
-    prepare_history_path(&theme_paths())
+pub fn grep_history_for(paths: &ThemePaths) -> GrepHistory {
+    GrepHistory::new(paths.config_dir.join(GREP_HISTORY_FILE_NAME))
 }
 
 fn prepare_history_path(paths: &ThemePaths) -> std::io::Result<PathBuf> {
