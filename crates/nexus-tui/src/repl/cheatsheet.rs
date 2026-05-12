@@ -7,6 +7,7 @@ const HINT_LINES: &[&str] = &[
     "/filter      filter events",
     "Tab          complete slash command",
     "Ctrl+G       pause / resume stream",
+    "Shift+wheel  scroll terminal scrollback",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,12 +46,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn first_run_returns_four_hint_lines() {
+    fn first_run_returns_hint_lines() {
         let tmp = tempfile::tempdir().unwrap();
         let rendered = render_first_run_cheatsheet(tmp.path()).expect("first run");
-        assert_eq!(rendered.lines.len(), 4);
+        assert_eq!(rendered.lines.len(), 5);
         assert!(rendered.lines[0].contains("?"));
         assert!(rendered.lines.iter().any(|l| l.contains("/filter")));
+        assert!(
+            rendered.lines.iter().any(|l| l.contains("Shift+wheel")),
+            "cheatsheet documents Shift+wheel terminal scrollback"
+        );
     }
 
     #[test]
