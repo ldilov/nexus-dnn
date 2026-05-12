@@ -181,6 +181,66 @@ export function ModelsSearchView() {
     [activeJobs, jobVariantMap],
   );
 
+  const jobByFamily = useMemo<Record<string, DownloadJob | undefined>>(
+    () => {
+      const PRIORITY: Record<DownloadState, number> = {
+        downloading: 6,
+        queued: 5,
+        paused: 4,
+        failed: 3,
+        downloaded: 2,
+        not_downloaded: 1,
+        incompatible: 0,
+        auth_required: 0,
+      };
+      const out: Record<string, DownloadJob | undefined> = {};
+      for (const j of Object.values(activeJobs)) {
+        const existing = out[j.family_id];
+        if (!existing) {
+          out[j.family_id] = j;
+          continue;
+        }
+        const nextScore = PRIORITY[j.state] ?? 0;
+        const prevScore = PRIORITY[existing.state] ?? 0;
+        if (nextScore > prevScore) {
+          out[j.family_id] = j;
+          continue;
+        }
+        if (nextScore === prevScore) {
+          const nextTs = j.started_at ?? j.created_at;
+          const prevTs = existing.started_at ?? existing.created_at;
+          if (nextTs > prevTs) {
+            out[j.family_id] = j;
+          }
+        }
+      }
+      return out;
+    },
+    [activeJobs],
+  );
+
+  const jobStateByFamily = useMemo<Record<string, DownloadState | undefined>>(
+    () => {
+      const out: Record<string, DownloadState | undefined> = {};
+      for (const [familyId, j] of Object.entries(jobByFamily)) {
+        if (j) out[familyId] = j.state;
+      }
+      return out;
+    },
+    [jobByFamily],
+  );
+
+  const jobIdByFamily = useMemo<Record<string, string | undefined>>(
+    () => {
+      const out: Record<string, string | undefined> = {};
+      for (const [familyId, j] of Object.entries(jobByFamily)) {
+        if (j) out[familyId] = j.job_id;
+      }
+      return out;
+    },
+    [jobByFamily],
+  );
+
   const startDownload = useCallback(
     async (family: ModelFamily, target: DownloadKind) => {
       const body = {
@@ -328,6 +388,9 @@ export function ModelsSearchView() {
       jobStateByVariant={jobStateByVariant}
       jobIdByVariant={jobIdByVariant}
       jobByVariant={jobByVariant}
+      jobStateByFamily={jobStateByFamily}
+      jobIdByFamily={jobIdByFamily}
+      jobByFamily={jobByFamily}
       {...handlers}
     />
   );
