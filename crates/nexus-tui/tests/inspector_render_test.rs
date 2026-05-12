@@ -56,6 +56,7 @@ fn snapshot_inspector_block_with_correlation_and_heuristic() {
         recent_context_count: 5,
         correlation_depth: 3,
         collapsed: std::collections::BTreeSet::new(),
+        event_class: None,
     };
     let rendered = render_inspector_block(&buf, &target, &cfg);
     insta::assert_snapshot!(rendered);

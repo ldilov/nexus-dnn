@@ -29,6 +29,14 @@ pub enum InspectorSection {
     CorrelatedEvents,
     Suggestions,
     RawPayload,
+    // S4 — Sub-sectioned inspector for classified failure events.
+    // These sections only render when [`InspectorRenderConfig.event_class`]
+    // marks the event as `HttpFailure`/`HttpSuccess` (HttpStatus,
+    // HttpRequest, HttpResponse) or `Exception`/`Panic` (StackTrace).
+    HttpStatus,
+    HttpRequest,
+    HttpResponse,
+    StackTrace,
 }
 
 impl InspectorSection {
@@ -42,6 +50,10 @@ impl InspectorSection {
             InspectorSection::CorrelatedEvents => "correlated events",
             InspectorSection::Suggestions => "suggestions",
             InspectorSection::RawPayload => "raw payload",
+            InspectorSection::HttpStatus => "http status",
+            InspectorSection::HttpRequest => "http request",
+            InspectorSection::HttpResponse => "http response",
+            InspectorSection::StackTrace => "stack trace",
         }
     }
 
@@ -55,10 +67,14 @@ impl InspectorSection {
             InspectorSection::CorrelatedEvents => "related",
             InspectorSection::Suggestions => "suggestions",
             InspectorSection::RawPayload => "raw",
+            InspectorSection::HttpStatus => "http_status",
+            InspectorSection::HttpRequest => "http_request",
+            InspectorSection::HttpResponse => "http_response",
+            InspectorSection::StackTrace => "stack_trace",
         }
     }
 
-    pub fn all() -> [InspectorSection; 8] {
+    pub fn all() -> [InspectorSection; 12] {
         [
             InspectorSection::Header,
             InspectorSection::Metadata,
@@ -68,8 +84,72 @@ impl InspectorSection {
             InspectorSection::CorrelatedEvents,
             InspectorSection::Suggestions,
             InspectorSection::RawPayload,
+            InspectorSection::HttpStatus,
+            InspectorSection::HttpRequest,
+            InspectorSection::HttpResponse,
+            InspectorSection::StackTrace,
         ]
     }
+}
+
+/// Default `collapsed` set seeded for a given event class on first
+/// inspect. The set contains the sections that should render in their
+/// **collapsed** state — sections NOT in the set are rendered expanded.
+///
+/// Per Define Q3 consensus:
+/// - Plain / HttpSuccess: hide HTTP/StackTrace sub-sections entirely
+///   (handled by the renderer, not this set).
+/// - HttpFailure: expand HttpStatus + HttpResponse; collapse everything
+///   else for a tight initial render (status + 200-char body
+///   snippet inline).
+/// - Exception / Panic: expand StackTrace; collapse most other sections
+///   so the trace is what the operator sees first.
+pub fn default_collapsed_for_class(
+    class: crate::inspector::classifier::EventClass,
+) -> std::collections::BTreeSet<InspectorSection> {
+    use crate::inspector::classifier::EventClass;
+    use std::collections::BTreeSet;
+    let mut collapsed = BTreeSet::new();
+    match class {
+        EventClass::Plain | EventClass::HttpSuccess { .. } => {
+            // Use the historical default — Header/Metadata/Fields
+            // expanded; everything else collapsed. The Define-Q3 matrix
+            // says Plain fully collapses but the existing UX already
+            // expands these — preserve to avoid snapshot churn here.
+            collapsed.insert(InspectorSection::CorrelationKeys);
+            collapsed.insert(InspectorSection::RecentContext);
+            collapsed.insert(InspectorSection::CorrelatedEvents);
+            collapsed.insert(InspectorSection::Suggestions);
+            collapsed.insert(InspectorSection::RawPayload);
+        }
+        EventClass::HttpFailure { .. } => {
+            // Tight failure view: status + response visible; everything
+            // else folded so the operator sees the failure quickly.
+            collapsed.insert(InspectorSection::Header);
+            collapsed.insert(InspectorSection::Metadata);
+            collapsed.insert(InspectorSection::CorrelationKeys);
+            collapsed.insert(InspectorSection::RecentContext);
+            collapsed.insert(InspectorSection::CorrelatedEvents);
+            collapsed.insert(InspectorSection::Suggestions);
+            collapsed.insert(InspectorSection::RawPayload);
+            collapsed.insert(InspectorSection::HttpRequest);
+            // Fields stays expanded — carries the http.* fields.
+            // HttpStatus + HttpResponse stay expanded.
+        }
+        EventClass::Exception | EventClass::Panic => {
+            // Trace-first view.
+            collapsed.insert(InspectorSection::Metadata);
+            collapsed.insert(InspectorSection::Fields);
+            collapsed.insert(InspectorSection::CorrelationKeys);
+            collapsed.insert(InspectorSection::RecentContext);
+            collapsed.insert(InspectorSection::CorrelatedEvents);
+            collapsed.insert(InspectorSection::Suggestions);
+            collapsed.insert(InspectorSection::RawPayload);
+            // Header stays expanded (carries event-source label).
+            // StackTrace stays expanded.
+        }
+    }
+    collapsed
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +158,11 @@ pub struct InspectorRenderConfig {
     pub recent_context_count: usize,
     pub correlation_depth: usize,
     pub collapsed: std::collections::BTreeSet<InspectorSection>,
+    /// Spec 044 S4 — when set, render the per-class sub-sections
+    /// (HttpStatus / HttpRequest / HttpResponse for HTTP classes,
+    /// StackTrace for Exception / Panic). `None` falls back to the
+    /// classic 8-section layout (no sub-sections rendered).
+    pub event_class: Option<crate::inspector::classifier::EventClass>,
 }
 
 impl Default for InspectorRenderConfig {
@@ -87,6 +172,7 @@ impl Default for InspectorRenderConfig {
             recent_context_count: 5,
             correlation_depth: 3,
             collapsed: std::collections::BTreeSet::new(),
+            event_class: None,
         }
     }
 }
@@ -268,6 +354,39 @@ pub fn render_inspector_layout(
         }
         row += lines.len() as u16;
     }
+
+    // Spec 044 S4 — per-class sub-sections. Only emit when the
+    // classifier marks this event as HTTP-flavoured or
+    // exception-flavoured. Plain events get no sub-sections, so the
+    // legacy 8-section layout renders byte-identically for them.
+    if let Some(class) = cfg.event_class {
+        use crate::inspector::classifier::EventClass;
+        match class {
+            EventClass::HttpSuccess { status } | EventClass::HttpFailure { status } => {
+                row += push_http_sections(
+                    &mut out,
+                    &mut section_rows,
+                    target,
+                    &cfg.collapsed,
+                    depth,
+                    status,
+                    row,
+                );
+            }
+            EventClass::Exception | EventClass::Panic => {
+                row += push_stack_trace_section(
+                    &mut out,
+                    &mut section_rows,
+                    target,
+                    &cfg.collapsed,
+                    depth,
+                    row,
+                );
+            }
+            EventClass::Plain => {}
+        }
+    }
+
     InspectorBlockLayout {
         rendered: out,
         section_rows,
@@ -326,6 +445,164 @@ fn severity_label(severity: Severity) -> &'static str {
     }
 }
 
+/// Render `HttpStatus` + `HttpRequest` + `HttpResponse` sub-sections.
+/// Returns the row-delta added by these sections. Pulls fields from
+/// the underlying `HostLog.fields` map: `http.method`, `http.url`,
+/// `http.status_code`, `http.duration_ms`, `http.response_body`, etc.
+fn push_http_sections(
+    out: &mut String,
+    section_rows: &mut Vec<(InspectorSection, u16)>,
+    target: &EventLine,
+    collapsed: &std::collections::BTreeSet<InspectorSection>,
+    depth: ColorDepth,
+    status: u16,
+    base_row: u16,
+) -> u16 {
+    use crate::stream::event_line::RawPayload;
+    use nexus_events::types::NexusEvent;
+    let mut row: u16 = 0;
+    let fields = match target.raw_payload.as_ref() {
+        RawPayload::NexusEvent(NexusEvent::HostLog { fields, .. }) => fields,
+        _ => return 0,
+    };
+
+    push_section(out, InspectorSection::HttpStatus, collapsed, depth);
+    section_rows.push((InspectorSection::HttpStatus, base_row + row));
+    row += 1;
+    if !collapsed.contains(&InspectorSection::HttpStatus) {
+        let outcome_glyph = if (200..400).contains(&status) {
+            "✓"
+        } else if status == 0 {
+            "⚠"
+        } else {
+            "✗"
+        };
+        let duration = fields
+            .get("http.duration_ms")
+            .map(|d| format!("  {d} ms"))
+            .unwrap_or_default();
+        let status_text = if status == 0 {
+            fields
+                .get("http.error")
+                .cloned()
+                .unwrap_or_else(|| "no status".into())
+        } else {
+            format!("{status}")
+        };
+        push_line(
+            out,
+            &format!("  {outcome_glyph} {status_text}{duration}"),
+            depth,
+        );
+        row += 1;
+    }
+
+    push_section(out, InspectorSection::HttpRequest, collapsed, depth);
+    section_rows.push((InspectorSection::HttpRequest, base_row + row));
+    row += 1;
+    if !collapsed.contains(&InspectorSection::HttpRequest) {
+        let method = fields.get("http.method").map(String::as_str).unwrap_or("?");
+        let url = fields.get("http.url").map(String::as_str).unwrap_or("?");
+        push_line(out, &format!("  {method} {url}"), depth);
+        row += 1;
+    }
+
+    push_section(out, InspectorSection::HttpResponse, collapsed, depth);
+    section_rows.push((InspectorSection::HttpResponse, base_row + row));
+    row += 1;
+    if !collapsed.contains(&InspectorSection::HttpResponse) {
+        let body = fields
+            .get("http.response_body")
+            .map(String::as_str)
+            .unwrap_or("");
+        if body.is_empty() {
+            push_line(out, "  (no response body captured)", depth);
+            row += 1;
+        } else {
+            // Snippet only — first 200 chars + ellipsis. Full body
+            // belongs to a future "expand body" toggle; operators
+            // can copy from raw_payload for the rest.
+            let mut snippet: String = body.chars().take(200).collect();
+            if body.chars().count() > 200 {
+                snippet.push('…');
+            }
+            push_line(out, &format!("  {snippet}"), depth);
+            row += 1;
+        }
+    }
+    row
+}
+
+/// Render `StackTrace` sub-section. Parses the underlying message
+/// body, then renders top-5 frames with `… N more frames` footer
+/// when truncated. Non-workspace frames render dimmed.
+fn push_stack_trace_section(
+    out: &mut String,
+    section_rows: &mut Vec<(InspectorSection, u16)>,
+    target: &EventLine,
+    collapsed: &std::collections::BTreeSet<InspectorSection>,
+    depth: ColorDepth,
+    base_row: u16,
+) -> u16 {
+    use crate::inspector::stack_trace::parse as parse_trace;
+    use crate::stream::event_line::RawPayload;
+    use nexus_events::types::NexusEvent;
+    let mut row: u16 = 0;
+    let message_body = match target.raw_payload.as_ref() {
+        RawPayload::NexusEvent(NexusEvent::HostLog { message, .. }) => message.as_str(),
+        _ => target.summary.as_str(),
+    };
+    let frames = parse_trace(message_body);
+
+    push_section(out, InspectorSection::StackTrace, collapsed, depth);
+    section_rows.push((InspectorSection::StackTrace, base_row + row));
+    row += 1;
+
+    if collapsed.contains(&InspectorSection::StackTrace) {
+        return row;
+    }
+    if frames.is_empty() {
+        push_line(out, "  (no parseable frames)", depth);
+        row += 1;
+        return row;
+    }
+
+    const TOP_N: usize = 5;
+    let total = frames.len();
+    let render_count = total.min(TOP_N);
+    for frame in frames.iter().take(render_count) {
+        let location = match (frame.file.as_deref(), frame.line) {
+            (Some(file), Some(line)) => format!("{file}:{line}"),
+            (Some(file), None) => file.to_string(),
+            _ => String::new(),
+        };
+        let line_text = if location.is_empty() {
+            format!("  at {}", frame.function)
+        } else {
+            format!("  at {}  ·  {}", frame.function, location)
+        };
+        if frame.is_workspace_frame() {
+            push_line(out, &line_text, depth);
+        } else {
+            push_line(out, &format!("\x1b[2m{line_text}\x1b[0m"), depth);
+        }
+        row += 1;
+    }
+    if total > TOP_N {
+        let remaining = total - TOP_N;
+        push_line(
+            out,
+            &format!(
+                "  … {remaining} more frame{}",
+                if remaining == 1 { "" } else { "s" }
+            ),
+            depth,
+        );
+        row += 1;
+    }
+    row
+}
+
 fn push_section(
     out: &mut String,
     section: InspectorSection,
@@ -355,6 +632,10 @@ fn section_icon(section: InspectorSection) -> &'static str {
         InspectorSection::CorrelatedEvents => "↳",
         InspectorSection::Suggestions => "✦",
         InspectorSection::RawPayload => "{ }",
+        InspectorSection::HttpStatus => "⚑",
+        InspectorSection::HttpRequest => "→",
+        InspectorSection::HttpResponse => "←",
+        InspectorSection::StackTrace => "▦",
     }
 }
 
