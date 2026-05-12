@@ -7,6 +7,11 @@ import type {
 } from "../../../services/model_store";
 import { CompatibilityBadge } from "./CompatibilityBadge";
 import { DependencyStrip } from "./DependencyStrip";
+import {
+  DownloadFailed,
+  DownloadProgress,
+  DownloadedChip,
+} from "./DownloadProgress";
 import { VariantList } from "./VariantList";
 import * as s from "./ModelCard.css";
 
@@ -27,6 +32,9 @@ interface ModelCardProps {
   jobStateByVariant: Record<string, DownloadState | undefined>;
   jobIdByVariant: Record<string, string | undefined>;
   jobByVariant: Record<string, DownloadJob | undefined>;
+  jobStateByFamily?: Record<string, DownloadState | undefined>;
+  jobIdByFamily?: Record<string, string | undefined>;
+  jobByFamily?: Record<string, DownloadJob | undefined>;
   onDownload: (family: ModelFamily, target: DownloadKind) => void;
   onPause: (jobId: string) => void;
   onResume: (jobId: string) => void;
@@ -86,6 +94,9 @@ export function ModelCard({
   jobStateByVariant,
   jobIdByVariant,
   jobByVariant,
+  jobStateByFamily,
+  jobIdByFamily,
+  jobByFamily,
   onDownload,
   onPause,
   onResume,
@@ -236,18 +247,18 @@ export function ModelCard({
         ) : (
           <>
             {primary && !showVariants && (
-              <button
-                type="button"
-                className={s.actionPrimary}
-                onClick={() =>
-                  onDownload(family, {
-                    kind: "primary",
-                    artifactId: primary.artifact_id,
-                  })
-                }
-              >
-                Download primary
-              </button>
+              <PrimaryDownloadAction
+                family={family}
+                primaryArtifactId={primary.artifact_id}
+                primarySize={primary.size_bytes}
+                fallbackState={primary.install_state}
+                liveState={jobStateByFamily?.[family.family_id]}
+                liveJobId={jobIdByFamily?.[family.family_id]}
+                liveJob={jobByFamily?.[family.family_id]}
+                onDownload={onDownload}
+                onPause={onPause}
+                onResume={onResume}
+              />
             )}
             {hasRequiredDeps && (
               <button
@@ -275,5 +286,87 @@ export function ModelCard({
         )}
       </footer>
     </article>
+  );
+}
+
+interface PrimaryDownloadActionProps {
+  family: ModelFamily;
+  primaryArtifactId: string;
+  primarySize: number | null;
+  fallbackState: DownloadState;
+  liveState: DownloadState | undefined;
+  liveJobId: string | undefined;
+  liveJob: DownloadJob | undefined;
+  onDownload: (family: ModelFamily, target: DownloadKind) => void;
+  onPause: (jobId: string) => void;
+  onResume: (jobId: string) => void;
+}
+
+function PrimaryDownloadAction({
+  family,
+  primaryArtifactId,
+  primarySize,
+  fallbackState,
+  liveState,
+  liveJobId,
+  liveJob,
+  onDownload,
+  onPause,
+  onResume,
+}: PrimaryDownloadActionProps) {
+  const state: DownloadState = liveState ?? fallbackState;
+
+  const triggerDownload = () =>
+    onDownload(family, {
+      kind: "primary",
+      artifactId: primaryArtifactId,
+    });
+
+  if (state === "downloaded") {
+    return (
+      <DownloadedChip
+        sizeBytes={primarySize}
+        onReDownload={triggerDownload}
+      />
+    );
+  }
+
+  if (state === "failed") {
+    return (
+      <DownloadFailed
+        errorReason={liveJob?.error_reason ?? null}
+        onRetry={triggerDownload}
+      />
+    );
+  }
+
+  if (state === "queued" || state === "downloading" || state === "paused") {
+    return (
+      <DownloadProgress
+        state={state}
+        progressBytes={liveJob?.progress_bytes ?? 0}
+        totalBytes={liveJob?.total_bytes ?? primarySize}
+        onPause={
+          liveJobId && state === "downloading"
+            ? () => onPause(liveJobId)
+            : undefined
+        }
+        onResume={
+          liveJobId && state === "paused"
+            ? () => onResume(liveJobId)
+            : undefined
+        }
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={s.actionPrimary}
+      onClick={triggerDownload}
+    >
+      Download primary
+    </button>
   );
 }
