@@ -7,6 +7,7 @@ pub mod ansi;
 pub mod cheatsheet;
 pub mod completion;
 pub mod editor;
+pub mod grep_history;
 pub mod inspect;
 pub mod microcopy;
 pub mod mouse_edit_mode;
