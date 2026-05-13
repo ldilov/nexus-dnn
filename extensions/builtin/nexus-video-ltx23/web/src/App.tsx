@@ -2,12 +2,14 @@ import { useCallback, useState, type ReactElement } from "react";
 import useSWR from "swr";
 import {
   type CreateRenderRequest,
+  type DepStatus,
   type QualityPreset,
   type RenderPlan,
   type RenderRun,
   type RuntimeProfilePreference,
   type RuntimeProfileSummary,
   artifactUrl,
+  hostApi,
   ltxApi,
 } from "./api";
 import * as s from "./styles.css";
@@ -92,21 +94,150 @@ export function App(): ReactElement {
 
   return (
     <div className={s.shell}>
-      <FormPanel
-        draft={draft}
-        onChange={setDraft}
-        profiles={profiles ?? []}
-        onPlan={handlePlan}
-        onSubmit={handleSubmit}
-        planning={planning}
-        submitting={submitting}
-        plan={plan}
-        planError={planError}
-        submitError={submitError}
-      />
+      <div className={s.formColumn}>
+        <DependencyBanner />
+        <FormPanel
+          draft={draft}
+          onChange={setDraft}
+          profiles={profiles ?? []}
+          onPlan={handlePlan}
+          onSubmit={handleSubmit}
+          planning={planning}
+          submitting={submitting}
+          plan={plan}
+          planError={planError}
+          submitError={submitError}
+        />
+      </div>
       <ResultPanel run={run ?? null} onCancel={handleCancel} />
     </div>
   );
+}
+
+function DependencyBanner(): ReactElement | null {
+  const [installing, setInstalling] = useState(false);
+  const [installError, setInstallError] = useState<string | null>(null);
+  const { data: deps, mutate } = useSWR<DepStatus>(
+    "host:dependencies",
+    () => hostApi.listDependencies(),
+    {
+      refreshInterval: (latest) => {
+        if (!latest) return 1500;
+        const hasRunning = latest.steps.some(
+          (st) => st.status === "running" || st.status === "pending",
+        );
+        return hasRunning ? 1000 : 5000;
+      },
+    },
+  );
+
+  const handleInstall = useCallback(
+    async (force = false) => {
+      setInstalling(true);
+      setInstallError(null);
+      try {
+        await hostApi.startInstall(force);
+        void mutate();
+      } catch (e) {
+        setInstallError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setInstalling(false);
+      }
+    },
+    [mutate],
+  );
+
+  if (!deps) return null;
+  const failed = deps.steps.find((st) => st.status === "failed");
+  const allOk = deps.all_satisfied;
+  const running = deps.steps.some(
+    (st) => st.status === "running" || (!allOk && st.status === "pending"),
+  );
+
+  return (
+    <section className={s.panel}>
+      <div className={s.depHeader}>
+        <h3 className={s.header} style={{ fontSize: "15px" }}>
+          Runtime
+        </h3>
+        <span className={depPillClass(allOk, !!failed, running)}>
+          {allOk
+            ? "ready"
+            : failed
+              ? "install failed"
+              : running
+                ? "installing…"
+                : "not installed"}
+        </span>
+      </div>
+
+      <ul className={s.depList}>
+        {deps.steps.map((st) => (
+          <li key={st.id} className={s.depItem}>
+            <span className={depItemDotClass(st.status)} />
+            <span>{st.id}</span>
+            <span className={s.meta}>
+              {st.artifact?.summary ?? st.status}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      {failed?.last_error ? (
+        <div className={s.errorBox}>
+          <strong>{failed.id} failed</strong>: {failed.last_error.message}
+        </div>
+      ) : null}
+      {installError ? <div className={s.errorBox}>{installError}</div> : null}
+
+      {!allOk || failed ? (
+        <div className={s.buttonRow}>
+          <button
+            type="button"
+            className={s.button}
+            disabled={installing || running}
+            onClick={() => void handleInstall(false)}
+          >
+            {running || installing ? "Installing…" : "Install runtime"}
+          </button>
+          {failed ? (
+            <button
+              type="button"
+              className={s.buttonSecondary}
+              disabled={installing || running}
+              onClick={() => void handleInstall(true)}
+            >
+              Force reinstall
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function depPillClass(
+  allOk: boolean,
+  failed: boolean,
+  running: boolean,
+): string {
+  if (failed) return s.riskFail;
+  if (allOk) return s.riskSafe;
+  if (running) return s.riskModerate;
+  return s.riskRisky;
+}
+
+function depItemDotClass(status: string): string {
+  switch (status) {
+    case "ok":
+      return s.dotCompleted;
+    case "running":
+      return s.dotRendering;
+    case "failed":
+      return s.dotFailed;
+    default:
+      return s.dotQueued;
+  }
 }
 
 interface FormPanelProps {
