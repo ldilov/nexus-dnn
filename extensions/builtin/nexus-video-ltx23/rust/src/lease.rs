@@ -82,11 +82,21 @@ fn build_launch_spec(
         ));
     }
 
+    // Walk up from extension_data_dir to surface the host data root so the
+    // worker's diffusers pipeline can resolve <host_data_dir>/models/Lightricks/
+    // LTX-2.3-<quant>/ for real profiles. NEXUS_VIDEO_LTX23_MODEL_DIR can
+    // override this for tests or future per-profile install plumbing.
+    let host_data_root = extension_data_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .unwrap_or(extension_data_dir);
+
     let mut spec = LaunchSpec::new(venv_python)
         .with_arg("-u")
         .with_arg("-m")
         .with_arg("ltx_video_worker")
         .with_env("NEXUS_VIDEO_LTX23_RUNTIME", profile)
+        .with_env("NEXUS_HOST_DATA_DIR", host_data_root.to_string_lossy().to_string())
         .with_env("PYTHONIOENCODING", "utf-8")
         .with_env("PYTHONUNBUFFERED", "1");
 
