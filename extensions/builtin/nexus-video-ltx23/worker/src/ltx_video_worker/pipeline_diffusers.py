@@ -259,8 +259,23 @@ def _ensure_pipeline_loaded(
             torch_dtype=dtype,
             local_files_only=True,
         )
-        pipe.to(device)
-        if hasattr(pipe, "enable_model_cpu_offload"):
+
+        # Sequential CPU offload over model_cpu_offload:
+        # - 4.7 GB peak VRAM vs 37 GB (validated 2026-05-13 on RTX 5070 Ti,
+        #   16 GB VRAM, dg845/LTX-2.3-Distilled-Diffusers BF16 weights).
+        # - 13.7 s/step vs 75 s/step (the model_offload path spilled to
+        #   system RAM via Windows unified memory).
+        # The sequential mode swaps individual layers in/out as they're
+        # called; never lands the whole transformer on GPU at once. Slower
+        # micro-cost per layer transfer is dwarfed by the avoided spill.
+        #
+        # `pipe.to(device)` is intentionally OMITTED — sequential offload
+        # manages device placement itself; calling `.to(...)` first pulls
+        # everything onto GPU and defeats the offload.
+        if hasattr(pipe, "enable_sequential_cpu_offload"):
+            pipe.enable_sequential_cpu_offload()
+        elif hasattr(pipe, "enable_model_cpu_offload"):
+            # Older diffusers — accept the spill rather than crash.
             pipe.enable_model_cpu_offload()
         if hasattr(pipe.vae, "enable_tiling"):
             pipe.vae.enable_tiling()
