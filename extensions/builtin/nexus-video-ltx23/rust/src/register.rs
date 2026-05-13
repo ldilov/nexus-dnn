@@ -103,13 +103,13 @@ impl LtxRouterProvider {
             .unwrap_or_else(std::env::temp_dir);
         let profile_install = ProfileInstallService::new(factory, host_data_root);
 
-        let state = ApiState {
+        let state = ApiState::new(
             repos,
             runner,
             runs_dir,
-            extension_version: EXTENSION_VERSION,
+            EXTENSION_VERSION,
             profile_install,
-        };
+        );
         Ok(router(state))
     }
 }

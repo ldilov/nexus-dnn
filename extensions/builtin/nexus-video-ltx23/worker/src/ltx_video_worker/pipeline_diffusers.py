@@ -38,7 +38,7 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from . import __version__
 from .ffmpeg_io import stitch_segments, trim_to_duration
@@ -450,6 +450,25 @@ async def _render_loop(
         seg_path = seg_dir / "raw.mp4"
         last_frame_path = seg_dir / "last_frame.png"
 
+        # Heartbeat callback fires at the end of each diffusers
+        # inference step. The pipe runs inside `asyncio.to_thread`, so
+        # we capture the running loop here and schedule notifications
+        # via `run_coroutine_threadsafe` from the worker thread.
+        loop = asyncio.get_running_loop()
+
+        def emit_step(step_idx: int) -> None:
+            coro = worker.emit_notification(
+                Notifications.SEGMENT_STEP,
+                {
+                    "run_id": rs.run_id,
+                    "segment_index": seg_index,
+                    "segment_count": segment_count,
+                    "step": step_idx + 1,
+                    "total_steps": num_inference_steps,
+                },
+            )
+            asyncio.run_coroutine_threadsafe(coro, loop)
+
         try:
             frames = await asyncio.to_thread(
                 _generate_segment,
@@ -463,6 +482,7 @@ async def _render_loop(
                 seg_seed,
                 guidance_scale,
                 num_inference_steps,
+                emit_step,
             )
         except RuntimeError as e:
             # CUDA OOM / VRAM budget exceeded surfaces here.
@@ -630,6 +650,7 @@ def _generate_segment(
     seed: int,
     guidance_scale: float,
     num_inference_steps: int,
+    step_heartbeat: Callable[[int], None] | None = None,
 ) -> Any:
     """Call into the LTX pipeline. Returns a list of PIL.Image frames.
 
@@ -667,6 +688,20 @@ def _generate_segment(
         elif "cond_image" in sig_params:
             call_kwargs["cond_image"] = image
         # else: text-to-video pipeline; silently drop the input image.
+
+    # Per-inference-step heartbeat. diffusers calls
+    # `callback_on_step_end(pipeline, step_index, timestep, callback_kwargs)`
+    # at the end of each denoising step and expects the dict back. We
+    # use this purely as a progress beacon — no kwargs are mutated.
+    if step_heartbeat is not None and "callback_on_step_end" in sig_params:
+        def _on_step_end(_pipe: Any, step_idx: int, _t: Any, cb_kwargs: dict[str, Any]) -> dict[str, Any]:
+            try:
+                step_heartbeat(step_idx)
+            except Exception:  # noqa: BLE001 — heartbeats must NEVER abort a render
+                pass
+            return cb_kwargs
+
+        call_kwargs["callback_on_step_end"] = _on_step_end
 
     # Drop kwargs the active pipeline doesn't accept (older / different
     # variants may not expose guidance_scale or num_inference_steps).

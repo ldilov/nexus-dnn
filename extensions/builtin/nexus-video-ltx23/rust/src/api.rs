@@ -1,16 +1,19 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use axum::{
     Json, Router,
     body::Body,
     extract::{Path, State},
-    http::{StatusCode, header},
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
 use chrono::Utc;
 use serde::Serialize;
+use tokio::sync::Mutex as AsyncMutex;
 use ulid::Ulid;
 
 use crate::errors::{ExtensionError, ExtensionErrorCode};
@@ -21,6 +24,32 @@ use crate::runtime_selection::{available_profiles, resolve_runtime_id};
 use crate::schemas::{CreateRenderRequest, RenderPlan, RuntimeProfilePreference};
 use crate::storage::{Repos, RenderRunRow, RenderSegmentRow};
 
+/// Idempotency-Key TTL. Inside this window, a repeat POST /renders with
+/// the same key returns the previously-created run instead of spawning
+/// a duplicate. Matches the openapi-declared semantics (header was
+/// declared in the route schema but never enforced until now).
+const IDEMPOTENCY_TTL: Duration = Duration::from_secs(600);
+
+/// Cap on the cache size — prevents unbounded memory growth from
+/// pathological clients sending unique keys forever. Once the cache
+/// hits the cap, the oldest entries get evicted on the next insert.
+const IDEMPOTENCY_CAP: usize = 1024;
+
+#[derive(Debug, Clone)]
+pub struct IdempotencyEntry {
+    run_id: String,
+    runtime_profile: String,
+    segment_count: u32,
+    created_at: chrono::DateTime<chrono::Utc>,
+    expires_at: Instant,
+}
+
+/// In-memory cache keyed by `Idempotency-Key` header. Restart drops it —
+/// fine for the safety-net use case (preventing accidental double-
+/// submits within seconds), bad for a multi-host deployment which we
+/// don't have today.
+type IdempotencyCache = Arc<AsyncMutex<HashMap<String, IdempotencyEntry>>>;
+
 #[derive(Clone)]
 pub struct ApiState {
     pub repos: Repos,
@@ -28,6 +57,30 @@ pub struct ApiState {
     pub runs_dir: PathBuf,
     pub extension_version: &'static str,
     pub profile_install: ProfileInstallService,
+    pub idempotency: IdempotencyCache,
+}
+
+impl ApiState {
+    /// Convenience: build state with a fresh empty idempotency cache.
+    /// Callers that need to share a cache across rebuilds can construct
+    /// the struct literal directly.
+    #[must_use]
+    pub fn new(
+        repos: Repos,
+        runner: Runner,
+        runs_dir: PathBuf,
+        extension_version: &'static str,
+        profile_install: ProfileInstallService,
+    ) -> Self {
+        Self {
+            repos,
+            runner,
+            runs_dir,
+            extension_version,
+            profile_install,
+            idempotency: Arc::new(AsyncMutex::new(HashMap::new())),
+        }
+    }
 }
 
 pub fn router(state: ApiState) -> Router {
@@ -100,26 +153,56 @@ struct RuntimeProfileSummary {
     installed: bool,
     healthy: bool,
     experimental: bool,
-    status_message: &'static str,
+    status_message: String,
 }
 
-async fn list_profiles() -> Json<Vec<RuntimeProfileSummary>> {
-    let profiles = available_profiles()
-        .iter()
-        .map(|p| RuntimeProfileSummary {
-            runtime_id: p.runtime_id,
-            display_name: p.display_name,
-            installed: matches!(p.runtime_id, "nexus.video.ltx23.fake"),
-            healthy: matches!(p.runtime_id, "nexus.video.ltx23.fake"),
-            experimental: p.experimental,
-            status_message: if matches!(p.runtime_id, "nexus.video.ltx23.fake") {
-                "ready"
-            } else {
-                "not installed (P2)"
-            },
-        })
-        .collect();
-    Json(profiles)
+async fn list_profiles(State(state): State<Arc<ApiState>>) -> Json<Vec<RuntimeProfileSummary>> {
+    let mut out = Vec::with_capacity(available_profiles().len());
+    for p in available_profiles() {
+        // `runtime_id` is `nexus.video.ltx23.<short>` — strip the
+        // namespace to look up the install state via ProfileInstallService.
+        let short = p.runtime_id.rsplit('.').next().unwrap_or("");
+        let summary = if short == "fake" {
+            RuntimeProfileSummary {
+                runtime_id: p.runtime_id,
+                display_name: p.display_name,
+                installed: true,
+                healthy: true,
+                experimental: p.experimental,
+                status_message: "ready".into(),
+            }
+        } else {
+            // Real-runtime profile — check the on-disk sentinel via the
+            // install service. Avoids hand-rolling another stat-the-
+            // sentinel path and stays in sync with the install POST.
+            let install_status = state.profile_install.status(short).await.ok();
+            let installed = install_status.as_ref().is_some_and(|s| s.installed);
+            let in_flight = install_status.as_ref().is_some_and(|s| s.in_flight);
+            let status_message = match install_status.as_ref() {
+                Some(s) if s.installed => "ready".to_string(),
+                Some(s) if s.in_flight => {
+                    s.phase.as_deref().unwrap_or("installing").to_string()
+                }
+                Some(s) if s.last_error.is_some() => {
+                    format!("install error: {}", s.last_error.as_deref().unwrap_or("?"))
+                }
+                _ => "not installed".to_string(),
+            };
+            RuntimeProfileSummary {
+                runtime_id: p.runtime_id,
+                display_name: p.display_name,
+                installed,
+                // Healthy only when fully installed and not currently
+                // reinstalling. The UI uses this to gate the "Generate
+                // video" button.
+                healthy: installed && !in_flight,
+                experimental: p.experimental,
+                status_message,
+            }
+        };
+        out.push(summary);
+    }
+    Json(out)
 }
 
 async fn create_plan(
@@ -140,10 +223,33 @@ struct CreateRenderResponse {
     created_at: String,
 }
 
+#[allow(clippy::too_many_lines)]
 async fn create_render(
     State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
     Json(req): Json<CreateRenderRequest>,
 ) -> ApiResult<(StatusCode, Json<CreateRenderResponse>)> {
+    let idempotency_key = headers
+        .get("idempotency-key")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string)
+        .filter(|s| !s.is_empty());
+
+    if let Some(ref key) = idempotency_key {
+        if let Some(cached) = lookup_idempotent(&state.idempotency, key).await {
+            return Ok((
+                StatusCode::ACCEPTED,
+                Json(CreateRenderResponse {
+                    id: cached.run_id,
+                    status: "queued",
+                    runtime_profile: cached.runtime_profile,
+                    segment_count: cached.segment_count,
+                    created_at: cached.created_at.to_rfc3339(),
+                }),
+            ));
+        }
+    }
+
     let runtime_id = resolve_runtime_id(req.runtime_profile, false);
     let plan = plan_render(&req, runtime_id)?;
 
@@ -225,6 +331,21 @@ async fn create_render(
         req.advanced.clone(),
     );
 
+    if let Some(key) = idempotency_key {
+        store_idempotent(
+            &state.idempotency,
+            key,
+            IdempotencyEntry {
+                run_id: run_id.clone(),
+                runtime_profile: runtime_id_owned.clone(),
+                segment_count: plan.segment_count,
+                created_at: now,
+                expires_at: Instant::now() + IDEMPOTENCY_TTL,
+            },
+        )
+        .await;
+    }
+
     Ok((
         StatusCode::ACCEPTED,
         Json(CreateRenderResponse {
@@ -235,6 +356,48 @@ async fn create_render(
             created_at: now.to_rfc3339(),
         }),
     ))
+}
+
+/// Look up a previously-cached idempotency key. Returns `None` when the
+/// key is absent, expired, or the cache is empty. Expired entries are
+/// reaped on read to keep memory bounded.
+async fn lookup_idempotent(
+    cache: &IdempotencyCache,
+    key: &str,
+) -> Option<IdempotencyEntry> {
+    let mut guard = cache.lock().await;
+    let now = Instant::now();
+    if let Some(entry) = guard.get(key) {
+        if entry.expires_at > now {
+            let cached = entry.clone();
+            drop(guard);
+            return Some(cached);
+        }
+    }
+    // Lazy reap of expired entries when we observe a miss.
+    guard.retain(|_, e| e.expires_at > now);
+    drop(guard);
+    None
+}
+
+async fn store_idempotent(
+    cache: &IdempotencyCache,
+    key: String,
+    entry: IdempotencyEntry,
+) {
+    let mut guard = cache.lock().await;
+    // Evict oldest first when at cap (cheap O(n) scan; cap is small).
+    if guard.len() >= IDEMPOTENCY_CAP {
+        if let Some(oldest_key) = guard
+            .iter()
+            .min_by_key(|(_, e)| e.expires_at)
+            .map(|(k, _)| k.clone())
+        {
+            guard.remove(&oldest_key);
+        }
+    }
+    guard.insert(key, entry);
+    drop(guard);
 }
 
 #[derive(Serialize)]
@@ -456,5 +619,90 @@ impl IntoResponse for ApiError {
             })),
         )
             .into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mk_cache() -> IdempotencyCache {
+        Arc::new(AsyncMutex::new(HashMap::new()))
+    }
+
+    fn mk_entry(run_id: &str, ttl: Duration) -> IdempotencyEntry {
+        IdempotencyEntry {
+            run_id: run_id.into(),
+            runtime_profile: "nexus.video.ltx23.fake".into(),
+            segment_count: 1,
+            created_at: chrono::Utc::now(),
+            expires_at: Instant::now() + ttl,
+        }
+    }
+
+    #[tokio::test]
+    async fn lookup_idempotent_returns_cached_entry_inside_ttl() {
+        let cache = mk_cache();
+        store_idempotent(&cache, "key-abc".into(), mk_entry("run-1", IDEMPOTENCY_TTL)).await;
+        let hit = lookup_idempotent(&cache, "key-abc").await;
+        assert_eq!(hit.map(|e| e.run_id), Some("run-1".into()));
+    }
+
+    #[tokio::test]
+    async fn lookup_idempotent_misses_after_ttl_expires() {
+        let cache = mk_cache();
+        // 1ms TTL → guaranteed-expired by the time we look it up.
+        store_idempotent(&cache, "stale".into(), mk_entry("run-x", Duration::from_millis(1))).await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        assert!(lookup_idempotent(&cache, "stale").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn lookup_reaps_expired_entries_on_miss() {
+        let cache = mk_cache();
+        store_idempotent(&cache, "old".into(), mk_entry("run-old", Duration::from_millis(1))).await;
+        store_idempotent(&cache, "fresh".into(), mk_entry("run-fresh", IDEMPOTENCY_TTL)).await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        // Miss on an unrelated key triggers a reap pass.
+        assert!(lookup_idempotent(&cache, "absent").await.is_none());
+        // Stale entry should be gone; fresh one should remain.
+        let guard = cache.lock().await;
+        let old_gone = !guard.contains_key("old");
+        let fresh_kept = guard.contains_key("fresh");
+        drop(guard);
+        assert!(old_gone);
+        assert!(fresh_kept);
+    }
+
+    #[tokio::test]
+    async fn store_evicts_oldest_when_at_cap() {
+        let cache = mk_cache();
+        // Fill the cache to cap; the inserted entries have monotonic
+        // expiry instants, so the "oldest" is the first inserted.
+        for i in 0..IDEMPOTENCY_CAP {
+            store_idempotent(
+                &cache,
+                format!("k{i}"),
+                mk_entry(&format!("run-{i}"), IDEMPOTENCY_TTL + Duration::from_millis(i as u64)),
+            )
+            .await;
+        }
+        assert_eq!(cache.lock().await.len(), IDEMPOTENCY_CAP);
+
+        // One more push triggers eviction.
+        store_idempotent(
+            &cache,
+            "overflow".into(),
+            mk_entry("run-overflow", IDEMPOTENCY_TTL * 2),
+        )
+        .await;
+        let guard = cache.lock().await;
+        let len = guard.len();
+        let k0_gone = !guard.contains_key("k0");
+        let overflow_present = guard.contains_key("overflow");
+        drop(guard);
+        assert_eq!(len, IDEMPOTENCY_CAP);
+        assert!(k0_gone, "oldest entry should have been evicted");
+        assert!(overflow_present);
     }
 }
