@@ -5,8 +5,9 @@ use nexus_extension::{BuildRouterError, ExtensionContext, ExtensionRouterProvide
 use sqlx::SqlitePool;
 
 use crate::api::{ApiState, http_routes, router};
+use crate::lease::LtxLeaseFactory;
 use crate::migrations::MIGRATIONS;
-use crate::simulate::{Simulator, SimulatorConfig};
+use crate::runner::{Runner, RunnerConfig};
 use crate::storage::Repos;
 
 pub const EXTENSION_ID: &str = "nexus.video.ltx23";
@@ -16,6 +17,7 @@ pub const EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub struct LtxProviderResources {
     pub pool: SqlitePool,
     pub host_data_dir: Option<PathBuf>,
+    pub extension_dir: PathBuf,
 }
 
 impl LtxProviderResources {
@@ -24,12 +26,19 @@ impl LtxProviderResources {
         Self {
             pool,
             host_data_dir: None,
+            extension_dir: PathBuf::new(),
         }
     }
 
     #[must_use]
     pub fn with_host_data_dir(mut self, dir: PathBuf) -> Self {
         self.host_data_dir = Some(dir);
+        self
+    }
+
+    #[must_use]
+    pub fn with_extension_dir(mut self, dir: PathBuf) -> Self {
+        self.extension_dir = dir;
         self
     }
 }
@@ -66,15 +75,29 @@ impl LtxRouterProvider {
             })?;
 
         let repos = Repos::from_pool(self.resources.pool.clone());
-        let simulator = Simulator::new(SimulatorConfig {
+
+        let extension_data_dir = self
+            .resources
+            .host_data_dir
+            .clone()
+            .unwrap_or_else(std::env::temp_dir)
+            .join("extensions")
+            .join(EXTENSION_ID);
+
+        let factory = std::sync::Arc::new(LtxLeaseFactory::new(
+            self.resources.extension_dir.clone(),
+            extension_data_dir,
+        ));
+
+        let runner = Runner::new(RunnerConfig {
             runs_dir: runs_dir.clone(),
             repos: repos.clone(),
-            segment_delay_ms: 200,
+            factory,
         });
 
         let state = ApiState {
             repos,
-            simulator,
+            runner,
             runs_dir,
             extension_version: EXTENSION_VERSION,
         };
