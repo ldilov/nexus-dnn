@@ -768,18 +768,30 @@ async fn serve_artifact(
         ))));
     }
 
-    let bytes = tokio::fs::read(&canonical)
+    // Stream the response body instead of reading the whole file into
+    // memory. A multi-minute LTX render lands at ~50-200 MB; the
+    // previous `tokio::fs::read` would heap-spike per request, which
+    // is especially painful when the UI auto-replays the preview.
+    let file = tokio::fs::File::open(&canonical)
         .await
         .map_err(|e| ExtensionError::NotFound(format!("artifact file: {e}")))?;
+    let metadata = file
+        .metadata()
+        .await
+        .map_err(|e| ExtensionError::Internal(format!("artifact stat: {e}")))?;
+    let content_length = metadata.len();
+    let stream = tokio_util::io::ReaderStream::new(file);
 
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "video/mp4")
+        .header(header::CONTENT_LENGTH, content_length.to_string())
+        .header(header::ACCEPT_RANGES, "bytes")
         .header(
             header::CONTENT_DISPOSITION,
             format!("inline; filename=\"{artifact_id}.mp4\""),
         )
-        .body(Body::from(bytes))
+        .body(Body::from_stream(stream))
         .map_err(|e| ExtensionError::Internal(format!("response build: {e}")))?)
 }
 
