@@ -101,28 +101,62 @@ So the fp8 file contains the transformer ONLY — the T5 text encoder, VAE, and 
 - `Lightricks/LTX-2.3-fp8`, `Lightricks/LTX-2.3-nvfp4` — transformer-only quantized variants
 - Several `Lightricks/LTX-2.3-22b-IC-LoRA-*` — LoRA control adapters (out of scope)
 
-**Path forward (Rung 7G — proposed)**:
-1. Installer downloads `Lightricks/LTX-2` with `allow_patterns` filtering out the BF16 transformer (~44 GB) — we already have an FP8 version. Keep `audio_vae/`, `latent_upsampler/`, `vocoder/`, `text_encoder/` (~9 GB T5-XXL), `tokenizer/`, `scheduler/`, `vae/`, `connectors/`. Estimated size: ~10–12 GB.
-2. Installer ALSO downloads the chosen quantized variant (already working today — `Lightricks/LTX-2.3-fp8` or `Lightricks/LTX-2.3-nvfp4`).
-3. `_ensure_pipeline_loaded` chains the two:
+**Path forward — first attempt (Lightricks/LTX-2 + fp8 transformer override) — REJECTED**:
+
+First hypothesis was to download `Lightricks/LTX-2` small components and override the transformer with the FP8 single file:
+
+```python
+transformer = LTX2VideoTransformer3DModel.from_single_file(
+    fp8_safetensors_path,
+    config='Lightricks/LTX-2/transformer/config.json',
+    torch_dtype=torch.bfloat16,
+)
+```
+
+Tried 2026-05-13. **Architectural mismatch across all 48 transformer blocks**:
+```
+size mismatch for transformer_blocks.{0..47}.scale_shift_table:
+  checkpoint shape [9, 4096] vs current model shape [6, 4096]
+size mismatch for transformer_blocks.{0..47}.audio_scale_shift_table:
+  checkpoint shape [9, 2048] vs current model shape [6, 2048]
+```
+
+LTX-2.3 is structurally different from LTX-2 — 9 conditioning channels vs 6 in every block's normalization tables. `ignore_mismatched_sizes=True` would re-randomise every single one of those tables, destroying the model. So `Lightricks/LTX-2`'s transformer config is **not** a valid pairing for the LTX-2.3-fp8 weights, even with the transformer-override pattern.
+
+Also: `Lightricks/LTX-2`'s small components ended up at **99.6 GB** on disk (not 10–12 GB as estimated) — the text_encoder alone is 12 shards × 4.5 GB ≈ 54 GB plus an additional 11-shard `model-*.safetensors` set. LTX-2 has a much larger encoder stack than expected.
+
+This download path is a dead end and was cleaned up — the 99.6 GB of `Lightricks/LTX-2` components are NOT useful for the LTX-2.3 chain. Recommend removing `C:\Users\lazar\.nexus\models\Lightricks\LTX-2\` before any further work.
+
+**Path forward — second attempt (community-ported diffusers-format LTX-2.3 repo) — RECOMMENDED for Rung 7G**:
+
+A search of HF surfaced multiple community ports of LTX-2.3 into diffusers-format:
+
+| Repo | Size | Status |
+|---|---|---|
+| `dg845/LTX-2.3-Diffusers` | ~94 GB | full BF16 LTX-2.3, 4034 downloads, has `model_index.json` |
+| `dg845/LTX-2.3-Distilled-Diffusers` | **~88 GB** | distilled BF16, 735 downloads, has `model_index.json` |
+| `CalamitousFelicitousness/LTX-2.3-distilled-Diffusers` | ? | 45 downloads |
+| `FastVideo/LTX-2.3-Distilled-Diffusers` | ? | 0 downloads |
+
+`dg845/LTX-2.3-Distilled-Diffusers` is the recommended target: distilled (8 inference steps default), 88 GB, the most-downloaded standalone diffusers port. It has the right `transformer/config.json` matching the LTX-2.3 architecture (9 conditioning channels), plus all sibling components (T5 text encoder, VAE, scheduler, tokenizer). Standard `from_pretrained` should Just Work.
+
+**Steps for Rung 7G**:
+1. Update `installer.py`'s `PROFILE_REPO` map to use `dg845/LTX-2.3-Distilled-Diffusers` (or make it a per-profile choice between `dg845/...` BF16 and the FP8 single-file). Optionally retain `Lightricks/LTX-2.3-fp8` as a fallback override for VRAM-constrained users.
+2. Profile install downloads ~88 GB; sentinel + DTO unchanged.
+3. `_ensure_pipeline_loaded` becomes:
    ```python
-   from diffusers import LTX2VideoTransformer3DModel, LTX2ImageToVideoPipeline
-   transformer = LTX2VideoTransformer3DModel.from_single_file(
-       fp8_safetensors_path, torch_dtype=torch.bfloat16, local_files_only=True,
-   )
    pipe = LTX2ImageToVideoPipeline.from_pretrained(
-       ltx2_base_dir,                  # the small components from Lightricks/LTX-2
-       transformer=transformer,        # quantized override
+       model_dir,                      # dg845/LTX-2.3-Distilled-Diffusers snapshot
        torch_dtype=torch.bfloat16,
        local_files_only=True,
    )
    ```
-4. Profile install endpoint extends to track BOTH downloads:
-   - Phase `downloading_base` for Lightricks/LTX-2 (with allow_patterns)
-   - Phase `downloading_quantized` for the fp8/nvfp4 variant
-5. Sentinel only written once both are complete.
+   No transformer-override needed — the repo already has matching weights.
+4. Drop the FP8 single-file path from `pipeline_diffusers.py::_ensure_pipeline_loaded` (move it to a separate `pipeline_diffusers_fp8.py` for the future fp8 quant work).
 
-This is a focused Rung 7G — not a redesign. Roughly: 50 lines of installer.py + 40 lines of pipeline_diffusers.py + maybe 2 new unit tests. The Rust side requires no changes.
+**Or — third attempt (NOT yet investigated)**: upstream diffusers may add LTX2.3-specific configs in a later release that lets `Lightricks/LTX-2.3-fp8` load via `from_single_file` without a base repo. Check diffusers >= 0.38 release notes when those land. Until then, route through the community port.
+
+Disk implication for the next session: ~88 GB additional download. Total LTX-2.3 footprint will be ~140 GB after cleanup (88 GB diffusers port + 56 GB optional fp8 single-file kept as a quant override).
 
 ## What the unified install flow proved out (independent of the load failure)
 
