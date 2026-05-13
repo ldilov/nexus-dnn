@@ -10,6 +10,7 @@ use crate::migrations::MIGRATIONS;
 use crate::profile_install::ProfileInstallService;
 use crate::runner::{Runner, RunnerConfig};
 use crate::storage::Repos;
+use crate::vram_supervisor::VramSupervisor;
 
 pub const EXTENSION_ID: &str = "nexus.video.ltx23";
 pub const EXTENSION_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -94,6 +95,7 @@ impl LtxRouterProvider {
             runs_dir: runs_dir.clone(),
             repos: repos.clone(),
             factory: factory.clone(),
+            vram_supervisor: VramSupervisor::from_env(),
         });
 
         let host_data_root = self

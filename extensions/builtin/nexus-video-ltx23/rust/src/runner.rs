@@ -12,6 +12,13 @@ use crate::errors::Result;
 use crate::lease::LtxLeaseFactory;
 use crate::schemas::{AdvancedSettings, RenderPlan};
 use crate::storage::Repos;
+use crate::vram_supervisor::{VramSupervisor, VramVerdict};
+
+/// Distinct JSON-RPC-style error code for VRAM-supervisor halts.
+///
+/// Mirrors the worker's `ErrorCodes` namespace (`-32100..-32109` are
+/// taken by the worker, so we claim `-32110` for host-side halts).
+pub const VRAM_SUPERVISOR_BREACH_CODE: i64 = -32110;
 
 // Render wall-clock budget. The real LTX-2.3 pipeline on a single 16 GB
 // GPU takes ~750 s per 4-second segment (60 s cold pipeline load + 8
@@ -37,6 +44,12 @@ pub struct RunnerConfig {
     pub runs_dir: PathBuf,
     pub repos: Repos,
     pub factory: Arc<LtxLeaseFactory>,
+    /// Watches `runtime.memory_stats` notifications and trips a clean
+    /// halt when usage crosses configured thresholds. Defaults to
+    /// `VramSupervisor::default()` (env-tunable; see
+    /// `vram_supervisor.rs`). Set deliberately to
+    /// `VramSupervisorConfig` with `u64::MAX` thresholds to disable.
+    pub vram_supervisor: VramSupervisor,
 }
 
 /// Per-run abort handle. Held by both the spawned render task and the
@@ -464,13 +477,21 @@ async fn run_via_lease(
                     .await?;
                 return Err(crate::errors::ExtensionError::RenderCancelled);
             }
+            // VRAM supervisor halts get a distinct error_code so the
+            // UI can show "halted by policy" rather than the generic
+            // "worker_error:-32603" path.
+            let error_code = if code == VRAM_SUPERVISOR_BREACH_CODE {
+                "vram_supervisor".to_string()
+            } else {
+                format!("worker_error:{code}")
+            };
             cfg.repos
                 .update_run_status(
                     run_id,
                     "failed",
                     None,
-                    Some(&format!("worker_error:{code}")),
-                    Some(&message),
+                    Some(&error_code),
+                    Some(&truncate_status_msg(&message)),
                 )
                 .await?;
             Err(crate::errors::ExtensionError::RenderFailed(message))
@@ -744,6 +765,28 @@ async fn handle_notification(
                 .to_string();
             Ok(Some(NotificationOutcome::Error { code, message }))
         }
+        "runtime.memory_stats" => {
+            // Supervisor reads each VRAM snapshot. A clean halt now
+            // (between segments, while the worker is still alive) is
+            // strictly better than crashing on the next allocation;
+            // the run row gets a distinct `vram_supervisor` error
+            // code so the UI can tell halt-by-policy from halt-by-OOM.
+            match cfg.vram_supervisor.evaluate(&note.params) {
+                VramVerdict::Healthy => Ok(None),
+                VramVerdict::Breach { reason } => {
+                    tracing::warn!(
+                        extension_id = "nexus.video.ltx23",
+                        run_id = %run_id,
+                        reason = %reason,
+                        "vram supervisor: threshold breached — halting chain"
+                    );
+                    Ok(Some(NotificationOutcome::Error {
+                        code: VRAM_SUPERVISOR_BREACH_CODE,
+                        message: format!("vram supervisor halt: {reason}"),
+                    }))
+                }
+            }
+        }
         _ => Ok(None),
     }
 }
@@ -845,6 +888,7 @@ mod tests {
                 PathBuf::from("/nonexistent-ext"),
                 PathBuf::from("/nonexistent-data"),
             )),
+            vram_supervisor: VramSupervisor::default(),
         })
     }
 
