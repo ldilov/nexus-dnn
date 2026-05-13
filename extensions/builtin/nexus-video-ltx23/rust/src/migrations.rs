@@ -15,4 +15,9 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "ltx_video_runs_segments",
         sql: include_str!("../../storage/migrations/002_ltx_video_runs_segments.sql"),
     },
+    Migration {
+        version: 3,
+        name: "constraints_and_indexes",
+        sql: include_str!("../../storage/migrations/003_constraints_and_indexes.sql"),
+    },
 ];

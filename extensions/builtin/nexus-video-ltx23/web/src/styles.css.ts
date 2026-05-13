@@ -132,6 +132,21 @@ export const buttonDanger = style([
   { background: danger, color: "oklch(15% 0 0)" },
 ]);
 
+// Smaller inline button — used for the per-segment retry affordance
+// in the failed-segment timeline. Keeps the row scannable while still
+// looking interactive (the full `button` size would dominate the row).
+export const buttonSubtle = style([
+  button,
+  {
+    background: "transparent",
+    color: textPrimary,
+    border: "1px solid oklch(35% 0.005 250)",
+    padding: "4px 10px",
+    fontSize: "12px",
+    marginInlineStart: "auto",
+  },
+]);
+
 export const buttonRow = style({
   display: "flex",
   gap: "10px",

@@ -61,10 +61,17 @@ def register_fake_handlers(worker) -> None:
     async def render_start(params):
         if not isinstance(params, dict):
             raise ValueError("params must be an object")
-        run_id = params.get("request_id") or f"run_{uuid.uuid4().hex[:12]}"
-        plan = params.get("video") or params.get("plan") or {}
-        workdir_str = params.get("workdir")
-        workdir = Path(workdir_str) if workdir_str else Path.cwd() / "fake_workdir" / run_id
+        run_id = sanitize_run_id(
+            params.get("request_id"),
+            fallback=f"run_{uuid.uuid4().hex[:12]}",
+        )
+        plan = ensure_dict(
+            params.get("video") or params.get("plan"), name="plan", default={}
+        )
+        workdir = sanitize_workdir(
+            params.get("workdir"),
+            fallback=Path.cwd() / "fake_workdir" / run_id,
+        )
         workdir.mkdir(parents=True, exist_ok=True)
 
         rs = FakeRunState(run_id=run_id, workdir=workdir, plan=plan)

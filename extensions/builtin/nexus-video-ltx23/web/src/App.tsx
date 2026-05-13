@@ -33,17 +33,26 @@ export function App(): ReactElement {
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [retryingSegmentIndex, setRetryingSegmentIndex] = useState<number | null>(
+    null,
+  );
+  const [retryError, setRetryError] = useState<string | null>(null);
 
   const { data: profiles } = useSWR<RuntimeProfileSummary[]>(
-    "/runtime-profiles",
+    "ltx:runtime-profiles",
     () => ltxApi.listProfiles(),
     { revalidateOnFocus: false },
   );
 
   const { data: run, mutate: refetchRun } = useSWR<RenderRun | null>(
-    activeRunId ? `/renders/${activeRunId}` : null,
+    activeRunId ? `ltx:renders:${activeRunId}` : null,
     () => (activeRunId ? ltxApi.getRender(activeRunId) : Promise.resolve(null)),
     {
+      // Adaptive cadence — the original 600ms-always polling was wasteful
+      // for renders that take 4+ min per segment. Poll fast on first
+      // load (no data yet), slower while a segment is mid-flight,
+      // stop entirely on terminal status.
       refreshInterval: (latest) => {
         if (!latest) return 1000;
         if (
@@ -53,7 +62,9 @@ export function App(): ReactElement {
         ) {
           return 0;
         }
-        return 600;
+        // 2s during long renders is plenty for a status-word UI;
+        // segment-completion events bump us forward naturally.
+        return 2000;
       },
     },
   );
@@ -87,14 +98,41 @@ export function App(): ReactElement {
   }, [draft, refetchRun]);
 
   const handleCancel = useCallback(async () => {
-    if (!activeRunId) return;
+    if (!activeRunId || cancelling) return;
+    setCancelling(true);
+    setSubmitError(null);
     try {
       await ltxApi.cancel(activeRunId);
       void refetchRun();
     } catch (e) {
-      console.error("cancel failed", e);
+      setSubmitError(
+        `Cancel failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      setCancelling(false);
     }
-  }, [activeRunId, refetchRun]);
+  }, [activeRunId, cancelling, refetchRun]);
+
+  const handleRetrySegment = useCallback(
+    async (segmentIndex: number) => {
+      if (!activeRunId || retryingSegmentIndex !== null) return;
+      setRetryingSegmentIndex(segmentIndex);
+      setRetryError(null);
+      try {
+        await ltxApi.retrySegment(activeRunId, segmentIndex);
+        void refetchRun();
+      } catch (e) {
+        setRetryError(
+          `Retry of segment ${segmentIndex + 1} failed: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        );
+      } finally {
+        setRetryingSegmentIndex(null);
+      }
+    },
+    [activeRunId, retryingSegmentIndex, refetchRun],
+  );
 
   return (
     <div className={s.shell}>
@@ -113,7 +151,14 @@ export function App(): ReactElement {
           submitError={submitError}
         />
       </div>
-      <ResultPanel run={run ?? null} onCancel={handleCancel} />
+      <ResultPanel
+        run={run ?? null}
+        onCancel={handleCancel}
+        cancelling={cancelling}
+        onRetrySegment={handleRetrySegment}
+        retryingSegmentIndex={retryingSegmentIndex}
+        retryError={retryError}
+      />
     </div>
   );
 }
@@ -374,12 +419,18 @@ function FormPanel({
             min={1}
             max={300}
             value={draft.duration_seconds}
-            onChange={(e) =>
-              update(
-                "duration_seconds",
-                Math.max(1, Math.min(300, Number(e.target.value) || 1)),
-              )
-            }
+            onChange={(e) => {
+              // Parse explicitly + reject NaN — `Number("") || 1`
+              // silently coerced empty fields to 1, masking the
+              // user's intent to clear the value before retyping.
+              const parsed = Number(e.target.value);
+              if (Number.isFinite(parsed)) {
+                update(
+                  "duration_seconds",
+                  Math.max(1, Math.min(300, parsed)),
+                );
+              }
+            }}
           />
         </div>
         <div className={s.fieldRow}>
@@ -393,7 +444,14 @@ function FormPanel({
             value={draft.seed ?? ""}
             onChange={(e) => {
               const v = e.target.value;
-              update("seed", v === "" ? undefined : Number(v));
+              if (v === "") {
+                update("seed", undefined);
+                return;
+              }
+              const parsed = Number(v);
+              if (Number.isFinite(parsed)) {
+                update("seed", parsed);
+              }
             }}
             placeholder="leave blank for random"
           />
@@ -976,13 +1034,23 @@ function PlanBlock({ plan }: { plan: RenderPlan }): ReactElement {
   );
 }
 
+interface ResultPanelProps {
+  run: RenderRun | null;
+  onCancel: () => void;
+  cancelling: boolean;
+  onRetrySegment: (segmentIndex: number) => void;
+  retryingSegmentIndex: number | null;
+  retryError: string | null;
+}
+
 function ResultPanel({
   run,
   onCancel,
-}: {
-  run: RenderRun | null;
-  onCancel: () => void;
-}): ReactElement {
+  cancelling,
+  onRetrySegment,
+  retryingSegmentIndex,
+  retryError,
+}: ResultPanelProps): ReactElement {
   if (!run) {
     return (
       <section className={s.panel}>
@@ -1000,6 +1068,12 @@ function ResultPanel({
     run.status === "failed" ||
     run.status === "cancelled";
 
+  // A retry is allowed for non-completed runs whose individual segment
+  // failed. The server also refuses retries on completed/cancelled
+  // runs (see api.rs retry_segment terminal guard) — keep the UI
+  // affordance in sync so users don't see a button that 4xxs.
+  const retryAllowed = run.status !== "completed" && run.status !== "cancelled";
+
   return (
     <section className={s.panel}>
       <h2 className={s.header}>Render {shortId(run.id)}</h2>
@@ -1011,13 +1085,23 @@ function ResultPanel({
       <StatusBar run={run} />
 
       {run.error_code ? (
-        <div className={s.errorBox}>
+        <div className={s.errorBox} role="alert" aria-live="polite">
           <strong>{run.error_code}</strong>:{" "}
           {run.error_message ?? "unknown error"}
         </div>
       ) : null}
 
-      <SegmentTimeline segments={run.segments} />
+      {retryError ? (
+        <div className={s.errorBox} role="alert" aria-live="polite">
+          {retryError}
+        </div>
+      ) : null}
+
+      <SegmentTimeline
+        segments={run.segments}
+        onRetry={retryAllowed ? onRetrySegment : null}
+        retryingSegmentIndex={retryingSegmentIndex}
+      />
 
       {run.status === "completed" && run.final_artifact_id ? (
         <FinalPreview artifactId={run.final_artifact_id} />
@@ -1029,8 +1113,10 @@ function ResultPanel({
             type="button"
             className={s.buttonDanger}
             onClick={onCancel}
+            disabled={cancelling}
+            aria-busy={cancelling}
           >
-            Cancel
+            {cancelling ? "Cancelling…" : "Cancel"}
           </button>
         </div>
       ) : null}
@@ -1066,22 +1152,44 @@ function StatusBar({ run }: { run: RenderRun }): ReactElement {
   );
 }
 
+interface SegmentTimelineProps {
+  segments: RenderRun["segments"];
+  onRetry: ((segmentIndex: number) => void) | null;
+  retryingSegmentIndex: number | null;
+}
+
 function SegmentTimeline({
   segments,
-}: {
-  segments: RenderRun["segments"];
-}): ReactElement {
+  onRetry,
+  retryingSegmentIndex,
+}: SegmentTimelineProps): ReactElement {
   return (
     <div className={s.segmentList}>
-      {segments.map((seg) => (
-        <div key={seg.index} className={s.segmentRow}>
-          <span className={dotClass(seg.status)} />
-          <span>
-            Segment {seg.index + 1} · {seg.duration_seconds.toFixed(1)}s
-          </span>
-          <span className={s.meta}>{seg.status}</span>
-        </div>
-      ))}
+      {segments.map((seg) => {
+        const isRetrying = retryingSegmentIndex === seg.index;
+        const canRetry = onRetry !== null && seg.status === "failed";
+        return (
+          <div key={seg.index} className={s.segmentRow}>
+            <span className={dotClass(seg.status)} />
+            <span>
+              Segment {seg.index + 1} · {seg.duration_seconds.toFixed(1)}s
+            </span>
+            <span className={s.meta}>{seg.status}</span>
+            {canRetry ? (
+              <button
+                type="button"
+                className={s.buttonSubtle}
+                onClick={() => onRetry?.(seg.index)}
+                disabled={retryingSegmentIndex !== null}
+                aria-busy={isRetrying}
+                aria-label={`Retry segment ${seg.index + 1}`}
+              >
+                {isRetrying ? "Retrying…" : "Retry"}
+              </button>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
