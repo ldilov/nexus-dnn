@@ -20,6 +20,58 @@ use crate::vram_supervisor::{VramSupervisor, VramVerdict};
 /// taken by the worker, so we claim `-32110` for host-side halts).
 pub const VRAM_SUPERVISOR_BREACH_CODE: i64 = -32110;
 
+// Worker JSON-RPC error code constants. These mirror the worker's
+// `rpc.py::ErrorCodes` namespace — kept in sync by hand because the
+// extension's Rust + Python halves don't share a generated schema.
+// If the worker adds a new code, add the matching match arm in
+// `map_worker_error_code` so the host UI gets a discriminator.
+const W_DRIVER_TOO_OLD: i64 = -32100;
+const W_TORCH_CUDA_MISMATCH: i64 = -32101;
+const W_GPU_NOT_SUPPORTED: i64 = -32102;
+const W_MODEL_MISSING: i64 = -32103;
+const W_MODEL_LOAD_FAILED: i64 = -32104;
+const W_VRAM_BUDGET_EXCEEDED: i64 = -32105;
+const W_RENDER_FAILED: i64 = -32106;
+const W_PLAN_INVALID: i64 = -32108;
+const W_NVFP4_NAN_BURST: i64 = -32109;
+
+/// Project a worker JSON-RPC error code to a UI-friendly `error_code`
+/// string. Returns a `&'static str` for the known namespace; the
+/// unknown-code path is handled by the caller.
+const fn map_worker_error_code(code: i64) -> &'static str {
+    match code {
+        VRAM_SUPERVISOR_BREACH_CODE => "vram_supervisor",
+        W_DRIVER_TOO_OLD => "driver_too_old",
+        W_TORCH_CUDA_MISMATCH => "torch_cuda_mismatch",
+        W_GPU_NOT_SUPPORTED => "gpu_not_supported",
+        W_MODEL_MISSING => "model_missing",
+        W_MODEL_LOAD_FAILED => "model_load_failed",
+        W_VRAM_BUDGET_EXCEEDED => "vram_budget_exceeded",
+        W_RENDER_FAILED => "render_failed",
+        W_PLAN_INVALID => "plan_invalid",
+        W_NVFP4_NAN_BURST => "nvfp4_nan_burst",
+        _ => "worker_error",
+    }
+}
+
+/// Convert a worker error code + message into the most specific
+/// typed `ExtensionError` variant available. This lets the HTTP
+/// layer map `model_missing` → 503 / `driver_too_old` → 503 /
+/// `plan_invalid` → 400 etc., instead of collapsing everything to
+/// the generic 500 path.
+#[allow(clippy::missing_const_for_fn)]
+fn typed_error_for(code: i64, message: String) -> crate::errors::ExtensionError {
+    use crate::errors::ExtensionError;
+    match code {
+        W_DRIVER_TOO_OLD => ExtensionError::DriverTooOld(message),
+        W_GPU_NOT_SUPPORTED => ExtensionError::GpuNotSupported(message),
+        W_MODEL_MISSING => ExtensionError::ModelMissing(message),
+        W_VRAM_BUDGET_EXCEEDED => ExtensionError::VramBudgetExceeded(message),
+        W_PLAN_INVALID => ExtensionError::PlanInvalid(message),
+        _ => ExtensionError::RenderFailed(message),
+    }
+}
+
 // Render wall-clock budget. The real LTX-2.3 pipeline on a single 16 GB
 // GPU takes ~750 s per 4-second segment (60 s cold pipeline load + 8
 // inference steps @ ~75 s each, measured 2026-05-13 on RTX 5070 Ti with
@@ -514,25 +566,23 @@ async fn run_via_lease(
                 cleanup_workdir(&workdir, run_id).await;
                 return Err(crate::errors::ExtensionError::RenderCancelled);
             }
-            // VRAM supervisor halts get a distinct error_code so the
-            // UI can show "halted by policy" rather than the generic
-            // "worker_error:-32603" path.
-            let error_code = if code == VRAM_SUPERVISOR_BREACH_CODE {
-                "vram_supervisor".to_string()
-            } else {
-                format!("worker_error:{code}")
-            };
+            // Map JSON-RPC error codes from the worker's ErrorCodes
+            // namespace to the typed `error_code` strings the UI
+            // discriminates on. Falls through to `worker_error:<code>`
+            // for any code not in the known namespace so we don't
+            // silently swallow new error types.
+            let error_code = map_worker_error_code(code);
             cfg.repos
                 .update_run_status(
                     run_id,
                     "failed",
                     None,
-                    Some(&error_code),
+                    Some(error_code),
                     Some(&truncate_status_msg(&message)),
                 )
                 .await?;
             cleanup_workdir(&workdir, run_id).await;
-            Err(crate::errors::ExtensionError::RenderFailed(message))
+            Err(typed_error_for(code, message))
         }
         NotificationOutcome::Cancelled => {
             cfg.repos
@@ -1035,6 +1085,58 @@ mod tests {
         let _ = runner.register_test_canceller("transient".into()).await;
         runner.cancellers.lock().await.remove("transient");
         assert!(!runner.is_render_in_flight("transient").await);
+    }
+
+    #[test]
+    fn map_worker_error_code_known_namespace() {
+        assert_eq!(map_worker_error_code(W_MODEL_MISSING), "model_missing");
+        assert_eq!(map_worker_error_code(W_DRIVER_TOO_OLD), "driver_too_old");
+        assert_eq!(
+            map_worker_error_code(W_VRAM_BUDGET_EXCEEDED),
+            "vram_budget_exceeded"
+        );
+        assert_eq!(
+            map_worker_error_code(VRAM_SUPERVISOR_BREACH_CODE),
+            "vram_supervisor"
+        );
+    }
+
+    #[test]
+    fn map_worker_error_code_unknown_falls_back() {
+        // Future worker code that hasn't been added to the map should
+        // still get a useful (if generic) label.
+        assert_eq!(map_worker_error_code(-99_999), "worker_error");
+        assert_eq!(map_worker_error_code(0), "worker_error");
+    }
+
+    #[test]
+    fn typed_error_for_routes_to_specific_variants() {
+        use crate::errors::ExtensionError;
+        assert!(matches!(
+            typed_error_for(W_MODEL_MISSING, "weights gone".into()),
+            ExtensionError::ModelMissing(_)
+        ));
+        assert!(matches!(
+            typed_error_for(W_DRIVER_TOO_OLD, "535 < 545".into()),
+            ExtensionError::DriverTooOld(_)
+        ));
+        assert!(matches!(
+            typed_error_for(W_GPU_NOT_SUPPORTED, "sm_75 unsupported".into()),
+            ExtensionError::GpuNotSupported(_)
+        ));
+        assert!(matches!(
+            typed_error_for(W_VRAM_BUDGET_EXCEEDED, "OOM".into()),
+            ExtensionError::VramBudgetExceeded(_)
+        ));
+        assert!(matches!(
+            typed_error_for(W_PLAN_INVALID, "bad plan".into()),
+            ExtensionError::PlanInvalid(_)
+        ));
+        // Unknown codes collapse to the generic RenderFailed bucket.
+        assert!(matches!(
+            typed_error_for(-99_999, "mystery".into()),
+            ExtensionError::RenderFailed(_)
+        ));
     }
 
     #[tokio::test]

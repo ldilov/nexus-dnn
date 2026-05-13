@@ -11,13 +11,21 @@ const danger = "oklch(70% 0.22 25)";
 const success = "oklch(72% 0.16 145)";
 const warning = "oklch(80% 0.18 80)";
 
-globalStyle("ltx23-video-app", {
+// The stylesheet is injected into the custom element's shadow root
+// (see main.tsx). `:host` matches the shadow root's host element from
+// inside the shadow tree — replaces the prior light-DOM globalStyle on
+// the tag name which would no longer match anything.
+globalStyle(":host", {
   display: "block",
   minHeight: "100%",
   color: textPrimary,
   background: surfaceBg,
   fontFamily:
     "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  // Reset inherited font properties from the host so the host's
+  // text-rendering defaults don't leak in via CSS inheritance.
+  lineHeight: 1.5,
+  fontSize: "14px",
 });
 
 export const shell = style({
