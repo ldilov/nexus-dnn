@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -44,10 +44,19 @@ pub struct RunnerConfig {
 /// notification loop.
 type CancelRegistry = Arc<Mutex<HashMap<String, Arc<Notify>>>>;
 
+/// In-flight retry tracker keyed by `(run_id, segment_index)`. Prevents
+/// two concurrent `POST /retry-segment` calls for the same segment
+/// from racing on the same workdir + DB row. Eviction happens in the
+/// retry task's tail block — `Drop`-style cleanup is unsafe here
+/// because tokio tasks can be cancelled at any await point, so the
+/// task itself removes its key when it terminates.
+type RetryRegistry = Arc<Mutex<HashSet<(String, u32)>>>;
+
 #[derive(Clone)]
 pub struct Runner {
     cfg: Arc<RunnerConfig>,
     cancellers: CancelRegistry,
+    retries: RetryRegistry,
 }
 
 /// Outcome of `Runner::cancel`. Reported by the HTTP layer so the response
@@ -62,12 +71,40 @@ pub enum CancelOutcome {
     NotInFlight,
 }
 
+/// Outcome of `Runner::spawn_retry_segment`. Lets the HTTP layer
+/// distinguish "first retry accepted" from "duplicate concurrent retry".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RetrySpawnOutcome {
+    /// Registry slot claimed; background task spawned.
+    Accepted,
+    /// Another retry for this `(run_id, segment_index)` is in flight.
+    Duplicate,
+}
+
+/// Hard cap on error-message length written to DB / forwarded to the
+/// SSE broker. Mirrors the worker-side `truncate_for_log` cap.
+const STATUS_MSG_CAP: usize = 2048;
+
+fn truncate_status_msg(message: &str) -> String {
+    if message.len() <= STATUS_MSG_CAP {
+        message.to_string()
+    } else {
+        let keep = STATUS_MSG_CAP - 32;
+        format!(
+            "{} … [truncated {} chars]",
+            &message[..keep],
+            message.len() - keep
+        )
+    }
+}
+
 impl Runner {
     #[must_use]
     pub fn new(cfg: RunnerConfig) -> Self {
         Self {
             cfg: Arc::new(cfg),
             cancellers: Arc::new(Mutex::new(HashMap::new())),
+            retries: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
@@ -172,8 +209,15 @@ impl Runner {
     /// Refuses to start if a live render task already exists for this
     /// run id — a retry while the full chain is in flight would race
     /// with the original task's segment-status writes.
+    /// Attempt to spawn a retry-segment task.
+    ///
+    /// Returns `RetrySpawnOutcome::Accepted` when the registry was
+    /// updated and the task launched, or `Duplicate` when an in-flight
+    /// retry already owns the same `(run_id, segment_index)` pair. The
+    /// HTTP layer translates the latter into a 409 Conflict so two
+    /// concurrent retry clicks don't race the same workdir.
     #[allow(clippy::too_many_arguments)]
-    pub fn spawn_retry_segment(
+    pub async fn spawn_retry_segment(
         &self,
         run_id: String,
         profile: String,
@@ -184,8 +228,16 @@ impl Runner {
         style_prompt: Option<String>,
         character_prompt: Option<String>,
         advanced: AdvancedSettings,
-    ) {
+    ) -> RetrySpawnOutcome {
+        let key = (run_id.clone(), segment_index);
+        {
+            let mut retries = self.retries.lock().await;
+            if !retries.insert(key.clone()) {
+                return RetrySpawnOutcome::Duplicate;
+            }
+        }
         let cfg = self.cfg.clone();
+        let retries = self.retries.clone();
         tokio::spawn(async move {
             let result = retry_segment_via_lease(
                 &cfg,
@@ -215,18 +267,27 @@ impl Runner {
                         &run_id,
                         i64::from(segment_index),
                         "failed",
-                        Some(&err.to_string()),
+                        Some(&truncate_status_msg(&err.to_string())),
                     )
                     .await;
             }
+            retries.lock().await.remove(&key);
         });
+        RetrySpawnOutcome::Accepted
     }
 
-    /// Returns true when a live render task currently owns this run id.
-    /// HTTP handlers use this to reject retry-segment while the full
-    /// chain is in flight.
+    /// Returns true when a live render OR retry task currently owns
+    /// this run id. HTTP handlers use this to reject retry-segment
+    /// while a full chain (or another retry) is in flight.
     pub async fn is_render_in_flight(&self, run_id: &str) -> bool {
-        self.cancellers.lock().await.contains_key(run_id)
+        if self.cancellers.lock().await.contains_key(run_id) {
+            return true;
+        }
+        self.retries
+            .lock()
+            .await
+            .iter()
+            .any(|(rid, _)| rid == run_id)
     }
 
     /// Test-only inspection — number of run ids with live tokens.
@@ -432,6 +493,12 @@ enum NotificationOutcome {
 /// Single-segment-retry analogue of `run_via_lease`. Acquires a fresh
 /// lease, sends `ltx.video.segment.retry`, drains notifications until
 /// `SEGMENT_COMPLETED` for the target index (success) or `ERROR` (failure).
+///
+/// The HTTP layer already flipped the segment row to `queued` before
+/// invoking this — we don't repeat it here so a fast worker emitting
+/// `SEGMENT_STARTED` before our DB write would not be clobbered. The
+/// lease is released on every exit path through `drive_retry_loop`'s
+/// inner Result handling at the end of the function.
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn retry_segment_via_lease(
     cfg: &RunnerConfig,
@@ -453,118 +520,144 @@ async fn retry_segment_via_lease(
         ))
     })?;
 
-    cfg.repos
-        .update_segment_status(run_id, i64::from(seg_idx), "queued", None)
-        .await?;
-
     let lease = cfg.factory.acquire(short_profile(profile)).await?;
-    let mut notifications = lease.subscribe_notifications();
-
-    let mut retry_params = build_render_params(
-        run_id,
-        plan,
-        prompt,
-        negative_prompt,
-        style_prompt,
-        character_prompt,
-        advanced,
-        &workdir,
-    );
-    if let Some(obj) = retry_params.as_object_mut() {
-        obj.insert("segment_index".into(), Value::from(seg_idx));
-    }
-
-    if let Err(e) = lease
-        .send_rpc("ltx.video.segment.retry", retry_params)
-        .await
-    {
-        let _ = lease.release().await;
-        return Err(crate::errors::ExtensionError::RenderFailed(format!(
-            "segment.retry rejected by worker: {e}"
-        )));
-    }
-
     let target = i64::from(seg_idx);
-    let outcome = tokio::time::timeout(RETRY_SEGMENT_TIMEOUT, async {
-        loop {
-            match notifications.recv().await {
-                Ok(note) => match note.method.as_str() {
-                    "ltx.video.segment.completed" => {
-                        if segment_index(&note.params) == Some(target) {
-                            cfg.repos
-                                .update_segment_status(run_id, target, "completed", None)
-                                .await?;
-                            return Ok::<RetryOutcome, crate::errors::ExtensionError>(
-                                RetryOutcome::Completed,
-                            );
+
+    // Single-exit pattern: do the work inside an inner async block,
+    // capture its Result, then release the lease ONCE on every path
+    // (timeout, channel close, worker error, success). Avoids the
+    // "lease leaked on timeout" anti-pattern the prior structure had.
+    let outcome_result: Result<RetryOutcome> = async {
+        let mut notifications = lease.subscribe_notifications();
+
+        let mut retry_params = build_render_params(
+            run_id,
+            plan,
+            prompt,
+            negative_prompt,
+            style_prompt,
+            character_prompt,
+            advanced,
+            &workdir,
+        );
+        if let Some(obj) = retry_params.as_object_mut() {
+            obj.insert("segment_index".into(), Value::from(seg_idx));
+        }
+
+        lease
+            .send_rpc("ltx.video.segment.retry", retry_params)
+            .await
+            .map_err(|e| {
+                crate::errors::ExtensionError::RenderFailed(format!(
+                    "segment.retry rejected by worker: {e}"
+                ))
+            })?;
+
+        let driven = tokio::time::timeout(RETRY_SEGMENT_TIMEOUT, async {
+            loop {
+                match notifications.recv().await {
+                    Ok(note) => {
+                        if !notification_matches_run(&note.params, run_id) {
+                            // Notification from a different run sharing the
+                            // pool — defence-in-depth so a mis-routed event
+                            // can't prematurely succeed our retry.
+                            continue;
                         }
-                        // SEGMENT_COMPLETED for a different index — possible if
-                        // the worker is mid-render of another run on the same
-                        // pool; ignore.
-                    }
-                    "ltx.video.segment.started" => {
-                        if segment_index(&note.params) == Some(target) {
-                            cfg.repos
-                                .update_segment_status(run_id, target, "rendering", None)
-                                .await?;
+                        match note.method.as_str() {
+                            "ltx.video.segment.completed" => {
+                                if segment_index(&note.params) == Some(target) {
+                                    cfg.repos
+                                        .update_segment_status(
+                                            run_id, target, "completed", None,
+                                        )
+                                        .await?;
+                                    return Ok::<RetryOutcome, crate::errors::ExtensionError>(
+                                        RetryOutcome::Completed,
+                                    );
+                                }
+                            }
+                            "ltx.video.segment.started" => {
+                                if segment_index(&note.params) == Some(target) {
+                                    cfg.repos
+                                        .update_segment_status(
+                                            run_id, target, "rendering", None,
+                                        )
+                                        .await?;
+                                }
+                            }
+                            "ltx.video.error" => {
+                                let code = note
+                                    .params
+                                    .get("code")
+                                    .and_then(Value::as_i64)
+                                    .unwrap_or(-32603);
+                                let message = note
+                                    .params
+                                    .get("message")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("worker emitted error without message")
+                                    .to_string();
+                                return Ok(RetryOutcome::Error { code, message });
+                            }
+                            _ => {}
                         }
                     }
-                    "ltx.video.error" => {
-                        let code = note
-                            .params
-                            .get("code")
-                            .and_then(Value::as_i64)
-                            .unwrap_or(-32603);
-                        let message = note
-                            .params
-                            .get("message")
-                            .and_then(Value::as_str)
-                            .unwrap_or("worker emitted error without message")
-                            .to_string();
-                        return Ok(RetryOutcome::Error { code, message });
+                    Err(RecvError::Lagged(skipped)) => {
+                        tracing::warn!(
+                            run_id = %run_id,
+                            segment_index = seg_idx,
+                            skipped,
+                            "runner: retry notification lag — dropping events but continuing"
+                        );
                     }
-                    _ => {}
-                },
-                Err(RecvError::Lagged(skipped)) => {
-                    tracing::warn!(
-                        run_id = %run_id,
-                        segment_index = seg_idx,
-                        skipped,
-                        "runner: retry notification lag — dropping events but continuing"
-                    );
-                }
-                Err(RecvError::Closed) => {
-                    return Err(crate::errors::ExtensionError::RenderFailed(
-                        "worker closed notification channel before retry completed".into(),
-                    ));
+                    Err(RecvError::Closed) => {
+                        return Err(crate::errors::ExtensionError::RenderFailed(
+                            "worker closed notification channel before retry completed".into(),
+                        ));
+                    }
                 }
             }
-        }
-    })
-    .await
-    .map_err(|_| {
-        crate::errors::ExtensionError::RenderFailed(format!(
-            "segment retry timed out after {} seconds",
-            RETRY_SEGMENT_TIMEOUT.as_secs()
-        ))
-    })??;
+        })
+        .await
+        .map_err(|_| {
+            crate::errors::ExtensionError::RenderFailed(format!(
+                "segment retry timed out after {} seconds",
+                RETRY_SEGMENT_TIMEOUT.as_secs()
+            ))
+        })?;
+
+        driven
+    }
+    .await;
 
     let _ = lease.release().await;
 
-    match outcome {
+    match outcome_result? {
         RetryOutcome::Completed => Ok(()),
         RetryOutcome::Error { code, message } => {
+            let truncated = truncate_status_msg(&message);
             cfg.repos
                 .update_segment_status(
                     run_id,
                     target,
                     "failed",
-                    Some(&format!("worker_error:{code} {message}")),
+                    Some(&format!("worker_error:{code} {truncated}")),
                 )
                 .await?;
             Err(crate::errors::ExtensionError::RenderFailed(message))
         }
     }
+}
+
+/// Compare a notification's `run_id` field (when present) against the
+/// expected one. Returns true when the field matches OR when it's
+/// absent — older worker builds may not emit `run_id` on every
+/// notification, so absence is treated as "trust the lease binding".
+fn notification_matches_run(params: &Value, expected: &str) -> bool {
+    params
+        .get("run_id")
+        .and_then(Value::as_str)
+        .is_none_or(|got| got == expected)
 }
 
 enum RetryOutcome {
@@ -813,6 +906,46 @@ mod tests {
         let _ = runner.register_test_canceller("transient".into()).await;
         runner.cancellers.lock().await.remove("transient");
         assert!(!runner.is_render_in_flight("transient").await);
+    }
+
+    #[tokio::test]
+    async fn is_render_in_flight_covers_retry_registry() {
+        let runner = empty_runner().await;
+        runner
+            .retries
+            .lock()
+            .await
+            .insert(("run-retry".into(), 3));
+        assert!(runner.is_render_in_flight("run-retry").await);
+        assert!(!runner.is_render_in_flight("run-other").await);
+    }
+
+    #[test]
+    fn notification_matches_run_returns_true_when_field_absent() {
+        let params = serde_json::json!({"segment_index": 1});
+        assert!(notification_matches_run(&params, "run-x"));
+    }
+
+    #[test]
+    fn notification_matches_run_compares_string_run_id() {
+        let params = serde_json::json!({"run_id": "run-x", "segment_index": 1});
+        assert!(notification_matches_run(&params, "run-x"));
+        let params_other = serde_json::json!({"run_id": "run-y", "segment_index": 1});
+        assert!(!notification_matches_run(&params_other, "run-x"));
+    }
+
+    #[test]
+    fn truncate_status_msg_passthrough_under_cap() {
+        let short = "x".repeat(100);
+        assert_eq!(truncate_status_msg(&short), short);
+    }
+
+    #[test]
+    fn truncate_status_msg_truncates_over_cap() {
+        let long = "y".repeat(STATUS_MSG_CAP * 2);
+        let out = truncate_status_msg(&long);
+        assert!(out.len() < long.len());
+        assert!(out.contains("truncated"));
     }
 
     #[tokio::test]

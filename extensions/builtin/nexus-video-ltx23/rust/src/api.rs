@@ -19,7 +19,7 @@ use ulid::Ulid;
 use crate::errors::{ExtensionError, ExtensionErrorCode};
 use crate::planning::plan_render;
 use crate::profile_install::{ProfileInstallService, ProfileInstallStatus};
-use crate::runner::{CancelOutcome, Runner};
+use crate::runner::{CancelOutcome, RetrySpawnOutcome, Runner};
 use crate::runtime_selection::{available_profiles, resolve_runtime_id};
 use crate::schemas::{CreateRenderRequest, RenderPlan, RuntimeProfilePreference};
 use crate::storage::{Repos, RenderRunRow, RenderSegmentRow};
@@ -537,11 +537,12 @@ async fn retry_segment(
     Path(run_id): Path<String>,
     Json(body): Json<RetrySegmentRequest>,
 ) -> ApiResult<StatusCode> {
+    validate_run_id(&run_id)?;
     let run = state.repos.get_run(&run_id).await?;
     if state.runner.is_render_in_flight(&run_id).await {
         return Err(ApiError(ExtensionError::InvalidRequest(format!(
-            "cannot retry segment for run '{run_id}' while a full render is in flight; \
-             cancel the run first or wait for it to terminate"
+            "cannot retry segment for run '{run_id}' while a full render or another retry \
+             is in flight; cancel the run first or wait for it to terminate"
         ))));
     }
     let plan = parse_plan_for_retry(&run)?;
@@ -563,29 +564,66 @@ async fn retry_segment(
         .prompt_override
         .clone()
         .unwrap_or_else(|| request.prompt.clone());
-    let runtime_id = run
-        .runtime_profile
-        .clone()
-        .unwrap_or_else(|| "fake".to_string());
+    // Silent "fake" fallback when runtime_profile is null was a data-
+    // corruption hazard — would re-render with placeholder MP4s over a
+    // real run. Refuse the retry with a clear message instead.
+    let runtime_id = run.runtime_profile.clone().ok_or_else(|| {
+        ExtensionError::InvalidRequest(format!(
+            "run '{run_id}' has no runtime_profile stored; cannot retry safely \
+             (would risk overwriting real artifacts with the fake pipeline)"
+        ))
+    })?;
 
     state
         .repos
         .update_segment_status(&run_id, i64::from(body.segment_index), "queued", None)
         .await?;
 
-    state.runner.spawn_retry_segment(
-        run_id,
-        runtime_id,
-        plan,
-        body.segment_index,
-        prompt,
-        request.negative_prompt.clone(),
-        request.style_prompt.clone(),
-        request.character_prompt.clone(),
-        request.advanced.clone(),
-    );
+    let spawn_outcome = state
+        .runner
+        .spawn_retry_segment(
+            run_id,
+            runtime_id,
+            plan,
+            body.segment_index,
+            prompt,
+            request.negative_prompt.clone(),
+            request.style_prompt.clone(),
+            request.character_prompt.clone(),
+            request.advanced.clone(),
+        )
+        .await;
 
-    Ok(StatusCode::ACCEPTED)
+    match spawn_outcome {
+        RetrySpawnOutcome::Accepted => Ok(StatusCode::ACCEPTED),
+        RetrySpawnOutcome::Duplicate => Err(ApiError(ExtensionError::InvalidRequest(
+            "a retry for this segment is already in flight".into(),
+        ))),
+    }
+}
+
+/// Run IDs must be safe to use as filesystem path components and as
+/// JSON-RPC `request_id` values. The HTTP layer already constrains
+/// callers to a `Path<String>` extracted from the URL, but downstream
+/// the value flows into `cfg.runs_dir.join(run_id)` so we enforce the
+/// shape explicitly: ULID-class characters plus a couple of legacy
+/// fixtures (test runs use `run_test_*`).
+fn validate_run_id(run_id: &str) -> ApiResult<()> {
+    if run_id.is_empty() || run_id.len() > 64 {
+        return Err(ApiError(ExtensionError::InvalidRequest(format!(
+            "run_id length out of range (1..=64); got {} chars",
+            run_id.len()
+        ))));
+    }
+    let ok = run_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    if !ok {
+        return Err(ApiError(ExtensionError::InvalidRequest(format!(
+            "run_id '{run_id}' contains characters outside [A-Za-z0-9_-]"
+        ))));
+    }
+    Ok(())
 }
 
 fn parse_plan_for_retry(run: &RenderRunRow) -> ApiResult<RenderPlan> {
@@ -686,6 +724,28 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validate_run_id_accepts_ulid_shape() {
+        assert!(validate_run_id("01JABCDEFGHJKMNPQRSTVWXYZ0").is_ok());
+        assert!(validate_run_id("run_test_001").is_ok());
+        assert!(validate_run_id("abc-def_123").is_ok());
+    }
+
+    #[test]
+    fn validate_run_id_rejects_path_traversal() {
+        assert!(validate_run_id("../escape").is_err());
+        assert!(validate_run_id("with/slash").is_err());
+        assert!(validate_run_id("with\\back").is_err());
+        assert!(validate_run_id("has.dot").is_err());
+        assert!(validate_run_id("has space").is_err());
+    }
+
+    #[test]
+    fn validate_run_id_rejects_empty_or_oversized() {
+        assert!(validate_run_id("").is_err());
+        assert!(validate_run_id(&"x".repeat(65)).is_err());
+    }
 
     fn mk_cache() -> IdempotencyCache {
         Arc::new(AsyncMutex::new(HashMap::new()))

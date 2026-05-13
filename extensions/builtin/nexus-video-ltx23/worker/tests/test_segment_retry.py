@@ -220,6 +220,48 @@ async def test_segment_retry_rejects_non_int_segment_index(worker):
 
 
 @pytest.mark.asyncio
+async def test_segment_retry_rejects_path_traversal_workdir(worker):
+    w, _, _ = worker
+    with pytest.raises(ValueError, match=r"\.\."):
+        await w._handlers[Methods.SEGMENT_RETRY](
+            {
+                "request_id": "run_traversal_001",
+                "segment_index": 0,
+                "video": _plan(),
+                "workdir": "../../etc",
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_segment_retry_rejects_path_separator_in_run_id(worker):
+    w, _, tmp_path = worker
+    with pytest.raises(ValueError, match="run_id"):
+        await w._handlers[Methods.SEGMENT_RETRY](
+            {
+                "request_id": "../sneaky",
+                "segment_index": 0,
+                "video": _plan(),
+                "workdir": str(tmp_path),
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_segment_retry_rejects_non_dict_plan(worker):
+    w, _, tmp_path = worker
+    with pytest.raises(ValueError, match="plan"):
+        await w._handlers[Methods.SEGMENT_RETRY](
+            {
+                "request_id": "run_baddict_001",
+                "segment_index": 0,
+                "video": "not-a-plan",
+                "workdir": str(tmp_path),
+            }
+        )
+
+
+@pytest.mark.asyncio
 async def test_segment_retry_auto_registers_run_when_unknown(worker):
     """Fresh worker / no prior render_start — retry still works.
     Mirrors the real-world flow: Rust runner acquires a fresh lease for
