@@ -21,7 +21,7 @@ in the `nexus-dnn` Rust monorepo. The branch
 - **Rung 6** ✅ `92c1267` — per-profile HF model install + RIFE skeleton
 - **Rung 7B** ✅ `e6388d5` — unified runtime install CTA (uv sync chained with weights)
 - **Rung 7E** ✅ `25246fe` — openapi fragment parity (10 routes + new schemas)
-- **Rung 7D** ✅ (next commit) — cancel actually cancels (Notify-based registry)
+- **Rung 7D** ✅ `d901295` — cancel actually cancels (Notify-based registry)
 
 The fake-profile path is fully exercised end-to-end (POST /renders →
 Python subprocess → JSON-RPC notifications → real ffmpeg-encoded MP4 →
@@ -45,14 +45,18 @@ worker dir lives at extension root not nested, JSON-RPC method is
 ## Where I am right now
 
 - Worktree: `D:\Workspace\repos\nexus-dnn\.claude\worktrees\unruffled-perlman-dd12e1`
-- Branch: `claude/unruffled-perlman-dd12e1` (pushed at `e6388d5`)
+- Branch: `claude/unruffled-perlman-dd12e1` (pushed at `d901295`)
 - All validation gates green: cargo clippy `-D warnings` (pedantic+nursery),
-  22/22 Rust tests, 31/31 Python tests, boundary audit PASS, `pnpm build`
+  26/26 Rust tests, 31/31 Python tests, boundary audit PASS, `pnpm build`
   green (360 KB JS + 4.5 KB CSS).
-- "Install runtime & download weights" CTA is wired end-to-end: live
-  smoke confirmed uv subprocess streams real package lines into the
-  `recent_progress` ring buffer (78 packages resolved, torch/diffusers
-  downloads observed).
+- "Install runtime & download weights" CTA is wired end-to-end (Rung 7B):
+  live smoke confirmed uv subprocess streams real package lines into the
+  `recent_progress` ring buffer.
+- OpenAPI fragment matches `api::http_routes()` exactly (Rung 7E).
+- Cancel propagates end-to-end (Rung 7D): live smoke confirmed
+  `POST /renders/.../cancel` stops the Python worker mid-render and
+  leaves the DB at `status=cancelled` with partial-segment progress
+  preserved.
 - PR not opened. URL when ready:
   `https://github.com/ldilov/nexus-dnn/compare/main...claude/unruffled-perlman-dd12e1?expand=1`
 
@@ -60,10 +64,10 @@ worker dir lives at extension root not nested, JSON-RPC method is
 
 ```bash
 cd D:/Workspace/repos/nexus-dnn/.claude/worktrees/unruffled-perlman-dd12e1
-git log --oneline -1                                              # should show e6388d5
+git log --oneline -1                                              # should show d901295
 git status --short                                                # apps/web/package-lock.json may show as M (pre-existing)
 cargo clippy -p nexus-video-ltx23-extension --all-targets -- -D warnings
-cargo test -p nexus-video-ltx23-extension --lib                   # 22/22
+cargo test -p nexus-video-ltx23-extension --lib                   # 26/26
 bash extensions/builtin/nexus-video-ltx23/scripts/audit-boundary.sh
 cd extensions/builtin/nexus-video-ltx23/worker && uv run python -m pytest tests/ -v   # 31/31
 cd ../../../..
@@ -171,7 +175,7 @@ Deliverable: `_try_interpolate_rife` actually uses RIFE when present;
 output_fps = 2× base_fps videos have smooth motion (vs minterpolate's
 slightly muddy interpolation).
 
-### Rung 7D — ✅ DONE (commit pending — see latest log)
+### Rung 7D — ✅ DONE (commit `d901295`)
 
 `POST /renders/{id}/cancel` now propagates end-to-end via an
 `Arc<Mutex<HashMap<String, Arc<Notify>>>>` registry on the `Runner`,
