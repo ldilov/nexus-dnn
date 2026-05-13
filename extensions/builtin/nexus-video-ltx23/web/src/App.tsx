@@ -461,18 +461,23 @@ function ProfileInstallPanel({
   if (status.installed) {
     return (
       <div className={s.warningBox}>
-        <strong>Weights installed</strong> · {status.repo}
+        <strong>Runtime installed</strong> · {status.repo}
       </div>
     );
   }
 
   const inFlight = status.in_flight || installing;
+  const phaseLabel = phaseDisplayLabel(status.phase);
+  const buttonLabel = inFlight
+    ? phaseLabel ?? "Installing…"
+    : "Install runtime & download weights";
   return (
     <div className={s.warningBox}>
-      <strong>Weights not installed</strong>: {status.repo ?? "unknown repo"}
+      <strong>Runtime not installed</strong>: {status.repo ?? "unknown repo"}
       <div className={s.meta} style={{ marginTop: 4 }}>
-        Required for the selected runtime profile. Downloads from Hugging Face
-        into {status.dest ?? "<host_data_dir>/models/…"}.
+        Resolves the diffusers extras (torch · diffusers · accelerate) via{" "}
+        <code>uv sync --extra diffusers</code>, then downloads weights from
+        Hugging Face into {status.dest ?? "<host_data_dir>/models/…"}.
       </div>
       {status.last_error ? (
         <div className={s.meta} style={{ marginTop: 4, color: "#e57373" }}>
@@ -491,10 +496,60 @@ function ProfileInstallPanel({
           disabled={inFlight}
           onClick={() => void handleInstall()}
         >
-          {inFlight ? "Downloading…" : "Download weights"}
+          {buttonLabel}
         </button>
       </div>
+      <InstallProgressLog
+        phase={status.phase}
+        recentProgress={status.recent_progress}
+      />
     </div>
+  );
+}
+
+function phaseDisplayLabel(phase: string | null): string | null {
+  if (!phase) return null;
+  if (phase.startsWith("error:")) return "Failed";
+  switch (phase) {
+    case "starting":
+      return "Starting…";
+    case "resolving_deps":
+      return "Resolving deps…";
+    case "downloading_weights":
+      return "Downloading weights…";
+    case "done":
+      return "Finishing…";
+    default:
+      return phase;
+  }
+}
+
+function InstallProgressLog({
+  phase,
+  recentProgress,
+}: {
+  phase: string | null;
+  recentProgress: string[];
+}): ReactElement | null {
+  if (!phase && recentProgress.length === 0) return null;
+  const phaseHint = phaseDisplayLabel(phase);
+  return (
+    <details className={s.progressDetails}>
+      <summary className={s.progressSummary}>
+        Install progress
+        {phaseHint ? <span className={s.meta}> · {phaseHint}</span> : null}
+        {recentProgress.length > 0 ? (
+          <span className={s.meta}> · {recentProgress.length} lines</span>
+        ) : null}
+      </summary>
+      {recentProgress.length === 0 ? (
+        <p className={s.meta} style={{ marginTop: 6 }}>
+          No output captured yet.
+        </p>
+      ) : (
+        <pre className={s.progressBlock}>{recentProgress.join("\n")}</pre>
+      )}
+    </details>
   );
 }
 
