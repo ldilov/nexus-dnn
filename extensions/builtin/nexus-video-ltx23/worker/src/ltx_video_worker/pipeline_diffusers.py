@@ -396,8 +396,10 @@ async def _render_loop(
         return
 
     prompt_obj = raw_params.get("prompt") or {}
-    action_prompt = prompt_obj.get("action") or prompt_obj.get("prompt") or ""
+    global_action = prompt_obj.get("action") or prompt_obj.get("prompt") or ""
     negative_prompt = prompt_obj.get("negative") or ""
+    style_anchor = (prompt_obj.get("style") or "").strip()
+    character_anchor = (prompt_obj.get("character") or "").strip()
 
     input_image_path: str | None = None
     input_image_block = raw_params.get("input_image") or {}
@@ -423,6 +425,15 @@ async def _render_loop(
         seg_index = int(seg.get("index", 0))
         seg_frame_count = int(seg.get("frame_count", 97))
         seg_seed = int(seg.get("seed", 0))
+        # Per-segment override from the planner's `scenes[]` zip; falls
+        # back to the global action prompt when this segment isn't
+        # claimed by any scene in the script.
+        seg_action_prompt = (seg.get("action_prompt") or global_action).strip()
+        effective_prompt = _compose_prompt(
+            character=character_anchor,
+            action=seg_action_prompt,
+            style=style_anchor,
+        )
 
         await worker.emit_notification(
             Notifications.SEGMENT_STARTED,
@@ -430,6 +441,7 @@ async def _render_loop(
                 "run_id": rs.run_id,
                 "segment_index": seg_index,
                 "segment_count": segment_count,
+                "effective_prompt": effective_prompt,
             },
         )
 
@@ -443,7 +455,7 @@ async def _render_loop(
                 _generate_segment,
                 rs.pipe,
                 last_frame_image,
-                action_prompt,
+                effective_prompt,
                 negative_prompt,
                 width,
                 height,
@@ -586,6 +598,25 @@ async def _render_loop(
             "profile": profile,
         },
     )
+
+
+def _compose_prompt(*, character: str, action: str, style: str) -> str:
+    """Build the LTX-2.3 prompt string from the three anchors.
+
+    Convention for video diffusion: subject first (anchors who/what is
+    on screen so the model commits to that identity), action middle
+    (what they do this scene), style last (how it looks). Empty parts
+    drop silently — single global prompt still works.
+
+    Threading the same character + style on every scene is the cheapest
+    way to keep visual continuity across cuts; combined with image
+    conditioning from the previous segment's last frame, it's the
+    practical answer to "preserve characters and art style across the
+    chain". The seed strategy (planner derives correlated per-scene
+    seeds from a master seed) handles RNG-driven lighting continuity.
+    """
+    parts = [p.strip() for p in (character, action, style) if p and p.strip()]
+    return ". ".join(parts)
 
 
 def _generate_segment(

@@ -220,6 +220,8 @@ async fn create_render(
         plan.clone(),
         req.prompt.clone(),
         req.negative_prompt.clone(),
+        req.style_prompt.clone(),
+        req.character_prompt.clone(),
         req.advanced.clone(),
     );
 

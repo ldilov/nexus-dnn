@@ -79,6 +79,86 @@ const fn segment_seed(base: u64, index: u32) -> u64 {
     h
 }
 
+/// Walk the user-supplied `scenes[]` script using per-scene durations
+/// as a virtual timeline; return the scene that overlaps the midpoint
+/// of the given segment window. Falls back to None when no scenes are
+/// provided, when an overlapping scene has an empty prompt, or when
+/// the segment falls past the end of the script (last scene's prompt
+/// is used as a "tail" anchor in that case).
+#[must_use]
+fn pick_scene_prompt(
+    scenes: &[crate::schemas::SceneSpec],
+    seg_start: f32,
+    seg_duration: f32,
+    seg_index: u32,
+) -> Option<String> {
+    if scenes.is_empty() {
+        return None;
+    }
+    let midpoint = seg_duration.mul_add(0.5, seg_start);
+    let total: f32 = scenes
+        .iter()
+        .map(|s| s.duration_seconds.unwrap_or(0.0).max(0.0))
+        .sum();
+    // If no scene declared its own duration, distribute evenly by index.
+    let prompt = if total <= 0.0 {
+        let idx = (seg_index as usize) % scenes.len();
+        scenes.get(idx).map(|s| s.prompt.clone())
+    } else {
+        let mut accum = 0.0_f32;
+        let mut picked: Option<&crate::schemas::SceneSpec> = None;
+        for scene in scenes {
+            let dur = scene.duration_seconds.unwrap_or(0.0).max(0.0);
+            accum += dur;
+            if midpoint <= accum {
+                picked = Some(scene);
+                break;
+            }
+        }
+        // Past the script's end → tail-anchor on the last scene.
+        picked.or_else(|| scenes.last()).map(|s| s.prompt.clone())
+    };
+    prompt.and_then(|p| if p.trim().is_empty() { None } else { Some(p) })
+}
+
+#[must_use]
+fn pick_scene_seed(
+    scenes: &[crate::schemas::SceneSpec],
+    base_seed: u64,
+    seg_start: f32,
+    seg_duration: f32,
+    seg_index: u32,
+) -> u64 {
+    if scenes.is_empty() {
+        return segment_seed(base_seed, seg_index);
+    }
+    // Reuse the same scene-walk as for prompts so a single SceneSpec's
+    // seed override applies to every segment it covers (preserves the
+    // RNG-driven elements of that scene's look across boundaries).
+    let midpoint = seg_duration.mul_add(0.5, seg_start);
+    let total: f32 = scenes
+        .iter()
+        .map(|s| s.duration_seconds.unwrap_or(0.0).max(0.0))
+        .sum();
+    let scene = if total <= 0.0 {
+        scenes.get((seg_index as usize) % scenes.len())
+    } else {
+        let mut accum = 0.0_f32;
+        let mut picked: Option<&crate::schemas::SceneSpec> = None;
+        for s in scenes {
+            accum += s.duration_seconds.unwrap_or(0.0).max(0.0);
+            if midpoint <= accum {
+                picked = Some(s);
+                break;
+            }
+        }
+        picked.or_else(|| scenes.last())
+    };
+    scene
+        .and_then(|s| s.seed)
+        .unwrap_or_else(|| segment_seed(base_seed, seg_index))
+}
+
 #[must_use]
 fn estimate_vram_risk(
     width: u32,
@@ -101,6 +181,7 @@ fn estimate_vram_risk(
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn plan_render(req: &CreateRenderRequest, runtime_profile: &str) -> Result<RenderPlan> {
     if req.prompt.trim().is_empty() {
         return Err(ExtensionError::InvalidRequest("prompt cannot be empty".into()));
@@ -157,14 +238,16 @@ pub fn plan_render(req: &CreateRenderRequest, runtime_profile: &str) -> Result<R
         } else {
             segment_seconds
         };
+        let action_prompt = pick_scene_prompt(&req.scenes, start, duration, i);
+        let seed = pick_scene_seed(&req.scenes, base_seed, start, duration, i);
         segments.push(RenderSegmentPlan {
             index: i,
             start_time_seconds: start,
             duration_seconds: duration,
             overlap_seconds,
             frame_count: ltx_frame_count(duration, base_fps),
-            seed: segment_seed(base_seed, i),
-            action_prompt: None,
+            seed,
+            action_prompt,
         });
     }
 
@@ -262,6 +345,8 @@ mod tests {
             prompt: "   ".into(),
             negative_prompt: None,
             style_prompt: None,
+            character_prompt: None,
+            scenes: Vec::new(),
             duration_seconds: 10.0,
             runtime_profile: RuntimeProfilePreference::Auto,
             quality_preset: QualityPreset::Balanced16gb,
@@ -283,6 +368,8 @@ mod tests {
             prompt: "x".into(),
             negative_prompt: None,
             style_prompt: None,
+            character_prompt: None,
+            scenes: Vec::new(),
             duration_seconds: dur,
             runtime_profile: RuntimeProfilePreference::Auto,
             quality_preset: QualityPreset::Balanced16gb,
@@ -306,6 +393,8 @@ mod tests {
             prompt: "x".into(),
             negative_prompt: None,
             style_prompt: None,
+            character_prompt: None,
+            scenes: Vec::new(),
             duration_seconds: 10.0,
             runtime_profile: RuntimeProfilePreference::Auto,
             quality_preset: QualityPreset::Balanced16gb,
@@ -331,6 +420,8 @@ mod tests {
             prompt: "test".into(),
             negative_prompt: None,
             style_prompt: None,
+            character_prompt: None,
+            scenes: Vec::new(),
             duration_seconds: 30.0,
             runtime_profile: RuntimeProfilePreference::Auto,
             quality_preset: QualityPreset::Balanced16gb,
@@ -354,6 +445,126 @@ mod tests {
         assert_eq!(seeds.len(), plan1.segments.len());
     }
 
+    fn mk_request_with_scenes(
+        duration: f32,
+        scenes: Vec<crate::schemas::SceneSpec>,
+    ) -> CreateRenderRequest {
+        CreateRenderRequest {
+            project_id: None,
+            input_image_artifact_id: None,
+            prompt: "global fallback prompt".into(),
+            negative_prompt: None,
+            style_prompt: None,
+            character_prompt: None,
+            scenes,
+            duration_seconds: duration,
+            runtime_profile: RuntimeProfilePreference::Auto,
+            quality_preset: QualityPreset::Balanced16gb,
+            width: None,
+            height: None,
+            base_fps: None,
+            output_fps: None,
+            seed: Some(999),
+            advanced: AdvancedSettings::default(),
+        }
+    }
+
+    #[test]
+    fn plan_assigns_scene_prompt_by_timeline_midpoint() {
+        let req = mk_request_with_scenes(
+            12.0,
+            vec![
+                crate::schemas::SceneSpec {
+                    prompt: "scene A: setup".into(),
+                    duration_seconds: Some(4.0),
+                    seed: None,
+                },
+                crate::schemas::SceneSpec {
+                    prompt: "scene B: conflict".into(),
+                    duration_seconds: Some(4.0),
+                    seed: None,
+                },
+                crate::schemas::SceneSpec {
+                    prompt: "scene C: resolution".into(),
+                    duration_seconds: Some(4.0),
+                    seed: None,
+                },
+            ],
+        );
+        let plan = plan_render(&req, "rtx40-fp8").unwrap();
+        // 12s / 4s segments = 3 segments (approximately), each midpoint
+        // lands in a different scene window.
+        assert!(plan.segment_count >= 3);
+        let action_prompts: Vec<String> = plan
+            .segments
+            .iter()
+            .filter_map(|s| s.action_prompt.clone())
+            .collect();
+        // All three scene prompts should be represented across the segments.
+        assert!(action_prompts.iter().any(|p| p.contains("scene A")));
+        assert!(action_prompts.iter().any(|p| p.contains("scene B")));
+        assert!(action_prompts.iter().any(|p| p.contains("scene C")));
+    }
+
+    #[test]
+    fn plan_tail_anchors_past_scene_end() {
+        // Render is 16s but scenes only cover 6s — segments past 6s
+        // should adopt the last scene's prompt as a tail anchor.
+        let req = mk_request_with_scenes(
+            16.0,
+            vec![
+                crate::schemas::SceneSpec {
+                    prompt: "intro shot".into(),
+                    duration_seconds: Some(3.0),
+                    seed: None,
+                },
+                crate::schemas::SceneSpec {
+                    prompt: "epilogue freeze".into(),
+                    duration_seconds: Some(3.0),
+                    seed: None,
+                },
+            ],
+        );
+        let plan = plan_render(&req, "rtx40-fp8").unwrap();
+        let last = plan.segments.last().unwrap();
+        assert_eq!(last.action_prompt.as_deref(), Some("epilogue freeze"));
+    }
+
+    #[test]
+    fn plan_falls_back_to_global_prompt_when_no_scenes() {
+        let req = mk_request_with_scenes(8.0, Vec::new());
+        let plan = plan_render(&req, "rtx40-fp8").unwrap();
+        for seg in &plan.segments {
+            assert!(seg.action_prompt.is_none(), "expected None, got {:?}", seg.action_prompt);
+        }
+    }
+
+    #[test]
+    fn plan_scene_seed_override_propagates() {
+        let req = mk_request_with_scenes(
+            8.0,
+            vec![
+                crate::schemas::SceneSpec {
+                    prompt: "first".into(),
+                    duration_seconds: Some(4.0),
+                    seed: Some(7777),
+                },
+                crate::schemas::SceneSpec {
+                    prompt: "second".into(),
+                    duration_seconds: Some(4.0),
+                    seed: Some(8888),
+                },
+            ],
+        );
+        let plan = plan_render(&req, "rtx40-fp8").unwrap();
+        // Segments whose midpoint falls in the first scene should use seed 7777.
+        for seg in &plan.segments {
+            let midpoint = seg.duration_seconds.mul_add(0.5, seg.start_time_seconds);
+            let expected = if midpoint <= 4.0 { 7777 } else { 8888 };
+            assert_eq!(seg.seed, expected, "segment {} midpoint={}", seg.index, midpoint);
+        }
+    }
+
     #[test]
     fn plan_emits_long_render_warning_above_60s() {
         let req = CreateRenderRequest {
@@ -362,6 +573,8 @@ mod tests {
             prompt: "long".into(),
             negative_prompt: None,
             style_prompt: None,
+            character_prompt: None,
+            scenes: Vec::new(),
             duration_seconds: 120.0,
             runtime_profile: RuntimeProfilePreference::Auto,
             quality_preset: QualityPreset::Balanced16gb,
