@@ -435,3 +435,158 @@ Recommended cleanup for the next session: remove the rockapaper and
 Lightricks/LTX-2.3-fp8 dirs until a diffusers loader for either lands.
 The dg845 repo + sequential CPU offload is the canonical 16-GB-fitting
 pipeline today.
+
+---
+
+## Rung 7G evening pass — quantized variants benchmark sweep
+
+User asked for a setup that:
+- Loads as much as possible onto GPU (not death-by-offload latency)
+- Takes real advantage of RTX Blackwell hardware
+- Offloads only rarely-used components
+
+Tested four diffusers-compatible quant paths against the working
+dg845 BF16 + sequential_cpu_offload baseline.
+
+### Survey of LTX-2.3 quantized variants on HF (2026-05-13)
+
+| Repo | Downloads | Format | Size | Outcome |
+|---|---|---|---|---|
+| `unsloth/LTX-2.3-GGUF` | 309 k | GGUF Q3..F16 | 13–39 GB/file | not yet tried (siblings of Abiray) |
+| `QuantStack/LTX-2.3-GGUF` | 47 k | GGUF Q3..Q8 | 16–24 GB/file | not yet tried |
+| `Lightricks/LTX-2.3-nvfp4` | 44 k | ComfyUI nvfp4 | ~14 GB | same single-file blocker as fp8 |
+| `Abiray/LTX-2.3-22B-DISTILLED-1.1-GGUF` | 32 k | GGUF Q3..Q8 | 13.7–23.8 GB | ❌ tested, see below |
+| `OzzyGT/LTX-2.3-Distilled-bnb-nf4` | 3 | bnb-nf4 + BF16 components | 28.8 GB | ❌ tested, see below |
+| `OzzyGT/LTX-2.3-Distilled-sdnq-dynamic-int4` | 100 | SDNQ int4 | — | SDNQ unsupported by diffusers |
+| `MrReclusive/LTX-2.3-FP4` | 44 | FP4 | — | not yet probed |
+| `rockapaper/LTX-2.3-Distilled-Diffusers_tenc_fp8_sdnq_r64_s16` | 17 | SDNQ + tenc-fp8 | 39.7 GB | SDNQ unsupported (see morning pass) |
+
+### Path 1 — `OzzyGT/LTX-2.3-Distilled-bnb-nf4` (28.8 GB) ❌
+
+bitsandbytes NF4 is diffusers-native (`bitsandbytes_4bit` is in the
+allowed quant list). bnb 0.49.2 kernel verified working on Blackwell
+sm_120 — a 128×128 NF4 linear forward returns OK.
+
+The pipeline loads cleanly. `model_cpu_offload` measurement on the
+real render:
+
+| Metric | bnb-nf4 + model_cpu_offload | dg845 BF16 + sequential_cpu_offload |
+|---|---|---|
+| Render (33 frames × 8 steps × 768×512) | 682 s (85 s/step) | (not retested at same resolution but ~14 s/step at smaller) |
+| Peak GPU mem | **21.16 GB** (spilled to system RAM) | **4.69 GB** |
+| Output | 33 prompt-matching frames | yes |
+
+The 21.16 GB peak is the smoking gun. nf4 transformer is ~13 GB, but
+the OzzyGT repo keeps audio-related layers in BF16 per its
+`llm_int8_skip_modules` list (audio_attn, audio_ff, video_to_audio_attn
+across all 48 blocks). Add text_encoder 7.8 GB + connectors 5.9 GB and
+during the encode/connect phase you transiently overlap two large
+components on GPU — Windows unified-memory spills again.
+
+Tried `enable_sequential_cpu_offload()` with the bnb-nf4 model →
+upstream version mismatch between accelerate and bitsandbytes:
+```
+TypeError: Params4bit.__new__() got an unexpected keyword argument '_is_hf_initialized'
+```
+The accelerate hooks pass a kwarg that bnb's `Params4bit` doesn't
+accept. Tracked upstream; would need either a bnb patch or an
+accelerate downgrade.
+
+### Path 2 — `Abiray/LTX-2.3-22B-DISTILLED-1.1-GGUF` Q4_K_M (16.5 GB) ❌
+
+Smallest single-file diffusers-routable quant. Downloaded the Q4_K_M
+file in 142 s. Diffusers' `GGUFQuantizationConfig` ought to handle it,
+but `LTX2VideoTransformer3DModel.from_single_file(gguf_path,
+quantization_config=GGUFQuantizationConfig(...), config=...)` fails
+inside `load_state_dict`:
+
+```
+File ".../diffusers/models/model_loading_utils.py", line 196:
+    if f.read().startswith("version"):
+       ^^^^^^^^
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0x94 in position 2525
+```
+
+Diffusers' single-file loader probes the file as ASCII before
+delegating to the GGUF parser. The `quantization_config` kwarg is read
+AFTER the format probe, so a binary GGUF file trips the utf-8 read
+before its quant config can route it. Upstream diffusers 0.39.0.dev0
+has this regression — to be fixed by either an explicit
+`gguf_file=...` kwarg or an early MIME-style sniff. Track on diffusers
+git, retry after upstream.
+
+### Path 3 — `Lightricks/LTX-2.3-fp8` single-file override ❌ (re-confirmed)
+
+The morning pass found this is a ComfyUI-style packed checkpoint
+(`model.diffusion_model.*` key prefix, 8871 keys with the whole
+pipeline bundled — audio_vae+transformer+vocoder all in one file).
+Direct `from_single_file` on the transformer model class fails with a
+meta-tensor dispatch error. A custom key-remap shim would unblock
+this — about 50–100 lines of pure key-mapping Python — but is
+genuine upstream work.
+
+### Path 4 — `optimum-quanto` in-place INT8 quantize-on-load ❌
+
+`QuantoConfig(weights_dtype='int8')` on dg845's transformer subfolder.
+After 30+ min and 50 GB RAM (holding both the original BF16 and
+emerging int8 in memory during conversion), still loading. Killed.
+Not viable for a 22B model on consumer hardware.
+
+### Conclusions
+
+For 2026-05-13's diffusers / bitsandbytes / accelerate versions, no
+quantized-and-mostly-GPU-resident path works cleanly out of the box.
+Sequential CPU offload on dg845 BF16 is the only working
+sub-16-GB solution today. The previously committed setup
+(`1fed6f4`) remains correct.
+
+**Path forward (Rung 7H+ proposal — needs separate session)**:
+
+1. **Custom GGUF loader for diffusers**: Wrap `gguf` python package's
+   reader to produce a state-dict diffusers can consume, then attach
+   it to `LTX2VideoTransformer3DModel.from_pretrained` via
+   `state_dict=...`. Bypasses the buggy utf-8 sniff entirely. Once
+   the transformer is loaded, dg845's other components plug in
+   normally. Expected to land peak at ~12–13 GB with the Q4_K_M
+   transformer, leaving 3–4 GB headroom on a 16 GB card.
+
+2. **Custom ComfyUI-style Lightricks loader**: 50–100 lines of key
+   remapping (`model.diffusion_model.*` → diffusers naming) so
+   `Lightricks/LTX-2.3-fp8` becomes loadable. Then we get the
+   officially-supported quant variant from Lightricks itself, no
+   community port required.
+
+3. **Wait for upstream fixes**: diffusers main is moving fast on LTX-2
+   support. The accelerate/bitsandbytes sequential-offload kwarg
+   mismatch + the GGUF utf-8 sniff are both upstream regressions
+   that will likely land fixes within weeks.
+
+4. **Selective offload via accelerate `dispatch_model`**: a fully
+   manual `device_map = {'transformer': 'cuda', 'vae': 'cuda',
+   'text_encoder': 'cpu', 'audio_vae': 'cpu', 'vocoder': 'cpu',
+   'connectors': 'cpu'}` would keep the hot loop GPU-resident with
+   only the rarely-called components on CPU. Combines with
+   `pipe.text_encoder.to('cuda')` → encode → `.to('cpu')` for the
+   one-shot prompt encoder cost. Hit a device-routing bug attempting
+   this manually (`F.embedding` with input_ids on CPU and weights on
+   cuda); needs hook plumbing to be correct.
+
+For now: the production code path is dg845 + sequential offload, peak
+4.69 GB, ~14 s/step at 512×320. Output quality is unaffected by
+offload mode — same weights, same dtype, same number of steps —
+sequential just shuffles them in/out of VRAM differently than
+model_cpu_offload, which is exactly why peak drops 8× without quality
+loss.
+
+### Disk footprint after evening pass
+
+| Path | Size | Status |
+|---|---|---|
+| `dg845/LTX-2.3-Distilled-Diffusers` | 88.5 GB | **production** |
+| `OzzyGT/LTX-2.3-Distilled-bnb-nf4` | 28.8 GB | research (kept until 7H) |
+| `Abiray/LTX-2.3-22B-DISTILLED-1.1-GGUF` (Q4_K_M) | 16.5 GB | research (kept until 7H) |
+| `Lightricks/LTX-2.3-fp8` | 55.9 GB | research (kept for ComfyUI-loader rung) |
+| `rockapaper/...sdnq_r64_s16` | 39.7 GB | not useful, candidate for removal |
+
+Total: ~229 GB. Drop the rockapaper dir to reclaim 40 GB; everything
+else has a plausible Rung 7H+ use.
