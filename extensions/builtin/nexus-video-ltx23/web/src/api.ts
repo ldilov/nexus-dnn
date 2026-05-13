@@ -177,6 +177,8 @@ export interface ProfileInstallStatus {
   dest: string | null;
   in_flight: boolean;
   last_error: string | null;
+  phase: string | null;
+  recent_progress: string[];
 }
 
 export const profileInstallApi = {
