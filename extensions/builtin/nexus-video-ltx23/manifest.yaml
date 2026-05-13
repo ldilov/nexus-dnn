@@ -181,7 +181,7 @@ storage:
   spec_version: "0.1"
   engine: "sqlite"
   namespace:
-    alias: "ltx23_video"
+    alias: "nexus_video_ltx23"
     prefix_mode: "host_derived"
   migrations:
     strategy: "sql_file_list"

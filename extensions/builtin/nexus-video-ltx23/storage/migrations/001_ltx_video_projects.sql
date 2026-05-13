@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS ext_nexus_video_ltx23__projects (
     updated_at TEXT NOT NULL,
     deleted_at TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_ext_nexus_video_ltx23__projects_created_at
+CREATE INDEX IF NOT EXISTS ext_nexus_video_ltx23_idx_projects_created_at
   ON ext_nexus_video_ltx23__projects(created_at);
 
 CREATE TABLE IF NOT EXISTS ext_nexus_video_ltx23__style_profiles (

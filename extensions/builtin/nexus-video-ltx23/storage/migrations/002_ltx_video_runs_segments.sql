@@ -26,9 +26,9 @@ CREATE TABLE IF NOT EXISTS ext_nexus_video_ltx23__runs (
     completed_at TEXT,
     cancelled_at TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_ext_nexus_video_ltx23__runs_project_id
+CREATE INDEX IF NOT EXISTS ext_nexus_video_ltx23_idx_runs_project_id
   ON ext_nexus_video_ltx23__runs(project_id);
-CREATE INDEX IF NOT EXISTS idx_ext_nexus_video_ltx23__runs_status
+CREATE INDEX IF NOT EXISTS ext_nexus_video_ltx23_idx_runs_status
   ON ext_nexus_video_ltx23__runs(status);
 
 CREATE TABLE IF NOT EXISTS ext_nexus_video_ltx23__segments (
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS ext_nexus_video_ltx23__segments (
     completed_at TEXT,
     UNIQUE(run_id, segment_index)
 );
-CREATE INDEX IF NOT EXISTS idx_ext_nexus_video_ltx23__segments_run_id
+CREATE INDEX IF NOT EXISTS ext_nexus_video_ltx23_idx_segments_run_id
   ON ext_nexus_video_ltx23__segments(run_id);
-CREATE INDEX IF NOT EXISTS idx_ext_nexus_video_ltx23__segments_status
+CREATE INDEX IF NOT EXISTS ext_nexus_video_ltx23_idx_segments_status
   ON ext_nexus_video_ltx23__segments(status);
