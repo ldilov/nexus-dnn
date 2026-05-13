@@ -1,10 +1,7 @@
-spec_version: "0.1"
-layout:
-  id: nexus.video.ltx23.main
-  title: "LTX 2.3 Video Generator"
-  kind: custom_element
-  custom_element_tag: "ltx23-video-app"
-  default_route: "/extensions/nexus.video.ltx23"
-  nav:
-    icon: "video"
-    section: "media"
+id: "ltx23-video.layout.main"
+displayName: "LTX 2.3 Video"
+description: "Prompt-driven video generation via LTX-2.3 with 16 GB safe defaults."
+icon: "movie"
+
+root:
+  type: ltx23-video-app
