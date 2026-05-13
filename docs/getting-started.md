@@ -10,13 +10,25 @@ Clone → Build → Start → Verify → Install Extension → Run Workflow → 
 
 ## 📋 Prerequisites
 
-| Tool | Version | Check Command |
-|------|---------|---------------|
-| Rust toolchain | latest stable | `rustc --version` |
-| Python | 3.11+ | `python --version` |
-| Node.js | 20+ | `node --version` |
+| Tool | Version | Check Command | Required for |
+|------|---------|---------------|---|
+| Rust toolchain | latest stable | `rustc --version` | building the host |
+| Node.js | 20+ | `node --version` | building the web frontend |
+| pnpm | 8+ | `pnpm --version` | frontend deps |
+| **uv** | 0.5+ | `uv --version` | **every extension with a Python worker** (mandatory) |
+| ffmpeg | 4+ | `ffmpeg -version` | optional — host auto-downloads when missing |
+| NVIDIA driver | per profile | `nvidia-smi` | only for GPU runtime profiles |
 
 > 💡 **Tip:** Run `rustup update stable` to ensure you have the latest Rust toolchain.
+> 🔧 **Install uv** (mandatory): `curl -LsSf https://astral.sh/uv/install.sh | sh` on Unix, or `irm https://astral.sh/uv/install.ps1 | iex` in PowerShell on Windows. The host's dependency installer fails fast if `uv` is missing from both the embedded Python runtime AND your `PATH`.
+
+You don't need Python on your system PATH — the host downloads a
+self-contained `python-build-standalone` build (currently 3.11.13)
+into each extension's data directory on first activation.
+
+> 📚 For the full hardware matrix (GPU driver versions per profile,
+> disk/VRAM budgets, NVFP4-on-Ada caveats), see
+> [`requirements.md`](requirements.md).
 
 ---
 
@@ -205,8 +217,10 @@ During a run you will see events such as:
 | `cargo build` fails with "npm not found" | Install Node.js 20+ |
 | Port 3000 already in use | Set `NEXUS_PORT=4000` environment variable |
 | Extension not discovered | Ensure `manifest.yaml` exists at the extension root |
-| Worker handshake fails | Check Python 3.11+ is installed and on PATH |
+| Dependency install fails with `uv binary not found` | Install uv — see Prerequisites |
+| Worker handshake fails | Check host log for the embedded Python path; the dependency installer should auto-download a python-build-standalone tarball on first activation |
 | Database error on start | Delete `~/.nexus/db/` to reinitialize |
+| Extension's GPU profile times out / errors on weights load | Check `nvidia-smi` reports a driver compatible with the profile's CUDA version (see [requirements.md](requirements.md)) |
 
 > ⚠️ **Warning:** Deleting `~/.nexus/db/` removes all workflow and run metadata. Back up before deleting.
 
