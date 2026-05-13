@@ -172,6 +172,31 @@ def _resolve_model_dir(profile: str) -> Path | None:
     return candidate if candidate.exists() else None
 
 
+def _resolve_gguf_transformer_override(model_dir: Path) -> Path | None:
+    """Resolve a GGUF transformer override for ``model_dir``.
+
+    Resolution order:
+      1. ``NEXUS_VIDEO_LTX23_TRANSFORMER_GGUF`` env var — explicit
+         absolute or model-relative path to a single ``.gguf`` file.
+      2. A single ``*.gguf`` file sitting in ``model_dir`` alongside
+         the diffusers tree (e.g. an operator drops the GGUF in there
+         after running the standard ``from_pretrained`` install).
+
+    Returns None when no override is configured. The standard
+    safetensors pipeline path runs unchanged in that case.
+    """
+    explicit = os.environ.get("NEXUS_VIDEO_LTX23_TRANSFORMER_GGUF", "").strip()
+    if explicit:
+        p = Path(explicit)
+        if not p.is_absolute():
+            p = model_dir / explicit
+        return p if p.is_file() else None
+
+    from .gguf_loader import find_gguf_transformer
+
+    return find_gguf_transformer(model_dir)
+
+
 def _expected_family_id(profile: str) -> str | None:
     """Map profile → Hugging Face repo. Single source of truth for quant routing.
 
@@ -260,6 +285,22 @@ def _ensure_pipeline_loaded(
             torch_dtype=dtype,
             local_files_only=True,
         )
+
+        gguf_override = _resolve_gguf_transformer_override(model_dir)
+        if gguf_override is not None:
+            from . import gguf_loader
+
+            worker.logger.info(
+                "diffusers.load_pipeline.gguf_override",
+                gguf_path=str(gguf_override),
+                base_config_dir=str(model_dir),
+            )
+            gguf_transformer = gguf_loader.load_gguf_transformer(
+                gguf_override,
+                model_dir,
+                compute_dtype=dtype,
+            )
+            pipe.transformer = gguf_transformer
 
         # Sequential CPU offload over model_cpu_offload:
         # - 4.7 GB peak VRAM vs 37 GB (validated 2026-05-13 on RTX 5070 Ti,
