@@ -1,0 +1,12 @@
+spec_version: "0.1"
+runtime_id: "nexus.video.ltx23.rtx50-nvfp4"
+models:
+  - id: "ltx-2.3-22b-dev-nvfp4"
+    provider: huggingface
+    repo: "Lightricks/LTX-2.3-nvfp4"
+    files:
+      - "ltx-2.3-22b-dev-nvfp4.safetensors"
+    role: primary
+    quantization: nvfp4
+    size_gb_approx: 12
+    notes: "Experimental on Blackwell. Known issue: NaN bursts on long contexts (>121 frames)."

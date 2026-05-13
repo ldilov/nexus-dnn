@@ -1,0 +1,88 @@
+runtime_id: "nexus.video.ltx23.rtx40-fp8"
+display_name: "LTX 2.3 FP8 (RTX 40 / CUDA 12.x)"
+family: "python"
+transport: "stdio"
+worker_entrypoint: "backends/_shared/worker/src/ltx_video_worker/__main__.py"
+version_manifest: "versions.yaml"
+
+capability_tags:
+  - "video-generation"
+  - "image-to-video"
+  - "long-video"
+  - "ltx-2.3"
+  - "fp8"
+  - "render.external_segments"
+
+supported_roles:
+  - "video.render"
+
+compatibility:
+  gpu:
+    vendor: "nvidia"
+    min_vram_mb: 12000
+    preferred_vram_mb: 16000
+  cuda:
+    preferred_family: "12.8"
+    fallback_family: "12.6"
+  torch:
+    preferred_package_index: "https://download.pytorch.org/whl/cu128"
+    fallback_package_index: "https://download.pytorch.org/whl/cu126"
+    packages:
+      torch: "2.10.0"
+      torchvision: "0.25.0"
+      torchaudio: "2.10.0"
+
+runtime_settings:
+  restart_after_segments:
+    type: "integer"
+    min: 1
+    max: 50
+    default: 6
+    description: "Force runtime restart after this many segments (warm-mode VRAM hygiene). Lower = safer, slower; higher = faster, more OOM risk on long videos."
+  restart_on_alloc_retries:
+    type: "boolean"
+    default: true
+    description: "Restart immediately when CUDA allocator retries (num_alloc_retries) increment. Gold-standard fragmentation signal."
+  restart_on_low_vram_mb:
+    type: "integer"
+    min: 500
+    max: 8000
+    default: 2500
+    description: "Restart at next segment boundary when free VRAM drops below this many MB post-cleanup."
+  tiled_vae:
+    type: "boolean"
+    default: true
+    description: "Tile VAE decode to keep peak VRAM under control. Trades a small quality drop for headroom."
+  enable_cpu_offload:
+    type: "boolean"
+    default: true
+    description: "Sequential CPU offload of transformer blocks. ~2x slower but safer on 16 GB."
+  max_concurrent_jobs_per_gpu:
+    type: "integer"
+    min: 1
+    max: 1
+    default: 1
+    description: "Hard cap: one render at a time per GPU."
+
+failure_categories:
+  - id: "driver_too_old"
+    stage: "validate_env"
+    user_message: "NVIDIA driver is too old. Update to R580+ via NVIDIA's driver page."
+  - id: "torch_cuda_mismatch"
+    stage: "validate_env"
+    user_message: "PyTorch CUDA version does not match installed CUDA runtime."
+  - id: "gpu_not_supported"
+    stage: "validate_env"
+    user_message: "Selected runtime requires an NVIDIA GPU with compute capability >= 8.9 (RTX 40 series)."
+  - id: "model_missing"
+    stage: "runtime_runtime"
+    user_message: "LTX-2.3 FP8 model weights not found. Re-download from the model store."
+  - id: "model_load_failed"
+    stage: "runtime_runtime"
+    user_message: "LTX-2.3 weights are present but failed to load."
+  - id: "vram_budget_exceeded"
+    stage: "runtime_runtime"
+    user_message: "Out of VRAM mid-render. Try the 'Apply safe settings' action to lower resolution / segment size."
+  - id: "render_failed"
+    stage: "runtime_runtime"
+    user_message: "Render failed. Retry the segment or inspect logs."

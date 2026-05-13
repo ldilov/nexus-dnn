@@ -1,0 +1,97 @@
+spec_version: '0.1'
+recipe:
+  id: image_to_long_video_recipe
+  version: 0.1.0
+  display_name: "LTX 2.3 — Image to Long Video"
+  summary: "Pick an image (optional), write a prompt, choose duration. Get an MP4."
+  category: video.generation
+workflow_template: "workflows/long_video.yaml"
+fields:
+  - id: input_image
+    type: artifact_ref
+    label: Input image (optional)
+    accept_mime: ["image/png", "image/jpeg", "image/webp"]
+    bind: run.input_image_artifact_id
+
+  - id: prompt
+    type: multiline_text
+    label: Prompt
+    placeholder: "A cinematic painterly shot of a traveler walking through neon rain"
+    bind: run.prompt
+
+  - id: negative_prompt
+    type: multiline_text
+    label: Negative prompt
+    placeholder: "flicker, warped anatomy, style drift, watermark"
+    bind: run.negative_prompt
+
+  - id: duration_seconds
+    type: number
+    label: Duration (seconds)
+    min: 1
+    max: 300
+    default: 10
+    bind: run.duration_seconds
+
+  - id: runtime_profile
+    type: enum
+    label: Runtime
+    values: [auto, rtx50-nvfp4, rtx50-fp8, rtx40-fp8]
+    default: auto
+    bind: run.runtime_profile
+
+  - id: quality_preset
+    type: enum
+    label: Quality
+    values: [draft, balanced_16gb, quality_16gb, high]
+    default: balanced_16gb
+    bind: run.quality_preset
+
+  - id: seed
+    type: integer
+    label: Seed (optional, blank = random)
+    bind: run.seed
+
+  - id: advanced
+    type: form_group
+    label: Advanced
+    collapsed: true
+    bind: run.advanced
+    fields:
+      - id: segment_seconds
+        type: number
+        label: Segment seconds
+        min: 1.0
+        max: 8.0
+        default: 4.0
+      - id: overlap_seconds
+        type: number
+        label: Overlap seconds
+        min: 0.0
+        max: 2.0
+        default: 0.5
+      - id: output_fps
+        type: integer
+        label: Output FPS
+        min: 24
+        max: 60
+        default: 48
+      - id: interpolation
+        type: enum
+        label: Frame interpolation
+        values: [rife_2x, none]
+        default: rife_2x
+
+actions:
+  - id: plan
+    label: Preview Plan
+    workflow_invoke:
+      kind: plan
+  - id: generate
+    label: Generate Video
+    workflow_invoke:
+      kind: render
+  - id: cancel
+    label: Cancel
+    workflow_invoke:
+      kind: cancel

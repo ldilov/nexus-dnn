@@ -3793,6 +3793,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "nexus-video-ltx23-extension"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum 0.8.8",
+ "chrono",
+ "futures",
+ "nexus-artifact",
+ "nexus-backend-runtimes",
+ "nexus-extension",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sqlx",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "ulid",
+]
+
+[[package]]
 name = "nexus-worker"
 version = "0.1.0"
 dependencies = [
