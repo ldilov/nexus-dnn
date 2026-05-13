@@ -189,3 +189,148 @@ Even without a completed render, this spike validated:
 | Second-load time (warm) | pending Rung 7G fix |
 
 Capture template: emitted by `_emit_memory_stats` in `pipeline_diffusers.py` via the existing `runtime.memory_stats` notification. Will land in DB rows once render runs to completion.
+
+---
+
+## Rung 7G follow-up — 2026-05-13 (afternoon session)
+
+Took the spike one round further: cleaned up the 99 GB of incompatible
+`Lightricks/LTX-2` components and downloaded the community port
+`dg845/LTX-2.3-Distilled-Diffusers` (88.45 GB in 9 minutes via the
+unified install CTA we built in Rung 7B). All four blockers from the
+morning got incremental progress:
+
+### Standalone test — ✅ SUCCESS
+
+Running `LTX2Pipeline.from_pretrained(dg845_dir)` directly from the
+runtime venv generated 49 real LTX-2.3 frames on the RTX 5070 Ti:
+
+| Metric | Measured |
+|---|---|
+| Pipeline class | `LTX2Pipeline` (per `model_index.json` `_class_name`) |
+| diffusers version | `0.39.0.dev0` (pinned at git commit `adff1cae9f3d4f79dcff6a3ceb02e0a56982f88c`) |
+| Cold pipeline load | **61.6 s** |
+| Render (8 inference steps × 49 frames × 768×512) | **691.3 s** (75 s / step) |
+| Peak GPU memory | **37.26 GB** (over the 16 GB physical limit — spilling to system RAM via Windows unified memory) |
+| Output | 49 PIL frames |
+| Prompt-following | **verified visually** — first frame shows a dim futuristic city skyline at dusk; samples at `C:\Users\lazar\.nexus\runs\rung7g-smoke\frame_{000,001,002}.png` |
+
+Total wall-clock: 753 s end-to-end (~12.5 minutes). The 37 GB peak
+exceeds 16 GB VRAM physically; Windows' unified-memory allocator
+silently spills to system RAM at significant perf cost — that's why
+each inference step takes 75 s instead of the expected 5–15 s on
+native VRAM. The standalone test still completed and produced a real,
+prompt-matching video frame.
+
+### Released diffusers 0.37.1 — INCOMPATIBLE WITH dg845 WEIGHTS
+
+Initially tried `pip install diffusers==0.37.1` (the latest released
+version). It dropped the in-progress LTX-2.3 schema:
+
+```
+Cannot load <transformer_blocks.0.audio_scale_shift_table>:
+  expected shape [6, 2048], got [9, 2048].
+```
+
+48 blocks all fail this mismatch on both `scale_shift_table` and
+`audio_scale_shift_table`. The released `LTX2VideoTransformer3DModel`
+class has 6 conditioning channels; the dg845 weights need 9. Released
+diffusers also discards the relevant config keys
+(`audio_cross_attn_mod`, `audio_gated_attn`, `cross_attn_mod`,
+`gated_attn`, `perturbed_attn`, `use_prompt_embeddings`,
+`audio_hidden_dim`, `video_hidden_dim`, `per_modality_projections`,
+`proj_bias`, `video_gated_attn`) as "not expected" — the 9-channel
+support was a development-branch feature that didn't make 0.37.1.
+
+`ignore_mismatched_sizes=True` doesn't propagate cleanly through
+`Pipeline.from_pretrained → sub_model.from_pretrained`; still errors.
+
+**Fix landed in this branch**: `diffusers` extra now pins to the git
+commit `adff1cae9f3d4f79dcff6a3ceb02e0a56982f88c` (HEAD of main as of
+2026-05-13). Hatch needs
+`[tool.hatch.metadata] allow-direct-references = true` to accept the
+git URL. Worker pyproject + uv.lock both updated. `pipeline_diffusers.py`
+now imports `LTX2Pipeline` (matches dg845's `model_index.json`
+`_class_name`) with `LTX2ImageToVideoPipeline` then `LTXImageToVideoPipeline`
+as fallbacks. `_generate_segment` probes the active pipeline's call
+signature and only passes `image`/`cond_image` when supported — drops
+silently when the active class is pure text-to-video.
+
+### Host-driven render through the worker subprocess — ⚠️ HANGS
+
+Triggered an identical render via `POST /renders` after the install
+completed. Worker started (`worker.start` logged), but emitted NO
+further stderr for the full 1800 s `RENDER_TIMEOUT` (bumped from
+600 s in this branch — see `runner.rs` RENDER_TIMEOUT). Host killed
+the lease at the timeout, the worker process exited cleanly with
+`worker.stop`. Zero progress notifications, zero error notifications,
+zero tqdm output.
+
+This is the SAME code path the standalone test ran successfully, but
+something about the host-subprocess integration is suppressing
+diffusers' progress output and likely the entire render loop. Several
+hypotheses worth probing in a fresh session:
+
+1. **stdout / stderr buffering**: `__main__.py::_hijack_stdout()`
+   redirects `sys.stdout → sys.stderr` BEFORE importing torch /
+   diffusers. Their tqdm and `print()` calls land on stderr, which
+   the host captures. But Python may buffer stderr aggressively when
+   stdout is redirected — diffusers' progress writes might never
+   flush before the worker is killed.
+2. **GPU contention**: the host's resident state holds a CUDA context
+   open for other extensions (`nexus.local-llm`, `nexus.audio.emotiontts`
+   both initialise GPU on load). Allocating the LTX2 pipeline on top
+   of an already-fragmented allocator might be dramatically slower.
+   Standalone ran with NO host resident.
+3. **CPU offload thrashing**: `enable_model_cpu_offload()` requires
+   shuttling tensors between CPU and GPU on every block. With 37 GB
+   peak memory already spilling to system RAM, the thrashing might
+   compound. The standalone test ran from a fresh process; the host's
+   worker venv has more pre-loaded baggage.
+
+### Path forward (Rung 7H — proposed)
+
+1. Add explicit `flush=True` calls or `PYTHONUNBUFFERED=1` propagation
+   in `lease.rs::LaunchSpec` so the worker's stderr is line-buffered.
+2. Strip the stdout hijack — diffusers' progress output is legit
+   stderr output already; we don't need the hijack for LTX 2.3 the
+   way we did for older worker implementations.
+3. Add per-step progress notifications (`callback_on_step_end` hook
+   in the LTX2Pipeline call) so the runner has visible heartbeats
+   even when stderr is silenced.
+4. Probe whether the host's other GPU-using extensions can be
+   deactivated for the duration of an LTX render (lease-level
+   exclusivity beyond what we have today).
+5. Switch to a quantized variant (Lightricks/LTX-2.3-fp8 via single-file
+   override OR a future diffusers quantization config) to keep peak
+   memory under 16 GB — fixes both the system-RAM spill AND likely
+   the host-integration hang.
+
+### Files modified this round
+
+| Path | Why |
+|---|---|
+| `worker/pyproject.toml` | Pin diffusers to git commit; allow-direct-references |
+| `worker/uv.lock` | Regenerated with 0.39.0.dev0 |
+| `worker/src/ltx_video_worker/installer.py` | `PROFILE_REPO` → `dg845/LTX-2.3-Distilled-Diffusers` |
+| `worker/src/ltx_video_worker/pipeline_diffusers.py` | `_expected_family_id` repo + `LTX2Pipeline` first + `_generate_segment` defensive image-kwarg probe |
+| `worker/tests/test_diffusers_resolver.py` | Updated assertions to dg845 paths |
+| `worker/tests/test_runtime_install.py` | Updated repo string in DTO assertions |
+| `rust/src/runner.rs` | RENDER_TIMEOUT 600s → 1800s with rationale comment |
+| `rust/src/profile_install.rs` | `profile_repo()` returns dg845 for all real-runtime profiles |
+
+All gates green: cargo clippy + 26/26 Rust tests + 31/31 Python tests
++ boundary audit PASS.
+
+### Cleanup completed
+
+- `C:\Users\lazar\.nexus\models\Lightricks\LTX-2` — deleted (99.6 GB
+  of incompatible components from the LTX-2 architecture).
+- `C:\Users\lazar\.nexus\models\Lightricks\LTX-2.3-fp8` — KEPT (56 GB
+  of transformer-only fp8 weights, future-useful for a quantization
+  rung once diffusers supports it natively).
+- `C:\Users\lazar\.nexus\models\dg845\LTX-2.3-Distilled-Diffusers` —
+  88.45 GB, working diffusers-format weights, used by current
+  pipeline_diffusers.py.
+
+Total disk footprint after cleanup: ~145 GB of model data.

@@ -27,7 +27,16 @@ diffusers = [
   "torch>=2.10",
   "torchvision>=0.25",
   "torchaudio>=2.10",
-  "diffusers>=0.32",
+  # The released diffusers 0.37.1 dropped the in-progress LTX-2.3
+  # schema (audio_scale_shift_table shape [9, 2048] expected by the
+  # weights but reverted to [6, 2048] in the released
+  # LTX2VideoTransformer3DModel). The published `Lightricks/LTX-2.3-fp8`
+  # and community `dg845/LTX-2.3-Distilled-Diffusers` weights both
+  # require the dev schema. Validated working at the pinned commit on
+  # 2026-05-13 (P0-T001 success on RTX 5070 Ti, prompt-matching first
+  # frame generated). Revisit once a released diffusers re-adds
+  # LTX-2.3 transformer support — currently 0.39.0.dev0.
+  "diffusers @ git+https://github.com/huggingface/diffusers.git@adff1cae9f3d4f79dcff6a3ceb02e0a56982f88c",
   "transformers>=4.45",
   "accelerate>=1.0",
   "safetensors>=0.4",
@@ -53,6 +62,12 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ltx_video_worker"]
+
+# Required because the `diffusers` extra pins to a git commit URL.
+# Hatch refuses direct references by default; opt-in here scoped to
+# this worker package.
+[tool.hatch.metadata]
+allow-direct-references = true
 
 # PyTorch ships separate wheels for CPU vs each CUDA toolchain on its own
 # index. The default PyPI resolution lands on the CPU wheel, which is fatal

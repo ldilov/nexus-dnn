@@ -13,7 +13,14 @@ use crate::lease::LtxLeaseFactory;
 use crate::schemas::RenderPlan;
 use crate::storage::Repos;
 
-const RENDER_TIMEOUT: Duration = Duration::from_secs(600);
+// Render wall-clock budget. The real LTX-2.3 pipeline on a single 16 GB
+// GPU takes ~750 s per 4-second segment (60 s cold pipeline load + 8
+// inference steps @ ~75 s each, measured 2026-05-13 on RTX 5070 Ti with
+// BF16 weights spilling to system RAM). The fake pipeline finishes in
+// seconds. 30 minutes covers both modes plus headroom for multi-segment
+// runs; cancellation still pre-empts via the Notify path so a stuck
+// render isn't unconditionally blocking the lease.
+const RENDER_TIMEOUT: Duration = Duration::from_secs(1800);
 /// Window the worker is given to flush its in-flight segment, emit
 /// `ltx.video.error{code:RENDER_CANCELLED}`, and clean up resources after
 /// the cancel RPC lands. Past this point the lease is force-released even
