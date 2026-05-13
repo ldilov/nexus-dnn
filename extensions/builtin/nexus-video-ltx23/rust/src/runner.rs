@@ -66,6 +66,7 @@ impl Runner {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn_render(
         &self,
         run_id: String,
@@ -73,6 +74,8 @@ impl Runner {
         plan: RenderPlan,
         prompt: String,
         negative_prompt: Option<String>,
+        style_prompt: Option<String>,
+        character_prompt: Option<String>,
         advanced: crate::schemas::AdvancedSettings,
     ) {
         let cfg = self.cfg.clone();
@@ -97,6 +100,8 @@ impl Runner {
                 &plan,
                 &prompt,
                 negative_prompt.as_deref(),
+                style_prompt.as_deref(),
+                character_prompt.as_deref(),
                 &advanced,
                 notify_for_task,
             )
@@ -179,6 +184,8 @@ async fn run_via_lease(
     plan: &RenderPlan,
     prompt: &str,
     negative_prompt: Option<&str>,
+    style_prompt: Option<&str>,
+    character_prompt: Option<&str>,
     advanced: &crate::schemas::AdvancedSettings,
     cancel_notify: Arc<Notify>,
 ) -> Result<()> {
@@ -202,8 +209,16 @@ async fn run_via_lease(
 
     let mut notifications = lease.subscribe_notifications();
 
-    let render_params =
-        build_render_params(run_id, plan, prompt, negative_prompt, advanced, &workdir);
+    let render_params = build_render_params(
+        run_id,
+        plan,
+        prompt,
+        negative_prompt,
+        style_prompt,
+        character_prompt,
+        advanced,
+        &workdir,
+    );
     if let Err(e) = lease.send_rpc("ltx.video.render.start", render_params).await {
         let _ = lease.release().await;
         return Err(crate::errors::ExtensionError::RenderFailed(format!(
@@ -399,18 +414,17 @@ fn segment_index(params: &Value) -> Option<i64> {
     params.get("segment_index").and_then(Value::as_i64)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_render_params(
     run_id: &str,
     plan: &RenderPlan,
     prompt: &str,
     negative_prompt: Option<&str>,
+    style_prompt: Option<&str>,
+    character_prompt: Option<&str>,
     advanced: &crate::schemas::AdvancedSettings,
     workdir: &std::path::Path,
 ) -> Value {
-    // The worker reads hyperparameters from `advanced.{guidance_scale,
-    // num_inference_steps}` — defaults applied there if absent. We pass
-    // through nulls when the user didn't override, so the worker stays
-    // the single source of default truth.
     let guidance_scale = advanced
         .guidance_scale
         .map_or(Value::Null, |v| serde_json::Value::from(f64::from(v)));
@@ -418,12 +432,35 @@ fn build_render_params(
         .num_inference_steps
         .map_or(Value::Null, Value::from);
 
+    // Per-segment `action_prompt` overrides the global `prompt` when
+    // the planner zipped a scenes[] script. The worker composes the
+    // effective prompt as `character + action + style` per segment;
+    // we pass all three slots through so the worker has full control
+    // over the final string sent to LTX-2.3.
+    let segments_json: Vec<Value> = plan
+        .segments
+        .iter()
+        .map(|s| {
+            json!({
+                "index": s.index,
+                "start_time_seconds": s.start_time_seconds,
+                "duration_seconds": s.duration_seconds,
+                "overlap_seconds": s.overlap_seconds,
+                "frame_count": s.frame_count,
+                "seed": s.seed,
+                "action_prompt": s.action_prompt,
+            })
+        })
+        .collect();
+
     json!({
         "request_id": run_id,
         "workdir": workdir.to_string_lossy(),
         "prompt": {
             "action": prompt,
             "negative": negative_prompt.unwrap_or(""),
+            "style": style_prompt.unwrap_or(""),
+            "character": character_prompt.unwrap_or(""),
         },
         "video": {
             "width": plan.width,
@@ -437,14 +474,7 @@ fn build_render_params(
             "overlap_seconds": plan.segments.first().map_or(0.5, |s| s.overlap_seconds),
             "mode": "external_segments",
             "frames_per_segment": plan.segments.first().map_or(97, |s| s.frame_count),
-            "segments": plan.segments.iter().map(|s| json!({
-                "index": s.index,
-                "start_time_seconds": s.start_time_seconds,
-                "duration_seconds": s.duration_seconds,
-                "overlap_seconds": s.overlap_seconds,
-                "frame_count": s.frame_count,
-                "seed": s.seed,
-            })).collect::<Vec<_>>(),
+            "segments": segments_json,
         },
         "advanced": {
             "guidance_scale": guidance_scale,

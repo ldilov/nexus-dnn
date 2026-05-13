@@ -10,6 +10,7 @@ import {
   type RenderRun,
   type RuntimeProfilePreference,
   type RuntimeProfileSummary,
+  type SceneSpec,
   artifactUrl,
   hostApi,
   ltxApi,
@@ -315,6 +316,52 @@ function FormPanel({
         />
       </div>
 
+      <div className={s.fieldRow}>
+        <label className={s.label} htmlFor="ltx-character">
+          Character anchor (optional)
+        </label>
+        <input
+          id="ltx-character"
+          className={s.input}
+          value={draft.character_prompt ?? ""}
+          onChange={(e) =>
+            update(
+              "character_prompt",
+              e.target.value.length > 0 ? e.target.value : undefined,
+            )
+          }
+          placeholder="a woman in a red coat, short black hair, brown eyes"
+        />
+        <span className={s.meta}>
+          Prepended to every scene's prompt; combined with image
+          conditioning to keep characters consistent across cuts.
+        </span>
+      </div>
+
+      <div className={s.fieldRow}>
+        <label className={s.label} htmlFor="ltx-style">
+          Style anchor (optional)
+        </label>
+        <input
+          id="ltx-style"
+          className={s.input}
+          value={draft.style_prompt ?? ""}
+          onChange={(e) =>
+            update(
+              "style_prompt",
+              e.target.value.length > 0 ? e.target.value : undefined,
+            )
+          }
+          placeholder="moody noir, deep teal shadows, neon highlights, 35mm film grain"
+        />
+        <span className={s.meta}>
+          Appended to every scene's prompt; threads visual style across
+          segment boundaries.
+        </span>
+      </div>
+
+      <ScenesEditor draft={draft} update={update} />
+
       <div className={s.inputRow}>
         <div className={s.fieldRow}>
           <label className={s.label} htmlFor="ltx-duration">
@@ -585,6 +632,182 @@ function ProfileStatus({
       {match.status_message}
       {match.experimental ? " (experimental)" : null}
     </div>
+  );
+}
+
+function ScenesEditor({
+  draft,
+  update,
+}: {
+  draft: CreateRenderRequest;
+  update: <K extends keyof CreateRenderRequest>(
+    key: K,
+    value: CreateRenderRequest[K],
+  ) => void;
+}): ReactElement {
+  const scenes = draft.scenes ?? [];
+
+  const setScenes = useCallback(
+    (next: SceneSpec[]) => {
+      update("scenes", next.length > 0 ? next : undefined);
+    },
+    [update],
+  );
+
+  const addScene = useCallback(() => {
+    const equalShare =
+      scenes.length > 0 ? draft.duration_seconds / (scenes.length + 1) : draft.duration_seconds;
+    setScenes([
+      ...scenes,
+      { prompt: "", duration_seconds: Math.max(1, Math.round(equalShare)) },
+    ]);
+  }, [scenes, setScenes, draft.duration_seconds]);
+
+  // exactOptionalPropertyTypes treats `undefined` as not assignable to
+  // an optional field — callers pass numbers or pass null to clear, and
+  // `null` triggers a delete on the corresponding key.
+  const updateScene = useCallback(
+    (
+      idx: number,
+      patch: { [K in keyof SceneSpec]?: SceneSpec[K] | null },
+    ) => {
+      const next = scenes.map((s, i) => {
+        if (i !== idx) return s;
+        const merged: SceneSpec = { ...s };
+        // `prompt` is required — `null` is treated as empty string clear.
+        if (patch.prompt !== undefined) {
+          merged.prompt = patch.prompt ?? "";
+        }
+        if (patch.duration_seconds !== undefined) {
+          if (patch.duration_seconds === null) delete merged.duration_seconds;
+          else merged.duration_seconds = patch.duration_seconds;
+        }
+        if (patch.seed !== undefined) {
+          if (patch.seed === null) delete merged.seed;
+          else merged.seed = patch.seed;
+        }
+        return merged;
+      });
+      setScenes(next);
+    },
+    [scenes, setScenes],
+  );
+
+  const removeScene = useCallback(
+    (idx: number) => {
+      setScenes(scenes.filter((_, i) => i !== idx));
+    },
+    [scenes, setScenes],
+  );
+
+  const scenesTotal = scenes.reduce(
+    (acc, s) => acc + (s.duration_seconds ?? 0),
+    0,
+  );
+
+  return (
+    <details className={s.progressDetails}>
+      <summary className={s.progressSummary}>
+        Scenes — {scenes.length === 0 ? "none (single prompt)" : `${scenes.length} scenes`}
+        {scenesTotal > 0 ? (
+          <span className={s.meta}>
+            {" · "}
+            {scenesTotal.toFixed(1)}s / {draft.duration_seconds}s
+          </span>
+        ) : null}
+      </summary>
+      <p className={s.meta} style={{ marginTop: 8 }}>
+        Split the video into named scenes. Each scene's midpoint
+        determines which prompt the corresponding segments use; scenes
+        run consecutively in order. Leave empty to use the global prompt
+        for the whole video.
+      </p>
+      {scenes.map((scene, idx) => (
+        <div
+          key={idx}
+          className={s.panel}
+          style={{ background: "rgba(0,0,0,0.18)", marginTop: 10, padding: 12 }}
+        >
+          <div className={s.fieldRow}>
+            <label className={s.label} htmlFor={`ltx-scene-${idx}-prompt`}>
+              Scene {idx + 1} prompt
+            </label>
+            <textarea
+              id={`ltx-scene-${idx}-prompt`}
+              className={s.textarea}
+              value={scene.prompt}
+              onChange={(e) => updateScene(idx, { prompt: e.target.value })}
+              placeholder="what happens in this scene…"
+              rows={2}
+            />
+          </div>
+          <div className={s.inputRow}>
+            <div className={s.fieldRow}>
+              <label
+                className={s.label}
+                htmlFor={`ltx-scene-${idx}-duration`}
+              >
+                Duration (s)
+              </label>
+              <input
+                id={`ltx-scene-${idx}-duration`}
+                className={s.input}
+                type="number"
+                min={1}
+                step={0.5}
+                value={scene.duration_seconds ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  updateScene(idx, {
+                    duration_seconds: v === "" ? null : Number(v),
+                  });
+                }}
+                placeholder="auto"
+              />
+            </div>
+            <div className={s.fieldRow}>
+              <label
+                className={s.label}
+                htmlFor={`ltx-scene-${idx}-seed`}
+              >
+                Scene seed (optional)
+              </label>
+              <input
+                id={`ltx-scene-${idx}-seed`}
+                className={s.input}
+                type="number"
+                value={scene.seed ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  updateScene(idx, {
+                    seed: v === "" ? null : Number(v),
+                  });
+                }}
+                placeholder="derived"
+              />
+            </div>
+            <div className={s.fieldRow} style={{ alignSelf: "flex-end" }}>
+              <button
+                type="button"
+                className={s.buttonDanger}
+                onClick={() => removeScene(idx)}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
+      <div className={s.buttonRow} style={{ marginTop: 10 }}>
+        <button
+          type="button"
+          className={s.buttonSecondary}
+          onClick={addScene}
+        >
+          + Add scene
+        </button>
+      </div>
+    </details>
   );
 }
 
