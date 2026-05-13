@@ -139,8 +139,17 @@ async fn apply_migrations(pool: &SqlitePool) -> Result<(), BuildRouterError> {
         if already.is_some() {
             continue;
         }
+        // Each migration is applied atomically: the DDL + the schema-
+        // version bookkeeping insert succeed-or-fail together. Prevents
+        // the partial-application failure mode where the table is
+        // created but the version row is missing, causing a re-run
+        // next boot.
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| Box::new(e) as BuildRouterError)?;
         sqlx::raw_sql(migration.sql)
-            .execute(pool)
+            .execute(&mut *tx)
             .await
             .map_err(|e| -> BuildRouterError {
                 Box::<dyn std::error::Error + Send + Sync>::from(format!(
@@ -154,10 +163,23 @@ async fn apply_migrations(pool: &SqlitePool) -> Result<(), BuildRouterError> {
         )
         .bind(i64::from(migration.version))
         .bind(migration.name)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| Box::new(e) as BuildRouterError)?;
+        tx.commit()
+            .await
+            .map_err(|e| Box::new(e) as BuildRouterError)?;
+    }
+
+    // Enable foreign key enforcement for the rest of the connection's
+    // lifetime. SQLite defaults to OFF; without this the FK declared in
+    // migration 003 wouldn't actually trip on orphan inserts. Done
+    // post-migration because the migration itself temporarily disables
+    // FKs during the table-rebuild dance.
+    sqlx::query("PRAGMA foreign_keys = ON")
         .execute(pool)
         .await
         .map_err(|e| Box::new(e) as BuildRouterError)?;
-    }
 
     Ok(())
 }

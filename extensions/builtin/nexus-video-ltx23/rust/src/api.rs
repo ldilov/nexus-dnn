@@ -42,6 +42,15 @@ pub struct IdempotencyEntry {
     segment_count: u32,
     created_at: chrono::DateTime<chrono::Utc>,
     expires_at: Instant,
+    /// `SipHash` fingerprint of the canonical request JSON.
+    ///
+    /// A repeat POST with the same `Idempotency-Key` but a different
+    /// body returns 422 instead of silently mirroring the previous
+    /// response (per the stripe-compatible / RFC-draft semantics).
+    /// Non-cryptographic on purpose — the `Idempotency-Key` is already
+    /// client-supplied uniqueness; this hash only catches accidental
+    /// reuse of the same key with different payloads.
+    request_hash: u64,
 }
 
 /// In-memory cache keyed by `Idempotency-Key` header. Restart drops it —
@@ -119,6 +128,7 @@ async fn start_profile_install(
     State(state): State<Arc<ApiState>>,
     Path(profile_id): Path<String>,
 ) -> ApiResult<(StatusCode, Json<ProfileInstallStatus>)> {
+    validate_profile_id(&profile_id)?;
     let status = state.profile_install.start(profile_id).await?;
     Ok((StatusCode::ACCEPTED, Json(status)))
 }
@@ -127,8 +137,32 @@ async fn profile_install_status(
     State(state): State<Arc<ApiState>>,
     Path(profile_id): Path<String>,
 ) -> ApiResult<Json<ProfileInstallStatus>> {
+    validate_profile_id(&profile_id)?;
     let status = state.profile_install.status(&profile_id).await?;
     Ok(Json(status))
+}
+
+/// Profile ids are an enum-like slug (`rtx40-fp8`, `rtx50-fp8`,
+/// `rtx50-nvfp4`, `fake`). The actual allowlist is enforced
+/// downstream in `runtime_selection::resolve_runtime_id`, but this
+/// shape check rejects path-traversal / control characters / oversized
+/// strings before any DB or filesystem operation touches them.
+fn validate_profile_id(profile_id: &str) -> ApiResult<()> {
+    if profile_id.is_empty() || profile_id.len() > 32 {
+        return Err(ApiError(ExtensionError::InvalidRequest(format!(
+            "profile_id length out of range (1..=32); got {} chars",
+            profile_id.len()
+        ))));
+    }
+    if !profile_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
+        return Err(ApiError(ExtensionError::InvalidRequest(format!(
+            "profile_id '{profile_id}' contains characters outside [A-Za-z0-9._-]"
+        ))));
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -229,14 +263,31 @@ async fn create_render(
     headers: HeaderMap,
     Json(req): Json<CreateRenderRequest>,
 ) -> ApiResult<(StatusCode, Json<CreateRenderResponse>)> {
+    // Bound free-text + scene-array sizes before any planner work / DB
+    // write so a giant prompt can't blow up the request_json column or
+    // multiply across segments.
+    req.validate_field_bounds()
+        .map_err(ExtensionError::InvalidRequest)?;
     let idempotency_key = headers
         .get("idempotency-key")
         .and_then(|v| v.to_str().ok())
         .map(str::to_string)
         .filter(|s| !s.is_empty());
 
+    let request_hash = hash_create_render_request(&req);
+
     if let Some(ref key) = idempotency_key {
         if let Some(cached) = lookup_idempotent(&state.idempotency, key).await {
+            if cached.request_hash != request_hash {
+                // Same Idempotency-Key + different body → 422. Stripe-
+                // compatible / RFC-draft semantics. Returning a stale
+                // success here would silently mask a client typo.
+                return Err(ApiError(ExtensionError::InvalidRequest(format!(
+                    "Idempotency-Key '{key}' was previously used with a \
+                     different request body; supply a fresh key or replay \
+                     the original request"
+                ))));
+            }
             return Ok((
                 StatusCode::ACCEPTED,
                 Json(CreateRenderResponse {
@@ -341,6 +392,7 @@ async fn create_render(
                 segment_count: plan.segment_count,
                 created_at: now,
                 expires_at: Instant::now() + IDEMPOTENCY_TTL,
+                request_hash,
             },
         )
         .await;
@@ -437,6 +489,7 @@ async fn get_render(
     State(state): State<Arc<ApiState>>,
     Path(run_id): Path<String>,
 ) -> ApiResult<Json<RenderStateResponse>> {
+    validate_run_id(&run_id)?;
     let run = state.repos.get_run(&run_id).await?;
     let segments = state.repos.list_segments(&run_id).await?;
     let completed = u32::try_from(
@@ -491,6 +544,7 @@ async fn cancel_render(
     State(state): State<Arc<ApiState>>,
     Path(run_id): Path<String>,
 ) -> ApiResult<StatusCode> {
+    validate_run_id(&run_id)?;
     let run = state.repos.get_run(&run_id).await?;
     if matches!(run.status.as_str(), "completed" | "failed" | "cancelled") {
         return Err(ApiError(ExtensionError::InvalidRequest(format!(
@@ -505,9 +559,12 @@ async fn cancel_render(
     // queued-but-never-spawned runs can still be marked cancelled.
     let outcome = state.runner.cancel(&run_id).await;
     if matches!(outcome, CancelOutcome::NotInFlight) {
+        // Race guard: between `get_run` and this write the task may have
+        // terminated naturally (completed/failed). The conditional-update
+        // variant refuses to overwrite a terminal row.
         state
             .repos
-            .update_run_status(&run_id, "cancelled", None, None, None)
+            .update_run_status_if_not_terminal(&run_id, "cancelled")
             .await?;
     }
     Ok(StatusCode::ACCEPTED)
@@ -517,6 +574,7 @@ async fn list_segments_handler(
     State(state): State<Arc<ApiState>>,
     Path(run_id): Path<String>,
 ) -> ApiResult<Json<Vec<SegmentSummary>>> {
+    validate_run_id(&run_id)?;
     let segments = state.repos.list_segments(&run_id).await?;
     Ok(Json(
         segments
@@ -539,6 +597,15 @@ async fn retry_segment(
 ) -> ApiResult<StatusCode> {
     validate_run_id(&run_id)?;
     let run = state.repos.get_run(&run_id).await?;
+    // Only failed segments are legitimate retry targets. Retrying a
+    // segment of a completed/cancelled run would race the published
+    // final.mp4 + corrupt the published artifact set.
+    if matches!(run.status.as_str(), "completed" | "cancelled") {
+        return Err(ApiError(ExtensionError::InvalidRequest(format!(
+            "cannot retry segment on run '{run_id}' in terminal state '{}'",
+            run.status
+        ))));
+    }
     if state.runner.is_render_in_flight(&run_id).await {
         return Err(ApiError(ExtensionError::InvalidRequest(format!(
             "cannot retry segment for run '{run_id}' while a full render or another retry \
@@ -602,6 +669,26 @@ async fn retry_segment(
     }
 }
 
+/// Non-cryptographic fingerprint over the request body.
+///
+/// Used by the idempotency cache to distinguish "same key, same body"
+/// (legitimate retry) from "same key, different body" (client bug /
+/// collision). Returns 0 when JSON serialisation fails; the caller
+/// still stores the entry, but every comparison against a freshly-
+/// computed 0 hash would falsely match — that's acceptable because
+/// (a) `serde_json` on our Serialize-derived types essentially never
+/// fails, and (b) the idempotency check is best-effort, not a
+/// security boundary.
+fn hash_create_render_request(req: &CreateRenderRequest) -> u64 {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    let Ok(canonical) = serde_json::to_string(req) else {
+        return 0;
+    };
+    let mut hasher = DefaultHasher::new();
+    canonical.hash(&mut hasher);
+    hasher.finish()
+}
+
 /// Run IDs must be safe to use as filesystem path components and as
 /// JSON-RPC `request_id` values. The HTTP layer already constrains
 /// callers to a `Path<String>` extracted from the URL, but downstream
@@ -658,9 +745,30 @@ async fn serve_artifact(
         .strip_prefix("ltx23-run-")
         .and_then(|s| s.strip_suffix("-final"))
         .ok_or_else(|| ExtensionError::NotFound(format!("artifact {artifact_id}")))?;
+    // Defense-in-depth: validate the extracted run_id before joining it
+    // onto runs_dir. axum URL-decodes path segments, so without this a
+    // request like `/artifacts/ltx23-run-..%2F..%2Fetc%2Fpasswd-final`
+    // would otherwise read outside the sandbox.
+    validate_run_id(run_id)?;
 
     let path = state.runs_dir.join(run_id).join("final.mp4");
-    let bytes = tokio::fs::read(&path)
+    // Belt + braces: after the join, canonicalise and verify the result
+    // is still a descendant of runs_dir. Catches any traversal that
+    // slipped past validate_run_id (none should — but the cost is one
+    // syscall on a path that exists).
+    let canonical = tokio::fs::canonicalize(&path)
+        .await
+        .map_err(|e| ExtensionError::NotFound(format!("artifact file: {e}")))?;
+    let runs_root = tokio::fs::canonicalize(&state.runs_dir)
+        .await
+        .map_err(|e| ExtensionError::Internal(format!("runs_dir canonicalize: {e}")))?;
+    if !canonical.starts_with(&runs_root) {
+        return Err(ApiError(ExtensionError::NotFound(format!(
+            "artifact {artifact_id}"
+        ))));
+    }
+
+    let bytes = tokio::fs::read(&canonical)
         .await
         .map_err(|e| ExtensionError::NotFound(format!("artifact file: {e}")))?;
 
@@ -758,6 +866,7 @@ mod tests {
             segment_count: 1,
             created_at: chrono::Utc::now(),
             expires_at: Instant::now() + ttl,
+            request_hash: 0,
         }
     }
 

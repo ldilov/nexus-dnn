@@ -147,6 +147,11 @@ export const ltxApi = {
   getRender: (runId: string) => jsonRequest<RenderRun>(`/renders/${runId}`),
   cancel: (runId: string) =>
     jsonRequest<void>(`/renders/${runId}/cancel`, { method: "POST" }),
+  retrySegment: (runId: string, segmentIndex: number) =>
+    jsonRequest<void>(`/renders/${runId}/retry-segment`, {
+      method: "POST",
+      body: JSON.stringify({ segment_index: segmentIndex }),
+    }),
 };
 
 export function artifactUrl(artifactId: string): string {

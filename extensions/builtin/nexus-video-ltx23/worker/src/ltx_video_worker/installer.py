@@ -261,7 +261,13 @@ async def _default_uv_sync_runner(
     ("stdout"|"stderr", text) for each line as it lands. uv writes
     its resolution progress on stderr.
     """
-    env = os.environ.copy()
+    # Project the host env down to an allowlist before handing it to
+    # `uv sync` — otherwise HF_TOKEN / AWS_* / GITHUB_TOKEN leak via
+    # subprocess argv echoing or uv's resolver-debug output (which we
+    # stream back to the host as notifications).
+    from .io_safety import safe_subprocess_env
+
+    env = safe_subprocess_env(os.environ.copy())
     runtime_venv = _runtime_venv_dir()
     if runtime_venv is not None:
         env["UV_PROJECT_ENVIRONMENT"] = str(runtime_venv)
@@ -293,6 +299,8 @@ async def _default_uv_sync_runner(
         stderr=asyncio.subprocess.PIPE,
     )
 
+    from .io_safety import scrub_sensitive
+
     async def _drain(stream: asyncio.StreamReader | None, channel: str) -> None:
         if stream is None:
             return
@@ -302,7 +310,11 @@ async def _default_uv_sync_runner(
                 break
             text = raw.decode("utf-8", errors="replace").rstrip()
             if text:
-                await on_line(channel, text)
+                # Scrub before forwarding — uv may echo Authorization
+                # headers or env-style token assignments in its
+                # resolver-debug output. The scrubber is conservative
+                # but cheap, and false-positives only blur log lines.
+                await on_line(channel, scrub_sensitive(text))
 
     await asyncio.gather(
         _drain(proc.stdout, "stdout"),

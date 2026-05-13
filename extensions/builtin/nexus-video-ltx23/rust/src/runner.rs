@@ -367,92 +367,127 @@ async fn run_via_lease(
         advanced,
         &workdir,
     );
-    if let Err(e) = lease.send_rpc("ltx.video.render.start", render_params).await {
-        let _ = lease.release().await;
-        return Err(crate::errors::ExtensionError::RenderFailed(format!(
-            "render.start rejected by worker: {e}"
-        )));
-    }
+    // Single-exit pattern: do the work inside an inner async block,
+    // capture its Result, then release the lease ONCE on every path
+    // (timeout, channel close, worker error, success). The pre-refactor
+    // structure left a window where the outer timeout's map_err would
+    // short-circuit before lease.release() ran.
+    let outcome_result: Result<NotificationOutcome> = async {
+        lease
+            .send_rpc("ltx.video.render.start", render_params)
+            .await
+            .map_err(|e| {
+                crate::errors::ExtensionError::RenderFailed(format!(
+                    "render.start rejected by worker: {e}"
+                ))
+            })?;
 
-    let cancel_wait = cancel_notify.notified();
-    tokio::pin!(cancel_wait);
-    let mut cancel_requested = false;
-    let mut cancel_deadline: Option<tokio::time::Instant> = None;
+        let cancel_wait = cancel_notify.notified();
+        tokio::pin!(cancel_wait);
+        let mut cancel_requested = false;
+        let mut cancel_deadline: Option<tokio::time::Instant> = None;
 
-    let outcome = tokio::time::timeout(RENDER_TIMEOUT, async {
-        loop {
-            let recv_fut = notifications.recv();
-            let cancel_deadline_tick = async {
-                if let Some(deadline) = cancel_deadline {
-                    tokio::time::sleep_until(deadline).await;
-                } else {
-                    std::future::pending::<()>().await;
-                }
-            };
-
-            tokio::select! {
-                () = &mut cancel_wait, if !cancel_requested => {
-                    cancel_requested = true;
-                    cancel_deadline = Some(tokio::time::Instant::now() + CANCEL_GRACE);
-                    if let Err(e) = lease
-                        .send_rpc("ltx.video.render.cancel", json!({ "request_id": run_id }))
-                        .await
-                    {
-                        tracing::warn!(
-                            extension_id = "nexus.video.ltx23",
-                            run_id = %run_id,
-                            error = %e,
-                            "runner: cancel RPC failed; will rely on grace timeout"
-                        );
+        let driven = tokio::time::timeout(RENDER_TIMEOUT, async {
+            loop {
+                let recv_fut = notifications.recv();
+                let cancel_deadline_tick = async {
+                    if let Some(deadline) = cancel_deadline {
+                        tokio::time::sleep_until(deadline).await;
                     } else {
-                        tracing::info!(
-                            extension_id = "nexus.video.ltx23",
-                            run_id = %run_id,
-                            "runner: cancel signalled to worker"
-                        );
+                        std::future::pending::<()>().await;
                     }
-                }
-                () = cancel_deadline_tick, if cancel_requested => {
-                    return Ok::<NotificationOutcome, crate::errors::ExtensionError>(
-                        NotificationOutcome::Cancelled,
-                    );
-                }
-                recv = recv_fut => match recv {
-                    Ok(note) => {
-                        if let Some(o) =
-                            handle_notification(cfg, run_id, &workdir, &note).await?
+                };
+
+                tokio::select! {
+                    () = &mut cancel_wait, if !cancel_requested => {
+                        cancel_requested = true;
+                        cancel_deadline = Some(tokio::time::Instant::now() + CANCEL_GRACE);
+                        if let Err(e) = lease
+                            .send_rpc("ltx.video.render.cancel", json!({ "request_id": run_id }))
+                            .await
                         {
-                            return Ok(o);
+                            tracing::warn!(
+                                extension_id = "nexus.video.ltx23",
+                                run_id = %run_id,
+                                error = %e,
+                                "runner: cancel RPC failed; will rely on grace timeout"
+                            );
+                        } else {
+                            tracing::info!(
+                                extension_id = "nexus.video.ltx23",
+                                run_id = %run_id,
+                                "runner: cancel signalled to worker"
+                            );
                         }
                     }
-                    Err(RecvError::Lagged(skipped)) => {
-                        tracing::warn!(
-                            run_id = %run_id,
-                            skipped,
-                            "runner: notification lag — dropping events but continuing"
+                    () = cancel_deadline_tick, if cancel_requested => {
+                        return Ok::<NotificationOutcome, crate::errors::ExtensionError>(
+                            NotificationOutcome::Cancelled,
                         );
                     }
-                    Err(RecvError::Closed) => {
-                        return Err(crate::errors::ExtensionError::RenderFailed(
-                            "worker closed notification channel before emitting done".into(),
-                        ));
+                    recv = recv_fut => match recv {
+                        Ok(note) => {
+                            if !notification_matches_run(&note.params, run_id) {
+                                // Defence-in-depth: a notification for a
+                                // different run_id sharing the broadcast
+                                // channel must not flip our segment rows.
+                                continue;
+                            }
+                            if let Some(o) =
+                                handle_notification(cfg, run_id, &workdir, &note).await?
+                            {
+                                return Ok(o);
+                            }
+                        }
+                        Err(RecvError::Lagged(skipped)) => {
+                            tracing::warn!(
+                                run_id = %run_id,
+                                skipped,
+                                "runner: notification lag — dropping events but continuing"
+                            );
+                        }
+                        Err(RecvError::Closed) => {
+                            return Err(crate::errors::ExtensionError::RenderFailed(
+                                "worker closed notification channel before emitting done"
+                                    .into(),
+                            ));
+                        }
                     }
                 }
             }
-        }
-    })
-    .await
-    .map_err(|_| {
-        crate::errors::ExtensionError::RenderFailed(format!(
-            "render timed out after {} seconds",
-            RENDER_TIMEOUT.as_secs()
-        ))
-    })??;
+        })
+        .await
+        .map_err(|_| {
+            crate::errors::ExtensionError::RenderFailed(format!(
+                "render timed out after {} seconds",
+                RENDER_TIMEOUT.as_secs()
+            ))
+        })?;
 
-    let _ = lease.release().await;
+        driven
+    }
+    .await;
+
+    if let Err(e) = lease.release().await {
+        tracing::warn!(
+            extension_id = "nexus.video.ltx23",
+            run_id = %run_id,
+            error = %e,
+            "runner: lease release failed; subprocess may be orphaned"
+        );
+    }
+
+    let outcome = outcome_result?;
 
     match outcome {
         NotificationOutcome::Done { final_path } => {
+            // Defence-in-depth: the worker controls the `final_path`
+            // field in its `ltx.video.done` notification. A compromised
+            // or crafted notification could point at any host-readable
+            // file (`.env`, ssh keys, etc.) and we'd happily publish it
+            // as `final.mp4`. Constrain the source path to the
+            // workdir's canonical descendant set before copying.
+            assert_path_under(&final_path, &workdir).await?;
             let artifact_id = format!("ltx23-run-{run_id}-final");
             let dest = cfg.runs_dir.join(run_id).join("final.mp4");
             tokio::fs::copy(&final_path, &dest).await.map_err(|e| {
@@ -465,6 +500,7 @@ async fn run_via_lease(
             cfg.repos
                 .update_run_status(run_id, "completed", Some(&artifact_id), None, None)
                 .await?;
+            cleanup_workdir(&workdir, run_id).await;
             Ok(())
         }
         NotificationOutcome::Error { code, message } => {
@@ -475,6 +511,7 @@ async fn run_via_lease(
                 cfg.repos
                     .update_run_status(run_id, "cancelled", None, None, None)
                     .await?;
+                cleanup_workdir(&workdir, run_id).await;
                 return Err(crate::errors::ExtensionError::RenderCancelled);
             }
             // VRAM supervisor halts get a distinct error_code so the
@@ -494,14 +531,62 @@ async fn run_via_lease(
                     Some(&truncate_status_msg(&message)),
                 )
                 .await?;
+            cleanup_workdir(&workdir, run_id).await;
             Err(crate::errors::ExtensionError::RenderFailed(message))
         }
         NotificationOutcome::Cancelled => {
             cfg.repos
                 .update_run_status(run_id, "cancelled", None, None, None)
                 .await?;
+            cleanup_workdir(&workdir, run_id).await;
             Err(crate::errors::ExtensionError::RenderCancelled)
         }
+    }
+}
+
+/// Verify a worker-supplied path is a descendant of `workdir`.
+/// Used to constrain the `final_path` field of `ltx.video.done` so a
+/// crafted notification can't cause the runner to copy arbitrary
+/// host files into the artifact publish slot.
+async fn assert_path_under(candidate: &std::path::Path, workdir: &std::path::Path) -> Result<()> {
+    let candidate_canon = tokio::fs::canonicalize(candidate).await.map_err(|e| {
+        crate::errors::ExtensionError::RenderFailed(format!(
+            "final_path {} not accessible: {e}",
+            candidate.display()
+        ))
+    })?;
+    let workdir_canon = tokio::fs::canonicalize(workdir).await.map_err(|e| {
+        crate::errors::ExtensionError::Internal(format!(
+            "workdir {} not accessible during final_path check: {e}",
+            workdir.display()
+        ))
+    })?;
+    if !candidate_canon.starts_with(&workdir_canon) {
+        return Err(crate::errors::ExtensionError::RenderFailed(format!(
+            "worker emitted final_path '{}' outside workdir '{}'; refusing to publish",
+            candidate.display(),
+            workdir.display()
+        )));
+    }
+    Ok(())
+}
+
+/// Best-effort workdir cleanup on terminal status transitions.
+/// Failures are logged but do not fail the render — the DB row already
+/// records the outcome, and a stale workdir is a disk-pressure issue
+/// rather than a correctness one.
+async fn cleanup_workdir(workdir: &std::path::Path, run_id: &str) {
+    if !workdir.is_dir() {
+        return;
+    }
+    if let Err(e) = tokio::fs::remove_dir_all(workdir).await {
+        tracing::warn!(
+            extension_id = "nexus.video.ltx23",
+            run_id = %run_id,
+            workdir = %workdir.display(),
+            error = %e,
+            "runner: workdir cleanup failed; disk space may accumulate"
+        );
     }
 }
 

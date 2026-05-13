@@ -1,5 +1,17 @@
 use serde::{Deserialize, Serialize};
 
+/// Hard cap on free-text prompt fields (chars).
+///
+/// The diffusers pipeline tokenises prompts on a CLIP-class encoder
+/// with a 77-token / ~300-char practical limit; we cap an order of
+/// magnitude higher to leave room for `character + style + action`
+/// concatenation while still bounding the per-segment memory + DB
+/// row footprint. Validated by `CreateRenderRequest::validate_field_bounds`
+/// before any planner work + DB write.
+pub const MAX_PROMPT_CHARS: usize = 4096;
+pub const MAX_SCENES: usize = 200;
+pub const MAX_PROJECT_ID_CHARS: usize = 128;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateRenderRequest {
     pub project_id: Option<String>,
@@ -37,6 +49,63 @@ pub struct CreateRenderRequest {
     pub seed: Option<u64>,
     #[serde(default)]
     pub advanced: AdvancedSettings,
+}
+
+impl CreateRenderRequest {
+    /// Reject oversized free-text fields + oversized scene arrays
+    /// before they reach the planner or the DB. Caller maps the
+    /// `Err(reason)` to a 400 `InvalidRequest`.
+    pub fn validate_field_bounds(&self) -> Result<(), String> {
+        if self.prompt.is_empty() {
+            return Err("prompt is required".into());
+        }
+        if self.prompt.len() > MAX_PROMPT_CHARS {
+            return Err(format!(
+                "prompt exceeds {MAX_PROMPT_CHARS} chars (got {})",
+                self.prompt.len()
+            ));
+        }
+        if let Some(neg) = &self.negative_prompt {
+            if neg.len() > MAX_PROMPT_CHARS {
+                return Err(format!(
+                    "negative_prompt exceeds {MAX_PROMPT_CHARS} chars"
+                ));
+            }
+        }
+        if let Some(style) = &self.style_prompt {
+            if style.len() > MAX_PROMPT_CHARS {
+                return Err(format!("style_prompt exceeds {MAX_PROMPT_CHARS} chars"));
+            }
+        }
+        if let Some(character) = &self.character_prompt {
+            if character.len() > MAX_PROMPT_CHARS {
+                return Err(format!(
+                    "character_prompt exceeds {MAX_PROMPT_CHARS} chars"
+                ));
+            }
+        }
+        if let Some(pid) = &self.project_id {
+            if pid.len() > MAX_PROJECT_ID_CHARS {
+                return Err(format!(
+                    "project_id exceeds {MAX_PROJECT_ID_CHARS} chars"
+                ));
+            }
+        }
+        if self.scenes.len() > MAX_SCENES {
+            return Err(format!(
+                "scenes array exceeds {MAX_SCENES} entries (got {})",
+                self.scenes.len()
+            ));
+        }
+        for (i, scene) in self.scenes.iter().enumerate() {
+            if scene.prompt.len() > MAX_PROMPT_CHARS {
+                return Err(format!(
+                    "scenes[{i}].prompt exceeds {MAX_PROMPT_CHARS} chars"
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
