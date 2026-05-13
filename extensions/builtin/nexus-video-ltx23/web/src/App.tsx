@@ -3,6 +3,7 @@ import useSWR from "swr";
 import {
   type CreateRenderRequest,
   type DepStatus,
+  type ProfileInstallStatus,
   type QualityPreset,
   type RenderPlan,
   type RenderRun,
@@ -11,6 +12,7 @@ import {
   artifactUrl,
   hostApi,
   ltxApi,
+  profileInstallApi,
 } from "./api";
 import * as s from "./styles.css";
 
@@ -393,6 +395,7 @@ function FormPanel({
       </div>
 
       <ProfileStatus profiles={profiles} selected={draft.runtime_profile} />
+      <ProfileInstallPanel selected={draft.runtime_profile} />
 
       <div className={s.buttonRow}>
         <button
@@ -419,6 +422,87 @@ function FormPanel({
       {plan ? <PlanBlock plan={plan} /> : null}
     </section>
   );
+}
+
+function ProfileInstallPanel({
+  selected,
+}: {
+  selected: RuntimeProfilePreference;
+}): ReactElement | null {
+  const profileId = profileIdForSelection(selected);
+  const [installing, setInstalling] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const { data: status, mutate } = useSWR<ProfileInstallStatus | null>(
+    profileId ? `profile-install:${profileId}` : null,
+    () => (profileId ? profileInstallApi.status(profileId) : Promise.resolve(null)),
+    {
+      refreshInterval: (latest) => {
+        if (!latest) return 0;
+        return latest.in_flight ? 2000 : 0;
+      },
+    },
+  );
+
+  const handleInstall = useCallback(async () => {
+    if (!profileId) return;
+    setInstalling(true);
+    setActionError(null);
+    try {
+      await profileInstallApi.start(profileId);
+      void mutate();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setInstalling(false);
+    }
+  }, [profileId, mutate]);
+
+  if (!profileId || !status) return null;
+  if (status.installed) {
+    return (
+      <div className={s.warningBox}>
+        <strong>Weights installed</strong> · {status.repo}
+      </div>
+    );
+  }
+
+  const inFlight = status.in_flight || installing;
+  return (
+    <div className={s.warningBox}>
+      <strong>Weights not installed</strong>: {status.repo ?? "unknown repo"}
+      <div className={s.meta} style={{ marginTop: 4 }}>
+        Required for the selected runtime profile. Downloads from Hugging Face
+        into {status.dest ?? "<host_data_dir>/models/…"}.
+      </div>
+      {status.last_error ? (
+        <div className={s.meta} style={{ marginTop: 4, color: "#e57373" }}>
+          Last error: {status.last_error}
+        </div>
+      ) : null}
+      {actionError ? (
+        <div className={s.meta} style={{ marginTop: 4, color: "#e57373" }}>
+          {actionError}
+        </div>
+      ) : null}
+      <div className={s.buttonRow} style={{ marginTop: 8 }}>
+        <button
+          type="button"
+          className={s.button}
+          disabled={inFlight}
+          onClick={() => void handleInstall()}
+        >
+          {inFlight ? "Downloading…" : "Download weights"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function profileIdForSelection(
+  pref: RuntimeProfilePreference,
+): string | null {
+  if (pref === "auto") return null;
+  return pref;
 }
 
 function ProfileStatus({

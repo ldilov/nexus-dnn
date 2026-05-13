@@ -3,6 +3,7 @@ pub mod errors;
 pub mod lease;
 pub mod migrations;
 pub mod planning;
+pub mod profile_install;
 pub mod register;
 pub mod runner;
 pub mod runtime_selection;
