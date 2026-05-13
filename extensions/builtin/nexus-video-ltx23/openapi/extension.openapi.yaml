@@ -240,9 +240,38 @@ components:
       properties:
         project_id: { type: string }
         input_image_artifact_id: { type: string }
-        prompt: { type: string, minLength: 1 }
+        prompt:
+          type: string
+          minLength: 1
+          description: |
+            Global / fallback action prompt — describes what's happening
+            overall. Used for every segment unless `scenes[i].prompt`
+            overrides it.
         negative_prompt: { type: string }
-        style_prompt: { type: string }
+        style_prompt:
+          type: string
+          description: |
+            Visual-style anchor appended to every scene's effective
+            prompt. Threads style across segment boundaries.
+            Example: `moody noir, deep teal shadows, neon highlights,
+            35mm film grain`.
+        character_prompt:
+          type: string
+          description: |
+            Character anchor prepended to every scene. Combined with
+            image conditioning from the previous segment's last frame,
+            this is the strongest tool for preserving character
+            appearance across cuts.
+            Example: `a woman in a red coat, short black hair, brown eyes`.
+        scenes:
+          type: array
+          description: |
+            Optional per-scene script. When non-empty, the planner
+            zips scenes[] against the computed segments — segments
+            whose timeline midpoint overlaps a scene's window adopt
+            that scene's prompt. Segments past the script's end
+            tail-anchor on the last scene.
+          items: { $ref: '#/components/schemas/Ltx23SceneSpec' }
         duration_seconds: { type: number, minimum: 1, maximum: 300 }
         runtime_profile:
           type: string
@@ -255,6 +284,72 @@ components:
         base_fps: { type: integer }
         output_fps: { type: integer }
         seed: { type: integer }
+        advanced:
+          $ref: '#/components/schemas/Ltx23AdvancedSettings'
+
+    Ltx23SceneSpec:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          description: |
+            What happens in this scene. Composed with the global
+            `character_prompt` + `style_prompt` to form the effective
+            prompt the worker sends to LTX-2.3.
+        duration_seconds:
+          type: number
+          minimum: 0.1
+          description: |
+            Defaults to `request.duration_seconds / scenes.length` when
+            omitted.
+        seed:
+          type: integer
+          description: |
+            Per-scene seed override. When omitted, derived deterministically
+            from the global seed + scene index so chain noise stays
+            correlated (preserves style/lighting continuity).
+
+    Ltx23AdvancedSettings:
+      type: object
+      description: |
+        Advanced render knobs. All optional — defaults are LTX-2.3
+        distilled-pipeline values tuned by Lightricks.
+      properties:
+        guidance_scale:
+          type: number
+          minimum: 1
+          maximum: 15
+          description: |
+            Classifier-Free Guidance scale — LTX-2.3's "temperature"
+            knob. Default 4.0. Higher = stricter prompt adherence,
+            less creative drift. Sensible range 1.0–7.0.
+        num_inference_steps:
+          type: integer
+          minimum: 2
+          maximum: 50
+          description: |
+            Denoising steps. Default 8 (distilled model is tuned for
+            this). Higher steps improve detail with roughly linear
+            wall-clock cost.
+        segment_seconds:
+          type: number
+          minimum: 1
+          description: |
+            Per-segment duration in seconds. Defaults to 4 s.
+        overlap_seconds:
+          type: number
+          minimum: 0
+          description: |
+            Overlap between consecutive segments in seconds. Defaults to 0.5 s.
+        output_fps:
+          type: integer
+          description: |
+            Output frame rate after interpolation. Defaults to 48 (RIFE 2×).
+        interpolation:
+          type: string
+          enum: [rife_2x, none]
 
     Ltx23RenderPlan:
       type: object
