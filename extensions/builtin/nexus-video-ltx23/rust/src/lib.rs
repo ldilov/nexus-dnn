@@ -1,11 +1,12 @@
 pub mod api;
 pub mod errors;
+pub mod lease;
 pub mod migrations;
 pub mod planning;
 pub mod register;
+pub mod runner;
 pub mod runtime_selection;
 pub mod schemas;
-pub mod simulate;
 pub mod storage;
 
 pub use errors::{ExtensionError, ExtensionErrorCode, Result};

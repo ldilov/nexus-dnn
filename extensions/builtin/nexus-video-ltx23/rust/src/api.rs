@@ -15,15 +15,15 @@ use ulid::Ulid;
 
 use crate::errors::{ExtensionError, ExtensionErrorCode};
 use crate::planning::plan_render;
+use crate::runner::Runner;
 use crate::runtime_selection::{available_profiles, resolve_runtime_id};
 use crate::schemas::{CreateRenderRequest, RenderPlan, RuntimeProfilePreference};
-use crate::simulate::Simulator;
 use crate::storage::{Repos, RenderRunRow, RenderSegmentRow};
 
 #[derive(Clone)]
 pub struct ApiState {
     pub repos: Repos,
-    pub simulator: Simulator,
+    pub runner: Runner,
     pub runs_dir: PathBuf,
     pub extension_version: &'static str,
 }
@@ -193,29 +193,19 @@ async fn create_render(
     state.repos.insert_segments(&segments).await?;
 
     let runtime_id_owned = runtime_id.to_string();
-    let is_fake = runtime_id == "nexus.video.ltx23.fake";
-    if is_fake {
-        state
-            .simulator
-            .spawn_fake_render(run_id.clone(), plan.segment_count);
-    } else {
-        state
-            .repos
-            .update_run_status(
-                &run_id,
-                "failed",
-                None,
-                Some("runtime_unavailable"),
-                Some("real runtime profiles are not yet installable; use 'auto' or 'rtx40-fp8' with the fake profile in P1 milestone"),
-            )
-            .await?;
-    }
+    state.runner.spawn_render(
+        run_id.clone(),
+        runtime_id.to_string(),
+        plan.clone(),
+        req.prompt.clone(),
+        req.negative_prompt.clone(),
+    );
 
     Ok((
         StatusCode::ACCEPTED,
         Json(CreateRenderResponse {
             id: run_id,
-            status: if is_fake { "queued" } else { "failed" },
+            status: "queued",
             runtime_profile: runtime_id_owned,
             segment_count: plan.segment_count,
             created_at: now.to_rfc3339(),
