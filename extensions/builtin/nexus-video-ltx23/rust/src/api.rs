@@ -537,17 +537,78 @@ async fn retry_segment(
     Path(run_id): Path<String>,
     Json(body): Json<RetrySegmentRequest>,
 ) -> ApiResult<StatusCode> {
+    let run = state.repos.get_run(&run_id).await?;
+    if state.runner.is_render_in_flight(&run_id).await {
+        return Err(ApiError(ExtensionError::InvalidRequest(format!(
+            "cannot retry segment for run '{run_id}' while a full render is in flight; \
+             cancel the run first or wait for it to terminate"
+        ))));
+    }
+    let plan = parse_plan_for_retry(&run)?;
+    let segment_count = plan.segments.len();
+    let seg_index = usize::try_from(body.segment_index).map_err(|_| {
+        ExtensionError::InvalidRequest(format!(
+            "segment_index {} not addressable",
+            body.segment_index
+        ))
+    })?;
+    if seg_index >= segment_count {
+        return Err(ApiError(ExtensionError::InvalidRequest(format!(
+            "segment_index {} out of range; run has {segment_count} segments",
+            body.segment_index
+        ))));
+    }
+    let request = parse_request_for_retry(&run)?;
+    let prompt = body
+        .prompt_override
+        .clone()
+        .unwrap_or_else(|| request.prompt.clone());
+    let runtime_id = run
+        .runtime_profile
+        .clone()
+        .unwrap_or_else(|| "fake".to_string());
+
     state
         .repos
         .update_segment_status(&run_id, i64::from(body.segment_index), "queued", None)
         .await?;
+
+    state.runner.spawn_retry_segment(
+        run_id,
+        runtime_id,
+        plan,
+        body.segment_index,
+        prompt,
+        request.negative_prompt.clone(),
+        request.style_prompt.clone(),
+        request.character_prompt.clone(),
+        request.advanced.clone(),
+    );
+
     Ok(StatusCode::ACCEPTED)
+}
+
+fn parse_plan_for_retry(run: &RenderRunRow) -> ApiResult<RenderPlan> {
+    let plan_json = run.plan_json.as_deref().ok_or_else(|| {
+        ExtensionError::InvalidRequest(format!(
+            "run '{}' has no stored plan; cannot retry segment",
+            run.id
+        ))
+    })?;
+    serde_json::from_str(plan_json).map_err(|e| {
+        ExtensionError::Internal(format!("deserialise plan for run '{}': {e}", run.id)).into()
+    })
+}
+
+fn parse_request_for_retry(run: &RenderRunRow) -> ApiResult<CreateRenderRequest> {
+    serde_json::from_str(&run.request_json).map_err(|e| {
+        ExtensionError::Internal(format!("deserialise request for run '{}': {e}", run.id)).into()
+    })
 }
 
 #[derive(serde::Deserialize)]
 struct RetrySegmentRequest {
     segment_index: u32,
-    #[allow(dead_code)]
     prompt_override: Option<String>,
 }
 

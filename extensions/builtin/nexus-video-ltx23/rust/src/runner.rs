@@ -10,7 +10,7 @@ use tokio::sync::{Mutex, Notify};
 
 use crate::errors::Result;
 use crate::lease::LtxLeaseFactory;
-use crate::schemas::RenderPlan;
+use crate::schemas::{AdvancedSettings, RenderPlan};
 use crate::storage::Repos;
 
 // Render wall-clock budget. The real LTX-2.3 pipeline on a single 16 GB
@@ -21,6 +21,11 @@ use crate::storage::Repos;
 // runs; cancellation still pre-empts via the Notify path so a stuck
 // render isn't unconditionally blocking the lease.
 const RENDER_TIMEOUT: Duration = Duration::from_secs(1800);
+// Single-segment retry budget. One segment instead of the full chain —
+// cold pipeline load + one 8-step inference at the real-runtime rate
+// is ~800 s tops on a 16 GB card; 15 minutes covers worst case with
+// the same safety pattern as RENDER_TIMEOUT.
+const RETRY_SEGMENT_TIMEOUT: Duration = Duration::from_secs(900);
 /// Window the worker is given to flush its in-flight segment, emit
 /// `ltx.video.error{code:RENDER_CANCELLED}`, and clean up resources after
 /// the cancel RPC lands. Past this point the lease is force-released even
@@ -153,6 +158,75 @@ impl Runner {
             notify.notify_waiters();
             CancelOutcome::Signalled
         })
+    }
+
+    /// Re-run a single segment by sending the worker an
+    /// `ltx.video.segment.retry` RPC against a freshly-acquired lease.
+    ///
+    /// Returns when the worker emits `SEGMENT_COMPLETED` for the target
+    /// segment (success) or an error notification (failure). Updates the
+    /// segment row's status in DB through the same notification handler
+    /// the full render uses. Idempotent at the HTTP layer — the caller
+    /// can retry the retry; each call acquires a fresh lease.
+    ///
+    /// Refuses to start if a live render task already exists for this
+    /// run id — a retry while the full chain is in flight would race
+    /// with the original task's segment-status writes.
+    #[allow(clippy::too_many_arguments)]
+    pub fn spawn_retry_segment(
+        &self,
+        run_id: String,
+        profile: String,
+        plan: RenderPlan,
+        segment_index: u32,
+        prompt: String,
+        negative_prompt: Option<String>,
+        style_prompt: Option<String>,
+        character_prompt: Option<String>,
+        advanced: AdvancedSettings,
+    ) {
+        let cfg = self.cfg.clone();
+        tokio::spawn(async move {
+            let result = retry_segment_via_lease(
+                &cfg,
+                &run_id,
+                &profile,
+                &plan,
+                segment_index,
+                &prompt,
+                negative_prompt.as_deref(),
+                style_prompt.as_deref(),
+                character_prompt.as_deref(),
+                &advanced,
+            )
+            .await;
+
+            if let Err(err) = result {
+                tracing::error!(
+                    extension_id = "nexus.video.ltx23",
+                    run_id = %run_id,
+                    segment_index,
+                    error = %err,
+                    "runner: segment retry failed"
+                );
+                let _ = cfg
+                    .repos
+                    .update_segment_status(
+                        &run_id,
+                        i64::from(segment_index),
+                        "failed",
+                        Some(&err.to_string()),
+                    )
+                    .await;
+            }
+        });
+    }
+
+    /// Returns true when a live render task currently owns this run id.
+    /// HTTP handlers use this to reject retry-segment while the full
+    /// chain is in flight.
+    pub async fn is_render_in_flight(&self, run_id: &str) -> bool {
+        self.cancellers.lock().await.contains_key(run_id)
     }
 
     /// Test-only inspection — number of run ids with live tokens.
@@ -353,6 +427,149 @@ enum NotificationOutcome {
     Done { final_path: PathBuf },
     Error { code: i64, message: String },
     Cancelled,
+}
+
+/// Single-segment-retry analogue of `run_via_lease`. Acquires a fresh
+/// lease, sends `ltx.video.segment.retry`, drains notifications until
+/// `SEGMENT_COMPLETED` for the target index (success) or `ERROR` (failure).
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+async fn retry_segment_via_lease(
+    cfg: &RunnerConfig,
+    run_id: &str,
+    profile: &str,
+    plan: &RenderPlan,
+    seg_idx: u32,
+    prompt: &str,
+    negative_prompt: Option<&str>,
+    style_prompt: Option<&str>,
+    character_prompt: Option<&str>,
+    advanced: &AdvancedSettings,
+) -> Result<()> {
+    let workdir = cfg.runs_dir.join(run_id).join("work");
+    tokio::fs::create_dir_all(&workdir).await.map_err(|e| {
+        crate::errors::ExtensionError::Internal(format!(
+            "mkdir workdir {}: {e}",
+            workdir.display()
+        ))
+    })?;
+
+    cfg.repos
+        .update_segment_status(run_id, i64::from(seg_idx), "queued", None)
+        .await?;
+
+    let lease = cfg.factory.acquire(short_profile(profile)).await?;
+    let mut notifications = lease.subscribe_notifications();
+
+    let mut retry_params = build_render_params(
+        run_id,
+        plan,
+        prompt,
+        negative_prompt,
+        style_prompt,
+        character_prompt,
+        advanced,
+        &workdir,
+    );
+    if let Some(obj) = retry_params.as_object_mut() {
+        obj.insert("segment_index".into(), Value::from(seg_idx));
+    }
+
+    if let Err(e) = lease
+        .send_rpc("ltx.video.segment.retry", retry_params)
+        .await
+    {
+        let _ = lease.release().await;
+        return Err(crate::errors::ExtensionError::RenderFailed(format!(
+            "segment.retry rejected by worker: {e}"
+        )));
+    }
+
+    let target = i64::from(seg_idx);
+    let outcome = tokio::time::timeout(RETRY_SEGMENT_TIMEOUT, async {
+        loop {
+            match notifications.recv().await {
+                Ok(note) => match note.method.as_str() {
+                    "ltx.video.segment.completed" => {
+                        if segment_index(&note.params) == Some(target) {
+                            cfg.repos
+                                .update_segment_status(run_id, target, "completed", None)
+                                .await?;
+                            return Ok::<RetryOutcome, crate::errors::ExtensionError>(
+                                RetryOutcome::Completed,
+                            );
+                        }
+                        // SEGMENT_COMPLETED for a different index — possible if
+                        // the worker is mid-render of another run on the same
+                        // pool; ignore.
+                    }
+                    "ltx.video.segment.started" => {
+                        if segment_index(&note.params) == Some(target) {
+                            cfg.repos
+                                .update_segment_status(run_id, target, "rendering", None)
+                                .await?;
+                        }
+                    }
+                    "ltx.video.error" => {
+                        let code = note
+                            .params
+                            .get("code")
+                            .and_then(Value::as_i64)
+                            .unwrap_or(-32603);
+                        let message = note
+                            .params
+                            .get("message")
+                            .and_then(Value::as_str)
+                            .unwrap_or("worker emitted error without message")
+                            .to_string();
+                        return Ok(RetryOutcome::Error { code, message });
+                    }
+                    _ => {}
+                },
+                Err(RecvError::Lagged(skipped)) => {
+                    tracing::warn!(
+                        run_id = %run_id,
+                        segment_index = seg_idx,
+                        skipped,
+                        "runner: retry notification lag — dropping events but continuing"
+                    );
+                }
+                Err(RecvError::Closed) => {
+                    return Err(crate::errors::ExtensionError::RenderFailed(
+                        "worker closed notification channel before retry completed".into(),
+                    ));
+                }
+            }
+        }
+    })
+    .await
+    .map_err(|_| {
+        crate::errors::ExtensionError::RenderFailed(format!(
+            "segment retry timed out after {} seconds",
+            RETRY_SEGMENT_TIMEOUT.as_secs()
+        ))
+    })??;
+
+    let _ = lease.release().await;
+
+    match outcome {
+        RetryOutcome::Completed => Ok(()),
+        RetryOutcome::Error { code, message } => {
+            cfg.repos
+                .update_segment_status(
+                    run_id,
+                    target,
+                    "failed",
+                    Some(&format!("worker_error:{code} {message}")),
+                )
+                .await?;
+            Err(crate::errors::ExtensionError::RenderFailed(message))
+        }
+    }
+}
+
+enum RetryOutcome {
+    Completed,
+    Error { code: i64, message: String },
 }
 
 async fn handle_notification(
@@ -579,6 +796,23 @@ mod tests {
         let second = runner.cancel("run-x").await;
         assert_eq!(first, CancelOutcome::NotInFlight);
         assert_eq!(second, CancelOutcome::NotInFlight);
+    }
+
+    #[tokio::test]
+    async fn is_render_in_flight_reflects_live_canceller() {
+        let runner = empty_runner().await;
+        assert!(!runner.is_render_in_flight("ghost").await);
+        let _ = runner.register_test_canceller("alive".into()).await;
+        assert!(runner.is_render_in_flight("alive").await);
+        assert!(!runner.is_render_in_flight("ghost").await);
+    }
+
+    #[tokio::test]
+    async fn is_render_in_flight_returns_false_after_cleanup() {
+        let runner = empty_runner().await;
+        let _ = runner.register_test_canceller("transient".into()).await;
+        runner.cancellers.lock().await.remove("transient");
+        assert!(!runner.is_render_in_flight("transient").await);
     }
 
     #[tokio::test]
