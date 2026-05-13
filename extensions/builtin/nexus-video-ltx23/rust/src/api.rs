@@ -16,7 +16,7 @@ use ulid::Ulid;
 use crate::errors::{ExtensionError, ExtensionErrorCode};
 use crate::planning::plan_render;
 use crate::profile_install::{ProfileInstallService, ProfileInstallStatus};
-use crate::runner::Runner;
+use crate::runner::{CancelOutcome, Runner};
 use crate::runtime_selection::{available_profiles, resolve_runtime_id};
 use crate::schemas::{CreateRenderRequest, RenderPlan, RuntimeProfilePreference};
 use crate::storage::{Repos, RenderRunRow, RenderSegmentRow};
@@ -332,10 +332,18 @@ async fn cancel_render(
             run.status
         ))));
     }
-    state
-        .repos
-        .update_run_status(&run_id, "cancelled", None, None, None)
-        .await?;
+    // Signal the live render task first so the worker gets the cancel RPC
+    // while it's still in-flight. The task itself flips the DB row to
+    // "cancelled" once the worker acks (or the grace window expires), so
+    // we only update the DB here as a fallback when no live task exists —
+    // queued-but-never-spawned runs can still be marked cancelled.
+    let outcome = state.runner.cancel(&run_id).await;
+    if matches!(outcome, CancelOutcome::NotInFlight) {
+        state
+            .repos
+            .update_run_status(&run_id, "cancelled", None, None, None)
+            .await?;
+    }
     Ok(StatusCode::ACCEPTED)
 }
 

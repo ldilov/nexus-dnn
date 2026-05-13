@@ -20,6 +20,8 @@ in the `nexus-dnn` Rust monorepo. The branch
 - **Rung 5** ✅ `0973a9d` — `pipeline_diffusers.py` (real LTX-2.3, shipped-unverified)
 - **Rung 6** ✅ `92c1267` — per-profile HF model install + RIFE skeleton
 - **Rung 7B** ✅ `e6388d5` — unified runtime install CTA (uv sync chained with weights)
+- **Rung 7E** ✅ `25246fe` — openapi fragment parity (10 routes + new schemas)
+- **Rung 7D** ✅ (next commit) — cancel actually cancels (Notify-based registry)
 
 The fake-profile path is fully exercised end-to-end (POST /renders →
 Python subprocess → JSON-RPC notifications → real ffmpeg-encoded MP4 →
@@ -169,40 +171,32 @@ Deliverable: `_try_interpolate_rife` actually uses RIFE when present;
 output_fps = 2× base_fps videos have smooth motion (vs minterpolate's
 slightly muddy interpolation).
 
-### Rung 7D — Cancel + retry-segment task abort
+### Rung 7D — ✅ DONE (commit pending — see latest log)
 
-Goal: `POST /renders/{id}/cancel` and `POST /renders/{id}/retry-segment`
-currently just flip DB rows. They don't actually stop the running
-Python subprocess.
+`POST /renders/{id}/cancel` now propagates end-to-end via an
+`Arc<Mutex<HashMap<String, Arc<Notify>>>>` registry on the `Runner`,
+a 3-way `select!` in `run_via_lease` (notification stream + cancel
+notify + 15s grace deadline), and `Runner::cancel(run_id)` returning
+`Signalled` / `NotInFlight`. Live smoke confirmed: 4-segment fake
+render, cancel after segment 1 completes, DB flips to `cancelled` at
+25 % with the partial work preserved. Caught + fixed a status-clobber
+bug in `spawn_render`'s outer error handler in the same commit.
 
-Approach:
-1. In `runner.rs`, store a `CancellationToken` per run_id in a
-   `DashMap` keyed on run_id.
-2. `spawn_render` selects on `cancellation_token.cancelled()` + the
-   notification loop. On cancel: send `ltx.video.render.cancel` RPC,
-   wait for the worker to emit `ltx.video.error` with code
-   RENDER_CANCELLED, release the lease.
-3. `cancel_render` handler in api.rs looks up the token and calls
-   `.cancel()`.
-4. `retry_segment` is harder — Python worker currently doesn't expose
-   a retry RPC. Two options: (a) full restart with seed offset (kills
-   completed segments, restart from index 0 with shifted seed),
-   (b) add `ltx.video.segment.retry` JSON-RPC method.
-5. Test: spawn a render, cancel mid-render, verify the Python
-   subprocess dies + run row is `cancelled`.
+`retry-segment` is still a DB-only flip — Python worker doesn't expose
+a retry RPC and the two redesign options (full restart vs. new RPC)
+are still open. Leaving deferred until there's a real product use case.
 
-Deliverable: cancel actually cancels.
+Full details: `checkpoints/2026-05-13-rung7d-complete.md`.
 
-### Rung 7E — OpenAPI parity
+### Rung 7E — ✅ DONE (commit `25246fe`)
 
-Goal: `extensions/builtin/nexus-video-ltx23/openapi/extension.openapi.yaml`
-is out of date — missing `/profiles/{profile_id}/install` (Rung 6) and
-the `/renders/{run_id}/segments` GET route.
-
-Approach: just extend the YAML. Run `cargo run --bin api_doc_check`
-after to confirm aggregation still works.
-
-Deliverable: openapi fragment matches what api.rs actually exposes.
+The extension's openapi fragment now mirrors `api::http_routes()` exactly:
+10 paths documented, plus new `Ltx23SegmentSummary` /
+`Ltx23ProfileInstallStatus` schemas, the reusable `ProfileId` parameter,
+and an extended `Ltx23RenderRun` matching the live `RenderStateResponse`.
+Boundary audit clean; `cargo run -p nexus-api --bin api-doc-check`
+baseline (22 missing extension routes in host doc) is unchanged — extensions
+own their own fragments per the host-extension boundary rule.
 
 ### Rung 7F — Open the PR
 

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -5,6 +6,7 @@ use std::time::Duration;
 use nexus_backend_runtimes::generic::leases::trait_def::BackendRuntimeLease;
 use serde_json::{Value, json};
 use tokio::sync::broadcast::error::RecvError;
+use tokio::sync::{Mutex, Notify};
 
 use crate::errors::Result;
 use crate::lease::LtxLeaseFactory;
@@ -12,6 +14,11 @@ use crate::schemas::RenderPlan;
 use crate::storage::Repos;
 
 const RENDER_TIMEOUT: Duration = Duration::from_secs(600);
+/// Window the worker is given to flush its in-flight segment, emit
+/// `ltx.video.error{code:RENDER_CANCELLED}`, and clean up resources after
+/// the cancel RPC lands. Past this point the lease is force-released even
+/// if the worker hasn't replied.
+const CANCEL_GRACE: Duration = Duration::from_secs(15);
 
 #[derive(Clone)]
 pub struct RunnerConfig {
@@ -20,15 +27,36 @@ pub struct RunnerConfig {
     pub factory: Arc<LtxLeaseFactory>,
 }
 
+/// Per-run abort handle. Held by both the spawned render task and the
+/// `cancel_render` HTTP handler so a flip on either side wakes the
+/// notification loop.
+type CancelRegistry = Arc<Mutex<HashMap<String, Arc<Notify>>>>;
+
 #[derive(Clone)]
 pub struct Runner {
     cfg: Arc<RunnerConfig>,
+    cancellers: CancelRegistry,
+}
+
+/// Outcome of `Runner::cancel`. Reported by the HTTP layer so the response
+/// can distinguish "already terminal" from "actually cancelled" cases
+/// without an extra DB round-trip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CancelOutcome {
+    /// A cancel signal was delivered to a live render task.
+    Signalled,
+    /// No live render task exists for this run id (already terminal,
+    /// never started, or already cancelled).
+    NotInFlight,
 }
 
 impl Runner {
     #[must_use]
     pub fn new(cfg: RunnerConfig) -> Self {
-        Self { cfg: Arc::new(cfg) }
+        Self {
+            cfg: Arc::new(cfg),
+            cancellers: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
     pub fn spawn_render(
@@ -40,29 +68,101 @@ impl Runner {
         negative_prompt: Option<String>,
     ) {
         let cfg = self.cfg.clone();
+        let cancellers = self.cancellers.clone();
+        let notify = Arc::new(Notify::new());
+
+        let run_id_for_task = run_id.clone();
+        let notify_for_task = notify.clone();
+        let cancellers_for_cleanup = cancellers.clone();
+        let run_id_for_cleanup = run_id.clone();
+
         tokio::spawn(async move {
-            if let Err(err) = run_via_lease(&cfg, &run_id, &profile, &plan, &prompt, negative_prompt.as_deref()).await {
-                tracing::error!(
-                    extension_id = "nexus.video.ltx23",
-                    run_id = %run_id,
-                    error = %err,
-                    "runner: render failed"
-                );
-                let _ = cfg
-                    .repos
-                    .update_run_status(
-                        &run_id,
-                        "failed",
-                        None,
-                        Some("runner_error"),
-                        Some(&err.to_string()),
-                    )
-                    .await;
+            cancellers
+                .lock()
+                .await
+                .insert(run_id.clone(), notify.clone());
+
+            let result = run_via_lease(
+                &cfg,
+                &run_id_for_task,
+                &profile,
+                &plan,
+                &prompt,
+                negative_prompt.as_deref(),
+                notify_for_task,
+            )
+            .await;
+
+            cancellers_for_cleanup
+                .lock()
+                .await
+                .remove(&run_id_for_cleanup);
+
+            if let Err(err) = result {
+                // RenderCancelled is the expected terminal Err on the cancel
+                // path — the inner loop has already flipped the row to
+                // "cancelled", so don't overwrite with "failed".
+                if matches!(err, crate::errors::ExtensionError::RenderCancelled) {
+                    tracing::info!(
+                        extension_id = "nexus.video.ltx23",
+                        run_id = %run_id_for_task,
+                        "runner: render cancelled"
+                    );
+                } else {
+                    tracing::error!(
+                        extension_id = "nexus.video.ltx23",
+                        run_id = %run_id_for_task,
+                        error = %err,
+                        "runner: render failed"
+                    );
+                    let _ = cfg
+                        .repos
+                        .update_run_status(
+                            &run_id_for_task,
+                            "failed",
+                            None,
+                            Some("runner_error"),
+                            Some(&err.to_string()),
+                        )
+                        .await;
+                }
             }
         });
     }
+
+    /// Signal a live render task to abort. Returns whether the signal
+    /// landed on an in-flight task. Idempotent — repeated calls after the
+    /// task has been removed from the registry simply return `NotInFlight`.
+    pub async fn cancel(&self, run_id: &str) -> CancelOutcome {
+        let token = self.cancellers.lock().await.get(run_id).cloned();
+        token.map_or(CancelOutcome::NotInFlight, |notify| {
+            notify.notify_waiters();
+            CancelOutcome::Signalled
+        })
+    }
+
+    /// Test-only inspection — number of run ids with live tokens.
+    #[cfg(test)]
+    #[must_use]
+    pub async fn live_render_count(&self) -> usize {
+        self.cancellers.lock().await.len()
+    }
+
+    /// Test-only: inject a canceller for a fake run id without going
+    /// through `spawn_render` (which requires a real lease factory + DB
+    /// pool). Returns a clone the test can `.notified().await` on.
+    #[cfg(test)]
+    pub async fn register_test_canceller(&self, run_id: String) -> Arc<Notify> {
+        let notify = Arc::new(Notify::new());
+        self.cancellers
+            .lock()
+            .await
+            .insert(run_id, notify.clone());
+        notify
+    }
 }
 
+#[allow(clippy::too_many_lines)]
 async fn run_via_lease(
     cfg: &RunnerConfig,
     run_id: &str,
@@ -70,6 +170,7 @@ async fn run_via_lease(
     plan: &RenderPlan,
     prompt: &str,
     negative_prompt: Option<&str>,
+    cancel_notify: Arc<Notify>,
 ) -> Result<()> {
     let workdir = cfg.runs_dir.join(run_id).join("work");
     tokio::fs::create_dir_all(&workdir).await.map_err(|e| {
@@ -99,25 +200,69 @@ async fn run_via_lease(
         )));
     }
 
+    let cancel_wait = cancel_notify.notified();
+    tokio::pin!(cancel_wait);
+    let mut cancel_requested = false;
+    let mut cancel_deadline: Option<tokio::time::Instant> = None;
+
     let outcome = tokio::time::timeout(RENDER_TIMEOUT, async {
         loop {
-            match notifications.recv().await {
-                Ok(note) => {
-                    if let Some(o) = handle_notification(cfg, run_id, &workdir, &note).await? {
-                        return Ok::<NotificationOutcome, crate::errors::ExtensionError>(o);
+            let recv_fut = notifications.recv();
+            let cancel_deadline_tick = async {
+                if let Some(deadline) = cancel_deadline {
+                    tokio::time::sleep_until(deadline).await;
+                } else {
+                    std::future::pending::<()>().await;
+                }
+            };
+
+            tokio::select! {
+                () = &mut cancel_wait, if !cancel_requested => {
+                    cancel_requested = true;
+                    cancel_deadline = Some(tokio::time::Instant::now() + CANCEL_GRACE);
+                    if let Err(e) = lease
+                        .send_rpc("ltx.video.render.cancel", json!({ "request_id": run_id }))
+                        .await
+                    {
+                        tracing::warn!(
+                            extension_id = "nexus.video.ltx23",
+                            run_id = %run_id,
+                            error = %e,
+                            "runner: cancel RPC failed; will rely on grace timeout"
+                        );
+                    } else {
+                        tracing::info!(
+                            extension_id = "nexus.video.ltx23",
+                            run_id = %run_id,
+                            "runner: cancel signalled to worker"
+                        );
                     }
                 }
-                Err(RecvError::Lagged(skipped)) => {
-                    tracing::warn!(
-                        run_id = %run_id,
-                        skipped,
-                        "runner: notification lag — dropping events but continuing"
+                () = cancel_deadline_tick, if cancel_requested => {
+                    return Ok::<NotificationOutcome, crate::errors::ExtensionError>(
+                        NotificationOutcome::Cancelled,
                     );
                 }
-                Err(RecvError::Closed) => {
-                    return Err(crate::errors::ExtensionError::RenderFailed(
-                        "worker closed notification channel before emitting done".into(),
-                    ));
+                recv = recv_fut => match recv {
+                    Ok(note) => {
+                        if let Some(o) =
+                            handle_notification(cfg, run_id, &workdir, &note).await?
+                        {
+                            return Ok(o);
+                        }
+                    }
+                    Err(RecvError::Lagged(skipped)) => {
+                        tracing::warn!(
+                            run_id = %run_id,
+                            skipped,
+                            "runner: notification lag — dropping events but continuing"
+                        );
+                    }
+                    Err(RecvError::Closed) => {
+                        return Err(crate::errors::ExtensionError::RenderFailed(
+                            "worker closed notification channel before emitting done".into(),
+                        ));
+                    }
                 }
             }
         }
@@ -149,6 +294,15 @@ async fn run_via_lease(
             Ok(())
         }
         NotificationOutcome::Error { code, message } => {
+            // The worker's RENDER_CANCELLED error code (-32107) lands here when
+            // cancel arrived before the grace timeout — collapse it back to the
+            // cancelled status path so the HTTP DTO and DB row agree.
+            if code == -32107 {
+                cfg.repos
+                    .update_run_status(run_id, "cancelled", None, None, None)
+                    .await?;
+                return Err(crate::errors::ExtensionError::RenderCancelled);
+            }
             cfg.repos
                 .update_run_status(
                     run_id,
@@ -160,12 +314,19 @@ async fn run_via_lease(
                 .await?;
             Err(crate::errors::ExtensionError::RenderFailed(message))
         }
+        NotificationOutcome::Cancelled => {
+            cfg.repos
+                .update_run_status(run_id, "cancelled", None, None, None)
+                .await?;
+            Err(crate::errors::ExtensionError::RenderCancelled)
+        }
     }
 }
 
 enum NotificationOutcome {
     Done { final_path: PathBuf },
     Error { code: i64, message: String },
+    Cancelled,
 }
 
 async fn handle_notification(
@@ -268,4 +429,96 @@ fn build_render_params(
 
 fn short_profile(full: &str) -> &str {
     full.rsplit('.').next().unwrap_or("fake")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn empty_runner() -> Runner {
+        // In-memory SQLite is enough — Runner::cancel never touches the DB.
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        Runner::new(RunnerConfig {
+            runs_dir: PathBuf::from("/tmp"),
+            repos: Repos::from_pool(pool),
+            factory: Arc::new(LtxLeaseFactory::new(
+                PathBuf::from("/nonexistent-ext"),
+                PathBuf::from("/nonexistent-data"),
+            )),
+        })
+    }
+
+    #[tokio::test]
+    async fn cancel_unknown_run_returns_not_in_flight() {
+        let runner = empty_runner().await;
+        let outcome = runner.cancel("does-not-exist").await;
+        assert_eq!(outcome, CancelOutcome::NotInFlight);
+        assert_eq!(runner.live_render_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn cancel_signals_registered_canceller() {
+        let runner = empty_runner().await;
+        let notify = runner.register_test_canceller("run-abc".into()).await;
+        assert_eq!(runner.live_render_count().await, 1);
+
+        let waiter = tokio::spawn(async move { notify.notified().await });
+        // Yield once so the waiter is parked on `notified()` before we
+        // call `notify_waiters` — `Notify` only wakes already-parked
+        // tasks, not future ones.
+        tokio::task::yield_now().await;
+
+        let outcome = runner.cancel("run-abc").await;
+        assert_eq!(outcome, CancelOutcome::Signalled);
+
+        tokio::time::timeout(Duration::from_millis(200), waiter)
+            .await
+            .expect("waiter should be notified within 200ms")
+            .expect("waiter task should not panic");
+    }
+
+    #[tokio::test]
+    async fn cancel_is_idempotent_after_registry_cleanup() {
+        let runner = empty_runner().await;
+        let _ = runner.register_test_canceller("run-x".into()).await;
+        // Simulate task completion: clean up the registry entry the way
+        // spawn_render's own teardown would.
+        runner.cancellers.lock().await.remove("run-x");
+
+        let first = runner.cancel("run-x").await;
+        let second = runner.cancel("run-x").await;
+        assert_eq!(first, CancelOutcome::NotInFlight);
+        assert_eq!(second, CancelOutcome::NotInFlight);
+    }
+
+    #[tokio::test]
+    async fn cancel_targets_only_requested_run_id() {
+        let runner = empty_runner().await;
+        let kept = runner.register_test_canceller("run-keep".into()).await;
+        let killed = runner.register_test_canceller("run-kill".into()).await;
+
+        let kept_waiter = tokio::spawn(async move { kept.notified().await });
+        let killed_waiter = tokio::spawn(async move { killed.notified().await });
+        tokio::task::yield_now().await;
+
+        let outcome = runner.cancel("run-kill").await;
+        assert_eq!(outcome, CancelOutcome::Signalled);
+
+        // The killed waiter completes; the kept waiter must NOT wake.
+        tokio::time::timeout(Duration::from_millis(200), killed_waiter)
+            .await
+            .expect("killed waiter should fire")
+            .expect("waiter task should not panic");
+
+        let kept_result = tokio::time::timeout(Duration::from_millis(50), kept_waiter).await;
+        assert!(
+            kept_result.is_err(),
+            "kept waiter should still be parked, not woken"
+        );
+    }
 }
