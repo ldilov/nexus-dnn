@@ -74,7 +74,7 @@ extensions/builtin/nexus-video-ltx23/
 ## Testing
 
 - Rust: `cargo test -p nexus-video-ltx23-worker`
-- Python: `cd backends/_shared/worker && uv run pytest`
+- Python: `cd worker && uv run pytest`
 - Frontend: `pnpm --filter nexus-video-ltx23-web vitest run`
 - Boundary audit: `bash scripts/audit-boundary.sh`
 - OpenAPI aggregation: `cargo run --bin api_doc_check`

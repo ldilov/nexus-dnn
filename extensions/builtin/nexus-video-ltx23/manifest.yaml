@@ -24,7 +24,7 @@ dependencies:
       type: runtime
       spec:
         family: python
-        version: ">=3.12,<3.13"
+        version: ">=3.11,<3.13"
         accelerator_profiles: [cpu, cuda12, cuda13]
 
     - id: pkgs
@@ -32,8 +32,8 @@ dependencies:
       requires: [python]
       spec:
         manager: uv
-        manifest_path: "backends/_shared/worker/pyproject.toml"
-        lock_path: "backends/_shared/worker/uv.lock"
+        manifest_path: "worker/pyproject.toml"
+        lock_path: "worker/uv.lock"
         target: extension_local
 
     - id: ffmpeg
@@ -59,26 +59,16 @@ dependencies:
             size: 0
             archive: zip
 
-    - id: models
-      type: model_artifact
-      requires: [python]
-      spec:
-        # FP8 weights live in a separate HF repo from the base LTX-2.3.
-        # Verified P0-T004 on 2026-05-13:
-        #   - Lightricks/LTX-2.3-fp8        -> ltx-2.3-22b-dev-fp8.safetensors,
-        #                                      ltx-2.3-22b-distilled-fp8.safetensors
-        #   - Lightricks/LTX-2.3-nvfp4      -> ltx-2.3-22b-dev-nvfp4.safetensors
-        #   - Lightricks/LTX-2.3            -> ltx-2.3-22b-dev.safetensors (bf16),
-        #                                      distilled, upscalers, LoRAs
-        # Profile-specific selection happens at install time; the manifest
-        # advertises the full family ID so the host model store knows the
-        # umbrella org.
-        family_id: "huggingface:Lightricks/LTX-2.3-family"
-        acceleration_match: "matches_runtime_step:python"
+    # NOTE: model_artifact steps are intentionally NOT declared at the global
+    # extension level. Model downloads are per-profile (FP8 weights for
+    # rtx40-fp8/rtx50-fp8, NVFP4 weights for rtx50-nvfp4, nothing for fake).
+    # Profile-specific install will land in a follow-up rung; the global
+    # install pipeline only covers the runtime + worker package set + system
+    # tools + validation.
 
     - id: validate
       type: validation
-      requires: [python, pkgs, ffmpeg, models]
+      requires: [python, pkgs, ffmpeg]
       spec:
         kind: worker_handshake
         timeout_seconds: 120
@@ -108,7 +98,7 @@ backend_runtimes:
     display_name: "LTX 2.3 FP8 (RTX 40 / CUDA 12.x)"
     family: "python"
     transport: "stdio"
-    worker_entrypoint: "backends/_shared/worker/src/ltx_video_worker/__main__.py"
+    worker_entrypoint: "worker/src/ltx_video_worker/__main__.py"
     version_manifest: "backends/rtx40-fp8/versions.yaml"
     capability_tags:
       - "video-generation"
@@ -123,7 +113,7 @@ backend_runtimes:
     display_name: "LTX 2.3 FP8 (RTX 50 / Blackwell)"
     family: "python"
     transport: "stdio"
-    worker_entrypoint: "backends/_shared/worker/src/ltx_video_worker/__main__.py"
+    worker_entrypoint: "worker/src/ltx_video_worker/__main__.py"
     version_manifest: "backends/rtx50-fp8/versions.yaml"
     capability_tags:
       - "video-generation"
@@ -139,7 +129,7 @@ backend_runtimes:
     display_name: "LTX 2.3 NVFP4 (RTX 50 / Blackwell, experimental)"
     family: "python"
     transport: "stdio"
-    worker_entrypoint: "backends/_shared/worker/src/ltx_video_worker/__main__.py"
+    worker_entrypoint: "worker/src/ltx_video_worker/__main__.py"
     version_manifest: "backends/rtx50-nvfp4/versions.yaml"
     capability_tags:
       - "video-generation"
@@ -156,7 +146,7 @@ backend_runtimes:
     display_name: "LTX 2.3 Fake (CI / development)"
     family: "python"
     transport: "stdio"
-    worker_entrypoint: "backends/_shared/worker/src/ltx_video_worker/__main__.py"
+    worker_entrypoint: "worker/src/ltx_video_worker/__main__.py"
     version_manifest: "backends/fake/versions.yaml"
     capability_tags:
       - "video-generation"
