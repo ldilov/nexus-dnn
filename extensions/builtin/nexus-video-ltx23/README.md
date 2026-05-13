@@ -15,12 +15,38 @@ User → host shell → extension custom-element UI → POST `/api/v1/extensions
 
 ## Runtime profiles
 
-| Profile | Hardware | Quant | Status |
-|---|---|---|---|
-| `nexus.video.ltx23.rtx40-fp8` | RTX 40 Ada (+ Ampere experimental) | FP8 | Production |
-| `nexus.video.ltx23.rtx50-fp8` | RTX 50 Blackwell | FP8 | Production |
-| `nexus.video.ltx23.rtx50-nvfp4` | RTX 50 Blackwell | NVFP4 | **Experimental — opt-in only** |
-| `nexus.video.ltx23.fake` | any | — | CI + frontend dev |
+| Profile | Target hardware | Quant | Model repo | Status |
+|---|---|---|---|---|
+| `nexus.video.ltx23.rtx40-fp8` | RTX 40 Ada (sm_89, CUDA 12.6+) | FP8 | `Lightricks/LTX-2.3-fp8` | Production |
+| `nexus.video.ltx23.rtx50-fp8` | RTX 50 Blackwell (sm_120, CUDA 12.8+) | FP8 | `Lightricks/LTX-2.3-fp8` | Production |
+| `nexus.video.ltx23.rtx50-nvfp4` | RTX 50 Blackwell (sm_120 native) | NVFP4 | `Lightricks/LTX-2.3-nvfp4` | **Experimental — opt-in only** |
+| `nexus.video.ltx23.fake` | any | — | none | CI + frontend dev |
+
+### NVFP4 on non-Blackwell hardware — a note
+
+NVFP4 (NVIDIA's 4-bit floating-point format) has **native tensor-core
+support only on Blackwell (sm_120+)**. Ada (sm_89, RTX 40) does NOT
+have NVFP4 tensor cores.
+
+This does NOT mean Ada cannot consume NVFP4 weights. Two paths exist:
+
+1. **(Recommended for Ada)** Use the `rtx40-fp8` profile + the
+   `Lightricks/LTX-2.3-fp8` weights directly. Ada's FP8 tensor cores
+   give the best throughput.
+2. **(Theoretical)** Load NVFP4 weights and dequantize layer-by-layer
+   to FP8 at compute time. Saves disk (~14 GB vs 28 GB) and possibly
+   VRAM. Requires an inference engine with NVFP4-aware kernels for
+   non-Blackwell hardware — TensorRT-LLM has this; **diffusers 0.37.x
+   as of 2026-05-13 does NOT.**
+
+The default `auto` runtime selector picks the conservative path
+(Ada → fp8, Blackwell + opt-in → nvfp4). To override and try NVFP4
+on Ada anyway, pass `runtime_profile=rtx50-nvfp4` explicitly via the
+recipe form AND set the experimental opt-in flag — at your own risk
+until validated against a real Ada GPU.
+
+See [`docs/requirements.md`](../../../docs/requirements.md#nvfp4-on-rtx-40--clarification)
+for the full hardware/driver matrix.
 
 ## Default 16 GB safety presets
 

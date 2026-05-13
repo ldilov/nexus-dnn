@@ -115,6 +115,22 @@ pub fn select_runtime(
     }
 }
 
+// Hardware support map for the LTX 2.3 quant variants:
+//
+//   FP8  tensor cores: Ada (sm_89), Hopper (sm_90), Blackwell (sm_120)
+//   NVFP4 tensor cores: Blackwell (sm_120) ONLY
+//
+// NVFP4 weights CAN be consumed on Ada via runtime dequant (NVFP4 → FP8
+// or → BF16) but that requires an inference engine with NVFP4-aware
+// kernels for non-Blackwell hardware. diffusers 0.37.x (our current
+// engine) does NOT implement that path; TensorRT-LLM does. Until we
+// validate the dequant path on real Ada hardware, `auto` selection
+// stays conservative: Ada always lands on rtx40-fp8 regardless of opt-in.
+//
+// Users who want to experiment with NVFP4-on-Ada via an alternative
+// engine can override explicitly via `Rtx50Nvfp4 + opt_in=true` — the
+// explicit branch above returns the nvfp4 runtime without an Ada gate,
+// trusting the user's hardware claim.
 fn auto_select(
     facts: &HostGpuFacts,
     experimental_nvfp4_opt_in: bool,
@@ -143,7 +159,8 @@ fn auto_select(
         });
     }
 
-    // Ada / Ampere fall through here.
+    // Ada / Ampere fall through here. NVFP4 dequant on Ada is theoretically
+    // viable with a non-diffusers engine but unvalidated; stay on fp8.
     Ok(SelectedRuntime {
         runtime_id: "nexus.video.ltx23.rtx40-fp8".into(),
         experimental: false,
@@ -211,10 +228,15 @@ mod tests {
 
     #[test]
     fn auto_ada_picks_rtx40_fp8() {
+        // Even with `experimental_nvfp4_opt_in=true`, auto on Ada stays
+        // on the fp8 path — NVFP4 dequant on sm_89 needs an engine
+        // (TensorRT-LLM etc.) that we haven't validated yet. Users can
+        // still override via explicit Rtx50Nvfp4 if they bring their
+        // own runtime.
         let r = select_runtime(
             RuntimeProfilePreference::Auto,
             &nvidia("ada", 8.9, 16384),
-            true, // even with opt-in, Ada cannot run nvfp4
+            true,
         )
         .unwrap();
         assert_eq!(r.runtime_id, "nexus.video.ltx23.rtx40-fp8");
