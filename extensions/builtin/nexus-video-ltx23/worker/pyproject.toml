@@ -15,6 +15,10 @@ dependencies = [
   "ffmpeg-python>=0.2",
   "pillow>=10.0",
   "numpy>=1.26,<3.0",
+  # Model downloads are driven by the worker (see installer.py). Adding
+  # huggingface_hub to the base deps lets the install flow run before the
+  # `diffusers` optional extras are installed — chicken-and-egg fix.
+  "huggingface_hub>=0.26",
 ]
 
 [project.optional-dependencies]
