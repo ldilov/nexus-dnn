@@ -92,8 +92,8 @@ capabilities:
   - "huggingface.search"
   - "huggingface.install"
   - "model.registry.read"
-  - "artifacts.read"
-  - "artifacts.write"
+  - "workspace.read"
+  - "workspace.write"
 
 operators:
   - file: "operators/plan_long_video.yaml"
@@ -102,9 +102,6 @@ operators:
 
 recipes:
   - file: "recipes/image_to_long_video.yaml"
-
-workflows:
-  - file: "workflows/long_video.yaml"
 
 backend_runtimes:
   - runtime_id: "nexus.video.ltx23.rtx40-fp8"
@@ -195,6 +192,3 @@ storage:
         path: "storage/migrations/002_ltx_video_runs_segments.sql"
   sql_profile:
     profile: "nexus_sqlite_v1"
-
-openapi:
-  fragment: "openapi/extension.openapi.yaml"

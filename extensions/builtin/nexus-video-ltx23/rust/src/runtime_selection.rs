@@ -1,5 +1,65 @@
 use crate::schemas::RuntimeProfilePreference;
 
+#[derive(Debug, Clone, Copy)]
+pub struct ProfileDescriptor {
+    pub runtime_id: &'static str,
+    pub display_name: &'static str,
+    pub experimental: bool,
+}
+
+const PROFILES: &[ProfileDescriptor] = &[
+    ProfileDescriptor {
+        runtime_id: "nexus.video.ltx23.fake",
+        display_name: "LTX 2.3 Fake (CI / development)",
+        experimental: false,
+    },
+    ProfileDescriptor {
+        runtime_id: "nexus.video.ltx23.rtx40-fp8",
+        display_name: "LTX 2.3 FP8 (RTX 40 / CUDA 12.x)",
+        experimental: false,
+    },
+    ProfileDescriptor {
+        runtime_id: "nexus.video.ltx23.rtx50-fp8",
+        display_name: "LTX 2.3 FP8 (RTX 50 / Blackwell)",
+        experimental: false,
+    },
+    ProfileDescriptor {
+        runtime_id: "nexus.video.ltx23.rtx50-nvfp4",
+        display_name: "LTX 2.3 NVFP4 (RTX 50 / Blackwell, experimental)",
+        experimental: true,
+    },
+];
+
+#[must_use]
+pub const fn available_profiles() -> &'static [ProfileDescriptor] {
+    PROFILES
+}
+
+/// P1 milestone shortcut: pick a `runtime_id` from a user preference without
+/// host GPU facts.
+///
+/// `Auto` resolves to the fake profile so the recipe works
+/// out-of-the-box before real runtimes are installable. Real GPU-aware
+/// selection happens via `select_runtime` once the host provides facts.
+#[must_use]
+pub const fn resolve_runtime_id(
+    preference: RuntimeProfilePreference,
+    experimental_nvfp4_opt_in: bool,
+) -> &'static str {
+    match preference {
+        RuntimeProfilePreference::Auto => "nexus.video.ltx23.fake",
+        RuntimeProfilePreference::Rtx40Fp8 => "nexus.video.ltx23.rtx40-fp8",
+        RuntimeProfilePreference::Rtx50Fp8 => "nexus.video.ltx23.rtx50-fp8",
+        RuntimeProfilePreference::Rtx50Nvfp4 => {
+            if experimental_nvfp4_opt_in {
+                "nexus.video.ltx23.rtx50-nvfp4"
+            } else {
+                "nexus.video.ltx23.rtx50-fp8"
+            }
+        }
+    }
+}
+
 /// Generic GPU facts the host exposes to extensions.
 ///
 /// The extension never reaches into host crates to compute these — they
