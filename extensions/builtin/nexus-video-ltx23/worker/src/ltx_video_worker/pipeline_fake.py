@@ -24,6 +24,7 @@ from .ffmpeg_io import (
     write_placeholder_mp4,
     write_placeholder_png,
 )
+from .io_safety import ensure_dict, sanitize_run_id, sanitize_workdir
 from .planning_validate import validate_plan
 from .rpc import ErrorCodes, Methods, Notifications
 from .vram import evict_models, memory_stats
@@ -86,7 +87,10 @@ def register_fake_handlers(worker) -> None:
     async def segment_retry(params):
         if not isinstance(params, dict):
             raise ValueError("params must be an object")
-        run_id = params.get("request_id") or params.get("run_id") or f"run_{uuid.uuid4().hex[:12]}"
+        run_id = sanitize_run_id(
+            params.get("request_id") or params.get("run_id"),
+            fallback=f"run_{uuid.uuid4().hex[:12]}",
+        )
         try:
             seg_index = int(params["segment_index"])
         except (KeyError, ValueError, TypeError) as e:
@@ -94,15 +98,19 @@ def register_fake_handlers(worker) -> None:
         if seg_index < 0:
             raise ValueError(f"segment_index must be non-negative, got {seg_index}")
 
-        plan = params.get("video") or params.get("plan") or {}
+        plan = ensure_dict(
+            params.get("video") or params.get("plan"), name="plan", default={}
+        )
         segment_count = int(plan.get("segment_count") or _default_segment_count(plan))
         if seg_index >= segment_count:
             raise ValueError(
                 f"segment_index {seg_index} out of range; plan has {segment_count} segments"
             )
 
-        workdir_str = params.get("workdir")
-        workdir = Path(workdir_str) if workdir_str else Path.cwd() / "fake_workdir" / run_id
+        workdir = sanitize_workdir(
+            params.get("workdir"),
+            fallback=Path.cwd() / "fake_workdir" / run_id,
+        )
         workdir.mkdir(parents=True, exist_ok=True)
 
         rs = state.get(run_id)
@@ -277,7 +285,7 @@ async def _retry_segment_loop(
     plan = rs.plan
     width = int(plan.get("width", 960))
     height = int(plan.get("height", 544))
-    duration = float(plan.get("requested_duration_seconds", plan.get("duration_seconds", 10)))
+    segment_seconds = float(plan.get("segment_seconds", 4.0))
 
     if rs.cancelled:
         await worker.emit_notification(
@@ -305,7 +313,9 @@ async def _retry_segment_loop(
 
     seg_path = rs.workdir / "segments" / f"{seg_index:03d}" / "raw.mp4"
     last_frame = rs.workdir / "segments" / f"{seg_index:03d}" / "last_frame.png"
-    write_placeholder_mp4(seg_path, duration_s=4.0, width=width, height=height)
+    write_placeholder_mp4(
+        seg_path, duration_s=segment_seconds, width=width, height=height
+    )
     write_placeholder_png(last_frame, width=width, height=height)
 
     await worker.emit_notification(
@@ -366,7 +376,6 @@ async def _retry_segment_loop(
     # final.mp4 — if it existed before the retry — is unaffected. The
     # caller can spawn a fresh render_start to re-stitch with the new
     # segment.
-    _ = duration
 
 
 def _default_segment_count(plan: dict[str, Any]) -> int:

@@ -42,6 +42,7 @@ from typing import Any, Callable
 
 from . import __version__
 from .ffmpeg_io import stitch_segments, trim_to_duration
+from .io_safety import ensure_dict, sanitize_run_id, sanitize_workdir, truncate_for_log
 from .planning_validate import validate_plan
 from .rpc import ErrorCodes, Methods, Notifications
 from .vram import evict_models, memory_stats
@@ -142,10 +143,17 @@ def register_diffusers_handlers(worker) -> None:
         if seg_index < 0:
             raise ValueError(f"segment_index must be non-negative, got {seg_index}")
 
-        run_id = params.get("request_id") or params.get("run_id") or f"run_{uuid.uuid4().hex[:12]}"
-        plan = params.get("video") or params.get("plan") or {}
-        workdir_str = params.get("workdir")
-        workdir = Path(workdir_str) if workdir_str else Path.cwd() / "diffusers_workdir" / run_id
+        run_id = sanitize_run_id(
+            params.get("request_id") or params.get("run_id"),
+            fallback=f"run_{uuid.uuid4().hex[:12]}",
+        )
+        plan = ensure_dict(
+            params.get("video") or params.get("plan"), name="plan", default={}
+        )
+        workdir = sanitize_workdir(
+            params.get("workdir"),
+            fallback=Path.cwd() / "diffusers_workdir" / run_id,
+        )
         workdir.mkdir(parents=True, exist_ok=True)
 
         rs = state.get(run_id)
@@ -625,8 +633,17 @@ async def _retry_segment_loop(
         return
 
     base_fps = int(plan.get("base_fps", 24))
-    _write_frames_as_mp4(frames, seg_path, base_fps=base_fps)
-    _save_last_frame(frames, last_frame_path)
+    try:
+        _write_frames_as_mp4(frames, seg_path, base_fps=base_fps)
+        _save_last_frame(frames, last_frame_path)
+    except OSError as e:
+        await _emit_error(
+            worker,
+            rs.run_id,
+            ErrorCodes.RENDER_FAILED,
+            f"retry segment artifact write failed: {e}",
+        )
+        return
 
     await worker.emit_notification(
         Notifications.ARTIFACT_CREATED,
@@ -1101,9 +1118,12 @@ def _save_last_frame(frames: Any, path: Path) -> None:
 
 
 async def _emit_error(worker, run_id: str, code: int, message: str) -> None:
+    # Cap message length before forwarding — diffusers exceptions can
+    # carry multi-MB tensor dumps that would otherwise hit the SSE
+    # broker + DB row verbatim.
     await worker.emit_notification(
         Notifications.ERROR,
-        {"run_id": run_id, "code": code, "message": message},
+        {"run_id": run_id, "code": code, "message": truncate_for_log(message)},
     )
 
 
