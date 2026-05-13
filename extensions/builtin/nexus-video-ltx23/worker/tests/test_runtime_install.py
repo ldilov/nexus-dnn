@@ -114,10 +114,13 @@ async def test_runtime_install_chains_uv_sync_then_snapshot_download(
 
     done = next(p for m, p in worker.notifications if m == "ltx.video.runtime.install.done")
     assert done["profile"] == "rtx40-fp8"
-    assert done["repo"] == "Lightricks/LTX-2.3-fp8"
-    assert install_hf_stub["call_kwargs"]["repo_id"] == "Lightricks/LTX-2.3-fp8"
+    assert done["repo"] == "dg845/LTX-2.3-Distilled-Diffusers"
+    assert (
+        install_hf_stub["call_kwargs"]["repo_id"]
+        == "dg845/LTX-2.3-Distilled-Diffusers"
+    )
 
-    expected_dest = tmp_path / "models" / "Lightricks" / "LTX-2.3-fp8"
+    expected_dest = tmp_path / "models" / "dg845" / "LTX-2.3-Distilled-Diffusers"
     assert (expected_dest / installer.SENTINEL_NAME).is_file()
 
 

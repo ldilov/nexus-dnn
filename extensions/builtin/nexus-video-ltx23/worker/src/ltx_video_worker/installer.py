@@ -45,10 +45,27 @@ from typing import Any, Awaitable, Callable
 from .rpc import ErrorCodes
 
 
+# Hugging Face repo per runtime profile.
+#
+# `Lightricks/LTX-2.3-fp8` and `Lightricks/LTX-2.3-nvfp4` are official
+# Lightricks repos but they ship the transformer weights as a single
+# safetensors file — NOT diffusers-format multi-folder layout. They have
+# no `model_index.json`, no `vae/`, no `text_encoder/`, etc. diffusers'
+# `from_pretrained` cannot load them directly, and the override-via-
+# `from_single_file` path fails on a transformer-config mismatch against
+# the only other LTX-family base repo (`Lightricks/LTX-2`, which has 6
+# conditioning channels vs LTX-2.3's 9).
+#
+# `dg845/LTX-2.3-Distilled-Diffusers` is a community-maintained port of
+# the distilled LTX-2.3 weights into diffusers-format with the correct
+# transformer config. It's the only repo we've validated end-to-end on
+# a real GPU (P0-T001 verification, 2026-05-13). All three real-runtime
+# profiles point at it; FP8 / NVFP4 hardware-specific optimization is a
+# future rung once diffusers ships native LTX-2.3 quant support.
 PROFILE_REPO: dict[str, str] = {
-    "rtx40-fp8": "Lightricks/LTX-2.3-fp8",
-    "rtx50-fp8": "Lightricks/LTX-2.3-fp8",
-    "rtx50-nvfp4": "Lightricks/LTX-2.3-nvfp4",
+    "rtx40-fp8": "dg845/LTX-2.3-Distilled-Diffusers",
+    "rtx50-fp8": "dg845/LTX-2.3-Distilled-Diffusers",
+    "rtx50-nvfp4": "dg845/LTX-2.3-Distilled-Diffusers",
 }
 
 SENTINEL_NAME = ".nexus-install-complete"
