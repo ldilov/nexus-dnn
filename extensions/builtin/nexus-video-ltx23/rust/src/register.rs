@@ -7,6 +7,7 @@ use sqlx::SqlitePool;
 use crate::api::{ApiState, http_routes, router};
 use crate::lease::LtxLeaseFactory;
 use crate::migrations::MIGRATIONS;
+use crate::profile_install::ProfileInstallService;
 use crate::runner::{Runner, RunnerConfig};
 use crate::storage::Repos;
 
@@ -92,14 +93,22 @@ impl LtxRouterProvider {
         let runner = Runner::new(RunnerConfig {
             runs_dir: runs_dir.clone(),
             repos: repos.clone(),
-            factory,
+            factory: factory.clone(),
         });
+
+        let host_data_root = self
+            .resources
+            .host_data_dir
+            .clone()
+            .unwrap_or_else(std::env::temp_dir);
+        let profile_install = ProfileInstallService::new(factory, host_data_root);
 
         let state = ApiState {
             repos,
             runner,
             runs_dir,
             extension_version: EXTENSION_VERSION,
+            profile_install,
         };
         Ok(router(state))
     }

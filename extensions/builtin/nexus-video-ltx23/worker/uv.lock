@@ -445,6 +445,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "ffmpeg-python" },
+    { name = "huggingface-hub" },
     { name = "numpy" },
     { name = "pillow" },
     { name = "pydantic" },
@@ -477,6 +478,7 @@ requires-dist = [
     { name = "diffusers", marker = "extra == 'diffusers'", specifier = ">=0.32" },
     { name = "einops", marker = "extra == 'diffusers'", specifier = ">=0.8" },
     { name = "ffmpeg-python", specifier = ">=0.2" },
+    { name = "huggingface-hub", specifier = ">=0.26" },
     { name = "huggingface-hub", marker = "extra == 'diffusers'", specifier = ">=0.26" },
     { name = "numpy", specifier = ">=1.26,<3.0" },
     { name = "pillow", specifier = ">=10.0" },

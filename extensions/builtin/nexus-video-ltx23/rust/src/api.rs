@@ -15,6 +15,7 @@ use ulid::Ulid;
 
 use crate::errors::{ExtensionError, ExtensionErrorCode};
 use crate::planning::plan_render;
+use crate::profile_install::{ProfileInstallService, ProfileInstallStatus};
 use crate::runner::Runner;
 use crate::runtime_selection::{available_profiles, resolve_runtime_id};
 use crate::schemas::{CreateRenderRequest, RenderPlan, RuntimeProfilePreference};
@@ -26,6 +27,7 @@ pub struct ApiState {
     pub runner: Runner,
     pub runs_dir: PathBuf,
     pub extension_version: &'static str,
+    pub profile_install: ProfileInstallService,
 }
 
 pub fn router(state: ApiState) -> Router {
@@ -39,6 +41,8 @@ pub fn router(state: ApiState) -> Router {
         .route("/renders/{run_id}/retry-segment", post(retry_segment))
         .route("/renders/{run_id}/segments", get(list_segments_handler))
         .route("/artifacts/{artifact_id}", get(serve_artifact))
+        .route("/profiles/{profile_id}/install", post(start_profile_install))
+        .route("/profiles/{profile_id}/install", get(profile_install_status))
         .with_state(Arc::new(state))
 }
 
@@ -54,7 +58,24 @@ pub fn http_routes() -> Vec<String> {
         "/renders/{run_id}/retry-segment".into(),
         "/renders/{run_id}/segments".into(),
         "/artifacts/{artifact_id}".into(),
+        "/profiles/{profile_id}/install".into(),
     ]
+}
+
+async fn start_profile_install(
+    State(state): State<Arc<ApiState>>,
+    Path(profile_id): Path<String>,
+) -> ApiResult<(StatusCode, Json<ProfileInstallStatus>)> {
+    let status = state.profile_install.start(profile_id).await?;
+    Ok((StatusCode::ACCEPTED, Json(status)))
+}
+
+async fn profile_install_status(
+    State(state): State<Arc<ApiState>>,
+    Path(profile_id): Path<String>,
+) -> ApiResult<Json<ProfileInstallStatus>> {
+    let status = state.profile_install.status(&profile_id).await?;
+    Ok(Json(status))
 }
 
 #[derive(Serialize)]

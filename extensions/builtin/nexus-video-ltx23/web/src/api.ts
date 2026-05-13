@@ -169,3 +169,21 @@ export const hostApi = {
       { method: "POST" },
     ),
 };
+
+export interface ProfileInstallStatus {
+  profile: string;
+  installed: boolean;
+  repo: string | null;
+  dest: string | null;
+  in_flight: boolean;
+  last_error: string | null;
+}
+
+export const profileInstallApi = {
+  status: (profileId: string) =>
+    jsonRequest<ProfileInstallStatus>(`/profiles/${profileId}/install`),
+  start: (profileId: string) =>
+    jsonRequest<ProfileInstallStatus>(`/profiles/${profileId}/install`, {
+      method: "POST",
+    }),
+};
