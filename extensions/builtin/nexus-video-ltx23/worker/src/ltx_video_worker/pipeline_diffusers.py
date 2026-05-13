@@ -132,10 +132,45 @@ def register_diffusers_handlers(worker) -> None:
         rs.cancelled = True
         return {"run_id": run_id, "cancel_requested": True}
 
+    async def segment_retry(params: Any) -> dict[str, Any]:
+        if not isinstance(params, dict):
+            raise ValueError("params must be an object")
+        try:
+            seg_index = int(params["segment_index"])
+        except (KeyError, ValueError, TypeError) as e:
+            raise ValueError("segment_index missing or non-integer") from e
+        if seg_index < 0:
+            raise ValueError(f"segment_index must be non-negative, got {seg_index}")
+
+        run_id = params.get("request_id") or params.get("run_id") or f"run_{uuid.uuid4().hex[:12]}"
+        plan = params.get("video") or params.get("plan") or {}
+        workdir_str = params.get("workdir")
+        workdir = Path(workdir_str) if workdir_str else Path.cwd() / "diffusers_workdir" / run_id
+        workdir.mkdir(parents=True, exist_ok=True)
+
+        rs = state.get(run_id)
+        if rs is None:
+            rs = DiffusersRunState(
+                run_id=run_id, workdir=workdir, plan=plan, pipe=None, device=None
+            )
+            state[run_id] = rs
+        else:
+            rs.cancelled = False
+            rs.plan = plan
+            rs.workdir = workdir
+
+        asyncio.create_task(
+            _load_then_retry_segment(
+                worker, rs, params, cached_pipe_ref, profile, seg_index
+            )
+        )
+        return {"run_id": run_id, "segment_index": seg_index, "status": "retrying"}
+
     worker.register(Methods.MODELS_LIST, models_list)
     worker.register(Methods.PLAN_VALIDATE, plan_validate)
     worker.register(Methods.RENDER_START, render_start)
     worker.register(Methods.RENDER_CANCEL, render_cancel)
+    worker.register(Methods.SEGMENT_RETRY, segment_retry)
 
 
 class _ModelMissing(Exception):
@@ -396,6 +431,249 @@ async def _load_then_render(
         {"run_id": rs.run_id, "phase": "rendering"},
     )
     await _render_loop(worker, rs, raw_params, cache, profile)
+
+
+async def _load_then_retry_segment(
+    worker,
+    rs: DiffusersRunState,
+    raw_params: dict[str, Any],
+    cache: dict[str, Any],
+    profile: str,
+    seg_index: int,
+) -> None:
+    """Pipeline-load + single-segment retry runs off the JSON-RPC reply path.
+
+    The retry RPC returns immediately so the caller isn't blocked while
+    the pipeline reloads (which can happen if the worker was idle long
+    enough for ``cache['pipe']`` to have been cleared by a prior DONE).
+    """
+    await worker.emit_notification(
+        Notifications.PROGRESS,
+        {
+            "run_id": rs.run_id,
+            "phase": "loading_model",
+            "profile": profile,
+            "retry": True,
+            "segment_index": seg_index,
+        },
+    )
+    try:
+        pipe, device = await asyncio.to_thread(
+            _ensure_pipeline_loaded, worker, profile, cache
+        )
+    except _ModelMissing as err:
+        await _emit_error(worker, rs.run_id, ErrorCodes.MODEL_MISSING, str(err))
+        return
+    except _ModelLoadFailed as err:
+        await _emit_error(worker, rs.run_id, ErrorCodes.MODEL_LOAD_FAILED, str(err))
+        return
+    except Exception as err:  # noqa: BLE001 — diffusers can throw anything
+        await _emit_error(
+            worker,
+            rs.run_id,
+            ErrorCodes.MODEL_LOAD_FAILED,
+            f"unexpected pipeline load failure: {err.__class__.__name__}: {err}",
+        )
+        return
+
+    rs.pipe = pipe
+    rs.device = device
+    await _retry_segment_loop(worker, rs, raw_params, seg_index)
+
+
+async def _retry_segment_loop(
+    worker,
+    rs: DiffusersRunState,
+    raw_params: dict[str, Any],
+    seg_index: int,
+) -> None:
+    """Re-run a single segment using the loaded pipeline.
+
+    Mirrors the per-segment slice of ``_render_loop``. Reads the prior
+    segment's ``last_frame.png`` for image conditioning (or the run's
+    initial input when ``seg_index == 0``); writes the new ``raw.mp4``
+    + ``last_frame.png`` in the same workdir layout the full render
+    would have used; emits SEGMENT_STARTED → SEGMENT_STEP → SEGMENT_COMPLETED
+    + ARTIFACT_CREATED. Does NOT re-stitch / re-trim / emit DONE — the
+    retry path is a partial recovery.
+    """
+    plan = rs.plan
+    width = int(plan.get("width", 960))
+    height = int(plan.get("height", 544))
+    segments = plan.get("segments") or []
+    if not segments:
+        await _emit_error(
+            worker,
+            rs.run_id,
+            ErrorCodes.PLAN_INVALID,
+            "retry plan contains no segments",
+        )
+        return
+    if seg_index >= len(segments):
+        await _emit_error(
+            worker,
+            rs.run_id,
+            ErrorCodes.PLAN_INVALID,
+            f"segment_index {seg_index} out of range; plan has {len(segments)} segments",
+        )
+        return
+
+    seg = segments[seg_index]
+    seg_frame_count = int(seg.get("frame_count", 97))
+    seg_seed = int(seg.get("seed", 0))
+
+    advanced = raw_params.get("advanced") or {}
+    guidance_scale = float(advanced.get("guidance_scale", 4.0))
+    num_inference_steps = int(advanced.get("num_inference_steps", 8))
+
+    prompt_obj = raw_params.get("prompt") or {}
+    global_action = prompt_obj.get("action") or prompt_obj.get("prompt") or ""
+    negative_prompt = prompt_obj.get("negative") or ""
+    style_anchor = (prompt_obj.get("style") or "").strip()
+    character_anchor = (prompt_obj.get("character") or "").strip()
+    seg_action_prompt = (seg.get("action_prompt") or global_action).strip()
+    effective_prompt = _compose_prompt(
+        character=character_anchor,
+        action=seg_action_prompt,
+        style=style_anchor,
+    )
+
+    if seg_index == 0:
+        input_image_block = raw_params.get("input_image") or {}
+        input_image_path = (
+            input_image_block.get("path") if isinstance(input_image_block, dict) else None
+        )
+        cond_image = _load_input_image(input_image_path, width, height)
+    else:
+        prev_last_frame = (
+            rs.workdir / "segments" / f"{seg_index - 1:03d}" / "last_frame.png"
+        )
+        cond_image = (
+            _load_input_image(str(prev_last_frame), width, height)
+            if prev_last_frame.is_file()
+            else None
+        )
+
+    if rs.cancelled:
+        await _emit_error(
+            worker,
+            rs.run_id,
+            ErrorCodes.RENDER_CANCELLED,
+            "segment retry cancelled before start",
+        )
+        return
+
+    segment_count = len(segments)
+    await worker.emit_notification(
+        Notifications.SEGMENT_STARTED,
+        {
+            "run_id": rs.run_id,
+            "segment_index": seg_index,
+            "segment_count": segment_count,
+            "effective_prompt": effective_prompt,
+            "retry": True,
+        },
+    )
+
+    seg_dir = rs.workdir / "segments" / f"{seg_index:03d}"
+    seg_dir.mkdir(parents=True, exist_ok=True)
+    seg_path = seg_dir / "raw.mp4"
+    last_frame_path = seg_dir / "last_frame.png"
+
+    loop = asyncio.get_running_loop()
+
+    def emit_step(step_idx: int) -> None:
+        coro = worker.emit_notification(
+            Notifications.SEGMENT_STEP,
+            {
+                "run_id": rs.run_id,
+                "segment_index": seg_index,
+                "segment_count": segment_count,
+                "step": step_idx + 1,
+                "total_steps": num_inference_steps,
+                "retry": True,
+            },
+        )
+        asyncio.run_coroutine_threadsafe(coro, loop)
+
+    try:
+        frames = await asyncio.to_thread(
+            _generate_segment,
+            rs.pipe,
+            cond_image,
+            effective_prompt,
+            negative_prompt,
+            width,
+            height,
+            seg_frame_count,
+            seg_seed,
+            guidance_scale,
+            num_inference_steps,
+            emit_step,
+        )
+    except RuntimeError as e:
+        msg = str(e)
+        code = (
+            ErrorCodes.VRAM_BUDGET_EXCEEDED
+            if "out of memory" in msg.lower()
+            else ErrorCodes.RENDER_FAILED
+        )
+        await _emit_error(worker, rs.run_id, code, msg)
+        return
+    except Exception as e:  # noqa: BLE001 — diffusers can throw anything
+        await _emit_error(worker, rs.run_id, ErrorCodes.RENDER_FAILED, str(e))
+        return
+
+    base_fps = int(plan.get("base_fps", 24))
+    _write_frames_as_mp4(frames, seg_path, base_fps=base_fps)
+    _save_last_frame(frames, last_frame_path)
+
+    await worker.emit_notification(
+        Notifications.ARTIFACT_CREATED,
+        {
+            "run_id": rs.run_id,
+            "segment_index": seg_index,
+            "kind": "raw_video",
+            "path": str(seg_path),
+            "mime": "video/mp4",
+            "retry": True,
+        },
+    )
+    await worker.emit_notification(
+        Notifications.ARTIFACT_CREATED,
+        {
+            "run_id": rs.run_id,
+            "segment_index": seg_index,
+            "kind": "last_frame",
+            "path": str(last_frame_path),
+            "mime": "image/png",
+            "retry": True,
+        },
+    )
+
+    rs.generation_count += 1
+    stats = memory_stats(rs.generation_count)
+    await worker.emit_notification(
+        Notifications.MEMORY_STATS,
+        {"run_id": rs.run_id, "segment_index": seg_index, **stats},
+    )
+    await worker.emit_notification(
+        Notifications.SEGMENT_COMPLETED,
+        {
+            "run_id": rs.run_id,
+            "segment_index": seg_index,
+            "segment_count": segment_count,
+            "retry": True,
+        },
+    )
+
+    del frames
+    gc.collect()
+    if _LAZY_TORCH is not None and _LAZY_TORCH.cuda.is_available():
+        try:
+            _LAZY_TORCH.cuda.empty_cache()
+        except Exception:
+            pass
 
 
 async def _render_loop(

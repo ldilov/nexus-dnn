@@ -13,6 +13,7 @@ class Methods:
     PLAN_VALIDATE = "ltx.video.plan.validate"
     RENDER_START = "ltx.video.render.start"
     RENDER_CANCEL = "ltx.video.render.cancel"
+    SEGMENT_RETRY = "ltx.video.segment.retry"
 
 
 class Notifications:
