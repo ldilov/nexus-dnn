@@ -11,7 +11,7 @@ re-run any discovery work.
 I'm continuing work on **spec 046 — LTX-2.3 video generation extension**
 in the `nexus-dnn` Rust monorepo. The branch
 `claude/unruffled-perlman-dd12e1` is pushed to `origin` at HEAD
-`92c1267` and represents the end of "Rung 6" in a phased build-up:
+`e6388d5` and represents the end of "Rung 7B" in a phased build-up:
 
 - **Rung 1** ✅ `90978b6` — fake-mode end-to-end (in-Rust simulator)
 - **Rung 2** ✅ `60a9d9e` — React 19 + vanilla-extract recipe UI bundle
@@ -19,6 +19,7 @@ in the `nexus-dnn` Rust monorepo. The branch
 - **Rung 4** ✅ `9b904e1` — real Python subprocess + StdioLease + JSON-RPC
 - **Rung 5** ✅ `0973a9d` — `pipeline_diffusers.py` (real LTX-2.3, shipped-unverified)
 - **Rung 6** ✅ `92c1267` — per-profile HF model install + RIFE skeleton
+- **Rung 7B** ✅ `e6388d5` — unified runtime install CTA (uv sync chained with weights)
 
 The fake-profile path is fully exercised end-to-end (POST /renders →
 Python subprocess → JSON-RPC notifications → real ffmpeg-encoded MP4 →
@@ -30,6 +31,9 @@ spike).
 curl evidence, and repo-specific conventions**:
 `specs/046-ltx23-video-generation/checkpoints/2026-05-13-rung6-complete.md`
 
+**Rung 7B addendum** (uv-sync-chained-with-weights install button):
+`specs/046-ltx23-video-generation/checkpoints/2026-05-13-rung7b-complete.md`
+
 **Read that file first** before doing anything. It documents the 14
 repo conventions that bit us during Rungs 3–6 and will bite again
 (operator yaml schema is strict, storage prefix is alias-derived,
@@ -39,9 +43,14 @@ worker dir lives at extension root not nested, JSON-RPC method is
 ## Where I am right now
 
 - Worktree: `D:\Workspace\repos\nexus-dnn\.claude\worktrees\unruffled-perlman-dd12e1`
-- Branch: `claude/unruffled-perlman-dd12e1`
+- Branch: `claude/unruffled-perlman-dd12e1` (pushed at `e6388d5`)
 - All validation gates green: cargo clippy `-D warnings` (pedantic+nursery),
-  16/16 Rust tests, 25/25 Python tests, boundary audit PASS.
+  22/22 Rust tests, 31/31 Python tests, boundary audit PASS, `pnpm build`
+  green (360 KB JS + 4.5 KB CSS).
+- "Install runtime & download weights" CTA is wired end-to-end: live
+  smoke confirmed uv subprocess streams real package lines into the
+  `recent_progress` ring buffer (78 packages resolved, torch/diffusers
+  downloads observed).
 - PR not opened. URL when ready:
   `https://github.com/ldilov/nexus-dnn/compare/main...claude/unruffled-perlman-dd12e1?expand=1`
 
@@ -49,12 +58,12 @@ worker dir lives at extension root not nested, JSON-RPC method is
 
 ```bash
 cd D:/Workspace/repos/nexus-dnn/.claude/worktrees/unruffled-perlman-dd12e1
-git log --oneline -1                                              # should show 92c1267
+git log --oneline -1                                              # should show e6388d5
 git status --short                                                # apps/web/package-lock.json may show as M (pre-existing)
 cargo clippy -p nexus-video-ltx23-extension --all-targets -- -D warnings
-cargo test -p nexus-video-ltx23-extension --lib                   # 16/16
+cargo test -p nexus-video-ltx23-extension --lib                   # 22/22
 bash extensions/builtin/nexus-video-ltx23/scripts/audit-boundary.sh
-cd extensions/builtin/nexus-video-ltx23/worker && uv run python -m pytest tests/ -v
+cd extensions/builtin/nexus-video-ltx23/worker && uv run python -m pytest tests/ -v   # 31/31
 cd ../../../..
 ```
 
@@ -122,31 +131,16 @@ Deliverable: green E2E real-render OR a precise diagnosis of why
 `pipeline_diffusers.py` doesn't match the actually-installed diffusers
 API, with a fix.
 
-### Rung 7B — Unified "Install for real video generation" CTA
+### Rung 7B — ✅ DONE (commit `e6388d5`)
 
-Goal: collapse the two-step user flow (diffusers extras install, then
-weights download) into a single button that does both. Today the user
-has to run `uv sync --extra diffusers` manually before "Download weights"
-can land usable weights — pipeline_diffusers.py would still fail with
-`torch not importable` even after weights are present.
-
-Approach:
-1. Add a `ltx.video.runtime.install` JSON-RPC method to
-   `worker/src/ltx_video_worker/installer.py` that:
-   - Runs `uv sync --extra diffusers` via subprocess inside the
-     worker's own venv. Emits `ltx.video.runtime.install.progress`
-     notifications by capturing uv stdout/stderr.
-   - On success, runs `ltx.video.install.start` for the same profile.
-2. In Rust, extend `ProfileInstallService` so `start()` calls
-   `ltx.video.runtime.install` (the bigger combined flow) instead of
-   just the weights download.
-3. Update the UI button label: "Download weights" → "Install runtime &
-   download weights". Surface uv progress in a collapsible textarea
-   so the user sees what's happening for the ~5 min of pip resolves.
-4. New tests: mock-subprocess for uv. (Don't actually invoke uv in CI.)
-
-Deliverable: single-click install for a real profile from
-"not-installed" to "ready to render".
+Delivered the unified "Install runtime & download weights" CTA. New
+`ltx.video.runtime.install` JSON-RPC chains `uv sync --extra diffusers`
+with the existing weight snapshot_download. UI surfaces a phase label
+and a collapsible `<details>` block with the last 200 uv output lines
+(ring buffer, 1024-char per-line cap). Live smoke confirmed real uv
+stdout reaches the DTO. See
+`specs/046-ltx23-video-generation/checkpoints/2026-05-13-rung7b-complete.md`
+for the full breakdown.
 
 ### Rung 7C — Wire `rife_ncnn_vulkan_python` frame-by-frame loop
 
