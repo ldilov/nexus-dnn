@@ -15,12 +15,21 @@ User → host shell → extension custom-element UI → POST `/api/v1/extensions
 
 ## Runtime profiles
 
-| Profile | Target hardware | Quant | Model repo | Status |
-|---|---|---|---|---|
-| `nexus.video.ltx23.rtx40-fp8` | RTX 40 Ada (sm_89, CUDA 12.6+) | FP8 | `Lightricks/LTX-2.3-fp8` | Production |
-| `nexus.video.ltx23.rtx50-fp8` | RTX 50 Blackwell (sm_120, CUDA 12.8+) | FP8 | `Lightricks/LTX-2.3-fp8` | Production |
-| `nexus.video.ltx23.rtx50-nvfp4` | RTX 50 Blackwell (sm_120 native) | NVFP4 | `Lightricks/LTX-2.3-nvfp4` | **Experimental — opt-in only** |
-| `nexus.video.ltx23.fake` | any | — | none | CI + frontend dev |
+| Profile | Target hardware | Compute | Model repo (today) | Peak VRAM | Status |
+|---|---|---|---|---|---|
+| `nexus.video.ltx23.rtx40-fp8` | RTX 40 Ada | sm_89, CUDA 12.6+ | `dg845/LTX-2.3-Distilled-Diffusers` (BF16) | ~5 GB | Production |
+| `nexus.video.ltx23.rtx50-fp8` | RTX 50 Blackwell | sm_120, CUDA 12.8+ | same as above | ~5 GB | Production |
+| `nexus.video.ltx23.rtx50-nvfp4` | RTX 50 Blackwell native | sm_120 | same as above today | ~5 GB | **Experimental** |
+| `nexus.video.ltx23.fake` | any | — | none | 0 | CI + frontend dev |
+
+The 22B BF16 model fits in ~5 GB peak VRAM via
+`pipe.enable_sequential_cpu_offload()` — individual transformer blocks
+swap in/out of GPU on demand instead of loading the whole model. The
+quant variants (`fp8`, `nvfp4`) all map to the same dg845 BF16 repo
+today until upstream diffusers ships a single-file loader for the
+official `Lightricks/LTX-2.3-{fp8,nvfp4}` ComfyUI-style checkpoints.
+See [`specs/046-ltx23-video-generation/verification/p0-t001-results.md`](../../../specs/046-ltx23-video-generation/verification/p0-t001-results.md)
+for the dead-end paths and the architectural reasoning.
 
 ### NVFP4 on non-Blackwell hardware — a note
 

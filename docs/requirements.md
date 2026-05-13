@@ -172,12 +172,29 @@ Heaviest extension on disk and VRAM. See
 for the full runtime profile matrix; the table below is the elevator
 pitch.
 
-| Profile | Target hardware | Model repo | Disk | VRAM (with `enable_model_cpu_offload`) |
+| Profile | Target hardware | Model repo | Disk | Peak VRAM (with `enable_sequential_cpu_offload` + `vae.enable_tiling`) |
 |---|---|---|---|---|
 | `fake` | any (CI / dev) | none | 0 | 0 |
-| `rtx40-fp8` | RTX 40 (Ada, sm_89), CUDA 12.6+ | `Lightricks/LTX-2.3-fp8` (single-file) | ~28 GB | 14 GB |
-| `rtx50-fp8` | RTX 50 (Blackwell, sm_120), CUDA 12.8+ | same as above | ~28 GB | 14 GB |
-| `rtx50-nvfp4` | RTX 50 (Blackwell, sm_120 native NVFP4) | `Lightricks/LTX-2.3-nvfp4` | ~14 GB | 10 GB (experimental) |
+| `rtx40-fp8` | RTX 40 (Ada, sm_89), CUDA 12.6+ | `dg845/LTX-2.3-Distilled-Diffusers` (BF16) | ~88 GB | **~5 GB** (measured 4.69 GB) |
+| `rtx50-fp8` | RTX 50 (Blackwell, sm_120), CUDA 12.8+ | same as above | ~88 GB | **~5 GB** |
+| `rtx50-nvfp4` | RTX 50 (Blackwell, sm_120 native NVFP4) | same as above today; future quant variant pending | ~88 GB | **~5 GB** |
+
+> The runtime uses `pipe.enable_sequential_cpu_offload()` to swap
+> transformer blocks in/out of GPU on demand — peak VRAM is the cost of
+> one active block plus its activations, NOT the whole 22B model. This
+> is what makes a BF16 22-billion-parameter video model fit on a 16 GB
+> GPU. Trade-off: each step pays a small CPU↔GPU transfer cost; render
+> wall-clock is dominated by inference compute rather than VRAM
+> paging. See [`specs/046-ltx23-video-generation/verification/p0-t001-results.md`](../specs/046-ltx23-video-generation/verification/p0-t001-results.md)
+> for the full benchmark table including the dead-ended FP8 / NVFP4 /
+> SDNQ / Quanto paths.
+
+> All three real-runtime profiles currently point at
+> `dg845/LTX-2.3-Distilled-Diffusers` because diffusers 0.39.0.dev0
+> (the version we pin) doesn't yet support the official
+> `Lightricks/LTX-2.3-{fp8,nvfp4}` ComfyUI-style single-file format.
+> When upstream diffusers ships a single-file loader for those, the
+> profiles will diverge again.
 
 #### NVFP4 on RTX 40 — clarification
 

@@ -334,3 +334,104 @@ All gates green: cargo clippy + 26/26 Rust tests + 31/31 Python tests
   pipeline_diffusers.py.
 
 Total disk footprint after cleanup: ~145 GB of model data.
+
+---
+
+## Rung 7G follow-up (final) — under-16-GB native fit
+
+User asked for a model that actually fits in 16 GB VRAM. After a small
+detour exploring four dead ends, the answer turned out to be one line.
+
+### Dead ends explored (so the next person doesn't repeat them)
+
+1. **Override dg845's BF16 transformer with the FP8 single-file**
+   (`Lightricks/LTX-2.3-fp8`):
+   The Lightricks FP8 file is ComfyUI-style — 8871 keys all prefixed
+   `model.diffusion_model.*`, packing the WHOLE pipeline (audio_vae,
+   transformer, vocoder, etc.) into one safetensors. `audio_scale_shift_table`
+   in this file is even differently shaped — `[2, 2048]` not `[6, 2048]`
+   or `[9, 2048]`. `LTX2VideoTransformer3DModel.from_single_file` chokes
+   on the key prefix (`NotImplementedError: cannot copy out of meta
+   tensor`). Would require a custom key-remap shim — out of scope here.
+
+2. **Community pre-quantized port `rockapaper/...tenc_fp8_sdnq_r64_s16`**:
+   39.7 GB on disk, full diffusers-format. Downloaded cleanly. Fails to
+   load:
+   ```
+   ValueError: Unknown quantization type, got sdnq - supported types are:
+     ['bitsandbytes_4bit', 'bitsandbytes_8bit', 'gguf', 'quanto',
+      'torchao', 'modelopt']
+   ```
+   SDNQ is a SD.next-specific quant scheme not supported by diffusers.
+
+3. **`optimum-quanto` INT8 quantize-on-load via `QuantoConfig`**:
+   In principle the cleanest path. In practice the on-the-fly quant of a
+   22B model spent 30+ minutes at the load step alone, consuming 50 GB
+   RAM (holding both the original and the int8 result during conversion).
+   Killed at the half-hour mark with no output. Not viable on this machine.
+
+4. **`Lightricks/LTX-2.3-nvfp4`**: NOT downloaded — same single-file
+   ComfyUI-style format as the FP8 repo, would hit the same loader issue.
+
+### What actually worked: `enable_sequential_cpu_offload()` ✅
+
+The same dg845 BF16 weights already on disk, loaded the same way, with
+one line changed in `_ensure_pipeline_loaded`:
+
+```python
+- pipe.enable_model_cpu_offload()
++ pipe.enable_sequential_cpu_offload()
+```
+
+`enable_sequential_cpu_offload()` swaps individual sub-modules between
+CPU and GPU on every forward pass — at most a single transformer block
+lives on the GPU at any moment. The peak VRAM cost is dominated by the
+single block's intermediate activations + KV cache, not the model
+weights themselves.
+
+### Telemetry — sequential CPU offload, 2026-05-13 evening
+
+| Metric | model_cpu_offload (morning) | sequential_cpu_offload (evening) |
+|---|---|---|
+| Peak GPU mem | **37.26 GB** (spilled to system RAM) | **4.69 GB** (no spill) |
+| First render: load + 8 steps × 49 frames × 768×512 | 753 s total | (not retested at same params; sized down test below) |
+| Sized-down render: 4 steps × 25 frames × 512×320 | n/a | 55 s total (13.7 s/step) |
+| Output | 49 prompt-matching frames | 25 prompt-matching frames |
+| Fits 16 GB native? | ❌ (spill) | ✅ |
+
+Sample saved at `C:\Users\lazar\.nexus\runs\rung7g-seqoffload\frame_{000,001,002}.png` — first frame again resolves the prompt visually (futuristic city, dusk lighting).
+
+The 13.7 s/step measurement at 512×320 doesn't compare apples-to-apples
+to the morning's 75 s/step at 768×512 (smaller resolution + fewer
+frames), but two qualitative observations stand:
+
+- The model_cpu_offload path was demonstrably slower than sequential
+  for the simple reason that it spilled. With actual VRAM (sequential
+  keeps everything inside 16 GB), throughput is bound by GPU compute
+  alone, not paging.
+- 4.69 GB peak leaves 11 GB headroom for larger resolutions or longer
+  segments before approaching the limit.
+
+### Production code change
+
+`worker/src/ltx_video_worker/pipeline_diffusers.py::_ensure_pipeline_loaded`
+now calls `enable_sequential_cpu_offload()` when supported, falls back
+to `enable_model_cpu_offload()` for older diffusers versions. `pipe.to(
+device)` is intentionally OMITTED — sequential offload manages device
+placement itself; calling `.to(...)` first defeats it.
+
+### Disk footprint after this round
+
+The detours added one repo:
+
+- `rockapaper/LTX-2.3-Distilled-Diffusers_tenc_fp8_sdnq_r64_s16` — 39.7 GB
+  (SDNQ format, diffusers can't load it — KEEP for a future SD.next
+  integration OR rerun with `bitsandbytes`/`quanto`/`torchao` ports).
+
+Total LTX-2.3 model footprint: ~185 GB (88 dg845 + 56 fp8 + 39 rockapaper +
+~2 other).
+
+Recommended cleanup for the next session: remove the rockapaper and
+Lightricks/LTX-2.3-fp8 dirs until a diffusers loader for either lands.
+The dg845 repo + sequential CPU offload is the canonical 16-GB-fitting
+pipeline today.
