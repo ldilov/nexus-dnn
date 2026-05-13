@@ -1,0 +1,19 @@
+spec_version: '0.1'
+operator:
+  id: nexus.video.ltx23.submit-render
+  version: 0.1.0
+  display_name: "Submit LTX-2.3 Render"
+  extension_id: nexus.video.ltx23
+  invoke:
+    transport: extension_http
+    method: POST
+    path: /renders
+inputs:
+  plan:
+    type: object
+    required: true
+outputs:
+  run_id:
+    type: string
+  status:
+    type: string

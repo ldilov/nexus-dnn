@@ -1,0 +1,21 @@
+spec_version: '0.1'
+operator:
+  id: nexus.video.ltx23.check-render-status
+  version: 0.1.0
+  display_name: "Check LTX-2.3 Render Status"
+  extension_id: nexus.video.ltx23
+  invoke:
+    transport: extension_http
+    method: GET
+    path: /renders/{run_id}
+inputs:
+  run_id:
+    type: string
+    required: true
+outputs:
+  status:
+    type: string
+  final_artifact_id:
+    type: string
+  progress_percent:
+    type: number
