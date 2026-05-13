@@ -221,19 +221,20 @@ def _ensure_pipeline_loaded(
         device = "cuda"
         dtype = _pick_dtype(profile, torch)
 
-        # The community-ported `dg845/LTX-2.3-Distilled-Diffusers` repo's
-        # model_index.json sets `_class_name: "LTX2Pipeline"`. That class is
-        # text-to-video with optional image conditioning via `cond_image`
-        # (and is what diffusers' from_pretrained instantiates anyway).
-        # Fall back to the LTX-2 image-to-video class if LTX2Pipeline isn't
-        # exported, then the LTX v1 class as a final escape hatch — both
-        # paths are unsupported on the current weights but keep import-
-        # errors visible to operators running stale diffusers versions.
+        # Prefer the image-to-video class for scene chaining: scene N+1
+        # is image-conditioned on scene N's last frame, which gives
+        # visual continuity across long-video segment boundaries.
+        # `LTX2ImageToVideoPipeline` shares the same sub-components as
+        # the text-to-video `LTX2Pipeline`, so we can force-instantiate
+        # it against the dg845 repo even though its `model_index.json`
+        # nominally declares LTX2Pipeline (validated 2026-05-13 on the
+        # RTX 5070 Ti — same weights load cleanly).
+        # Fallback chain handles older diffusers releases.
         try:
-            from diffusers import LTX2Pipeline as _PipeClass  # type: ignore
+            from diffusers import LTX2ImageToVideoPipeline as _PipeClass  # type: ignore
         except ImportError:
             try:
-                from diffusers import LTX2ImageToVideoPipeline as _PipeClass  # type: ignore
+                from diffusers import LTX2Pipeline as _PipeClass  # type: ignore
             except ImportError:
                 try:
                     from diffusers import LTXImageToVideoPipeline as _PipeClass  # type: ignore
@@ -377,6 +378,14 @@ async def _render_loop(
         plan.get("requested_duration_seconds", plan.get("duration_seconds", 10))
     )
     segments = plan.get("segments") or []
+
+    # Hyperparameters — pulled from the top-level request_params (NOT the
+    # `plan` dict, since these are user-facing knobs, not planner output).
+    # Defaults match the LTX 2.3 distilled pipeline's recommended values
+    # (guidance_scale 4.0, 8 inference steps for a distilled model).
+    advanced = raw_params.get("advanced") or {}
+    guidance_scale = float(advanced.get("guidance_scale", 4.0))
+    num_inference_steps = int(advanced.get("num_inference_steps", 8))
     if not segments:
         await _emit_error(
             worker,
@@ -440,6 +449,8 @@ async def _render_loop(
                 height,
                 seg_frame_count,
                 seg_seed,
+                guidance_scale,
+                num_inference_steps,
             )
         except RuntimeError as e:
             # CUDA OOM / VRAM budget exceeded surfaces here.
@@ -586,15 +597,17 @@ def _generate_segment(
     height: int,
     num_frames: int,
     seed: int,
+    guidance_scale: float,
+    num_inference_steps: int,
 ) -> Any:
     """Call into the LTX pipeline. Returns a list of PIL.Image frames.
 
-    The pipeline class varies between releases — diffusers 0.39.0.dev0
-    ships `LTX2Pipeline` (text-to-video) as the dg845 weights' class.
-    Earlier `LTX2ImageToVideoPipeline` / `LTXI2VLongMultiPromptPipeline`
-    both accept an image-conditioning argument. Probe which kwarg the
-    active class accepts and pass through the input image when supported;
-    otherwise fall through to text-to-video.
+    The pipeline class varies between releases — `LTX2ImageToVideoPipeline`
+    is preferred (accepts `image=` for scene chaining), but we fall back
+    to `LTX2Pipeline` (text-to-video) and `LTXI2VLongMultiPromptPipeline`
+    (`cond_image=`) by probing the active class's signature. The text-only
+    fallback silently drops the input image — fine for a fresh run with
+    no seed image, but breaks the multi-segment chain.
     """
     import inspect
 
@@ -612,6 +625,8 @@ def _generate_segment(
         "height": height,
         "num_frames": num_frames,
         "generator": generator,
+        "guidance_scale": guidance_scale,
+        "num_inference_steps": num_inference_steps,
     }
 
     sig_params = inspect.signature(pipe.__call__).parameters
@@ -621,6 +636,10 @@ def _generate_segment(
         elif "cond_image" in sig_params:
             call_kwargs["cond_image"] = image
         # else: text-to-video pipeline; silently drop the input image.
+
+    # Drop kwargs the active pipeline doesn't accept (older / different
+    # variants may not expose guidance_scale or num_inference_steps).
+    call_kwargs = {k: v for k, v in call_kwargs.items() if k in sig_params}
 
     result = pipe(**call_kwargs)
     # diffusers returns a dataclass-ish object with `.frames`.
