@@ -1,0 +1,43 @@
+runtime_id: "nexus.video.ltx23.fake"
+display_name: "LTX 2.3 Fake (CI / development)"
+family: "python"
+transport: "stdio"
+worker_entrypoint: "backends/_shared/worker/src/ltx_video_worker/__main__.py"
+version_manifest: "versions.yaml"
+
+capability_tags:
+  - "video-generation"
+  - "image-to-video"
+  - "long-video"
+  - "fake"
+  - "render.external_segments"
+
+supported_roles:
+  - "video.render"
+
+compatibility:
+  gpu:
+    vendor: "any"
+    min_vram_mb: 0
+
+env_vars:
+  NEXUS_VIDEO_LTX23_RUNTIME: "fake"
+
+runtime_settings:
+  segment_emit_delay_ms:
+    type: "integer"
+    min: 0
+    max: 10000
+    default: 50
+    description: "Deterministic per-segment delay for UI testing. 50 ms by default keeps tests fast; bump to 1000 for visible progress."
+  fake_failure_segment_index:
+    type: "integer"
+    min: -1
+    max: 100
+    default: -1
+    description: "If >= 0, fake runtime fails at this segment index. Used to test retry-segment and supervisor restart paths."
+
+failure_categories:
+  - id: "fake_error"
+    stage: "runtime_runtime"
+    user_message: "Fake runtime failed (deterministic test fixture)."

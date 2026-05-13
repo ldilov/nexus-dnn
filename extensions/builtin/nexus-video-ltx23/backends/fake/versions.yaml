@@ -1,0 +1,7 @@
+spec_version: "0.1"
+runtime_id: "nexus.video.ltx23.fake"
+versions:
+  - version: "0.1.0"
+    status: "active"
+    notes: "Fake runtime — no model weights, no GPU. Pure Python placeholder for CI + frontend dev."
+    assets: []
