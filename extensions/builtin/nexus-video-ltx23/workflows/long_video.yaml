@@ -1,0 +1,25 @@
+spec_version: '0.1'
+workflow:
+  id: nexus.video.ltx23.long-video
+  version: 0.1.0
+  title: LTX 2.3 Long Video Render
+  extension_id: nexus.video.ltx23
+nodes:
+  - id: plan
+    operator_ref: nexus.video.ltx23.plan-long-video@0.1.0
+    inputs:
+      request: $.run
+  - id: submit
+    operator_ref: nexus.video.ltx23.submit-render@0.1.0
+    depends_on: [plan]
+    inputs:
+      plan: $.nodes.plan.outputs.plan
+  - id: status
+    operator_ref: nexus.video.ltx23.check-render-status@0.1.0
+    depends_on: [submit]
+    inputs:
+      run_id: $.nodes.submit.outputs.run_id
+outputs:
+  run_id: $.nodes.submit.outputs.run_id
+  final_artifact_id: $.nodes.status.outputs.final_artifact_id
+  status: $.nodes.status.outputs.status
