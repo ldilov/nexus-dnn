@@ -1146,26 +1146,182 @@ def _try_interpolate_rife(
 
     Implementation is intentionally fallback-friendly:
       1. Try `rife-ncnn-vulkan-python` (Practical-RIFE wheel from
-         `interpolation` optional extras) if installed.
+         `interpolation` optional extras) if installed. Pipes raw rgb24
+         frames through ffmpeg → wheel → ffmpeg at target_fps.
       2. Fall back to ffmpeg's `minterpolate` motion-compensated filter
          which ships with ffmpeg ≥ 4 — way slower than RIFE but better
          than no interpolation when the optional extras aren't installed.
       3. Return False so caller uses the stitched file directly.
     """
-    # 1. Preferred: rife-ncnn-vulkan-python (no torch, fast).
-    try:
-        import rife_ncnn_vulkan_python as rife  # type: ignore  # noqa: F401
-
-        # The actual API of rife-ncnn-vulkan-python operates on PIL frames,
-        # not files — wiring frame-by-frame integration is Rung 6b. For now
-        # we surface that it's present but defer to ffmpeg until the loop
-        # is wired.
-        return _interpolate_via_ffmpeg(src, dst, target_fps)
-    except ImportError:
-        pass
-
-    # 2. Fallback: ffmpeg minterpolate. Works without optional extras.
+    if _interpolate_via_rife(src, dst, base_fps, target_fps):
+        return True
     return _interpolate_via_ffmpeg(src, dst, target_fps)
+
+
+class _RifeUnavailable(Exception):
+    """The rife wheel is missing, malformed, or rejected its constructor."""
+
+
+def _interpolate_via_rife(
+    src: Path, dst: Path, base_fps: int, target_fps: int
+) -> bool:
+    """RIFE 2× interpolation via the `rife-ncnn-vulkan-python` wheel.
+
+    Practical-RIFE only doubles the frame rate, so a request for any
+    other ratio falls through to `_interpolate_via_ffmpeg`. Any wheel-
+    level failure (missing import, malformed processor, ffmpeg pipe
+    error) also returns False so the caller's fallback chain runs.
+    """
+    if target_fps != base_fps * 2:
+        # Practical-RIFE only interpolates a single midpoint frame per
+        # pair (2× ratio). Anything else is the ffmpeg path's job.
+        return False
+    try:
+        processor = _build_rife_processor()
+    except _RifeUnavailable:
+        return False
+    try:
+        return _run_rife_pipeline(src, dst, base_fps, target_fps, processor)
+    except Exception:  # noqa: BLE001 — defensive; we never want RIFE failures to crash render
+        return False
+
+
+def _build_rife_processor() -> Any:
+    """Locate + instantiate the rife processor across known wheel forks.
+
+    Different `rife-ncnn-vulkan-python` releases expose the class as
+    one of {``Rife``, ``RIFE``, ``RifeNCNNVulkan``}. The constructor
+    likewise accepts either ``gpuid=0`` (kwarg), ``gpu_id=0``, or
+    positional `0` depending on version. Probe in priority order;
+    raise `_RifeUnavailable` if nothing works so the caller can fall
+    through cleanly.
+    """
+    try:
+        import rife_ncnn_vulkan_python as rife_mod  # type: ignore
+    except ImportError as e:
+        raise _RifeUnavailable("rife-ncnn-vulkan-python not installed") from e
+
+    cls = None
+    for name in ("Rife", "RIFE", "RifeNCNNVulkan"):
+        cls = getattr(rife_mod, name, None)
+        if cls is not None:
+            break
+    if cls is None:
+        raise _RifeUnavailable(
+            "no Rife class found in rife_ncnn_vulkan_python module surface"
+        )
+
+    last_err: Exception | None = None
+    for ctor_kwargs in ({"gpuid": 0}, {"gpu_id": 0}, {}):
+        try:
+            return cls(**ctor_kwargs)
+        except TypeError as e:
+            last_err = e
+            continue
+        except Exception as e:  # noqa: BLE001 — wheel may raise anything
+            last_err = e
+            break
+    raise _RifeUnavailable(
+        f"rife constructor rejected every probed signature: {last_err}"
+    )
+
+
+def _invoke_rife(processor: Any, img0: Any, img1: Any) -> Any:
+    """Probe for the right entry-point method on the rife processor."""
+    for method_name in ("process", "interpolate", "__call__"):
+        method = getattr(processor, method_name, None)
+        if callable(method):
+            return method(img0, img1)
+    raise AttributeError(
+        f"rife processor {type(processor).__name__} has no recognised entry point"
+    )
+
+
+def _run_rife_pipeline(
+    src: Path,
+    dst: Path,
+    base_fps: int,
+    target_fps: int,
+    processor: Any,
+) -> bool:
+    """Decode → interpolate → encode pipeline backing `_interpolate_via_rife`.
+
+    Frames flow as raw rgb24 through ffmpeg pipes — avoids on-disk
+    intermediates for the 50–100 frame typical segment chains. PIL is
+    used only as the rife wheel's expected interchange format.
+    """
+    import ffmpeg  # type: ignore
+    from PIL import Image  # type: ignore
+    import numpy as np  # type: ignore
+
+    probe = ffmpeg.probe(str(src))
+    video_stream = next(
+        (s for s in probe.get("streams", []) if s.get("codec_type") == "video"),
+        None,
+    )
+    if video_stream is None:
+        return False
+    width = int(video_stream["width"])
+    height = int(video_stream["height"])
+
+    decoded, _stderr = (
+        ffmpeg.input(str(src))
+        .output("pipe:", format="rawvideo", pix_fmt="rgb24")
+        .run(capture_stdout=True, capture_stderr=True, quiet=True)
+    )
+
+    frame_bytes = width * height * 3
+    if frame_bytes == 0 or len(decoded) % frame_bytes != 0:
+        return False
+    num_frames = len(decoded) // frame_bytes
+    if num_frames < 2:
+        return False
+
+    raw = np.frombuffer(decoded, dtype=np.uint8).reshape(
+        num_frames, height, width, 3
+    )
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    encoder = (
+        ffmpeg.input(
+            "pipe:",
+            format="rawvideo",
+            pix_fmt="rgb24",
+            s=f"{width}x{height}",
+            r=str(target_fps),
+        )
+        .output(
+            str(dst),
+            vcodec="libx264",
+            pix_fmt="yuv420p",
+            movflags="+faststart",
+            loglevel="error",
+        )
+        .overwrite_output()
+        .run_async(pipe_stdin=True)
+    )
+
+    try:
+        for i in range(num_frames):
+            cur_pil = Image.fromarray(raw[i])
+            encoder.stdin.write(np.asarray(cur_pil, dtype=np.uint8).tobytes())
+            if i + 1 < num_frames:
+                nxt_pil = Image.fromarray(raw[i + 1])
+                mid = _invoke_rife(processor, cur_pil, nxt_pil)
+                mid_array = np.asarray(mid, dtype=np.uint8)
+                if mid_array.shape != (height, width, 3):
+                    return False
+                encoder.stdin.write(mid_array.tobytes())
+        encoder.stdin.close()
+        encoder.wait()
+    finally:
+        if encoder.stdin and not encoder.stdin.closed:
+            try:
+                encoder.stdin.close()
+            except OSError:
+                pass
+
+    return dst.is_file()
 
 
 def _interpolate_via_ffmpeg(src: Path, dst: Path, target_fps: int) -> bool:
