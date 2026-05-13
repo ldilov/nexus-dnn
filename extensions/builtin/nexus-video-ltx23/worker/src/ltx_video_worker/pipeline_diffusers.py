@@ -166,17 +166,24 @@ def _resolve_model_dir(profile: str) -> Path | None:
     family = _expected_family_id(profile)
     if family is None:
         return None
-    quant_repo = family.split("/")[-1]
-    candidate = Path(host_data_dir) / "models" / "Lightricks" / quant_repo
+    # repo_id is owner/name; the snapshot lands at <host_data_dir>/models/<owner>/<name>/
+    parts = family.split("/")
+    candidate = Path(host_data_dir).joinpath("models", *parts)
     return candidate if candidate.exists() else None
 
 
 def _expected_family_id(profile: str) -> str | None:
-    """Map profile → Hugging Face repo. Single source of truth for quant routing."""
-    if profile in ("rtx40-fp8", "rtx50-fp8"):
-        return "Lightricks/LTX-2.3-fp8"
-    if profile == "rtx50-nvfp4":
-        return "Lightricks/LTX-2.3-nvfp4"
+    """Map profile → Hugging Face repo. Single source of truth for quant routing.
+
+    Mirrors `installer.py::PROFILE_REPO`. All real-runtime profiles point
+    at the community port `dg845/LTX-2.3-Distilled-Diffusers` — the only
+    diffusers-format repo with the correct LTX-2.3 transformer config
+    (9 conditioning channels). The official Lightricks single-file repos
+    won't load via standard `from_pretrained`; see
+    `specs/046-ltx23-video-generation/verification/p0-t001-results.md`.
+    """
+    if profile in ("rtx40-fp8", "rtx50-fp8", "rtx50-nvfp4"):
+        return "dg845/LTX-2.3-Distilled-Diffusers"
     return None
 
 
@@ -214,20 +221,27 @@ def _ensure_pipeline_loaded(
         device = "cuda"
         dtype = _pick_dtype(profile, torch)
 
-        # diffusers 0.37+ ships separate classes for LTX v1 (`LTXImageToVideoPipeline`)
-        # and LTX 2.x (`LTX2ImageToVideoPipeline`). The Lightricks/LTX-2.3-{fp8,nvfp4}
-        # weights set model_index.json's `_class_name` to the LTX2 class; fall back
-        # to the v1 class only if the v2 symbol isn't exported (older diffusers).
+        # The community-ported `dg845/LTX-2.3-Distilled-Diffusers` repo's
+        # model_index.json sets `_class_name: "LTX2Pipeline"`. That class is
+        # text-to-video with optional image conditioning via `cond_image`
+        # (and is what diffusers' from_pretrained instantiates anyway).
+        # Fall back to the LTX-2 image-to-video class if LTX2Pipeline isn't
+        # exported, then the LTX v1 class as a final escape hatch — both
+        # paths are unsupported on the current weights but keep import-
+        # errors visible to operators running stale diffusers versions.
         try:
-            from diffusers import LTX2ImageToVideoPipeline as _PipeClass  # type: ignore
+            from diffusers import LTX2Pipeline as _PipeClass  # type: ignore
         except ImportError:
             try:
-                from diffusers import LTXImageToVideoPipeline as _PipeClass  # type: ignore
-            except ImportError as ie:
-                raise _ModelLoadFailed(
-                    f"diffusers LTX(2)ImageToVideoPipeline not importable: {ie}. "
-                    "Run the dependency installer with the diffusers extras."
-                ) from ie
+                from diffusers import LTX2ImageToVideoPipeline as _PipeClass  # type: ignore
+            except ImportError:
+                try:
+                    from diffusers import LTXImageToVideoPipeline as _PipeClass  # type: ignore
+                except ImportError as ie:
+                    raise _ModelLoadFailed(
+                        f"no LTX pipeline class importable from diffusers: {ie}. "
+                        "Ensure the diffusers extras pin (git@adff1cae9...) is installed."
+                    ) from ie
 
         global _LAZY_PIPELINE_CLASS
         _LAZY_PIPELINE_CLASS = _PipeClass
@@ -558,22 +572,42 @@ def _generate_segment(
     num_frames: int,
     seed: int,
 ) -> Any:
-    """Call into the LTX pipeline. Returns a list of PIL.Image frames."""
+    """Call into the LTX pipeline. Returns a list of PIL.Image frames.
+
+    The pipeline class varies between releases — diffusers 0.39.0.dev0
+    ships `LTX2Pipeline` (text-to-video) as the dg845 weights' class.
+    Earlier `LTX2ImageToVideoPipeline` / `LTXI2VLongMultiPromptPipeline`
+    both accept an image-conditioning argument. Probe which kwarg the
+    active class accepts and pass through the input image when supported;
+    otherwise fall through to text-to-video.
+    """
+    import inspect
+
     torch = _LAZY_TORCH
     generator = (
         torch.Generator(device="cuda").manual_seed(seed)
         if torch is not None
         else None
     )
-    result = pipe(
-        image=image,
-        prompt=prompt,
-        negative_prompt=negative_prompt,
-        width=width,
-        height=height,
-        num_frames=num_frames,
-        generator=generator,
-    )
+
+    call_kwargs: dict[str, Any] = {
+        "prompt": prompt,
+        "negative_prompt": negative_prompt,
+        "width": width,
+        "height": height,
+        "num_frames": num_frames,
+        "generator": generator,
+    }
+
+    sig_params = inspect.signature(pipe.__call__).parameters
+    if image is not None:
+        if "image" in sig_params:
+            call_kwargs["image"] = image
+        elif "cond_image" in sig_params:
+            call_kwargs["cond_image"] = image
+        # else: text-to-video pipeline; silently drop the input image.
+
+    result = pipe(**call_kwargs)
     # diffusers returns a dataclass-ish object with `.frames`.
     frames = getattr(result, "frames", None)
     if frames is None and isinstance(result, dict):

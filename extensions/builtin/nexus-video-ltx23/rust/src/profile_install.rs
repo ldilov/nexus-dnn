@@ -254,9 +254,15 @@ impl ProfileInstallService {
 }
 
 fn profile_repo(profile: &str) -> Option<&'static str> {
+    // Mirror of the Python worker's `installer.py::PROFILE_REPO`. All
+    // real-runtime profiles point at the community diffusers-format port
+    // until upstream diffusers ships native LTX-2.3 quant support (see
+    // `specs/046-ltx23-video-generation/verification/p0-t001-results.md`
+    // for the architecture finding).
     match profile {
-        "rtx40-fp8" | "rtx50-fp8" => Some("Lightricks/LTX-2.3-fp8"),
-        "rtx50-nvfp4" => Some("Lightricks/LTX-2.3-nvfp4"),
+        "rtx40-fp8" | "rtx50-fp8" | "rtx50-nvfp4" => {
+            Some("dg845/LTX-2.3-Distilled-Diffusers")
+        }
         _ => None,
     }
 }
@@ -285,20 +291,24 @@ mod tests {
         assert!(s.recent_progress.is_empty());
     }
 
+    // All real-runtime profiles map to the community diffusers-format
+    // port today (verification/p0-t001-results.md).
+    const DG845: &str = "dg845/LTX-2.3-Distilled-Diffusers";
+
     #[tokio::test]
     async fn status_resolves_repo_per_profile() {
         let svc = ProfileInstallService::new(temp_factory(), PathBuf::from("/tmp"));
         assert_eq!(
             svc.status("rtx40-fp8").await.unwrap().repo.as_deref(),
-            Some("Lightricks/LTX-2.3-fp8")
+            Some(DG845)
         );
         assert_eq!(
             svc.status("rtx50-fp8").await.unwrap().repo.as_deref(),
-            Some("Lightricks/LTX-2.3-fp8")
+            Some(DG845)
         );
         assert_eq!(
             svc.status("rtx50-nvfp4").await.unwrap().repo.as_deref(),
-            Some("Lightricks/LTX-2.3-nvfp4")
+            Some(DG845)
         );
     }
 
