@@ -22,9 +22,28 @@ export interface AdvancedSettings {
   output_fps?: number;
 }
 
+export interface SceneSpec {
+  /** What happens in this scene. Composed with character + style anchors. */
+  prompt: string;
+  /** Defaults to duration_seconds / scenes.length when omitted. */
+  duration_seconds?: number;
+  /** Per-scene seed override; otherwise derived from the master seed. */
+  seed?: number;
+}
+
 export interface CreateRenderRequest {
   prompt: string;
   negative_prompt?: string;
+  /** Visual-style anchor appended to every scene. e.g. "moody noir,
+   * deep teal shadows, neon highlights, 35mm film grain". */
+  style_prompt?: string;
+  /** Character anchor prepended to every scene. e.g. "a woman in a red
+   * coat, short black hair, brown eyes". Strongest tool combined with
+   * image conditioning for character preservation. */
+  character_prompt?: string;
+  /** Optional per-scene script. When empty, global `prompt` drives
+   * every segment. */
+  scenes?: SceneSpec[];
   duration_seconds: number;
   runtime_profile: RuntimeProfilePreference;
   quality_preset: QualityPreset;
