@@ -27,6 +27,15 @@ pub struct AdvancedSettings {
     pub overlap_seconds: Option<f32>,
     pub output_fps: Option<u32>,
     pub interpolation: Option<InterpolationMethod>,
+    /// Classifier-Free Guidance scale (LTX 2.3's "temperature" knob).
+    /// Higher = more prompt adherence, less creative drift. Default 4.0
+    /// matches the LTX 2.3 distilled pipeline's recommended value.
+    /// Sensible range: 1.0 (free-flowing) – 7.0 (very literal).
+    pub guidance_scale: Option<f32>,
+    /// Number of denoising steps. The distilled model is tuned for 8;
+    /// higher steps improve quality with diminishing returns and roughly
+    /// linear wall-clock cost. Sensible range: 4 (fastest, lossy) – 30.
+    pub num_inference_steps: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]

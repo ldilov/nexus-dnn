@@ -12,6 +12,16 @@ export type QualityPreset =
   | "quality_16gb"
   | "high";
 
+export interface AdvancedSettings {
+  /** Classifier-Free Guidance scale ("temperature"). 1.0–7.0. Default 4.0. */
+  guidance_scale?: number;
+  /** Denoising steps. 4–30. Default 8 (distilled model). */
+  num_inference_steps?: number;
+  segment_seconds?: number;
+  overlap_seconds?: number;
+  output_fps?: number;
+}
+
 export interface CreateRenderRequest {
   prompt: string;
   negative_prompt?: string;
@@ -19,6 +29,7 @@ export interface CreateRenderRequest {
   runtime_profile: RuntimeProfilePreference;
   quality_preset: QualityPreset;
   seed?: number;
+  advanced?: AdvancedSettings;
 }
 
 export interface RenderPlanSegment {
