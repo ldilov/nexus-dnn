@@ -107,26 +107,18 @@ def register_diffusers_handlers(worker) -> None:
         )
         workdir.mkdir(parents=True, exist_ok=True)
 
-        try:
-            pipe, device = _ensure_pipeline_loaded(
-                worker, profile, cached_pipe_ref
-            )
-        except _ModelMissing as err:
-            return _emit_terminal_error(
-                worker, run_id, ErrorCodes.MODEL_MISSING, str(err)
-            )
-        except _ModelLoadFailed as err:
-            return _emit_terminal_error(
-                worker, run_id, ErrorCodes.MODEL_LOAD_FAILED, str(err)
-            )
-
+        # Pipeline load can take minutes on a cold cache (22B fp8 →
+        # CPU-offload pinned memory) and must NOT block the JSON-RPC
+        # reply — the host's send_rpc has a fixed timeout, and a
+        # blocking load times out before the render even starts.
+        # Reply immediately and run load+render in a background task.
         rs = DiffusersRunState(
-            run_id=run_id, workdir=workdir, plan=plan, pipe=pipe, device=device
+            run_id=run_id, workdir=workdir, plan=plan, pipe=None, device=None
         )
         state[run_id] = rs
 
         asyncio.create_task(
-            _render_loop(worker, rs, params, cached_pipe_ref, profile)
+            _load_then_render(worker, rs, params, cached_pipe_ref, profile)
         )
         return {"run_id": run_id, "status": "started"}
 
@@ -283,6 +275,56 @@ def _pick_dtype(profile: str, torch: Any) -> Any:
     for activations — better numerical stability than fp16 for video work.
     """
     return getattr(torch, "bfloat16", torch.float16)
+
+
+async def _load_then_render(
+    worker,
+    rs: DiffusersRunState,
+    raw_params: dict[str, Any],
+    cache: dict[str, Any],
+    profile: str,
+) -> None:
+    """Pipeline load runs off the JSON-RPC reply path.
+
+    The 22B fp8 pipeline takes 30s–several-minutes to materialise on
+    cold cache (read safetensors, allocate GPU buffers, set up CPU
+    offload hooks). Doing this inside `render_start` blocks the
+    JSON-RPC handler past the host's send_rpc timeout. Run it here
+    instead — render_start has already returned `status:started`.
+    """
+    await worker.emit_notification(
+        Notifications.PROGRESS,
+        {"run_id": rs.run_id, "phase": "loading_model", "profile": profile},
+    )
+    try:
+        pipe, device = await asyncio.to_thread(
+            _ensure_pipeline_loaded, worker, profile, cache
+        )
+    except _ModelMissing as err:
+        await _emit_error(
+            worker, rs.run_id, ErrorCodes.MODEL_MISSING, str(err)
+        )
+        return
+    except _ModelLoadFailed as err:
+        await _emit_error(
+            worker, rs.run_id, ErrorCodes.MODEL_LOAD_FAILED, str(err)
+        )
+        return
+    except Exception as err:  # noqa: BLE001 — diffusers can throw anything
+        await _emit_error(
+            worker, rs.run_id, ErrorCodes.MODEL_LOAD_FAILED,
+            f"unexpected pipeline load failure: {err.__class__.__name__}: {err}",
+        )
+        return
+
+    rs.pipe = pipe
+    rs.device = device
+
+    await worker.emit_notification(
+        Notifications.PROGRESS,
+        {"run_id": rs.run_id, "phase": "rendering"},
+    )
+    await _render_loop(worker, rs, raw_params, cache, profile)
 
 
 async def _render_loop(
