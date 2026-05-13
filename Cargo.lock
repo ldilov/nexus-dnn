@@ -3429,6 +3429,7 @@ dependencies = [
  "nexus-run",
  "nexus-scheduler",
  "nexus-storage",
+ "nexus-video-ltx23-extension",
  "nexus-worker",
  "nexus-workflow",
  "reqwest 0.12.28",

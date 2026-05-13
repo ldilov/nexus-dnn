@@ -3,19 +3,15 @@ operator:
   id: nexus.video.ltx23.check-render-status
   version: 0.1.0
   display_name: "Check LTX-2.3 Render Status"
-  extension_id: nexus.video.ltx23
-  invoke:
-    transport: extension_http
-    method: GET
-    path: /renders/{run_id}
+  description: "Poll render status for a previously-submitted run_id."
 inputs:
-  run_id:
+  - name: run_id
     type: string
     required: true
 outputs:
-  status:
+  - name: status
     type: string
-  final_artifact_id:
+  - name: final_artifact_id
     type: string
-  progress_percent:
+  - name: progress_percent
     type: number
