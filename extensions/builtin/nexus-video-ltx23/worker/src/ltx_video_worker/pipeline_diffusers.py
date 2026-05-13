@@ -42,7 +42,13 @@ from typing import Any, Callable
 
 from . import __version__
 from .ffmpeg_io import stitch_segments, trim_to_duration
-from .io_safety import ensure_dict, sanitize_run_id, sanitize_workdir, truncate_for_log
+from .io_safety import (
+    ensure_dict,
+    sanitize_run_id,
+    sanitize_workdir,
+    scrub_sensitive,
+    truncate_for_log,
+)
 from .planning_validate import validate_plan
 from .rpc import ErrorCodes, Methods, Notifications
 from .vram import evict_models, memory_stats
@@ -100,11 +106,16 @@ def register_diffusers_handlers(worker) -> None:
         if not isinstance(params, dict):
             raise ValueError("params must be an object")
 
-        plan = params.get("video") or params.get("plan") or {}
-        run_id = params.get("request_id") or f"run_{uuid.uuid4().hex[:12]}"
-        workdir_str = params.get("workdir")
-        workdir = (
-            Path(workdir_str) if workdir_str else Path.cwd() / "diffusers_workdir" / run_id
+        run_id = sanitize_run_id(
+            params.get("request_id"),
+            fallback=f"run_{uuid.uuid4().hex[:12]}",
+        )
+        plan = ensure_dict(
+            params.get("video") or params.get("plan"), name="plan", default={}
+        )
+        workdir = sanitize_workdir(
+            params.get("workdir"),
+            fallback=Path.cwd() / "diffusers_workdir" / run_id,
         )
         workdir.mkdir(parents=True, exist_ok=True)
 
@@ -1118,12 +1129,14 @@ def _save_last_frame(frames: Any, path: Path) -> None:
 
 
 async def _emit_error(worker, run_id: str, code: int, message: str) -> None:
-    # Cap message length before forwarding — diffusers exceptions can
-    # carry multi-MB tensor dumps that would otherwise hit the SSE
-    # broker + DB row verbatim.
+    # Cap message length + scrub token-like substrings before
+    # forwarding. Diffusers / HuggingFace exceptions can carry multi-MB
+    # tensor dumps AND echo Authorization headers / HF_TOKEN values
+    # that would otherwise hit the SSE broker + DB row verbatim.
+    safe = truncate_for_log(scrub_sensitive(message))
     await worker.emit_notification(
         Notifications.ERROR,
-        {"run_id": run_id, "code": code, "message": truncate_for_log(message)},
+        {"run_id": run_id, "code": code, "message": safe},
     )
 
 

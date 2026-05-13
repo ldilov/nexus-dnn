@@ -83,6 +83,89 @@ def ensure_dict(value: Any, *, name: str, default: dict[str, Any] | None = None)
     return value
 
 
+_SECRET_RE = re.compile(
+    r"(?i)(token|secret|api[_-]?key|password|authorization)\s*[:=]\s*['\"]?[A-Za-z0-9._\-/+=]{6,}['\"]?",
+)
+_HEADER_RE = re.compile(r"(?im)^\s*Authorization\s*:\s*.+$")
+_BEARER_RE = re.compile(r"(?i)(Bearer|Token)\s+[A-Za-z0-9._\-/+=]{6,}")
+
+
+def scrub_sensitive(message: str) -> str:
+    """Replace token-like substrings with a `<redacted>` marker.
+
+    Run on every string that leaves the worker to the host (DB rows,
+    SSE notifications, log lines) so a misconfigured private HuggingFace
+    repo or uv resolver-debug output can't echo `HF_TOKEN=...` /
+    `Authorization: Bearer ...` back through the API surface. Errs on
+    the side of over-redaction — false positives only hurt
+    diagnosability, false negatives leak credentials.
+    """
+    redacted = _SECRET_RE.sub(r"\1=<redacted>", message)
+    redacted = _HEADER_RE.sub("Authorization: <redacted>", redacted)
+    redacted = _BEARER_RE.sub(r"\1 <redacted>", redacted)
+    return redacted
+
+
+# Subset of host env vars passed through to subprocess (uv sync, etc).
+# Anything not on this list is dropped — prevents `HF_TOKEN`, `AWS_*`,
+# `GITHUB_TOKEN`, etc from being inherited by a subprocess that logs
+# its argv/env on failure.
+_UV_ENV_ALLOWLIST = frozenset(
+    {
+        # Shell / locale
+        "PATH",
+        "HOME",
+        "USERPROFILE",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+        "LANG",
+        "LANGUAGE",
+        "LC_ALL",
+        "LC_CTYPE",
+        "PYTHONIOENCODING",
+        "PYTHONUTF8",
+        # uv
+        "UV_PROJECT_ENVIRONMENT",
+        "UV_CACHE_DIR",
+        "UV_NO_PROGRESS",
+        "UV_NATIVE_TLS",
+        # Windows essentials
+        "SYSTEMROOT",
+        "WINDIR",
+        "COMSPEC",
+        "USERNAME",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "PROGRAMDATA",
+        "PROGRAMFILES",
+        "PROGRAMFILES(X86)",
+        # Nexus-specific
+        "NEXUS_HOST_DATA_DIR",
+        "NEXUS_VIDEO_LTX23_MODEL_DIR",
+        "NEXUS_VIDEO_LTX23_RUNTIME",
+        "NEXUS_VIDEO_LTX23_INSTALL_INTERPOLATION",
+        "NEXUS_VIDEO_LTX23_TRANSFORMER_GGUF",
+    }
+)
+
+
+def safe_subprocess_env(base_env: dict[str, str]) -> dict[str, str]:
+    """Project a host env down to an allowlisted subset for subprocess use.
+
+    Returns a new dict containing only allowlisted keys whose values
+    are non-empty strings. Use this for any `subprocess.Popen` /
+    `asyncio.create_subprocess_exec` call that streams its stdout/stderr
+    back through `on_line` — otherwise tokens in the host env leak via
+    subprocess-echoed argv/env or resolver debug output.
+    """
+    return {
+        key: value
+        for key, value in base_env.items()
+        if key in _UV_ENV_ALLOWLIST and isinstance(value, str) and value
+    }
+
+
 def truncate_for_log(message: str, *, max_chars: int = 2048) -> str:
     """Cap an error message length before persisting / forwarding.
 

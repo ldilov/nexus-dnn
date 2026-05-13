@@ -161,7 +161,41 @@ impl Repos {
         Ok(())
     }
 
+    /// Race-safe terminal-status guard: refuses to overwrite a row that
+    /// already terminated. Used by `cancel_render` so a cancel that
+    /// lands between `get_run` + this write can't clobber a `completed`
+    /// row. Returns the number of rows actually updated; 0 means the
+    /// row was already terminal, which is a noop, not an error.
+    pub async fn update_run_status_if_not_terminal(
+        &self,
+        run_id: &str,
+        new_status: &str,
+    ) -> Result<u64> {
+        let now = Utc::now().to_rfc3339();
+        let cancelled = (new_status == "cancelled").then(|| now.clone());
+        let result = sqlx::query(
+            "UPDATE ext_nexus_video_ltx23__runs \
+             SET status = ?, \
+                 cancelled_at = COALESCE(cancelled_at, ?) \
+             WHERE id = ? AND status NOT IN ('completed', 'failed', 'cancelled')",
+        )
+        .bind(new_status)
+        .bind(cancelled)
+        .bind(run_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Atomic multi-row insert via a single sqlx transaction. Avoids the
+    /// N+1 round-trip pattern of the old loop-based insert + makes
+    /// partial-failure invisible to readers (either all segments land
+    /// or none do).
     pub async fn insert_segments(&self, segments: &[RenderSegmentRow]) -> Result<()> {
+        if segments.is_empty() {
+            return Ok(());
+        }
+        let mut tx = self.pool.begin().await?;
         for seg in segments {
             sqlx::query(
                 "INSERT INTO ext_nexus_video_ltx23__segments (\
@@ -189,9 +223,10 @@ impl Repos {
             .bind(&seg.error_message)
             .bind(seg.started_at.map(|t| t.to_rfc3339()))
             .bind(seg.completed_at.map(|t| t.to_rfc3339()))
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
         }
+        tx.commit().await?;
         Ok(())
     }
 
