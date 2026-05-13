@@ -1125,6 +1125,7 @@ function ResultPanel({
 }
 
 function StatusBar({ run }: { run: RenderRun }): ReactElement {
+  const eta = estimateEta(run);
   return (
     <div className={s.fieldRow}>
       <div
@@ -1136,6 +1137,7 @@ function StatusBar({ run }: { run: RenderRun }): ReactElement {
       >
         <span>
           <strong>{run.status}</strong>
+          {eta ? <span className={s.meta}> · {eta}</span> : null}
         </span>
         <span>
           {run.completed_segments}/{run.segment_count} segments ·{" "}
@@ -1192,6 +1194,72 @@ function SegmentTimeline({
       })}
     </div>
   );
+}
+
+/**
+ * Estimate remaining time for an in-flight render.
+ *
+ * Strategy: take the average wall-clock duration of completed
+ * segments (started_at → completed_at), multiply by the number of
+ * segments still to run. Falls back silently when there's no
+ * timestamp data or the run is already terminal — better a missing
+ * ETA than a confidently-wrong one.
+ *
+ * The real LTX-2.3 pipeline takes ~12-15 minutes per segment on a
+ * 16 GB GPU; this is the difference between "screen feels frozen" and
+ * "Segment 3 of 6 · ~28m remaining" which is the actual UX gap the
+ * frontend agent flagged in HIGH 3.
+ */
+function estimateEta(run: RenderRun): string | null {
+  if (
+    run.status === "completed" ||
+    run.status === "failed" ||
+    run.status === "cancelled"
+  ) {
+    return null;
+  }
+  if (run.segment_count <= 0) {
+    return null;
+  }
+  const completed = run.segments.filter(
+    (s) => s.status === "completed" && s.started_at && s.completed_at,
+  );
+  if (completed.length === 0) {
+    return null;
+  }
+  const totalMs = completed.reduce((sum, seg) => {
+    const start = Date.parse(seg.started_at!);
+    const end = Date.parse(seg.completed_at!);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      return sum;
+    }
+    return sum + (end - start);
+  }, 0);
+  if (totalMs === 0) {
+    return null;
+  }
+  const avgMs = totalMs / completed.length;
+  const remaining = run.segment_count - run.completed_segments;
+  if (remaining <= 0) {
+    return null;
+  }
+  const etaMs = remaining * avgMs;
+  return `~${formatDuration(etaMs)} remaining`;
+}
+
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.round(ms / 1000);
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes < 60) {
+    return seconds === 0 ? `${minutes}m` : `${minutes}m ${seconds}s`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remMinutes = minutes % 60;
+  return `${hours}h ${remMinutes}m`;
 }
 
 function dotClass(status: string): string {
