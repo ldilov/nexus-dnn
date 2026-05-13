@@ -1,0 +1,85 @@
+runtime_id: "nexus.video.ltx23.rtx50-nvfp4"
+display_name: "LTX 2.3 NVFP4 (RTX 50 / Blackwell, experimental)"
+family: "python"
+transport: "stdio"
+worker_entrypoint: "backends/_shared/worker/src/ltx_video_worker/__main__.py"
+version_manifest: "versions.yaml"
+experimental: true
+
+capability_tags:
+  - "video-generation"
+  - "image-to-video"
+  - "long-video"
+  - "ltx-2.3"
+  - "nvfp4"
+  - "blackwell"
+  - "experimental"
+  - "render.external_segments"
+
+supported_roles:
+  - "video.render"
+
+compatibility:
+  gpu:
+    vendor: "nvidia"
+    architecture: "blackwell"
+    min_vram_mb: 16000
+  driver:
+    min_major: 580
+    min_full_windows: "580.88"
+    min_full_linux: "580.65"
+  cuda:
+    preferred_family: "13.0"
+    fallback_family: "12.9"
+  torch:
+    preferred_package_index: "https://download.pytorch.org/whl/cu130"
+    fallback_package_index: "https://download.pytorch.org/whl/cu129"
+    packages:
+      torch: "2.10.0"
+      torchvision: "0.25.0"
+      torchaudio: "2.10.0"
+
+opt_in:
+  required: true
+  flag: "experimental.ltx23.nvfp4"
+  warning: "NVFP4 inference on Blackwell is experimental as of 2026-05-13. Known issues: occasional NaN bursts on >121-frame contexts, quant-scale calibration drift. Recommended fallback: rtx50-fp8."
+
+runtime_settings:
+  restart_after_segments:
+    type: "integer"
+    min: 1
+    max: 50
+    default: 4
+    description: "Lower default for experimental path — tighter safety margin."
+  restart_on_alloc_retries:
+    type: "boolean"
+    default: true
+  restart_on_low_vram_mb:
+    type: "integer"
+    default: 2500
+  tiled_vae:
+    type: "boolean"
+    default: true
+  enable_cpu_offload:
+    type: "boolean"
+    default: false
+  max_concurrent_jobs_per_gpu:
+    type: "integer"
+    default: 1
+
+failure_categories:
+  - id: "driver_too_old"
+    stage: "validate_env"
+    user_message: "CUDA 13.0 requires NVIDIA driver R580+. Update via NVIDIA's driver page."
+  - id: "torch_cu130_unavailable"
+    stage: "install_deps"
+    user_message: "PyTorch cu130 wheel index unreachable. Falling back to cu129 nightly. If both fail, switch to the rtx50-fp8 runtime."
+  - id: "nvfp4_nan_burst"
+    stage: "runtime_runtime"
+    user_message: "NVFP4 inference produced NaN frames (known issue on long contexts). Reduce frames_per_segment or switch to rtx50-fp8."
+  - id: "model_missing"
+    stage: "runtime_runtime"
+    user_message: "LTX-2.3 NVFP4 model weights not found. Re-download from the model store."
+  - id: "vram_budget_exceeded"
+    stage: "runtime_runtime"
+    user_message: "Out of VRAM. Try 'Apply safe settings' or switch to rtx50-fp8."
