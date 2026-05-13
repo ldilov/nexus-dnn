@@ -1,0 +1,48 @@
+[package]
+name = "nexus-video-ltx23-extension"
+version = "0.1.0"
+edition = "2021"
+description = "Rust shim for the LTX 2.3 Video Generator extension (spec 046). Owns extension HTTP routes, render planning, runtime-profile selection, storage CRUD, and JSON-RPC event forwarding to the isolated Python worker."
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "nexus-video-ltx23-worker"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["json", "macros", "tokio", "http1", "query"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "fs", "process", "io-util", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+tracing = "0.1"
+thiserror = "1"
+anyhow = "1"
+ulid = { version = "1", features = ["serde"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros", "migrate", "chrono"] }
+chrono = { version = "0.4", features = ["serde"] }
+async-trait = "0.1"
+futures = "0.3"
+tokio-stream = { version = "0.1", features = ["sync"] }
+
+nexus-extension = { path = "../../../../crates/nexus-extension" }
+nexus-backend-runtimes = { path = "../../../../crates/nexus-backend-runtimes" }
+nexus-artifact = { path = "../../../../crates/nexus-artifact" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
+tempfile = "3"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

@@ -1,0 +1,245 @@
+openapi: 3.0.3
+info:
+  title: LTX 2.3 Video Extension API
+  version: 0.1.0
+  description: |
+    Extension routes mounted by the host's generic dispatcher under
+    /api/v1/extensions/nexus.video.ltx23/*. All endpoints are extension-owned.
+
+servers:
+  - url: /api/v1/extensions/{ext_id}
+    variables:
+      ext_id:
+        default: nexus.video.ltx23
+
+paths:
+  /health:
+    get:
+      tags: [LTX Video Extension]
+      summary: Extension liveness + runtime profile snapshot
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExtensionHealth' }
+
+  /runtime-profiles:
+    get:
+      tags: [LTX Video Extension]
+      summary: List installed runtime profiles with health badges
+      responses:
+        '200':
+          description: Profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RuntimeProfileSummary' }
+
+  /recipe/plan:
+    post:
+      tags: [LTX Video Extension]
+      summary: Validate request and compute a RenderPlan (no GPU work)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Ltx23CreateRenderRequest' }
+      responses:
+        '200':
+          description: Render plan
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ltx23RenderPlan' }
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExtensionError' }
+
+  /renders:
+    post:
+      tags: [LTX Video Extension]
+      summary: Start a render run
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Ltx23CreateRenderRequest' }
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ltx23RenderRun' }
+        '400':
+          description: Invalid request
+        '409':
+          description: Idempotency conflict
+
+  /renders/{run_id}:
+    get:
+      tags: [LTX Video Extension]
+      summary: Get render status
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Run state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ltx23RenderRun' }
+        '404':
+          description: Run not found
+
+  /renders/{run_id}/cancel:
+    post:
+      tags: [LTX Video Extension]
+      summary: Request cancellation
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '202':
+          description: Cancel requested
+
+  /renders/{run_id}/retry-segment:
+    post:
+      tags: [LTX Video Extension]
+      summary: Re-render a single segment
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [segment_index]
+              properties:
+                segment_index: { type: integer, minimum: 0 }
+                prompt_override: { type: string }
+      responses:
+        '202':
+          description: Retry accepted
+
+components:
+  schemas:
+    Ltx23CreateRenderRequest:
+      type: object
+      required: [prompt, duration_seconds]
+      properties:
+        project_id: { type: string }
+        input_image_artifact_id: { type: string }
+        prompt: { type: string, minLength: 1 }
+        negative_prompt: { type: string }
+        style_prompt: { type: string }
+        duration_seconds: { type: number, minimum: 1, maximum: 300 }
+        runtime_profile:
+          type: string
+          enum: [auto, rtx50-nvfp4, rtx50-fp8, rtx40-fp8]
+        quality_preset:
+          type: string
+          enum: [draft, balanced_16gb, quality_16gb, high]
+        width: { type: integer }
+        height: { type: integer }
+        base_fps: { type: integer }
+        output_fps: { type: integer }
+        seed: { type: integer }
+
+    Ltx23RenderPlan:
+      type: object
+      required: [mode, segment_count]
+      properties:
+        mode:
+          type: string
+          enum: [external_segments]
+        width: { type: integer }
+        height: { type: integer }
+        base_fps: { type: integer }
+        output_fps: { type: integer }
+        requested_duration_seconds: { type: number }
+        planned_duration_seconds: { type: number }
+        segment_count: { type: integer }
+        runtime_profile: { type: string }
+        gpu_memory_budget_mb: { type: integer }
+        interpolation:
+          type: string
+          enum: [rife_2x, none]
+        vram_risk:
+          type: string
+          enum: [safe, moderate, risky, likely_to_fail, unsupported]
+        warnings:
+          type: array
+          items: { type: string }
+        segments:
+          type: array
+          items: { $ref: '#/components/schemas/Ltx23RenderSegmentPlan' }
+
+    Ltx23RenderSegmentPlan:
+      type: object
+      properties:
+        index: { type: integer }
+        start_time_seconds: { type: number }
+        duration_seconds: { type: number }
+        overlap_seconds: { type: number }
+        frame_count: { type: integer }
+        seed: { type: integer }
+        action_prompt: { type: string }
+
+    Ltx23RenderRun:
+      type: object
+      properties:
+        id: { type: string }
+        project_id: { type: string }
+        status:
+          type: string
+          enum: [queued, planning, waiting_for_runtime, rendering, joining, interpolating, encoding, completed, failed_retryable, failed, cancelled]
+        progress_percent: { type: number }
+        runtime_profile: { type: string }
+        segment_count: { type: integer }
+        completed_segments: { type: integer }
+        final_artifact_id: { type: string }
+        error_code: { type: string }
+        error_message: { type: string }
+        created_at: { type: string, format: date-time }
+        started_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time }
+
+    RuntimeProfileSummary:
+      type: object
+      properties:
+        runtime_id: { type: string }
+        display_name: { type: string }
+        installed: { type: boolean }
+        healthy: { type: boolean }
+        experimental: { type: boolean }
+        status_message: { type: string }
+
+    ExtensionHealth:
+      type: object
+      properties:
+        status: { type: string }
+        version: { type: string }
+        active_profile: { type: string }
+
+    ExtensionError:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+        recovery_hint: { type: string }

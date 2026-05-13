@@ -1,0 +1,25 @@
+spec_version: "0.1"
+runtime_id: "nexus.video.ltx23.rtx50-fp8"
+models:
+  - id: "ltx-2.3-22b-dev-fp8"
+    provider: huggingface
+    repo: "Lightricks/LTX-2.3-fp8"
+    files:
+      - "ltx-2.3-22b-dev-fp8.safetensors"
+    role: primary
+    quantization: fp8_e4m3
+    size_gb_approx: 22
+  - id: "ltx-2.3-22b-distilled-fp8"
+    provider: huggingface
+    repo: "Lightricks/LTX-2.3-fp8"
+    files:
+      - "ltx-2.3-22b-distilled-fp8.safetensors"
+    role: optional
+    quantization: fp8_e4m3
+    size_gb_approx: 22
+  - id: "ltx-2.3-spatial-upscaler-x2"
+    provider: huggingface
+    repo: "Lightricks/LTX-2.3"
+    files:
+      - "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+    role: optional

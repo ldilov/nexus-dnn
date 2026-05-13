@@ -1,0 +1,200 @@
+spec_version: "0.1"
+
+extension:
+  id: "nexus.video.ltx23"
+  version: "0.1.0"
+  name: "LTX 2.3 Video Generator"
+  description: "Generate custom-length videos from prompts and optional input images using host-managed isolated LTX-2.3 backend runtimes. RTX 40 FP8 + RTX 50 Blackwell FP8 (production) + RTX 50 NVFP4 (experimental). 16 GB VRAM-safe by default via external-segments mode."
+  publisher: "nexus"
+
+compatibility:
+  host_api: ">=0.1.0"
+  protocol: ">=0.1.0"
+
+runtime:
+  family: "native"
+  entrypoint: "bin/nexus-video-ltx23-worker${exe_suffix}"
+  environment:
+    cuda_version: null
+    env_vars: {}
+
+dependencies:
+  steps:
+    - id: python
+      type: runtime
+      spec:
+        family: python
+        version: ">=3.12,<3.13"
+        accelerator_profiles: [cpu, cuda12, cuda13]
+
+    - id: pkgs
+      type: package_set
+      requires: [python]
+      spec:
+        manager: uv
+        manifest_path: "backends/_shared/worker/pyproject.toml"
+        lock_path: "backends/_shared/worker/uv.lock"
+        target: extension_local
+
+    - id: ffmpeg
+      type: system_binary
+      spec:
+        id: ffmpeg
+        version: ">=4.0"
+        allow_system_path: true
+        sources:
+          - platform: windows-x64
+            url: "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip"
+            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            size: 0
+            archive: zip
+          - platform: linux-x64
+            url: "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz"
+            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            size: 0
+            archive: tar.xz
+          - platform: darwin-arm64
+            url: "https://evermeet.cx/ffmpeg/getrelease/zip"
+            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            size: 0
+            archive: zip
+
+    - id: models
+      type: model_artifact
+      requires: [python]
+      spec:
+        # FP8 weights live in a separate HF repo from the base LTX-2.3.
+        # Verified P0-T004 on 2026-05-13:
+        #   - Lightricks/LTX-2.3-fp8        -> ltx-2.3-22b-dev-fp8.safetensors,
+        #                                      ltx-2.3-22b-distilled-fp8.safetensors
+        #   - Lightricks/LTX-2.3-nvfp4      -> ltx-2.3-22b-dev-nvfp4.safetensors
+        #   - Lightricks/LTX-2.3            -> ltx-2.3-22b-dev.safetensors (bf16),
+        #                                      distilled, upscalers, LoRAs
+        # Profile-specific selection happens at install time; the manifest
+        # advertises the full family ID so the host model store knows the
+        # umbrella org.
+        family_id: "huggingface:Lightricks/LTX-2.3-family"
+        acceleration_match: "matches_runtime_step:python"
+
+    - id: validate
+      type: validation
+      requires: [python, pkgs, ffmpeg, models]
+      spec:
+        kind: worker_handshake
+        timeout_seconds: 120
+
+capabilities:
+  - "filesystem.read"
+  - "filesystem.write"
+  - "process.spawn"
+  - "gpu.compute"
+  - "storage.schema_contribute"
+  - "huggingface.search"
+  - "huggingface.install"
+  - "model.registry.read"
+  - "artifacts.read"
+  - "artifacts.write"
+
+operators:
+  - file: "operators/plan_long_video.yaml"
+  - file: "operators/submit_render.yaml"
+  - file: "operators/check_render_status.yaml"
+
+recipes:
+  - file: "recipes/image_to_long_video.yaml"
+
+workflows:
+  - file: "workflows/long_video.yaml"
+
+backend_runtimes:
+  - runtime_id: "nexus.video.ltx23.rtx40-fp8"
+    display_name: "LTX 2.3 FP8 (RTX 40 / CUDA 12.x)"
+    family: "python"
+    transport: "stdio"
+    worker_entrypoint: "backends/_shared/worker/src/ltx_video_worker/__main__.py"
+    version_manifest: "backends/rtx40-fp8/versions.yaml"
+    capability_tags:
+      - "video-generation"
+      - "image-to-video"
+      - "long-video"
+      - "ltx-2.3"
+      - "fp8"
+    supported_roles:
+      - "video.render"
+
+  - runtime_id: "nexus.video.ltx23.rtx50-fp8"
+    display_name: "LTX 2.3 FP8 (RTX 50 / Blackwell)"
+    family: "python"
+    transport: "stdio"
+    worker_entrypoint: "backends/_shared/worker/src/ltx_video_worker/__main__.py"
+    version_manifest: "backends/rtx50-fp8/versions.yaml"
+    capability_tags:
+      - "video-generation"
+      - "image-to-video"
+      - "long-video"
+      - "ltx-2.3"
+      - "fp8"
+      - "blackwell"
+    supported_roles:
+      - "video.render"
+
+  - runtime_id: "nexus.video.ltx23.rtx50-nvfp4"
+    display_name: "LTX 2.3 NVFP4 (RTX 50 / Blackwell, experimental)"
+    family: "python"
+    transport: "stdio"
+    worker_entrypoint: "backends/_shared/worker/src/ltx_video_worker/__main__.py"
+    version_manifest: "backends/rtx50-nvfp4/versions.yaml"
+    capability_tags:
+      - "video-generation"
+      - "image-to-video"
+      - "long-video"
+      - "ltx-2.3"
+      - "nvfp4"
+      - "blackwell"
+      - "experimental"
+    supported_roles:
+      - "video.render"
+
+  - runtime_id: "nexus.video.ltx23.fake"
+    display_name: "LTX 2.3 Fake (CI / development)"
+    family: "python"
+    transport: "stdio"
+    worker_entrypoint: "backends/_shared/worker/src/ltx_video_worker/__main__.py"
+    version_manifest: "backends/fake/versions.yaml"
+    capability_tags:
+      - "video-generation"
+      - "image-to-video"
+      - "long-video"
+      - "fake"
+    supported_roles:
+      - "video.render"
+
+ui:
+  layouts:
+    - file: "ui/layouts/main.yaml"
+      default: true
+  assets:
+    root: "web/dist"
+  custom_elements:
+    - tag: "ltx23-video-app"
+      module: "ltx23-video.js"
+      entry: "register"
+
+storage:
+  spec_version: "0.1"
+  engine: "sqlite"
+  namespace:
+    alias: "ltx23_video"
+    prefix_mode: "host_derived"
+  migrations:
+    strategy: "sql_file_list"
+    files:
+      - id: "001_ltx_video_projects"
+        path: "storage/migrations/001_ltx_video_projects.sql"
+      - id: "002_ltx_video_runs_segments"
+        path: "storage/migrations/002_ltx_video_runs_segments.sql"
+  sql_profile:
+    profile: "nexus_sqlite_v1"
+
+openapi:
+  fragment: "openapi/extension.openapi.yaml"

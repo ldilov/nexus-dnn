@@ -1,0 +1,15 @@
+spec_version: "0.1"
+runtime_id: "nexus.video.ltx23.rtx50-nvfp4"
+versions:
+  - version: "0.1.0"
+    status: "planned"
+    notes: "Experimental Blackwell NVFP4 path. Scaffolded P1; lands in P5 behind opt-in flag."
+    assets:
+      - platform: "windows-x64"
+        url: "PLACEHOLDER://populated-on-P5"
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+        size: 0
+      - platform: "linux-x64"
+        url: "PLACEHOLDER://populated-on-P5"
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+        size: 0
