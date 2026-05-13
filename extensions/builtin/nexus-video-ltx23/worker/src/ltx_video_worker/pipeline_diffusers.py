@@ -222,25 +222,33 @@ def _ensure_pipeline_loaded(
         device = "cuda"
         dtype = _pick_dtype(profile, torch)
 
+        # diffusers 0.37+ ships separate classes for LTX v1 (`LTXImageToVideoPipeline`)
+        # and LTX 2.x (`LTX2ImageToVideoPipeline`). The Lightricks/LTX-2.3-{fp8,nvfp4}
+        # weights set model_index.json's `_class_name` to the LTX2 class; fall back
+        # to the v1 class only if the v2 symbol isn't exported (older diffusers).
         try:
-            from diffusers import LTXImageToVideoPipeline  # type: ignore
+            from diffusers import LTX2ImageToVideoPipeline as _PipeClass  # type: ignore
+        except ImportError:
+            try:
+                from diffusers import LTXImageToVideoPipeline as _PipeClass  # type: ignore
+            except ImportError as ie:
+                raise _ModelLoadFailed(
+                    f"diffusers LTX(2)ImageToVideoPipeline not importable: {ie}. "
+                    "Run the dependency installer with the diffusers extras."
+                ) from ie
 
-            global _LAZY_PIPELINE_CLASS
-            _LAZY_PIPELINE_CLASS = LTXImageToVideoPipeline
-        except ImportError as ie:
-            raise _ModelLoadFailed(
-                f"diffusers LTXImageToVideoPipeline not importable: {ie}. "
-                "Run the dependency installer with the diffusers extras."
-            ) from ie
+        global _LAZY_PIPELINE_CLASS
+        _LAZY_PIPELINE_CLASS = _PipeClass
 
         worker.logger.info(
             "diffusers.load_pipeline",
             profile=profile,
             model_dir=str(model_dir),
             dtype=str(dtype),
+            pipeline_class=_PipeClass.__name__,
         )
         load_start = time.perf_counter()
-        pipe = LTXImageToVideoPipeline.from_pretrained(
+        pipe = _PipeClass.from_pretrained(
             str(model_dir),
             torch_dtype=dtype,
             local_files_only=True,

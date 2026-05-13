@@ -206,21 +206,60 @@ def _worker_dir() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _runtime_venv_dir() -> Path | None:
+    """Return the host-managed runtime venv path the worker actually runs from.
+
+    Convention (set by the host's `pkgs` dependency-installer step):
+        <NEXUS_HOST_DATA_DIR>/extensions/nexus.video.ltx23/runtime/packages/.venv/
+
+    Returns None when `NEXUS_HOST_DATA_DIR` isn't set — the unified
+    install flow still works against the dev `worker/.venv/` in that
+    case (test mode).
+    """
+    host_data = os.environ.get("NEXUS_HOST_DATA_DIR")
+    if not host_data:
+        return None
+    return (
+        Path(host_data)
+        / "extensions"
+        / "nexus.video.ltx23"
+        / "runtime"
+        / "packages"
+        / ".venv"
+    )
+
+
 async def _default_uv_sync_runner(
     cwd: Path, on_line: Callable[[str, str], Awaitable[None]]
 ) -> int:
     """Spawn `uv sync --extra diffusers` and stream its output.
 
+    The host runs the worker from `<host_data_dir>/extensions/<ext_id>/
+    runtime/packages/.venv/`, not from the in-repo `worker/.venv/`.
+    uv's default project-env resolution would target the latter — point
+    it at the runtime venv via `UV_PROJECT_ENVIRONMENT` so the install
+    actually lands where the worker subprocess imports from.
+
     Returns the process exit code. The on_line callback receives
     ("stdout"|"stderr", text) for each line as it lands. uv writes
     its resolution progress on stderr.
     """
+    env = os.environ.copy()
+    runtime_venv = _runtime_venv_dir()
+    if runtime_venv is not None:
+        env["UV_PROJECT_ENVIRONMENT"] = str(runtime_venv)
+        await on_line(
+            "info",
+            f"uv targeting runtime venv: {runtime_venv}",
+        )
+
     proc = await asyncio.create_subprocess_exec(
         "uv",
         "sync",
         "--extra",
         "diffusers",
         cwd=str(cwd),
+        env=env,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
