@@ -73,6 +73,7 @@ impl Runner {
         plan: RenderPlan,
         prompt: String,
         negative_prompt: Option<String>,
+        advanced: crate::schemas::AdvancedSettings,
     ) {
         let cfg = self.cfg.clone();
         let cancellers = self.cancellers.clone();
@@ -96,6 +97,7 @@ impl Runner {
                 &plan,
                 &prompt,
                 negative_prompt.as_deref(),
+                &advanced,
                 notify_for_task,
             )
             .await;
@@ -169,7 +171,7 @@ impl Runner {
     }
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 async fn run_via_lease(
     cfg: &RunnerConfig,
     run_id: &str,
@@ -177,6 +179,7 @@ async fn run_via_lease(
     plan: &RenderPlan,
     prompt: &str,
     negative_prompt: Option<&str>,
+    advanced: &crate::schemas::AdvancedSettings,
     cancel_notify: Arc<Notify>,
 ) -> Result<()> {
     let workdir = cfg.runs_dir.join(run_id).join("work");
@@ -199,7 +202,8 @@ async fn run_via_lease(
 
     let mut notifications = lease.subscribe_notifications();
 
-    let render_params = build_render_params(run_id, plan, prompt, negative_prompt, &workdir);
+    let render_params =
+        build_render_params(run_id, plan, prompt, negative_prompt, advanced, &workdir);
     if let Err(e) = lease.send_rpc("ltx.video.render.start", render_params).await {
         let _ = lease.release().await;
         return Err(crate::errors::ExtensionError::RenderFailed(format!(
@@ -400,8 +404,20 @@ fn build_render_params(
     plan: &RenderPlan,
     prompt: &str,
     negative_prompt: Option<&str>,
+    advanced: &crate::schemas::AdvancedSettings,
     workdir: &std::path::Path,
 ) -> Value {
+    // The worker reads hyperparameters from `advanced.{guidance_scale,
+    // num_inference_steps}` — defaults applied there if absent. We pass
+    // through nulls when the user didn't override, so the worker stays
+    // the single source of default truth.
+    let guidance_scale = advanced
+        .guidance_scale
+        .map_or(Value::Null, |v| serde_json::Value::from(f64::from(v)));
+    let num_inference_steps = advanced
+        .num_inference_steps
+        .map_or(Value::Null, Value::from);
+
     json!({
         "request_id": run_id,
         "workdir": workdir.to_string_lossy(),
@@ -429,6 +445,10 @@ fn build_render_params(
                 "frame_count": s.frame_count,
                 "seed": s.seed,
             })).collect::<Vec<_>>(),
+        },
+        "advanced": {
+            "guidance_scale": guidance_scale,
+            "num_inference_steps": num_inference_steps,
         },
         "runtime_profile": plan.runtime_profile.clone(),
     })

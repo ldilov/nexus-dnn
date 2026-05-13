@@ -1,6 +1,7 @@
 import { useCallback, useState, type ReactElement } from "react";
 import useSWR from "swr";
 import {
+  type AdvancedSettings,
   type CreateRenderRequest,
   type DepStatus,
   type ProfileInstallStatus,
@@ -397,6 +398,8 @@ function FormPanel({
       <ProfileStatus profiles={profiles} selected={draft.runtime_profile} />
       <ProfileInstallPanel selected={draft.runtime_profile} />
 
+      <AdvancedKnobs draft={draft} update={update} />
+
       <div className={s.buttonRow}>
         <button
           type="button"
@@ -582,6 +585,105 @@ function ProfileStatus({
       {match.status_message}
       {match.experimental ? " (experimental)" : null}
     </div>
+  );
+}
+
+function AdvancedKnobs({
+  draft,
+  update,
+}: {
+  draft: CreateRenderRequest;
+  update: <K extends keyof CreateRenderRequest>(
+    key: K,
+    value: CreateRenderRequest[K],
+  ) => void;
+}): ReactElement {
+  const advanced = draft.advanced ?? {};
+  const setAdvanced = useCallback(
+    <K extends keyof AdvancedSettings>(
+      key: K,
+      value: AdvancedSettings[K],
+    ) => {
+      const next: AdvancedSettings = { ...advanced };
+      if (value === undefined || value === null) {
+        delete next[key];
+      } else {
+        next[key] = value;
+      }
+      update("advanced", Object.keys(next).length > 0 ? next : undefined);
+    },
+    [advanced, update],
+  );
+
+  return (
+    <details className={s.progressDetails}>
+      <summary className={s.progressSummary}>
+        Advanced — guidance &amp; steps
+        {advanced.guidance_scale !== undefined ? (
+          <span className={s.meta}> · cfg {advanced.guidance_scale}</span>
+        ) : null}
+        {advanced.num_inference_steps !== undefined ? (
+          <span className={s.meta}>
+            {" · "}
+            {advanced.num_inference_steps} steps
+          </span>
+        ) : null}
+      </summary>
+      <div className={s.inputRow} style={{ marginTop: 10 }}>
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-cfg">
+            Guidance scale (temperature)
+          </label>
+          <input
+            id="ltx-cfg"
+            className={s.input}
+            type="number"
+            min={1}
+            max={15}
+            step={0.5}
+            value={advanced.guidance_scale ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setAdvanced(
+                "guidance_scale",
+                v === "" ? undefined : Number(v),
+              );
+            }}
+            placeholder="4.0 (default)"
+          />
+          <span className={s.meta}>
+            1–7. Higher = stricter prompt adherence; lower = more
+            creative drift. Distilled LTX 2.3 default is 4.0.
+          </span>
+        </div>
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-steps">
+            Inference steps
+          </label>
+          <input
+            id="ltx-steps"
+            className={s.input}
+            type="number"
+            min={2}
+            max={50}
+            step={1}
+            value={advanced.num_inference_steps ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setAdvanced(
+                "num_inference_steps",
+                v === "" ? undefined : Math.round(Number(v)),
+              );
+            }}
+            placeholder="8 (default)"
+          />
+          <span className={s.meta}>
+            Distilled model is tuned for 8. Higher steps improve detail
+            with ~linear wall-clock cost.
+          </span>
+        </div>
+      </div>
+    </details>
   );
 }
 
