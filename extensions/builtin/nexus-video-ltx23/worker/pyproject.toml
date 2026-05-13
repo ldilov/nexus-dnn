@@ -43,6 +43,12 @@ diffusers = [
   "safetensors>=0.4",
   "huggingface_hub>=0.26",
   "einops>=0.8",
+  # Read GGUF transformer checkpoints (Q4_K_M, Q5_K_M, Q8_0, F16/BF16
+  # quants) and inject as state_dict into LTX2VideoTransformer3DModel,
+  # bypassing diffusers 0.39.0.dev0 `from_single_file` utf-8-sniff
+  # regression. The diffusers `quantizers/gguf/` runtime ops handle the
+  # on-device dequant; we only need the reader half from this package.
+  "gguf>=0.10",
 ]
 interpolation = [
   # Practical-RIFE has pip wheels via this fork. Pin loose for now; lockfile
