@@ -137,7 +137,102 @@ paths:
         '202':
           description: Retry accepted
 
+  /renders/{run_id}/segments:
+    get:
+      tags: [LTX Video Extension]
+      summary: List per-segment status rows for a run
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Segment rows in index order
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Ltx23SegmentSummary' }
+        '404':
+          description: Run not found
+
+  /artifacts/{artifact_id}:
+    get:
+      tags: [LTX Video Extension]
+      summary: Stream the final MP4 for a completed run
+      parameters:
+        - name: artifact_id
+          in: path
+          required: true
+          description: Currently the only supported form is `ltx23-run-<run_id>-final`.
+          schema: { type: string }
+      responses:
+        '200':
+          description: MP4 bytes
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Artifact file missing on disk
+
+  /profiles/{profile_id}/install:
+    get:
+      tags: [LTX Video Extension]
+      summary: Current install state for a runtime profile
+      description: |
+        Reports whether the LTX-2.3 weights for `profile_id` are installed,
+        whether a runtime install is in flight, the most-recent phase, and
+        a bounded ring buffer of recent worker output lines (capped at 200
+        entries / 1024 chars per entry). The runtime install chains
+        `uv sync --extra diffusers` with `huggingface_hub.snapshot_download`.
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: Install status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ltx23ProfileInstallStatus' }
+    post:
+      tags: [LTX Video Extension]
+      summary: Trigger a unified runtime install (uv sync + weights)
+      description: |
+        Idempotent: if the runtime install is already in flight for this
+        profile, returns the current status without spawning a second
+        worker. Sets `in_flight=true` immediately, then progressively
+        populates `phase` and `recent_progress` as the worker emits
+        `ltx.video.runtime.install.{progress,done,error}` notifications.
+        On success the host writes `<dest>/.nexus-install-complete`.
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '202':
+          description: Install accepted (sync or already in flight)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ltx23ProfileInstallStatus' }
+        '400':
+          description: Unknown profile (e.g. `fake` has no installable model)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExtensionError' }
+        '503':
+          description: Worker runtime unavailable
+
 components:
+  parameters:
+    ProfileId:
+      name: profile_id
+      in: path
+      required: true
+      description: Runtime profile id; `auto` and `fake` reject with 400.
+      schema:
+        type: string
+        enum: [rtx40-fp8, rtx50-fp8, rtx50-nvfp4]
+
   schemas:
     Ltx23CreateRenderRequest:
       type: object
@@ -210,15 +305,77 @@ components:
           type: string
           enum: [queued, planning, waiting_for_runtime, rendering, joining, interpolating, encoding, completed, failed_retryable, failed, cancelled]
         progress_percent: { type: number }
-        runtime_profile: { type: string }
+        runtime_profile: { type: string, nullable: true }
         segment_count: { type: integer }
         completed_segments: { type: integer }
-        final_artifact_id: { type: string }
-        error_code: { type: string }
-        error_message: { type: string }
+        requested_duration_seconds: { type: number }
+        planned_duration_seconds: { type: number, nullable: true }
+        width: { type: integer }
+        height: { type: integer }
+        base_fps: { type: integer }
+        output_fps: { type: integer }
+        final_artifact_id: { type: string, nullable: true }
+        error_code: { type: string, nullable: true }
+        error_message: { type: string, nullable: true }
         created_at: { type: string, format: date-time }
-        started_at: { type: string, format: date-time }
-        completed_at: { type: string, format: date-time }
+        started_at: { type: string, format: date-time, nullable: true }
+        completed_at: { type: string, format: date-time, nullable: true }
+        segments:
+          type: array
+          items: { $ref: '#/components/schemas/Ltx23SegmentSummary' }
+
+    Ltx23SegmentSummary:
+      type: object
+      required: [index, status, duration_seconds]
+      properties:
+        index: { type: integer, minimum: 0 }
+        status:
+          type: string
+          enum: [queued, rendering, completed, failed]
+        duration_seconds: { type: number }
+        started_at: { type: string, format: date-time, nullable: true }
+        completed_at: { type: string, format: date-time, nullable: true }
+
+    Ltx23ProfileInstallStatus:
+      type: object
+      required: [profile, installed, in_flight, recent_progress]
+      properties:
+        profile:
+          type: string
+          description: Runtime profile id (e.g. `rtx40-fp8`, `rtx50-fp8`, `rtx50-nvfp4`).
+        installed:
+          type: boolean
+          description: True when the host has observed `<dest>/.nexus-install-complete`.
+        repo:
+          type: string
+          nullable: true
+          description: Hugging Face repo id, e.g. `Lightricks/LTX-2.3-fp8`. Null for profiles without an installable model.
+        dest:
+          type: string
+          nullable: true
+          description: Absolute filesystem path the weights resolve to (`<host_data_dir>/models/<owner>/<name>`).
+        in_flight:
+          type: boolean
+          description: True while the worker is mid-install (uv sync OR snapshot download).
+        last_error:
+          type: string
+          nullable: true
+        phase:
+          type: string
+          nullable: true
+          description: |
+            Most-recent worker-emitted phase. One of
+            `starting`, `resolving_deps`, `downloading_weights`, `done`, or
+            `error:<phase>` when the worker reported a failure. Null before
+            any progress notification has been received.
+        recent_progress:
+          type: array
+          description: |
+            Bounded ring buffer (200 entries, 1024 chars/entry) of recent
+            worker output lines, each prefixed with the originating stream
+            (`stdout:`, `stderr:`, or `info:` for synthetic lines emitted by
+            the host service itself).
+          items: { type: string }
 
     RuntimeProfileSummary:
       type: object
@@ -232,10 +389,15 @@ components:
 
     ExtensionHealth:
       type: object
+      required: [status, version, extension_id]
       properties:
-        status: { type: string }
+        status:
+          type: string
+          enum: [ok]
         version: { type: string }
-        active_profile: { type: string }
+        extension_id:
+          type: string
+          enum: [nexus.video.ltx23]
 
     ExtensionError:
       type: object
