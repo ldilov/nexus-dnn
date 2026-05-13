@@ -9,6 +9,7 @@ pub mod runner;
 pub mod runtime_selection;
 pub mod schemas;
 pub mod storage;
+pub mod vram_supervisor;
 
 pub use errors::{ExtensionError, ExtensionErrorCode, Result};
 pub use migrations::{Migration, MIGRATIONS};
