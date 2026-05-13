@@ -122,3 +122,50 @@ export const ltxApi = {
 export function artifactUrl(artifactId: string): string {
   return `${API_BASE}/artifacts/${artifactId}`;
 }
+
+const HOST_BASE = "/api/v1";
+const EXTENSION_ID = "nexus.video.ltx23";
+
+export type DepStepStatus =
+  | "pending"
+  | "running"
+  | "ok"
+  | "failed"
+  | "skipped";
+
+export interface DepStep {
+  id: string;
+  type: string;
+  status: DepStepStatus;
+  satisfied: boolean;
+  artifact?: { summary: string } | null;
+  last_error?: { category: string; message: string } | null;
+}
+
+export interface DepStatus {
+  steps: DepStep[];
+  all_satisfied: boolean;
+}
+
+async function hostJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${HOST_BASE}${path}`, {
+    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    ...init,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`${res.status}: ${body}`);
+  }
+  const wire = (await res.json()) as { data: T };
+  return wire.data;
+}
+
+export const hostApi = {
+  listDependencies: () =>
+    hostJson<DepStatus>(`/extensions/${EXTENSION_ID}/dependencies`),
+  startInstall: (force = false) =>
+    hostJson<{ install_run_id: string; started_at: string }>(
+      `/extensions/${EXTENSION_ID}/install${force ? "?force=true" : ""}`,
+      { method: "POST" },
+    ),
+};

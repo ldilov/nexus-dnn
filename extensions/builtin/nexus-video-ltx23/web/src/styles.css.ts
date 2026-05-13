@@ -258,3 +258,33 @@ export const emptyHint = style({
   fontSize: "13px",
   fontStyle: "italic",
 });
+
+export const formColumn = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: "16px",
+});
+
+export const depHeader = style({
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+});
+
+export const depList = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: "4px",
+  margin: 0,
+  padding: 0,
+  listStyle: "none",
+});
+
+export const depItem = style({
+  display: "grid",
+  gridTemplateColumns: "12px 80px 1fr",
+  alignItems: "center",
+  gap: "10px",
+  padding: "4px 0",
+  fontSize: "12px",
+});
