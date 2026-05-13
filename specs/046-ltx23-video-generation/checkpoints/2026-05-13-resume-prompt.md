@@ -22,6 +22,11 @@ in the `nexus-dnn` Rust monorepo. The branch
 - **Rung 7B** ✅ `e6388d5` — unified runtime install CTA (uv sync chained with weights)
 - **Rung 7E** ✅ `25246fe` — openapi fragment parity (10 routes + new schemas)
 - **Rung 7D** ✅ `d901295` — cancel actually cancels (Notify-based registry)
+- **Rung 7A** ⏳ spike on user's RTX 5070 Ti — 4 of 5 blockers fixed
+  (`5d53ef8` CUDA wheels + runtime venv + LTX2 class; commit
+  shipping the async render_start fix). 5th blocker fully diagnosed
+  + recipe for Rung 7G written into
+  `verification/p0-t001-results.md`. NOT yet rendered a real video.
 
 The fake-profile path is fully exercised end-to-end (POST /renders →
 Python subprocess → JSON-RPC notifications → real ffmpeg-encoded MP4 →
@@ -109,7 +114,58 @@ gates are green. After each commit, append a brief checkpoint to
 `specs/046-ltx23-video-generation/checkpoints/` and update this resume
 prompt's "where I am" section.
 
-### Rung 7A — Real-GPU validation spike (P0-T001) [if user has GPU access]
+### Rung 7G (formerly 7A continuation) — Switch to community-port diffusers repo + real render
+
+**Read first**: `specs/046-ltx23-video-generation/verification/p0-t001-results.md`
+
+What's done (Rung 7A spike, this branch):
+- CUDA torch wheels resolve via `pytorch-cu128` index (commit `5d53ef8`).
+- uv sync targets the host's runtime venv via `UV_PROJECT_ENVIRONMENT`
+  (commit `5d53ef8`).
+- `LTX2ImageToVideoPipeline` (LTX 2.x) replaces `LTXImageToVideoPipeline`
+  (LTX v1) in `_ensure_pipeline_loaded` (commit `5d53ef8`).
+- `render_start` returns immediately; pipeline load + render happen in
+  `_load_then_render` (commit included in the diagnosis push).
+- 56 GB downloaded for `Lightricks/LTX-2.3-fp8` (transformer-only single
+  files — `model_index.json` missing, can't load standalone).
+- 99.6 GB downloaded for `Lightricks/LTX-2` components — **wrong
+  architecture** (9 conditioning channels in LTX-2.3 vs 6 in LTX-2,
+  mismatch across all 48 transformer blocks). DELETE THIS BEFORE
+  STARTING 7G:
+  ```bash
+  rm -rf C:/Users/lazar/.nexus/models/Lightricks/LTX-2
+  ```
+
+What to do in Rung 7G:
+1. Edit `installer.py::PROFILE_REPO` so `rtx40-fp8` / `rtx50-fp8` map
+   to `dg845/LTX-2.3-Distilled-Diffusers` (the community port — 88 GB,
+   full diffusers-format with the right transformer config). Optionally
+   keep `Lightricks/LTX-2.3-fp8` as a fallback override repo for the
+   FP8 quantization variant once upstream diffusers supports it.
+2. Update `pipeline_diffusers.py::_ensure_pipeline_loaded` to use the
+   straightforward `LTX2ImageToVideoPipeline.from_pretrained(model_dir,
+   torch_dtype=torch.bfloat16, local_files_only=True)`. Remove the
+   transformer-override scaffolding (we tried it; doesn't work for
+   LTX-2.3 with `Lightricks/LTX-2` config — see results doc).
+3. Trigger the unified install via `POST
+   /api/v1/extensions/nexus.video.ltx23/profiles/rtx50-fp8/install`
+   (Rung 7B flow). Wait ~10–30 min for 88 GB.
+4. Submit a 4-second draft render at `runtime_profile=rtx50-fp8`.
+5. Capture in `verification/p0-t001-results.md`:
+   - first-load time (`from_pretrained` wall-clock)
+   - per-segment wall-clock
+   - peak `torch.cuda.max_memory_allocated()`
+   - `num_alloc_retries` (from `vram.memory_stats`)
+   - downloaded MP4 plays + has correct frame count
+
+If the BF16 88 GB pipeline OOMs on 16 GB VRAM even with
+`enable_model_cpu_offload + vae.enable_tiling`, the next iteration is
+to add `pipe.enable_sequential_cpu_offload()` (slower but tighter
+per-component swapping) OR pursue an FP8 quant path via diffusers
+0.38+ once it ships proper LTX-2.3 config support.
+
+Deliverable: a `final.mp4` artifact + filled-in P0-T001 telemetry
+table. Branch should then be PR-ready (Rung 7F).
 
 Goal: get the first real LTX-2.3 render to complete on the user's RTX
 hardware. This requires the user — not Claude — to be at a machine
