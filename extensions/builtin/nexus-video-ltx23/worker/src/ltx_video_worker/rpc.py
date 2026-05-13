@@ -19,6 +19,7 @@ class Notifications:
     PROGRESS = "ltx.video.progress"
     SEGMENT_STARTED = "ltx.video.segment.started"
     SEGMENT_COMPLETED = "ltx.video.segment.completed"
+    SEGMENT_STEP = "ltx.video.segment.step"
     ARTIFACT_CREATED = "ltx.video.artifact.created"
     DONE = "ltx.video.done"
     ERROR = "ltx.video.error"

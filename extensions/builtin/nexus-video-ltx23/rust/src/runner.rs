@@ -378,6 +378,34 @@ async fn handle_notification(
             }
             Ok(None)
         }
+        "ltx.video.segment.step" => {
+            // Per-inference-step heartbeat from pipeline_diffusers' diffusers
+            // `callback_on_step_end` hook. Solves the "worker silent for
+            // minutes" UX problem — gives the recipe UI a live per-step
+            // progress counter even when the segment-level progress
+            // hasn't ticked yet. Logged at TRACE so it doesn't spam the
+            // host log; the notification still reaches any SSE subscriber.
+            let step = note.params.get("step").and_then(Value::as_u64).unwrap_or(0);
+            let total = note
+                .params
+                .get("total_steps")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let seg = note
+                .params
+                .get("segment_index")
+                .and_then(Value::as_i64)
+                .unwrap_or(-1);
+            tracing::trace!(
+                extension_id = "nexus.video.ltx23",
+                run_id = %run_id,
+                segment = seg,
+                step,
+                total,
+                "segment inference step"
+            );
+            Ok(None)
+        }
         "ltx.video.done" => {
             let final_path = note
                 .params
