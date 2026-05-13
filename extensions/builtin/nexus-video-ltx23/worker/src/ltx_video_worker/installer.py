@@ -1,21 +1,38 @@
-"""Profile-specific model install via huggingface_hub.
+"""Profile-specific runtime + model install.
 
-Registered regardless of profile so the install RPC is available from a
-fresh fake-mode worker (chicken-and-egg: download the FP8/NVFP4 weights
-BEFORE switching to the real profile).
+Two RPC surfaces are exposed (both registered regardless of the active
+worker profile, so a fresh fake-mode worker can be used to install
+real-profile assets):
 
-JSON-RPC surface:
-  - `ltx.video.install.start` { profile, host_data_dir } → { repo, dest, status: 'started' }
-  - `ltx.video.install.status` { profile, host_data_dir } → { installed: bool, dest, has_sentinel }
+  - `ltx.video.install.start` { profile, host_data_dir }
+      → only the weight snapshot_download (legacy single-step flow).
 
-Notifications during install:
-  - `ltx.video.install.progress` { profile, repo, downloaded_files, total_files }
+  - `ltx.video.runtime.install` { profile, host_data_dir }
+      → full "install everything needed to run this profile" flow:
+        1. `uv sync --extra diffusers` inside the worker's own
+           pyproject (resolves torch/diffusers/transformers/accelerate/
+           safetensors/einops). Idempotent — uv exits in seconds when
+           the lockfile already matches.
+        2. After uv succeeds, the existing snapshot_download path
+           downloads the LTX-2.3 FP8/NVFP4 weights.
+
+  - `ltx.video.install.status` { profile, host_data_dir }
+      → returns weight-install state (sentinel + dest).
+
+Notifications during a render-runtime install:
+  - `ltx.video.runtime.install.progress` { profile, repo, phase, output? }
+      where phase ∈ {"resolving_deps", "downloading_weights"}.
+  - `ltx.video.runtime.install.done`     { profile, repo, dest }
+  - `ltx.video.runtime.install.error`    { profile, repo, code, message, phase }
+
+Notifications during a weights-only install (legacy):
+  - `ltx.video.install.progress` { profile, repo, phase, dest }
   - `ltx.video.install.done`     { profile, repo, dest }
   - `ltx.video.install.error`    { profile, repo, code, message }
 
 Sentinel file (<dest>/.nexus-install-complete) is written atomically on
-success. The Rust side checks for it (or the diffusers pipeline's
-config.json + model_index.json) to determine installed-ness.
+weight-install success. The Rust side checks for it (or the diffusers
+pipeline's config.json + model_index.json) to determine installed-ness.
 """
 
 from __future__ import annotations
@@ -23,7 +40,7 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from .rpc import ErrorCodes
 
@@ -36,9 +53,33 @@ PROFILE_REPO: dict[str, str] = {
 
 SENTINEL_NAME = ".nexus-install-complete"
 
+# Bounded buffer so a chatty resolver can't OOM the worker — the most
+# recent N lines win; older ones drop silently. The Rust side mirrors
+# this cap in its own buffer.
+PROGRESS_LINE_LIMIT_BYTES = 1024
 
-def register_installer_handlers(worker) -> None:
-    in_flight: dict[str, asyncio.Task[Any]] = {}
+
+# Pluggable for tests: signature is
+#   async (cwd: Path, on_line: Callable[[str, str], Awaitable[None]]) -> int
+# Returns the subprocess exit code. on_line is called with ("stdout"|"stderr", text)
+# for each line read. Default implementation shells out to `uv sync --extra diffusers`.
+UvSyncRunner = Callable[[Path, Callable[[str, str], Awaitable[None]]], Awaitable[int]]
+
+
+def register_installer_handlers(
+    worker,
+    *,
+    uv_sync_runner: UvSyncRunner | None = None,
+) -> None:
+    """Register installer JSON-RPC handlers on the given worker.
+
+    `uv_sync_runner` may be injected by tests to replace the real uv
+    subprocess with a deterministic stub.
+    """
+
+    runner: UvSyncRunner = uv_sync_runner or _default_uv_sync_runner
+    in_flight_snapshot: dict[str, asyncio.Task[Any]] = {}
+    in_flight_runtime: dict[str, asyncio.Task[Any]] = {}
 
     async def install_status(params: Any) -> dict[str, Any]:
         if not isinstance(params, dict):
@@ -86,7 +127,7 @@ def register_installer_handlers(worker) -> None:
 
         dest = _dest_dir(host_data_dir, repo)
 
-        if profile in in_flight and not in_flight[profile].done():
+        if profile in in_flight_snapshot and not in_flight_snapshot[profile].done():
             return {
                 "status": "already_in_flight",
                 "profile": profile,
@@ -97,7 +138,48 @@ def register_installer_handlers(worker) -> None:
         task = asyncio.create_task(
             _run_install(worker, profile=profile, repo=repo, dest=dest)
         )
-        in_flight[profile] = task
+        in_flight_snapshot[profile] = task
+        return {
+            "status": "started",
+            "profile": profile,
+            "repo": repo,
+            "dest": str(dest),
+        }
+
+    async def runtime_install(params: Any) -> dict[str, Any]:
+        if not isinstance(params, dict):
+            raise ValueError("params must be an object")
+        profile = str(params.get("profile", ""))
+        host_data_dir = params.get("host_data_dir") or os.environ.get(
+            "NEXUS_HOST_DATA_DIR"
+        )
+        if not host_data_dir:
+            raise ValueError("host_data_dir not supplied and NEXUS_HOST_DATA_DIR unset")
+
+        repo = PROFILE_REPO.get(profile)
+        if not repo:
+            return {
+                "status": "rejected",
+                "error_code": ErrorCodes.INVALID_PARAMS,
+                "error": f"unknown profile: {profile}",
+            }
+
+        dest = _dest_dir(host_data_dir, repo)
+
+        if profile in in_flight_runtime and not in_flight_runtime[profile].done():
+            return {
+                "status": "already_in_flight",
+                "profile": profile,
+                "repo": repo,
+                "dest": str(dest),
+            }
+
+        task = asyncio.create_task(
+            _run_runtime_install(
+                worker, profile=profile, repo=repo, dest=dest, uv_runner=runner
+            )
+        )
+        in_flight_runtime[profile] = task
         return {
             "status": "started",
             "profile": profile,
@@ -107,6 +189,7 @@ def register_installer_handlers(worker) -> None:
 
     worker.register("ltx.video.install.start", install_start)
     worker.register("ltx.video.install.status", install_status)
+    worker.register("ltx.video.runtime.install", runtime_install)
 
 
 def _dest_dir(host_data_dir: str, repo: str) -> Path:
@@ -114,26 +197,240 @@ def _dest_dir(host_data_dir: str, repo: str) -> Path:
     return Path(host_data_dir) / "models" / Path(*repo.split("/"))
 
 
-async def _run_install(worker, profile: str, repo: str, dest: Path) -> None:
+def _worker_dir() -> Path:
+    """Resolve <extension_dir>/worker/ from this module's location.
+
+    Layout: <worker_dir>/src/ltx_video_worker/installer.py
+    parents[0]=ltx_video_worker, parents[1]=src, parents[2]=worker.
+    """
+    return Path(__file__).resolve().parents[2]
+
+
+async def _default_uv_sync_runner(
+    cwd: Path, on_line: Callable[[str, str], Awaitable[None]]
+) -> int:
+    """Spawn `uv sync --extra diffusers` and stream its output.
+
+    Returns the process exit code. The on_line callback receives
+    ("stdout"|"stderr", text) for each line as it lands. uv writes
+    its resolution progress on stderr.
+    """
+    proc = await asyncio.create_subprocess_exec(
+        "uv",
+        "sync",
+        "--extra",
+        "diffusers",
+        cwd=str(cwd),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    async def _drain(stream: asyncio.StreamReader | None, channel: str) -> None:
+        if stream is None:
+            return
+        while True:
+            raw = await stream.readline()
+            if not raw:
+                break
+            text = raw.decode("utf-8", errors="replace").rstrip()
+            if text:
+                await on_line(channel, text)
+
+    await asyncio.gather(
+        _drain(proc.stdout, "stdout"),
+        _drain(proc.stderr, "stderr"),
+    )
+    return await proc.wait()
+
+
+async def _run_runtime_install(
+    worker,
+    *,
+    profile: str,
+    repo: str,
+    dest: Path,
+    uv_runner: UvSyncRunner,
+) -> None:
+    """Run uv sync, then weight snapshot_download. Emit runtime.install.* notes."""
+
+    worker_dir = _worker_dir()
+
+    await worker.emit_notification(
+        "ltx.video.runtime.install.progress",
+        {
+            "profile": profile,
+            "repo": repo,
+            "phase": "resolving_deps",
+            "output": f"running uv sync --extra diffusers in {worker_dir}",
+        },
+    )
+
+    async def _forward_uv_line(channel: str, text: str) -> None:
+        truncated = text if len(text) <= PROGRESS_LINE_LIMIT_BYTES else (
+            text[:PROGRESS_LINE_LIMIT_BYTES] + "…"
+        )
+        await worker.emit_notification(
+            "ltx.video.runtime.install.progress",
+            {
+                "profile": profile,
+                "repo": repo,
+                "phase": "resolving_deps",
+                "stream": channel,
+                "output": truncated,
+            },
+        )
+
     try:
-        from huggingface_hub import snapshot_download  # type: ignore
-    except ImportError as e:
+        exit_code = await uv_runner(worker_dir, _forward_uv_line)
+    except FileNotFoundError as e:
+        await worker.emit_notification(
+            "ltx.video.runtime.install.error",
+            {
+                "profile": profile,
+                "repo": repo,
+                "phase": "resolving_deps",
+                "code": ErrorCodes.INTERNAL_ERROR,
+                "message": f"uv executable not found on PATH: {e}",
+            },
+        )
+        return
+    except Exception as e:  # noqa: BLE001 — surface anything uv launcher throws
+        await worker.emit_notification(
+            "ltx.video.runtime.install.error",
+            {
+                "profile": profile,
+                "repo": repo,
+                "phase": "resolving_deps",
+                "code": ErrorCodes.INTERNAL_ERROR,
+                "message": f"uv launch failed: {e}",
+            },
+        )
+        return
+
+    if exit_code != 0:
+        await worker.emit_notification(
+            "ltx.video.runtime.install.error",
+            {
+                "profile": profile,
+                "repo": repo,
+                "phase": "resolving_deps",
+                "code": ErrorCodes.INTERNAL_ERROR,
+                "message": f"uv sync exited with code {exit_code}",
+            },
+        )
+        return
+
+    await worker.emit_notification(
+        "ltx.video.runtime.install.progress",
+        {
+            "profile": profile,
+            "repo": repo,
+            "phase": "downloading_weights",
+            "output": f"downloading {repo} to {dest}",
+        },
+    )
+
+    weights_result = await _do_snapshot_download(profile=profile, repo=repo, dest=dest)
+    if isinstance(weights_result, _DownloadFailure):
+        await worker.emit_notification(
+            "ltx.video.runtime.install.error",
+            {
+                "profile": profile,
+                "repo": repo,
+                "phase": "downloading_weights",
+                "code": weights_result.code,
+                "message": weights_result.message,
+            },
+        )
+        return
+
+    if not _write_sentinel(weights_result.resolved, profile=profile, repo=repo):
+        await worker.emit_notification(
+            "ltx.video.runtime.install.error",
+            {
+                "profile": profile,
+                "repo": repo,
+                "phase": "downloading_weights",
+                "code": ErrorCodes.INTERNAL_ERROR,
+                "message": "failed to write install sentinel",
+            },
+        )
+        return
+
+    await worker.emit_notification(
+        "ltx.video.runtime.install.done",
+        {"profile": profile, "repo": repo, "dest": weights_result.resolved},
+    )
+
+
+async def _run_install(worker, profile: str, repo: str, dest: Path) -> None:
+    """Legacy weights-only install path. Kept for the old install.start RPC."""
+
+    await worker.emit_notification(
+        "ltx.video.install.progress",
+        {"profile": profile, "repo": repo, "phase": "starting", "dest": str(dest)},
+    )
+
+    weights_result = await _do_snapshot_download(profile=profile, repo=repo, dest=dest)
+    if isinstance(weights_result, _DownloadFailure):
+        await worker.emit_notification(
+            "ltx.video.install.error",
+            {
+                "profile": profile,
+                "repo": repo,
+                "code": weights_result.code,
+                "message": weights_result.message,
+            },
+        )
+        return
+
+    if not _write_sentinel(weights_result.resolved, profile=profile, repo=repo):
         await worker.emit_notification(
             "ltx.video.install.error",
             {
                 "profile": profile,
                 "repo": repo,
                 "code": ErrorCodes.INTERNAL_ERROR,
-                "message": f"huggingface_hub not importable: {e}",
+                "message": "failed to write install sentinel",
             },
         )
         return
 
+    await worker.emit_notification(
+        "ltx.video.install.done",
+        {"profile": profile, "repo": repo, "dest": weights_result.resolved},
+    )
+
+
+class _DownloadSuccess:
+    __slots__ = ("resolved",)
+
+    def __init__(self, resolved: str) -> None:
+        self.resolved = resolved
+
+
+class _DownloadFailure:
+    __slots__ = ("code", "message")
+
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        self.message = message
+
+
+async def _do_snapshot_download(
+    *, profile: str, repo: str, dest: Path
+) -> _DownloadSuccess | _DownloadFailure:
+    try:
+        from huggingface_hub import snapshot_download  # type: ignore
+    except ImportError as e:
+        return _DownloadFailure(
+            ErrorCodes.INTERNAL_ERROR,
+            f"huggingface_hub not importable: {e}",
+        )
+
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     def _download_sync() -> str:
-        # snapshot_download is sync; run in a thread so the asyncio loop keeps
-        # processing JSON-RPC traffic (notifications, cancel).
         return snapshot_download(
             repo_id=repo,
             local_dir=str(dest),
@@ -141,46 +438,34 @@ async def _run_install(worker, profile: str, repo: str, dest: Path) -> None:
             allow_patterns=None,
         )
 
-    await worker.emit_notification(
-        "ltx.video.install.progress",
-        {"profile": profile, "repo": repo, "phase": "starting", "dest": str(dest)},
-    )
-
     try:
         resolved = await asyncio.to_thread(_download_sync)
     except Exception as e:  # noqa: BLE001 — surface anything HF throws
-        await worker.emit_notification(
-            "ltx.video.install.error",
-            {
-                "profile": profile,
-                "repo": repo,
-                "code": ErrorCodes.MODEL_LOAD_FAILED,
-                "message": f"snapshot_download failed: {e}",
-            },
+        return _DownloadFailure(
+            ErrorCodes.MODEL_LOAD_FAILED,
+            f"snapshot_download failed for {profile}/{repo}: {e}",
         )
-        return
+    return _DownloadSuccess(resolved=resolved)
 
-    sentinel = Path(resolved) / SENTINEL_NAME
+
+def _write_sentinel(resolved_dir: str, *, profile: str, repo: str) -> bool:
+    sentinel = Path(resolved_dir) / SENTINEL_NAME
     try:
         sentinel.write_text(
-            "installed_by=nexus.video.ltx23.installer\nprofile={p}\nrepo={r}\n".format(
-                p=profile, r=repo
-            ),
+            "installed_by=nexus.video.ltx23.installer\n"
+            f"profile={profile}\n"
+            f"repo={repo}\n",
             encoding="utf-8",
         )
-    except OSError as e:
-        await worker.emit_notification(
-            "ltx.video.install.error",
-            {
-                "profile": profile,
-                "repo": repo,
-                "code": ErrorCodes.INTERNAL_ERROR,
-                "message": f"failed to write install sentinel: {e}",
-            },
-        )
-        return
+        return True
+    except OSError:
+        return False
 
-    await worker.emit_notification(
-        "ltx.video.install.done",
-        {"profile": profile, "repo": repo, "dest": resolved},
-    )
+
+__all__ = [
+    "register_installer_handlers",
+    "PROFILE_REPO",
+    "SENTINEL_NAME",
+    "PROGRESS_LINE_LIMIT_BYTES",
+    "UvSyncRunner",
+]

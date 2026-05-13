@@ -288,3 +288,46 @@ export const depItem = style({
   padding: "4px 0",
   fontSize: "12px",
 });
+
+export const progressDetails = style({
+  marginTop: "10px",
+  borderTop: "1px solid oklch(30% 0.005 250)",
+  paddingTop: "8px",
+});
+
+export const progressSummary = style({
+  cursor: "pointer",
+  fontSize: "12px",
+  color: textMuted,
+  fontFamily: "JetBrains Mono, monospace",
+  userSelect: "none",
+  selectors: {
+    "&::-webkit-details-marker": {
+      display: "none",
+    },
+    "&::marker": {
+      content: '""',
+    },
+    "&::before": {
+      content: '"▸ "',
+      display: "inline-block",
+      transition: "transform 120ms ease",
+    },
+  },
+});
+
+export const progressBlock = style({
+  marginTop: "8px",
+  padding: "8px",
+  background: "rgba(0, 0, 0, 0.25)",
+  border: "1px solid oklch(30% 0.005 250)",
+  borderRadius: "4px",
+  fontFamily: "JetBrains Mono, monospace",
+  fontSize: "11px",
+  lineHeight: 1.5,
+  maxHeight: "240px",
+  overflowY: "auto",
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+  color: textMuted,
+});
