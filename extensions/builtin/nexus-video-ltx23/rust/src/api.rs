@@ -342,6 +342,11 @@ async fn create_render(
         started_at: None,
         completed_at: None,
         cancelled_at: None,
+        restart_count: 0,
+        // Snapshot the supervisor's restart cap at insert time so the
+        // UI badge ("restart 1/3") reflects what THIS run is allowed
+        // even if the operator later retunes the env var.
+        max_restart_count: i64::from(crate::runner::max_restarts_from_env_public()),
     };
     state.repos.insert_run(&run).await?;
 
@@ -474,6 +479,13 @@ struct RenderStateResponse {
     started_at: Option<String>,
     completed_at: Option<String>,
     segments: Vec<SegmentSummary>,
+    /// Rung 7L observability: how many transparent restarts the VRAM
+    /// supervisor has triggered so far on this run. 0 for the common
+    /// case (no VRAM pressure); non-zero means at least one halt+resume.
+    restart_count: u32,
+    /// Snapshot of the supervisor cap this run is running under. UI
+    /// renders "restart 1/3" as `restart_count`/`max_restart_count`.
+    max_restart_count: u32,
 }
 
 #[derive(Serialize)]
@@ -527,6 +539,8 @@ async fn get_render(
         created_at: run.created_at.to_rfc3339(),
         started_at: run.started_at.map(|t| t.to_rfc3339()),
         completed_at: run.completed_at.map(|t| t.to_rfc3339()),
+        restart_count: u32::try_from(run.restart_count).unwrap_or(0),
+        max_restart_count: u32::try_from(run.max_restart_count).unwrap_or(0),
         segments: segments
             .into_iter()
             .map(|s| SegmentSummary {

@@ -89,6 +89,16 @@ fn max_restarts_from_env() -> u32 {
         .unwrap_or(DEFAULT_MAX_RESTARTS)
 }
 
+/// Public wrapper around `max_restarts_from_env`.
+///
+/// The HTTP layer calls this to snapshot the current cap into
+/// `run.max_restart_count` at insert-run time. Returns the same value
+/// `run_via_lease` will use when it spawns the run.
+#[must_use]
+pub fn max_restarts_from_env_public() -> u32 {
+    max_restarts_from_env()
+}
+
 // Render wall-clock budget. The real LTX-2.3 pipeline on a single 16 GB
 // GPU takes ~750 s per 4-second segment (60 s cold pipeline load + 8
 // inference steps @ ~75 s each, measured 2026-05-13 on RTX 5070 Ti with
@@ -501,6 +511,20 @@ async fn run_via_lease(
                     next_offset,
                     "vram supervisor: restarting chain at next segment"
                 );
+                // Bump the persisted counter so polling clients see
+                // the restart in real time (DB row reflects intent
+                // BEFORE the new lease acquire — the row may show
+                // restart_count=N briefly even if the next attempt
+                // fails immediately, but that's the right semantic:
+                // the restart was attempted).
+                if let Err(e) = cfg.repos.increment_restart_count(run_id).await {
+                    tracing::warn!(
+                        extension_id = "nexus.video.ltx23",
+                        run_id = %run_id,
+                        error = %e,
+                        "runner: failed to persist restart counter; UI badge will lag"
+                    );
+                }
                 segment_offset = next_offset;
             }
             other => break other,
