@@ -347,6 +347,7 @@ async fn create_render(
         // UI badge ("restart 1/3") reflects what THIS run is allowed
         // even if the operator later retunes the env var.
         max_restart_count: i64::from(crate::runner::max_restarts_from_env_public()),
+        last_breach_reason: None,
     };
     state.repos.insert_run(&run).await?;
 
@@ -486,6 +487,11 @@ struct RenderStateResponse {
     /// Snapshot of the supervisor cap this run is running under. UI
     /// renders "restart 1/3" as `restart_count`/`max_restart_count`.
     max_restart_count: u32,
+    /// Most recent VRAM-supervisor breach reason (human-readable, e.g.
+    /// `frag_ratio=0.42 exceeded max=0.30`). `None` for runs that
+    /// never breached. UI renders this as a tooltip on the restart
+    /// badge so the operator can see *why* the chain restarted.
+    last_breach_reason: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -541,6 +547,7 @@ async fn get_render(
         completed_at: run.completed_at.map(|t| t.to_rfc3339()),
         restart_count: u32::try_from(run.restart_count).unwrap_or(0),
         max_restart_count: u32::try_from(run.max_restart_count).unwrap_or(0),
+        last_breach_reason: run.last_breach_reason,
         segments: segments
             .into_iter()
             .map(|s| SegmentSummary {
