@@ -72,6 +72,23 @@ fn typed_error_for(code: i64, message: String) -> crate::errors::ExtensionError 
     }
 }
 
+// Hard cap on transparent restart-mid-chain attempts before the runner
+// gives up and surfaces the supervisor halt to the UI. Three is the
+// sweet spot from spec-046 measurements: one restart is often enough to
+// drain the fragmented CUDA pool; two covers slow-leak pathologies;
+// three is the canary for "something else is wrong, stop wasting GPU
+// time". Configurable via env var so operators can tune for their
+// hardware without rebuilding.
+const DEFAULT_MAX_RESTARTS: u32 = 3;
+const MAX_RESTARTS_ENV: &str = "NEXUS_VIDEO_LTX23_VRAM_MAX_RESTARTS";
+
+fn max_restarts_from_env() -> u32 {
+    std::env::var(MAX_RESTARTS_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .unwrap_or(DEFAULT_MAX_RESTARTS)
+}
+
 // Render wall-clock budget. The real LTX-2.3 pipeline on a single 16 GB
 // GPU takes ~750 s per 4-second segment (60 s cold pipeline load + 8
 // inference steps @ ~75 s each, measured 2026-05-13 on RTX 5070 Ti with
@@ -401,135 +418,109 @@ async fn run_via_lease(
         .update_run_status(run_id, "waiting_for_runtime", None, None, None)
         .await?;
 
-    let lease = cfg.factory.acquire(short_profile(profile)).await?;
+    let max_restarts = max_restarts_from_env();
+    let mut segment_offset: u32 = 0;
+    let mut restart_attempts: u32 = 0;
+    let mut last_breach_reason: Option<String> = None;
 
-    cfg.repos
-        .update_run_status(run_id, "rendering", None, None, None)
+    let outcome = loop {
+        cfg.repos
+            .update_run_status(run_id, "rendering", None, None, None)
+            .await?;
+
+        let attempt_outcome = run_attempt(
+            cfg,
+            run_id,
+            profile,
+            plan,
+            prompt,
+            negative_prompt,
+            style_prompt,
+            character_prompt,
+            advanced,
+            &workdir,
+            segment_offset,
+            cancel_notify.clone(),
+        )
         .await?;
 
-    let mut notifications = lease.subscribe_notifications();
-
-    let render_params = build_render_params(
-        run_id,
-        plan,
-        prompt,
-        negative_prompt,
-        style_prompt,
-        character_prompt,
-        advanced,
-        &workdir,
-    );
-    // Single-exit pattern: do the work inside an inner async block,
-    // capture its Result, then release the lease ONCE on every path
-    // (timeout, channel close, worker error, success). The pre-refactor
-    // structure left a window where the outer timeout's map_err would
-    // short-circuit before lease.release() ran.
-    let outcome_result: Result<NotificationOutcome> = async {
-        lease
-            .send_rpc("ltx.video.render.start", render_params)
-            .await
-            .map_err(|e| {
-                crate::errors::ExtensionError::RenderFailed(format!(
-                    "render.start rejected by worker: {e}"
-                ))
-            })?;
-
-        let cancel_wait = cancel_notify.notified();
-        tokio::pin!(cancel_wait);
-        let mut cancel_requested = false;
-        let mut cancel_deadline: Option<tokio::time::Instant> = None;
-
-        let driven = tokio::time::timeout(RENDER_TIMEOUT, async {
-            loop {
-                let recv_fut = notifications.recv();
-                let cancel_deadline_tick = async {
-                    if let Some(deadline) = cancel_deadline {
-                        tokio::time::sleep_until(deadline).await;
-                    } else {
-                        std::future::pending::<()>().await;
-                    }
-                };
-
-                tokio::select! {
-                    () = &mut cancel_wait, if !cancel_requested => {
-                        cancel_requested = true;
-                        cancel_deadline = Some(tokio::time::Instant::now() + CANCEL_GRACE);
-                        if let Err(e) = lease
-                            .send_rpc("ltx.video.render.cancel", json!({ "request_id": run_id }))
-                            .await
-                        {
-                            tracing::warn!(
-                                extension_id = "nexus.video.ltx23",
-                                run_id = %run_id,
-                                error = %e,
-                                "runner: cancel RPC failed; will rely on grace timeout"
-                            );
-                        } else {
-                            tracing::info!(
-                                extension_id = "nexus.video.ltx23",
-                                run_id = %run_id,
-                                "runner: cancel signalled to worker"
-                            );
-                        }
-                    }
-                    () = cancel_deadline_tick, if cancel_requested => {
-                        return Ok::<NotificationOutcome, crate::errors::ExtensionError>(
-                            NotificationOutcome::Cancelled,
-                        );
-                    }
-                    recv = recv_fut => match recv {
-                        Ok(note) => {
-                            if !notification_matches_run(&note.params, run_id) {
-                                // Defence-in-depth: a notification for a
-                                // different run_id sharing the broadcast
-                                // channel must not flip our segment rows.
-                                continue;
-                            }
-                            if let Some(o) =
-                                handle_notification(cfg, run_id, &workdir, &note).await?
-                            {
-                                return Ok(o);
-                            }
-                        }
-                        Err(RecvError::Lagged(skipped)) => {
-                            tracing::warn!(
-                                run_id = %run_id,
-                                skipped,
-                                "runner: notification lag — dropping events but continuing"
-                            );
-                        }
-                        Err(RecvError::Closed) => {
-                            return Err(crate::errors::ExtensionError::RenderFailed(
-                                "worker closed notification channel before emitting done"
-                                    .into(),
-                            ));
-                        }
-                    }
+        match attempt_outcome {
+            NotificationOutcome::RestartRequired {
+                reason,
+                last_completed_segment,
+            } => {
+                // Translate the "what was the last good segment" into
+                // the "where do we resume" index. last_completed_segment
+                // is the original chain index (0-based); we resume at +1.
+                let next_offset = u32::try_from(last_completed_segment.saturating_add(1))
+                    .unwrap_or(u32::MAX);
+                // No forward progress check — should be impossible
+                // because the latch is consumed by segment.completed,
+                // but defensive: if next_offset isn't strictly greater
+                // than the offset we just ran with, collapse to halt.
+                if next_offset <= segment_offset
+                    || (next_offset as usize) >= plan.segments.len()
+                {
+                    tracing::warn!(
+                        extension_id = "nexus.video.ltx23",
+                        run_id = %run_id,
+                        reason = %reason,
+                        segment_offset,
+                        next_offset,
+                        plan_segments = plan.segments.len(),
+                        "vram supervisor: restart point invalid; halting chain"
+                    );
+                    break NotificationOutcome::Error {
+                        code: VRAM_SUPERVISOR_BREACH_CODE,
+                        message: format!("vram supervisor halt: {reason}"),
+                    };
                 }
+                restart_attempts += 1;
+                last_breach_reason = Some(reason.clone());
+                if restart_attempts > max_restarts {
+                    tracing::warn!(
+                        extension_id = "nexus.video.ltx23",
+                        run_id = %run_id,
+                        reason = %reason,
+                        restart_attempts,
+                        max_restarts,
+                        "vram supervisor: restart budget exhausted; halting chain"
+                    );
+                    break NotificationOutcome::Error {
+                        code: VRAM_SUPERVISOR_BREACH_CODE,
+                        message: format!(
+                            "vram supervisor halt after {restart_attempts} restart(s): {reason}"
+                        ),
+                    };
+                }
+                tracing::info!(
+                    extension_id = "nexus.video.ltx23",
+                    run_id = %run_id,
+                    reason = %reason,
+                    restart_attempts,
+                    next_offset,
+                    "vram supervisor: restarting chain at next segment"
+                );
+                segment_offset = next_offset;
             }
-        })
-        .await
-        .map_err(|_| {
-            crate::errors::ExtensionError::RenderFailed(format!(
-                "render timed out after {} seconds",
-                RENDER_TIMEOUT.as_secs()
-            ))
-        })?;
+            other => break other,
+        }
+    };
 
-        driven
+    // Stash the last breach reason on a transient log so the final
+    // error message can mention it when the chain ultimately Done's
+    // after one or more restarts — useful operator diagnostic.
+    if let Some(reason) = &last_breach_reason {
+        if matches!(outcome, NotificationOutcome::Done { .. }) {
+            tracing::info!(
+                extension_id = "nexus.video.ltx23",
+                run_id = %run_id,
+                breach_reason = %reason,
+                restart_attempts,
+                "vram supervisor: chain completed after transparent restart(s)"
+            );
+        }
     }
-    .await;
-
-    if let Err(e) = lease.release().await {
-        tracing::warn!(
-            extension_id = "nexus.video.ltx23",
-            run_id = %run_id,
-            error = %e,
-            "runner: lease release failed; subprocess may be orphaned"
-        );
-    }
-
-    let outcome = outcome_result?;
 
     match outcome {
         NotificationOutcome::Done { final_path } => {
@@ -591,7 +582,196 @@ async fn run_via_lease(
             cleanup_workdir(&workdir, run_id).await;
             Err(crate::errors::ExtensionError::RenderCancelled)
         }
+        // The loop above only `break`s with Done / Error / Cancelled.
+        // This arm exists for exhaustiveness — the type system won't
+        // let us drop it without a wildcard, and a wildcard would hide
+        // future variants.
+        NotificationOutcome::RestartRequired { .. } => {
+            unreachable!("RestartRequired must be consumed by the restart loop")
+        }
     }
+}
+
+/// One attempt at running the chain (from `segment_offset` to end).
+///
+/// Acquires a fresh lease, sends `render.start`, drains notifications
+/// until terminal outcome OR `RestartRequired`. Releases the lease on
+/// every exit path. Caller decides whether to restart based on the
+/// outcome variant.
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+async fn run_attempt(
+    cfg: &RunnerConfig,
+    run_id: &str,
+    profile: &str,
+    plan: &RenderPlan,
+    prompt: &str,
+    negative_prompt: Option<&str>,
+    style_prompt: Option<&str>,
+    character_prompt: Option<&str>,
+    advanced: &crate::schemas::AdvancedSettings,
+    workdir: &std::path::Path,
+    segment_offset: u32,
+    cancel_notify: Arc<Notify>,
+) -> Result<NotificationOutcome> {
+    let lease = cfg.factory.acquire(short_profile(profile)).await?;
+    let mut notifications = lease.subscribe_notifications();
+    let breach_latch = BreachLatch::default();
+
+    let render_params = if segment_offset == 0 {
+        build_render_params(
+            run_id,
+            plan,
+            prompt,
+            negative_prompt,
+            style_prompt,
+            character_prompt,
+            advanced,
+            workdir,
+        )
+    } else {
+        // Resume mid-chain: trim the segments + point at the prior
+        // chain's last_frame.png so the worker re-anchors visual
+        // continuity. The path is the workdir layout the worker
+        // itself writes (`<workdir>/segments/<NNN>/last_frame.png`).
+        let prev_idx = segment_offset.saturating_sub(1);
+        let cond_image = workdir
+            .join("segments")
+            .join(format!("{prev_idx:03}"))
+            .join("last_frame.png");
+        let cond_image_opt = if cond_image.is_file() {
+            Some(cond_image.as_path())
+        } else {
+            // Best effort — if the prior segment's last_frame.png was
+            // never written (worker crash before flush), fall through
+            // without cond_image. The worker will still render the
+            // remaining segments, just without the visual-continuity
+            // anchor. Logged so an operator can correlate.
+            tracing::warn!(
+                extension_id = "nexus.video.ltx23",
+                run_id = %run_id,
+                segment_offset,
+                expected_path = %cond_image.display(),
+                "restart attempt: prior last_frame.png missing; resume will lose continuity"
+            );
+            None
+        };
+        build_render_params_offset(
+            run_id,
+            plan,
+            prompt,
+            negative_prompt,
+            style_prompt,
+            character_prompt,
+            advanced,
+            workdir,
+            segment_offset,
+            cond_image_opt,
+        )
+    };
+
+    let outcome_result: Result<NotificationOutcome> = async {
+        lease
+            .send_rpc("ltx.video.render.start", render_params)
+            .await
+            .map_err(|e| {
+                crate::errors::ExtensionError::RenderFailed(format!(
+                    "render.start rejected by worker: {e}"
+                ))
+            })?;
+
+        let cancel_wait = cancel_notify.notified();
+        tokio::pin!(cancel_wait);
+        let mut cancel_requested = false;
+        let mut cancel_deadline: Option<tokio::time::Instant> = None;
+
+        let driven = tokio::time::timeout(RENDER_TIMEOUT, async {
+            loop {
+                let recv_fut = notifications.recv();
+                let cancel_deadline_tick = async {
+                    if let Some(deadline) = cancel_deadline {
+                        tokio::time::sleep_until(deadline).await;
+                    } else {
+                        std::future::pending::<()>().await;
+                    }
+                };
+
+                tokio::select! {
+                    () = &mut cancel_wait, if !cancel_requested => {
+                        cancel_requested = true;
+                        cancel_deadline = Some(tokio::time::Instant::now() + CANCEL_GRACE);
+                        if let Err(e) = lease
+                            .send_rpc("ltx.video.render.cancel", json!({ "request_id": run_id }))
+                            .await
+                        {
+                            tracing::warn!(
+                                extension_id = "nexus.video.ltx23",
+                                run_id = %run_id,
+                                error = %e,
+                                "runner: cancel RPC failed; will rely on grace timeout"
+                            );
+                        } else {
+                            tracing::info!(
+                                extension_id = "nexus.video.ltx23",
+                                run_id = %run_id,
+                                "runner: cancel signalled to worker"
+                            );
+                        }
+                    }
+                    () = cancel_deadline_tick, if cancel_requested => {
+                        return Ok::<NotificationOutcome, crate::errors::ExtensionError>(
+                            NotificationOutcome::Cancelled,
+                        );
+                    }
+                    recv = recv_fut => match recv {
+                        Ok(note) => {
+                            if !notification_matches_run(&note.params, run_id) {
+                                continue;
+                            }
+                            if let Some(o) = handle_notification(
+                                cfg, run_id, workdir, &note, &breach_latch,
+                            ).await? {
+                                return Ok(o);
+                            }
+                        }
+                        Err(RecvError::Lagged(skipped)) => {
+                            tracing::warn!(
+                                run_id = %run_id,
+                                skipped,
+                                "runner: notification lag — dropping events but continuing"
+                            );
+                        }
+                        Err(RecvError::Closed) => {
+                            return Err(crate::errors::ExtensionError::RenderFailed(
+                                "worker closed notification channel before emitting done"
+                                    .into(),
+                            ));
+                        }
+                    }
+                }
+            }
+        })
+        .await
+        .map_err(|_| {
+            crate::errors::ExtensionError::RenderFailed(format!(
+                "render timed out after {} seconds",
+                RENDER_TIMEOUT.as_secs()
+            ))
+        })?;
+
+        driven
+    }
+    .await;
+
+    if let Err(e) = lease.release().await {
+        tracing::warn!(
+            extension_id = "nexus.video.ltx23",
+            run_id = %run_id,
+            error = %e,
+            "runner: lease release failed; subprocess may be orphaned"
+        );
+    }
+
+    outcome_result
 }
 
 /// Verify a worker-supplied path is a descendant of `workdir`.
@@ -641,9 +821,53 @@ async fn cleanup_workdir(workdir: &std::path::Path, run_id: &str) {
 }
 
 enum NotificationOutcome {
-    Done { final_path: PathBuf },
-    Error { code: i64, message: String },
+    Done {
+        final_path: PathBuf,
+    },
+    Error {
+        code: i64,
+        message: String,
+    },
     Cancelled,
+    /// Supervisor tripped mid-chain. Carries the breach reason for
+    /// logging + the last segment index that completed successfully
+    /// so the outer driver can resume from `index + 1` with a trimmed
+    /// plan + cond-image from the prior segment's `last_frame.png`.
+    RestartRequired {
+        reason: String,
+        last_completed_segment: i64,
+    },
+}
+
+/// Shared mid-render state for the supervisor's "breach now, restart at
+/// next segment boundary" flow.
+///
+/// `runtime.memory_stats` notifications interleave with `segment.completed`
+/// notifications (memory stats fire just before the worker advances to
+/// the next segment). The latch is set when a breach is detected and
+/// consumed on the very next `segment.completed` so the runner can
+/// release the lease while the worker is in a quiescent state — never
+/// mid-step. Falls back to immediate halt if the worker emits `done`
+/// before the latch is consumed (chain already finished, no resume
+/// needed).
+#[derive(Default)]
+struct BreachLatch {
+    reason: tokio::sync::Mutex<Option<String>>,
+}
+
+impl BreachLatch {
+    async fn set(&self, reason: String) {
+        let mut guard = self.reason.lock().await;
+        if guard.is_none() {
+            *guard = Some(reason);
+        }
+        // Multiple breaches in one segment collapse to the first reason
+        // observed — the underlying VRAM problem is one event, not many.
+    }
+
+    async fn take(&self) -> Option<String> {
+        self.reason.lock().await.take()
+    }
 }
 
 /// Single-segment-retry analogue of `run_via_lease`. Acquires a fresh
@@ -826,6 +1050,7 @@ async fn handle_notification(
     run_id: &str,
     _workdir: &std::path::Path,
     note: &nexus_backend_runtimes::generic::leases::trait_def::LeaseNotification,
+    breach_latch: &BreachLatch,
 ) -> Result<Option<NotificationOutcome>> {
     match note.method.as_str() {
         "ltx.video.segment.started" => {
@@ -841,6 +1066,16 @@ async fn handle_notification(
                 cfg.repos
                     .update_segment_status(run_id, i, "completed", None)
                     .await?;
+                // Supervisor breach pending? Now is the right moment to
+                // halt: the segment just landed cleanly on disk + the
+                // worker is between segments, so releasing the lease
+                // here gives a clean restart point.
+                if let Some(reason) = breach_latch.take().await {
+                    return Ok(Some(NotificationOutcome::RestartRequired {
+                        reason,
+                        last_completed_segment: i,
+                    }));
+                }
             }
             Ok(None)
         }
@@ -901,11 +1136,14 @@ async fn handle_notification(
             Ok(Some(NotificationOutcome::Error { code, message }))
         }
         "runtime.memory_stats" => {
-            // Supervisor reads each VRAM snapshot. A clean halt now
-            // (between segments, while the worker is still alive) is
-            // strictly better than crashing on the next allocation;
-            // the run row gets a distinct `vram_supervisor` error
-            // code so the UI can tell halt-by-policy from halt-by-OOM.
+            // Supervisor reads each VRAM snapshot. Instead of halting
+            // immediately, set a latch — the next `segment.completed`
+            // arm consumes it and returns RestartRequired so the outer
+            // driver can release the lease + acquire a fresh one to
+            // continue the chain transparently. After
+            // `max_restarts_from_env()` exhausted attempts the outer
+            // driver collapses to the legacy halt path with the
+            // `vram_supervisor` error_code.
             match cfg.vram_supervisor.evaluate(&note.params) {
                 VramVerdict::Healthy => Ok(None),
                 VramVerdict::Breach { reason } => {
@@ -913,12 +1151,10 @@ async fn handle_notification(
                         extension_id = "nexus.video.ltx23",
                         run_id = %run_id,
                         reason = %reason,
-                        "vram supervisor: threshold breached — halting chain"
+                        "vram supervisor: threshold breached — will restart at next segment boundary"
                     );
-                    Ok(Some(NotificationOutcome::Error {
-                        code: VRAM_SUPERVISOR_BREACH_CODE,
-                        message: format!("vram supervisor halt: {reason}"),
-                    }))
+                    breach_latch.set(reason).await;
+                    Ok(None)
                 }
             }
         }
@@ -928,6 +1164,78 @@ async fn handle_notification(
 
 fn segment_index(params: &Value) -> Option<i64> {
     params.get("segment_index").and_then(Value::as_i64)
+}
+
+/// Build a `render.start` payload that resumes mid-chain.
+///
+/// Slices `plan.segments[segment_offset..]` and injects an
+/// `input_image.path` pointing at the prior segment's `last_frame.png`
+/// so the worker conditions the resume chain on visual continuity
+/// from the breach point. Segment indices remain ORIGINAL (worker
+/// uses `seg["index"]` to compute its workdir path), so the on-disk
+/// layout + DB segment rows stay coherent across attempts.
+#[allow(clippy::too_many_arguments)]
+fn build_render_params_offset(
+    run_id: &str,
+    plan: &RenderPlan,
+    prompt: &str,
+    negative_prompt: Option<&str>,
+    style_prompt: Option<&str>,
+    character_prompt: Option<&str>,
+    advanced: &crate::schemas::AdvancedSettings,
+    workdir: &std::path::Path,
+    segment_offset: u32,
+    cond_image_path: Option<&std::path::Path>,
+) -> Value {
+    let mut params = build_render_params(
+        run_id,
+        plan,
+        prompt,
+        negative_prompt,
+        style_prompt,
+        character_prompt,
+        advanced,
+        workdir,
+    );
+
+    // Trim segments + inject cond_image. The worker's render_loop reads
+    // `input_image.path` once for segment 0, then derives subsequent
+    // `cond_image` from the prior segment's last_frame.png internally.
+    // So injecting the prior chain's last_frame.png as `input_image.path`
+    // for the FIRST segment of the resume payload re-establishes
+    // continuity without any further worker-side change.
+    let offset_usize = segment_offset as usize;
+    if let Some(obj) = params.as_object_mut() {
+        if let Some(video) = obj.get_mut("video").and_then(Value::as_object_mut) {
+            if let Some(segments_arr) = video.get_mut("segments").and_then(Value::as_array_mut) {
+                if offset_usize < segments_arr.len() {
+                    segments_arr.drain(0..offset_usize);
+                }
+            }
+            // The worker reads `frames_per_segment` / `segment_seconds`
+            // from the first remaining segment, but recompute defensively
+            // so even an empty-array edge case stays consistent.
+            if let Some(first) = plan.segments.get(offset_usize) {
+                video.insert("frames_per_segment".into(), Value::from(first.frame_count));
+                video.insert(
+                    "segment_seconds".into(),
+                    Value::from(f64::from(first.duration_seconds)),
+                );
+                video.insert(
+                    "overlap_seconds".into(),
+                    Value::from(f64::from(first.overlap_seconds)),
+                );
+            }
+        }
+        if let Some(cond) = cond_image_path {
+            obj.insert(
+                "input_image".into(),
+                json!({ "path": cond.to_string_lossy() }),
+            );
+        }
+        obj.insert("resumed_from_segment".into(), Value::from(segment_offset));
+    }
+    params
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1177,6 +1485,216 @@ mod tests {
         let out = truncate_status_msg(&long);
         assert!(out.len() < long.len());
         assert!(out.contains("truncated"));
+    }
+
+    // ── Rung 7L: BreachLatch + restart-mid-chain ──────────────────────
+
+    #[tokio::test]
+    async fn breach_latch_set_then_take_returns_first_reason() {
+        let latch = BreachLatch::default();
+        latch.set("frag too high".into()).await;
+        assert_eq!(latch.take().await, Some("frag too high".into()));
+        // Second take returns None — the consumer drained it.
+        assert_eq!(latch.take().await, None);
+    }
+
+    #[tokio::test]
+    async fn breach_latch_set_is_first_writer_wins() {
+        let latch = BreachLatch::default();
+        latch.set("first".into()).await;
+        latch.set("second".into()).await;
+        assert_eq!(latch.take().await, Some("first".into()));
+    }
+
+    #[tokio::test]
+    async fn breach_latch_starts_empty() {
+        let latch = BreachLatch::default();
+        assert_eq!(latch.take().await, None);
+    }
+
+    #[test]
+    fn max_restarts_from_env_uses_default_when_unset() {
+        // SAFETY: clearing env var inside the test process; relies on
+        // test-isolation via single-threaded reads of this var.
+        std::env::remove_var(MAX_RESTARTS_ENV);
+        assert_eq!(max_restarts_from_env(), DEFAULT_MAX_RESTARTS);
+    }
+
+    #[test]
+    fn max_restarts_from_env_parses_valid_override() {
+        std::env::set_var(MAX_RESTARTS_ENV, "7");
+        let result = max_restarts_from_env();
+        std::env::remove_var(MAX_RESTARTS_ENV);
+        assert_eq!(result, 7);
+    }
+
+    #[test]
+    fn max_restarts_from_env_falls_back_on_garbage() {
+        std::env::set_var(MAX_RESTARTS_ENV, "not-a-number");
+        let result = max_restarts_from_env();
+        std::env::remove_var(MAX_RESTARTS_ENV);
+        assert_eq!(result, DEFAULT_MAX_RESTARTS);
+    }
+
+    fn sample_plan(seg_count: u32) -> RenderPlan {
+        use crate::schemas::{
+            InterpolationMethod, RenderMode, RenderPlan, RenderSegmentPlan, VramRisk,
+        };
+        RenderPlan {
+            mode: RenderMode::ExternalSegments,
+            width: 832,
+            height: 480,
+            base_fps: 24,
+            output_fps: 48,
+            requested_duration_seconds: f32::from(u16::try_from(seg_count * 4).unwrap_or(0)),
+            planned_duration_seconds: f32::from(u16::try_from(seg_count * 4).unwrap_or(0)),
+            segment_count: seg_count,
+            segments: (0..seg_count)
+                .map(|i| RenderSegmentPlan {
+                    index: i,
+                    start_time_seconds: f32::from(u16::try_from(i * 4).unwrap_or(0)),
+                    duration_seconds: 4.0,
+                    overlap_seconds: 0.5,
+                    frame_count: 97,
+                    seed: u64::from(i),
+                    action_prompt: Some(format!("scene {i}")),
+                })
+                .collect(),
+            runtime_profile: "nexus.video.ltx23.fake".into(),
+            gpu_memory_budget_mb: 16_384,
+            interpolation: InterpolationMethod::Rife2x,
+            warnings: vec![],
+            vram_risk: VramRisk::Safe,
+        }
+    }
+
+    #[test]
+    fn build_render_params_offset_trims_segments() {
+        let plan = sample_plan(5);
+        let workdir = PathBuf::from("/runs/run-x/work");
+        let params = build_render_params_offset(
+            "run-x", &plan, "make video", None, None, None,
+            &AdvancedSettings::default(), &workdir, 2, None,
+        );
+        let segments = params["video"]["segments"]
+            .as_array()
+            .expect("segments array");
+        assert_eq!(segments.len(), 3, "should keep segments[2..] = 3 entries");
+        assert_eq!(segments[0]["index"].as_u64().unwrap(), 2);
+        assert_eq!(segments[1]["index"].as_u64().unwrap(), 3);
+        assert_eq!(segments[2]["index"].as_u64().unwrap(), 4);
+    }
+
+    #[test]
+    fn build_render_params_offset_marks_resumed_segment() {
+        let plan = sample_plan(3);
+        let workdir = PathBuf::from("/runs/run-x/work");
+        let params = build_render_params_offset(
+            "run-x", &plan, "make video", None, None, None,
+            &AdvancedSettings::default(), &workdir, 1, None,
+        );
+        assert_eq!(params["resumed_from_segment"].as_u64(), Some(1));
+    }
+
+    #[test]
+    fn build_render_params_offset_injects_cond_image() {
+        let plan = sample_plan(3);
+        let workdir = PathBuf::from("/runs/run-x/work");
+        let cond = std::path::PathBuf::from("/runs/run-x/work/segments/000/last_frame.png");
+        let params = build_render_params_offset(
+            "run-x", &plan, "make video", None, None, None,
+            &AdvancedSettings::default(), &workdir, 1, Some(cond.as_path()),
+        );
+        let injected = params["input_image"]["path"].as_str().expect("input_image.path");
+        assert!(injected.contains("last_frame.png"));
+        assert!(injected.contains("000"));
+    }
+
+    #[test]
+    fn build_render_params_offset_no_cond_omits_input_image() {
+        let plan = sample_plan(3);
+        let workdir = PathBuf::from("/runs/run-x/work");
+        let params = build_render_params_offset(
+            "run-x", &plan, "make video", None, None, None,
+            &AdvancedSettings::default(), &workdir, 1, None,
+        );
+        assert!(params.get("input_image").is_none());
+    }
+
+    #[test]
+    fn build_render_params_offset_zero_offset_equivalent_to_full_chain() {
+        let plan = sample_plan(4);
+        let workdir = PathBuf::from("/runs/run-x/work");
+        let full = build_render_params(
+            "run-x", &plan, "make video", None, None, None,
+            &AdvancedSettings::default(), &workdir,
+        );
+        let offset_zero = build_render_params_offset(
+            "run-x", &plan, "make video", None, None, None,
+            &AdvancedSettings::default(), &workdir, 0, None,
+        );
+        // resumed_from_segment field differs (0 vs absent), but the
+        // segments array should be byte-identical.
+        assert_eq!(
+            full["video"]["segments"],
+            offset_zero["video"]["segments"],
+        );
+    }
+
+    #[tokio::test]
+    async fn handle_notification_memory_stats_breach_sets_latch_no_outcome() {
+        let runner = empty_runner().await;
+        let latch = BreachLatch::default();
+        let breach_payload = serde_json::json!({
+            "run_id": "run-x",
+            "num_ooms": 10, // exceeds default max=1
+        });
+        let note = nexus_backend_runtimes::generic::leases::trait_def::LeaseNotification {
+            method: "runtime.memory_stats".into(),
+            params: breach_payload,
+        };
+        let outcome = handle_notification(
+            &runner.cfg,
+            "run-x",
+            std::path::Path::new("/tmp"),
+            &note,
+            &latch,
+        )
+        .await
+        .expect("handler should not error");
+        assert!(outcome.is_none(), "breach must not return outcome directly");
+        assert!(
+            latch.reason.lock().await.is_some(),
+            "breach must populate latch"
+        );
+    }
+
+    #[tokio::test]
+    async fn handle_notification_memory_stats_healthy_leaves_latch_clear() {
+        let runner = empty_runner().await;
+        let latch = BreachLatch::default();
+        let healthy_payload = serde_json::json!({
+            "run_id": "run-x",
+            "num_ooms": 0,
+            "num_alloc_retries": 1,
+            "frag_ratio": 0.1,
+            "free_mb": 8000,
+        });
+        let note = nexus_backend_runtimes::generic::leases::trait_def::LeaseNotification {
+            method: "runtime.memory_stats".into(),
+            params: healthy_payload,
+        };
+        let outcome = handle_notification(
+            &runner.cfg,
+            "run-x",
+            std::path::Path::new("/tmp"),
+            &note,
+            &latch,
+        )
+        .await
+        .expect("handler should not error");
+        assert!(outcome.is_none());
+        assert!(latch.reason.lock().await.is_none());
     }
 
     #[tokio::test]
