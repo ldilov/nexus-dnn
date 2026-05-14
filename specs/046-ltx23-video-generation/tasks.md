@@ -38,7 +38,7 @@ Results recorded in [research.md](research.md) § Phase-0 table.
 | P1-T019 | `scripts/audit-boundary.sh` (per spec template) | ☐ |
 | P1-T020 | `backends/{rtx40-fp8,rtx50-fp8,rtx50-nvfp4,fake}/backend-runtime.yaml` (4 descriptors) | ☐ |
 | P1-T021 | `backends/{rtx40-fp8,rtx50-fp8,rtx50-nvfp4,fake}/versions.yaml` (4 version manifests) | ☐ |
-| P1-T022 | `backends/_shared/worker/pyproject.toml` + uv.lock (will be generated post-install) | ☐ |
+| P1-T022 | `worker/pyproject.toml` + uv.lock (will be generated post-install) | ☐ |
 | P1-T023 | `ui/layouts/main.yaml` + `ui/open_recipe.yaml` | ☐ |
 
 ### Rust extension worker

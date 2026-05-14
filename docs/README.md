@@ -8,6 +8,7 @@ nexus-dnn is a local-first, extensible AI workflow platform for composing, execu
 
 | Document | Description |
 |----------|-------------|
+| [📋 Requirements](requirements.md) | What to install before building — uv, Rust, Node, GPU drivers, per-extension prerequisites |
 | [⚡ Getting Started](getting-started.md) | Install, build, run your first workflow in under 10 minutes |
 
 ---

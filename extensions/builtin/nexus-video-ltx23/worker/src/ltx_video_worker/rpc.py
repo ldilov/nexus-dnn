@@ -13,12 +13,14 @@ class Methods:
     PLAN_VALIDATE = "ltx.video.plan.validate"
     RENDER_START = "ltx.video.render.start"
     RENDER_CANCEL = "ltx.video.render.cancel"
+    SEGMENT_RETRY = "ltx.video.segment.retry"
 
 
 class Notifications:
     PROGRESS = "ltx.video.progress"
     SEGMENT_STARTED = "ltx.video.segment.started"
     SEGMENT_COMPLETED = "ltx.video.segment.completed"
+    SEGMENT_STEP = "ltx.video.segment.step"
     ARTIFACT_CREATED = "ltx.video.artifact.created"
     DONE = "ltx.video.done"
     ERROR = "ltx.video.error"

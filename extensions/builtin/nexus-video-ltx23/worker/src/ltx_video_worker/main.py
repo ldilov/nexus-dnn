@@ -71,20 +71,30 @@ class Worker:
             out.flush()
 
     def _register_intrinsic(self) -> None:
-        async def health(_params):
+        async def handshake(_params: Any) -> dict[str, Any]:
+            return {
+                "runtime_id": f"nexus.video.ltx23.{self.profile}",
+                "profile": self.profile,
+                "protocol_version": PROTOCOL_VERSION,
+                "version": __version__,
+                "python_version": "{}.{}.{}".format(*sys.version_info[:3]),
+            }
+
+        async def health(_params: Any) -> dict[str, Any]:
             return {
                 "runtime_id": f"nexus.video.ltx23.{self.profile}",
                 "profile": self.profile,
                 "status": "ready",
                 "version": __version__,
                 "protocol_version": PROTOCOL_VERSION,
-                "python_version": "%d.%d.%d" % sys.version_info[:3],
+                "python_version": "{}.{}.{}".format(*sys.version_info[:3]),
             }
 
-        async def shutdown(_params):
+        async def shutdown(_params: Any) -> dict[str, Any]:
             self._shutdown.set()
             return {"shutting_down": True}
 
+        self.register("handshake", handshake)
         self.register(Methods.HEALTH, health)
         self.register("shutdown", shutdown)
 
