@@ -37,6 +37,12 @@ class FakeRunState:
         self.plan = plan
         self.cancelled = False
         self.generation_count = 0
+        # Rung 7L resume offset (Item C). Mirrors the field on
+        # DiffusersRunState — the fake pipeline emits the same
+        # RESUME_ACKNOWLEDGED notification so integration tests that
+        # exercise the supervisor restart loop without GPU hardware
+        # see the same observable behaviour as the real pipeline.
+        self.resumed_from_segment: int = 0
 
 
 def register_fake_handlers(worker) -> None:
@@ -75,6 +81,11 @@ def register_fake_handlers(worker) -> None:
         workdir.mkdir(parents=True, exist_ok=True)
 
         rs = FakeRunState(run_id=run_id, workdir=workdir, plan=plan)
+        raw_offset = params.get("resumed_from_segment", 0)
+        try:
+            rs.resumed_from_segment = max(0, int(raw_offset))
+        except (TypeError, ValueError):
+            rs.resumed_from_segment = 0
         state[run_id] = rs
 
         # Launch the async render task (fire-and-forget).
@@ -155,6 +166,16 @@ async def _render_loop(
     duration = float(plan.get("requested_duration_seconds", plan.get("duration_seconds", 10)))
 
     segment_paths: list[Path] = []
+
+    # Item C: ack a Rung 7L resume before the first segment fires.
+    if rs.resumed_from_segment > 0:
+        await worker.emit_notification(
+            Notifications.RESUME_ACKNOWLEDGED,
+            {
+                "run_id": rs.run_id,
+                "resumed_from_segment": rs.resumed_from_segment,
+            },
+        )
 
     for i in range(segment_count):
         if rs.cancelled:
