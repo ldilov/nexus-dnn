@@ -1243,6 +1243,7 @@ function ResultPanel({
 
 function StatusBar({ run }: { run: RenderRun }): ReactElement {
   const eta = estimateEta(run);
+  const restartBadge = renderRestartBadge(run);
   return (
     <div className={s.fieldRow}>
       <div
@@ -1254,6 +1255,7 @@ function StatusBar({ run }: { run: RenderRun }): ReactElement {
       >
         <span>
           <strong>{run.status}</strong>
+          {restartBadge}
           {eta ? <span className={s.meta}> · {eta}</span> : null}
         </span>
         <span>
@@ -1377,6 +1379,30 @@ function formatDuration(ms: number): string {
   const hours = Math.floor(minutes / 60);
   const remMinutes = minutes % 60;
   return `${hours}h ${remMinutes}m`;
+}
+
+/**
+ * Render the "restart N/M" badge alongside the status word.
+ *
+ * Hidden for clean runs (count=0) so the status bar doesn't grow a
+ * decorative pixel that always reads zero. When non-zero, formats as
+ * `· restart 1/3` and is wrapped in `aria-live="polite"` so screen
+ * readers announce each new restart event as it lands via the SWR
+ * poll. Pulls the cap from the DTO rather than re-deriving from env
+ * — historical rows display the cap they ran under, not whatever
+ * the operator most recently retuned.
+ */
+function renderRestartBadge(run: RenderRun): ReactElement | null {
+  if (!run.restart_count || run.restart_count <= 0) {
+    return null;
+  }
+  const cap = run.max_restart_count > 0 ? run.max_restart_count : run.restart_count;
+  return (
+    <span className={s.meta} aria-live="polite">
+      {" · "}
+      restart {run.restart_count}/{cap}
+    </span>
+  );
 }
 
 function dotClass(status: string): string {

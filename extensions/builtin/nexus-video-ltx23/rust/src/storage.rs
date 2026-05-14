@@ -29,6 +29,18 @@ pub struct RenderRunRow {
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
     pub cancelled_at: Option<DateTime<Utc>>,
+    /// How many transparent restarts the VRAM supervisor triggered on
+    /// this run. 0 means a clean chain; non-zero means the supervisor
+    /// halted at least once + the runner successfully resumed. Used by
+    /// the UI to show a "restart N/M" badge so operators can correlate
+    /// long render times with restart events.
+    pub restart_count: i64,
+    /// Cap that this run ran under, snapshotted from
+    /// `NEXUS_VIDEO_LTX23_VRAM_MAX_RESTARTS` at `insert_run` time.
+    /// Surfaced on the DTO so the UI can show "restart 1/3" without a
+    /// separate config probe. Historical rows persist the value they
+    /// ran with even if the env was later retuned.
+    pub max_restart_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,9 +87,10 @@ impl Repos {
                 runtime_lease_id, requested_duration_seconds, planned_duration_seconds, \
                 width, height, base_fps, output_fps, segment_count, seed, quality_preset, \
                 render_mode, request_json, plan_json, error_code, error_message, \
-                final_artifact_id, created_at, started_at, completed_at, cancelled_at\
+                final_artifact_id, created_at, started_at, completed_at, cancelled_at, \
+                restart_count, max_restart_count\
              ) VALUES (\
-                ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?\
+                ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?\
              )",
         )
         .bind(&run.id)
@@ -103,6 +116,23 @@ impl Repos {
         .bind(run.started_at.map(|t| t.to_rfc3339()))
         .bind(run.completed_at.map(|t| t.to_rfc3339()))
         .bind(run.cancelled_at.map(|t| t.to_rfc3339()))
+        .bind(run.restart_count)
+        .bind(run.max_restart_count)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Bump the persisted restart counter. Called by the runner after
+    /// each successful transparent restart (Rung 7L) so the UI can
+    /// display "restart N/M" without re-deriving from logs.
+    pub async fn increment_restart_count(&self, run_id: &str) -> Result<()> {
+        sqlx::query(
+            "UPDATE ext_nexus_video_ltx23__runs \
+             SET restart_count = restart_count + 1 \
+             WHERE id = ?",
+        )
+        .bind(run_id)
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -114,7 +144,7 @@ impl Repos {
                  planned_duration_seconds, width, height, base_fps, output_fps, segment_count, \
                  seed, quality_preset, render_mode, request_json, plan_json, error_code, \
                  error_message, final_artifact_id, created_at, started_at, completed_at, \
-                 cancelled_at \
+                 cancelled_at, restart_count, max_restart_count \
              FROM ext_nexus_video_ltx23__runs WHERE id = ?",
         )
         .bind(run_id)
@@ -302,6 +332,8 @@ struct RenderRunRowRaw {
     started_at: Option<String>,
     completed_at: Option<String>,
     cancelled_at: Option<String>,
+    restart_count: i64,
+    max_restart_count: i64,
 }
 
 fn parse_dt(raw: &str) -> Result<DateTime<Utc>> {
@@ -342,6 +374,8 @@ impl TryFrom<RenderRunRowRaw> for RenderRunRow {
             started_at: parse_dt_opt(r.started_at.as_deref())?,
             completed_at: parse_dt_opt(r.completed_at.as_deref())?,
             cancelled_at: parse_dt_opt(r.cancelled_at.as_deref())?,
+            restart_count: r.restart_count,
+            max_restart_count: r.max_restart_count,
         })
     }
 }
