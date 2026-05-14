@@ -114,6 +114,12 @@ export interface RenderRun {
   started_at?: string | null;
   completed_at?: string | null;
   segments: RenderRunSegment[];
+  /** Rung 7L observability: number of transparent VRAM-supervisor
+   * restarts that have happened so far on this run. 0 for clean runs. */
+  restart_count: number;
+  /** Cap this run is running under (snapshot of
+   * `NEXUS_VIDEO_LTX23_VRAM_MAX_RESTARTS` at insert time). */
+  max_restart_count: number;
 }
 
 async function jsonRequest<T>(
