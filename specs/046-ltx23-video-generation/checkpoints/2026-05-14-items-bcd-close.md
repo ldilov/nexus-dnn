@@ -105,32 +105,47 @@ reviewable.
 
 ## What's still deferred
 
-### Item E — Real-GPU restart smoke test (hardware-gated)
+### Item E — Real-GPU restart smoke test
 
-**Status**: not implemented this arc — requires direct hardware
-access (RTX 5070 Ti with the full diffusers pipeline loaded). The
-test plan is documented:
+**Status**: scripted, ready to run on hardware. See
+`extensions/builtin/nexus-video-ltx23/scripts/smoke-vram-supervisor.sh`.
 
-1. Start a fresh render with a 20-segment plan against the real
-   `nexus.video.ltx23.rtx40-fp8` profile.
-2. Set `NEXUS_VIDEO_LTX23_VRAM_MIN_FREE_MB=999999` so the supervisor
-   trips on the first `memory_stats` payload (free MB will always
-   be below 999 GB on a 16 GB card).
-3. Verify:
-   - Render completes via transparent restart (no operator
-     intervention).
-   - `restart_count` on the run row reaches 1+ (depends on cap +
-     pacing).
-   - `last_breach_reason` contains "free_mb=X below min=999999"
-     (from `vram_supervisor::evaluate`).
-   - Worker logs show exactly N `runtime.resume_acknowledged`
-     notifications matching N restarts.
-   - Segment rows for the resumed range have `started_at` and
-     `completed_at` populated correctly (regression-guard against
-     Item B's batching).
+Usage:
+```bash
+# 1. Start the host with the impossible MIN_FREE_MB so the
+#    supervisor trips on the first memory_stats event.
+export NEXUS_VIDEO_LTX23_VRAM_MIN_FREE_MB=999999
+cargo run -p nexus-core --release
+# 2. From another shell, run the smoke test.
+./extensions/builtin/nexus-video-ltx23/scripts/smoke-vram-supervisor.sh \
+    --host http://127.0.0.1:8085 --profile rtx40-fp8 --duration 20
+```
 
-The infrastructure to run this test is complete after Items A-D
-landed. Only the hardware execution is missing.
+The script checks 4 acceptance criteria + a regression-guard for
+Item B's no-coalescing rule:
+
+1. final status == `completed` (chain finished via transparent
+   restart, not failed/cancelled).
+2. `restart_count >= 1` (the impossible MIN_FREE_MB env tripped
+   the supervisor at least once).
+3. `last_breach_reason` mentions `free_mb` (the threshold the env
+   knob targets — proves the supervisor saw the breach the test
+   intended to force).
+4. `final_artifact_id` is present (worker DONE landed + runner
+   copied the final.mp4 into place).
+5. Bonus: every segment row has both `started_at` and `completed_at`
+   populated. NULL on a completed segment would mean Item B's
+   batching dropped the `rendering` write — exactly the regression
+   the `ordered_started_then_completed_preserves_started_at` unit
+   test guards against, here verified end-to-end.
+
+Exit codes: 0 = PASS, 1 = real test failure, 2 = prereqs missing
+(host unreachable, profile not installed, etc.).
+
+Pre-flight (host-reachability + profile-install probes) is
+verified non-hardware. The actual restart-loop test takes ~25 min
+of real GPU time on a single RTX 5070 Ti at 832×480 / 8 inference
+steps / 20-segment chain. Re-runnable any time.
 
 ### Other backlog (not in this prompt's scope)
 
