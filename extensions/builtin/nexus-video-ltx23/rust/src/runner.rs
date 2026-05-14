@@ -3,13 +3,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use nexus_backend_runtimes::generic::leases::trait_def::BackendRuntimeLease;
 use serde_json::{Value, json};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{Mutex, Notify};
 
 use crate::errors::Result;
-use crate::lease::LtxLeaseFactory;
+use crate::lease::LeaseAcquirer;
 use crate::schemas::{AdvancedSettings, RenderPlan};
 use crate::storage::Repos;
 use crate::vram_supervisor::{VramSupervisor, VramVerdict};
@@ -122,7 +121,7 @@ const CANCEL_GRACE: Duration = Duration::from_secs(15);
 pub struct RunnerConfig {
     pub runs_dir: PathBuf,
     pub repos: Repos,
-    pub factory: Arc<LtxLeaseFactory>,
+    pub factory: Arc<dyn LeaseAcquirer>,
     /// Watches `runtime.memory_stats` notifications and trips a clean
     /// halt when usage crosses configured thresholds. Defaults to
     /// `VramSupervisor::default()` (env-tunable; see
@@ -637,7 +636,7 @@ async fn run_attempt(
     segment_offset: u32,
     cancel_notify: Arc<Notify>,
 ) -> Result<NotificationOutcome> {
-    let lease = cfg.factory.acquire(short_profile(profile)).await?;
+    let lease = cfg.factory.acquire_lease(short_profile(profile)).await?;
     let mut notifications = lease.subscribe_notifications();
     let breach_latch = BreachLatch::default();
 
@@ -924,7 +923,7 @@ async fn retry_segment_via_lease(
         ))
     })?;
 
-    let lease = cfg.factory.acquire(short_profile(profile)).await?;
+    let lease = cfg.factory.acquire_lease(short_profile(profile)).await?;
     let target = i64::from(seg_idx);
 
     // Single-exit pattern: do the work inside an inner async block,
@@ -1339,6 +1338,7 @@ fn short_profile(full: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lease::LtxLeaseFactory;
     use sqlx::sqlite::SqlitePoolOptions;
 
     async fn empty_runner() -> Runner {
@@ -1536,15 +1536,19 @@ mod tests {
         assert_eq!(latch.take().await, None);
     }
 
+    // env-var mutation: serialised against every other test that
+    // touches `MAX_RESTARTS_ENV` (including the orchestration
+    // exhaustion test). `serial_test::serial` makes cargo run these
+    // sequentially even under --test-threads > 1.
     #[test]
+    #[serial_test::serial(max_restarts_env)]
     fn max_restarts_from_env_uses_default_when_unset() {
-        // SAFETY: clearing env var inside the test process; relies on
-        // test-isolation via single-threaded reads of this var.
         std::env::remove_var(MAX_RESTARTS_ENV);
         assert_eq!(max_restarts_from_env(), DEFAULT_MAX_RESTARTS);
     }
 
     #[test]
+    #[serial_test::serial(max_restarts_env)]
     fn max_restarts_from_env_parses_valid_override() {
         std::env::set_var(MAX_RESTARTS_ENV, "7");
         let result = max_restarts_from_env();
@@ -1553,6 +1557,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(max_restarts_env)]
     fn max_restarts_from_env_falls_back_on_garbage() {
         std::env::set_var(MAX_RESTARTS_ENV, "not-a-number");
         let result = max_restarts_from_env();
@@ -1745,5 +1750,573 @@ mod tests {
             kept_result.is_err(),
             "kept waiter should still be parked, not woken"
         );
+    }
+
+    // ── Rung 7L: end-to-end restart-loop orchestration ────────────────
+    //
+    // These tests exercise the multi-attempt outer loop in `run_via_lease`
+    // without a GPU. They substitute `LtxLeaseFactory` with a hand-rolled
+    // `FakeLeaseAcquirer` that hands out `FakeLease` instances backed by
+    // a `broadcast::Sender` per lease. The test drives the runner by
+    // pushing JSON-RPC notifications into the sender in the same order
+    // the worker would emit them, then asserts (a) the lease lifecycle
+    // (acquire/release counts) and (b) the persisted `restart_count`.
+    //
+    // Hand-rolled rather than mockall: the lease trait has a
+    // `subscribe_notifications -> broadcast::Receiver` shape that maps
+    // poorly to mockall's stateless `.returning()` model. A concrete
+    // struct owning a real broadcast sender is the cheapest path to
+    // deterministic notification ordering.
+    mod orchestration {
+        use super::super::*;
+        use crate::lease::LeaseAcquirer;
+        use crate::schemas::{
+            AdvancedSettings, InterpolationMethod, RenderMode, RenderPlan, RenderSegmentPlan,
+            VramRisk,
+        };
+        use crate::storage::{RenderRunRow, Repos};
+        use crate::vram_supervisor::{VramSupervisor, VramSupervisorConfig};
+        use async_trait::async_trait;
+        use chrono::Utc;
+        use nexus_backend_runtimes::generic::enums::LeaseState;
+        use nexus_backend_runtimes::generic::ids::RuntimeLeaseId;
+        use nexus_backend_runtimes::generic::leases::error::LeaseError;
+        use nexus_backend_runtimes::generic::leases::trait_def::{
+            BackendRuntimeLease, LeaseNotification,
+        };
+        use sqlx::sqlite::SqlitePoolOptions;
+        use std::path::PathBuf;
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::time::Duration;
+        use tokio::sync::{Notify, broadcast};
+
+        /// Per-lease handle the test keeps to inject notifications and
+        /// watch lifecycle state. The matching `FakeLease` (handed to
+        /// the runner) shares the same sender + counters via `Arc`.
+        struct LeaseHandle {
+            tx: broadcast::Sender<LeaseNotification>,
+            subscribed_count: Arc<AtomicUsize>,
+            release_count: Arc<AtomicUsize>,
+        }
+
+        struct FakeLease {
+            id: RuntimeLeaseId,
+            tx: broadcast::Sender<LeaseNotification>,
+            subscribed_count: Arc<AtomicUsize>,
+            release_count: Arc<AtomicUsize>,
+        }
+
+        #[async_trait]
+        impl BackendRuntimeLease for FakeLease {
+            fn id(&self) -> RuntimeLeaseId {
+                self.id
+            }
+
+            fn state(&self) -> LeaseState {
+                LeaseState::Ready
+            }
+
+            async fn send_rpc(
+                &self,
+                _method: &str,
+                _params: serde_json::Value,
+            ) -> std::result::Result<serde_json::Value, LeaseError> {
+                // Worker would parse render.start and start emitting
+                // segment notifications. Tests drive the notifications
+                // directly, so the RPC just acks.
+                Ok(serde_json::Value::Null)
+            }
+
+            fn subscribe_notifications(&self) -> broadcast::Receiver<LeaseNotification> {
+                self.subscribed_count.fetch_add(1, Ordering::SeqCst);
+                self.tx.subscribe()
+            }
+
+            async fn release(&self) -> std::result::Result<(), LeaseError> {
+                self.release_count.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        }
+
+        struct FakeLeaseAcquirer {
+            handles: tokio::sync::Mutex<Vec<Arc<LeaseHandle>>>,
+            acquire_count: AtomicUsize,
+            new_acquire: Notify,
+        }
+
+        impl FakeLeaseAcquirer {
+            fn new() -> Self {
+                Self {
+                    handles: tokio::sync::Mutex::new(Vec::new()),
+                    acquire_count: AtomicUsize::new(0),
+                    new_acquire: Notify::new(),
+                }
+            }
+
+            async fn wait_for_lease(&self, n: usize) -> Arc<LeaseHandle> {
+                // Spin with a Notify wake on each new acquire; bounded by
+                // the outer test timeout via tokio::time::timeout.
+                loop {
+                    if self.acquire_count.load(Ordering::SeqCst) >= n {
+                        return self.handles.lock().await[n - 1].clone();
+                    }
+                    let wait = self.new_acquire.notified();
+                    tokio::pin!(wait);
+                    if self.acquire_count.load(Ordering::SeqCst) >= n {
+                        return self.handles.lock().await[n - 1].clone();
+                    }
+                    wait.await;
+                }
+            }
+        }
+
+        #[async_trait]
+        impl LeaseAcquirer for FakeLeaseAcquirer {
+            async fn acquire_lease(
+                &self,
+                _profile: &str,
+            ) -> Result<Arc<dyn BackendRuntimeLease>> {
+                let (tx, _) = broadcast::channel::<LeaseNotification>(1024);
+                let subscribed_count = Arc::new(AtomicUsize::new(0));
+                let release_count = Arc::new(AtomicUsize::new(0));
+                let lease: Arc<dyn BackendRuntimeLease> = Arc::new(FakeLease {
+                    id: RuntimeLeaseId::new(),
+                    tx: tx.clone(),
+                    subscribed_count: subscribed_count.clone(),
+                    release_count: release_count.clone(),
+                });
+                self.handles.lock().await.push(Arc::new(LeaseHandle {
+                    tx,
+                    subscribed_count,
+                    release_count,
+                }));
+                self.acquire_count.fetch_add(1, Ordering::SeqCst);
+                self.new_acquire.notify_waiters();
+                Ok(lease)
+            }
+        }
+
+        async fn wait_subscribed(handle: &LeaseHandle) {
+            // Subscribed status flips before the runner calls send_rpc,
+            // which runs on the same task — yield until visible.
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while handle.subscribed_count.load(Ordering::SeqCst) == 0 {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("subscribe should land within 5s");
+        }
+
+        async fn apply_test_migrations(pool: &sqlx::SqlitePool) {
+            sqlx::query(
+                "CREATE TABLE IF NOT EXISTS ext_nexus_video_ltx23__schema_versions (\
+                     version INTEGER PRIMARY KEY,\
+                     name TEXT NOT NULL,\
+                     applied_at TEXT NOT NULL\
+                 )",
+            )
+            .execute(pool)
+            .await
+            .expect("create schema_versions");
+
+            for migration in crate::migrations::MIGRATIONS {
+                let already: Option<i64> = sqlx::query_scalar(
+                    "SELECT version FROM ext_nexus_video_ltx23__schema_versions WHERE version = ?",
+                )
+                .bind(i64::from(migration.version))
+                .fetch_optional(pool)
+                .await
+                .expect("query schema version");
+                if already.is_some() {
+                    continue;
+                }
+                let mut tx = pool.begin().await.expect("begin");
+                sqlx::raw_sql(migration.sql)
+                    .execute(&mut *tx)
+                    .await
+                    .unwrap_or_else(|e| panic!("apply migration {}: {e}", migration.version));
+                sqlx::query(
+                    "INSERT INTO ext_nexus_video_ltx23__schema_versions (version, name, applied_at) VALUES (?, ?, ?)",
+                )
+                .bind(i64::from(migration.version))
+                .bind(migration.name)
+                .bind(Utc::now().to_rfc3339())
+                .execute(&mut *tx)
+                .await
+                .expect("record schema version");
+                tx.commit().await.expect("commit migration");
+            }
+        }
+
+        fn linear_plan(seg_count: u32) -> RenderPlan {
+            // Test inputs stay within u16 range; mirror the
+            // `sample_plan` idiom used elsewhere in this module so
+            // clippy's cast-precision-loss lint stays quiet.
+            let total_secs = f32::from(u16::try_from(seg_count * 4).unwrap_or(0));
+            RenderPlan {
+                mode: RenderMode::ExternalSegments,
+                width: 832,
+                height: 480,
+                base_fps: 24,
+                output_fps: 48,
+                requested_duration_seconds: total_secs,
+                planned_duration_seconds: total_secs,
+                segment_count: seg_count,
+                segments: (0..seg_count)
+                    .map(|i| RenderSegmentPlan {
+                        index: i,
+                        start_time_seconds: f32::from(u16::try_from(i * 4).unwrap_or(0)),
+                        duration_seconds: 4.0,
+                        overlap_seconds: 0.0,
+                        frame_count: 97,
+                        seed: u64::from(i),
+                        action_prompt: Some(format!("scene {i}")),
+                    })
+                    .collect(),
+                runtime_profile: "nexus.video.ltx23.fake".into(),
+                gpu_memory_budget_mb: 16_384,
+                interpolation: InterpolationMethod::Rife2x,
+                warnings: vec![],
+                vram_risk: VramRisk::Safe,
+            }
+        }
+
+        async fn build_runner(
+            runs_dir: PathBuf,
+            acquirer: Arc<FakeLeaseAcquirer>,
+            supervisor: VramSupervisor,
+        ) -> (RunnerConfig, Repos) {
+            let pool = SqlitePoolOptions::new()
+                .max_connections(4)
+                .connect("sqlite::memory:")
+                .await
+                .expect("open in-memory sqlite");
+            apply_test_migrations(&pool).await;
+            let repos = Repos::from_pool(pool);
+            let cfg = RunnerConfig {
+                runs_dir,
+                repos: repos.clone(),
+                factory: acquirer,
+                vram_supervisor: supervisor,
+            };
+            (cfg, repos)
+        }
+
+        async fn insert_test_run(
+            repos: &Repos,
+            run_id: &str,
+            plan: &RenderPlan,
+            max_restarts: u32,
+        ) {
+            let now = Utc::now();
+            repos
+                .insert_run(&RenderRunRow {
+                    id: run_id.to_string(),
+                    project_id: "test-project".into(),
+                    status: "queued".into(),
+                    runtime_profile: Some(plan.runtime_profile.clone()),
+                    requested_duration_seconds: f64::from(plan.requested_duration_seconds),
+                    planned_duration_seconds: Some(f64::from(plan.planned_duration_seconds)),
+                    width: i64::from(plan.width),
+                    height: i64::from(plan.height),
+                    base_fps: i64::from(plan.base_fps),
+                    output_fps: i64::from(plan.output_fps),
+                    segment_count: i64::from(plan.segment_count),
+                    seed: None,
+                    quality_preset: "balanced".into(),
+                    render_mode: "external_segments".into(),
+                    request_json: "{}".into(),
+                    plan_json: Some("{}".into()),
+                    error_code: None,
+                    error_message: None,
+                    final_artifact_id: None,
+                    created_at: now,
+                    started_at: None,
+                    completed_at: None,
+                    cancelled_at: None,
+                    restart_count: 0,
+                    max_restart_count: i64::from(max_restarts),
+                })
+                .await
+                .expect("insert run row");
+        }
+
+        fn note(method: &str, run_id: &str, extra: serde_json::Value) -> LeaseNotification {
+            let mut params = serde_json::Map::new();
+            params.insert("run_id".into(), serde_json::Value::String(run_id.into()));
+            if let serde_json::Value::Object(extra_obj) = extra {
+                for (k, v) in extra_obj {
+                    params.insert(k, v);
+                }
+            }
+            LeaseNotification {
+                method: method.into(),
+                params: serde_json::Value::Object(params),
+            }
+        }
+
+        fn drive_segment(handle: &LeaseHandle, run_id: &str, seg_idx: i64) {
+            handle
+                .tx
+                .send(note(
+                    "ltx.video.segment.started",
+                    run_id,
+                    serde_json::json!({ "segment_index": seg_idx }),
+                ))
+                .expect("send segment.started");
+            handle
+                .tx
+                .send(note(
+                    "ltx.video.segment.completed",
+                    run_id,
+                    serde_json::json!({ "segment_index": seg_idx }),
+                ))
+                .expect("send segment.completed");
+        }
+
+        /// Memory-stats payload that breaches the `num_ooms` default-1 cap.
+        fn breach_payload() -> serde_json::Value {
+            serde_json::json!({ "num_ooms": 7 })
+        }
+
+        // Rung 7L happy path: supervisor trips after segment 0 completes,
+        // latch consumed by segment 1, runner releases first lease and
+        // acquires a fresh one, second lease drives segments 2–3 plus the
+        // terminal `done`. Asserts: render returns Ok(()), restart_count=1,
+        // both leases released, exactly 2 acquires.
+        #[tokio::test(flavor = "current_thread", start_paused = false)]
+        async fn rung7l_outer_loop_resumes_after_one_breach() {
+            let tmp = tempfile::tempdir().expect("tmp");
+            let runs_dir = tmp.path().to_path_buf();
+            let run_id = "run-rung7l-happy";
+            let acquirer = Arc::new(FakeLeaseAcquirer::new());
+
+            // Strict supervisor: num_ooms=1 cap so the test payload trips.
+            let supervisor = VramSupervisor::new(VramSupervisorConfig {
+                max_num_ooms: 1,
+                ..VramSupervisorConfig::default()
+            });
+
+            let (cfg, repos) = build_runner(runs_dir.clone(), acquirer.clone(), supervisor).await;
+            let plan = linear_plan(4);
+            insert_test_run(&repos, run_id, &plan, 3).await;
+
+            // Pre-stage final.mp4 inside the workdir the runner will mkdir;
+            // the runner copies this path into <runs_dir>/<run_id>/final.mp4.
+            let workdir = runs_dir.join(run_id).join("work");
+            tokio::fs::create_dir_all(&workdir)
+                .await
+                .expect("mkdir workdir");
+            let final_path = workdir.join("final.mp4");
+            tokio::fs::write(&final_path, b"fake mp4 bytes")
+                .await
+                .expect("write final.mp4");
+
+            let cfg_for_task = cfg.clone();
+            let plan_for_task = plan.clone();
+            let run_id_owned = run_id.to_string();
+            let task = tokio::spawn(async move {
+                run_via_lease(
+                    &cfg_for_task,
+                    &run_id_owned,
+                    "nexus.video.ltx23.fake",
+                    &plan_for_task,
+                    "test prompt",
+                    None,
+                    None,
+                    None,
+                    &AdvancedSettings::default(),
+                    Arc::new(Notify::new()),
+                )
+                .await
+            });
+
+            // First lease: drive seg 0 → memory_stats breach → seg 1
+            // completion consumes the latch → RestartRequired.
+            let lease1 = acquirer.wait_for_lease(1).await;
+            wait_subscribed(&lease1).await;
+            drive_segment(&lease1, run_id, 0);
+            lease1
+                .tx
+                .send(note("runtime.memory_stats", run_id, breach_payload()))
+                .expect("send memory_stats");
+            // Segment 1 started + completed — the completed arm consumes
+            // the latch and emits RestartRequired{last_completed_segment:1}.
+            drive_segment(&lease1, run_id, 1);
+
+            // Second lease: drive remaining segments + done.
+            let lease2 = acquirer.wait_for_lease(2).await;
+            wait_subscribed(&lease2).await;
+            drive_segment(&lease2, run_id, 2);
+            drive_segment(&lease2, run_id, 3);
+            lease2
+                .tx
+                .send(LeaseNotification {
+                    method: "ltx.video.done".into(),
+                    params: serde_json::json!({
+                        "run_id": run_id,
+                        "final_path": final_path.to_string_lossy(),
+                    }),
+                })
+                .expect("send done");
+
+            // Render should resolve cleanly.
+            let outcome = tokio::time::timeout(Duration::from_secs(10), task)
+                .await
+                .expect("task should complete within 10s")
+                .expect("task panicked");
+            outcome.expect("run_via_lease should return Ok after restart");
+
+            // Persisted counter reflects exactly one restart attempt.
+            let run = repos.get_run(run_id).await.expect("get_run");
+            assert_eq!(
+                run.restart_count, 1,
+                "expected restart_count=1 after one transparent restart"
+            );
+            assert_eq!(run.status, "completed");
+            assert_eq!(
+                acquirer.acquire_count.load(Ordering::SeqCst),
+                2,
+                "expected exactly two lease acquires (initial + restart)"
+            );
+            // Both leases released by the runner's lease lifecycle.
+            assert_eq!(
+                lease1.release_count.load(Ordering::SeqCst),
+                1,
+                "first lease should be released exactly once"
+            );
+            assert_eq!(
+                lease2.release_count.load(Ordering::SeqCst),
+                1,
+                "second lease should be released exactly once"
+            );
+        }
+
+        // Rung 7L safety net: budget=1 means the runner accepts one
+        // restart, then collapses the next breach into a `vram_supervisor`
+        // terminal error. Six-segment plan is wide enough that the
+        // bounds-check exit (`next_offset >= plan.segments.len()`) doesn't
+        // pre-empt the budget-exhausted exit.
+        //
+        // Serialised against the three `max_restarts_from_env_*` tests
+        // (same group: `max_restarts_env`) because all four mutate the
+        // shared `MAX_RESTARTS_ENV` process env var.
+        #[tokio::test(flavor = "current_thread", start_paused = false)]
+        #[serial_test::serial(max_restarts_env)]
+        async fn rung7l_outer_loop_halts_when_restart_budget_exhausted() {
+            let tmp = tempfile::tempdir().expect("tmp");
+            let runs_dir = tmp.path().to_path_buf();
+            let run_id = "run-rung7l-exhausted";
+            let acquirer = Arc::new(FakeLeaseAcquirer::new());
+            let supervisor = VramSupervisor::new(VramSupervisorConfig {
+                max_num_ooms: 1,
+                ..VramSupervisorConfig::default()
+            });
+
+            let (cfg, repos) = build_runner(runs_dir.clone(), acquirer.clone(), supervisor).await;
+            let plan = linear_plan(6);
+            insert_test_run(&repos, run_id, &plan, 1).await;
+
+            // Constrain restart budget for this test only; reset before
+            // returning so concurrent tests don't see a leaked override.
+            // Same pattern used by `max_restarts_from_env_parses_valid_override`.
+            std::env::set_var(MAX_RESTARTS_ENV, "1");
+
+            // Workdir must exist before run_via_lease's create_dir_all so
+            // the test doesn't race on directory creation. The Error arm
+            // skips the final.mp4 copy, so no file pre-staging needed.
+            let workdir = runs_dir.join(run_id).join("work");
+            tokio::fs::create_dir_all(&workdir)
+                .await
+                .expect("mkdir workdir");
+
+            let cfg_for_task = cfg.clone();
+            let plan_for_task = plan.clone();
+            let run_id_owned = run_id.to_string();
+            let task = tokio::spawn(async move {
+                run_via_lease(
+                    &cfg_for_task,
+                    &run_id_owned,
+                    "nexus.video.ltx23.fake",
+                    &plan_for_task,
+                    "test prompt",
+                    None,
+                    None,
+                    None,
+                    &AdvancedSettings::default(),
+                    Arc::new(Notify::new()),
+                )
+                .await
+            });
+
+            // Iteration 0: breach after seg 0; latch consumed by seg 1
+            // → RestartRequired. restart_attempts becomes 1, not over
+            // budget; runner persists restart_count=1, acquires lease 2.
+            let lease1 = acquirer.wait_for_lease(1).await;
+            wait_subscribed(&lease1).await;
+            drive_segment(&lease1, run_id, 0);
+            lease1
+                .tx
+                .send(note("runtime.memory_stats", run_id, breach_payload()))
+                .expect("send memory_stats #1");
+            drive_segment(&lease1, run_id, 1);
+
+            // Iteration 1: breach after seg 2; latch consumed by seg 3
+            // → RestartRequired. restart_attempts becomes 2, > budget(1)
+            // → runner breaks with Error{vram_supervisor}. DOES NOT
+            // increment restart_count again.
+            let lease2 = acquirer.wait_for_lease(2).await;
+            wait_subscribed(&lease2).await;
+            drive_segment(&lease2, run_id, 2);
+            lease2
+                .tx
+                .send(note("runtime.memory_stats", run_id, breach_payload()))
+                .expect("send memory_stats #2");
+            drive_segment(&lease2, run_id, 3);
+
+            let outcome = tokio::time::timeout(Duration::from_secs(10), task)
+                .await
+                .expect("task should complete within 10s")
+                .expect("task panicked");
+
+            // Restore env BEFORE asserting so a failed assert doesn't
+            // leak the override into the next test in this binary.
+            std::env::remove_var(MAX_RESTARTS_ENV);
+
+            let err = outcome.expect_err("run_via_lease should fail when budget exhausted");
+            assert!(
+                matches!(err, crate::errors::ExtensionError::RenderFailed(_)),
+                "expected RenderFailed, got {err:?}"
+            );
+            assert!(
+                err.to_string().contains("vram supervisor halt after 2 restart"),
+                "expected 'vram supervisor halt after 2 restart' in error, got: {err}"
+            );
+
+            let run = repos.get_run(run_id).await.expect("get_run");
+            assert_eq!(
+                run.restart_count, 1,
+                "expected restart_count=1 (incremented before budget check on the surviving iter)"
+            );
+            assert_eq!(run.status, "failed");
+            assert_eq!(run.error_code.as_deref(), Some("vram_supervisor"));
+            assert_eq!(
+                acquirer.acquire_count.load(Ordering::SeqCst),
+                2,
+                "expected exactly two lease acquires before exhaustion"
+            );
+            assert_eq!(
+                lease1.release_count.load(Ordering::SeqCst),
+                1,
+                "first lease must be released"
+            );
+            assert_eq!(
+                lease2.release_count.load(Ordering::SeqCst),
+                1,
+                "second lease must be released"
+            );
+        }
     }
 }
