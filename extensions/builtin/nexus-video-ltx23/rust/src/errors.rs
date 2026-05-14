@@ -33,6 +33,18 @@ pub enum ExtensionError {
 
     #[error("internal error: {0}")]
     Internal(String),
+
+    #[error("not found: {0}")]
+    NotFound(String),
+
+    #[error("storage error: {0}")]
+    Storage(String),
+}
+
+impl From<sqlx::Error> for ExtensionError {
+    fn from(err: sqlx::Error) -> Self {
+        Self::Storage(err.to_string())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -47,6 +59,8 @@ pub enum ExtensionErrorCode {
     RenderFailed,
     RenderCancelled,
     Internal,
+    NotFound,
+    Storage,
 }
 
 impl ExtensionError {
@@ -63,6 +77,8 @@ impl ExtensionError {
             Self::RenderFailed(_) => ExtensionErrorCode::RenderFailed,
             Self::RenderCancelled => ExtensionErrorCode::RenderCancelled,
             Self::Internal(_) => ExtensionErrorCode::Internal,
+            Self::NotFound(_) => ExtensionErrorCode::NotFound,
+            Self::Storage(_) => ExtensionErrorCode::Storage,
         }
     }
 }

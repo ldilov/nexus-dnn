@@ -23,12 +23,20 @@ def _hijack_stdout() -> None:
 def cli() -> int:
     _hijack_stdout()
 
+    from .installer import register_installer_handlers
     from .main import Worker
     from .pipeline_fake import register_fake_handlers
     from .telemetry import WorkerLogger
 
     profile = os.environ.get("NEXUS_VIDEO_LTX23_RUNTIME", "fake")
     worker = Worker(profile=profile)
+
+    # Installer handlers are registered regardless of profile so any fresh
+    # worker can drive a model download for ANY profile. The recipe UI's
+    # "Download weights" CTA wakes a fake-profile worker (cheapest spawn)
+    # and asks IT to fetch the FP8/NVFP4 repo — no need to first install
+    # the full diffusers extras just to download files.
+    register_installer_handlers(worker)
 
     if profile == "fake":
         register_fake_handlers(worker)

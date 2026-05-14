@@ -512,6 +512,16 @@ fn build_extension_router_registry(
             ));
             res
         })),
+        Arc::new(nexus_video_ltx23_extension::LtxRouterProvider::new({
+            let mut res =
+                nexus_video_ltx23_extension::LtxProviderResources::new(pool.clone());
+            res = res.with_host_data_dir(host_data_dir.clone());
+            let id = nexus_video_ltx23_extension::EXTENSION_ID;
+            if let Some(ext) = extension_registry.get_extension(id) {
+                res = res.with_extension_dir(ext.directory.clone());
+            }
+            res
+        })),
     ];
 
     for provider in &providers {
