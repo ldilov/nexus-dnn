@@ -332,6 +332,48 @@ impl Repos {
         .await?;
         Ok(())
     }
+
+    /// Batched analogue of `update_segment_status` — applies every
+    /// pending write inside one sqlx transaction. The
+    /// `notification_buffer` flusher uses this to fold ~120 round-
+    /// trips per 60-segment render into ~5 commits. Each row is
+    /// applied in the order received, so `started → completed`
+    /// transitions preserve their `started_at` timestamps via the
+    /// same `COALESCE` semantics the single-row method uses.
+    pub async fn update_segment_status_batch(
+        &self,
+        batch: &[crate::notification_buffer::SegmentStatusWrite],
+    ) -> Result<()> {
+        if batch.is_empty() {
+            return Ok(());
+        }
+        let mut tx = self.pool.begin().await?;
+        for write in batch {
+            let now = Utc::now().to_rfc3339();
+            let started = (write.status == "rendering").then(|| now.clone());
+            let completed =
+                matches!(write.status.as_str(), "completed" | "failed").then(|| now.clone());
+
+            sqlx::query(
+                "UPDATE ext_nexus_video_ltx23__segments \
+                 SET status = ?, \
+                     preview_artifact_id = COALESCE(?, preview_artifact_id), \
+                     started_at = COALESCE(started_at, ?), \
+                     completed_at = COALESCE(completed_at, ?) \
+                 WHERE run_id = ? AND segment_index = ?",
+            )
+            .bind(&write.status)
+            .bind(write.preview_artifact_id.as_deref())
+            .bind(started)
+            .bind(completed)
+            .bind(&write.run_id)
+            .bind(write.segment_index)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
 }
 
 #[derive(sqlx::FromRow)]
