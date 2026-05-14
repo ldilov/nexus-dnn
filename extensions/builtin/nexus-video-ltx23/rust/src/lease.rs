@@ -2,12 +2,34 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use nexus_backend_runtimes::generic::ids::RuntimeLeaseId;
 use nexus_backend_runtimes::generic::install_ctx::LaunchSpec;
 use nexus_backend_runtimes::generic::leases::stdio_lease::StdioLease;
 use nexus_backend_runtimes::generic::leases::trait_def::BackendRuntimeLease;
 
 use crate::errors::{ExtensionError, Result};
+
+/// Abstraction the runner depends on to acquire a fresh lease.
+///
+/// The production implementation (`LtxLeaseFactory`) spawns a Python
+/// worker subprocess; integration tests substitute a `FakeLeaseAcquirer`
+/// that hands out broadcast-channel-backed doubles. Returning the
+/// trait-object handle (`Arc<dyn BackendRuntimeLease>`) keeps the runner
+/// transport-agnostic — future named-pipe or websocket leases plug in
+/// without touching the orchestration loop.
+#[async_trait]
+pub trait LeaseAcquirer: Send + Sync + 'static {
+    async fn acquire_lease(&self, profile: &str) -> Result<Arc<dyn BackendRuntimeLease>>;
+}
+
+#[async_trait]
+impl LeaseAcquirer for LtxLeaseFactory {
+    async fn acquire_lease(&self, profile: &str) -> Result<Arc<dyn BackendRuntimeLease>> {
+        let lease = self.acquire(profile).await?;
+        Ok(lease)
+    }
+}
 
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(60);
 
