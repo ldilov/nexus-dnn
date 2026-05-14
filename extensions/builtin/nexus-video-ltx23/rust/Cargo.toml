@@ -37,6 +37,9 @@ nexus-artifact = { path = "../../../../crates/nexus-artifact" }
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
 tempfile = "3"
+# Serialises tests that mutate process-wide env vars (MAX_RESTARTS_ENV)
+# so they cannot stomp each other under cargo's default parallel runner.
+serial_test = "3"
 
 [lints.rust]
 unsafe_code = "forbid"
