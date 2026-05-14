@@ -2,7 +2,7 @@ runtime_id: "nexus.video.ltx23.fake"
 display_name: "LTX 2.3 Fake (CI / development)"
 family: "python"
 transport: "stdio"
-worker_entrypoint: "backends/_shared/worker/src/ltx_video_worker/__main__.py"
+worker_entrypoint: "worker/src/ltx_video_worker/__main__.py"
 version_manifest: "versions.yaml"
 
 capability_tags:

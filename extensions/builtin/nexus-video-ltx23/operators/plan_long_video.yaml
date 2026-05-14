@@ -3,15 +3,11 @@ operator:
   id: nexus.video.ltx23.plan-long-video
   version: 0.1.0
   display_name: "Plan LTX-2.3 Long Video"
-  extension_id: nexus.video.ltx23
-  invoke:
-    transport: extension_http
-    method: POST
-    path: /recipe/plan
+  description: "Validate a CreateRenderRequest and compute a RenderPlan (no GPU work)."
 inputs:
-  request:
+  - name: request
     type: object
     required: true
 outputs:
-  plan:
+  - name: plan
     type: object

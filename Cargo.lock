@@ -3429,6 +3429,7 @@ dependencies = [
  "nexus-run",
  "nexus-scheduler",
  "nexus-storage",
+ "nexus-video-ltx23-extension",
  "nexus-worker",
  "nexus-workflow",
  "reqwest 0.12.28",
@@ -3812,6 +3813,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-stream",
+ "tokio-util",
  "tracing",
  "ulid",
 ]

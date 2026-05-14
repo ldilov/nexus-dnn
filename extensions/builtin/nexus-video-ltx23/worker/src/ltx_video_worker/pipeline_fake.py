@@ -24,6 +24,7 @@ from .ffmpeg_io import (
     write_placeholder_mp4,
     write_placeholder_png,
 )
+from .io_safety import ensure_dict, sanitize_run_id, sanitize_workdir
 from .planning_validate import validate_plan
 from .rpc import ErrorCodes, Methods, Notifications
 from .vram import evict_models, memory_stats
@@ -60,10 +61,17 @@ def register_fake_handlers(worker) -> None:
     async def render_start(params):
         if not isinstance(params, dict):
             raise ValueError("params must be an object")
-        run_id = params.get("request_id") or f"run_{uuid.uuid4().hex[:12]}"
-        plan = params.get("video") or params.get("plan") or {}
-        workdir_str = params.get("workdir")
-        workdir = Path(workdir_str) if workdir_str else Path.cwd() / "fake_workdir" / run_id
+        run_id = sanitize_run_id(
+            params.get("request_id"),
+            fallback=f"run_{uuid.uuid4().hex[:12]}",
+        )
+        plan = ensure_dict(
+            params.get("video") or params.get("plan"), name="plan", default={}
+        )
+        workdir = sanitize_workdir(
+            params.get("workdir"),
+            fallback=Path.cwd() / "fake_workdir" / run_id,
+        )
         workdir.mkdir(parents=True, exist_ok=True)
 
         rs = FakeRunState(run_id=run_id, workdir=workdir, plan=plan)
@@ -83,10 +91,54 @@ def register_fake_handlers(worker) -> None:
         rs.cancelled = True
         return {"run_id": run_id, "cancel_requested": True}
 
+    async def segment_retry(params):
+        if not isinstance(params, dict):
+            raise ValueError("params must be an object")
+        run_id = sanitize_run_id(
+            params.get("request_id") or params.get("run_id"),
+            fallback=f"run_{uuid.uuid4().hex[:12]}",
+        )
+        try:
+            seg_index = int(params["segment_index"])
+        except (KeyError, ValueError, TypeError) as e:
+            raise ValueError("segment_index missing or non-integer") from e
+        if seg_index < 0:
+            raise ValueError(f"segment_index must be non-negative, got {seg_index}")
+
+        plan = ensure_dict(
+            params.get("video") or params.get("plan"), name="plan", default={}
+        )
+        segment_count = int(plan.get("segment_count") or _default_segment_count(plan))
+        if seg_index >= segment_count:
+            raise ValueError(
+                f"segment_index {seg_index} out of range; plan has {segment_count} segments"
+            )
+
+        workdir = sanitize_workdir(
+            params.get("workdir"),
+            fallback=Path.cwd() / "fake_workdir" / run_id,
+        )
+        workdir.mkdir(parents=True, exist_ok=True)
+
+        rs = state.get(run_id)
+        if rs is None:
+            rs = FakeRunState(run_id=run_id, workdir=workdir, plan=plan)
+            state[run_id] = rs
+        else:
+            rs.cancelled = False
+            rs.plan = plan
+            rs.workdir = workdir
+
+        asyncio.create_task(
+            _retry_segment_loop(worker, rs, seg_index, segment_count, emit_delay_ms)
+        )
+        return {"run_id": run_id, "segment_index": seg_index, "status": "retrying"}
+
     worker.register(Methods.MODELS_LIST, models_list)
     worker.register(Methods.PLAN_VALIDATE, plan_validate)
     worker.register(Methods.RENDER_START, render_start)
     worker.register(Methods.RENDER_CANCEL, render_cancel)
+    worker.register(Methods.SEGMENT_RETRY, segment_retry)
 
 
 async def _render_loop(
@@ -219,6 +271,118 @@ async def _render_loop(
             "segment_count": segment_count,
         },
     )
+
+
+async def _retry_segment_loop(
+    worker,
+    rs: FakeRunState,
+    seg_index: int,
+    segment_count: int,
+    emit_delay_ms: int,
+) -> None:
+    """Re-run a single segment without redoing the whole chain.
+
+    Mirrors the per-segment slice of ``_render_loop``: emits
+    SEGMENT_STARTED, writes placeholder artifacts, emits
+    ARTIFACT_CREATED + SEGMENT_COMPLETED + MEMORY_STATS. Does NOT
+    re-stitch / re-trim / emit DONE — retry is a partial recovery, the
+    caller's segment table updates are enough. Honours ``rs.cancelled``
+    so a concurrent cancel still pre-empts.
+    """
+    plan = rs.plan
+    width = int(plan.get("width", 960))
+    height = int(plan.get("height", 544))
+    segment_seconds = float(plan.get("segment_seconds", 4.0))
+
+    if rs.cancelled:
+        await worker.emit_notification(
+            Notifications.ERROR,
+            {
+                "run_id": rs.run_id,
+                "segment_index": seg_index,
+                "code": ErrorCodes.RENDER_CANCELLED,
+                "message": "segment retry cancelled before start",
+            },
+        )
+        return
+
+    await worker.emit_notification(
+        Notifications.SEGMENT_STARTED,
+        {
+            "run_id": rs.run_id,
+            "segment_index": seg_index,
+            "segment_count": segment_count,
+            "retry": True,
+        },
+    )
+
+    await asyncio.sleep(emit_delay_ms / 1000.0)
+
+    seg_path = rs.workdir / "segments" / f"{seg_index:03d}" / "raw.mp4"
+    last_frame = rs.workdir / "segments" / f"{seg_index:03d}" / "last_frame.png"
+    write_placeholder_mp4(
+        seg_path, duration_s=segment_seconds, width=width, height=height
+    )
+    write_placeholder_png(last_frame, width=width, height=height)
+
+    await worker.emit_notification(
+        Notifications.ARTIFACT_CREATED,
+        {
+            "run_id": rs.run_id,
+            "segment_index": seg_index,
+            "kind": "raw_video",
+            "path": str(seg_path),
+            "mime": "video/mp4",
+            "retry": True,
+        },
+    )
+    await worker.emit_notification(
+        Notifications.ARTIFACT_CREATED,
+        {
+            "run_id": rs.run_id,
+            "segment_index": seg_index,
+            "kind": "last_frame",
+            "path": str(last_frame),
+            "mime": "image/png",
+            "retry": True,
+        },
+    )
+
+    rs.generation_count += 1
+    await worker.emit_notification(
+        Notifications.SEGMENT_COMPLETED,
+        {
+            "run_id": rs.run_id,
+            "segment_index": seg_index,
+            "segment_count": segment_count,
+            "retry": True,
+        },
+    )
+    await worker.emit_notification(
+        Notifications.MEMORY_STATS,
+        {
+            "run_id": rs.run_id,
+            "segment_index": seg_index,
+            **memory_stats(rs.generation_count),
+        },
+    )
+    await worker.emit_notification(
+        Notifications.PROGRESS,
+        {
+            "run_id": rs.run_id,
+            "current_segment_index": seg_index,
+            "segment_count": segment_count,
+            "message": f"Retried segment {seg_index + 1} of {segment_count}",
+            "retry": True,
+        },
+    )
+
+    # Note: the retry path intentionally does NOT emit DONE. The Rust
+    # supervisor distinguishes retry-completion (just this segment) from
+    # render-completion (whole chain stitched + trimmed). The original
+    # final.mp4 — if it existed before the retry — is unaffected. The
+    # caller can spawn a fresh render_start to re-stitch with the new
+    # segment.
 
 
 def _default_segment_count(plan: dict[str, Any]) -> int:

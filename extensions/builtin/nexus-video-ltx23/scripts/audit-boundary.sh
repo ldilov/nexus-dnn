@@ -26,6 +26,17 @@ HOST_ALLOWED_PATTERNS=(
   "apps/web/src/views/extensions"   # generic extension renderer — may name the gallery item
 )
 
+# Permitted startup-wiring seam, mirroring the emotion-tts / local-llm
+# precedent. Constitution Principle XIII allows a single seam where the host
+# constructs concrete provider types (it cannot trait-only because Rust needs
+# concrete types at compile time). See router_hook.rs docstring on
+# ExtensionRouterProvider: "the host depends only on this trait — never on a
+# concrete extension type, except in the single permitted startup-wiring seam".
+HOST_ALLOWED_FILES=(
+  "crates/nexus-core/Cargo.toml"
+  "crates/nexus-core/src/app.rs"
+)
+
 # Repo root inferred from script location.
 REPO_ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
 cd "$REPO_ROOT"
@@ -47,7 +58,7 @@ for path in "${HOST_SCAN_PATHS[@]}"; do
       continue
     fi
 
-    # Filter out lines under allowed sub-paths.
+    # Filter out lines under allowed sub-paths or allowed wiring-seam files.
     FILTERED=""
     while IFS= read -r line; do
       keep=1
@@ -57,6 +68,14 @@ for path in "${HOST_SCAN_PATHS[@]}"; do
           "./$allowed"*) keep=0; break;;
         esac
       done
+      if [ "$keep" = "1" ]; then
+        for allowed_file in "${HOST_ALLOWED_FILES[@]}"; do
+          case "$line" in
+            "$allowed_file":*) keep=0; break;;
+            "./$allowed_file":*) keep=0; break;;
+          esac
+        done
+      fi
       if [ "$keep" = "1" ]; then
         FILTERED="${FILTERED}${line}\n"
       fi
