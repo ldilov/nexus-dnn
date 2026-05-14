@@ -26,9 +26,10 @@ branches).
 
 - **Worktree**: `D:\Workspace\repos\nexus-dnn\.claude\worktrees\unruffled-perlman-dd12e1`
 - **Branch**: `claude/unruffled-perlman-dd12e1` (pushed)
-- **HEAD**: `f59475f` (`feat(046): surface Rung 7L restart_count on the run row + UI badge`)
-- **`origin/main`**: also at `f59475f` (branch + main fully synced)
-- **34 commits ahead of pre-spec baseline** (`d009334`)
+- **HEAD**: `55803fd` (`test(046): mock-lease orchestration covers Rung 7L restart loop`)
+- **`origin/main`**: at `dd79ba8` (merge of `55803fd` into the prior
+  `dda5f04` from the 2026-05-14 session close)
+- **35 commits ahead of pre-spec baseline** (`d009334`)
 - **Working tree**: clean
 - **Pre-existing WIP on local main** (unrelated to spec 046): some
   files modified in `apps/web/src/hooks/`, `apps/web/src/layout/local_llm/`,
@@ -36,19 +37,21 @@ branches).
   them — they belong to a different work stream.
 
 **Read first** before doing anything:
-`specs/046-ltx23-video-generation/checkpoints/2026-05-14-session-close.md`
-— that file documents the 3 commits from the prior session, the
-deferred backlog, and the cross-session-continuity memory notes.
+`specs/046-ltx23-video-generation/checkpoints/2026-05-14-item-a-mock-lease-orchestration.md`
+— documents Item A close (mock-lease orchestration tests landed,
+74/72 → 74/74) and the refreshed deferred backlog. The earlier
+`2026-05-14-session-close.md` is still useful for the deeper Rung 7L
+design context.
 
 ## Phase 0 — Sanity gate (MANDATORY)
 
 
 ```bash
 cd D:/Workspace/repos/nexus-dnn/.claude/worktrees/unruffled-perlman-dd12e1
-git log --oneline -1                                                # → f59475f
+git log --oneline -1                                                # → 55803fd
 git status --short                                                  # → clean
 cargo clippy -p nexus-video-ltx23-extension --all-targets -- -D warnings
-cargo test -p nexus-video-ltx23-extension --lib                     # → 72/72
+cargo test -p nexus-video-ltx23-extension --lib                     # → 74/74
 bash extensions/builtin/nexus-video-ltx23/scripts/audit-boundary.sh # → PASS
 cd extensions/builtin/nexus-video-ltx23/worker && uv run python -m pytest tests/ -q  # → 111/111
 cd ../web && pnpm tsc --noEmit                                      # → clean
@@ -65,7 +68,12 @@ checkpoint; something regressed.
 
 In priority order:
 
-### Item A — End-to-end mock-lease orchestration test (Recommended)
+### Item A — End-to-end mock-lease orchestration test ✅ DONE 2026-05-14 (`55803fd`)
+
+See `2026-05-14-item-a-mock-lease-orchestration.md` for the close
+checkpoint. Skip to Item B for fresh sessions.
+
+### Item A — original specification (kept for reference)
 
 **Goal**: verify the Rung 7L multi-attempt outer loop choreography
 (lease A → breach → lease B → done) without GPU hardware. The
@@ -267,7 +275,7 @@ rather than guessing:
 - A test that passes when it shouldn't. Tighten the mock before
   claiming green.
 
-Memory file: `MEMORY.md` index says HEAD is `f59475f`. If your
+Memory file: `MEMORY.md` index says HEAD is `55803fd`. If your
 sanity gate disagrees, somebody landed work between sessions;
 reconcile before proceeding.
 
@@ -288,9 +296,15 @@ reconcile before proceeding.
 
 ## My pick of next item
 
-**Item A (end-to-end mock-lease orchestration test)** —
-component-level coverage is complete; the restart-loop choreography
-is the last untested piece of Rung 7L. mockall setup is a one-time
-investment that unblocks similar tests for future runner work
-(notification-batch coalescing in Item B would use the same
-infrastructure).
+**Item B (notification-batch coalescing)** — Item A is closed (see
+`2026-05-14-item-a-mock-lease-orchestration.md`). The
+`FakeLease`/`FakeLeaseAcquirer` doubles added in commit `55803fd`
+make a 60-segment batching test cheap: fire 240 notifications,
+assert the DB sees < N writes within a 50ms flush window. Same
+infra, just heavier load + assertions on the new
+`notification_buffer` module.
+
+Decision note (2026-05-14): `mockall` was *not* added in the end.
+Hand-rolled trait doubles compose better with `broadcast::Receiver`
+state than mockall's `.returning()` model. Item B can keep using
+the same pattern.
