@@ -9,6 +9,7 @@ use tokio::sync::{Mutex, Notify};
 
 use crate::errors::Result;
 use crate::lease::LeaseAcquirer;
+use crate::notification_buffer::{NotificationBuffer, SegmentStatusWrite};
 use crate::schemas::{AdvancedSettings, RenderPlan};
 use crate::storage::Repos;
 use crate::vram_supervisor::{VramSupervisor, VramVerdict};
@@ -128,6 +129,13 @@ pub struct RunnerConfig {
     /// `vram_supervisor.rs`). Set deliberately to
     /// `VramSupervisorConfig` with `u64::MAX` thresholds to disable.
     pub vram_supervisor: VramSupervisor,
+    /// Coalesces `update_segment_status` writes through a periodic
+    /// flusher (Item B). Each notification handler enqueues instead
+    /// of awaiting `SQLite` directly; the flusher commits batches
+    /// every 50 ms inside one transaction. Run lifecycle calls
+    /// `flush_now` at terminal-state transitions so the polling
+    /// client always sees a consistent snapshot.
+    pub notification_buffer: NotificationBuffer,
 }
 
 /// Per-run abort handle. Held by both the spawned render task and the
@@ -556,6 +564,21 @@ async fn run_via_lease(
                 "vram supervisor: chain completed after transparent restart(s)"
             );
         }
+    }
+
+    // Item B: drain the notification buffer before flipping the run
+    // row to a terminal status. Guarantees that any client that sees
+    // status=completed/failed/cancelled also sees every segment row
+    // in its final state — no "completed run with rendering segments"
+    // window. Best-effort: a flusher failure is logged but doesn't
+    // mask the actual outcome.
+    if let Err(e) = cfg.notification_buffer.flush_now().await {
+        tracing::warn!(
+            extension_id = "nexus.video.ltx23",
+            run_id = %run_id,
+            error = %e,
+            "notification buffer flush_now failed at terminal exit; segment rows may lag"
+        );
     }
 
     match outcome {
@@ -1081,6 +1104,34 @@ enum RetryOutcome {
     Error { code: i64, message: String },
 }
 
+/// Push one segment-status write through the batching flusher. A
+/// flusher-died error logs a warn and falls through — the render
+/// itself is unaffected, the polling client just sees a stale row
+/// until the next status change.
+async fn enqueue_segment_status(
+    buffer: &NotificationBuffer,
+    run_id: &str,
+    segment_index: i64,
+    status: &str,
+) {
+    let write = SegmentStatusWrite {
+        run_id: run_id.to_string(),
+        segment_index,
+        status: status.into(),
+        preview_artifact_id: None,
+    };
+    if let Err(e) = buffer.enqueue(write).await {
+        tracing::warn!(
+            extension_id = "nexus.video.ltx23",
+            run_id = %run_id,
+            segment = segment_index,
+            new_status = %status,
+            error = %e,
+            "notification buffer enqueue failed; segment status will lag"
+        );
+    }
+}
+
 async fn handle_notification(
     cfg: &RunnerConfig,
     run_id: &str,
@@ -1091,17 +1142,13 @@ async fn handle_notification(
     match note.method.as_str() {
         "ltx.video.segment.started" => {
             if let Some(i) = segment_index(&note.params) {
-                cfg.repos
-                    .update_segment_status(run_id, i, "rendering", None)
-                    .await?;
+                enqueue_segment_status(&cfg.notification_buffer, run_id, i, "rendering").await;
             }
             Ok(None)
         }
         "ltx.video.segment.completed" => {
             if let Some(i) = segment_index(&note.params) {
-                cfg.repos
-                    .update_segment_status(run_id, i, "completed", None)
-                    .await?;
+                enqueue_segment_status(&cfg.notification_buffer, run_id, i, "completed").await;
                 // Supervisor breach pending? Now is the right moment to
                 // halt: the segment just landed cleanly on disk + the
                 // worker is between segments, so releasing the lease
@@ -1361,14 +1408,21 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let repos = Repos::from_pool(pool);
+        let (notification_buffer, _handle) =
+            crate::notification_buffer::NotificationBuffer::new(
+                repos.clone(),
+                crate::notification_buffer::DEFAULT_FLUSH_INTERVAL,
+            );
         Runner::new(RunnerConfig {
             runs_dir: PathBuf::from("/tmp"),
-            repos: Repos::from_pool(pool),
+            repos,
             factory: Arc::new(LtxLeaseFactory::new(
                 PathBuf::from("/nonexistent-ext"),
                 PathBuf::from("/nonexistent-data"),
             )),
             vram_supervisor: VramSupervisor::default(),
+            notification_buffer,
         })
     }
 
@@ -2008,11 +2062,21 @@ mod tests {
                 .expect("open in-memory sqlite");
             apply_test_migrations(&pool).await;
             let repos = Repos::from_pool(pool);
+            // Item B: each test spins up its own flusher. Use the
+            // production cadence — fast enough that segment status
+            // settles within the test's overall 10s timeout, slow
+            // enough that the tick doesn't dominate test wall-clock.
+            let (notification_buffer, _flusher_handle) =
+                crate::notification_buffer::NotificationBuffer::new(
+                    repos.clone(),
+                    crate::notification_buffer::DEFAULT_FLUSH_INTERVAL,
+                );
             let cfg = RunnerConfig {
                 runs_dir,
                 repos: repos.clone(),
                 factory: acquirer,
                 vram_supervisor: supervisor,
+                notification_buffer,
             };
             (cfg, repos)
         }
