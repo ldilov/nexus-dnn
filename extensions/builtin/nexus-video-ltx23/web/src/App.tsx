@@ -1,4 +1,10 @@
-import { useCallback, useState, type ReactElement } from "react";
+import {
+  useCallback,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactElement,
+} from "react";
 import useSWR from "swr";
 import {
   type AdvancedSettings,
@@ -322,8 +328,17 @@ function FormPanel({
     [draft, onChange],
   );
 
+  const handleFormSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (submitting || draft.prompt.trim().length === 0) return;
+      onSubmit();
+    },
+    [submitting, draft.prompt, onSubmit],
+  );
+
   return (
-    <section className={s.panel}>
+    <form className={s.panel} onSubmit={handleFormSubmit} noValidate>
       <h2 className={s.header}>LTX 2.3 Video Generator</h2>
       <p className={s.subhead}>
         Prompt-driven video synthesis · external-segments mode · 16 GB safe
@@ -515,20 +530,24 @@ function FormPanel({
           {planning ? "Planning…" : "Preview plan"}
         </button>
         <button
-          type="button"
+          type="submit"
           className={s.button}
-          onClick={onSubmit}
           disabled={submitting || draft.prompt.trim().length === 0}
+          aria-busy={submitting}
         >
           {submitting ? "Submitting…" : "Generate video"}
         </button>
       </div>
 
-      {planError ? <div className={s.errorBox}>{planError}</div> : null}
-      {submitError ? <div className={s.errorBox}>{submitError}</div> : null}
+      {planError ? (
+        <div className={s.errorBox} role="alert">{planError}</div>
+      ) : null}
+      {submitError ? (
+        <div className={s.errorBox} role="alert">{submitError}</div>
+      ) : null}
 
       {plan ? <PlanBlock plan={plan} /> : null}
-    </section>
+    </form>
   );
 }
 
@@ -705,9 +724,33 @@ function ScenesEditor({
 }): ReactElement {
   const scenes = draft.scenes ?? [];
 
-  const setScenes = useCallback(
-    (next: SceneSpec[]) => {
-      update("scenes", next.length > 0 ? next : undefined);
+  // Parallel array of stable UI ids — React `key`s must remain stable
+  // across reorders + deletes or input focus / uncontrolled-state in
+  // textareas survives across the wrong scene. The DTO scenes array
+  // doesn't carry ids (the server wouldn't know what to do with them),
+  // so we maintain them as a separate component-local concern.
+  const uiIdCounter = useRef(0);
+  const [sceneIds, setSceneIds] = useState<string[]>(() =>
+    scenes.map(() => `scene-${uiIdCounter.current++}`),
+  );
+
+  // Keep `sceneIds` in sync with scenes.length when external code
+  // (e.g. sessionStorage rehydrate) mutates the array out of band.
+  // Adds new ids when scenes grew externally; truncates when shrunk.
+  // Reorder happens through our own mutators which keep the arrays
+  // in lockstep, so this branch only catches "draft replaced wholesale".
+  if (sceneIds.length !== scenes.length) {
+    const next = sceneIds.slice(0, scenes.length);
+    while (next.length < scenes.length) {
+      next.push(`scene-${uiIdCounter.current++}`);
+    }
+    setSceneIds(next);
+  }
+
+  const commitScenes = useCallback(
+    (nextScenes: SceneSpec[], nextIds: string[]) => {
+      update("scenes", nextScenes.length > 0 ? nextScenes : undefined);
+      setSceneIds(nextIds);
     },
     [update],
   );
@@ -715,11 +758,14 @@ function ScenesEditor({
   const addScene = useCallback(() => {
     const equalShare =
       scenes.length > 0 ? draft.duration_seconds / (scenes.length + 1) : draft.duration_seconds;
-    setScenes([
-      ...scenes,
-      { prompt: "", duration_seconds: Math.max(1, Math.round(equalShare)) },
-    ]);
-  }, [scenes, setScenes, draft.duration_seconds]);
+    commitScenes(
+      [
+        ...scenes,
+        { prompt: "", duration_seconds: Math.max(1, Math.round(equalShare)) },
+      ],
+      [...sceneIds, `scene-${uiIdCounter.current++}`],
+    );
+  }, [scenes, sceneIds, commitScenes, draft.duration_seconds]);
 
   // exactOptionalPropertyTypes treats `undefined` as not assignable to
   // an optional field — callers pass numbers or pass null to clear, and
@@ -729,9 +775,9 @@ function ScenesEditor({
       idx: number,
       patch: { [K in keyof SceneSpec]?: SceneSpec[K] | null },
     ) => {
-      const next = scenes.map((s, i) => {
-        if (i !== idx) return s;
-        const merged: SceneSpec = { ...s };
+      const next = scenes.map((sc, i) => {
+        if (i !== idx) return sc;
+        const merged: SceneSpec = { ...sc };
         // `prompt` is required — `null` is treated as empty string clear.
         if (patch.prompt !== undefined) {
           merged.prompt = patch.prompt ?? "";
@@ -746,20 +792,53 @@ function ScenesEditor({
         }
         return merged;
       });
-      setScenes(next);
+      commitScenes(next, sceneIds);
     },
-    [scenes, setScenes],
+    [scenes, sceneIds, commitScenes],
   );
 
   const removeScene = useCallback(
     (idx: number) => {
-      setScenes(scenes.filter((_, i) => i !== idx));
+      commitScenes(
+        scenes.filter((_, i) => i !== idx),
+        sceneIds.filter((_, i) => i !== idx),
+      );
     },
-    [scenes, setScenes],
+    [scenes, sceneIds, commitScenes],
+  );
+
+  const moveScene = useCallback(
+    (idx: number, direction: -1 | 1) => {
+      const target = idx + direction;
+      if (target < 0 || target >= scenes.length) return;
+      // Pre-validate to satisfy noUncheckedIndexedAccess — the
+      // bounds check above guarantees both look-ups succeed but
+      // TS can't propagate that knowledge through the index op.
+      const fromScene = scenes[idx];
+      const toScene = scenes[target];
+      const fromId = sceneIds[idx];
+      const toId = sceneIds[target];
+      if (
+        fromScene === undefined ||
+        toScene === undefined ||
+        fromId === undefined ||
+        toId === undefined
+      ) {
+        return;
+      }
+      const nextScenes = [...scenes];
+      const nextIds = [...sceneIds];
+      nextScenes[idx] = toScene;
+      nextScenes[target] = fromScene;
+      nextIds[idx] = toId;
+      nextIds[target] = fromId;
+      commitScenes(nextScenes, nextIds);
+    },
+    [scenes, sceneIds, commitScenes],
   );
 
   const scenesTotal = scenes.reduce(
-    (acc, s) => acc + (s.duration_seconds ?? 0),
+    (acc, sc) => acc + (sc.duration_seconds ?? 0),
     0,
   );
 
@@ -780,82 +859,120 @@ function ScenesEditor({
         run consecutively in order. Leave empty to use the global prompt
         for the whole video.
       </p>
-      {scenes.map((scene, idx) => (
-        <div
-          key={idx}
-          className={s.panel}
-          style={{ background: "rgba(0,0,0,0.18)", marginTop: 10, padding: 12 }}
-        >
-          <div className={s.fieldRow}>
-            <label className={s.label} htmlFor={`ltx-scene-${idx}-prompt`}>
-              Scene {idx + 1} prompt
-            </label>
-            <textarea
-              id={`ltx-scene-${idx}-prompt`}
-              className={s.textarea}
-              value={scene.prompt}
-              onChange={(e) => updateScene(idx, { prompt: e.target.value })}
-              placeholder="what happens in this scene…"
-              rows={2}
-            />
-          </div>
-          <div className={s.inputRow}>
-            <div className={s.fieldRow}>
-              <label
-                className={s.label}
-                htmlFor={`ltx-scene-${idx}-duration`}
-              >
-                Duration (s)
-              </label>
-              <input
-                id={`ltx-scene-${idx}-duration`}
-                className={s.input}
-                type="number"
-                min={1}
-                step={0.5}
-                value={scene.duration_seconds ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  updateScene(idx, {
-                    duration_seconds: v === "" ? null : Number(v),
-                  });
-                }}
-                placeholder="auto"
-              />
+      {scenes.map((scene, idx) => {
+        const uiId = sceneIds[idx] ?? `scene-fallback-${idx}`;
+        const parseNumberInput = (raw: string): number | null => {
+          if (raw === "") return null;
+          const parsed = Number(raw);
+          return Number.isFinite(parsed) ? parsed : null;
+        };
+        return (
+          <div
+            key={uiId}
+            className={s.panel}
+            style={{ background: "rgba(0,0,0,0.18)", marginTop: 10, padding: 12 }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 6,
+              }}
+            >
+              <strong className={s.meta}>Scene {idx + 1}</strong>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  type="button"
+                  className={s.buttonSubtle}
+                  onClick={() => moveScene(idx, -1)}
+                  disabled={idx === 0}
+                  aria-label={`Move scene ${idx + 1} up`}
+                  title="Move up"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className={s.buttonSubtle}
+                  onClick={() => moveScene(idx, 1)}
+                  disabled={idx === scenes.length - 1}
+                  aria-label={`Move scene ${idx + 1} down`}
+                  title="Move down"
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  className={s.buttonSubtle}
+                  onClick={() => removeScene(idx)}
+                  aria-label={`Remove scene ${idx + 1}`}
+                  title="Remove scene"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
             <div className={s.fieldRow}>
-              <label
-                className={s.label}
-                htmlFor={`ltx-scene-${idx}-seed`}
-              >
-                Scene seed (optional)
+              <label className={s.label} htmlFor={`ltx-${uiId}-prompt`}>
+                Scene prompt
               </label>
-              <input
-                id={`ltx-scene-${idx}-seed`}
-                className={s.input}
-                type="number"
-                value={scene.seed ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  updateScene(idx, {
-                    seed: v === "" ? null : Number(v),
-                  });
-                }}
-                placeholder="derived"
+              <textarea
+                id={`ltx-${uiId}-prompt`}
+                className={s.textarea}
+                value={scene.prompt}
+                onChange={(e) => updateScene(idx, { prompt: e.target.value })}
+                placeholder="what happens in this scene…"
+                rows={2}
               />
             </div>
-            <div className={s.fieldRow} style={{ alignSelf: "flex-end" }}>
-              <button
-                type="button"
-                className={s.buttonDanger}
-                onClick={() => removeScene(idx)}
-              >
-                Remove
-              </button>
+            <div className={s.inputRow}>
+              <div className={s.fieldRow}>
+                <label
+                  className={s.label}
+                  htmlFor={`ltx-${uiId}-duration`}
+                >
+                  Duration (s)
+                </label>
+                <input
+                  id={`ltx-${uiId}-duration`}
+                  className={s.input}
+                  type="number"
+                  min={1}
+                  step={0.5}
+                  value={scene.duration_seconds ?? ""}
+                  onChange={(e) => {
+                    updateScene(idx, {
+                      duration_seconds: parseNumberInput(e.target.value),
+                    });
+                  }}
+                  placeholder="auto"
+                />
+              </div>
+              <div className={s.fieldRow}>
+                <label
+                  className={s.label}
+                  htmlFor={`ltx-${uiId}-seed`}
+                >
+                  Scene seed (optional)
+                </label>
+                <input
+                  id={`ltx-${uiId}-seed`}
+                  className={s.input}
+                  type="number"
+                  value={scene.seed ?? ""}
+                  onChange={(e) => {
+                    updateScene(idx, {
+                      seed: parseNumberInput(e.target.value),
+                    });
+                  }}
+                  placeholder="derived"
+                />
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
       <div className={s.buttonRow} style={{ marginTop: 10 }}>
         <button
           type="button"
