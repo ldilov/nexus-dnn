@@ -25,6 +25,12 @@ class Notifications:
     DONE = "ltx.video.done"
     ERROR = "ltx.video.error"
     MEMORY_STATS = "runtime.memory_stats"
+    # Worker-side ack for a Rung 7L resume. Emitted exactly once per
+    # render.start when the payload's `resumed_from_segment` field is
+    # non-zero, BEFORE the first SEGMENT_STARTED of the resumed chain.
+    # Operators correlate this with the host's restart_count to confirm
+    # that the worker saw the resume offset the runner believes it sent.
+    RESUME_ACKNOWLEDGED = "runtime.resume_acknowledged"
 
 
 class ErrorCodes:

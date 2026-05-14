@@ -91,11 +91,24 @@ impl LtxRouterProvider {
             extension_data_dir,
         ));
 
+        // Item B: spawn the segment-status flusher alongside the
+        // runner. The JoinHandle is intentionally detached — the
+        // flusher exits cleanly when every NotificationBuffer clone
+        // drops (i.e. when the runner is dropped at process exit).
+        // No restart logic needed; if it ever crashes, segment-status
+        // writes degrade to log-only and the run still completes.
+        let (notification_buffer, _flusher_handle) =
+            crate::notification_buffer::NotificationBuffer::new(
+                repos.clone(),
+                crate::notification_buffer::DEFAULT_FLUSH_INTERVAL,
+            );
+
         let runner = Runner::new(RunnerConfig {
             runs_dir: runs_dir.clone(),
             repos: repos.clone(),
             factory: factory.clone(),
             vram_supervisor: VramSupervisor::from_env(),
+            notification_buffer,
         });
 
         let host_data_root = self

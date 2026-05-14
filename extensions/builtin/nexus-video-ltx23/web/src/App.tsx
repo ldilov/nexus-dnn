@@ -1397,8 +1397,17 @@ function renderRestartBadge(run: RenderRun): ReactElement | null {
     return null;
   }
   const cap = run.max_restart_count > 0 ? run.max_restart_count : run.restart_count;
+  // Tooltip surfaces the VRAM-supervisor breach reason so the
+  // operator can see *why* the chain restarted (frag-ratio,
+  // alloc-retries, free-MB, num-ooms) without grepping logs. Falls
+  // back to a generic explanation when the backend didn't persist a
+  // reason — happens for runs that landed before migration 005.
+  const reason = run.last_breach_reason?.trim();
+  const tooltip = reason
+    ? `VRAM supervisor breach: ${reason}`
+    : "VRAM supervisor halted this chain at least once";
   return (
-    <span className={s.meta} aria-live="polite">
+    <span className={s.meta} aria-live="polite" title={tooltip}>
       {" · "}
       restart {run.restart_count}/{cap}
     </span>

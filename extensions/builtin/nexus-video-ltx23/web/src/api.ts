@@ -120,6 +120,11 @@ export interface RenderRun {
   /** Cap this run is running under (snapshot of
    * `NEXUS_VIDEO_LTX23_VRAM_MAX_RESTARTS` at insert time). */
   max_restart_count: number;
+  /** Human-readable description of the most recent VRAM-supervisor
+   * breach (e.g. `frag_ratio=0.42 exceeded max=0.30`). Null/undefined
+   * for runs that never tripped the supervisor. UI renders this as
+   * the restart badge's tooltip. */
+  last_breach_reason?: string | null;
 }
 
 async function jsonRequest<T>(
