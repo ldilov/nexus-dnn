@@ -41,6 +41,11 @@ pub struct RenderRunRow {
     /// separate config probe. Historical rows persist the value they
     /// ran with even if the env was later retuned.
     pub max_restart_count: i64,
+    /// Most recent VRAM-supervisor breach reason. NULL for runs that
+    /// never tripped the supervisor. The UI renders this as a tooltip
+    /// on the restart badge so an operator can see *why* a run had
+    /// to restart, not just *that* it did.
+    pub last_breach_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,9 +93,9 @@ impl Repos {
                 width, height, base_fps, output_fps, segment_count, seed, quality_preset, \
                 render_mode, request_json, plan_json, error_code, error_message, \
                 final_artifact_id, created_at, started_at, completed_at, cancelled_at, \
-                restart_count, max_restart_count\
+                restart_count, max_restart_count, last_breach_reason\
              ) VALUES (\
-                ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?\
+                ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?\
              )",
         )
         .bind(&run.id)
@@ -118,6 +123,7 @@ impl Repos {
         .bind(run.cancelled_at.map(|t| t.to_rfc3339()))
         .bind(run.restart_count)
         .bind(run.max_restart_count)
+        .bind(&run.last_breach_reason)
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -138,13 +144,34 @@ impl Repos {
         Ok(())
     }
 
+    /// Stash the most recent VRAM-supervisor breach reason. Called
+    /// alongside `increment_restart_count` on every restart attempt
+    /// and again on the budget-exhausted halt path so the final UI
+    /// state always reflects the breach that ended the chain.
+    pub async fn update_last_breach_reason(
+        &self,
+        run_id: &str,
+        reason: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE ext_nexus_video_ltx23__runs \
+             SET last_breach_reason = ? \
+             WHERE id = ?",
+        )
+        .bind(reason)
+        .bind(run_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn get_run(&self, run_id: &str) -> Result<RenderRunRow> {
         let row = sqlx::query_as::<_, RenderRunRowRaw>(
             "SELECT id, project_id, status, runtime_profile, requested_duration_seconds, \
                  planned_duration_seconds, width, height, base_fps, output_fps, segment_count, \
                  seed, quality_preset, render_mode, request_json, plan_json, error_code, \
                  error_message, final_artifact_id, created_at, started_at, completed_at, \
-                 cancelled_at, restart_count, max_restart_count \
+                 cancelled_at, restart_count, max_restart_count, last_breach_reason \
              FROM ext_nexus_video_ltx23__runs WHERE id = ?",
         )
         .bind(run_id)
@@ -305,6 +332,48 @@ impl Repos {
         .await?;
         Ok(())
     }
+
+    /// Batched analogue of `update_segment_status` — applies every
+    /// pending write inside one sqlx transaction. The
+    /// `notification_buffer` flusher uses this to fold ~120 round-
+    /// trips per 60-segment render into ~5 commits. Each row is
+    /// applied in the order received, so `started → completed`
+    /// transitions preserve their `started_at` timestamps via the
+    /// same `COALESCE` semantics the single-row method uses.
+    pub async fn update_segment_status_batch(
+        &self,
+        batch: &[crate::notification_buffer::SegmentStatusWrite],
+    ) -> Result<()> {
+        if batch.is_empty() {
+            return Ok(());
+        }
+        let mut tx = self.pool.begin().await?;
+        for write in batch {
+            let now = Utc::now().to_rfc3339();
+            let started = (write.status == "rendering").then(|| now.clone());
+            let completed =
+                matches!(write.status.as_str(), "completed" | "failed").then(|| now.clone());
+
+            sqlx::query(
+                "UPDATE ext_nexus_video_ltx23__segments \
+                 SET status = ?, \
+                     preview_artifact_id = COALESCE(?, preview_artifact_id), \
+                     started_at = COALESCE(started_at, ?), \
+                     completed_at = COALESCE(completed_at, ?) \
+                 WHERE run_id = ? AND segment_index = ?",
+            )
+            .bind(&write.status)
+            .bind(write.preview_artifact_id.as_deref())
+            .bind(started)
+            .bind(completed)
+            .bind(&write.run_id)
+            .bind(write.segment_index)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
 }
 
 #[derive(sqlx::FromRow)]
@@ -334,6 +403,7 @@ struct RenderRunRowRaw {
     cancelled_at: Option<String>,
     restart_count: i64,
     max_restart_count: i64,
+    last_breach_reason: Option<String>,
 }
 
 fn parse_dt(raw: &str) -> Result<DateTime<Utc>> {
@@ -376,6 +446,7 @@ impl TryFrom<RenderRunRowRaw> for RenderRunRow {
             cancelled_at: parse_dt_opt(r.cancelled_at.as_deref())?,
             restart_count: r.restart_count,
             max_restart_count: r.max_restart_count,
+            last_breach_reason: r.last_breach_reason,
         })
     }
 }

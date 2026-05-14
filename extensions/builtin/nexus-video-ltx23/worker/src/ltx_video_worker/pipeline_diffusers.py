@@ -74,6 +74,14 @@ class DiffusersRunState:
         self.device = device
         self.cancelled = False
         self.generation_count = 0
+        # Rung 7L resume offset (Item C). Set from the
+        # `resumed_from_segment` field on render.start when the host
+        # re-issued the chain after a VRAM-supervisor breach. 0 (the
+        # default) means "first attempt". The render loop emits
+        # RESUME_ACKNOWLEDGED exactly once when this is non-zero so
+        # operators can correlate the worker's segment numbering
+        # against the host's restart counter.
+        self.resumed_from_segment: int = 0
 
 
 def register_diffusers_handlers(worker) -> None:
@@ -127,6 +135,16 @@ def register_diffusers_handlers(worker) -> None:
         rs = DiffusersRunState(
             run_id=run_id, workdir=workdir, plan=plan, pipe=None, device=None
         )
+        # Rung 7L: capture the host's resume offset onto the run
+        # state. The render loop reads this once and emits the
+        # ack notification before the first segment. Non-int /
+        # negative values collapse to 0 so a malformed payload
+        # silently behaves like a first attempt.
+        raw_offset = params.get("resumed_from_segment", 0)
+        try:
+            rs.resumed_from_segment = max(0, int(raw_offset))
+        except (TypeError, ValueError):
+            rs.resumed_from_segment = 0
         state[run_id] = rs
 
         asyncio.create_task(
@@ -758,6 +776,20 @@ async def _render_loop(
 
     segment_paths: list[Path] = []
     segment_count = len(segments)
+
+    # Item C: ack a Rung 7L resume before the first segment fires.
+    # Operators reading worker logs see this notification once when
+    # the host has re-issued render.start at a non-zero offset, and
+    # use it to confirm that the worker's segment numbering aligns
+    # with the host's restart_count.
+    if rs.resumed_from_segment > 0:
+        await worker.emit_notification(
+            Notifications.RESUME_ACKNOWLEDGED,
+            {
+                "run_id": rs.run_id,
+                "resumed_from_segment": rs.resumed_from_segment,
+            },
+        )
 
     for seg in segments:
         if rs.cancelled:
