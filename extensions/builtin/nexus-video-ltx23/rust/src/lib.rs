@@ -2,6 +2,7 @@ pub mod api;
 pub mod errors;
 pub mod lease;
 pub mod migrations;
+pub mod notification_buffer;
 pub mod planning;
 pub mod profile_install;
 pub mod register;
