@@ -20,4 +20,9 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "constraints_and_indexes",
         sql: include_str!("../../storage/migrations/003_constraints_and_indexes.sql"),
     },
+    Migration {
+        version: 4,
+        name: "runs_restart_count",
+        sql: include_str!("../../storage/migrations/004_runs_restart_count.sql"),
+    },
 ];
