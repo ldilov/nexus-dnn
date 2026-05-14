@@ -486,6 +486,19 @@ async fn run_via_lease(
                 }
                 restart_attempts += 1;
                 last_breach_reason = Some(reason.clone());
+                // Persist the breach reason BEFORE the budget check so
+                // that even the budget-exhausted halt path's DB row
+                // reflects *why* the chain stopped. Cheap (one UPDATE)
+                // and the UI's tooltip needs it on both happy + halt
+                // paths.
+                if let Err(e) = cfg.repos.update_last_breach_reason(run_id, &reason).await {
+                    tracing::warn!(
+                        extension_id = "nexus.video.ltx23",
+                        run_id = %run_id,
+                        error = %e,
+                        "runner: failed to persist last_breach_reason; UI tooltip will lag"
+                    );
+                }
                 if restart_attempts > max_restarts {
                     tracing::warn!(
                         extension_id = "nexus.video.ltx23",
@@ -2038,6 +2051,7 @@ mod tests {
                     cancelled_at: None,
                     restart_count: 0,
                     max_restart_count: i64::from(max_restarts),
+                    last_breach_reason: None,
                 })
                 .await
                 .expect("insert run row");
@@ -2176,6 +2190,20 @@ mod tests {
                 "expected restart_count=1 after one transparent restart"
             );
             assert_eq!(run.status, "completed");
+            // Item D: breach reason persists across the restart so the
+            // UI tooltip survives into the completed-state DTO.
+            assert!(
+                run.last_breach_reason.is_some(),
+                "expected last_breach_reason to be persisted after a breach"
+            );
+            assert!(
+                run.last_breach_reason
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("num_ooms"),
+                "expected breach reason to mention num_ooms, got {:?}",
+                run.last_breach_reason
+            );
             assert_eq!(
                 acquirer.acquire_count.load(Ordering::SeqCst),
                 2,
@@ -2302,6 +2330,17 @@ mod tests {
             );
             assert_eq!(run.status, "failed");
             assert_eq!(run.error_code.as_deref(), Some("vram_supervisor"));
+            // Item D: even on the halt path the most recent breach
+            // reason is persisted, so the UI tooltip survives into
+            // the failed-state row.
+            assert!(
+                run.last_breach_reason
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("num_ooms"),
+                "expected breach reason to survive into failed row, got {:?}",
+                run.last_breach_reason
+            );
             assert_eq!(
                 acquirer.acquire_count.load(Ordering::SeqCst),
                 2,
