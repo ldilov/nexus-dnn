@@ -25,4 +25,9 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "runs_restart_count",
         sql: include_str!("../../storage/migrations/004_runs_restart_count.sql"),
     },
+    Migration {
+        version: 5,
+        name: "runs_last_breach_reason",
+        sql: include_str!("../../storage/migrations/005_runs_last_breach_reason.sql"),
+    },
 ];
