@@ -20,8 +20,8 @@ use crate::errors::{ExtensionError, ExtensionErrorCode};
 use crate::planning::plan_render;
 use crate::profile_install::{ProfileInstallService, ProfileInstallStatus};
 use crate::runner::{CancelOutcome, RetrySpawnOutcome, Runner};
-use crate::runtime_selection::{available_profiles, resolve_runtime_id_with_substitution};
-use crate::schemas::{CreateRenderRequest, PlanWarning, RenderPlan, RuntimeProfilePreference};
+use crate::runtime_selection::{available_profiles, resolve_runtime_id};
+use crate::schemas::{CreateRenderRequest, RenderPlan, RuntimeProfilePreference};
 use crate::storage::{RenderRunRow, RenderSegmentRow, Repos};
 
 /// Idempotency-Key TTL. Inside this window, a repeat POST /renders with
@@ -247,30 +247,9 @@ async fn create_plan(
     State(_state): State<Arc<ApiState>>,
     Json(req): Json<CreateRenderRequest>,
 ) -> ApiResult<Json<RenderPlan>> {
-    let (runtime_id, substituted_from) =
-        resolve_runtime_id_with_substitution(req.runtime_profile, false);
-    let mut plan = plan_render(&req, runtime_id)?;
-    if let Some(requested) = substituted_from {
-        plan.warnings
-            .push(runtime_substitution_warning(requested, runtime_id));
-    }
+    let runtime_id = resolve_runtime_id(req.runtime_profile);
+    let plan = plan_render(&req, runtime_id)?;
     Ok(Json(plan))
-}
-
-/// Build the `PlanWarning` surfaced when the resolver downgrades the
-/// user's runtime preference (today: NVFP4 → FP8 because
-/// `experimental_nvfp4_opt_in` is off in the request path). Without this
-/// the user receives FP8 silently, with no indication their explicit
-/// choice was overridden — which is exactly the smoke-test surprise this
-/// covers.
-fn runtime_substitution_warning(requested: &str, resolved: &str) -> PlanWarning {
-    PlanWarning {
-        code: "runtime_substituted".into(),
-        message: format!(
-            "requested runtime '{requested}' requires experimental opt-in and is not \
-             available through this request path; using '{resolved}' instead"
-        ),
-    }
 }
 
 #[derive(Serialize)]
@@ -326,13 +305,8 @@ async fn create_render(
         }
     }
 
-    let (runtime_id, substituted_from) =
-        resolve_runtime_id_with_substitution(req.runtime_profile, false);
-    let mut plan = plan_render(&req, runtime_id)?;
-    if let Some(requested) = substituted_from {
-        plan.warnings
-            .push(runtime_substitution_warning(requested, runtime_id));
-    }
+    let runtime_id = resolve_runtime_id(req.runtime_profile);
+    let plan = plan_render(&req, runtime_id)?;
 
     let run_id = Ulid::new().to_string();
     let now = Utc::now();
