@@ -147,6 +147,29 @@ def test_apply_offload_mode_none_skips_pipe_to_when_gguf_already_placed() -> Non
     pipe.enable_sequential_cpu_offload.assert_not_called()
 
 
+def test_apply_offload_mode_none_admits_real_16gb_card() -> None:
+    # Regression for the units bug caught by the 2026-05-15 smoke:
+    # a genuine 16 GB RTX 5070 Ti reports ~15.92 GiB total to
+    # torch.cuda.mem_get_info() (1.710e10 bytes — never a full 16 GiB,
+    # the driver always reserves some). The old 16-GiB threshold
+    # rejected it by ~80 MB. The 15-GiB floor must let it through.
+    pipe = MagicMock(name="pipe")
+    moved = MagicMock(name="moved_pipe")
+    pipe.to.return_value = moved
+    torch_mod = _fake_torch(total_bytes=17_100_000_000, free_bytes=16_000_000_000)
+
+    result = pd._apply_offload_mode(
+        pipe=pipe,
+        offload_mode="none",
+        device="cuda",
+        torch_mod=torch_mod,
+        logger=_logger(),
+    )
+
+    pipe.to.assert_called_once_with("cuda")
+    assert result is moved
+
+
 def test_apply_offload_mode_none_rejects_small_vram() -> None:
     # 8 GB card — refuse to load with mode=none rather than OOM mid-render.
     pipe = MagicMock(name="pipe")
