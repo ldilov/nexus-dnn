@@ -82,6 +82,16 @@ class DiffusersRunState:
         # operators can correlate the worker's segment numbering
         # against the host's restart counter.
         self.resumed_from_segment: int = 0
+        # Strong reference to the background _load_then_render task.
+        # CPython 3.11+ holds only WEAK references to asyncio tasks,
+        # so a `asyncio.create_task(...)` without a strong reference
+        # can be garbage-collected before the task ever runs —
+        # producing the exact symptom we hit on 2026-05-15: worker
+        # silent, no progress events, no error. Storing the Task on
+        # the per-run state object keeps it alive for the lifetime
+        # of the run (state[run_id] holds rs as long as the run is
+        # tracked). Same pattern applied to `_load_then_retry_segment`.
+        self.bg_task: Any = None
 
 
 def register_diffusers_handlers(worker) -> None:
@@ -147,8 +157,9 @@ def register_diffusers_handlers(worker) -> None:
             rs.resumed_from_segment = 0
         state[run_id] = rs
 
-        asyncio.create_task(
-            _load_then_render(worker, rs, params, cached_pipe_ref, profile)
+        rs.bg_task = asyncio.create_task(
+            _load_then_render(worker, rs, params, cached_pipe_ref, profile),
+            name=f"ltx-render-{run_id}",
         )
         return {"run_id": run_id, "status": "started"}
 
@@ -196,10 +207,11 @@ def register_diffusers_handlers(worker) -> None:
             rs.plan = plan
             rs.workdir = workdir
 
-        asyncio.create_task(
+        rs.bg_task = asyncio.create_task(
             _load_then_retry_segment(
                 worker, rs, params, cached_pipe_ref, profile, seg_index
-            )
+            ),
+            name=f"ltx-retry-{run_id}-seg{seg_index}",
         )
         return {"run_id": run_id, "segment_index": seg_index, "status": "retrying"}
 
@@ -1172,6 +1184,20 @@ async def _emit_error(worker, run_id: str, code: int, message: str) -> None:
     )
 
 
+# Strong references to fire-and-forget background tasks.
+# CPython 3.11+ only holds WEAK references to tasks, so a task created
+# without a strong reference can be GC'd before running. We add each
+# spawned task to this set and remove it via a done-callback. Pattern
+# straight from the Python 3.12 asyncio.create_task docstring.
+_FIRE_AND_FORGET_TASKS: set[Any] = set()
+
+
+def _spawn_fire_and_forget(coro: Any, *, name: str | None = None) -> None:
+    task = asyncio.create_task(coro, name=name)
+    _FIRE_AND_FORGET_TASKS.add(task)
+    task.add_done_callback(_FIRE_AND_FORGET_TASKS.discard)
+
+
 def _emit_terminal_error(
     worker, run_id: str, code: int, message: str
 ) -> dict[str, Any]:
@@ -1180,7 +1206,10 @@ def _emit_terminal_error(
     Emits an error notification (so the supervisor sees it) AND returns
     a started-but-doomed RPC response so the JSON-RPC layer doesn't hang.
     """
-    asyncio.create_task(_emit_error(worker, run_id, code, message))
+    _spawn_fire_and_forget(
+        _emit_error(worker, run_id, code, message),
+        name=f"ltx-emit-error-{run_id}",
+    )
     return {"run_id": run_id, "status": "failed", "error": message}
 
 
