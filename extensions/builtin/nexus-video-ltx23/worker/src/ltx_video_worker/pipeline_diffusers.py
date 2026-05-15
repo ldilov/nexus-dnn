@@ -105,7 +105,15 @@ def _offload_mode_from_params(raw_params: dict[str, Any]) -> str:
     return mode
 
 
-_MIN_VRAM_BYTES_FOR_NONE = 16 * 1024**3
+# Minimum total VRAM for offload_mode="none". The NVFP4 transformer
+# is ~11 GB; with VAE + text encoder + activations the resident
+# footprint peaks around 13-14 GB. The floor is 15 GiB (≈16.1 GB
+# decimal) — a genuine 16 GB-class card reports ~15.9 GiB total to
+# `torch.cuda.mem_get_info()` (never a full 16 GiB; some is always
+# reserved by the driver), so a 16-GiB floor would wrongly reject
+# every 16 GB card by a ~80 MB margin. 15 GiB admits all 16 GB cards
+# while still rejecting 12 GB cards (~11.2 GiB total).
+_MIN_VRAM_BYTES_FOR_NONE = 15 * 1024**3
 
 
 def _gguf_install_device_for_mode(offload_mode: str, device: str) -> str:
@@ -327,9 +335,10 @@ def _apply_offload_mode(
         free_bytes, total_bytes = torch_mod.cuda.mem_get_info()
         if total_bytes < _MIN_VRAM_BYTES_FOR_NONE:
             raise _ModelLoadFailed(
-                f"offload_mode=\"none\" requires 16 GB+ VRAM; this card "
-                f"reports {total_bytes / 1e9:.1f} GB total. Downgrade to "
-                f"\"model\" or \"sequential\" or pick a higher-VRAM card."
+                f"offload_mode=\"none\" needs a 16 GB-class GPU "
+                f"(>= {_MIN_VRAM_BYTES_FOR_NONE / 1024**3:.0f} GiB total); "
+                f"this card reports {total_bytes / 1024**3:.1f} GiB. "
+                f"Downgrade to \"model\" or \"sequential\"."
             )
         if gguf_already_placed:
             # Transformer is already on CUDA (placed at install time).
