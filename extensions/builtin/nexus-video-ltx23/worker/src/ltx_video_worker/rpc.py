@@ -31,6 +31,12 @@ class Notifications:
     # Operators correlate this with the host's restart_count to confirm
     # that the worker saw the resume offset the runner believes it sent.
     RESUME_ACKNOWLEDGED = "runtime.resume_acknowledged"
+    # Emitted once after the diffusers pipeline finishes loading, before
+    # the first SEGMENT_STARTED of the render. Payload carries the
+    # transformer's device (cuda vs cpu) + bytes reserved by the CUDA
+    # allocator — the smoke gate consumes this to prove `offload_mode=
+    # "none"` actually parked the weights on the GPU.
+    WEIGHTS_RESIDENT = "runtime.weights_resident"
 
 
 class ErrorCodes:

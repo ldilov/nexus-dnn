@@ -70,6 +70,62 @@ def _or_default(value: Any, default: Any) -> Any:
     return default if value is None else value
 
 
+def _offload_mode_from_params(raw_params: dict[str, Any]) -> str:
+    """Extract the resolved offload mode from a render-start payload.
+
+    The host always resolves `OffloadMode::Auto` to a concrete string
+    (`"none"`, `"model"`, `"sequential"`) before sending. We default
+    to `"sequential"` only if the payload is missing the field
+    entirely — a defensive fallback that matches the historical
+    behaviour for any workflow that pre-dates this contract.
+    """
+    advanced = raw_params.get("advanced") if isinstance(raw_params, dict) else None
+    if not isinstance(advanced, dict):
+        return "sequential"
+    mode = advanced.get("offload_mode")
+    if not isinstance(mode, str) or not mode:
+        return "sequential"
+    return mode
+
+
+async def _emit_weights_resident(
+    worker, run_id: str, pipe: Any, offload_mode: str
+) -> None:
+    """Emit `runtime.weights_resident` once the pipeline has loaded.
+
+    The payload reports where the transformer actually sits + how many
+    bytes the CUDA allocator has reserved. The smoke gate uses this to
+    prove `offload_mode == "none"` actually parked the weights on the
+    GPU instead of leaving them under one of the offload hooks.
+    """
+    transformer_device = "unknown"
+    memory_reserved_bytes = 0
+    try:
+        transformer = getattr(pipe, "transformer", None)
+        if transformer is not None:
+            params = transformer.parameters()
+            first = next(iter(params), None)
+            if first is not None:
+                transformer_device = first.device.type
+    except Exception:  # noqa: BLE001 — diagnostic notification, never fatal
+        transformer_device = "error"
+    torch = _LAZY_TORCH
+    if torch is not None:
+        try:
+            memory_reserved_bytes = int(torch.cuda.memory_reserved())
+        except Exception:  # noqa: BLE001 — diagnostic notification, never fatal
+            memory_reserved_bytes = 0
+    await worker.emit_notification(
+        Notifications.WEIGHTS_RESIDENT,
+        {
+            "run_id": run_id,
+            "offload_mode": offload_mode,
+            "transformer_device": transformer_device,
+            "memory_reserved_bytes": memory_reserved_bytes,
+        },
+    )
+
+
 class DiffusersRunState:
     def __init__(
         self,
@@ -309,12 +365,19 @@ def _expected_family_id(profile: str) -> str | None:
 
 
 def _ensure_pipeline_loaded(
-    worker, profile: str, cache: dict[str, Any]
+    worker, profile: str, cache: dict[str, Any], offload_mode: str
 ) -> tuple[Any, str]:
     """Idempotent pipeline loader. Returns (pipe, device).
 
     First call boots torch + diffusers + the LTX pipeline + the model
     weights. Subsequent calls return the cached pipe.
+
+    `offload_mode` selects the diffusers offload strategy: `"none"`
+    parks the whole pipeline on the GPU (`pipe.to("cuda")`), `"model"`
+    enables coarse `enable_model_cpu_offload`, `"sequential"` enables
+    the per-layer `enable_sequential_cpu_offload`. The host resolves
+    the operator's `Auto` choice to a concrete string before the
+    payload arrives, so the worker never observes `"auto"`.
     """
     if cache["pipe"] is not None:
         return cache["pipe"], cache["device"]
@@ -398,23 +461,56 @@ def _ensure_pipeline_loaded(
             )
             pipe.transformer = gguf_transformer
 
-        # Sequential CPU offload over model_cpu_offload:
-        # - 4.7 GB peak VRAM vs 37 GB (validated 2026-05-13 on RTX 5070 Ti,
-        #   16 GB VRAM, dg845/LTX-2.3-Distilled-Diffusers BF16 weights).
-        # - 13.7 s/step vs 75 s/step (the model_offload path spilled to
-        #   system RAM via Windows unified memory).
-        # The sequential mode swaps individual layers in/out as they're
-        # called; never lands the whole transformer on GPU at once. Slower
-        # micro-cost per layer transfer is dwarfed by the avoided spill.
+        # Dispatch the operator-selected offload strategy. Historical
+        # context: sequential offload measured 4.7 GB peak VRAM / 13.7
+        # s/step on RTX 5070 Ti versus model_cpu_offload's 37 GB / 75
+        # s/step (the latter spilled to unified memory on Windows).
+        # NVFP4 on Blackwell has enough headroom for `none` (full
+        # pipeline resident) which is faster still.
         #
-        # `pipe.to(device)` is intentionally OMITTED — sequential offload
-        # manages device placement itself; calling `.to(...)` first pulls
-        # everything onto GPU and defeats the offload.
-        if hasattr(pipe, "enable_sequential_cpu_offload"):
-            pipe.enable_sequential_cpu_offload()
-        elif hasattr(pipe, "enable_model_cpu_offload"):
-            # Older diffusers — accept the spill rather than crash.
+        # `pipe.to(device)` is reserved for `offload_mode == "none"`.
+        # Both offload helpers manage device placement themselves;
+        # calling `.to(...)` first defeats their offload hooks.
+        if offload_mode == "none":
+            free_bytes, total_bytes = torch.cuda.mem_get_info()
+            min_total = 16 * 1024**3
+            if total_bytes < min_total:
+                raise _ModelLoadFailed(
+                    f"offload_mode=\"none\" requires 16 GB+ VRAM; this card "
+                    f"reports {total_bytes / 1e9:.1f} GB total. Downgrade to "
+                    f"\"model\" or \"sequential\" or pick a higher-VRAM card."
+                )
+            pipe = pipe.to(device)
+            worker.logger.info(
+                "diffusers.load_pipeline.offload",
+                mode="none",
+                vram_total_gb=round(total_bytes / 1e9, 1),
+                vram_free_gb=round(free_bytes / 1e9, 1),
+            )
+        elif offload_mode == "model":
+            if not hasattr(pipe, "enable_model_cpu_offload"):
+                raise _ModelLoadFailed(
+                    "diffusers pipeline class lacks enable_model_cpu_offload; "
+                    "upgrade diffusers or pick a different offload_mode"
+                )
             pipe.enable_model_cpu_offload()
+            worker.logger.info("diffusers.load_pipeline.offload", mode="model")
+        elif offload_mode == "sequential":
+            if hasattr(pipe, "enable_sequential_cpu_offload"):
+                pipe.enable_sequential_cpu_offload()
+            elif hasattr(pipe, "enable_model_cpu_offload"):
+                # Older diffusers releases without sequential offload —
+                # accept the spill rather than crash. The host's
+                # per-profile default never picks sequential when the
+                # pipeline doesn't support it, but a paranoid operator
+                # override should still load.
+                pipe.enable_model_cpu_offload()
+            worker.logger.info("diffusers.load_pipeline.offload", mode="sequential")
+        else:
+            raise _ModelLoadFailed(
+                f"unknown offload_mode: {offload_mode!r}; expected "
+                "\"none\", \"model\", or \"sequential\""
+            )
         if hasattr(pipe.vae, "enable_tiling"):
             pipe.vae.enable_tiling()
         worker.logger.info(
@@ -459,13 +555,19 @@ async def _load_then_render(
     JSON-RPC handler past the host's send_rpc timeout. Run it here
     instead — render_start has already returned `status:started`.
     """
+    offload_mode = _offload_mode_from_params(raw_params)
     await worker.emit_notification(
         Notifications.PROGRESS,
-        {"run_id": rs.run_id, "phase": "loading_model", "profile": profile},
+        {
+            "run_id": rs.run_id,
+            "phase": "loading_model",
+            "profile": profile,
+            "offload_mode": offload_mode,
+        },
     )
     try:
         pipe, device = await asyncio.to_thread(
-            _ensure_pipeline_loaded, worker, profile, cache
+            _ensure_pipeline_loaded, worker, profile, cache, offload_mode
         )
     except _ModelMissing as err:
         await _emit_error(
@@ -487,6 +589,7 @@ async def _load_then_render(
     rs.pipe = pipe
     rs.device = device
 
+    await _emit_weights_resident(worker, rs.run_id, pipe, offload_mode)
     await worker.emit_notification(
         Notifications.PROGRESS,
         {"run_id": rs.run_id, "phase": "rendering"},
@@ -524,6 +627,7 @@ async def _load_then_retry_segment(
     the pipeline reloads (which can happen if the worker was idle long
     enough for ``cache['pipe']`` to have been cleared by a prior DONE).
     """
+    offload_mode = _offload_mode_from_params(raw_params)
     await worker.emit_notification(
         Notifications.PROGRESS,
         {
@@ -532,11 +636,12 @@ async def _load_then_retry_segment(
             "profile": profile,
             "retry": True,
             "segment_index": seg_index,
+            "offload_mode": offload_mode,
         },
     )
     try:
         pipe, device = await asyncio.to_thread(
-            _ensure_pipeline_loaded, worker, profile, cache
+            _ensure_pipeline_loaded, worker, profile, cache, offload_mode
         )
     except _ModelMissing as err:
         await _emit_error(worker, rs.run_id, ErrorCodes.MODEL_MISSING, str(err))
@@ -555,6 +660,7 @@ async def _load_then_retry_segment(
 
     rs.pipe = pipe
     rs.device = device
+    await _emit_weights_resident(worker, rs.run_id, pipe, offload_mode)
     await _retry_segment_loop(worker, rs, raw_params, seg_index)
 
 
