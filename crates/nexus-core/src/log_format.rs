@@ -50,7 +50,12 @@ pub struct PrettyFormat {
 }
 
 const RESET: &str = "\x1b[0m";
-const DIM_GREY: &str = "\x1b[2;90m";
+// Bright-black (ANSI 90) — readable grey on dark terminal themes while
+// still receding behind cyan-coloured first-party targets. The previous
+// value used the additional `2;` (dim) attribute on top of bright-black,
+// which collapsed to near-pure-black on most dark schemes and made the
+// noisy `worker.stderr` bridge target effectively invisible.
+const DIM_GREY: &str = "\x1b[90m";
 const CYAN: &str = "\x1b[36m";
 
 /// Reserved target for events that should render WITHOUT the standard

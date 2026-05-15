@@ -4,12 +4,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use axum::{
-    Json, Router,
     body::Body,
     extract::{Path, State},
-    http::{HeaderMap, StatusCode, header},
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
+    Json, Router,
 };
 use chrono::Utc;
 use serde::Serialize;
@@ -20,9 +20,9 @@ use crate::errors::{ExtensionError, ExtensionErrorCode};
 use crate::planning::plan_render;
 use crate::profile_install::{ProfileInstallService, ProfileInstallStatus};
 use crate::runner::{CancelOutcome, RetrySpawnOutcome, Runner};
-use crate::runtime_selection::{available_profiles, resolve_runtime_id};
-use crate::schemas::{CreateRenderRequest, RenderPlan, RuntimeProfilePreference};
-use crate::storage::{Repos, RenderRunRow, RenderSegmentRow};
+use crate::runtime_selection::{available_profiles, resolve_runtime_id_with_substitution};
+use crate::schemas::{CreateRenderRequest, PlanWarning, RenderPlan, RuntimeProfilePreference};
+use crate::storage::{RenderRunRow, RenderSegmentRow, Repos};
 
 /// Idempotency-Key TTL. Inside this window, a repeat POST /renders with
 /// the same key returns the previously-created run instead of spawning
@@ -103,8 +103,14 @@ pub fn router(state: ApiState) -> Router {
         .route("/renders/{run_id}/retry-segment", post(retry_segment))
         .route("/renders/{run_id}/segments", get(list_segments_handler))
         .route("/artifacts/{artifact_id}", get(serve_artifact))
-        .route("/profiles/{profile_id}/install", post(start_profile_install))
-        .route("/profiles/{profile_id}/install", get(profile_install_status))
+        .route(
+            "/profiles/{profile_id}/install",
+            post(start_profile_install),
+        )
+        .route(
+            "/profiles/{profile_id}/install",
+            get(profile_install_status),
+        )
         .with_state(Arc::new(state))
 }
 
@@ -214,9 +220,7 @@ async fn list_profiles(State(state): State<Arc<ApiState>>) -> Json<Vec<RuntimePr
             let in_flight = install_status.as_ref().is_some_and(|s| s.in_flight);
             let status_message = match install_status.as_ref() {
                 Some(s) if s.installed => "ready".to_string(),
-                Some(s) if s.in_flight => {
-                    s.phase.as_deref().unwrap_or("installing").to_string()
-                }
+                Some(s) if s.in_flight => s.phase.as_deref().unwrap_or("installing").to_string(),
                 Some(s) if s.last_error.is_some() => {
                     format!("install error: {}", s.last_error.as_deref().unwrap_or("?"))
                 }
@@ -243,9 +247,30 @@ async fn create_plan(
     State(_state): State<Arc<ApiState>>,
     Json(req): Json<CreateRenderRequest>,
 ) -> ApiResult<Json<RenderPlan>> {
-    let runtime_id = resolve_runtime_id(req.runtime_profile, false);
-    let plan = plan_render(&req, runtime_id)?;
+    let (runtime_id, substituted_from) =
+        resolve_runtime_id_with_substitution(req.runtime_profile, false);
+    let mut plan = plan_render(&req, runtime_id)?;
+    if let Some(requested) = substituted_from {
+        plan.warnings
+            .push(runtime_substitution_warning(requested, runtime_id));
+    }
     Ok(Json(plan))
+}
+
+/// Build the `PlanWarning` surfaced when the resolver downgrades the
+/// user's runtime preference (today: NVFP4 → FP8 because
+/// `experimental_nvfp4_opt_in` is off in the request path). Without this
+/// the user receives FP8 silently, with no indication their explicit
+/// choice was overridden — which is exactly the smoke-test surprise this
+/// covers.
+fn runtime_substitution_warning(requested: &str, resolved: &str) -> PlanWarning {
+    PlanWarning {
+        code: "runtime_substituted".into(),
+        message: format!(
+            "requested runtime '{requested}' requires experimental opt-in and is not \
+             available through this request path; using '{resolved}' instead"
+        ),
+    }
 }
 
 #[derive(Serialize)]
@@ -301,8 +326,13 @@ async fn create_render(
         }
     }
 
-    let runtime_id = resolve_runtime_id(req.runtime_profile, false);
-    let plan = plan_render(&req, runtime_id)?;
+    let (runtime_id, substituted_from) =
+        resolve_runtime_id_with_substitution(req.runtime_profile, false);
+    let mut plan = plan_render(&req, runtime_id)?;
+    if let Some(requested) = substituted_from {
+        plan.warnings
+            .push(runtime_substitution_warning(requested, runtime_id));
+    }
 
     let run_id = Ulid::new().to_string();
     let now = Utc::now();
@@ -311,12 +341,10 @@ async fn create_render(
         .clone()
         .unwrap_or_else(|| format!("inline-{run_id}"));
 
-    let plan_json = serde_json::to_string(&plan).map_err(|e| {
-        ExtensionError::Internal(format!("plan serialise: {e}"))
-    })?;
-    let request_json = serde_json::to_string(&req).map_err(|e| {
-        ExtensionError::Internal(format!("request serialise: {e}"))
-    })?;
+    let plan_json = serde_json::to_string(&plan)
+        .map_err(|e| ExtensionError::Internal(format!("plan serialise: {e}")))?;
+    let request_json = serde_json::to_string(&req)
+        .map_err(|e| ExtensionError::Internal(format!("request serialise: {e}")))?;
 
     let run = RenderRunRow {
         id: run_id.clone(),
@@ -419,10 +447,7 @@ async fn create_render(
 /// Look up a previously-cached idempotency key. Returns `None` when the
 /// key is absent, expired, or the cache is empty. Expired entries are
 /// reaped on read to keep memory bounded.
-async fn lookup_idempotent(
-    cache: &IdempotencyCache,
-    key: &str,
-) -> Option<IdempotencyEntry> {
+async fn lookup_idempotent(cache: &IdempotencyCache, key: &str) -> Option<IdempotencyEntry> {
     let mut guard = cache.lock().await;
     let now = Instant::now();
     if let Some(entry) = guard.get(key) {
@@ -438,11 +463,7 @@ async fn lookup_idempotent(
     None
 }
 
-async fn store_idempotent(
-    cache: &IdempotencyCache,
-    key: String,
-    entry: IdempotencyEntry,
-) {
+async fn store_idempotent(cache: &IdempotencyCache, key: String, entry: IdempotencyEntry) {
     let mut guard = cache.lock().await;
     // Evict oldest first when at cap (cheap O(n) scan; cap is small).
     if guard.len() >= IDEMPOTENCY_CAP {
@@ -510,13 +531,8 @@ async fn get_render(
     validate_run_id(&run_id)?;
     let run = state.repos.get_run(&run_id).await?;
     let segments = state.repos.list_segments(&run_id).await?;
-    let completed = u32::try_from(
-        segments
-            .iter()
-            .filter(|s| s.status == "completed")
-            .count(),
-    )
-    .unwrap_or(u32::MAX);
+    let completed = u32::try_from(segments.iter().filter(|s| s.status == "completed").count())
+        .unwrap_or(u32::MAX);
 
     #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
     let progress = if run.segment_count > 0 {
@@ -840,9 +856,10 @@ impl IntoResponse for ApiError {
             | ExtensionError::DriverTooOld(_)
             | ExtensionError::GpuNotSupported(_)
             | ExtensionError::ModelMissing(_) => (StatusCode::SERVICE_UNAVAILABLE, self.0.code()),
-            ExtensionError::VramBudgetExceeded(_) => {
-                (StatusCode::PAYLOAD_TOO_LARGE, ExtensionErrorCode::VramBudgetExceeded)
-            }
+            ExtensionError::VramBudgetExceeded(_) => (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                ExtensionErrorCode::VramBudgetExceeded,
+            ),
             ExtensionError::RenderCancelled => {
                 (StatusCode::CONFLICT, ExtensionErrorCode::RenderCancelled)
             }
@@ -915,7 +932,12 @@ mod tests {
     async fn lookup_idempotent_misses_after_ttl_expires() {
         let cache = mk_cache();
         // 1ms TTL → guaranteed-expired by the time we look it up.
-        store_idempotent(&cache, "stale".into(), mk_entry("run-x", Duration::from_millis(1))).await;
+        store_idempotent(
+            &cache,
+            "stale".into(),
+            mk_entry("run-x", Duration::from_millis(1)),
+        )
+        .await;
         tokio::time::sleep(Duration::from_millis(10)).await;
         assert!(lookup_idempotent(&cache, "stale").await.is_none());
     }
@@ -923,8 +945,18 @@ mod tests {
     #[tokio::test]
     async fn lookup_reaps_expired_entries_on_miss() {
         let cache = mk_cache();
-        store_idempotent(&cache, "old".into(), mk_entry("run-old", Duration::from_millis(1))).await;
-        store_idempotent(&cache, "fresh".into(), mk_entry("run-fresh", IDEMPOTENCY_TTL)).await;
+        store_idempotent(
+            &cache,
+            "old".into(),
+            mk_entry("run-old", Duration::from_millis(1)),
+        )
+        .await;
+        store_idempotent(
+            &cache,
+            "fresh".into(),
+            mk_entry("run-fresh", IDEMPOTENCY_TTL),
+        )
+        .await;
         tokio::time::sleep(Duration::from_millis(10)).await;
         // Miss on an unrelated key triggers a reap pass.
         assert!(lookup_idempotent(&cache, "absent").await.is_none());
@@ -946,7 +978,10 @@ mod tests {
             store_idempotent(
                 &cache,
                 format!("k{i}"),
-                mk_entry(&format!("run-{i}"), IDEMPOTENCY_TTL + Duration::from_millis(i as u64)),
+                mk_entry(
+                    &format!("run-{i}"),
+                    IDEMPOTENCY_TTL + Duration::from_millis(i as u64),
+                ),
             )
             .await;
         }
