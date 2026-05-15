@@ -37,6 +37,21 @@ def _logger() -> Any:
 # ---------------------------------------------------------------------------
 
 
+def test_gguf_install_device_for_mode_returns_cuda_only_for_none() -> None:
+    # The whole point of the install-device routing: mode=none gets
+    # weights on CUDA at install time; every other mode keeps them on
+    # CPU so the offload hooks have something to page from.
+    assert pd._gguf_install_device_for_mode("none", "cuda") == "cuda"
+    assert pd._gguf_install_device_for_mode("model", "cuda") == "cpu"
+    assert pd._gguf_install_device_for_mode("sequential", "cuda") == "cpu"
+
+
+def test_gguf_install_device_for_mode_honours_device_arg() -> None:
+    # When the host is configured to run on a non-cuda device (CI / fake
+    # profile), mode=none still respects whatever the caller passed.
+    assert pd._gguf_install_device_for_mode("none", "cpu") == "cpu"
+
+
 def test_offload_mode_from_params_returns_explicit_value() -> None:
     assert (
         pd._offload_mode_from_params({"advanced": {"offload_mode": "none"}})
@@ -97,6 +112,37 @@ def test_apply_offload_mode_none_moves_pipe_to_cuda_on_big_card() -> None:
     pipe.to.assert_called_once_with("cuda")
     assert result is moved
     # Offload helpers must NOT be called when mode=none.
+    pipe.enable_model_cpu_offload.assert_not_called()
+    pipe.enable_sequential_cpu_offload.assert_not_called()
+
+
+def test_apply_offload_mode_none_skips_pipe_to_when_gguf_already_placed() -> None:
+    # When the GGUF transformer was installed directly onto CUDA at load
+    # time, `pipe.to("cuda")` is redundant — and worse, it can mask the
+    # fact that GGUFParameters don't move via stock nn.Module.to(). The
+    # caller signals this via gguf_already_placed=True and the dispatch
+    # only sweeps the non-GGUF submodules onto cuda instead.
+    pipe = MagicMock(name="pipe")
+    vae = MagicMock(name="vae")
+    text_encoder = MagicMock(name="text_encoder")
+    pipe.vae = vae
+    pipe.text_encoder = text_encoder
+    pipe.text_encoder_2 = None  # LTX-2.3 has a single T5 encoder
+    torch_mod = _fake_torch(total_bytes=16 * 1024**3, free_bytes=14 * 1024**3)
+
+    result = pd._apply_offload_mode(
+        pipe=pipe,
+        offload_mode="none",
+        device="cuda",
+        torch_mod=torch_mod,
+        logger=_logger(),
+        gguf_already_placed=True,
+    )
+
+    pipe.to.assert_not_called()  # critical: no redundant sweep
+    vae.to.assert_called_once_with("cuda")
+    text_encoder.to.assert_called_once_with("cuda")
+    assert result is pipe  # no rebinding when gguf_already_placed
     pipe.enable_model_cpu_offload.assert_not_called()
     pipe.enable_sequential_cpu_offload.assert_not_called()
 
