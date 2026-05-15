@@ -10,6 +10,7 @@ import {
   type AdvancedSettings,
   type CreateRenderRequest,
   type DepStatus,
+  type OffloadMode,
   type ProfileInstallStatus,
   type QualityPreset,
   type RenderPlan,
@@ -1016,7 +1017,7 @@ function AdvancedKnobs({
   return (
     <details className={s.progressDetails}>
       <summary className={s.progressSummary}>
-        Advanced — guidance &amp; steps
+        Advanced — guidance, steps &amp; offload
         {advanced.guidance_scale !== undefined ? (
           <span className={s.meta}> · cfg {advanced.guidance_scale}</span>
         ) : null}
@@ -1025,6 +1026,9 @@ function AdvancedKnobs({
             {" · "}
             {advanced.num_inference_steps} steps
           </span>
+        ) : null}
+        {advanced.offload_mode && advanced.offload_mode !== "auto" ? (
+          <span className={s.meta}>{` · offload ${advanced.offload_mode}`}</span>
         ) : null}
       </summary>
       <div className={s.inputRow} style={{ marginTop: 10 }}>
@@ -1078,6 +1082,31 @@ function AdvancedKnobs({
           <span className={s.meta}>
             Distilled model is tuned for 8. Higher steps improve detail
             with ~linear wall-clock cost.
+          </span>
+        </div>
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-offload-mode">
+            Offload strategy
+          </label>
+          <select
+            id="ltx-offload-mode"
+            className={s.input}
+            value={advanced.offload_mode ?? "auto"}
+            onChange={(e) => {
+              const v = e.target.value as OffloadMode;
+              setAdvanced("offload_mode", v === "auto" ? undefined : v);
+            }}
+          >
+            <option value="auto">Auto (profile default)</option>
+            <option value="none">None — full GPU resident (needs 16 GB+)</option>
+            <option value="model">Model — mid-grained offload (balanced)</option>
+            <option value="sequential">
+              Sequential — per-layer offload (lowest VRAM)
+            </option>
+          </select>
+          <span className={s.meta}>
+            NVFP4 defaults to None; FP8 profiles default to Sequential. Pick
+            None on a 16 GB+ card for the fastest inference.
           </span>
         </div>
       </div>
