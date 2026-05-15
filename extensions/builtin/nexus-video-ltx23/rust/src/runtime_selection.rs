@@ -1,4 +1,4 @@
-use crate::schemas::RuntimeProfilePreference;
+use crate::schemas::{OffloadMode, RuntimeProfilePreference};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ProfileDescriptor {
@@ -35,52 +35,50 @@ pub const fn available_profiles() -> &'static [ProfileDescriptor] {
     PROFILES
 }
 
-/// P1 milestone shortcut: pick a `runtime_id` from a user preference
-/// without host GPU facts, and report when the user's preference was
-/// downgraded.
-///
-/// The second tuple element is `Some(originally_requested_runtime_id)`
-/// when the resolver substituted a different runtime than the caller
-/// asked for (today the only case is `Rtx50Nvfp4 → rtx50-fp8` because
-/// NVFP4 is gated behind `experimental_nvfp4_opt_in`). Callers MUST
-/// propagate that into the user-visible plan (e.g. a `PlanWarning`)
-/// instead of swallowing it — otherwise users who explicitly choose
-/// NVFP4 silently get FP8.
+/// Pick a `runtime_id` from a user preference without host GPU facts.
 ///
 /// `Auto` resolves to the fake profile so the recipe works
 /// out-of-the-box before real runtimes are installable. Real GPU-aware
 /// selection happens via `select_runtime` once the host provides facts.
+///
+/// `Rtx50Nvfp4` resolves verbatim to the NVFP4 runtime. The previous
+/// experimental opt-in gate that silently downgraded it to FP8 was
+/// removed once nvfp4 was validated end-to-end on real hardware
+/// (2026-05-15). Profile-install failures now surface as a 503 from
+/// the existing install-check, which is the right failure mode.
 #[must_use]
-pub const fn resolve_runtime_id_with_substitution(
-    preference: RuntimeProfilePreference,
-    experimental_nvfp4_opt_in: bool,
-) -> (&'static str, Option<&'static str>) {
+pub const fn resolve_runtime_id(preference: RuntimeProfilePreference) -> &'static str {
     match preference {
-        RuntimeProfilePreference::Auto => ("nexus.video.ltx23.fake", None),
-        RuntimeProfilePreference::Rtx40Fp8 => ("nexus.video.ltx23.rtx40-fp8", None),
-        RuntimeProfilePreference::Rtx50Fp8 => ("nexus.video.ltx23.rtx50-fp8", None),
-        RuntimeProfilePreference::Rtx50Nvfp4 => {
-            if experimental_nvfp4_opt_in {
-                ("nexus.video.ltx23.rtx50-nvfp4", None)
-            } else {
-                (
-                    "nexus.video.ltx23.rtx50-fp8",
-                    Some("nexus.video.ltx23.rtx50-nvfp4"),
-                )
-            }
-        }
+        RuntimeProfilePreference::Auto => "nexus.video.ltx23.fake",
+        RuntimeProfilePreference::Rtx40Fp8 => "nexus.video.ltx23.rtx40-fp8",
+        RuntimeProfilePreference::Rtx50Fp8 => "nexus.video.ltx23.rtx50-fp8",
+        RuntimeProfilePreference::Rtx50Nvfp4 => "nexus.video.ltx23.rtx50-nvfp4",
     }
 }
 
-/// Back-compat shim: drops the substitution signal. Prefer
-/// `resolve_runtime_id_with_substitution` in any path that produces a
-/// user-visible plan so the downgrade can be surfaced as a warning.
+/// Per-profile default offload mode used to resolve `OffloadMode::Auto`
+/// before the payload reaches the worker.
+///
+/// `profile` is the SHORT slug — e.g. `"rtx50-nvfp4"`, NOT the fully
+/// qualified `"nexus.video.ltx23.rtx50-nvfp4"`. Match the existing
+/// `short_profile()` helper in `runner.rs`.
+///
+/// Rationale per profile:
+/// - `rtx50-nvfp4`: FP4 weights ~11 GB on a 16 GB Blackwell card; fits
+///   resident with headroom for activations + VAE + text encoder.
+///   `None` is the right default; operators can downgrade to `Model`
+///   if they're tight on VRAM.
+/// - `rtx50-fp8` / `rtx40-fp8`: FP8 weights ~14 GB. `model_cpu_offload`
+///   was documented to spill to unified memory on RTX 5070 Ti; until
+///   a fresh benchmark proves `Model` fits cleanly, default
+///   `Sequential` and let operators opt up.
+/// - `fake` / unknown: `Sequential` is the safest mode.
 #[must_use]
-pub const fn resolve_runtime_id(
-    preference: RuntimeProfilePreference,
-    experimental_nvfp4_opt_in: bool,
-) -> &'static str {
-    resolve_runtime_id_with_substitution(preference, experimental_nvfp4_opt_in).0
+pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
+    match profile.as_bytes() {
+        b"rtx50-nvfp4" => OffloadMode::None,
+        _ => OffloadMode::Sequential,
+    }
 }
 
 /// Generic GPU facts the host exposes to extensions.
@@ -270,28 +268,21 @@ mod tests {
     }
 
     #[test]
-    fn resolve_explicit_nvfp4_without_opt_in_reports_substitution() {
-        // The reported bug: a user posting `runtime_profile: "rtx50-nvfp4"`
-        // through the request path (which hardcodes `opt_in=false`) was
-        // silently downgraded to FP8 with no warning anywhere. The
-        // resolver MUST now report the original requested runtime so the
-        // API layer can surface it as a `PlanWarning`.
-        let (resolved, substituted_from) =
-            resolve_runtime_id_with_substitution(RuntimeProfilePreference::Rtx50Nvfp4, false);
-        assert_eq!(resolved, "nexus.video.ltx23.rtx50-fp8");
-        assert_eq!(substituted_from, Some("nexus.video.ltx23.rtx50-nvfp4"));
+    fn resolve_explicit_nvfp4_keeps_nvfp4() {
+        // The previous experimental opt-in gate that downgraded explicit
+        // NVFP4 requests to FP8 was removed once nvfp4 was validated
+        // end-to-end on real hardware. An operator asking for NVFP4
+        // through the request path now lands on the NVFP4 runtime
+        // verbatim; profile-install gaps surface as a 503 from the
+        // existing install-check, not a silent substitution.
+        assert_eq!(
+            resolve_runtime_id(RuntimeProfilePreference::Rtx50Nvfp4),
+            "nexus.video.ltx23.rtx50-nvfp4"
+        );
     }
 
     #[test]
-    fn resolve_explicit_nvfp4_with_opt_in_keeps_nvfp4() {
-        let (resolved, substituted_from) =
-            resolve_runtime_id_with_substitution(RuntimeProfilePreference::Rtx50Nvfp4, true);
-        assert_eq!(resolved, "nexus.video.ltx23.rtx50-nvfp4");
-        assert_eq!(substituted_from, None);
-    }
-
-    #[test]
-    fn resolve_non_substituting_branches_report_no_substitution() {
+    fn resolve_runtime_id_covers_every_preference() {
         for (pref, expected) in [
             (RuntimeProfilePreference::Auto, "nexus.video.ltx23.fake"),
             (
@@ -302,31 +293,39 @@ mod tests {
                 RuntimeProfilePreference::Rtx50Fp8,
                 "nexus.video.ltx23.rtx50-fp8",
             ),
+            (
+                RuntimeProfilePreference::Rtx50Nvfp4,
+                "nexus.video.ltx23.rtx50-nvfp4",
+            ),
         ] {
-            for opt_in in [false, true] {
-                let (resolved, substituted_from) =
-                    resolve_runtime_id_with_substitution(pref, opt_in);
-                assert_eq!(resolved, expected, "pref={pref:?} opt_in={opt_in}");
-                assert_eq!(substituted_from, None, "pref={pref:?} opt_in={opt_in}");
-            }
+            assert_eq!(resolve_runtime_id(pref), expected, "pref={pref:?}");
         }
     }
 
     #[test]
-    fn resolve_runtime_id_back_compat_drops_substitution_signal() {
-        // The thin wrapper must keep returning the resolved id verbatim
-        // so older callers (and tests) keep compiling unchanged.
+    fn default_offload_mode_per_profile() {
+        // NVFP4 weights fit resident on a 16 GB Blackwell card with
+        // headroom — None is the right default. Every other profile
+        // (including unknowns) falls through to the safest mode.
         assert_eq!(
-            resolve_runtime_id(RuntimeProfilePreference::Rtx50Nvfp4, false),
-            "nexus.video.ltx23.rtx50-fp8"
+            default_offload_mode_for_profile("rtx50-nvfp4"),
+            OffloadMode::None
         );
         assert_eq!(
-            resolve_runtime_id(RuntimeProfilePreference::Rtx50Nvfp4, true),
-            "nexus.video.ltx23.rtx50-nvfp4"
+            default_offload_mode_for_profile("rtx50-fp8"),
+            OffloadMode::Sequential
         );
         assert_eq!(
-            resolve_runtime_id(RuntimeProfilePreference::Rtx40Fp8, false),
-            "nexus.video.ltx23.rtx40-fp8"
+            default_offload_mode_for_profile("rtx40-fp8"),
+            OffloadMode::Sequential
+        );
+        assert_eq!(
+            default_offload_mode_for_profile("fake"),
+            OffloadMode::Sequential
+        );
+        assert_eq!(
+            default_offload_mode_for_profile("future-profile-xyz"),
+            OffloadMode::Sequential
         );
     }
 
