@@ -148,11 +148,7 @@ impl Repos {
     /// alongside `increment_restart_count` on every restart attempt
     /// and again on the budget-exhausted halt path so the final UI
     /// state always reflects the breach that ended the chain.
-    pub async fn update_last_breach_reason(
-        &self,
-        run_id: &str,
-        reason: &str,
-    ) -> Result<()> {
+    pub async fn update_last_breach_reason(&self, run_id: &str, reason: &str) -> Result<()> {
         sqlx::query(
             "UPDATE ext_nexus_video_ltx23__runs \
              SET last_breach_reason = ? \
