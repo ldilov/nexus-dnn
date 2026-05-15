@@ -241,6 +241,49 @@ async def test_render_start_skips_resume_ack_for_first_attempt(worker):
 
 
 @pytest.mark.asyncio
+async def test_render_start_keeps_strong_ref_to_bg_task(worker):
+    """Regression guard for CPython 3.11's weak-task-ref bug.
+
+    `asyncio.create_task(...)` returns a Task that the event loop only
+    holds a WEAK reference to. If the caller discards the return value,
+    the task can be garbage-collected before its first await runs —
+    which is exactly what bit us on 2026-05-15: the worker accepted
+    render.start, replied OK, then sat idle for minutes because the
+    background render task had vanished.
+
+    Behavioural check: if the bg task GCs before first await, no
+    SEGMENT_STARTED ever fires. Asserting SEGMENT_STARTED arrives
+    within a generous timeout is the cleanest proof that the strong
+    reference on rs.bg_task is doing its job.
+    """
+    w, events, tmp_path = worker
+    plan = {
+        "segment_count": 1,
+        "width": 960,
+        "height": 544,
+        "requested_duration_seconds": 4,
+        "segment_seconds": 4,
+    }
+    await w._handlers[Methods.RENDER_START](
+        {"request_id": "run_bg_task", "video": plan, "workdir": str(tmp_path)}
+    )
+    # Force a GC pass between render_start and the first await, to
+    # surface the bug if the strong-ref guard ever regresses.
+    import gc
+    gc.collect()
+    for _ in range(50):
+        if any(m == Notifications.SEGMENT_STARTED for m, _ in events):
+            break
+        await asyncio.sleep(0.05)
+    methods = [m for m, _ in events]
+    assert Notifications.SEGMENT_STARTED in methods, (
+        "Background render task never reached its first emit — "
+        "likely GC'd before its first await. Verify "
+        "rs.bg_task = asyncio.create_task(...) in render_start."
+    )
+
+
+@pytest.mark.asyncio
 async def test_render_start_tolerates_malformed_resume_offset(worker):
     """Garbage values for resumed_from_segment must collapse to 0,
     not crash render_start. Defends against host bugs that emit

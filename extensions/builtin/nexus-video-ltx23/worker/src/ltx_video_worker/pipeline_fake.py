@@ -43,6 +43,10 @@ class FakeRunState:
         # exercise the supervisor restart loop without GPU hardware
         # see the same observable behaviour as the real pipeline.
         self.resumed_from_segment: int = 0
+        # Strong reference to the background render task. See the
+        # matching DiffusersRunState.bg_task field for the full
+        # CPython-3.11 weak-task-ref bug story this guards against.
+        self.bg_task: Any = None
 
 
 def register_fake_handlers(worker) -> None:
@@ -88,8 +92,14 @@ def register_fake_handlers(worker) -> None:
             rs.resumed_from_segment = 0
         state[run_id] = rs
 
-        # Launch the async render task (fire-and-forget).
-        asyncio.create_task(_render_loop(worker, rs, emit_delay_ms, fail_at))
+        # Launch the async render task. The Task object is kept on
+        # rs.bg_task so CPython's weak-ref-only task tracker can't
+        # GC it before it runs (see DiffusersRunState.bg_task for the
+        # full rationale).
+        rs.bg_task = asyncio.create_task(
+            _render_loop(worker, rs, emit_delay_ms, fail_at),
+            name=f"fake-ltx-render-{run_id}",
+        )
         return {"run_id": run_id, "status": "started"}
 
     async def render_cancel(params):
@@ -140,8 +150,9 @@ def register_fake_handlers(worker) -> None:
             rs.plan = plan
             rs.workdir = workdir
 
-        asyncio.create_task(
-            _retry_segment_loop(worker, rs, seg_index, segment_count, emit_delay_ms)
+        rs.bg_task = asyncio.create_task(
+            _retry_segment_loop(worker, rs, seg_index, segment_count, emit_delay_ms),
+            name=f"fake-ltx-retry-{run_id}-seg{seg_index}",
         )
         return {"run_id": run_id, "segment_index": seg_index, "status": "retrying"}
 
