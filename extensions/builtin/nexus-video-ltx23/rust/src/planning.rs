@@ -2,13 +2,13 @@
     clippy::cast_possible_truncation,
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
-    clippy::cast_lossless,
+    clippy::cast_lossless
 )]
 
 use crate::errors::{ExtensionError, Result};
 use crate::schemas::{
-    CreateRenderRequest, InterpolationMethod, PlanWarning, QualityPreset, RenderMode,
-    RenderPlan, RenderSegmentPlan, RuntimeProfilePreference, VramRisk,
+    CreateRenderRequest, InterpolationMethod, PlanWarning, QualityPreset, RenderMode, RenderPlan,
+    RenderSegmentPlan, RuntimeProfilePreference, VramRisk,
 };
 
 const DEFAULT_BASE_FPS: u32 = 24;
@@ -29,11 +29,7 @@ pub fn ltx_frame_count(seconds: f32, fps: u32) -> u32 {
 }
 
 #[must_use]
-pub fn segment_count(
-    duration_seconds: f32,
-    segment_seconds: f32,
-    overlap_seconds: f32,
-) -> u32 {
+pub fn segment_count(duration_seconds: f32, segment_seconds: f32, overlap_seconds: f32) -> u32 {
     if duration_seconds <= 0.0 || segment_seconds <= 0.0 {
         return 0;
     }
@@ -184,7 +180,9 @@ fn estimate_vram_risk(
 #[allow(clippy::too_many_lines)]
 pub fn plan_render(req: &CreateRenderRequest, runtime_profile: &str) -> Result<RenderPlan> {
     if req.prompt.trim().is_empty() {
-        return Err(ExtensionError::InvalidRequest("prompt cannot be empty".into()));
+        return Err(ExtensionError::InvalidRequest(
+            "prompt cannot be empty".into(),
+        ));
     }
     if req.duration_seconds < MIN_DURATION || req.duration_seconds > MAX_DURATION {
         return Err(ExtensionError::InvalidRequest(format!(
@@ -308,7 +306,11 @@ mod tests {
     fn ltx_frame_count_satisfies_8n_plus_1() {
         for seconds in [1.0_f32, 2.5, 4.0, 5.0, 7.3, 10.0] {
             let fc = ltx_frame_count(seconds, 24);
-            assert_eq!((fc - 1) % 8, 0, "frame count {fc} for {seconds}s must be 8n+1");
+            assert_eq!(
+                (fc - 1) % 8,
+                0,
+                "frame count {fc} for {seconds}s must be 8n+1"
+            );
         }
     }
 
@@ -535,7 +537,11 @@ mod tests {
         let req = mk_request_with_scenes(8.0, Vec::new());
         let plan = plan_render(&req, "rtx40-fp8").unwrap();
         for seg in &plan.segments {
-            assert!(seg.action_prompt.is_none(), "expected None, got {:?}", seg.action_prompt);
+            assert!(
+                seg.action_prompt.is_none(),
+                "expected None, got {:?}",
+                seg.action_prompt
+            );
         }
     }
 
@@ -561,7 +567,11 @@ mod tests {
         for seg in &plan.segments {
             let midpoint = seg.duration_seconds.mul_add(0.5, seg.start_time_seconds);
             let expected = if midpoint <= 4.0 { 7777 } else { 8888 };
-            assert_eq!(seg.seed, expected, "segment {} midpoint={}", seg.index, midpoint);
+            assert_eq!(
+                seg.seed, expected,
+                "segment {} midpoint={}",
+                seg.index, midpoint
+            );
         }
     }
 

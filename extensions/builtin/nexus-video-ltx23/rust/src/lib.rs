@@ -15,7 +15,7 @@ pub mod vram_supervisor;
 pub use errors::{ExtensionError, ExtensionErrorCode, Result};
 pub use migrations::{Migration, MIGRATIONS};
 pub use planning::{ltx_frame_count, plan_render, segment_count};
-pub use register::{EXTENSION_ID, EXTENSION_VERSION, LtxProviderResources, LtxRouterProvider};
+pub use register::{LtxProviderResources, LtxRouterProvider, EXTENSION_ID, EXTENSION_VERSION};
 pub use schemas::{
     CreateRenderRequest, InterpolationMethod, QualityPreset, RenderMode, RenderPlan,
     RenderSegmentPlan, RuntimeProfilePreference, VramRisk,

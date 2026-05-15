@@ -199,18 +199,10 @@ impl ProfileInstallService {
                             return Err(ExtensionError::Internal(msg));
                         }
                         "ltx.video.runtime.install.progress" => {
-                            if let Some(phase) = note
-                                .params
-                                .get("phase")
-                                .and_then(|v| v.as_str())
-                            {
+                            if let Some(phase) = note.params.get("phase").and_then(|v| v.as_str()) {
                                 svc.record_phase(&profile_owned, phase).await;
                             }
-                            if let Some(line) = note
-                                .params
-                                .get("output")
-                                .and_then(|v| v.as_str())
-                            {
+                            if let Some(line) = note.params.get("output").and_then(|v| v.as_str()) {
                                 let stream = note
                                     .params
                                     .get("stream")
@@ -260,9 +252,7 @@ fn profile_repo(profile: &str) -> Option<&'static str> {
     // `specs/046-ltx23-video-generation/verification/p0-t001-results.md`
     // for the architecture finding).
     match profile {
-        "rtx40-fp8" | "rtx50-fp8" | "rtx50-nvfp4" => {
-            Some("dg845/LTX-2.3-Distilled-Diffusers")
-        }
+        "rtx40-fp8" | "rtx50-fp8" | "rtx50-nvfp4" => Some("dg845/LTX-2.3-Distilled-Diffusers"),
         _ => None,
     }
 }

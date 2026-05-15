@@ -119,9 +119,7 @@ pub struct VramSupervisor {
 impl VramSupervisor {
     #[must_use]
     pub fn new(cfg: VramSupervisorConfig) -> Self {
-        Self {
-            cfg: Arc::new(cfg),
-        }
+        Self { cfg: Arc::new(cfg) }
     }
 
     /// Convenience: env-driven defaults in one call.
@@ -143,16 +141,10 @@ impl VramSupervisor {
     /// builds.
     #[must_use]
     pub fn evaluate(&self, stats: &Value) -> VramVerdict {
-        let num_ooms = stats
-            .get("num_ooms")
-            .and_then(Value::as_u64)
-            .unwrap_or(0);
+        let num_ooms = stats.get("num_ooms").and_then(Value::as_u64).unwrap_or(0);
         if num_ooms > self.cfg.max_num_ooms {
             return VramVerdict::Breach {
-                reason: format!(
-                    "num_ooms={num_ooms} exceeded max={}",
-                    self.cfg.max_num_ooms
-                ),
+                reason: format!("num_ooms={num_ooms} exceeded max={}", self.cfg.max_num_ooms),
             };
         }
 
@@ -188,10 +180,7 @@ impl VramSupervisor {
         if let Some(free_mb) = stats.get("free_mb").and_then(Value::as_u64) {
             if free_mb > 0 && free_mb < self.cfg.min_free_mb {
                 return VramVerdict::Breach {
-                    reason: format!(
-                        "free_mb={free_mb} below min={}",
-                        self.cfg.min_free_mb
-                    ),
+                    reason: format!("free_mb={free_mb} below min={}", self.cfg.min_free_mb),
                 };
             }
         }
@@ -223,7 +212,10 @@ mod tests {
             "frag_ratio": 0.15,
             "free_mb": 8000,
         });
-        assert_eq!(supervisor_with_defaults().evaluate(&stats), VramVerdict::Healthy);
+        assert_eq!(
+            supervisor_with_defaults().evaluate(&stats),
+            VramVerdict::Healthy
+        );
     }
 
     #[test]
@@ -232,7 +224,10 @@ mod tests {
         // should not trip the supervisor — we'd rather miss a real
         // breach than mass-cancel healthy runs.
         let stats = json!({});
-        assert_eq!(supervisor_with_defaults().evaluate(&stats), VramVerdict::Healthy);
+        assert_eq!(
+            supervisor_with_defaults().evaluate(&stats),
+            VramVerdict::Healthy
+        );
     }
 
     #[test]
@@ -285,7 +280,10 @@ mod tests {
         // every CI test that uses the fake pipeline would trip the
         // supervisor immediately.
         let stats = json!({"free_mb": 0, "num_alloc_retries": 0, "frag_ratio": 0.0});
-        assert_eq!(supervisor_with_defaults().evaluate(&stats), VramVerdict::Healthy);
+        assert_eq!(
+            supervisor_with_defaults().evaluate(&stats),
+            VramVerdict::Healthy
+        );
     }
 
     #[test]
@@ -340,10 +338,7 @@ mod tests {
             "NEXUS_VIDEO_LTX23_VRAM_MIN_FREE_MB" => Some(String::new()),
             _ => None,
         });
-        assert_eq!(
-            cfg.max_alloc_retries, 6,
-            "typo must not disable supervisor"
-        );
+        assert_eq!(cfg.max_alloc_retries, 6, "typo must not disable supervisor");
         assert_eq!(
             cfg.min_free_mb, 2_560,
             "empty value must fall back to default"
