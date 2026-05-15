@@ -67,20 +67,29 @@ pub const fn resolve_runtime_id(preference: RuntimeProfilePreference) -> &'stati
 ///
 /// Rationale per profile (all default to `Sequential`):
 ///
-/// Real-GPU verification across 2026-05-15/16 established that the
-/// shipped LTX-2.3 checkpoint is unquantized bf16 (a ~36 GB
-/// transformer alongside a ~46 GB Gemma-3 text encoder, ~83 GB total).
-/// `None` (all resident) and `Model` (whole-transformer-at-once
-/// paging) both overflow a 16 GB card into Windows shared VRAM and
-/// thrash forever. With the nvfp4 profile now defaulting to NF4
-/// quantisation (see `default_quant_for_profile`) the footprint drops
-/// to ~22 GB, which fits 96 GB system RAM and pages cleanly under
-/// `Sequential` (per-layer offload, ~2 GB peak VRAM, never touches
-/// shared VRAM). `Sequential` is therefore the safe default for every
-/// profile; operators with a big-VRAM card can opt up to `Model`/`None`.
+/// Real-GPU verification across 2026-05-15/16:
+///
+/// - `rtx50-nvfp4` → `Model`. This profile is NF4-quantised (see
+///   `default_quant_for_profile`), ~22 GB. bitsandbytes quantisation
+///   is fundamentally incompatible with
+///   `enable_sequential_cpu_offload()` — bnb loads params via
+///   accelerate's meta-device dispatch and sequential offload then
+///   tries to copy meta tensors that were never materialised
+///   ("Cannot copy out of meta tensor; no data!"). The
+///   diffusers-supported low-VRAM combo for a bnb-quantised pipeline
+///   is `enable_model_cpu_offload()`, and at NF4 its peak is the
+///   largest single quantised component (~10 GB), which fits a 16 GB
+///   card. (The earlier failed Model attempt was on the *unquantised*
+///   83 GB checkpoint — a different situation entirely.)
+/// - Every other profile → `Sequential`. They keep raw bf16 weights
+///   (no bnb), so sequential's per-layer paging (~2 GB peak, never
+///   touches shared VRAM) is the safe default.
 #[must_use]
-pub const fn default_offload_mode_for_profile(_profile: &str) -> OffloadMode {
-    OffloadMode::Sequential
+pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
+    match profile.as_bytes() {
+        b"rtx50-nvfp4" => OffloadMode::Model,
+        _ => OffloadMode::Sequential,
+    }
 }
 
 /// Default quantisation per profile.
@@ -546,19 +555,17 @@ mod tests {
     }
 
     #[test]
-    fn default_offload_mode_is_sequential_for_every_profile() {
-        // After the 2026-05-16 finding (shipped checkpoint is 83 GB raw
-        // bf16; nf4 quant brings nvfp4 to ~22 GB) Sequential is the
-        // safe default for ALL profiles: per-layer paging, ~2 GB peak
-        // VRAM, never touches Windows shared VRAM. None/Model both
-        // overflow 16 GB and hang.
-        for p in [
-            "rtx50-nvfp4",
-            "rtx50-fp8",
-            "rtx40-fp8",
-            "fake",
-            "future-profile-xyz",
-        ] {
+    fn default_offload_mode_per_profile() {
+        // nvfp4 is NF4-quantised → Model (bnb is incompatible with
+        // sequential offload — meta-tensor copy error; model offload
+        // is the diffusers-supported bnb combo and at ~22 GB its
+        // ~10 GB peak fits 16 GB). Every other profile keeps raw bf16
+        // and uses Sequential (per-layer, ~2 GB peak, no shared VRAM).
+        assert_eq!(
+            default_offload_mode_for_profile("rtx50-nvfp4"),
+            OffloadMode::Model
+        );
+        for p in ["rtx50-fp8", "rtx40-fp8", "fake", "future-profile-xyz"] {
             assert_eq!(
                 default_offload_mode_for_profile(p),
                 OffloadMode::Sequential,
