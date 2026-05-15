@@ -64,7 +64,30 @@ export interface CreateRenderRequest {
   quality_preset: QualityPreset;
   seed?: number;
   advanced?: AdvancedSettings;
+  /** Server-issued id from `POST /input-images`. When set, the worker
+   * conditions segment 0 on the uploaded image. Subsequent segments
+   * still chain off the prior segment's last frame; the image only
+   * anchors the very first frame's identity/style. */
+  input_image_artifact_id?: string;
 }
+
+/** Wire response from `POST /input-images`. */
+export interface UploadedInputImage {
+  artifact_id: string;
+  mime: "image/png" | "image/jpeg" | "image/webp";
+  byte_length: number;
+  sha256: string;
+}
+
+/** Client-side limits. Mirror the host's INPUT_IMAGE_BODY_LIMIT_BYTES +
+ * ACCEPTED_INPUT_MIMES — keeping them in sync as constants so the UI
+ * can fail before the network round-trip on obvious violations. */
+export const INPUT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+export const INPUT_IMAGE_ACCEPTED_MIMES: readonly string[] = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+];
 
 export interface RenderPlanSegment {
   index: number;
@@ -178,6 +201,23 @@ export const ltxApi = {
       method: "POST",
       body: JSON.stringify({ segment_index: segmentIndex }),
     }),
+  uploadInputImage: async (file: File): Promise<UploadedInputImage> => {
+    const fd = new FormData();
+    fd.append("image", file, file.name);
+    // Multipart upload — Content-Type is set by the browser including
+    // the boundary, so we deliberately DON'T pass a `Content-Type`
+    // header. Setting it manually breaks the boundary parameter and
+    // multer fails with a generic "multipart" error.
+    const res = await fetch(`${API_BASE}/input-images`, {
+      method: "POST",
+      body: fd,
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`${res.status} ${res.statusText}: ${body}`);
+    }
+    return (await res.json()) as UploadedInputImage;
+  },
 };
 
 export function artifactUrl(artifactId: string): string {

@@ -339,6 +339,64 @@ export const progressSummary = style({
   },
 });
 
+export const dropzone = style({
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "6px",
+  border: "1px dashed oklch(38% 0.005 250)",
+  borderRadius: "10px",
+  background: elevated,
+  padding: "18px 14px",
+  textAlign: "center",
+  color: textMuted,
+  fontSize: "13px",
+  cursor: "pointer",
+  transition:
+    "border-color 120ms ease, background 120ms ease, filter 120ms ease",
+  selectors: {
+    "&:hover, &:focus-within": {
+      borderColor: accentDim,
+      background: "oklch(28% 0.01 250)",
+    },
+  },
+});
+
+export const dropzoneActive = style({
+  borderColor: accent,
+  background: "oklch(30% 0.04 240)",
+  color: textPrimary,
+});
+
+export const dropzonePreview = style({
+  display: "grid",
+  gridTemplateColumns: "auto 1fr auto",
+  alignItems: "center",
+  gap: "12px",
+  padding: "10px 12px",
+  border: "1px solid oklch(32% 0.005 250)",
+  borderRadius: "10px",
+  background: elevated,
+});
+
+export const dropzoneThumb = style({
+  width: "72px",
+  height: "72px",
+  borderRadius: "8px",
+  background: "#000",
+  objectFit: "cover",
+  display: "block",
+});
+
+export const dropzoneClearButton = style([
+  buttonSubtle,
+  {
+    marginInlineStart: 0,
+    padding: "4px 8px",
+  },
+]);
+
 export const progressBlock = style({
   marginTop: "8px",
   padding: "8px",

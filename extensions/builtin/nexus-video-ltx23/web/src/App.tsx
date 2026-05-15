@@ -23,6 +23,7 @@ import {
   ltxApi,
   profileInstallApi,
 } from "./api";
+import { InputImagePicker } from "./InputImagePicker";
 import * as s from "./styles.css";
 
 const initialRequest: CreateRenderRequest = {
@@ -345,6 +346,13 @@ function FormPanel({
         Prompt-driven video synthesis · external-segments mode · 16 GB safe
         defaults
       </p>
+
+      <div className={s.fieldRow}>
+        <InputImagePicker
+          artifactId={draft.input_image_artifact_id}
+          onChange={(next) => update("input_image_artifact_id", next)}
+        />
+      </div>
 
       <div className={s.fieldRow}>
         <label className={s.label} htmlFor="ltx-prompt">
