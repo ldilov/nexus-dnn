@@ -1818,7 +1818,7 @@ mod tests {
     }
 
     #[test]
-    fn build_render_params_auto_resolves_to_none_for_rtx50_nvfp4() {
+    fn build_render_params_auto_resolves_to_model_for_rtx50_nvfp4() {
         let mut plan = sample_plan(1);
         plan.runtime_profile = "nexus.video.ltx23.rtx50-nvfp4".into();
         let workdir = PathBuf::from("/runs/run-y/work");
@@ -1828,8 +1828,10 @@ mod tests {
         );
         assert_eq!(
             params["advanced"]["offload_mode"].as_str(),
-            Some("none"),
-            "Auto on rtx50-nvfp4 must resolve to none (FP4 weights fit resident)"
+            Some("model"),
+            "Auto on rtx50-nvfp4 must resolve to model — None can't fit \
+             T5 + transformer on 16 GB and the manual split breaks the \
+             LTX2 pipeline's co-location assumption (verified 2026-05-15)"
         );
     }
 
@@ -1893,36 +1895,36 @@ mod tests {
 
     #[test]
     fn build_advanced_block_resolves_placement_from_offload_mode() {
-        // Auto offload + Auto placement on rtx50-nvfp4 → none mode, but
-        // the nvfp4 profile default keeps the ~11 GB T5 OFF the GPU so
-        // transformer + activations fit on 16 GB. transformer + vae go
-        // to cuda, text_encoder stays cpu. (Regression guard for the
-        // 2026-05-15 OOM/hang where all-cuda tried to co-resident T5 +
-        // transformer ≈ 22 GB on a 16 GB card.)
+        // Auto offload on rtx50-nvfp4 → Model offload (the verified
+        // 16 GB-correct default). placement_for_offload_mode(Model) =
+        // transformer paged from CPU, vae + text_encoder cuda-resident
+        // one-shot. The offload hook owns actual device movement; the
+        // triple is informational under Model.
         let advanced = AdvancedSettings::default();
         let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
-        assert_eq!(block["offload_mode"].as_str(), Some("none"));
-        assert_eq!(block["component_placement"]["transformer"].as_str(), Some("cuda"));
+        assert_eq!(block["offload_mode"].as_str(), Some("model"));
+        assert_eq!(block["component_placement"]["transformer"].as_str(), Some("cpu"));
         assert_eq!(block["component_placement"]["vae"].as_str(), Some("cuda"));
-        assert_eq!(block["component_placement"]["text_encoder"].as_str(), Some("cpu"));
+        assert_eq!(block["component_placement"]["text_encoder"].as_str(), Some("cuda"));
         assert_eq!(block["placement_overridden"].as_bool(), Some(false));
     }
 
     #[test]
     fn build_advanced_block_respects_explicit_per_component_override() {
-        // Operator pinned text_encoder to CPU on top of an Auto-resolved
-        // None mode — the override wins, other components stay implied.
+        // Operator pins transformer to CUDA on top of the Auto-resolved
+        // nvfp4 Model placement (transformer would otherwise be cpu).
+        // The explicit field wins; the others fall through to implied.
         let advanced = AdvancedSettings {
             component_placement: crate::schemas::ComponentPlacement {
-                transformer: crate::schemas::DevicePreference::Auto,
+                transformer: crate::schemas::DevicePreference::Cuda,
                 vae: crate::schemas::DevicePreference::Auto,
-                text_encoder: crate::schemas::DevicePreference::Cpu,
+                text_encoder: crate::schemas::DevicePreference::Auto,
             },
             ..AdvancedSettings::default()
         };
         let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
         assert_eq!(block["component_placement"]["transformer"].as_str(), Some("cuda"));
-        assert_eq!(block["component_placement"]["text_encoder"].as_str(), Some("cpu"));
+        assert_eq!(block["component_placement"]["vae"].as_str(), Some("cuda"));
         assert_eq!(block["placement_overridden"].as_bool(), Some(true));
     }
 
