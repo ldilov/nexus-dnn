@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use axum::{
     body::Body,
-    extract::{Path, State},
+    extract::{DefaultBodyLimit, Multipart, Path, State},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -13,6 +13,7 @@ use axum::{
 };
 use chrono::Utc;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use tokio::sync::Mutex as AsyncMutex;
 use ulid::Ulid;
 
@@ -64,6 +65,12 @@ pub struct ApiState {
     pub repos: Repos,
     pub runner: Runner,
     pub runs_dir: PathBuf,
+    /// Directory holding operator-uploaded input images. Mirrors the
+    /// runner's `RunnerConfig::inputs_dir` — the upload handler writes
+    /// here, the runner reads from here. Keeping them as the same
+    /// `PathBuf` instead of re-deriving from `runs_dir` keeps the
+    /// "where to look" answer authoritative in one place.
+    pub inputs_dir: PathBuf,
     pub extension_version: &'static str,
     pub profile_install: ProfileInstallService,
     pub idempotency: IdempotencyCache,
@@ -78,6 +85,7 @@ impl ApiState {
         repos: Repos,
         runner: Runner,
         runs_dir: PathBuf,
+        inputs_dir: PathBuf,
         extension_version: &'static str,
         profile_install: ProfileInstallService,
     ) -> Self {
@@ -85,6 +93,7 @@ impl ApiState {
             repos,
             runner,
             runs_dir,
+            inputs_dir,
             extension_version,
             profile_install,
             idempotency: Arc::new(AsyncMutex::new(HashMap::new())),
@@ -103,6 +112,10 @@ pub fn router(state: ApiState) -> Router {
         .route("/renders/{run_id}/retry-segment", post(retry_segment))
         .route("/renders/{run_id}/segments", get(list_segments_handler))
         .route("/artifacts/{artifact_id}", get(serve_artifact))
+        .route(
+            "/input-images",
+            post(upload_input_image).layer(DefaultBodyLimit::max(INPUT_IMAGE_BODY_LIMIT_BYTES)),
+        )
         .route(
             "/profiles/{profile_id}/install",
             post(start_profile_install),
@@ -126,9 +139,18 @@ pub fn http_routes() -> Vec<String> {
         "/renders/{run_id}/retry-segment".into(),
         "/renders/{run_id}/segments".into(),
         "/artifacts/{artifact_id}".into(),
+        "/input-images".into(),
         "/profiles/{profile_id}/install".into(),
     ]
 }
+
+/// Max bytes accepted by `POST /input-images`.
+///
+/// A single 4K PNG runs 5–8 MB; 8 MB is the sweet spot that covers
+/// realistic reference images without inviting abuse. The body-limit
+/// layer rejects oversized requests with 413 BEFORE the handler runs
+/// (no buffer allocation).
+pub const INPUT_IMAGE_BODY_LIMIT_BYTES: usize = 8 * 1024 * 1024;
 
 async fn start_profile_install(
     State(state): State<Arc<ApiState>>,
@@ -272,6 +294,30 @@ async fn create_render(
     // multiply across segments.
     req.validate_field_bounds()
         .map_err(ExtensionError::InvalidRequest)?;
+
+    // Pre-flight the input-image artifact id against the inputs
+    // directory. The runner soft-fails a stale id (renders text-only +
+    // logs a warn) — fine for an in-flight breach, wrong for a fresh
+    // submission. Catching it here turns "GPU-hour run silently ignored
+    // your reference image" into an immediate, actionable 400. Uses the
+    // exact resolver the runner uses so accept/reject can never diverge.
+    if let Some(id) = req.input_image_artifact_id.clone() {
+        let inputs_dir = state.inputs_dir.clone();
+        let resolves = tokio::task::spawn_blocking(move || {
+            crate::runner::resolve_input_image_path(&inputs_dir, &id).is_some()
+        })
+        .await
+        .map_err(|e| ExtensionError::Internal(format!("input-image preflight join: {e}")))?;
+        if !resolves {
+            return Err(ApiError(ExtensionError::InvalidRequest(format!(
+                "input_image_artifact_id '{}' does not resolve to an \
+                 on-disk file; re-upload the reference image before \
+                 submitting this render",
+                req.input_image_artifact_id.as_deref().unwrap_or("")
+            ))));
+        }
+    }
+
     let idempotency_key = headers
         .get("idempotency-key")
         .and_then(|v| v.to_str().ok())
@@ -387,6 +433,7 @@ async fn create_render(
         req.negative_prompt.clone(),
         req.style_prompt.clone(),
         req.character_prompt.clone(),
+        req.input_image_artifact_id.clone(),
         req.advanced.clone(),
     );
 
@@ -668,6 +715,7 @@ async fn retry_segment(
             request.negative_prompt.clone(),
             request.style_prompt.clone(),
             request.character_prompt.clone(),
+            request.input_image_artifact_id.clone(),
             request.advanced.clone(),
         )
         .await;
@@ -746,6 +794,168 @@ fn parse_request_for_retry(run: &RenderRunRow) -> ApiResult<CreateRenderRequest>
 struct RetrySegmentRequest {
     segment_index: u32,
     prompt_override: Option<String>,
+}
+
+/// Accepted MIME types for the input-image upload route.
+///
+/// Mirrors the `image_to_long_video.yaml` recipe declaration. Every
+/// allowed type also has a `magic_signature` arm in `sniff_image_kind`
+/// so a renamed `.exe` posing as `image/png` is rejected before the
+/// bytes hit disk.
+const ACCEPTED_INPUT_MIMES: &[&str] = &["image/png", "image/jpeg", "image/webp"];
+
+/// Decoded image kind, in step with `ACCEPTED_INPUT_MIMES`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InputImageKind {
+    Png,
+    Jpeg,
+    Webp,
+}
+
+impl InputImageKind {
+    const fn mime(self) -> &'static str {
+        match self {
+            Self::Png => "image/png",
+            Self::Jpeg => "image/jpeg",
+            Self::Webp => "image/webp",
+        }
+    }
+
+    const fn extension(self) -> &'static str {
+        match self {
+            Self::Png => "png",
+            Self::Jpeg => "jpg",
+            Self::Webp => "webp",
+        }
+    }
+}
+
+/// Probe the first few bytes for an image signature.
+///
+/// Returns `Some(kind)` when the magic bytes match a supported format.
+/// Rejecting an unrecognised payload at this layer (rather than letting
+/// PIL decide later in the worker) gives the operator an actionable 400
+/// instead of an opaque worker crash.
+fn sniff_image_kind(bytes: &[u8]) -> Option<InputImageKind> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Some(InputImageKind::Png);
+    }
+    if bytes.starts_with(b"\xFF\xD8\xFF") {
+        return Some(InputImageKind::Jpeg);
+    }
+    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        return Some(InputImageKind::Webp);
+    }
+    None
+}
+
+#[derive(Serialize)]
+struct UploadInputImageResponse {
+    artifact_id: String,
+    mime: &'static str,
+    byte_length: u64,
+    sha256: String,
+}
+
+/// `POST /api/v1/extensions/nexus.video.ltx23/input-images`
+///
+/// Accepts a single `image` multipart field, writes it to
+/// `<inputs_dir>/ltx23-input-<ulid>.<ext>`, and returns the
+/// server-issued artifact id. The artifact id is then submitted as
+/// `CreateRenderRequest::input_image_artifact_id` on `POST /renders`
+/// and resolved back to the on-disk path by the runner.
+///
+/// Mirrors the multipart pattern of
+/// `extensions/builtin/emotion-tts/rust/src/router/voice_assets.rs::upload`,
+/// scaled down for a single image (8 MB cap vs 64 MB for audio).
+async fn upload_input_image(
+    State(state): State<Arc<ApiState>>,
+    mut multipart: Multipart,
+) -> ApiResult<(StatusCode, Json<UploadInputImageResponse>)> {
+    let mut payload: Option<Vec<u8>> = None;
+    let mut declared_mime: Option<String> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ExtensionError::InvalidRequest(format!("multipart: {e}")))?
+    {
+        let name = field.name().map(String::from).unwrap_or_default();
+        if name == "image" {
+            declared_mime = field.content_type().map(String::from);
+            let bytes = field
+                .bytes()
+                .await
+                .map_err(|e| ExtensionError::InvalidRequest(format!("read field 'image': {e}")))?;
+            payload = Some(bytes.to_vec());
+        } else {
+            // Drain unrecognised fields so multipart parsing stays
+            // happy; ignore their content. Same posture as emotion-tts.
+            let _ = field.bytes().await;
+        }
+    }
+
+    let bytes =
+        payload.ok_or_else(|| ExtensionError::InvalidRequest("missing field: image".into()))?;
+    if bytes.is_empty() {
+        return Err(ApiError(ExtensionError::InvalidRequest(
+            "image payload is empty".into(),
+        )));
+    }
+
+    let declared = declared_mime.as_deref().unwrap_or("");
+    if !declared.is_empty() && !ACCEPTED_INPUT_MIMES.contains(&declared) {
+        return Err(ApiError(ExtensionError::InvalidRequest(format!(
+            "Content-Type '{declared}' is not an accepted image type; \
+             allowed: {ACCEPTED_INPUT_MIMES:?}"
+        ))));
+    }
+
+    let kind = sniff_image_kind(&bytes).ok_or_else(|| {
+        ExtensionError::InvalidRequest(
+            "payload does not start with a recognised image signature (PNG/JPEG/WEBP)".into(),
+        )
+    })?;
+    if !declared.is_empty() && declared != kind.mime() {
+        return Err(ApiError(ExtensionError::InvalidRequest(format!(
+            "Content-Type '{declared}' disagrees with payload magic bytes \
+             ({}); refusing upload",
+            kind.mime()
+        ))));
+    }
+
+    let artifact_id = format!("ltx23-input-{}", Ulid::new());
+    let dest = state
+        .inputs_dir
+        .join(format!("{artifact_id}.{}", kind.extension()));
+
+    tokio::fs::write(&dest, &bytes).await.map_err(|e| {
+        ExtensionError::Internal(format!("persist input image to {}: {e}", dest.display()))
+    })?;
+
+    let sha256 = hex_lower(Sha256::digest(&bytes).as_slice());
+    #[allow(clippy::cast_possible_truncation)]
+    let byte_length = bytes.len() as u64;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(UploadInputImageResponse {
+            artifact_id,
+            mime: kind.mime(),
+            byte_length,
+            sha256,
+        }),
+    ))
+}
+
+/// Hex-encode bytes without pulling a fourth crate (`hex`).
+fn hex_lower(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        use std::fmt::Write;
+        write!(&mut out, "{b:02x}").expect("write to string never fails");
+    }
+    out
 }
 
 async fn serve_artifact(
