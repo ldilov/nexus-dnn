@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{Mutex, Notify};
 
@@ -122,6 +122,15 @@ const CANCEL_GRACE: Duration = Duration::from_secs(15);
 #[derive(Clone)]
 pub struct RunnerConfig {
     pub runs_dir: PathBuf,
+    /// Directory holding operator-uploaded input images keyed by
+    /// `ltx23-input-<ulid>.<ext>`. The runner reads this to resolve
+    /// `CreateRenderRequest::input_image_artifact_id` into an absolute
+    /// path the worker can `PIL.Image.open()` for first-segment
+    /// conditioning. Created by `register.rs::build_router_inner`
+    /// next to `runs_dir`; layout is single-flat-directory, no
+    /// per-run nesting (an input image may be referenced by multiple
+    /// renders during a tweaking session).
+    pub inputs_dir: PathBuf,
     pub repos: Repos,
     pub factory: Arc<dyn LeaseAcquirer>,
     /// Watches `runtime.memory_stats` notifications and trips a clean
@@ -218,6 +227,7 @@ impl Runner {
         negative_prompt: Option<String>,
         style_prompt: Option<String>,
         character_prompt: Option<String>,
+        input_image_artifact_id: Option<String>,
         advanced: crate::schemas::AdvancedSettings,
     ) {
         let cfg = self.cfg.clone();
@@ -244,6 +254,7 @@ impl Runner {
                 negative_prompt.as_deref(),
                 style_prompt.as_deref(),
                 character_prompt.as_deref(),
+                input_image_artifact_id.as_deref(),
                 &advanced,
                 notify_for_task,
             )
@@ -327,6 +338,7 @@ impl Runner {
         negative_prompt: Option<String>,
         style_prompt: Option<String>,
         character_prompt: Option<String>,
+        input_image_artifact_id: Option<String>,
         advanced: AdvancedSettings,
     ) -> RetrySpawnOutcome {
         let key = (run_id.clone(), segment_index);
@@ -349,6 +361,7 @@ impl Runner {
                 negative_prompt.as_deref(),
                 style_prompt.as_deref(),
                 character_prompt.as_deref(),
+                input_image_artifact_id.as_deref(),
                 &advanced,
             )
             .await;
@@ -403,10 +416,7 @@ impl Runner {
     #[cfg(test)]
     pub async fn register_test_canceller(&self, run_id: String) -> Arc<Notify> {
         let notify = Arc::new(Notify::new());
-        self.cancellers
-            .lock()
-            .await
-            .insert(run_id, notify.clone());
+        self.cancellers.lock().await.insert(run_id, notify.clone());
         notify
     }
 }
@@ -421,15 +431,13 @@ async fn run_via_lease(
     negative_prompt: Option<&str>,
     style_prompt: Option<&str>,
     character_prompt: Option<&str>,
+    input_image_artifact_id: Option<&str>,
     advanced: &crate::schemas::AdvancedSettings,
     cancel_notify: Arc<Notify>,
 ) -> Result<()> {
     let workdir = cfg.runs_dir.join(run_id).join("work");
     tokio::fs::create_dir_all(&workdir).await.map_err(|e| {
-        crate::errors::ExtensionError::Internal(format!(
-            "mkdir workdir {}: {e}",
-            workdir.display()
-        ))
+        crate::errors::ExtensionError::Internal(format!("mkdir workdir {}: {e}", workdir.display()))
     })?;
 
     cfg.repos
@@ -455,6 +463,7 @@ async fn run_via_lease(
             negative_prompt,
             style_prompt,
             character_prompt,
+            input_image_artifact_id,
             advanced,
             &workdir,
             segment_offset,
@@ -470,15 +479,13 @@ async fn run_via_lease(
                 // Translate the "what was the last good segment" into
                 // the "where do we resume" index. last_completed_segment
                 // is the original chain index (0-based); we resume at +1.
-                let next_offset = u32::try_from(last_completed_segment.saturating_add(1))
-                    .unwrap_or(u32::MAX);
+                let next_offset =
+                    u32::try_from(last_completed_segment.saturating_add(1)).unwrap_or(u32::MAX);
                 // No forward progress check — should be impossible
                 // because the latch is consumed by segment.completed,
                 // but defensive: if next_offset isn't strictly greater
                 // than the offset we just ran with, collapse to halt.
-                if next_offset <= segment_offset
-                    || (next_offset as usize) >= plan.segments.len()
-                {
+                if next_offset <= segment_offset || (next_offset as usize) >= plan.segments.len() {
                     tracing::warn!(
                         extension_id = "nexus.video.ltx23",
                         run_id = %run_id,
@@ -668,6 +675,7 @@ async fn run_attempt(
     negative_prompt: Option<&str>,
     style_prompt: Option<&str>,
     character_prompt: Option<&str>,
+    input_image_artifact_id: Option<&str>,
     advanced: &crate::schemas::AdvancedSettings,
     workdir: &std::path::Path,
     segment_offset: u32,
@@ -687,6 +695,8 @@ async fn run_attempt(
             character_prompt,
             advanced,
             workdir,
+            &cfg.inputs_dir,
+            input_image_artifact_id,
         )
     } else {
         // Resume mid-chain: trim the segments + point at the prior
@@ -724,6 +734,8 @@ async fn run_attempt(
             character_prompt,
             advanced,
             workdir,
+            &cfg.inputs_dir,
+            input_image_artifact_id,
             segment_offset,
             cond_image_opt,
         )
@@ -950,14 +962,12 @@ async fn retry_segment_via_lease(
     negative_prompt: Option<&str>,
     style_prompt: Option<&str>,
     character_prompt: Option<&str>,
+    input_image_artifact_id: Option<&str>,
     advanced: &AdvancedSettings,
 ) -> Result<()> {
     let workdir = cfg.runs_dir.join(run_id).join("work");
     tokio::fs::create_dir_all(&workdir).await.map_err(|e| {
-        crate::errors::ExtensionError::Internal(format!(
-            "mkdir workdir {}: {e}",
-            workdir.display()
-        ))
+        crate::errors::ExtensionError::Internal(format!("mkdir workdir {}: {e}", workdir.display()))
     })?;
 
     let lease = cfg.factory.acquire_lease(short_profile(profile)).await?;
@@ -979,6 +989,17 @@ async fn retry_segment_via_lease(
             character_prompt,
             advanced,
             &workdir,
+            &cfg.inputs_dir,
+            // Only the first-segment retry conditions on the original
+            // upload — later segments retry against the chain's own
+            // last_frame.png, which the worker reads internally. Soft-
+            // failing for seg_idx > 0 keeps the retry behaviour aligned
+            // with the resume path's "prior segment wins" invariant.
+            if seg_idx == 0 {
+                input_image_artifact_id
+            } else {
+                None
+            },
         );
         if let Some(obj) = retry_params.as_object_mut() {
             obj.insert("segment_index".into(), Value::from(seg_idx));
@@ -1007,9 +1028,7 @@ async fn retry_segment_via_lease(
                             "ltx.video.segment.completed" => {
                                 if segment_index(&note.params) == Some(target) {
                                     cfg.repos
-                                        .update_segment_status(
-                                            run_id, target, "completed", None,
-                                        )
+                                        .update_segment_status(run_id, target, "completed", None)
                                         .await?;
                                     return Ok::<RetryOutcome, crate::errors::ExtensionError>(
                                         RetryOutcome::Completed,
@@ -1019,9 +1038,7 @@ async fn retry_segment_via_lease(
                             "ltx.video.segment.started" => {
                                 if segment_index(&note.params) == Some(target) {
                                     cfg.repos
-                                        .update_segment_status(
-                                            run_id, target, "rendering", None,
-                                        )
+                                        .update_segment_status(run_id, target, "rendering", None)
                                         .await?;
                                 }
                             }
@@ -1268,6 +1285,11 @@ fn build_render_params_offset(
     character_prompt: Option<&str>,
     advanced: &crate::schemas::AdvancedSettings,
     workdir: &std::path::Path,
+    inputs_dir: &std::path::Path,
+    // Resume payload deliberately ignores the operator's original
+    // upload — see comment + T13 below. Kept as a named param so
+    // callers and reviewers see the boundary intent in the signature.
+    _input_image_artifact_id: Option<&str>,
     segment_offset: u32,
     cond_image_path: Option<&std::path::Path>,
 ) -> Value {
@@ -1280,6 +1302,13 @@ fn build_render_params_offset(
         character_prompt,
         advanced,
         workdir,
+        inputs_dir,
+        // Resume payload — the prior segment's last_frame.png supplied
+        // via `cond_image_path` is the authoritative conditioning
+        // anchor. Suppress the operator's original upload here so the
+        // mid-chain continuity is never overwritten by a stale upload
+        // reference. T13 guards this invariant.
+        None,
     );
 
     // Trim segments + inject cond_image. The worker's render_loop reads
@@ -1332,6 +1361,8 @@ fn build_render_params(
     character_prompt: Option<&str>,
     advanced: &crate::schemas::AdvancedSettings,
     workdir: &std::path::Path,
+    inputs_dir: &std::path::Path,
+    input_image_artifact_id: Option<&str>,
 ) -> Value {
     // Substitute the pipeline's documented defaults when the user
     // leaves these unset, rather than sending JSON `null`. The worker
@@ -1388,7 +1419,7 @@ fn build_render_params(
         })
         .collect();
 
-    json!({
+    let mut payload = json!({
         "request_id": run_id,
         "workdir": workdir.to_string_lossy(),
         "prompt": {
@@ -1417,7 +1448,74 @@ fn build_render_params(
             "offload_mode": offload_mode_str,
         },
         "runtime_profile": plan.runtime_profile.clone(),
-    })
+    });
+
+    if let Some(id) = input_image_artifact_id {
+        if let Some(path) = resolve_input_image_path(inputs_dir, id) {
+            if let Some(obj) = payload.as_object_mut() {
+                obj.insert(
+                    "input_image".into(),
+                    json!({ "path": path.to_string_lossy() }),
+                );
+            }
+        } else {
+            tracing::warn!(
+                extension_id = "nexus.video.ltx23",
+                run_id = %run_id,
+                artifact_id = %id,
+                inputs_dir = %inputs_dir.display(),
+                "input_image artifact id did not resolve to an on-disk file; \
+                 rendering text-only (worker will fall back to solid-grey conditioning)"
+            );
+        }
+    }
+
+    payload
+}
+
+/// Resolve `<artifact_id>` to an absolute path inside `inputs_dir`.
+///
+/// Tries each accepted extension (png/jpg/jpeg/webp) and returns the
+/// first hit. The candidate path is canonicalised + verified to live
+/// under the canonical `inputs_dir`, so any traversal symlink or escape
+/// trick is caught before the path is handed to the worker.
+///
+/// Returns `None` for every failure mode — invalid id shape, no file
+/// matching any accepted extension, canonicalize error, or path-escape.
+/// Caller renders text-only on `None` and logs a warn.
+///
+/// `pub(crate)` so `api.rs::create_render` can run the identical
+/// resolution at submission time and reject a render that references a
+/// stale / orphaned artifact id with a 400 instead of silently
+/// degrading to text-only after a GPU-hour run. Single source of truth
+/// for "does this artifact id point at a usable file".
+pub(crate) fn resolve_input_image_path(
+    inputs_dir: &std::path::Path,
+    artifact_id: &str,
+) -> Option<PathBuf> {
+    const ACCEPTED_EXTS: &[&str] = &["png", "jpg", "jpeg", "webp"];
+
+    if !crate::schemas::is_valid_input_artifact_id(artifact_id) {
+        return None;
+    }
+
+    let inputs_canon = std::fs::canonicalize(inputs_dir).ok()?;
+    for ext in ACCEPTED_EXTS {
+        let candidate = inputs_canon.join(format!("{artifact_id}.{ext}"));
+        if !candidate.is_file() {
+            continue;
+        }
+        let canon = std::fs::canonicalize(&candidate).ok()?;
+        // Defence in depth: even with a clean id shape, refuse a
+        // symlink that points outside inputs_dir. canonicalize +
+        // starts_with is the standard Rust pattern (mirrors
+        // assert_path_under above for worker-supplied paths).
+        if !canon.starts_with(&inputs_canon) {
+            return None;
+        }
+        return Some(canon);
+    }
+    None
 }
 
 fn short_profile(full: &str) -> &str {
@@ -1438,13 +1536,13 @@ mod tests {
             .await
             .unwrap();
         let repos = Repos::from_pool(pool);
-        let (notification_buffer, _handle) =
-            crate::notification_buffer::NotificationBuffer::new(
-                repos.clone(),
-                crate::notification_buffer::DEFAULT_FLUSH_INTERVAL,
-            );
+        let (notification_buffer, _handle) = crate::notification_buffer::NotificationBuffer::new(
+            repos.clone(),
+            crate::notification_buffer::DEFAULT_FLUSH_INTERVAL,
+        );
         Runner::new(RunnerConfig {
             runs_dir: PathBuf::from("/tmp"),
+            inputs_dir: PathBuf::from("/tmp"),
             repos,
             factory: Arc::new(LtxLeaseFactory::new(
                 PathBuf::from("/nonexistent-ext"),
@@ -1570,11 +1668,7 @@ mod tests {
     #[tokio::test]
     async fn is_render_in_flight_covers_retry_registry() {
         let runner = empty_runner().await;
-        runner
-            .retries
-            .lock()
-            .await
-            .insert(("run-retry".into(), 3));
+        runner.retries.lock().await.insert(("run-retry".into(), 3));
         assert!(runner.is_render_in_flight("run-retry").await);
         assert!(!runner.is_render_in_flight("run-other").await);
     }
@@ -1693,13 +1787,33 @@ mod tests {
         }
     }
 
+    /// Test-only `inputs_dir` placeholder. The existing offload-mode /
+    /// segment-trim tests don't exercise the resolver — they pass an
+    /// empty artifact id so the directory is never read. The dedicated
+    /// input-image resolver tests below provision their own
+    /// `tempfile::tempdir`.
+    fn test_inputs_dir() -> std::path::PathBuf {
+        std::path::PathBuf::from("/tmp/ltx23-nonexistent-inputs")
+    }
+
     #[test]
     fn build_render_params_offset_trims_segments() {
         let plan = sample_plan(5);
         let workdir = PathBuf::from("/runs/run-x/work");
+        let inputs_dir = test_inputs_dir();
         let params = build_render_params_offset(
-            "run-x", &plan, "make video", None, None, None,
-            &AdvancedSettings::default(), &workdir, 2, None,
+            "run-x",
+            &plan,
+            "make video",
+            None,
+            None,
+            None,
+            &AdvancedSettings::default(),
+            &workdir,
+            &inputs_dir,
+            None,
+            2,
+            None,
         );
         let segments = params["video"]["segments"]
             .as_array()
@@ -1714,9 +1828,20 @@ mod tests {
     fn build_render_params_offset_marks_resumed_segment() {
         let plan = sample_plan(3);
         let workdir = PathBuf::from("/runs/run-x/work");
+        let inputs_dir = test_inputs_dir();
         let params = build_render_params_offset(
-            "run-x", &plan, "make video", None, None, None,
-            &AdvancedSettings::default(), &workdir, 1, None,
+            "run-x",
+            &plan,
+            "make video",
+            None,
+            None,
+            None,
+            &AdvancedSettings::default(),
+            &workdir,
+            &inputs_dir,
+            None,
+            1,
+            None,
         );
         assert_eq!(params["resumed_from_segment"].as_u64(), Some(1));
     }
@@ -1725,12 +1850,25 @@ mod tests {
     fn build_render_params_offset_injects_cond_image() {
         let plan = sample_plan(3);
         let workdir = PathBuf::from("/runs/run-x/work");
+        let inputs_dir = test_inputs_dir();
         let cond = std::path::PathBuf::from("/runs/run-x/work/segments/000/last_frame.png");
         let params = build_render_params_offset(
-            "run-x", &plan, "make video", None, None, None,
-            &AdvancedSettings::default(), &workdir, 1, Some(cond.as_path()),
+            "run-x",
+            &plan,
+            "make video",
+            None,
+            None,
+            None,
+            &AdvancedSettings::default(),
+            &workdir,
+            &inputs_dir,
+            None,
+            1,
+            Some(cond.as_path()),
         );
-        let injected = params["input_image"]["path"].as_str().expect("input_image.path");
+        let injected = params["input_image"]["path"]
+            .as_str()
+            .expect("input_image.path");
         assert!(injected.contains("last_frame.png"));
         assert!(injected.contains("000"));
     }
@@ -1739,9 +1877,20 @@ mod tests {
     fn build_render_params_offset_no_cond_omits_input_image() {
         let plan = sample_plan(3);
         let workdir = PathBuf::from("/runs/run-x/work");
+        let inputs_dir = test_inputs_dir();
         let params = build_render_params_offset(
-            "run-x", &plan, "make video", None, None, None,
-            &AdvancedSettings::default(), &workdir, 1, None,
+            "run-x",
+            &plan,
+            "make video",
+            None,
+            None,
+            None,
+            &AdvancedSettings::default(),
+            &workdir,
+            &inputs_dir,
+            None,
+            1,
+            None,
         );
         assert!(params.get("input_image").is_none());
     }
@@ -1753,9 +1902,18 @@ mod tests {
         // (`Sequential`) so the worker observes a concrete string.
         let plan = sample_plan(2);
         let workdir = PathBuf::from("/runs/run-x/work");
+        let inputs_dir = test_inputs_dir();
         let params = build_render_params(
-            "run-x", &plan, "make video", None, None, None,
-            &AdvancedSettings::default(), &workdir,
+            "run-x",
+            &plan,
+            "make video",
+            None,
+            None,
+            None,
+            &AdvancedSettings::default(),
+            &workdir,
+            &inputs_dir,
+            None,
         );
         assert_eq!(
             params["advanced"]["offload_mode"].as_str(),
@@ -1769,9 +1927,18 @@ mod tests {
         let mut plan = sample_plan(1);
         plan.runtime_profile = "nexus.video.ltx23.rtx50-nvfp4".into();
         let workdir = PathBuf::from("/runs/run-y/work");
+        let inputs_dir = test_inputs_dir();
         let params = build_render_params(
-            "run-y", &plan, "make video", None, None, None,
-            &AdvancedSettings::default(), &workdir,
+            "run-y",
+            &plan,
+            "make video",
+            None,
+            None,
+            None,
+            &AdvancedSettings::default(),
+            &workdir,
+            &inputs_dir,
+            None,
         );
         assert_eq!(
             params["advanced"]["offload_mode"].as_str(),
@@ -1784,6 +1951,7 @@ mod tests {
     fn build_render_params_explicit_offload_mode_propagates() {
         let plan = sample_plan(1);
         let workdir = PathBuf::from("/runs/run-z/work");
+        let inputs_dir = test_inputs_dir();
         for (mode, expected) in [
             (OffloadMode::None, "none"),
             (OffloadMode::Model, "model"),
@@ -1794,8 +1962,16 @@ mod tests {
                 ..AdvancedSettings::default()
             };
             let params = build_render_params(
-                "run-z", &plan, "make video", None, None, None,
-                &advanced, &workdir,
+                "run-z",
+                &plan,
+                "make video",
+                None,
+                None,
+                None,
+                &advanced,
+                &workdir,
+                &inputs_dir,
+                None,
             );
             assert_eq!(
                 params["advanced"]["offload_mode"].as_str(),
@@ -1814,13 +1990,24 @@ mod tests {
         // restarted worker.
         let plan = sample_plan(3);
         let workdir = PathBuf::from("/runs/run-r/work");
+        let inputs_dir = test_inputs_dir();
         let advanced = AdvancedSettings {
             offload_mode: OffloadMode::None,
             ..AdvancedSettings::default()
         };
         let resumed = build_render_params_offset(
-            "run-r", &plan, "make video", None, None, None,
-            &advanced, &workdir, 1, None,
+            "run-r",
+            &plan,
+            "make video",
+            None,
+            None,
+            None,
+            &advanced,
+            &workdir,
+            &inputs_dir,
+            None,
+            1,
+            None,
         );
         assert_eq!(
             resumed["advanced"]["offload_mode"].as_str(),
@@ -1828,8 +2015,16 @@ mod tests {
             "resume payload must propagate offload_mode"
         );
         let retry = build_render_params(
-            "run-r", &plan, "make video", None, None, None,
-            &advanced, &workdir,
+            "run-r",
+            &plan,
+            "make video",
+            None,
+            None,
+            None,
+            &advanced,
+            &workdir,
+            &inputs_dir,
+            None,
         );
         assert_eq!(
             retry["advanced"]["offload_mode"].as_str(),
@@ -1842,20 +2037,188 @@ mod tests {
     fn build_render_params_offset_zero_offset_equivalent_to_full_chain() {
         let plan = sample_plan(4);
         let workdir = PathBuf::from("/runs/run-x/work");
+        let inputs_dir = test_inputs_dir();
         let full = build_render_params(
-            "run-x", &plan, "make video", None, None, None,
-            &AdvancedSettings::default(), &workdir,
+            "run-x",
+            &plan,
+            "make video",
+            None,
+            None,
+            None,
+            &AdvancedSettings::default(),
+            &workdir,
+            &inputs_dir,
+            None,
         );
         let offset_zero = build_render_params_offset(
-            "run-x", &plan, "make video", None, None, None,
-            &AdvancedSettings::default(), &workdir, 0, None,
+            "run-x",
+            &plan,
+            "make video",
+            None,
+            None,
+            None,
+            &AdvancedSettings::default(),
+            &workdir,
+            &inputs_dir,
+            None,
+            0,
+            None,
         );
         // resumed_from_segment field differs (0 vs absent), but the
         // segments array should be byte-identical.
-        assert_eq!(
-            full["video"]["segments"],
-            offset_zero["video"]["segments"],
+        assert_eq!(full["video"]["segments"], offset_zero["video"]["segments"],);
+    }
+
+    // ── Input-image resolver + injection (T4-T7, T13) ────────────────
+
+    fn write_test_image(dir: &std::path::Path, id: &str, ext: &str) -> std::path::PathBuf {
+        let path = dir.join(format!("{id}.{ext}"));
+        std::fs::write(&path, b"\x89PNG\r\n\x1a\nfake").expect("write test image");
+        path
+    }
+
+    #[test]
+    fn build_render_params_injects_input_image_when_artifact_resolves() {
+        // T4 — resolver hits an on-disk file → input_image.path lands
+        // in the worker payload pointing at that file.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let id = "ltx23-input-01J9ABCDEFGHJKMNPQRSTVWXYZ";
+        let written = write_test_image(tmp.path(), id, "png");
+
+        let plan = sample_plan(2);
+        let workdir = PathBuf::from("/runs/run-x/work");
+        let params = build_render_params(
+            "run-x",
+            &plan,
+            "make video",
+            None,
+            None,
+            None,
+            &AdvancedSettings::default(),
+            &workdir,
+            tmp.path(),
+            Some(id),
         );
+
+        let path_in_payload = params["input_image"]["path"]
+            .as_str()
+            .expect("input_image.path must be present when artifact resolves");
+        let canon_expected = std::fs::canonicalize(&written).expect("canonicalize written");
+        // The payload path is the resolver's canonical absolute form.
+        // Compare canonical-to-canonical to avoid UNC/symlink mismatches
+        // on Windows where the temp dir may sit behind `\\?\` aliases.
+        let canon_actual = std::fs::canonicalize(std::path::Path::new(path_in_payload))
+            .expect("canonicalize actual");
+        assert_eq!(canon_actual, canon_expected);
+    }
+
+    #[test]
+    fn build_render_params_omits_input_image_when_artifact_id_is_none() {
+        // T5 — no artifact id → no `input_image` key in the payload.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let plan = sample_plan(2);
+        let workdir = PathBuf::from("/runs/run-x/work");
+        let params = build_render_params(
+            "run-x",
+            &plan,
+            "make video",
+            None,
+            None,
+            None,
+            &AdvancedSettings::default(),
+            &workdir,
+            tmp.path(),
+            None,
+        );
+        assert!(params.get("input_image").is_none());
+    }
+
+    #[test]
+    fn build_render_params_omits_input_image_when_artifact_id_misses() {
+        // T6 — id has the right shape but no file matches → soft-fail,
+        // payload omits the field. The render proceeds text-only with
+        // the worker's solid-grey fallback (logged warn).
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let plan = sample_plan(2);
+        let workdir = PathBuf::from("/runs/run-x/work");
+        let params = build_render_params(
+            "run-x",
+            &plan,
+            "make video",
+            None,
+            None,
+            None,
+            &AdvancedSettings::default(),
+            &workdir,
+            tmp.path(),
+            Some("ltx23-input-MISSINGNOFILEONDISK"),
+        );
+        assert!(params.get("input_image").is_none());
+    }
+
+    #[test]
+    fn resolve_input_image_path_rejects_bad_id_shape() {
+        // T7a — even if a file exists at the literal path, an invalid
+        // id shape returns None before any filesystem access.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let _ = write_test_image(tmp.path(), "../escape", "png");
+        // No actual file matches the canonical shape — but the
+        // validator rejects the shape regardless.
+        let resolved = resolve_input_image_path(tmp.path(), "../escape");
+        assert!(resolved.is_none(), "bad id shape must not resolve");
+    }
+
+    #[test]
+    fn resolve_input_image_path_returns_under_inputs_dir() {
+        // T7b — happy-path resolver result must be a canonical
+        // descendant of inputs_dir. The build_render_params caller
+        // relies on this for the path-under-inputs_dir guarantee.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let id = "ltx23-input-01J9HAPPYCASE";
+        let _ = write_test_image(tmp.path(), id, "jpg");
+
+        let inputs_canon = std::fs::canonicalize(tmp.path()).expect("canonicalize inputs");
+        let resolved =
+            resolve_input_image_path(tmp.path(), id).expect("happy-path id must resolve");
+        assert!(resolved.starts_with(&inputs_canon));
+    }
+
+    #[test]
+    fn build_render_params_offset_resume_path_overrides_uploaded_image() {
+        // T13 — resume invariant. When `build_render_params_offset`
+        // runs with both an uploaded artifact id AND a cond_image_path
+        // (from the prior segment's last_frame.png), the resume path
+        // wins. The operator's original upload must NOT leak into a
+        // mid-chain resume — that would erase the visual continuity the
+        // VRAM-supervisor restart loop is trying to preserve.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let id = "ltx23-input-01J9UPLOAD";
+        let _ = write_test_image(tmp.path(), id, "webp");
+
+        let plan = sample_plan(3);
+        let workdir = PathBuf::from("/runs/run-resume/work");
+        let cond = std::path::PathBuf::from("/runs/run-resume/work/segments/000/last_frame.png");
+        let params = build_render_params_offset(
+            "run-resume",
+            &plan,
+            "make video",
+            None,
+            None,
+            None,
+            &AdvancedSettings::default(),
+            &workdir,
+            tmp.path(),
+            Some(id),
+            1,
+            Some(cond.as_path()),
+        );
+        let injected = params["input_image"]["path"]
+            .as_str()
+            .expect("resume path must inject input_image");
+        // The resume cond_image wins — payload points at last_frame.png,
+        // NOT at the operator's webp upload under tmp.path().
+        assert!(injected.contains("last_frame.png"));
+        assert!(!injected.contains(id));
     }
 
     #[tokio::test]
@@ -1974,10 +2337,10 @@ mod tests {
         };
         use sqlx::sqlite::SqlitePoolOptions;
         use std::path::PathBuf;
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
         use std::time::Duration;
-        use tokio::sync::{Notify, broadcast};
+        use tokio::sync::{broadcast, Notify};
 
         /// Per-lease handle the test keeps to inject notifications and
         /// watch lifecycle state. The matching `FakeLease` (handed to
@@ -2061,10 +2424,7 @@ mod tests {
 
         #[async_trait]
         impl LeaseAcquirer for FakeLeaseAcquirer {
-            async fn acquire_lease(
-                &self,
-                _profile: &str,
-            ) -> Result<Arc<dyn BackendRuntimeLease>> {
+            async fn acquire_lease(&self, _profile: &str) -> Result<Arc<dyn BackendRuntimeLease>> {
                 let (tx, _) = broadcast::channel::<LeaseNotification>(1024);
                 let subscribed_count = Arc::new(AtomicUsize::new(0));
                 let release_count = Arc::new(AtomicUsize::new(0));
@@ -2192,8 +2552,18 @@ mod tests {
                     repos.clone(),
                     crate::notification_buffer::DEFAULT_FLUSH_INTERVAL,
                 );
+            // Mirror production layout — inputs_dir is a sibling of
+            // runs_dir under the per-extension data root. Tests rarely
+            // exercise the resolver, but creating the directory keeps
+            // any code path that canonicalizes inputs_dir from erroring
+            // on a missing directory.
+            let inputs_dir = runs_dir
+                .parent()
+                .map_or_else(|| runs_dir.join("inputs"), |p| p.join("inputs"));
+            std::fs::create_dir_all(&inputs_dir).expect("mkdir inputs");
             let cfg = RunnerConfig {
                 runs_dir,
+                inputs_dir,
                 repos: repos.clone(),
                 factory: acquirer,
                 vram_supervisor: supervisor,
@@ -2323,6 +2693,7 @@ mod tests {
                     "nexus.video.ltx23.fake",
                     &plan_for_task,
                     "test prompt",
+                    None,
                     None,
                     None,
                     None,
@@ -2458,6 +2829,7 @@ mod tests {
                     None,
                     None,
                     None,
+                    None,
                     &AdvancedSettings::default(),
                     Arc::new(Notify::new()),
                 )
@@ -2504,7 +2876,8 @@ mod tests {
                 "expected RenderFailed, got {err:?}"
             );
             assert!(
-                err.to_string().contains("vram supervisor halt after 2 restart"),
+                err.to_string()
+                    .contains("vram supervisor halt after 2 restart"),
                 "expected 'vram supervisor halt after 2 restart' in error, got: {err}"
             );
 
