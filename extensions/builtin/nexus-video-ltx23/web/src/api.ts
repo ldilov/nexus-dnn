@@ -12,6 +12,19 @@ export type QualityPreset =
   | "quality_16gb"
   | "high";
 
+/**
+ * Diffusers pipeline offload strategy.
+ *
+ * - `auto`: use the per-profile default chosen by the host runner. NVFP4
+ *   defaults to `none`, every other profile defaults to `sequential`.
+ * - `none`: pipe.to("cuda"). Fastest; requires 16 GB+ VRAM. Worker
+ *   rejects this mode on smaller cards before the load completes.
+ * - `model`: enable_model_cpu_offload. Mid-grained, mid-speed.
+ * - `sequential`: enable_sequential_cpu_offload. Slowest, lowest VRAM
+ *   working set.
+ */
+export type OffloadMode = "auto" | "none" | "model" | "sequential";
+
 export interface AdvancedSettings {
   /** Classifier-Free Guidance scale ("temperature"). 1.0–7.0. Default 4.0. */
   guidance_scale?: number;
@@ -20,6 +33,8 @@ export interface AdvancedSettings {
   segment_seconds?: number;
   overlap_seconds?: number;
   output_fps?: number;
+  /** Diffusers offload strategy. Omitted → backend defaults to "auto". */
+  offload_mode?: OffloadMode;
 }
 
 export interface SceneSpec {
