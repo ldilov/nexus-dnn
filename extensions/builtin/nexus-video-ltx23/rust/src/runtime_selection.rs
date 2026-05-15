@@ -64,10 +64,17 @@ pub const fn resolve_runtime_id(preference: RuntimeProfilePreference) -> &'stati
 /// `short_profile()` helper in `runner.rs`.
 ///
 /// Rationale per profile:
-/// - `rtx50-nvfp4`: FP4 weights ~11 GB on a 16 GB Blackwell card; fits
-///   resident with headroom for activations + VAE + text encoder.
-///   `None` is the right default; operators can downgrade to `Model`
-///   if they're tight on VRAM.
+/// - `rtx50-nvfp4`: `Model`. Real-GPU verification on 2026-05-15
+///   proved that `None` (every component GPU-resident) is unviable on
+///   a 16 GB card — the NVFP4 transformer (~11 GB) plus the T5-XXL
+///   text encoder (~11 GB) cannot co-reside. The naive workaround
+///   (transformer on CUDA, T5 on CPU) makes the LTX2 diffusers
+///   pipeline raise a cross-device tensor mismatch because it assumes
+///   all components are co-located. `enable_model_cpu_offload()` is
+///   the diffusers-blessed answer: it pages each submodule onto the
+///   GPU only while active, handles cross-device movement
+///   automatically, and peaks at the largest single submodule
+///   (~11 GB) rather than the sum.
 /// - `rtx50-fp8` / `rtx40-fp8`: FP8 weights ~14 GB. `model_cpu_offload`
 ///   was documented to spill to unified memory on RTX 5070 Ti; until
 ///   a fresh benchmark proves `Model` fits cleanly, default
@@ -76,7 +83,7 @@ pub const fn resolve_runtime_id(preference: RuntimeProfilePreference) -> &'stati
 #[must_use]
 pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
     match profile.as_bytes() {
-        b"rtx50-nvfp4" => OffloadMode::None,
+        b"rtx50-nvfp4" => OffloadMode::Model,
         _ => OffloadMode::Sequential,
     }
 }
@@ -126,36 +133,24 @@ pub const fn placement_for_offload_mode(mode: OffloadMode) -> ComponentPlacement
 
 /// Profile-tuned base placement, before any operator override.
 ///
-/// `placement_for_offload_mode` describes what an offload mode means in
-/// the abstract, but a 16 GB-class card physically cannot hold every
-/// component of an LTX-2.3 NVFP4 pipeline at once: the NVFP4 transformer
-/// is ~11 GB and the T5-XXL text encoder is another ~11 GB — together
-/// ~22 GB, well over 16 GB. Real-GPU verification on 2026-05-15 proved
-/// `offload_mode=none` (all-CUDA) stalls indefinitely on exactly this
-/// card because the move thrashes / never completes.
-///
-/// So the NVFP4 profile's default keeps the text encoder on CPU even
-/// under `None` — it runs once per render, so the ~1-2 s round-trip
-/// cost is negligible against freeing 11 GB for the transformer +
-/// activations. Other profiles defer to the offload mode unchanged
-/// (FP8 paths page the transformer via hooks and never try to hold
-/// everything resident).
+/// Every profile now defers to the offload-mode-implied placement.
+/// An earlier nvfp4 special-case forced `transformer=cuda, vae=cuda,
+/// text_encoder=cpu` to dodge the 22 GB co-residency problem, but
+/// real-GPU verification on 2026-05-15 proved that split makes the
+/// LTX2 diffusers pipeline raise a cross-device tensor mismatch — it
+/// assumes all components live on one device. The correct nvfp4
+/// answer is `enable_model_cpu_offload()` (the `Model` offload mode,
+/// now the nvfp4 default in `default_offload_mode_for_profile`), whose
+/// hooks page submodules on demand and bridge devices automatically.
+/// Manual per-component placement remains available as an explicit
+/// operator override for power users whose pipeline tolerates it; it
+/// is no longer a silent profile default.
 #[must_use]
 pub const fn default_placement_for_profile(
-    profile: &str,
+    _profile: &str,
     base_mode: OffloadMode,
 ) -> ComponentPlacement {
-    match profile.as_bytes() {
-        b"rtx50-nvfp4" => ComponentPlacement {
-            transformer: DevicePreference::Cuda,
-            vae: DevicePreference::Cuda,
-            // The one deliberate divergence from
-            // placement_for_offload_mode(None): T5 stays on CPU because
-            // transformer + T5 don't co-fit on 16 GB.
-            text_encoder: DevicePreference::Cpu,
-        },
-        _ => placement_for_offload_mode(base_mode),
-    }
+    placement_for_offload_mode(base_mode)
 }
 
 /// Compose an explicit per-component override on top of the
@@ -460,68 +455,70 @@ mod tests {
     }
 
     #[test]
-    fn resolve_component_placement_nvfp4_default_keeps_t5_on_cpu() {
-        // THE regression guard: nvfp4 + all-Auto + None must NOT put
-        // the ~11 GB T5 on the GPU (transformer + T5 don't co-fit on
-        // 16 GB). Without an operator override, the profile default
-        // keeps text_encoder on CPU.
-        let resolved = resolve_component_placement(
-            "rtx50-nvfp4",
-            OffloadMode::None,
-            ComponentPlacement::default(),
-        );
-        assert_eq!(
-            resolved,
-            ComponentPlacement {
-                transformer: DevicePreference::Cuda,
-                vae: DevicePreference::Cuda,
-                text_encoder: DevicePreference::Cpu,
+    fn resolve_component_placement_defers_to_offload_mode_for_all_profiles() {
+        // Post-2026-05-15: no profile special-cases placement. nvfp4's
+        // 16 GB problem is solved by the Model offload default (set in
+        // default_offload_mode_for_profile), not a manual T5-on-cpu
+        // split — that split broke the LTX2 pipeline's co-location
+        // assumption on real hardware.
+        for profile in ["rtx50-nvfp4", "rtx50-fp8", "fake", "unknown-xyz"] {
+            for mode in [
+                OffloadMode::None,
+                OffloadMode::Model,
+                OffloadMode::Sequential,
+            ] {
+                assert_eq!(
+                    resolve_component_placement(
+                        profile,
+                        mode,
+                        ComponentPlacement::default()
+                    ),
+                    placement_for_offload_mode(mode),
+                    "profile={profile} mode={mode:?}"
+                );
             }
-        );
+        }
     }
 
     #[test]
     fn resolve_component_placement_lets_explicit_overrides_win() {
-        // Operator forces text_encoder onto the GPU on nvfp4 even
-        // though the profile default keeps it on CPU — explicit wins.
+        // Operator pins text_encoder to CPU on top of a None-mode
+        // pipeline — the explicit field overrides the implied
+        // placement; the others fall through.
         let resolved = resolve_component_placement(
             "rtx50-nvfp4",
             OffloadMode::None,
             ComponentPlacement {
                 transformer: DevicePreference::Auto,
                 vae: DevicePreference::Auto,
-                text_encoder: DevicePreference::Cuda,
+                text_encoder: DevicePreference::Cpu,
             },
         );
         assert_eq!(
             resolved,
             ComponentPlacement {
-                transformer: DevicePreference::Cuda, // profile default
-                vae: DevicePreference::Cuda,         // profile default
-                text_encoder: DevicePreference::Cuda, // explicit override
+                transformer: DevicePreference::Cuda, // implied by None
+                vae: DevicePreference::Cuda,         // implied by None
+                text_encoder: DevicePreference::Cpu, // explicit override
             }
         );
     }
 
     #[test]
-    fn default_placement_for_profile_nvfp4_vs_others() {
-        assert_eq!(
-            default_placement_for_profile("rtx50-nvfp4", OffloadMode::None),
-            ComponentPlacement {
-                transformer: DevicePreference::Cuda,
-                vae: DevicePreference::Cuda,
-                text_encoder: DevicePreference::Cpu,
+    fn default_placement_for_profile_always_defers_to_offload_mode() {
+        for profile in ["rtx50-nvfp4", "rtx50-fp8", "fake"] {
+            for mode in [
+                OffloadMode::None,
+                OffloadMode::Model,
+                OffloadMode::Sequential,
+            ] {
+                assert_eq!(
+                    default_placement_for_profile(profile, mode),
+                    placement_for_offload_mode(mode),
+                    "profile={profile} mode={mode:?}"
+                );
             }
-        );
-        // Non-nvfp4 defers to the offload-mode mapping.
-        assert_eq!(
-            default_placement_for_profile("rtx50-fp8", OffloadMode::Sequential),
-            placement_for_offload_mode(OffloadMode::Sequential),
-        );
-        assert_eq!(
-            default_placement_for_profile("fake", OffloadMode::Model),
-            placement_for_offload_mode(OffloadMode::Model),
-        );
+        }
     }
 
     #[test]
@@ -537,12 +534,14 @@ mod tests {
 
     #[test]
     fn default_offload_mode_per_profile() {
-        // NVFP4 weights fit resident on a 16 GB Blackwell card with
-        // headroom — None is the right default. Every other profile
-        // (including unknowns) falls through to the safest mode.
+        // nvfp4 → Model: real-GPU verification proved None (all
+        // resident) can't fit T5 + transformer on 16 GB and the manual
+        // split breaks the pipeline's co-location assumption.
+        // enable_model_cpu_offload is the diffusers-correct answer.
+        // Every other profile → Sequential (safest, lowest VRAM).
         assert_eq!(
             default_offload_mode_for_profile("rtx50-nvfp4"),
-            OffloadMode::None
+            OffloadMode::Model
         );
         assert_eq!(
             default_offload_mode_for_profile("rtx50-fp8"),

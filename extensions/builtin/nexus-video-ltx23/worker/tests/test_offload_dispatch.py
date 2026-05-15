@@ -271,7 +271,13 @@ def test_place_pipeline_none_skips_transformer_when_pre_placed() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_place_pipeline_model_installs_hook_and_places_vae_text_encoder() -> None:
+def test_place_pipeline_model_installs_hook_and_places_nothing() -> None:
+    # enable_model_cpu_offload OWNS every component's placement: it
+    # keeps weights on CPU and pages each submodule onto the GPU only
+    # while active, bridging cross-device tensors itself. Manually
+    # .to()-ing vae/text_encoder on top would fight the hook and
+    # reintroduce the 2026-05-15 cross-device mismatch. So under model
+    # we install the hook and place NOTHING by hand.
     pipe = _pipe_with_components()
     pd._place_pipeline(
         pipe=pipe,
@@ -281,10 +287,9 @@ def test_place_pipeline_model_installs_hook_and_places_vae_text_encoder() -> Non
         logger=_logger(),
     )
     pipe.enable_model_cpu_offload.assert_called_once_with()
-    # Hook owns the transformer; we do NOT manually move it.
     pipe.transformer.to.assert_not_called()
-    pipe.vae.to.assert_called_once_with("cuda")
-    pipe.text_encoder.to.assert_called_once_with("cuda")
+    pipe.vae.to.assert_not_called()
+    pipe.text_encoder.to.assert_not_called()
 
 
 def test_place_pipeline_sequential_installs_hook() -> None:
