@@ -1332,12 +1332,23 @@ fn build_render_params(
     advanced: &crate::schemas::AdvancedSettings,
     workdir: &std::path::Path,
 ) -> Value {
-    let guidance_scale = advanced
-        .guidance_scale
-        .map_or(Value::Null, |v| serde_json::Value::from(f64::from(v)));
-    let num_inference_steps = advanced
-        .num_inference_steps
-        .map_or(Value::Null, Value::from);
+    // Substitute the pipeline's documented defaults when the user
+    // leaves these unset, rather than sending JSON `null`. The worker
+    // previously crashed with `float(None)` in `_render_loop` because
+    // `dict.get("guidance_scale", 4.0)` returns None — not 4.0 — when
+    // the key exists with a None value. Defaults are kept in sync with
+    // pipeline_diffusers._render_loop's fallback values so the
+    // behaviour is identical whether the host or worker fills them in.
+    const DEFAULT_GUIDANCE_SCALE: f32 = 4.0;
+    const DEFAULT_NUM_INFERENCE_STEPS: u32 = 8;
+    let guidance_scale = serde_json::Value::from(f64::from(
+        advanced.guidance_scale.unwrap_or(DEFAULT_GUIDANCE_SCALE),
+    ));
+    let num_inference_steps = serde_json::Value::from(
+        advanced
+            .num_inference_steps
+            .unwrap_or(DEFAULT_NUM_INFERENCE_STEPS),
+    );
 
     // Per-segment `action_prompt` overrides the global `prompt` when
     // the planner zipped a scenes[] script. The worker composes the
