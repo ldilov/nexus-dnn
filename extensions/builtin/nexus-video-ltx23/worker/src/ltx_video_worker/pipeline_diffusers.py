@@ -393,9 +393,13 @@ def _place_pipeline(
             f"unknown offload_mode: {offload_mode!r}; expected "
             "\"none\", \"model\", or \"sequential\""
         )
-    # The offload hook owns the transformer's paging; the vae + text
-    # encoder are one-shot modules and still honour the triple.
-    _place_components(pipe, placement, logger, include_transformer=False)
+    # The offload hook OWNS every component's device placement: it
+    # keeps stable weights on CPU and pages each submodule onto the
+    # GPU only while active, bridging cross-device tensors itself.
+    # Manually `.to()`-ing vae / text_encoder here would fight those
+    # hooks and reintroduce the cross-device mismatch that the manual
+    # split caused on 2026-05-15. So under model / sequential we do
+    # NOT place anything by hand — the triple is informational only.
     logger.info(
         "diffusers.load_pipeline.offload", mode=offload_mode, placement=placement
     )
