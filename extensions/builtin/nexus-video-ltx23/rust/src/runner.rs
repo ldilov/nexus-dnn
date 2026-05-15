@@ -1747,6 +1747,98 @@ mod tests {
     }
 
     #[test]
+    fn build_render_params_default_advanced_resolves_auto_for_fake_profile() {
+        // `AdvancedSettings::default()` carries `OffloadMode::Auto`.
+        // The `fake` profile maps to the catch-all default
+        // (`Sequential`) so the worker observes a concrete string.
+        let plan = sample_plan(2);
+        let workdir = PathBuf::from("/runs/run-x/work");
+        let params = build_render_params(
+            "run-x", &plan, "make video", None, None, None,
+            &AdvancedSettings::default(), &workdir,
+        );
+        assert_eq!(
+            params["advanced"]["offload_mode"].as_str(),
+            Some("sequential"),
+            "Auto on the fake profile must resolve to sequential"
+        );
+    }
+
+    #[test]
+    fn build_render_params_auto_resolves_to_none_for_rtx50_nvfp4() {
+        let mut plan = sample_plan(1);
+        plan.runtime_profile = "nexus.video.ltx23.rtx50-nvfp4".into();
+        let workdir = PathBuf::from("/runs/run-y/work");
+        let params = build_render_params(
+            "run-y", &plan, "make video", None, None, None,
+            &AdvancedSettings::default(), &workdir,
+        );
+        assert_eq!(
+            params["advanced"]["offload_mode"].as_str(),
+            Some("none"),
+            "Auto on rtx50-nvfp4 must resolve to none (FP4 weights fit resident)"
+        );
+    }
+
+    #[test]
+    fn build_render_params_explicit_offload_mode_propagates() {
+        let plan = sample_plan(1);
+        let workdir = PathBuf::from("/runs/run-z/work");
+        for (mode, expected) in [
+            (OffloadMode::None, "none"),
+            (OffloadMode::Model, "model"),
+            (OffloadMode::Sequential, "sequential"),
+        ] {
+            let advanced = AdvancedSettings {
+                offload_mode: mode,
+                ..AdvancedSettings::default()
+            };
+            let params = build_render_params(
+                "run-z", &plan, "make video", None, None, None,
+                &advanced, &workdir,
+            );
+            assert_eq!(
+                params["advanced"]["offload_mode"].as_str(),
+                Some(expected),
+                "explicit {mode:?} must serialise as {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn build_render_params_offset_propagates_offload_mode() {
+        // The resume + retry call paths reach the worker through
+        // `build_render_params_offset` (resume) and
+        // `retry_segment_via_lease -> build_render_params` (retry).
+        // Both must carry the operator's offload choice into the
+        // restarted worker.
+        let plan = sample_plan(3);
+        let workdir = PathBuf::from("/runs/run-r/work");
+        let advanced = AdvancedSettings {
+            offload_mode: OffloadMode::None,
+            ..AdvancedSettings::default()
+        };
+        let resumed = build_render_params_offset(
+            "run-r", &plan, "make video", None, None, None,
+            &advanced, &workdir, 1, None,
+        );
+        assert_eq!(
+            resumed["advanced"]["offload_mode"].as_str(),
+            Some("none"),
+            "resume payload must propagate offload_mode"
+        );
+        let retry = build_render_params(
+            "run-r", &plan, "make video", None, None, None,
+            &advanced, &workdir,
+        );
+        assert_eq!(
+            retry["advanced"]["offload_mode"].as_str(),
+            Some("none"),
+            "retry payload (build_render_params direct) must propagate offload_mode"
+        );
+    }
+
+    #[test]
     fn build_render_params_offset_zero_offset_equivalent_to_full_chain() {
         let plan = sample_plan(4);
         let workdir = PathBuf::from("/runs/run-x/work");

@@ -88,6 +88,76 @@ def _offload_mode_from_params(raw_params: dict[str, Any]) -> str:
     return mode
 
 
+_MIN_VRAM_BYTES_FOR_NONE = 16 * 1024**3
+
+
+def _apply_offload_mode(
+    *,
+    pipe: Any,
+    offload_mode: str,
+    device: str,
+    torch_mod: Any,
+    logger: Any,
+) -> Any:
+    """Apply the resolved offload strategy to a freshly-loaded pipeline.
+
+    Pure on its inputs apart from calling methods on `pipe`/`torch_mod`/
+    `logger`, which makes this the testable surface for the dispatch
+    contract. Returns the pipe (potentially after `pipe.to(device)`
+    moved it to the GPU for `mode="none"`).
+
+    Raises `_ModelLoadFailed` when:
+    - `mode="none"` and `torch_mod.cuda.mem_get_info()[1] < 16 GB`;
+    - `mode="model"` and the pipe lacks `enable_model_cpu_offload`;
+    - `mode` is anything other than `none`/`model`/`sequential`.
+
+    `pipe.to(device)` is reserved for `mode="none"`. Both offload
+    helpers manage device placement themselves; calling `.to(...)`
+    first defeats their hooks.
+    """
+    if offload_mode == "none":
+        free_bytes, total_bytes = torch_mod.cuda.mem_get_info()
+        if total_bytes < _MIN_VRAM_BYTES_FOR_NONE:
+            raise _ModelLoadFailed(
+                f"offload_mode=\"none\" requires 16 GB+ VRAM; this card "
+                f"reports {total_bytes / 1e9:.1f} GB total. Downgrade to "
+                f"\"model\" or \"sequential\" or pick a higher-VRAM card."
+            )
+        pipe = pipe.to(device)
+        logger.info(
+            "diffusers.load_pipeline.offload",
+            mode="none",
+            vram_total_gb=round(total_bytes / 1e9, 1),
+            vram_free_gb=round(free_bytes / 1e9, 1),
+        )
+        return pipe
+    if offload_mode == "model":
+        if not hasattr(pipe, "enable_model_cpu_offload"):
+            raise _ModelLoadFailed(
+                "diffusers pipeline class lacks enable_model_cpu_offload; "
+                "upgrade diffusers or pick a different offload_mode"
+            )
+        pipe.enable_model_cpu_offload()
+        logger.info("diffusers.load_pipeline.offload", mode="model")
+        return pipe
+    if offload_mode == "sequential":
+        if hasattr(pipe, "enable_sequential_cpu_offload"):
+            pipe.enable_sequential_cpu_offload()
+        elif hasattr(pipe, "enable_model_cpu_offload"):
+            # Older diffusers releases without sequential offload —
+            # accept the spill rather than crash. The host's per-profile
+            # default never picks sequential when the pipeline doesn't
+            # support it, but a paranoid operator override should still
+            # load.
+            pipe.enable_model_cpu_offload()
+        logger.info("diffusers.load_pipeline.offload", mode="sequential")
+        return pipe
+    raise _ModelLoadFailed(
+        f"unknown offload_mode: {offload_mode!r}; expected "
+        "\"none\", \"model\", or \"sequential\""
+    )
+
+
 async def _emit_weights_resident(
     worker, run_id: str, pipe: Any, offload_mode: str
 ) -> None:
@@ -467,50 +537,13 @@ def _ensure_pipeline_loaded(
         # s/step (the latter spilled to unified memory on Windows).
         # NVFP4 on Blackwell has enough headroom for `none` (full
         # pipeline resident) which is faster still.
-        #
-        # `pipe.to(device)` is reserved for `offload_mode == "none"`.
-        # Both offload helpers manage device placement themselves;
-        # calling `.to(...)` first defeats their offload hooks.
-        if offload_mode == "none":
-            free_bytes, total_bytes = torch.cuda.mem_get_info()
-            min_total = 16 * 1024**3
-            if total_bytes < min_total:
-                raise _ModelLoadFailed(
-                    f"offload_mode=\"none\" requires 16 GB+ VRAM; this card "
-                    f"reports {total_bytes / 1e9:.1f} GB total. Downgrade to "
-                    f"\"model\" or \"sequential\" or pick a higher-VRAM card."
-                )
-            pipe = pipe.to(device)
-            worker.logger.info(
-                "diffusers.load_pipeline.offload",
-                mode="none",
-                vram_total_gb=round(total_bytes / 1e9, 1),
-                vram_free_gb=round(free_bytes / 1e9, 1),
-            )
-        elif offload_mode == "model":
-            if not hasattr(pipe, "enable_model_cpu_offload"):
-                raise _ModelLoadFailed(
-                    "diffusers pipeline class lacks enable_model_cpu_offload; "
-                    "upgrade diffusers or pick a different offload_mode"
-                )
-            pipe.enable_model_cpu_offload()
-            worker.logger.info("diffusers.load_pipeline.offload", mode="model")
-        elif offload_mode == "sequential":
-            if hasattr(pipe, "enable_sequential_cpu_offload"):
-                pipe.enable_sequential_cpu_offload()
-            elif hasattr(pipe, "enable_model_cpu_offload"):
-                # Older diffusers releases without sequential offload —
-                # accept the spill rather than crash. The host's
-                # per-profile default never picks sequential when the
-                # pipeline doesn't support it, but a paranoid operator
-                # override should still load.
-                pipe.enable_model_cpu_offload()
-            worker.logger.info("diffusers.load_pipeline.offload", mode="sequential")
-        else:
-            raise _ModelLoadFailed(
-                f"unknown offload_mode: {offload_mode!r}; expected "
-                "\"none\", \"model\", or \"sequential\""
-            )
+        pipe = _apply_offload_mode(
+            pipe=pipe,
+            offload_mode=offload_mode,
+            device=device,
+            torch_mod=torch,
+            logger=worker.logger,
+        )
         if hasattr(pipe.vae, "enable_tiling"):
             pipe.vae.enable_tiling()
         worker.logger.info(
