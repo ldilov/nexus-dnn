@@ -12,6 +12,35 @@ pub const MAX_PROMPT_CHARS: usize = 4096;
 pub const MAX_SCENES: usize = 200;
 pub const MAX_PROJECT_ID_CHARS: usize = 128;
 
+/// Max length of an `input_image_artifact_id`.
+///
+/// The id is produced server-side by `api.rs::upload_input_image` as
+/// `ltx23-input-<ulid>` (12 + 26 = 38). Cap at 64 to leave room for a
+/// future scheme bump (e.g. namespace prefix).
+pub const MAX_INPUT_ARTIFACT_ID_CHARS: usize = 64;
+
+/// Validate the shape of a server-issued input-image artifact id.
+///
+/// The id is consumed by `runner.rs::build_render_params` to locate
+/// `<inputs_dir>/<id>.<ext>` on disk. Refusing anything outside the
+/// strict prefix + alphanumeric tail shape stops a crafted request body
+/// from escaping the inputs directory via the join — defence in depth
+/// alongside the path-canonicalisation check in the resolver.
+#[must_use]
+pub fn is_valid_input_artifact_id(id: &str) -> bool {
+    const PREFIX: &str = "ltx23-input-";
+    if id.is_empty() || id.len() > MAX_INPUT_ARTIFACT_ID_CHARS {
+        return false;
+    }
+    let Some(tail) = id.strip_prefix(PREFIX) else {
+        return false;
+    };
+    if tail.is_empty() {
+        return false;
+    }
+    tail.chars().all(|c| c.is_ascii_alphanumeric())
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateRenderRequest {
     pub project_id: Option<String>,
@@ -67,9 +96,7 @@ impl CreateRenderRequest {
         }
         if let Some(neg) = &self.negative_prompt {
             if neg.len() > MAX_PROMPT_CHARS {
-                return Err(format!(
-                    "negative_prompt exceeds {MAX_PROMPT_CHARS} chars"
-                ));
+                return Err(format!("negative_prompt exceeds {MAX_PROMPT_CHARS} chars"));
             }
         }
         if let Some(style) = &self.style_prompt {
@@ -79,15 +106,20 @@ impl CreateRenderRequest {
         }
         if let Some(character) = &self.character_prompt {
             if character.len() > MAX_PROMPT_CHARS {
-                return Err(format!(
-                    "character_prompt exceeds {MAX_PROMPT_CHARS} chars"
-                ));
+                return Err(format!("character_prompt exceeds {MAX_PROMPT_CHARS} chars"));
             }
         }
         if let Some(pid) = &self.project_id {
             if pid.len() > MAX_PROJECT_ID_CHARS {
+                return Err(format!("project_id exceeds {MAX_PROJECT_ID_CHARS} chars"));
+            }
+        }
+        if let Some(id) = &self.input_image_artifact_id {
+            if !is_valid_input_artifact_id(id) {
                 return Err(format!(
-                    "project_id exceeds {MAX_PROJECT_ID_CHARS} chars"
+                    "input_image_artifact_id '{id}' has invalid shape; \
+                     expected 'ltx23-input-' + alphanumeric tail (≤ \
+                     {MAX_INPUT_ARTIFACT_ID_CHARS} chars)"
                 ));
             }
         }
@@ -294,6 +326,95 @@ mod tests {
         // the worker sees it.
         let parsed: AdvancedSettings = serde_json::from_str("{}").unwrap();
         assert_eq!(parsed.offload_mode, OffloadMode::Auto);
+    }
+
+    #[test]
+    fn is_valid_input_artifact_id_accepts_canonical_shape() {
+        // The server-issued id is `ltx23-input-` + 26-char ULID.
+        assert!(is_valid_input_artifact_id(
+            "ltx23-input-01J9ABCDEFGHJKMNPQRSTVWXYZ"
+        ));
+        // Lowercase ULIDs are also accepted (the upload route uses
+        // Ulid::new().to_string() which produces upper-case, but a
+        // future change shouldn't trip the validator).
+        assert!(is_valid_input_artifact_id("ltx23-input-abc123"));
+    }
+
+    #[test]
+    fn is_valid_input_artifact_id_rejects_traversal_and_junk() {
+        // Path-traversal shapes — the resolver canonicalises before
+        // joining, but rejecting at the schema layer means a crafted
+        // body never reaches the filesystem in the first place.
+        assert!(!is_valid_input_artifact_id("../escape"));
+        assert!(!is_valid_input_artifact_id("ltx23-input-../escape"));
+        assert!(!is_valid_input_artifact_id("ltx23-input-with/slash"));
+        assert!(!is_valid_input_artifact_id("ltx23-input-with\\back"));
+        assert!(!is_valid_input_artifact_id("ltx23-input-has.dot"));
+        // Empty / missing prefix / missing tail.
+        assert!(!is_valid_input_artifact_id(""));
+        assert!(!is_valid_input_artifact_id("01J9ABC"));
+        assert!(!is_valid_input_artifact_id("ltx23-input-"));
+        // Wrong prefix — sibling extensions must not be addressable
+        // through this validator.
+        assert!(!is_valid_input_artifact_id("emotion-tts-input-01J9"));
+        // Oversized.
+        let too_long = format!("ltx23-input-{}", "a".repeat(100));
+        assert!(!is_valid_input_artifact_id(&too_long));
+    }
+
+    #[test]
+    fn create_render_request_round_trips_input_image_artifact_id() {
+        let wire = json!({
+            "prompt": "a cinematic dolly shot",
+            "input_image_artifact_id": "ltx23-input-01J9ABCDEFGHJKMNPQRSTVWXYZ",
+            "duration_seconds": 6.0,
+            "runtime_profile": "auto",
+            "quality_preset": "balanced16gb",
+        });
+        let parsed: CreateRenderRequest = serde_json::from_value(wire).unwrap();
+        assert_eq!(
+            parsed.input_image_artifact_id.as_deref(),
+            Some("ltx23-input-01J9ABCDEFGHJKMNPQRSTVWXYZ")
+        );
+        // Round-trips through serde without loss.
+        let again = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(
+            again["input_image_artifact_id"].as_str(),
+            Some("ltx23-input-01J9ABCDEFGHJKMNPQRSTVWXYZ")
+        );
+    }
+
+    #[test]
+    fn validate_field_bounds_rejects_bad_input_artifact_id() {
+        let mut req = CreateRenderRequest {
+            project_id: None,
+            input_image_artifact_id: Some("../escape".into()),
+            prompt: "ok".into(),
+            negative_prompt: None,
+            style_prompt: None,
+            character_prompt: None,
+            scenes: vec![],
+            duration_seconds: 4.0,
+            runtime_profile: RuntimeProfilePreference::default(),
+            quality_preset: QualityPreset::default(),
+            width: None,
+            height: None,
+            base_fps: None,
+            output_fps: None,
+            seed: None,
+            advanced: AdvancedSettings::default(),
+        };
+        let err = req.validate_field_bounds().unwrap_err();
+        assert!(err.contains("input_image_artifact_id"));
+        assert!(err.contains("invalid shape"));
+
+        // Accepting the canonical shape unblocks validation.
+        req.input_image_artifact_id = Some("ltx23-input-01J9ABCDEFGHJKMNPQRSTVWXYZ".into());
+        assert!(req.validate_field_bounds().is_ok());
+
+        // None passes (the field is optional).
+        req.input_image_artifact_id = None;
+        assert!(req.validate_field_bounds().is_ok());
     }
 
     #[test]
