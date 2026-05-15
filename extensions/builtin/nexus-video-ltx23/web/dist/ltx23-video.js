@@ -12106,7 +12106,7 @@ function Zy({
     d.transformer && d.transformer !== "auto" ? `T:${d.transformer}` : null,
     d.vae && d.vae !== "auto" ? `V:${d.vae}` : null,
     d.text_encoder && d.text_encoder !== "auto" ? `E:${d.text_encoder}` : null,
-    c.text_encoder_quant && c.text_encoder_quant !== "default" ? `quant:${c.text_encoder_quant}` : null
+    c.quantization && c.quantization !== "none" ? `quant:${c.quantization}` : null
   ].filter(Boolean).join(" · ");
   return /* @__PURE__ */ o.jsxs("details", { className: Ri, style: { marginTop: 10 }, children: [
     /* @__PURE__ */ o.jsxs("summary", { className: Ui, children: [
@@ -12145,32 +12145,29 @@ function Zy({
         )
       ] }),
       /* @__PURE__ */ o.jsxs("div", { className: Kl, children: [
-        /* @__PURE__ */ o.jsx("label", { className: Fl, htmlFor: "ltx-text-encoder-quant", children: "Text-encoder quantisation" }),
+        /* @__PURE__ */ o.jsx("label", { className: Fl, htmlFor: "ltx-quantization", children: "Weight quantisation" }),
         /* @__PURE__ */ o.jsxs(
           "select",
           {
-            id: "ltx-text-encoder-quant",
+            id: "ltx-quantization",
             className: rt,
-            value: c.text_encoder_quant ?? "default",
+            value: c.quantization ?? "none",
             onChange: (z) => {
               const C = z.target.value;
-              y(
-                "text_encoder_quant",
-                C === "default" ? void 0 : C
-              );
+              y("quantization", C === "none" ? void 0 : C);
             },
             children: [
-              /* @__PURE__ */ o.jsx("option", { value: "default", children: "Default — keep profile's bf16" }),
-              /* @__PURE__ */ o.jsx("option", { value: "fp8", children: "FP8 (bnb 8-bit) — ~5.5 GB encoder" }),
-              /* @__PURE__ */ o.jsx("option", { value: "int8", children: "INT8 (bnb 8-bit) — ~5.5 GB encoder" }),
-              /* @__PURE__ */ o.jsx("option", { value: "nf4", children: "NF4 (bnb 4-bit) — ~3 GB encoder" })
+              /* @__PURE__ */ o.jsx("option", { value: "none", children: "None — raw bf16 (~83 GB, 80 GB+ card)" }),
+              /* @__PURE__ */ o.jsx("option", { value: "nf4", children: "NF4 (bnb 4-bit) — ~22 GB, 16 GB-card default" }),
+              /* @__PURE__ */ o.jsx("option", { value: "int8", children: "INT8 (bnb 8-bit) — ~42 GB, higher fidelity" })
             ]
           }
         ),
         /* @__PURE__ */ o.jsxs("span", { className: Sl, children: [
-          "Non-default values require ",
+          "Quantises BOTH the LTX-2.3 transformer and the Gemma-3 text encoder at load. The shipped checkpoint is raw bf16 (~83 GB); nvfp4 defaults to NF4 so it runs on a 16 GB card. Requires",
+          " ",
           /* @__PURE__ */ o.jsx("code", { children: "bitsandbytes" }),
-          " in the worker venv. T5-XXL encodes once per render so the perceptual cost is modest even at NF4."
+          " in the worker venv."
         ] })
       ] }),
       /* @__PURE__ */ o.jsxs("div", { className: Kl, children: [

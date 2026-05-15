@@ -48,11 +48,14 @@ export interface ComponentPlacement {
 export type SchedulerChoice = "flow_match_euler" | "flow_match_heun";
 
 /**
- * Text-encoder runtime quantisation. `"default"` keeps whatever the
- * installed profile ships (bf16). The others load a bitsandbytes-
- * quantised T5-XXL and require `bitsandbytes` in the worker venv.
+ * On-the-fly weight quantisation applied to BOTH heavy components
+ * (LTX-2.3 transformer + Gemma-3 text encoder) at pipeline-load time.
+ * The shipped checkpoint is raw bf16 (~83 GB) — `"nf4"` shrinks it to
+ * ~22 GB so it runs on a 16 GB GPU under sequential offload without
+ * shared-VRAM spill. `"none"` keeps raw weights (80 GB+ card only).
+ * Requires `bitsandbytes` in the worker venv.
  */
-export type TextEncoderQuant = "default" | "fp8" | "int8" | "nf4";
+export type ModelQuant = "none" | "nf4" | "int8";
 
 export interface AdvancedSettings {
   /** Classifier-Free Guidance scale ("temperature"). 1.0–7.0. Default 4.0. */
@@ -68,8 +71,9 @@ export interface AdvancedSettings {
   component_placement?: ComponentPlacement;
   /** Flow-matching scheduler. Defaults to flow_match_euler. */
   scheduler?: SchedulerChoice;
-  /** Text-encoder runtime quantisation. Defaults to "default". */
-  text_encoder_quant?: TextEncoderQuant;
+  /** Weight quantisation (transformer + text encoder). Omitted →
+   * backend resolves the per-profile default (nvfp4 → nf4). */
+  quantization?: ModelQuant;
   /** Flow-matching trajectory decode point. 0.0–1.0. */
   decode_timestep?: number;
   /** Noise injected into image-conditioning latent. 0.0–0.3. */

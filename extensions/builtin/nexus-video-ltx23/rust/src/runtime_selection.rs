@@ -1,4 +1,6 @@
-use crate::schemas::{ComponentPlacement, DevicePreference, OffloadMode, RuntimeProfilePreference};
+use crate::schemas::{
+    ComponentPlacement, DevicePreference, ModelQuant, OffloadMode, RuntimeProfilePreference,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ProfileDescriptor {
@@ -63,28 +65,39 @@ pub const fn resolve_runtime_id(preference: RuntimeProfilePreference) -> &'stati
 /// qualified `"nexus.video.ltx23.rtx50-nvfp4"`. Match the existing
 /// `short_profile()` helper in `runner.rs`.
 ///
-/// Rationale per profile:
-/// - `rtx50-nvfp4`: `Model`. Real-GPU verification on 2026-05-15
-///   proved that `None` (every component GPU-resident) is unviable on
-///   a 16 GB card — the NVFP4 transformer (~11 GB) plus the T5-XXL
-///   text encoder (~11 GB) cannot co-reside. The naive workaround
-///   (transformer on CUDA, T5 on CPU) makes the LTX2 diffusers
-///   pipeline raise a cross-device tensor mismatch because it assumes
-///   all components are co-located. `enable_model_cpu_offload()` is
-///   the diffusers-blessed answer: it pages each submodule onto the
-///   GPU only while active, handles cross-device movement
-///   automatically, and peaks at the largest single submodule
-///   (~11 GB) rather than the sum.
-/// - `rtx50-fp8` / `rtx40-fp8`: FP8 weights ~14 GB. `model_cpu_offload`
-///   was documented to spill to unified memory on RTX 5070 Ti; until
-///   a fresh benchmark proves `Model` fits cleanly, default
-///   `Sequential` and let operators opt up.
-/// - `fake` / unknown: `Sequential` is the safest mode.
+/// Rationale per profile (all default to `Sequential`):
+///
+/// Real-GPU verification across 2026-05-15/16 established that the
+/// shipped LTX-2.3 checkpoint is unquantized bf16 (a ~36 GB
+/// transformer alongside a ~46 GB Gemma-3 text encoder, ~83 GB total).
+/// `None` (all resident) and `Model` (whole-transformer-at-once
+/// paging) both overflow a 16 GB card into Windows shared VRAM and
+/// thrash forever. With the nvfp4 profile now defaulting to NF4
+/// quantisation (see `default_quant_for_profile`) the footprint drops
+/// to ~22 GB, which fits 96 GB system RAM and pages cleanly under
+/// `Sequential` (per-layer offload, ~2 GB peak VRAM, never touches
+/// shared VRAM). `Sequential` is therefore the safe default for every
+/// profile; operators with a big-VRAM card can opt up to `Model`/`None`.
 #[must_use]
-pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
+pub const fn default_offload_mode_for_profile(_profile: &str) -> OffloadMode {
+    OffloadMode::Sequential
+}
+
+/// Default quantisation per profile.
+///
+/// `rtx50-nvfp4` → `Nf4`: the profile name promises 4-bit but the
+/// shipped checkpoint is raw bf16; without on-the-fly NF4 quant it
+/// loads 83 GB and cannot run on 16 GB. NF4 shrinks transformer +
+/// Gemma-3 encoder to ~22 GB.
+///
+/// Every other profile → `None`: `fake`/CI has no real weights, and
+/// the fp8 profiles' quant story is a separate (unbuilt) path — they
+/// keep raw weights until explicitly addressed.
+#[must_use]
+pub const fn default_quant_for_profile(profile: &str) -> ModelQuant {
     match profile.as_bytes() {
-        b"rtx50-nvfp4" => OffloadMode::Model,
-        _ => OffloadMode::Sequential,
+        b"rtx50-nvfp4" => ModelQuant::Nf4,
+        _ => ModelQuant::None,
     }
 }
 
@@ -533,32 +546,40 @@ mod tests {
     }
 
     #[test]
-    fn default_offload_mode_per_profile() {
-        // nvfp4 → Model: real-GPU verification proved None (all
-        // resident) can't fit T5 + transformer on 16 GB and the manual
-        // split breaks the pipeline's co-location assumption.
-        // enable_model_cpu_offload is the diffusers-correct answer.
-        // Every other profile → Sequential (safest, lowest VRAM).
-        assert_eq!(
-            default_offload_mode_for_profile("rtx50-nvfp4"),
-            OffloadMode::Model
-        );
-        assert_eq!(
-            default_offload_mode_for_profile("rtx50-fp8"),
-            OffloadMode::Sequential
-        );
-        assert_eq!(
-            default_offload_mode_for_profile("rtx40-fp8"),
-            OffloadMode::Sequential
-        );
-        assert_eq!(
-            default_offload_mode_for_profile("fake"),
-            OffloadMode::Sequential
-        );
-        assert_eq!(
-            default_offload_mode_for_profile("future-profile-xyz"),
-            OffloadMode::Sequential
-        );
+    fn default_offload_mode_is_sequential_for_every_profile() {
+        // After the 2026-05-16 finding (shipped checkpoint is 83 GB raw
+        // bf16; nf4 quant brings nvfp4 to ~22 GB) Sequential is the
+        // safe default for ALL profiles: per-layer paging, ~2 GB peak
+        // VRAM, never touches Windows shared VRAM. None/Model both
+        // overflow 16 GB and hang.
+        for p in [
+            "rtx50-nvfp4",
+            "rtx50-fp8",
+            "rtx40-fp8",
+            "fake",
+            "future-profile-xyz",
+        ] {
+            assert_eq!(
+                default_offload_mode_for_profile(p),
+                OffloadMode::Sequential,
+                "profile={p}"
+            );
+        }
+    }
+
+    #[test]
+    fn default_quant_per_profile() {
+        // nvfp4 → Nf4 (the profile name promises 4-bit; the shipped
+        // checkpoint is raw bf16, so without on-the-fly nf4 it loads
+        // 83 GB). Everything else keeps raw weights.
+        assert_eq!(default_quant_for_profile("rtx50-nvfp4"), ModelQuant::Nf4);
+        for p in ["rtx50-fp8", "rtx40-fp8", "fake", "xyz"] {
+            assert_eq!(
+                default_quant_for_profile(p),
+                ModelQuant::None,
+                "profile={p}"
+            );
+        }
     }
 
     #[test]
