@@ -139,6 +139,32 @@ pub struct AdvancedSettings {
     /// higher steps improve quality with diminishing returns and roughly
     /// linear wall-clock cost. Sensible range: 4 (fastest, lossy) – 30.
     pub num_inference_steps: Option<u32>,
+    /// CPU/GPU offload aggressiveness for the diffusers pipeline. `Auto`
+    /// resolves to the per-profile default in `runner.rs` before the
+    /// payload reaches the worker — the worker never sees `auto`.
+    #[serde(default)]
+    pub offload_mode: OffloadMode,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OffloadMode {
+    /// Use the per-profile default. Resolved away in
+    /// `runner.rs::build_render_params` so the worker only ever observes
+    /// `none`, `model`, or `sequential`.
+    #[default]
+    Auto,
+    /// `pipe.to("cuda")` — full pipeline resident on GPU. Fastest,
+    /// requires most VRAM. Worker rejects this mode on cards with
+    /// less than 16 GB total VRAM.
+    None,
+    /// `pipe.enable_model_cpu_offload()` — one major submodule on GPU
+    /// at a time. Mid-grained, mid-speed.
+    Model,
+    /// `pipe.enable_sequential_cpu_offload()` — one layer on GPU at a
+    /// time. Slowest, lowest VRAM. Current per-profile default for
+    /// fp8 profiles.
+    Sequential,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
