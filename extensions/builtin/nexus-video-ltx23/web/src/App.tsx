@@ -21,7 +21,7 @@ import {
   type RuntimeProfileSummary,
   type SceneSpec,
   type SchedulerChoice,
-  type TextEncoderQuant,
+  type ModelQuant,
   artifactUrl,
   hostApi,
   ltxApi,
@@ -1187,8 +1187,8 @@ function PipelineTuningPanel({
     placement.text_encoder && placement.text_encoder !== "auto"
       ? `E:${placement.text_encoder}`
       : null,
-    advanced.text_encoder_quant && advanced.text_encoder_quant !== "default"
-      ? `quant:${advanced.text_encoder_quant}`
+    advanced.quantization && advanced.quantization !== "none"
+      ? `quant:${advanced.quantization}`
       : null,
   ]
     .filter(Boolean)
@@ -1225,30 +1225,27 @@ function PipelineTuningPanel({
           />
         </div>
         <div className={s.fieldRow}>
-          <label className={s.label} htmlFor="ltx-text-encoder-quant">
-            Text-encoder quantisation
+          <label className={s.label} htmlFor="ltx-quantization">
+            Weight quantisation
           </label>
           <select
-            id="ltx-text-encoder-quant"
+            id="ltx-quantization"
             className={s.input}
-            value={advanced.text_encoder_quant ?? "default"}
+            value={advanced.quantization ?? "none"}
             onChange={(e) => {
-              const v = e.target.value as TextEncoderQuant;
-              setAdvanced(
-                "text_encoder_quant",
-                v === "default" ? undefined : v,
-              );
+              const v = e.target.value as ModelQuant;
+              setAdvanced("quantization", v === "none" ? undefined : v);
             }}
           >
-            <option value="default">Default — keep profile's bf16</option>
-            <option value="fp8">FP8 (bnb 8-bit) — ~5.5 GB encoder</option>
-            <option value="int8">INT8 (bnb 8-bit) — ~5.5 GB encoder</option>
-            <option value="nf4">NF4 (bnb 4-bit) — ~3 GB encoder</option>
+            <option value="none">None — raw bf16 (~83 GB, 80 GB+ card)</option>
+            <option value="nf4">NF4 (bnb 4-bit) — ~22 GB, 16 GB-card default</option>
+            <option value="int8">INT8 (bnb 8-bit) — ~42 GB, higher fidelity</option>
           </select>
           <span className={s.meta}>
-            Non-default values require <code>bitsandbytes</code> in the
-            worker venv. T5-XXL encodes once per render so the
-            perceptual cost is modest even at NF4.
+            Quantises BOTH the LTX-2.3 transformer and the Gemma-3 text
+            encoder at load. The shipped checkpoint is raw bf16 (~83 GB);
+            nvfp4 defaults to NF4 so it runs on a 16 GB card. Requires{" "}
+            <code>bitsandbytes</code> in the worker venv.
           </span>
         </div>
         <div className={s.fieldRow}>

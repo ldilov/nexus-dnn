@@ -10,9 +10,11 @@ use tokio::sync::{Mutex, Notify};
 use crate::errors::Result;
 use crate::lease::LeaseAcquirer;
 use crate::notification_buffer::{NotificationBuffer, SegmentStatusWrite};
-use crate::runtime_selection::{default_offload_mode_for_profile, resolve_component_placement};
+use crate::runtime_selection::{
+    default_offload_mode_for_profile, default_quant_for_profile, resolve_component_placement,
+};
 use crate::schemas::{
-    AdvancedSettings, DevicePreference, OffloadMode, RenderPlan, SchedulerChoice, TextEncoderQuant,
+    AdvancedSettings, DevicePreference, ModelQuant, OffloadMode, RenderPlan, SchedulerChoice,
 };
 use crate::storage::Repos;
 use crate::vram_supervisor::{VramSupervisor, VramVerdict};
@@ -1446,11 +1448,19 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
         SchedulerChoice::FlowMatchEuler => "flow_match_euler",
         SchedulerChoice::FlowMatchHeun => "flow_match_heun",
     };
-    let text_encoder_quant_str = match advanced.text_encoder_quant {
-        TextEncoderQuant::Default => "default",
-        TextEncoderQuant::Fp8 => "fp8",
-        TextEncoderQuant::Int8 => "int8",
-        TextEncoderQuant::Nf4 => "nf4",
+    // The shipped checkpoint is unquantized bf16 (~83 GB). When the
+    // operator leaves quant on the default `None`, resolve a
+    // per-profile default so nvfp4 actually quantises (nf4) instead of
+    // trying to load 83 GB onto a 16 GB card. Explicit operator choice
+    // always wins.
+    let quant = match advanced.quantization {
+        ModelQuant::None => default_quant_for_profile(short_profile(runtime_profile)),
+        explicit => explicit,
+    };
+    let quant_str = match quant {
+        ModelQuant::None => "none",
+        ModelQuant::Nf4 => "nf4",
+        ModelQuant::Int8 => "int8",
     };
 
     let decode_timestep = advanced
@@ -1470,7 +1480,7 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
         "component_placement": placement_json,
         "placement_overridden": placement_overridden,
         "scheduler": scheduler_str,
-        "text_encoder_quant": text_encoder_quant_str,
+        "quantization": quant_str,
         "decode_timestep": decode_timestep,
         "image_cond_noise_scale": image_cond_noise_scale,
         "guidance_rescale": guidance_rescale,
@@ -1818,7 +1828,7 @@ mod tests {
     }
 
     #[test]
-    fn build_render_params_auto_resolves_to_model_for_rtx50_nvfp4() {
+    fn build_render_params_auto_resolves_to_sequential_for_rtx50_nvfp4() {
         let mut plan = sample_plan(1);
         plan.runtime_profile = "nexus.video.ltx23.rtx50-nvfp4".into();
         let workdir = PathBuf::from("/runs/run-y/work");
@@ -1828,10 +1838,11 @@ mod tests {
         );
         assert_eq!(
             params["advanced"]["offload_mode"].as_str(),
-            Some("model"),
-            "Auto on rtx50-nvfp4 must resolve to model — None can't fit \
-             T5 + transformer on 16 GB and the manual split breaks the \
-             LTX2 pipeline's co-location assumption (verified 2026-05-15)"
+            Some("sequential"),
+            "Auto on rtx50-nvfp4 → sequential: with nf4 quant the \
+             footprint is ~22 GB which fits 96 GB RAM and pages cleanly \
+             per-layer (~2 GB peak VRAM). None/Model both overflow 16 GB \
+             into Windows shared VRAM and hang (verified 2026-05-16)."
         );
     }
 
@@ -1895,25 +1906,24 @@ mod tests {
 
     #[test]
     fn build_advanced_block_resolves_placement_from_offload_mode() {
-        // Auto offload on rtx50-nvfp4 → Model offload (the verified
-        // 16 GB-correct default). placement_for_offload_mode(Model) =
-        // transformer paged from CPU, vae + text_encoder cuda-resident
-        // one-shot. The offload hook owns actual device movement; the
-        // triple is informational under Model.
+        // Auto on rtx50-nvfp4 → Sequential (the verified-safe default
+        // for the nf4-quantised ~22 GB footprint). Sequential's
+        // implied placement is all-CPU stable storage; the per-layer
+        // offload hook owns actual device movement.
         let advanced = AdvancedSettings::default();
         let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
-        assert_eq!(block["offload_mode"].as_str(), Some("model"));
+        assert_eq!(block["offload_mode"].as_str(), Some("sequential"));
         assert_eq!(block["component_placement"]["transformer"].as_str(), Some("cpu"));
-        assert_eq!(block["component_placement"]["vae"].as_str(), Some("cuda"));
-        assert_eq!(block["component_placement"]["text_encoder"].as_str(), Some("cuda"));
+        assert_eq!(block["component_placement"]["vae"].as_str(), Some("cpu"));
+        assert_eq!(block["component_placement"]["text_encoder"].as_str(), Some("cpu"));
         assert_eq!(block["placement_overridden"].as_bool(), Some(false));
     }
 
     #[test]
     fn build_advanced_block_respects_explicit_per_component_override() {
         // Operator pins transformer to CUDA on top of the Auto-resolved
-        // nvfp4 Model placement (transformer would otherwise be cpu).
-        // The explicit field wins; the others fall through to implied.
+        // nvfp4 Sequential placement (all-cpu by default). The explicit
+        // field wins; the others fall through to implied (cpu).
         let advanced = AdvancedSettings {
             component_placement: crate::schemas::ComponentPlacement {
                 transformer: crate::schemas::DevicePreference::Cuda,
@@ -1924,7 +1934,7 @@ mod tests {
         };
         let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
         assert_eq!(block["component_placement"]["transformer"].as_str(), Some("cuda"));
-        assert_eq!(block["component_placement"]["vae"].as_str(), Some("cuda"));
+        assert_eq!(block["component_placement"]["vae"].as_str(), Some("cpu"));
         assert_eq!(block["placement_overridden"].as_bool(), Some(true));
     }
 
@@ -1939,24 +1949,44 @@ mod tests {
     }
 
     #[test]
-    fn build_advanced_block_emits_concrete_text_encoder_quant_string() {
+    fn build_advanced_block_explicit_quant_propagates_verbatim() {
+        // An explicit operator choice always wins over the per-profile
+        // default, on any profile.
         for (variant, expected) in [
-            (crate::schemas::TextEncoderQuant::Default, "default"),
-            (crate::schemas::TextEncoderQuant::Fp8, "fp8"),
-            (crate::schemas::TextEncoderQuant::Int8, "int8"),
-            (crate::schemas::TextEncoderQuant::Nf4, "nf4"),
+            (crate::schemas::ModelQuant::Nf4, "nf4"),
+            (crate::schemas::ModelQuant::Int8, "int8"),
         ] {
             let advanced = AdvancedSettings {
-                text_encoder_quant: variant,
+                quantization: variant,
                 ..AdvancedSettings::default()
             };
             let block = build_advanced_block(&advanced, "nexus.video.ltx23.fake");
             assert_eq!(
-                block["text_encoder_quant"].as_str(),
+                block["quantization"].as_str(),
                 Some(expected),
                 "variant={variant:?}"
             );
         }
+    }
+
+    #[test]
+    fn build_advanced_block_nvfp4_default_quant_is_nf4() {
+        // The whole point of the quant work: the shipped checkpoint is
+        // 83 GB raw bf16. With quant left at the default None, nvfp4
+        // must resolve to nf4 so it actually fits — NOT pass `none`
+        // through and try to load 83 GB onto a 16 GB card.
+        let advanced = AdvancedSettings::default();
+        let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
+        assert_eq!(block["quantization"].as_str(), Some("nf4"));
+        // And the safe offload mode for the quantised footprint.
+        assert_eq!(block["offload_mode"].as_str(), Some("sequential"));
+    }
+
+    #[test]
+    fn build_advanced_block_fake_profile_default_quant_is_none() {
+        let advanced = AdvancedSettings::default();
+        let block = build_advanced_block(&advanced, "nexus.video.ltx23.fake");
+        assert_eq!(block["quantization"].as_str(), Some("none"));
     }
 
     #[test]
