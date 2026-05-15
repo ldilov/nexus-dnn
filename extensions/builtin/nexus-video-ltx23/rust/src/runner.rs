@@ -1828,7 +1828,7 @@ mod tests {
     }
 
     #[test]
-    fn build_render_params_auto_resolves_to_sequential_for_rtx50_nvfp4() {
+    fn build_render_params_auto_resolves_to_model_for_rtx50_nvfp4() {
         let mut plan = sample_plan(1);
         plan.runtime_profile = "nexus.video.ltx23.rtx50-nvfp4".into();
         let workdir = PathBuf::from("/runs/run-y/work");
@@ -1838,11 +1838,12 @@ mod tests {
         );
         assert_eq!(
             params["advanced"]["offload_mode"].as_str(),
-            Some("sequential"),
-            "Auto on rtx50-nvfp4 → sequential: with nf4 quant the \
-             footprint is ~22 GB which fits 96 GB RAM and pages cleanly \
-             per-layer (~2 GB peak VRAM). None/Model both overflow 16 GB \
-             into Windows shared VRAM and hang (verified 2026-05-16)."
+            Some("model"),
+            "Auto on rtx50-nvfp4 → model: the profile is NF4-quantised, \
+             and bnb is incompatible with sequential offload (meta-tensor \
+             copy error). enable_model_cpu_offload is the bnb-supported \
+             combo; at ~22 GB its ~10 GB peak fits 16 GB (verified \
+             2026-05-16)."
         );
     }
 
@@ -1906,35 +1907,37 @@ mod tests {
 
     #[test]
     fn build_advanced_block_resolves_placement_from_offload_mode() {
-        // Auto on rtx50-nvfp4 → Sequential (the verified-safe default
-        // for the nf4-quantised ~22 GB footprint). Sequential's
-        // implied placement is all-CPU stable storage; the per-layer
-        // offload hook owns actual device movement.
+        // Auto on rtx50-nvfp4 → Model (bnb-quantised; sequential is
+        // bnb-incompatible). placement_for_offload_mode(Model) =
+        // transformer paged from CPU, vae + text_encoder cuda-resident.
+        // The model-offload hook owns actual device movement; the
+        // triple is informational under a hooked mode.
         let advanced = AdvancedSettings::default();
         let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
-        assert_eq!(block["offload_mode"].as_str(), Some("sequential"));
+        assert_eq!(block["offload_mode"].as_str(), Some("model"));
         assert_eq!(block["component_placement"]["transformer"].as_str(), Some("cpu"));
-        assert_eq!(block["component_placement"]["vae"].as_str(), Some("cpu"));
-        assert_eq!(block["component_placement"]["text_encoder"].as_str(), Some("cpu"));
+        assert_eq!(block["component_placement"]["vae"].as_str(), Some("cuda"));
+        assert_eq!(block["component_placement"]["text_encoder"].as_str(), Some("cuda"));
         assert_eq!(block["placement_overridden"].as_bool(), Some(false));
     }
 
     #[test]
     fn build_advanced_block_respects_explicit_per_component_override() {
-        // Operator pins transformer to CUDA on top of the Auto-resolved
-        // nvfp4 Sequential placement (all-cpu by default). The explicit
-        // field wins; the others fall through to implied (cpu).
+        // Operator pins vae to CPU on top of the Auto-resolved nvfp4
+        // Model placement (vae would otherwise be cuda). The explicit
+        // field wins; the others fall through to implied.
         let advanced = AdvancedSettings {
             component_placement: crate::schemas::ComponentPlacement {
-                transformer: crate::schemas::DevicePreference::Cuda,
-                vae: crate::schemas::DevicePreference::Auto,
+                transformer: crate::schemas::DevicePreference::Auto,
+                vae: crate::schemas::DevicePreference::Cpu,
                 text_encoder: crate::schemas::DevicePreference::Auto,
             },
             ..AdvancedSettings::default()
         };
         let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
-        assert_eq!(block["component_placement"]["transformer"].as_str(), Some("cuda"));
+        assert_eq!(block["component_placement"]["transformer"].as_str(), Some("cpu"));
         assert_eq!(block["component_placement"]["vae"].as_str(), Some("cpu"));
+        assert_eq!(block["component_placement"]["text_encoder"].as_str(), Some("cuda"));
         assert_eq!(block["placement_overridden"].as_bool(), Some(true));
     }
 
@@ -1978,8 +1981,9 @@ mod tests {
         let advanced = AdvancedSettings::default();
         let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
         assert_eq!(block["quantization"].as_str(), Some("nf4"));
-        // And the safe offload mode for the quantised footprint.
-        assert_eq!(block["offload_mode"].as_str(), Some("sequential"));
+        // Model offload — the bnb-compatible pairing for the quantised
+        // footprint (sequential + bnb = meta-tensor copy error).
+        assert_eq!(block["offload_mode"].as_str(), Some("model"));
     }
 
     #[test]
