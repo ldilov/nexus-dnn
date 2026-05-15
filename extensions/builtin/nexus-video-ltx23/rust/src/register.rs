@@ -4,7 +4,7 @@ use axum::Router;
 use nexus_extension::{BuildRouterError, ExtensionContext, ExtensionRouterProvider};
 use sqlx::SqlitePool;
 
-use crate::api::{ApiState, http_routes, router};
+use crate::api::{http_routes, router, ApiState};
 use crate::lease::LtxLeaseFactory;
 use crate::migrations::MIGRATIONS;
 use crate::profile_install::ProfileInstallService;
@@ -58,14 +58,15 @@ impl LtxRouterProvider {
     async fn build_router_inner(&self) -> Result<Router, BuildRouterError> {
         apply_migrations(&self.resources.pool).await?;
 
-        let runs_dir = self
+        let extension_data_root = self
             .resources
             .host_data_dir
             .clone()
             .unwrap_or_else(|| std::env::temp_dir().join("nexus-video-ltx23-runs"))
             .join("extensions")
-            .join(EXTENSION_ID)
-            .join("runs");
+            .join(EXTENSION_ID);
+        let runs_dir = extension_data_root.join("runs");
+        let inputs_dir = extension_data_root.join("inputs");
 
         tokio::fs::create_dir_all(&runs_dir)
             .await
@@ -73,6 +74,14 @@ impl LtxRouterProvider {
                 Box::new(std::io::Error::other(format!(
                     "create runs dir {}: {e}",
                     runs_dir.display()
+                )))
+            })?;
+        tokio::fs::create_dir_all(&inputs_dir)
+            .await
+            .map_err(|e| -> BuildRouterError {
+                Box::new(std::io::Error::other(format!(
+                    "create inputs dir {}: {e}",
+                    inputs_dir.display()
                 )))
             })?;
 
@@ -105,6 +114,7 @@ impl LtxRouterProvider {
 
         let runner = Runner::new(RunnerConfig {
             runs_dir: runs_dir.clone(),
+            inputs_dir: inputs_dir.clone(),
             repos: repos.clone(),
             factory: factory.clone(),
             vram_supervisor: VramSupervisor::from_env(),
@@ -122,6 +132,7 @@ impl LtxRouterProvider {
             repos,
             runner,
             runs_dir,
+            inputs_dir,
             EXTENSION_VERSION,
             profile_install,
         );
