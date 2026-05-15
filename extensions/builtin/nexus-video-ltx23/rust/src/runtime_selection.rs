@@ -124,18 +124,53 @@ pub const fn placement_for_offload_mode(mode: OffloadMode) -> ComponentPlacement
     }
 }
 
-/// Compose an explicit per-component override on top of an
-/// `OffloadMode`-implied placement.
+/// Profile-tuned base placement, before any operator override.
 ///
-/// Any field that the operator left as `Auto` falls through to the
-/// implied placement; any explicit `Cuda` / `Cpu` field overrides.
-/// Result is always fully concrete — every field is `Cuda` or `Cpu`.
+/// `placement_for_offload_mode` describes what an offload mode means in
+/// the abstract, but a 16 GB-class card physically cannot hold every
+/// component of an LTX-2.3 NVFP4 pipeline at once: the NVFP4 transformer
+/// is ~11 GB and the T5-XXL text encoder is another ~11 GB — together
+/// ~22 GB, well over 16 GB. Real-GPU verification on 2026-05-15 proved
+/// `offload_mode=none` (all-CUDA) stalls indefinitely on exactly this
+/// card because the move thrashes / never completes.
+///
+/// So the NVFP4 profile's default keeps the text encoder on CPU even
+/// under `None` — it runs once per render, so the ~1-2 s round-trip
+/// cost is negligible against freeing 11 GB for the transformer +
+/// activations. Other profiles defer to the offload mode unchanged
+/// (FP8 paths page the transformer via hooks and never try to hold
+/// everything resident).
+#[must_use]
+pub const fn default_placement_for_profile(
+    profile: &str,
+    base_mode: OffloadMode,
+) -> ComponentPlacement {
+    match profile.as_bytes() {
+        b"rtx50-nvfp4" => ComponentPlacement {
+            transformer: DevicePreference::Cuda,
+            vae: DevicePreference::Cuda,
+            // The one deliberate divergence from
+            // placement_for_offload_mode(None): T5 stays on CPU because
+            // transformer + T5 don't co-fit on 16 GB.
+            text_encoder: DevicePreference::Cpu,
+        },
+        _ => placement_for_offload_mode(base_mode),
+    }
+}
+
+/// Compose an explicit per-component override on top of the
+/// profile-tuned base placement.
+///
+/// Any field the operator left as `Auto` falls through to the profile
+/// default; any explicit `Cuda` / `Cpu` field overrides. Result is
+/// always fully concrete — every field is `Cuda` or `Cpu`.
 #[must_use]
 pub const fn resolve_component_placement(
+    profile: &str,
     base_mode: OffloadMode,
     override_triple: ComponentPlacement,
 ) -> ComponentPlacement {
-    let implied = placement_for_offload_mode(base_mode);
+    let implied = default_placement_for_profile(profile, base_mode);
     ComponentPlacement {
         transformer: match override_triple.transformer {
             DevicePreference::Auto => implied.transformer,
@@ -413,10 +448,11 @@ mod tests {
     }
 
     #[test]
-    fn resolve_component_placement_passes_through_when_all_auto() {
-        // Operator left every field at default Auto — implied placement
-        // from the offload mode propagates verbatim.
+    fn resolve_component_placement_passes_through_when_all_auto_non_nvfp4() {
+        // A non-nvfp4 profile under all-Auto falls through to the
+        // offload-mode-implied placement verbatim.
         let resolved = resolve_component_placement(
+            "rtx50-fp8",
             OffloadMode::None,
             ComponentPlacement::default(),
         );
@@ -424,24 +460,67 @@ mod tests {
     }
 
     #[test]
-    fn resolve_component_placement_lets_explicit_overrides_win() {
-        // Operator pinned text_encoder to CPU on a None-mode pipeline
-        // (the recommended nvfp4-on-16GB shape — keep T5 off the GPU).
+    fn resolve_component_placement_nvfp4_default_keeps_t5_on_cpu() {
+        // THE regression guard: nvfp4 + all-Auto + None must NOT put
+        // the ~11 GB T5 on the GPU (transformer + T5 don't co-fit on
+        // 16 GB). Without an operator override, the profile default
+        // keeps text_encoder on CPU.
         let resolved = resolve_component_placement(
+            "rtx50-nvfp4",
+            OffloadMode::None,
+            ComponentPlacement::default(),
+        );
+        assert_eq!(
+            resolved,
+            ComponentPlacement {
+                transformer: DevicePreference::Cuda,
+                vae: DevicePreference::Cuda,
+                text_encoder: DevicePreference::Cpu,
+            }
+        );
+    }
+
+    #[test]
+    fn resolve_component_placement_lets_explicit_overrides_win() {
+        // Operator forces text_encoder onto the GPU on nvfp4 even
+        // though the profile default keeps it on CPU — explicit wins.
+        let resolved = resolve_component_placement(
+            "rtx50-nvfp4",
             OffloadMode::None,
             ComponentPlacement {
                 transformer: DevicePreference::Auto,
                 vae: DevicePreference::Auto,
-                text_encoder: DevicePreference::Cpu,
+                text_encoder: DevicePreference::Cuda,
             },
         );
         assert_eq!(
             resolved,
             ComponentPlacement {
-                transformer: DevicePreference::Cuda, // from implied
-                vae: DevicePreference::Cuda,         // from implied
-                text_encoder: DevicePreference::Cpu, // explicit override
+                transformer: DevicePreference::Cuda, // profile default
+                vae: DevicePreference::Cuda,         // profile default
+                text_encoder: DevicePreference::Cuda, // explicit override
             }
+        );
+    }
+
+    #[test]
+    fn default_placement_for_profile_nvfp4_vs_others() {
+        assert_eq!(
+            default_placement_for_profile("rtx50-nvfp4", OffloadMode::None),
+            ComponentPlacement {
+                transformer: DevicePreference::Cuda,
+                vae: DevicePreference::Cuda,
+                text_encoder: DevicePreference::Cpu,
+            }
+        );
+        // Non-nvfp4 defers to the offload-mode mapping.
+        assert_eq!(
+            default_placement_for_profile("rtx50-fp8", OffloadMode::Sequential),
+            placement_for_offload_mode(OffloadMode::Sequential),
+        );
+        assert_eq!(
+            default_placement_for_profile("fake", OffloadMode::Model),
+            placement_for_offload_mode(OffloadMode::Model),
         );
     }
 

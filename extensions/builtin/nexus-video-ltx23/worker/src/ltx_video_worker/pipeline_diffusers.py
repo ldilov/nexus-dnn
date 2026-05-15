@@ -116,40 +116,43 @@ def _offload_mode_from_params(raw_params: dict[str, Any]) -> str:
 _MIN_VRAM_BYTES_FOR_NONE = 15 * 1024**3
 
 
-def _gguf_install_device_for_mode(offload_mode: str, device: str) -> str:
-    """Where GGUF-quantized parameters should land at install time.
+# The placement the worker falls back to only when the host payload
+# predates the component_placement contract entirely (older queued
+# renders). Mirrors the historical sequential-offload default — every
+# component CPU-resident, paged per forward call — so an old payload
+# behaves exactly as it did before this feature.
+_LEGACY_PLACEMENT: dict[str, str] = {
+    "transformer": "cpu",
+    "vae": "cpu",
+    "text_encoder": "cpu",
+}
 
-    Only `mode="none"` benefits from CUDA-resident weights. The offload
-    helpers (`model` / `sequential`) install hooks that page weights
-    from CPU to GPU per-forward; installing onto CUDA in those modes
-    would waste the memory the hooks were chosen to save.
-    """
-    return device if offload_mode == "none" else "cpu"
 
+def _component_placement_from_params(raw_params: dict[str, Any]) -> dict[str, str]:
+    """Extract the host-resolved component placement triple.
 
-def _component_placement_from_params(raw_params: dict[str, Any]) -> dict[str, str] | None:
-    """Extract per-component placement triple from the payload.
-
-    Returns the dict `{"transformer": "cuda"|"cpu", "vae": "cuda"|"cpu",
-    "text_encoder": "cuda"|"cpu"}` ONLY when the operator overrode the
-    preset (`placement_overridden=True`). When the preset stands, returns
-    None — the offload-hook path handles placement.
+    The host ALWAYS resolves Auto + per-profile defaults + operator
+    overrides into a fully concrete triple before dispatch, so this is
+    authoritative — there is no "preset vs override" branching on the
+    worker. Returns the historical all-CPU placement only when the
+    payload predates the contract (missing/malformed block), so a
+    stale queued render still behaves as it did before this feature.
     """
     advanced = raw_params.get("advanced") if isinstance(raw_params, dict) else None
     if not isinstance(advanced, dict):
-        return None
-    if not advanced.get("placement_overridden"):
-        return None
+        return dict(_LEGACY_PLACEMENT)
     placement = advanced.get("component_placement")
     if not isinstance(placement, dict):
-        return None
+        return dict(_LEGACY_PLACEMENT)
     out: dict[str, str] = {}
     for key in ("transformer", "vae", "text_encoder"):
         value = placement.get(key)
         if value in ("cuda", "cpu"):
             out[key] = value
         else:
-            return None  # malformed payload — defer to preset
+            # Any missing/garbage field → fall back wholesale rather
+            # than ship a half-resolved triple to the placement logic.
+            return dict(_LEGACY_PLACEMENT)
     return out
 
 
@@ -279,83 +282,96 @@ def _apply_text_encoder_quant(
     logger.info("diffusers.load_pipeline.text_encoder_quant", quant=quant)
 
 
-def _apply_component_placement(pipe: Any, placement: dict[str, str], logger: Any) -> None:
-    """Force each non-GGUF component onto the operator-specified device.
+def _place_components(
+    pipe: Any,
+    placement: dict[str, str],
+    logger: Any,
+    *,
+    include_transformer: bool,
+) -> None:
+    """Move each named component onto its host-resolved device.
 
-    Used when the operator overrode the preset (`placement_overridden=True`
-    in the payload). Skips the transformer when it was already installed
-    onto CUDA via the GGUF loader's install_device path — moving a GGUF
-    transformer after install would be a no-op anyway since GGUFParameter
-    doesn't honour stock `.to()`.
+    `placement` is fully concrete — the host already collapsed Auto +
+    per-profile defaults + operator overrides into `{"transformer":
+    "cuda"|"cpu", "vae": ..., "text_encoder": ...}`. The transformer is
+    only moved when `include_transformer` is True AND it wasn't already
+    placed at GGUF-install time (the caller decides).
     """
-    for name in ("vae", "text_encoder", "text_encoder_2"):
+    names: tuple[str, ...] = ()
+    if include_transformer:
+        names += ("transformer",)
+    names += ("vae", "text_encoder", "text_encoder_2")
+    moved: dict[str, str] = {}
+    for name in names:
+        key = "text_encoder" if name == "text_encoder_2" else name
+        target = placement.get(key)
+        if target is None:
+            continue
         submod = getattr(pipe, name, None)
         if submod is None or not hasattr(submod, "to"):
             continue
-        target = placement.get(name if name != "text_encoder_2" else "text_encoder")
-        if target is None:
-            continue
         submod.to(target)
-    logger.info("diffusers.load_pipeline.placement", placement=placement)
+        moved[name] = target
+    logger.info("diffusers.load_pipeline.placement", moved=moved)
 
 
-def _apply_offload_mode(
+def _place_pipeline(
     *,
     pipe: Any,
     offload_mode: str,
-    device: str,
+    placement: dict[str, str],
     torch_mod: Any,
     logger: Any,
-    gguf_already_placed: bool = False,
+    transformer_pre_placed: bool = False,
 ) -> Any:
-    """Apply the resolved offload strategy to a freshly-loaded pipeline.
+    """Place the pipeline per the host-resolved component triple.
 
-    Pure on its inputs apart from calling methods on `pipe`/`torch_mod`/
-    `logger`, which makes this the testable surface for the dispatch
-    contract. Returns the pipe (potentially after `pipe.to(device)`
-    moved it to the GPU for `mode="none"`).
+    The host always sends a concrete `placement` triple — there is no
+    "preset vs override" branching on the worker any more; the triple is
+    authoritative. `offload_mode` only decides whether the transformer
+    is paged by a diffusers offload hook (`model` / `sequential`) or
+    pinned by direct placement (`none`).
 
-    Raises `_ModelLoadFailed` when:
-    - `mode="none"` and `torch_mod.cuda.mem_get_info()[1] < 16 GB`;
-    - `mode="model"` and the pipe lacks `enable_model_cpu_offload`;
-    - `mode` is anything other than `none`/`model`/`sequential`.
+    `none`: no hooks. Every component is placed at `placement[name]`.
+    The NVFP4-on-16GB shape (`transformer=cuda, vae=cuda,
+    text_encoder=cpu`) keeps the ~11 GB T5 off the GPU so the ~11 GB
+    transformer + activations actually fit — `pipe.to("cuda")` on the
+    whole pipeline was the 2026-05-15 hang (T5 + transformer > 16 GB).
 
-    `pipe.to(device)` is reserved for `mode="none"`. Both offload
-    helpers manage device placement themselves; calling `.to(...)`
-    first defeats their hooks.
+    `model` / `sequential`: install the offload hook (it owns the
+    transformer's per-forward paging); still honour the vae +
+    text_encoder placement from the triple.
 
-    `gguf_already_placed`: when True, the caller has already installed
-    the GGUF transformer onto the correct device (see
-    `_gguf_install_device_for_mode`), so the `mode="none"` branch
-    skips the redundant `pipe.to(device)` — that call doesn't move
-    GGUFParameter instances anyway, and on a fresh CUDA-installed
-    transformer it would just waste a sweep.
+    Raises `_ModelLoadFailed` on insufficient VRAM for a CUDA-resident
+    config, a missing offload helper, or an unknown mode.
+
+    `transformer_pre_placed`: True when the GGUF loader already
+    installed the transformer onto its device; skip moving it again
+    (GGUFParameter doesn't honour stock `.to()` anyway).
     """
+    wants_cuda = "cuda" in placement.values()
     if offload_mode == "none":
-        free_bytes, total_bytes = torch_mod.cuda.mem_get_info()
-        if total_bytes < _MIN_VRAM_BYTES_FOR_NONE:
-            raise _ModelLoadFailed(
-                f"offload_mode=\"none\" needs a 16 GB-class GPU "
-                f"(>= {_MIN_VRAM_BYTES_FOR_NONE / 1024**3:.0f} GiB total); "
-                f"this card reports {total_bytes / 1024**3:.1f} GiB. "
-                f"Downgrade to \"model\" or \"sequential\"."
-            )
-        if gguf_already_placed:
-            # Transformer is already on CUDA (placed at install time).
-            # Move only the non-GGUF submodules — VAE, text encoder,
-            # scheduler buffers — via the standard path.
-            for name in ("vae", "text_encoder", "text_encoder_2"):
-                submod = getattr(pipe, name, None)
-                if submod is not None and hasattr(submod, "to"):
-                    submod.to(device)
-        else:
-            pipe = pipe.to(device)
+        if wants_cuda:
+            free_bytes, total_bytes = torch_mod.cuda.mem_get_info()
+            if total_bytes < _MIN_VRAM_BYTES_FOR_NONE:
+                raise _ModelLoadFailed(
+                    f"offload_mode=\"none\" needs a 16 GB-class GPU "
+                    f"(>= {_MIN_VRAM_BYTES_FOR_NONE / 1024**3:.0f} GiB "
+                    f"total); this card reports "
+                    f"{total_bytes / 1024**3:.1f} GiB. Downgrade to "
+                    f"\"model\" or \"sequential\"."
+                )
+        _place_components(
+            pipe,
+            placement,
+            logger,
+            include_transformer=not transformer_pre_placed,
+        )
         logger.info(
             "diffusers.load_pipeline.offload",
             mode="none",
-            gguf_already_placed=gguf_already_placed,
-            vram_total_gb=round(total_bytes / 1e9, 1),
-            vram_free_gb=round(free_bytes / 1e9, 1),
+            placement=placement,
+            transformer_pre_placed=transformer_pre_placed,
         )
         return pipe
     if offload_mode == "model":
@@ -365,24 +381,25 @@ def _apply_offload_mode(
                 "upgrade diffusers or pick a different offload_mode"
             )
         pipe.enable_model_cpu_offload()
-        logger.info("diffusers.load_pipeline.offload", mode="model")
-        return pipe
-    if offload_mode == "sequential":
+    elif offload_mode == "sequential":
         if hasattr(pipe, "enable_sequential_cpu_offload"):
             pipe.enable_sequential_cpu_offload()
         elif hasattr(pipe, "enable_model_cpu_offload"):
             # Older diffusers releases without sequential offload —
-            # accept the spill rather than crash. The host's per-profile
-            # default never picks sequential when the pipeline doesn't
-            # support it, but a paranoid operator override should still
-            # load.
+            # accept the spill rather than crash.
             pipe.enable_model_cpu_offload()
-        logger.info("diffusers.load_pipeline.offload", mode="sequential")
-        return pipe
-    raise _ModelLoadFailed(
-        f"unknown offload_mode: {offload_mode!r}; expected "
-        "\"none\", \"model\", or \"sequential\""
+    else:
+        raise _ModelLoadFailed(
+            f"unknown offload_mode: {offload_mode!r}; expected "
+            "\"none\", \"model\", or \"sequential\""
+        )
+    # The offload hook owns the transformer's paging; the vae + text
+    # encoder are one-shot modules and still honour the triple.
+    _place_components(pipe, placement, logger, include_transformer=False)
+    logger.info(
+        "diffusers.load_pipeline.offload", mode=offload_mode, placement=placement
     )
+    return pipe
 
 
 async def _emit_weights_resident(
@@ -668,7 +685,7 @@ def _ensure_pipeline_loaded(
     offload_mode: str,
     *,
     scheduler_choice: str = "flow_match_euler",
-    placement_override: dict[str, str] | None = None,
+    placement: dict[str, str] | None = None,
     text_encoder_quant: str = "default",
 ) -> tuple[Any, str]:
     """Idempotent pipeline loader. Returns (pipe, device).
@@ -676,13 +693,16 @@ def _ensure_pipeline_loaded(
     First call boots torch + diffusers + the LTX pipeline + the model
     weights. Subsequent calls return the cached pipe.
 
-    `offload_mode` selects the diffusers offload strategy: `"none"`
-    parks the whole pipeline on the GPU (`pipe.to("cuda")`), `"model"`
-    enables coarse `enable_model_cpu_offload`, `"sequential"` enables
-    the per-layer `enable_sequential_cpu_offload`. The host resolves
-    the operator's `Auto` choice to a concrete string before the
-    payload arrives, so the worker never observes `"auto"`.
+    `offload_mode` selects whether the transformer is paged by a
+    diffusers offload hook (`model` / `sequential`) or pinned by direct
+    placement (`none`). `placement` is the host-resolved concrete
+    component triple (`{"transformer","vae","text_encoder"}` each
+    `"cuda"`/`"cpu"`) and is authoritative — the host already folded
+    Auto + per-profile defaults + operator overrides into it. The
+    worker never observes `"auto"`.
     """
+    if placement is None:
+        placement = dict(_LEGACY_PLACEMENT)
     if cache["pipe"] is not None:
         return cache["pipe"], cache["device"]
 
@@ -749,16 +769,17 @@ def _ensure_pipeline_loaded(
             local_files_only=True,
         )
 
-        # When the operator requested `mode="none"`, GGUF-quantized
-        # transformers MUST be installed onto CUDA directly. Stock
-        # `pipe.to("cuda")` does not relocate GGUFParameter instances
-        # after the fact (their move semantics live in the quantizer,
-        # not nn.Module._apply) — so passing target_device=cpu here and
-        # relying on `pipe.to(device)` later leaves the transformer
-        # silently CPU-resident. The 2026-05-15 nvfp4 smoke render
-        # timed out at 30 min with 0 % progress because of exactly that
-        # bug; this branch is the fix.
-        gguf_install_device = _gguf_install_device_for_mode(offload_mode, device)
+        # GGUF-quantized transformers MUST be installed directly onto
+        # their target device. Stock `pipe.to(...)` does not relocate
+        # GGUFParameter instances after the fact (their move semantics
+        # live in the quantizer, not nn.Module._apply). Under `none` the
+        # transformer's resolved placement decides; under model /
+        # sequential the offload hook pages from CPU so install on CPU.
+        gguf_install_device = (
+            placement.get("transformer", "cpu")
+            if offload_mode == "none"
+            else "cpu"
+        )
         gguf_override = _resolve_gguf_transformer_override(model_dir)
         if gguf_override is not None:
             from . import gguf_loader
@@ -777,16 +798,10 @@ def _ensure_pipeline_loaded(
             )
             pipe.transformer = gguf_transformer
 
-        # Dispatch the operator-selected offload strategy. Historical
-        # context: sequential offload measured 4.7 GB peak VRAM / 13.7
-        # s/step on RTX 5070 Ti versus model_cpu_offload's 37 GB / 75
-        # s/step (the latter spilled to unified memory on Windows).
-        # NVFP4 on Blackwell has enough headroom for `none` (full
-        # pipeline resident) which is faster still.
-        # T5 quantisation runs BEFORE placement / offload dispatch
-        # because it replaces pipe.text_encoder wholesale; placing the
-        # old encoder then quantising would have moved CPU/GPU memory
-        # we're about to throw away.
+        # T5 quantisation runs BEFORE placement dispatch because it
+        # replaces pipe.text_encoder wholesale; placing the old encoder
+        # then quantising would move CPU/GPU memory we're about to
+        # throw away.
         _apply_text_encoder_quant(
             pipe=pipe,
             quant=text_encoder_quant,
@@ -795,21 +810,20 @@ def _ensure_pipeline_loaded(
             logger=worker.logger,
         )
 
-        if placement_override is not None:
-            # Operator overrode the preset — skip the offload hooks
-            # entirely and place each non-GGUF component directly. The
-            # GGUF transformer (if any) was already placed at install
-            # time via gguf_install_device.
-            _apply_component_placement(pipe, placement_override, worker.logger)
-        else:
-            pipe = _apply_offload_mode(
-                pipe=pipe,
-                offload_mode=offload_mode,
-                device=device,
-                torch_mod=torch,
-                logger=worker.logger,
-                gguf_already_placed=gguf_override is not None,
-            )
+        # The host-resolved triple is authoritative. `_place_pipeline`
+        # decides hook-vs-direct per offload_mode but always honours
+        # the triple — crucially keeping the ~11 GB T5 off the GPU for
+        # nvfp4-on-16GB so the transformer + activations actually fit.
+        # The 2026-05-15 hang was `pipe.to("cuda")` trying to make T5 +
+        # transformer (~22 GB) co-resident on a 16 GB card.
+        pipe = _place_pipeline(
+            pipe=pipe,
+            offload_mode=offload_mode,
+            placement=placement,
+            torch_mod=torch,
+            logger=worker.logger,
+            transformer_pre_placed=gguf_override is not None,
+        )
         _apply_scheduler_choice(pipe, scheduler_choice, worker.logger)
         if hasattr(pipe.vae, "enable_tiling"):
             pipe.vae.enable_tiling()
@@ -874,7 +888,7 @@ async def _load_then_render(
                 cache,
                 offload_mode,
                 scheduler_choice=_scheduler_from_params(raw_params),
-                placement_override=_component_placement_from_params(raw_params),
+                placement=_component_placement_from_params(raw_params),
                 text_encoder_quant=_text_encoder_quant_from_params(raw_params),
             )
         )
@@ -957,7 +971,7 @@ async def _load_then_retry_segment(
                 cache,
                 offload_mode,
                 scheduler_choice=_scheduler_from_params(raw_params),
-                placement_override=_component_placement_from_params(raw_params),
+                placement=_component_placement_from_params(raw_params),
                 text_encoder_quant=_text_encoder_quant_from_params(raw_params),
             )
         )
