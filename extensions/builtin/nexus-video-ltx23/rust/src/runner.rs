@@ -10,7 +10,8 @@ use tokio::sync::{Mutex, Notify};
 use crate::errors::Result;
 use crate::lease::LeaseAcquirer;
 use crate::notification_buffer::{NotificationBuffer, SegmentStatusWrite};
-use crate::schemas::{AdvancedSettings, RenderPlan};
+use crate::runtime_selection::default_offload_mode_for_profile;
+use crate::schemas::{AdvancedSettings, OffloadMode, RenderPlan};
 use crate::storage::Repos;
 use crate::vram_supervisor::{VramSupervisor, VramVerdict};
 
@@ -1350,6 +1351,22 @@ fn build_render_params(
             .unwrap_or(DEFAULT_NUM_INFERENCE_STEPS),
     );
 
+    // Resolve `Auto` to a concrete per-profile default before the
+    // payload reaches the worker — the worker treats an `auto` string
+    // as an unknown mode and refuses to load.
+    let offload_mode = match advanced.offload_mode {
+        OffloadMode::Auto => default_offload_mode_for_profile(short_profile(&plan.runtime_profile)),
+        concrete => concrete,
+    };
+    // Auto is resolved above; the arm is kept as a defensive fallthrough
+    // so a future addition to `OffloadMode` lands on the safest mode
+    // instead of panicking the worker with an unknown string.
+    let offload_mode_str = match offload_mode {
+        OffloadMode::None => "none",
+        OffloadMode::Model => "model",
+        OffloadMode::Sequential | OffloadMode::Auto => "sequential",
+    };
+
     // Per-segment `action_prompt` overrides the global `prompt` when
     // the planner zipped a scenes[] script. The worker composes the
     // effective prompt as `character + action + style` per segment;
@@ -1397,6 +1414,7 @@ fn build_render_params(
         "advanced": {
             "guidance_scale": guidance_scale,
             "num_inference_steps": num_inference_steps,
+            "offload_mode": offload_mode_str,
         },
         "runtime_profile": plan.runtime_profile.clone(),
     })
