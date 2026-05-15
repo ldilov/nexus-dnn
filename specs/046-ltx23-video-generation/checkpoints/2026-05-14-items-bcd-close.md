@@ -107,10 +107,17 @@ reviewable.
 
 ### Item E — Real-GPU restart smoke test
 
-**Status**: scripted, ready to run on hardware. See
-`extensions/builtin/nexus-video-ltx23/scripts/smoke-vram-supervisor.sh`.
+**Status**: scripted, ready to run on hardware. Both shells supported
+per the cross-platform rule:
+- `extensions/builtin/nexus-video-ltx23/scripts/smoke-vram-supervisor.sh` (Linux / macOS / git-bash)
+- `extensions/builtin/nexus-video-ltx23/scripts/smoke-vram-supervisor.ps1` (Windows PowerShell)
 
-Usage:
+Both variants take identical flag names (kebab-case in bash,
+PascalCase in pwsh), exit with the same codes (0 PASS, 1 fail, 2
+prereq missing), and print identical glyph-prefixed lines
+(`▶ ✓ ✗ !`).
+
+Usage (Linux / macOS / git-bash):
 ```bash
 # 1. Start the host with the impossible MIN_FREE_MB so the
 #    supervisor trips on the first memory_stats event.
@@ -120,6 +127,20 @@ cargo run -p nexus-core --release
 ./extensions/builtin/nexus-video-ltx23/scripts/smoke-vram-supervisor.sh \
     --host http://127.0.0.1:8085 --profile rtx40-fp8 --duration 20
 ```
+
+Usage (native Windows PowerShell):
+```powershell
+# 1. Same lever, PowerShell syntax.
+$Env:NEXUS_VIDEO_LTX23_VRAM_MIN_FREE_MB = '999999'
+cargo run -p nexus-core --release
+# 2. From another pwsh shell:
+.\extensions\builtin\nexus-video-ltx23\scripts\smoke-vram-supervisor.ps1 `
+    -HostUrl 'http://127.0.0.1:8085' -Profile 'rtx40-fp8' -Duration 20
+```
+
+The audit-boundary script also ships in both shells —
+`audit-boundary.sh` and `audit-boundary.ps1` — so CI on either
+platform can run the same gate.
 
 The script checks 4 acceptance criteria + a regression-guard for
 Item B's no-coalescing rule:
