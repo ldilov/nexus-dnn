@@ -19,7 +19,10 @@ dependencies = [
   # huggingface_hub to the base deps lets the install flow run before the
   # `diffusers` optional extras are installed — chicken-and-egg fix.
   "huggingface_hub>=0.26",
-  "bitsandbytes[diffusers]>=0.45",
+  # Cap below 0.50: the 0.49.x line is the upstream-confirmed
+  # known-good pair with transformers 4.57.x for the NF4 quant path
+  # (see the transformers pin note in the diffusers extra).
+  "bitsandbytes[diffusers]>=0.45,<0.50",
 ]
 
 [project.optional-dependencies]
@@ -38,7 +41,17 @@ diffusers = [
   # frame generated). Revisit once a released diffusers re-adds
   # LTX-2.3 transformer support — currently 0.39.0.dev0.
   "diffusers @ git+https://github.com/huggingface/diffusers.git@adff1cae9f3d4f79dcff6a3ceb02e0a56982f88c",
-  "transformers>=4.45",
+  # Cap below 5.0. transformers 5.x's model-loading refactor
+  # (core_model_loading.set_param_for_module) passes an internal
+  # `_is_hf_initialized` kwarg into the bitsandbytes parameter
+  # constructor, which the 0.49.x `Params4bit.__new__` signature
+  # rejects — fatal for the NF4 quant path. 4.57.x is the
+  # upstream-confirmed known-good pair (huggingface/transformers
+  # #43872) and still ships Gemma-3 (added 4.50), which the LTX-2.3
+  # text encoder needs. Mirrors the emotion-tts worker's
+  # `transformers>=4.52,<5.0` precedent. Revisit when bnb ships a
+  # transformers-5-compatible release.
+  "transformers>=4.52,<5.0",
   "accelerate>=1.0",
   "safetensors>=0.4",
   "huggingface_hub>=0.26",
