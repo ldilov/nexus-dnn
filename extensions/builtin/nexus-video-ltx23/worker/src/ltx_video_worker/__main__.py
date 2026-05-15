@@ -18,6 +18,16 @@ import sys
 def _hijack_stdout() -> None:
     sys.__nexus_jsonrpc_stdout__ = sys.stdout
     sys.stdout = sys.stderr
+    # PYTHONUNBUFFERED=1 from the host only unbuffers the C-level FILE*; it
+    # does not touch Python's TextIOWrapper. Without this reconfigure, log
+    # lines from torch / diffusers / huggingface_hub (which all go through
+    # the stdlib `logging` module's StreamHandler) sit in the TextIOWrapper
+    # buffer and only flush when tqdm overflows it — observed as a 22-minute
+    # dead-silence window during model load on RTX 5070 Ti (2026-05-14).
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(line_buffering=True)
+    if hasattr(sys.__nexus_jsonrpc_stdout__, "reconfigure"):
+        sys.__nexus_jsonrpc_stdout__.reconfigure(line_buffering=True)
 
 
 def cli() -> int:
