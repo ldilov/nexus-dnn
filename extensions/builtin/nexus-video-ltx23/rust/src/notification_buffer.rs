@@ -94,12 +94,9 @@ impl NotificationBuffer {
     /// flusher task has terminated (channel closed) — the caller
     /// can fall back to a direct DB write if that matters.
     pub async fn enqueue(&self, write: SegmentStatusWrite) -> Result<()> {
-        self.tx
-            .send(Msg::Write(write))
-            .await
-            .map_err(|_| crate::errors::ExtensionError::Internal(
-                "notification buffer flusher dropped".into(),
-            ))?;
+        self.tx.send(Msg::Write(write)).await.map_err(|_| {
+            crate::errors::ExtensionError::Internal("notification buffer flusher dropped".into())
+        })?;
         Ok(())
     }
 
@@ -110,12 +107,9 @@ impl NotificationBuffer {
     /// DB as best-effort.
     pub async fn flush_now(&self) -> Result<()> {
         let (ack_tx, ack_rx) = oneshot::channel();
-        self.tx
-            .send(Msg::Flush(ack_tx))
-            .await
-            .map_err(|_| crate::errors::ExtensionError::Internal(
-                "notification buffer flusher dropped".into(),
-            ))?;
+        self.tx.send(Msg::Flush(ack_tx)).await.map_err(|_| {
+            crate::errors::ExtensionError::Internal("notification buffer flusher dropped".into())
+        })?;
         ack_rx.await.map_err(|_| {
             crate::errors::ExtensionError::Internal(
                 "notification buffer flusher dropped during flush".into(),
@@ -124,11 +118,7 @@ impl NotificationBuffer {
     }
 }
 
-async fn flush_loop(
-    repos: Repos,
-    mut rx: mpsc::Receiver<Msg>,
-    flush_interval: Duration,
-) {
+async fn flush_loop(repos: Repos, mut rx: mpsc::Receiver<Msg>, flush_interval: Duration) {
     let mut batch: Vec<SegmentStatusWrite> = Vec::new();
     let mut ticker = interval(flush_interval);
     // The first tick fires immediately; skip it so the batch doesn't
@@ -307,9 +297,15 @@ mod tests {
         let (buf, handle) = NotificationBuffer::new(repos.clone(), Duration::from_secs(60));
 
         // Three writes for distinct segments — all should land in one batch.
-        buf.enqueue(write("run-flush", 0, "rendering")).await.unwrap();
-        buf.enqueue(write("run-flush", 1, "rendering")).await.unwrap();
-        buf.enqueue(write("run-flush", 2, "completed")).await.unwrap();
+        buf.enqueue(write("run-flush", 0, "rendering"))
+            .await
+            .unwrap();
+        buf.enqueue(write("run-flush", 1, "rendering"))
+            .await
+            .unwrap();
+        buf.enqueue(write("run-flush", 2, "completed"))
+            .await
+            .unwrap();
 
         // flush_now must be observable BEFORE the 60s tick fires.
         buf.flush_now().await.unwrap();
@@ -319,8 +315,14 @@ mod tests {
         assert_eq!(segs[0].status, "rendering");
         assert_eq!(segs[1].status, "rendering");
         assert_eq!(segs[2].status, "completed");
-        assert!(segs[0].started_at.is_some(), "rendering must populate started_at");
-        assert!(segs[2].completed_at.is_some(), "completed must populate completed_at");
+        assert!(
+            segs[0].started_at.is_some(),
+            "rendering must populate started_at"
+        );
+        assert!(
+            segs[2].completed_at.is_some(),
+            "completed must populate completed_at"
+        );
 
         // Drop the buffer; flusher exits cleanly.
         drop(buf);
@@ -334,7 +336,9 @@ mod tests {
         // Short interval — flusher should fire within a few ticks.
         let (buf, handle) = NotificationBuffer::new(repos.clone(), Duration::from_millis(20));
 
-        buf.enqueue(write("run-tick", 0, "completed")).await.unwrap();
+        buf.enqueue(write("run-tick", 0, "completed"))
+            .await
+            .unwrap();
 
         // Poll the DB until the tick lands. 1s timeout — plenty.
         let deadline = std::time::Instant::now() + Duration::from_secs(1);
@@ -366,8 +370,12 @@ mod tests {
         let (buf, handle) = NotificationBuffer::new(repos.clone(), Duration::from_secs(60));
 
         // Both writes for segment 0 within the same flush window.
-        buf.enqueue(write("run-order", 0, "rendering")).await.unwrap();
-        buf.enqueue(write("run-order", 0, "completed")).await.unwrap();
+        buf.enqueue(write("run-order", 0, "rendering"))
+            .await
+            .unwrap();
+        buf.enqueue(write("run-order", 0, "completed"))
+            .await
+            .unwrap();
         buf.flush_now().await.unwrap();
 
         let segs = repos.list_segments("run-order").await.unwrap();
@@ -388,8 +396,12 @@ mod tests {
         seed_run_and_segments(&repos, "run-drop", 2).await;
         let (buf, handle) = NotificationBuffer::new(repos.clone(), Duration::from_secs(60));
 
-        buf.enqueue(write("run-drop", 0, "completed")).await.unwrap();
-        buf.enqueue(write("run-drop", 1, "completed")).await.unwrap();
+        buf.enqueue(write("run-drop", 0, "completed"))
+            .await
+            .unwrap();
+        buf.enqueue(write("run-drop", 1, "completed"))
+            .await
+            .unwrap();
         drop(buf);
         // Joining the flusher proves the channel closed AND the final
         // drain landed before exit.

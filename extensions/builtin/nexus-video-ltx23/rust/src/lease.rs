@@ -53,9 +53,9 @@ impl LtxLeaseFactory {
             .map_err(ExtensionError::RuntimeUnavailable)?;
 
         let lease_id = RuntimeLeaseId::new();
-        let lease = StdioLease::spawn(launch, lease_id).await.map_err(|e| {
-            ExtensionError::RuntimeUnavailable(format!("worker spawn failed: {e}"))
-        })?;
+        let lease = StdioLease::spawn(launch, lease_id)
+            .await
+            .map_err(|e| ExtensionError::RuntimeUnavailable(format!("worker spawn failed: {e}")))?;
 
         // Custom handshake — minimal worker has no slow torch pre-import, so the
         // default 60s budget is generous.
@@ -118,7 +118,10 @@ fn build_launch_spec(
         .with_arg("-m")
         .with_arg("ltx_video_worker")
         .with_env("NEXUS_VIDEO_LTX23_RUNTIME", profile)
-        .with_env("NEXUS_HOST_DATA_DIR", host_data_root.to_string_lossy().to_string())
+        .with_env(
+            "NEXUS_HOST_DATA_DIR",
+            host_data_root.to_string_lossy().to_string(),
+        )
         .with_env("PYTHONIOENCODING", "utf-8")
         .with_env("PYTHONUNBUFFERED", "1");
 
