@@ -1,0 +1,17 @@
+feat(046): resolve OffloadMode::Auto in runner, propagate to worker
+
+`build_render_params` now resolves `OffloadMode::Auto` to the
+per-profile default via `default_offload_mode_for_profile(short_profile(
+plan.runtime_profile))` and serialises the resulting concrete mode
+into the `advanced` block of the worker payload as a snake_case
+string (`none` / `model` / `sequential`).
+
+The resume + retry call paths reach the same code through
+`build_render_params_offset` and `retry_segment_via_lease`, both of
+which delegate to `build_render_params`, so the field threads through
+automatically. A targeted test for the retry path lands in the test
+sweep (step 6).
+
+The worker observes only concrete strings — it never sees `auto`.
+
+Refs: .claude/session-plan.md v2 layer 3.
