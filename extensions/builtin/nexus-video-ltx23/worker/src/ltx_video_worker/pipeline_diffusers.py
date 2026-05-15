@@ -571,9 +571,10 @@ async def _retry_segment_loop(
     seg_frame_count = int(seg.get("frame_count", 97))
     seg_seed = int(seg.get("seed", 0))
 
+    # Same null-vs-missing guard as in _render_loop — see comment there.
     advanced = raw_params.get("advanced") or {}
-    guidance_scale = float(advanced.get("guidance_scale", 4.0))
-    num_inference_steps = int(advanced.get("num_inference_steps", 8))
+    guidance_scale = float(_or_default(advanced.get("guidance_scale"), 4.0))
+    num_inference_steps = int(_or_default(advanced.get("num_inference_steps"), 8))
 
     prompt_obj = raw_params.get("prompt") or {}
     global_action = prompt_obj.get("action") or prompt_obj.get("prompt") or ""
