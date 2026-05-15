@@ -1426,7 +1426,11 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
         OffloadMode::Sequential | OffloadMode::Auto => "sequential",
     };
 
-    let placement = resolve_component_placement(offload_mode, advanced.component_placement);
+    let placement = resolve_component_placement(
+        short_profile(runtime_profile),
+        offload_mode,
+        advanced.component_placement,
+    );
     let placement_overridden = !advanced.component_placement.is_fully_auto();
     let device_str = |pref: DevicePreference| match pref {
         DevicePreference::Auto | DevicePreference::Cpu => "cpu",
@@ -1889,14 +1893,18 @@ mod tests {
 
     #[test]
     fn build_advanced_block_resolves_placement_from_offload_mode() {
-        // Auto offload + Auto placement on rtx50-nvfp4 → none mode →
-        // every component reported as cuda.
+        // Auto offload + Auto placement on rtx50-nvfp4 → none mode, but
+        // the nvfp4 profile default keeps the ~11 GB T5 OFF the GPU so
+        // transformer + activations fit on 16 GB. transformer + vae go
+        // to cuda, text_encoder stays cpu. (Regression guard for the
+        // 2026-05-15 OOM/hang where all-cuda tried to co-resident T5 +
+        // transformer ≈ 22 GB on a 16 GB card.)
         let advanced = AdvancedSettings::default();
         let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
         assert_eq!(block["offload_mode"].as_str(), Some("none"));
         assert_eq!(block["component_placement"]["transformer"].as_str(), Some("cuda"));
         assert_eq!(block["component_placement"]["vae"].as_str(), Some("cuda"));
-        assert_eq!(block["component_placement"]["text_encoder"].as_str(), Some("cuda"));
+        assert_eq!(block["component_placement"]["text_encoder"].as_str(), Some("cpu"));
         assert_eq!(block["placement_overridden"].as_bool(), Some(false));
     }
 
