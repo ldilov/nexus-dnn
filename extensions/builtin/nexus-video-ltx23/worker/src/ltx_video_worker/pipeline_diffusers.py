@@ -58,6 +58,18 @@ _LAZY_TORCH: Any = None
 _LAZY_PIPELINE_CLASS: Any = None
 
 
+def _or_default(value: Any, default: Any) -> Any:
+    """Return `default` when `value` is None OR missing.
+
+    `dict.get(key, default)` returns the default ONLY when the key is
+    absent. If the host serialised an unset Optional<T> as JSON `null`,
+    `.get(key, default)` returns None — not the default — and subsequent
+    `float(None)` / `int(None)` crashes the render. This helper makes
+    both paths collapse to `default`.
+    """
+    return default if value is None else value
+
+
 class DiffusersRunState:
     def __init__(
         self,
@@ -479,7 +491,23 @@ async def _load_then_render(
         Notifications.PROGRESS,
         {"run_id": rs.run_id, "phase": "rendering"},
     )
-    await _render_loop(worker, rs, raw_params, cache, profile)
+    # Surface any in-render exception as an ltx.video.error notification
+    # so the host runner sees a terminal event instead of waiting for
+    # RENDER_TIMEOUT (30 min) on a dead bg task. Without this catch,
+    # uncaught exceptions in _render_loop became asyncio "task exception
+    # was never retrieved" warnings on stderr — host log scrape only,
+    # no host-side state change. 2026-05-15: triggered by the null-
+    # guidance_scale TypeError; we want this safety net even after the
+    # primary fix lands.
+    try:
+        await _render_loop(worker, rs, raw_params, cache, profile)
+    except Exception as err:  # noqa: BLE001 — render code can throw anything
+        await _emit_error(
+            worker,
+            rs.run_id,
+            ErrorCodes.RENDER_FAILED,
+            f"render task crashed: {err.__class__.__name__}: {err}",
+        )
 
 
 async def _load_then_retry_segment(
@@ -761,9 +789,15 @@ async def _render_loop(
     # `plan` dict, since these are user-facing knobs, not planner output).
     # Defaults match the LTX 2.3 distilled pipeline's recommended values
     # (guidance_scale 4.0, 8 inference steps for a distilled model).
+    #
+    # NOTE: the host's `build_render_params` emits these fields as JSON
+    # `null` when the user leaves them unset. `dict.get(k, default)`
+    # returns the default ONLY for missing keys — for `null` it returns
+    # None. `float(None)` crashes the render. `_or_default` collapses
+    # both paths to the default.
     advanced = raw_params.get("advanced") or {}
-    guidance_scale = float(advanced.get("guidance_scale", 4.0))
-    num_inference_steps = int(advanced.get("num_inference_steps", 8))
+    guidance_scale = float(_or_default(advanced.get("guidance_scale"), 4.0))
+    num_inference_steps = int(_or_default(advanced.get("num_inference_steps"), 8))
     if not segments:
         await _emit_error(
             worker,
