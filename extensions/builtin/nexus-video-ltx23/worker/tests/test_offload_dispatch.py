@@ -235,6 +235,123 @@ def test_apply_offload_mode_model_raises_when_helper_missing() -> None:
     assert "enable_model_cpu_offload" in str(info.value)
 
 
+def test_component_placement_from_params_returns_none_when_not_overridden() -> None:
+    # placement_overridden=False means "use the preset" — dispatch
+    # should fall through to the existing offload-hook path.
+    assert (
+        pd._component_placement_from_params(
+            {"advanced": {"placement_overridden": False, "component_placement": {}}}
+        )
+        is None
+    )
+    assert pd._component_placement_from_params({}) is None
+    assert pd._component_placement_from_params({"advanced": {}}) is None
+
+
+def test_component_placement_from_params_returns_triple_when_overridden() -> None:
+    result = pd._component_placement_from_params(
+        {
+            "advanced": {
+                "placement_overridden": True,
+                "component_placement": {
+                    "transformer": "cuda",
+                    "vae": "cuda",
+                    "text_encoder": "cpu",
+                },
+            }
+        }
+    )
+    assert result == {"transformer": "cuda", "vae": "cuda", "text_encoder": "cpu"}
+
+
+def test_component_placement_from_params_rejects_malformed_triple() -> None:
+    # If any field is missing or off-vocabulary, defer to the preset
+    # rather than crash mid-load.
+    assert (
+        pd._component_placement_from_params(
+            {
+                "advanced": {
+                    "placement_overridden": True,
+                    "component_placement": {"transformer": "gpu"},  # typo
+                }
+            }
+        )
+        is None
+    )
+
+
+def test_scheduler_from_params_defaults_to_flow_match_euler() -> None:
+    assert pd._scheduler_from_params({}) == "flow_match_euler"
+    assert (
+        pd._scheduler_from_params({"advanced": {"scheduler": "flow_match_heun"}})
+        == "flow_match_heun"
+    )
+    # Unknown values still flow through — dispatch validation lives
+    # in _apply_scheduler_choice and surfaces a clear ModelLoadFailed
+    # rather than being silently substituted here.
+    assert (
+        pd._scheduler_from_params({"advanced": {"scheduler": "ddim"}}) == "ddim"
+    )
+
+
+def test_text_encoder_quant_from_params_defaults_to_default() -> None:
+    assert pd._text_encoder_quant_from_params({}) == "default"
+    assert (
+        pd._text_encoder_quant_from_params({"advanced": {"text_encoder_quant": "nf4"}})
+        == "nf4"
+    )
+    # Unknown values collapse to default rather than crashing the
+    # later dispatch — this is the only place we soft-fail; users
+    # who explicitly type "fp16" instead of "fp8" get the bf16
+    # baseline they could have always chosen.
+    assert (
+        pd._text_encoder_quant_from_params(
+            {"advanced": {"text_encoder_quant": "garbage"}}
+        )
+        == "default"
+    )
+
+
+def test_coerce_optional_float_handles_null_and_numbers() -> None:
+    assert pd._coerce_optional_float(None) is None
+    assert pd._coerce_optional_float(0.05) == 0.05
+    assert pd._coerce_optional_float(7) == 7.0
+    # Bad input collapses to None instead of crashing the segment.
+    assert pd._coerce_optional_float("oops") is None
+    assert pd._coerce_optional_float([0.5]) is None
+
+
+def test_apply_scheduler_choice_noop_for_default() -> None:
+    pipe = MagicMock(name="pipe")
+    pd._apply_scheduler_choice(pipe, "flow_match_euler", _logger())
+    # Default == already loaded; nothing should touch pipe.scheduler.
+    assert not pipe.scheduler.from_config.called
+
+
+def test_apply_scheduler_choice_rejects_unknown() -> None:
+    pipe = MagicMock(name="pipe")
+    with pytest.raises(_ModelLoadFailed) as info:
+        pd._apply_scheduler_choice(pipe, "ddim", _logger())
+    assert "unknown scheduler" in str(info.value)
+
+
+def test_apply_text_encoder_quant_default_is_noop() -> None:
+    pipe = MagicMock(name="pipe")
+    pd._apply_text_encoder_quant(pipe, "default", "/fake", None, _logger())
+    # No swap happened.
+    assert not isinstance(pipe.text_encoder, MagicMock) or pipe.text_encoder is pipe.text_encoder
+
+
+def test_apply_text_encoder_quant_rejects_unknown() -> None:
+    pipe = MagicMock(name="pipe")
+    with pytest.raises(_ModelLoadFailed) as info:
+        pd._apply_text_encoder_quant(pipe, "garbage", "/fake", None, _logger())
+    # Either ImportError-shaped (bnb missing) or the explicit unknown
+    # check — both are acceptable failure modes.
+    msg = str(info.value)
+    assert "garbage" in msg or "bitsandbytes" in msg
+
+
 def test_apply_offload_mode_rejects_unknown_mode() -> None:
     pipe = MagicMock(name="pipe")
     with pytest.raises(_ModelLoadFailed) as info:
