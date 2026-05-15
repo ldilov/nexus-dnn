@@ -193,13 +193,18 @@ pub struct AdvancedSettings {
     /// is pushed above ~7. Diffusers default = 0.0 (off).
     /// Range: 0.0–1.0 inclusive.
     pub guidance_rescale: Option<f32>,
-    /// Text-encoder runtime quantisation. `Default` keeps whatever
-    /// the installed profile ships (bf16/fp16). `Fp8`/`Int8`/`Nf4`
-    /// load a bitsandbytes-quantised T5-XXL to free up ~5-8 GB
-    /// for the transformer + activations. Requires `bitsandbytes`
-    /// to be importable in the worker's venv.
+    /// On-the-fly weight quantisation applied to BOTH heavy
+    /// components (the LTX-2.3 transformer + the Gemma-3 text
+    /// encoder) at pipeline-load time via diffusers'
+    /// `PipelineQuantizationConfig`. The shipped checkpoint is
+    /// unquantized bf16 (~36 GB transformer + ~46 GB encoder = 83 GB),
+    /// which cannot run on a 16 GB card without catastrophic
+    /// shared-VRAM spill. `Nf4` shrinks that to ~22 GB so it fits
+    /// system RAM and pages cleanly under sequential offload.
+    /// `None` keeps the raw bf16 weights (only viable on a card with
+    /// 80 GB+ VRAM). Requires `bitsandbytes` in the worker venv.
     #[serde(default)]
-    pub text_encoder_quant: TextEncoderQuant,
+    pub quantization: ModelQuant,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -248,18 +253,21 @@ pub enum SchedulerChoice {
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum TextEncoderQuant {
-    /// Keep whatever the installed profile shipped (bf16/fp16).
+pub enum ModelQuant {
+    /// No quantisation — load raw bf16 weights. The shipped LTX-2.3
+    /// checkpoint is ~83 GB at bf16 (transformer + Gemma-3 encoder),
+    /// so this only runs without shared-VRAM spill on an 80 GB+ card.
+    /// It is the default ONLY for the `fake`/CI profile.
     #[default]
-    Default,
-    /// bitsandbytes FP8 (e4m3) T5-XXL — ~5.5 GB working set.
-    Fp8,
-    /// bitsandbytes INT8 T5-XXL — ~5.5 GB working set.
-    Int8,
-    /// bitsandbytes NF4 T5-XXL — ~3 GB working set, larger quality
-    /// hit but the encoder runs once per render so perceptual cost
-    /// on the final video is modest.
+    None,
+    /// bitsandbytes NF4 (4-bit) on transformer + text encoder.
+    /// ~83 GB → ~22 GB; fits 96 GB system RAM and pages cleanly
+    /// under sequential offload on a 16 GB GPU. The nvfp4 default.
     Nf4,
+    /// bitsandbytes INT8 (8-bit) on transformer + text encoder.
+    /// ~83 GB → ~42 GB; higher fidelity than NF4, still needs a
+    /// big-RAM host + offload on a 16 GB GPU.
+    Int8,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -447,17 +455,26 @@ mod tests {
     }
 
     #[test]
-    fn text_encoder_quant_round_trip() {
-        for quant in [
-            TextEncoderQuant::Default,
-            TextEncoderQuant::Fp8,
-            TextEncoderQuant::Int8,
-            TextEncoderQuant::Nf4,
-        ] {
+    fn model_quant_round_trip() {
+        for quant in [ModelQuant::None, ModelQuant::Nf4, ModelQuant::Int8] {
             let wire = serde_json::to_string(&quant).unwrap();
-            let back: TextEncoderQuant = serde_json::from_str(&wire).unwrap();
+            let back: ModelQuant = serde_json::from_str(&wire).unwrap();
             assert_eq!(back, quant);
         }
+        assert_eq!(serde_json::to_value(ModelQuant::None).unwrap(), json!("none"));
+        assert_eq!(serde_json::to_value(ModelQuant::Nf4).unwrap(), json!("nf4"));
+        assert_eq!(serde_json::to_value(ModelQuant::Int8).unwrap(), json!("int8"));
+    }
+
+    #[test]
+    fn model_quant_defaults_to_none() {
+        #[derive(serde::Deserialize)]
+        struct Probe {
+            #[serde(default)]
+            quantization: ModelQuant,
+        }
+        let p: Probe = serde_json::from_str("{}").unwrap();
+        assert_eq!(p.quantization, ModelQuant::None);
     }
 
     fn make_valid_request() -> CreateRenderRequest {

@@ -130,18 +130,59 @@ def test_scheduler_from_params_defaults_to_flow_match_euler() -> None:
     assert pd._scheduler_from_params({"advanced": {"scheduler": "ddim"}}) == "ddim"
 
 
-def test_text_encoder_quant_from_params_defaults_to_default() -> None:
-    assert pd._text_encoder_quant_from_params({}) == "default"
+def test_quantization_from_params_defaults_to_none() -> None:
+    # Host resolves the per-profile default (nvfp4 → nf4) before
+    # dispatch; the worker reads the concrete value. Missing/garbage
+    # → "none" (correct for fake/CI; loud-fail for real profiles on a
+    # small card rather than silent mis-quant).
+    assert pd._quantization_from_params({}) == "none"
+    assert pd._quantization_from_params({"advanced": {}}) == "none"
     assert (
-        pd._text_encoder_quant_from_params({"advanced": {"text_encoder_quant": "nf4"}})
-        == "nf4"
+        pd._quantization_from_params({"advanced": {"quantization": "nf4"}}) == "nf4"
     )
     assert (
-        pd._text_encoder_quant_from_params(
-            {"advanced": {"text_encoder_quant": "garbage"}}
+        pd._quantization_from_params({"advanced": {"quantization": "int8"}}) == "int8"
+    )
+    assert (
+        pd._quantization_from_params({"advanced": {"quantization": "garbage"}})
+        == "none"
+    )
+
+
+def test_build_pipeline_quant_config_none_returns_none() -> None:
+    assert pd._build_pipeline_quant_config("none", None) is None
+
+
+def test_build_pipeline_quant_config_rejects_unknown() -> None:
+    with pytest.raises(_ModelLoadFailed) as info:
+        pd._build_pipeline_quant_config("fp8", None)
+    assert "unknown quantization" in str(info.value)
+
+
+def _quant_stack_available() -> bool:
+    try:
+        import bitsandbytes  # type: ignore  # noqa: F401
+        from diffusers.quantizers import (  # type: ignore  # noqa: F401
+            PipelineQuantizationConfig,
         )
-        == "default"
-    )
+
+        return True
+    except ImportError:
+        return False
+
+
+def test_build_pipeline_quant_config_nf4_targets_both_heavy_components() -> None:
+    # bitsandbytes lives in the RUNTIME venv, not necessarily the test
+    # venv — skip if the stack isn't importable here. The runtime path
+    # + GPU smoke is the real validation; this just guards the config
+    # shape when the deps are present.
+    if not _quant_stack_available():
+        pytest.skip("bitsandbytes / PipelineQuantizationConfig not in test venv")
+    cfg = pd._build_pipeline_quant_config("nf4", None)
+    assert cfg is not None
+    components = set(getattr(cfg, "components_to_quantize", []) or [])
+    assert {"transformer", "text_encoder"}.issubset(components)
+    assert "4bit" in getattr(cfg, "quant_backend", "")
 
 
 def test_coerce_optional_float_handles_null_and_numbers() -> None:
@@ -376,14 +417,10 @@ def test_apply_scheduler_choice_rejects_unknown() -> None:
     assert "unknown scheduler" in str(info.value)
 
 
-def test_apply_text_encoder_quant_default_is_noop() -> None:
-    pipe = MagicMock(name="pipe")
-    pd._apply_text_encoder_quant(pipe, "default", "/fake", None, _logger())
-
-
-def test_apply_text_encoder_quant_rejects_unknown() -> None:
-    pipe = MagicMock(name="pipe")
-    with pytest.raises(_ModelLoadFailed) as info:
-        pd._apply_text_encoder_quant(pipe, "garbage", "/fake", None, _logger())
-    msg = str(info.value)
-    assert "garbage" in msg or "bitsandbytes" in msg
+def test_build_pipeline_quant_config_int8_uses_8bit_backend() -> None:
+    if not _quant_stack_available():
+        pytest.skip("bitsandbytes / PipelineQuantizationConfig not in test venv")
+    cfg = pd._build_pipeline_quant_config("int8", None)
+    assert cfg is not None
+    backend = getattr(cfg, "quant_backend", "")
+    assert "8bit" in backend or "8_bit" in backend

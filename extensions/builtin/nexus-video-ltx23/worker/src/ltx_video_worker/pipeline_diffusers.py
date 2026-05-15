@@ -166,14 +166,77 @@ def _scheduler_from_params(raw_params: dict[str, Any]) -> str:
     return "flow_match_euler"
 
 
-def _text_encoder_quant_from_params(raw_params: dict[str, Any]) -> str:
+def _quantization_from_params(raw_params: dict[str, Any]) -> str:
+    """Extract the host-resolved quantisation mode.
+
+    The host resolves the per-profile default (nvfp4 → nf4) before
+    dispatch, so the worker just reads the concrete value. `none` is
+    the safe fallback for any pre-contract / malformed payload — it
+    keeps the raw bf16 weights, which is correct behaviour for the
+    `fake`/CI profile and a loud-failure path for real profiles on a
+    small card (rather than silently mis-quantising).
+    """
     advanced = raw_params.get("advanced") if isinstance(raw_params, dict) else None
     if not isinstance(advanced, dict):
-        return "default"
-    name = advanced.get("text_encoder_quant")
-    if isinstance(name, str) and name in ("default", "fp8", "int8", "nf4"):
+        return "none"
+    name = advanced.get("quantization")
+    if isinstance(name, str) and name in ("none", "nf4", "int8"):
         return name
-    return "default"
+    return "none"
+
+
+def _build_pipeline_quant_config(quant: str, compute_dtype: Any) -> Any:
+    """Build a diffusers `PipelineQuantizationConfig` for the two heavy
+    components (transformer + text encoder), or return None for `none`.
+
+    The shipped LTX-2.3 checkpoint is unquantized bf16 (~36 GB
+    transformer + ~46 GB Gemma-3 encoder). bitsandbytes NF4/INT8
+    applied at `from_pretrained` time shrinks that to ~22/42 GB so it
+    fits system RAM and pages cleanly under sequential offload — the
+    only configuration that runs on a 16 GB GPU without Windows
+    shared-VRAM spill.
+
+    Raises `_ModelLoadFailed` if bitsandbytes or the quant API is
+    missing — surfacing "install bitsandbytes" beats silently loading
+    83 GB and hanging.
+    """
+    if quant == "none":
+        return None
+    if quant not in ("nf4", "int8"):
+        raise _ModelLoadFailed(
+            f"unknown quantization: {quant!r}; expected "
+            '"none", "nf4", or "int8"'
+        )
+    try:
+        import bitsandbytes  # type: ignore  # noqa: F401
+        from diffusers.quantizers import PipelineQuantizationConfig  # type: ignore
+    except ImportError as ie:
+        raise _ModelLoadFailed(
+            f"quantization={quant!r} requires bitsandbytes + a diffusers "
+            f"with PipelineQuantizationConfig in the worker venv: {ie}. "
+            f"`uv pip install bitsandbytes` into the runtime .venv, or "
+            f"set quantization='none' (needs an 80 GB+ card)."
+        ) from ie
+
+    if quant == "nf4":
+        backend = "bitsandbytes_4bit"
+        quant_kwargs = {
+            "load_in_4bit": True,
+            "bnb_4bit_quant_type": "nf4",
+            "bnb_4bit_compute_dtype": compute_dtype,
+        }
+    else:  # int8
+        backend = "bitsandbytes_8bit"
+        quant_kwargs = {"load_in_8bit": True}
+
+    # Quantise BOTH heavy components in the single from_pretrained
+    # call. `text_encoder` is the Gemma-3 LLM (~46 GB bf16);
+    # `transformer` is the LTX-2.3 DiT (~36 GB bf16).
+    return PipelineQuantizationConfig(
+        quant_backend=backend,
+        quant_kwargs=quant_kwargs,
+        components_to_quantize=["transformer", "text_encoder"],
+    )
 
 
 def _apply_scheduler_choice(pipe: Any, choice: str, logger: Any) -> None:
@@ -205,81 +268,6 @@ def _apply_scheduler_choice(pipe: Any, choice: str, logger: Any) -> None:
         f"unknown scheduler: {choice!r}; expected "
         '"flow_match_euler" or "flow_match_heun"'
     )
-
-
-def _apply_text_encoder_quant(
-    pipe: Any, quant: str, model_dir: Any, dtype: Any, logger: Any
-) -> None:
-    """Swap `pipe.text_encoder` for a bitsandbytes-quantised T5.
-
-    Quantises the T5-XXL text encoder weights in-place to free ~5-8 GB
-    of VRAM/RAM working set. Encoder runs once per render so the
-    perceptual cost on the final video is modest even at `nf4`.
-
-    Requires `bitsandbytes` to be importable in the worker venv. Fails
-    loudly with `_ModelLoadFailed` if the import is missing, the
-    requested mode is unknown, or the swap fails — surfacing "install
-    bitsandbytes" rather than silently keeping the bf16 encoder
-    resident is the right error mode.
-
-    `quant="default"` short-circuits to a no-op so the common path
-    pays nothing.
-    """
-    if quant == "default":
-        return
-    try:
-        import bitsandbytes  # type: ignore  # noqa: F401
-        from transformers import BitsAndBytesConfig, T5EncoderModel  # type: ignore
-    except ImportError as ie:
-        raise _ModelLoadFailed(
-            f"text_encoder_quant={quant!r} requires bitsandbytes + transformers "
-            f"in the worker venv: {ie}. Use text_encoder_quant='default' or "
-            f"`uv pip install bitsandbytes` in the runtime's .venv."
-        ) from ie
-
-    config_kwargs: dict[str, Any]
-    if quant == "fp8":
-        # Transformers' BitsAndBytesConfig doesn't expose an FP8 mode
-        # directly; the closest 8-bit path is load_in_8bit (linear8bit
-        # quantisation). Operators picking fp8 get the bnb 8-bit path
-        # since neither bnb nor T5 ship a true FP8 (e4m3) loader yet.
-        config_kwargs = {"load_in_8bit": True}
-    elif quant == "int8":
-        config_kwargs = {"load_in_8bit": True}
-    elif quant == "nf4":
-        config_kwargs = {
-            "load_in_4bit": True,
-            "bnb_4bit_quant_type": "nf4",
-            "bnb_4bit_compute_dtype": dtype,
-        }
-    else:
-        raise _ModelLoadFailed(
-            f"unknown text_encoder_quant: {quant!r}; expected "
-            '"default", "fp8", "int8", or "nf4"'
-        )
-
-    text_encoder_dir = Path(model_dir) / "text_encoder"
-    if not text_encoder_dir.is_dir():
-        # Some LTX-2.3 diffusers ports put the encoder weights at the
-        # repo root instead of a subdir. Fall through to the full repo.
-        text_encoder_dir = Path(model_dir)
-
-    bnb_config = BitsAndBytesConfig(**config_kwargs)
-    try:
-        quantised = T5EncoderModel.from_pretrained(
-            str(text_encoder_dir),
-            quantization_config=bnb_config,
-            torch_dtype=dtype,
-            local_files_only=True,
-        )
-    except Exception as e:
-        raise _ModelLoadFailed(
-            f"failed to load bnb-quantised T5 ({quant}): {e}. "
-            f"Try text_encoder_quant='default' or verify the text_encoder "
-            f"subdir exists at {text_encoder_dir}."
-        ) from e
-    pipe.text_encoder = quantised
-    logger.info("diffusers.load_pipeline.text_encoder_quant", quant=quant)
 
 
 def _place_components(
@@ -690,7 +678,7 @@ def _ensure_pipeline_loaded(
     *,
     scheduler_choice: str = "flow_match_euler",
     placement: dict[str, str] | None = None,
-    text_encoder_quant: str = "default",
+    quantization: str = "none",
 ) -> tuple[Any, str]:
     """Idempotent pipeline loader. Returns (pipe, device).
 
@@ -767,10 +755,24 @@ def _ensure_pipeline_loaded(
             pipeline_class=_PipeClass.__name__,
         )
         load_start = time.perf_counter()
+        # On-the-fly quantisation of the two heavy components
+        # (transformer + Gemma-3 text encoder). The shipped checkpoint
+        # is raw bf16 (~83 GB) — without this it cannot run on a 16 GB
+        # card. nvfp4 resolves to nf4 on the host; the worker just
+        # applies whatever concrete mode it was handed.
+        quant_config = _build_pipeline_quant_config(quantization, dtype)
+        from_pretrained_kwargs: dict[str, Any] = {
+            "torch_dtype": dtype,
+            "local_files_only": True,
+        }
+        if quant_config is not None:
+            from_pretrained_kwargs["quantization_config"] = quant_config
+            worker.logger.info(
+                "diffusers.load_pipeline.quantization", quantization=quantization
+            )
         pipe = _PipeClass.from_pretrained(
             str(model_dir),
-            torch_dtype=dtype,
-            local_files_only=True,
+            **from_pretrained_kwargs,
         )
 
         # GGUF-quantized transformers MUST be installed directly onto
@@ -802,17 +804,6 @@ def _ensure_pipeline_loaded(
             )
             pipe.transformer = gguf_transformer
 
-        # T5 quantisation runs BEFORE placement dispatch because it
-        # replaces pipe.text_encoder wholesale; placing the old encoder
-        # then quantising would move CPU/GPU memory we're about to
-        # throw away.
-        _apply_text_encoder_quant(
-            pipe=pipe,
-            quant=text_encoder_quant,
-            model_dir=model_dir,
-            dtype=dtype,
-            logger=worker.logger,
-        )
 
         # The host-resolved triple is authoritative. `_place_pipeline`
         # decides hook-vs-direct per offload_mode but always honours
@@ -893,7 +884,7 @@ async def _load_then_render(
                 offload_mode,
                 scheduler_choice=_scheduler_from_params(raw_params),
                 placement=_component_placement_from_params(raw_params),
-                text_encoder_quant=_text_encoder_quant_from_params(raw_params),
+                quantization=_quantization_from_params(raw_params),
             )
         )
     except _ModelMissing as err:
@@ -976,7 +967,7 @@ async def _load_then_retry_segment(
                 offload_mode,
                 scheduler_choice=_scheduler_from_params(raw_params),
                 placement=_component_placement_from_params(raw_params),
-                text_encoder_quant=_text_encoder_quant_from_params(raw_params),
+                quantization=_quantization_from_params(raw_params),
             )
         )
     except _ModelMissing as err:
