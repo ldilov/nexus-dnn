@@ -104,6 +104,27 @@ impl CreateRenderRequest {
                 ));
             }
         }
+        if let Some(v) = self.advanced.decode_timestep {
+            if !(0.0..=1.0).contains(&v) || !v.is_finite() {
+                return Err(format!(
+                    "advanced.decode_timestep must be in 0.0..=1.0 (got {v})"
+                ));
+            }
+        }
+        if let Some(v) = self.advanced.image_cond_noise_scale {
+            if !(0.0..=0.3).contains(&v) || !v.is_finite() {
+                return Err(format!(
+                    "advanced.image_cond_noise_scale must be in 0.0..=0.3 (got {v})"
+                ));
+            }
+        }
+        if let Some(v) = self.advanced.guidance_rescale {
+            if !(0.0..=1.0).contains(&v) || !v.is_finite() {
+                return Err(format!(
+                    "advanced.guidance_rescale must be in 0.0..=1.0 (got {v})"
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -144,6 +165,101 @@ pub struct AdvancedSettings {
     /// payload reaches the worker — the worker never sees `auto`.
     #[serde(default)]
     pub offload_mode: OffloadMode,
+    /// Per-component device override. Each field defaults to `Auto`
+    /// which means "follow the resolved `offload_mode`'s placement
+    /// for this component". An explicit `Cuda` / `Cpu` value
+    /// overrides that component and switches the worker away from
+    /// the offload-hook path onto direct `.to(device)` placement —
+    /// the two are mutually exclusive on a per-load basis.
+    #[serde(default)]
+    pub component_placement: ComponentPlacement,
+    /// Diffusers scheduler / sampler. `FlowMatchEuler` is the
+    /// distilled-LTX default; `FlowMatchHeun` trades ~30% extra
+    /// wall-clock for marginally higher quality. Non-flow-matching
+    /// schedulers (`DDIM`, `DPM++`, `UniPC`, …) are intentionally
+    /// absent — they break on LTX-2.3's flow-matching parametrisation.
+    #[serde(default)]
+    pub scheduler: SchedulerChoice,
+    /// Flow-matching trajectory decode point. Pipeline default ≈ 0.05.
+    /// Lower → smoother motion at the cost of decoder work.
+    /// Range: 0.0–1.0 inclusive.
+    pub decode_timestep: Option<f32>,
+    /// Noise added to the image-conditioning latent when chaining
+    /// segments. Pipeline default ≈ 0.025. Lower → sharper
+    /// continuity across cuts (risk of stutter); higher → more
+    /// creative drift. Range: 0.0–0.3 inclusive.
+    pub image_cond_noise_scale: Option<f32>,
+    /// Rescale CFG to avoid over-saturation when `guidance_scale`
+    /// is pushed above ~7. Diffusers default = 0.0 (off).
+    /// Range: 0.0–1.0 inclusive.
+    pub guidance_rescale: Option<f32>,
+    /// Text-encoder runtime quantisation. `Default` keeps whatever
+    /// the installed profile ships (bf16/fp16). `Fp8`/`Int8`/`Nf4`
+    /// load a bitsandbytes-quantised T5-XXL to free up ~5-8 GB
+    /// for the transformer + activations. Requires `bitsandbytes`
+    /// to be importable in the worker's venv.
+    #[serde(default)]
+    pub text_encoder_quant: TextEncoderQuant,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DevicePreference {
+    /// Defer to the resolved `OffloadMode`'s placement for this
+    /// component. Resolved away on the host before the worker sees
+    /// the payload — the worker only observes `cuda` / `cpu`.
+    #[default]
+    Auto,
+    Cuda,
+    Cpu,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ComponentPlacement {
+    #[serde(default)]
+    pub transformer: DevicePreference,
+    #[serde(default)]
+    pub vae: DevicePreference,
+    #[serde(default)]
+    pub text_encoder: DevicePreference,
+}
+
+impl ComponentPlacement {
+    /// True iff every field is the default `Auto` — equivalent to
+    /// "the operator hasn't overridden the preset's placement".
+    #[must_use]
+    pub const fn is_fully_auto(&self) -> bool {
+        matches!(self.transformer, DevicePreference::Auto)
+            && matches!(self.vae, DevicePreference::Auto)
+            && matches!(self.text_encoder, DevicePreference::Auto)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SchedulerChoice {
+    /// `FlowMatchEulerDiscreteScheduler` — distilled-LTX default.
+    #[default]
+    FlowMatchEuler,
+    /// `FlowMatchHeunDiscreteScheduler` — marginally higher quality,
+    /// ~30% extra wall-clock per step.
+    FlowMatchHeun,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TextEncoderQuant {
+    /// Keep whatever the installed profile shipped (bf16/fp16).
+    #[default]
+    Default,
+    /// bitsandbytes FP8 (e4m3) T5-XXL — ~5.5 GB working set.
+    Fp8,
+    /// bitsandbytes INT8 T5-XXL — ~5.5 GB working set.
+    Int8,
+    /// bitsandbytes NF4 T5-XXL — ~3 GB working set, larger quality
+    /// hit but the encoder runs once per render so perceptual cost
+    /// on the final video is modest.
+    Nf4,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -294,6 +410,115 @@ mod tests {
         // the worker sees it.
         let parsed: AdvancedSettings = serde_json::from_str("{}").unwrap();
         assert_eq!(parsed.offload_mode, OffloadMode::Auto);
+    }
+
+    #[test]
+    fn device_preference_round_trip() {
+        for pref in [
+            DevicePreference::Auto,
+            DevicePreference::Cuda,
+            DevicePreference::Cpu,
+        ] {
+            let wire = serde_json::to_string(&pref).unwrap();
+            let back: DevicePreference = serde_json::from_str(&wire).unwrap();
+            assert_eq!(back, pref);
+        }
+        assert_eq!(serde_json::to_value(DevicePreference::Cpu).unwrap(), json!("cpu"));
+        assert_eq!(serde_json::to_value(DevicePreference::Cuda).unwrap(), json!("cuda"));
+    }
+
+    #[test]
+    fn component_placement_defaults_to_all_auto() {
+        let parsed: ComponentPlacement = serde_json::from_str("{}").unwrap();
+        assert!(parsed.is_fully_auto());
+    }
+
+    #[test]
+    fn scheduler_choice_round_trip() {
+        for choice in [SchedulerChoice::FlowMatchEuler, SchedulerChoice::FlowMatchHeun] {
+            let wire = serde_json::to_string(&choice).unwrap();
+            let back: SchedulerChoice = serde_json::from_str(&wire).unwrap();
+            assert_eq!(back, choice);
+        }
+        assert_eq!(
+            serde_json::to_value(SchedulerChoice::FlowMatchHeun).unwrap(),
+            json!("flow_match_heun")
+        );
+    }
+
+    #[test]
+    fn text_encoder_quant_round_trip() {
+        for quant in [
+            TextEncoderQuant::Default,
+            TextEncoderQuant::Fp8,
+            TextEncoderQuant::Int8,
+            TextEncoderQuant::Nf4,
+        ] {
+            let wire = serde_json::to_string(&quant).unwrap();
+            let back: TextEncoderQuant = serde_json::from_str(&wire).unwrap();
+            assert_eq!(back, quant);
+        }
+    }
+
+    fn make_valid_request() -> CreateRenderRequest {
+        CreateRenderRequest {
+            project_id: None,
+            input_image_artifact_id: None,
+            prompt: "test".into(),
+            negative_prompt: None,
+            style_prompt: None,
+            character_prompt: None,
+            scenes: vec![],
+            duration_seconds: 4.0,
+            runtime_profile: RuntimeProfilePreference::default(),
+            quality_preset: QualityPreset::default(),
+            width: None,
+            height: None,
+            base_fps: None,
+            output_fps: None,
+            seed: None,
+            advanced: AdvancedSettings::default(),
+        }
+    }
+
+    #[test]
+    fn validate_field_bounds_accepts_in_range_hyperparameters() {
+        let mut req = make_valid_request();
+        req.advanced.decode_timestep = Some(0.05);
+        req.advanced.image_cond_noise_scale = Some(0.025);
+        req.advanced.guidance_rescale = Some(0.7);
+        assert!(req.validate_field_bounds().is_ok());
+    }
+
+    #[test]
+    fn validate_field_bounds_rejects_decode_timestep_above_range() {
+        let mut req = make_valid_request();
+        req.advanced.decode_timestep = Some(1.5);
+        let err = req.validate_field_bounds().expect_err("must reject");
+        assert!(err.contains("decode_timestep"));
+    }
+
+    #[test]
+    fn validate_field_bounds_rejects_image_cond_noise_scale_above_range() {
+        let mut req = make_valid_request();
+        req.advanced.image_cond_noise_scale = Some(0.5);
+        let err = req.validate_field_bounds().expect_err("must reject");
+        assert!(err.contains("image_cond_noise_scale"));
+    }
+
+    #[test]
+    fn validate_field_bounds_rejects_guidance_rescale_above_range() {
+        let mut req = make_valid_request();
+        req.advanced.guidance_rescale = Some(2.0);
+        let err = req.validate_field_bounds().expect_err("must reject");
+        assert!(err.contains("guidance_rescale"));
+    }
+
+    #[test]
+    fn validate_field_bounds_rejects_nan_decode_timestep() {
+        let mut req = make_valid_request();
+        req.advanced.decode_timestep = Some(f32::NAN);
+        assert!(req.validate_field_bounds().is_err());
     }
 
     #[test]
