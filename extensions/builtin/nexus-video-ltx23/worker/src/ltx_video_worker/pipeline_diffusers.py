@@ -91,6 +91,17 @@ def _offload_mode_from_params(raw_params: dict[str, Any]) -> str:
 _MIN_VRAM_BYTES_FOR_NONE = 16 * 1024**3
 
 
+def _gguf_install_device_for_mode(offload_mode: str, device: str) -> str:
+    """Where GGUF-quantized parameters should land at install time.
+
+    Only `mode="none"` benefits from CUDA-resident weights. The offload
+    helpers (`model` / `sequential`) install hooks that page weights
+    from CPU to GPU per-forward; installing onto CUDA in those modes
+    would waste the memory the hooks were chosen to save.
+    """
+    return device if offload_mode == "none" else "cpu"
+
+
 def _apply_offload_mode(
     *,
     pipe: Any,
@@ -98,6 +109,7 @@ def _apply_offload_mode(
     device: str,
     torch_mod: Any,
     logger: Any,
+    gguf_already_placed: bool = False,
 ) -> Any:
     """Apply the resolved offload strategy to a freshly-loaded pipeline.
 
@@ -114,6 +126,13 @@ def _apply_offload_mode(
     `pipe.to(device)` is reserved for `mode="none"`. Both offload
     helpers manage device placement themselves; calling `.to(...)`
     first defeats their hooks.
+
+    `gguf_already_placed`: when True, the caller has already installed
+    the GGUF transformer onto the correct device (see
+    `_gguf_install_device_for_mode`), so the `mode="none"` branch
+    skips the redundant `pipe.to(device)` — that call doesn't move
+    GGUFParameter instances anyway, and on a fresh CUDA-installed
+    transformer it would just waste a sweep.
     """
     if offload_mode == "none":
         free_bytes, total_bytes = torch_mod.cuda.mem_get_info()
@@ -123,10 +142,20 @@ def _apply_offload_mode(
                 f"reports {total_bytes / 1e9:.1f} GB total. Downgrade to "
                 f"\"model\" or \"sequential\" or pick a higher-VRAM card."
             )
-        pipe = pipe.to(device)
+        if gguf_already_placed:
+            # Transformer is already on CUDA (placed at install time).
+            # Move only the non-GGUF submodules — VAE, text encoder,
+            # scheduler buffers — via the standard path.
+            for name in ("vae", "text_encoder", "text_encoder_2"):
+                submod = getattr(pipe, name, None)
+                if submod is not None and hasattr(submod, "to"):
+                    submod.to(device)
+        else:
+            pipe = pipe.to(device)
         logger.info(
             "diffusers.load_pipeline.offload",
             mode="none",
+            gguf_already_placed=gguf_already_placed,
             vram_total_gb=round(total_bytes / 1e9, 1),
             vram_free_gb=round(free_bytes / 1e9, 1),
         )
@@ -515,6 +544,16 @@ def _ensure_pipeline_loaded(
             local_files_only=True,
         )
 
+        # When the operator requested `mode="none"`, GGUF-quantized
+        # transformers MUST be installed onto CUDA directly. Stock
+        # `pipe.to("cuda")` does not relocate GGUFParameter instances
+        # after the fact (their move semantics live in the quantizer,
+        # not nn.Module._apply) — so passing target_device=cpu here and
+        # relying on `pipe.to(device)` later leaves the transformer
+        # silently CPU-resident. The 2026-05-15 nvfp4 smoke render
+        # timed out at 30 min with 0 % progress because of exactly that
+        # bug; this branch is the fix.
+        gguf_install_device = _gguf_install_device_for_mode(offload_mode, device)
         gguf_override = _resolve_gguf_transformer_override(model_dir)
         if gguf_override is not None:
             from . import gguf_loader
@@ -523,11 +562,13 @@ def _ensure_pipeline_loaded(
                 "diffusers.load_pipeline.gguf_override",
                 gguf_path=str(gguf_override),
                 base_config_dir=str(model_dir),
+                install_device=str(gguf_install_device),
             )
             gguf_transformer = gguf_loader.load_gguf_transformer(
                 gguf_override,
                 model_dir,
                 compute_dtype=dtype,
+                install_device=gguf_install_device,
             )
             pipe.transformer = gguf_transformer
 
@@ -543,6 +584,7 @@ def _ensure_pipeline_loaded(
             device=device,
             torch_mod=torch,
             logger=worker.logger,
+            gguf_already_placed=gguf_override is not None,
         )
         if hasattr(pipe.vae, "enable_tiling"):
             pipe.vae.enable_tiling()
