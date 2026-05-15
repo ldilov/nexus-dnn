@@ -1,0 +1,203 @@
+"""Tests for the offload-mode dispatch helper.
+
+Cover the four wire values (`none`, `model`, `sequential`, unknown)
+plus the parameter-extraction helper. The dispatch surface is the
+small `_apply_offload_mode` function — pure on its inputs apart from
+calling methods on the pipe / torch / logger — which lets us test
+without paying for a real diffusers + torch import.
+"""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import MagicMock
+
+import pytest
+
+from ltx_video_worker import pipeline_diffusers as pd
+from ltx_video_worker.pipeline_diffusers import _ModelLoadFailed
+
+
+def _fake_torch(total_bytes: int, free_bytes: int | None = None) -> Any:
+    """Build a stand-in `torch` module that returns the requested
+    `(free, total)` from `torch.cuda.mem_get_info()`."""
+    if free_bytes is None:
+        free_bytes = total_bytes
+    cuda = SimpleNamespace(mem_get_info=lambda: (free_bytes, total_bytes))
+    return SimpleNamespace(cuda=cuda)
+
+
+def _logger() -> Any:
+    return SimpleNamespace(info=lambda *a, **k: None)
+
+
+# ---------------------------------------------------------------------------
+# _offload_mode_from_params
+# ---------------------------------------------------------------------------
+
+
+def test_offload_mode_from_params_returns_explicit_value() -> None:
+    assert (
+        pd._offload_mode_from_params({"advanced": {"offload_mode": "none"}})
+        == "none"
+    )
+    assert (
+        pd._offload_mode_from_params({"advanced": {"offload_mode": "model"}})
+        == "model"
+    )
+    assert (
+        pd._offload_mode_from_params(
+            {"advanced": {"offload_mode": "sequential"}}
+        )
+        == "sequential"
+    )
+
+
+def test_offload_mode_from_params_defaults_when_missing() -> None:
+    # No advanced block at all → sequential (safest pre-contract default).
+    assert pd._offload_mode_from_params({}) == "sequential"
+    # advanced present but no offload_mode key → sequential.
+    assert (
+        pd._offload_mode_from_params({"advanced": {"guidance_scale": 4.0}})
+        == "sequential"
+    )
+    # advanced.offload_mode is the wrong type → sequential (never crash).
+    assert (
+        pd._offload_mode_from_params({"advanced": {"offload_mode": None}})
+        == "sequential"
+    )
+    assert (
+        pd._offload_mode_from_params({"advanced": {"offload_mode": 7}})
+        == "sequential"
+    )
+    # advanced is not a dict at all (defensive against malformed payloads).
+    assert pd._offload_mode_from_params({"advanced": "junk"}) == "sequential"
+
+
+# ---------------------------------------------------------------------------
+# _apply_offload_mode
+# ---------------------------------------------------------------------------
+
+
+def test_apply_offload_mode_none_moves_pipe_to_cuda_on_big_card() -> None:
+    pipe = MagicMock(name="pipe")
+    moved = MagicMock(name="moved_pipe")
+    pipe.to.return_value = moved
+    torch_mod = _fake_torch(total_bytes=24 * 1024**3, free_bytes=20 * 1024**3)
+
+    result = pd._apply_offload_mode(
+        pipe=pipe,
+        offload_mode="none",
+        device="cuda",
+        torch_mod=torch_mod,
+        logger=_logger(),
+    )
+
+    pipe.to.assert_called_once_with("cuda")
+    assert result is moved
+    # Offload helpers must NOT be called when mode=none.
+    pipe.enable_model_cpu_offload.assert_not_called()
+    pipe.enable_sequential_cpu_offload.assert_not_called()
+
+
+def test_apply_offload_mode_none_rejects_small_vram() -> None:
+    # 8 GB card — refuse to load with mode=none rather than OOM mid-render.
+    pipe = MagicMock(name="pipe")
+    torch_mod = _fake_torch(total_bytes=8 * 1024**3)
+
+    with pytest.raises(_ModelLoadFailed) as info:
+        pd._apply_offload_mode(
+            pipe=pipe,
+            offload_mode="none",
+            device="cuda",
+            torch_mod=torch_mod,
+            logger=_logger(),
+        )
+
+    assert "16 GB" in str(info.value)
+    pipe.to.assert_not_called()
+
+
+def test_apply_offload_mode_model_calls_model_offload() -> None:
+    pipe = MagicMock(name="pipe")
+    torch_mod = _fake_torch(total_bytes=24 * 1024**3)
+
+    result = pd._apply_offload_mode(
+        pipe=pipe,
+        offload_mode="model",
+        device="cuda",
+        torch_mod=torch_mod,
+        logger=_logger(),
+    )
+
+    pipe.enable_model_cpu_offload.assert_called_once_with()
+    pipe.enable_sequential_cpu_offload.assert_not_called()
+    pipe.to.assert_not_called()
+    assert result is pipe
+
+
+def test_apply_offload_mode_sequential_calls_sequential_offload() -> None:
+    pipe = MagicMock(name="pipe")
+    torch_mod = _fake_torch(total_bytes=16 * 1024**3)
+
+    result = pd._apply_offload_mode(
+        pipe=pipe,
+        offload_mode="sequential",
+        device="cuda",
+        torch_mod=torch_mod,
+        logger=_logger(),
+    )
+
+    pipe.enable_sequential_cpu_offload.assert_called_once_with()
+    pipe.enable_model_cpu_offload.assert_not_called()
+    pipe.to.assert_not_called()
+    assert result is pipe
+
+
+def test_apply_offload_mode_sequential_falls_back_to_model_when_missing() -> None:
+    # Older diffusers releases ship `enable_model_cpu_offload` only.
+    class OldPipe:
+        def enable_model_cpu_offload(self) -> None:
+            self.called = True
+
+    pipe = OldPipe()
+    pd._apply_offload_mode(
+        pipe=pipe,
+        offload_mode="sequential",
+        device="cuda",
+        torch_mod=_fake_torch(total_bytes=16 * 1024**3),
+        logger=_logger(),
+    )
+
+    assert getattr(pipe, "called", False) is True
+
+
+def test_apply_offload_mode_model_raises_when_helper_missing() -> None:
+    class HelperLessPipe:
+        pass
+
+    with pytest.raises(_ModelLoadFailed) as info:
+        pd._apply_offload_mode(
+            pipe=HelperLessPipe(),
+            offload_mode="model",
+            device="cuda",
+            torch_mod=_fake_torch(total_bytes=24 * 1024**3),
+            logger=_logger(),
+        )
+
+    assert "enable_model_cpu_offload" in str(info.value)
+
+
+def test_apply_offload_mode_rejects_unknown_mode() -> None:
+    pipe = MagicMock(name="pipe")
+    with pytest.raises(_ModelLoadFailed) as info:
+        pd._apply_offload_mode(
+            pipe=pipe,
+            offload_mode="auto",  # host MUST resolve Auto away
+            device="cuda",
+            torch_mod=_fake_torch(total_bytes=24 * 1024**3),
+            logger=_logger(),
+        )
+    assert "unknown offload_mode" in str(info.value)
+    assert "'auto'" in str(info.value)

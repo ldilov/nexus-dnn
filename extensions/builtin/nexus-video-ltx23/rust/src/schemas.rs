@@ -245,3 +245,71 @@ pub struct PlanWarning {
     pub code: String,
     pub message: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn offload_mode_serializes_as_snake_case() {
+        assert_eq!(
+            serde_json::to_value(OffloadMode::Auto).unwrap(),
+            json!("auto")
+        );
+        assert_eq!(
+            serde_json::to_value(OffloadMode::None).unwrap(),
+            json!("none")
+        );
+        assert_eq!(
+            serde_json::to_value(OffloadMode::Model).unwrap(),
+            json!("model")
+        );
+        assert_eq!(
+            serde_json::to_value(OffloadMode::Sequential).unwrap(),
+            json!("sequential")
+        );
+    }
+
+    #[test]
+    fn offload_mode_round_trips_through_serde() {
+        for mode in [
+            OffloadMode::Auto,
+            OffloadMode::None,
+            OffloadMode::Model,
+            OffloadMode::Sequential,
+        ] {
+            let wire = serde_json::to_string(&mode).unwrap();
+            let back: OffloadMode = serde_json::from_str(&wire).unwrap();
+            assert_eq!(back, mode, "round-trip failed for {mode:?}");
+        }
+    }
+
+    #[test]
+    fn advanced_settings_defaults_offload_mode_to_auto_when_absent() {
+        // The wire contract for the worker payload + the retry replay
+        // path: a request with no `advanced` field at all collapses to
+        // every default, including `OffloadMode::Auto`. The host
+        // resolver turns that into a concrete per-profile mode before
+        // the worker sees it.
+        let parsed: AdvancedSettings = serde_json::from_str("{}").unwrap();
+        assert_eq!(parsed.offload_mode, OffloadMode::Auto);
+    }
+
+    #[test]
+    fn advanced_settings_round_trips_explicit_offload_mode() {
+        let wire = json!({
+            "guidance_scale": 4.0,
+            "num_inference_steps": 8,
+            "offload_mode": "none",
+        });
+        let parsed: AdvancedSettings = serde_json::from_value(wire).unwrap();
+        assert_eq!(parsed.offload_mode, OffloadMode::None);
+        // Re-serialise + reparse to confirm the field survives a
+        // round-trip through the retry-replay path (which serialises
+        // the parsed struct back into request_json).
+        let again = serde_json::to_string(&parsed).unwrap();
+        let twice: AdvancedSettings = serde_json::from_str(&again).unwrap();
+        assert_eq!(twice.offload_mode, OffloadMode::None);
+    }
+}
