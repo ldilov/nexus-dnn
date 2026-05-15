@@ -1,4 +1,4 @@
-use crate::schemas::{OffloadMode, RuntimeProfilePreference};
+use crate::schemas::{ComponentPlacement, DevicePreference, OffloadMode, RuntimeProfilePreference};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ProfileDescriptor {
@@ -78,6 +78,77 @@ pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
     match profile.as_bytes() {
         b"rtx50-nvfp4" => OffloadMode::None,
         _ => OffloadMode::Sequential,
+    }
+}
+
+/// Per-component device placement implied by a concrete `OffloadMode`.
+///
+/// The worker dispatcher uses the placement triple directly when the
+/// operator overrode the per-component knobs; otherwise the host
+/// resolves `Auto` via this function so the worker still receives
+/// concrete strings on the wire.
+///
+/// Note: for `Model` / `Sequential` the transformer's reported device
+/// is `Cpu` because the offload hooks page weights from CPU per
+/// forward call. Reporting `Cuda` here would be misleading — even
+/// though the hook makes the layer transiently CUDA-resident, the
+/// stable storage lives on the CPU.
+#[must_use]
+pub const fn placement_for_offload_mode(mode: OffloadMode) -> ComponentPlacement {
+    match mode {
+        // `None`: every component resident on GPU.
+        OffloadMode::None => ComponentPlacement {
+            transformer: DevicePreference::Cuda,
+            vae: DevicePreference::Cuda,
+            text_encoder: DevicePreference::Cuda,
+        },
+        // `Model`: model_cpu_offload pages the transformer's submodules
+        // onto GPU one at a time. VAE + text encoder still benefit from
+        // being CUDA-resident (one-shot calls).
+        OffloadMode::Model => ComponentPlacement {
+            transformer: DevicePreference::Cpu,
+            vae: DevicePreference::Cuda,
+            text_encoder: DevicePreference::Cuda,
+        },
+        // `Sequential`: every layer paged. Stays on CPU for stable
+        // storage; this is the lowest-VRAM mode.
+        //
+        // `Auto` should not reach this fn — the runner resolves Auto
+        // before dispatch — but if it ever does we fall through to
+        // Sequential's safe shape rather than panic.
+        OffloadMode::Sequential | OffloadMode::Auto => ComponentPlacement {
+            transformer: DevicePreference::Cpu,
+            vae: DevicePreference::Cpu,
+            text_encoder: DevicePreference::Cpu,
+        },
+    }
+}
+
+/// Compose an explicit per-component override on top of an
+/// `OffloadMode`-implied placement.
+///
+/// Any field that the operator left as `Auto` falls through to the
+/// implied placement; any explicit `Cuda` / `Cpu` field overrides.
+/// Result is always fully concrete — every field is `Cuda` or `Cpu`.
+#[must_use]
+pub const fn resolve_component_placement(
+    base_mode: OffloadMode,
+    override_triple: ComponentPlacement,
+) -> ComponentPlacement {
+    let implied = placement_for_offload_mode(base_mode);
+    ComponentPlacement {
+        transformer: match override_triple.transformer {
+            DevicePreference::Auto => implied.transformer,
+            other => other,
+        },
+        vae: match override_triple.vae {
+            DevicePreference::Auto => implied.vae,
+            other => other,
+        },
+        text_encoder: match override_triple.text_encoder {
+            DevicePreference::Auto => implied.text_encoder,
+            other => other,
+        },
     }
 }
 
@@ -300,6 +371,89 @@ mod tests {
         ] {
             assert_eq!(resolve_runtime_id(pref), expected, "pref={pref:?}");
         }
+    }
+
+    #[test]
+    fn placement_for_offload_mode_matches_documented_contract() {
+        // `None`: every component lives on cuda — fastest, biggest VRAM
+        // budget. Caller picks this only after passing the 16-GB check.
+        assert_eq!(
+            placement_for_offload_mode(OffloadMode::None),
+            ComponentPlacement {
+                transformer: DevicePreference::Cuda,
+                vae: DevicePreference::Cuda,
+                text_encoder: DevicePreference::Cuda,
+            }
+        );
+        // `Model`: model_cpu_offload hook pages the transformer; vae +
+        // text encoder still benefit from being cuda-resident.
+        assert_eq!(
+            placement_for_offload_mode(OffloadMode::Model),
+            ComponentPlacement {
+                transformer: DevicePreference::Cpu,
+                vae: DevicePreference::Cuda,
+                text_encoder: DevicePreference::Cuda,
+            }
+        );
+        // `Sequential`: everything paged from CPU per forward call.
+        assert_eq!(
+            placement_for_offload_mode(OffloadMode::Sequential),
+            ComponentPlacement {
+                transformer: DevicePreference::Cpu,
+                vae: DevicePreference::Cpu,
+                text_encoder: DevicePreference::Cpu,
+            }
+        );
+        // `Auto` should not reach this fn but the safe fallback shape
+        // matches Sequential — lowest VRAM, no crashes.
+        assert_eq!(
+            placement_for_offload_mode(OffloadMode::Auto),
+            placement_for_offload_mode(OffloadMode::Sequential),
+        );
+    }
+
+    #[test]
+    fn resolve_component_placement_passes_through_when_all_auto() {
+        // Operator left every field at default Auto — implied placement
+        // from the offload mode propagates verbatim.
+        let resolved = resolve_component_placement(
+            OffloadMode::None,
+            ComponentPlacement::default(),
+        );
+        assert_eq!(resolved, placement_for_offload_mode(OffloadMode::None));
+    }
+
+    #[test]
+    fn resolve_component_placement_lets_explicit_overrides_win() {
+        // Operator pinned text_encoder to CPU on a None-mode pipeline
+        // (the recommended nvfp4-on-16GB shape — keep T5 off the GPU).
+        let resolved = resolve_component_placement(
+            OffloadMode::None,
+            ComponentPlacement {
+                transformer: DevicePreference::Auto,
+                vae: DevicePreference::Auto,
+                text_encoder: DevicePreference::Cpu,
+            },
+        );
+        assert_eq!(
+            resolved,
+            ComponentPlacement {
+                transformer: DevicePreference::Cuda, // from implied
+                vae: DevicePreference::Cuda,         // from implied
+                text_encoder: DevicePreference::Cpu, // explicit override
+            }
+        );
+    }
+
+    #[test]
+    fn component_placement_is_fully_auto_iff_default() {
+        assert!(ComponentPlacement::default().is_fully_auto());
+        assert!(!ComponentPlacement {
+            transformer: DevicePreference::Cuda,
+            vae: DevicePreference::Auto,
+            text_encoder: DevicePreference::Auto,
+        }
+        .is_fully_auto());
     }
 
     #[test]
