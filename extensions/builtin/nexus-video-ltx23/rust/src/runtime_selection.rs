@@ -35,29 +35,52 @@ pub const fn available_profiles() -> &'static [ProfileDescriptor] {
     PROFILES
 }
 
-/// P1 milestone shortcut: pick a `runtime_id` from a user preference without
-/// host GPU facts.
+/// P1 milestone shortcut: pick a `runtime_id` from a user preference
+/// without host GPU facts, and report when the user's preference was
+/// downgraded.
+///
+/// The second tuple element is `Some(originally_requested_runtime_id)`
+/// when the resolver substituted a different runtime than the caller
+/// asked for (today the only case is `Rtx50Nvfp4 → rtx50-fp8` because
+/// NVFP4 is gated behind `experimental_nvfp4_opt_in`). Callers MUST
+/// propagate that into the user-visible plan (e.g. a `PlanWarning`)
+/// instead of swallowing it — otherwise users who explicitly choose
+/// NVFP4 silently get FP8.
 ///
 /// `Auto` resolves to the fake profile so the recipe works
 /// out-of-the-box before real runtimes are installable. Real GPU-aware
 /// selection happens via `select_runtime` once the host provides facts.
 #[must_use]
+pub const fn resolve_runtime_id_with_substitution(
+    preference: RuntimeProfilePreference,
+    experimental_nvfp4_opt_in: bool,
+) -> (&'static str, Option<&'static str>) {
+    match preference {
+        RuntimeProfilePreference::Auto => ("nexus.video.ltx23.fake", None),
+        RuntimeProfilePreference::Rtx40Fp8 => ("nexus.video.ltx23.rtx40-fp8", None),
+        RuntimeProfilePreference::Rtx50Fp8 => ("nexus.video.ltx23.rtx50-fp8", None),
+        RuntimeProfilePreference::Rtx50Nvfp4 => {
+            if experimental_nvfp4_opt_in {
+                ("nexus.video.ltx23.rtx50-nvfp4", None)
+            } else {
+                (
+                    "nexus.video.ltx23.rtx50-fp8",
+                    Some("nexus.video.ltx23.rtx50-nvfp4"),
+                )
+            }
+        }
+    }
+}
+
+/// Back-compat shim: drops the substitution signal. Prefer
+/// `resolve_runtime_id_with_substitution` in any path that produces a
+/// user-visible plan so the downgrade can be surfaced as a warning.
+#[must_use]
 pub const fn resolve_runtime_id(
     preference: RuntimeProfilePreference,
     experimental_nvfp4_opt_in: bool,
 ) -> &'static str {
-    match preference {
-        RuntimeProfilePreference::Auto => "nexus.video.ltx23.fake",
-        RuntimeProfilePreference::Rtx40Fp8 => "nexus.video.ltx23.rtx40-fp8",
-        RuntimeProfilePreference::Rtx50Fp8 => "nexus.video.ltx23.rtx50-fp8",
-        RuntimeProfilePreference::Rtx50Nvfp4 => {
-            if experimental_nvfp4_opt_in {
-                "nexus.video.ltx23.rtx50-nvfp4"
-            } else {
-                "nexus.video.ltx23.rtx50-fp8"
-            }
-        }
-    }
+    resolve_runtime_id_with_substitution(preference, experimental_nvfp4_opt_in).0
 }
 
 /// Generic GPU facts the host exposes to extensions.
@@ -142,9 +165,13 @@ fn auto_select(
         )));
     }
 
-    let arch = facts.architecture.as_deref().unwrap_or("").to_ascii_lowercase();
-    let is_blackwell = arch.contains("blackwell")
-        || facts.compute_capability.is_some_and(|c| c >= 12.0);
+    let arch = facts
+        .architecture
+        .as_deref()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let is_blackwell =
+        arch.contains("blackwell") || facts.compute_capability.is_some_and(|c| c >= 12.0);
 
     if is_blackwell && experimental_nvfp4_opt_in {
         return Ok(SelectedRuntime {
@@ -240,6 +267,67 @@ mod tests {
         )
         .unwrap();
         assert_eq!(r.runtime_id, "nexus.video.ltx23.rtx40-fp8");
+    }
+
+    #[test]
+    fn resolve_explicit_nvfp4_without_opt_in_reports_substitution() {
+        // The reported bug: a user posting `runtime_profile: "rtx50-nvfp4"`
+        // through the request path (which hardcodes `opt_in=false`) was
+        // silently downgraded to FP8 with no warning anywhere. The
+        // resolver MUST now report the original requested runtime so the
+        // API layer can surface it as a `PlanWarning`.
+        let (resolved, substituted_from) =
+            resolve_runtime_id_with_substitution(RuntimeProfilePreference::Rtx50Nvfp4, false);
+        assert_eq!(resolved, "nexus.video.ltx23.rtx50-fp8");
+        assert_eq!(substituted_from, Some("nexus.video.ltx23.rtx50-nvfp4"));
+    }
+
+    #[test]
+    fn resolve_explicit_nvfp4_with_opt_in_keeps_nvfp4() {
+        let (resolved, substituted_from) =
+            resolve_runtime_id_with_substitution(RuntimeProfilePreference::Rtx50Nvfp4, true);
+        assert_eq!(resolved, "nexus.video.ltx23.rtx50-nvfp4");
+        assert_eq!(substituted_from, None);
+    }
+
+    #[test]
+    fn resolve_non_substituting_branches_report_no_substitution() {
+        for (pref, expected) in [
+            (RuntimeProfilePreference::Auto, "nexus.video.ltx23.fake"),
+            (
+                RuntimeProfilePreference::Rtx40Fp8,
+                "nexus.video.ltx23.rtx40-fp8",
+            ),
+            (
+                RuntimeProfilePreference::Rtx50Fp8,
+                "nexus.video.ltx23.rtx50-fp8",
+            ),
+        ] {
+            for opt_in in [false, true] {
+                let (resolved, substituted_from) =
+                    resolve_runtime_id_with_substitution(pref, opt_in);
+                assert_eq!(resolved, expected, "pref={pref:?} opt_in={opt_in}");
+                assert_eq!(substituted_from, None, "pref={pref:?} opt_in={opt_in}");
+            }
+        }
+    }
+
+    #[test]
+    fn resolve_runtime_id_back_compat_drops_substitution_signal() {
+        // The thin wrapper must keep returning the resolved id verbatim
+        // so older callers (and tests) keep compiling unchanged.
+        assert_eq!(
+            resolve_runtime_id(RuntimeProfilePreference::Rtx50Nvfp4, false),
+            "nexus.video.ltx23.rtx50-fp8"
+        );
+        assert_eq!(
+            resolve_runtime_id(RuntimeProfilePreference::Rtx50Nvfp4, true),
+            "nexus.video.ltx23.rtx50-nvfp4"
+        );
+        assert_eq!(
+            resolve_runtime_id(RuntimeProfilePreference::Rtx40Fp8, false),
+            "nexus.video.ltx23.rtx40-fp8"
+        );
     }
 
     #[test]
