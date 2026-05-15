@@ -33,6 +33,7 @@ Model directory resolution order:
 from __future__ import annotations
 
 import asyncio
+import functools
 import gc
 import os
 import time
@@ -56,6 +57,22 @@ from .vram import evict_models, memory_stats
 
 _LAZY_TORCH: Any = None
 _LAZY_PIPELINE_CLASS: Any = None
+
+
+def _coerce_optional_float(value: Any) -> float | None:
+    """Cast a payload field to float, or return None when missing/null.
+
+    Mirrors `_or_default` for the optional hyperparameter case: the
+    host emits explicit JSON null when the user left the field unset,
+    and we want that to land as Python None (not a TypeError from
+    `float(None)`) so the pipeline call helper can omit the kwarg.
+    """
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _or_default(value: Any, default: Any) -> Any:
@@ -100,6 +117,178 @@ def _gguf_install_device_for_mode(offload_mode: str, device: str) -> str:
     would waste the memory the hooks were chosen to save.
     """
     return device if offload_mode == "none" else "cpu"
+
+
+def _component_placement_from_params(raw_params: dict[str, Any]) -> dict[str, str] | None:
+    """Extract per-component placement triple from the payload.
+
+    Returns the dict `{"transformer": "cuda"|"cpu", "vae": "cuda"|"cpu",
+    "text_encoder": "cuda"|"cpu"}` ONLY when the operator overrode the
+    preset (`placement_overridden=True`). When the preset stands, returns
+    None — the offload-hook path handles placement.
+    """
+    advanced = raw_params.get("advanced") if isinstance(raw_params, dict) else None
+    if not isinstance(advanced, dict):
+        return None
+    if not advanced.get("placement_overridden"):
+        return None
+    placement = advanced.get("component_placement")
+    if not isinstance(placement, dict):
+        return None
+    out: dict[str, str] = {}
+    for key in ("transformer", "vae", "text_encoder"):
+        value = placement.get(key)
+        if value in ("cuda", "cpu"):
+            out[key] = value
+        else:
+            return None  # malformed payload — defer to preset
+    return out
+
+
+def _scheduler_from_params(raw_params: dict[str, Any]) -> str:
+    advanced = raw_params.get("advanced") if isinstance(raw_params, dict) else None
+    if not isinstance(advanced, dict):
+        return "flow_match_euler"
+    name = advanced.get("scheduler")
+    if isinstance(name, str) and name:
+        return name
+    return "flow_match_euler"
+
+
+def _text_encoder_quant_from_params(raw_params: dict[str, Any]) -> str:
+    advanced = raw_params.get("advanced") if isinstance(raw_params, dict) else None
+    if not isinstance(advanced, dict):
+        return "default"
+    name = advanced.get("text_encoder_quant")
+    if isinstance(name, str) and name in ("default", "fp8", "int8", "nf4"):
+        return name
+    return "default"
+
+
+def _apply_scheduler_choice(pipe: Any, choice: str, logger: Any) -> None:
+    """Swap `pipe.scheduler` to the operator-requested scheduler class.
+
+    Only flow-matching schedulers are valid for LTX-2.3. The default
+    (`flow_match_euler`) is already loaded by `from_pretrained`, so this
+    is a no-op unless the operator picked `flow_match_heun`. Other
+    diffusers schedulers (DDIM, DPM++, UniPC, ...) are not supported and
+    intentionally not in the registry — they break on flow-matching
+    velocity parameterisation.
+    """
+    if choice == "flow_match_euler":
+        return  # already loaded
+    if choice == "flow_match_heun":
+        try:
+            from diffusers import FlowMatchHeunDiscreteScheduler  # type: ignore
+        except ImportError as ie:
+            raise _ModelLoadFailed(
+                f"FlowMatchHeunDiscreteScheduler not importable: {ie}. "
+                f"Upgrade diffusers or use scheduler='flow_match_euler'."
+            ) from ie
+        pipe.scheduler = FlowMatchHeunDiscreteScheduler.from_config(
+            pipe.scheduler.config
+        )
+        logger.info("diffusers.load_pipeline.scheduler", scheduler=choice)
+        return
+    raise _ModelLoadFailed(
+        f"unknown scheduler: {choice!r}; expected "
+        '"flow_match_euler" or "flow_match_heun"'
+    )
+
+
+def _apply_text_encoder_quant(
+    pipe: Any, quant: str, model_dir: Any, dtype: Any, logger: Any
+) -> None:
+    """Swap `pipe.text_encoder` for a bitsandbytes-quantised T5.
+
+    Quantises the T5-XXL text encoder weights in-place to free ~5-8 GB
+    of VRAM/RAM working set. Encoder runs once per render so the
+    perceptual cost on the final video is modest even at `nf4`.
+
+    Requires `bitsandbytes` to be importable in the worker venv. Fails
+    loudly with `_ModelLoadFailed` if the import is missing, the
+    requested mode is unknown, or the swap fails — surfacing "install
+    bitsandbytes" rather than silently keeping the bf16 encoder
+    resident is the right error mode.
+
+    `quant="default"` short-circuits to a no-op so the common path
+    pays nothing.
+    """
+    if quant == "default":
+        return
+    try:
+        import bitsandbytes  # type: ignore  # noqa: F401
+        from transformers import BitsAndBytesConfig, T5EncoderModel  # type: ignore
+    except ImportError as ie:
+        raise _ModelLoadFailed(
+            f"text_encoder_quant={quant!r} requires bitsandbytes + transformers "
+            f"in the worker venv: {ie}. Use text_encoder_quant='default' or "
+            f"`uv pip install bitsandbytes` in the runtime's .venv."
+        ) from ie
+
+    config_kwargs: dict[str, Any]
+    if quant == "fp8":
+        # Transformers' BitsAndBytesConfig doesn't expose an FP8 mode
+        # directly; the closest 8-bit path is load_in_8bit (linear8bit
+        # quantisation). Operators picking fp8 get the bnb 8-bit path
+        # since neither bnb nor T5 ship a true FP8 (e4m3) loader yet.
+        config_kwargs = {"load_in_8bit": True}
+    elif quant == "int8":
+        config_kwargs = {"load_in_8bit": True}
+    elif quant == "nf4":
+        config_kwargs = {
+            "load_in_4bit": True,
+            "bnb_4bit_quant_type": "nf4",
+            "bnb_4bit_compute_dtype": dtype,
+        }
+    else:
+        raise _ModelLoadFailed(
+            f"unknown text_encoder_quant: {quant!r}; expected "
+            '"default", "fp8", "int8", or "nf4"'
+        )
+
+    text_encoder_dir = Path(model_dir) / "text_encoder"
+    if not text_encoder_dir.is_dir():
+        # Some LTX-2.3 diffusers ports put the encoder weights at the
+        # repo root instead of a subdir. Fall through to the full repo.
+        text_encoder_dir = Path(model_dir)
+
+    bnb_config = BitsAndBytesConfig(**config_kwargs)
+    try:
+        quantised = T5EncoderModel.from_pretrained(
+            str(text_encoder_dir),
+            quantization_config=bnb_config,
+            torch_dtype=dtype,
+            local_files_only=True,
+        )
+    except Exception as e:
+        raise _ModelLoadFailed(
+            f"failed to load bnb-quantised T5 ({quant}): {e}. "
+            f"Try text_encoder_quant='default' or verify the text_encoder "
+            f"subdir exists at {text_encoder_dir}."
+        ) from e
+    pipe.text_encoder = quantised
+    logger.info("diffusers.load_pipeline.text_encoder_quant", quant=quant)
+
+
+def _apply_component_placement(pipe: Any, placement: dict[str, str], logger: Any) -> None:
+    """Force each non-GGUF component onto the operator-specified device.
+
+    Used when the operator overrode the preset (`placement_overridden=True`
+    in the payload). Skips the transformer when it was already installed
+    onto CUDA via the GGUF loader's install_device path — moving a GGUF
+    transformer after install would be a no-op anyway since GGUFParameter
+    doesn't honour stock `.to()`.
+    """
+    for name in ("vae", "text_encoder", "text_encoder_2"):
+        submod = getattr(pipe, name, None)
+        if submod is None or not hasattr(submod, "to"):
+            continue
+        target = placement.get(name if name != "text_encoder_2" else "text_encoder")
+        if target is None:
+            continue
+        submod.to(target)
+    logger.info("diffusers.load_pipeline.placement", placement=placement)
 
 
 def _apply_offload_mode(
@@ -464,7 +653,14 @@ def _expected_family_id(profile: str) -> str | None:
 
 
 def _ensure_pipeline_loaded(
-    worker, profile: str, cache: dict[str, Any], offload_mode: str
+    worker,
+    profile: str,
+    cache: dict[str, Any],
+    offload_mode: str,
+    *,
+    scheduler_choice: str = "flow_match_euler",
+    placement_override: dict[str, str] | None = None,
+    text_encoder_quant: str = "default",
 ) -> tuple[Any, str]:
     """Idempotent pipeline loader. Returns (pipe, device).
 
@@ -578,14 +774,34 @@ def _ensure_pipeline_loaded(
         # s/step (the latter spilled to unified memory on Windows).
         # NVFP4 on Blackwell has enough headroom for `none` (full
         # pipeline resident) which is faster still.
-        pipe = _apply_offload_mode(
+        # T5 quantisation runs BEFORE placement / offload dispatch
+        # because it replaces pipe.text_encoder wholesale; placing the
+        # old encoder then quantising would have moved CPU/GPU memory
+        # we're about to throw away.
+        _apply_text_encoder_quant(
             pipe=pipe,
-            offload_mode=offload_mode,
-            device=device,
-            torch_mod=torch,
+            quant=text_encoder_quant,
+            model_dir=model_dir,
+            dtype=dtype,
             logger=worker.logger,
-            gguf_already_placed=gguf_override is not None,
         )
+
+        if placement_override is not None:
+            # Operator overrode the preset — skip the offload hooks
+            # entirely and place each non-GGUF component directly. The
+            # GGUF transformer (if any) was already placed at install
+            # time via gguf_install_device.
+            _apply_component_placement(pipe, placement_override, worker.logger)
+        else:
+            pipe = _apply_offload_mode(
+                pipe=pipe,
+                offload_mode=offload_mode,
+                device=device,
+                torch_mod=torch,
+                logger=worker.logger,
+                gguf_already_placed=gguf_override is not None,
+            )
+        _apply_scheduler_choice(pipe, scheduler_choice, worker.logger)
         if hasattr(pipe.vae, "enable_tiling"):
             pipe.vae.enable_tiling()
         worker.logger.info(
@@ -642,7 +858,16 @@ async def _load_then_render(
     )
     try:
         pipe, device = await asyncio.to_thread(
-            _ensure_pipeline_loaded, worker, profile, cache, offload_mode
+            functools.partial(
+                _ensure_pipeline_loaded,
+                worker,
+                profile,
+                cache,
+                offload_mode,
+                scheduler_choice=_scheduler_from_params(raw_params),
+                placement_override=_component_placement_from_params(raw_params),
+                text_encoder_quant=_text_encoder_quant_from_params(raw_params),
+            )
         )
     except _ModelMissing as err:
         await _emit_error(
@@ -716,7 +941,16 @@ async def _load_then_retry_segment(
     )
     try:
         pipe, device = await asyncio.to_thread(
-            _ensure_pipeline_loaded, worker, profile, cache, offload_mode
+            functools.partial(
+                _ensure_pipeline_loaded,
+                worker,
+                profile,
+                cache,
+                offload_mode,
+                scheduler_choice=_scheduler_from_params(raw_params),
+                placement_override=_component_placement_from_params(raw_params),
+                text_encoder_quant=_text_encoder_quant_from_params(raw_params),
+            )
         )
     except _ModelMissing as err:
         await _emit_error(worker, rs.run_id, ErrorCodes.MODEL_MISSING, str(err))
@@ -784,6 +1018,9 @@ async def _retry_segment_loop(
     advanced = raw_params.get("advanced") or {}
     guidance_scale = float(_or_default(advanced.get("guidance_scale"), 4.0))
     num_inference_steps = int(_or_default(advanced.get("num_inference_steps"), 8))
+    decode_timestep = _coerce_optional_float(advanced.get("decode_timestep"))
+    image_cond_noise_scale = _coerce_optional_float(advanced.get("image_cond_noise_scale"))
+    guidance_rescale = _coerce_optional_float(advanced.get("guidance_rescale"))
 
     prompt_obj = raw_params.get("prompt") or {}
     global_action = prompt_obj.get("action") or prompt_obj.get("prompt") or ""
@@ -857,18 +1094,23 @@ async def _retry_segment_loop(
 
     try:
         frames = await asyncio.to_thread(
-            _generate_segment,
-            rs.pipe,
-            cond_image,
-            effective_prompt,
-            negative_prompt,
-            width,
-            height,
-            seg_frame_count,
-            seg_seed,
-            guidance_scale,
-            num_inference_steps,
-            emit_step,
+            functools.partial(
+                _generate_segment,
+                rs.pipe,
+                cond_image,
+                effective_prompt,
+                negative_prompt,
+                width,
+                height,
+                seg_frame_count,
+                seg_seed,
+                guidance_scale,
+                num_inference_steps,
+                emit_step,
+                decode_timestep=decode_timestep,
+                image_cond_noise_scale=image_cond_noise_scale,
+                guidance_rescale=guidance_rescale,
+            )
         )
     except RuntimeError as e:
         msg = str(e)
@@ -979,6 +1221,9 @@ async def _render_loop(
     advanced = raw_params.get("advanced") or {}
     guidance_scale = float(_or_default(advanced.get("guidance_scale"), 4.0))
     num_inference_steps = int(_or_default(advanced.get("num_inference_steps"), 8))
+    decode_timestep = _coerce_optional_float(advanced.get("decode_timestep"))
+    image_cond_noise_scale = _coerce_optional_float(advanced.get("image_cond_noise_scale"))
+    guidance_rescale = _coerce_optional_float(advanced.get("guidance_rescale"))
     if not segments:
         await _emit_error(
             worker,
@@ -1078,18 +1323,23 @@ async def _render_loop(
 
         try:
             frames = await asyncio.to_thread(
-                _generate_segment,
-                rs.pipe,
-                last_frame_image,
-                effective_prompt,
-                negative_prompt,
-                width,
-                height,
-                seg_frame_count,
-                seg_seed,
-                guidance_scale,
-                num_inference_steps,
-                emit_step,
+                functools.partial(
+                    _generate_segment,
+                    rs.pipe,
+                    last_frame_image,
+                    effective_prompt,
+                    negative_prompt,
+                    width,
+                    height,
+                    seg_frame_count,
+                    seg_seed,
+                    guidance_scale,
+                    num_inference_steps,
+                    emit_step,
+                    decode_timestep=decode_timestep,
+                    image_cond_noise_scale=image_cond_noise_scale,
+                    guidance_rescale=guidance_rescale,
+                )
             )
         except RuntimeError as e:
             # CUDA OOM / VRAM budget exceeded surfaces here.
@@ -1258,6 +1508,10 @@ def _generate_segment(
     guidance_scale: float,
     num_inference_steps: int,
     step_heartbeat: Callable[[int], None] | None = None,
+    *,
+    decode_timestep: float | None = None,
+    image_cond_noise_scale: float | None = None,
+    guidance_rescale: float | None = None,
 ) -> Any:
     """Call into the LTX pipeline. Returns a list of PIL.Image frames.
 
@@ -1287,6 +1541,17 @@ def _generate_segment(
         "guidance_scale": guidance_scale,
         "num_inference_steps": num_inference_steps,
     }
+    # Optional LTX-2.3-specific knobs. None signals "use pipeline
+    # default" and gets stripped here so we never pass an explicit
+    # None into the diffusers call (which would override the default
+    # with null and trip TypeError downstream — same class of bug as
+    # the 2026-05-15 guidance_scale=None incident).
+    if decode_timestep is not None:
+        call_kwargs["decode_timestep"] = decode_timestep
+    if image_cond_noise_scale is not None:
+        call_kwargs["image_cond_noise_scale"] = image_cond_noise_scale
+    if guidance_rescale is not None:
+        call_kwargs["guidance_rescale"] = guidance_rescale
 
     sig_params = inspect.signature(pipe.__call__).parameters
     if image is not None:
