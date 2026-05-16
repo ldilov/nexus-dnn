@@ -11,7 +11,8 @@ use crate::errors::Result;
 use crate::lease::LeaseAcquirer;
 use crate::notification_buffer::{NotificationBuffer, SegmentStatusWrite};
 use crate::runtime_selection::{
-    default_offload_mode_for_profile, default_quant_for_profile, resolve_component_placement,
+    default_max_frag_ratio_for_profile, default_offload_mode_for_profile,
+    default_quant_for_profile, resolve_component_placement,
 };
 use crate::schemas::{
     AdvancedSettings, DevicePreference, ModelQuant, OffloadMode, RenderPlan, SchedulerChoice,
@@ -805,6 +806,7 @@ async fn run_attempt(
                             }
                             if let Some(o) = handle_notification(
                                 cfg, run_id, workdir, &note, &breach_latch,
+                                profile, plan.segment_count,
                             ).await? {
                                 return Ok(o);
                             }
@@ -1160,6 +1162,16 @@ async fn handle_notification(
     _workdir: &std::path::Path,
     note: &nexus_backend_runtimes::generic::leases::trait_def::LeaseNotification,
     breach_latch: &BreachLatch,
+    // SHORT or fully-qualified profile slug for the running chain —
+    // selects the per-profile `max_frag_ratio` ceiling so an offloaded
+    // fp8/nvfp4 pipeline's benign post-render fragmentation does not
+    // latch a false breach.
+    profile: &str,
+    // Total planned segments for the chain. When the FINAL segment
+    // completes there is nothing left to render, so a latched breach
+    // is moot — suppress the restart rather than collapsing a
+    // finished render into a `vram_supervisor` error.
+    total_segments: u32,
 ) -> Result<Option<NotificationOutcome>> {
     match note.method.as_str() {
         "ltx.video.segment.started" => {
@@ -1176,10 +1188,21 @@ async fn handle_notification(
                 // worker is between segments, so releasing the lease
                 // here gives a clean restart point.
                 if let Some(reason) = breach_latch.take().await {
-                    return Ok(Some(NotificationOutcome::RestartRequired {
-                        reason,
-                        last_completed_segment: i,
-                    }));
+                    if let Some(outcome) =
+                        restart_outcome_for_latched_breach(&reason, i, total_segments)
+                    {
+                        return Ok(Some(outcome));
+                    }
+                    tracing::info!(
+                        extension_id = "nexus.video.ltx23",
+                        run_id = %run_id,
+                        reason = %reason,
+                        last_segment = i,
+                        total_segments,
+                        "vram supervisor: breach latched on the final segment — \
+                         render already complete, treating as benign (no restart)"
+                    );
+                    return Ok(None);
                 }
             }
             Ok(None)
@@ -1249,7 +1272,7 @@ async fn handle_notification(
             // `max_restarts_from_env()` exhausted attempts the outer
             // driver collapses to the legacy halt path with the
             // `vram_supervisor` error_code.
-            match cfg.vram_supervisor.evaluate(&note.params) {
+            match evaluate_memory_stats(&cfg.vram_supervisor, profile, &note.params) {
                 VramVerdict::Healthy => Ok(None),
                 VramVerdict::Breach { reason } => {
                     tracing::warn!(
@@ -1269,6 +1292,53 @@ async fn handle_notification(
 
 fn segment_index(params: &Value) -> Option<i64> {
     params.get("segment_index").and_then(Value::as_i64)
+}
+
+/// Resolve the per-profile `frag_ratio` ceiling and evaluate a
+/// `runtime.memory_stats` payload.
+///
+/// fp8/nvfp4 run under CPU offload and leave the CUDA pool heavily
+/// fragmented after a *normal* render, so the spec-046 default of
+/// 0.30 would false-positive on every healthy run of those profiles.
+/// `resolve_max_frag_ratio` keeps an explicit env override winning.
+/// Centralised here so Guard A is unit-testable without driving the
+/// async notification loop.
+fn evaluate_memory_stats(
+    supervisor: &VramSupervisor,
+    profile: &str,
+    stats: &Value,
+) -> VramVerdict {
+    let max_frag = supervisor
+        .resolve_max_frag_ratio(default_max_frag_ratio_for_profile(short_profile(profile)));
+    supervisor.evaluate_with_max_frag(stats, max_frag)
+}
+
+/// Decide what a latched supervisor breach means once a segment has
+/// completed cleanly.
+///
+/// `completed_segment` is the ORIGINAL 0-based chain index that just
+/// landed; `total_segments` is the full planned count. When the final
+/// segment completes (`completed_segment + 1 >= total_segments`) every
+/// planned segment is on disk and the run will proceed to
+/// `ltx.video.done` — the breach is moot (there is nothing left to
+/// render) so this returns `None` and the caller lets the chain
+/// finish. Otherwise it returns `RestartRequired` so the outer driver
+/// releases the lease and resumes mid-chain.
+///
+/// Pure + sync so the benign-completion guard is unit-testable without
+/// driving the async notification loop.
+fn restart_outcome_for_latched_breach(
+    reason: &str,
+    completed_segment: i64,
+    total_segments: u32,
+) -> Option<NotificationOutcome> {
+    if completed_segment.saturating_add(1) >= i64::from(total_segments) {
+        return None;
+    }
+    Some(NotificationOutcome::RestartRequired {
+        reason: reason.to_string(),
+        last_completed_segment: completed_segment,
+    })
 }
 
 /// Build a `render.start` payload that resumes mid-chain.
@@ -2441,6 +2511,8 @@ mod tests {
             std::path::Path::new("/tmp"),
             &note,
             &latch,
+            "nexus.video.ltx23.fake",
+            4,
         )
         .await
         .expect("handler should not error");
@@ -2472,11 +2544,153 @@ mod tests {
             std::path::Path::new("/tmp"),
             &note,
             &latch,
+            "nexus.video.ltx23.fake",
+            4,
         )
         .await
         .expect("handler should not error");
         assert!(outcome.is_none());
         assert!(latch.reason.lock().await.is_none());
+    }
+
+    // ── supervisor false-positive guards ─────────────────────────────
+
+    #[test]
+    fn restart_outcome_restarts_when_chain_has_more_segments() {
+        let outcome = restart_outcome_for_latched_breach("frag spike", 1, 4)
+            .expect("mid-chain breach must request a restart");
+        match outcome {
+            NotificationOutcome::RestartRequired {
+                reason,
+                last_completed_segment,
+            } => {
+                assert_eq!(reason, "frag spike");
+                assert_eq!(last_completed_segment, 1);
+            }
+            _ => panic!("expected RestartRequired"),
+        }
+    }
+
+    #[test]
+    fn restart_outcome_benign_on_final_segment() {
+        // Last segment (index 3 of a 4-segment chain) just landed —
+        // the render is complete, a latched breach is moot.
+        assert!(restart_outcome_for_latched_breach("frag spike", 3, 4).is_none());
+    }
+
+    #[test]
+    fn restart_outcome_benign_when_index_at_or_beyond_total() {
+        // Defensive: an out-of-range index must also be treated as
+        // "nothing left to restart" rather than panicking or looping.
+        assert!(restart_outcome_for_latched_breach("x", 4, 4).is_none());
+        assert!(restart_outcome_for_latched_breach("x", 9, 4).is_none());
+    }
+
+    #[test]
+    fn evaluate_memory_stats_fp8_profiles_ignore_benign_fragmentation() {
+        // The reported false-positive: offloaded fp8/nvfp4 end every
+        // healthy render at frag_ratio ≈ 0.995 — must NOT breach.
+        let supervisor = VramSupervisor::default();
+        let stats = serde_json::json!({
+            "num_ooms": 0,
+            "num_alloc_retries": 1,
+            "frag_ratio": 0.995,
+            "free_mb": 8000,
+        });
+        for profile in [
+            "nexus.video.ltx23.rtx50-nvfp4",
+            "nexus.video.ltx23.rtx50-fp8",
+            "nexus.video.ltx23.rtx40-fp8",
+        ] {
+            assert_eq!(
+                evaluate_memory_stats(&supervisor, profile, &stats),
+                VramVerdict::Healthy,
+                "profile={profile} benign post-render frag must not breach"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_memory_stats_fake_profile_still_breaches_high_frag() {
+        // Genuine mid-render breach on the tight-ceiling profile.
+        let supervisor = VramSupervisor::default();
+        let stats = serde_json::json!({"frag_ratio": 0.995});
+        match evaluate_memory_stats(&supervisor, "nexus.video.ltx23.fake", &stats) {
+            VramVerdict::Breach { reason } => assert!(reason.contains("frag_ratio")),
+            VramVerdict::Healthy => panic!("fake profile must keep the 0.30 ceiling"),
+        }
+    }
+
+    #[test]
+    fn evaluate_memory_stats_real_oom_breaches_even_on_fp8() {
+        // Disabling frag for fp8 must not mask a real OOM.
+        let supervisor = VramSupervisor::default();
+        let stats = serde_json::json!({"frag_ratio": 0.999, "num_ooms": 10});
+        match evaluate_memory_stats(&supervisor, "nexus.video.ltx23.rtx50-nvfp4", &stats) {
+            VramVerdict::Breach { reason } => assert!(reason.contains("num_ooms=10")),
+            VramVerdict::Healthy => panic!("real OOM must still breach on fp8"),
+        }
+    }
+
+    #[tokio::test]
+    async fn handle_notification_final_segment_breach_is_benign() {
+        let runner = empty_runner().await;
+        let latch = BreachLatch::default();
+        latch.set("frag_ratio=0.995 exceeded max=0.300".into()).await;
+        // Segment index 3 of a 4-segment chain = the final segment.
+        let note = nexus_backend_runtimes::generic::leases::trait_def::LeaseNotification {
+            method: "ltx.video.segment.completed".into(),
+            params: serde_json::json!({"run_id": "run-x", "segment_index": 3}),
+        };
+        let outcome = handle_notification(
+            &runner.cfg,
+            "run-x",
+            std::path::Path::new("/tmp"),
+            &note,
+            &latch,
+            "nexus.video.ltx23.rtx50-nvfp4",
+            4,
+        )
+        .await
+        .expect("handler should not error");
+        assert!(
+            outcome.is_none(),
+            "breach on the final segment must NOT abort a finished render"
+        );
+        assert!(
+            latch.reason.lock().await.is_none(),
+            "latch must still be consumed even on the benign path"
+        );
+    }
+
+    #[tokio::test]
+    async fn handle_notification_midchain_segment_breach_restarts() {
+        let runner = empty_runner().await;
+        let latch = BreachLatch::default();
+        latch.set("num_ooms=2 exceeded max=1".into()).await;
+        // Segment index 1 of a 4-segment chain = more work remains.
+        let note = nexus_backend_runtimes::generic::leases::trait_def::LeaseNotification {
+            method: "ltx.video.segment.completed".into(),
+            params: serde_json::json!({"run_id": "run-x", "segment_index": 1}),
+        };
+        let outcome = handle_notification(
+            &runner.cfg,
+            "run-x",
+            std::path::Path::new("/tmp"),
+            &note,
+            &latch,
+            "nexus.video.ltx23.rtx50-nvfp4",
+            4,
+        )
+        .await
+        .expect("handler should not error");
+        match outcome {
+            Some(NotificationOutcome::RestartRequired {
+                last_completed_segment,
+                ..
+            }) => assert_eq!(last_completed_segment, 1),
+            _ => panic!("expected RestartRequired"),
+        }
     }
 
     #[tokio::test]
