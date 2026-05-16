@@ -67,17 +67,15 @@ pub const fn resolve_runtime_id(preference: RuntimeProfilePreference) -> &'stati
 ///
 /// Rationale per profile:
 ///
-/// - `rtx50-nvfp4` → `Model`. Retained as the conservative default
-///   while NVFP4-specific offload tuning (accelerate `device_map` /
-///   `max_memory` partial-load vs sequential vs model) is determined
-///   on real hardware — that analysis is N4's scope. NOTE: post the
-///   N3 rename this profile is real NVIDIA `ModelOpt` FP4 restored
-///   from a pre-quantised tree, NOT bitsandbytes-NF4; the bnb
-///   meta-device / `enable_sequential_cpu_offload()` constraint that
-///   originally forced `Model` here applies only to explicit
-///   `Nf4Bnb`/`Int8` now (enforced by `compatibility.rs` Guard 1),
-///   so the `Model` default is provisional pending N4, not a hard
-///   `ModelOpt` requirement.
+/// - `rtx50-nvfp4` → `Model`. This profile's resolved default quant
+///   is `Nf4Bnb` (real NVIDIA NVFP4 is host-blocked & under
+///   construction — see `default_quant_for_profile`). bitsandbytes
+///   loads params via accelerate meta-device dispatch and is
+///   fundamentally incompatible with `enable_sequential_cpu_offload`
+///   ("Cannot copy out of meta tensor"); the diffusers-supported
+///   low-VRAM combo for a bnb pipeline is `enable_model_cpu_offload`,
+///   whose NF4 peak (~10 GB largest single component) fits 16 GB.
+///   Verified on the RTX 5070 Ti (047 close-out).
 /// - Every other profile → `Sequential`. They keep raw bf16 weights
 ///   (no bnb), so sequential's per-layer paging (~2 GB peak, never
 ///   touches shared VRAM) is the safe default.
@@ -91,10 +89,18 @@ pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
 
 /// Default quantisation per profile.
 ///
-/// `rtx50-nvfp4` → `Nvfp4`: real NVIDIA `ModelOpt` FP4, restored from
-/// the pre-quantised on-disk official tree (no 83 GB bf16 read, no
-/// on-the-fly pass). Replaces the prior bitsandbytes-NF4 stand-in —
-/// the profile name now means what it says.
+/// `rtx50-nvfp4` → `Nf4Bnb`: the verified-working bitsandbytes-NF4
+/// path that fits 16 GB under `enable_model_cpu_offload` (real render
+/// confirmed, 047 close-out). Real NVIDIA `ModelOpt` NVFP4
+/// (`ModelQuant::Nvfp4`) is **under construction / host-blocked** —
+/// NVFP4 layers cannot CPU-offload, diffusers blocks pre-quant cpu
+/// `device_map`, and `modelopt_cuda_ext_mx` will not build without a
+/// CUDA toolchain on this host (see
+/// `checkpoints/2026-05-17-nvfp4-offload-blocker.md`). The `Nvfp4`
+/// enum value stays for honest naming + explicit selection, but it is
+/// NOT the profile default until those blockers are resolved; an
+/// explicit `Nvfp4` request is rejected at plan time
+/// (`compatibility.rs` — `[nvfp4_under_construction]`).
 ///
 /// Every other profile → `None`: `fake`/CI has no real weights, and
 /// the fp8 profiles' quant story is a separate (unbuilt) path — they
@@ -102,7 +108,7 @@ pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
 #[must_use]
 pub const fn default_quant_for_profile(profile: &str) -> ModelQuant {
     match profile.as_bytes() {
-        b"rtx50-nvfp4" => ModelQuant::Nvfp4,
+        b"rtx50-nvfp4" => ModelQuant::Nf4Bnb,
         _ => ModelQuant::None,
     }
 }
@@ -637,9 +643,11 @@ mod tests {
 
     #[test]
     fn default_quant_per_profile() {
-        // nvfp4 → Nvfp4 (real NVIDIA ModelOpt FP4 restored from the
-        // pre-quantised tree). Everything else keeps raw weights.
-        assert_eq!(default_quant_for_profile("rtx50-nvfp4"), ModelQuant::Nvfp4);
+        // nvfp4 profile → Nf4Bnb: the verified-working bnb path.
+        // Real NVFP4 is host-blocked / under construction (see
+        // default_quant_for_profile doc); the profile must keep
+        // resolving to the path that actually renders on 16 GB.
+        assert_eq!(default_quant_for_profile("rtx50-nvfp4"), ModelQuant::Nf4Bnb);
         for p in ["rtx50-fp8", "rtx40-fp8", "fake", "xyz"] {
             assert_eq!(
                 default_quant_for_profile(p),
