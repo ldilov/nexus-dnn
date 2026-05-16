@@ -245,6 +245,23 @@ mod tests {
     }
 
     #[test]
+    fn gguf_profile_passes_all_guards() {
+        // GGUF is neither bnb (Guard 1) nor under-construction NVFP4
+        // (Guard 0) nor fp8-class (Guard 2 CFG) nor nvfp4 (Guard 3
+        // frame ceiling). The rtx50-gguf profile with its defaults —
+        // and even with sequential offload + high CFG + long segments
+        // — must pass cleanly. Regression guard for the G-A wiring.
+        const GGUF: &str = "nexus.video.ltx23.rtx50-gguf";
+        let dflt = advanced(OffloadMode::Auto, ModelQuant::None, None);
+        assert!(check_known_incompatibilities(GGUF, &dflt, 97).is_ok());
+        let explicit = advanced(OffloadMode::Sequential, ModelQuant::Gguf, Some(8.0));
+        assert!(
+            check_known_incompatibilities(GGUF, &explicit, 200).is_ok(),
+            "gguf must not trip the bnb/fp8/nvfp4 guards"
+        );
+    }
+
+    #[test]
     fn explicit_int8_plus_sequential_is_blocked() {
         // DEFECT 1 regression guard: INT8 also loads via bnb
         // meta-device dispatch, so int8+sequential crashes identically

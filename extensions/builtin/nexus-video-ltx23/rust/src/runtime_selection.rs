@@ -30,6 +30,11 @@ const PROFILES: &[ProfileDescriptor] = &[
         display_name: "LTX 2.3 NVFP4 (RTX 50 / Blackwell, experimental)",
         experimental: true,
     },
+    ProfileDescriptor {
+        runtime_id: "nexus.video.ltx23.rtx50-gguf",
+        display_name: "LTX 2.3 GGUF Q4 (RTX 50 / 16 GB)",
+        experimental: false,
+    },
 ];
 
 #[must_use]
@@ -55,6 +60,7 @@ pub const fn resolve_runtime_id(preference: RuntimeProfilePreference) -> &'stati
         RuntimeProfilePreference::Rtx40Fp8 => "nexus.video.ltx23.rtx40-fp8",
         RuntimeProfilePreference::Rtx50Fp8 => "nexus.video.ltx23.rtx50-fp8",
         RuntimeProfilePreference::Rtx50Nvfp4 => "nexus.video.ltx23.rtx50-nvfp4",
+        RuntimeProfilePreference::Rtx50Gguf => "nexus.video.ltx23.rtx50-gguf",
     }
 }
 
@@ -76,13 +82,19 @@ pub const fn resolve_runtime_id(preference: RuntimeProfilePreference) -> &'stati
 ///   low-VRAM combo for a bnb pipeline is `enable_model_cpu_offload`,
 ///   whose NF4 peak (~10 GB largest single component) fits 16 GB.
 ///   Verified on the RTX 5070 Ti (047 close-out).
+/// - `rtx50-gguf` → `Model`. The GGUF Q4 transformer (~16.5 GB on
+///   disk, ~smaller resident) is installed CPU-side by `gguf_loader`
+///   and paged by `enable_model_cpu_offload`; GGUF `GGUFLinear`
+///   dequant-per-matmul is not bnb, so the meta-device sequential
+///   crash does not apply, but model-offload is the proven low-VRAM
+///   pairing for the largest-single-component peak on 16 GB.
 /// - Every other profile → `Sequential`. They keep raw bf16 weights
 ///   (no bnb), so sequential's per-layer paging (~2 GB peak, never
 ///   touches shared VRAM) is the safe default.
 #[must_use]
 pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
     match profile.as_bytes() {
-        b"rtx50-nvfp4" => OffloadMode::Model,
+        b"rtx50-nvfp4" | b"rtx50-gguf" => OffloadMode::Model,
         _ => OffloadMode::Sequential,
     }
 }
@@ -102,6 +114,11 @@ pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
 /// explicit `Nvfp4` request is rejected at plan time
 /// (`compatibility.rs` — `[nvfp4_under_construction]`).
 ///
+/// `rtx50-gguf` → `Gguf`: the Abiray LTX-2.3 `Q4_K_M` GGUF transformer
+/// loaded via the extension-local `gguf_loader` (LTX2 key-rename
+/// applied, proven schema-clean 4186/4186 against the dg845 base
+/// config). Not bnb, not NVFP4 — none of either's constraints apply.
+///
 /// Every other profile → `None`: `fake`/CI has no real weights, and
 /// the fp8 profiles' quant story is a separate (unbuilt) path — they
 /// keep raw weights until explicitly addressed.
@@ -109,6 +126,7 @@ pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
 pub const fn default_quant_for_profile(profile: &str) -> ModelQuant {
     match profile.as_bytes() {
         b"rtx50-nvfp4" => ModelQuant::Nf4Bnb,
+        b"rtx50-gguf" => ModelQuant::Gguf,
         _ => ModelQuant::None,
     }
 }
@@ -137,13 +155,26 @@ pub fn is_fp8_family(profile: &str) -> bool {
     is_nvfp4_family(profile) || profile.ends_with("-fp8")
 }
 
+/// Single source of truth: is `profile` a GGUF runtime?
+///
+/// Matches any `*-gguf` slug (today only `rtx50-gguf`). GGUF runs the
+/// transformer through `enable_model_cpu_offload` exactly like the
+/// fp8/nvfp4 profiles, so it shares their post-offload frag-ratio
+/// behaviour (see `default_max_frag_ratio_for_profile`). It is NOT
+/// fp8-class for the CFG guard — Q4 GGUF has no e4m3 saturation — so
+/// it is intentionally separate from `is_fp8_family`.
+#[must_use]
+pub fn is_gguf_family(profile: &str) -> bool {
+    profile == "gguf" || profile.ends_with("-gguf")
+}
+
 /// Per-profile VRAM-supervisor `max_frag_ratio` ceiling.
 ///
 /// `profile` is the SHORT slug (e.g. `"rtx50-nvfp4"`), matching the
 /// `short_profile()` helper in `runner.rs` — same convention as the
 /// two siblings above.
 ///
-/// Background: the fp8/nvfp4 profiles run under
+/// Background: the fp8/nvfp4/gguf profiles run under
 /// `enable_model_cpu_offload()` / `enable_sequential_cpu_offload()`,
 /// which free + reallocate the transformer on every forward. After a
 /// *normal, successful* render the CUDA pool is left ~0.99 fragmented
@@ -168,13 +199,13 @@ pub fn is_fp8_family(profile: &str) -> bool {
 /// still wins over this per-profile default — see
 /// `VramSupervisor::resolve_max_frag_ratio`.
 ///
-/// Keyed off `is_fp8_family` (the single profile-class source) rather
-/// than an inline slug enumeration, so a new offloaded profile is
-/// covered the moment it is added to `PROFILES` — no risk of this
-/// ceiling silently reverting to the false-positive 0.30 for it.
+/// Keyed off `is_fp8_family` + `is_gguf_family` (the profile-class
+/// sources) rather than an inline slug enumeration, so a new offloaded
+/// profile is covered the moment it is added to `PROFILES` — no risk
+/// of this ceiling silently reverting to the false-positive 0.30.
 #[must_use]
 pub fn default_max_frag_ratio_for_profile(profile: &str) -> f64 {
-    if is_fp8_family(profile) {
+    if is_fp8_family(profile) || is_gguf_family(profile) {
         1.0
     } else {
         0.30
@@ -326,6 +357,14 @@ pub fn select_runtime(
                 experimental: true,
             })
         }
+        RuntimeProfilePreference::Rtx50Gguf => Ok(SelectedRuntime {
+            // GGUF Q4 is GGUFLinear dequant-per-matmul — no fp8/nvfp4
+            // tensor-core requirement, runs on any CUDA card. Schema
+            // proven clean against the dg845 base config (4186/4186);
+            // not experimental.
+            runtime_id: "nexus.video.ltx23.rtx50-gguf".into(),
+            experimental: false,
+        }),
         RuntimeProfilePreference::Auto => auto_select(facts, experimental_nvfp4_opt_in),
     }
 }
@@ -491,9 +530,38 @@ mod tests {
                 RuntimeProfilePreference::Rtx50Nvfp4,
                 "nexus.video.ltx23.rtx50-nvfp4",
             ),
+            (
+                RuntimeProfilePreference::Rtx50Gguf,
+                "nexus.video.ltx23.rtx50-gguf",
+            ),
         ] {
             assert_eq!(resolve_runtime_id(pref), expected, "pref={pref:?}");
         }
+    }
+
+    #[test]
+    fn is_gguf_family_matches_only_gguf_slugs() {
+        assert!(is_gguf_family("rtx50-gguf"));
+        assert!(is_gguf_family("gguf"));
+        assert!(is_gguf_family("rtx60-gguf")); // future profile, zero code change
+        for p in ["rtx50-nvfp4", "rtx50-fp8", "fake", "rtx40-fp8"] {
+            assert!(!is_gguf_family(p), "profile={p} must not be gguf-family");
+        }
+        // gguf is intentionally NOT fp8-family (no e4m3 CFG saturation).
+        assert!(!is_fp8_family("rtx50-gguf"));
+        assert!(!is_nvfp4_family("rtx50-gguf"));
+    }
+
+    #[test]
+    fn select_runtime_returns_gguf_non_experimental() {
+        let sel = select_runtime(
+            RuntimeProfilePreference::Rtx50Gguf,
+            &nvidia("blackwell", 12.0, 16384),
+            false, // no nvfp4 opt-in — gguf must not require it
+        )
+        .expect("gguf must select without the nvfp4 opt-in");
+        assert_eq!(sel.runtime_id, "nexus.video.ltx23.rtx50-gguf");
+        assert!(!sel.experimental);
     }
 
     #[test]
@@ -632,6 +700,12 @@ mod tests {
             default_offload_mode_for_profile("rtx50-nvfp4"),
             OffloadMode::Model
         );
+        // gguf: GGUFLinear dequant-per-matmul, paged by
+        // enable_model_cpu_offload (not bnb, not sequential).
+        assert_eq!(
+            default_offload_mode_for_profile("rtx50-gguf"),
+            OffloadMode::Model
+        );
         for p in ["rtx50-fp8", "rtx40-fp8", "fake", "future-profile-xyz"] {
             assert_eq!(
                 default_offload_mode_for_profile(p),
@@ -648,6 +722,8 @@ mod tests {
         // default_quant_for_profile doc); the profile must keep
         // resolving to the path that actually renders on 16 GB.
         assert_eq!(default_quant_for_profile("rtx50-nvfp4"), ModelQuant::Nf4Bnb);
+        // gguf profile → Gguf (Abiray Q4 via gguf_loader, schema-clean).
+        assert_eq!(default_quant_for_profile("rtx50-gguf"), ModelQuant::Gguf);
         for p in ["rtx50-fp8", "rtx40-fp8", "fake", "xyz"] {
             assert_eq!(
                 default_quant_for_profile(p),
@@ -664,7 +740,7 @@ mod tests {
         // effectively disabled (ratio <= 1.0, strict `>` test never
         // trips). fake/CI + unknown keep the tight spec-046 0.30
         // (matches VramSupervisorConfig::default().max_frag_ratio).
-        for p in ["rtx50-nvfp4", "rtx50-fp8", "rtx40-fp8"] {
+        for p in ["rtx50-nvfp4", "rtx50-fp8", "rtx40-fp8", "rtx50-gguf"] {
             assert!(
                 (default_max_frag_ratio_for_profile(p) - 1.0).abs() < f64::EPSILON,
                 "profile={p} must disable the frag check"

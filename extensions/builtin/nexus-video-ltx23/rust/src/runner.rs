@@ -1629,6 +1629,8 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
         ModelQuant::Int8 => "int8",
         // New worker contract: "nvfp4" → ModelOpt restore path.
         ModelQuant::Nvfp4 => "nvfp4",
+        // "gguf" → gguf_loader override path (rename + schema-clean).
+        ModelQuant::Gguf => "gguf",
     };
 
     let decode_timestep = advanced
@@ -2243,6 +2245,7 @@ mod tests {
             (crate::schemas::ModelQuant::Nf4Bnb, "nf4"),
             (crate::schemas::ModelQuant::Int8, "int8"),
             (crate::schemas::ModelQuant::Nvfp4, "nvfp4"),
+            (crate::schemas::ModelQuant::Gguf, "gguf"),
         ] {
             let advanced = AdvancedSettings {
                 quantization: variant,
