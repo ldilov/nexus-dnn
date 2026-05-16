@@ -265,7 +265,6 @@ pub fn plan_render(req: &CreateRenderRequest, runtime_profile: &str) -> Result<R
     crate::compatibility::check_known_incompatibilities(
         runtime_profile,
         &req.advanced,
-        req.advanced.guidance_scale,
         max_segment_frames,
     )?;
 
