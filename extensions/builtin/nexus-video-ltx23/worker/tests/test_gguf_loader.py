@@ -288,3 +288,94 @@ def test_resolve_override_falls_back_to_dir_scan(
 def test_load_gguf_state_dict_raises_on_missing_file(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         gguf_loader.load_gguf_state_dict(tmp_path / "absent.gguf")
+
+
+# --- G-A: LTX2 diffusers key rename -----------------------------------------
+
+
+def test_apply_ltx2_diffusers_rename_maps_adaln_single_to_time_embed() -> None:
+    # The Abiray GGUF carries original `adaln_single.*` names; the
+    # diffusers LTX2 model expects `time_embed.*`. The rename must
+    # bridge that (this is the dominant `extra_in_gguf` cause).
+    sd = {
+        "adaln_single.linear.weight": torch.zeros(2, 2),
+        "adaln_single.emb.timestep_embedder.linear_1.bias": torch.zeros(3),
+        "transformer_blocks.0.attn1.to_q.weight": torch.zeros(4, 4),
+    }
+    out = gguf_loader.apply_ltx2_diffusers_rename(sd)
+    assert "time_embed.linear.weight" in out
+    assert "time_embed.emb.timestep_embedder.linear_1.bias" in out
+    # already-diffusers keys pass through untouched
+    assert "transformer_blocks.0.attn1.to_q.weight" in out
+    # no key dropped or duplicated
+    assert len(out) == len(sd)
+    # original keys gone (renamed, not copied)
+    assert "adaln_single.linear.weight" not in out
+
+
+def test_apply_ltx2_diffusers_rename_is_collision_free() -> None:
+    # R-GA-2 guard: renaming must not collapse two distinct keys onto
+    # one (which would silently drop a weight).
+    sd = {
+        "adaln_single.linear.weight": torch.zeros(1),
+        "q_norm.weight": torch.zeros(1),
+        "k_norm.weight": torch.zeros(1),
+        "patchify_proj.weight": torch.zeros(1),
+    }
+    out = gguf_loader.apply_ltx2_diffusers_rename(sd)
+    assert len(out) == len(sd), "rename collapsed keys (collision)"
+    assert "norm_q.weight" in out and "norm_k.weight" in out
+    assert "proj_in.weight" in out
+
+
+def test_apply_ltx2_diffusers_rename_maps_prompt_adaln_single_variants() -> None:
+    # Residual the diffusers converter does NOT cover: the Abiray GGUF
+    # carries `prompt_adaln_single.*` / `audio_prompt_adaln_single.*`;
+    # the diffusers model attributes are `prompt_adaln`/`audio_prompt_adaln`.
+    # One substring rule must fix BOTH (the audio key contains the
+    # non-audio token). Without this 12 keys stay unmatched vs dg845.
+    sd = {
+        "prompt_adaln_single.linear.weight": torch.zeros(1),
+        "audio_prompt_adaln_single.emb.timestep_embedder.linear_1.bias": torch.zeros(1),
+    }
+    out = gguf_loader.apply_ltx2_diffusers_rename(sd)
+    assert "prompt_adaln.linear.weight" in out
+    assert "audio_prompt_adaln.emb.timestep_embedder.linear_1.bias" in out
+    assert len(out) == len(sd)
+    assert not any("_single." in k for k in out)
+
+
+def test_apply_ltx2_diffusers_rename_preserves_gguf_param_values() -> None:
+    p = _make_gguf_param((32, 144), Q4_K)
+    sd = {"adaln_single.linear.weight": p}
+    out = gguf_loader.apply_ltx2_diffusers_rename(sd)
+    assert out["time_embed.linear.weight"] is p  # value object untouched
+
+
+# --- G-A: zero-fill of unmatched (audio_*) meta params ----------------------
+
+
+def test_zero_fill_meta_params_materialises_remaining_meta_tensors() -> None:
+    from accelerate import init_empty_weights
+
+    with init_empty_weights():
+        m = _TinyTransformer(hidden=8, ffn=16)
+    # everything is on meta after init_empty_weights
+    assert any(p.is_meta for p in m.parameters())
+    filled = gguf_loader.zero_fill_meta_params(
+        m, device=torch.device("cpu"), dtype=torch.float32
+    )
+    assert filled > 0
+    assert not any(p.is_meta for p in m.parameters())
+    assert not any(b.is_meta for b in m.buffers())
+    # filled params are zeros (inert for the unused audio branch)
+    for p in m.parameters():
+        assert torch.count_nonzero(p) == 0
+
+
+def test_zero_fill_meta_params_noop_when_all_materialised() -> None:
+    m = _TinyTransformer(hidden=8, ffn=16)  # real init, no meta
+    filled = gguf_loader.zero_fill_meta_params(
+        m, device=torch.device("cpu"), dtype=torch.float32
+    )
+    assert filled == 0

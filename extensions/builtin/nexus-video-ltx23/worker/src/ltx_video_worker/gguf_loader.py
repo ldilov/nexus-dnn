@@ -109,6 +109,83 @@ def load_gguf_state_dict(gguf_path: str | Path) -> dict[str, Any]:
     return load_gguf_checkpoint(path)
 
 
+def apply_ltx2_diffusers_rename(state_dict: dict[str, Any]) -> dict[str, Any]:
+    """Rename original-LTX-2.3 keys to diffusers `LTX2VideoTransformer3DModel`
+    names, reusing diffusers' authoritative converter.
+
+    The Abiray GGUF carries original key names (`adaln_single.*`,
+    `patchify_proj`, `q_norm`/`k_norm`, …); the diffusers model expects
+    the renamed forms (`time_embed.*`, `proj_in`, `norm_q`/`norm_k`).
+    `diffusers...convert_ltx2_transformer_to_diffusers` is the single
+    source of truth for that map (it also strips a
+    `model.diffusion_model.` prefix — a no-op for the Abiray GGUF which
+    has none). We feed it a shallow copy so the caller's dict is
+    untouched; GGUFParameter values are moved by reference (only keys
+    are rewritten — never the tensor objects).
+
+    Collision-safe by construction: the converter renames in place via
+    `dict.pop`; if two source keys mapped to one target the dict would
+    shrink — callers assert ``len`` is preserved (see tests / the
+    R-GA-2 guard in the G-A locked-design checkpoint).
+    """
+    from diffusers.loaders.single_file_utils import (
+        convert_ltx2_transformer_to_diffusers,
+    )
+
+    renamed = convert_ltx2_transformer_to_diffusers(dict(state_dict))
+
+    # Supplemental: the diffusers converter's `adaln_single` special
+    # handler only rewrites keys starting exactly `adaln_single.` /
+    # `audio_adaln_single.`. The Abiray GGUF additionally carries
+    # `prompt_adaln_single.*` / `audio_prompt_adaln_single.*`; the
+    # diffusers model attributes are `prompt_adaln` / `audio_prompt_adaln`
+    # (no `_single`). One substring rule fixes BOTH — `"audio_prompt_
+    # adaln_single."` contains `"prompt_adaln_single."`, so replacing
+    # that token also maps the audio variant to `audio_prompt_adaln.`.
+    # 1:1 (collision-free); without it 12 keys stay unmatched.
+    out: dict[str, Any] = {}
+    for k, v in renamed.items():
+        out[k.replace("prompt_adaln_single.", "prompt_adaln.")] = v
+    return out
+
+
+def zero_fill_meta_params(
+    model: Any,
+    *,
+    device: "torch.device",
+    dtype: "torch.dtype",
+) -> int:
+    """Materialise every still-on-`meta` param/buffer to zeros on `device`.
+
+    After a partial GGUF install (``strict_schema=False``) the model's
+    unmatched parameters — for the Abiray video-only GGUF these are the
+    ``audio_*`` branch ``LTX2VideoTransformer3DModel`` always builds —
+    remain meta tensors. Leaving any meta tensor crashes the first
+    forward. Zeros are inert *iff* the video-only forward never consumes
+    those modules (audio conditioning is None) — that assumption is
+    validated only by a coherent real render (G2 / risk R-GA-1).
+    Returns the count materialised (0 when the model is fully real).
+    """
+    import torch
+
+    filled = 0
+    for mod in model.modules():
+        for name, p in list(mod._parameters.items()):
+            if p is not None and p.is_meta:
+                mod._parameters[name] = torch.nn.Parameter(
+                    torch.zeros(p.shape, dtype=dtype, device=device),
+                    requires_grad=False,
+                )
+                filled += 1
+        for name, b in list(mod._buffers.items()):
+            if b is not None and b.is_meta:
+                mod._buffers[name] = torch.zeros(
+                    b.shape, dtype=b.dtype, device=device
+                )
+                filled += 1
+    return filled
+
+
 def _byte_shape_to_unquantized_shape(
     byte_shape: tuple[int, ...],
     quant_type: Any,
@@ -212,6 +289,7 @@ def load_gguf_transformer(
     compute_dtype: "torch.dtype | None" = None,
     strict_schema: bool = True,
     install_device: "torch.device | str | None" = None,
+    rename_keys: bool = False,
 ) -> Any:
     """Build an ``LTX2VideoTransformer3DModel`` from a GGUF file.
 
@@ -223,7 +301,15 @@ def load_gguf_transformer(
             read; the safetensors shards next to it are ignored.
         compute_dtype: Per-matmul dequant target. Defaults to bfloat16.
         strict_schema: When True (default), raises ``GGUFSchemaMismatch``
-            if the GGUF state-dict diverges from the target model.
+            if the GGUF state-dict diverges from the target model. When
+            False, the unmatched target params/buffers (e.g. the
+            ``audio_*`` branch for a video-only GGUF) are zero-filled
+            after install so the model is fully materialised — see
+            ``zero_fill_meta_params`` + risk R-GA-1.
+        rename_keys: When True, apply the diffusers LTX2 key rename
+            (``apply_ltx2_diffusers_rename``) to the GGUF state-dict
+            before schema validation + install. Required for the Abiray
+            GGUF (original `adaln_single.*` names → `time_embed.*`).
         install_device: Where every GGUF-quantized parameter and every
             plain parameter / buffer lands during install. Defaults to
             ``cpu`` to preserve historical behaviour, which is what the
@@ -264,6 +350,15 @@ def load_gguf_transformer(
         model = LTX2VideoTransformer3DModel.from_config(cfg_dict)
 
     state_dict = load_gguf_state_dict(gguf_path)
+    if rename_keys:
+        before = len(state_dict)
+        state_dict = apply_ltx2_diffusers_rename(state_dict)
+        if len(state_dict) != before:
+            raise GGUFSchemaMismatch(
+                f"LTX2 key rename collapsed {before - len(state_dict)} "
+                f"key(s) (collision) for {gguf_path}; refusing a silent "
+                "weight drop. [R-GA-2]"
+            )
     report = validate_state_dict_against_model(state_dict, model)
 
     if strict_schema and not report.is_clean:
@@ -331,11 +426,21 @@ def load_gguf_transformer(
 
     model.hf_quantizer = quantizer
 
+    # Partial-load completion: any target param/buffer the GGUF did not
+    # cover (the unconditional `audio_*` branch for a video-only GGUF)
+    # is still a meta tensor and would crash the first forward. Zero-
+    # fill it. Inert only if the video path never consumes it (R-GA-1,
+    # validated by a coherent G2 render — not by this code).
+    zero_filled = zero_fill_meta_params(
+        model, device=install_target_device, dtype=compute_dtype
+    )
+
     logger.info(
-        "ltx_video_worker.gguf_loader: installed quantized=%d plain=%d skipped=%d install_device=%s schema_clean=%s",
+        "ltx_video_worker.gguf_loader: installed quantized=%d plain=%d skipped=%d zero_filled=%d install_device=%s schema_clean=%s",
         installed_quantized,
         installed_plain,
         skipped,
+        zero_filled,
         install_target_device,
         report.is_clean,
     )
