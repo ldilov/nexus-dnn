@@ -13,10 +13,12 @@
 //! strictly better UX than the status-quo runtime crash, and ships
 //! without that machinery.
 //!
-//! 1. `quant=nf4 + offload=sequential` — bitsandbytes loads params via
-//!    accelerate meta-device dispatch; `enable_sequential_cpu_offload`
-//!    then tries to copy meta tensors that were never materialised
-//!    ("Cannot copy out of meta tensor; no data!"). Hard crash.
+//! 1. bitsandbytes (`nf4_bnb`/`int8`) + `offload=sequential` — bnb
+//!    loads params via accelerate meta-device dispatch;
+//!    `enable_sequential_cpu_offload` then tries to copy meta tensors
+//!    that were never materialised ("Cannot copy out of meta tensor;
+//!    no data!"). Hard crash. (Does NOT apply to `nvfp4` — that is
+//!    NVIDIA `ModelOpt`, not bnb.)
 //! 2. fp8/nvfp4 profile + `guidance_scale > 5.5` — the FP8 e4m3 range
 //!    saturates at high CFG; attention outputs go NaN/Inf and the
 //!    video turns grey/black a few seconds in. Silent quality
@@ -70,8 +72,9 @@ const fn effective_offload(advanced: &AdvancedSettings, short_profile: &str) -> 
 }
 
 /// Resolve the quantisation the worker will actually apply — `None`
-/// means "take the per-profile default" (nvfp4 → nf4), an explicit
-/// choice always wins. Same precedence as `build_advanced_block`.
+/// means "take the per-profile default" (nvfp4 profile → `Nvfp4`),
+/// an explicit choice always wins. Same precedence as
+/// `build_advanced_block`.
 const fn effective_quant(advanced: &AdvancedSettings, short_profile: &str) -> ModelQuant {
     match advanced.quantization {
         ModelQuant::None => default_quant_for_profile(short_profile),
@@ -106,7 +109,7 @@ pub fn check_known_incompatibilities(
     // both quant variants, not just NF4.
     if matches!(
         effective_quant(advanced, short),
-        ModelQuant::Nf4 | ModelQuant::Int8
+        ModelQuant::Nf4Bnb | ModelQuant::Int8
     ) && effective_offload(advanced, short) == OffloadMode::Sequential
     {
         return Err(ExtensionError::InvalidRequest(
@@ -176,19 +179,32 @@ mod tests {
     }
 
     #[test]
-    fn nf4_plus_explicit_sequential_is_blocked() {
-        // nvfp4 profile resolves quant→nf4; user forces sequential.
+    fn nvfp4_profile_default_plus_sequential_is_allowed_post_rename() {
+        // N3 behaviour change: the nvfp4 profile's resolved default
+        // quant is now `Nvfp4` (real ModelOpt FP4), not bitsandbytes
+        // NF4. ModelOpt does not use accelerate meta-device dispatch,
+        // so the profile default + sequential is no longer a Guard-1
+        // crash — it must be ALLOWED. (Explicit bnb `Nf4Bnb`/`Int8` +
+        // sequential is still blocked — covered by the explicit_*
+        // tests.) Regression guard documenting the misnomer fix.
         let adv = advanced(OffloadMode::Sequential, ModelQuant::None, None);
-        let err = check_known_incompatibilities(NVFP4, &adv, 97)
-            .expect_err("nf4+sequential must block");
-        assert!(matches!(err, ExtensionError::InvalidRequest(m)
-            if m.contains("quant_bnb_sequential_unsupported")));
+        assert!(check_known_incompatibilities(NVFP4, &adv, 97).is_ok());
     }
 
     #[test]
     fn explicit_nf4_plus_sequential_on_any_profile_blocked() {
-        let adv = advanced(OffloadMode::Sequential, ModelQuant::Nf4, None);
+        let adv = advanced(OffloadMode::Sequential, ModelQuant::Nf4Bnb, None);
         assert!(check_known_incompatibilities(FP8, &adv, 97).is_err());
+    }
+
+    #[test]
+    fn nvfp4_plus_sequential_is_not_blocked_by_bnb_guard() {
+        // NVFP4 is NVIDIA ModelOpt, not bitsandbytes — it does not load
+        // via accelerate meta-device dispatch, so Guard 1 (the bnb
+        // meta-tensor crash) must NOT fire for it. Regression guard for
+        // the N3 rename: the guard keys on `Nf4Bnb`/`Int8`, not `Nvfp4`.
+        let adv = advanced(OffloadMode::Sequential, ModelQuant::Nvfp4, None);
+        assert!(check_known_incompatibilities(NVFP4, &adv, 97).is_ok());
     }
 
     #[test]
@@ -197,8 +213,8 @@ mod tests {
         // meta-device dispatch, so int8+sequential crashes identically
         // to nf4+sequential. Must be blocked at plan time.
         let adv = advanced(OffloadMode::Sequential, ModelQuant::Int8, None);
-        let err = check_known_incompatibilities(FP8, &adv, 97)
-            .expect_err("int8+sequential must block");
+        let err =
+            check_known_incompatibilities(FP8, &adv, 97).expect_err("int8+sequential must block");
         assert!(matches!(err, ExtensionError::InvalidRequest(m)
             if m.contains("quant_bnb_sequential_unsupported")));
     }
@@ -226,8 +242,8 @@ mod tests {
     #[test]
     fn fp8_guidance_above_ceiling_blocked() {
         let adv = advanced(OffloadMode::Auto, ModelQuant::None, Some(6.0));
-        let err = check_known_incompatibilities(FP8, &adv, 97)
-            .expect_err("fp8 + cfg>5.5 must block");
+        let err =
+            check_known_incompatibilities(FP8, &adv, 97).expect_err("fp8 + cfg>5.5 must block");
         assert!(matches!(err, ExtensionError::InvalidRequest(m)
             if m.contains("fp8_guidance_too_high")));
     }
@@ -278,9 +294,8 @@ mod tests {
     fn first_offending_combo_is_reported() {
         // nf4+sequential AND cfg>5.5 both true → guard 1 wins (single
         // cause, most actionable: the crash beats the quality bug).
-        let adv = advanced(OffloadMode::Sequential, ModelQuant::Nf4, Some(8.0));
-        let err = check_known_incompatibilities(NVFP4, &adv, 200)
-            .expect_err("must block");
+        let adv = advanced(OffloadMode::Sequential, ModelQuant::Nf4Bnb, Some(8.0));
+        let err = check_known_incompatibilities(NVFP4, &adv, 200).expect_err("must block");
         assert!(matches!(err, ExtensionError::InvalidRequest(m)
             if m.contains("quant_bnb_sequential_unsupported")
             && !m.contains("fp8_guidance_too_high")));

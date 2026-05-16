@@ -247,16 +247,16 @@ pub struct AdvancedSettings {
     /// is pushed above ~7. Diffusers default = 0.0 (off).
     /// Range: 0.0–1.0 inclusive.
     pub guidance_rescale: Option<f32>,
-    /// On-the-fly weight quantisation applied to BOTH heavy
-    /// components (the LTX-2.3 transformer + the Gemma-3 text
-    /// encoder) at pipeline-load time via diffusers'
-    /// `PipelineQuantizationConfig`. The shipped checkpoint is
-    /// unquantized bf16 (~36 GB transformer + ~46 GB encoder = 83 GB),
-    /// which cannot run on a 16 GB card without catastrophic
-    /// shared-VRAM spill. `Nf4` shrinks that to ~22 GB so it fits
-    /// system RAM and pages cleanly under sequential offload.
-    /// `None` keeps the raw bf16 weights (only viable on a card with
-    /// 80 GB+ VRAM). Requires `bitsandbytes` in the worker venv.
+    /// Weight quantisation backend for the two heavy components (the
+    /// LTX-2.3 transformer + the Gemma-3 text encoder). `Nf4Bnb` /
+    /// `Int8` apply bitsandbytes on-the-fly at load via diffusers'
+    /// `PipelineQuantizationConfig` (the shipped bf16 checkpoint is
+    /// ~36 GB transformer + ~46 GB encoder = 83 GB, unrunnable on a
+    /// 16 GB card raw); `Nf4Bnb` shrinks that to ~22 GB. `Nvfp4` is
+    /// real NVIDIA `ModelOpt` FP4 restored from a pre-quantised on-disk
+    /// tree (no on-the-fly pass). `None` keeps raw bf16 (only viable
+    /// on an 80 GB+ card). bnb variants require `bitsandbytes`;
+    /// `Nvfp4` requires `nvidia-modelopt` in the worker venv.
     #[serde(default)]
     pub quantization: ModelQuant,
     /// Hard ceiling (GiB) on the GPU VRAM the diffusers device-map
@@ -329,12 +329,24 @@ pub enum ModelQuant {
     None,
     /// bitsandbytes NF4 (4-bit) on transformer + text encoder.
     /// ~83 GB → ~22 GB; fits 96 GB system RAM and pages cleanly
-    /// under sequential offload on a 16 GB GPU. The nvfp4 default.
-    Nf4,
+    /// under sequential offload on a 16 GB GPU. Loads via accelerate
+    /// meta-device dispatch (so it is incompatible with sequential
+    /// offload — see `compatibility.rs` Guard 1). NOT NVIDIA FP4.
+    /// `serde(alias = "nf4")` keeps the pre-rename wire value
+    /// deserialising (back-compat).
+    #[serde(rename = "nf4_bnb", alias = "nf4")]
+    Nf4Bnb,
     /// bitsandbytes INT8 (8-bit) on transformer + text encoder.
     /// ~83 GB → ~42 GB; higher fidelity than NF4, still needs a
-    /// big-RAM host + offload on a 16 GB GPU.
+    /// big-RAM host + offload on a 16 GB GPU. Also bitsandbytes
+    /// (same meta-device sequential-offload constraint as `Nf4Bnb`).
     Int8,
+    /// NVIDIA `ModelOpt` **NVFP4** (real Blackwell FP4) — pre-quantised
+    /// on disk (official `Lightricks/LTX-2.3-nvfp4`, QAD-trained),
+    /// restored via `ModelOpt` HF-checkpointing, NOT bitsandbytes. The
+    /// `rtx50-nvfp4` profile default. Distinct backend from `Nf4Bnb`;
+    /// the bnb meta-device sequential constraint does not apply.
+    Nvfp4,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -554,8 +566,14 @@ mod tests {
             let back: DevicePreference = serde_json::from_str(&wire).unwrap();
             assert_eq!(back, pref);
         }
-        assert_eq!(serde_json::to_value(DevicePreference::Cpu).unwrap(), json!("cpu"));
-        assert_eq!(serde_json::to_value(DevicePreference::Cuda).unwrap(), json!("cuda"));
+        assert_eq!(
+            serde_json::to_value(DevicePreference::Cpu).unwrap(),
+            json!("cpu")
+        );
+        assert_eq!(
+            serde_json::to_value(DevicePreference::Cuda).unwrap(),
+            json!("cuda")
+        );
     }
 
     #[test]
@@ -566,7 +584,10 @@ mod tests {
 
     #[test]
     fn scheduler_choice_round_trip() {
-        for choice in [SchedulerChoice::FlowMatchEuler, SchedulerChoice::FlowMatchHeun] {
+        for choice in [
+            SchedulerChoice::FlowMatchEuler,
+            SchedulerChoice::FlowMatchHeun,
+        ] {
             let wire = serde_json::to_string(&choice).unwrap();
             let back: SchedulerChoice = serde_json::from_str(&wire).unwrap();
             assert_eq!(back, choice);
@@ -579,14 +600,41 @@ mod tests {
 
     #[test]
     fn model_quant_round_trip() {
-        for quant in [ModelQuant::None, ModelQuant::Nf4, ModelQuant::Int8] {
+        for quant in [
+            ModelQuant::None,
+            ModelQuant::Nf4Bnb,
+            ModelQuant::Int8,
+            ModelQuant::Nvfp4,
+        ] {
             let wire = serde_json::to_string(&quant).unwrap();
             let back: ModelQuant = serde_json::from_str(&wire).unwrap();
             assert_eq!(back, quant);
         }
-        assert_eq!(serde_json::to_value(ModelQuant::None).unwrap(), json!("none"));
-        assert_eq!(serde_json::to_value(ModelQuant::Nf4).unwrap(), json!("nf4"));
-        assert_eq!(serde_json::to_value(ModelQuant::Int8).unwrap(), json!("int8"));
+        assert_eq!(
+            serde_json::to_value(ModelQuant::None).unwrap(),
+            json!("none")
+        );
+        assert_eq!(
+            serde_json::to_value(ModelQuant::Nf4Bnb).unwrap(),
+            json!("nf4_bnb")
+        );
+        assert_eq!(
+            serde_json::to_value(ModelQuant::Int8).unwrap(),
+            json!("int8")
+        );
+        assert_eq!(
+            serde_json::to_value(ModelQuant::Nvfp4).unwrap(),
+            json!("nvfp4")
+        );
+    }
+
+    #[test]
+    fn model_quant_legacy_nf4_alias_back_compat() {
+        // Pre-rename wire value `"nf4"` must still deserialise to the
+        // renamed bitsandbytes variant so old persisted payloads and
+        // external callers keep working after the N3 rename.
+        let back: ModelQuant = serde_json::from_str("\"nf4\"").unwrap();
+        assert_eq!(back, ModelQuant::Nf4Bnb);
     }
 
     #[test]
@@ -630,8 +678,7 @@ mod tests {
         assert!(err.contains("invalid shape"));
 
         // Accepting the canonical shape unblocks validation.
-        req.input_image_artifact_id =
-            Some("ltx23-input-01J9ABCDEFGHJKMNPQRSTVWXYZ".into());
+        req.input_image_artifact_id = Some("ltx23-input-01J9ABCDEFGHJKMNPQRSTVWXYZ".into());
         assert!(req.validate_field_bounds().is_ok());
 
         // None passes (the field is optional).
