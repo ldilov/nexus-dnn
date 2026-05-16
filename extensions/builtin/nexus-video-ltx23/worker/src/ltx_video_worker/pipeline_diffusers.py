@@ -300,10 +300,10 @@ def _build_pipeline_quant_config(quant: str, compute_dtype: Any) -> Any:
     """
     if quant == "none":
         return None
-    if quant not in ("nf4", "int8"):
+    if quant not in ("nf4", "int8", "gguf"):
         raise _ModelLoadFailed(
             f"unknown quantization: {quant!r}; expected "
-            '"none", "nf4", or "int8"'
+            '"none", "nf4", "int8", or "gguf"'
         )
     try:
         import bitsandbytes  # type: ignore  # noqa: F401
@@ -316,24 +316,37 @@ def _build_pipeline_quant_config(quant: str, compute_dtype: Any) -> Any:
             f"set quantization='none' (needs an 80 GB+ card)."
         ) from ie
 
-    if quant == "nf4":
+    if quant == "int8":
+        backend = "bitsandbytes_8bit"
+        quant_kwargs: dict[str, Any] = {"load_in_8bit": True}
+    else:  # "nf4" or "gguf" — both quantise via bnb-NF4
         backend = "bitsandbytes_4bit"
         quant_kwargs = {
             "load_in_4bit": True,
             "bnb_4bit_quant_type": "nf4",
             "bnb_4bit_compute_dtype": compute_dtype,
         }
-    else:  # int8
-        backend = "bitsandbytes_8bit"
-        quant_kwargs = {"load_in_8bit": True}
 
-    # Quantise BOTH heavy components in the single from_pretrained
-    # call. `text_encoder` is the Gemma-3 LLM (~46 GB bf16);
-    # `transformer` is the LTX-2.3 DiT (~36 GB bf16).
+    if quant == "gguf":
+        # The transformer is supplied by the GGUF override
+        # (gguf_loader) AFTER from_pretrained, so it must NOT be bnb-
+        # quantised here. But the Gemma-3 text encoder (~46 GB bf16) is
+        # NOT covered by the GGUF (transformer-only) and still cannot
+        # fit a 16 GB card unquantised — so bnb-NF4 it (~12 GB). The
+        # base transformer still materialises bf16 then gets replaced
+        # (the documented load-then-discard tax — a transient host-RAM
+        # cost, not GPU; tracked for the deferred G1 fork-probe).
+        components = ["text_encoder"]
+    else:
+        # Quantise BOTH heavy components in the single from_pretrained
+        # call. `text_encoder` is the Gemma-3 LLM (~46 GB bf16);
+        # `transformer` is the LTX-2.3 DiT (~36 GB bf16).
+        components = ["transformer", "text_encoder"]
+
     return PipelineQuantizationConfig(
         quant_backend=backend,
         quant_kwargs=quant_kwargs,
-        components_to_quantize=["transformer", "text_encoder"],
+        components_to_quantize=components,
     )
 
 
