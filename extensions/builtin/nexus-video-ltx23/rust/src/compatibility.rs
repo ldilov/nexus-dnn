@@ -88,13 +88,14 @@ fn is_fp8_family(short_profile: &str) -> bool {
 /// message tail as `[code]` so the frontend can branch without
 /// parsing prose.
 ///
-/// `guidance_scale` is the operator value or `None` (→ pipeline
-/// default). `max_segment_frames` is the largest per-segment frame
-/// count in the plan (the last segment can exceed the nominal one).
+/// `guidance_scale` is read from `advanced` (operator value or, when
+/// unset, the pipeline default) — single source of truth, identical
+/// to what `build_advanced_block` serialises. `max_segment_frames` is
+/// the largest per-segment frame count in the plan (the last segment
+/// can exceed the nominal one).
 pub fn check_known_incompatibilities(
     runtime_profile_full: &str,
     advanced: &AdvancedSettings,
-    guidance_scale: Option<f32>,
     max_segment_frames: u32,
 ) -> Result<()> {
     let short = short_profile_slug(runtime_profile_full);
@@ -113,7 +114,7 @@ pub fn check_known_incompatibilities(
     }
 
     // Guard 2 — high CFG saturates the FP8 activation range.
-    let cfg = guidance_scale.unwrap_or(DEFAULT_GUIDANCE_SCALE);
+    let cfg = advanced.guidance_scale.unwrap_or(DEFAULT_GUIDANCE_SCALE);
     if is_fp8_family(short) && cfg > FP8_MAX_GUIDANCE_SCALE {
         return Err(ExtensionError::InvalidRequest(format!(
             "guidance_scale {cfg} exceeds the FP8-safe ceiling of \
@@ -170,7 +171,7 @@ mod tests {
     fn nf4_plus_explicit_sequential_is_blocked() {
         // nvfp4 profile resolves quant→nf4; user forces sequential.
         let adv = advanced(OffloadMode::Sequential, ModelQuant::None, None);
-        let err = check_known_incompatibilities(NVFP4, &adv, None, 97)
+        let err = check_known_incompatibilities(NVFP4, &adv, 97)
             .expect_err("nf4+sequential must block");
         assert!(matches!(err, ExtensionError::InvalidRequest(m)
             if m.contains("quant_nf4_sequential_unsupported")));
@@ -179,27 +180,27 @@ mod tests {
     #[test]
     fn explicit_nf4_plus_sequential_on_any_profile_blocked() {
         let adv = advanced(OffloadMode::Sequential, ModelQuant::Nf4, None);
-        assert!(check_known_incompatibilities(FP8, &adv, None, 97).is_err());
+        assert!(check_known_incompatibilities(FP8, &adv, 97).is_err());
     }
 
     #[test]
     fn nf4_plus_model_offload_is_allowed() {
         // The safe default path: nvfp4 → nf4 + model offload.
         let adv = advanced(OffloadMode::Model, ModelQuant::None, None);
-        assert!(check_known_incompatibilities(NVFP4, &adv, None, 97).is_ok());
+        assert!(check_known_incompatibilities(NVFP4, &adv, 97).is_ok());
     }
 
     #[test]
     fn nvfp4_auto_offload_default_is_allowed() {
         // Auto on nvfp4 resolves to Model (not Sequential) → safe.
         let adv = advanced(OffloadMode::Auto, ModelQuant::None, None);
-        assert!(check_known_incompatibilities(NVFP4, &adv, None, 97).is_ok());
+        assert!(check_known_incompatibilities(NVFP4, &adv, 97).is_ok());
     }
 
     #[test]
     fn fp8_guidance_above_ceiling_blocked() {
         let adv = advanced(OffloadMode::Auto, ModelQuant::None, Some(6.0));
-        let err = check_known_incompatibilities(FP8, &adv, Some(6.0), 97)
+        let err = check_known_incompatibilities(FP8, &adv, 97)
             .expect_err("fp8 + cfg>5.5 must block");
         assert!(matches!(err, ExtensionError::InvalidRequest(m)
             if m.contains("fp8_guidance_too_high")));
@@ -208,27 +209,27 @@ mod tests {
     #[test]
     fn fp8_guidance_at_ceiling_allowed() {
         let adv = advanced(OffloadMode::Auto, ModelQuant::None, Some(5.5));
-        assert!(check_known_incompatibilities(FP8, &adv, Some(5.5), 97).is_ok());
+        assert!(check_known_incompatibilities(FP8, &adv, 97).is_ok());
     }
 
     #[test]
     fn fp8_default_guidance_allowed() {
         // None → 4.0 default, well under the 5.5 ceiling.
         let adv = advanced(OffloadMode::Auto, ModelQuant::None, None);
-        assert!(check_known_incompatibilities(FP8, &adv, None, 97).is_ok());
+        assert!(check_known_incompatibilities(FP8, &adv, 97).is_ok());
     }
 
     #[test]
     fn fake_profile_exempt_from_fp8_guidance_guard() {
         // fake/CI has no FP8 kernels — high CFG is fine there.
         let adv = advanced(OffloadMode::Auto, ModelQuant::None, Some(9.0));
-        assert!(check_known_incompatibilities(FAKE, &adv, Some(9.0), 999).is_ok());
+        assert!(check_known_incompatibilities(FAKE, &adv, 999).is_ok());
     }
 
     #[test]
     fn nvfp4_segment_over_121_frames_blocked() {
         let adv = advanced(OffloadMode::Model, ModelQuant::None, None);
-        let err = check_known_incompatibilities(NVFP4, &adv, None, 122)
+        let err = check_known_incompatibilities(NVFP4, &adv, 122)
             .expect_err("nvfp4 + >121 frames must block");
         assert!(matches!(err, ExtensionError::InvalidRequest(m)
             if m.contains("nvfp4_segment_too_long")));
@@ -237,14 +238,14 @@ mod tests {
     #[test]
     fn nvfp4_segment_at_121_frames_allowed() {
         let adv = advanced(OffloadMode::Model, ModelQuant::None, None);
-        assert!(check_known_incompatibilities(NVFP4, &adv, None, 121).is_ok());
+        assert!(check_known_incompatibilities(NVFP4, &adv, 121).is_ok());
     }
 
     #[test]
     fn fp8_long_segment_allowed_only_nvfp4_frame_capped() {
         // The 121-frame ceiling is NVFP4-specific; plain FP8 is exempt.
         let adv = advanced(OffloadMode::Auto, ModelQuant::None, None);
-        assert!(check_known_incompatibilities(FP8, &adv, None, 200).is_ok());
+        assert!(check_known_incompatibilities(FP8, &adv, 200).is_ok());
     }
 
     #[test]
@@ -252,7 +253,7 @@ mod tests {
         // nf4+sequential AND cfg>5.5 both true → guard 1 wins (single
         // cause, most actionable: the crash beats the quality bug).
         let adv = advanced(OffloadMode::Sequential, ModelQuant::Nf4, Some(8.0));
-        let err = check_known_incompatibilities(NVFP4, &adv, Some(8.0), 200)
+        let err = check_known_incompatibilities(NVFP4, &adv, 200)
             .expect_err("must block");
         assert!(matches!(err, ExtensionError::InvalidRequest(m)
             if m.contains("quant_nf4_sequential_unsupported")
