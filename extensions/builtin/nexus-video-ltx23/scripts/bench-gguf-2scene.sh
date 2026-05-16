@@ -12,7 +12,9 @@
 # Usage: ./bench-gguf-2scene.sh [--host URL] [--steps N]
 set -euo pipefail
 
-HOST="http://127.0.0.1:8085"
+# Default = the user-launched release binary's port (older smoke
+# tooling used 8085; the live host is 3000).
+HOST="http://127.0.0.1:3000"
 STEPS=8
 while [[ $# -gt 0 ]]; do
   case "$1" in
