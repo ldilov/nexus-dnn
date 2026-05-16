@@ -65,22 +65,19 @@ pub const fn resolve_runtime_id(preference: RuntimeProfilePreference) -> &'stati
 /// qualified `"nexus.video.ltx23.rtx50-nvfp4"`. Match the existing
 /// `short_profile()` helper in `runner.rs`.
 ///
-/// Rationale per profile (all default to `Sequential`):
+/// Rationale per profile:
 ///
-/// Real-GPU verification across 2026-05-15/16:
-///
-/// - `rtx50-nvfp4` → `Model`. This profile is NF4-quantised (see
-///   `default_quant_for_profile`), ~22 GB. bitsandbytes quantisation
-///   is fundamentally incompatible with
-///   `enable_sequential_cpu_offload()` — bnb loads params via
-///   accelerate's meta-device dispatch and sequential offload then
-///   tries to copy meta tensors that were never materialised
-///   ("Cannot copy out of meta tensor; no data!"). The
-///   diffusers-supported low-VRAM combo for a bnb-quantised pipeline
-///   is `enable_model_cpu_offload()`, and at NF4 its peak is the
-///   largest single quantised component (~10 GB), which fits a 16 GB
-///   card. (The earlier failed Model attempt was on the *unquantised*
-///   83 GB checkpoint — a different situation entirely.)
+/// - `rtx50-nvfp4` → `Model`. Retained as the conservative default
+///   while NVFP4-specific offload tuning (accelerate `device_map` /
+///   `max_memory` partial-load vs sequential vs model) is determined
+///   on real hardware — that analysis is N4's scope. NOTE: post the
+///   N3 rename this profile is real NVIDIA `ModelOpt` FP4 restored
+///   from a pre-quantised tree, NOT bitsandbytes-NF4; the bnb
+///   meta-device / `enable_sequential_cpu_offload()` constraint that
+///   originally forced `Model` here applies only to explicit
+///   `Nf4Bnb`/`Int8` now (enforced by `compatibility.rs` Guard 1),
+///   so the `Model` default is provisional pending N4, not a hard
+///   `ModelOpt` requirement.
 /// - Every other profile → `Sequential`. They keep raw bf16 weights
 ///   (no bnb), so sequential's per-layer paging (~2 GB peak, never
 ///   touches shared VRAM) is the safe default.
@@ -94,10 +91,10 @@ pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
 
 /// Default quantisation per profile.
 ///
-/// `rtx50-nvfp4` → `Nf4`: the profile name promises 4-bit but the
-/// shipped checkpoint is raw bf16; without on-the-fly NF4 quant it
-/// loads 83 GB and cannot run on 16 GB. NF4 shrinks transformer +
-/// Gemma-3 encoder to ~22 GB.
+/// `rtx50-nvfp4` → `Nvfp4`: real NVIDIA `ModelOpt` FP4, restored from
+/// the pre-quantised on-disk official tree (no 83 GB bf16 read, no
+/// on-the-fly pass). Replaces the prior bitsandbytes-NF4 stand-in —
+/// the profile name now means what it says.
 ///
 /// Every other profile → `None`: `fake`/CI has no real weights, and
 /// the fp8 profiles' quant story is a separate (unbuilt) path — they
@@ -105,7 +102,7 @@ pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
 #[must_use]
 pub const fn default_quant_for_profile(profile: &str) -> ModelQuant {
     match profile.as_bytes() {
-        b"rtx50-nvfp4" => ModelQuant::Nf4,
+        b"rtx50-nvfp4" => ModelQuant::Nvfp4,
         _ => ModelQuant::None,
     }
 }
@@ -558,11 +555,7 @@ mod tests {
                 OffloadMode::Sequential,
             ] {
                 assert_eq!(
-                    resolve_component_placement(
-                        profile,
-                        mode,
-                        ComponentPlacement::default()
-                    ),
+                    resolve_component_placement(profile, mode, ComponentPlacement::default()),
                     placement_for_offload_mode(mode),
                     "profile={profile} mode={mode:?}"
                 );
@@ -644,10 +637,9 @@ mod tests {
 
     #[test]
     fn default_quant_per_profile() {
-        // nvfp4 → Nf4 (the profile name promises 4-bit; the shipped
-        // checkpoint is raw bf16, so without on-the-fly nf4 it loads
-        // 83 GB). Everything else keeps raw weights.
-        assert_eq!(default_quant_for_profile("rtx50-nvfp4"), ModelQuant::Nf4);
+        // nvfp4 → Nvfp4 (real NVIDIA ModelOpt FP4 restored from the
+        // pre-quantised tree). Everything else keeps raw weights.
+        assert_eq!(default_quant_for_profile("rtx50-nvfp4"), ModelQuant::Nvfp4);
         for p in ["rtx50-fp8", "rtx40-fp8", "fake", "xyz"] {
             assert_eq!(
                 default_quant_for_profile(p),

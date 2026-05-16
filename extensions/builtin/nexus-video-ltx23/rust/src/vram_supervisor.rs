@@ -218,9 +218,7 @@ impl VramSupervisor {
             .unwrap_or(0.0);
         if frag_ratio > max_frag_ratio {
             return VramVerdict::Breach {
-                reason: format!(
-                    "frag_ratio={frag_ratio:.3} exceeded max={max_frag_ratio:.3}"
-                ),
+                reason: format!("frag_ratio={frag_ratio:.3} exceeded max={max_frag_ratio:.3}"),
             };
         }
 
