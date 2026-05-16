@@ -322,6 +322,25 @@ def test_resolve_override_resolves_gguf_profile_family_dir(
     assert pd._resolve_gguf_transformer_override(base, "rtx50-nvfp4") is None
 
 
+def test_build_pipeline_quant_config_gguf_quantises_text_encoder_only() -> None:
+    # Regression: G-A3 wired the rtx50-gguf contract but the worker
+    # quant-config dispatch raised on "gguf" -> the G2 render timed out.
+    # gguf must NOT raise, must NOT bnb the transformer (GGUF override
+    # supplies it), and MUST bnb-NF4 the Gemma-3 text encoder (~46 GB
+    # bf16 won't fit 16 GB otherwise).
+    cfg = pd._build_pipeline_quant_config("gguf", torch.bfloat16)
+    assert cfg is not None
+    comps = getattr(cfg, "components_to_quantize", None)
+    assert comps == ["text_encoder"], f"expected text_encoder-only, got {comps}"
+    assert "4bit" in getattr(cfg, "quant_backend", ""), getattr(cfg, "quant_backend", "")
+
+
+def test_build_pipeline_quant_config_none_and_unknown() -> None:
+    assert pd._build_pipeline_quant_config("none", torch.bfloat16) is None
+    with pytest.raises(Exception):
+        pd._build_pipeline_quant_config("bogus", torch.bfloat16)
+
+
 def test_resolve_override_family_path_needs_host_data_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
