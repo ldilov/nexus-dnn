@@ -14,8 +14,9 @@
   after the G-A ff-merges so it loads the new rtx50-gguf wiring +
   gguf_loader. The dg845 tree and the Abiray GGUF are already on disk.
 
-.PARAMETER Host
-  Host base URL. Default http://127.0.0.1:8085
+.PARAMETER HostUrl
+  Host base URL. Default http://127.0.0.1:3000 (the user-launched
+  release binary's port; older smoke tooling used 8085).
 
 .PARAMETER Steps
   num_inference_steps. Default 8 (distilled fast-iter). Use 30 for a
@@ -23,11 +24,11 @@
 
 .EXAMPLE
   ./bench-gguf-2scene.ps1
-  ./bench-gguf-2scene.ps1 -HostUrl http://127.0.0.1:8085 -Steps 30
+  ./bench-gguf-2scene.ps1 -HostUrl http://127.0.0.1:3000 -Steps 30
 #>
 [CmdletBinding()]
 param(
-  [string]$HostUrl = "http://127.0.0.1:8085",
+  [string]$HostUrl = "http://127.0.0.1:3000",
   [int]$Steps = 8
 )
 $ErrorActionPreference = "Stop"
