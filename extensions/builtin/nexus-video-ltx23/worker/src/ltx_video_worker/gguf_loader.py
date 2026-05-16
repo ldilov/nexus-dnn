@@ -211,6 +211,7 @@ def load_gguf_transformer(
     *,
     compute_dtype: "torch.dtype | None" = None,
     strict_schema: bool = True,
+    install_device: "torch.device | str | None" = None,
 ) -> Any:
     """Build an ``LTX2VideoTransformer3DModel`` from a GGUF file.
 
@@ -223,12 +224,21 @@ def load_gguf_transformer(
         compute_dtype: Per-matmul dequant target. Defaults to bfloat16.
         strict_schema: When True (default), raises ``GGUFSchemaMismatch``
             if the GGUF state-dict diverges from the target model.
+        install_device: Where every GGUF-quantized parameter and every
+            plain parameter / buffer lands during install. Defaults to
+            ``cpu`` to preserve historical behaviour, which is what the
+            offload-hook paths (``model``/``sequential``) expect. Callers
+            running with ``offload_mode="none"`` MUST pass ``cuda`` here
+            — diffusers' stock ``ModelMixin.to(cuda)`` does not relocate
+            ``GGUFParameter`` instances after install, so leaving them
+            on CPU is the difference between "weights are GPU-resident"
+            and "inference silently runs on CPU".
 
     Returns:
         ``LTX2VideoTransformer3DModel`` with the GGUF state-dict
-        installed and ``hf_quantizer`` attached. Lives on the meta
-        device until the caller moves it (via accelerate dispatch or
-        ``.to(device)``).
+        installed at ``install_device`` and ``hf_quantizer`` attached.
+        Caller does NOT need to call ``.to(device)`` afterwards — the
+        install pass placed everything on ``install_device`` directly.
     """
     import torch
     from accelerate import init_empty_weights
@@ -281,7 +291,10 @@ def load_gguf_transformer(
         modules_to_not_convert=[],
     )
 
-    install_target_device = torch.device("cpu")
+    if install_device is None:
+        install_target_device = torch.device("cpu")
+    else:
+        install_target_device = torch.device(install_device)
     installed_quantized = 0
     installed_plain = 0
     skipped = 0
@@ -319,10 +332,11 @@ def load_gguf_transformer(
     model.hf_quantizer = quantizer
 
     logger.info(
-        "ltx_video_worker.gguf_loader: installed quantized=%d plain=%d skipped=%d schema_clean=%s",
+        "ltx_video_worker.gguf_loader: installed quantized=%d plain=%d skipped=%d install_device=%s schema_clean=%s",
         installed_quantized,
         installed_plain,
         skipped,
+        install_target_device,
         report.is_clean,
     )
 

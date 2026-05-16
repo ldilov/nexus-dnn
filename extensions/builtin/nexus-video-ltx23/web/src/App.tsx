@@ -8,8 +8,10 @@ import {
 import useSWR from "swr";
 import {
   type AdvancedSettings,
+  type ComponentPlacement,
   type CreateRenderRequest,
   type DepStatus,
+  type DevicePreference,
   type OffloadMode,
   type ProfileInstallStatus,
   type QualityPreset,
@@ -18,6 +20,8 @@ import {
   type RuntimeProfilePreference,
   type RuntimeProfileSummary,
   type SceneSpec,
+  type SchedulerChoice,
+  type ModelQuant,
   artifactUrl,
   hostApi,
   ltxApi,
@@ -1117,8 +1121,268 @@ function AdvancedKnobs({
             None on a 16 GB+ card for the fastest inference.
           </span>
         </div>
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-scheduler">
+            Scheduler
+          </label>
+          <select
+            id="ltx-scheduler"
+            className={s.input}
+            value={advanced.scheduler ?? "flow_match_euler"}
+            onChange={(e) => {
+              const v = e.target.value as SchedulerChoice;
+              setAdvanced(
+                "scheduler",
+                v === "flow_match_euler" ? undefined : v,
+              );
+            }}
+          >
+            <option value="flow_match_euler">
+              Flow-match Euler — distilled-LTX default
+            </option>
+            <option value="flow_match_heun">
+              Flow-match Heun — ~30% slower, marginally higher quality
+            </option>
+          </select>
+          <span className={s.meta}>
+            Non-flow-matching schedulers (DDIM, DPM++, UniPC) are
+            intentionally absent — they break on LTX-2.3.
+          </span>
+        </div>
+        <PipelineTuningPanel advanced={advanced} setAdvanced={setAdvanced} />
       </div>
     </details>
+  );
+}
+
+function PipelineTuningPanel({
+  advanced,
+  setAdvanced,
+}: {
+  advanced: AdvancedSettings;
+  setAdvanced: <K extends keyof AdvancedSettings>(
+    key: K,
+    value: AdvancedSettings[K],
+  ) => void;
+}): ReactElement {
+  const placement: ComponentPlacement = advanced.component_placement ?? {};
+  const placementOverridden =
+    (placement.transformer && placement.transformer !== "auto") ||
+    (placement.vae && placement.vae !== "auto") ||
+    (placement.text_encoder && placement.text_encoder !== "auto");
+
+  const setPlacement = (
+    field: keyof ComponentPlacement,
+    value: DevicePreference,
+  ): void => {
+    const next: ComponentPlacement = { ...placement };
+    if (value === "auto") {
+      delete next[field];
+    } else {
+      next[field] = value;
+    }
+    const stillEmpty =
+      Object.keys(next).length === 0 ||
+      Object.values(next).every((v) => v === "auto" || v === undefined);
+    setAdvanced("component_placement", stillEmpty ? undefined : next);
+  };
+
+  const summary = [
+    placement.transformer && placement.transformer !== "auto"
+      ? `T:${placement.transformer}`
+      : null,
+    placement.vae && placement.vae !== "auto" ? `V:${placement.vae}` : null,
+    placement.text_encoder && placement.text_encoder !== "auto"
+      ? `E:${placement.text_encoder}`
+      : null,
+    advanced.quantization && advanced.quantization !== "none"
+      ? `quant:${advanced.quantization}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <details className={s.progressDetails} style={{ marginTop: 10 }}>
+      <summary className={s.progressSummary}>
+        Pipeline tuning {placementOverridden ? "·" : ""}{" "}
+        {summary ? <span className={s.meta}>{summary}</span> : null}
+      </summary>
+      <div className={s.inputRow} style={{ marginTop: 10 }}>
+        <div className={s.fieldRow}>
+          <span className={s.label}>Per-component placement</span>
+          <span className={s.meta}>
+            Override where each pipeline component lives. Auto follows
+            the offload preset; explicit values switch the worker away
+            from offload hooks onto direct .to(device) placement.
+          </span>
+          <PlacementRow
+            label="Transformer"
+            value={placement.transformer ?? "auto"}
+            onChange={(v) => setPlacement("transformer", v)}
+          />
+          <PlacementRow
+            label="VAE"
+            value={placement.vae ?? "auto"}
+            onChange={(v) => setPlacement("vae", v)}
+          />
+          <PlacementRow
+            label="Text encoder"
+            value={placement.text_encoder ?? "auto"}
+            onChange={(v) => setPlacement("text_encoder", v)}
+          />
+        </div>
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-quantization">
+            Weight quantisation
+          </label>
+          <select
+            id="ltx-quantization"
+            className={s.input}
+            value={advanced.quantization ?? "none"}
+            onChange={(e) => {
+              const v = e.target.value as ModelQuant;
+              setAdvanced("quantization", v === "none" ? undefined : v);
+            }}
+          >
+            <option value="none">None — raw bf16 (~83 GB, 80 GB+ card)</option>
+            <option value="nf4">NF4 (bnb 4-bit) — ~22 GB, 16 GB-card default</option>
+            <option value="int8">INT8 (bnb 8-bit) — ~42 GB, higher fidelity</option>
+          </select>
+          <span className={s.meta}>
+            Quantises BOTH the LTX-2.3 transformer and the Gemma-3 text
+            encoder at load. The shipped checkpoint is raw bf16 (~83 GB);
+            nvfp4 defaults to NF4 so it runs on a 16 GB card. Requires{" "}
+            <code>bitsandbytes</code> in the worker venv.
+          </span>
+        </div>
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-decode-timestep">
+            Decode timestep
+          </label>
+          <input
+            id="ltx-decode-timestep"
+            className={s.input}
+            type="number"
+            min={0}
+            max={1}
+            step={0.01}
+            value={advanced.decode_timestep ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setAdvanced(
+                "decode_timestep",
+                v === "" ? undefined : Number(v),
+              );
+            }}
+            placeholder="0.05 (pipeline default)"
+          />
+          <span className={s.meta}>
+            Flow-matching trajectory decode point. 0.0–1.0. Lower →
+            smoother motion at the cost of extra decoder work.
+          </span>
+        </div>
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-image-cond-noise">
+            Image-conditioning noise
+          </label>
+          <input
+            id="ltx-image-cond-noise"
+            className={s.input}
+            type="number"
+            min={0}
+            max={0.3}
+            step={0.005}
+            value={advanced.image_cond_noise_scale ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setAdvanced(
+                "image_cond_noise_scale",
+                v === "" ? undefined : Number(v),
+              );
+            }}
+            placeholder="0.025 (pipeline default)"
+          />
+          <span className={s.meta}>
+            Noise injected into the segment-chaining image latent.
+            0.0–0.3. Lower → sharper continuity across cuts (risk of
+            stutter); higher → more creative drift.
+          </span>
+        </div>
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-guidance-rescale">
+            Guidance rescale
+          </label>
+          <input
+            id="ltx-guidance-rescale"
+            className={s.input}
+            type="number"
+            min={0}
+            max={1}
+            step={0.05}
+            value={advanced.guidance_rescale ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setAdvanced(
+                "guidance_rescale",
+                v === "" ? undefined : Number(v),
+              );
+            }}
+            placeholder="0 (off)"
+          />
+          <span className={s.meta}>
+            Rescales CFG to avoid over-saturation when guidance scale
+            is pushed above ~7. 0.0–1.0. Leave at 0 unless you see
+            burnt highlights.
+          </span>
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function PlacementRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: DevicePreference;
+  onChange: (v: DevicePreference) => void;
+}): ReactElement {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        flexWrap: "wrap",
+        marginTop: 6,
+      }}
+    >
+      <span style={{ minWidth: 110, fontSize: 13 }}>{label}</span>
+      {(["auto", "cuda", "cpu"] as const).map((opt) => (
+        <label
+          key={opt}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            fontSize: 13,
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="radio"
+            name={`placement-${label}`}
+            value={opt}
+            checked={value === opt}
+            onChange={() => onChange(opt)}
+          />
+          {opt === "auto" ? "Auto" : opt === "cuda" ? "GPU" : "CPU"}
+        </label>
+      ))}
+    </div>
   );
 }
 

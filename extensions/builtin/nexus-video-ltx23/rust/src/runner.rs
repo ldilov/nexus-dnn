@@ -10,8 +10,12 @@ use tokio::sync::{Mutex, Notify};
 use crate::errors::Result;
 use crate::lease::LeaseAcquirer;
 use crate::notification_buffer::{NotificationBuffer, SegmentStatusWrite};
-use crate::runtime_selection::default_offload_mode_for_profile;
-use crate::schemas::{AdvancedSettings, OffloadMode, RenderPlan};
+use crate::runtime_selection::{
+    default_offload_mode_for_profile, default_quant_for_profile, resolve_component_placement,
+};
+use crate::schemas::{
+    AdvancedSettings, DevicePreference, ModelQuant, OffloadMode, RenderPlan, SchedulerChoice,
+};
 use crate::storage::Repos;
 use crate::vram_supervisor::{VramSupervisor, VramVerdict};
 
@@ -1371,32 +1375,7 @@ fn build_render_params(
     // the key exists with a None value. Defaults are kept in sync with
     // pipeline_diffusers._render_loop's fallback values so the
     // behaviour is identical whether the host or worker fills them in.
-    const DEFAULT_GUIDANCE_SCALE: f32 = 4.0;
-    const DEFAULT_NUM_INFERENCE_STEPS: u32 = 8;
-    let guidance_scale = serde_json::Value::from(f64::from(
-        advanced.guidance_scale.unwrap_or(DEFAULT_GUIDANCE_SCALE),
-    ));
-    let num_inference_steps = serde_json::Value::from(
-        advanced
-            .num_inference_steps
-            .unwrap_or(DEFAULT_NUM_INFERENCE_STEPS),
-    );
-
-    // Resolve `Auto` to a concrete per-profile default before the
-    // payload reaches the worker — the worker treats an `auto` string
-    // as an unknown mode and refuses to load.
-    let offload_mode = match advanced.offload_mode {
-        OffloadMode::Auto => default_offload_mode_for_profile(short_profile(&plan.runtime_profile)),
-        concrete => concrete,
-    };
-    // Auto is resolved above; the arm is kept as a defensive fallthrough
-    // so a future addition to `OffloadMode` lands on the safest mode
-    // instead of panicking the worker with an unknown string.
-    let offload_mode_str = match offload_mode {
-        OffloadMode::None => "none",
-        OffloadMode::Model => "model",
-        OffloadMode::Sequential | OffloadMode::Auto => "sequential",
-    };
+    let advanced_block = build_advanced_block(advanced, &plan.runtime_profile);
 
     // Per-segment `action_prompt` overrides the global `prompt` when
     // the planner zipped a scenes[] script. The worker composes the
@@ -1442,11 +1421,7 @@ fn build_render_params(
             "frames_per_segment": plan.segments.first().map_or(97, |s| s.frame_count),
             "segments": segments_json,
         },
-        "advanced": {
-            "guidance_scale": guidance_scale,
-            "num_inference_steps": num_inference_steps,
-            "offload_mode": offload_mode_str,
-        },
+        "advanced": advanced_block,
         "runtime_profile": plan.runtime_profile.clone(),
     });
 
@@ -1520,6 +1495,94 @@ pub(crate) fn resolve_input_image_path(
 
 fn short_profile(full: &str) -> &str {
     full.rsplit('.').next().unwrap_or("fake")
+}
+
+/// Build the worker payload's `advanced` block from operator settings.
+///
+/// Centralises `Auto` resolution + every wire-format conversion so the
+/// payload-shape and the build-time call site stay independently
+/// testable. The worker observes only concrete values — no `auto`
+/// device, no `None`-as-JSON-null where the worker expects a number,
+/// no `Auto`-variant offload mode.
+fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> Value {
+    const DEFAULT_GUIDANCE_SCALE: f32 = 4.0;
+    const DEFAULT_NUM_INFERENCE_STEPS: u32 = 8;
+    let guidance_scale = Value::from(f64::from(
+        advanced.guidance_scale.unwrap_or(DEFAULT_GUIDANCE_SCALE),
+    ));
+    let num_inference_steps = Value::from(
+        advanced
+            .num_inference_steps
+            .unwrap_or(DEFAULT_NUM_INFERENCE_STEPS),
+    );
+
+    let offload_mode = match advanced.offload_mode {
+        OffloadMode::Auto => default_offload_mode_for_profile(short_profile(runtime_profile)),
+        concrete => concrete,
+    };
+    let offload_mode_str = match offload_mode {
+        OffloadMode::None => "none",
+        OffloadMode::Model => "model",
+        OffloadMode::Sequential | OffloadMode::Auto => "sequential",
+    };
+
+    let placement = resolve_component_placement(
+        short_profile(runtime_profile),
+        offload_mode,
+        advanced.component_placement,
+    );
+    let placement_overridden = !advanced.component_placement.is_fully_auto();
+    let device_str = |pref: DevicePreference| match pref {
+        DevicePreference::Auto | DevicePreference::Cpu => "cpu",
+        DevicePreference::Cuda => "cuda",
+    };
+    let placement_json = json!({
+        "transformer": device_str(placement.transformer),
+        "vae": device_str(placement.vae),
+        "text_encoder": device_str(placement.text_encoder),
+    });
+
+    let scheduler_str = match advanced.scheduler {
+        SchedulerChoice::FlowMatchEuler => "flow_match_euler",
+        SchedulerChoice::FlowMatchHeun => "flow_match_heun",
+    };
+    // The shipped checkpoint is unquantized bf16 (~83 GB). When the
+    // operator leaves quant on the default `None`, resolve a
+    // per-profile default so nvfp4 actually quantises (nf4) instead of
+    // trying to load 83 GB onto a 16 GB card. Explicit operator choice
+    // always wins.
+    let quant = match advanced.quantization {
+        ModelQuant::None => default_quant_for_profile(short_profile(runtime_profile)),
+        explicit => explicit,
+    };
+    let quant_str = match quant {
+        ModelQuant::None => "none",
+        ModelQuant::Nf4 => "nf4",
+        ModelQuant::Int8 => "int8",
+    };
+
+    let decode_timestep = advanced
+        .decode_timestep
+        .map_or(Value::Null, |v| Value::from(f64::from(v)));
+    let image_cond_noise_scale = advanced
+        .image_cond_noise_scale
+        .map_or(Value::Null, |v| Value::from(f64::from(v)));
+    let guidance_rescale = advanced
+        .guidance_rescale
+        .map_or(Value::Null, |v| Value::from(f64::from(v)));
+
+    json!({
+        "guidance_scale": guidance_scale,
+        "num_inference_steps": num_inference_steps,
+        "offload_mode": offload_mode_str,
+        "component_placement": placement_json,
+        "placement_overridden": placement_overridden,
+        "scheduler": scheduler_str,
+        "quantization": quant_str,
+        "decode_timestep": decode_timestep,
+        "image_cond_noise_scale": image_cond_noise_scale,
+        "guidance_rescale": guidance_rescale,
+    })
 }
 
 #[cfg(test)]
@@ -1923,7 +1986,7 @@ mod tests {
     }
 
     #[test]
-    fn build_render_params_auto_resolves_to_none_for_rtx50_nvfp4() {
+    fn build_render_params_auto_resolves_to_model_for_rtx50_nvfp4() {
         let mut plan = sample_plan(1);
         plan.runtime_profile = "nexus.video.ltx23.rtx50-nvfp4".into();
         let workdir = PathBuf::from("/runs/run-y/work");
@@ -1942,8 +2005,12 @@ mod tests {
         );
         assert_eq!(
             params["advanced"]["offload_mode"].as_str(),
-            Some("none"),
-            "Auto on rtx50-nvfp4 must resolve to none (FP4 weights fit resident)"
+            Some("model"),
+            "Auto on rtx50-nvfp4 → model: the profile is NF4-quantised, \
+             and bnb is incompatible with sequential offload (meta-tensor \
+             copy error). enable_model_cpu_offload is the bnb-supported \
+             combo; at ~22 GB its ~10 GB peak fits 16 GB (verified \
+             2026-05-16)."
         );
     }
 
@@ -2031,6 +2098,116 @@ mod tests {
             Some("none"),
             "retry payload (build_render_params direct) must propagate offload_mode"
         );
+    }
+
+    #[test]
+    fn build_advanced_block_resolves_placement_from_offload_mode() {
+        // Auto on rtx50-nvfp4 → Model (bnb-quantised; sequential is
+        // bnb-incompatible). placement_for_offload_mode(Model) =
+        // transformer paged from CPU, vae + text_encoder cuda-resident.
+        // The model-offload hook owns actual device movement; the
+        // triple is informational under a hooked mode.
+        let advanced = AdvancedSettings::default();
+        let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
+        assert_eq!(block["offload_mode"].as_str(), Some("model"));
+        assert_eq!(block["component_placement"]["transformer"].as_str(), Some("cpu"));
+        assert_eq!(block["component_placement"]["vae"].as_str(), Some("cuda"));
+        assert_eq!(block["component_placement"]["text_encoder"].as_str(), Some("cuda"));
+        assert_eq!(block["placement_overridden"].as_bool(), Some(false));
+    }
+
+    #[test]
+    fn build_advanced_block_respects_explicit_per_component_override() {
+        // Operator pins vae to CPU on top of the Auto-resolved nvfp4
+        // Model placement (vae would otherwise be cuda). The explicit
+        // field wins; the others fall through to implied.
+        let advanced = AdvancedSettings {
+            component_placement: crate::schemas::ComponentPlacement {
+                transformer: crate::schemas::DevicePreference::Auto,
+                vae: crate::schemas::DevicePreference::Cpu,
+                text_encoder: crate::schemas::DevicePreference::Auto,
+            },
+            ..AdvancedSettings::default()
+        };
+        let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
+        assert_eq!(block["component_placement"]["transformer"].as_str(), Some("cpu"));
+        assert_eq!(block["component_placement"]["vae"].as_str(), Some("cpu"));
+        assert_eq!(block["component_placement"]["text_encoder"].as_str(), Some("cuda"));
+        assert_eq!(block["placement_overridden"].as_bool(), Some(true));
+    }
+
+    #[test]
+    fn build_advanced_block_emits_concrete_scheduler_string() {
+        let advanced = AdvancedSettings {
+            scheduler: crate::schemas::SchedulerChoice::FlowMatchHeun,
+            ..AdvancedSettings::default()
+        };
+        let block = build_advanced_block(&advanced, "nexus.video.ltx23.fake");
+        assert_eq!(block["scheduler"].as_str(), Some("flow_match_heun"));
+    }
+
+    #[test]
+    fn build_advanced_block_explicit_quant_propagates_verbatim() {
+        // An explicit operator choice always wins over the per-profile
+        // default, on any profile.
+        for (variant, expected) in [
+            (crate::schemas::ModelQuant::Nf4, "nf4"),
+            (crate::schemas::ModelQuant::Int8, "int8"),
+        ] {
+            let advanced = AdvancedSettings {
+                quantization: variant,
+                ..AdvancedSettings::default()
+            };
+            let block = build_advanced_block(&advanced, "nexus.video.ltx23.fake");
+            assert_eq!(
+                block["quantization"].as_str(),
+                Some(expected),
+                "variant={variant:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn build_advanced_block_nvfp4_default_quant_is_nf4() {
+        // The whole point of the quant work: the shipped checkpoint is
+        // 83 GB raw bf16. With quant left at the default None, nvfp4
+        // must resolve to nf4 so it actually fits — NOT pass `none`
+        // through and try to load 83 GB onto a 16 GB card.
+        let advanced = AdvancedSettings::default();
+        let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
+        assert_eq!(block["quantization"].as_str(), Some("nf4"));
+        // Model offload — the bnb-compatible pairing for the quantised
+        // footprint (sequential + bnb = meta-tensor copy error).
+        assert_eq!(block["offload_mode"].as_str(), Some("model"));
+    }
+
+    #[test]
+    fn build_advanced_block_fake_profile_default_quant_is_none() {
+        let advanced = AdvancedSettings::default();
+        let block = build_advanced_block(&advanced, "nexus.video.ltx23.fake");
+        assert_eq!(block["quantization"].as_str(), Some("none"));
+    }
+
+    #[test]
+    fn build_advanced_block_serialises_three_hyperparameters_as_numbers() {
+        let advanced = AdvancedSettings {
+            decode_timestep: Some(0.07),
+            image_cond_noise_scale: Some(0.04),
+            guidance_rescale: Some(0.6),
+            ..AdvancedSettings::default()
+        };
+        let block = build_advanced_block(&advanced, "nexus.video.ltx23.fake");
+        assert!((block["decode_timestep"].as_f64().unwrap() - 0.07).abs() < 1e-5);
+        assert!((block["image_cond_noise_scale"].as_f64().unwrap() - 0.04).abs() < 1e-5);
+        assert!((block["guidance_rescale"].as_f64().unwrap() - 0.6).abs() < 1e-5);
+    }
+
+    #[test]
+    fn build_advanced_block_omits_hyperparameters_as_null_when_unset() {
+        let block = build_advanced_block(&AdvancedSettings::default(), "nexus.video.ltx23.fake");
+        assert!(block["decode_timestep"].is_null());
+        assert!(block["image_cond_noise_scale"].is_null());
+        assert!(block["guidance_rescale"].is_null());
     }
 
     #[test]
