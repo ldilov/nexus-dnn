@@ -433,10 +433,23 @@ def test_build_pipeline_quant_config_int8_uses_8bit_backend() -> None:
 _GIB = 1024**3
 
 
-def _budget_torch(total_gib: float, *, raise_info: bool = False,
-                  raise_set: bool = False) -> tuple[Any, list[float]]:
+def _budget_torch(
+    total_gib: float,
+    *,
+    physical_gib: float | None = None,
+    raise_info: bool = False,
+    raise_set: bool = False,
+    raise_props: bool = False,
+) -> tuple[Any, list[float]]:
     """Fake torch whose cuda namespace records the fraction passed to
-    set_per_process_memory_fraction. Returns (torch, recorded_calls)."""
+    set_per_process_memory_fraction. Returns (torch, recorded_calls).
+
+    `total_gib` is the mem_get_info() total (WDDM-committed budget on
+    Windows). `physical_gib` is get_device_properties().total_memory
+    (physical VRAM) — defaults to `total_gib` so existing callers see
+    no divergence; set it explicitly to simulate the WDDM gap.
+    """
+    physical = total_gib if physical_gib is None else physical_gib
     recorded: list[float] = []
 
     def _mem_get_info() -> tuple[int, int]:
@@ -445,6 +458,11 @@ def _budget_torch(total_gib: float, *, raise_info: bool = False,
         total = int(total_gib * _GIB)
         return total, total
 
+    def _get_device_properties(_idx: int) -> Any:
+        if raise_props:
+            raise RuntimeError("no device properties")
+        return SimpleNamespace(total_memory=int(physical * _GIB))
+
     def _set_fraction(fraction: float, device: int) -> None:
         if raise_set:
             raise RuntimeError("driver rejected fraction")
@@ -452,6 +470,7 @@ def _budget_torch(total_gib: float, *, raise_info: bool = False,
 
     cuda = SimpleNamespace(
         mem_get_info=_mem_get_info,
+        get_device_properties=_get_device_properties,
         set_per_process_memory_fraction=_set_fraction,
     )
     return SimpleNamespace(cuda=cuda), recorded
@@ -516,8 +535,10 @@ def test_apply_vram_budget_noop_when_budget_exceeds_card() -> None:
     assert recorded == []
 
 
-def test_apply_vram_budget_swallows_mem_get_info_error() -> None:
-    torch, recorded = _budget_torch(16, raise_info=True)
+def test_apply_vram_budget_skips_when_both_vram_queries_fail() -> None:
+    # Primary (get_device_properties) AND fallback (mem_get_info) must
+    # both fail before the cap is skipped — it is an optional optim.
+    torch, recorded = _budget_torch(16, raise_props=True, raise_info=True)
     assert pd._apply_vram_budget(torch, "model", 15, _logger()) is None
     assert recorded == []
 
@@ -526,3 +547,25 @@ def test_apply_vram_budget_swallows_set_fraction_error() -> None:
     torch, recorded = _budget_torch(16, raise_set=True)
     assert pd._apply_vram_budget(torch, "model", 15, _logger()) is None
     assert recorded == []
+
+
+def test_apply_vram_budget_uses_physical_vram_not_wddm_budget() -> None:
+    # WDDM gap: mem_get_info() reports the committed budget (15.5 GiB)
+    # but the card is physically 16 GiB. set_per_process_memory_fraction
+    # divides by physical internally, so the fraction MUST use physical
+    # (12/16 = 0.75), not the WDDM total (12/15.5 ≈ 0.774) — otherwise
+    # the cap lands ~0.5 GiB looser than the operator asked.
+    torch, recorded = _budget_torch(15.5, physical_gib=16.0)
+    fraction = pd._apply_vram_budget(torch, "model", 12, _logger())
+    assert fraction is not None
+    assert abs(fraction - 12.0 / 16.0) < 1e-9
+    assert recorded == [fraction]
+
+
+def test_apply_vram_budget_falls_back_to_mem_get_info_without_props() -> None:
+    # No device-properties API → fall back to mem_get_info's total.
+    torch, recorded = _budget_torch(16, raise_props=True)
+    fraction = pd._apply_vram_budget(torch, "model", 12, _logger())
+    assert fraction is not None
+    assert abs(fraction - 12.0 / 16.0) < 1e-9
+    assert recorded == [fraction]
