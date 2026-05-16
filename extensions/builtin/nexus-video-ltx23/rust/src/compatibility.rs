@@ -101,6 +101,29 @@ pub fn check_known_incompatibilities(
 ) -> Result<()> {
     let short = short_profile_slug(runtime_profile_full);
 
+    // Guard 0 — real NVIDIA ModelOpt NVFP4 is under construction /
+    // host-blocked: NVFP4 layers cannot CPU-offload, diffusers blocks
+    // pre-quant cpu device_map, and `modelopt_cuda_ext_mx` will not
+    // build without a CUDA toolchain on this host (see
+    // checkpoints/2026-05-17-nvfp4-offload-blocker.md). The `Nvfp4`
+    // value stays for honest naming + future use, but resolves only
+    // via an EXPLICIT operator request (it is not a profile default —
+    // `default_quant_for_profile` keeps `rtx50-nvfp4` on the verified
+    // bnb path). Reject the explicit request at plan time rather than
+    // letting it reach a worker with no nvfp4 branch.
+    if matches!(effective_quant(advanced, short), ModelQuant::Nvfp4) {
+        return Err(ExtensionError::InvalidRequest(
+            "quantization='nvfp4' (real NVIDIA ModelOpt FP4) is under \
+             construction and not yet runnable on this host (NVFP4 \
+             layers cannot CPU-offload, and the ModelOpt MX CUDA \
+             extension requires a CUDA build toolchain). Use \
+             quantization='nf4_bnb' (the verified 16 GB path) or leave \
+             it unset to take the profile default. \
+             [nvfp4_under_construction]"
+                .into(),
+        ));
+    }
+
     // Guard 1 — bitsandbytes (NF4 *or* INT8) + sequential offload is
     // an immediate accelerate crash. BOTH 4-bit and 8-bit bnb load
     // params via accelerate's meta-device dispatch, so
@@ -179,16 +202,17 @@ mod tests {
     }
 
     #[test]
-    fn nvfp4_profile_default_plus_sequential_is_allowed_post_rename() {
-        // N3 behaviour change: the nvfp4 profile's resolved default
-        // quant is now `Nvfp4` (real ModelOpt FP4), not bitsandbytes
-        // NF4. ModelOpt does not use accelerate meta-device dispatch,
-        // so the profile default + sequential is no longer a Guard-1
-        // crash — it must be ALLOWED. (Explicit bnb `Nf4Bnb`/`Int8` +
-        // sequential is still blocked — covered by the explicit_*
-        // tests.) Regression guard documenting the misnomer fix.
+    fn nvfp4_profile_default_plus_sequential_is_blocked() {
+        // Real NVFP4 is shelved/host-blocked, so the `rtx50-nvfp4`
+        // profile default resolves to `Nf4Bnb` (the verified bnb
+        // path). Nf4Bnb + sequential is the Guard-1 meta-tensor crash
+        // and must be blocked at plan time. (This is the original
+        // pre-N3c semantic, restored after the NVFP4 shelve decision.)
         let adv = advanced(OffloadMode::Sequential, ModelQuant::None, None);
-        assert!(check_known_incompatibilities(NVFP4, &adv, 97).is_ok());
+        let err = check_known_incompatibilities(NVFP4, &adv, 97)
+            .expect_err("nf4_bnb (nvfp4 profile default) + sequential must block");
+        assert!(matches!(err, ExtensionError::InvalidRequest(m)
+            if m.contains("quant_bnb_sequential_unsupported")));
     }
 
     #[test]
@@ -198,13 +222,26 @@ mod tests {
     }
 
     #[test]
-    fn nvfp4_plus_sequential_is_not_blocked_by_bnb_guard() {
-        // NVFP4 is NVIDIA ModelOpt, not bitsandbytes — it does not load
-        // via accelerate meta-device dispatch, so Guard 1 (the bnb
-        // meta-tensor crash) must NOT fire for it. Regression guard for
-        // the N3 rename: the guard keys on `Nf4Bnb`/`Int8`, not `Nvfp4`.
-        let adv = advanced(OffloadMode::Sequential, ModelQuant::Nvfp4, None);
-        assert!(check_known_incompatibilities(NVFP4, &adv, 97).is_ok());
+    fn explicit_nvfp4_is_rejected_as_under_construction() {
+        // Real NVFP4 is host-blocked / under construction (Guard 0).
+        // An explicit operator `quantization='nvfp4'` must be rejected
+        // at plan time with the actionable code, on any profile and
+        // any offload mode — it must NOT reach a worker that has no
+        // nvfp4 branch.
+        for offload in [
+            OffloadMode::Model,
+            OffloadMode::Sequential,
+            OffloadMode::Auto,
+        ] {
+            let adv = advanced(offload, ModelQuant::Nvfp4, None);
+            let err = check_known_incompatibilities(NVFP4, &adv, 97)
+                .expect_err("explicit nvfp4 must be rejected");
+            assert!(matches!(err, ExtensionError::InvalidRequest(m)
+                if m.contains("nvfp4_under_construction")));
+        }
+        // It is rejected regardless of profile too.
+        let adv = advanced(OffloadMode::Model, ModelQuant::Nvfp4, None);
+        assert!(check_known_incompatibilities(FAKE, &adv, 97).is_err());
     }
 
     #[test]
