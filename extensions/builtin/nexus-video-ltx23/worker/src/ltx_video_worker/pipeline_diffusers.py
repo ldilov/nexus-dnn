@@ -35,6 +35,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import gc
+import json
 import os
 import time
 import uuid
@@ -706,12 +707,54 @@ class _ModelLoadFailed(Exception):
     pass
 
 
+# Pre-quantised diffusers tree for the nvfp4 profile. Same LTX-2.3
+# distilled architecture as the dg845 bf16 port (validated 2026-05-16:
+# byte-identical model_index.json + every render-critical transformer
+# config key matches), but already bnb-NF4 with a baked
+# `quantization_config`. Preferring it skips the ~89 GB bf16 read +
+# on-the-fly quantisation entirely (~29 GB direct load instead).
+_PREQUANTIZED_NF4_FAMILY = "OzzyGT/LTX-2.3-Distilled-bnb-nf4"
+
+
+def _prequantized_family_for(profile: str) -> str | None:
+    """Pre-quantised family to prefer for `profile`, or None.
+
+    Only the NF4 (`rtx50-nvfp4`) profile has a vetted pre-quantised
+    tree today. fp8 profiles keep the bf16 dg845 path until their own
+    pre-quantised variants are validated.
+    """
+    if profile == "rtx50-nvfp4":
+        return _PREQUANTIZED_NF4_FAMILY
+    return None
+
+
+def _dir_is_prequantized(model_dir: Path) -> bool:
+    """True iff the diffusers tree at `model_dir` ships a baked
+    `quantization_config` (i.e. weights are already quantised on disk).
+
+    bitsandbytes writes the config into `transformer/config.json` at
+    save time; diffusers `from_pretrained` then re-applies it natively.
+    When this is True the worker MUST NOT layer its own on-the-fly
+    `PipelineQuantizationConfig` on top — that double-configures the
+    quantiser and fails. Any read/parse error → False (fall back to
+    the safe on-the-fly path rather than mis-skip quantisation).
+    """
+    cfg = model_dir / "transformer" / "config.json"
+    try:
+        with cfg.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return False
+    return bool(data.get("quantization_config"))
+
+
 def _resolve_model_dir(profile: str) -> Path | None:
     """Locate the on-disk model directory for this profile.
 
     Order:
       1. NEXUS_VIDEO_LTX23_MODEL_DIR (explicit override).
-      2. <host_data_dir>/models/Lightricks/LTX-2.3-<quant>/.
+      2. The profile's pre-quantised family, if installed (nvfp4 only).
+      3. <host_data_dir>/models/<expected family>/.
     Returns the directory only if it actually exists on disk.
     """
     explicit = os.environ.get("NEXUS_VIDEO_LTX23_MODEL_DIR")
@@ -722,13 +765,22 @@ def _resolve_model_dir(profile: str) -> Path | None:
     host_data_dir = os.environ.get("NEXUS_HOST_DATA_DIR")
     if not host_data_dir:
         return None
+    models_root = Path(host_data_dir).joinpath("models")
+
+    # Prefer a pre-quantised tree when one is installed — avoids the
+    # ~89 GB bf16 read + on-the-fly quant that otherwise stalls every
+    # cold nvfp4 load. Falls through to the bf16 family if absent.
+    prequant = _prequantized_family_for(profile)
+    if prequant is not None:
+        cand = models_root.joinpath(*prequant.split("/"))
+        if cand.exists():
+            return cand
 
     family = _expected_family_id(profile)
     if family is None:
         return None
     # repo_id is owner/name; the snapshot lands at <host_data_dir>/models/<owner>/<name>/
-    parts = family.split("/")
-    candidate = Path(host_data_dir).joinpath("models", *parts)
+    candidate = models_root.joinpath(*family.split("/"))
     return candidate if candidate.exists() else None
 
 
@@ -865,11 +917,27 @@ def _ensure_pipeline_loaded(
         )
         load_start = time.perf_counter()
         # On-the-fly quantisation of the two heavy components
-        # (transformer + Gemma-3 text encoder). The shipped checkpoint
-        # is raw bf16 (~83 GB) — without this it cannot run on a 16 GB
-        # card. nvfp4 resolves to nf4 on the host; the worker just
-        # applies whatever concrete mode it was handed.
-        quant_config = _build_pipeline_quant_config(quantization, dtype)
+        # (transformer + Gemma-3 text encoder). The shipped bf16
+        # checkpoint (~89 GB) cannot run on a 16 GB card without it;
+        # nvfp4 resolves to nf4 on the host.
+        #
+        # BUT: if the resolved tree is ALREADY quantised on disk (it
+        # ships its own baked `quantization_config`), diffusers
+        # re-applies that natively at load — layering our own
+        # PipelineQuantizationConfig on top double-configures the
+        # quantiser and fails. Skip the on-the-fly pass entirely in
+        # that case (this is the ~89 GB→~29 GB fast path that makes a
+        # cold nvfp4 load practical).
+        effective_quantization = quantization
+        if _dir_is_prequantized(model_dir):
+            effective_quantization = "none"
+            worker.logger.info(
+                "diffusers.load_pipeline.prequantized",
+                model_dir=str(model_dir),
+                requested_quantization=quantization,
+                note="baked quantization_config; skipping on-the-fly quant",
+            )
+        quant_config = _build_pipeline_quant_config(effective_quantization, dtype)
         from_pretrained_kwargs: dict[str, Any] = {
             "torch_dtype": dtype,
             "local_files_only": True,
@@ -877,7 +945,8 @@ def _ensure_pipeline_loaded(
         if quant_config is not None:
             from_pretrained_kwargs["quantization_config"] = quant_config
             worker.logger.info(
-                "diffusers.load_pipeline.quantization", quantization=quantization
+                "diffusers.load_pipeline.quantization",
+                quantization=effective_quantization,
             )
         pipe = _PipeClass.from_pretrained(
             str(model_dir),
