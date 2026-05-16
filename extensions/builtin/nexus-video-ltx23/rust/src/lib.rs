@@ -1,4 +1,5 @@
 pub mod api;
+pub mod compatibility;
 pub mod errors;
 pub mod lease;
 pub mod migrations;
