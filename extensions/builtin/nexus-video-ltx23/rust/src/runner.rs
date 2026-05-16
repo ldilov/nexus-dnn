@@ -1570,6 +1570,14 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
     let guidance_rescale = advanced
         .guidance_rescale
         .map_or(Value::Null, |v| Value::from(f64::from(v)));
+    // Operator VRAM ceiling. `None` → JSON null → worker leaves the
+    // accelerate device-map heuristic untouched (pre-cap behaviour).
+    // A concrete value → worker pins `max_memory[0]` to it under
+    // model / sequential offload. Bounds were already enforced by
+    // `CreateRenderRequest::validate_field_bounds` before this runs.
+    let max_gpu_vram_gib = advanced
+        .max_gpu_vram_gib
+        .map_or(Value::Null, Value::from);
 
     json!({
         "guidance_scale": guidance_scale,
@@ -1582,6 +1590,7 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
         "decode_timestep": decode_timestep,
         "image_cond_noise_scale": image_cond_noise_scale,
         "guidance_rescale": guidance_rescale,
+        "max_gpu_vram_gib": max_gpu_vram_gib,
     })
 }
 
@@ -2208,6 +2217,22 @@ mod tests {
         assert!(block["decode_timestep"].is_null());
         assert!(block["image_cond_noise_scale"].is_null());
         assert!(block["guidance_rescale"].is_null());
+    }
+
+    #[test]
+    fn build_advanced_block_propagates_max_gpu_vram_gib_as_number() {
+        let advanced = AdvancedSettings {
+            max_gpu_vram_gib: Some(15),
+            ..AdvancedSettings::default()
+        };
+        let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
+        assert_eq!(block["max_gpu_vram_gib"].as_u64(), Some(15));
+    }
+
+    #[test]
+    fn build_advanced_block_max_gpu_vram_gib_null_when_unset() {
+        let block = build_advanced_block(&AdvancedSettings::default(), "nexus.video.ltx23.fake");
+        assert!(block["max_gpu_vram_gib"].is_null());
     }
 
     #[test]
