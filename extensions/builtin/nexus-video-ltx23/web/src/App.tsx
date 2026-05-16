@@ -1122,6 +1122,34 @@ function AdvancedKnobs({
           </span>
         </div>
         <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-max-vram">
+            Max GPU VRAM (GiB)
+          </label>
+          <input
+            id="ltx-max-vram"
+            className={s.input}
+            type="number"
+            min={4}
+            max={128}
+            step={1}
+            value={advanced.max_gpu_vram_gib ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              const n = Math.round(Number(v));
+              setAdvanced(
+                "max_gpu_vram_gib",
+                v === "" || !Number.isFinite(n) ? undefined : n,
+              );
+            }}
+            placeholder="No cap"
+          />
+          <span className={s.meta}>
+            Hard ceiling for model/sequential offload. Set ~1 GiB below your
+            card (e.g. 15 on a 16 GB GPU) to stop NVFP4 spilling into shared
+            VRAM. Ignored under None.
+          </span>
+        </div>
+        <div className={s.fieldRow}>
           <label className={s.label} htmlFor="ltx-scheduler">
             Scheduler
           </label>

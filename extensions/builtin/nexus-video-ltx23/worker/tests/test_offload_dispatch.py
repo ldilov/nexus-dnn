@@ -424,3 +424,105 @@ def test_build_pipeline_quant_config_int8_uses_8bit_backend() -> None:
     assert cfg is not None
     backend = getattr(cfg, "quant_backend", "")
     assert "8bit" in backend or "8_bit" in backend
+
+
+# ---------------------------------------------------------------------------
+# operator VRAM ceiling — _max_gpu_vram_gib_from_params + _apply_vram_budget
+# ---------------------------------------------------------------------------
+
+_GIB = 1024**3
+
+
+def _budget_torch(total_gib: float, *, raise_info: bool = False,
+                  raise_set: bool = False) -> tuple[Any, list[float]]:
+    """Fake torch whose cuda namespace records the fraction passed to
+    set_per_process_memory_fraction. Returns (torch, recorded_calls)."""
+    recorded: list[float] = []
+
+    def _mem_get_info() -> tuple[int, int]:
+        if raise_info:
+            raise RuntimeError("no cuda")
+        total = int(total_gib * _GIB)
+        return total, total
+
+    def _set_fraction(fraction: float, device: int) -> None:
+        if raise_set:
+            raise RuntimeError("driver rejected fraction")
+        recorded.append(fraction)
+
+    cuda = SimpleNamespace(
+        mem_get_info=_mem_get_info,
+        set_per_process_memory_fraction=_set_fraction,
+    )
+    return SimpleNamespace(cuda=cuda), recorded
+
+
+@pytest.mark.parametrize(
+    "advanced, expected",
+    [
+        ({"max_gpu_vram_gib": 15}, 15),
+        ({"max_gpu_vram_gib": 4}, 4),
+        ({"max_gpu_vram_gib": 128}, 128),
+        ({"max_gpu_vram_gib": 3}, None),  # below floor
+        ({"max_gpu_vram_gib": 129}, None),  # above ceiling
+        ({"max_gpu_vram_gib": True}, None),  # bool is not an int budget
+        ({"max_gpu_vram_gib": 15.5}, None),  # non-integral
+        ({"max_gpu_vram_gib": "15"}, None),  # string
+        ({}, None),  # absent
+    ],
+)
+def test_max_gpu_vram_gib_from_params(advanced: dict, expected: int | None) -> None:
+    assert pd._max_gpu_vram_gib_from_params({"advanced": advanced}) == expected
+
+
+def test_max_gpu_vram_gib_from_params_missing_advanced() -> None:
+    assert pd._max_gpu_vram_gib_from_params({}) is None
+    assert pd._max_gpu_vram_gib_from_params({"advanced": None}) is None
+
+
+def test_apply_vram_budget_none_budget_is_noop() -> None:
+    torch, recorded = _budget_torch(16)
+    assert pd._apply_vram_budget(torch, "model", None, _logger()) is None
+    assert recorded == []
+
+
+def test_apply_vram_budget_skipped_under_none_offload() -> None:
+    torch, recorded = _budget_torch(16)
+    assert pd._apply_vram_budget(torch, "none", 15, _logger()) is None
+    assert recorded == []
+
+
+def test_apply_vram_budget_caps_allocator_under_model_offload() -> None:
+    torch, recorded = _budget_torch(16)
+    fraction = pd._apply_vram_budget(torch, "model", 15, _logger())
+    assert fraction is not None
+    assert 0.0 < fraction < 1.0
+    assert recorded == [fraction]
+    # 15 GiB ceiling on a 16 GiB card → ~0.9375.
+    assert abs(fraction - 15 / 16) < 1e-6
+
+
+def test_apply_vram_budget_caps_under_sequential_offload() -> None:
+    torch, recorded = _budget_torch(24)
+    fraction = pd._apply_vram_budget(torch, "sequential", 12, _logger())
+    assert fraction is not None
+    assert abs(fraction - 0.5) < 1e-6
+    assert recorded == [fraction]
+
+
+def test_apply_vram_budget_noop_when_budget_exceeds_card() -> None:
+    torch, recorded = _budget_torch(16)
+    assert pd._apply_vram_budget(torch, "model", 32, _logger()) is None
+    assert recorded == []
+
+
+def test_apply_vram_budget_swallows_mem_get_info_error() -> None:
+    torch, recorded = _budget_torch(16, raise_info=True)
+    assert pd._apply_vram_budget(torch, "model", 15, _logger()) is None
+    assert recorded == []
+
+
+def test_apply_vram_budget_swallows_set_fraction_error() -> None:
+    torch, recorded = _budget_torch(16, raise_set=True)
+    assert pd._apply_vram_budget(torch, "model", 15, _logger()) is None
+    assert recorded == []

@@ -74,6 +74,12 @@ export interface AdvancedSettings {
   /** Weight quantisation (transformer + text encoder). Omitted →
    * backend resolves the per-profile default (nvfp4 → nf4). */
   quantization?: ModelQuant;
+  /** Hard GPU VRAM ceiling (GiB) for the device-map dispatch under
+   * model/sequential offload. 4–128. Omitted → no cap (accelerate's
+   * default heuristic; spills past the line by a small margin on
+   * nvfp4). Set just below the card's physical VRAM to keep the
+   * transformer out of shared GPU memory. */
+  max_gpu_vram_gib?: number;
   /** Flow-matching trajectory decode point. 0.0–1.0. */
   decode_timestep?: number;
   /** Noise injected into image-conditioning latent. 0.0–0.3. */

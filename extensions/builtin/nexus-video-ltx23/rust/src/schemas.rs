@@ -19,6 +19,20 @@ pub const MAX_PROJECT_ID_CHARS: usize = 128;
 /// future scheme bump (e.g. namespace prefix).
 pub const MAX_INPUT_ARTIFACT_ID_CHARS: usize = 64;
 
+/// Inclusive bounds for `AdvancedSettings.max_gpu_vram_gib`.
+///
+/// The cap maps to an `accelerate` `max_memory={0: "<N>GiB", ...}`
+/// ceiling on the diffusers device-map dispatch under `model` /
+/// `sequential` offload — it pins the transformer just below the
+/// physical VRAM line so it cannot spill into Windows shared GPU
+/// memory (the small-margin spill that collapses nvfp4 throughput).
+/// Floor 4 GiB: below that even one paged transformer block plus its
+/// activations will not fit, so the cap would be self-defeating.
+/// Ceiling 128 GiB: a sanity guard comfortably above any single
+/// consumer / prosumer card.
+pub const MIN_GPU_VRAM_GIB: u32 = 4;
+pub const MAX_GPU_VRAM_GIB: u32 = 128;
+
 /// Validate the shape of a server-issued input-image artifact id.
 ///
 /// The id is consumed by `runner.rs::build_render_params` to locate
@@ -157,6 +171,14 @@ impl CreateRenderRequest {
                 ));
             }
         }
+        if let Some(v) = self.advanced.max_gpu_vram_gib {
+            if !(MIN_GPU_VRAM_GIB..=MAX_GPU_VRAM_GIB).contains(&v) {
+                return Err(format!(
+                    "advanced.max_gpu_vram_gib must be in \
+                     {MIN_GPU_VRAM_GIB}..={MAX_GPU_VRAM_GIB} (got {v})"
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -237,6 +259,19 @@ pub struct AdvancedSettings {
     /// 80 GB+ VRAM). Requires `bitsandbytes` in the worker venv.
     #[serde(default)]
     pub quantization: ModelQuant,
+    /// Hard ceiling (GiB) on the GPU VRAM the diffusers device-map
+    /// dispatch may consume. Applied under `model` / `sequential`
+    /// offload only. `None` keeps the pre-cap behaviour — accelerate's
+    /// default heuristic places layers and spills past the hardware
+    /// line by a small margin on nvfp4, which bleeds into Windows
+    /// shared GPU memory and collapses throughput. When set, the
+    /// worker passes `max_memory={0: "<N>GiB", "cpu": <host RAM>}` to
+    /// the dispatch so the transformer is pinned just below the card's
+    /// physical VRAM. Ignored under `none` (full-resident) — there is
+    /// no device map to bound there. Bounds enforced by
+    /// `CreateRenderRequest::validate_field_bounds`.
+    #[serde(default)]
+    pub max_gpu_vram_gib: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -659,5 +694,47 @@ mod tests {
         let again = serde_json::to_string(&parsed).unwrap();
         let twice: AdvancedSettings = serde_json::from_str(&again).unwrap();
         assert_eq!(twice.offload_mode, OffloadMode::None);
+    }
+
+    #[test]
+    fn max_gpu_vram_gib_defaults_to_none_when_absent() {
+        let wire = json!({ "offload_mode": "model" });
+        let parsed: AdvancedSettings = serde_json::from_value(wire).unwrap();
+        assert_eq!(parsed.max_gpu_vram_gib, None);
+    }
+
+    #[test]
+    fn max_gpu_vram_gib_round_trips_explicit_value() {
+        let wire = json!({ "max_gpu_vram_gib": 15 });
+        let parsed: AdvancedSettings = serde_json::from_value(wire).unwrap();
+        assert_eq!(parsed.max_gpu_vram_gib, Some(15));
+        let again = serde_json::to_string(&parsed).unwrap();
+        let twice: AdvancedSettings = serde_json::from_str(&again).unwrap();
+        assert_eq!(twice.max_gpu_vram_gib, Some(15));
+    }
+
+    #[test]
+    fn validate_field_bounds_accepts_in_range_max_gpu_vram_gib() {
+        let mut req = make_valid_request();
+        req.advanced.max_gpu_vram_gib = Some(MIN_GPU_VRAM_GIB);
+        assert!(req.validate_field_bounds().is_ok());
+        req.advanced.max_gpu_vram_gib = Some(MAX_GPU_VRAM_GIB);
+        assert!(req.validate_field_bounds().is_ok());
+    }
+
+    #[test]
+    fn validate_field_bounds_rejects_max_gpu_vram_gib_below_floor() {
+        let mut req = make_valid_request();
+        req.advanced.max_gpu_vram_gib = Some(MIN_GPU_VRAM_GIB - 1);
+        let err = req.validate_field_bounds().expect_err("must reject");
+        assert!(err.contains("max_gpu_vram_gib"));
+    }
+
+    #[test]
+    fn validate_field_bounds_rejects_max_gpu_vram_gib_above_ceiling() {
+        let mut req = make_valid_request();
+        req.advanced.max_gpu_vram_gib = Some(MAX_GPU_VRAM_GIB + 1);
+        let err = req.validate_field_bounds().expect_err("must reject");
+        assert!(err.contains("max_gpu_vram_gib"));
     }
 }

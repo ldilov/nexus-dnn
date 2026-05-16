@@ -116,6 +116,90 @@ def _offload_mode_from_params(raw_params: dict[str, Any]) -> str:
 _MIN_VRAM_BYTES_FOR_NONE = 15 * 1024**3
 
 
+# Inclusive bounds for the operator VRAM ceiling, mirroring the Rust
+# host's `schemas::{MIN,MAX}_GPU_VRAM_GIB`. Re-checked here as defence
+# in depth: a payload that skipped host validation must not drive an
+# absurd allocator fraction.
+_MIN_GPU_VRAM_GIB = 4
+_MAX_GPU_VRAM_GIB = 128
+
+
+def _max_gpu_vram_gib_from_params(raw_params: dict[str, Any]) -> int | None:
+    """Extract the operator's GPU VRAM ceiling (GiB), or None.
+
+    The host serialises `AdvancedSettings.max_gpu_vram_gib` as a JSON
+    number, or null when unset. Anything out of the shared bounds,
+    non-integral, or boolean → None, meaning "no cap" (the pre-cap
+    behaviour: let accelerate's heuristic place layers).
+    """
+    advanced = raw_params.get("advanced") if isinstance(raw_params, dict) else None
+    if not isinstance(advanced, dict):
+        return None
+    raw = advanced.get("max_gpu_vram_gib")
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        return None
+    if not _MIN_GPU_VRAM_GIB <= raw <= _MAX_GPU_VRAM_GIB:
+        return None
+    return raw
+
+
+def _apply_vram_budget(
+    torch_mod: Any,
+    offload_mode: str,
+    max_gpu_vram_gib: int | None,
+    logger: Any,
+) -> float | None:
+    """Hard-cap the CUDA caching allocator to the operator's budget.
+
+    Returns the applied fraction in (0, 1), or None when no cap is
+    applied.
+
+    Under `model` / `sequential` offload accelerate's default
+    placement heuristic over-allocates the transformer by a small
+    margin on nvfp4, bleeding into Windows shared GPU memory and
+    collapsing throughput. `set_per_process_memory_fraction` pins the
+    allocator below the physical VRAM line so the process physically
+    cannot spill — if the model genuinely will not fit the budget the
+    load fails loudly with a CUDA OOM (the desired "fail, don't crawl"
+    mode) instead of silently crawling on shared memory.
+
+    No-op under `none` (the full-resident path owns its own 15 GiB
+    floor check), when no budget is set, or when the budget meets or
+    exceeds the card (nothing to clamp). Any torch error is swallowed
+    — this is an optional optimisation, never load-fatal.
+    """
+    if max_gpu_vram_gib is None or offload_mode == "none":
+        return None
+    try:
+        _free, total_bytes = torch_mod.cuda.mem_get_info()
+    except Exception as exc:  # noqa: BLE001 — optional optimisation, never fatal
+        logger.info("diffusers.vram_budget.skipped", reason=str(exc))
+        return None
+    if total_bytes <= 0:
+        return None
+    budget_bytes = max_gpu_vram_gib * 1024**3
+    fraction = budget_bytes / total_bytes
+    if fraction >= 1.0:
+        logger.info(
+            "diffusers.vram_budget.noop",
+            max_gpu_vram_gib=max_gpu_vram_gib,
+            total_gib=round(total_bytes / 1024**3, 2),
+        )
+        return None
+    try:
+        torch_mod.cuda.set_per_process_memory_fraction(fraction, 0)
+    except Exception as exc:  # noqa: BLE001 — optional optimisation, never fatal
+        logger.info("diffusers.vram_budget.skipped", reason=str(exc))
+        return None
+    logger.info(
+        "diffusers.vram_budget.applied",
+        max_gpu_vram_gib=max_gpu_vram_gib,
+        fraction=round(fraction, 4),
+        total_gib=round(total_bytes / 1024**3, 2),
+    )
+    return fraction
+
+
 # The placement the worker falls back to only when the host payload
 # predates the component_placement contract entirely (older queued
 # renders). Mirrors the historical sequential-offload default — every
@@ -395,7 +479,11 @@ def _place_pipeline(
 
 
 async def _emit_weights_resident(
-    worker, run_id: str, pipe: Any, offload_mode: str
+    worker,
+    run_id: str,
+    pipe: Any,
+    offload_mode: str,
+    max_gpu_vram_gib: int | None = None,
 ) -> None:
     """Emit `runtime.weights_resident` once the pipeline has loaded.
 
@@ -428,6 +516,7 @@ async def _emit_weights_resident(
             "offload_mode": offload_mode,
             "transformer_device": transformer_device,
             "memory_reserved_bytes": memory_reserved_bytes,
+            "max_gpu_vram_gib": max_gpu_vram_gib,
         },
     )
 
@@ -679,6 +768,7 @@ def _ensure_pipeline_loaded(
     scheduler_choice: str = "flow_match_euler",
     placement: dict[str, str] | None = None,
     quantization: str = "none",
+    max_gpu_vram_gib: int | None = None,
 ) -> tuple[Any, str]:
     """Idempotent pipeline loader. Returns (pipe, device).
 
@@ -720,6 +810,12 @@ def _ensure_pipeline_loaded(
 
         device = "cuda"
         dtype = _pick_dtype(profile, torch)
+
+        # Pin the CUDA allocator below the operator's VRAM ceiling
+        # BEFORE any weights are materialised, so the offload-hook
+        # path cannot bleed the nvfp4 transformer into Windows shared
+        # GPU memory. No-op under `none` / when no budget is set.
+        _apply_vram_budget(torch, offload_mode, max_gpu_vram_gib, worker.logger)
 
         # Prefer the image-to-video class for scene chaining: scene N+1
         # is image-conditioned on scene N's last frame, which gives
@@ -885,6 +981,7 @@ async def _load_then_render(
                 scheduler_choice=_scheduler_from_params(raw_params),
                 placement=_component_placement_from_params(raw_params),
                 quantization=_quantization_from_params(raw_params),
+                max_gpu_vram_gib=_max_gpu_vram_gib_from_params(raw_params),
             )
         )
     except _ModelMissing as err:
@@ -907,7 +1004,13 @@ async def _load_then_render(
     rs.pipe = pipe
     rs.device = device
 
-    await _emit_weights_resident(worker, rs.run_id, pipe, offload_mode)
+    await _emit_weights_resident(
+        worker,
+        rs.run_id,
+        pipe,
+        offload_mode,
+        _max_gpu_vram_gib_from_params(raw_params),
+    )
     await worker.emit_notification(
         Notifications.PROGRESS,
         {"run_id": rs.run_id, "phase": "rendering"},
@@ -968,6 +1071,7 @@ async def _load_then_retry_segment(
                 scheduler_choice=_scheduler_from_params(raw_params),
                 placement=_component_placement_from_params(raw_params),
                 quantization=_quantization_from_params(raw_params),
+                max_gpu_vram_gib=_max_gpu_vram_gib_from_params(raw_params),
             )
         )
     except _ModelMissing as err:
@@ -987,7 +1091,13 @@ async def _load_then_retry_segment(
 
     rs.pipe = pipe
     rs.device = device
-    await _emit_weights_resident(worker, rs.run_id, pipe, offload_mode)
+    await _emit_weights_resident(
+        worker,
+        rs.run_id,
+        pipe,
+        offload_mode,
+        _max_gpu_vram_gib_from_params(raw_params),
+    )
     await _retry_segment_loop(worker, rs, raw_params, seg_index)
 
 
