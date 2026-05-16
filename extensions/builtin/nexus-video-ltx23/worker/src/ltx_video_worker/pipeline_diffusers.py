@@ -170,11 +170,24 @@ def _apply_vram_budget(
     """
     if max_gpu_vram_gib is None or offload_mode == "none":
         return None
+    # Denominator MUST be physical VRAM (`total_memory` from
+    # get_device_properties) because that is exactly what
+    # `set_per_process_memory_fraction` divides by internally
+    # (cudaGetDeviceProperties().totalGlobalMem). Using
+    # `mem_get_info()`'s total instead is wrong on Windows WDDM, where
+    # it returns the driver-committed budget (< physical), so the
+    # resulting cap lands looser than the operator requested — the
+    # exact precision the spill-prevention feature exists to provide.
+    # Fall back to mem_get_info() only if device properties are
+    # unavailable (still safe, just slightly loose on WDDM).
     try:
-        _free, total_bytes = torch_mod.cuda.mem_get_info()
-    except Exception as exc:  # noqa: BLE001 — optional optimisation, never fatal
-        logger.info("diffusers.vram_budget.skipped", reason=str(exc))
-        return None
+        total_bytes = int(torch_mod.cuda.get_device_properties(0).total_memory)
+    except Exception:  # noqa: BLE001 — fall back, never fatal
+        try:
+            _free, total_bytes = torch_mod.cuda.mem_get_info()
+        except Exception as exc:  # noqa: BLE001 — optional optimisation
+            logger.info("diffusers.vram_budget.skipped", reason=str(exc))
+            return None
     if total_bytes <= 0:
         return None
     budget_bytes = max_gpu_vram_gib * 1024**3
