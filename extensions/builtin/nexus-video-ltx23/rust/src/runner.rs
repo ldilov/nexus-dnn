@@ -1303,11 +1303,7 @@ fn segment_index(params: &Value) -> Option<i64> {
 /// `resolve_max_frag_ratio` keeps an explicit env override winning.
 /// Centralised here so Guard A is unit-testable without driving the
 /// async notification loop.
-fn evaluate_memory_stats(
-    supervisor: &VramSupervisor,
-    profile: &str,
-    stats: &Value,
-) -> VramVerdict {
+fn evaluate_memory_stats(supervisor: &VramSupervisor, profile: &str, stats: &Value) -> VramVerdict {
     let max_frag = supervisor
         .resolve_max_frag_ratio(default_max_frag_ratio_for_profile(short_profile(profile)));
     supervisor.evaluate_with_max_frag(stats, max_frag)
@@ -1627,8 +1623,12 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
     };
     let quant_str = match quant {
         ModelQuant::None => "none",
-        ModelQuant::Nf4 => "nf4",
+        // bnb wire value stays "nf4" so the worker's bitsandbytes
+        // branch is unchanged by the N3 rename (host-side enum only).
+        ModelQuant::Nf4Bnb => "nf4",
         ModelQuant::Int8 => "int8",
+        // New worker contract: "nvfp4" → ModelOpt restore path.
+        ModelQuant::Nvfp4 => "nvfp4",
     };
 
     let decode_timestep = advanced
@@ -1645,9 +1645,7 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
     // A concrete value → worker pins `max_memory[0]` to it under
     // model / sequential offload. Bounds were already enforced by
     // `CreateRenderRequest::validate_field_bounds` before this runs.
-    let max_gpu_vram_gib = advanced
-        .max_gpu_vram_gib
-        .map_or(Value::Null, Value::from);
+    let max_gpu_vram_gib = advanced.max_gpu_vram_gib.map_or(Value::Null, Value::from);
 
     json!({
         "guidance_scale": guidance_scale,
@@ -2189,9 +2187,15 @@ mod tests {
         let advanced = AdvancedSettings::default();
         let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
         assert_eq!(block["offload_mode"].as_str(), Some("model"));
-        assert_eq!(block["component_placement"]["transformer"].as_str(), Some("cpu"));
+        assert_eq!(
+            block["component_placement"]["transformer"].as_str(),
+            Some("cpu")
+        );
         assert_eq!(block["component_placement"]["vae"].as_str(), Some("cuda"));
-        assert_eq!(block["component_placement"]["text_encoder"].as_str(), Some("cuda"));
+        assert_eq!(
+            block["component_placement"]["text_encoder"].as_str(),
+            Some("cuda")
+        );
         assert_eq!(block["placement_overridden"].as_bool(), Some(false));
     }
 
@@ -2209,9 +2213,15 @@ mod tests {
             ..AdvancedSettings::default()
         };
         let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
-        assert_eq!(block["component_placement"]["transformer"].as_str(), Some("cpu"));
+        assert_eq!(
+            block["component_placement"]["transformer"].as_str(),
+            Some("cpu")
+        );
         assert_eq!(block["component_placement"]["vae"].as_str(), Some("cpu"));
-        assert_eq!(block["component_placement"]["text_encoder"].as_str(), Some("cuda"));
+        assert_eq!(
+            block["component_placement"]["text_encoder"].as_str(),
+            Some("cuda")
+        );
         assert_eq!(block["placement_overridden"].as_bool(), Some(true));
     }
 
@@ -2230,8 +2240,9 @@ mod tests {
         // An explicit operator choice always wins over the per-profile
         // default, on any profile.
         for (variant, expected) in [
-            (crate::schemas::ModelQuant::Nf4, "nf4"),
+            (crate::schemas::ModelQuant::Nf4Bnb, "nf4"),
             (crate::schemas::ModelQuant::Int8, "int8"),
+            (crate::schemas::ModelQuant::Nvfp4, "nvfp4"),
         ] {
             let advanced = AdvancedSettings {
                 quantization: variant,
@@ -2247,16 +2258,17 @@ mod tests {
     }
 
     #[test]
-    fn build_advanced_block_nvfp4_default_quant_is_nf4() {
-        // The whole point of the quant work: the shipped checkpoint is
-        // 83 GB raw bf16. With quant left at the default None, nvfp4
-        // must resolve to nf4 so it actually fits — NOT pass `none`
-        // through and try to load 83 GB onto a 16 GB card.
+    fn build_advanced_block_nvfp4_default_quant_is_nvfp4() {
+        // N3 misnomer fix: with quant left at the default None, the
+        // `rtx50-nvfp4` profile now resolves to real NVIDIA ModelOpt
+        // FP4 (`"nvfp4"`), restored from the pre-quantised on-disk
+        // tree — NOT the bitsandbytes-NF4 stand-in it used to mean,
+        // and NOT raw `none` (which would try 83 GB on a 16 GB card).
         let advanced = AdvancedSettings::default();
         let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
-        assert_eq!(block["quantization"].as_str(), Some("nf4"));
-        // Model offload — the bnb-compatible pairing for the quantised
-        // footprint (sequential + bnb = meta-tensor copy error).
+        assert_eq!(block["quantization"].as_str(), Some("nvfp4"));
+        // Offload default is unchanged by N3 (still the per-profile
+        // default); NVFP4-specific offload tuning is N4's scope.
         assert_eq!(block["offload_mode"].as_str(), Some("model"));
     }
 
@@ -2636,7 +2648,9 @@ mod tests {
     async fn handle_notification_final_segment_breach_is_benign() {
         let runner = empty_runner().await;
         let latch = BreachLatch::default();
-        latch.set("frag_ratio=0.995 exceeded max=0.300".into()).await;
+        latch
+            .set("frag_ratio=0.995 exceeded max=0.300".into())
+            .await;
         // Segment index 3 of a 4-segment chain = the final segment.
         let note = nexus_backend_runtimes::generic::leases::trait_def::LeaseNotification {
             method: "ltx.video.segment.completed".into(),
