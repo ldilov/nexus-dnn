@@ -110,6 +110,44 @@ pub const fn default_quant_for_profile(profile: &str) -> ModelQuant {
     }
 }
 
+/// Per-profile VRAM-supervisor `max_frag_ratio` ceiling.
+///
+/// `profile` is the SHORT slug (e.g. `"rtx50-nvfp4"`), matching the
+/// `short_profile()` helper in `runner.rs` — same convention as the
+/// two siblings above.
+///
+/// Background: the fp8/nvfp4 profiles run under
+/// `enable_model_cpu_offload()` / `enable_sequential_cpu_offload()`,
+/// which free + reallocate the transformer on every forward. After a
+/// *normal, successful* render the CUDA pool is left ~0.99 fragmented
+/// by design — `frag_ratio` is `1 - largest_free_block / total_free`
+/// and an offloaded pipeline always ends with the pool carved up. So
+/// on these profiles `frag_ratio` is not a meaningful OOM predictor
+/// and the spec-046 default of 0.30 (measured on the *unoffloaded*
+/// dg845 BF16 spike) produces a guaranteed false-positive that aborts
+/// otherwise-perfect renders.
+///
+/// `frag_ratio` is defined on `[0.0, 1.0]`, so a ceiling of `1.0`
+/// with the supervisor's strict `frag_ratio > max_frag_ratio` test
+/// can never trip — i.e. the frag check is effectively disabled for
+/// these profiles, and real trouble is still caught by `num_ooms`,
+/// `num_alloc_retries`, and `free_mb` (the actual OOM predictors).
+///
+/// `fake`/CI + any unknown profile keep the original `0.30` (the fake
+/// runtime emits `frag_ratio = 0.0`, and dev/CI wants the tight
+/// check). This matches `VramSupervisorConfig::default().max_frag_ratio`.
+///
+/// An explicit `NEXUS_VIDEO_LTX23_VRAM_MAX_FRAG_RATIO` env override
+/// still wins over this per-profile default — see
+/// `VramSupervisor::resolve_max_frag_ratio`.
+#[must_use]
+pub const fn default_max_frag_ratio_for_profile(profile: &str) -> f64 {
+    match profile.as_bytes() {
+        b"rtx50-nvfp4" | b"rtx50-fp8" | b"rtx40-fp8" => 1.0,
+        _ => 0.30,
+    }
+}
+
 /// Per-component device placement implied by a concrete `OffloadMode`.
 ///
 /// The worker dispatcher uses the placement triple directly when the
@@ -585,6 +623,27 @@ mod tests {
                 default_quant_for_profile(p),
                 ModelQuant::None,
                 "profile={p}"
+            );
+        }
+    }
+
+    #[test]
+    fn default_max_frag_ratio_per_profile() {
+        // fp8/nvfp4 run offloaded and end every healthy render with a
+        // ~0.99-fragmented pool by design — the frag check is
+        // effectively disabled (ratio <= 1.0, strict `>` test never
+        // trips). fake/CI + unknown keep the tight spec-046 0.30
+        // (matches VramSupervisorConfig::default().max_frag_ratio).
+        for p in ["rtx50-nvfp4", "rtx50-fp8", "rtx40-fp8"] {
+            assert!(
+                (default_max_frag_ratio_for_profile(p) - 1.0).abs() < f64::EPSILON,
+                "profile={p} must disable the frag check"
+            );
+        }
+        for p in ["fake", "future-profile-xyz"] {
+            assert!(
+                (default_max_frag_ratio_for_profile(p) - 0.30).abs() < f64::EPSILON,
+                "profile={p} must keep the tight 0.30 ceiling"
             );
         }
     }
