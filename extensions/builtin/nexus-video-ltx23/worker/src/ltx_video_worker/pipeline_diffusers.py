@@ -33,6 +33,7 @@ Model directory resolution order:
 from __future__ import annotations
 
 import asyncio
+import functools
 import gc
 import os
 import time
@@ -56,6 +57,22 @@ from .vram import evict_models, memory_stats
 
 _LAZY_TORCH: Any = None
 _LAZY_PIPELINE_CLASS: Any = None
+
+
+def _coerce_optional_float(value: Any) -> float | None:
+    """Cast a payload field to float, or return None when missing/null.
+
+    Mirrors `_or_default` for the optional hyperparameter case: the
+    host emits explicit JSON null when the user left the field unset,
+    and we want that to land as Python None (not a TypeError from
+    `float(None)`) so the pipeline call helper can omit the kwarg.
+    """
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _or_default(value: Any, default: Any) -> Any:
@@ -88,47 +105,261 @@ def _offload_mode_from_params(raw_params: dict[str, Any]) -> str:
     return mode
 
 
-_MIN_VRAM_BYTES_FOR_NONE = 16 * 1024**3
+# Minimum total VRAM for offload_mode="none". The NVFP4 transformer
+# is ~11 GB; with VAE + text encoder + activations the resident
+# footprint peaks around 13-14 GB. The floor is 15 GiB (≈16.1 GB
+# decimal) — a genuine 16 GB-class card reports ~15.9 GiB total to
+# `torch.cuda.mem_get_info()` (never a full 16 GiB; some is always
+# reserved by the driver), so a 16-GiB floor would wrongly reject
+# every 16 GB card by a ~80 MB margin. 15 GiB admits all 16 GB cards
+# while still rejecting 12 GB cards (~11.2 GiB total).
+_MIN_VRAM_BYTES_FOR_NONE = 15 * 1024**3
 
 
-def _apply_offload_mode(
+# The placement the worker falls back to only when the host payload
+# predates the component_placement contract entirely (older queued
+# renders). Mirrors the historical sequential-offload default — every
+# component CPU-resident, paged per forward call — so an old payload
+# behaves exactly as it did before this feature.
+_LEGACY_PLACEMENT: dict[str, str] = {
+    "transformer": "cpu",
+    "vae": "cpu",
+    "text_encoder": "cpu",
+}
+
+
+def _component_placement_from_params(raw_params: dict[str, Any]) -> dict[str, str]:
+    """Extract the host-resolved component placement triple.
+
+    The host ALWAYS resolves Auto + per-profile defaults + operator
+    overrides into a fully concrete triple before dispatch, so this is
+    authoritative — there is no "preset vs override" branching on the
+    worker. Returns the historical all-CPU placement only when the
+    payload predates the contract (missing/malformed block), so a
+    stale queued render still behaves as it did before this feature.
+    """
+    advanced = raw_params.get("advanced") if isinstance(raw_params, dict) else None
+    if not isinstance(advanced, dict):
+        return dict(_LEGACY_PLACEMENT)
+    placement = advanced.get("component_placement")
+    if not isinstance(placement, dict):
+        return dict(_LEGACY_PLACEMENT)
+    out: dict[str, str] = {}
+    for key in ("transformer", "vae", "text_encoder"):
+        value = placement.get(key)
+        if value in ("cuda", "cpu"):
+            out[key] = value
+        else:
+            # Any missing/garbage field → fall back wholesale rather
+            # than ship a half-resolved triple to the placement logic.
+            return dict(_LEGACY_PLACEMENT)
+    return out
+
+
+def _scheduler_from_params(raw_params: dict[str, Any]) -> str:
+    advanced = raw_params.get("advanced") if isinstance(raw_params, dict) else None
+    if not isinstance(advanced, dict):
+        return "flow_match_euler"
+    name = advanced.get("scheduler")
+    if isinstance(name, str) and name:
+        return name
+    return "flow_match_euler"
+
+
+def _quantization_from_params(raw_params: dict[str, Any]) -> str:
+    """Extract the host-resolved quantisation mode.
+
+    The host resolves the per-profile default (nvfp4 → nf4) before
+    dispatch, so the worker just reads the concrete value. `none` is
+    the safe fallback for any pre-contract / malformed payload — it
+    keeps the raw bf16 weights, which is correct behaviour for the
+    `fake`/CI profile and a loud-failure path for real profiles on a
+    small card (rather than silently mis-quantising).
+    """
+    advanced = raw_params.get("advanced") if isinstance(raw_params, dict) else None
+    if not isinstance(advanced, dict):
+        return "none"
+    name = advanced.get("quantization")
+    if isinstance(name, str) and name in ("none", "nf4", "int8"):
+        return name
+    return "none"
+
+
+def _build_pipeline_quant_config(quant: str, compute_dtype: Any) -> Any:
+    """Build a diffusers `PipelineQuantizationConfig` for the two heavy
+    components (transformer + text encoder), or return None for `none`.
+
+    The shipped LTX-2.3 checkpoint is unquantized bf16 (~36 GB
+    transformer + ~46 GB Gemma-3 encoder). bitsandbytes NF4/INT8
+    applied at `from_pretrained` time shrinks that to ~22/42 GB so it
+    fits system RAM and pages cleanly under sequential offload — the
+    only configuration that runs on a 16 GB GPU without Windows
+    shared-VRAM spill.
+
+    Raises `_ModelLoadFailed` if bitsandbytes or the quant API is
+    missing — surfacing "install bitsandbytes" beats silently loading
+    83 GB and hanging.
+    """
+    if quant == "none":
+        return None
+    if quant not in ("nf4", "int8"):
+        raise _ModelLoadFailed(
+            f"unknown quantization: {quant!r}; expected "
+            '"none", "nf4", or "int8"'
+        )
+    try:
+        import bitsandbytes  # type: ignore  # noqa: F401
+        from diffusers.quantizers import PipelineQuantizationConfig  # type: ignore
+    except ImportError as ie:
+        raise _ModelLoadFailed(
+            f"quantization={quant!r} requires bitsandbytes + a diffusers "
+            f"with PipelineQuantizationConfig in the worker venv: {ie}. "
+            f"`uv pip install bitsandbytes` into the runtime .venv, or "
+            f"set quantization='none' (needs an 80 GB+ card)."
+        ) from ie
+
+    if quant == "nf4":
+        backend = "bitsandbytes_4bit"
+        quant_kwargs = {
+            "load_in_4bit": True,
+            "bnb_4bit_quant_type": "nf4",
+            "bnb_4bit_compute_dtype": compute_dtype,
+        }
+    else:  # int8
+        backend = "bitsandbytes_8bit"
+        quant_kwargs = {"load_in_8bit": True}
+
+    # Quantise BOTH heavy components in the single from_pretrained
+    # call. `text_encoder` is the Gemma-3 LLM (~46 GB bf16);
+    # `transformer` is the LTX-2.3 DiT (~36 GB bf16).
+    return PipelineQuantizationConfig(
+        quant_backend=backend,
+        quant_kwargs=quant_kwargs,
+        components_to_quantize=["transformer", "text_encoder"],
+    )
+
+
+def _apply_scheduler_choice(pipe: Any, choice: str, logger: Any) -> None:
+    """Swap `pipe.scheduler` to the operator-requested scheduler class.
+
+    Only flow-matching schedulers are valid for LTX-2.3. The default
+    (`flow_match_euler`) is already loaded by `from_pretrained`, so this
+    is a no-op unless the operator picked `flow_match_heun`. Other
+    diffusers schedulers (DDIM, DPM++, UniPC, ...) are not supported and
+    intentionally not in the registry — they break on flow-matching
+    velocity parameterisation.
+    """
+    if choice == "flow_match_euler":
+        return  # already loaded
+    if choice == "flow_match_heun":
+        try:
+            from diffusers import FlowMatchHeunDiscreteScheduler  # type: ignore
+        except ImportError as ie:
+            raise _ModelLoadFailed(
+                f"FlowMatchHeunDiscreteScheduler not importable: {ie}. "
+                f"Upgrade diffusers or use scheduler='flow_match_euler'."
+            ) from ie
+        pipe.scheduler = FlowMatchHeunDiscreteScheduler.from_config(
+            pipe.scheduler.config
+        )
+        logger.info("diffusers.load_pipeline.scheduler", scheduler=choice)
+        return
+    raise _ModelLoadFailed(
+        f"unknown scheduler: {choice!r}; expected "
+        '"flow_match_euler" or "flow_match_heun"'
+    )
+
+
+def _place_components(
+    pipe: Any,
+    placement: dict[str, str],
+    logger: Any,
+    *,
+    include_transformer: bool,
+) -> None:
+    """Move each named component onto its host-resolved device.
+
+    `placement` is fully concrete — the host already collapsed Auto +
+    per-profile defaults + operator overrides into `{"transformer":
+    "cuda"|"cpu", "vae": ..., "text_encoder": ...}`. The transformer is
+    only moved when `include_transformer` is True AND it wasn't already
+    placed at GGUF-install time (the caller decides).
+    """
+    names: tuple[str, ...] = ()
+    if include_transformer:
+        names += ("transformer",)
+    names += ("vae", "text_encoder", "text_encoder_2")
+    moved: dict[str, str] = {}
+    for name in names:
+        key = "text_encoder" if name == "text_encoder_2" else name
+        target = placement.get(key)
+        if target is None:
+            continue
+        submod = getattr(pipe, name, None)
+        if submod is None or not hasattr(submod, "to"):
+            continue
+        submod.to(target)
+        moved[name] = target
+    logger.info("diffusers.load_pipeline.placement", moved=moved)
+
+
+def _place_pipeline(
     *,
     pipe: Any,
     offload_mode: str,
-    device: str,
+    placement: dict[str, str],
     torch_mod: Any,
     logger: Any,
+    transformer_pre_placed: bool = False,
 ) -> Any:
-    """Apply the resolved offload strategy to a freshly-loaded pipeline.
+    """Place the pipeline per the host-resolved component triple.
 
-    Pure on its inputs apart from calling methods on `pipe`/`torch_mod`/
-    `logger`, which makes this the testable surface for the dispatch
-    contract. Returns the pipe (potentially after `pipe.to(device)`
-    moved it to the GPU for `mode="none"`).
+    The host always sends a concrete `placement` triple — there is no
+    "preset vs override" branching on the worker any more; the triple is
+    authoritative. `offload_mode` only decides whether the transformer
+    is paged by a diffusers offload hook (`model` / `sequential`) or
+    pinned by direct placement (`none`).
 
-    Raises `_ModelLoadFailed` when:
-    - `mode="none"` and `torch_mod.cuda.mem_get_info()[1] < 16 GB`;
-    - `mode="model"` and the pipe lacks `enable_model_cpu_offload`;
-    - `mode` is anything other than `none`/`model`/`sequential`.
+    `none`: no hooks. Every component is placed at `placement[name]`.
+    The NVFP4-on-16GB shape (`transformer=cuda, vae=cuda,
+    text_encoder=cpu`) keeps the ~11 GB T5 off the GPU so the ~11 GB
+    transformer + activations actually fit — `pipe.to("cuda")` on the
+    whole pipeline was the 2026-05-15 hang (T5 + transformer > 16 GB).
 
-    `pipe.to(device)` is reserved for `mode="none"`. Both offload
-    helpers manage device placement themselves; calling `.to(...)`
-    first defeats their hooks.
+    `model` / `sequential`: install the offload hook (it owns the
+    transformer's per-forward paging); still honour the vae +
+    text_encoder placement from the triple.
+
+    Raises `_ModelLoadFailed` on insufficient VRAM for a CUDA-resident
+    config, a missing offload helper, or an unknown mode.
+
+    `transformer_pre_placed`: True when the GGUF loader already
+    installed the transformer onto its device; skip moving it again
+    (GGUFParameter doesn't honour stock `.to()` anyway).
     """
+    wants_cuda = "cuda" in placement.values()
     if offload_mode == "none":
-        free_bytes, total_bytes = torch_mod.cuda.mem_get_info()
-        if total_bytes < _MIN_VRAM_BYTES_FOR_NONE:
-            raise _ModelLoadFailed(
-                f"offload_mode=\"none\" requires 16 GB+ VRAM; this card "
-                f"reports {total_bytes / 1e9:.1f} GB total. Downgrade to "
-                f"\"model\" or \"sequential\" or pick a higher-VRAM card."
-            )
-        pipe = pipe.to(device)
+        if wants_cuda:
+            free_bytes, total_bytes = torch_mod.cuda.mem_get_info()
+            if total_bytes < _MIN_VRAM_BYTES_FOR_NONE:
+                raise _ModelLoadFailed(
+                    f"offload_mode=\"none\" needs a 16 GB-class GPU "
+                    f"(>= {_MIN_VRAM_BYTES_FOR_NONE / 1024**3:.0f} GiB "
+                    f"total); this card reports "
+                    f"{total_bytes / 1024**3:.1f} GiB. Downgrade to "
+                    f"\"model\" or \"sequential\"."
+                )
+        _place_components(
+            pipe,
+            placement,
+            logger,
+            include_transformer=not transformer_pre_placed,
+        )
         logger.info(
             "diffusers.load_pipeline.offload",
             mode="none",
-            vram_total_gb=round(total_bytes / 1e9, 1),
-            vram_free_gb=round(free_bytes / 1e9, 1),
+            placement=placement,
+            transformer_pre_placed=transformer_pre_placed,
         )
         return pipe
     if offload_mode == "model":
@@ -138,24 +369,29 @@ def _apply_offload_mode(
                 "upgrade diffusers or pick a different offload_mode"
             )
         pipe.enable_model_cpu_offload()
-        logger.info("diffusers.load_pipeline.offload", mode="model")
-        return pipe
-    if offload_mode == "sequential":
+    elif offload_mode == "sequential":
         if hasattr(pipe, "enable_sequential_cpu_offload"):
             pipe.enable_sequential_cpu_offload()
         elif hasattr(pipe, "enable_model_cpu_offload"):
             # Older diffusers releases without sequential offload —
-            # accept the spill rather than crash. The host's per-profile
-            # default never picks sequential when the pipeline doesn't
-            # support it, but a paranoid operator override should still
-            # load.
+            # accept the spill rather than crash.
             pipe.enable_model_cpu_offload()
-        logger.info("diffusers.load_pipeline.offload", mode="sequential")
-        return pipe
-    raise _ModelLoadFailed(
-        f"unknown offload_mode: {offload_mode!r}; expected "
-        "\"none\", \"model\", or \"sequential\""
+    else:
+        raise _ModelLoadFailed(
+            f"unknown offload_mode: {offload_mode!r}; expected "
+            "\"none\", \"model\", or \"sequential\""
+        )
+    # The offload hook OWNS every component's device placement: it
+    # keeps stable weights on CPU and pages each submodule onto the
+    # GPU only while active, bridging cross-device tensors itself.
+    # Manually `.to()`-ing vae / text_encoder here would fight those
+    # hooks and reintroduce the cross-device mismatch that the manual
+    # split caused on 2026-05-15. So under model / sequential we do
+    # NOT place anything by hand — the triple is informational only.
+    logger.info(
+        "diffusers.load_pipeline.offload", mode=offload_mode, placement=placement
     )
+    return pipe
 
 
 async def _emit_weights_resident(
@@ -435,20 +671,30 @@ def _expected_family_id(profile: str) -> str | None:
 
 
 def _ensure_pipeline_loaded(
-    worker, profile: str, cache: dict[str, Any], offload_mode: str
+    worker,
+    profile: str,
+    cache: dict[str, Any],
+    offload_mode: str,
+    *,
+    scheduler_choice: str = "flow_match_euler",
+    placement: dict[str, str] | None = None,
+    quantization: str = "none",
 ) -> tuple[Any, str]:
     """Idempotent pipeline loader. Returns (pipe, device).
 
     First call boots torch + diffusers + the LTX pipeline + the model
     weights. Subsequent calls return the cached pipe.
 
-    `offload_mode` selects the diffusers offload strategy: `"none"`
-    parks the whole pipeline on the GPU (`pipe.to("cuda")`), `"model"`
-    enables coarse `enable_model_cpu_offload`, `"sequential"` enables
-    the per-layer `enable_sequential_cpu_offload`. The host resolves
-    the operator's `Auto` choice to a concrete string before the
-    payload arrives, so the worker never observes `"auto"`.
+    `offload_mode` selects whether the transformer is paged by a
+    diffusers offload hook (`model` / `sequential`) or pinned by direct
+    placement (`none`). `placement` is the host-resolved concrete
+    component triple (`{"transformer","vae","text_encoder"}` each
+    `"cuda"`/`"cpu"`) and is authoritative — the host already folded
+    Auto + per-profile defaults + operator overrides into it. The
+    worker never observes `"auto"`.
     """
+    if placement is None:
+        placement = dict(_LEGACY_PLACEMENT)
     if cache["pipe"] is not None:
         return cache["pipe"], cache["device"]
 
@@ -509,12 +755,37 @@ def _ensure_pipeline_loaded(
             pipeline_class=_PipeClass.__name__,
         )
         load_start = time.perf_counter()
+        # On-the-fly quantisation of the two heavy components
+        # (transformer + Gemma-3 text encoder). The shipped checkpoint
+        # is raw bf16 (~83 GB) — without this it cannot run on a 16 GB
+        # card. nvfp4 resolves to nf4 on the host; the worker just
+        # applies whatever concrete mode it was handed.
+        quant_config = _build_pipeline_quant_config(quantization, dtype)
+        from_pretrained_kwargs: dict[str, Any] = {
+            "torch_dtype": dtype,
+            "local_files_only": True,
+        }
+        if quant_config is not None:
+            from_pretrained_kwargs["quantization_config"] = quant_config
+            worker.logger.info(
+                "diffusers.load_pipeline.quantization", quantization=quantization
+            )
         pipe = _PipeClass.from_pretrained(
             str(model_dir),
-            torch_dtype=dtype,
-            local_files_only=True,
+            **from_pretrained_kwargs,
         )
 
+        # GGUF-quantized transformers MUST be installed directly onto
+        # their target device. Stock `pipe.to(...)` does not relocate
+        # GGUFParameter instances after the fact (their move semantics
+        # live in the quantizer, not nn.Module._apply). Under `none` the
+        # transformer's resolved placement decides; under model /
+        # sequential the offload hook pages from CPU so install on CPU.
+        gguf_install_device = (
+            placement.get("transformer", "cpu")
+            if offload_mode == "none"
+            else "cpu"
+        )
         gguf_override = _resolve_gguf_transformer_override(model_dir)
         if gguf_override is not None:
             from . import gguf_loader
@@ -523,27 +794,32 @@ def _ensure_pipeline_loaded(
                 "diffusers.load_pipeline.gguf_override",
                 gguf_path=str(gguf_override),
                 base_config_dir=str(model_dir),
+                install_device=str(gguf_install_device),
             )
             gguf_transformer = gguf_loader.load_gguf_transformer(
                 gguf_override,
                 model_dir,
                 compute_dtype=dtype,
+                install_device=gguf_install_device,
             )
             pipe.transformer = gguf_transformer
 
-        # Dispatch the operator-selected offload strategy. Historical
-        # context: sequential offload measured 4.7 GB peak VRAM / 13.7
-        # s/step on RTX 5070 Ti versus model_cpu_offload's 37 GB / 75
-        # s/step (the latter spilled to unified memory on Windows).
-        # NVFP4 on Blackwell has enough headroom for `none` (full
-        # pipeline resident) which is faster still.
-        pipe = _apply_offload_mode(
+
+        # The host-resolved triple is authoritative. `_place_pipeline`
+        # decides hook-vs-direct per offload_mode but always honours
+        # the triple — crucially keeping the ~11 GB T5 off the GPU for
+        # nvfp4-on-16GB so the transformer + activations actually fit.
+        # The 2026-05-15 hang was `pipe.to("cuda")` trying to make T5 +
+        # transformer (~22 GB) co-resident on a 16 GB card.
+        pipe = _place_pipeline(
             pipe=pipe,
             offload_mode=offload_mode,
-            device=device,
+            placement=placement,
             torch_mod=torch,
             logger=worker.logger,
+            transformer_pre_placed=gguf_override is not None,
         )
+        _apply_scheduler_choice(pipe, scheduler_choice, worker.logger)
         if hasattr(pipe.vae, "enable_tiling"):
             pipe.vae.enable_tiling()
         worker.logger.info(
@@ -600,7 +876,16 @@ async def _load_then_render(
     )
     try:
         pipe, device = await asyncio.to_thread(
-            _ensure_pipeline_loaded, worker, profile, cache, offload_mode
+            functools.partial(
+                _ensure_pipeline_loaded,
+                worker,
+                profile,
+                cache,
+                offload_mode,
+                scheduler_choice=_scheduler_from_params(raw_params),
+                placement=_component_placement_from_params(raw_params),
+                quantization=_quantization_from_params(raw_params),
+            )
         )
     except _ModelMissing as err:
         await _emit_error(
@@ -674,7 +959,16 @@ async def _load_then_retry_segment(
     )
     try:
         pipe, device = await asyncio.to_thread(
-            _ensure_pipeline_loaded, worker, profile, cache, offload_mode
+            functools.partial(
+                _ensure_pipeline_loaded,
+                worker,
+                profile,
+                cache,
+                offload_mode,
+                scheduler_choice=_scheduler_from_params(raw_params),
+                placement=_component_placement_from_params(raw_params),
+                quantization=_quantization_from_params(raw_params),
+            )
         )
     except _ModelMissing as err:
         await _emit_error(worker, rs.run_id, ErrorCodes.MODEL_MISSING, str(err))
@@ -742,6 +1036,9 @@ async def _retry_segment_loop(
     advanced = raw_params.get("advanced") or {}
     guidance_scale = float(_or_default(advanced.get("guidance_scale"), 4.0))
     num_inference_steps = int(_or_default(advanced.get("num_inference_steps"), 8))
+    decode_timestep = _coerce_optional_float(advanced.get("decode_timestep"))
+    image_cond_noise_scale = _coerce_optional_float(advanced.get("image_cond_noise_scale"))
+    guidance_rescale = _coerce_optional_float(advanced.get("guidance_rescale"))
 
     prompt_obj = raw_params.get("prompt") or {}
     global_action = prompt_obj.get("action") or prompt_obj.get("prompt") or ""
@@ -815,18 +1112,23 @@ async def _retry_segment_loop(
 
     try:
         frames = await asyncio.to_thread(
-            _generate_segment,
-            rs.pipe,
-            cond_image,
-            effective_prompt,
-            negative_prompt,
-            width,
-            height,
-            seg_frame_count,
-            seg_seed,
-            guidance_scale,
-            num_inference_steps,
-            emit_step,
+            functools.partial(
+                _generate_segment,
+                rs.pipe,
+                cond_image,
+                effective_prompt,
+                negative_prompt,
+                width,
+                height,
+                seg_frame_count,
+                seg_seed,
+                guidance_scale,
+                num_inference_steps,
+                emit_step,
+                decode_timestep=decode_timestep,
+                image_cond_noise_scale=image_cond_noise_scale,
+                guidance_rescale=guidance_rescale,
+            )
         )
     except RuntimeError as e:
         msg = str(e)
@@ -937,6 +1239,9 @@ async def _render_loop(
     advanced = raw_params.get("advanced") or {}
     guidance_scale = float(_or_default(advanced.get("guidance_scale"), 4.0))
     num_inference_steps = int(_or_default(advanced.get("num_inference_steps"), 8))
+    decode_timestep = _coerce_optional_float(advanced.get("decode_timestep"))
+    image_cond_noise_scale = _coerce_optional_float(advanced.get("image_cond_noise_scale"))
+    guidance_rescale = _coerce_optional_float(advanced.get("guidance_rescale"))
     if not segments:
         await _emit_error(
             worker,
@@ -1036,18 +1341,23 @@ async def _render_loop(
 
         try:
             frames = await asyncio.to_thread(
-                _generate_segment,
-                rs.pipe,
-                last_frame_image,
-                effective_prompt,
-                negative_prompt,
-                width,
-                height,
-                seg_frame_count,
-                seg_seed,
-                guidance_scale,
-                num_inference_steps,
-                emit_step,
+                functools.partial(
+                    _generate_segment,
+                    rs.pipe,
+                    last_frame_image,
+                    effective_prompt,
+                    negative_prompt,
+                    width,
+                    height,
+                    seg_frame_count,
+                    seg_seed,
+                    guidance_scale,
+                    num_inference_steps,
+                    emit_step,
+                    decode_timestep=decode_timestep,
+                    image_cond_noise_scale=image_cond_noise_scale,
+                    guidance_rescale=guidance_rescale,
+                )
             )
         except RuntimeError as e:
             # CUDA OOM / VRAM budget exceeded surfaces here.
@@ -1216,6 +1526,10 @@ def _generate_segment(
     guidance_scale: float,
     num_inference_steps: int,
     step_heartbeat: Callable[[int], None] | None = None,
+    *,
+    decode_timestep: float | None = None,
+    image_cond_noise_scale: float | None = None,
+    guidance_rescale: float | None = None,
 ) -> Any:
     """Call into the LTX pipeline. Returns a list of PIL.Image frames.
 
@@ -1245,6 +1559,17 @@ def _generate_segment(
         "guidance_scale": guidance_scale,
         "num_inference_steps": num_inference_steps,
     }
+    # Optional LTX-2.3-specific knobs. None signals "use pipeline
+    # default" and gets stripped here so we never pass an explicit
+    # None into the diffusers call (which would override the default
+    # with null and trip TypeError downstream — same class of bug as
+    # the 2026-05-15 guidance_scale=None incident).
+    if decode_timestep is not None:
+        call_kwargs["decode_timestep"] = decode_timestep
+    if image_cond_noise_scale is not None:
+        call_kwargs["image_cond_noise_scale"] = image_cond_noise_scale
+    if guidance_rescale is not None:
+        call_kwargs["guidance_rescale"] = guidance_rescale
 
     sig_params = inspect.signature(pipe.__call__).parameters
     if image is not None:
