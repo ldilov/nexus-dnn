@@ -347,6 +347,14 @@ pub enum ModelQuant {
     /// `rtx50-nvfp4` profile default. Distinct backend from `Nf4Bnb`;
     /// the bnb meta-device sequential constraint does not apply.
     Nvfp4,
+    /// GGUF `Q4_K_M` transformer (community Abiray LTX-2.3 build,
+    /// ~16.5 GB on disk). Loaded via the extension-local
+    /// `gguf_loader` (dequant-per-matmul `GGUFLinear`) against the
+    /// dg845 base config with the LTX2 key-rename applied — proven
+    /// fully schema-clean (4186/4186). NOT bitsandbytes, NOT NVIDIA
+    /// FP4: neither the bnb meta-device sequential constraint nor the
+    /// NVFP4 host blockers apply. The `rtx50-gguf` profile default.
+    Gguf,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -378,6 +386,7 @@ pub enum RuntimeProfilePreference {
     Rtx50Nvfp4,
     Rtx50Fp8,
     Rtx40Fp8,
+    Rtx50Gguf,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -605,6 +614,7 @@ mod tests {
             ModelQuant::Nf4Bnb,
             ModelQuant::Int8,
             ModelQuant::Nvfp4,
+            ModelQuant::Gguf,
         ] {
             let wire = serde_json::to_string(&quant).unwrap();
             let back: ModelQuant = serde_json::from_str(&wire).unwrap();
@@ -625,6 +635,10 @@ mod tests {
         assert_eq!(
             serde_json::to_value(ModelQuant::Nvfp4).unwrap(),
             json!("nvfp4")
+        );
+        assert_eq!(
+            serde_json::to_value(ModelQuant::Gguf).unwrap(),
+            json!("gguf")
         );
     }
 

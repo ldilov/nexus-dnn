@@ -784,7 +784,28 @@ def _resolve_model_dir(profile: str) -> Path | None:
     return candidate if candidate.exists() else None
 
 
-def _resolve_gguf_transformer_override(model_dir: Path) -> Path | None:
+# The GGUF Q4 profile's transformer lives in its own installed family
+# dir (NOT inside the dg845 base tree the profile borrows its config /
+# companions from). Schema proven clean against dg845 after the LTX2
+# key-rename (4186/4186 — see checkpoints/2026-05-17-gA-reprobe-*).
+_GGUF_FAMILY = "Abiray/LTX-2.3-22B-DISTILLED-1.1-GGUF"
+
+
+def _gguf_family_for(profile: str) -> str | None:
+    """Owner/name of the GGUF transformer family for `profile`, or None.
+
+    Only the dedicated `rtx50-gguf` profile resolves a first-class GGUF
+    family. Other profiles keep the env / drop-in-dir override
+    behaviour (None here → fall through).
+    """
+    if profile == "rtx50-gguf":
+        return _GGUF_FAMILY
+    return None
+
+
+def _resolve_gguf_transformer_override(
+    model_dir: Path, profile: str | None = None
+) -> Path | None:
     """Resolve a GGUF transformer override for ``model_dir``.
 
     Resolution order:
@@ -793,6 +814,9 @@ def _resolve_gguf_transformer_override(model_dir: Path) -> Path | None:
       2. A single ``*.gguf`` file sitting in ``model_dir`` alongside
          the diffusers tree (e.g. an operator drops the GGUF in there
          after running the standard ``from_pretrained`` install).
+      3. The profile's first-class GGUF family
+         (``<host_data>/models/<owner>/<name>/*.gguf``) — only for a
+         dedicated gguf profile (`rtx50-gguf`).
 
     Returns None when no override is configured. The standard
     safetensors pipeline path runs unchanged in that case.
@@ -806,7 +830,18 @@ def _resolve_gguf_transformer_override(model_dir: Path) -> Path | None:
 
     from .gguf_loader import find_gguf_transformer
 
-    return find_gguf_transformer(model_dir)
+    found = find_gguf_transformer(model_dir)
+    if found is not None:
+        return found
+
+    family = _gguf_family_for(profile) if profile else None
+    if family is not None:
+        host_data_dir = os.environ.get("NEXUS_HOST_DATA_DIR")
+        if host_data_dir:
+            fam_dir = Path(host_data_dir).joinpath("models", *family.split("/"))
+            if fam_dir.is_dir():
+                return find_gguf_transformer(fam_dir)
+    return None
 
 
 def _expected_family_id(profile: str) -> str | None:
@@ -819,7 +854,12 @@ def _expected_family_id(profile: str) -> str | None:
     won't load via standard `from_pretrained`; see
     `specs/046-ltx23-video-generation/verification/p0-t001-results.md`.
     """
-    if profile in ("rtx40-fp8", "rtx50-fp8", "rtx50-nvfp4"):
+    if profile in ("rtx40-fp8", "rtx50-fp8", "rtx50-nvfp4", "rtx50-gguf"):
+        # rtx50-gguf borrows dg845 ONLY for the transformer `config.json`
+        # + companion VAE/text-encoder/scheduler; its transformer weights
+        # come from the GGUF override (Abiray family), not dg845's
+        # safetensors. The base transformer is loaded-then-replaced (a
+        # known, documented load-then-discard tax — G1 fork-probe).
         return "dg845/LTX-2.3-Distilled-Diffusers"
     return None
 
@@ -964,21 +1004,31 @@ def _ensure_pipeline_loaded(
             if offload_mode == "none"
             else "cpu"
         )
-        gguf_override = _resolve_gguf_transformer_override(model_dir)
+        gguf_override = _resolve_gguf_transformer_override(model_dir, profile)
         if gguf_override is not None:
             from . import gguf_loader
 
+            # The first-class gguf profile (Abiray family) carries
+            # original LTX-2.3 key names → apply the LTX2 diffusers
+            # rename (proven schema-clean 4186/4186). strict_schema
+            # stays True: the re-probe proved it clean, so a future
+            # GGUF/diffusers drift must fail LOUDLY, not silently
+            # zero-fill. An env / drop-in override on a non-gguf
+            # profile keeps the historical no-rename behaviour.
+            is_gguf_profile = _gguf_family_for(profile) is not None
             worker.logger.info(
                 "diffusers.load_pipeline.gguf_override",
                 gguf_path=str(gguf_override),
                 base_config_dir=str(model_dir),
                 install_device=str(gguf_install_device),
+                rename_keys=is_gguf_profile,
             )
             gguf_transformer = gguf_loader.load_gguf_transformer(
                 gguf_override,
                 model_dir,
                 compute_dtype=dtype,
                 install_device=gguf_install_device,
+                rename_keys=is_gguf_profile,
             )
             pipe.transformer = gguf_transformer
 
