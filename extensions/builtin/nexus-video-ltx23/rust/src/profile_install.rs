@@ -252,7 +252,9 @@ fn profile_repo(profile: &str) -> Option<&'static str> {
     // `specs/046-ltx23-video-generation/verification/p0-t001-results.md`
     // for the architecture finding).
     match profile {
-        "rtx40-fp8" | "rtx50-fp8" | "rtx50-nvfp4" => Some("dg845/LTX-2.3-Distilled-Diffusers"),
+        "rtx40-fp8" | "rtx50-fp8" | "rtx50-nvfp4" | "rtx50-gguf" => {
+            Some("dg845/LTX-2.3-Distilled-Diffusers")
+        }
         _ => None,
     }
 }
@@ -298,6 +300,10 @@ mod tests {
         );
         assert_eq!(
             svc.status("rtx50-nvfp4").await.unwrap().repo.as_deref(),
+            Some(DG845)
+        );
+        assert_eq!(
+            svc.status("rtx50-gguf").await.unwrap().repo.as_deref(),
             Some(DG845)
         );
     }
