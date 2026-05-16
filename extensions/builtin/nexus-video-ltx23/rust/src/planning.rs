@@ -249,6 +249,26 @@ pub fn plan_render(req: &CreateRenderRequest, runtime_profile: &str) -> Result<R
         });
     }
 
+    // Plan-time compatibility gate: reject the three known-bad
+    // quant/offload/sampler combinations here, with an actionable
+    // message, instead of letting them crash opaquely deep in the
+    // worker (accelerate meta-tensor copy / FP8 NaN / NVFP4 NaN
+    // burst). `runtime_profile` is the fully-qualified id; the guard
+    // resolves the effective offload/quant the same way the worker
+    // payload builder does. The last segment can exceed the nominal
+    // frame count, so check the chain's maximum.
+    let max_segment_frames = segments
+        .iter()
+        .map(|s| s.frame_count)
+        .max()
+        .unwrap_or(frame_count_per_segment);
+    crate::compatibility::check_known_incompatibilities(
+        runtime_profile,
+        &req.advanced,
+        req.advanced.guidance_scale,
+        max_segment_frames,
+    )?;
+
     let budget = quality_preset_gpu_budget_mb(req.quality_preset);
     let risk = estimate_vram_risk(
         width,
