@@ -30,7 +30,9 @@
 //! to their per-profile concretes before the check.
 
 use crate::errors::{ExtensionError, Result};
-use crate::runtime_selection::{default_offload_mode_for_profile, default_quant_for_profile};
+use crate::runtime_selection::{
+    default_offload_mode_for_profile, default_quant_for_profile, is_fp8_family, is_nvfp4_family,
+};
 use crate::schemas::{AdvancedSettings, ModelQuant, OffloadMode};
 
 /// Highest CFG the FP8/NVFP4 activation range tolerates before e4m3
@@ -77,10 +79,6 @@ const fn effective_quant(advanced: &AdvancedSettings, short_profile: &str) -> Mo
     }
 }
 
-fn is_fp8_family(short_profile: &str) -> bool {
-    matches!(short_profile, "rtx40-fp8" | "rtx50-fp8" | "rtx50-nvfp4")
-}
-
 /// Reject a render whose effective config hits a known-bad combo.
 ///
 /// Returns the FIRST offending combination so the message stays
@@ -100,15 +98,23 @@ pub fn check_known_incompatibilities(
 ) -> Result<()> {
     let short = short_profile_slug(runtime_profile_full);
 
-    // Guard 1 — nf4 + sequential is an immediate accelerate crash.
-    if effective_quant(advanced, short) == ModelQuant::Nf4
-        && effective_offload(advanced, short) == OffloadMode::Sequential
+    // Guard 1 — bitsandbytes (NF4 *or* INT8) + sequential offload is
+    // an immediate accelerate crash. BOTH 4-bit and 8-bit bnb load
+    // params via accelerate's meta-device dispatch, so
+    // `enable_sequential_cpu_offload` hits the identical "Cannot copy
+    // out of meta tensor; no data!" on either — the guard must cover
+    // both quant variants, not just NF4.
+    if matches!(
+        effective_quant(advanced, short),
+        ModelQuant::Nf4 | ModelQuant::Int8
+    ) && effective_offload(advanced, short) == OffloadMode::Sequential
     {
         return Err(ExtensionError::InvalidRequest(
-            "offload_mode='sequential' is incompatible with NF4 quantisation \
-             (bitsandbytes loads via accelerate meta-device dispatch and \
-             sequential offload cannot copy the un-materialised meta tensors). \
-             Use offload_mode='model' instead. [quant_nf4_sequential_unsupported]"
+            "offload_mode='sequential' is incompatible with bitsandbytes \
+             quantisation (NF4/INT8 load via accelerate meta-device \
+             dispatch and sequential offload cannot copy the \
+             un-materialised meta tensors). Use offload_mode='model' \
+             instead. [quant_bnb_sequential_unsupported]"
                 .into(),
         ));
     }
@@ -126,7 +132,9 @@ pub fn check_known_incompatibilities(
     }
 
     // Guard 3 — NVFP4 GEMM NaN-bursts past a 121-frame context.
-    if short == "rtx50-nvfp4" && max_segment_frames > NVFP4_MAX_SEGMENT_FRAMES {
+    // `is_nvfp4_family` (not a literal slug) so a future *-nvfp4
+    // profile is covered automatically.
+    if is_nvfp4_family(short) && max_segment_frames > NVFP4_MAX_SEGMENT_FRAMES {
         return Err(ExtensionError::InvalidRequest(format!(
             "segment frame count {max_segment_frames} exceeds the NVFP4 \
              stability ceiling of {NVFP4_MAX_SEGMENT_FRAMES} frames; NVFP4 \
@@ -174,13 +182,31 @@ mod tests {
         let err = check_known_incompatibilities(NVFP4, &adv, 97)
             .expect_err("nf4+sequential must block");
         assert!(matches!(err, ExtensionError::InvalidRequest(m)
-            if m.contains("quant_nf4_sequential_unsupported")));
+            if m.contains("quant_bnb_sequential_unsupported")));
     }
 
     #[test]
     fn explicit_nf4_plus_sequential_on_any_profile_blocked() {
         let adv = advanced(OffloadMode::Sequential, ModelQuant::Nf4, None);
         assert!(check_known_incompatibilities(FP8, &adv, 97).is_err());
+    }
+
+    #[test]
+    fn explicit_int8_plus_sequential_is_blocked() {
+        // DEFECT 1 regression guard: INT8 also loads via bnb
+        // meta-device dispatch, so int8+sequential crashes identically
+        // to nf4+sequential. Must be blocked at plan time.
+        let adv = advanced(OffloadMode::Sequential, ModelQuant::Int8, None);
+        let err = check_known_incompatibilities(FP8, &adv, 97)
+            .expect_err("int8+sequential must block");
+        assert!(matches!(err, ExtensionError::InvalidRequest(m)
+            if m.contains("quant_bnb_sequential_unsupported")));
+    }
+
+    #[test]
+    fn int8_plus_model_offload_is_allowed() {
+        let adv = advanced(OffloadMode::Model, ModelQuant::Int8, None);
+        assert!(check_known_incompatibilities(FP8, &adv, 97).is_ok());
     }
 
     #[test]
@@ -256,7 +282,40 @@ mod tests {
         let err = check_known_incompatibilities(NVFP4, &adv, 200)
             .expect_err("must block");
         assert!(matches!(err, ExtensionError::InvalidRequest(m)
-            if m.contains("quant_nf4_sequential_unsupported")
+            if m.contains("quant_bnb_sequential_unsupported")
             && !m.contains("fp8_guidance_too_high")));
+    }
+
+    #[test]
+    fn future_nvfp4_profile_is_covered_by_guards_2_and_3() {
+        // DEFECT 2 regression guard: a hypothetical 2nd NVFP4 profile
+        // must be picked up by the FP8 guidance guard AND the NVFP4
+        // frame-count guard with ZERO code changes — proving the
+        // single-source `is_*_family` predicates, not slug literals,
+        // drive classification.
+        const FUTURE: &str = "nexus.video.ltx23.rtx60-nvfp4";
+        let hi_cfg = advanced(OffloadMode::Model, ModelQuant::None, Some(7.0));
+        assert!(
+            check_known_incompatibilities(FUTURE, &hi_cfg, 97).is_err(),
+            "future nvfp4 profile must still hit the FP8 guidance guard"
+        );
+        let long = advanced(OffloadMode::Model, ModelQuant::None, None);
+        assert!(
+            check_known_incompatibilities(FUTURE, &long, 200).is_err(),
+            "future nvfp4 profile must still hit the 121-frame guard"
+        );
+    }
+
+    #[test]
+    fn future_fp8_profile_is_covered_by_guidance_guard() {
+        const FUTURE_FP8: &str = "nexus.video.ltx23.rtx60-fp8";
+        let hi_cfg = advanced(OffloadMode::Auto, ModelQuant::None, Some(7.0));
+        assert!(
+            check_known_incompatibilities(FUTURE_FP8, &hi_cfg, 97).is_err(),
+            "future fp8 profile must still hit the FP8 guidance guard"
+        );
+        // ...but NOT the NVFP4-only frame guard.
+        let long = advanced(OffloadMode::Auto, ModelQuant::None, None);
+        assert!(check_known_incompatibilities(FUTURE_FP8, &long, 300).is_ok());
     }
 }

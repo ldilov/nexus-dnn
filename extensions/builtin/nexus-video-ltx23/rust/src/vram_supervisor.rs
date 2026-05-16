@@ -159,10 +159,24 @@ impl VramSupervisor {
         }
     }
 
-    /// Evaluate a `runtime.memory_stats` payload against the
-    /// thresholds. Returns the first threshold that breached so the
-    /// reason message stays short. A missing field is treated as
-    /// "well within bounds" (zero) — the worker emits the schema in
+    /// Evaluate a `runtime.memory_stats` payload using the CONFIG
+    /// default `max_frag_ratio` (0.30 unless env-overridden).
+    ///
+    /// ⚠️ PROFILE-UNAWARE. This uses the raw config ceiling, NOT the
+    /// per-profile resolved one. On an offloaded fp8/nvfp4 profile a
+    /// healthy render ends at `frag_ratio ≈ 0.995`, so calling this
+    /// (rather than the profile-aware path) false-breaches every good
+    /// run. Production code MUST go through
+    /// `runner::evaluate_memory_stats`, which calls
+    /// `resolve_max_frag_ratio(default_max_frag_ratio_for_profile(..))`
+    /// then `evaluate_with_max_frag`. This method exists only for the
+    /// fake/CI profile (`frag_ratio=0.0`) and for unit tests pinning the
+    /// default-ceiling behaviour. Do NOT reach for it as the
+    /// "ergonomic" entry point on a real profile.
+    ///
+    /// Returns the first threshold that breached so the reason message
+    /// stays short. A missing field is treated as "well within
+    /// bounds" (zero) — the worker emits the schema in
     /// `vram.py::memory_stats` so this only matters for older worker
     /// builds.
     #[must_use]

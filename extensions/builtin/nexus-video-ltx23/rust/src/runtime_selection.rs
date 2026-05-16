@@ -110,6 +110,30 @@ pub const fn default_quant_for_profile(profile: &str) -> ModelQuant {
     }
 }
 
+/// Single source of truth: is `profile` an NVFP4 runtime?
+///
+/// Matches any `*-nvfp4` slug (today only `rtx50-nvfp4`, but a future
+/// `rtx60-nvfp4` is covered with ZERO code changes — that is the
+/// point). Used by the plan-time compatibility guard for the
+/// NVFP4-specific frame-count ceiling and by `is_fp8_family` below.
+#[must_use]
+pub fn is_nvfp4_family(profile: &str) -> bool {
+    profile == "nvfp4" || profile.ends_with("-nvfp4")
+}
+
+/// Single source of truth: does `profile` run on FP8-class kernels
+/// whose e4m3 activation range saturates at high CFG?
+///
+/// Every NVFP4 profile (FP8-family activations) plus any `*-fp8`
+/// slug. A future `rtx60-fp8` / `rtx60-nvfp4` is covered automatically
+/// — there is exactly ONE place to teach the system a new profile's
+/// class, here. The plan-time guidance guard and the per-profile
+/// frag-ratio ceiling both key off this predicate.
+#[must_use]
+pub fn is_fp8_family(profile: &str) -> bool {
+    is_nvfp4_family(profile) || profile.ends_with("-fp8")
+}
+
 /// Per-profile VRAM-supervisor `max_frag_ratio` ceiling.
 ///
 /// `profile` is the SHORT slug (e.g. `"rtx50-nvfp4"`), matching the
@@ -140,11 +164,17 @@ pub const fn default_quant_for_profile(profile: &str) -> ModelQuant {
 /// An explicit `NEXUS_VIDEO_LTX23_VRAM_MAX_FRAG_RATIO` env override
 /// still wins over this per-profile default — see
 /// `VramSupervisor::resolve_max_frag_ratio`.
+///
+/// Keyed off `is_fp8_family` (the single profile-class source) rather
+/// than an inline slug enumeration, so a new offloaded profile is
+/// covered the moment it is added to `PROFILES` — no risk of this
+/// ceiling silently reverting to the false-positive 0.30 for it.
 #[must_use]
-pub const fn default_max_frag_ratio_for_profile(profile: &str) -> f64 {
-    match profile.as_bytes() {
-        b"rtx50-nvfp4" | b"rtx50-fp8" | b"rtx40-fp8" => 1.0,
-        _ => 0.30,
+pub fn default_max_frag_ratio_for_profile(profile: &str) -> f64 {
+    if is_fp8_family(profile) {
+        1.0
+    } else {
+        0.30
     }
 }
 
@@ -646,6 +676,33 @@ mod tests {
                 "profile={p} must keep the tight 0.30 ceiling"
             );
         }
+        // Extendability: a future *-fp8 / *-nvfp4 profile inherits the
+        // 1.0 ceiling with no code change.
+        for p in ["rtx60-nvfp4", "rtx60-fp8"] {
+            assert!(
+                (default_max_frag_ratio_for_profile(p) - 1.0).abs() < f64::EPSILON,
+                "future profile={p} must auto-inherit the disabled frag check"
+            );
+        }
+    }
+
+    #[test]
+    fn profile_family_predicates_are_the_single_classification_source() {
+        // is_nvfp4_family: any *-nvfp4, today + future.
+        assert!(is_nvfp4_family("rtx50-nvfp4"));
+        assert!(is_nvfp4_family("rtx60-nvfp4"));
+        assert!(is_nvfp4_family("nvfp4"));
+        assert!(!is_nvfp4_family("rtx50-fp8"));
+        assert!(!is_nvfp4_family("fake"));
+
+        // is_fp8_family: every nvfp4 profile + any *-fp8.
+        assert!(is_fp8_family("rtx50-nvfp4"));
+        assert!(is_fp8_family("rtx60-nvfp4"));
+        assert!(is_fp8_family("rtx40-fp8"));
+        assert!(is_fp8_family("rtx50-fp8"));
+        assert!(is_fp8_family("rtx60-fp8"));
+        assert!(!is_fp8_family("fake"));
+        assert!(!is_fp8_family("future-profile-xyz"));
     }
 
     #[test]
