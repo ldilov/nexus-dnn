@@ -45,6 +45,14 @@ pub struct VramSupervisorConfig {
     pub max_frag_ratio: f64,
     pub min_free_mb: u64,
     pub max_num_ooms: u64,
+    /// True when `max_frag_ratio` came from an explicit
+    /// `NEXUS_VIDEO_LTX23_VRAM_MAX_FRAG_RATIO` env override. An
+    /// explicit operator choice must win over the per-profile default
+    /// resolved by `resolve_max_frag_ratio` — without this flag the
+    /// profile default would silently clobber a deliberately strict
+    /// override. Defaults to `false`, so `from_reader(|_| None)` still
+    /// equals `default()`.
+    pub frag_ratio_from_env: bool,
 }
 
 impl Default for VramSupervisorConfig {
@@ -54,6 +62,7 @@ impl Default for VramSupervisorConfig {
             max_frag_ratio: 0.30,
             min_free_mb: 2_560,
             max_num_ooms: 1,
+            frag_ratio_from_env: false,
         }
     }
 }
@@ -81,6 +90,7 @@ impl VramSupervisorConfig {
         }
         if let Some(v) = parse_f64(read("NEXUS_VIDEO_LTX23_VRAM_MAX_FRAG_RATIO")) {
             cfg.max_frag_ratio = v;
+            cfg.frag_ratio_from_env = true;
         }
         if let Some(v) = parse_u64(read("NEXUS_VIDEO_LTX23_VRAM_MIN_FREE_MB")) {
             cfg.min_free_mb = v;
@@ -133,6 +143,22 @@ impl VramSupervisor {
         &self.cfg
     }
 
+    /// Resolve the effective `max_frag_ratio` for a run.
+    ///
+    /// Precedence: an explicit `NEXUS_VIDEO_LTX23_VRAM_MAX_FRAG_RATIO`
+    /// env override (the operator's deliberate choice) always wins;
+    /// otherwise the caller's per-profile default applies. The
+    /// supervisor stays decoupled from `runtime_selection` — the
+    /// runner passes `default_max_frag_ratio_for_profile(profile)` in.
+    #[must_use]
+    pub fn resolve_max_frag_ratio(&self, per_profile_default: f64) -> f64 {
+        if self.cfg.frag_ratio_from_env {
+            self.cfg.max_frag_ratio
+        } else {
+            per_profile_default
+        }
+    }
+
     /// Evaluate a `runtime.memory_stats` payload against the
     /// thresholds. Returns the first threshold that breached so the
     /// reason message stays short. A missing field is treated as
@@ -141,6 +167,17 @@ impl VramSupervisor {
     /// builds.
     #[must_use]
     pub fn evaluate(&self, stats: &Value) -> VramVerdict {
+        self.evaluate_with_max_frag(stats, self.cfg.max_frag_ratio)
+    }
+
+    /// Same as [`evaluate`](Self::evaluate) but with the `frag_ratio`
+    /// ceiling supplied by the caller (the runner resolves the
+    /// per-profile value via [`resolve_max_frag_ratio`]). All other
+    /// thresholds come from the config. Splitting this out keeps the
+    /// per-profile fix testable in isolation without reconstructing a
+    /// whole config.
+    #[must_use]
+    pub fn evaluate_with_max_frag(&self, stats: &Value, max_frag_ratio: f64) -> VramVerdict {
         let num_ooms = stats.get("num_ooms").and_then(Value::as_u64).unwrap_or(0);
         if num_ooms > self.cfg.max_num_ooms {
             return VramVerdict::Breach {
@@ -165,11 +202,10 @@ impl VramSupervisor {
             .get("frag_ratio")
             .and_then(Value::as_f64)
             .unwrap_or(0.0);
-        if frag_ratio > self.cfg.max_frag_ratio {
+        if frag_ratio > max_frag_ratio {
             return VramVerdict::Breach {
                 reason: format!(
-                    "frag_ratio={frag_ratio:.3} exceeded max={:.3}",
-                    self.cfg.max_frag_ratio
+                    "frag_ratio={frag_ratio:.3} exceeded max={max_frag_ratio:.3}"
                 ),
             };
         }
@@ -349,5 +385,87 @@ mod tests {
     fn config_from_reader_with_no_overrides_matches_default() {
         let cfg = VramSupervisorConfig::from_reader(|_| None);
         assert_eq!(cfg, VramSupervisorConfig::default());
+    }
+
+    // ── per-profile frag ceiling (Guard A: nvfp4/fp8 false-positive) ──
+
+    #[test]
+    fn high_frag_ceiling_admits_benign_offload_fragmentation() {
+        // fp8/nvfp4 end a HEALTHY render with frag_ratio ≈ 0.995 by
+        // design. With the per-profile ceiling of 1.0 the strict
+        // `frag_ratio > max` test never trips → no false breach.
+        let stats = json!({
+            "num_ooms": 0,
+            "num_alloc_retries": 1,
+            "frag_ratio": 0.995,
+            "free_mb": 8000,
+        });
+        assert_eq!(
+            supervisor_with_defaults().evaluate_with_max_frag(&stats, 1.0),
+            VramVerdict::Healthy
+        );
+    }
+
+    #[test]
+    fn tight_frag_ceiling_still_breaches_on_high_frag() {
+        // fake/dev keeps the 0.30 ceiling — a genuine mid-render frag
+        // spike must still trip.
+        let stats = json!({"frag_ratio": 0.995});
+        match supervisor_with_defaults().evaluate_with_max_frag(&stats, 0.30) {
+            VramVerdict::Breach { reason } => {
+                assert!(reason.contains("frag_ratio=0.995"));
+                assert!(reason.contains("max=0.300"));
+            }
+            VramVerdict::Healthy => panic!("expected Breach but got Healthy"),
+        }
+    }
+
+    #[test]
+    fn high_frag_ceiling_still_catches_real_oom_signals() {
+        // Disabling the frag check for offloaded profiles must NOT
+        // disable the real OOM predictors (num_ooms / retries /
+        // free_mb) — those still guard the run.
+        let stats = json!({"frag_ratio": 0.999, "num_ooms": 10});
+        match supervisor_with_defaults().evaluate_with_max_frag(&stats, 1.0) {
+            VramVerdict::Breach { reason } => assert!(reason.contains("num_ooms=10")),
+            VramVerdict::Healthy => panic!("expected Breach but got Healthy"),
+        }
+    }
+
+    #[test]
+    fn evaluate_delegates_to_config_frag_ratio() {
+        // `evaluate` must stay equivalent to the old inline behaviour
+        // (cfg.max_frag_ratio = 0.30 by default).
+        let stats = json!({"frag_ratio": 0.50});
+        match supervisor_with_defaults().evaluate(&stats) {
+            VramVerdict::Breach { reason } => assert!(reason.contains("frag_ratio")),
+            VramVerdict::Healthy => panic!("expected Breach but got Healthy"),
+        }
+    }
+
+    #[test]
+    fn resolve_max_frag_ratio_uses_profile_default_without_env() {
+        let sup = supervisor_with_defaults();
+        // No env override → caller's per-profile default wins.
+        assert!((sup.resolve_max_frag_ratio(1.0) - 1.0).abs() < f64::EPSILON);
+        assert!((sup.resolve_max_frag_ratio(0.30) - 0.30).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn resolve_max_frag_ratio_explicit_env_override_wins() {
+        let cfg = VramSupervisorConfig::from_reader(|key| match key {
+            "NEXUS_VIDEO_LTX23_VRAM_MAX_FRAG_RATIO" => Some("0.5".into()),
+            _ => None,
+        });
+        assert!(cfg.frag_ratio_from_env);
+        let sup = VramSupervisor::new(cfg);
+        // Operator's deliberate 0.5 must beat even the fp8 1.0 default.
+        assert!((sup.resolve_max_frag_ratio(1.0) - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn frag_ratio_from_env_false_unless_env_set() {
+        assert!(!VramSupervisorConfig::default().frag_ratio_from_env);
+        assert!(!VramSupervisorConfig::from_reader(|_| None).frag_ratio_from_env);
     }
 }
