@@ -290,6 +290,48 @@ def test_load_gguf_state_dict_raises_on_missing_file(tmp_path: Path) -> None:
         gguf_loader.load_gguf_state_dict(tmp_path / "absent.gguf")
 
 
+# --- G-A3: rtx50-gguf profile resolver wiring -------------------------------
+
+
+def test_gguf_family_for_only_maps_the_gguf_profile() -> None:
+    assert pd._gguf_family_for("rtx50-gguf") == "Abiray/LTX-2.3-22B-DISTILLED-1.1-GGUF"
+    for p in ("rtx50-nvfp4", "rtx50-fp8", "rtx40-fp8", "fake", ""):
+        assert pd._gguf_family_for(p) is None
+
+
+def test_expected_family_id_includes_gguf_profile() -> None:
+    # rtx50-gguf borrows the dg845 tree for config + companions.
+    assert pd._expected_family_id("rtx50-gguf") == "dg845/LTX-2.3-Distilled-Diffusers"
+
+
+def test_resolve_override_resolves_gguf_profile_family_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("NEXUS_VIDEO_LTX23_TRANSFORMER_GGUF", raising=False)
+    monkeypatch.setenv("NEXUS_HOST_DATA_DIR", str(tmp_path))
+    fam = tmp_path / "models" / "Abiray" / "LTX-2.3-22B-DISTILLED-1.1-GGUF"
+    fam.mkdir(parents=True)
+    gguf_file = fam / "LTX-2.3-22B-distilled-1.1-Q4_K_M.gguf"
+    gguf_file.write_bytes(b"\x00")
+    # base model_dir (dg845-ish) has NO .gguf — resolution must reach
+    # the profile family dir.
+    base = tmp_path / "dg845"
+    base.mkdir()
+    assert pd._resolve_gguf_transformer_override(base, "rtx50-gguf") == gguf_file
+    # a non-gguf profile must NOT pick up the family gguf.
+    assert pd._resolve_gguf_transformer_override(base, "rtx50-nvfp4") is None
+
+
+def test_resolve_override_family_path_needs_host_data_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("NEXUS_VIDEO_LTX23_TRANSFORMER_GGUF", raising=False)
+    monkeypatch.delenv("NEXUS_HOST_DATA_DIR", raising=False)
+    base = tmp_path / "dg845"
+    base.mkdir()
+    assert pd._resolve_gguf_transformer_override(base, "rtx50-gguf") is None
+
+
 # --- G-A: LTX2 diffusers key rename -----------------------------------------
 
 
