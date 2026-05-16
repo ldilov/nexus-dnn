@@ -72,9 +72,9 @@ const fn effective_offload(advanced: &AdvancedSettings, short_profile: &str) -> 
 }
 
 /// Resolve the quantisation the worker will actually apply — `None`
-/// means "take the per-profile default" (nvfp4 profile → `Nvfp4`),
-/// an explicit choice always wins. Same precedence as
-/// `build_advanced_block`.
+/// means "take the per-profile default" (nvfp4 profile → `Nf4Bnb`
+/// while real NVFP4 is host-blocked), an explicit choice always wins.
+/// Same precedence as `build_advanced_block`.
 const fn effective_quant(advanced: &AdvancedSettings, short_profile: &str) -> ModelQuant {
     match advanced.quantization {
         ModelQuant::None => default_quant_for_profile(short_profile),
