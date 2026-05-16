@@ -2258,17 +2258,17 @@ mod tests {
     }
 
     #[test]
-    fn build_advanced_block_nvfp4_default_quant_is_nvfp4() {
-        // N3 misnomer fix: with quant left at the default None, the
-        // `rtx50-nvfp4` profile now resolves to real NVIDIA ModelOpt
-        // FP4 (`"nvfp4"`), restored from the pre-quantised on-disk
-        // tree — NOT the bitsandbytes-NF4 stand-in it used to mean,
-        // and NOT raw `none` (which would try 83 GB on a 16 GB card).
+    fn build_advanced_block_nvfp4_default_quant_is_nf4_bnb() {
+        // Real NVFP4 is host-blocked / under construction, so with
+        // quant left at the default None the `rtx50-nvfp4` profile
+        // resolves to the verified bitsandbytes path — wire value
+        // "nf4" (Nf4Bnb), the combo that actually renders on 16 GB —
+        // NOT raw `none` (which would try 83 GB on a 16 GB card) and
+        // NOT "nvfp4" (no worker branch; rejected at plan time).
         let advanced = AdvancedSettings::default();
         let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-nvfp4");
-        assert_eq!(block["quantization"].as_str(), Some("nvfp4"));
-        // Offload default is unchanged by N3 (still the per-profile
-        // default); NVFP4-specific offload tuning is N4's scope.
+        assert_eq!(block["quantization"].as_str(), Some("nf4"));
+        // Model offload — the bnb-compatible 16 GB pairing.
         assert_eq!(block["offload_mode"].as_str(), Some("model"));
     }
 
