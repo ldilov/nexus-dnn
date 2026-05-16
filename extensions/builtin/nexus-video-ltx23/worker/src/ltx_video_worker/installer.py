@@ -66,6 +66,11 @@ PROFILE_REPO: dict[str, str] = {
     "rtx40-fp8": "dg845/LTX-2.3-Distilled-Diffusers",
     "rtx50-fp8": "dg845/LTX-2.3-Distilled-Diffusers",
     "rtx50-nvfp4": "dg845/LTX-2.3-Distilled-Diffusers",
+    # rtx50-gguf installs the dg845 tree for the transformer config +
+    # companion VAE / text-encoder / scheduler; its transformer weights
+    # come from the Abiray GGUF override at load time (gguf_loader,
+    # schema-clean via the LTX2 rename).
+    "rtx50-gguf": "dg845/LTX-2.3-Distilled-Diffusers",
 }
 
 SENTINEL_NAME = ".nexus-install-complete"
