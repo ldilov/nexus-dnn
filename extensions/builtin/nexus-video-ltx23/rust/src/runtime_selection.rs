@@ -82,19 +82,22 @@ pub const fn resolve_runtime_id(preference: RuntimeProfilePreference) -> &'stati
 ///   low-VRAM combo for a bnb pipeline is `enable_model_cpu_offload`,
 ///   whose NF4 peak (~10 GB largest single component) fits 16 GB.
 ///   Verified on the RTX 5070 Ti (047 close-out).
-/// - `rtx50-gguf` → `Model`. The GGUF Q4 transformer (~16.5 GB on
-///   disk, ~smaller resident) is installed CPU-side by `gguf_loader`
-///   and paged by `enable_model_cpu_offload`; GGUF `GGUFLinear`
-///   dequant-per-matmul is not bnb, so the meta-device sequential
-///   crash does not apply, but model-offload is the proven low-VRAM
-///   pairing for the largest-single-component peak on 16 GB.
+/// - `rtx50-gguf` → `Group`. The GGUF Q4 22B transformer's
+///   whole-component working set exceeds 15 GiB, so
+///   `enable_model_cpu_offload` OOMs on a 16 GB card (proven
+///   2026-05-17, independent of resolution/frames). `sequential` is
+///   barred by the bnb-NF4 Gemma-3 text encoder (meta-tensor crash).
+///   Block-level group offload pages the transformer in small
+///   block-groups (peak ≈ a few blocks + active component) — the only
+///   mode that fits.
 /// - Every other profile → `Sequential`. They keep raw bf16 weights
 ///   (no bnb), so sequential's per-layer paging (~2 GB peak, never
 ///   touches shared VRAM) is the safe default.
 #[must_use]
 pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
     match profile.as_bytes() {
-        b"rtx50-nvfp4" | b"rtx50-gguf" => OffloadMode::Model,
+        b"rtx50-gguf" => OffloadMode::Group,
+        b"rtx50-nvfp4" => OffloadMode::Model,
         _ => OffloadMode::Sequential,
     }
 }
@@ -157,12 +160,13 @@ pub fn is_fp8_family(profile: &str) -> bool {
 
 /// Single source of truth: is `profile` a GGUF runtime?
 ///
-/// Matches any `*-gguf` slug (today only `rtx50-gguf`). GGUF runs the
-/// transformer through `enable_model_cpu_offload` exactly like the
-/// fp8/nvfp4 profiles, so it shares their post-offload frag-ratio
-/// behaviour (see `default_max_frag_ratio_for_profile`). It is NOT
-/// fp8-class for the CFG guard — Q4 GGUF has no e4m3 saturation — so
-/// it is intentionally separate from `is_fp8_family`.
+/// Matches any `*-gguf` slug (today only `rtx50-gguf`). GGUF pages
+/// the transformer via block-level group offload (the fp8/nvfp4
+/// profiles use model/sequential) but shares the same post-offload
+/// CUDA-pool fragmentation, so it gets the relaxed frag-ratio ceiling
+/// too (see `default_max_frag_ratio_for_profile`). It is NOT fp8-class
+/// for the CFG guard — Q4 GGUF has no e4m3 saturation — so it is
+/// intentionally separate from `is_fp8_family`.
 #[must_use]
 pub fn is_gguf_family(profile: &str) -> bool {
     profile == "gguf" || profile.ends_with("-gguf")
@@ -247,7 +251,10 @@ pub const fn placement_for_offload_mode(mode: OffloadMode) -> ComponentPlacement
         // `Auto` should not reach this fn — the runner resolves Auto
         // before dispatch — but if it ever does we fall through to
         // Sequential's safe shape rather than panic.
-        OffloadMode::Sequential | OffloadMode::Auto => ComponentPlacement {
+        // `Group`: block-level group-offload hook owns placement and
+        // pages block-groups from CPU stable storage — same reported
+        // shape as Sequential (all CPU; hook bridges per forward).
+        OffloadMode::Sequential | OffloadMode::Group | OffloadMode::Auto => ComponentPlacement {
             transformer: DevicePreference::Cpu,
             vae: DevicePreference::Cpu,
             text_encoder: DevicePreference::Cpu,
@@ -700,11 +707,13 @@ mod tests {
             default_offload_mode_for_profile("rtx50-nvfp4"),
             OffloadMode::Model
         );
-        // gguf: GGUFLinear dequant-per-matmul, paged by
-        // enable_model_cpu_offload (not bnb, not sequential).
+        // gguf: the Q4 22B transformer's whole-component working set
+        // > 15 GiB (model-offload OOMs on 16 GB, proven 2026-05-17);
+        // sequential barred by the bnb Gemma-3 text encoder. Block-
+        // level group offload is the only mode that fits.
         assert_eq!(
             default_offload_mode_for_profile("rtx50-gguf"),
-            OffloadMode::Model
+            OffloadMode::Group
         );
         for p in ["rtx50-fp8", "rtx40-fp8", "fake", "future-profile-xyz"] {
             assert_eq!(
