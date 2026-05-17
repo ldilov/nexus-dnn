@@ -59,6 +59,25 @@ def cli() -> int:
         try:
             import numpy  # noqa: F401 — pre-import side-effect
             import torch  # noqa: F401 — pre-import side-effect
+
+            # Same LoaderLock cure for SciPy. `nvidia-modelopt` (a
+            # quant backend dep) pulls in `scipy`; diffusers'
+            # quantizer auto-mapping imports the modelopt quantizer
+            # module -> modelopt -> scipy during the OFF-thread
+            # `_ensure_pipeline_loaded`. `scipy.linalg`/`scipy.optimize`
+            # load BLAS/LAPACK C-extensions whose DllMain spawns
+            # OpenMP/MKL helper threads -> the identical Windows
+            # LoaderLock deadlock (py-spy 2026-05-17: asyncio worker
+            # thread frozen in `scipy\linalg\blas.py` create_module,
+            # 612 MB / flat CPU, render times out). Force the C-ext
+            # load on the MAIN thread now so the off-thread import is
+            # a cached no-op. Best-effort: scipy is absent unless a
+            # modelopt-class backend is installed.
+            try:
+                import scipy.linalg  # noqa: F401 — pre-import side-effect
+                import scipy.optimize  # noqa: F401 — pre-import side-effect
+            except ImportError:
+                pass
         except ImportError as e:
             # Diffusers extras may not be installed yet for first-boot
             # install flows; log via stderr (telemetry isn't set up yet)
