@@ -60,22 +60,32 @@ def cli() -> int:
             import numpy  # noqa: F401 — pre-import side-effect
             import torch  # noqa: F401 — pre-import side-effect
 
-            # Same LoaderLock cure for SciPy. `nvidia-modelopt` (a
-            # quant backend dep) pulls in `scipy`; diffusers'
-            # quantizer auto-mapping imports the modelopt quantizer
-            # module -> modelopt -> scipy during the OFF-thread
-            # `_ensure_pipeline_loaded`. `scipy.linalg`/`scipy.optimize`
-            # load BLAS/LAPACK C-extensions whose DllMain spawns
-            # OpenMP/MKL helper threads -> the identical Windows
-            # LoaderLock deadlock (py-spy 2026-05-17: asyncio worker
-            # thread frozen in `scipy\linalg\blas.py` create_module,
-            # 612 MB / flat CPU, render times out). Force the C-ext
-            # load on the MAIN thread now so the off-thread import is
-            # a cached no-op. Best-effort: scipy is absent unless a
-            # modelopt-class backend is installed.
+            # Same LoaderLock cure for the modelopt -> scipy chain.
+            # `nvidia-modelopt` (a quant backend dep) pulls in `scipy`;
+            # diffusers' quantizer auto-mapping imports the modelopt
+            # quantizer module -> modelopt -> scipy.{linalg,optimize,
+            # interpolate,special,...} during the OFF-thread
+            # `_ensure_pipeline_loaded`. Each scipy subpackage loads its
+            # own BLAS/LAPACK/_fitpack C-extension whose DllMain spawns
+            # OpenMP/MKL helper threads -> the Windows LoaderLock
+            # deadlock (py-spy 2026-05-17 pinned it walking forward:
+            # scipy.linalg.blas -> scipy.interpolate._fitpack as each
+            # was individually pre-imported — whack-a-mole). Root lever:
+            # pre-import `modelopt.torch.quantization` HERE on the MAIN
+            # thread; it transitively forces modelopt's ENTIRE scipy +
+            # native C-ext tree to load once at boot (no render
+            # timeout), so every off-thread import is a cached no-op.
+            # ~10 s one-time. Best-effort: absent unless a modelopt
+            # backend is installed; the explicit scipy lines remain as
+            # a defensive fallback for a no-modelopt-but-scipy env.
+            try:
+                import modelopt.torch.quantization  # noqa: F401
+            except ImportError:
+                pass
             try:
                 import scipy.linalg  # noqa: F401 — pre-import side-effect
                 import scipy.optimize  # noqa: F401 — pre-import side-effect
+                import scipy.interpolate  # noqa: F401 — pre-import side-effect
             except ImportError:
                 pass
 
