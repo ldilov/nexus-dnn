@@ -123,10 +123,17 @@ def apply_ltx2_diffusers_rename(state_dict: dict[str, Any]) -> dict[str, Any]:
     untouched; GGUFParameter values are moved by reference (only keys
     are rewritten — never the tensor objects).
 
-    Collision-safe by construction: the converter renames in place via
-    `dict.pop`; if two source keys mapped to one target the dict would
-    shrink — callers assert ``len`` is preserved (see tests / the
-    R-GA-2 guard in the G-A locked-design checkpoint).
+    NOTE on key counts: the official Abiray checkpoint has 4444 keys;
+    `convert_ltx2_transformer_to_diffusers` intentionally normalises it
+    to the 4186-key diffusers `LTX2VideoTransformer3DModel` layout —
+    it *removes* non-transformer keys by design (e.g.
+    `*_embeddings_connector` via `remove_keys_inplace`). That count
+    drop is EXPECTED, not a collision. The real "no silent weight
+    drop" guarantee is `validate_state_dict_against_model` +
+    `strict_schema` downstream: a genuinely lost weight surfaces as a
+    `missing_in_gguf` key vs the target (G-A2 proved missing=0). The
+    only collision we must self-guard is OUR supplemental substring
+    rule below (we own it; it must be strictly 1:1) — done explicitly.
     """
     from diffusers.loaders.single_file_utils import (
         convert_ltx2_transformer_to_diffusers,
@@ -145,7 +152,16 @@ def apply_ltx2_diffusers_rename(state_dict: dict[str, Any]) -> dict[str, Any]:
     # 1:1 (collision-free); without it 12 keys stay unmatched.
     out: dict[str, Any] = {}
     for k, v in renamed.items():
-        out[k.replace("prompt_adaln_single.", "prompt_adaln.")] = v
+        nk = k.replace("prompt_adaln_single.", "prompt_adaln.")
+        if nk in out and nk != k:
+            # Two distinct converter-output keys collapsed onto one by
+            # OUR supplemental rule → a genuine silent weight drop.
+            raise GGUFSchemaMismatch(
+                f"supplemental LTX2 rename collision: {k!r} and an "
+                f"earlier key both map to {nk!r}; refusing a silent "
+                "weight drop. [R-GA-2]"
+            )
+        out[nk] = v
     return out
 
 
@@ -351,14 +367,17 @@ def load_gguf_transformer(
 
     state_dict = load_gguf_state_dict(gguf_path)
     if rename_keys:
-        before = len(state_dict)
+        # `convert_ltx2_transformer_to_diffusers` intentionally
+        # normalises the 4444-key official checkpoint to the 4186-key
+        # diffusers layout (removes non-transformer keys by design) —
+        # a raw-length-equality check here is a FALSE collision signal
+        # (it failed G2 run #6 on a perfectly valid conversion). True
+        # silent weight drops are caught by `validate_state_dict
+        # _against_model` + `strict_schema` below (a lost weight = a
+        # `missing_in_gguf` key vs the target; G-A2 proved missing=0).
+        # `apply_ltx2_diffusers_rename` self-guards its OWN
+        # supplemental rule against genuine many-to-one collisions.
         state_dict = apply_ltx2_diffusers_rename(state_dict)
-        if len(state_dict) != before:
-            raise GGUFSchemaMismatch(
-                f"LTX2 key rename collapsed {before - len(state_dict)} "
-                f"key(s) (collision) for {gguf_path}; refusing a silent "
-                "weight drop. [R-GA-2]"
-            )
     report = validate_state_dict_against_model(state_dict, model)
 
     if strict_schema and not report.is_clean:
