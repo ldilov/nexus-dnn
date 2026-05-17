@@ -1589,6 +1589,7 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
     let offload_mode_str = match offload_mode {
         OffloadMode::None => "none",
         OffloadMode::Model => "model",
+        OffloadMode::Group => "group",
         OffloadMode::Sequential | OffloadMode::Auto => "sequential",
     };
 

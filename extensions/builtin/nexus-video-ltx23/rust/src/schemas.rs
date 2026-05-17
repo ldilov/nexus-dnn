@@ -376,6 +376,13 @@ pub enum OffloadMode {
     /// time. Slowest, lowest VRAM. Current per-profile default for
     /// fp8 profiles.
     Sequential,
+    /// `pipe.enable_group_offload(offload_type="block_level")` — pages
+    /// the transformer in small block-groups. Peak ≈ a few blocks +
+    /// the active component, between `model` and `sequential`. The
+    /// only mode that fits the GGUF Q4 22B transformer on 16 GB, since
+    /// `sequential` is barred by the bnb-NF4 Gemma-3 text encoder
+    /// (meta-tensor crash). The `rtx50-gguf` profile default.
+    Group,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -490,11 +497,16 @@ mod tests {
             OffloadMode::None,
             OffloadMode::Model,
             OffloadMode::Sequential,
+            OffloadMode::Group,
         ] {
             let wire = serde_json::to_string(&mode).unwrap();
             let back: OffloadMode = serde_json::from_str(&wire).unwrap();
             assert_eq!(back, mode, "round-trip failed for {mode:?}");
         }
+        assert_eq!(
+            serde_json::to_value(OffloadMode::Group).unwrap(),
+            json!("group")
+        );
     }
 
     #[test]

@@ -116,6 +116,14 @@ def _offload_mode_from_params(raw_params: dict[str, Any]) -> str:
 # while still rejecting 12 GB cards (~11.2 GiB total).
 _MIN_VRAM_BYTES_FOR_NONE = 15 * 1024**3
 
+# Block-level group-offload group size for offload_mode="group". The
+# LTX-2.3 transformer has 48 blocks; 1 block/group is the lowest-peak
+# setting (~1/48 of the transformer resident + the active component +
+# activations), which is what makes the GGUF Q4 22B transformer fit a
+# 16 GB card. Tune upward (2, 4, …) for throughput once it fits — more
+# blocks/group = fewer CPU↔GPU transfers but a higher VRAM peak.
+_GROUP_OFFLOAD_BLOCKS_PER_GROUP = 1
+
 
 # Inclusive bounds for the operator VRAM ceiling, mirroring the Rust
 # host's `schemas::{MIN,MAX}_GPU_VRAM_GIB`. Re-checked here as defence
@@ -487,10 +495,31 @@ def _place_pipeline(
             # Older diffusers releases without sequential offload —
             # accept the spill rather than crash.
             pipe.enable_model_cpu_offload()
+    elif offload_mode == "group":
+        # Block-level group offload: pages the transformer in small
+        # block-groups (peak ≈ num_blocks_per_group blocks + the
+        # active component) instead of the WHOLE component
+        # (model-offload) — the only mode that fits the GGUF Q4 22B
+        # transformer on 16 GB, since `sequential` is barred by the
+        # bnb-NF4 Gemma-3 text encoder (meta-tensor crash). Applied
+        # pipeline-level so the bnb text encoder + VAE are paged too.
+        # `low_cpu_mem_usage=True` keeps the offloaded copy lean.
+        if not hasattr(pipe, "enable_group_offload"):
+            raise _ModelLoadFailed(
+                "diffusers pipeline lacks enable_group_offload; "
+                "upgrade diffusers or pick offload_mode='model'"
+            )
+        pipe.enable_group_offload(
+            onload_device=torch_mod.device("cuda"),
+            offload_device=torch_mod.device("cpu"),
+            offload_type="block_level",
+            num_blocks_per_group=_GROUP_OFFLOAD_BLOCKS_PER_GROUP,
+            low_cpu_mem_usage=True,
+        )
     else:
         raise _ModelLoadFailed(
             f"unknown offload_mode: {offload_mode!r}; expected "
-            "\"none\", \"model\", or \"sequential\""
+            "\"none\", \"model\", \"sequential\", or \"group\""
         )
     # The offload hook OWNS every component's device placement: it
     # keeps stable weights on CPU and pages each submodule onto the
