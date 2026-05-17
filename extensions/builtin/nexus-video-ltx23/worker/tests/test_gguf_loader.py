@@ -406,6 +406,23 @@ def test_apply_ltx2_diffusers_rename_maps_prompt_adaln_single_variants() -> None
     assert not any("_single." in k for k in out)
 
 
+def test_apply_ltx2_diffusers_rename_allows_legit_converter_key_drop() -> None:
+    # Regression for G2 run #6: the diffusers converter intentionally
+    # REMOVES non-transformer keys (e.g. *_embeddings_connector) — the
+    # official 4444-key checkpoint normalises to 4186. That count drop
+    # must NOT raise (the old raw-length R-GA-2 guard wrongly did).
+    sd = {
+        "video_embeddings_connector.weight": torch.zeros(1),
+        "audio_embeddings_connector.bias": torch.zeros(1),
+        "transformer_blocks.0.attn1.to_q.weight": torch.zeros(2, 2),
+    }
+    out = gguf_loader.apply_ltx2_diffusers_rename(sd)  # must not raise
+    assert "video_embeddings_connector.weight" not in out
+    assert "audio_embeddings_connector.bias" not in out
+    assert "transformer_blocks.0.attn1.to_q.weight" in out
+    assert len(out) < len(sd)  # legit reduction, not an error
+
+
 def test_apply_ltx2_diffusers_rename_preserves_gguf_param_values() -> None:
     p = _make_gguf_param((32, 144), Q4_K)
     sd = {"adaln_single.linear.weight": p}
