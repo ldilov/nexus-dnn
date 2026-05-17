@@ -78,6 +78,25 @@ def cli() -> int:
                 import scipy.optimize  # noqa: F401 — pre-import side-effect
             except ImportError:
                 pass
+
+            # Same rationale for bitsandbytes. bnb 0.49.x runs
+            # `subprocess.run("pip list | grep habana-torch-plugin",
+            # shell=True)` at import of `bitsandbytes.backends.default.ops`
+            # (`get_gaudi_sw_version`). In this uv-managed runtime that
+            # `pip list` subprocess is pathologically slow; when the
+            # FIRST bnb import happens OFF-thread inside the
+            # render-timeout-bounded `_ensure_pipeline_loaded` it eats
+            # the 1800 s budget and the render times out (py-spy
+            # 2026-05-17: asyncio thread parked in
+            # `bitsandbytes\backends\utils.py:71` subprocess.communicate
+            # join). Doing this slow first-import HERE — at boot, with
+            # no render timeout — lets it complete once and caches the
+            # module so the in-render import is a no-op (the nf4/int8
+            # bnb path and the gguf text-encoder bnb both rely on this).
+            try:
+                import bitsandbytes  # noqa: F401 — pre-import side-effect
+            except ImportError:
+                pass
         except ImportError as e:
             # Diffusers extras may not be installed yet for first-boot
             # install flows; log via stderr (telemetry isn't set up yet)
