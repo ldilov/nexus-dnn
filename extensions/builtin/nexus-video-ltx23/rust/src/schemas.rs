@@ -355,6 +355,22 @@ pub enum ModelQuant {
     /// FP4: neither the bnb meta-device sequential constraint nor the
     /// NVFP4 host blockers apply. The `rtx50-gguf` profile default.
     Gguf,
+    /// Official Lightricks **diffusers-native FP8** (`e4m3`) transformer
+    /// — the QAD-trained `Lightricks/LTX-2.3-fp8` checkpoint, loaded
+    /// natively by diffusers `from_pretrained` (no bitsandbytes, no
+    /// `ModelOpt` restore, no `gguf_loader`). Honest naming: this is
+    /// distinct from any on-the-fly fp8 cast and from the bf16 `dg845`
+    /// port the `rtx*-fp8` profiles currently install. It is NOT a
+    /// profile default yet — the official-repo wiring and the
+    /// `validate_state_dict_against_model` schema-parity gate are a
+    /// GPU/network-bound verification seam (plan steps S2b/S2c). Until
+    /// that lands, an explicit `fp8_official` request is rejected at
+    /// plan time the same way `Nvfp4` is — see `compatibility.rs`
+    /// (`[fp8_official_under_construction]`). The enum value exists now
+    /// so the contract, naming, and guard are reviewable before the
+    /// hardware-gated work.
+    #[serde(rename = "fp8_official")]
+    Fp8Official,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -394,6 +410,15 @@ pub enum RuntimeProfilePreference {
     Rtx50Fp8,
     Rtx40Fp8,
     Rtx50Gguf,
+    /// LTX-Video 0.9.7 13B GGUF — a DIFFERENT model line from the
+    /// LTX-2.3-22B the other profiles target (`base_model`
+    /// `Lightricks/LTX-Video`, T5 text encoder, its own VAE). `Q4_K_M`
+    /// transformer ≈ 8 GB fits 16 GB RESIDENT (no offload), so the
+    /// `GGUFParameter`-opaque-to-offload-hooks wall that blocks the
+    /// LTX-2.3 `rtx50-gguf` path does not apply here. Plan-time-gated
+    /// by `ltxv097_proven()` until the worker 0.9.7 pipeline branch is
+    /// wired + GPU-verified.
+    Rtx50Ltxv097Gguf,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -418,6 +443,16 @@ pub enum InterpolationMethod {
     #[default]
     Rife2x,
     None,
+    /// Scene-boundary overlap trim + Reinhard colour match + a short
+    /// deterministic alpha bridge. No model, no extra VRAM. The
+    /// LTX-Video 0.9.7 path's working seam fix (the boundary already
+    /// overlaps via tail conditioning, so a synthesised gap-fill is the
+    /// wrong tool); resolves there from the shared `rife2x` default too.
+    OverlapBlend,
+    /// `OverlapBlend` but the boundary bridge is FILM motion-aware
+    /// interpolation instead of a linear ramp. Optional; falls back to
+    /// the linear bridge if the FILM model is unavailable.
+    Film,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]

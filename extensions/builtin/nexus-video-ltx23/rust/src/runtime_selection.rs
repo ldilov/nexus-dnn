@@ -35,6 +35,11 @@ const PROFILES: &[ProfileDescriptor] = &[
         display_name: "LTX 2.3 GGUF Q4 (RTX 50 / 16 GB)",
         experimental: false,
     },
+    ProfileDescriptor {
+        runtime_id: "nexus.video.ltx23.rtx50-ltxv097-gguf",
+        display_name: "LTX-Video 0.9.7 13B GGUF (RTX 50 / 16 GB native)",
+        experimental: false,
+    },
 ];
 
 #[must_use]
@@ -61,6 +66,7 @@ pub const fn resolve_runtime_id(preference: RuntimeProfilePreference) -> &'stati
         RuntimeProfilePreference::Rtx50Fp8 => "nexus.video.ltx23.rtx50-fp8",
         RuntimeProfilePreference::Rtx50Nvfp4 => "nexus.video.ltx23.rtx50-nvfp4",
         RuntimeProfilePreference::Rtx50Gguf => "nexus.video.ltx23.rtx50-gguf",
+        RuntimeProfilePreference::Rtx50Ltxv097Gguf => "nexus.video.ltx23.rtx50-ltxv097-gguf",
     }
 }
 
@@ -97,7 +103,14 @@ pub const fn resolve_runtime_id(preference: RuntimeProfilePreference) -> &'stati
 pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
     match profile.as_bytes() {
         b"rtx50-gguf" => OffloadMode::Group,
-        b"rtx50-nvfp4" => OffloadMode::Model,
+        // `rtx50-nvfp4` → bnb-NF4 pages cleanly under model offload
+        // (047-verified). `rtx50-ltxv097-gguf` → LTX-Video 0.9.7 13B Q4
+        // (~8 GB) + its own VAE fit 16 GB resident alongside a paged
+        // T5; `model` keeps the GGUF transformer resident (never pages,
+        // so GGUFParameter offload-hook opacity is moot) while T5 can
+        // swap. Neither wants `none` (worker <16 GB full-resident
+        // rejection) nor `group`/`sequential`.
+        b"rtx50-nvfp4" | b"rtx50-ltxv097-gguf" => OffloadMode::Model,
         _ => OffloadMode::Sequential,
     }
 }
@@ -122,14 +135,23 @@ pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
 /// applied, proven schema-clean 4186/4186 against the dg845 base
 /// config). Not bnb, not NVFP4 — none of either's constraints apply.
 ///
-/// Every other profile → `None`: `fake`/CI has no real weights, and
-/// the fp8 profiles' quant story is a separate (unbuilt) path — they
-/// keep raw weights until explicitly addressed.
+/// `rtx50-fp8` / `rtx40-fp8` → `Fp8Official`: the official Lightricks
+/// `LTX-2.3-fp8` single-file transformer (QAD-trained) loaded as an
+/// override over the dg845 base tree — the SAME shape as `rtx50-gguf`
+/// (dg845 base for config + companion VAE/TE/scheduler; transformer
+/// from a single-file override at load time). The worker single-file
+/// loader + the render-equivalence proof are a GPU/host-restart-bound
+/// seam, so the path is gated at plan time by `fp8_official_proven()`
+/// (`compatibility.rs` Guard 0b) until it is verified — exactly the
+/// `gguf_diffusers_fit_proven()` discipline.
+///
+/// Every other profile → `None`: `fake`/CI has no real weights.
 #[must_use]
 pub const fn default_quant_for_profile(profile: &str) -> ModelQuant {
     match profile.as_bytes() {
         b"rtx50-nvfp4" => ModelQuant::Nf4Bnb,
-        b"rtx50-gguf" => ModelQuant::Gguf,
+        b"rtx50-gguf" | b"rtx50-ltxv097-gguf" => ModelQuant::Gguf,
+        b"rtx50-fp8" | b"rtx40-fp8" => ModelQuant::Fp8Official,
         _ => ModelQuant::None,
     }
 }
@@ -170,6 +192,102 @@ pub fn is_fp8_family(profile: &str) -> bool {
 #[must_use]
 pub fn is_gguf_family(profile: &str) -> bool {
     profile == "gguf" || profile.ends_with("-gguf")
+}
+
+/// Single source of truth: is `profile` the LTX-Video 0.9.7 13B line?
+///
+/// A DIFFERENT model from the LTX-2.3-22B every other profile targets
+/// (`base_model` `Lightricks/LTX-Video`, T5 text encoder, its own VAE,
+/// diffusers-native `LTXConditionPipeline`). Its GGUF is also
+/// `is_gguf_family` (slug ends `-gguf`) but its Q4 transformer
+/// (~8 GB) fits 16 GB RESIDENT — it never pages, so the
+/// `GGUFParameter`-opaque-to-offload-hooks wall behind
+/// `gguf_diffusers_fit_proven()` does NOT apply. Guard 0c keys off
+/// this predicate to EXCLUDE the 0.9.7 path from the LTX-2.3
+/// VRAM-bound rejection.
+#[must_use]
+pub fn is_ltxv097_family(profile: &str) -> bool {
+    profile.contains("ltxv097")
+}
+
+/// Has a local benchmark proven the GGUF transformer fits a 16 GB card
+/// under the installed diffusers build?
+///
+/// **The de-rot trigger is `scripts/smoke-gguf-diffusers-fit.{sh,ps1}`,
+/// NOT a diffusers version literal.** Across 9 runs on 2026-05-17 the
+/// GGUF path OOM'd byte-identically at 14.84 GiB regardless of offload
+/// mode (model / group) and resolution: diffusers' `group_offloading`
+/// has a TorchAO-wrapper branch but none for the `GGUFParameter`
+/// subclass, so the dequant-per-matmul transformer is opaque to every
+/// offload hook. A version gate is the wrong key — diffusers documented
+/// LTX GGUF *loading* by v0.37.1 yet it still does not *fit* 16 GB, so
+/// "newer diffusers" is not evidence of fit.
+///
+/// Contract: the smoke script re-instantiates a known GGUF LTX pipeline
+/// against the installed diffusers and asserts whether the transformer
+/// clears 16 GB. While it keeps reproducing the OOM this stays `false`
+/// and the plan-time guard (`compatibility.rs`,
+/// `[gguf_vram_bound_diffusers]`) fires — honest, not a version
+/// surprise. Only a passing smoke run flips this const; the pinned
+/// `gguf_guard_*` unit tests fail if it is flipped without the message
+/// and reality moving together, so it cannot silently rot into dead
+/// code.
+#[must_use]
+pub const fn gguf_diffusers_fit_proven() -> bool {
+    false
+}
+
+/// Has the official Lightricks `LTX-2.3-fp8` single-file transformer
+/// been wired into the worker AND render-equivalence-verified on a
+/// real GPU?
+///
+/// `Lightricks/LTX-2.3-fp8` is a single-file *full-model* fp8
+/// checkpoint (`ltx-2.3-22b-distilled-fp8.safetensors`, ~29 GB) — no
+/// `model_index.json` / component tree, so diffusers `from_pretrained`
+/// cannot load it. It must be loaded as a transformer override over
+/// the dg845 base via the LTX2 key-rename, then
+/// `validate_state_dict_against_model`, then install — the same proven
+/// shape as the Abiray GGUF path. That worker single-file loader, plus
+/// the schema-parity then hidden-state then render-equivalence gate
+/// chain, is GPU/host-restart-bound and not yet landed.
+///
+/// While this is `false`, `compatibility.rs` Guard 0b rejects an
+/// `Fp8Official` request (explicit OR the `rtx*-fp8` profile default)
+/// at plan time — honest, not a worker crash on a missing branch.
+/// Only the wired + GPU-verified worker loader flips this; the pinned
+/// `*_fp8_official_*` unit tests fail if it is flipped without the
+/// message and reality moving together, so it cannot rot.
+#[must_use]
+pub const fn fp8_official_proven() -> bool {
+    false
+}
+
+/// Has the LTX-Video 0.9.7 13B GGUF worker pipeline branch been wired
+/// AND GPU-verified end-to-end on the 16 GB card?
+///
+/// 0.9.7 is a separate model line with its own worker branch
+/// (`pipeline_ltxv097.py`): diffusers-native `LTXImageToVideoPipeline`
+/// with a T5 encoder, the base repo's canonical 0.9.x video VAE, and
+/// the transformer via `LTXVideoTransformer3DModel.from_single_file`
+/// using `GGUFQuantizationConfig` (the documented upstream LTX-Video
+/// GGUF recipe) — NOT the `LTX2Pipeline`+dg845 path the other profiles
+/// use.
+///
+/// **GPU-VERIFIED 2026-05-18** on the 16 GB RTX 5070 Ti via
+/// `scripts/smoke-ltxv097-render.py`, which drives the real
+/// `pipeline_ltxv097` functions end-to-end: a 25-frame 512×320 render
+/// produced a valid H.264 MP4 at **peak 9.92 / 15.92 GiB** (resident,
+/// no offload-hook wall — the 0.9.7 thesis). The companion
+/// `*-vae-BF16.safetensors` is ComfyUI-shaped and intentionally NOT
+/// used (base repo's VAE is canonical); `sentencepiece`+`protobuf`
+/// were added to the worker deps for the T5 tokenizer. With this
+/// `true`, Guard 0d no longer fires and `rtx50-ltxv097-gguf` is a
+/// first-class selectable profile. The pinned `*_ltxv097_*` tests
+/// assert this proven state; do not regress the flag without
+/// re-verifying.
+#[must_use]
+pub const fn ltxv097_proven() -> bool {
+    true
 }
 
 /// Per-profile VRAM-supervisor `max_frag_ratio` ceiling.
@@ -370,6 +488,14 @@ pub fn select_runtime(
             // proven clean against the dg845 base config (4186/4186);
             // not experimental.
             runtime_id: "nexus.video.ltx23.rtx50-gguf".into(),
+            experimental: false,
+        }),
+        RuntimeProfilePreference::Rtx50Ltxv097Gguf => Ok(SelectedRuntime {
+            // LTX-Video 0.9.7 13B GGUF — separate model line, Q4 fits
+            // 16 GB resident. Explicit-select only (not auto-picked);
+            // the plan-time Guard 0d still gates it until the worker
+            // 0.9.7 branch is proven.
+            runtime_id: "nexus.video.ltx23.rtx50-ltxv097-gguf".into(),
             experimental: false,
         }),
         RuntimeProfilePreference::Auto => auto_select(facts, experimental_nvfp4_opt_in),
@@ -733,7 +859,26 @@ mod tests {
         assert_eq!(default_quant_for_profile("rtx50-nvfp4"), ModelQuant::Nf4Bnb);
         // gguf profile → Gguf (Abiray Q4 via gguf_loader, schema-clean).
         assert_eq!(default_quant_for_profile("rtx50-gguf"), ModelQuant::Gguf);
-        for p in ["rtx50-fp8", "rtx40-fp8", "fake", "xyz"] {
+        // LTX-Video 0.9.7 GGUF profile → Gguf (separate model line,
+        // resident-fit; gated by Guard 0d until the worker branch lands).
+        assert_eq!(
+            default_quant_for_profile("rtx50-ltxv097-gguf"),
+            ModelQuant::Gguf
+        );
+        assert!(is_ltxv097_family("rtx50-ltxv097-gguf"));
+        assert!(!is_ltxv097_family("rtx50-gguf"));
+        // fp8 profiles → Fp8Official (official Lightricks single-file
+        // transformer override; gated by fp8_official_proven() at plan
+        // time until the worker loader + GPU proof land).
+        assert_eq!(
+            default_quant_for_profile("rtx50-fp8"),
+            ModelQuant::Fp8Official
+        );
+        assert_eq!(
+            default_quant_for_profile("rtx40-fp8"),
+            ModelQuant::Fp8Official
+        );
+        for p in ["fake", "xyz"] {
             assert_eq!(
                 default_quant_for_profile(p),
                 ModelQuant::None,
