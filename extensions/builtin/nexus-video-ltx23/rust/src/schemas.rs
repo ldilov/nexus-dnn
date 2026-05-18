@@ -272,6 +272,14 @@ pub struct AdvancedSettings {
     /// `CreateRenderRequest::validate_field_bounds`.
     #[serde(default)]
     pub max_gpu_vram_gib: Option<u32>,
+    /// Opt-in two-pass spatial upscale (LTX-Video 0.9.7 path): render
+    /// at the native low resolution, latent-upsample via the official
+    /// spatial upscaler, short refine + tiled decode → 720p. `None` /
+    /// `false` keeps the single-pass native render. Verified peak
+    /// 13.5 GiB on a 16 GB card; the upscaler stage does not touch the
+    /// quantised transformer so it adds little VRAM.
+    #[serde(default)]
+    pub upscale: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
