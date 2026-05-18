@@ -129,6 +129,22 @@ def cli() -> int:
 
     if profile == "fake":
         register_fake_handlers(worker)
+    elif "ltxv097" in profile:
+        # LTX-Video 0.9.7 13B is a SEPARATE model line (T5 encoder, own
+        # VAE, diffusers-native LTXConditionPipeline + from_single_file
+        # GGUF) — its own isolated module so it can't destabilise the
+        # LTX-2.3 path. Mirrors runtime_selection::is_ltxv097_family.
+        try:
+            from .pipeline_ltxv097 import register_ltxv097_handlers
+        except ImportError as e:
+            worker.logger.error(
+                "ltxv097 profile requested but pipeline_ltxv097 is not "
+                "importable (diffusers extras missing?).",
+                profile=profile,
+                error=str(e),
+            )
+            return 2
+        register_ltxv097_handlers(worker)
     else:
         try:
             from .pipeline_diffusers import register_diffusers_handlers

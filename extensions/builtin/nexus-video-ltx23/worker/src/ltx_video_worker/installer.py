@@ -71,6 +71,16 @@ PROFILE_REPO: dict[str, str] = {
     # come from the Abiray GGUF override at load time (gguf_loader,
     # schema-clean via the LTX2 rename).
     "rtx50-gguf": "dg845/LTX-2.3-Distilled-Diffusers",
+    # LTX-Video 0.9.7 is a SEPARATE model line. The generic install
+    # flow fetches the GGUF repo (transformer Q4 ladder + companion
+    # `ltxv-13b-0.9.7-vae-BF16.safetensors`). The base diffusers repo
+    # `Lightricks/LTX-Video` (T5 text_encoder + tokenizer + scheduler +
+    # transformer/vae config) is resolved by `pipeline_ltxv097`'s
+    # loader — via the standard <models>/Lightricks/LTX-Video tree if
+    # staged, the NEXUS_VIDEO_LTX23_MODEL_DIR override, or the bare HF
+    # id (first-run network fetch). Staging the base in this same
+    # install flow is a documented follow-up (dual-fetch surgery).
+    "rtx50-ltxv097-gguf": "wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF",
 }
 
 SENTINEL_NAME = ".nexus-install-complete"
