@@ -86,7 +86,35 @@ export interface AdvancedSettings {
   image_cond_noise_scale?: number;
   /** CFG-rescale (controls over-saturation at high guidance). 0.0–1.0. */
   guidance_rescale?: number;
+  /** Scene-boundary interpolation method (LTX-Video 0.9.7 path).
+   * Omitted → worker default (overlap_blend). */
+  interpolation?: InterpolationMethod;
+  /** Opt-in two-pass 720p spatial upscale. Omitted → single-pass. */
+  upscale?: boolean;
+  /** VAE-decode noise scale. 0.0–0.5. Default 0.025. */
+  decode_noise_scale?: number;
+  /** Scene-continuation condition strength. 0.0–1.0. Default 0.7. */
+  condition_strength?: number;
+  /** Trailing frames fed as the next scene's video condition.
+   * 1–120. Default 24. */
+  condition_tail_frames?: number;
+  /** Seam: frames trimmed from the re-rendered overlap. 0–48.
+   * Default 8. */
+  seam_overlap_frames?: number;
+  /** Seam: transition-bridge length. 0–24. Default 0
+   * (overlap_blend) / 6 (model bridges). */
+  seam_blend_frames?: number;
+  /** Seam: Reinhard colour match across the boundary. Default true. */
+  seam_color_match?: boolean;
 }
+
+/** Scene-boundary interpolation methods (matches the Rust
+ * `InterpolationMethod` serde snake_case wire values). */
+export type InterpolationMethod =
+  | "overlap_blend"
+  | "film"
+  | "rife2x"
+  | "none";
 
 export interface SceneSpec {
   /** What happens in this scene. Composed with character + style anchors. */

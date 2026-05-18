@@ -1664,6 +1664,20 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
     // Opt-in two-pass spatial upscale. `None` → JSON null → worker
     // keeps its single-pass native render default.
     let upscale = advanced.upscale.map_or(Value::Null, Value::from);
+    // Remaining worker-honoured knobs. All null-when-unset so the
+    // worker's _sampling_params / seam_params single-source-of-truth
+    // defaults stand unless the operator overrides them.
+    let f = |o: Option<f32>| o.map_or(Value::Null, |v| Value::from(f64::from(v)));
+    let decode_noise_scale = f(advanced.decode_noise_scale);
+    let condition_strength = f(advanced.condition_strength);
+    let condition_tail_frames = advanced
+        .condition_tail_frames
+        .map_or(Value::Null, Value::from);
+    let seam_overlap_frames = advanced
+        .seam_overlap_frames
+        .map_or(Value::Null, Value::from);
+    let seam_blend_frames = advanced.seam_blend_frames.map_or(Value::Null, Value::from);
+    let seam_color_match = advanced.seam_color_match.map_or(Value::Null, Value::from);
 
     json!({
         "guidance_scale": guidance_scale,
@@ -1679,6 +1693,12 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
         "max_gpu_vram_gib": max_gpu_vram_gib,
         "interpolation": interpolation,
         "upscale": upscale,
+        "decode_noise_scale": decode_noise_scale,
+        "condition_strength": condition_strength,
+        "condition_tail_frames": condition_tail_frames,
+        "seam_overlap_frames": seam_overlap_frames,
+        "seam_blend_frames": seam_blend_frames,
+        "seam_color_match": seam_color_match,
     })
 }
 
@@ -2280,6 +2300,44 @@ mod tests {
             "nexus.video.ltx23.rtx50-ltxv097-gguf",
         );
         assert_eq!(on["upscale"].as_bool(), Some(true));
+    }
+
+    #[test]
+    fn build_advanced_block_emits_every_param_when_fully_populated() {
+        // Codex risk control: a fully-set AdvancedSettings must reach
+        // the worker with NO field silently dropped to a default.
+        let advanced = AdvancedSettings {
+            decode_noise_scale: Some(0.03),
+            condition_strength: Some(0.65),
+            condition_tail_frames: Some(32),
+            seam_overlap_frames: Some(12),
+            seam_blend_frames: Some(4),
+            seam_color_match: Some(false),
+            upscale: Some(true),
+            interpolation: Some(crate::schemas::InterpolationMethod::Film),
+            ..AdvancedSettings::default()
+        };
+        let b = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-ltxv097-gguf");
+        assert!((b["decode_noise_scale"].as_f64().unwrap() - 0.03).abs() < 1e-6);
+        assert!((b["condition_strength"].as_f64().unwrap() - 0.65).abs() < 1e-6);
+        assert_eq!(b["condition_tail_frames"].as_u64(), Some(32));
+        assert_eq!(b["seam_overlap_frames"].as_u64(), Some(12));
+        assert_eq!(b["seam_blend_frames"].as_u64(), Some(4));
+        assert_eq!(b["seam_color_match"].as_bool(), Some(false));
+        assert_eq!(b["upscale"].as_bool(), Some(true));
+        assert_eq!(b["interpolation"].as_str(), Some("film"));
+        // Unset → null so the worker keeps its own SoT default.
+        let d = build_advanced_block(&AdvancedSettings::default(), "nexus.video.ltx23.fake");
+        for k in [
+            "decode_noise_scale",
+            "condition_strength",
+            "condition_tail_frames",
+            "seam_overlap_frames",
+            "seam_blend_frames",
+            "seam_color_match",
+        ] {
+            assert!(d[k].is_null(), "{k} must be null when unset");
+        }
     }
 
     #[test]
