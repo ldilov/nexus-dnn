@@ -1632,6 +1632,10 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
         ModelQuant::Nvfp4 => "nvfp4",
         // "gguf" → gguf_loader override path (rename + schema-clean).
         ModelQuant::Gguf => "gguf",
+        // "fp8" → official Lightricks diffusers-native fp8 transformer
+        // (worker loads via from_pretrained behind a schema-parity
+        // gate). Plan-time-guarded until S2b/S2c verify it on hardware.
+        ModelQuant::Fp8Official => "fp8",
     };
 
     let decode_timestep = advanced
@@ -1649,6 +1653,14 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
     // model / sequential offload. Bounds were already enforced by
     // `CreateRenderRequest::validate_field_bounds` before this runs.
     let max_gpu_vram_gib = advanced.max_gpu_vram_gib.map_or(Value::Null, Value::from);
+    // Operator's scene-boundary seam method. `None` → JSON null →
+    // worker resolves env/default (the LTX-Video 0.9.7 path defaults to
+    // its `overlap_blend` seam fix). Workers that don't treat seams
+    // ignore the key (call-kwarg filtered), so this is contract-safe
+    // across profiles.
+    let interpolation = advanced.interpolation.map_or(Value::Null, |m| {
+        serde_json::to_value(m).unwrap_or(Value::Null)
+    });
 
     json!({
         "guidance_scale": guidance_scale,
@@ -1662,6 +1674,7 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
         "image_cond_noise_scale": image_cond_noise_scale,
         "guidance_rescale": guidance_rescale,
         "max_gpu_vram_gib": max_gpu_vram_gib,
+        "interpolation": interpolation,
     })
 }
 
@@ -2239,6 +2252,35 @@ mod tests {
     }
 
     #[test]
+    fn build_advanced_block_omits_interpolation_when_unset() {
+        // Unset → JSON null: the worker resolves env/default (the
+        // LTX-Video 0.9.7 path's `overlap_blend` seam fix) rather than
+        // the host forcing the shared `rife2x` default onto it.
+        let advanced = AdvancedSettings::default();
+        let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-ltxv097-gguf");
+        assert!(block["interpolation"].is_null());
+    }
+
+    #[test]
+    fn build_advanced_block_serialises_explicit_seam_method() {
+        for (method, wire) in [
+            (
+                crate::schemas::InterpolationMethod::OverlapBlend,
+                "overlap_blend",
+            ),
+            (crate::schemas::InterpolationMethod::Film, "film"),
+            (crate::schemas::InterpolationMethod::None, "none"),
+        ] {
+            let advanced = AdvancedSettings {
+                interpolation: Some(method),
+                ..AdvancedSettings::default()
+            };
+            let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-ltxv097-gguf");
+            assert_eq!(block["interpolation"].as_str(), Some(wire));
+        }
+    }
+
+    #[test]
     fn build_advanced_block_explicit_quant_propagates_verbatim() {
         // An explicit operator choice always wins over the per-profile
         // default, on any profile.
@@ -2247,6 +2289,7 @@ mod tests {
             (crate::schemas::ModelQuant::Int8, "int8"),
             (crate::schemas::ModelQuant::Nvfp4, "nvfp4"),
             (crate::schemas::ModelQuant::Gguf, "gguf"),
+            (crate::schemas::ModelQuant::Fp8Official, "fp8"),
         ] {
             let advanced = AdvancedSettings {
                 quantization: variant,

@@ -378,7 +378,7 @@ mod tests {
             seed: Some(42),
             advanced: AdvancedSettings::default(),
         };
-        assert!(plan_render(&req, "rtx40-fp8").is_err());
+        assert!(plan_render(&req, "fake").is_err());
     }
 
     #[test]
@@ -401,9 +401,9 @@ mod tests {
             seed: Some(42),
             advanced: AdvancedSettings::default(),
         };
-        assert!(plan_render(&mk(0.5), "rtx40-fp8").is_err());
-        assert!(plan_render(&mk(301.0), "rtx40-fp8").is_err());
-        assert!(plan_render(&mk(10.0), "rtx40-fp8").is_ok());
+        assert!(plan_render(&mk(0.5), "fake").is_err());
+        assert!(plan_render(&mk(301.0), "fake").is_err());
+        assert!(plan_render(&mk(10.0), "fake").is_ok());
     }
 
     #[test]
@@ -426,7 +426,7 @@ mod tests {
             seed: Some(42),
             advanced: AdvancedSettings::default(),
         };
-        let plan = plan_render(&req, "rtx40-fp8").unwrap();
+        let plan = plan_render(&req, "fake").unwrap();
         assert_eq!(plan.width % 32, 0);
         assert_eq!(plan.height % 32, 0);
         assert!(plan.width >= 961);
@@ -453,8 +453,8 @@ mod tests {
             seed: Some(123_456),
             advanced: AdvancedSettings::default(),
         };
-        let plan1 = plan_render(&req, "rtx40-fp8").unwrap();
-        let plan2 = plan_render(&req, "rtx40-fp8").unwrap();
+        let plan1 = plan_render(&req, "fake").unwrap();
+        let plan2 = plan_render(&req, "fake").unwrap();
         // Determinism
         for (a, b) in plan1.segments.iter().zip(plan2.segments.iter()) {
             assert_eq!(a.seed, b.seed);
@@ -512,7 +512,7 @@ mod tests {
                 },
             ],
         );
-        let plan = plan_render(&req, "rtx40-fp8").unwrap();
+        let plan = plan_render(&req, "fake").unwrap();
         // 12s / 4s segments = 3 segments (approximately), each midpoint
         // lands in a different scene window.
         assert!(plan.segment_count >= 3);
@@ -546,7 +546,7 @@ mod tests {
                 },
             ],
         );
-        let plan = plan_render(&req, "rtx40-fp8").unwrap();
+        let plan = plan_render(&req, "fake").unwrap();
         let last = plan.segments.last().unwrap();
         assert_eq!(last.action_prompt.as_deref(), Some("epilogue freeze"));
     }
@@ -554,7 +554,7 @@ mod tests {
     #[test]
     fn plan_falls_back_to_global_prompt_when_no_scenes() {
         let req = mk_request_with_scenes(8.0, Vec::new());
-        let plan = plan_render(&req, "rtx40-fp8").unwrap();
+        let plan = plan_render(&req, "fake").unwrap();
         for seg in &plan.segments {
             assert!(
                 seg.action_prompt.is_none(),
@@ -581,7 +581,7 @@ mod tests {
                 },
             ],
         );
-        let plan = plan_render(&req, "rtx40-fp8").unwrap();
+        let plan = plan_render(&req, "fake").unwrap();
         // Segments whose midpoint falls in the first scene should use seed 7777.
         for seg in &plan.segments {
             let midpoint = seg.duration_seconds.mul_add(0.5, seg.start_time_seconds);
@@ -614,7 +614,7 @@ mod tests {
             seed: Some(1),
             advanced: AdvancedSettings::default(),
         };
-        let plan = plan_render(&req, "rtx40-fp8").unwrap();
+        let plan = plan_render(&req, "fake").unwrap();
         assert!(plan.warnings.iter().any(|w| w.code == "long_render"));
     }
 }

@@ -62,6 +62,16 @@ diffusers = [
   # regression. The diffusers `quantizers/gguf/` runtime ops handle the
   # on-device dequant; we only need the reader half from this package.
   "gguf>=0.10",
+  # T5 tokenizer backend for the LTX-Video 0.9.x line
+  # (`rtx50-ltxv097-gguf`). The LTX-2.3 path uses Gemma-3 (no
+  # sentencepiece), so this was absent until the 0.9.7 profile —
+  # without it `transformers` returns a lazy `Placeholder` for
+  # `T5Tokenizer` and diffusers' `from_pretrained` aborts the pipeline
+  # load ("component ... cannot be loaded ... no loading methods").
+  # GPU-verified required on 2026-05-18 (smoke-ltxv097-render).
+  # `protobuf` is the T5 fast→slow conversion dep.
+  "sentencepiece>=0.2",
+  "protobuf>=4",
 ]
 interpolation = [
   # Practical-RIFE has pip wheels via this fork. Pin loose for now; lockfile
