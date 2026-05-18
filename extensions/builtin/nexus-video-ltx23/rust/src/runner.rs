@@ -1661,6 +1661,9 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
     let interpolation = advanced.interpolation.map_or(Value::Null, |m| {
         serde_json::to_value(m).unwrap_or(Value::Null)
     });
+    // Opt-in two-pass spatial upscale. `None` → JSON null → worker
+    // keeps its single-pass native render default.
+    let upscale = advanced.upscale.map_or(Value::Null, Value::from);
 
     json!({
         "guidance_scale": guidance_scale,
@@ -1675,6 +1678,7 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
         "guidance_rescale": guidance_rescale,
         "max_gpu_vram_gib": max_gpu_vram_gib,
         "interpolation": interpolation,
+        "upscale": upscale,
     })
 }
 
@@ -2259,6 +2263,23 @@ mod tests {
         let advanced = AdvancedSettings::default();
         let block = build_advanced_block(&advanced, "nexus.video.ltx23.rtx50-ltxv097-gguf");
         assert!(block["interpolation"].is_null());
+    }
+
+    #[test]
+    fn build_advanced_block_wires_upscale_flag() {
+        let off = build_advanced_block(
+            &AdvancedSettings::default(),
+            "nexus.video.ltx23.rtx50-ltxv097-gguf",
+        );
+        assert!(off["upscale"].is_null());
+        let on = build_advanced_block(
+            &AdvancedSettings {
+                upscale: Some(true),
+                ..AdvancedSettings::default()
+            },
+            "nexus.video.ltx23.rtx50-ltxv097-gguf",
+        );
+        assert_eq!(on["upscale"].as_bool(), Some(true));
     }
 
     #[test]
