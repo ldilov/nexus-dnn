@@ -1364,6 +1364,228 @@ function PipelineTuningPanel({
             burnt highlights.
           </span>
         </div>
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-decode-noise-scale">
+            Decode noise scale
+          </label>
+          <input
+            id="ltx-decode-noise-scale"
+            className={s.input}
+            type="number"
+            min={0}
+            max={0.5}
+            step={0.005}
+            value={advanced.decode_noise_scale ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setAdvanced(
+                "decode_noise_scale",
+                v === "" ? undefined : Number(v),
+              );
+            }}
+            placeholder="0.025 (default)"
+          />
+          <span className={s.meta}>
+            VAE-decode noise. 0.0–0.5. Higher → grainier decode.
+          </span>
+        </div>
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-condition-strength">
+            Condition strength
+          </label>
+          <input
+            id="ltx-condition-strength"
+            className={s.input}
+            type="number"
+            min={0}
+            max={1}
+            step={0.05}
+            value={advanced.condition_strength ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setAdvanced(
+                "condition_strength",
+                v === "" ? undefined : Number(v),
+              );
+            }}
+            placeholder="0.7 (default)"
+          />
+          <span className={s.meta}>
+            Scene-continuation anchor. 0.0–1.0. 1.0 fully anchors to
+            the prior tail (static); lower lets the next scene animate
+            while keeping identity.
+          </span>
+        </div>
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-condition-tail-frames">
+            Condition tail frames
+          </label>
+          <input
+            id="ltx-condition-tail-frames"
+            className={s.input}
+            type="number"
+            min={1}
+            max={120}
+            step={1}
+            value={advanced.condition_tail_frames ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setAdvanced(
+                "condition_tail_frames",
+                v === "" ? undefined : Number(v),
+              );
+            }}
+            placeholder="24 (default)"
+          />
+          <span className={s.meta}>
+            Trailing frames of the previous scene fed as the next
+            scene's video condition. 1–120. Larger = more motion
+            context but heavier conditioned VRAM (Q6 spills &gt;16 GB).
+          </span>
+        </div>
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-interpolation">
+            Seam interpolation
+          </label>
+          <select
+            id="ltx-interpolation"
+            className={s.input}
+            value={advanced.interpolation ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setAdvanced(
+                "interpolation",
+                v === ""
+                  ? undefined
+                  : (v as NonNullable<AdvancedSettings["interpolation"]>),
+              );
+            }}
+          >
+            <option value="">Default (overlap_blend)</option>
+            <option value="overlap_blend">
+              overlap_blend — trim + colour match (no model)
+            </option>
+            <option value="film">film — FILM motion bridge (Apache-2.0)</option>
+            <option value="rife2x">rife2x — Practical-RIFE bridge</option>
+            <option value="none">none — hard concat (legacy)</option>
+          </select>
+          <span className={s.meta}>
+            Scene-boundary treatment. overlap_blend is the proven
+            no-model default; film/rife add a motion-aware bridge
+            (operator-supplied weights, graceful linear fallback).
+          </span>
+        </div>
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-seam-overlap-frames">
+            Seam overlap frames
+          </label>
+          <input
+            id="ltx-seam-overlap-frames"
+            className={s.input}
+            type="number"
+            min={0}
+            max={48}
+            step={1}
+            value={advanced.seam_overlap_frames ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setAdvanced(
+                "seam_overlap_frames",
+                v === "" ? undefined : Number(v),
+              );
+            }}
+            placeholder="8 (default)"
+          />
+          <span className={s.meta}>
+            Frames trimmed from the re-rendered conditioned overlap.
+            0–48.
+          </span>
+        </div>
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-seam-blend-frames">
+            Seam blend frames
+          </label>
+          <input
+            id="ltx-seam-blend-frames"
+            className={s.input}
+            type="number"
+            min={0}
+            max={24}
+            step={1}
+            value={advanced.seam_blend_frames ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setAdvanced(
+                "seam_blend_frames",
+                v === "" ? undefined : Number(v),
+              );
+            }}
+            placeholder="0 / 6 for model bridges"
+          />
+          <span className={s.meta}>
+            Transition-bridge length. 0–24. A linear bridge ghosts on
+            motion (kept 0 for overlap_blend); model bridges default 6.
+          </span>
+        </div>
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-seam-color-match">
+            Seam colour match
+          </label>
+          <select
+            id="ltx-seam-color-match"
+            className={s.input}
+            value={
+              advanced.seam_color_match === undefined
+                ? ""
+                : advanced.seam_color_match
+                  ? "on"
+                  : "off"
+            }
+            onChange={(e) => {
+              const v = e.target.value;
+              setAdvanced(
+                "seam_color_match",
+                v === "" ? undefined : v === "on",
+              );
+            }}
+          >
+            <option value="">Default (on)</option>
+            <option value="on">On — Reinhard match across boundary</option>
+            <option value="off">Off</option>
+          </select>
+          <span className={s.meta}>
+            Reinhard per-channel colour match removes the exposure/tone
+            step at the cut.
+          </span>
+        </div>
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-upscale">
+            720p two-pass upscale
+          </label>
+          <select
+            id="ltx-upscale"
+            className={s.input}
+            value={
+              advanced.upscale === undefined
+                ? ""
+                : advanced.upscale
+                  ? "on"
+                  : "off"
+            }
+            onChange={(e) => {
+              const v = e.target.value;
+              setAdvanced("upscale", v === "" ? undefined : v === "on");
+            }}
+          >
+            <option value="">Default (off — native 768×512)</option>
+            <option value="on">On — render then upscale to 1280×720</option>
+            <option value="off">Off</option>
+          </select>
+          <span className={s.meta}>
+            Opt-in official two-pass: render native → spatial latent
+            upsample → tiled decode → 720p. Verified peak ≈13.5 GiB.
+          </span>
+        </div>
       </div>
     </details>
   );

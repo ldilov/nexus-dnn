@@ -452,6 +452,16 @@ async def _render_loop(
     # 720p is the proven target (render 768x512 → 1536x1024 → 1280x720).
     target_size = (1280, 720) if upscale else None
 
+    # Log the FULLY-RESOLVED param set (defaults filled for unset
+    # fields) so an operator can diff what ran against what was sent —
+    # the safety control for the now-fully-exposed knob surface.
+    try:
+        worker.logger.info(
+            "ltxv097.resolved_params", upscale=upscale, **samp, **seam
+        )
+    except Exception:  # noqa: BLE001 — telemetry must never abort a render
+        pass
+
     prompt_obj = raw_params.get("prompt") or {}
     global_action = prompt_obj.get("action") or prompt_obj.get("prompt") or ""
     negative_prompt = prompt_obj.get("negative") or ""

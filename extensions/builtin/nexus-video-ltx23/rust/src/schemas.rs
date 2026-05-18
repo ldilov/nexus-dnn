@@ -179,6 +179,41 @@ impl CreateRenderRequest {
                 ));
             }
         }
+        if let Some(v) = self.advanced.decode_noise_scale {
+            if !(0.0..=0.5).contains(&v) || !v.is_finite() {
+                return Err(format!(
+                    "advanced.decode_noise_scale must be in 0.0..=0.5 (got {v})"
+                ));
+            }
+        }
+        if let Some(v) = self.advanced.condition_strength {
+            if !(0.0..=1.0).contains(&v) || !v.is_finite() {
+                return Err(format!(
+                    "advanced.condition_strength must be in 0.0..=1.0 (got {v})"
+                ));
+            }
+        }
+        if let Some(v) = self.advanced.condition_tail_frames {
+            if !(1..=120).contains(&v) {
+                return Err(format!(
+                    "advanced.condition_tail_frames must be in 1..=120 (got {v})"
+                ));
+            }
+        }
+        if let Some(v) = self.advanced.seam_overlap_frames {
+            if v > 48 {
+                return Err(format!(
+                    "advanced.seam_overlap_frames must be in 0..=48 (got {v})"
+                ));
+            }
+        }
+        if let Some(v) = self.advanced.seam_blend_frames {
+            if v > 24 {
+                return Err(format!(
+                    "advanced.seam_blend_frames must be in 0..=24 (got {v})"
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -280,6 +315,33 @@ pub struct AdvancedSettings {
     /// quantised transformer so it adds little VRAM.
     #[serde(default)]
     pub upscale: Option<bool>,
+    /// VAE-decode noise scale (LTX `decode_noise_scale`). Worker
+    /// default 0.025. Higher → grainier decode. Range 0.0..=0.5.
+    #[serde(default)]
+    pub decode_noise_scale: Option<f32>,
+    /// `LTXVideoCondition.strength` for scene continuation. 1.0 fully
+    /// anchors scene N+1 to the prior tail (static); lower lets it
+    /// animate while inheriting identity. Worker default 0.7.
+    #[serde(default)]
+    pub condition_strength: Option<f32>,
+    /// Trailing frames of the previous scene fed as the next scene's
+    /// video condition. Worker default 24. Larger = more motion
+    /// context but heavier conditioned VRAM. Range 1..=120.
+    #[serde(default)]
+    pub condition_tail_frames: Option<u32>,
+    /// Seam: frames trimmed from the re-rendered conditioned overlap.
+    /// Worker default 8. Range 0..=48.
+    #[serde(default)]
+    pub seam_overlap_frames: Option<u32>,
+    /// Seam: transition-bridge length. Worker default 0 for
+    /// overlap_blend (a linear bridge ghosts on motion), 6 for the
+    /// motion-aware model bridges. Range 0..=24.
+    #[serde(default)]
+    pub seam_blend_frames: Option<u32>,
+    /// Seam: apply Reinhard colour match across the boundary. Worker
+    /// default true.
+    #[serde(default)]
+    pub seam_color_match: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -768,6 +830,52 @@ mod tests {
         req.advanced.image_cond_noise_scale = Some(0.025);
         req.advanced.guidance_rescale = Some(0.7);
         assert!(req.validate_field_bounds().is_ok());
+    }
+
+    #[test]
+    fn validate_field_bounds_checks_newly_exposed_params() {
+        let mut req = make_valid_request();
+        req.advanced.decode_noise_scale = Some(0.03);
+        req.advanced.condition_strength = Some(0.7);
+        req.advanced.condition_tail_frames = Some(24);
+        req.advanced.seam_overlap_frames = Some(8);
+        req.advanced.seam_blend_frames = Some(6);
+        req.advanced.seam_color_match = Some(true);
+        assert!(req.validate_field_bounds().is_ok());
+
+        req.advanced.condition_strength = Some(1.5);
+        assert!(req
+            .validate_field_bounds()
+            .unwrap_err()
+            .contains("condition_strength"));
+        req.advanced.condition_strength = None;
+
+        req.advanced.condition_tail_frames = Some(0);
+        assert!(req
+            .validate_field_bounds()
+            .unwrap_err()
+            .contains("condition_tail_frames"));
+        req.advanced.condition_tail_frames = None;
+
+        req.advanced.seam_overlap_frames = Some(99);
+        assert!(req
+            .validate_field_bounds()
+            .unwrap_err()
+            .contains("seam_overlap_frames"));
+        req.advanced.seam_overlap_frames = None;
+
+        req.advanced.decode_noise_scale = Some(0.6);
+        assert!(req
+            .validate_field_bounds()
+            .unwrap_err()
+            .contains("decode_noise_scale"));
+        req.advanced.decode_noise_scale = None;
+
+        req.advanced.seam_blend_frames = Some(25);
+        assert!(req
+            .validate_field_bounds()
+            .unwrap_err()
+            .contains("seam_blend_frames"));
     }
 
     #[test]
