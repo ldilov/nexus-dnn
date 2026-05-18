@@ -448,17 +448,23 @@ pub enum RenderMode {
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum InterpolationMethod {
+    /// Practical-RIFE motion-aware boundary bridge (on the LTX-Video
+    /// 0.9.7 path). Code MIT; its weights are an operator-supplied
+    /// external asset (not redistributed) so GPL provenance stays
+    /// clean. Falls back to the linear bridge if the model is absent.
+    /// NOTE: an *unset* request is sent as null (not this default), so
+    /// the worker still resolves unset → `OverlapBlend`.
     #[default]
     Rife2x,
     None,
-    /// Scene-boundary overlap trim + Reinhard colour match + a short
-    /// deterministic alpha bridge. No model, no extra VRAM. The
-    /// LTX-Video 0.9.7 path's working seam fix (the boundary already
-    /// overlaps via tail conditioning, so a synthesised gap-fill is the
-    /// wrong tool); resolves there from the shared `rife2x` default too.
+    /// Scene-boundary overlap trim + Reinhard colour match. No model,
+    /// no extra VRAM. The LTX-Video 0.9.7 path's default seam fix (the
+    /// boundary already overlaps via tail conditioning, so a
+    /// synthesised gap-fill is the wrong primary tool); the worker
+    /// also resolves any unset/unknown value here.
     OverlapBlend,
-    /// `OverlapBlend` but the boundary bridge is FILM motion-aware
-    /// interpolation instead of a linear ramp. Optional; falls back to
+    /// `OverlapBlend` but the boundary bridge is FILM (Apache-2.0,
+    /// GPL-clean) motion-aware interpolation. Optional; falls back to
     /// the linear bridge if the FILM model is unavailable.
     Film,
 }

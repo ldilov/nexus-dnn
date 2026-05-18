@@ -91,7 +91,7 @@ def main() -> int:
     s1[-1].save(outdir / "prev_last.png")
     s2[0].save(outdir / "raw_cur_first.png")
 
-    for method in ("none", "overlap_blend", "film"):
+    for method in ("none", "overlap_blend", "film", "rife"):
         params = seam_mod.seam_params({"interpolation": method}, None)
         treated = seam_mod.apply_seam(prev_tail, list(s2), params, _Log())
         tag = method
