@@ -74,6 +74,14 @@ _GGUF_REPO = "wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF"
 # repo's `vae/` is the canonical diffusers 0.9.7 video VAE.
 _BASE_REPO = "Lightricks/LTX-Video-0.9.7-dev"
 
+# Official 0.9.7 spatial latent upscaler (two-pass 720p). The on-disk
+# asset is a single safetensors (ComfyUI shape) under the LTX-Video
+# repo dir, not a diffusers tree — resolution handles both + the HF id.
+_UPSCALER_REPO = "Lightricks/ltxv-spatial-upscaler-0.9.7"
+_UPSCALER_SINGLE_REL = (
+    "models/Lightricks/LTX-Video/ltxv-spatial-upscaler-0.9.7.safetensors"
+)
+
 # Sampling baseline (the example workflow + diffusers LTXConditionPipeline
 # defaults). Every value is overridable via the render request's
 # `advanced` block — these are the defaults a stable render starts from.
@@ -437,6 +445,12 @@ async def _render_loop(
         advanced,
         os.environ.get("NEXUS_VIDEO_LTX23_SEAM_METHOD", "").strip() or None,
     )
+    upscale = _coerce_flag(advanced.get("upscale")) or _coerce_flag(
+        os.environ.get("NEXUS_VIDEO_LTX23_UPSCALE")
+    )
+    # The official 0.9.7 two-pass renders native then 2x-upsamples;
+    # 720p is the proven target (render 768x512 → 1536x1024 → 1280x720).
+    target_size = (1280, 720) if upscale else None
 
     prompt_obj = raw_params.get("prompt") or {}
     global_action = prompt_obj.get("action") or prompt_obj.get("prompt") or ""
@@ -525,8 +539,11 @@ async def _render_loop(
         try:
             frames = await asyncio.to_thread(
                 functools.partial(
-                    _generate_segment,
+                    _generate_segment_dispatch,
                     rs.pipe,
+                    cache,
+                    upscale,
+                    target_size,
                     last_frame_image,
                     effective_prompt,
                     negative_prompt,
@@ -536,6 +553,7 @@ async def _render_loop(
                     seg_seed,
                     samp,
                     emit_step,
+                    worker.logger,
                 )
             )
         except RuntimeError as e:
@@ -570,6 +588,11 @@ async def _render_loop(
         _fl = list(frames)
         _tail_n = max(1, min(samp["condition_tail_frames"], len(_fl)))
         last_frame_image = _fl[-_tail_n:]
+        if upscale:
+            # Output is 720p but the next scene's stage-1 renders at
+            # native res and VAE-encodes this tail as its condition —
+            # keep the condition at the generation resolution.
+            last_frame_image = _resize_frames(last_frame_image, width, height)
         segment_paths.append(seg_path)
 
         for kind, p, mime in (
@@ -631,6 +654,7 @@ async def _render_loop(
     trim_to_duration(stitched_path, final_path, duration_s=duration)
 
     cache["pipe"] = None
+    cache["upsampler"] = None
     evict_models(rs)
 
     await worker.emit_notification(
@@ -944,6 +968,268 @@ def _generate_segment(
         frames[0]
         if isinstance(frames, list) and len(frames) == 1
         else frames
+    )
+
+
+def _coerce_flag(value: Any) -> bool:
+    if value is None or isinstance(value, bool):
+        return bool(value)
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _resize_frames(frames: Any, width: int, height: int) -> list[Any]:
+    try:
+        from PIL import Image  # type: ignore
+    except ImportError:
+        return list(frames)
+    out: list[Any] = []
+    for f in frames:
+        out.append(
+            f if f.size == (width, height)
+            else f.resize((width, height), Image.LANCZOS)
+        )
+    return out
+
+
+def _resolve_upscaler_ref() -> tuple[str, bool]:
+    """(ref, is_single_file). env → on-disk single-file → diffusers
+    tree → bare HF id (mirrors the proven smoke + the GGUF/base
+    resolution convention)."""
+    env = os.environ.get("NEXUS_VIDEO_LTX23_UPSCALER", "").strip()
+    if env:
+        return env, env.endswith(".safetensors")
+    host = os.environ.get("NEXUS_HOST_DATA_DIR", "")
+    single = Path(host).joinpath(*_UPSCALER_SINGLE_REL.split("/"))
+    if single.is_file():
+        return str(single), True
+    tree = Path(host).joinpath("models", *_UPSCALER_REPO.split("/"))
+    if tree.is_dir():
+        return str(tree), False
+    return _UPSCALER_REPO, False
+
+
+def _build_upsampler(pipe: Any, logger: Any) -> Any:
+    """Load the spatial latent upsampler sharing the base pipeline's
+    VAE instance (same latent normalisation — a fresh VAE washes the
+    colour out). Raises RuntimeError naming the unmet expectation so
+    the caller can fall back to the single-pass native render."""
+    torch = _LAZY_TORCH
+    try:
+        from diffusers import LTXLatentUpsamplePipeline  # type: ignore
+    except ImportError as e:
+        raise RuntimeError(
+            f"diffusers has no LTXLatentUpsamplePipeline ({e}); the "
+            "pinned build cannot do the 0.9.7 two-pass upscale."
+        ) from e
+    ref, is_single = _resolve_upscaler_ref()
+    errs: list[str] = []
+    up = None
+    if is_single and hasattr(LTXLatentUpsamplePipeline, "from_single_file"):
+        try:
+            up = LTXLatentUpsamplePipeline.from_single_file(
+                ref, vae=pipe.vae, torch_dtype=torch.bfloat16
+            )
+        except Exception as e:  # noqa: BLE001
+            errs.append(f"from_single_file({ref}): {e}")
+    if up is None:
+        pre = ref if not is_single else _UPSCALER_REPO
+        try:
+            up = LTXLatentUpsamplePipeline.from_pretrained(
+                pre, vae=pipe.vae, torch_dtype=torch.bfloat16
+            )
+        except Exception as e:  # noqa: BLE001
+            errs.append(f"from_pretrained({pre}): {e}")
+    if up is None:
+        raise RuntimeError(
+            "spatial upscaler load failed (" + " | ".join(errs) + ")"
+        )
+    up.to("cuda")
+    logger.info("ltxv097.upsampler_loaded", ref=ref, single_file=is_single)
+    return up
+
+
+def _ensure_upsampler(pipe: Any, cache: dict[str, Any], logger: Any) -> Any:
+    if cache.get("upsampler") is None:
+        cache["upsampler"] = _build_upsampler(pipe, logger)
+    return cache["upsampler"]
+
+
+def _ltx_conditioning(image: Any, samp: dict[str, Any], sig_params: Any) -> dict[str, Any]:
+    """Build the LTXVideoCondition kwargs (the RCA'd continuation
+    contract). Duplicated from `_generate_segment` by deliberate
+    isolation — the proven single-pass stays byte-identical; the
+    two-pass owns its own copy so a future change to one cannot
+    silently regress the other."""
+    if image is None:
+        return {}
+    is_tail = isinstance(image, (list, tuple)) and len(image) > 0
+    if "conditions" in sig_params:
+        try:
+            from diffusers.pipelines.ltx.pipeline_ltx_condition import (  # type: ignore
+                LTXVideoCondition,
+            )
+
+            cond_kw = {"video": list(image)} if is_tail else {"image": image}
+            return {
+                "conditions": [
+                    LTXVideoCondition(
+                        frame_index=0,
+                        strength=samp.get("condition_strength", 0.7),
+                        **cond_kw,
+                    )
+                ]
+            }
+        except Exception:  # noqa: BLE001 — fall back to image=
+            pass
+    single = image[-1] if (isinstance(image, (list, tuple)) and image) else image
+    if "image" in sig_params:
+        return {"image": single}
+    if "cond_image" in sig_params:
+        return {"cond_image": single}
+    return {}
+
+
+def _generate_segment_2pass(
+    pipe: Any,
+    upsampler: Any,
+    image: Any,
+    prompt: str,
+    negative_prompt: str,
+    width: int,
+    height: int,
+    num_frames: int,
+    seed: int,
+    samp: dict[str, Any],
+    step_heartbeat: Callable[[int], None] | None,
+    target_size: tuple[int, int],
+) -> Any:
+    """Official 0.9.7 two-pass: conditioned latent render → spatial
+    latent upsample → short refine + tiled decode → resize to target.
+    Raises RuntimeError on an unsupported pinned-diffusers signature so
+    the caller falls back to the proven single pass (GPU-verified
+    recipe; peak 13.5 GiB on a 16 GB card)."""
+    import inspect
+
+    torch = _LAZY_TORCH
+    sig = inspect.signature(pipe.__call__).parameters
+    for need in ("output_type", "latents", "denoise_strength"):
+        if need not in sig:
+            raise RuntimeError(
+                f"two-pass upscale needs '{need}' on the pinned "
+                "LTXConditionPipeline (absent) — single-pass fallback"
+            )
+    gen = (
+        torch.Generator(device="cuda").manual_seed(seed)
+        if torch is not None
+        else None
+    )
+
+    k1: dict[str, Any] = {
+        "prompt": prompt,
+        "negative_prompt": negative_prompt,
+        "width": width,
+        "height": height,
+        "num_frames": num_frames,
+        "frame_rate": 24,
+        "generator": gen,
+        "guidance_scale": samp["guidance_scale"],
+        "num_inference_steps": samp["num_inference_steps"],
+        "decode_timestep": samp["decode_timestep"],
+        "decode_noise_scale": samp["decode_noise_scale"],
+        "image_cond_noise_scale": samp["image_cond_noise_scale"],
+        "output_type": "latent",
+    }
+    k1.update(_ltx_conditioning(image, samp, sig))
+    if step_heartbeat is not None and "callback_on_step_end" in sig:
+        def _hb(_p: Any, i: int, _t: Any, cb: dict[str, Any]) -> dict[str, Any]:
+            try:
+                step_heartbeat(i)
+            except Exception:  # noqa: BLE001 — never abort a render
+                pass
+            return cb
+
+        k1["callback_on_step_end"] = _hb
+    k1 = {k: v for k, v in k1.items() if k in sig}
+    r1 = pipe(**k1)
+    latents = getattr(r1, "frames", None)
+    if latents is None and isinstance(r1, dict):
+        latents = r1.get("frames")
+    if latents is None:
+        raise RuntimeError("two-pass stage1 returned no latent")
+
+    up_out = upsampler(latents=latents, output_type="latent")
+    upscaled = getattr(up_out, "frames", up_out)
+
+    k3 = {
+        "prompt": prompt,
+        "negative_prompt": negative_prompt,
+        "width": width * 2,
+        "height": height * 2,
+        "num_frames": num_frames,
+        "frame_rate": 24,
+        "generator": (
+            torch.Generator(device="cuda").manual_seed(seed)
+            if torch is not None
+            else None
+        ),
+        "guidance_scale": samp["guidance_scale"],
+        "num_inference_steps": max(6, samp["num_inference_steps"] // 3),
+        "denoise_strength": 0.4,
+        "latents": upscaled,
+        "decode_timestep": samp["decode_timestep"],
+        "decode_noise_scale": samp["decode_noise_scale"],
+        "output_type": "pil",
+    }
+    k3 = {k: v for k, v in k3.items() if k in sig}
+    r3 = pipe(**k3)
+    frames = getattr(r3, "frames", None)
+    if frames is None and isinstance(r3, dict):
+        frames = r3.get("frames")
+    if frames is None:
+        raise RuntimeError("two-pass stage3 returned no frames")
+    fl = (
+        frames[0]
+        if isinstance(frames, list) and len(frames) == 1
+        else frames
+    )
+    return _resize_frames(fl, target_size[0], target_size[1])
+
+
+def _generate_segment_dispatch(
+    pipe: Any,
+    cache: dict[str, Any],
+    upscale: bool,
+    target_size: tuple[int, int] | None,
+    image: Any,
+    prompt: str,
+    negative_prompt: str,
+    width: int,
+    height: int,
+    num_frames: int,
+    seed: int,
+    samp: dict[str, Any],
+    step_heartbeat: Callable[[int], None] | None,
+    logger: Any,
+) -> Any:
+    """Single-pass by default; the two-pass 720p upscale when opted in,
+    with an automatic fall-through to the proven single pass if the
+    upscaler is unavailable or the pinned API can't do it (the native
+    render must never be blocked by an optional quality upgrade)."""
+    if upscale and target_size is not None:
+        try:
+            upsampler = _ensure_upsampler(pipe, cache, logger)
+            return _generate_segment_2pass(
+                pipe, upsampler, image, prompt, negative_prompt,
+                width, height, num_frames, seed, samp,
+                step_heartbeat, target_size,
+            )
+        except RuntimeError as e:
+            logger.info("ltxv097.upscale_fallback", reason=str(e))
+        except Exception as e:  # noqa: BLE001 — optional path never fatal
+            logger.info("ltxv097.upscale_fallback", reason=str(e))
+    return _generate_segment(
+        pipe, image, prompt, negative_prompt, width, height,
+        num_frames, seed, samp, step_heartbeat,
     )
 
 
