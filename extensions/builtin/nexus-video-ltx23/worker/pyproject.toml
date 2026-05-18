@@ -72,6 +72,11 @@ diffusers = [
   # `protobuf` is the T5 fast→slow conversion dep.
   "sentencepiece>=0.2",
   "protobuf>=4",
+  # Farneback dense optical flow for the advanced-motion quality gate
+  # (motion.py). headless = no GUI/Qt deps (server-appropriate);
+  # Apache-2.0. Optional at runtime — motion.py degrades to the
+  # numpy-only metrics if cv2 is absent.
+  "opencv-python-headless>=4.10",
 ]
 interpolation = [
   # Practical-RIFE has pip wheels via this fork. Pin loose for now; lockfile
