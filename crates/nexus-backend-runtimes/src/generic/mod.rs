@@ -23,6 +23,7 @@ pub mod catalog;
 pub mod enums;
 pub mod errors;
 pub mod family_handler;
+pub mod host_model_registrar;
 pub mod ids;
 pub mod install_ctx;
 pub mod install_pipeline;

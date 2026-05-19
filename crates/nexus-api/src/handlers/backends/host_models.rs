@@ -355,23 +355,35 @@ pub async fn register_existing_host_model(
     }
 }
 
-async fn run_host_register_existing(
-    state: &AppState,
-    hf: std::sync::Arc<dyn nexus_huggingface::HuggingFaceCapability>,
-    paths: &crate::HostInstallPaths,
-    req: RegisterExistingHostModelRequest,
-) -> Result<HostInstallOutcome, HostInstallFailure> {
-    let meta = hf
-        .detail(&req.repo_id, req.revision.as_deref())
-        .await
-        .map_err(|e| match e {
-            HfError::RepoNotFound(_) => HfError::RepoNotFound(req.repo_id.clone()),
-            other => other,
-        })?;
+struct RegisteredExistingOutcome {
+    install_id: String,
+    already_installed: bool,
+    family: String,
+    sha256_root: String,
+}
 
-    let family = derive_family(&req.files, &meta);
-    let quantization = derive_quantization(&req.files);
-    let variant = req.display_name.clone().unwrap_or_else(|| "default".into());
+/// Shared core for register-existing: HF-resolve identity (the same path as
+/// `run_host_install`, so dedup converges) then adopt the on-disk tree.
+/// Both the HTTP handler and the in-process [`HostModelRegistrar`] impl call
+/// this so identity derivation can never diverge between them.
+async fn register_existing_core(
+    pool: &sqlx::SqlitePool,
+    paths: &crate::HostInstallPaths,
+    hf: &dyn nexus_huggingface::HuggingFaceCapability,
+    repo_id: &str,
+    revision: Option<&str>,
+    files: &[String],
+    existing_root: std::path::PathBuf,
+    display_name: Option<String>,
+) -> Result<RegisteredExistingOutcome, HostInstallFailure> {
+    let meta = hf.detail(repo_id, revision).await.map_err(|e| match e {
+        HfError::RepoNotFound(_) => HfError::RepoNotFound(repo_id.to_string()),
+        other => other,
+    })?;
+
+    let family = derive_family(files, &meta);
+    let quantization = derive_quantization(files);
+    let variant = display_name.unwrap_or_else(|| "default".into());
 
     let store_req = RegisterExistingRequest {
         family: family.clone(),
@@ -380,29 +392,107 @@ async fn run_host_register_existing(
         variant,
         source_revision: meta.revision.clone(),
         source_kind: "local_import".into(),
-        source_url: Some(format!("https://huggingface.co/{}", req.repo_id)),
+        source_url: Some(format!("https://huggingface.co/{repo_id}")),
         license_spdx: meta.license.clone(),
         private: false,
         owner_extension_id: None,
-        existing_root: std::path::PathBuf::from(&req.existing_root),
-        files: req.files.clone(),
+        existing_root,
+        files: files.to_vec(),
     };
 
-    let outcome = register_existing(
+    let outcome =
+        register_existing(pool, &paths.installs_root, &paths.blobs_root, store_req).await?;
+
+    Ok(RegisteredExistingOutcome {
+        install_id: outcome.install.install_id,
+        already_installed: outcome.already_installed,
+        family,
+        sha256_root: outcome.install.sha256_root,
+    })
+}
+
+async fn run_host_register_existing(
+    state: &AppState,
+    hf: std::sync::Arc<dyn nexus_huggingface::HuggingFaceCapability>,
+    paths: &crate::HostInstallPaths,
+    req: RegisterExistingHostModelRequest,
+) -> Result<HostInstallOutcome, HostInstallFailure> {
+    let core = register_existing_core(
         state.db.pool(),
-        &paths.installs_root,
-        &paths.blobs_root,
-        store_req,
+        paths,
+        hf.as_ref(),
+        &req.repo_id,
+        req.revision.as_deref(),
+        &req.files,
+        std::path::PathBuf::from(&req.existing_root),
+        req.display_name.clone(),
     )
     .await?;
 
     Ok(HostInstallOutcome {
-        install_id: outcome.install.install_id,
+        install_id: core.install_id,
         task_id: format!("hmr_task_{}", super::ulid_lite()),
-        already_installed: outcome.already_installed,
-        routed_backend: route_backend_for(&family),
-        sha256_root: outcome.install.sha256_root,
+        already_installed: core.already_installed,
+        routed_backend: route_backend_for(&core.family),
+        sha256_root: core.sha256_root,
     })
+}
+
+/// In-process [`HostModelRegistrar`] the host injects into builtin
+/// extensions so their own download path can adopt models into the host
+/// store without an HTTP round-trip. Wraps the same
+/// [`register_existing_core`] as the public endpoint, so an extension's
+/// registration dedups against a Foundry install of the same repo.
+pub struct HostModelRegistrarService {
+    pool: sqlx::SqlitePool,
+    paths: crate::HostInstallPaths,
+    hf: std::sync::Arc<dyn nexus_huggingface::HuggingFaceCapability>,
+}
+
+impl HostModelRegistrarService {
+    pub fn new(
+        pool: sqlx::SqlitePool,
+        paths: crate::HostInstallPaths,
+        hf: std::sync::Arc<dyn nexus_huggingface::HuggingFaceCapability>,
+    ) -> Self {
+        Self { pool, paths, hf }
+    }
+}
+
+#[async_trait::async_trait]
+impl nexus_backend_runtimes::generic::host_model_registrar::HostModelRegistrar
+    for HostModelRegistrarService
+{
+    async fn register_existing(
+        &self,
+        req: nexus_backend_runtimes::generic::host_model_registrar::RegisterExistingModel,
+    ) -> Result<nexus_backend_runtimes::generic::host_model_registrar::RegisteredModel, String>
+    {
+        let core = register_existing_core(
+            &self.pool,
+            &self.paths,
+            self.hf.as_ref(),
+            &req.repo_id,
+            req.revision.as_deref(),
+            &req.files,
+            req.existing_root,
+            req.display_name,
+        )
+        .await
+        .map_err(|e| match e {
+            HostInstallFailure::PrivateModel => "model is private to another extension".to_string(),
+            HostInstallFailure::Hf(err) => format!("huggingface: {err}"),
+            HostInstallFailure::Model(err) => format!("model store: {err}"),
+            HostInstallFailure::Io(err) => format!("io: {err}"),
+        })?;
+
+        Ok(
+            nexus_backend_runtimes::generic::host_model_registrar::RegisteredModel {
+                install_id: core.install_id,
+                already_installed: core.already_installed,
+            },
+        )
+    }
 }
 
 fn bad_request(msg: &str) -> Response {

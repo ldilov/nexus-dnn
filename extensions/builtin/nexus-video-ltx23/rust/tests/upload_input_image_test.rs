@@ -63,6 +63,7 @@ async fn build_app() -> (Router, tempfile::TempDir) {
             PathBuf::from("/nonexistent-data"),
         )),
         tmp.path().to_path_buf(),
+        None,
     );
 
     let state = ApiState::new(
