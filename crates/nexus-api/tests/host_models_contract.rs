@@ -287,3 +287,71 @@ async fn host_runtimes_and_host_models_are_independent_top_level_lists() {
         .unwrap();
     assert_eq!(resp_r.status(), StatusCode::OK);
 }
+
+async fn seed_install_family(db: &SqliteDatabase, install_id: &str, family: &str) {
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO host_model_installs (install_id, family, version, quantization, variant, \
+         install_root, files_manifest, sha256_root, source_revision, state, source_kind, \
+         source_url, license_spdx, license_url, private_model, owner_extension_id, created_at, \
+         updated_at) VALUES ($1,$2,'v','q','default','/t','[]',$3,$3,'ready','huggingface',\
+         'hf://x','apache-2.0','https://x',0,NULL,$4,$4)",
+    )
+    .bind(install_id)
+    .bind(family)
+    .bind(format!("sha-{install_id}"))
+    .bind(&now)
+    .execute(db.pool())
+    .await
+    .expect("seed install family");
+}
+
+#[tokio::test]
+async fn family_query_param_filters_installs_server_side() {
+    let state = build_state().await;
+    seed_install_family(&state.db, "llama-1", "llama").await;
+    seed_install_family(&state.db, "ltxv-1", "ltxv-13b-0.9.7-dev-gguf").await;
+
+    let router = nexus_api::create_router(state);
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/host-models?family=ltxv-13b-0.9.7-dev-gguf")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = collect_body(response.into_body()).await;
+    let installs = body["data"]["installs"].as_array().expect("installs array");
+    assert_eq!(
+        installs.len(),
+        1,
+        "only the matching family must be returned"
+    );
+    assert_eq!(installs[0]["family"], "ltxv-13b-0.9.7-dev-gguf");
+}
+
+#[tokio::test]
+async fn absent_family_query_param_returns_all_installs() {
+    let state = build_state().await;
+    seed_install_family(&state.db, "a", "fam-a").await;
+    seed_install_family(&state.db, "b", "fam-b").await;
+
+    let router = nexus_api::create_router(state);
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/host-models")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = collect_body(response.into_body()).await;
+    assert_eq!(
+        body["data"]["installs"].as_array().expect("installs").len(),
+        2
+    );
+}
