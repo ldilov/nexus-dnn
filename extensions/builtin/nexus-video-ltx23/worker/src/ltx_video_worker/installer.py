@@ -291,20 +291,9 @@ async def _default_uv_sync_runner(
             f"uv targeting runtime venv: {runtime_venv}",
         )
 
+    # RIFE FPS interpolation is not a pip dependency — it auto-stages the
+    # nihui/rife-ncnn-vulkan prebuilt binary at runtime (see fps_interp).
     cmd = ["uv", "sync", "--extra", "diffusers"]
-    # Opt-in: install the practical-rife wheel for GPU-accelerated 2×
-    # interpolation. Default-off because the wheel pulls vulkan
-    # runtime deps + only builds on linux/windows (excluded on darwin
-    # via the pyproject marker). Operators flip this when they want
-    # 24→48 fps output for the demo path.
-    if os.environ.get("NEXUS_VIDEO_LTX23_INSTALL_INTERPOLATION", "").strip() in (
-        "1", "true", "yes", "on"
-    ):
-        cmd.extend(["--extra", "interpolation"])
-        await on_line(
-            "info",
-            "interpolation extra requested via NEXUS_VIDEO_LTX23_INSTALL_INTERPOLATION",
-        )
 
     proc = await asyncio.create_subprocess_exec(
         *cmd,

@@ -78,11 +78,11 @@ diffusers = [
   # numpy-only metrics if cv2 is absent.
   "opencv-python-headless>=4.10",
 ]
-interpolation = [
-  # Practical-RIFE has pip wheels via this fork. Pin loose for now; lockfile
-  # produced at install time will pin exactly.
-  "rife-ncnn-vulkan-python>=1.2; sys_platform != 'darwin'",
-]
+# NOTE: RIFE FPS interpolation is NOT a pip dependency. The
+# rife-ncnn-vulkan-python package is sdist-only (CMake+Vulkan source
+# build, fails on stock Windows). RIFE ships instead as the upstream
+# nihui/rife-ncnn-vulkan prebuilt binary, auto-staged at runtime by
+# `ltx_video_worker.fps_interp` (silent ffmpeg-minterpolate fallback).
 test = [
   "pytest>=8.0",
   "pytest-asyncio>=0.23",

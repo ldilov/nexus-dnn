@@ -1,212 +1,244 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+import tempfile
+import zipfile
 from pathlib import Path
-from typing import Any
+
+# RIFE FPS interpolation via the upstream nihui/rife-ncnn-vulkan prebuilt
+# binary (MIT, models bundled in the release zip — provenance-clean, no
+# pip build, no redistributed weights). Auto-staged on first use the same
+# way the FILM seam model is, with a silent fall-through to ffmpeg
+# minterpolate so a render never fails on the optional interpolation path.
+
+_RIFE_BIN_ENV = "NEXUS_VIDEO_LTX23_RIFE_BIN"
+_RIFE_AUTOSTAGE_ENV = "NEXUS_VIDEO_LTX23_RIFE_AUTOSTAGE"
+_RIFE_URL_ENV = "NEXUS_VIDEO_LTX23_RIFE_URL"
+
+_RIFE_TAG = "20221029"
+_RIFE_BASE = (
+    f"https://github.com/nihui/rife-ncnn-vulkan/releases/download/{_RIFE_TAG}/"
+    f"rife-ncnn-vulkan-{_RIFE_TAG}"
+)
+_RIFE_ASSET = {
+    "win": f"{_RIFE_BASE}-windows.zip",
+    "linux": f"{_RIFE_BASE}-ubuntu.zip",
+    "darwin": f"{_RIFE_BASE}-macos.zip",
+}
 
 
-class _RifeUnavailable(Exception):
-    pass
+def _coerce_bool(raw: str | None, default: bool) -> bool:
+    if raw is None or raw == "":
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
 def try_interpolate(
-    src: Path, dst: Path, base_fps: int, target_fps: int
-) -> bool:
-    if target_fps <= base_fps:
-        return False
-    if _interpolate_recursive_rife(src, dst, base_fps, target_fps):
-        return True
-    return _interpolate_via_ffmpeg(src, dst, target_fps)
-
-
-def _interpolate_recursive_rife(
-    src: Path, dst: Path, base_fps: int, target_fps: int
-) -> bool:
-    factor = _doubling_factor(base_fps, target_fps)
-    if factor == 0:
-        return _interpolate_via_rife(src, dst, base_fps, target_fps)
-    try:
-        processor = _build_rife_processor()
-    except _RifeUnavailable:
-        return False
-    cur_src = src
-    cur_fps = base_fps
-    tmp_chain: list[Path] = []
-    try:
-        for step in range(factor):
-            step_fps = cur_fps * 2
-            step_dst = (
-                dst
-                if step == factor - 1
-                else dst.parent / f".rife_x{step_fps}_{dst.name}"
-            )
-            try:
-                ok = _run_rife_pipeline(
-                    cur_src, step_dst, cur_fps, step_fps, processor
-                )
-            except Exception:  # noqa: BLE001
-                ok = False
-            if not ok:
-                return False
-            if step != factor - 1:
-                tmp_chain.append(step_dst)
-            cur_src = step_dst
-            cur_fps = step_fps
-        return dst.is_file()
-    finally:
-        for p in tmp_chain:
-            try:
-                p.unlink()
-            except OSError:
-                pass
-
-
-def _doubling_factor(base_fps: int, target_fps: int) -> int:
-    if base_fps <= 0 or target_fps <= base_fps:
-        return 0
-    ratio = target_fps / base_fps
-    factor = 0
-    probe = 1
-    while probe * 2 <= ratio + 1e-6:
-        probe *= 2
-        factor += 1
-    return factor if probe == int(round(ratio)) and probe >= 2 else 0
-
-
-def _interpolate_via_rife(
-    src: Path, dst: Path, base_fps: int, target_fps: int
-) -> bool:
-    if target_fps != base_fps * 2:
-        return False
-    try:
-        processor = _build_rife_processor()
-    except _RifeUnavailable:
-        return False
-    try:
-        return _run_rife_pipeline(src, dst, base_fps, target_fps, processor)
-    except Exception:  # noqa: BLE001
-        return False
-
-
-def _build_rife_processor() -> Any:
-    try:
-        import rife_ncnn_vulkan_python as rife_mod  # type: ignore
-    except ImportError as e:
-        raise _RifeUnavailable("rife-ncnn-vulkan-python not installed") from e
-
-    cls = None
-    for name in ("Rife", "RIFE", "RifeNCNNVulkan"):
-        cls = getattr(rife_mod, name, None)
-        if cls is not None:
-            break
-    if cls is None:
-        raise _RifeUnavailable(
-            "no Rife class found in rife_ncnn_vulkan_python module surface"
-        )
-
-    last_err: Exception | None = None
-    for ctor_kwargs in ({"gpuid": 0}, {"gpu_id": 0}, {}):
-        try:
-            return cls(**ctor_kwargs)
-        except TypeError as e:
-            last_err = e
-            continue
-        except Exception as e:  # noqa: BLE001
-            last_err = e
-            break
-    raise _RifeUnavailable(
-        f"rife constructor rejected every probed signature: {last_err}"
-    )
-
-
-def _invoke_rife(processor: Any, img0: Any, img1: Any) -> Any:
-    for method_name in ("process", "interpolate", "__call__"):
-        method = getattr(processor, method_name, None)
-        if callable(method):
-            return method(img0, img1)
-    raise AttributeError(
-        f"rife processor {type(processor).__name__} has no recognised entry point"
-    )
-
-
-def _run_rife_pipeline(
     src: Path,
     dst: Path,
     base_fps: int,
     target_fps: int,
-    processor: Any,
+    logger: object = None,
 ) -> bool:
-    import ffmpeg  # type: ignore
-    from PIL import Image  # type: ignore
-    import numpy as np  # type: ignore
-
-    probe = ffmpeg.probe(str(src))
-    video_stream = next(
-        (s for s in probe.get("streams", []) if s.get("codec_type") == "video"),
-        None,
-    )
-    if video_stream is None:
+    if target_fps <= base_fps:
         return False
-    width = int(video_stream["width"])
-    height = int(video_stream["height"])
+    if _interpolate_via_rife_binary(src, dst, base_fps, target_fps, logger):
+        return True
+    return _interpolate_via_ffmpeg(src, dst, target_fps)
 
-    decoded, _stderr = (
-        ffmpeg.input(str(src))
-        .output("pipe:", format="rawvideo", pix_fmt="rgb24")
-        .run(capture_stdout=True, capture_stderr=True, quiet=True)
-    )
 
-    frame_bytes = width * height * 3
-    if frame_bytes == 0 or len(decoded) % frame_bytes != 0:
-        return False
-    num_frames = len(decoded) // frame_bytes
-    if num_frames < 2:
-        return False
+def _platform_rife_url() -> str | None:
+    override = os.environ.get(_RIFE_URL_ENV, "").strip()
+    if override:
+        return override
+    p = sys.platform
+    if p.startswith("win"):
+        return _RIFE_ASSET["win"]
+    if p.startswith("linux"):
+        return _RIFE_ASSET["linux"]
+    if p == "darwin":
+        return _RIFE_ASSET["darwin"]
+    return None
 
-    raw = np.frombuffer(decoded, dtype=np.uint8).reshape(
-        num_frames, height, width, 3
-    )
 
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    encoder = (
-        ffmpeg.input(
-            "pipe:",
-            format="rawvideo",
-            pix_fmt="rgb24",
-            s=f"{width}x{height}",
-            r=str(target_fps),
-        )
-        .output(
-            str(dst),
-            vcodec="libx264",
-            pix_fmt="yuv420p",
-            movflags="+faststart",
-            loglevel="error",
-        )
-        .overwrite_output()
-        .run_async(pipe_stdin=True)
-    )
+def _stage_root() -> Path:
+    host = os.environ.get("NEXUS_HOST_DATA_DIR", "").strip()
+    base = Path(host) if host else Path(tempfile.gettempdir())
+    return base / "models" / "nihui" / "rife-ncnn-vulkan"
 
+
+def _find_binary(root: Path) -> Path | None:
+    for name in ("rife-ncnn-vulkan.exe", "rife-ncnn-vulkan"):
+        hits = sorted(root.rglob(name))
+        if hits:
+            return hits[0]
+    return None
+
+
+def _find_model_dir(bin_path: Path) -> Path | None:
+    base = bin_path.parent
+    preferred = base / "rife-v4.6"
+    if preferred.is_dir():
+        return preferred
+    cands = sorted(d for d in base.glob("rife*") if d.is_dir())
+    return cands[0] if cands else None
+
+
+def _log(logger: object, **fields: object) -> None:
+    if logger is None:
+        return
     try:
-        for i in range(num_frames):
-            cur_pil = Image.fromarray(raw[i])
-            encoder.stdin.write(np.asarray(cur_pil, dtype=np.uint8).tobytes())
-            if i + 1 < num_frames:
-                nxt_pil = Image.fromarray(raw[i + 1])
-                mid = _invoke_rife(processor, cur_pil, nxt_pil)
-                mid_array = np.asarray(mid, dtype=np.uint8)
-                if mid_array.shape != (height, width, 3):
-                    return False
-                encoder.stdin.write(mid_array.tobytes())
-        encoder.stdin.close()
-        encoder.wait()
-    finally:
-        if encoder.stdin and not encoder.stdin.closed:
-            try:
-                encoder.stdin.close()
-            except OSError:
-                pass
+        logger.info("ltxv097.rife_autostage", **fields)  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001
+        pass
 
-    return dst.is_file()
+
+def _download(url: str, dest: Path) -> bool:
+    import urllib.request
+
+    tmp = dest.parent / (dest.name + ".part")
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with urllib.request.urlopen(url, timeout=120) as resp:  # noqa: S310
+            tmp.write_bytes(resp.read())
+        tmp.replace(dest)
+        return True
+    except Exception:  # noqa: BLE001
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        return False
+
+
+def _autostage_binary(logger: object = None) -> Path | None:
+    root = _stage_root()
+    existing = _find_binary(root)
+    if existing is not None:
+        return existing
+    if not _coerce_bool(os.environ.get(_RIFE_AUTOSTAGE_ENV), True):
+        return None
+    url = _platform_rife_url()
+    if url is None:
+        return None
+    zip_path = root / f"rife-ncnn-vulkan-{_RIFE_TAG}.zip"
+    if not _download(url, zip_path):
+        _log(logger, ok=False, stage="download", url=url, root=str(root))
+        return None
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(root)
+    except Exception:  # noqa: BLE001
+        _log(logger, ok=False, stage="extract", url=url, root=str(root))
+        return None
+    finally:
+        try:
+            zip_path.unlink()
+        except OSError:
+            pass
+    found = _find_binary(root)
+    if found is not None:
+        try:
+            found.chmod(0o755)
+        except OSError:
+            pass
+    _log(logger, ok=found is not None, stage="ready", url=url, root=str(root))
+    return found
+
+
+def _resolve_rife_binary(
+    logger: object = None,
+) -> tuple[Path, Path] | None:
+    explicit = os.environ.get(_RIFE_BIN_ENV, "").strip()
+    if explicit:
+        p = Path(explicit)
+        if not p.is_file():
+            return None
+        model_dir = _find_model_dir(p)
+        return (p, model_dir) if model_dir is not None else None
+    binary = _autostage_binary(logger)
+    if binary is None:
+        return None
+    model_dir = _find_model_dir(binary)
+    if model_dir is None:
+        return None
+    return binary, model_dir
+
+
+def _interpolate_via_rife_binary(
+    src: Path,
+    dst: Path,
+    base_fps: int,
+    target_fps: int,
+    logger: object = None,
+) -> bool:
+    resolved = _resolve_rife_binary(logger)
+    if resolved is None:
+        return False
+    bin_path, model_dir = resolved
+    try:
+        import ffmpeg  # type: ignore
+
+        probe = ffmpeg.probe(str(src))
+        has_video = any(
+            s.get("codec_type") == "video" for s in probe.get("streams", [])
+        )
+        if not has_video:
+            return False
+        with tempfile.TemporaryDirectory() as td:
+            indir = Path(td) / "in"
+            outdir = Path(td) / "out"
+            indir.mkdir()
+            outdir.mkdir()
+            (
+                ffmpeg.input(str(src))
+                .output(str(indir / "%08d.png"), loglevel="error")
+                .overwrite_output()
+                .run()
+            )
+            n_in = len(list(indir.glob("*.png")))
+            if n_in < 2:
+                return False
+            n_out = max(2, round(n_in * target_fps / base_fps))
+            proc = subprocess.run(  # noqa: S603
+                [
+                    str(bin_path),
+                    "-i",
+                    str(indir),
+                    "-o",
+                    str(outdir),
+                    "-m",
+                    str(model_dir),
+                    "-n",
+                    str(n_out),
+                    "-f",
+                    "%08d.png",
+                ],
+                capture_output=True,
+                timeout=1800,
+            )
+            if proc.returncode != 0:
+                return False
+            if len(list(outdir.glob("*.png"))) < 2:
+                return False
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            (
+                ffmpeg.input(str(outdir / "%08d.png"), framerate=target_fps)
+                .output(
+                    str(dst),
+                    vcodec="libx264",
+                    pix_fmt="yuv420p",
+                    movflags="+faststart",
+                    loglevel="error",
+                )
+                .overwrite_output()
+                .run()
+            )
+        return dst.is_file()
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _interpolate_via_ffmpeg(src: Path, dst: Path, target_fps: int) -> bool:
