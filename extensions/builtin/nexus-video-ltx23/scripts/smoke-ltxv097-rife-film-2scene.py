@@ -104,6 +104,7 @@ def main() -> int:
         import torch
         from ltx_video_worker import pipeline_ltxv097 as mod  # type: ignore
         from ltx_video_worker import seam as seam_mod  # type: ignore
+        from ltx_video_worker import fps_interp as fi  # type: ignore
         from ltx_video_worker.ffmpeg_io import stitch_segments
         from ltx_video_worker.fps_interp import try_interpolate
         from ltx_video_worker.seam import apply_seam, seam_params
@@ -121,14 +122,6 @@ def main() -> int:
         print(f"FAIL: ffmpeg-python unavailable: {e}")
         return 2
 
-    rife_wheel = False
-    try:
-        import rife_ncnn_vulkan_python  # type: ignore  # noqa: F401
-
-        rife_wheel = True
-    except Exception:  # noqa: BLE001
-        pass
-
     seam = seam_params({}, seam_method)
     target = (1280, 720) if upscale else None
     frames_per_scene = max(seg_frames, seconds * fps)
@@ -137,7 +130,7 @@ def main() -> int:
         f"scenes={n_scenes} sec/scene={seconds} fps={fps}->{out_fps} "
         f"native={W}x{H} seg={seg_frames} "
         f"upscale={'720p' if upscale else 'native'} "
-        f"seam={seam.get('method')} rife_wheel={rife_wheel}"
+        f"seam={seam.get('method')}"
     )
 
     t0 = time.perf_counter()
@@ -212,9 +205,11 @@ def main() -> int:
     stitched = outdir / "stitched.mp4"
     interpolated = outdir / "interpolated.mp4"
     stitch_segments(seg_paths, stitched)
-    interp_ok = try_interpolate(stitched, interpolated, fps, out_fps)
+    interp_ok = try_interpolate(stitched, interpolated, fps, out_fps, log)
     final = interpolated if interp_ok else stitched
     final_fps = _probe_fps(final)
+    rife_bin = fi._resolve_rife_binary(log)
+    rife_ready = rife_bin is not None
 
     film_slot = seam_mod._MODEL_CACHE.get("film") or {}
     film_loaded = film_slot.get("model") is not None
@@ -228,7 +223,8 @@ def main() -> int:
     print(f"  seam method requested={seam_method} FILM_loaded={film_loaded}")
     print(
         f"  interp ok={interp_ok} via="
-        f"{'rife-ncnn' if rife_wheel and interp_ok else ('ffmpeg' if interp_ok else 'none')} "
+        f"{'rife-ncnn' if rife_ready and interp_ok else ('ffmpeg' if interp_ok else 'none')} "
+        f"rife_bin={rife_bin[0] if rife_ready else None} "
         f"final_fps={final_fps:.2f} target={out_fps}"
     )
     print(f"  final: {final}")

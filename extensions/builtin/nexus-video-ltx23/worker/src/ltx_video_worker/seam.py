@@ -255,9 +255,12 @@ _MODEL_SPECS: dict[str, tuple[str, tuple[str, ...]]] = {
 _MODEL_CACHE: dict[str, dict[str, Any]] = {}
 _MODEL_LOCK = threading.Lock()
 
+# The original jkawamoto GitHub release was removed (404); the same
+# author now hosts the identical TorchScript checkpoint on Hugging Face.
+# Same forward contract: model(img0, img1, timestep) -> mid.
 _FILM_DEFAULT_URL = (
-    "https://github.com/jkawamoto/frame-interpolation-pytorch/"
-    "releases/download/v1.0.0/film_net_fp32.pt"
+    "https://huggingface.co/jkawamoto/frame-interpolation-pytorch/"
+    "resolve/main/film_net_fp32.pt"
 )
 _FILM_AUTOSTAGE_ENV = "NEXUS_VIDEO_LTX23_FILM_AUTOSTAGE"
 _FILM_URL_ENV = "NEXUS_VIDEO_LTX23_FILM_MODEL_URL"
@@ -269,7 +272,7 @@ def _download(url: str, dest: Any) -> bool:
     tmp = dest.parent / (dest.name + ".part")
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
-        with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310
+        with urllib.request.urlopen(url, timeout=120) as resp:  # noqa: S310
             tmp.write_bytes(resp.read())
         tmp.replace(dest)
         return True
