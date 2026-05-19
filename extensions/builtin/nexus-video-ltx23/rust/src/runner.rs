@@ -1570,6 +1570,7 @@ fn short_profile(full: &str) -> &str {
 /// testable. The worker observes only concrete values — no `auto`
 /// device, no `None`-as-JSON-null where the worker expects a number,
 /// no `Auto`-variant offload mode.
+#[allow(clippy::too_many_lines)]
 fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> Value {
     const DEFAULT_GUIDANCE_SCALE: f32 = 4.0;
     const DEFAULT_NUM_INFERENCE_STEPS: u32 = 8;
@@ -1664,6 +1665,12 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
     // Opt-in two-pass spatial upscale. `None` → JSON null → worker
     // keeps its single-pass native render default.
     let upscale = advanced.upscale.map_or(Value::Null, Value::from);
+    // Upscale strategy. `None` → JSON null → worker defaults to the
+    // proven two_pass; `decoupled` skips the transformer refine.
+    let upscale_mode = advanced
+        .upscale_mode
+        .as_deref()
+        .map_or(Value::Null, Value::from);
     // Remaining worker-honoured knobs. All null-when-unset so the
     // worker's _sampling_params / seam_params single-source-of-truth
     // defaults stand unless the operator overrides them.
@@ -1693,6 +1700,7 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
         "max_gpu_vram_gib": max_gpu_vram_gib,
         "interpolation": interpolation,
         "upscale": upscale,
+        "upscale_mode": upscale_mode,
         "decode_noise_scale": decode_noise_scale,
         "condition_strength": condition_strength,
         "condition_tail_frames": condition_tail_frames,
@@ -2314,6 +2322,7 @@ mod tests {
             seam_blend_frames: Some(4),
             seam_color_match: Some(false),
             upscale: Some(true),
+            upscale_mode: Some("decoupled".into()),
             interpolation: Some(crate::schemas::InterpolationMethod::Film),
             ..AdvancedSettings::default()
         };
@@ -2325,6 +2334,7 @@ mod tests {
         assert_eq!(b["seam_blend_frames"].as_u64(), Some(4));
         assert_eq!(b["seam_color_match"].as_bool(), Some(false));
         assert_eq!(b["upscale"].as_bool(), Some(true));
+        assert_eq!(b["upscale_mode"].as_str(), Some("decoupled"));
         assert_eq!(b["interpolation"].as_str(), Some("film"));
         // Unset → null so the worker keeps its own SoT default.
         let d = build_advanced_block(&AdvancedSettings::default(), "nexus.video.ltx23.fake");
@@ -2335,6 +2345,7 @@ mod tests {
             "seam_overlap_frames",
             "seam_blend_frames",
             "seam_color_match",
+            "upscale_mode",
         ] {
             assert!(d[k].is_null(), "{k} must be null when unset");
         }

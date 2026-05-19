@@ -452,6 +452,13 @@ async def _render_loop(
     upscale = _coerce_flag(advanced.get("upscale")) or _coerce_flag(
         os.environ.get("NEXUS_VIDEO_LTX23_UPSCALE")
     )
+    upscale_mode = str(
+        advanced.get("upscale_mode")
+        or os.environ.get("NEXUS_VIDEO_LTX23_UPSCALE_MODE", "").strip()
+        or "two_pass"
+    ).strip().lower()
+    if upscale_mode not in ("two_pass", "decoupled"):
+        upscale_mode = "two_pass"
     # The official 0.9.7 two-pass renders native then 2x-upsamples;
     # 720p is the proven target (render 768x512 → 1536x1024 → 1280x720).
     target_size = (1280, 720) if upscale else None
@@ -461,7 +468,11 @@ async def _render_loop(
     # the safety control for the now-fully-exposed knob surface.
     try:
         worker.logger.info(
-            "ltxv097.resolved_params", upscale=upscale, **samp, **seam
+            "ltxv097.resolved_params",
+            upscale=upscale,
+            upscale_mode=upscale_mode,
+            **samp,
+            **seam,
         )
     except Exception:  # noqa: BLE001 — telemetry must never abort a render
         pass
@@ -568,6 +579,7 @@ async def _render_loop(
                     samp,
                     emit_step,
                     worker.logger,
+                    upscale_mode,
                 )
             )
         except RuntimeError as e:
@@ -1209,6 +1221,99 @@ def _generate_segment_2pass(
     return _resize_frames(fl, target_size[0], target_size[1])
 
 
+def _generate_segment_decoupled(
+    pipe: Any,
+    upsampler: Any,
+    image: Any,
+    prompt: str,
+    negative_prompt: str,
+    width: int,
+    height: int,
+    num_frames: int,
+    seed: int,
+    samp: dict[str, Any],
+    step_heartbeat: Callable[[int], None] | None,
+    target_size: tuple[int, int],
+) -> Any:
+    """Latent-domain 720p: conditioned native render → spatial latent
+    upsample → VAE decode of the upsampled latents WITHOUT the 13B
+    transformer refine. The transformer forward at 1536x1024 is the
+    sole stage-3 driver that overshoots a 16 GB card (RCA 2026-05-19,
+    resv 16.92 > 16 GiB); skipping it removes the spill. The denorm is
+    NOT reimplemented — `upsampler(output_type="pil")` runs the pinned
+    LTXLatentUpsamplePipeline's own decode branch, so the latent
+    normalisation contract stays exactly diffusers'. Raises RuntimeError
+    on an unsupported pinned signature so the caller falls back to the
+    proven single pass. Softer than the refined two-pass by design."""
+    import inspect
+
+    torch = _LAZY_TORCH
+    sig = inspect.signature(pipe.__call__).parameters
+    if "output_type" not in sig:
+        raise RuntimeError(
+            "stage-1 pipe lacks 'output_type' — decoupled upscale "
+            "unavailable; single-pass fallback"
+        )
+    gen = (
+        torch.Generator(device="cuda").manual_seed(seed)
+        if torch is not None
+        else None
+    )
+    k1: dict[str, Any] = {
+        "prompt": prompt,
+        "negative_prompt": negative_prompt,
+        "width": width,
+        "height": height,
+        "num_frames": num_frames,
+        "frame_rate": 24,
+        "generator": gen,
+        "guidance_scale": samp["guidance_scale"],
+        "num_inference_steps": samp["num_inference_steps"],
+        "decode_timestep": samp["decode_timestep"],
+        "decode_noise_scale": samp["decode_noise_scale"],
+        "image_cond_noise_scale": samp["image_cond_noise_scale"],
+        "output_type": "latent",
+    }
+    k1.update(_ltx_conditioning(image, samp, sig))
+    if step_heartbeat is not None and "callback_on_step_end" in sig:
+        def _hb(_p: Any, i: int, _t: Any, cb: dict[str, Any]) -> dict[str, Any]:
+            try:
+                step_heartbeat(i)
+            except Exception:  # noqa: BLE001 — never abort a render
+                pass
+            return cb
+
+        k1["callback_on_step_end"] = _hb
+    k1 = {k: v for k, v in k1.items() if k in sig}
+    r1 = pipe(**k1)
+    latents = getattr(r1, "frames", None)
+    if latents is None and isinstance(r1, dict):
+        latents = r1.get("frames")
+    if latents is None:
+        raise RuntimeError("decoupled stage1 returned no latent")
+
+    up_out = upsampler(
+        latents=latents,
+        decode_timestep=samp["decode_timestep"],
+        decode_noise_scale=samp["decode_noise_scale"],
+        generator=(
+            torch.Generator(device="cuda").manual_seed(seed)
+            if torch is not None
+            else None
+        ),
+        output_type="pil",
+    )
+    frames = getattr(up_out, "frames", None)
+    if frames is None:
+        frames = up_out[0] if isinstance(up_out, tuple) else up_out
+    fl = (
+        frames[0]
+        if isinstance(frames, list) and len(frames) == 1
+        else frames
+    )
+    return _resize_frames(fl, target_size[0], target_size[1])
+
+
 def _generate_segment_dispatch(
     pipe: Any,
     cache: dict[str, Any],
@@ -1224,14 +1329,23 @@ def _generate_segment_dispatch(
     samp: dict[str, Any],
     step_heartbeat: Callable[[int], None] | None,
     logger: Any,
+    upscale_mode: str = "two_pass",
 ) -> Any:
-    """Single-pass by default; the two-pass 720p upscale when opted in,
-    with an automatic fall-through to the proven single pass if the
-    upscaler is unavailable or the pinned API can't do it (the native
+    """Single-pass by default; on opt-in upscale either the refined
+    two-pass (`two_pass`, the proven default) or the latent-domain
+    decode (`decoupled`, no transformer refine — fits 16 GB at full
+    frame count). Either upscale path falls through to the proven
+    single pass if the upscaler/pinned API can't do it (the native
     render must never be blocked by an optional quality upgrade)."""
     if upscale and target_size is not None:
         try:
             upsampler = _ensure_upsampler(pipe, cache, logger)
+            if upscale_mode == "decoupled":
+                return _generate_segment_decoupled(
+                    pipe, upsampler, image, prompt, negative_prompt,
+                    width, height, num_frames, seed, samp,
+                    step_heartbeat, target_size,
+                )
             return _generate_segment_2pass(
                 pipe, upsampler, image, prompt, negative_prompt,
                 width, height, num_frames, seed, samp,
