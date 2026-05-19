@@ -21,10 +21,14 @@ _ESRGAN_URL_ENV = "NEXUS_VIDEO_LTX23_ESRGAN_URL"
 _ESRGAN_MODEL_ENV = "NEXUS_VIDEO_LTX23_ESRGAN_MODEL"
 _ESRGAN_TILE_ENV = "NEXUS_VIDEO_LTX23_ESRGAN_TILE"
 
-_ESRGAN_TAG = "v0.2.0"
+# The xinntao/Real-ESRGAN-ncnn-vulkan release zips are binary-ONLY
+# (no models). The main xinntao/Real-ESRGAN repo's v0.2.5.0 NCNN
+# portable zips (~43 MB) DO bundle the models/ dir — that is the one
+# that actually works as a self-contained staged binary.
+_ESRGAN_TAG = "20220424"
 _ESRGAN_BASE = (
-    "https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan/releases/download/"
-    f"{_ESRGAN_TAG}/realesrgan-ncnn-vulkan-{_ESRGAN_TAG}"
+    "https://github.com/xinntao/Real-ESRGAN/releases/download/"
+    f"v0.2.5.0/realesrgan-ncnn-vulkan-{_ESRGAN_TAG}"
 )
 _ESRGAN_ASSET = {
     "win": f"{_ESRGAN_BASE}-windows.zip",
@@ -179,7 +183,9 @@ def try_upscale(
     resolved = _resolve_binary(logger)
     if resolved is None:
         return False
-    bin_path, models_dir = resolved
+    # models_dir presence is validated in _resolve_binary; the binary
+    # itself loads ./models relative to cwd (set below), not via -m.
+    bin_path, _models_dir = resolved
     model = os.environ.get(_ESRGAN_MODEL_ENV, "").strip() or _DEFAULT_MODEL
     tile = os.environ.get(_ESRGAN_TILE_ENV, "").strip() or _DEFAULT_TILE
     try:
@@ -210,6 +216,10 @@ def try_upscale(
             )
             if not any(indir.glob("*.png")):
                 return False
+            # The binary resolves models RELATIVE to its working dir
+            # (`./models/<name>.param`). Passing an absolute `-m` made
+            # it concat exedir + abs-path and fail. Run with
+            # cwd=exedir and no `-m` so it uses the bundled ./models.
             proc = subprocess.run(  # noqa: S603
                 [
                     str(bin_path),
@@ -221,13 +231,12 @@ def try_upscale(
                     model,
                     "-s",
                     str(_MODEL_SCALE),
-                    "-m",
-                    str(models_dir),
                     "-t",
                     tile,
                     "-f",
                     "png",
                 ],
+                cwd=str(bin_path.parent),
                 capture_output=True,
                 timeout=3600,
             )
