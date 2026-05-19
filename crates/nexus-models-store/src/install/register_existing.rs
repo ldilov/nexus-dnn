@@ -49,7 +49,11 @@ async fn sha256_file(path: &Path) -> ModelStoreResult<(String, u64)> {
         hasher.update(&buf[..n]);
         total += n as u64;
     }
-    let hex = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
+    let hex = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
     Ok((hex, total))
 }
 
