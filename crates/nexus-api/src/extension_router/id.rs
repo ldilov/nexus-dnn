@@ -90,7 +90,7 @@ mod tests {
     #[test]
     fn rejects_uppercase() {
         let err = ExtensionId::parse("BadUpper").unwrap_err();
-        matches!(err, IdError::InvalidFormat(_));
+        assert!(matches!(err, IdError::InvalidFormat(_)));
     }
 
     #[test]
@@ -103,15 +103,10 @@ mod tests {
             ExtensionId::parse("has spaces").unwrap_err(),
             IdError::InvalidFormat(_)
         ));
-        assert!(
-            matches!(
-                ExtensionId::parse("has..dotdot").unwrap_err(),
-                IdError::InvalidFormat(_)
-            )
-            .then_some(())
-            .is_some()
-                || true
-        );
+        assert!(matches!(
+            ExtensionId::parse("has..dotdot").unwrap_err(),
+            IdError::InvalidFormat(_)
+        ));
     }
 
     #[test]
