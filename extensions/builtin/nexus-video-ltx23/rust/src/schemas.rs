@@ -223,6 +223,23 @@ impl CreateRenderRequest {
                 ));
             }
         }
+        if let Some(v) = self.advanced.model_id.as_deref() {
+            let has_gguf_ext = std::path::Path::new(v)
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("gguf"));
+            let safe = !v.is_empty()
+                && v.len() <= 128
+                && has_gguf_ext
+                && !v.contains("..")
+                && v.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+            if !safe {
+                return Err(format!(
+                    "advanced.model_id must be a bare *.gguf filename \
+                     (alphanumeric/._- only, no path) (got {v:?})"
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -333,6 +350,9 @@ pub struct AdvancedSettings {
     /// `"two_pass"` | `"decoupled"` accepted.
     #[serde(default)]
     pub upscale_mode: Option<String>,
+    /// GGUF quant basename to load (e.g. `ltxv-13b-0.9.7-dev-Q4_K_M.gguf`). Bare filename only — validated.
+    #[serde(default)]
+    pub model_id: Option<String>,
     /// VAE-decode noise scale (LTX `decode_noise_scale`). Worker
     /// default 0.025. Higher → grainier decode. Range 0.0..=0.5.
     #[serde(default)]
@@ -892,6 +912,26 @@ mod tests {
             .unwrap_err()
             .contains("upscale_mode"));
         req.advanced.upscale_mode = None;
+
+        req.advanced.model_id = Some("ltxv-13b-0.9.7-dev-Q4_K_M.gguf".into());
+        assert!(req.validate_field_bounds().is_ok());
+        for bad in [
+            "../etc/passwd.gguf",
+            "/abs/path.gguf",
+            "sub/dir.gguf",
+            "model.safetensors",
+            "..gguf",
+            "a b.gguf",
+        ] {
+            req.advanced.model_id = Some(bad.into());
+            assert!(
+                req.validate_field_bounds()
+                    .unwrap_err()
+                    .contains("model_id"),
+                "expected {bad:?} rejected"
+            );
+        }
+        req.advanced.model_id = None;
 
         req.advanced.decode_noise_scale = Some(0.6);
         assert!(req
