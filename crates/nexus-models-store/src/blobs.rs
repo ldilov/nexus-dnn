@@ -60,6 +60,45 @@ pub async fn materialize_blob(
         let _ = fs::remove_file(source_path).await;
     }
 
+    link_cas_into_place(&cas, target_path).await
+}
+
+/// Register an already-on-disk file the host does **not** own (e.g. a model
+/// an extension downloaded itself) into the CAS without consuming it.
+///
+/// Unlike [`materialize_blob`], `source_path` is left intact: when the
+/// content is new it is hardlinked into the CAS (zero-copy on the same
+/// volume) and copied only on a cross-device fallback. The original tree is
+/// never moved or removed, so the owning extension's own
+/// already-installed checks keep working after registration.
+pub async fn link_existing_into_cas(
+    content_sha256: &str,
+    source_path: &Path,
+    target_path: &Path,
+    blobs_root: &Path,
+) -> ModelStoreResult<()> {
+    let cas = cas_path(blobs_root, content_sha256);
+    if let Some(parent) = cas.parent() {
+        fs::create_dir_all(parent).await?;
+    }
+
+    if fs::metadata(&cas).await.is_err() {
+        match fs::hard_link(source_path, &cas).await {
+            Ok(()) => {}
+            Err(_) => {
+                // Cross-device or filesystem without hardlinks — copy, but
+                // keep the source (host does not own these bytes).
+                fs::copy(source_path, &cas).await?;
+            }
+        }
+    }
+
+    link_cas_into_place(&cas, target_path).await
+}
+
+/// Place a CAS blob at `target_path` via hardlink, falling back to a symlink
+/// (warn-logged) when hardlinking is unavailable.
+async fn link_cas_into_place(cas: &Path, target_path: &Path) -> ModelStoreResult<()> {
     if let Some(parent) = target_path.parent() {
         fs::create_dir_all(parent).await?;
     }
@@ -67,7 +106,7 @@ pub async fn materialize_blob(
         fs::remove_file(target_path).await?;
     }
 
-    match fs::hard_link(&cas, target_path).await {
+    match fs::hard_link(cas, target_path).await {
         Ok(()) => Ok(()),
         Err(e) => {
             tracing::warn!(
@@ -78,12 +117,12 @@ pub async fn materialize_blob(
             );
             #[cfg(unix)]
             {
-                tokio::fs::symlink(&cas, target_path).await?;
+                tokio::fs::symlink(cas, target_path).await?;
             }
             #[cfg(windows)]
             {
                 tokio::task::spawn_blocking({
-                    let cas = cas.clone();
+                    let cas = cas.to_path_buf();
                     let target = target_path.to_path_buf();
                     move || std::os::windows::fs::symlink_file(&cas, &target)
                 })
