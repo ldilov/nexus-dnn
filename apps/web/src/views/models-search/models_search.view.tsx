@@ -90,12 +90,17 @@ export function ModelsSearchView() {
   const navigate = useNavigate();
   const location = useLocation();
   const [query, setQuery] = useState(loaderData.params.q);
+  const [repoFilter, setRepoFilter] = useState(loaderData.params.repo);
   const [activeJobs, setActiveJobs] = useState<Record<string, DownloadJob>>({});
   const [jobVariantMap, setJobVariantMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setQuery(loaderData.params.q);
   }, [loaderData.params.q]);
+
+  useEffect(() => {
+    setRepoFilter(loaderData.params.repo);
+  }, [loaderData.params.repo]);
 
   const mutateParams = useCallback(
     (patch: Partial<ParsedSearchParams>) => {
@@ -117,6 +122,15 @@ export function ModelsSearchView() {
     }, 280);
     return () => window.clearTimeout(handle);
   }, [query, loaderData.params.q, mutateParams]);
+
+  useEffect(() => {
+    const trimmed = repoFilter.trim();
+    if (trimmed === loaderData.params.repo) return undefined;
+    const handle = window.setTimeout(() => {
+      mutateParams({ repo: trimmed, page: 1 });
+    }, 280);
+    return () => window.clearTimeout(handle);
+  }, [repoFilter, loaderData.params.repo, mutateParams]);
 
   const activeJobKey = useMemo(() => {
     const ids = Object.values(activeJobs)
@@ -396,6 +410,7 @@ export function ModelsSearchView() {
   const handlers = useMemo(
     () => ({
       onQueryChange: (q: string) => setQuery(q),
+      onRepoChange: (r: string) => setRepoFilter(r),
       onToggleFormat: (fmt: Format) =>
         mutateParams({
           formats: toggleInList(loaderData.params.formats, fmt),
@@ -434,6 +449,7 @@ export function ModelsSearchView() {
       onClearInstalled: () => mutateParams({ installed: "any", page: 1 }),
       onClearAll: () => {
         setQuery("");
+        setRepoFilter("");
         navigate({ pathname: location.pathname, search: "" }, { replace: false });
       },
       onSortChange: (sort: ParsedSearchParams["sort"]) =>
@@ -467,6 +483,7 @@ export function ModelsSearchView() {
     <ModelsSearchUI
       params={loaderData.params}
       query={query}
+      repo={repoFilter}
       backends={loaderData.backends}
       page={loaderData.page}
       loading={navigation.state === "loading"}

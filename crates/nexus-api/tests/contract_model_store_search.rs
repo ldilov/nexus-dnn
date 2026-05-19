@@ -298,3 +298,29 @@ async fn t_s9_installed_filter_joins_against_install_map() {
     assert_eq!(not_families.len(), 1);
     assert_eq!(not_families[0]["family_id"], "huggingface:ts9org/beta");
 }
+
+/// T-S-REPO — generic `?repo=` narrows results by repository-id
+/// substring (case-insensitive). Host-generic: any caller, any repo.
+#[tokio::test]
+async fn t_s_repo_filter_narrows_by_repository_substring() {
+    let harness = harness_with(StubHf::with_results(vec![
+        gguf_result("meta/llama-8b-gguf", &[("Q4_K_M", 4_000_000_000)]),
+        gguf_result(
+            "wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF",
+            &[("Q5_K_S", 9_000_000_000)],
+        ),
+    ]))
+    .await;
+    let (status, body) = get_json(
+        harness.state,
+        "/api/v1/model-store/search?q=gguf&repo=WSBAGNSV1/ltxv",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let families = body["data"]["families"].as_array().unwrap();
+    assert_eq!(families.len(), 1, "repo filter must narrow to the match");
+    assert_eq!(
+        families[0]["family_id"],
+        "huggingface:wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF"
+    );
+}

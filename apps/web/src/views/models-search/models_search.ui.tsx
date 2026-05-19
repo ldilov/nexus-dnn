@@ -25,6 +25,7 @@ import * as s from "./models_search.css";
 export interface ModelsSearchUIProps {
   params: ParsedSearchParams;
   query: string;
+  repo: string;
   backends: BackendCapability[];
   page: SearchPage;
   loading: boolean;
@@ -40,6 +41,7 @@ export interface ModelsSearchUIProps {
   jobIdByArtifact: Record<string, string | undefined>;
   jobByArtifact: Record<string, DownloadJob | undefined>;
   onQueryChange: (q: string) => void;
+  onRepoChange: (repo: string) => void;
   onToggleFormat: (fmt: Format) => void;
   onToggleBackend: (id: string) => void;
   onToggleModality: (m: Modality) => void;
@@ -69,6 +71,7 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
   const {
     params,
     query,
+    repo,
     backends,
     page,
     loading,
@@ -84,6 +87,7 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
     jobIdByArtifact,
     jobByArtifact,
     onQueryChange,
+    onRepoChange,
     onToggleFormat,
     onToggleBackend,
     onToggleModality,
@@ -123,9 +127,11 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
 
       <FilterBar
         query={query}
+        repo={repo}
         params={params}
         backends={backends}
         onQueryChange={onQueryChange}
+        onRepoChange={onRepoChange}
         onToggleFormat={onToggleFormat}
         onToggleBackend={onToggleBackend}
         onToggleModality={onToggleModality}
