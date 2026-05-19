@@ -46,6 +46,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .ffmpeg_io import stitch_segments, trim_to_duration
+from .fps_interp import try_interpolate
 from .io_safety import ensure_dict, sanitize_run_id, sanitize_workdir
 from .planning_validate import validate_plan
 from .rpc import ErrorCodes, Methods, Notifications
@@ -730,9 +731,26 @@ async def _render_loop(
     final_dir = rs.workdir / "final"
     final_dir.mkdir(parents=True, exist_ok=True)
     stitched_path = final_dir / "stitched.mp4"
+    interpolated_path = final_dir / "interpolated.mp4"
     final_path = final_dir / "final.mp4"
     stitch_segments(segment_paths, stitched_path)
-    trim_to_duration(stitched_path, final_path, duration_s=duration)
+
+    output_fps = _resolve_output_fps(advanced, base_fps)
+    pre_trim = stitched_path
+    if output_fps > base_fps and try_interpolate(
+        stitched_path, interpolated_path, base_fps, output_fps
+    ):
+        pre_trim = interpolated_path
+        await worker.emit_notification(
+            Notifications.PROGRESS,
+            {
+                "run_id": rs.run_id,
+                "overall_percent": 100,
+                "message": f"FPS interpolation: {base_fps} → {output_fps} fps",
+            },
+        )
+
+    trim_to_duration(pre_trim, final_path, duration_s=duration)
 
     cache["pipe"] = None
     cache["upsampler"] = None
@@ -914,6 +932,22 @@ def _resolve_upscale_mode(advanced: dict[str, Any]) -> str:
         or "two_pass"
     ).strip().lower()
     return mode if mode in ("two_pass", "decoupled") else "two_pass"
+
+
+_OUTPUT_FPS_MAX = 240
+
+
+def _resolve_output_fps(advanced: dict[str, Any], base_fps: int) -> int:
+    raw = advanced.get("output_fps")
+    if raw is None:
+        raw = os.environ.get("NEXUS_VIDEO_LTX23_OUTPUT_FPS", "").strip()
+    try:
+        fps = int(raw)
+    except (TypeError, ValueError):
+        return base_fps
+    if fps <= base_fps:
+        return base_fps
+    return min(fps, _OUTPUT_FPS_MAX)
 
 
 _VAE_TILING_AGGRESSIVE = {
