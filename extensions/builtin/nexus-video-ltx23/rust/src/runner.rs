@@ -1675,6 +1675,10 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
         .model_id
         .as_deref()
         .map_or(Value::Null, Value::from);
+    let vae_tiling = advanced
+        .vae_tiling
+        .as_deref()
+        .map_or(Value::Null, Value::from);
     // Remaining worker-honoured knobs. All null-when-unset so the
     // worker's _sampling_params / seam_params single-source-of-truth
     // defaults stand unless the operator overrides them.
@@ -1706,6 +1710,7 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
         "upscale": upscale,
         "upscale_mode": upscale_mode,
         "model_id": model_id,
+        "vae_tiling": vae_tiling,
         "decode_noise_scale": decode_noise_scale,
         "condition_strength": condition_strength,
         "condition_tail_frames": condition_tail_frames,
@@ -2329,6 +2334,7 @@ mod tests {
             upscale: Some(true),
             upscale_mode: Some("decoupled".into()),
             model_id: Some("ltxv-13b-0.9.7-dev-Q4_K_M.gguf".into()),
+            vae_tiling: Some("aggressive".into()),
             interpolation: Some(crate::schemas::InterpolationMethod::Film),
             ..AdvancedSettings::default()
         };
@@ -2345,6 +2351,7 @@ mod tests {
             b["model_id"].as_str(),
             Some("ltxv-13b-0.9.7-dev-Q4_K_M.gguf")
         );
+        assert_eq!(b["vae_tiling"].as_str(), Some("aggressive"));
         assert_eq!(b["interpolation"].as_str(), Some("film"));
         // Unset → null so the worker keeps its own SoT default.
         let d = build_advanced_block(&AdvancedSettings::default(), "nexus.video.ltx23.fake");
@@ -2357,6 +2364,7 @@ mod tests {
             "seam_color_match",
             "upscale_mode",
             "model_id",
+            "vae_tiling",
         ] {
             assert!(d[k].is_null(), "{k} must be null when unset");
         }

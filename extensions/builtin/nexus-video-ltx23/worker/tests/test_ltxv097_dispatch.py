@@ -183,6 +183,31 @@ def test_dispatch_skips_tiling_reassert_when_enabled(monkeypatch: Any) -> None:
     assert pipe.vae.calls == []
 
 
+# --- _resolve_vae_tiling -----------------------------------------------------
+
+
+def test_resolve_vae_tiling_default_is_empty_kwargs() -> None:
+    assert m._resolve_vae_tiling({}) == ("default", {})
+    assert m._resolve_vae_tiling({"vae_tiling": "default"}) == ("default", {})
+    assert m._resolve_vae_tiling({"vae_tiling": "garbage"}) == ("default", {})
+
+
+def test_resolve_vae_tiling_aggressive_carries_small_tiles() -> None:
+    mode, kw = m._resolve_vae_tiling({"vae_tiling": "AGGRESSIVE"})
+    assert mode == "aggressive"
+    assert kw["tile_sample_min_height"] == 256
+    assert kw["tile_sample_stride_width"] == 192
+    # caller-mutation must not poison the module constant
+    kw["tile_sample_min_height"] = 1
+    assert m._resolve_vae_tiling({"vae_tiling": "aggressive"})[1][
+        "tile_sample_min_height"
+    ] == 256
+
+
+def test_resolve_vae_tiling_off() -> None:
+    assert m._resolve_vae_tiling({"vae_tiling": "off"}) == ("off", {})
+
+
 # --- _safe_gguf_basename + _resolve_ltxv097_paths (model_id, security) ------
 
 

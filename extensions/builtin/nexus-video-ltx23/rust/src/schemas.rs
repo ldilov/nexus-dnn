@@ -240,6 +240,14 @@ impl CreateRenderRequest {
                 ));
             }
         }
+        if let Some(v) = self.advanced.vae_tiling.as_deref() {
+            if !matches!(v, "default" | "aggressive" | "off") {
+                return Err(format!(
+                    "advanced.vae_tiling must be \"default\", \
+                     \"aggressive\" or \"off\" (got {v:?})"
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -353,6 +361,9 @@ pub struct AdvancedSettings {
     /// GGUF quant basename to load (e.g. `ltxv-13b-0.9.7-dev-Q4_K_M.gguf`). Bare filename only — validated.
     #[serde(default)]
     pub model_id: Option<String>,
+    /// VAE tiling preset: `default` | `aggressive` (smaller tiles, lower VAE peak) | `off` (>16 GB only).
+    #[serde(default)]
+    pub vae_tiling: Option<String>,
     /// VAE-decode noise scale (LTX `decode_noise_scale`). Worker
     /// default 0.025. Higher → grainier decode. Range 0.0..=0.5.
     #[serde(default)]
@@ -932,6 +943,17 @@ mod tests {
             );
         }
         req.advanced.model_id = None;
+
+        for ok in ["default", "aggressive", "off"] {
+            req.advanced.vae_tiling = Some(ok.into());
+            assert!(req.validate_field_bounds().is_ok());
+        }
+        req.advanced.vae_tiling = Some("ultra".into());
+        assert!(req
+            .validate_field_bounds()
+            .unwrap_err()
+            .contains("vae_tiling"));
+        req.advanced.vae_tiling = None;
 
         req.advanced.decode_noise_scale = Some(0.6);
         assert!(req

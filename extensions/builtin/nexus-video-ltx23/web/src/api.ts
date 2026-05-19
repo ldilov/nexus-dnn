@@ -93,6 +93,7 @@ export interface AdvancedSettings {
   upscale?: boolean;
   upscale_mode?: "two_pass" | "decoupled";
   model_id?: string;
+  vae_tiling?: "default" | "aggressive" | "off";
   /** VAE-decode noise scale. 0.0–0.5. Default 0.025. */
   decode_noise_scale?: number;
   /** Scene-continuation condition strength. 0.0–1.0. Default 0.7. */
