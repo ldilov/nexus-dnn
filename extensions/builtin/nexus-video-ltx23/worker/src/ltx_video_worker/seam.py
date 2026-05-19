@@ -255,6 +255,52 @@ _MODEL_SPECS: dict[str, tuple[str, tuple[str, ...]]] = {
 _MODEL_CACHE: dict[str, dict[str, Any]] = {}
 _MODEL_LOCK = threading.Lock()
 
+_FILM_DEFAULT_URL = (
+    "https://github.com/jkawamoto/frame-interpolation-pytorch/"
+    "releases/download/v1.0.0/film_net_fp32.pt"
+)
+_FILM_AUTOSTAGE_ENV = "NEXUS_VIDEO_LTX23_FILM_AUTOSTAGE"
+_FILM_URL_ENV = "NEXUS_VIDEO_LTX23_FILM_MODEL_URL"
+
+
+def _download(url: str, dest: Any) -> bool:
+    import urllib.request
+
+    tmp = dest.parent / (dest.name + ".part")
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310
+            tmp.write_bytes(resp.read())
+        tmp.replace(dest)
+        return True
+    except Exception:  # noqa: BLE001
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        return False
+
+
+def _maybe_autostage_film(kind: str, path: Any, logger: Any) -> None:
+    if kind != "film" or path.is_file():
+        return
+    import os
+
+    if not _coerce_bool(os.environ.get(_FILM_AUTOSTAGE_ENV), False):
+        return
+    url = os.environ.get(_FILM_URL_ENV, "").strip() or _FILM_DEFAULT_URL
+    ok = _download(url, path)
+    if logger is not None:
+        try:
+            logger.info(
+                "ltxv097.seam_film_autostage",
+                ok=ok,
+                url=url,
+                path=str(path),
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
 
 def _model_bridge(kind: str, a: Any, b: Any, n: int, logger: Any) -> list[Any]:
     """Motion-aware bridge via the ``kind`` model; ``[]`` on any
@@ -334,6 +380,7 @@ def _load_model_locked(kind: str, logger: Any) -> Any:
     else:
         host_data = os.environ.get("NEXUS_HOST_DATA_DIR", "")
         path = Path(host_data).joinpath("models", *rel)
+    _maybe_autostage_film(kind, path, logger)
     if not path.is_file():
         if logger is not None:
             try:
