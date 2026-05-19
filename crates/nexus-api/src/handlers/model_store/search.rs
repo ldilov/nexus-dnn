@@ -28,6 +28,7 @@ static FAMILY_CACHE: LazyLock<Mutex<HashMap<String, CachedFamilies>>> =
 fn fingerprint(params: &SearchQuery) -> String {
     let mut parts: Vec<String> = vec![
         format!("q={}", params.q.as_deref().unwrap_or("")),
+        format!("repo={}", params.repo.as_deref().unwrap_or("")),
         format!("sort={}", params.sort.as_deref().unwrap_or("")),
         format!(
             "show_unsupported={}",
@@ -97,6 +98,7 @@ pub(crate) fn clear_cache_for_tests() {
 #[derive(Debug, Default)]
 pub struct SearchQuery {
     pub q: Option<String>,
+    pub repo: Option<String>,
     pub format: Vec<String>,
     pub backend: Vec<String>,
     pub modality: Vec<String>,
@@ -119,6 +121,7 @@ fn parse_query_string(raw: Option<&str>) -> SearchQuery {
         let value = percent_decode(value);
         match key {
             "q" => out.q = Some(value),
+            "repo" => out.repo = Some(value),
             "format" => out.format.push(value),
             "backend" => out.backend.push(value),
             "modality" => out.modality.push(value),
@@ -335,6 +338,16 @@ pub async fn search(State(state): State<AppState>, RawQuery(raw): RawQuery) -> R
                 .as_deref()
                 .is_some_and(|l| allowed.contains(&l))
         });
+    }
+
+    if let Some(needle) = params
+        .repo
+        .as_deref()
+        .map(str::trim)
+        .filter(|r| !r.is_empty())
+        .map(str::to_lowercase)
+    {
+        families.retain(|f| f.repository.repo_id.to_lowercase().contains(&needle));
     }
 
     let compat_filter: Vec<CompatibilityStatus> = params
