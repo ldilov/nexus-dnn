@@ -355,3 +355,82 @@ async fn absent_family_query_param_returns_all_installs() {
         2
     );
 }
+
+async fn seed_install_src(db: &SqliteDatabase, install_id: &str, source_url: &str) {
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO host_model_installs (install_id, family, version, quantization, variant, \
+         install_root, files_manifest, sha256_root, source_revision, state, source_kind, \
+         source_url, license_spdx, license_url, private_model, owner_extension_id, created_at, \
+         updated_at) VALUES ($1,'llama','v','gguf','default','/t','[]',$2,$2,'ready',\
+         'huggingface',$3,'apache-2.0','https://x',0,NULL,$4,$4)",
+    )
+    .bind(install_id)
+    .bind(format!("sha-{install_id}"))
+    .bind(source_url)
+    .bind(&now)
+    .execute(db.pool())
+    .await
+    .expect("seed install src");
+}
+
+#[tokio::test]
+async fn repo_query_param_filters_by_source_url_substring() {
+    let state = build_state().await;
+    seed_install_src(
+        &state.db,
+        "llm-1",
+        "https://huggingface.co/TheBloke/Llama-3-8B-GGUF",
+    )
+    .await;
+    seed_install_src(
+        &state.db,
+        "ltxv-1",
+        "https://huggingface.co/wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF",
+    )
+    .await;
+
+    let router = nexus_api::create_router(state);
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/host-models?repo=wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = collect_body(response.into_body()).await;
+    let installs = body["data"]["installs"].as_array().expect("installs array");
+    assert_eq!(installs.len(), 1, "only the matching repo must be returned");
+    assert_eq!(installs[0]["install_id"], "ltxv-1");
+}
+
+#[tokio::test]
+async fn family_and_repo_filters_combine_as_and() {
+    let state = build_state().await;
+    seed_install_src(
+        &state.db,
+        "ltxv-1",
+        "https://huggingface.co/wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF",
+    )
+    .await;
+
+    let router = nexus_api::create_router(state);
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/host-models?family=llama&repo=does-not-match")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = collect_body(response.into_body()).await;
+    assert_eq!(
+        body["data"]["installs"].as_array().expect("installs").len(),
+        0,
+        "family matches but repo does not -> AND yields empty"
+    );
+}
