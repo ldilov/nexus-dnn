@@ -12,7 +12,9 @@ smoke-ltxv097-i2v-sharp — operator-gated real-GPU i2v sharpness probe
 
 Image-to-video from a seed reference image (AR cover-cropped, C1) on
 the LTX-Video 0.9.7 GGUF path: native gen at NEXUS_I2V_W x NEXUS_I2V_H
-(default 960x540, the operator-stated minimum), Q4_K_M, LOW base_fps
+(default 1024x576 — exact 16:9, /32, >= the 960x540 minimum; any
+override is snapped to a multiple of 32 as LTX requires), Q4_K_M, LOW
+base_fps
 (fps restored later by RIFE/FILM — a VRAM lever), aggressive VAE
 tiling, model offload, NO transformer-refine upscale (kills the spill
 driver). Then Real-ESRGAN ncnn 4x -> exact downscale to the target
@@ -28,7 +30,7 @@ RUN (worker venv; .pth resolves ltx_video_worker from the MAIN repo):
   <venv>/Scripts/python.exe scripts/smoke-ltxv097-i2v-sharp.py
 
 Env knobs:
-  NEXUS_I2V_W (960) NEXUS_I2V_H (540) NEXUS_I2V_FPS (16)
+  NEXUS_I2V_W (1024) NEXUS_I2V_H (576) NEXUS_I2V_FPS (16)
   NEXUS_I2V_OUTFPS (2x FPS) NEXUS_I2V_SCENES (3) NEXUS_I2V_SECONDS (2.7)
   NEXUS_I2V_TARGET_W (1920) NEXUS_I2V_TARGET_H (1080)
   NEXUS_I2V_QUANT (ltxv-13b-0.9.7-dev-Q4_K_M.gguf)
@@ -81,6 +83,12 @@ def _int(env: str, d: int) -> int:
         return d
 
 
+def _snap32(x: int) -> int:
+    # LTX requires gen width/height divisible by 32. Round to nearest,
+    # floor at 32, so every ladder rung is a valid model resolution.
+    return max(32, int(round(x / 32.0)) * 32)
+
+
 def _probe_fps(path: Path) -> float:
     import ffmpeg
 
@@ -95,8 +103,10 @@ def main() -> int:
     os.environ.setdefault("NEXUS_HOST_DATA_DIR", "C:/Users/lazar/.nexus")
     os.environ.setdefault("NEXUS_VIDEO_LTX23_FILM_AUTOSTAGE", "1")
 
-    W = _int("NEXUS_I2V_W", 960)
-    H = _int("NEXUS_I2V_H", 540)
+    # Default 1024x576: exact 16:9, both /32, >= the operator-stated
+    # 960x540 minimum. Any override is snapped to /32 (LTX requirement).
+    W = _snap32(_int("NEXUS_I2V_W", 1024))
+    H = _snap32(_int("NEXUS_I2V_H", 576))
     fps = _int("NEXUS_I2V_FPS", 16)
     out_fps = _int("NEXUS_I2V_OUTFPS", fps * 2)
     n_scenes = max(1, _int("NEXUS_I2V_SCENES", 3))
