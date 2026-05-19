@@ -20,21 +20,38 @@ pub struct LtxProviderResources {
     pub pool: SqlitePool,
     pub host_data_dir: Option<PathBuf>,
     pub extension_dir: PathBuf,
+    pub host_model_registrar: Option<
+        std::sync::Arc<
+            dyn nexus_backend_runtimes::generic::host_model_registrar::HostModelRegistrar,
+        >,
+    >,
 }
 
 impl LtxProviderResources {
     #[must_use]
-    pub const fn new(pool: SqlitePool) -> Self {
+    pub fn new(pool: SqlitePool) -> Self {
         Self {
             pool,
             host_data_dir: None,
             extension_dir: PathBuf::new(),
+            host_model_registrar: None,
         }
     }
 
     #[must_use]
     pub fn with_host_data_dir(mut self, dir: PathBuf) -> Self {
         self.host_data_dir = Some(dir);
+        self
+    }
+
+    #[must_use]
+    pub fn with_host_model_registrar(
+        mut self,
+        registrar: std::sync::Arc<
+            dyn nexus_backend_runtimes::generic::host_model_registrar::HostModelRegistrar,
+        >,
+    ) -> Self {
+        self.host_model_registrar = Some(registrar);
         self
     }
 
@@ -126,7 +143,11 @@ impl LtxRouterProvider {
             .host_data_dir
             .clone()
             .unwrap_or_else(std::env::temp_dir);
-        let profile_install = ProfileInstallService::new(factory, host_data_root);
+        let profile_install = ProfileInstallService::new(
+            factory,
+            host_data_root,
+            self.resources.host_model_registrar.clone(),
+        );
 
         let state = ApiState::new(
             repos,

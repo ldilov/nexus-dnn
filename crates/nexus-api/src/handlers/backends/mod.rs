@@ -11,8 +11,8 @@ mod uninstall;
 
 pub use catalog::{detail, list, variants};
 pub use host_models::{
-    create_model_lease, install_host_model, list_host_model_dependents, list_host_models,
-    register_existing_host_model, release_model_lease, resolve_host_models,
+    HostModelRegistrarService, create_model_lease, install_host_model, list_host_model_dependents,
+    list_host_models, register_existing_host_model, release_model_lease, resolve_host_models,
 };
 pub use host_runtimes::{list_host_runtimes, parameter_catalog};
 pub use lease::{create_lease, release_lease};
