@@ -1650,6 +1650,36 @@ function PipelineTuningPanel({
             conditioned renders on a 16 GB card.
           </span>
         </div>
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-vae-tiling">
+            VAE tiling
+          </label>
+          <select
+            id="ltx-vae-tiling"
+            className={s.input}
+            value={advanced.vae_tiling ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setAdvanced(
+                "vae_tiling",
+                v === ""
+                  ? undefined
+                  : (v as "default" | "aggressive" | "off"),
+              );
+            }}
+          >
+            <option value="">Default (mandatory 16 GB tiling)</option>
+            <option value="aggressive">
+              Aggressive — smaller tiles, lower VAE peak
+            </option>
+            <option value="off">Off — only safe on &gt;16 GB cards</option>
+          </select>
+          <span className={s.meta}>
+            VRAM↔seam tradeoff for the VAE encode/decode. Not the 720p
+            spill lever (that is the transformer — use Decoupled or
+            Q4_K_M). Off disables the mandatory 16 GB tiling.
+          </span>
+        </div>
       </div>
     </details>
   );
