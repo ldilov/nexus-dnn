@@ -105,7 +105,6 @@ pub fn router(state: ApiState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/runtime-profiles", get(list_profiles))
-        .route("/models", get(list_models))
         .route("/recipe/plan", post(create_plan))
         .route("/renders", post(create_render))
         .route("/renders/{run_id}", get(get_render))
@@ -263,58 +262,6 @@ async fn list_profiles(State(state): State<Arc<ApiState>>) -> Json<Vec<RuntimePr
         };
         out.push(summary);
     }
-    Json(out)
-}
-
-const LTXV097_GGUF_FAMILY_REL: &str = "models/wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF";
-
-#[derive(Serialize)]
-struct ModelOption {
-    basename: String,
-    label: String,
-    fits_16gb: Option<bool>,
-}
-
-fn quant_hint(basename: &str) -> (String, Option<bool>) {
-    let b = basename.to_ascii_uppercase();
-    if b.contains("Q4_K_M") {
-        ("Light fallback · fits 16 GB".into(), Some(true))
-    } else if b.contains("Q5_K_S") {
-        ("Default · balanced · fits 16 GB".into(), Some(true))
-    } else if b.contains("Q6_K") {
-        (
-            "High fidelity · unconditioned-only @16 GB".into(),
-            Some(false),
-        )
-    } else if b.contains("Q8_0") {
-        ("Max quality · needs >16 GB".into(), Some(false))
-    } else {
-        ("GGUF quant".into(), None)
-    }
-}
-
-async fn list_models() -> Json<Vec<ModelOption>> {
-    let mut out: Vec<ModelOption> = Vec::new();
-    if let Ok(host_data) = std::env::var("NEXUS_HOST_DATA_DIR") {
-        let dir = std::path::Path::new(&host_data).join(LTXV097_GGUF_FAMILY_REL);
-        if let Ok(entries) = std::fs::read_dir(&dir) {
-            for e in entries.flatten() {
-                let name = e.file_name().to_string_lossy().into_owned();
-                if std::path::Path::new(&name)
-                    .extension()
-                    .is_some_and(|x| x.eq_ignore_ascii_case("gguf"))
-                {
-                    let (label, fits_16gb) = quant_hint(&name);
-                    out.push(ModelOption {
-                        basename: name,
-                        label,
-                        fits_16gb,
-                    });
-                }
-            }
-        }
-    }
-    out.sort_by(|a, b| a.basename.cmp(&b.basename));
     Json(out)
 }
 
