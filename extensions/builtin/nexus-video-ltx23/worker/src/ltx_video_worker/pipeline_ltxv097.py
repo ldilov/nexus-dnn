@@ -246,23 +246,36 @@ def register_ltxv097_handlers(worker) -> None:
 # --------------------------------------------------------------------------
 
 
-def _resolve_ltxv097_paths() -> tuple[Path, str]:
-    """(transformer_gguf, base_repo_dir_or_id).
+def _safe_gguf_basename(model_id: str | None) -> str | None:
+    if not model_id:
+        return None
+    name = model_id.strip()
+    if (
+        not name
+        or len(name) > 128
+        or not name.endswith(".gguf")
+        or ".." in name
+        or "/" in name
+        or "\\" in name
+        or not all(c.isalnum() or c in "._-" for c in name)
+    ):
+        return None
+    return name
 
-    Resolution: explicit env override → the standard
-    ``<NEXUS_HOST_DATA_DIR>/models/<owner>/<name>/`` convention (matches
-    ``installer._dest_dir``). The base repo falls back to the bare HF id
-    so a first run can still pull the diffusers components if only the
-    GGUF was staged. The VAE is NOT a separate artifact — it comes from
-    the base 0.9.7-dev repo's own canonical `vae/`.
-    """
+
+def _resolve_ltxv097_paths(model_id: str | None = None) -> tuple[Path, str]:
+    """(transformer_gguf, base_repo_dir_or_id). Precedence:
+    sanitized model_id (under the family dir) → env → default."""
     host_data = os.environ.get("NEXUS_HOST_DATA_DIR", "")
 
     def _models_dir(repo: str) -> Path:
         return Path(host_data).joinpath("models", *repo.split("/"))
 
+    safe_id = _safe_gguf_basename(model_id)
     gguf_env = os.environ.get("NEXUS_VIDEO_LTX23_LTXV097_GGUF", "").strip()
-    if gguf_env:
+    if safe_id:
+        gguf = _models_dir(_GGUF_REPO) / safe_id
+    elif gguf_env:
         gguf = Path(gguf_env)
     else:
         gguf = _models_dir(_GGUF_REPO) / _DEFAULT_GGUF_BASENAME
@@ -329,7 +342,9 @@ def _apply_offload_ltxv097(pipe: Any, offload_mode: str, logger: Any) -> None:
         pipe.to("cuda")
 
 
-def _build_ltxv097_pipeline(offload_mode: str, logger: Any) -> Any:
+def _build_ltxv097_pipeline(
+    offload_mode: str, logger: Any, model_id: str | None = None
+) -> Any:
     """Load the 0.9.7 pipeline: GGUF transformer + the 0.9.7-dev base
     (T5 + tokenizer + scheduler + canonical `vae/`).
 
@@ -355,7 +370,7 @@ def _build_ltxv097_pipeline(offload_mode: str, logger: Any) -> Any:
             "build does not expose the LTX-Video GGUF recipe."
         ) from e
 
-    gguf_path, base_repo = _resolve_ltxv097_paths()
+    gguf_path, base_repo = _resolve_ltxv097_paths(model_id)
     if not gguf_path.is_file():
         raise RuntimeError(
             f"LTX-Video 0.9.7 GGUF transformer not found at {gguf_path}. "
@@ -413,14 +428,19 @@ def _build_ltxv097_pipeline(offload_mode: str, logger: Any) -> Any:
     return pipe
 
 
-def _ensure_pipeline(rs: Ltxv097RunState, cache: dict[str, Any], logger: Any) -> Any:
+def _ensure_pipeline(
+    rs: Ltxv097RunState,
+    cache: dict[str, Any],
+    logger: Any,
+    model_id: str | None = None,
+) -> Any:
     if cache.get("pipe") is not None:
         rs.pipe = cache["pipe"]
         return rs.pipe
     offload_mode = os.environ.get(
         "NEXUS_VIDEO_LTX23_OFFLOAD_MODE", "model"
     ).strip() or "model"
-    pipe = _build_ltxv097_pipeline(offload_mode, logger)
+    pipe = _build_ltxv097_pipeline(offload_mode, logger, model_id)
     cache["pipe"] = pipe
     rs.pipe = pipe
     return pipe
@@ -492,7 +512,10 @@ async def _render_loop(
     last_frame_image = _load_input_image(input_image_path, width, height)
 
     try:
-        await asyncio.to_thread(_ensure_pipeline, rs, cache, worker.logger)
+        await asyncio.to_thread(
+            _ensure_pipeline, rs, cache, worker.logger,
+            advanced.get("model_id"),
+        )
     except Exception as e:  # noqa: BLE001 — load failure → actionable error
         await _emit_error(
             worker, rs.run_id, ErrorCodes.RENDER_FAILED,
@@ -769,7 +792,10 @@ async def _retry_segment_loop(
         return
 
     try:
-        await asyncio.to_thread(_ensure_pipeline, rs, cache, worker.logger)
+        await asyncio.to_thread(
+            _ensure_pipeline, rs, cache, worker.logger,
+            advanced.get("model_id"),
+        )
     except Exception as e:  # noqa: BLE001
         await _emit_error(
             worker, rs.run_id, ErrorCodes.RENDER_FAILED,

@@ -183,6 +183,55 @@ def test_dispatch_skips_tiling_reassert_when_enabled(monkeypatch: Any) -> None:
     assert pipe.vae.calls == []
 
 
+# --- _safe_gguf_basename + _resolve_ltxv097_paths (model_id, security) ------
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("ltxv-13b-0.9.7-dev-Q4_K_M.gguf", "ltxv-13b-0.9.7-dev-Q4_K_M.gguf"),
+        ("  Q5_K_S.gguf  ", "Q5_K_S.gguf"),
+        (None, None),
+        ("", None),
+        ("../etc/passwd.gguf", None),
+        ("/abs/x.gguf", None),
+        ("sub/dir.gguf", None),
+        ("back\\slash.gguf", None),
+        ("model.safetensors", None),
+        ("a b.gguf", None),
+        ("x" * 130 + ".gguf", None),
+    ],
+)
+def test_safe_gguf_basename(raw: Any, expected: Any) -> None:
+    assert m._safe_gguf_basename(raw) == expected
+
+
+def test_resolve_paths_model_id_wins_over_env_and_default(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setenv("NEXUS_HOST_DATA_DIR", "/data")
+    monkeypatch.setenv("NEXUS_VIDEO_LTX23_LTXV097_GGUF", "/env/override.gguf")
+    gguf, _ = m._resolve_ltxv097_paths("ltxv-13b-0.9.7-dev-Q6_K.gguf")
+    assert gguf.name == "ltxv-13b-0.9.7-dev-Q6_K.gguf"
+    assert "wsbagnsv1" in str(gguf)  # resolved UNDER the family dir
+
+
+def test_resolve_paths_unsafe_model_id_falls_back_to_env(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setenv("NEXUS_HOST_DATA_DIR", "/data")
+    monkeypatch.setenv("NEXUS_VIDEO_LTX23_LTXV097_GGUF", "/env/override.gguf")
+    gguf, _ = m._resolve_ltxv097_paths("../escape.gguf")
+    assert str(gguf) == str(__import__("pathlib").Path("/env/override.gguf"))
+
+
+def test_resolve_paths_none_model_id_uses_default(monkeypatch: Any) -> None:
+    monkeypatch.setenv("NEXUS_HOST_DATA_DIR", "/data")
+    monkeypatch.delenv("NEXUS_VIDEO_LTX23_LTXV097_GGUF", raising=False)
+    gguf, _ = m._resolve_ltxv097_paths(None)
+    assert gguf.name == m._DEFAULT_GGUF_BASENAME
+
+
 # --- _silence_offload_defeat_warning ----------------------------------------
 
 
