@@ -311,6 +311,24 @@ def _import_ltx_pipeline_class() -> Any:
     )
 
 
+def _apply_offload_ltxv097(pipe: Any, offload_mode: str, logger: Any) -> None:
+    # sequential crashes on GGUF (GGUFParameter meta-device) — degrade to model.
+    if offload_mode == "none":
+        pipe.to("cuda")
+        return
+    if offload_mode == "sequential":
+        logger.info(
+            "ltxv097.offload_mode_unsupported",
+            requested="sequential",
+            applied="model",
+            reason="sequential cpu offload is GGUF-incompatible",
+        )
+    if hasattr(pipe, "enable_model_cpu_offload"):
+        pipe.enable_model_cpu_offload()
+    else:
+        pipe.to("cuda")
+
+
 def _build_ltxv097_pipeline(offload_mode: str, logger: Any) -> Any:
     """Load the 0.9.7 pipeline: GGUF transformer + the 0.9.7-dev base
     (T5 + tokenizer + scheduler + canonical `vae/`).
@@ -391,27 +409,7 @@ def _build_ltxv097_pipeline(offload_mode: str, logger: Any) -> Any:
             except Exception as e:  # noqa: BLE001 — best effort
                 logger.info("ltxv097.vae_mem_opt_skip", meth=meth, err=str(e))
 
-    # sequential offload crashes on GGUF (GGUFParameter meta-device) — degrade to model.
-    if offload_mode == "none":
-        pipe.to("cuda")
-    elif offload_mode == "sequential":
-        logger.info(
-            "ltxv097.offload_mode_unsupported",
-            requested="sequential",
-            applied="model",
-            reason="sequential cpu offload is GGUF-incompatible "
-            "(GGUFParameter meta-device KeyError)",
-        )
-        if hasattr(pipe, "enable_model_cpu_offload"):
-            pipe.enable_model_cpu_offload()
-        else:
-            pipe.to("cuda")
-    elif hasattr(pipe, "enable_model_cpu_offload"):
-        # Default ('model') + any unmapped mode: model offload keeps the
-        # GGUF transformer resident while T5/VAE swap as needed.
-        pipe.enable_model_cpu_offload()
-    else:
-        pipe.to("cuda")
+    _apply_offload_ltxv097(pipe, offload_mode, logger)
     return pipe
 
 
@@ -460,13 +458,7 @@ async def _render_loop(
     upscale = _coerce_flag(advanced.get("upscale")) or _coerce_flag(
         os.environ.get("NEXUS_VIDEO_LTX23_UPSCALE")
     )
-    upscale_mode = str(
-        advanced.get("upscale_mode")
-        or os.environ.get("NEXUS_VIDEO_LTX23_UPSCALE_MODE", "").strip()
-        or "two_pass"
-    ).strip().lower()
-    if upscale_mode not in ("two_pass", "decoupled"):
-        upscale_mode = "two_pass"
+    upscale_mode = _resolve_upscale_mode(advanced)
     # The official 0.9.7 two-pass renders native then 2x-upsamples;
     # 720p is the proven target (render 768x512 → 1536x1024 → 1280x720).
     target_size = (1280, 720) if upscale else None
@@ -875,6 +867,15 @@ async def _retry_segment_loop(
 # Generation + IO helpers (self-contained — keeps this pipeline separate
 # from the 85 KB LTX-2.3 module; logic mirrors its proven equivalents)
 # --------------------------------------------------------------------------
+
+
+def _resolve_upscale_mode(advanced: dict[str, Any]) -> str:
+    mode = str(
+        advanced.get("upscale_mode")
+        or os.environ.get("NEXUS_VIDEO_LTX23_UPSCALE_MODE", "").strip()
+        or "two_pass"
+    ).strip().lower()
+    return mode if mode in ("two_pass", "decoupled") else "two_pass"
 
 
 def _sampling_params(advanced: dict[str, Any]) -> dict[str, Any]:
