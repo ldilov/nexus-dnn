@@ -14,6 +14,8 @@ use nexus_worker::DefaultWorkerManager;
 use semver::Version;
 use tower::ServiceExt;
 
+mod common;
+
 async fn build_state() -> AppState {
     let db = Arc::new(
         SqliteDatabase::new("sqlite::memory:")
@@ -405,6 +407,143 @@ async fn repo_query_param_filters_by_source_url_substring() {
     let installs = body["data"]["installs"].as_array().expect("installs array");
     assert_eq!(installs.len(), 1, "only the matching repo must be returned");
     assert_eq!(installs[0]["install_id"], "ltxv-1");
+}
+
+async fn write_existing(dir: &std::path::Path, rel: &str, bytes: &[u8]) {
+    let p = dir.join(rel);
+    tokio::fs::create_dir_all(p.parent().unwrap())
+        .await
+        .unwrap();
+    tokio::fs::write(&p, bytes).await.unwrap();
+}
+
+fn register_existing_payload(repo: &str, root: &std::path::Path) -> serde_json::Value {
+    serde_json::json!({
+        "source": "huggingface",
+        "repo_id": repo,
+        "files": ["model.Q5_K_M.gguf", "sub/vae.safetensors"],
+        "existing_root": root.to_string_lossy(),
+    })
+}
+
+#[tokio::test]
+async fn register_existing_adopts_on_disk_tree_and_dedups_with_foundry() {
+    let hf = Arc::new(common::StubHf::default());
+    let mut h = common::harness_with(hf).await;
+
+    let work = tempfile::tempdir().expect("workdir");
+    let existing = work.path().join("ext-owned/org/repo");
+    write_existing(&existing, "model.Q5_K_M.gguf", b"transformer").await;
+    write_existing(&existing, "sub/vae.safetensors", b"vae").await;
+    let installs = work.path().join("installs");
+    let blobs = work.path().join("blobs");
+    h.state.host_install_paths = Some(nexus_api::HostInstallPaths {
+        installs_root: installs,
+        blobs_root: blobs,
+    });
+
+    let db_handle = h.state.db.clone();
+    let router = nexus_api::create_router(h.state);
+
+    // First registration -> 201 Created, fresh install.
+    let resp = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/host-models/register-existing")
+                .header("Content-Type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&register_existing_payload("org/repo", &existing)).unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = collect_body(resp.into_body()).await;
+    let install_id = body["data"]["install_id"]
+        .as_str()
+        .expect("install_id")
+        .to_string();
+    assert!(install_id.starts_with("hmi_"));
+    assert_eq!(body["data"]["already_installed"], false);
+    assert_eq!(body["data"]["routed_backend"], "llama.cpp");
+    assert!(body["data"]["sha256_root"].is_string());
+
+    // Source tree the host does not own MUST survive untouched.
+    assert!(existing.join("model.Q5_K_M.gguf").is_file());
+    assert!(existing.join("sub/vae.safetensors").is_file());
+
+    // Surfaces in the generic ?repo= listing as a ready local_import row.
+    let listed = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/host-models?repo=org/repo")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let listed_body = collect_body(listed.into_body()).await;
+    let installs_arr = listed_body["data"]["installs"]
+        .as_array()
+        .expect("installs");
+    assert_eq!(installs_arr.len(), 1);
+    assert_eq!(installs_arr[0]["install_id"], install_id);
+    assert_eq!(installs_arr[0]["source_kind"], "local_import");
+    assert_eq!(installs_arr[0]["state"], "ready");
+
+    // Re-register the same repo+tree -> 200 OK, SAME install_id (the
+    // convergence guarantee: an extension's own download dedups against a
+    // later Foundry install of the same repo).
+    let again = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/host-models/register-existing")
+                .header("Content-Type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&register_existing_payload("org/repo", &existing)).unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(again.status(), StatusCode::OK);
+    let again_body = collect_body(again.into_body()).await;
+    assert_eq!(again_body["data"]["already_installed"], true);
+    assert_eq!(again_body["data"]["install_id"], install_id);
+
+    let n = count_rows(&db_handle).await;
+    assert_eq!(n, 1, "idempotent — exactly one row after re-register");
+}
+
+#[tokio::test]
+async fn register_existing_rejects_path_traversal_before_touching_store() {
+    let hf = Arc::new(common::StubHf::default());
+    let h = common::harness_with(hf).await;
+    let router = nexus_api::create_router(h.state);
+
+    let payload = serde_json::json!({
+        "source": "huggingface",
+        "repo_id": "org/repo",
+        "files": ["../escape.gguf"],
+        "existing_root": "/tmp/whatever",
+    });
+    let resp = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/host-models/register-existing")
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_vec(&payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
