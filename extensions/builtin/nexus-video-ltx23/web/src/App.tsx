@@ -1586,6 +1586,38 @@ function PipelineTuningPanel({
             upsample → tiled decode → 720p. Verified peak ≈13.5 GiB.
           </span>
         </div>
+        {advanced.upscale === true && (
+          <div className={s.fieldRow}>
+            <label className={s.label} htmlFor="ltx-upscale-mode">
+              Upscale mode
+            </label>
+            <select
+              id="ltx-upscale-mode"
+              className={s.input}
+              value={advanced.upscale_mode ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                setAdvanced(
+                  "upscale_mode",
+                  v === "" ? undefined : (v as "two_pass" | "decoupled"),
+                );
+              }}
+            >
+              <option value="">Default (two-pass — refined)</option>
+              <option value="two_pass">
+                Two-pass — refined (crispest; needs Q4_K_M to fit 16 GB)
+              </option>
+              <option value="decoupled">
+                Decoupled — no refine (fits Q5_K_S, faster, softer)
+              </option>
+            </select>
+            <span className={s.meta}>
+              Decoupled skips the transformer refine and decodes the
+              upsampled latents directly — the only mode that fits
+              full-frame 720p on a 16 GB card at the Q5_K_S default.
+            </span>
+          </div>
+        )}
       </div>
     </details>
   );
