@@ -303,6 +303,20 @@ impl NexusApp {
                 Some(download_job_store_for_dep.clone()),
             ));
 
+        let host_model_registrar: Option<
+            Arc<dyn nexus_backend_runtimes::generic::host_model_registrar::HostModelRegistrar>,
+        > =
+            host_install_paths.clone().map(|paths| {
+                Arc::new(nexus_api::handlers::backends::HostModelRegistrarService::new(
+                db.pool().clone(),
+                paths,
+                huggingface_for_dep.clone(),
+            ))
+                as Arc<
+                    dyn nexus_backend_runtimes::generic::host_model_registrar::HostModelRegistrar,
+                >
+            });
+
         let extension_router_registry = build_extension_router_registry(
             pool_for_extensions,
             app_for_health.config.port,
@@ -311,6 +325,7 @@ impl NexusApp {
             app_for_health.config.resolved_data_dir(),
             model_store_client.clone(),
             artifact_store.clone(),
+            host_model_registrar,
         );
 
         // Resolve the embedded-Python asset once: env-var override wins, then
@@ -474,6 +489,9 @@ fn build_extension_router_registry(
     host_data_dir: std::path::PathBuf,
     model_store_client: Arc<dyn nexus_extension_deps::ModelStoreClient>,
     artifact_store: Arc<nexus_artifact::FilesystemArtifactStore>,
+    host_model_registrar: Option<
+        Arc<dyn nexus_backend_runtimes::generic::host_model_registrar::HostModelRegistrar>,
+    >,
 ) -> nexus_api::extension_router::SharedRegistry {
     use nexus_api::extension_router::{DefaultRegistry, ExtensionId, ExtensionRouterRegistry};
     use nexus_extension::{ExtensionContext, ExtensionRouterProvider, HostFacts};
@@ -513,12 +531,14 @@ fn build_extension_router_registry(
             res
         })),
         Arc::new(nexus_video_ltx23_extension::LtxRouterProvider::new({
-            let mut res =
-                nexus_video_ltx23_extension::LtxProviderResources::new(pool.clone());
+            let mut res = nexus_video_ltx23_extension::LtxProviderResources::new(pool.clone());
             res = res.with_host_data_dir(host_data_dir.clone());
             let id = nexus_video_ltx23_extension::EXTENSION_ID;
             if let Some(ext) = extension_registry.get_extension(id) {
                 res = res.with_extension_dir(ext.directory.clone());
+            }
+            if let Some(registrar) = host_model_registrar.clone() {
+                res = res.with_host_model_registrar(registrar);
             }
             res
         })),
