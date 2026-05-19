@@ -91,6 +91,7 @@ export interface AdvancedSettings {
   interpolation?: InterpolationMethod;
   /** Opt-in two-pass 720p spatial upscale. Omitted → single-pass. */
   upscale?: boolean;
+  upscale_mode?: "two_pass" | "decoupled";
   /** VAE-decode noise scale. 0.0–0.5. Default 0.025. */
   decode_noise_scale?: number;
   /** Scene-continuation condition strength. 0.0–1.0. Default 0.7. */

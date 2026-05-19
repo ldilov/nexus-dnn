@@ -37,6 +37,7 @@ class Notifications:
     # allocator — the smoke gate consumes this to prove `offload_mode=
     # "none"` actually parked the weights on the GPU.
     WEIGHTS_RESIDENT = "runtime.weights_resident"
+    UPSCALE_FALLBACK = "ltx.video.upscale.fallback"
 
 
 class ErrorCodes:
