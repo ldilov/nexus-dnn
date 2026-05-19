@@ -343,7 +343,10 @@ def _apply_offload_ltxv097(pipe: Any, offload_mode: str, logger: Any) -> None:
 
 
 def _build_ltxv097_pipeline(
-    offload_mode: str, logger: Any, model_id: str | None = None
+    offload_mode: str,
+    logger: Any,
+    model_id: str | None = None,
+    vae_tiling: tuple[str, dict[str, int]] | None = None,
 ) -> Any:
     """Load the 0.9.7 pipeline: GGUF transformer + the 0.9.7-dev base
     (T5 + tokenizer + scheduler + canonical `vae/`).
@@ -410,19 +413,27 @@ def _build_ltxv097_pipeline(
     # shared-mem crawl (~80 s/step vs 4 s/step), 2026-05-18. Tiling
     # processes the latent in spatial tiles so the VAE peak is bounded
     # regardless of resolution/conditioning; negligible quality cost.
-    for obj, meth in (
-        (pipe, "enable_vae_tiling"),
-        (pipe, "enable_vae_slicing"),
-        (getattr(pipe, "vae", None), "enable_tiling"),
-        (getattr(pipe, "vae", None), "enable_slicing"),
-    ):
+    tiling_mode, tiling_kwargs = vae_tiling or ("default", {})
+    vae = getattr(pipe, "vae", None)
+    plan: list[tuple[Any, str, dict[str, int]]] = [
+        (pipe, "enable_vae_slicing", {}),
+        (vae, "enable_slicing", {}),
+    ]
+    if tiling_mode != "off":
+        plan += [
+            (pipe, "enable_vae_tiling", {}),
+            (vae, "enable_tiling", tiling_kwargs),
+        ]
+    for obj, meth, kw in plan:
         fn = getattr(obj, meth, None) if obj is not None else None
         if callable(fn):
             try:
-                fn()
-                logger.info("ltxv097.vae_mem_opt", applied=meth)
+                fn(**kw)
+                logger.info("ltxv097.vae_mem_opt", applied=meth, mode=tiling_mode)
             except Exception as e:  # noqa: BLE001 — best effort
                 logger.info("ltxv097.vae_mem_opt_skip", meth=meth, err=str(e))
+    if tiling_mode == "off":
+        logger.info("ltxv097.vae_tiling_off")
 
     _apply_offload_ltxv097(pipe, offload_mode, logger)
     return pipe
@@ -433,6 +444,7 @@ def _ensure_pipeline(
     cache: dict[str, Any],
     logger: Any,
     model_id: str | None = None,
+    vae_tiling: tuple[str, dict[str, int]] | None = None,
 ) -> Any:
     if cache.get("pipe") is not None:
         rs.pipe = cache["pipe"]
@@ -440,7 +452,7 @@ def _ensure_pipeline(
     offload_mode = os.environ.get(
         "NEXUS_VIDEO_LTX23_OFFLOAD_MODE", "model"
     ).strip() or "model"
-    pipe = _build_ltxv097_pipeline(offload_mode, logger, model_id)
+    pipe = _build_ltxv097_pipeline(offload_mode, logger, model_id, vae_tiling)
     cache["pipe"] = pipe
     rs.pipe = pipe
     return pipe
@@ -514,7 +526,7 @@ async def _render_loop(
     try:
         await asyncio.to_thread(
             _ensure_pipeline, rs, cache, worker.logger,
-            advanced.get("model_id"),
+            advanced.get("model_id"), _resolve_vae_tiling(advanced),
         )
     except Exception as e:  # noqa: BLE001 — load failure → actionable error
         await _emit_error(
@@ -794,7 +806,7 @@ async def _retry_segment_loop(
     try:
         await asyncio.to_thread(
             _ensure_pipeline, rs, cache, worker.logger,
-            advanced.get("model_id"),
+            advanced.get("model_id"), _resolve_vae_tiling(advanced),
         )
     except Exception as e:  # noqa: BLE001
         await _emit_error(
@@ -902,6 +914,27 @@ def _resolve_upscale_mode(advanced: dict[str, Any]) -> str:
         or "two_pass"
     ).strip().lower()
     return mode if mode in ("two_pass", "decoupled") else "two_pass"
+
+
+_VAE_TILING_AGGRESSIVE = {
+    "tile_sample_min_height": 256,
+    "tile_sample_min_width": 256,
+    "tile_sample_stride_height": 192,
+    "tile_sample_stride_width": 192,
+}
+
+
+def _resolve_vae_tiling(advanced: dict[str, Any]) -> tuple[str, dict[str, int]]:
+    mode = str(
+        advanced.get("vae_tiling")
+        or os.environ.get("NEXUS_VIDEO_LTX23_VAE_TILING", "").strip()
+        or "default"
+    ).strip().lower()
+    if mode == "aggressive":
+        return "aggressive", dict(_VAE_TILING_AGGRESSIVE)
+    if mode == "off":
+        return "off", {}
+    return "default", {}
 
 
 def _sampling_params(advanced: dict[str, Any]) -> dict[str, Any]:
