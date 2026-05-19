@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{Json, response::Response};
@@ -43,7 +43,15 @@ pub struct HostModelsResponse {
     pub installs: Vec<HostModelView>,
 }
 
-pub async fn list_host_models(State(state): State<AppState>) -> Response {
+#[derive(Debug, Default, Deserialize)]
+pub struct HostModelsQuery {
+    pub family: Option<String>,
+}
+
+pub async fn list_host_models(
+    State(state): State<AppState>,
+    Query(query): Query<HostModelsQuery>,
+) -> Response {
     let rows = match list_all_visible(state.db.pool(), None).await {
         Ok(r) => r,
         Err(e) => {
@@ -53,8 +61,14 @@ pub async fn list_host_models(State(state): State<AppState>) -> Response {
                 .into_response();
         }
     };
+    let family_filter = query
+        .family
+        .as_deref()
+        .map(str::trim)
+        .filter(|f| !f.is_empty());
     let installs: Vec<HostModelView> = rows
         .into_iter()
+        .filter(|r| family_filter.is_none_or(|f| r.family == f))
         .map(|r| HostModelView {
             install_id: r.install_id,
             family: r.family,
