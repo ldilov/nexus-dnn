@@ -1671,6 +1671,10 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
         .upscale_mode
         .as_deref()
         .map_or(Value::Null, Value::from);
+    let model_id = advanced
+        .model_id
+        .as_deref()
+        .map_or(Value::Null, Value::from);
     // Remaining worker-honoured knobs. All null-when-unset so the
     // worker's _sampling_params / seam_params single-source-of-truth
     // defaults stand unless the operator overrides them.
@@ -1701,6 +1705,7 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
         "interpolation": interpolation,
         "upscale": upscale,
         "upscale_mode": upscale_mode,
+        "model_id": model_id,
         "decode_noise_scale": decode_noise_scale,
         "condition_strength": condition_strength,
         "condition_tail_frames": condition_tail_frames,
@@ -2323,6 +2328,7 @@ mod tests {
             seam_color_match: Some(false),
             upscale: Some(true),
             upscale_mode: Some("decoupled".into()),
+            model_id: Some("ltxv-13b-0.9.7-dev-Q4_K_M.gguf".into()),
             interpolation: Some(crate::schemas::InterpolationMethod::Film),
             ..AdvancedSettings::default()
         };
@@ -2335,6 +2341,10 @@ mod tests {
         assert_eq!(b["seam_color_match"].as_bool(), Some(false));
         assert_eq!(b["upscale"].as_bool(), Some(true));
         assert_eq!(b["upscale_mode"].as_str(), Some("decoupled"));
+        assert_eq!(
+            b["model_id"].as_str(),
+            Some("ltxv-13b-0.9.7-dev-Q4_K_M.gguf")
+        );
         assert_eq!(b["interpolation"].as_str(), Some("film"));
         // Unset → null so the worker keeps its own SoT default.
         let d = build_advanced_block(&AdvancedSettings::default(), "nexus.video.ltx23.fake");
@@ -2346,6 +2356,7 @@ mod tests {
             "seam_blend_frames",
             "seam_color_match",
             "upscale_mode",
+            "model_id",
         ] {
             assert!(d[k].is_null(), "{k} must be null when unset");
         }
