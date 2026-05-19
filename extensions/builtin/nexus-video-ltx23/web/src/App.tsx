@@ -27,6 +27,7 @@ import {
   hostApi,
   ltxApi,
   profileInstallApi,
+  FOUNDRY_HREF,
 } from "./api";
 import { InputImagePicker } from "./InputImagePicker";
 import * as s from "./styles.css";
@@ -1628,27 +1629,37 @@ function PipelineTuningPanel({
           <label className={s.label} htmlFor="ltx-model-id">
             GGUF model
           </label>
-          <select
-            id="ltx-model-id"
-            className={s.input}
-            value={advanced.model_id ?? ""}
-            onChange={(e) => {
-              const v = e.target.value;
-              setAdvanced("model_id", v === "" ? undefined : v);
-            }}
-          >
-            <option value="">Default (profile quant)</option>
-            {(models ?? []).map((mo) => (
-              <option key={mo.basename} value={mo.basename}>
-                {mo.basename} — {mo.label}
-              </option>
-            ))}
-          </select>
-          <span className={s.meta}>
-            Per-render GGUF quant. Q5_K_S = balanced default; Q4_K_M =
-            lighter (use for two-pass 720p); Q6_K/Q8_0 do not fit
-            conditioned renders on a 16 GB card.
-          </span>
+          {models && models.length === 0 ? (
+            <span className={s.meta}>
+              No LTX-Video GGUF model installed. Install one from the{" "}
+              <a href={FOUNDRY_HREF}>Model Foundry</a> (search{" "}
+              <code>wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF</code>), then reload.
+            </span>
+          ) : (
+            <>
+              <select
+                id="ltx-model-id"
+                className={s.input}
+                value={advanced.model_id ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setAdvanced("model_id", v === "" ? undefined : v);
+                }}
+              >
+                <option value="">Default (profile quant)</option>
+                {(models ?? []).map((mo) => (
+                  <option key={mo.basename} value={mo.basename}>
+                    {mo.basename} — {mo.label}
+                  </option>
+                ))}
+              </select>
+              <span className={s.meta}>
+                Per-render GGUF quant. Q5_K_S = balanced default; Q4_K_M =
+                lighter (use for two-pass 720p); Q6_K/Q8_0 do not fit
+                conditioned renders on a 16 GB card.
+              </span>
+            </>
+          )}
         </div>
         <div className={s.fieldRow}>
           <label className={s.label} htmlFor="ltx-vae-tiling">

@@ -211,6 +211,38 @@ export interface ModelOption {
   fits_16gb: boolean | null;
 }
 
+export const LTXV_GGUF_REPO = "wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF";
+export const FOUNDRY_HREF = "/models";
+
+const LTXV_QUANTS: ReadonlyArray<ModelOption> = [
+  {
+    basename: "ltxv-13b-0.9.7-dev-Q5_K_S.gguf",
+    label: "Default · balanced · fits 16 GB",
+    fits_16gb: true,
+  },
+  {
+    basename: "ltxv-13b-0.9.7-dev-Q4_K_M.gguf",
+    label: "Light fallback · fits 16 GB",
+    fits_16gb: true,
+  },
+  {
+    basename: "ltxv-13b-0.9.7-dev-Q6_K.gguf",
+    label: "High fidelity · unconditioned-only @16 GB",
+    fits_16gb: false,
+  },
+  {
+    basename: "ltxv-13b-0.9.7-dev-Q8_0.gguf",
+    label: "Max quality · needs >16 GB",
+    fits_16gb: false,
+  },
+];
+
+interface HostModelInstall {
+  install_id: string;
+  family: string;
+  source_url: string | null;
+}
+
 export interface RenderRunSegment {
   index: number;
   status: string;
@@ -271,7 +303,12 @@ async function jsonRequest<T>(
 export const ltxApi = {
   health: () => jsonRequest<{ status: string; version: string }>("/health"),
   listProfiles: () => jsonRequest<RuntimeProfileSummary[]>("/runtime-profiles"),
-  listModels: () => jsonRequest<ModelOption[]>("/models"),
+  listModels: async (): Promise<ModelOption[]> => {
+    const { installs } = await hostJson<{ installs: HostModelInstall[] }>(
+      `/host-models?repo=${encodeURIComponent(LTXV_GGUF_REPO)}`,
+    );
+    return installs.length > 0 ? [...LTXV_QUANTS] : [];
+  },
   plan: (req: CreateRenderRequest) =>
     jsonRequest<RenderPlan>("/recipe/plan", {
       method: "POST",
