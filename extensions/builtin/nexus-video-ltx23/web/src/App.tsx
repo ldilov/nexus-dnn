@@ -22,6 +22,7 @@ import {
   type SceneSpec,
   type SchedulerChoice,
   type ModelQuant,
+  type ModelOption,
   artifactUrl,
   hostApi,
   ltxApi,
@@ -1193,6 +1194,11 @@ function PipelineTuningPanel({
     value: AdvancedSettings[K],
   ) => void;
 }): ReactElement {
+  const { data: models } = useSWR<ModelOption[]>(
+    "ltx:models",
+    () => ltxApi.listModels(),
+    { revalidateOnFocus: false },
+  );
   const placement: ComponentPlacement = advanced.component_placement ?? {};
   const placementOverridden =
     (placement.transformer && placement.transformer !== "auto") ||
@@ -1618,6 +1624,32 @@ function PipelineTuningPanel({
             </span>
           </div>
         )}
+        <div className={s.fieldRow}>
+          <label className={s.label} htmlFor="ltx-model-id">
+            GGUF model
+          </label>
+          <select
+            id="ltx-model-id"
+            className={s.input}
+            value={advanced.model_id ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setAdvanced("model_id", v === "" ? undefined : v);
+            }}
+          >
+            <option value="">Default (profile quant)</option>
+            {(models ?? []).map((mo) => (
+              <option key={mo.basename} value={mo.basename}>
+                {mo.basename} — {mo.label}
+              </option>
+            ))}
+          </select>
+          <span className={s.meta}>
+            Per-render GGUF quant. Q5_K_S = balanced default; Q4_K_M =
+            lighter (use for two-pass 720p); Q6_K/Q8_0 do not fit
+            conditioned renders on a 16 GB card.
+          </span>
+        </div>
       </div>
     </details>
   );
