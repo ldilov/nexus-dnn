@@ -46,6 +46,7 @@ pub struct HostModelsResponse {
 #[derive(Debug, Default, Deserialize)]
 pub struct HostModelsQuery {
     pub family: Option<String>,
+    pub repo: Option<String>,
 }
 
 pub async fn list_host_models(
@@ -66,9 +67,18 @@ pub async fn list_host_models(
         .as_deref()
         .map(str::trim)
         .filter(|f| !f.is_empty());
+    let repo_filter = query
+        .repo
+        .as_deref()
+        .map(str::trim)
+        .filter(|r| !r.is_empty());
     let installs: Vec<HostModelView> = rows
         .into_iter()
         .filter(|r| family_filter.is_none_or(|f| r.family == f))
+        .filter(|r| {
+            repo_filter
+                .is_none_or(|needle| r.source_url.as_deref().is_some_and(|u| u.contains(needle)))
+        })
         .map(|r| HostModelView {
             install_id: r.install_id,
             family: r.family,
