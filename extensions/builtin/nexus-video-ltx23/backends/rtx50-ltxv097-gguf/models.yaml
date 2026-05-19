@@ -1,0 +1,17 @@
+spec_version: "0.1"
+runtime_id: "nexus.video.ltx23.rtx50-ltxv097-gguf"
+models:
+  - id: "ltxv-13b-0.9.7-dev-gguf"
+    provider: huggingface
+    repo: "wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF"
+    role: primary
+    quantization: gguf
+    size_gb_approx: 9
+    notes: "LTX-Video 0.9.7 13B GGUF transformer (Q-quant variants). The conditioned-fit default is Q5_K_S; selectable per the model_id advanced param."
+  - id: "ltxv-097-spatial-upscaler"
+    provider: huggingface
+    repo: "Lightricks/LTX-Video"
+    files:
+      - "ltxv-spatial-upscaler-0.9.7.safetensors"
+    role: optional
+    notes: "Used by the opt-in two-pass / decoupled 720p upscale path."
