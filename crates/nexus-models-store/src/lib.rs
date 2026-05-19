@@ -17,13 +17,14 @@ pub mod resolver;
 pub mod types;
 pub mod verify;
 
-pub use blobs::{FileManifestEntry, GcReport, gc_blobs, materialize_blob};
+pub use blobs::{FileManifestEntry, GcReport, gc_blobs, link_existing_into_cas, materialize_blob};
 pub use download::{DownloadOutcome, DownloadSpec, download_and_verify, make_limiter};
 pub use errors::{ModelStoreError, ModelStoreResult};
 pub use install::{
     HostModelRow, HttpFetcher, IdentityKey, InstallModelRequest, InstalledModelDto, ModelFetcher,
-    ModelStoreCtx, PlannedFile, StagedFile, StagedInstallOutcome, StagedInstallRequest,
-    find_existing, install_from_staging, install_model, list_all_visible, uninstall_model,
+    ModelStoreCtx, PlannedFile, RegisterExistingRequest, StagedFile, StagedInstallOutcome,
+    StagedInstallRequest, compute_sha256_root, find_existing, install_from_staging, install_model,
+    list_all_visible, register_existing, uninstall_model,
 };
 pub use leases::{
     ModelLease, acquire_lease, install_exists, list_active_dependents, list_active_leases,
