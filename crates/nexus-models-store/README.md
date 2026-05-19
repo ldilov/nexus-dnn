@@ -96,6 +96,16 @@ All migrations are append-only and idempotent.
   add fixtures to `tests/normalize_fixtures.rs`.
 - **New dependency role**: add a variant to `types::DependencyRole`,
   extend `normalize::deps::classify_role`, cover with a fixture.
+- **Adopt an already-downloaded model**: any extension that fetches a
+  model through its own path can hand the on-disk tree to the host via
+  `register_existing` (or the generic `POST /api/v1/host-models/register-existing`
+  endpoint, or the in-process `HostModelRegistrar` trait the host
+  injects). The source tree is linked into the CAS without being
+  consumed, a fresh install root is materialized, and the row dedups on
+  the install `IdentityKey` — so a self-downloaded model converges to
+  one `install_id` with a later Foundry install of the same repo.
+  `compute_sha256_root` is the single canonical tree digest shared by
+  every install path.
 
 ## Testing
 
