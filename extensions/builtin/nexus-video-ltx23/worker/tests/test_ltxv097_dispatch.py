@@ -283,3 +283,30 @@ def test_silence_offload_defeat_warning_idempotent_and_scoped(
         assert filt.filter(drop) is False
     finally:
         lg.filters[:] = before
+
+
+# --- _resolve_output_fps -----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "advanced, base, expected",
+    [
+        ({}, 24, 24),
+        ({"output_fps": None}, 24, 24),
+        ({"output_fps": 48}, 24, 48),
+        ({"output_fps": "48"}, 24, 48),
+        ({"output_fps": 24}, 24, 24),
+        ({"output_fps": 12}, 24, 24),
+        ({"output_fps": "garbage"}, 24, 24),
+        ({"output_fps": 999999}, 24, 240),
+        ({"output_fps": 96}, 24, 96),
+    ],
+)
+def test_resolve_output_fps(advanced: dict, base: int, expected: int) -> None:
+    assert m._resolve_output_fps(advanced, base) == expected
+
+
+def test_resolve_output_fps_env_override(monkeypatch: Any) -> None:
+    monkeypatch.setenv("NEXUS_VIDEO_LTX23_OUTPUT_FPS", "48")
+    assert m._resolve_output_fps({}, 24) == 48
+    assert m._resolve_output_fps({"output_fps": 24}, 24) == 24
