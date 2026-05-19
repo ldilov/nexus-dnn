@@ -391,13 +391,21 @@ def _build_ltxv097_pipeline(offload_mode: str, logger: Any) -> Any:
             except Exception as e:  # noqa: BLE001 — best effort
                 logger.info("ltxv097.vae_mem_opt_skip", meth=meth, err=str(e))
 
-    # GGUF transformer resident; T5 paged. Honour host-resolved mode.
+    # sequential offload crashes on GGUF (GGUFParameter meta-device) — degrade to model.
     if offload_mode == "none":
         pipe.to("cuda")
-    elif offload_mode == "sequential" and hasattr(
-        pipe, "enable_sequential_cpu_offload"
-    ):
-        pipe.enable_sequential_cpu_offload()
+    elif offload_mode == "sequential":
+        logger.info(
+            "ltxv097.offload_mode_unsupported",
+            requested="sequential",
+            applied="model",
+            reason="sequential cpu offload is GGUF-incompatible "
+            "(GGUFParameter meta-device KeyError)",
+        )
+        if hasattr(pipe, "enable_model_cpu_offload"):
+            pipe.enable_model_cpu_offload()
+        else:
+            pipe.to("cuda")
     elif hasattr(pipe, "enable_model_cpu_offload"):
         # Default ('model') + any unmapped mode: model offload keeps the
         # GGUF transformer resident while T5/VAE swap as needed.
@@ -596,6 +604,26 @@ async def _render_loop(
                 worker, rs.run_id, ErrorCodes.RENDER_FAILED, str(e)
             )
             return
+
+        frames = list(frames)
+        if (
+            upscale
+            and target_size is not None
+            and frames
+            and hasattr(frames[0], "size")
+            and tuple(frames[0].size) != tuple(target_size)
+        ):
+            await worker.emit_notification(
+                Notifications.UPSCALE_FALLBACK,
+                {
+                    "run_id": rs.run_id,
+                    "segment_index": seg_index,
+                    "segment_count": segment_count,
+                    "requested": list(target_size),
+                    "actual": list(frames[0].size),
+                    "upscale_mode": upscale_mode,
+                },
+            )
 
         # `last_frame_image` here still holds the PREVIOUS segment's
         # tail (or the seg-0 still / None) — the only point both
@@ -1034,11 +1062,28 @@ def _resolve_upscaler_ref() -> tuple[str, bool]:
     return _UPSCALER_REPO, False
 
 
+_offload_defeat_filter_installed = False
+
+
+def _silence_offload_defeat_warning() -> None:
+    global _offload_defeat_filter_installed
+    if _offload_defeat_filter_installed:
+        return
+    import logging
+
+    fragment = "memory gains from offloading are likely to be lost"
+
+    class _Drop(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            return fragment not in record.getMessage()
+
+    logging.getLogger("diffusers.pipelines.pipeline_utils").addFilter(
+        _Drop()
+    )
+    _offload_defeat_filter_installed = True
+
+
 def _build_upsampler(pipe: Any, logger: Any) -> Any:
-    """Load the spatial latent upsampler sharing the base pipeline's
-    VAE instance (same latent normalisation — a fresh VAE washes the
-    colour out). Raises RuntimeError naming the unmet expectation so
-    the caller can fall back to the single-pass native render."""
     torch = _LAZY_TORCH
     try:
         from diffusers import LTXLatentUpsamplePipeline  # type: ignore
@@ -1069,6 +1114,7 @@ def _build_upsampler(pipe: Any, logger: Any) -> Any:
         raise RuntimeError(
             "spatial upscaler load failed (" + " | ".join(errs) + ")"
         )
+    _silence_offload_defeat_warning()
     up.to("cuda")
     logger.info("ltxv097.upsampler_loaded", ref=ref, single_file=is_single)
     return up
@@ -1337,6 +1383,14 @@ def _generate_segment_dispatch(
     frame count). Either upscale path falls through to the proven
     single pass if the upscaler/pinned API can't do it (the native
     render must never be blocked by an optional quality upgrade)."""
+    # self-heal: a leaked use_tiling=False would blow stage-1's 16 GB budget.
+    _vae = getattr(pipe, "vae", None)
+    if _vae is not None and not getattr(_vae, "use_tiling", True):
+        if hasattr(_vae, "enable_tiling"):
+            _vae.enable_tiling()
+        else:
+            _vae.use_tiling = True
+        logger.info("ltxv097.vae_tiling_reasserted")
     if upscale and target_size is not None:
         try:
             upsampler = _ensure_upsampler(pipe, cache, logger)
