@@ -7,12 +7,12 @@ use nexus_huggingface::{
     DownloadFileSpec as HfDownloadFileSpec, DownloadSpec as HfDownloadSpec, HfError,
 };
 use nexus_models_store::{
-    ModelDependency, ModelStoreError, Quantization, ResolutionContext, StagedFile,
-    StagedInstallRequest, ZeroSizeProbe, install_exists, install_from_staging,
-    list_active_dependents, list_all_visible, release_lease, resolve_dry_run,
+    FileManifestEntry, ModelDependency, ModelStoreError, Quantization, RegisterExistingRequest,
+    ResolutionContext, StagedFile, StagedInstallRequest, ZeroSizeProbe, compute_sha256_root,
+    install_exists, install_from_staging, list_active_dependents, list_all_visible,
+    register_existing, release_lease, resolve_dry_run,
 };
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
 
 use crate::AppState;
@@ -279,6 +279,132 @@ pub async fn install_host_model(
     }
 }
 
+/// Adopt an already-on-disk model tree (a caller downloaded itself) into the
+/// host model store without re-downloading. Generic host capability — any
+/// extension or out-of-process client may call it. Identity is resolved via
+/// the same HF metadata + `derive_family`/`derive_quantization` path as
+/// `install_host_model`, so a registered row dedups (one `install_id`)
+/// against a later Foundry install of the same repo.
+#[derive(Debug, Deserialize)]
+pub struct RegisterExistingHostModelRequest {
+    pub source: String,
+    pub repo_id: String,
+    #[serde(default)]
+    pub revision: Option<String>,
+    #[serde(default)]
+    pub files: Vec<String>,
+    pub existing_root: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+}
+
+pub async fn register_existing_host_model(
+    State(state): State<AppState>,
+    Json(req): Json<RegisterExistingHostModelRequest>,
+) -> Response {
+    if req.repo_id.trim().is_empty() {
+        return bad_request("repo_id required");
+    }
+    if req.source != "huggingface" {
+        return bad_request(&format!(
+            "unsupported source '{}'; only 'huggingface' is accepted",
+            req.source
+        ));
+    }
+    if req.existing_root.trim().is_empty() {
+        return bad_request("existing_root required");
+    }
+    if req.files.is_empty() {
+        return bad_request("files must contain at least one entry");
+    }
+    for f in &req.files {
+        if let Err(msg) = validate_relative_path(f) {
+            return bad_request(&msg);
+        }
+    }
+
+    let Some(hf) = state.huggingface.as_ref().cloned() else {
+        return service_unavailable(
+            "huggingface_unwired",
+            "huggingface capability not configured",
+        );
+    };
+    let Some(paths) = state.host_install_paths.clone() else {
+        return service_unavailable(
+            "host_install_unwired",
+            "host-models install paths not configured",
+        );
+    };
+
+    match run_host_register_existing(&state, hf, &paths, req).await {
+        Ok(outcome) => {
+            let body = HostInstallResponse {
+                install_id: outcome.install_id,
+                task_id: outcome.task_id,
+                already_installed: outcome.already_installed,
+                routed_backend: outcome.routed_backend,
+                sha256_root: outcome.sha256_root,
+            };
+            if body.already_installed {
+                ApiResponse::ok(body).into_response()
+            } else {
+                ApiResponse::created(body).into_response()
+            }
+        }
+        Err(err) => host_install_error(err).into_response(),
+    }
+}
+
+async fn run_host_register_existing(
+    state: &AppState,
+    hf: std::sync::Arc<dyn nexus_huggingface::HuggingFaceCapability>,
+    paths: &crate::HostInstallPaths,
+    req: RegisterExistingHostModelRequest,
+) -> Result<HostInstallOutcome, HostInstallFailure> {
+    let meta = hf
+        .detail(&req.repo_id, req.revision.as_deref())
+        .await
+        .map_err(|e| match e {
+            HfError::RepoNotFound(_) => HfError::RepoNotFound(req.repo_id.clone()),
+            other => other,
+        })?;
+
+    let family = derive_family(&req.files, &meta);
+    let quantization = derive_quantization(&req.files);
+    let variant = req.display_name.clone().unwrap_or_else(|| "default".into());
+
+    let store_req = RegisterExistingRequest {
+        family: family.clone(),
+        version: meta.revision.clone(),
+        quantization,
+        variant,
+        source_revision: meta.revision.clone(),
+        source_kind: "local_import".into(),
+        source_url: Some(format!("https://huggingface.co/{}", req.repo_id)),
+        license_spdx: meta.license.clone(),
+        private: false,
+        owner_extension_id: None,
+        existing_root: std::path::PathBuf::from(&req.existing_root),
+        files: req.files.clone(),
+    };
+
+    let outcome = register_existing(
+        state.db.pool(),
+        &paths.installs_root,
+        &paths.blobs_root,
+        store_req,
+    )
+    .await?;
+
+    Ok(HostInstallOutcome {
+        install_id: outcome.install.install_id,
+        task_id: format!("hmr_task_{}", super::ulid_lite()),
+        already_installed: outcome.already_installed,
+        routed_backend: route_backend_for(&family),
+        sha256_root: outcome.install.sha256_root,
+    })
+}
+
 fn bad_request(msg: &str) -> Response {
     ApiResponse::<()>::err(
         StatusCode::BAD_REQUEST,
@@ -488,16 +614,15 @@ async fn run_host_install(
 }
 
 fn compute_root_sha(files: &[nexus_huggingface::DownloadedFile]) -> String {
-    let mut sorted: Vec<_> = files.iter().collect();
-    sorted.sort_by(|a, b| a.path.cmp(&b.path));
-    let mut hasher = Sha256::new();
-    for f in &sorted {
-        hasher.update(f.path.as_bytes());
-        hasher.update(b"\0");
-        hasher.update(f.sha256.as_bytes());
-        hasher.update(b"\n");
-    }
-    format!("{:x}", hasher.finalize())
+    let entries: Vec<FileManifestEntry> = files
+        .iter()
+        .map(|f| FileManifestEntry {
+            path: f.path.clone(),
+            sha256: f.sha256.clone(),
+            size_bytes: f.size_bytes,
+        })
+        .collect();
+    compute_sha256_root(&entries)
 }
 
 fn derive_family(paths: &[String], meta: &nexus_huggingface::RepoMetadata) -> String {

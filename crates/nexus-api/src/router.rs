@@ -300,6 +300,10 @@ pub fn build(state: AppState) -> Router {
         )
         .route("/host-models/resolve", post(backends::resolve_host_models))
         .route(
+            "/host-models/register-existing",
+            post(backends::register_existing_host_model),
+        )
+        .route(
             "/host-models/{installId}/dependents",
             get(backends::list_host_model_dependents),
         )
