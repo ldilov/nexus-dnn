@@ -1524,8 +1524,31 @@ def _load_input_image(path: str | None, width: int, height: int) -> Any:
     else:
         img = Image.new("RGB", (width, height), (32, 32, 32))
     if img.size != (width, height):
-        img = img.resize((width, height), Image.LANCZOS)
+        img = _cover_crop(img, width, height)
     return img
+
+
+def _cover_crop(img: Any, width: int, height: int) -> Any:
+    """Aspect-preserving cover-fit: scale so the image fully covers the
+    target box, then center-crop to exactly (width, height).
+
+    A naive ``resize((w, h))`` stretches a mismatched-aspect source —
+    fatal for i2v conditioning (a 3:2 portrait squashed into 16:9
+    distorts the subject's face). Cover-crop keeps geometry intact and
+    discards only the overflow on the longer axis.
+    """
+    from PIL import Image  # type: ignore
+
+    src_w, src_h = img.size
+    if src_w <= 0 or src_h <= 0:
+        return img.resize((width, height), Image.LANCZOS)
+    scale = max(width / src_w, height / src_h)
+    new_w = max(width, round(src_w * scale))
+    new_h = max(height, round(src_h * scale))
+    scaled = img.resize((new_w, new_h), Image.LANCZOS)
+    left = (new_w - width) // 2
+    top = (new_h - height) // 2
+    return scaled.crop((left, top, left + width, top + height))
 
 
 def _write_frames_as_mp4(frames: Any, path: Path, base_fps: int) -> None:
