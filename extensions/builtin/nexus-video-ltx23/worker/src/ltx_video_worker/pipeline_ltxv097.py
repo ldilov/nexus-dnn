@@ -57,13 +57,17 @@ from .vram import evict_models, memory_stats
 # pre-warmed on the main thread in __main__).
 _LAZY_TORCH: Any = None
 
-# Default transformer quant from the wsbagnsv1 ladder. Q6_K (~10 GB)
-# is the 16 GB-fit pick: Q8_0 (14 GB) + T5/VAE/activations spills into
-# Windows shared GPU memory on a 16 GB card (user-confirmed
-# 2026-05-18). The forthcoming model dropdown makes this per-render
-# selectable; Q6_K is the safe default. Override with
-# NEXUS_VIDEO_LTX23_LTXV097_GGUF (or the future model_id param).
-_DEFAULT_GGUF_BASENAME = "ltxv-13b-0.9.7-dev-Q6_K.gguf"
+# Default transformer quant from the wsbagnsv1 ladder. Q5_K_S
+# (~8.5 GiB) is the conditioned-fit sweet spot, GPU-verified
+# 2026-05-19: conditioned 2-scene peak 12.79 GiB on a 16 GB card, no
+# shared-mem crawl, 5-bit K-quant fidelity above Q4_K_M. Q6_K (~10 GiB)
+# was the prior default but the Q6 VRAM RCA (2026-05-18) proved its
+# +2 GiB resident deficit makes EVERY conditioned/multi-scene render
+# spill into Windows shared memory (~22-33 s/step crawl) — it is
+# unconditioned-only on 16 GB. Q4_K_M remains the lighter fallback;
+# the model dropdown makes this per-render selectable. Override with
+# NEXUS_VIDEO_LTX23_LTXV097_GGUF (or the model_id param).
+_DEFAULT_GGUF_BASENAME = "ltxv-13b-0.9.7-dev-Q5_K_S.gguf"
 _GGUF_REPO = "wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF"
 # CORRECT diffusers base for the 13b-0.9.7-dev GGUF: the dedicated
 # diffusers-format repo (model_index + transformer/config + the proper
