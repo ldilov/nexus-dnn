@@ -1,0 +1,15 @@
+spec_version: "0.1"
+runtime_id: "nexus.video.ltx23.rtx50-gguf"
+versions:
+  - version: "0.1.0"
+    status: "planned"
+    notes: "Blackwell GGUF Q4 22B path (dg845 base tree + Abiray GGUF transformer override). Runtime asset bundle populated when GGUF profile install is wired through the host model store."
+    assets:
+      - platform: "windows-x64"
+        url: "PLACEHOLDER://populated-on-gguf-profile-install"
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+        size: 0
+      - platform: "linux-x64"
+        url: "PLACEHOLDER://populated-on-gguf-profile-install"
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+        size: 0

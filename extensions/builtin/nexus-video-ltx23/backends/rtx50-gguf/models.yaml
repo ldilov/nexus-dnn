@@ -1,0 +1,23 @@
+spec_version: "0.1"
+runtime_id: "nexus.video.ltx23.rtx50-gguf"
+models:
+  - id: "ltx-2.3-distilled-diffusers-base"
+    provider: huggingface
+    repo: "dg845/LTX-2.3-Distilled-Diffusers"
+    role: primary
+    quantization: none
+    size_gb_approx: 24
+    notes: "Diffusers base tree (transformer config.json + VAE + text encoder + scheduler). The transformer weights are loaded-then-replaced by the GGUF override."
+  - id: "ltx-2.3-22b-distilled-gguf"
+    provider: huggingface
+    repo: "Abiray/LTX-2.3-22B-DISTILLED-1.1-GGUF"
+    role: primary
+    quantization: gguf
+    size_gb_approx: 13
+    notes: "First-class GGUF transformer family. Resolved via NEXUS_VIDEO_LTX23_TRANSFORMER_GGUF or the host_data/models/<owner>/<name> convention."
+  - id: "ltx-2.3-spatial-upscaler-x2"
+    provider: huggingface
+    repo: "Lightricks/LTX-2.3"
+    files:
+      - "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+    role: optional
