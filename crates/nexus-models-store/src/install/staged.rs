@@ -151,7 +151,7 @@ pub async fn install_from_staging(
     })
 }
 
-fn guard_relative_path(untrusted: &str) -> ModelStoreResult<()> {
+pub(super) fn guard_relative_path(untrusted: &str) -> ModelStoreResult<()> {
     if untrusted.is_empty() {
         return Err(ModelStoreError::ManifestInvalid("file path is empty".into()));
     }
