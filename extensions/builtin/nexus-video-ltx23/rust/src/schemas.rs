@@ -98,6 +98,7 @@ impl CreateRenderRequest {
     /// Reject oversized free-text fields + oversized scene arrays
     /// before they reach the planner or the DB. Caller maps the
     /// `Err(reason)` to a 400 `InvalidRequest`.
+    #[allow(clippy::too_many_lines)]
     pub fn validate_field_bounds(&self) -> Result<(), String> {
         if self.prompt.is_empty() {
             return Err("prompt is required".into());
@@ -214,6 +215,14 @@ impl CreateRenderRequest {
                 ));
             }
         }
+        if let Some(v) = self.advanced.upscale_mode.as_deref() {
+            if v != "two_pass" && v != "decoupled" {
+                return Err(format!(
+                    "advanced.upscale_mode must be \"two_pass\" or \
+                     \"decoupled\" (got {v:?})"
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -315,6 +324,15 @@ pub struct AdvancedSettings {
     /// quantised transformer so it adds little VRAM.
     #[serde(default)]
     pub upscale: Option<bool>,
+    /// Upscale strategy when `upscale` is set. `"two_pass"` (default /
+    /// `None`) is the proven refined render→upsample→refine→decode.
+    /// `"decoupled"` skips the 13B transformer refine and VAE-decodes
+    /// the upsampled latents directly — fits a 16 GB card at full
+    /// frame count (the two-pass stage-3 transformer at 1536x1024
+    /// spills to WDDM, RCA 2026-05-19) at a softness cost. Only
+    /// `"two_pass"` | `"decoupled"` accepted.
+    #[serde(default)]
+    pub upscale_mode: Option<String>,
     /// VAE-decode noise scale (LTX `decode_noise_scale`). Worker
     /// default 0.025. Higher → grainier decode. Range 0.0..=0.5.
     #[serde(default)]
@@ -334,7 +352,7 @@ pub struct AdvancedSettings {
     #[serde(default)]
     pub seam_overlap_frames: Option<u32>,
     /// Seam: transition-bridge length. Worker default 0 for
-    /// overlap_blend (a linear bridge ghosts on motion), 6 for the
+    /// `overlap_blend` (a linear bridge ghosts on motion), 6 for the
     /// motion-aware model bridges. Range 0..=24.
     #[serde(default)]
     pub seam_blend_frames: Option<u32>,
@@ -863,6 +881,17 @@ mod tests {
             .unwrap_err()
             .contains("seam_overlap_frames"));
         req.advanced.seam_overlap_frames = None;
+
+        req.advanced.upscale_mode = Some("decoupled".into());
+        assert!(req.validate_field_bounds().is_ok());
+        req.advanced.upscale_mode = Some("two_pass".into());
+        assert!(req.validate_field_bounds().is_ok());
+        req.advanced.upscale_mode = Some("turbo".into());
+        assert!(req
+            .validate_field_bounds()
+            .unwrap_err()
+            .contains("upscale_mode"));
+        req.advanced.upscale_mode = None;
 
         req.advanced.decode_noise_scale = Some(0.6);
         assert!(req
