@@ -92,6 +92,7 @@ export interface AdvancedSettings {
   /** Opt-in two-pass 720p spatial upscale. Omitted → single-pass. */
   upscale?: boolean;
   upscale_mode?: "two_pass" | "decoupled";
+  model_id?: string;
   /** VAE-decode noise scale. 0.0–0.5. Default 0.025. */
   decode_noise_scale?: number;
   /** Scene-continuation condition strength. 0.0–1.0. Default 0.7. */
@@ -203,6 +204,12 @@ export interface RuntimeProfileSummary {
   status_message: string;
 }
 
+export interface ModelOption {
+  basename: string;
+  label: string;
+  fits_16gb: boolean | null;
+}
+
 export interface RenderRunSegment {
   index: number;
   status: string;
@@ -263,6 +270,7 @@ async function jsonRequest<T>(
 export const ltxApi = {
   health: () => jsonRequest<{ status: string; version: string }>("/health"),
   listProfiles: () => jsonRequest<RuntimeProfileSummary[]>("/runtime-profiles"),
+  listModels: () => jsonRequest<ModelOption[]>("/models"),
   plan: (req: CreateRenderRequest) =>
     jsonRequest<RenderPlan>("/recipe/plan", {
       method: "POST",
