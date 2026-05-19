@@ -15,6 +15,7 @@ describe("parseSearchParams / serializeSearchParams", () => {
   it("round-trips every field (T090)", () => {
     const input: ParsedSearchParams = {
       q: "llama-3",
+      repo: "wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF",
       formats: ["gguf", "safetensors"],
       backends: ["llama.cpp"],
       modalities: ["llm", "image"],
@@ -30,6 +31,17 @@ describe("parseSearchParams / serializeSearchParams", () => {
     const qs = serializeSearchParams(input);
     const back = parseSearchParams(new URLSearchParams(qs.toString()));
     expect(back).toEqual(input);
+  });
+
+  it("round-trips the generic repo filter", () => {
+    const p: ParsedSearchParams = {
+      ...DEFAULT_SEARCH_PARAMS,
+      repo: "owner/some-model",
+    };
+    const qs = serializeSearchParams(p);
+    expect(qs.get("repo")).toBe("owner/some-model");
+    const back = parseSearchParams(new URLSearchParams(qs.toString()));
+    expect(back.repo).toBe("owner/some-model");
   });
 
   it("omits default values from the URL (FR-093 AS #3)", () => {

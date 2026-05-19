@@ -34,9 +34,11 @@ const COMPAT_OPTIONS: readonly {
 
 interface FilterBarProps {
   query: string;
+  repo: string;
   params: ParsedSearchParams;
   backends: BackendCapability[];
   onQueryChange: (q: string) => void;
+  onRepoChange: (repo: string) => void;
   onToggleFormat: (fmt: Format) => void;
   onToggleBackend: (id: string) => void;
   onToggleModality: (m: Modality) => void;
@@ -49,9 +51,11 @@ interface FilterBarProps {
 
 export function FilterBar({
   query,
+  repo,
   params,
   backends,
   onQueryChange,
+  onRepoChange,
   onToggleFormat,
   onToggleBackend,
   onToggleModality,
@@ -69,7 +73,8 @@ export function FilterBar({
     params.licenses.length > 0 ||
     params.showUnsupported ||
     params.installed !== "any" ||
-    params.q.trim().length > 0;
+    params.q.trim().length > 0 ||
+    params.repo.trim().length > 0;
 
   return (
     <div className={s.filterBar} role="search" aria-label="Model filters">
@@ -84,6 +89,17 @@ export function FilterBar({
           placeholder="search neural registry..."
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
+        />
+        <label className={s.screenReaderOnly} htmlFor="models-search-repo">
+          Filter by repository
+        </label>
+        <input
+          id="models-search-repo"
+          type="text"
+          className={s.queryInput}
+          placeholder="repo filter (owner/name)..."
+          value={repo}
+          onChange={(e) => onRepoChange(e.target.value)}
         />
         {hasActive && (
           <button

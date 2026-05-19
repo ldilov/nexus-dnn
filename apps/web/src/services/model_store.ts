@@ -187,6 +187,7 @@ export interface DownloadJob {
 
 export interface ParsedSearchParams {
   q: string;
+  repo: string;
   formats: Format[];
   backends: string[];
   modalities: Modality[];
@@ -208,6 +209,7 @@ export interface ParsedSearchParams {
 
 export const DEFAULT_SEARCH_PARAMS: ParsedSearchParams = {
   q: "",
+  repo: "",
   formats: [],
   backends: [],
   modalities: [],
@@ -289,6 +291,7 @@ export function parseSearchParams(qs: URLSearchParams): ParsedSearchParams {
 
   return {
     q: qs.get("q") ?? "",
+    repo: qs.get("repo") ?? "",
     formats: parseEnumList<Format>(qs.getAll("format"), VALID_FORMATS),
     backends: qs.getAll("backend"),
     modalities: parseEnumList<Modality>(qs.getAll("modality"), VALID_MODALITIES),
@@ -313,6 +316,7 @@ export function parseSearchParams(qs: URLSearchParams): ParsedSearchParams {
 export function serializeSearchParams(p: ParsedSearchParams): URLSearchParams {
   const qs = new URLSearchParams();
   if (p.q) qs.set("q", p.q);
+  if (p.repo) qs.set("repo", p.repo);
   for (const f of p.formats) qs.append("format", f);
   for (const b of p.backends) qs.append("backend", b);
   for (const m of p.modalities) qs.append("modality", m);
