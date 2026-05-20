@@ -47,6 +47,7 @@ from typing import Any, Callable
 
 from .ffmpeg_io import stitch_segments, trim_to_duration
 from .fps_interp import try_interpolate
+from .generation_profiles import profile_sampling
 from .io_safety import ensure_dict, sanitize_run_id, sanitize_workdir
 from .planning_validate import validate_plan
 from .rpc import ErrorCodes, Methods, Notifications
@@ -128,16 +129,6 @@ _DEF_CONDITION_TAIL_FRAMES = 24
 # unchanged behaviour). Operators tune via advanced.guidance_rescale;
 # canonical safe ladder is 0.3 → 0.5 → 0.7 (synthesis 2026-05-20).
 _DEF_GUIDANCE_RESCALE = 0.0
-
-# preset="distilled" flips _sampling_params' dev-recipe defaults (the
-# _DEF_* constants) to the distilled 13b's 8-step / guidance-1.0 regime;
-# every other knob and any explicit `advanced` value still take effect.
-_PRESETS: dict[str, dict[str, Any]] = {
-    "distilled": {
-        "num_inference_steps": 8,
-        "guidance_scale": 1.0,
-    },
-}
 
 # The timestep set LTX-Video 0.9.7-distilled was distilled against
 # (diffusers LTX docs). Denoising at these exact noise levels is the
@@ -1156,7 +1147,7 @@ def _sampling_params(advanced: dict[str, Any]) -> dict[str, Any]:
     is the single source of truth for #4 "adjustable params".
     """
     g = advanced.get
-    preset = _PRESETS.get(str(advanced.get("preset") or "").strip().lower(), {})
+    preset = profile_sampling(advanced.get("profile") or advanced.get("preset"))
 
     def _d(key: str, fallback: Any) -> Any:
         return preset.get(key, fallback)
@@ -1202,7 +1193,7 @@ def _sampling_params(advanced: dict[str, Any]) -> dict[str, Any]:
             )
         ),
         "timestep_schedule": _coerce_timestep_schedule(
-            g("timestep_schedule")
+            _or_default(g("timestep_schedule"), _d("timestep_schedule", None))
         ),
     }
 
