@@ -343,3 +343,27 @@ def test_sampling_params_unknown_preset_falls_back_to_dev(preset: Any) -> None:
     samp = m._sampling_params({"preset": preset})
     assert samp["num_inference_steps"] == m._DEF_STEPS
     assert samp["guidance_scale"] == m._DEF_GUIDANCE
+
+
+# --- timestep_schedule resolution -------------------------------------------
+
+
+def test_sampling_params_no_timestep_schedule_by_default() -> None:
+    assert m._sampling_params({})["timestep_schedule"] is None
+    assert m._sampling_params({"preset": "distilled"})["timestep_schedule"] is None
+
+
+def test_sampling_params_official_timestep_schedule() -> None:
+    samp = m._sampling_params({"timestep_schedule": "official"})
+    assert samp["timestep_schedule"] == m._OFFICIAL_DISTILLED_TIMESTEPS
+    assert samp["timestep_schedule"] is not m._OFFICIAL_DISTILLED_TIMESTEPS
+
+
+def test_sampling_params_explicit_timestep_list() -> None:
+    samp = m._sampling_params({"timestep_schedule": [1000, 500, 0.03]})
+    assert samp["timestep_schedule"] == [1000.0, 500.0, 0.03]
+
+
+@pytest.mark.parametrize("bad", ["garbage", [], ["x"], [None], 42])
+def test_coerce_timestep_schedule_rejects_invalid(bad: Any) -> None:
+    assert m._coerce_timestep_schedule(bad) is None

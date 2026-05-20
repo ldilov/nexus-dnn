@@ -50,10 +50,15 @@ Env knobs:
   NEXUS_I2V_GUIDANCE ()    override preset guidance (1.0); 1.1-1.5 makes
                            the negative prompt marginally active
   NEXUS_I2V_STEPS ()       override preset steps (8)
-  NEXUS_I2V_IMG_COND_NOISE ()  override image_cond_noise_scale (0.15);
-                           raise (~0.25) to curb cross-segment drift
-  NEXUS_I2V_COND_STRENGTH ()   override condition_strength (0.7); lower
-                           (~0.5) to weaken the anchor to the prev tail
+  NEXUS_I2V_IMG_COND_NOISE ()  override image_cond_noise_scale (0.15)
+  NEXUS_I2V_COND_STRENGTH ()   override condition_strength (0.7); keep
+                           >=0.65 — lower morphs identity (GPU-proven)
+  NEXUS_I2V_TIMESTEPS ()   custom sampling schedule: "official" = the
+                           distilled set [1000,993,987,981,975,909,725,
+                           0.03], or a comma list; empty = uniform steps
+  NEXUS_I2V_COLOR_ANCHOR (1)   1 = normalize every segment back to
+                           segment 0 — colour mean/std (contrast) AND
+                           high-frequency energy (over-sharpen); 0 = off
   NEXUS_I2V_TEMPORAL_TILE (48) NEXUS_I2V_TEMPORAL_OVERLAP (16)  tier-2 B
 
 Exit: 0 PASS, 1 FAIL (render crash / wrong frame count), 2 prereq missing.
@@ -166,6 +171,86 @@ def _boundary_delta(prev_last, cur_first) -> float:
     return float(np.mean(np.abs(x - y)) / 255.0)
 
 
+def _opt_schedule(env: str):
+    """Parse NEXUS_I2V_TIMESTEPS: 'official', a comma list, or None."""
+    v = os.environ.get(env, "").strip()
+    if not v:
+        return None
+    if v.lower() == "official":
+        return "official"
+    try:
+        return [float(x) for x in v.split(",") if x.strip()]
+    except ValueError:
+        return None
+
+
+_HF_BLUR_RADIUS = 2.0
+
+
+def _seg_color_stats(frames):
+    """Per-channel (mean, std) over a segment's RGB frames."""
+    import numpy as np
+
+    arr = np.stack(
+        [np.asarray(f.convert("RGB"), dtype=np.float32) for f in frames]
+    )
+    return arr.mean(axis=(0, 1, 2)), arr.std(axis=(0, 1, 2)) + 1e-6
+
+
+def _seg_hf_energy(frames) -> float:
+    """Mean high-frequency energy of a segment — std of (frame - blur).
+    Colour mean/std miss this; it is the band that compounds into the
+    over-sharpened look down the conditioning chain."""
+    import numpy as np
+    from PIL import ImageFilter
+
+    vals = []
+    for f in frames:
+        rgb = f.convert("RGB")
+        blur = rgb.filter(ImageFilter.GaussianBlur(radius=_HF_BLUR_RADIUS))
+        hf = np.asarray(rgb, dtype=np.float32) - np.asarray(blur, dtype=np.float32)
+        vals.append(float(hf.std()))
+    return sum(vals) / max(1, len(vals))
+
+
+def _apply_color_anchor(frames, ref_mean, ref_std):
+    """AdaIN-shift a segment's frames so its colour mean/std match the
+    reference (segment 0). One affine correction per channel applied to
+    every frame — kills cross-segment contrast drift without disturbing
+    intra-segment motion or lighting changes."""
+    import numpy as np
+    from PIL import Image
+
+    cur_mean, cur_std = _seg_color_stats(frames)
+    out = []
+    for f in frames:
+        a = np.asarray(f.convert("RGB"), dtype=np.float32)
+        a = (a - cur_mean) / cur_std * ref_std + ref_mean
+        out.append(Image.fromarray(np.clip(a, 0.0, 255.0).astype(np.uint8)))
+    return out
+
+
+def _apply_hf_guard(frames, cur_hf: float, ref_hf: float):
+    """Attenuate a segment's high-frequency band toward segment 0's
+    energy. Only ever softens (scale <= 1), never sharpens — so it can
+    only undo accumulated over-sharpening, never add ringing."""
+    import numpy as np
+    from PIL import Image, ImageFilter
+
+    scale = min(1.0, ref_hf / (cur_hf + 1e-6))
+    if scale > 0.985:
+        return frames
+    out = []
+    for f in frames:
+        rgb = f.convert("RGB")
+        blur = rgb.filter(ImageFilter.GaussianBlur(radius=_HF_BLUR_RADIUS))
+        base = np.asarray(blur, dtype=np.float32)
+        hf = np.asarray(rgb, dtype=np.float32) - base
+        a = base + hf * scale
+        out.append(Image.fromarray(np.clip(a, 0.0, 255.0).astype(np.uint8)))
+    return out
+
+
 def _seg_actions(n_segments: int) -> list[str]:
     """Map n segments onto the two scenes — first half scene 1, second
     half scene 2 — so a 3- or 4-segment run is always a 2-scene story."""
@@ -216,12 +301,17 @@ def _render_path_a(
     """Manual stitched-segment render (Path A). Returns (segment mp4
     paths, advisory lines, hard_fail_count)."""
     seam = seam_lib.seam_params({}, "film")
+    color_anchor = os.environ.get(
+        "NEXUS_I2V_COLOR_ANCHOR", "1"
+    ).strip().lower() not in ("0", "false", "no", "off")
     seg_paths: list[Path] = []
     advisories: list[str] = []
     hard_fail = 0
     cond: object = seed_img
     prev_seam_tail = None
     prev_tail_last = None
+    ref_color = None
+    ref_hf = None
     for si, action in enumerate(actions):
         prompt = f"{CHARACTER}. {action}. {STYLE}"
         seed = global_seed + si * nf
@@ -248,11 +338,24 @@ def _render_path_a(
             gc.collect()
             torch.cuda.empty_cache()
             continue
+        # Cross-segment anchor: segment 0 sets the reference; every later
+        # segment is AdaIN-shifted (colour mean/std) AND high-frequency
+        # attenuated back to it, before the seam and before its tail
+        # feeds the next segment — so neither contrast nor over-sharpen
+        # can compound down the conditioning chain.
+        anchored = ""
+        if si == 0:
+            ref_color = _seg_color_stats(fr)
+            ref_hf = _seg_hf_energy(fr)
+        elif color_anchor and ref_color is not None:
+            fr = _apply_color_anchor(fr, *ref_color)
+            fr = _apply_hf_guard(fr, _seg_hf_energy(fr), ref_hf)
+            anchored = " anchored(color+hf)"
         fr = seam_lib.apply_seam(prev_seam_tail, fr, seam, log)
         peak = torch.cuda.max_memory_allocated() / 1024**3
         resv = torch.cuda.max_memory_reserved() / 1024**3
         verdict, adv = _advisory(motion_mod, fr, prev_tail_last)
-        advisories.append(f"seg{si}: {adv}")
+        advisories.append(f"seg{si}: {adv}{anchored}")
         spill = "  <-- SPILL WARNING" if resv > vram_ceiling else ""
         for k, ix in {"first": 0, "mid": len(fr) // 2, "last": -1}.items():
             fr[ix].save(framedir / f"a_seg{si}_{k}.png")
@@ -261,7 +364,7 @@ def _render_path_a(
         seg_paths.append(seg_path)
         print(
             f"  seg{si}: {len(fr)}f {time.perf_counter() - t:.0f}s "
-            f"peak={peak:.2f} resv={resv:.2f}GiB [{adv}]{spill}"
+            f"peak={peak:.2f} resv={resv:.2f}GiB [{adv}{anchored}]{spill}"
         )
         tcount = max(1, min(samp["condition_tail_frames"], len(fr)))
         prev_seam_tail = fr[-tcount:]
@@ -334,6 +437,9 @@ def main() -> int:  # noqa: C901 — linear tiered script, splitting hurts clari
     ov_cs = _opt_float("NEXUS_I2V_COND_STRENGTH")
     if ov_cs is not None:
         advanced["condition_strength"] = ov_cs
+    ov_ts = _opt_schedule("NEXUS_I2V_TIMESTEPS")
+    if ov_ts is not None:
+        advanced["timestep_schedule"] = ov_ts
     tile = _int("NEXUS_I2V_TEMPORAL_TILE", mod._DEF_LONGMP_TILE)
     overlap = _int("NEXUS_I2V_TEMPORAL_OVERLAP", mod._DEF_LONGMP_OVERLAP)
     advanced["temporal_tile_size"] = tile
@@ -344,13 +450,15 @@ def main() -> int:  # noqa: C901 — linear tiered script, splitting hurts clari
         f"\ntier={tier} gen={width}x{height} fps={fps} seg_frames={nf} "
         f"(~{nf / fps:.1f}s) quant={quant}"
     )
+    sched = samp.get("timestep_schedule")
     print(
         f"resolved sampling: preset=distilled "
         f"steps={samp['num_inference_steps']} "
         f"guidance={samp['guidance_scale']} "
         f"image_cond_noise={samp['image_cond_noise_scale']} "
         f"cond_strength={samp['condition_strength']} "
-        f"cond_tail={samp['condition_tail_frames']}"
+        f"cond_tail={samp['condition_tail_frames']} "
+        f"timesteps={'uniform' if not sched else sched}"
     )
 
     seed_img = mod._load_input_image(seed_path, width, height)
