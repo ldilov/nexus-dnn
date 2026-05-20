@@ -45,16 +45,36 @@ def test_resolve_profile_id_normalization(raw: Any, expected: Any) -> None:
     assert gp.resolve_profile_id(raw) == expected
 
 
-def test_list_profiles_returns_three_sorted() -> None:
+def test_list_profiles_returns_five_sorted() -> None:
     profiles = gp.list_profiles()
-    assert len(profiles) == 3
+    assert len(profiles) == 5
     ids = [p.id for p in profiles]
     assert ids == sorted(ids)
     assert ids == [
+        "ltx23-distilled-motion",
+        "ltx23-distilled-motion-gothic",
         "ltx23-distilled-multiscene",
         "ltx23-distilled-official-schedule",
         "ltx23-distilled-single",
     ]
+
+
+def test_motion_profiles_declare_motion_prompts() -> None:
+    for profile_id in ("ltx23-distilled-motion", "ltx23-distilled-motion-gothic"):
+        profile = gp.get_profile(profile_id)
+        assert profile is not None
+        assert profile.render["motion_prompts"] is True
+
+
+def test_non_motion_profiles_lack_motion_prompts() -> None:
+    for profile_id in (
+        "ltx23-distilled-single",
+        "ltx23-distilled-multiscene",
+        "ltx23-distilled-official-schedule",
+    ):
+        profile = gp.get_profile(profile_id)
+        assert profile is not None
+        assert not profile.render.get("motion_prompts")
 
 
 def test_profile_sampling_returns_copy() -> None:

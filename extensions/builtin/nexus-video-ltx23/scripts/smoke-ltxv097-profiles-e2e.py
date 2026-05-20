@@ -100,10 +100,15 @@ def _render_profile(
     reviewdir: Path,
     vram_ceiling: float,
     log: Any,
+    base_style: str,
+    base_neg: str,
 ) -> dict[str, Any]:
     render = profile.render
     path = render.get("path", "single")
     advanced: dict[str, Any] = {"profile": profile.id}
+    rescale = _float("NEXUS_I2V_GUIDANCE_RESCALE", -1.0)
+    if rescale >= 0.0:
+        advanced["guidance_rescale"] = rescale
     samp = mod._sampling_params(advanced)
 
     if path == "single":
@@ -115,52 +120,70 @@ def _render_profile(
         "1" if render.get("color_anchor", False) else "0"
     )
 
-    sched = samp.get("timestep_schedule")
-    print(
-        f"\n== profile {profile.id} ({path}) ==\n"
-        f"  status={profile.status} min_vram={profile.min_vram_gib}GiB "
-        f"clips={len(actions)}\n"
-        f"  sampling: steps={samp['num_inference_steps']} "
-        f"guidance={samp['guidance_scale']} "
-        f"image_cond_noise={samp['image_cond_noise_scale']} "
-        f"cond_strength={samp['condition_strength']} "
-        f"cond_tail={samp['condition_tail_frames']} "
-        f"timesteps={'uniform' if not sched else sched} "
-        f"color_anchor={render.get('color_anchor', False)}"
-    )
+    motion_prompts = bool(render.get("motion_prompts"))
+    if motion_prompts:
+        helpers.POSITIVE_SYSTEM = helpers.MOTION_POSITIVE_SYSTEM
+        helpers.STYLE = helpers.STYLE_MOTION
+        helpers.NEG = helpers.ENHANCED_NEG
+    else:
+        helpers.POSITIVE_SYSTEM = ""
+        helpers.STYLE = base_style
+        helpers.NEG = base_neg
 
-    t0 = time.perf_counter()
-    seg_paths, advisories, hard_fail = helpers._render_path_a(
-        mod, motion_mod, seam_lib, torch, pipe, seed_img, actions,
-        width, height, nf, global_seed, samp, segdir, framedir,
-        vram_ceiling, log,
-    )
+    # finally-restore so a render exception cannot leak one profile's
+    # prompt globals into the next profile in the loop.
+    try:
+        sched = samp.get("timestep_schedule")
+        print(
+            f"\n== profile {profile.id} ({path}) ==\n"
+            f"  status={profile.status} min_vram={profile.min_vram_gib}GiB "
+            f"clips={len(actions)}\n"
+            f"  sampling: steps={samp['num_inference_steps']} "
+            f"guidance={samp['guidance_scale']} "
+            f"image_cond_noise={samp['image_cond_noise_scale']} "
+            f"cond_strength={samp['condition_strength']} "
+            f"cond_tail={samp['condition_tail_frames']} "
+            f"timesteps={'uniform' if not sched else sched} "
+            f"color_anchor={render.get('color_anchor', False)} "
+            f"motion_prompts={motion_prompts}"
+        )
 
-    final_path: Path | None = None
-    if seg_paths:
-        final_path = reviewdir / f"profile_{profile.id}.mp4"
-        stitch_segments(seg_paths, final_path)
+        t0 = time.perf_counter()
+        seg_paths, advisories, hard_fail = helpers._render_path_a(
+            mod, motion_mod, seam_lib, torch, pipe, seed_img, actions,
+            width, height, nf, global_seed, samp, segdir, framedir,
+            vram_ceiling, log,
+        )
 
-    passed = hard_fail == 0 and len(seg_paths) == len(actions)
-    advisory = "; ".join(advisories) if advisories else "(none)"
-    print(
-        f"  result={'PASS' if passed else 'FAIL'} "
-        f"clips={len(seg_paths)}/{len(actions)} "
-        f"hard_fail={hard_fail} {time.perf_counter() - t0:.0f}s"
-    )
-    for a in advisories:
-        print(f"    {a}")
-    if final_path is not None:
-        print(f"  review clip: {final_path}")
+        final_path: Path | None = None
+        if seg_paths:
+            final_path = reviewdir / f"profile_{profile.id}.mp4"
+            stitch_segments(seg_paths, final_path)
 
-    return {
-        "id": profile.id,
-        "name": profile.name,
-        "path": path,
-        "status": profile.status,
-        "passed": passed,
-        "advisory": advisory,
-    }
+        passed = hard_fail == 0 and len(seg_paths) == len(actions)
+        advisory = "; ".join(advisories) if advisories else "(none)"
+        print(
+            f"  result={'PASS' if passed else 'FAIL'} "
+            f"clips={len(seg_paths)}/{len(actions)} "
+            f"hard_fail={hard_fail} {time.perf_counter() - t0:.0f}s"
+        )
+        for a in advisories:
+            print(f"    {a}")
+        if final_path is not None:
+            print(f"  review clip: {final_path}")
+
+        return {
+            "id": profile.id,
+            "name": profile.name,
+            "path": path,
+            "status": profile.status,
+            "passed": passed,
+            "advisory": advisory,
+        }
+    finally:
+        helpers.POSITIVE_SYSTEM = ""
+        helpers.STYLE = base_style
+        helpers.NEG = base_neg
 
 
 def main() -> int:
@@ -175,6 +198,9 @@ def main() -> int:
         print(f"FAIL: cannot load sibling multiscene smoke: {e}")
         traceback.print_exc()
         return 2
+
+    base_style = helpers.STYLE
+    base_neg = helpers.NEG
 
     width = helpers._snap32(_int("NEXUS_I2V_W", 768))
     height = helpers._snap32(_int("NEXUS_I2V_H", 512))
@@ -249,6 +275,7 @@ def main() -> int:
                 nf=nf, global_seed=global_seed, e2e_segments=e2e_segments,
                 segdir=segdir, framedir=framedir, reviewdir=reviewdir,
                 vram_ceiling=vram_ceiling, log=log,
+                base_style=base_style, base_neg=base_neg,
             )
         except Exception as e:  # noqa: BLE001 — render crash is a hard fail
             print(f"  FAIL profile {profile.id}: {e}")

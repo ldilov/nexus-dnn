@@ -62,6 +62,43 @@ _PROFILES: dict[str, GenerationProfile] = {
         status="experimental",
         min_vram_gib=12,
     ),
+    "ltx23-distilled-motion": GenerationProfile(
+        id="ltx23-distilled-motion",
+        name="Distilled — motion (realistic)",
+        description=(
+            "Distilled 13B with the motion prompt set (anti-static negative + "
+            "prepended motion-cue system prompt, no locked-off camera) at CFG "
+            "1.25. Photorealistic, visibly animated character motion."
+        ),
+        sampling={"num_inference_steps": 8, "guidance_scale": 1.25},
+        render={
+            "path": "manual_stitch",
+            "color_anchor": True,
+            "segments": 4,
+            "motion_prompts": True,
+        },
+        status="proven",
+        min_vram_gib=14,
+    ),
+    "ltx23-distilled-motion-gothic": GenerationProfile(
+        id="ltx23-distilled-motion-gothic",
+        name="Distilled — motion (gothic, stylized)",
+        description=(
+            "Distilled 13B motion prompt set at CFG 5.0 with 16 sampling "
+            "steps (above the checkpoint's ~8-step design point — GPU-proven "
+            "to stay coherent here). High-contrast, stylized, dramatic look "
+            "— deliberately over-saturated. Roughly 2x render time."
+        ),
+        sampling={"num_inference_steps": 16, "guidance_scale": 5.0},
+        render={
+            "path": "manual_stitch",
+            "color_anchor": True,
+            "segments": 4,
+            "motion_prompts": True,
+        },
+        status="proven",
+        min_vram_gib=14,
+    ),
 }
 
 _ALIASES: dict[str, str] = {"distilled": "ltx23-distilled-single"}
