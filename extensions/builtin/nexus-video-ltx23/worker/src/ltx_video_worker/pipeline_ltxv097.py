@@ -129,6 +129,20 @@ _DEF_CONDITION_TAIL_FRAMES = 24
 # canonical safe ladder is 0.3 → 0.5 → 0.7 (synthesis 2026-05-20).
 _DEF_GUIDANCE_RESCALE = 0.0
 
+# LongMultiPrompt (Option D) temporal-window defaults. tile/overlap are
+# in DECODED frames — diffusers scales them by the VAE temporal ratio
+# internally. 80/24 are diffusers' own defaults; overlap_cond 0.5 and
+# adain 0.25 match the upstream ComfyUI-parity recipe. The window-fusion
+# happens in LATENT space, so there is no per-scene VAE-decode handoff
+# (the structural cause of the manual seam path's error propagation).
+_DEF_LONGMP_TILE = 80
+_DEF_LONGMP_OVERLAP = 24
+_DEF_LONGMP_OVERLAP_COND = 0.5
+_DEF_LONGMP_ADAIN = 0.25
+# AutoencoderKLLTXVideo temporal compression ratio — fixed by the model;
+# used to replicate diffusers' window split before the pipeline call.
+_LONGMP_VAE_TEMPORAL = 8
+
 
 class Ltxv097RunState:
     def __init__(self, run_id: str, workdir: Path, plan: dict[str, Any]):
@@ -356,9 +370,15 @@ def _build_ltxv097_pipeline(
     logger: Any,
     model_id: str | None = None,
     vae_tiling: tuple[str, dict[str, int]] | None = None,
+    pipeline_cls: Any | None = None,
 ) -> Any:
     """Load the 0.9.7 pipeline: GGUF transformer + the 0.9.7-dev base
     (T5 + tokenizer + scheduler + canonical `vae/`).
+
+    `pipeline_cls` overrides the pipeline class — when None the standard
+    `LTXConditionPipeline` family is probed. The GGUF transformer +
+    base-repo component assembly is class-agnostic, so the LongMultiPrompt
+    long-video class (Option D) reuses this builder verbatim.
 
     Pairing the GGUF with the matching `Lightricks/LTX-Video-0.9.7-dev`
     diffusers config is mandatory: the monorepo's mixed config produced
@@ -408,7 +428,7 @@ def _build_ltxv097_pipeline(
     # VAE + T5 + scheduler come from the 0.9.7-dev base repo's own
     # canonical diffusers components (its `vae/` is the correct 0.9.7
     # video VAE — the ComfyUI companion blob is not used).
-    pipe_cls = _import_ltx_pipeline_class()
+    pipe_cls = pipeline_cls or _import_ltx_pipeline_class()
     pipe = pipe_cls.from_pretrained(
         base_repo,
         transformer=transformer,
@@ -475,6 +495,46 @@ def _maybe_override_scheduler_shift(pipe: Any, logger: Any) -> None:
         logger.info("ltxv097.scheduler_shift", shift=shift)
     except Exception as e:  # noqa: BLE001 — optional path, never fatal
         logger.info("ltxv097.scheduler_shift_skip", err=str(e))
+
+
+def _import_ltx_longmp_pipeline_class() -> Any:
+    """`LTXI2VLongMultiPromptPipeline` — the long-video class that fuses
+    consecutive temporal windows in LATENT space (no per-scene VAE-decode
+    handoff). It carries the same five-component contract as
+    `LTXConditionPipeline` (scheduler/vae/text_encoder/tokenizer/
+    transformer), so the GGUF transformer drops in unchanged. Raises a
+    clear error if the pinned diffusers predates the class.
+    """
+    try:
+        mod = __import__(
+            "diffusers", fromlist=["LTXI2VLongMultiPromptPipeline"]
+        )
+        return getattr(mod, "LTXI2VLongMultiPromptPipeline")
+    except (ImportError, AttributeError) as e:
+        raise RuntimeError(
+            "LTXI2VLongMultiPromptPipeline is not importable from the "
+            f"pinned diffusers ({e}); the long-video multi-scene path "
+            "needs a diffusers build that ships it."
+        ) from e
+
+
+def _build_ltxv097_longmp_pipeline(
+    offload_mode: str,
+    logger: Any,
+    model_id: str | None = None,
+    vae_tiling: tuple[str, dict[str, int]] | None = None,
+) -> Any:
+    """Build the GGUF 0.9.7 stack wrapped in `LTXI2VLongMultiPromptPipeline`
+    (Option D). Identical GGUF-transformer + base-repo assembly as
+    `_build_ltxv097_pipeline`; only the pipeline class differs.
+    """
+    return _build_ltxv097_pipeline(
+        offload_mode,
+        logger,
+        model_id=model_id,
+        vae_tiling=vae_tiling,
+        pipeline_cls=_import_ltx_longmp_pipeline_class(),
+    )
 
 
 def _ensure_pipeline(
@@ -1566,6 +1626,153 @@ def _generate_segment_dispatch(
     return _generate_segment(
         pipe, image, prompt, negative_prompt, width, height,
         num_frames, seed, samp, step_heartbeat,
+    )
+
+
+def _longmp_window_count(
+    num_frames: int, temporal_tile_size: int, temporal_overlap: int
+) -> int:
+    """Replicate diffusers' `split_into_temporal_windows` count so scene
+    prompts can be mapped to temporal windows BEFORE the pipeline call.
+    The split is fully deterministic from these three numbers.
+    """
+    latent_len = (max(1, num_frames) - 1) // _LONGMP_VAE_TEMPORAL + 1
+    tile = max(1, temporal_tile_size // _LONGMP_VAE_TEMPORAL)
+    overlap = max(0, temporal_overlap // _LONGMP_VAE_TEMPORAL)
+    stride = max(tile - overlap, 1)
+    count, start = 0, 0
+    while start < latent_len:
+        end = min(start + tile, latent_len)
+        count += 1
+        if end == latent_len:
+            break
+        start += stride
+    return max(1, count)
+
+
+def _longmp_prompt_segments(
+    scenes: list[str], window_count: int
+) -> list[dict[str, Any]]:
+    """Map N scene prompts evenly across `window_count` temporal windows
+    as diffusers `prompt_segments` (`{start_window, end_window, text}`).
+    When there are fewer windows than scenes, the trailing scenes are
+    dropped — one window cannot render two scenes.
+    """
+    n = len(scenes)
+    if n == 0:
+        return []
+    if window_count <= n:
+        return [
+            {"start_window": i, "end_window": i, "text": scenes[i]}
+            for i in range(max(1, window_count))
+        ]
+    per, rem = divmod(window_count, n)
+    segments: list[dict[str, Any]] = []
+    cursor = 0
+    for i, text in enumerate(scenes):
+        span = per + (1 if i < rem else 0)
+        segments.append(
+            {
+                "start_window": cursor,
+                "end_window": cursor + span - 1,
+                "text": text,
+            }
+        )
+        cursor += span
+    return segments
+
+
+def _generate_video_longmp(
+    pipe: Any,
+    cond_image: Any,
+    scenes: list[str],
+    negative_prompt: str,
+    width: int,
+    height: int,
+    num_frames: int,
+    seed: int,
+    samp: dict[str, Any],
+    advanced: dict[str, Any],
+    logger: Any,
+) -> Any:
+    """Render a whole multi-scene video in ONE
+    `LTXI2VLongMultiPromptPipeline` call (Option D).
+
+    Scene N+1 conditions on scene N's tail LATENTS via native temporal-
+    window fusion — there is no VAE-decode handoff between scenes, so the
+    decode-degradation error-propagation loop of the manual seam path is
+    structurally gone. Returns a flat list of PIL frames.
+
+    `image_cond_noise_scale` and `condition_tail_frames` from `samp` do
+    not exist on this pipeline (it uses a per-token cond mask instead) —
+    the signature filter drops them, same as `_generate_segment`.
+    """
+    import inspect
+
+    g = advanced.get
+    tile = int(_or_default(g("temporal_tile_size"), _DEF_LONGMP_TILE))
+    overlap = int(
+        _or_default(g("temporal_overlap"), _DEF_LONGMP_OVERLAP)
+    )
+    window_count = _longmp_window_count(num_frames, tile, overlap)
+    segments = _longmp_prompt_segments(scenes, window_count)
+    logger.info(
+        "ltxv097.longmp_windows",
+        num_frames=num_frames,
+        windows=window_count,
+        scenes=len(scenes),
+        tile=tile,
+        overlap=overlap,
+    )
+
+    call_kwargs: dict[str, Any] = {
+        "prompt": list(scenes),
+        "prompt_segments": segments,
+        "negative_prompt": negative_prompt,
+        "width": width,
+        "height": height,
+        "num_frames": num_frames,
+        "frame_rate": 24,
+        "seed": seed,
+        "guidance_scale": samp["guidance_scale"],
+        "guidance_rescale": samp["guidance_rescale"],
+        "num_inference_steps": samp["num_inference_steps"],
+        "cond_image": cond_image,
+        "cond_strength": samp.get(
+            "condition_strength", _DEF_CONDITION_STRENGTH
+        ),
+        "temporal_tile_size": tile,
+        "temporal_overlap": overlap,
+        "temporal_overlap_cond_strength": float(
+            _or_default(
+                g("temporal_overlap_cond_strength"),
+                _DEF_LONGMP_OVERLAP_COND,
+            )
+        ),
+        "adain_factor": float(
+            _or_default(g("adain_factor"), _DEF_LONGMP_ADAIN)
+        ),
+        "decode_timestep": samp["decode_timestep"],
+        "decode_noise_scale": samp["decode_noise_scale"],
+        "output_type": "pil",
+    }
+    sig_params = inspect.signature(pipe.__call__).parameters
+    call_kwargs = {
+        k: v for k, v in call_kwargs.items() if k in sig_params
+    }
+    result = pipe(**call_kwargs)
+    frames = getattr(result, "frames", None)
+    if frames is None and isinstance(result, dict):
+        frames = result.get("frames")
+    if frames is None:
+        raise RuntimeError(
+            "LTXI2VLongMultiPromptPipeline returned no frames — unknown "
+            "result shape"
+        )
+    return (
+        frames[0]
+        if isinstance(frames, list) and len(frames) == 1
+        else frames
     )
 
 
