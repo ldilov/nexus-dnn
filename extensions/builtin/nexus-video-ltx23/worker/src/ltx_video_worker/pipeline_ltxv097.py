@@ -131,12 +131,17 @@ _DEF_GUIDANCE_RESCALE = 0.0
 
 # LongMultiPrompt (Option D) temporal-window defaults. tile/overlap are
 # in DECODED frames — diffusers scales them by the VAE temporal ratio
-# internally. 80/24 are diffusers' own defaults; overlap_cond 0.5 and
-# adain 0.25 match the upstream ComfyUI-parity recipe. The window-fusion
-# happens in LATENT space, so there is no per-scene VAE-decode handoff
-# (the structural cause of the manual seam path's error propagation).
-_DEF_LONGMP_TILE = 80
-_DEF_LONGMP_OVERLAP = 24
+# internally. The window-fusion happens in LATENT space, so there is no
+# per-scene VAE-decode handoff (the structural cause of the manual seam
+# path's error propagation). overlap_cond 0.5 and adain 0.25 match the
+# upstream ComfyUI-parity recipe.
+# tile/overlap: diffusers' own defaults are 80/24, but a tile-80 window
+# (10 latent frames) puts denoise activations + the GGUF transformer
+# past a 16 GiB card. 48 = 6 latent frames, GPU-proven 12.04 GiB peak
+# on the RTX 5070 Ti (smoke D1f 2026-05-20). Bigger cards just get more
+# (smaller) windows — still correct.
+_DEF_LONGMP_TILE = 48
+_DEF_LONGMP_OVERLAP = 16
 _DEF_LONGMP_OVERLAP_COND = 0.5
 _DEF_LONGMP_ADAIN = 0.25
 # AutoencoderKLLTXVideo temporal compression ratio — fixed by the model;
@@ -518,6 +523,41 @@ def _import_ltx_longmp_pipeline_class() -> Any:
         ) from e
 
 
+def _install_longmp_encode_evict(pipe: Any, logger: Any) -> None:
+    """Evict the GGUF transformer to CPU before every per-window T5
+    prompt encode.
+
+    `LTXI2VLongMultiPromptPipeline` encodes prompts interleaved with
+    denoising (encode → denoise → encode → …). `enable_model_cpu_offload`
+    offloads components along a fixed forward chain, so when execution
+    loops back from the transformer to the text encoder the transformer
+    is never offloaded — T5-XXL (~9 GiB) and the GGUF transformer
+    (~8.3 GiB) end up co-resident and spill the 16 GiB card (smoke D1:
+    19.55 GiB peak, invariant to tile / decode / resolution).
+
+    Wrapping `encode_prompt` to drop the transformer first breaks the
+    co-residency; the transformer's own offload hook reloads it to GPU
+    for the next denoise step. `GGUFParameter` follows a plain `.to()`
+    (probe 2026-05-20: `.to("cpu")` freed 8.29 GiB) — the GGUF/offload
+    incompatibility is specific to accelerate's sequential mechanism.
+    """
+    torch = _LAZY_TORCH
+    orig = getattr(pipe, "encode_prompt", None)
+    if orig is None or torch is None:
+        logger.info("ltxv097.longmp_encode_evict_skip")
+        return
+
+    def _encode_prompt_evicting(*args: Any, **kwargs: Any) -> Any:
+        transformer = getattr(pipe, "transformer", None)
+        if transformer is not None:
+            transformer.to("cpu")
+            torch.cuda.empty_cache()
+        return orig(*args, **kwargs)
+
+    pipe.encode_prompt = _encode_prompt_evicting
+    logger.info("ltxv097.longmp_encode_evict_installed")
+
+
 def _build_ltxv097_longmp_pipeline(
     offload_mode: str,
     logger: Any,
@@ -526,15 +566,19 @@ def _build_ltxv097_longmp_pipeline(
 ) -> Any:
     """Build the GGUF 0.9.7 stack wrapped in `LTXI2VLongMultiPromptPipeline`
     (Option D). Identical GGUF-transformer + base-repo assembly as
-    `_build_ltxv097_pipeline`; only the pipeline class differs.
+    `_build_ltxv097_pipeline`; only the pipeline class differs. The
+    encode-evict wrapper breaks the T5 / transformer VRAM co-residency
+    that LongMP's interleaved encode/denoise otherwise causes.
     """
-    return _build_ltxv097_pipeline(
+    pipe = _build_ltxv097_pipeline(
         offload_mode,
         logger,
         model_id=model_id,
         vae_tiling=vae_tiling,
         pipeline_cls=_import_ltx_longmp_pipeline_class(),
     )
+    _install_longmp_encode_evict(pipe, logger)
+    return pipe
 
 
 def _ensure_pipeline(
@@ -1682,6 +1726,63 @@ def _longmp_prompt_segments(
     return segments
 
 
+def _encode_seed_guidance_latents(
+    pipe: Any,
+    cond_image: Any,
+    width: int,
+    height: int,
+    f_lat: int,
+    logger: Any,
+) -> Any:
+    """Encode the seed image to a normalized LTX latent replicated to
+    `f_lat` frames — the `guidance_latents` argument for
+    `LTXI2VLongMultiPromptPipeline` (Option D quality pass).
+
+    Mirrors the pipeline's own `cond_image` encode path exactly
+    (`video_processor.preprocess` -> `vae.encode` -> `latent_dist.mode()`
+    -> `_normalize_latents` with the VAE's per-channel mean/std) so the
+    guidance latent lives in the same normalized space the denoiser
+    expects. `guidance_latents` must match the global latent frame count
+    (`__call__` raises ValueError otherwise) — hence the replicate along
+    the temporal axis.
+
+    `vae.encode` is `@apply_forward_hook`-decorated: under
+    `enable_model_cpu_offload` it moves the VAE on/off GPU itself. The
+    encode is driven through that hook — manually `vae.to("cuda")` would
+    desync accelerate's offload state. Only the input tensor is placed on
+    the pipeline execution device. Result returns on CPU; the pipeline
+    re-casts it to the execution device + float32 internally.
+    """
+    torch = _LAZY_TORCH
+    vae = pipe.vae
+    device = pipe._execution_device
+    img = pipe.video_processor.preprocess(
+        cond_image, height=height, width=width
+    )
+    img = img.to(device=device, dtype=vae.dtype)
+    enc = vae.encode(img.unsqueeze(2))
+    lat = (
+        enc.latent_dist.mode()
+        if hasattr(enc, "latent_dist")
+        else enc.latents
+    )
+    lat = lat.to(torch.float32)
+    lat = pipe._normalize_latents(
+        lat,
+        vae.latents_mean,
+        vae.latents_std,
+        vae.config.scaling_factor,
+    )
+    guidance = lat.repeat(1, 1, f_lat, 1, 1).contiguous()
+    logger.info(
+        "ltxv097.longmp_guidance_encoded",
+        shape=tuple(guidance.shape),
+    )
+    if torch is not None:
+        torch.cuda.empty_cache()
+    return guidance.cpu()
+
+
 def _generate_video_longmp(
     pipe: Any,
     cond_image: Any,
@@ -1702,6 +1803,12 @@ def _generate_video_longmp(
     window fusion — there is no VAE-decode handoff between scenes, so the
     decode-degradation error-propagation loop of the manual seam path is
     structurally gone. Returns a flat list of PIL frames.
+
+    `pipe.vae.use_framewise_decoding` is forced on before the call: the
+    LTX VAE's `_decode` only takes the bounded `_temporal_tiled_decode`
+    path when that flag is True, and `enable_tiling()` never sets it — so
+    a whole-video decode otherwise runs every frame at once and spills
+    the 16 GiB card (smoke D1: 20.21 GiB reserved at decode).
 
     `image_cond_noise_scale` and `condition_tail_frames` from `samp` do
     not exist on this pipeline (it uses a per-token cond mask instead) —
@@ -1756,14 +1863,53 @@ def _generate_video_longmp(
         "decode_noise_scale": samp["decode_noise_scale"],
         "output_type": "pil",
     }
+    # Opt-in guidance_latents identity re-injection (Option D quality
+    # pass). Active only when `advanced.guiding_strength` is set — absent
+    # leaves the working path untouched. The seed is encoded to a
+    # normalized latent and passed as a soft per-window identity anchor
+    # against last-window autoregressive drift. Debate gate 2026-05-20
+    # (Codex + adversary): keep guiding_strength low (~0.2 — higher
+    # suppresses motion since the static seed is appended as reference
+    # context every window) and pair it with a SMALL temporal_tile —
+    # guidance appends ~window-size reference tokens per window, so VRAM
+    # grows; tile must drop, not rise.
+    guiding_strength = g("guiding_strength")
+    if guiding_strength is not None and cond_image is not None:
+        vae_t = getattr(
+            pipe, "vae_temporal_compression_ratio", _LONGMP_VAE_TEMPORAL
+        )
+        f_lat = (max(1, num_frames) - 1) // vae_t + 1
+        call_kwargs["guidance_latents"] = _encode_seed_guidance_latents(
+            pipe, cond_image, width, height, f_lat, logger
+        )
+        call_kwargs["guiding_strength"] = float(guiding_strength)
+        logger.info(
+            "ltxv097.longmp_guidance_on",
+            guiding_strength=float(guiding_strength),
+            f_lat=f_lat,
+        )
     sig_params = inspect.signature(pipe.__call__).parameters
     call_kwargs = {
         k: v for k, v in call_kwargs.items() if k in sig_params
     }
+    if guiding_strength is not None and "guidance_latents" not in call_kwargs:
+        logger.error(
+            "ltxv097.longmp_guidance_unsupported",
+            reason="pipeline __call__ lacks guidance_latents — guidance "
+            "requested but inactive",
+        )
+    # Force framewise (temporal-tiled) VAE decoding before the call. The
+    # LTX VAE's `_decode` only routes to the bounded
+    # `_temporal_tiled_decode` when `use_framewise_decoding` is True, and
+    # `enable_tiling()` never sets it — without this a whole-video decode
+    # runs every frame at once and spills the 16 GiB card.
+    vae = getattr(pipe, "vae", None)
+    if vae is not None:
+        vae.use_framewise_decoding = True
     result = pipe(**call_kwargs)
     frames = getattr(result, "frames", None)
-    if frames is None and isinstance(result, dict):
-        frames = result.get("frames")
+    if frames is None and isinstance(result, (list, tuple)) and result:
+        frames = result[0]
     if frames is None:
         raise RuntimeError(
             "LTXI2VLongMultiPromptPipeline returned no frames — unknown "
