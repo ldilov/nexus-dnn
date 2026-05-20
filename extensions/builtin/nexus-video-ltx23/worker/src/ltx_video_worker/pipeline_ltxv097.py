@@ -139,6 +139,17 @@ _PRESETS: dict[str, dict[str, Any]] = {
     },
 }
 
+# The timestep set LTX-Video 0.9.7-distilled was distilled against
+# (diffusers LTX docs). Denoising at these exact noise levels is the
+# documented best-quality path; uniform `num_inference_steps` spacing
+# lands the distilled student off its trained anchors. Opt-in via
+# advanced.timestep_schedule — LTXConditionPipeline.__call__ accepts a
+# bare `timesteps=` list (no sigmas double-pass), so no pipeline
+# subclass is needed.
+_OFFICIAL_DISTILLED_TIMESTEPS: list[float] = [
+    1000.0, 993.0, 987.0, 981.0, 975.0, 909.0, 725.0, 0.03,
+]
+
 # LongMultiPrompt (Option D) temporal-window defaults. tile/overlap are
 # in DECODED frames — diffusers scales them by the VAE temporal ratio
 # internally. The window-fusion happens in LATENT space, so there is no
@@ -1122,6 +1133,22 @@ def _resolve_vae_tiling(advanced: dict[str, Any]) -> tuple[str, dict[str, int]]:
     return "default", {}
 
 
+def _coerce_timestep_schedule(value: Any) -> list[float] | None:
+    """Coerce advanced.timestep_schedule into a list of floats, or None.
+    `"official"` resolves to the distilled checkpoint's published set."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        if value.strip().lower() == "official":
+            return list(_OFFICIAL_DISTILLED_TIMESTEPS)
+        return None
+    try:
+        sched = [float(x) for x in value]
+    except (TypeError, ValueError):
+        return None
+    return sched or None
+
+
 def _sampling_params(advanced: dict[str, Any]) -> dict[str, Any]:
     """The tunable sampling baseline. Every key is overridable via the
     request's `advanced` block; absent/`null` → the documented default
@@ -1174,6 +1201,9 @@ def _sampling_params(advanced: dict[str, Any]) -> dict[str, Any]:
                 _d("guidance_rescale", _DEF_GUIDANCE_RESCALE),
             )
         ),
+        "timestep_schedule": _coerce_timestep_schedule(
+            g("timestep_schedule")
+        ),
     }
 
 
@@ -1221,6 +1251,12 @@ def _generate_segment(
         "decode_noise_scale": samp["decode_noise_scale"],
         "image_cond_noise_scale": samp["image_cond_noise_scale"],
     }
+    # Opt-in custom timestep schedule. LTXConditionPipeline.__call__ takes
+    # a bare `timesteps=` list and overrides num_inference_steps from its
+    # length; signature-filtered below so fallback classes ignore it.
+    schedule = samp.get("timestep_schedule")
+    if schedule:
+        call_kwargs["timesteps"] = list(schedule)
     sig_params = inspect.signature(pipe.__call__).parameters
 
     # `image` is either a single PIL frame (image-to-video / first
