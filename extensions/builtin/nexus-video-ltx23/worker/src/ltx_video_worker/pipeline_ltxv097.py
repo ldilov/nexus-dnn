@@ -129,6 +129,16 @@ _DEF_CONDITION_TAIL_FRAMES = 24
 # canonical safe ladder is 0.3 → 0.5 → 0.7 (synthesis 2026-05-20).
 _DEF_GUIDANCE_RESCALE = 0.0
 
+# preset="distilled" flips _sampling_params' dev-recipe defaults (the
+# _DEF_* constants) to the distilled 13b's 8-step / guidance-1.0 regime;
+# every other knob and any explicit `advanced` value still take effect.
+_PRESETS: dict[str, dict[str, Any]] = {
+    "distilled": {
+        "num_inference_steps": 8,
+        "guidance_scale": 1.0,
+    },
+}
+
 # LongMultiPrompt (Option D) temporal-window defaults. tile/overlap are
 # in DECODED frames — diffusers scales them by the VAE temporal ratio
 # internally. The window-fusion happens in LATENT space, so there is no
@@ -1119,34 +1129,50 @@ def _sampling_params(advanced: dict[str, Any]) -> dict[str, Any]:
     is the single source of truth for #4 "adjustable params".
     """
     g = advanced.get
+    preset = _PRESETS.get(str(advanced.get("preset") or "").strip().lower(), {})
+
+    def _d(key: str, fallback: Any) -> Any:
+        return preset.get(key, fallback)
+
     return {
         "num_inference_steps": int(
-            _or_default(g("num_inference_steps"), _DEF_STEPS)
+            _or_default(g("num_inference_steps"), _d("num_inference_steps", _DEF_STEPS))
         ),
         "guidance_scale": float(
-            _or_default(g("guidance_scale"), _DEF_GUIDANCE)
+            _or_default(g("guidance_scale"), _d("guidance_scale", _DEF_GUIDANCE))
         ),
         "decode_timestep": float(
-            _or_default(g("decode_timestep"), _DEF_DECODE_TIMESTEP)
+            _or_default(g("decode_timestep"), _d("decode_timestep", _DEF_DECODE_TIMESTEP))
         ),
         "decode_noise_scale": float(
-            _or_default(g("decode_noise_scale"), _DEF_DECODE_NOISE_SCALE)
+            _or_default(
+                g("decode_noise_scale"),
+                _d("decode_noise_scale", _DEF_DECODE_NOISE_SCALE),
+            )
         ),
         "image_cond_noise_scale": float(
             _or_default(
-                g("image_cond_noise_scale"), _DEF_IMAGE_COND_NOISE_SCALE
+                g("image_cond_noise_scale"),
+                _d("image_cond_noise_scale", _DEF_IMAGE_COND_NOISE_SCALE),
             )
         ),
         "condition_strength": float(
-            _or_default(g("condition_strength"), _DEF_CONDITION_STRENGTH)
+            _or_default(
+                g("condition_strength"),
+                _d("condition_strength", _DEF_CONDITION_STRENGTH),
+            )
         ),
         "condition_tail_frames": int(
             _or_default(
-                g("condition_tail_frames"), _DEF_CONDITION_TAIL_FRAMES
+                g("condition_tail_frames"),
+                _d("condition_tail_frames", _DEF_CONDITION_TAIL_FRAMES),
             )
         ),
         "guidance_rescale": float(
-            _or_default(g("guidance_rescale"), _DEF_GUIDANCE_RESCALE)
+            _or_default(
+                g("guidance_rescale"),
+                _d("guidance_rescale", _DEF_GUIDANCE_RESCALE),
+            )
         ),
     }
 
