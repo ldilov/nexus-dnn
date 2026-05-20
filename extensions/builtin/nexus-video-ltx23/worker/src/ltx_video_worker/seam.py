@@ -109,6 +109,14 @@ def seam_params(advanced: dict[str, Any], env_method: str | None) -> dict[str, A
         "color_match": _coerce_bool(
             g("seam_color_match"), _DEF_COLOR_MATCH
         ),
+        # AdaIN-style pixel blend factor (research P1-10). 1.0 = full
+        # Reinhard transfer (legacy). 0.25 = soft style nudge matching
+        # the Lightricks ComfyUI LTXVAdainLatent recommendation. Lower
+        # values reduce risk of over-corrected exposure on natural
+        # mid-scene lighting changes.
+        "color_match_factor": _coerce_float(
+            g("seam_color_match_factor"), 1.0
+        ),
     }
 
 
@@ -136,7 +144,9 @@ def apply_seam(
         body = cur_frames[-1:]
 
     if params.get("color_match", True):
-        body = _color_match(body, tail[-1])
+        body = _color_match(
+            body, tail[-1], float(params.get("color_match_factor", 1.0))
+        )
 
     blend_n = max(0, min(int(params.get("blend_frames", 0)), len(body)))
     bridge: list[Any] = []
@@ -169,20 +179,26 @@ def apply_seam(
 _COLOR_STAT_FRAMES = 8
 
 
-def _color_match(frames: list[Any], reference: Any) -> list[Any]:
-    """Reinhard per-channel mean/std transfer onto ``reference``.
+def _color_match(
+    frames: list[Any], reference: Any, factor: float = 1.0
+) -> list[Any]:
+    """AdaIN-style per-channel mean/std transfer onto ``reference``,
+    blended at ``factor`` (1.0 = full transfer, 0.25 = research nudge).
 
     Source statistics are estimated from the boundary head only (the
     first ``_COLOR_STAT_FRAMES``), not the whole body: the goal is to
     remove the exposure/tone STEP at the cut, so a long interior with a
     legitimate mid-scene lighting change must not dominate the estimate
     and back-propagate a miscorrection onto frames that were already
-    correct. The transform is then applied uniformly to every frame.
+    correct. The transform is then blended with the original per
+    ``factor``.
     """
     try:
         import numpy as np
         from PIL import Image  # type: ignore
     except ImportError:
+        return frames
+    if factor <= 0.0:
         return frames
 
     ref = np.asarray(reference.convert("RGB"), dtype=np.float32)
@@ -197,9 +213,11 @@ def _color_match(frames: list[Any], reference: Any) -> list[Any]:
     src_std = head_stack.reshape(-1, 3).std(axis=0) + 1e-5
 
     out: list[Any] = []
+    blend = max(0.0, min(1.0, factor))
     for f in frames:
         arr = np.asarray(f.convert("RGB"), dtype=np.float32)
-        matched = (arr - src_mean) / src_std * ref_std + ref_mean
+        adain = (arr - src_mean) / src_std * ref_std + ref_mean
+        matched = blend * adain + (1.0 - blend) * arr
         out.append(
             Image.fromarray(np.clip(matched, 0.0, 255.0).astype(np.uint8))
         )
@@ -410,6 +428,15 @@ def _load_model_locked(kind: str, logger: Any) -> Any:
                 pass
         slot["model"] = None
     return slot["model"]
+
+
+def _coerce_float(value: Any, default: float) -> float:
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _coerce_int(value: Any, default: int) -> int:
