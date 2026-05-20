@@ -367,3 +367,29 @@ def test_sampling_params_explicit_timestep_list() -> None:
 @pytest.mark.parametrize("bad", ["garbage", [], ["x"], [None], 42])
 def test_coerce_timestep_schedule_rejects_invalid(bad: Any) -> None:
     assert m._coerce_timestep_schedule(bad) is None
+
+
+def test_profile_supplies_timestep_schedule() -> None:
+    samp = m._sampling_params({"profile": "ltx23-distilled-official-schedule"})
+    assert samp["timestep_schedule"] == m._OFFICIAL_DISTILLED_TIMESTEPS
+    assert samp["num_inference_steps"] == 8
+    assert samp["guidance_scale"] == 1.0
+
+
+def test_explicit_timestep_schedule_overrides_profile() -> None:
+    samp = m._sampling_params(
+        {
+            "profile": "ltx23-distilled-official-schedule",
+            "timestep_schedule": [1000, 500, 0.03],
+        }
+    )
+    assert samp["timestep_schedule"] == [1000.0, 500.0, 0.03]
+
+
+def test_profile_without_schedule_leaves_it_none() -> None:
+    assert (
+        m._sampling_params({"profile": "ltx23-distilled-single"})[
+            "timestep_schedule"
+        ]
+        is None
+    )
