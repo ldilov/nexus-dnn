@@ -310,3 +310,36 @@ def test_resolve_output_fps_env_override(monkeypatch: Any) -> None:
     monkeypatch.setenv("NEXUS_VIDEO_LTX23_OUTPUT_FPS", "48")
     assert m._resolve_output_fps({}, 24) == 48
     assert m._resolve_output_fps({"output_fps": 24}, 24) == 24
+
+
+# --- _sampling_params preset resolution -------------------------------------
+
+
+def test_sampling_params_default_is_dev_recipe() -> None:
+    samp = m._sampling_params({})
+    assert samp["num_inference_steps"] == m._DEF_STEPS
+    assert samp["guidance_scale"] == m._DEF_GUIDANCE
+
+
+def test_sampling_params_distilled_preset_flips_steps_and_guidance() -> None:
+    samp = m._sampling_params({"preset": "distilled"})
+    assert samp["num_inference_steps"] == 8
+    assert samp["guidance_scale"] == 1.0
+    # non-preset knobs keep their dev baseline
+    assert samp["image_cond_noise_scale"] == m._DEF_IMAGE_COND_NOISE_SCALE
+    assert samp["condition_strength"] == m._DEF_CONDITION_STRENGTH
+
+
+def test_sampling_params_explicit_value_overrides_preset() -> None:
+    samp = m._sampling_params(
+        {"preset": "distilled", "guidance_scale": 1.25, "num_inference_steps": 12}
+    )
+    assert samp["num_inference_steps"] == 12
+    assert samp["guidance_scale"] == 1.25
+
+
+@pytest.mark.parametrize("preset", [None, "", "  ", "unknown", 123])
+def test_sampling_params_unknown_preset_falls_back_to_dev(preset: Any) -> None:
+    samp = m._sampling_params({"preset": preset})
+    assert samp["num_inference_steps"] == m._DEF_STEPS
+    assert samp["guidance_scale"] == m._DEF_GUIDANCE
