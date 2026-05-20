@@ -52,6 +52,20 @@ Env knobs (sampling A/B — empty = production defaults):
                                    directly. Research P1-6 biggest smudge
                                    fix. VRAM cost: stage-3 at 2x native.
 
+Env knobs (Option D — LongMultiPrompt single-call long video):
+  NEXUS_I2V_LONGMP (0)             1 = render ALL scenes in ONE
+                                   LTXI2VLongMultiPromptPipeline call.
+                                   Scene N+1 conditions on scene N's tail
+                                   LATENTS (no VAE-decode handoff) — kills
+                                   visible cuts + error propagation.
+                                   Bypasses TWO_PASS and the manual seam.
+  NEXUS_I2V_TOTAL_FRAMES (auto)    total video frames; auto = round(
+                                   scenes*secs*fps) snapped to 8n+1.
+  NEXUS_I2V_TEMPORAL_TILE (80)     temporal window size (decoded frames)
+  NEXUS_I2V_TEMPORAL_OVERLAP (24)  window overlap (decoded frames)
+  NEXUS_I2V_OVERLAP_COND (0.5)     prev-window tail-latent inject strength
+  NEXUS_I2V_ADAIN (0.25)           cross-window AdaIN consistency factor
+
 Exit: 0 PASS, 1 FAIL/REVIEW, 2 prerequisite missing.
 """
 
@@ -204,6 +218,22 @@ def _build_advanced() -> dict[str, float | int]:
         n = _opt_int(env)
         if n is not None:
             adv[key] = n
+    # Option D — LongMultiPrompt temporal-window knobs. Ignored by
+    # `_sampling_params`; consumed by `_generate_video_longmp`.
+    for key, env in (
+        ("temporal_overlap_cond_strength", "NEXUS_I2V_OVERLAP_COND"),
+        ("adain_factor", "NEXUS_I2V_ADAIN"),
+    ):
+        v = _opt_float(env)
+        if v is not None:
+            adv[key] = v
+    for key, env in (
+        ("temporal_tile_size", "NEXUS_I2V_TEMPORAL_TILE"),
+        ("temporal_overlap", "NEXUS_I2V_TEMPORAL_OVERLAP"),
+    ):
+        n = _opt_int(env)
+        if n is not None:
+            adv[key] = n
     return adv
 
 
@@ -211,6 +241,12 @@ def _snap32(x: int) -> int:
     # LTX requires gen width/height divisible by 32. Round to nearest,
     # floor at 32, so every ladder rung is a valid model resolution.
     return max(32, int(round(x / 32.0)) * 32)
+
+
+def _snap_8nplus1(x: int) -> int:
+    # LTX num_frames must satisfy (n - 1) % 8 == 0. Floor to the nearest
+    # valid value (>= 9) so VRAM never grows from rounding up.
+    return max(9, ((max(9, x) - 1) // 8) * 8 + 1)
 
 
 def _probe_fps(path: Path) -> float:
@@ -284,9 +320,17 @@ def main() -> int:
         f"sampling overrides={advanced or '(production defaults)'}"
     )
 
+    # Option D — single-call long-video path. Builds the LongMultiPrompt
+    # pipeline class instead of LTXConditionPipeline (same GGUF stack).
+    longmp = (os.environ.get("NEXUS_I2V_LONGMP", "0").strip().lower()
+              in ("1", "true", "yes", "on"))
     seed_img = mod._load_input_image(seed_path, W, H)  # C1 cover-crop
     t0 = time.perf_counter()
-    pipe = mod._build_ltxv097_pipeline(
+    _build = (
+        mod._build_ltxv097_longmp_pipeline if longmp
+        else mod._build_ltxv097_pipeline
+    )
+    pipe = _build(
         os.environ.get("NEXUS_VIDEO_LTX23_OFFLOAD_MODE", "model"),
         log,
         model_id=quant,
@@ -330,68 +374,147 @@ def main() -> int:
     # memory; the VRAM ceiling guard will catch any spill.
     two_pass = (os.environ.get("NEXUS_I2V_TWO_PASS", "0").strip().lower()
                 in ("1", "true", "yes", "on"))
-    if two_pass:
-        print(f"two_pass=ON target={tw}x{th} (stage-3 at {W*2}x{H*2})")
-    for si in range(n_scenes):
-        prompt = (
-            f"{STYLE_CAMERA}. {CHARACTER}. "
-            f"{SCENES[si % len(SCENES)]}. {STYLE_ATMOSPHERE}"
+    if longmp:
+        # Option D: render every scene in ONE LongMultiPrompt call.
+        # Latent-space window fusion replaces the manual per-scene loop +
+        # apply_seam — no VAE-decode handoff, so no compounding smudge.
+        # two_pass / the seam machinery do not apply on this path.
+        tile = advanced.get("temporal_tile_size", mod._DEF_LONGMP_TILE)
+        overlap = advanced.get(
+            "temporal_overlap", mod._DEF_LONGMP_OVERLAP
         )
-        seed = global_seed + si * nf
+        total_frames = _opt_int("NEXUS_I2V_TOTAL_FRAMES")
+        if total_frames is None:
+            # Length-based estimate, then grow until the temporal-window
+            # split yields >= n_scenes windows — otherwise a trailing
+            # scene prompt gets no window and is silently dropped.
+            total_frames = _snap_8nplus1(int(round(secs * fps)) * n_scenes)
+            while (mod._longmp_window_count(total_frames, tile, overlap)
+                   < n_scenes):
+                total_frames += 8
+        win = mod._longmp_window_count(total_frames, tile, overlap)
+        scenes = [
+            f"{STYLE_CAMERA}. {CHARACTER}. "
+            f"{SCENES[i % len(SCENES)]}. {STYLE_ATMOSPHERE}"
+            for i in range(n_scenes)
+        ]
+        print(
+            f"longmp=ON single-call total_frames={total_frames} (8n+1) "
+            f"scenes={n_scenes} windows={win} tile={tile} overlap={overlap}"
+        )
+        if win < n_scenes:
+            print(
+                f"  WARN: {win} windows < {n_scenes} scenes — trailing "
+                f"scenes will be dropped; raise NEXUS_I2V_TOTAL_FRAMES "
+                f"or lower NEXUS_I2V_TEMPORAL_TILE"
+            )
         t = time.perf_counter()
         torch.cuda.reset_peak_memory_stats()
         try:
             fr = list(
-                mod._generate_segment_dispatch(
-                    pipe, cache, two_pass,
-                    (tw, th) if two_pass else None,
-                    cond, prompt, NEG,
-                    W, H, nf, seed, samp, None, log, "two_pass",
+                mod._generate_video_longmp(
+                    pipe, seed_img, scenes, NEG,
+                    W, H, total_frames, global_seed, samp, advanced, log,
                 )
             )
         except Exception as e:  # noqa: BLE001
-            print(f"FAIL scene{si}: {e}")
+            print(f"FAIL longmp: {e}")
             traceback.print_exc()
             return 1
-        fr = apply_seam(prev_seam_tail, fr, seam, log)
         peak = torch.cuda.max_memory_allocated() / 1024**3
         resv = torch.cuda.max_memory_reserved() / 1024**3
-        worst_resv = max(worst_resv, resv)
+        worst_resv = resv
         if resv > vram_ceiling_gib:
             print(
-                f"FAIL scene{si}: reserved={resv:.2f} GiB > ceiling "
+                f"FAIL longmp: reserved={resv:.2f} GiB > ceiling "
                 f"{vram_ceiling_gib:.2f} GiB (Windows shared-GPU-memory "
-                f"spill risk). Lower NEXUS_I2V_W/H, increase VAE tile "
-                f"count, or drop steps. Aborting before downstream "
-                f"scenes degrade further."
+                f"spill risk). Lower NEXUS_I2V_W/H or "
+                f"NEXUS_I2V_TEMPORAL_TILE, or drop steps."
             )
             return 1
         spill = "  <-- SPILL RISK" if resv > vram_ceiling_gib * 0.95 else ""
-        tag = f"s{si}"
-        for k, ix in {"first": 0, "mid": len(fr) // 2, "last": len(fr) - 1}.items():
-            fr[ix].save(outdir / f"{tag}_{k}.png")
-        seg_path = segdir / f"{len(seg_paths):03d}.mp4"
+        for k, ix in {
+            "first": 0, "mid": len(fr) // 2, "last": len(fr) - 1
+        }.items():
+            fr[ix].save(outdir / f"longmp_{k}.png")
+        seg_path = segdir / "000.mp4"
         mod._write_frames_as_mp4(fr, seg_path, base_fps=fps)
         seg_paths.append(seg_path)
         print(
-            f"  {tag}: {len(fr)}f {time.perf_counter() - t:.0f}s "
+            f"  longmp: {len(fr)}f {time.perf_counter() - t:.0f}s "
             f"peak={peak:.2f} resv={resv:.2f} dims={fr[0].size}{spill}"
         )
-        tcount = max(1, min(samp["condition_tail_frames"], len(fr)))
-        prev_seam_tail = fr[-tcount:]
-        # In two-pass mode `fr` is target-res (e.g. 1920x1080); the next
-        # scene generates at native W,H so its conditioning tail must be
-        # native too — feeding a target-res tail makes the pipeline
-        # VAE-encode huge frames and spikes VRAM past the 16 GB ceiling
-        # (2026-05-20 G2 scene-1 spill). The seam color-match still uses
-        # the full-res prev_seam_tail.
-        if two_pass and fr[0].size != (W, H):
-            cond = [f.resize((W, H)) for f in fr[-tcount:]]
-        else:
-            cond = fr[-tcount:]
         del fr
         gc.collect()
         torch.cuda.empty_cache()
+    else:
+        if two_pass:
+            print(f"two_pass=ON target={tw}x{th} (stage-3 at {W*2}x{H*2})")
+        for si in range(n_scenes):
+            prompt = (
+                f"{STYLE_CAMERA}. {CHARACTER}. "
+                f"{SCENES[si % len(SCENES)]}. {STYLE_ATMOSPHERE}"
+            )
+            seed = global_seed + si * nf
+            t = time.perf_counter()
+            torch.cuda.reset_peak_memory_stats()
+            try:
+                fr = list(
+                    mod._generate_segment_dispatch(
+                        pipe, cache, two_pass,
+                        (tw, th) if two_pass else None,
+                        cond, prompt, NEG,
+                        W, H, nf, seed, samp, None, log, "two_pass",
+                    )
+                )
+            except Exception as e:  # noqa: BLE001
+                print(f"FAIL scene{si}: {e}")
+                traceback.print_exc()
+                return 1
+            fr = apply_seam(prev_seam_tail, fr, seam, log)
+            peak = torch.cuda.max_memory_allocated() / 1024**3
+            resv = torch.cuda.max_memory_reserved() / 1024**3
+            worst_resv = max(worst_resv, resv)
+            if resv > vram_ceiling_gib:
+                print(
+                    f"FAIL scene{si}: reserved={resv:.2f} GiB > ceiling "
+                    f"{vram_ceiling_gib:.2f} GiB (Windows shared-GPU-memory "
+                    f"spill risk). Lower NEXUS_I2V_W/H, increase VAE tile "
+                    f"count, or drop steps. Aborting before downstream "
+                    f"scenes degrade further."
+                )
+                return 1
+            spill = (
+                "  <-- SPILL RISK"
+                if resv > vram_ceiling_gib * 0.95 else ""
+            )
+            tag = f"s{si}"
+            for k, ix in {
+                "first": 0, "mid": len(fr) // 2, "last": len(fr) - 1
+            }.items():
+                fr[ix].save(outdir / f"{tag}_{k}.png")
+            seg_path = segdir / f"{len(seg_paths):03d}.mp4"
+            mod._write_frames_as_mp4(fr, seg_path, base_fps=fps)
+            seg_paths.append(seg_path)
+            print(
+                f"  {tag}: {len(fr)}f {time.perf_counter() - t:.0f}s "
+                f"peak={peak:.2f} resv={resv:.2f} dims={fr[0].size}{spill}"
+            )
+            tcount = max(1, min(samp["condition_tail_frames"], len(fr)))
+            prev_seam_tail = fr[-tcount:]
+            # In two-pass mode `fr` is target-res (e.g. 1920x1080); the
+            # next scene generates at native W,H so its conditioning tail
+            # must be native too — feeding a target-res tail makes the
+            # pipeline VAE-encode huge frames and spikes VRAM past the
+            # 16 GB ceiling (2026-05-20 G2 scene-1 spill). The seam
+            # color-match still uses the full-res prev_seam_tail.
+            if two_pass and fr[0].size != (W, H):
+                cond = [f.resize((W, H)) for f in fr[-tcount:]]
+            else:
+                cond = fr[-tcount:]
+            del fr
+            gc.collect()
+            torch.cuda.empty_cache()
 
     if not seg_paths:
         print("FAIL: no segments")
@@ -416,7 +539,8 @@ def main() -> int:
     print(f"  interp ok={interp_ok} final_fps={final_fps:.2f} target={out_fps}")
     print(f"  final: {out}")
     print(f"  frames: {outdir}")
-    verdict = worst_resv <= 15.0 and len(seg_paths) == n_scenes
+    expected_segs = 1 if longmp else n_scenes
+    verdict = worst_resv <= 15.0 and len(seg_paths) == expected_segs
     print("I2V_SHARP_RESULT:", "PASS" if verdict else "FAIL/REVIEW")
     return 0 if verdict else 1
 
