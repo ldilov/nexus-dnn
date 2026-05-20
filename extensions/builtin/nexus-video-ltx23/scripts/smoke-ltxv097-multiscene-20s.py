@@ -49,7 +49,10 @@ Env knobs:
   NEXUS_I2V_VRAM_CEILING (15.0)  GiB; reserved above → loud spill warning
   NEXUS_I2V_GUIDANCE ()    override preset guidance (1.0); 1.1-1.5 makes
                            the negative prompt marginally active
-  NEXUS_I2V_STEPS ()       override preset steps (8)
+  NEXUS_I2V_STEPS ()       override preset steps (8); >8 is off-spec for
+                           the distilled checkpoint (distilled for ~8)
+  NEXUS_I2V_GUIDANCE_RESCALE ()  CFG variance-collapse rescale (0.5-0.7);
+                           counters the over-saturation high CFG brings
   NEXUS_I2V_IMG_COND_NOISE ()  override image_cond_noise_scale (0.15)
   NEXUS_I2V_COND_STRENGTH ()   override condition_strength (0.7); keep
                            >=0.65 — lower morphs identity (GPU-proven)
@@ -60,6 +63,9 @@ Env knobs:
                            segment 0 — colour mean/std (contrast) AND
                            high-frequency energy (over-sharpen); 0 = off
   NEXUS_I2V_TEMPORAL_TILE (48) NEXUS_I2V_TEMPORAL_OVERLAP (16)  tier-2 B
+  NEXUS_I2V_MOTION_PROMPTS ()  1 = drop locked-off camera, prepend the
+                           motion positive-system prompt, use the
+                           enhanced anti-static negative prompt
 
 Exit: 0 PASS, 1 FAIL (render crash / wrong frame count), 2 prereq missing.
 """
@@ -81,6 +87,24 @@ NEG = (
     "extra fingers, missing fingers, bad anatomy, deformed hands, "
     "melted hands, distorted face, changing face, morphing identity, "
     "mask-like face"
+)
+# Prepended motion "system prompt" — empty by default so behaviour is
+# unchanged; NEXUS_I2V_MOTION_PROMPTS swaps in the motion variants.
+POSITIVE_SYSTEM = ""
+MOTION_POSITIVE_SYSTEM = (
+    "breathing chest, blinking eyes, darting gaze, subtle posture "
+    "shifts, drifting fabric, smooth steady camera drift"
+)
+ENHANCED_NEG = (
+    "static, frozen, motionless, stiff pose, rigid body, mannequin, "
+    "dead eyes, no blinking, mask-like face, jittery, stuttering, "
+    "motion smear, distorted face, changing face, morphing identity, "
+    "deformed hands, fused fingers, extra fingers, missing fingers, "
+    "bad anatomy, blurry, low quality"
+)
+STYLE_MOTION = (
+    "candlelit gothic cathedral, volumetric haze, "
+    "cinematic 35mm film grain, photorealistic"
 )
 SCENE1_ACTIONS = [
     "she slowly tilts her head, her grin widening as her dark eyes "
@@ -313,7 +337,9 @@ def _render_path_a(
     ref_color = None
     ref_hf = None
     for si, action in enumerate(actions):
-        prompt = f"{CHARACTER}. {action}. {STYLE}"
+        prompt = ". ".join(
+            p for p in (POSITIVE_SYSTEM, CHARACTER, action, STYLE) if p
+        )
         seed = global_seed + si * nf
         t = time.perf_counter()
         torch.cuda.reset_peak_memory_stats()
@@ -384,6 +410,18 @@ def main() -> int:  # noqa: C901 — linear tiered script, splitting hurts clari
     if tier not in (1, 2, 3):
         print(f"FAIL: NEXUS_I2V_TIER must be 1|2|3, got {tier}")
         return 2
+    motion_prompts = os.environ.get(
+        "NEXUS_I2V_MOTION_PROMPTS", ""
+    ).strip().lower() in ("1", "true", "yes", "on")
+    if motion_prompts:
+        global POSITIVE_SYSTEM, STYLE, NEG
+        POSITIVE_SYSTEM = MOTION_POSITIVE_SYSTEM
+        STYLE = STYLE_MOTION
+        NEG = ENHANCED_NEG
+    print(
+        f"prompt set: "
+        f"{'MOTION (enhanced neg + positive system, no locked-off camera)' if motion_prompts else 'baseline'}"
+    )
     width = _snap32(_int("NEXUS_I2V_W", 768))
     height = _snap32(_int("NEXUS_I2V_H", 512))
     fps = _int("NEXUS_I2V_FPS", 24)
@@ -437,6 +475,9 @@ def main() -> int:  # noqa: C901 — linear tiered script, splitting hurts clari
     ov_cs = _opt_float("NEXUS_I2V_COND_STRENGTH")
     if ov_cs is not None:
         advanced["condition_strength"] = ov_cs
+    ov_gr = _opt_float("NEXUS_I2V_GUIDANCE_RESCALE")
+    if ov_gr is not None:
+        advanced["guidance_rescale"] = ov_gr
     ov_ts = _opt_schedule("NEXUS_I2V_TIMESTEPS")
     if ov_ts is not None:
         advanced["timestep_schedule"] = ov_ts
@@ -495,7 +536,10 @@ def main() -> int:  # noqa: C901 — linear tiered script, splitting hurts clari
     # ----- Tier 2: Path A vs Path B comparison -----
     if tier == 2:
         actions = _seg_actions(2)
-        scenes = [f"{CHARACTER}. {a}. {STYLE}" for a in actions]
+        scenes = [
+            ". ".join(p for p in (POSITIVE_SYSTEM, CHARACTER, a, STYLE) if p)
+            for a in actions
+        ]
         hard_fail = 0
 
         print("\n-- Path A: manual stitched segments --")
