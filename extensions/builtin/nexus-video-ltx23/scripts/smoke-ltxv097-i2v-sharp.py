@@ -65,59 +65,50 @@ Env knobs (Option D — LongMultiPrompt single-call long video):
   NEXUS_I2V_TEMPORAL_OVERLAP (24)  window overlap (decoded frames)
   NEXUS_I2V_OVERLAP_COND (0.5)     prev-window tail-latent inject strength
   NEXUS_I2V_ADAIN (0.25)           cross-window AdaIN consistency factor
+  NEXUS_I2V_GUIDING_STRENGTH ()    opt-in: encode the seed + pass it as
+                                   guidance_latents (per-window identity
+                                   re-injection vs last-window drift).
+                                   Keep low (~0.2; higher kills motion)
+                                   and pair with a SMALL TEMPORAL_TILE
+                                   (~32) — guidance grows per-window VRAM.
 
 Exit: 0 PASS, 1 FAIL/REVIEW, 2 prerequisite missing.
 """
 
-# Predation arc (fictional). Seed image shows the nun ALREADY in the
-# possessed state — grinning, hands raised, dark-eyed — so prompts
-# escalate menace forward from that baseline rather than describing
-# transition into possession (which the seed contradicts). Each scene
-# leads with subject body motion and picks up where the previous
-# scene's tail leaves the pose. STYLE_CAMERA leads the composite
-# prompt to survive T5's 128-token truncation.
+# Possession arc (fictional). Seed shows the nun ALREADY possessed —
+# grinning, dark-eyed — so the arc escalates menace from that baseline.
+# Research operating-point pass (ltxv_13b_quality_research/06): the
+# prior max-violence prompts ("snaps head violently", "lurching off the
+# floor") overran LTX's per-window motion budget → the t6.5s face-smear.
+# Each scene now describes ONE moderate, chronological, renderable
+# motion and picks up the previous scene's end pose. The composed
+# prompt (CHARACTER + SCENE + STYLE) is kept short so it fits T5's
+# 128-token cap — the prior version truncated the style tail every run.
 CHARACTER = (
-    "a young nun in a black habit and white wimple, pale gaunt face, "
-    "dark intense eyes"
+    "the same pale-faced young nun, black veil, white wimple, "
+    "dark hollow eyes"
 )
-# STYLE_CAMERA leads the composite prompt so the camera-suppression
-# clause survives T5's 128-token truncation (Run A showed prompts
-# composing to 158 tokens; STYLE-at-tail was being chopped, letting
-# LTX default to its dolly-out fallback at scene end).
-STYLE_CAMERA = (
-    "static locked-off camera, no pan no zoom no dolly, "
-    "only the subject moves"
+STYLE = (
+    "locked-off camera, candlelit gothic cathedral, volumetric haze, "
+    "cinematic 35mm film grain, photorealistic"
 )
-STYLE_ATMOSPHERE = (
-    "dark gothic horror, candlelit cathedral, volumetric god-rays, "
-    "desaturated cold palette, film grain, cinematic 35mm, dramatic "
-    "chiaroscuro, photorealistic"
-)
-# Research-aligned NEG (ltxv_13b_quality_research/09_parameter_preset_
-# cheatsheet.md). Targets the specific artifacts visible in our sample:
-# face/hand melting, finger fusion, motion smear. Camera-suppression
-# kept from prior experimentation since dolly-out is our open issue.
+# Research-aligned NEG (ltxv_13b_quality_research/09 + the identity /
+# continuation negatives) — targets face/hand melt, motion smear, and
+# the identity drift seen in the second half.
 NEG = (
     "worst quality, low quality, inconsistent motion, blurry, jittery, "
     "distorted, motion smear, motion artifacts, fused fingers, "
-    "extra fingers, missing fingers, bad anatomy, weird hand, "
-    "deformed hands, melted hands, distorted face, "
-    "camera pan, camera zoom, camera dolly, dolly out, zoom out, "
-    "wide shot"
+    "extra fingers, missing fingers, bad anatomy, deformed hands, "
+    "melted hands, distorted face, changing face, morphing identity, "
+    "mask-like face"
 )
 SCENES = [
-    "she snaps her head violently to the side, her hair whipping "
-    "across her face, her tongue lashing out past her teeth, her "
-    "shoulders jerking upward, candle flames exploding outward "
-    "around her, robed onlookers stumbling backward",
-    "she throws both arms wide open like wings, her body lurching "
-    "upward off the floor, her habit billowing dramatically outward, "
-    "her head snapping backward, a robed onlooker collapsing to the "
-    "stones behind her, candles bursting in showers of sparks",
-    "she hurls herself forward toward the camera, her arms shooting "
-    "out reaching past the lens, her mouth tearing open in a snarl, "
-    "her hair flying wildly around her face, the cathedral candles "
-    "all exploding at once behind her",
+    "she slowly tilts her head, her grin widening as her dark eyes "
+    "fix on the camera, candle flames trembling beside her",
+    "she leans toward the camera, lifting one trembling hand, her "
+    "fingers spreading wide, her smile stretching unnaturally",
+    "she tips her head back, her mouth falling open in a slow silent "
+    "scream, both hands rising into the candlelight",
 ]
 
 
@@ -220,9 +211,12 @@ def _build_advanced() -> dict[str, float | int]:
             adv[key] = n
     # Option D — LongMultiPrompt temporal-window knobs. Ignored by
     # `_sampling_params`; consumed by `_generate_video_longmp`.
+    # `guiding_strength` is opt-in: when set, the seed is encoded and
+    # passed as `guidance_latents` (per-window identity re-injection).
     for key, env in (
         ("temporal_overlap_cond_strength", "NEXUS_I2V_OVERLAP_COND"),
         ("adain_factor", "NEXUS_I2V_ADAIN"),
+        ("guiding_strength", "NEXUS_I2V_GUIDING_STRENGTH"),
     ):
         v = _opt_float(env)
         if v is not None:
@@ -394,8 +388,7 @@ def main() -> int:
                 total_frames += 8
         win = mod._longmp_window_count(total_frames, tile, overlap)
         scenes = [
-            f"{STYLE_CAMERA}. {CHARACTER}. "
-            f"{SCENES[i % len(SCENES)]}. {STYLE_ATMOSPHERE}"
+            f"{CHARACTER}. {SCENES[i % len(SCENES)]}. {STYLE}"
             for i in range(n_scenes)
         ]
         print(
@@ -424,12 +417,16 @@ def main() -> int:
         peak = torch.cuda.max_memory_allocated() / 1024**3
         resv = torch.cuda.max_memory_reserved() / 1024**3
         worst_resv = resv
+        print(
+            f"  longmp mem: peak_alloc={peak:.2f} GiB "
+            f"reserved={resv:.2f} GiB ({time.perf_counter() - t:.0f}s)"
+        )
         if resv > vram_ceiling_gib:
             print(
-                f"FAIL longmp: reserved={resv:.2f} GiB > ceiling "
-                f"{vram_ceiling_gib:.2f} GiB (Windows shared-GPU-memory "
-                f"spill risk). Lower NEXUS_I2V_W/H or "
-                f"NEXUS_I2V_TEMPORAL_TILE, or drop steps."
+                f"FAIL longmp: reserved={resv:.2f} GiB (peak_alloc="
+                f"{peak:.2f}) > ceiling {vram_ceiling_gib:.2f} GiB "
+                f"(Windows shared-GPU-memory spill risk). Lower "
+                f"NEXUS_I2V_W/H or NEXUS_I2V_TEMPORAL_TILE, or drop steps."
             )
             return 1
         spill = "  <-- SPILL RISK" if resv > vram_ceiling_gib * 0.95 else ""
@@ -452,8 +449,7 @@ def main() -> int:
             print(f"two_pass=ON target={tw}x{th} (stage-3 at {W*2}x{H*2})")
         for si in range(n_scenes):
             prompt = (
-                f"{STYLE_CAMERA}. {CHARACTER}. "
-                f"{SCENES[si % len(SCENES)]}. {STYLE_ATMOSPHERE}"
+                f"{CHARACTER}. {SCENES[si % len(SCENES)]}. {STYLE}"
             )
             seed = global_seed + si * nf
             t = time.perf_counter()
