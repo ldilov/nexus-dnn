@@ -120,6 +120,14 @@ _DEF_CONDITION_STRENGTH = 0.7
 # motion-bearing tail is a small multiple. 24 ≈ 1 s @ 24fps of motion
 # context; tunable via advanced.condition_tail_frames.
 _DEF_CONDITION_TAIL_FRAMES = 24
+# guidance_rescale (Lin et al. 2023, "Common Diffusion Noise Schedules
+# and Sample Steps are Flawed") rescales the predicted noise after CFG
+# to restore variance lost at high guidance scales. At LTX cfg>=7 the
+# guidance signal overshoots (variance collapse → trajectory
+# overconfidence → camera-dolly bias). 0.0 = off (production default,
+# unchanged behaviour). Operators tune via advanced.guidance_rescale;
+# canonical safe ladder is 0.3 → 0.5 → 0.7 (synthesis 2026-05-20).
+_DEF_GUIDANCE_RESCALE = 0.0
 
 
 class Ltxv097RunState:
@@ -437,7 +445,36 @@ def _build_ltxv097_pipeline(
         logger.info("ltxv097.vae_tiling_off")
 
     _apply_offload_ltxv097(pipe, offload_mode, logger)
+    _maybe_override_scheduler_shift(pipe, logger)
     return pipe
+
+
+def _maybe_override_scheduler_shift(pipe: Any, logger: Any) -> None:
+    """Rebuild the LTX scheduler with a custom flow-matching shift when
+    `NEXUS_VIDEO_LTX23_FLOW_SHIFT` is set. Default (env unset / 0 / 1.0)
+    leaves the model-shipped scheduler untouched. Higher shift biases
+    sigma distribution toward high-noise steps (more motion freedom in
+    early denoising); synthesis 2026-05-20 ranks 3.0-4.0 as motion lever.
+    """
+    raw = os.environ.get("NEXUS_VIDEO_LTX23_FLOW_SHIFT", "").strip()
+    if not raw:
+        return
+    try:
+        shift = float(raw)
+    except ValueError:
+        return
+    if shift <= 0.0 or abs(shift - 1.0) < 1e-6:
+        return
+    try:
+        from diffusers import FlowMatchEulerDiscreteScheduler  # type: ignore
+
+        cur = getattr(pipe, "scheduler", None)
+        cfg = dict(getattr(cur, "config", {}) or {})
+        cfg["shift"] = shift
+        pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(cfg)
+        logger.info("ltxv097.scheduler_shift", shift=shift)
+    except Exception as e:  # noqa: BLE001 — optional path, never fatal
+        logger.info("ltxv097.scheduler_shift_skip", err=str(e))
 
 
 def _ensure_pipeline(
@@ -1004,6 +1041,9 @@ def _sampling_params(advanced: dict[str, Any]) -> dict[str, Any]:
                 g("condition_tail_frames"), _DEF_CONDITION_TAIL_FRAMES
             )
         ),
+        "guidance_rescale": float(
+            _or_default(g("guidance_rescale"), _DEF_GUIDANCE_RESCALE)
+        ),
     }
 
 
@@ -1045,6 +1085,7 @@ def _generate_segment(
         "frame_rate": 24,
         "generator": generator,
         "guidance_scale": samp["guidance_scale"],
+        "guidance_rescale": samp["guidance_rescale"],
         "num_inference_steps": samp["num_inference_steps"],
         "decode_timestep": samp["decode_timestep"],
         "decode_noise_scale": samp["decode_noise_scale"],
@@ -1210,6 +1251,15 @@ def _build_upsampler(pipe: Any, logger: Any) -> Any:
         )
     _silence_offload_defeat_warning()
     up.to("cuda")
+    # Offload the upsampler's own network to CPU until first use. The
+    # shared `vae` stays on cuda (the main pipe needs it resident). In
+    # multi-scene two-pass, keeping latent_upsampler resident across
+    # scenes pushed reserved VRAM past the 16 GB card's safe ceiling
+    # (2026-05-20 G2). `_generate_segment_2pass` streams it GPU<->CPU
+    # around the single upsample call.
+    _lu = getattr(up, "latent_upsampler", None)
+    if _lu is not None:
+        _lu.to("cpu")
     logger.info("ltxv097.upsampler_loaded", ref=ref, single_file=is_single)
     return up
 
@@ -1323,8 +1373,18 @@ def _generate_segment_2pass(
     if latents is None:
         raise RuntimeError("two-pass stage1 returned no latent")
 
+    # Stream the upsampler network GPU<->CPU around its single call so
+    # it does not hold VRAM during the stage-3 refine (multi-scene VRAM
+    # ceiling fix, 2026-05-20). The shared vae is untouched.
+    _lu = getattr(upsampler, "latent_upsampler", None)
+    if _lu is not None:
+        _lu.to("cuda")
     up_out = upsampler(latents=latents, output_type="latent")
     upscaled = getattr(up_out, "frames", up_out)
+    if _lu is not None:
+        _lu.to("cpu")
+        if torch is not None:
+            torch.cuda.empty_cache()
 
     k3 = {
         "prompt": prompt,
