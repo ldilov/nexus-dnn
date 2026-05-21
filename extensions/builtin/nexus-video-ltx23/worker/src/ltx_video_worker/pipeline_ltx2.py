@@ -125,16 +125,24 @@ _DEF_IMAGE_COND_NOISE_SCALE = 0.0
 # operator can force the legacy single-stage path with two_stage=false.
 _DEF_TWO_STAGE = True
 _STAGE2_DISTILLED_SIGMAS = (0.909375, 0.725, 0.421875, 0.0)
-# Motion-intensity prompt nudge. Motion is prompt-driven (Gemma steering
-# confirmed by A/B); each level appends a short directed-motion phrase.
-# "dynamic" is the default — the energetic-but-coherent operating point
-# (a worded 60/40 violent/calm balance beat every other lever tested).
+# Motion-intensity prompt nudge. A head-to-head proved an abstract
+# adjective tag ("energetic motion") does NOT animate the model — motion
+# comes from action VERBS describing what the subject does. Each level
+# appends a verb-driven action clause. Two levels: "dynamic" (default —
+# the energetic-but-coherent operating point) and "intense" (maximum
+# motion, costs some fast-frame softness). An unknown value falls back to
+# the default. The operator's own action verbs in the prompt body remain
+# the strongest motion lever.
 _DEF_MOTION_INTENSITY = "dynamic"
 _MOTION_INTENSITY_SUFFIX = {
-    "calm": "slow gentle deliberate motion",
-    "moderate": "natural steady motion",
-    "dynamic": "energetic forceful directed motion, dynamic movement",
-    "intense": "fast intense motion, rapid dynamic movement",
+    "dynamic": (
+        "the subject moves through the scene with energy, rising, "
+        "turning and gesturing in sharp directed motion"
+    ),
+    "intense": (
+        "the subject moves rapidly and forcefully, lunging, twisting "
+        "and whipping in fast intense motion"
+    ),
 }
 # VAE latent geometry. The LTX-2 video VAE downscales 8x temporally and
 # 32x spatially with 128 latent channels — the SpatioTemporalScaleFactors
