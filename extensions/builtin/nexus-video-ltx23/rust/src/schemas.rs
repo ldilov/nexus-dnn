@@ -194,6 +194,13 @@ impl CreateRenderRequest {
                 ));
             }
         }
+        if let Some(v) = self.advanced.keyframe_strength {
+            if !(0.0..=1.0).contains(&v) || !v.is_finite() {
+                return Err(format!(
+                    "advanced.keyframe_strength must be in 0.0..=1.0 (got {v})"
+                ));
+            }
+        }
         if let Some(v) = self.advanced.condition_tail_frames {
             if !(1..=120).contains(&v) {
                 return Err(format!(
@@ -216,10 +223,10 @@ impl CreateRenderRequest {
             }
         }
         if let Some(v) = self.advanced.upscale_mode.as_deref() {
-            if v != "two_pass" && v != "decoupled" {
+            if v != "two_pass" && v != "decoupled" && v != "esrgan" {
                 return Err(format!(
-                    "advanced.upscale_mode must be \"two_pass\" or \
-                     \"decoupled\" (got {v:?})"
+                    "advanced.upscale_mode must be \"two_pass\", \
+                     \"decoupled\" or \"esrgan\" (got {v:?})"
                 ));
             }
         }
@@ -354,8 +361,10 @@ pub struct AdvancedSettings {
     /// `"decoupled"` skips the 13B transformer refine and VAE-decodes
     /// the upsampled latents directly — fits a 16 GB card at full
     /// frame count (the two-pass stage-3 transformer at 1536x1024
-    /// spills to WDDM, RCA 2026-05-19) at a softness cost. Only
-    /// `"two_pass"` | `"decoupled"` accepted.
+    /// spills to WDDM, RCA 2026-05-19) at a softness cost. `"esrgan"`
+    /// is the LTX-2 native-path post-render 720p pass — a standalone
+    /// Real-ESRGAN process, VRAM-isolated from the 19B set. Only
+    /// `"two_pass"` | `"decoupled"` | `"esrgan"` accepted.
     #[serde(default)]
     pub upscale_mode: Option<String>,
     /// GGUF quant basename to load (e.g. `ltxv-13b-0.9.7-dev-Q4_K_M.gguf`). Bare filename only — validated.
@@ -391,6 +400,13 @@ pub struct AdvancedSettings {
     /// default true.
     #[serde(default)]
     pub seam_color_match: Option<bool>,
+    /// i2v keyframe-condition strength for the LTX-2 native path. 1.0
+    /// pins a clean identity first frame; lower unlocks more motion at
+    /// the cost of identity drift. Distinct from `condition_strength`,
+    /// which governs scene-to-scene continuation carry. Worker default
+    /// 1.0. Range 0.0..=1.0.
+    #[serde(default)]
+    pub keyframe_strength: Option<f32>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -538,6 +554,16 @@ pub enum RuntimeProfilePreference {
     /// by `ltxv097_proven()` until the worker 0.9.7 pipeline branch is
     /// wired + GPU-verified.
     Rtx50Ltxv097Gguf,
+    /// LTX-2 19B Kijai-distilled GGUF — a THIRD model architecture,
+    /// distinct from both the LTX-2.3-22B and the LTX-Video 0.9.7 13B
+    /// lines. Pulls the `ltx-2-19b-distilled_Q4_K_M.gguf` transformer +
+    /// distilled embeddings connector + LTX-2 video/audio VAEs (from
+    /// `Kijai/LTXV2_comfy`), a Gemma-3-12B Q4 text encoder (from
+    /// `unsloth/gemma-3-12b-it-GGUF`), and base configs from
+    /// `rootonchair/LTX-2-19b-distilled`. Routed to the worker's
+    /// `pipeline_ltx2.py` branch. The Q4 stack pages under sequential
+    /// offload on a 16 GB card.
+    Rtx50Ltx2Gguf,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -917,12 +943,25 @@ mod tests {
         assert!(req.validate_field_bounds().is_ok());
         req.advanced.upscale_mode = Some("two_pass".into());
         assert!(req.validate_field_bounds().is_ok());
+        req.advanced.upscale_mode = Some("esrgan".into());
+        assert!(req.validate_field_bounds().is_ok());
         req.advanced.upscale_mode = Some("turbo".into());
         assert!(req
             .validate_field_bounds()
             .unwrap_err()
             .contains("upscale_mode"));
         req.advanced.upscale_mode = None;
+
+        req.advanced.keyframe_strength = Some(1.0);
+        assert!(req.validate_field_bounds().is_ok());
+        req.advanced.keyframe_strength = Some(0.0);
+        assert!(req.validate_field_bounds().is_ok());
+        req.advanced.keyframe_strength = Some(1.5);
+        assert!(req
+            .validate_field_bounds()
+            .unwrap_err()
+            .contains("keyframe_strength"));
+        req.advanced.keyframe_strength = None;
 
         req.advanced.model_id = Some("ltxv-13b-0.9.7-dev-Q4_K_M.gguf".into());
         assert!(req.validate_field_bounds().is_ok());

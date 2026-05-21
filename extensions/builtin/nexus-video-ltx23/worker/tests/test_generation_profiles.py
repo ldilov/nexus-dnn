@@ -45,9 +45,9 @@ def test_resolve_profile_id_normalization(raw: Any, expected: Any) -> None:
     assert gp.resolve_profile_id(raw) == expected
 
 
-def test_list_profiles_returns_five_sorted() -> None:
+def test_list_profiles_returns_eight_sorted() -> None:
     profiles = gp.list_profiles()
-    assert len(profiles) == 5
+    assert len(profiles) == 8
     ids = [p.id for p in profiles]
     assert ids == sorted(ids)
     assert ids == [
@@ -56,7 +56,68 @@ def test_list_profiles_returns_five_sorted() -> None:
         "ltx23-distilled-multiscene",
         "ltx23-distilled-official-schedule",
         "ltx23-distilled-single",
+        "ltxv2-distilled-q4",
+        "ltxv2-distilled-q4-quality",
+        "ltxv2-multiscene",
     ]
+
+
+def test_list_profiles_filters_by_architecture() -> None:
+    ltxv2 = gp.list_profiles(architecture="ltxv2")
+    assert [p.id for p in ltxv2] == [
+        "ltxv2-distilled-q4",
+        "ltxv2-distilled-q4-quality",
+        "ltxv2-multiscene",
+    ]
+    ltxv097 = gp.list_profiles(architecture="ltxv097")
+    assert len(ltxv097) == 5
+    assert all(p.architecture == "ltxv097" for p in ltxv097)
+
+
+def test_list_architectures() -> None:
+    assert gp.list_architectures() == ["ltxv097", "ltxv2"]
+
+
+def test_ltxv2_profile_fields() -> None:
+    profile = gp.get_profile("ltxv2-distilled-q4")
+    assert profile is not None
+    assert profile.architecture == "ltxv2"
+    assert profile.sampling["num_inference_steps"] == 8
+    assert profile.sampling["guidance_scale"] == 1.0
+    assert profile.render["width"] == 768
+    assert profile.render["height"] == 512
+
+
+def test_ltxv2_distilled_q4_retuned_for_i2v() -> None:
+    profile = gp.get_profile("ltxv2-distilled-q4")
+    assert profile is not None
+    assert profile.render["path"] == "single"
+    assert profile.render["frames"] == 105
+    assert profile.render["base_fps"] == 16
+    assert profile.render["output_fps"] == 32
+    assert (profile.render["frames"] - 1) % 8 == 0
+    assert profile.render["output_fps"] == 2 * profile.render["base_fps"]
+
+
+def test_ltxv2_quality_profile_runs_uncond_branch() -> None:
+    profile = gp.get_profile("ltxv2-distilled-q4-quality")
+    assert profile is not None
+    assert profile.architecture == "ltxv2"
+    assert profile.sampling["guidance_scale"] == 1.1
+    assert profile.sampling["guidance_scale"] > 1.0
+    assert profile.render["path"] == "single"
+    assert profile.render["frames"] == 105
+
+
+def test_ltxv2_multiscene_profile_drives_manual_stitch() -> None:
+    profile = gp.get_profile("ltxv2-multiscene")
+    assert profile is not None
+    assert profile.architecture == "ltxv2"
+    assert profile.render["path"] == "manual_stitch"
+    assert profile.render["condition_tail_frames"] == 3
+    assert 0.0 < profile.render["condition_strength"] <= 1.0
+    assert profile.render["color_anchor"] is True
+    assert profile.render["frames"] == 105
 
 
 def test_motion_profiles_declare_motion_prompts() -> None:

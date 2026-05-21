@@ -77,6 +77,17 @@ diffusers = [
   # Apache-2.0. Optional at runtime — motion.py degrades to the
   # numpy-only metrics if cv2 is absent.
   "opencv-python-headless>=4.10",
+  # Lightricks' own native LTX-2 model library — the `AVTransformer3DModel`
+  # (`LTXModel`) class that loads the Kijai `ltx-2-19b-distilled_Q4_K_M`
+  # native GGUF that HuggingFace `diffusers` cannot (26 weight tensors are
+  # 2x the width its `LTX2VideoTransformer3DModel` config expects). Drives
+  # the `ltxv2` profile via `ltx2_native_loader` + `pipeline_ltx2`.
+  # MUST be installed `--no-deps` — its `torch~=2.7` pin would otherwise
+  # downgrade the worker's torch 2.11+cu128 (RTX 50-series requires cu128).
+  "ltx-core @ git+https://github.com/Lightricks/LTX-2.git@1799988#subdirectory=packages/ltx-core",
+  # ltx-core dep installed explicitly because ltx-core is `--no-deps`:
+  # `ltx_core.components.schedulers` imports scipy at module load.
+  "scipy>=1.14",
 ]
 # NOTE: RIFE FPS interpolation is NOT a pip dependency. The
 # rife-ncnn-vulkan-python package is sdist-only (CMake+Vulkan source
