@@ -67,13 +67,46 @@ def test_decay_condition_strength_disabled_for_nonpositive_span() -> None:
     assert cond.decay_condition_strength(0.7, 3, decay_span=-1) == 0.7
 
 
-def test_build_keyframe_condition_carries_first_frame_anchor() -> None:
+def test_build_keyframe_condition_replaces_frame_zero() -> None:
     latent = torch.randn(1, 128, 1, 4, 6)
     item = cond.build_keyframe_condition(latent, strength=1.0)
-    assert item.frame_idx == 0
+    assert item.latent_idx == 0
     assert item.strength == 1.0
-    assert item.num_pixel_frames == 1
-    assert item.keyframes is latent
+    assert item.latent is latent
+
+
+def test_build_keyframe_condition_replaces_in_place_not_appends() -> None:
+    from ltx_core.components.patchifiers import VideoLatentPatchifier
+    from ltx_core.tools import VideoLatentTools
+    from ltx_core.types import LatentState, VideoLatentShape
+
+    target = VideoLatentShape(batch=1, channels=128, frames=3, height=4, width=6)
+    tools = VideoLatentTools(
+        patchifier=VideoLatentPatchifier(patch_size=1),
+        target_shape=target,
+        fps=24.0,
+    )
+    init = tools.create_initial_state(device="cpu", dtype=torch.float32)
+    token_count = init.latent.shape[1]
+    state = LatentState(
+        latent=torch.randn(1, token_count, 128),
+        denoise_mask=torch.ones(1, token_count, 1),
+        positions=init.positions,
+        clean_latent=torch.zeros(1, token_count, 128),
+        attention_mask=None,
+    )
+    keyframe = torch.randn(1, 128, 1, 4, 6)
+    item = cond.build_keyframe_condition(keyframe, strength=1.0)
+    out = item.apply_to(state, tools)
+
+    # Replace-in-place: token count is unchanged (no appended tokens).
+    assert out.latent.shape[1] == token_count
+    assert out.clean_latent.shape == out.latent.shape
+    # Frame-0 latent tokens carry the keyframe and a fully-clean mask.
+    frame0 = keyframe.shape[3] * keyframe.shape[4]
+    assert torch.allclose(out.clean_latent[:, :frame0], item.latent.flatten(2).permute(0, 2, 1))
+    assert torch.all(out.denoise_mask[:, :frame0] == 0.0)
+    assert torch.all(out.denoise_mask[:, frame0:] == 1.0)
 
 
 def test_build_reference_condition_carries_tail_latent() -> None:

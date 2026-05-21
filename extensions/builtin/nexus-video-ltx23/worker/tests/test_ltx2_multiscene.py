@@ -65,9 +65,15 @@ def test_scene_0_conditioning_empty_without_keyframe() -> None:
 
 
 def test_continuation_scene_carries_tail_and_global_anchor() -> None:
+    from ltx_core.conditioning.types.latent_cond import VideoConditionByLatentIndex
+
     tail = torch.randn(1, 128, 3, 4, 6)
     anchor = torch.randn(1, 128, 1, 4, 6)
-    with_anchor = ms._scene_conditioning(1, None, tail, anchor, 0.5, True)
+    with_anchor = ms._scene_conditioning(1, None, tail, anchor, 0.9, True)
     assert len(with_anchor) == 2
-    no_anchor = ms._scene_conditioning(1, None, tail, anchor, 0.5, False)
+    no_anchor = ms._scene_conditioning(1, None, tail, anchor, 0.9, False)
     assert len(no_anchor) == 1
+    # Continuation replaces the new scene's opening latent frames in place.
+    assert isinstance(no_anchor[0], VideoConditionByLatentIndex)
+    assert no_anchor[0].latent_idx == 0
+    assert no_anchor[0].latent is tail
