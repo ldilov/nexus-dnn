@@ -115,8 +115,10 @@ def _scene_conditioning(
     """Build the conditioning items for one scene.
 
     Scene 0 uses the i2v keyframe condition (when an input image was
-    supplied). Scene N>0 carries the prior scene's 3-frame latent tail as
-    the continuation anchor, plus the optional low-weight global anchor.
+    supplied). Scene N>0 replaces its opening latent frames with the prior
+    scene's latent tail (``build_continuation_condition`` — a literal
+    continuation), plus the optional low-weight global anchor carried as a
+    loose reference.
     """
     items: list[Any] = []
     if scene_index == 0:
@@ -124,7 +126,7 @@ def _scene_conditioning(
             items.append(keyframe_item)
         return items
     if prev_tail is not None:
-        items.append(cond.build_reference_condition(prev_tail, condition_strength))
+        items.append(cond.build_continuation_condition(prev_tail, condition_strength))
     if use_global_anchor and anchor_latent is not None:
         items.append(
             cond.build_reference_condition(anchor_latent, _GLOBAL_ANCHOR_STRENGTH)
