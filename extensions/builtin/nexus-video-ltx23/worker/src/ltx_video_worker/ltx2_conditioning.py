@@ -182,27 +182,6 @@ def extract_tail_latent(grid_latent: Any, tail_frames: int) -> Any:
     return grid_latent[:, :, -n:, :, :].contiguous()
 
 
-def apply_image_cond_noise(
-    latent: Any, noise_scale: float, seed: int
-) -> Any:
-    """Add scaled Gaussian noise to a keyframe latent to unlock motion.
-
-    A perfectly clean keyframe over-anchors the i2v start and freezes the
-    subject (spec 048 R2). A small seeded noise injection gives the
-    denoise loop headroom to animate while keeping identity. ``noise_scale``
-    0.0 is a no-op — the keyframe stays clean.
-    """
-    import torch
-
-    if noise_scale <= 0.0:
-        return latent
-    generator = torch.Generator(device="cpu").manual_seed(int(seed))
-    noise = torch.randn(
-        tuple(latent.shape), generator=generator, dtype=torch.float32
-    ).to(device=latent.device, dtype=latent.dtype)
-    return latent + noise_scale * noise
-
-
 def build_keyframe_condition(image_latent: Any, strength: float) -> Any:
     """Build the i2v first-frame ``VideoConditionByLatentIndex``.
 

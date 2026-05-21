@@ -117,18 +117,12 @@ def test_build_reference_condition_carries_tail_latent() -> None:
     assert item.latent is tail
 
 
-def test_apply_image_cond_noise_is_noop_at_zero_scale() -> None:
-    latent = torch.randn(1, 128, 1, 4, 6)
-    assert cond.apply_image_cond_noise(latent, 0.0, seed=7) is latent
-    assert cond.apply_image_cond_noise(latent, -0.1, seed=7) is latent
+def test_build_continuation_condition_replaces_opening_frames() -> None:
+    from ltx_core.conditioning.types.latent_cond import VideoConditionByLatentIndex
 
-
-def test_apply_image_cond_noise_perturbs_and_is_seed_deterministic() -> None:
-    latent = torch.zeros(1, 128, 1, 4, 6)
-    noised = cond.apply_image_cond_noise(latent, 0.05, seed=42)
-    assert noised.shape == latent.shape
-    assert not torch.equal(noised, latent)
-    again = cond.apply_image_cond_noise(latent, 0.05, seed=42)
-    assert torch.equal(noised, again)
-    other = cond.apply_image_cond_noise(latent, 0.05, seed=43)
-    assert not torch.equal(noised, other)
+    tail = torch.randn(1, 128, 2, 4, 6)
+    item = cond.build_continuation_condition(tail, strength=0.9)
+    assert isinstance(item, VideoConditionByLatentIndex)
+    assert item.latent_idx == 0
+    assert item.strength == 0.9
+    assert item.latent is tail
