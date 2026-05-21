@@ -26,20 +26,20 @@ def test_resolve_sampling_two_stage_is_configurable() -> None:
 
 
 def test_resolve_sampling_motion_intensity_is_configurable() -> None:
-    for level in ("calm", "moderate", "dynamic", "intense"):
+    for level in ("dynamic", "intense"):
         samp = pl._resolve_sampling({"motion_intensity": level})
         assert samp["motion_intensity"] == level
 
 
 def test_resolve_sampling_motion_intensity_invalid_falls_back() -> None:
-    samp = pl._resolve_sampling({"motion_intensity": "bogus"})
-    assert samp["motion_intensity"] == pl._DEF_MOTION_INTENSITY
+    # Dropped levels (calm/moderate) and unknowns fall back to the default.
+    for level in ("bogus", "calm", "moderate"):
+        samp = pl._resolve_sampling({"motion_intensity": level})
+        assert samp["motion_intensity"] == pl._DEF_MOTION_INTENSITY
 
 
 def test_motion_intensity_levels_all_have_a_suffix() -> None:
-    assert set(pl._MOTION_INTENSITY_SUFFIX) >= {
-        "calm", "moderate", "dynamic", "intense"
-    }
+    assert set(pl._MOTION_INTENSITY_SUFFIX) == {"dynamic", "intense"}
     assert pl._DEF_MOTION_INTENSITY in pl._MOTION_INTENSITY_SUFFIX
 
 
