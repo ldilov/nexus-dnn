@@ -40,6 +40,11 @@ const PROFILES: &[ProfileDescriptor] = &[
         display_name: "LTX-Video 0.9.7 13B GGUF (RTX 50 / 16 GB native)",
         experimental: false,
     },
+    ProfileDescriptor {
+        runtime_id: "nexus.video.ltx23.rtx50-ltx2-gguf",
+        display_name: "LTX-2 19B distilled GGUF (RTX 50 / 16 GB, Kijai Q4)",
+        experimental: false,
+    },
 ];
 
 #[must_use]
@@ -67,6 +72,7 @@ pub const fn resolve_runtime_id(preference: RuntimeProfilePreference) -> &'stati
         RuntimeProfilePreference::Rtx50Nvfp4 => "nexus.video.ltx23.rtx50-nvfp4",
         RuntimeProfilePreference::Rtx50Gguf => "nexus.video.ltx23.rtx50-gguf",
         RuntimeProfilePreference::Rtx50Ltxv097Gguf => "nexus.video.ltx23.rtx50-ltxv097-gguf",
+        RuntimeProfilePreference::Rtx50Ltx2Gguf => "nexus.video.ltx23.rtx50-ltx2-gguf",
     }
 }
 
@@ -111,6 +117,13 @@ pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
         // swap. Neither wants `none` (worker <16 GB full-resident
         // rejection) nor `group`/`sequential`.
         b"rtx50-nvfp4" | b"rtx50-ltxv097-gguf" => OffloadMode::Model,
+        // Every other profile → `Sequential`. This includes
+        // `rtx50-ltx2-gguf`: the LTX-2 19B Kijai-distilled Q4_K_M stack
+        // (~12.65 GB transformer + Gemma-3-12B Q4 text encoder + two
+        // BF16 VAEs) is too large to keep resident on a 16 GB card, so
+        // sequential's per-layer paging (~2 GB peak, never touches
+        // shared VRAM) is the safe default — the same reasoning as the
+        // bf16 fp8 profiles.
         _ => OffloadMode::Sequential,
     }
 }
@@ -150,7 +163,7 @@ pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
 pub const fn default_quant_for_profile(profile: &str) -> ModelQuant {
     match profile.as_bytes() {
         b"rtx50-nvfp4" => ModelQuant::Nf4Bnb,
-        b"rtx50-gguf" | b"rtx50-ltxv097-gguf" => ModelQuant::Gguf,
+        b"rtx50-gguf" | b"rtx50-ltxv097-gguf" | b"rtx50-ltx2-gguf" => ModelQuant::Gguf,
         b"rtx50-fp8" | b"rtx40-fp8" => ModelQuant::Fp8Official,
         _ => ModelQuant::None,
     }
@@ -208,6 +221,27 @@ pub fn is_gguf_family(profile: &str) -> bool {
 #[must_use]
 pub fn is_ltxv097_family(profile: &str) -> bool {
     profile.contains("ltxv097")
+}
+
+/// Single source of truth: is `profile` the LTX-2 19B distilled line?
+///
+/// A THIRD model architecture, distinct from both the LTX-2.3-22B that
+/// `rtx50-gguf`/`nvfp4`/`fp8` target and the LTX-Video 0.9.7 13B that
+/// `rtx50-ltxv097-gguf` targets. Today only `rtx50-ltx2-gguf` — the
+/// Kijai distilled GGUF stack (`ltx-2-19b-distilled_Q4_K_M.gguf`
+/// transformer + a distilled embeddings connector + LTX-2 video/audio
+/// VAEs + a Gemma-3-12B Q4 text encoder), driven by the worker's
+/// `pipeline_ltx2.py` branch.
+///
+/// The substring is `ltx2` (no hyphen / dot) so it cannot collide with
+/// the existing slugs: `rtx50-ltxv097-gguf` contains `ltxv097`,
+/// `rtx50-gguf`/`rtx50-nvfp4`/`rtx50-fp8`/`rtx40-fp8`/`fake` contain
+/// none of `ltx2`. A future `rtx60-ltx2-gguf` is covered with zero
+/// code change — same extendability contract as the sibling
+/// predicates.
+#[must_use]
+pub fn is_ltx2_family(profile: &str) -> bool {
+    profile.contains("ltx2")
 }
 
 /// Has a local benchmark proven the GGUF transformer fits a 16 GB card
@@ -498,6 +532,15 @@ pub fn select_runtime(
             runtime_id: "nexus.video.ltx23.rtx50-ltxv097-gguf".into(),
             experimental: false,
         }),
+        RuntimeProfilePreference::Rtx50Ltx2Gguf => Ok(SelectedRuntime {
+            // LTX-2 19B Kijai-distilled GGUF — a third model line,
+            // routed to the worker's `pipeline_ltx2.py` branch. The Q4
+            // stack pages under sequential offload on a 16 GB card.
+            // Explicit-select only (not auto-picked); GGUF dequant runs
+            // on any CUDA card, no fp8/nvfp4 tensor-core requirement.
+            runtime_id: "nexus.video.ltx23.rtx50-ltx2-gguf".into(),
+            experimental: false,
+        }),
         RuntimeProfilePreference::Auto => auto_select(facts, experimental_nvfp4_opt_in),
     }
 }
@@ -667,6 +710,14 @@ mod tests {
                 RuntimeProfilePreference::Rtx50Gguf,
                 "nexus.video.ltx23.rtx50-gguf",
             ),
+            (
+                RuntimeProfilePreference::Rtx50Ltxv097Gguf,
+                "nexus.video.ltx23.rtx50-ltxv097-gguf",
+            ),
+            (
+                RuntimeProfilePreference::Rtx50Ltx2Gguf,
+                "nexus.video.ltx23.rtx50-ltx2-gguf",
+            ),
         ] {
             assert_eq!(resolve_runtime_id(pref), expected, "pref={pref:?}");
         }
@@ -677,6 +728,8 @@ mod tests {
         assert!(is_gguf_family("rtx50-gguf"));
         assert!(is_gguf_family("gguf"));
         assert!(is_gguf_family("rtx60-gguf")); // future profile, zero code change
+        assert!(is_gguf_family("rtx50-ltxv097-gguf"));
+        assert!(is_gguf_family("rtx50-ltx2-gguf"));
         for p in ["rtx50-nvfp4", "rtx50-fp8", "fake", "rtx40-fp8"] {
             assert!(!is_gguf_family(p), "profile={p} must not be gguf-family");
         }
@@ -841,6 +894,12 @@ mod tests {
             default_offload_mode_for_profile("rtx50-gguf"),
             OffloadMode::Group
         );
+        // ltx2-gguf: the LTX-2 19B Kijai Q4 stack is too large to keep
+        // resident on 16 GB → Sequential per-layer paging.
+        assert_eq!(
+            default_offload_mode_for_profile("rtx50-ltx2-gguf"),
+            OffloadMode::Sequential
+        );
         for p in ["rtx50-fp8", "rtx40-fp8", "fake", "future-profile-xyz"] {
             assert_eq!(
                 default_offload_mode_for_profile(p),
@@ -867,6 +926,26 @@ mod tests {
         );
         assert!(is_ltxv097_family("rtx50-ltxv097-gguf"));
         assert!(!is_ltxv097_family("rtx50-gguf"));
+        // LTX-2 19B distilled GGUF profile → Gguf (Kijai Q4_K_M stack).
+        assert_eq!(
+            default_quant_for_profile("rtx50-ltx2-gguf"),
+            ModelQuant::Gguf
+        );
+        // is_ltx2_family classifies only the LTX-2 line; the substring
+        // `ltx2` must not collide with the other GGUF / fp8 slugs.
+        assert!(is_ltx2_family("rtx50-ltx2-gguf"));
+        assert!(is_ltx2_family("rtx60-ltx2-gguf")); // future, zero code change
+        for p in [
+            "rtx50-ltxv097-gguf",
+            "rtx50-gguf",
+            "rtx50-nvfp4",
+            "rtx50-fp8",
+            "rtx40-fp8",
+            "fake",
+        ] {
+            assert!(!is_ltx2_family(p), "profile={p} must not be ltx2-family");
+            assert!(!is_ltxv097_family("rtx50-ltx2-gguf"));
+        }
         // fp8 profiles → Fp8Official (official Lightricks single-file
         // transformer override; gated by fp8_official_proven() at plan
         // time until the worker loader + GPU proof land).
