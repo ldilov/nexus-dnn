@@ -41,7 +41,6 @@ _PROFILES: dict[str, GenerationProfile] = {
             "num_inference_steps": 8,
             "guidance_scale": 1.0,
             "condition_strength": 0.7,
-            "image_cond_noise_scale": 0.15,
         },
         render={"path": "manual_stitch", "color_anchor": True, "segments": 4},
         status="proven",

@@ -54,26 +54,36 @@ def test_scene_geometry_overrides_frame_count_only() -> None:
     assert base["num_frames"] == 105
 
 
-def test_scene_0_conditioning_uses_keyframe_only() -> None:
-    sentinel = object()
-    items = ms._scene_conditioning(0, sentinel, None, None, 0.5, True)
-    assert items == [sentinel]
+def test_scene_0_conditioning_uses_keyframe_per_stage() -> None:
+    kf_stage1, kf_stage2 = object(), object()
+    stage1, stage2 = ms._scene_conditioning(
+        0, kf_stage1, kf_stage2, None, None, 0.5, True
+    )
+    assert stage1 == [kf_stage1]
+    assert stage2 == [kf_stage2]
 
 
 def test_scene_0_conditioning_empty_without_keyframe() -> None:
-    assert ms._scene_conditioning(0, None, None, None, 0.5, True) == []
+    stage1, stage2 = ms._scene_conditioning(0, None, None, None, None, 0.5, True)
+    assert stage1 == []
+    assert stage2 == []
 
 
 def test_continuation_scene_carries_tail_and_global_anchor() -> None:
     from ltx_core.conditioning.types.latent_cond import VideoConditionByLatentIndex
 
-    tail = torch.randn(1, 128, 3, 4, 6)
+    tail = torch.randn(1, 128, 2, 4, 6)
     anchor = torch.randn(1, 128, 1, 4, 6)
-    with_anchor = ms._scene_conditioning(1, None, tail, anchor, 0.9, True)
-    assert len(with_anchor) == 2
-    no_anchor = ms._scene_conditioning(1, None, tail, anchor, 0.9, False)
-    assert len(no_anchor) == 1
+    stage1, stage2 = ms._scene_conditioning(
+        1, None, None, tail, anchor, 0.9, True
+    )
+    assert len(stage1) == 2  # continuation + global anchor
+    assert stage2 == []  # the refine needs no condition
+    s1_no, s2_no = ms._scene_conditioning(
+        1, None, None, tail, anchor, 0.9, False
+    )
+    assert len(s1_no) == 1
     # Continuation replaces the new scene's opening latent frames in place.
-    assert isinstance(no_anchor[0], VideoConditionByLatentIndex)
-    assert no_anchor[0].latent_idx == 0
-    assert no_anchor[0].latent is tail
+    assert isinstance(s1_no[0], VideoConditionByLatentIndex)
+    assert s1_no[0].latent_idx == 0
+    assert s1_no[0].latent is tail
