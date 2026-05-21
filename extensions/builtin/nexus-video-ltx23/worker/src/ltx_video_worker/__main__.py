@@ -145,6 +145,23 @@ def cli() -> int:
             )
             return 2
         register_ltxv097_handlers(worker)
+    elif "ltx2" in profile:
+        # LTX-2 19B (Kijai distilled GGUF stack) is a THIRD model line —
+        # diffusers LTX2Pipeline family, Gemma-3-12B encoder + embeddings
+        # connector, Kijai video/audio VAE. Its own isolated module so it
+        # cannot destabilise the LTX-2.3 or 0.9.7 paths. Mirrors
+        # runtime_selection::is_ltx2_family.
+        try:
+            from .pipeline_ltx2 import register_ltx2_handlers
+        except ImportError as e:
+            worker.logger.error(
+                "ltx2 profile requested but pipeline_ltx2 is not "
+                "importable (diffusers extras missing?).",
+                profile=profile,
+                error=str(e),
+            )
+            return 2
+        register_ltx2_handlers(worker)
     else:
         try:
             from .pipeline_diffusers import register_diffusers_handlers

@@ -83,6 +83,41 @@ PROFILE_REPO: dict[str, str] = {
     "rtx50-ltxv097-gguf": "wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF",
 }
 
+# Multi-repo profiles: profile → list of (repo_id, allow_patterns).
+# Each repo is downloaded independently into its own _dest_dir tree.
+# Installed iff the sentinel file exists in ALL per-repo dest dirs.
+PROFILE_MULTI_REPO: dict[str, list[tuple[str, list[str]]]] = {
+    "rtx50-ltx2-gguf": [
+        (
+            "Kijai/LTXV2_comfy",
+            [
+                "diffusion_models/ltx-2-19b-distilled_Q4_K_M.gguf",
+                "text_encoders/ltx-2-19b-embeddings_connector_distill_bf16.safetensors",
+                "VAE/LTX2_video_vae_bf16.safetensors",
+                "VAE/LTX2_audio_vae_bf16.safetensors",
+            ],
+        ),
+        (
+            "unsloth/gemma-3-12b-it-GGUF",
+            [
+                "gemma-3-12b-it-Q4_K_S.gguf",
+                "config.json",
+            ],
+        ),
+        (
+            "rootonchair/LTX-2-19b-distilled",
+            [
+                "model_index.json",
+                "transformer/config.json",
+                "scheduler/scheduler_config.json",
+                "tokenizer/*",
+                "connectors/config.json",
+                "audio_vae/config.json",
+            ],
+        ),
+    ],
+}
+
 SENTINEL_NAME = ".nexus-install-complete"
 
 # Bounded buffer so a chatty resolver can't OOM the worker — the most
@@ -122,6 +157,19 @@ def register_installer_handlers(
         )
         if not host_data_dir:
             raise ValueError("host_data_dir not supplied and NEXUS_HOST_DATA_DIR unset")
+
+        multi = PROFILE_MULTI_REPO.get(profile)
+        if multi is not None:
+            dests = [_dest_dir(host_data_dir, repo) for repo, _ in multi]
+            sentinels = [d / SENTINEL_NAME for d in dests]
+            installed = all(s.is_file() for s in sentinels)
+            return {
+                "installed": installed,
+                "dest": [str(d) for d in dests],
+                "has_sentinel": installed,
+                "repos": [repo for repo, _ in multi],
+            }
+
         repo = PROFILE_REPO.get(profile)
         if not repo:
             return {
@@ -148,6 +196,29 @@ def register_installer_handlers(
         )
         if not host_data_dir:
             raise ValueError("host_data_dir not supplied and NEXUS_HOST_DATA_DIR unset")
+
+        multi = PROFILE_MULTI_REPO.get(profile)
+        if multi is not None:
+            if profile in in_flight_snapshot and not in_flight_snapshot[profile].done():
+                return {
+                    "status": "already_in_flight",
+                    "profile": profile,
+                    "repos": [r for r, _ in multi],
+                }
+            task = asyncio.create_task(
+                _run_multi_repo_install(
+                    worker,
+                    profile=profile,
+                    repos_patterns=multi,
+                    host_data_dir=host_data_dir,
+                )
+            )
+            in_flight_snapshot[profile] = task
+            return {
+                "status": "started",
+                "profile": profile,
+                "repos": [r for r, _ in multi],
+            }
 
         repo = PROFILE_REPO.get(profile)
         if not repo:
@@ -187,6 +258,30 @@ def register_installer_handlers(
         )
         if not host_data_dir:
             raise ValueError("host_data_dir not supplied and NEXUS_HOST_DATA_DIR unset")
+
+        multi = PROFILE_MULTI_REPO.get(profile)
+        if multi is not None:
+            if profile in in_flight_runtime and not in_flight_runtime[profile].done():
+                return {
+                    "status": "already_in_flight",
+                    "profile": profile,
+                    "repos": [r for r, _ in multi],
+                }
+            task = asyncio.create_task(
+                _run_runtime_install_multi(
+                    worker,
+                    profile=profile,
+                    repos_patterns=multi,
+                    host_data_dir=host_data_dir,
+                    uv_runner=runner,
+                )
+            )
+            in_flight_runtime[profile] = task
+            return {
+                "status": "started",
+                "profile": profile,
+                "repos": [r for r, _ in multi],
+            }
 
         repo = PROFILE_REPO.get(profile)
         if not repo:
@@ -502,7 +597,7 @@ class _DownloadFailure:
 
 
 async def _do_snapshot_download(
-    *, profile: str, repo: str, dest: Path
+    *, profile: str, repo: str, dest: Path, allow_patterns: list[str] | None = None
 ) -> _DownloadSuccess | _DownloadFailure:
     try:
         from huggingface_hub import snapshot_download  # type: ignore
@@ -519,7 +614,7 @@ async def _do_snapshot_download(
             repo_id=repo,
             local_dir=str(dest),
             local_dir_use_symlinks=False,
-            allow_patterns=None,
+            allow_patterns=allow_patterns,
         )
 
     try:
@@ -530,6 +625,172 @@ async def _do_snapshot_download(
             f"snapshot_download failed for {profile}/{repo}: {e}",
         )
     return _DownloadSuccess(resolved=resolved)
+
+
+async def _run_multi_repo_install(
+    worker,
+    *,
+    profile: str,
+    repos_patterns: list[tuple[str, list[str]]],
+    host_data_dir: str,
+) -> None:
+    """Legacy weights-only install path for multi-repo profiles."""
+    for repo, patterns in repos_patterns:
+        dest = _dest_dir(host_data_dir, repo)
+        await worker.emit_notification(
+            "ltx.video.install.progress",
+            {"profile": profile, "repo": repo, "phase": "starting", "dest": str(dest)},
+        )
+        result = await _do_snapshot_download(
+            profile=profile, repo=repo, dest=dest, allow_patterns=patterns
+        )
+        if isinstance(result, _DownloadFailure):
+            await worker.emit_notification(
+                "ltx.video.install.error",
+                {
+                    "profile": profile,
+                    "repo": repo,
+                    "code": result.code,
+                    "message": result.message,
+                },
+            )
+            return
+        if not _write_sentinel(result.resolved, profile=profile, repo=repo):
+            await worker.emit_notification(
+                "ltx.video.install.error",
+                {
+                    "profile": profile,
+                    "repo": repo,
+                    "code": ErrorCodes.INTERNAL_ERROR,
+                    "message": "failed to write install sentinel",
+                },
+            )
+            return
+        await worker.emit_notification(
+            "ltx.video.install.done",
+            {"profile": profile, "repo": repo, "dest": result.resolved},
+        )
+
+
+async def _run_runtime_install_multi(
+    worker,
+    *,
+    profile: str,
+    repos_patterns: list[tuple[str, list[str]]],
+    host_data_dir: str,
+    uv_runner: UvSyncRunner,
+) -> None:
+    """uv sync then per-repo snapshot_download for multi-repo profiles."""
+    worker_dir = _worker_dir()
+    primary_repo = repos_patterns[0][0] if repos_patterns else profile
+
+    await worker.emit_notification(
+        "ltx.video.runtime.install.progress",
+        {
+            "profile": profile,
+            "repo": primary_repo,
+            "phase": "resolving_deps",
+            "output": f"running uv sync --extra diffusers in {worker_dir}",
+        },
+    )
+
+    async def _forward_uv_line(channel: str, text: str) -> None:
+        truncated = text if len(text) <= PROGRESS_LINE_LIMIT_BYTES else (
+            text[:PROGRESS_LINE_LIMIT_BYTES] + "…"
+        )
+        await worker.emit_notification(
+            "ltx.video.runtime.install.progress",
+            {
+                "profile": profile,
+                "repo": primary_repo,
+                "phase": "resolving_deps",
+                "stream": channel,
+                "output": truncated,
+            },
+        )
+
+    try:
+        exit_code = await uv_runner(worker_dir, _forward_uv_line)
+    except FileNotFoundError as e:
+        await worker.emit_notification(
+            "ltx.video.runtime.install.error",
+            {
+                "profile": profile,
+                "repo": primary_repo,
+                "phase": "resolving_deps",
+                "code": ErrorCodes.INTERNAL_ERROR,
+                "message": f"uv executable not found on PATH: {e}",
+            },
+        )
+        return
+    except Exception as e:  # noqa: BLE001
+        await worker.emit_notification(
+            "ltx.video.runtime.install.error",
+            {
+                "profile": profile,
+                "repo": primary_repo,
+                "phase": "resolving_deps",
+                "code": ErrorCodes.INTERNAL_ERROR,
+                "message": f"uv launch failed: {e}",
+            },
+        )
+        return
+
+    if exit_code != 0:
+        await worker.emit_notification(
+            "ltx.video.runtime.install.error",
+            {
+                "profile": profile,
+                "repo": primary_repo,
+                "phase": "resolving_deps",
+                "code": ErrorCodes.INTERNAL_ERROR,
+                "message": f"uv sync exited with code {exit_code}",
+            },
+        )
+        return
+
+    for repo, patterns in repos_patterns:
+        dest = _dest_dir(host_data_dir, repo)
+        await worker.emit_notification(
+            "ltx.video.runtime.install.progress",
+            {
+                "profile": profile,
+                "repo": repo,
+                "phase": "downloading_weights",
+                "output": f"downloading {repo} to {dest}",
+            },
+        )
+        result = await _do_snapshot_download(
+            profile=profile, repo=repo, dest=dest, allow_patterns=patterns
+        )
+        if isinstance(result, _DownloadFailure):
+            await worker.emit_notification(
+                "ltx.video.runtime.install.error",
+                {
+                    "profile": profile,
+                    "repo": repo,
+                    "phase": "downloading_weights",
+                    "code": result.code,
+                    "message": result.message,
+                },
+            )
+            return
+        if not _write_sentinel(result.resolved, profile=profile, repo=repo):
+            await worker.emit_notification(
+                "ltx.video.runtime.install.error",
+                {
+                    "profile": profile,
+                    "repo": repo,
+                    "phase": "downloading_weights",
+                    "code": ErrorCodes.INTERNAL_ERROR,
+                    "message": "failed to write install sentinel",
+                },
+            )
+            return
+        await worker.emit_notification(
+            "ltx.video.runtime.install.done",
+            {"profile": profile, "repo": repo, "dest": result.resolved},
+        )
 
 
 def _write_sentinel(resolved_dir: str, *, profile: str, repo: str) -> bool:
@@ -549,6 +810,7 @@ def _write_sentinel(resolved_dir: str, *, profile: str, repo: str) -> bool:
 __all__ = [
     "register_installer_handlers",
     "PROFILE_REPO",
+    "PROFILE_MULTI_REPO",
     "SENTINEL_NAME",
     "PROGRESS_LINE_LIMIT_BYTES",
     "UvSyncRunner",
