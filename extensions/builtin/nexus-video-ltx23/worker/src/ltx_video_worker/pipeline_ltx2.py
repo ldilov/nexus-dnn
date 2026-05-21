@@ -91,6 +91,9 @@ _CONNECTOR_REL = (
 )
 _VIDEO_VAE_REL = "Kijai/LTXV2_comfy/VAE/LTX2_video_vae_bf16.safetensors"
 _AUDIO_VAE_REL = "Kijai/LTXV2_comfy/VAE/LTX2_audio_vae_bf16.safetensors"
+_LATENT_UPSAMPLER_REL = (
+    "Lightricks/LTX-2/ltx-2-spatial-upscaler-x2-1.0.safetensors"
+)
 _GEMMA_GGUF_DIR_REL = "unsloth/gemma-3-12b-it-GGUF"
 _GEMMA_GGUF_FILE = "gemma-3-12b-it-Q4_K_S.gguf"
 # Weight-stripped diffusers config tree (tokenizer + scheduler configs).
@@ -110,9 +113,29 @@ _DEF_FRAMES = 105
 _DEF_BASE_FPS = 16
 _DEF_OUTPUT_FPS = 32
 _DEF_KEYFRAME_STRENGTH = 1.0
-# i2v keyframe-latent noise — 0.0 keeps a clean keyframe; raise (research
-# range ~0.0-0.05) to unlock motion when the i2v start is too static.
+# i2v keyframe-latent noise — 0.0 keeps a clean keyframe (the validated
+# default; a per-step re-noise sweep found it inert for motion). An
+# optional configurable knob, off by default.
 _DEF_IMAGE_COND_NOISE_SCALE = 0.0
+# Two-stage distilled pipeline (default ON). The distilled 19B is trained
+# to generate stage 1 at HALF the target resolution, then a LatentUpsampler
+# doubles the latent and a short STAGE_2 refine restores detail. Running
+# stage 1 at full res starves the 8-step model of the token budget it
+# needs to coordinate motion — motion is suppressed / back-loaded. The
+# operator can force the legacy single-stage path with two_stage=false.
+_DEF_TWO_STAGE = True
+_STAGE2_DISTILLED_SIGMAS = (0.909375, 0.725, 0.421875, 0.0)
+# Motion-intensity prompt nudge. Motion is prompt-driven (Gemma steering
+# confirmed by A/B); each level appends a short directed-motion phrase.
+# "dynamic" is the default — the energetic-but-coherent operating point
+# (a worded 60/40 violent/calm balance beat every other lever tested).
+_DEF_MOTION_INTENSITY = "dynamic"
+_MOTION_INTENSITY_SUFFIX = {
+    "calm": "slow gentle deliberate motion",
+    "moderate": "natural steady motion",
+    "dynamic": "energetic forceful directed motion, dynamic movement",
+    "intense": "fast intense motion, rapid dynamic movement",
+}
 # VAE latent geometry. The LTX-2 video VAE downscales 8x temporally and
 # 32x spatially with 128 latent channels — the SpatioTemporalScaleFactors
 # default. A pixel frame count of 8n+1 maps to a clean latent frame
@@ -120,6 +143,10 @@ _DEF_IMAGE_COND_NOISE_SCALE = 0.0
 _LATENT_CHANNELS = 128
 _VAE_TIME_SCALE = 8
 _VAE_SPATIAL_SCALE = 32
+# Width/height snap. 64 (not the VAE's 32) so the two-stage half-res
+# stage-1 geometry is itself an exact 32-multiple — half of a 64-snapped
+# dimension divides cleanly by the VAE spatial scale.
+_DIM_SNAP = 64
 
 # VAE-decode tiling defaults (16 GiB-fit). A one-shot decode of the full
 # 121-frame latent peaks ~23 GiB; temporal tiling decodes the clip in
@@ -278,6 +305,7 @@ class _ResolvedPaths:
         video_vae: Path,
         audio_vae: Path,
         gemma_dir: Path,
+        latent_upsampler: Path,
     ) -> None:
         self.transformer_gguf = transformer_gguf
         self.base_dir = base_dir
@@ -285,6 +313,7 @@ class _ResolvedPaths:
         self.video_vae = video_vae
         self.audio_vae = audio_vae
         self.gemma_dir = gemma_dir
+        self.latent_upsampler = latent_upsampler
 
 
 def _resolve_paths() -> _ResolvedPaths:
@@ -313,6 +342,15 @@ def _resolve_paths() -> _ResolvedPaths:
     base_env = os.environ.get("NEXUS_VIDEO_LTX23_LTX2_BASE_DIR", "").strip()
     base_dir = Path(base_env) if base_env else models / _BASE_DIR_REL
 
+    upsampler_env = os.environ.get(
+        "NEXUS_VIDEO_LTX23_LTX2_UPSAMPLER", ""
+    ).strip()
+    latent_upsampler = (
+        Path(upsampler_env)
+        if upsampler_env
+        else models / _LATENT_UPSAMPLER_REL
+    )
+
     return _ResolvedPaths(
         transformer_gguf=transformer_gguf,
         base_dir=base_dir,
@@ -320,6 +358,7 @@ def _resolve_paths() -> _ResolvedPaths:
         video_vae=models / _VIDEO_VAE_REL,
         audio_vae=models / _AUDIO_VAE_REL,
         gemma_dir=models / _GEMMA_GGUF_DIR_REL,
+        latent_upsampler=latent_upsampler,
     )
 
 
@@ -621,6 +660,14 @@ def _coerce_float(value: Any, default: float) -> float:
         return default
 
 
+def _coerce_bool(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
 def _resolve_sampling(advanced: dict[str, Any]) -> dict[str, Any]:
     """The tunable sampling baseline. Every key is overridable via the
     request's ``advanced`` block; absent / null collapses to the
@@ -640,9 +687,23 @@ def _resolve_sampling(advanced: dict[str, Any]) -> dict[str, Any]:
     guidance = _coerce_float(
         _pick("guidance_scale", _DEF_GUIDANCE), _DEF_GUIDANCE
     )
+    cond_noise = _coerce_float(
+        _pick("image_cond_noise_scale", _DEF_IMAGE_COND_NOISE_SCALE),
+        _DEF_IMAGE_COND_NOISE_SCALE,
+    )
+    two_stage = _coerce_bool(_pick("two_stage", _DEF_TWO_STAGE), _DEF_TWO_STAGE)
+    intensity = str(
+        _pick("motion_intensity", _DEF_MOTION_INTENSITY)
+        or _DEF_MOTION_INTENSITY
+    ).strip().lower()
+    if intensity not in _MOTION_INTENSITY_SUFFIX:
+        intensity = _DEF_MOTION_INTENSITY
     return {
         "num_inference_steps": max(1, steps),
         "guidance_scale": max(1.0, guidance),
+        "image_cond_noise_scale": max(0.0, cond_noise),
+        "two_stage": two_stage,
+        "motion_intensity": intensity,
     }
 
 
@@ -784,8 +845,8 @@ def _resolve_geometry(plan: dict[str, Any]) -> dict[str, int]:
         max(_DEF_OUTPUT_FPS, 2 * base_fps),
     )
 
-    width = _snap_to_multiple(width, _VAE_SPATIAL_SCALE, _VAE_SPATIAL_SCALE)
-    height = _snap_to_multiple(height, _VAE_SPATIAL_SCALE, _VAE_SPATIAL_SCALE)
+    width = _snap_to_multiple(width, _DIM_SNAP, _DIM_SNAP)
+    height = _snap_to_multiple(height, _DIM_SNAP, _DIM_SNAP)
     # 8n+1 frame count: round (frames - 1) to a multiple of 8 then +1.
     frames = _snap_to_multiple(frames - 1, _VAE_TIME_SCALE, 0) + 1
 
@@ -947,7 +1008,13 @@ async def _render_loop(
     style = (prompt_obj.get("style") or "").strip()
     character = (prompt_obj.get("character") or "").strip()
     effective_prompt = ". ".join(
-        p for p in (character, prompt, style, _POSITIVE_QUALITY_SUFFIX) if p
+        p for p in (
+            character,
+            prompt,
+            style,
+            _MOTION_INTENSITY_SUFFIX[samp["motion_intensity"]],
+            _POSITIVE_QUALITY_SUFFIX,
+        ) if p
     )
     if not effective_prompt:
         await _emit_error(
@@ -1028,8 +1095,9 @@ async def _render_loop(
         },
     )
 
-    # Stage 1b — i2v: VAE-encode the input image to a keyframe condition.
-    # The encoder is a small transient load, freed before the transformer.
+    # Stage 1b — i2v keyframe source. The keyframe is VAE-encoded inside
+    # `_generate_single`, per stage (half + full res for the two-stage
+    # pipeline); the handler only resolves the request fields here.
     input_image_block = raw_params.get("input_image") or {}
     input_image_path = (
         input_image_block.get("path")
@@ -1039,30 +1107,6 @@ async def _render_loop(
     keyframe_strength = _coerce_float(
         advanced.get("keyframe_strength"), _DEF_KEYFRAME_STRENGTH
     )
-    image_cond_noise = _coerce_float(
-        advanced.get("image_cond_noise_scale"), _DEF_IMAGE_COND_NOISE_SCALE
-    )
-    conditioning_items: list[Any] = []
-    if input_image_path:
-        try:
-            keyframe_item = await asyncio.to_thread(
-                encode_keyframe,
-                paths,
-                input_image_path,
-                geometry,
-                keyframe_strength,
-                worker.logger,
-                image_cond_noise,
-                seed,
-            )
-        except Exception as e:  # noqa: BLE001 — actionable error, not a stack
-            await _emit_error(
-                worker, rs.run_id, ErrorCodes.MODEL_LOAD_FAILED,
-                f"ltxv2 i2v keyframe encode failed: {e}",
-            )
-            return
-        if keyframe_item is not None:
-            conditioning_items.append(keyframe_item)
 
     # Stage 2 — load the GGUF transformer + embeddings connector.
     try:
@@ -1115,7 +1159,8 @@ async def _render_loop(
                 emit_step,
                 worker.logger,
                 vae_tiling,
-                conditioning_items,
+                input_image_path,
+                keyframe_strength,
             )
         )
     except RuntimeError as e:
@@ -1220,9 +1265,11 @@ async def _render_loop(
         samp=samp,
         seed=seed,
         conditioning={
-            "mode": "i2v" if conditioning_items else "t2v",
+            "mode": "i2v" if input_image_path else "t2v",
             "keyframe_strength": keyframe_strength,
-            "image_cond_noise_scale": image_cond_noise,
+            "image_cond_noise_scale": samp["image_cond_noise_scale"],
+            "two_stage": samp["two_stage"],
+            "motion_intensity": samp["motion_intensity"],
         },
         scene_count=1,
         duration=duration,
@@ -1316,6 +1363,8 @@ def run_native_denoise(
     step_heartbeat: Callable[[int], None] | None,
     logger: Any,
     conditioning_items: list[Any] | None = None,
+    initial_latent: Any | None = None,
+    sigmas_override: list[float] | None = None,
 ) -> Any:
     """Run the native LTX-2 denoise loop once; return the (B,C,F,H,W) grid latent.
 
@@ -1328,6 +1377,12 @@ def run_native_denoise(
     ``clean_latent`` before each Euler step. With an all-ones mask the
     masked timestep and the x0 pin reduce exactly to the unconditioned
     arithmetic, so it is one loop for both paths.
+
+    ``initial_latent`` + ``sigmas_override`` drive the distilled stage-2
+    refine: a full-res ``(B,C,F,H,W)`` latent (the 2x-upsampled stage-1
+    output) is renoised to ``sigmas_override[0]`` and denoised over the
+    short ``STAGE_2_DISTILLED_SIGMAS`` schedule. Absent both, this is the
+    stage-1 / single-stage path — pure noise, the full distilled schedule.
 
     The transformer is NOT evicted here — the caller owns VRAM staging:
     the single-clip path evicts before the VAE decode; the multi-scene
@@ -1350,8 +1405,11 @@ def run_native_denoise(
     height = geometry["height"]
     num_frames = geometry["num_frames"]
     fps = float(geometry["frame_rate"])
-    steps = samp["num_inference_steps"]
     guidance = samp["guidance_scale"]
+    if sigmas_override is not None:
+        steps = len(sigmas_override) - 1
+    else:
+        steps = samp["num_inference_steps"]
     do_cfg = guidance > 1.0 + 1e-6 and embeds["neg_hidden"] is not None
 
     pos_context, pos_context_mask = _build_video_context(
@@ -1379,23 +1437,42 @@ def run_native_denoise(
         fps=fps,
     )
 
+    if sigmas_override is not None:
+        sigmas = torch.tensor(
+            list(sigmas_override), dtype=torch.float32, device=device
+        )
+    else:
+        sigmas = _resolve_sigmas(target_shape, steps, torch).to(device)
+    sigma0 = float(sigmas[0])
+
     generator = torch.Generator(device="cpu").manual_seed(seed)
-    init_state = tools.create_initial_state(device=device, dtype=dtype)
+    init_state = tools.create_initial_state(
+        device=device, dtype=dtype, initial_latent=initial_latent
+    )
     token_count = init_state.latent.shape[1]
     noise = torch.randn(
         1, token_count, _LATENT_CHANNELS,
         generator=generator, dtype=torch.float32,
     ).to(device=device, dtype=dtype)
+    # Rectified-flow seed: x_sigma0 = (1 - sigma0)*x0 + sigma0*noise.
+    # Stage 1 / single-stage has no initial latent (x0 = zeros) and
+    # sigma0 = 1.0, so the seed is pure noise — bit-identical to the prior
+    # start. The stage-2 refine passes the 2x-upsampled stage-1 latent as
+    # x0 and renoises at sigma0 = STAGE_2_DISTILLED_SIGMAS[0] (0.909375).
+    latent_seed = (
+        (1.0 - sigma0) * init_state.latent.to(torch.float32)
+        + sigma0 * noise.to(torch.float32)
+    ).to(dtype)
 
     items = list(conditioning_items or [])
     has_cond = bool(items)
     state = LatentState(
-        latent=noise,
+        latent=latent_seed,
         denoise_mask=torch.ones(
             1, token_count, 1, device=device, dtype=torch.float32
         ),
         positions=init_state.positions.to(device),
-        clean_latent=noise,
+        clean_latent=latent_seed,
         attention_mask=None,
     )
     for item in items:
@@ -1414,9 +1491,26 @@ def run_native_denoise(
     attention_mask = state.attention_mask
     mask_flat = denoise_mask[..., 0]
 
-    sigmas = _resolve_sigmas(target_shape, steps, torch).to(device)
     diffusion_step = EulerDiffusionStep()
     perturbations = BatchedPerturbationConfig.empty(batch_size=1)
+
+    # i2v motion headroom: a keyframe pinned to a fixed clean target on
+    # every step reads to the model as a finished frame 0 from step 1, so
+    # the safest temporally-coherent continuation is to copy it — motion
+    # is suppressed or back-loaded. Re-noising the conditioned-token pin
+    # target, decaying linearly from full at step 0 to zero on the last
+    # step, keeps frame 0 a loose target while early steps decide motion,
+    # then locks it to the exact keyframe. ``cond_noise`` is a fixed
+    # seeded tensor so the decay is deterministic.
+    image_cond_noise_scale = float(samp.get("image_cond_noise_scale", 0.0))
+    cond_noise = None
+    if has_cond and image_cond_noise_scale > 0.0:
+        cond_gen = torch.Generator(device="cpu").manual_seed(seed + 1)
+        cond_noise = torch.randn(
+            tuple(clean_latent.shape),
+            generator=cond_gen,
+            dtype=torch.float32,
+        ).to(device)
 
     logger.info(
         "ltx2.native_denoise.start",
@@ -1425,6 +1519,7 @@ def run_native_denoise(
         cfg=do_cfg,
         token_count=int(latent.shape[1]),
         conditioned=has_cond,
+        image_cond_noise=image_cond_noise_scale,
         sigmas=[round(float(s), 4) for s in sigmas.tolist()],
     )
 
@@ -1473,16 +1568,22 @@ def run_native_denoise(
                 neg_denoised = to_denoised(latent, neg_velocity, token_sigma)
                 denoised = neg_denoised + guidance * (denoised - neg_denoised)
 
-            # x0-space conditioning: blend conditioned tokens toward
-            # clean_latent in the denoised (x0) prediction BEFORE the Euler
-            # step (strength 1.0 -> fully pinned), then advance every token
-            # together. Blending the *stepped* latent (next sigma) with a
-            # raw sigma-0 clean latent — the prior approach — mixed noise
-            # levels and melted keyframe-anchored subjects.
+            # x0-space conditioning: blend conditioned tokens toward the
+            # keyframe pin target in the denoised (x0) prediction BEFORE
+            # the Euler step (strength 1.0 -> fully pinned), then advance
+            # every token together. Blending the *stepped* latent (next
+            # sigma) with a raw sigma-0 clean latent — the prior approach —
+            # mixed noise levels and melted keyframe-anchored subjects.
+            # The pin target carries step-decaying noise (loose early,
+            # exact keyframe on the last step) for i2v motion headroom.
             if has_cond:
+                pin = clean_latent.to(torch.float32)
+                if cond_noise is not None:
+                    decay = 1.0 - step_idx / max(1, steps - 1)
+                    pin = pin + (image_cond_noise_scale * decay) * cond_noise
                 denoised = (
                     denoise_mask * denoised.to(torch.float32)
-                    + (1.0 - denoise_mask) * clean_latent.to(torch.float32)
+                    + (1.0 - denoise_mask) * pin
                 ).to(dtype)
 
             latent = diffusion_step.step(
@@ -1512,6 +1613,70 @@ def run_native_denoise(
         "ltx2.native_denoise.done", latent_shape=list(grid_latent.shape)
     )
     return grid_latent
+
+
+def run_two_stage_denoise(
+    stack: _NativeStack,
+    embeds: dict[str, Any],
+    geometry: dict[str, int],
+    samp: dict[str, Any],
+    seed: int,
+    step_heartbeat: Callable[[int], None] | None,
+    logger: Any,
+    upsampler: Any,
+    vae_encoder: Any,
+    conditioning_stage1: list[Any] | None = None,
+    conditioning_stage2: list[Any] | None = None,
+) -> tuple[Any, Any]:
+    """Distilled two-stage render: half-res stage 1 -> 2x upsample -> refine.
+
+    The distilled 19B coordinates motion in its trained regime — stage 1
+    at half the target resolution. ``LatentUpsampler`` then doubles the
+    grid latent spatially and a short ``STAGE_2`` refine restores detail
+    at full resolution. ``conditioning_stage1`` conditions the half-res
+    pass (keyframe at half res, or a scene-continuation tail);
+    ``conditioning_stage2`` conditions the refine (keyframe at full res,
+    or empty — a continuation scene's continuity is already carried in
+    the upsampled latent).
+
+    Geometry width/height are 64-snapped at resolution time so the half
+    grid is an exact integer half. Returns ``(refined_full_grid,
+    stage1_half_grid)`` — the caller decodes the full grid and may slice
+    the half grid for scene continuation.
+    """
+    import torch
+
+    from . import ltx2_upsampler as ups
+
+    geo_half = {
+        **geometry,
+        "width": geometry["width"] // 2,
+        "height": geometry["height"] // 2,
+    }
+    logger.info(
+        "ltx2.two_stage.start",
+        half=[geo_half["width"], geo_half["height"]],
+        full=[geometry["width"], geometry["height"]],
+        num_frames=geometry["num_frames"],
+    )
+
+    grid_half = run_native_denoise(
+        stack, embeds, geo_half, samp, seed, step_heartbeat, logger,
+        conditioning_stage1,
+    )
+    grid_up = ups.upsample_grid_latent(
+        grid_half.to("cpu"), vae_encoder, upsampler
+    )
+    grid_refined = run_native_denoise(
+        stack, embeds, geometry, samp, seed, step_heartbeat, logger,
+        conditioning_stage2,
+        initial_latent=grid_up.to(device=stack.device, dtype=torch.bfloat16),
+        sigmas_override=list(_STAGE2_DISTILLED_SIGMAS),
+    )
+    logger.info(
+        "ltx2.two_stage.done", latent_shape=list(grid_refined.shape)
+    )
+    return grid_refined, grid_half
 
 
 def evict_transformer(stack: _NativeStack) -> None:
@@ -1573,18 +1738,59 @@ def _generate_single(
     step_heartbeat: Callable[[int], None] | None,
     logger: Any,
     vae_tiling: dict[str, int] | None = None,
-    conditioning_items: list[Any] | None = None,
+    input_image_path: str | None = None,
+    keyframe_strength: float = _DEF_KEYFRAME_STRENGTH,
 ) -> list[Any]:
-    """Single-clip render: conditioned denoise → evict transformer → VAE decode.
+    """Single-clip render: denoise → evict transformer → VAE decode.
 
-    ``conditioning_items`` is the i2v keyframe condition (or empty for
-    pure t2v). The transformer is evicted before the VAE decode so the
-    decoder transient never collides with the 19B resident set.
+    With ``samp['two_stage']`` (the default) this runs the distilled
+    two-stage pipeline — half-res stage 1, 2x latent upsample, full-res
+    refine — encoding the i2v keyframe at both resolutions. With
+    ``two_stage`` off it is the legacy single-stage full-res denoise.
+    The transformer is evicted before the VAE decode so the decoder
+    transient never collides with the 19B resident set.
     """
-    grid_latent = run_native_denoise(
-        stack, embeds, geometry, samp, seed, step_heartbeat, logger,
-        conditioning_items,
-    )
+    import torch
+
+    from . import ltx2_conditioning as cond
+    from . import ltx2_upsampler as ups
+
+    two_stage = bool(samp.get("two_stage", _DEF_TWO_STAGE))
+
+    if two_stage:
+        geo_half = {
+            **geometry,
+            "width": geometry["width"] // 2,
+            "height": geometry["height"] // 2,
+        }
+        kf_half = encode_keyframe(
+            paths, input_image_path, geo_half, keyframe_strength, logger
+        )
+        kf_full = encode_keyframe(
+            paths, input_image_path, geometry, keyframe_strength, logger
+        )
+        upsampler = ups.load_latent_upsampler(
+            paths.latent_upsampler, "cpu", logger
+        )
+        vae_encoder = cond.load_video_encoder(
+            paths.video_vae, torch.device("cpu"), logger
+        )
+        grid_latent, _grid_half = run_two_stage_denoise(
+            stack, embeds, geometry, samp, seed, step_heartbeat, logger,
+            upsampler, vae_encoder,
+            conditioning_stage1=[kf_half] if kf_half is not None else [],
+            conditioning_stage2=[kf_full] if kf_full is not None else [],
+        )
+        del upsampler, vae_encoder
+    else:
+        kf = encode_keyframe(
+            paths, input_image_path, geometry, keyframe_strength, logger
+        )
+        grid_latent = run_native_denoise(
+            stack, embeds, geometry, samp, seed, step_heartbeat, logger,
+            [kf] if kf is not None else [],
+        )
+
     evict_transformer(stack)
     return decode_grid_to_frames(
         grid_latent, paths, stack.device, logger,
@@ -1598,17 +1804,20 @@ def encode_keyframe(
     geometry: dict[str, int],
     strength: float,
     logger: Any,
-    image_cond_noise_scale: float = _DEF_IMAGE_COND_NOISE_SCALE,
-    seed: int = 0,
 ) -> Any | None:
     """Encode an input image into an i2v keyframe conditioning item.
 
     Loads the native VAE encoder, encodes the cover-cropped input image
-    to a one-frame latent, frees the encoder, optionally adds a small
-    seeded noise to the keyframe latent (``image_cond_noise_scale`` —
-    unlocks motion when the i2v start is too static, spec 048 R2), and
-    returns a ``VideoConditionByKeyframeIndex``. Returns ``None`` when no
-    input image is supplied — the caller then renders pure-noise t2v.
+    to a one-frame latent, frees the encoder, and returns the keyframe
+    condition. Returns ``None`` when no input image is supplied — the
+    caller then renders pure-noise t2v.
+
+    Motion headroom is NOT injected here: a once-upfront noise on the
+    keyframe latent froze nothing and just softened frame 0. The denoise
+    loop instead re-noises the conditioned-frame pin target per step
+    (``samp['image_cond_noise_scale']``) — loose early, tight late — so
+    the keyframe stays a clean target while early steps keep motion
+    freedom.
     """
     import torch
 
@@ -1630,9 +1839,6 @@ def encode_keyframe(
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-    keyframe_latent = cond.apply_image_cond_noise(
-        keyframe_latent, image_cond_noise_scale, seed
-    )
     return cond.build_keyframe_condition(keyframe_latent, strength)
 
 

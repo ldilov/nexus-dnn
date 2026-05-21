@@ -28,6 +28,7 @@ import os
 from typing import Any
 
 from . import ltx2_conditioning as cond
+from . import ltx2_upsampler as ups
 from . import pipeline_ltx2 as pl
 from .ffmpeg_io import stitch_segments, trim_to_duration
 from .rpc import ErrorCodes, Notifications
@@ -43,11 +44,16 @@ _GLOBAL_ANCHOR_STRENGTH = 0.15
 _SEAM_PREV_TAIL = 16
 
 
-def _compose_scene_prompt(prompt_obj: dict[str, Any], scene_action: str) -> str:
+def _compose_scene_prompt(
+    prompt_obj: dict[str, Any],
+    scene_action: str,
+    motion_intensity: str = pl._DEF_MOTION_INTENSITY,
+) -> str:
     """Compose one scene's effective prompt from the global prompt parts.
 
     Mirrors the single-clip prompt builder: character + per-scene action
-    + style + the builtin anti-artifact quality suffix.
+    + style + the motion-intensity nudge + the anti-artifact quality
+    suffix.
     """
     character = (prompt_obj.get("character") or "").strip()
     style = (prompt_obj.get("style") or "").strip()
@@ -57,9 +63,12 @@ def _compose_scene_prompt(prompt_obj: dict[str, Any], scene_action: str) -> str:
         or prompt_obj.get("text")
         or ""
     ).strip()
+    motion = pl._MOTION_INTENSITY_SUFFIX.get(
+        motion_intensity, pl._MOTION_INTENSITY_SUFFIX[pl._DEF_MOTION_INTENSITY]
+    )
     return ". ".join(
         p
-        for p in (character, action, style, pl._POSITIVE_QUALITY_SUFFIX)
+        for p in (character, action, style, motion, pl._POSITIVE_QUALITY_SUFFIX)
         if p
     )
 
@@ -106,32 +115,39 @@ def _scene_geometry(
 
 def _scene_conditioning(
     scene_index: int,
-    keyframe_item: Any | None,
+    keyframe_stage1: Any | None,
+    keyframe_stage2: Any | None,
     prev_tail: Any | None,
     anchor_latent: Any | None,
     condition_strength: float,
     use_global_anchor: bool,
-) -> list[Any]:
-    """Build the conditioning items for one scene.
+) -> tuple[list[Any], list[Any]]:
+    """Build ``(stage1, stage2)`` conditioning item lists for one scene.
 
-    Scene 0 uses the i2v keyframe condition (when an input image was
-    supplied). Scene N>0 replaces its opening latent frames with the prior
-    scene's latent tail (``build_continuation_condition`` — a literal
-    continuation), plus the optional low-weight global anchor carried as a
-    loose reference.
+    Scene 0 anchors to the i2v keyframe — ``keyframe_stage1`` conditions
+    the (half-res) stage-1 pass, ``keyframe_stage2`` the full-res refine.
+    Scene N>0 replaces its opening latent frames with the prior scene's
+    stage-1 tail (``build_continuation_condition`` — a literal
+    continuation) plus an optional low-weight global anchor, all at the
+    stage-1 resolution; the refine needs no condition because the
+    continuity is already carried in the upsampled latent. With the
+    single-stage path ``keyframe_stage1 == keyframe_stage2`` and only the
+    stage-1 list is used.
     """
-    items: list[Any] = []
     if scene_index == 0:
-        if keyframe_item is not None:
-            items.append(keyframe_item)
-        return items
+        s1 = [keyframe_stage1] if keyframe_stage1 is not None else []
+        s2 = [keyframe_stage2] if keyframe_stage2 is not None else []
+        return s1, s2
+    s1: list[Any] = []
     if prev_tail is not None:
-        items.append(cond.build_continuation_condition(prev_tail, condition_strength))
+        s1.append(
+            cond.build_continuation_condition(prev_tail, condition_strength)
+        )
     if use_global_anchor and anchor_latent is not None:
-        items.append(
+        s1.append(
             cond.build_reference_condition(anchor_latent, _GLOBAL_ANCHOR_STRENGTH)
         )
-    return items
+    return s1, []
 
 
 async def run_multiscene(
@@ -162,7 +178,10 @@ async def run_multiscene(
         prompt_obj.get("negative") or pl._DEF_NEGATIVE_PROMPT
     ).strip()
     scene_prompts = [
-        _compose_scene_prompt(prompt_obj, s["action_prompt"]) for s in scenes
+        _compose_scene_prompt(
+            prompt_obj, s["action_prompt"], samp["motion_intensity"]
+        )
+        for s in scenes
     ]
     if not any(p.strip() for p in scene_prompts):
         await pl._emit_error(
@@ -206,7 +225,8 @@ async def run_multiscene(
         )
         return
 
-    # Stage 1b — i2v keyframe for scene 0 from the input image.
+    # Stage 1b — i2v keyframe for scene 0. Two-stage encodes it at both
+    # the half-res (stage 1) and full-res (refine) geometry.
     input_image_block = raw_params.get("input_image") or {}
     input_image_path = (
         input_image_block.get("path")
@@ -216,22 +236,25 @@ async def run_multiscene(
     keyframe_strength = pl._coerce_float(
         advanced.get("keyframe_strength"), pl._DEF_KEYFRAME_STRENGTH
     )
-    image_cond_noise = pl._coerce_float(
-        advanced.get("image_cond_noise_scale"), pl._DEF_IMAGE_COND_NOISE_SCALE
-    )
-    keyframe_item = None
+    two_stage = bool(samp.get("two_stage", pl._DEF_TWO_STAGE))
+    geo_half = {
+        **geometry,
+        "width": geometry["width"] // 2,
+        "height": geometry["height"] // 2,
+    }
+    kf_full = None
+    kf_half = None
     if input_image_path:
         try:
-            keyframe_item = await asyncio.to_thread(
-                pl.encode_keyframe,
-                paths,
-                input_image_path,
-                geometry,
-                keyframe_strength,
-                worker.logger,
-                image_cond_noise,
-                scenes[0]["seed"],
+            kf_full = await asyncio.to_thread(
+                pl.encode_keyframe, paths, input_image_path, geometry,
+                keyframe_strength, worker.logger,
             )
+            if two_stage:
+                kf_half = await asyncio.to_thread(
+                    pl.encode_keyframe, paths, input_image_path, geo_half,
+                    keyframe_strength, worker.logger,
+                )
         except Exception as e:  # noqa: BLE001
             await pl._emit_error(
                 worker, rs.run_id, ErrorCodes.MODEL_LOAD_FAILED,
@@ -260,22 +283,42 @@ async def run_multiscene(
         )
         return
 
+    # Continuation is a latent-frame replace (build_continuation_condition):
+    # the carried tail frames ARE the new scene's opening frames, so the
+    # strength is held near-clean (0.9) — the 0.5 append-reference default
+    # left the overlap half-denoised. Two tail frames anchor continuity
+    # without over-pinning the new scene's opening motion.
     condition_strength = pl._coerce_float(
         advanced.get("condition_strength")
         or render_block.get("condition_strength"),
-        0.5,
+        0.9,
     )
     tail_frames = pl._coerce_int(
         advanced.get("condition_tail_frames")
         or render_block.get("condition_tail_frames"),
-        3,
+        2,
     )
     use_global_anchor = bool(
         render_block.get("global_anchor", render_block.get("color_anchor", True))
     )
 
     # Stage 3 — denoise every scene with the transformer warm, carrying
-    # the latent tail forward.
+    # the latent tail forward. Two-stage runs each scene as half-res
+    # stage 1 -> 2x upsample -> refine; the continuation tail is sliced
+    # from the half-res stage-1 grid so it conditions the next scene's
+    # stage-1 pass at the matching resolution.
+    upsampler = None
+    vae_encoder = None
+    if two_stage:
+        import torch as _torch
+
+        upsampler = ups.load_latent_upsampler(
+            paths.latent_upsampler, "cpu", worker.logger
+        )
+        vae_encoder = cond.load_video_encoder(
+            paths.video_vae, _torch.device("cpu"), worker.logger
+        )
+    keyframe_stage1 = kf_half if two_stage else kf_full
     grids: list[Any] = []
     try:
         prev_tail = None
@@ -283,24 +326,28 @@ async def run_multiscene(
         for i, scene in enumerate(scenes):
             if rs.cancelled:
                 raise RuntimeError("render cancelled by user")
-            items = _scene_conditioning(
-                i, keyframe_item, prev_tail, anchor_latent,
+            stage1, stage2 = _scene_conditioning(
+                i, keyframe_stage1, kf_full, prev_tail, anchor_latent,
                 condition_strength, use_global_anchor,
             )
-            grid = await asyncio.to_thread(
-                pl.run_native_denoise,
-                rs.pipe,
-                scene_embeds[i],
-                _scene_geometry(geometry, scene["num_frames"]),
-                samp,
-                scene["seed"],
-                None,
-                worker.logger,
-                items,
-            )
-            prev_tail = cond.extract_tail_latent(grid, tail_frames)
+            scene_geo = _scene_geometry(geometry, scene["num_frames"])
+            if two_stage:
+                grid, grid_tail = await asyncio.to_thread(
+                    pl.run_two_stage_denoise,
+                    rs.pipe, scene_embeds[i], scene_geo, samp,
+                    scene["seed"], None, worker.logger,
+                    upsampler, vae_encoder, stage1, stage2,
+                )
+            else:
+                grid = await asyncio.to_thread(
+                    pl.run_native_denoise,
+                    rs.pipe, scene_embeds[i], scene_geo, samp,
+                    scene["seed"], None, worker.logger, stage1,
+                )
+                grid_tail = grid
+            prev_tail = cond.extract_tail_latent(grid_tail, tail_frames)
             if i == 0:
-                anchor_latent = grid[:, :, :1, :, :].contiguous()
+                anchor_latent = grid_tail[:, :, :1, :, :].contiguous()
             grids.append(grid.to("cpu"))
             await worker.emit_notification(
                 Notifications.PROGRESS,
@@ -439,7 +486,7 @@ async def run_multiscene(
             "mode": "i2v" if keyframe_item is not None else "t2v",
             "render_path": "manual_stitch",
             "keyframe_strength": keyframe_strength,
-            "image_cond_noise_scale": image_cond_noise,
+            "image_cond_noise_scale": samp["image_cond_noise_scale"],
             "condition_strength": condition_strength,
             "condition_tail_frames": tail_frames,
         },
