@@ -174,6 +174,22 @@ backend_runtimes:
     supported_roles:
       - "video.render"
 
+  - runtime_id: "nexus.video.ltx23.rtx50-ltx2-gguf"
+    display_name: "LTX-2 19B distilled GGUF (RTX 50 / 16 GB, Kijai Q4)"
+    family: "python"
+    transport: "stdio"
+    worker_entrypoint: "worker/src/ltx_video_worker/__main__.py"
+    version_manifest: "backends/rtx50-ltx2-gguf/versions.yaml"
+    capability_tags:
+      - "video-generation"
+      - "image-to-video"
+      - "long-video"
+      - "ltx-2"
+      - "gguf"
+      - "blackwell"
+    supported_roles:
+      - "video.render"
+
   - runtime_id: "nexus.video.ltx23.fake"
     display_name: "LTX 2.3 Fake (CI / development)"
     family: "python"
