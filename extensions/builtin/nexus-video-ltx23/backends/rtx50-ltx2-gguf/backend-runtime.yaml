@@ -1,0 +1,85 @@
+runtime_id: "nexus.video.ltx23.rtx50-ltx2-gguf"
+display_name: "LTX-2 19B distilled GGUF (RTX 50 / 16 GB, Kijai Q4)"
+family: "python"
+transport: "stdio"
+worker_entrypoint: "worker/src/ltx_video_worker/__main__.py"
+version_manifest: "versions.yaml"
+
+capability_tags:
+  - "video-generation"
+  - "image-to-video"
+  - "long-video"
+  - "ltx-2"
+  - "gguf"
+  - "blackwell"
+  - "render.external_segments"
+
+supported_roles:
+  - "video.render"
+
+compatibility:
+  gpu:
+    vendor: "nvidia"
+    architecture: "blackwell"
+    min_vram_mb: 16000
+    preferred_vram_mb: 16000
+  driver:
+    min_major: 580
+    min_full_windows: "580.88"
+    min_full_linux: "580.65"
+  cuda:
+    preferred_family: "12.8"
+  torch:
+    preferred_package_index: "https://download.pytorch.org/whl/cu128"
+    packages:
+      torch: "2.10.0"
+      torchvision: "0.25.0"
+      torchaudio: "2.10.0"
+
+runtime_settings:
+  restart_after_segments:
+    type: "integer"
+    min: 1
+    max: 50
+    default: 6
+    description: "Force runtime restart after this many segments."
+  restart_on_alloc_retries:
+    type: "boolean"
+    default: true
+  restart_on_low_vram_mb:
+    type: "integer"
+    min: 500
+    max: 8000
+    default: 2500
+  tiled_vae:
+    type: "boolean"
+    default: true
+  enable_cpu_offload:
+    type: "boolean"
+    default: true
+    description: "The LTX-2 19B Kijai Q4 stack exceeds 16 GB resident; sequential CPU offload pages the transformer per layer to fit a 16 GB card."
+  max_concurrent_jobs_per_gpu:
+    type: "integer"
+    min: 1
+    max: 1
+    default: 1
+
+failure_categories:
+  - id: "driver_too_old"
+    stage: "validate_env"
+    user_message: "NVIDIA driver below 580.88 (Windows) / 580.65 (Linux). Blackwell requires R580 Studio/Production. Update via NVIDIA's driver page."
+  - id: "gpu_not_supported"
+    stage: "validate_env"
+    user_message: "This runtime is for Blackwell (RTX 50). Use an FP8 runtime on Ada / Ampere hardware."
+  - id: "gguf_transformer_missing"
+    stage: "runtime_runtime"
+    user_message: "LTX-2 19B distilled GGUF transformer not found. Download the LTXV2 GGUF family from the model store."
+  - id: "model_missing"
+    stage: "runtime_runtime"
+    user_message: "LTX-2 components (embeddings connector / VAEs / Gemma-3 text encoder) not found. Re-download from the model store."
+  - id: "vram_budget_exceeded"
+    stage: "runtime_runtime"
+    user_message: "Out of VRAM mid-render. Lower native resolution, enable sequential offload, or apply safe settings."
+  - id: "render_failed"
+    stage: "runtime_runtime"
+    user_message: "Render failed. Retry the segment or inspect logs."
