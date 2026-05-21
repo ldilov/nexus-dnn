@@ -4,13 +4,16 @@ Spec 048. These helpers turn an input image into a keyframe latent and a
 prior scene's grid latent into a continuation anchor — the conditioning
 seam ``pipeline_ltx2._generate_single`` applies before the denoise loop.
 
-The ltx-core conditioning items append *clean* reference tokens to the
-noisy latent sequence and set their ``denoise_mask`` to ``1 - strength``
-(strength 1.0 -> mask 0 -> kept fully clean). The denoise loop in
-``pipeline_ltx2`` therefore honours ``LatentState.denoise_mask``: tokens
-with mask < 1 are re-pinned to ``clean_latent`` every step and carry a
-near-zero per-token timestep. With no conditioning the mask is all-ones
-and the loop is bit-identical to the prior pure-t2v path.
+The keyframe condition (``VideoConditionByLatentIndex``) replaces the
+grid's frame-0 latent tokens in place, so the keyframe IS rendered
+frame 0. The scene-continuation reference (``VideoConditionByReferenceLatent``)
+appends clean reference tokens. Both set ``denoise_mask`` to
+``1 - strength`` on their tokens (strength 1.0 -> mask 0 -> kept fully
+clean). The denoise loop in ``pipeline_ltx2`` honours
+``LatentState.denoise_mask``: conditioned tokens carry a near-zero
+per-token timestep and their x0 prediction is pinned to ``clean_latent``
+before each step. With no conditioning the mask is all-ones and the loop
+is the pure-t2v path.
 
 Boundary: extension-local. Importing ``ltx_core`` internals is
 intentional here — see ``pipeline_ltx2`` module docstring.
@@ -201,20 +204,48 @@ def apply_image_cond_noise(
 
 
 def build_keyframe_condition(image_latent: Any, strength: float) -> Any:
-    """Build the i2v first-frame ``VideoConditionByKeyframeIndex``.
+    """Build the i2v first-frame ``VideoConditionByLatentIndex``.
 
-    ``strength`` 1.0 pins a clean identity first frame; lower unlocks
-    motion at the cost of identity drift.
+    ``VideoConditionByLatentIndex`` replaces the grid's frame-0 latent
+    tokens in place, so the keyframe IS rendered frame 0 (held clean via
+    ``denoise_mask = 1 - strength``). ``VideoConditionByKeyframeIndex``
+    only *appends* the keyframe as extra guiding tokens that
+    ``clear_conditioning`` strips before VAE decode — the output frame 0
+    was never anchored, so keyframe-anchored subjects free-generated and
+    melted while backgrounds held. ``strength`` 1.0 pins a clean identity
+    first frame; lower unlocks motion at the cost of identity drift.
     """
-    from ltx_core.conditioning.types.keyframe_cond import (
-        VideoConditionByKeyframeIndex,
+    from ltx_core.conditioning.types.latent_cond import (
+        VideoConditionByLatentIndex,
     )
 
-    return VideoConditionByKeyframeIndex(
-        keyframes=image_latent,
-        frame_idx=0,
+    return VideoConditionByLatentIndex(
+        latent=image_latent,
         strength=float(strength),
-        num_pixel_frames=1,
+        latent_idx=0,
+    )
+
+
+def build_continuation_condition(tail_latent: Any, strength: float) -> Any:
+    """Build a scene-continuation condition that replaces the opening frames.
+
+    ``VideoConditionByLatentIndex`` replaces the new scene's first latent
+    frames in place with the prior scene's tail latent, so the scene
+    literally continues from those frames (held clean via
+    ``denoise_mask = 1 - strength``). ``VideoConditionByReferenceLatent``
+    only appends the tail as loose guiding context — the new scene's own
+    opening frames free-generate and drift off the prior scene, the same
+    append-not-render failure the keyframe path had. ``strength`` near
+    1.0 makes the overlap an exact continuation; lower lets it ease in.
+    """
+    from ltx_core.conditioning.types.latent_cond import (
+        VideoConditionByLatentIndex,
+    )
+
+    return VideoConditionByLatentIndex(
+        latent=tail_latent,
+        strength=float(strength),
+        latent_idx=0,
     )
 
 

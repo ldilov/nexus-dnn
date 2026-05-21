@@ -1269,28 +1269,41 @@ def _build_video_context(
     return out.video_encoding, out.attention_mask
 
 
-def _resolve_sigmas(stack: _NativeStack, steps: int, torch_mod: Any) -> Any:
-    """Build the distilled sigma schedule.
+_DISTILLED_SIGMAS_8STEP = (
+    1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0,
+)
 
-    The embedded ``config.scheduler.sampler`` is ``"LinearQuadratic"`` —
-    ltx-core's ``LinearQuadraticScheduler`` is the matching native
-    scheduler. It returns ``steps + 1`` sigmas descending from 1.0 to
-    0.0, which is exactly what ``EulerDiffusionStep`` indexes.
+
+def _resolve_sigmas(target_shape: Any, steps: int, torch_mod: Any) -> Any:
+    """Build the sigma schedule for the LTX-2 19B distilled checkpoint.
+
+    The distilled model is trained to sample on a FIXED 8-step sigma list
+    (``DISTILLED_SIGMAS`` in the official ``ltx-pipelines`` package), NOT a
+    scheduler descent — ``DistilledPipeline`` uses
+    ``torch.tensor(DISTILLED_SIGMAS)`` and never calls ``LTX2Scheduler``.
+    Its first four steps barely move (all >= 0.975); the denoising happens
+    across the final four (0.975 -> 0.909 -> 0.725 -> 0.422 -> 0.0).
+    Feeding ``LTX2Scheduler``'s smooth descent — which also stretches its
+    terminal to 0.1, never the trained 0.422 — hands the model velocity
+    targets at sigmas it never trained on, and every denoised token melts
+    while the keyframe-pinned frame 0 (schedule-independent) survives.
+
+    For the canonical 8-step distilled render the fixed list is returned
+    verbatim. A non-8-step override falls back to ``LTX2Scheduler`` with a
+    token-count-matched resolution shift — it reads
+    ``math.prod(latent.shape[2:])`` and a bare call assumes a 4096-token
+    default, so a meta latent (zero memory) of the real ``target_shape``
+    is passed.
     """
-    from ltx_core.components.schedulers import (
-        LinearQuadraticScheduler,
-        LTX2Scheduler,
-    )
+    if steps == 8:
+        return torch_mod.tensor(
+            _DISTILLED_SIGMAS_8STEP, dtype=torch_mod.float32
+        )
 
-    sampler = str(
-        (stack.config.get("scheduler") or {}).get("sampler", "")
-    ).strip().lower()
-    scheduler = (
-        LinearQuadraticScheduler()
-        if sampler in ("linearquadratic", "linear_quadratic", "")
-        else LTX2Scheduler()
-    )
-    sigmas = scheduler.execute(steps=steps)
+    from ltx_core.components.schedulers import LTX2Scheduler
+
+    grid = torch_mod.empty(target_shape.to_torch_shape(), device="meta")
+    sigmas = LTX2Scheduler().execute(steps=steps, latent=grid)
     return sigmas.to(torch_mod.float32)
 
 
@@ -1308,13 +1321,13 @@ def run_native_denoise(
 
     With no conditioning items this is the pure-t2v path: the latent is
     all noise, ``denoise_mask`` is all-ones, every token is stepped. A
-    keyframe / reference-latent conditioning item appends *clean* tokens
-    (``denoise_mask`` < 1); those carry a near-zero per-token timestep
-    (``sigma * mask``) and are re-pinned to ``clean_latent`` after every
-    step so they stay clean context the transformer attends to. It is one
-    loop for both paths — with an all-ones mask the masked timestep
-    (``sigma * 1``) and the re-pin (``1 * stepped + 0 * clean``) reduce
-    exactly to the unconditioned arithmetic.
+    conditioning item marks clean tokens (``denoise_mask`` < 1): the
+    keyframe condition replaces frame-0 tokens in place, the reference
+    condition appends them. Those tokens carry a near-zero per-token
+    timestep (``sigma * mask``) and their x0 prediction is pinned to
+    ``clean_latent`` before each Euler step. With an all-ones mask the
+    masked timestep and the x0 pin reduce exactly to the unconditioned
+    arithmetic, so it is one loop for both paths.
 
     The transformer is NOT evicted here — the caller owns VRAM staging:
     the single-clip path evicts before the VAE decode; the multi-scene
@@ -1401,7 +1414,7 @@ def run_native_denoise(
     attention_mask = state.attention_mask
     mask_flat = denoise_mask[..., 0]
 
-    sigmas = _resolve_sigmas(stack, steps, torch).to(device)
+    sigmas = _resolve_sigmas(target_shape, steps, torch).to(device)
     diffusion_step = EulerDiffusionStep()
     perturbations = BatchedPerturbationConfig.empty(batch_size=1)
 
@@ -1418,10 +1431,10 @@ def run_native_denoise(
     def _run_transformer(lat: Any, sigma_val: Any, ctx: Any, ctx_mask: Any) -> Any:
         """One LTXModel velocity forward for the video branch.
 
-        ``timesteps`` is per-token ``sigma * denoise_mask`` — appended
-        clean conditioning tokens land at ~0, the noisy tokens at the
-        loop sigma. With an all-ones mask this is the uniform-sigma
-        forward of the prior t2v path.
+        ``timesteps`` is per-token ``sigma * denoise_mask`` — clean
+        conditioning tokens land at ~0, the noisy tokens at the loop
+        sigma. With an all-ones mask this is the uniform-sigma forward
+        of the prior t2v path.
         """
         timesteps = (float(sigma_val) * mask_flat).to(device=device, dtype=dtype)
         modality = Modality(
@@ -1443,32 +1456,41 @@ def run_native_denoise(
         for step_idx in range(steps):
             sigma = sigmas[step_idx]
             sigma_f = float(sigma)
+            # Per-token sigma — ltx-core's X0Model contract: a token's
+            # velocity->x0 conversion uses timesteps = sigma * denoise_mask.
+            # Clean conditioning tokens (denoise_mask < 1) convert at ~0.
+            token_sigma = sigma * denoise_mask
 
             velocity = _run_transformer(
                 latent, sigma_f, pos_context, pos_context_mask
             )
-            denoised = to_denoised(latent, velocity, sigma)
+            denoised = to_denoised(latent, velocity, token_sigma)
 
             if do_cfg:
                 neg_velocity = _run_transformer(
                     latent, sigma_f, neg_context, neg_context_mask
                 )
-                neg_denoised = to_denoised(latent, neg_velocity, sigma)
+                neg_denoised = to_denoised(latent, neg_velocity, token_sigma)
                 denoised = neg_denoised + guidance * (denoised - neg_denoised)
 
-            stepped = diffusion_step.step(
+            # x0-space conditioning: blend conditioned tokens toward
+            # clean_latent in the denoised (x0) prediction BEFORE the Euler
+            # step (strength 1.0 -> fully pinned), then advance every token
+            # together. Blending the *stepped* latent (next sigma) with a
+            # raw sigma-0 clean latent — the prior approach — mixed noise
+            # levels and melted keyframe-anchored subjects.
+            if has_cond:
+                denoised = (
+                    denoise_mask * denoised.to(torch.float32)
+                    + (1.0 - denoise_mask) * clean_latent.to(torch.float32)
+                ).to(dtype)
+
+            latent = diffusion_step.step(
                 sample=latent,
                 denoised_sample=denoised,
                 sigmas=sigmas,
                 step_index=step_idx,
             )
-            if has_cond:
-                latent = (
-                    denoise_mask * stepped.to(torch.float32)
-                    + (1.0 - denoise_mask) * clean_latent.to(torch.float32)
-                ).to(dtype)
-            else:
-                latent = stepped
 
             if step_heartbeat is not None:
                 try:
