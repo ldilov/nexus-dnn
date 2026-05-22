@@ -483,7 +483,7 @@ async def run_multiscene(
         samp=samp,
         seed=scenes[0]["seed"],
         conditioning={
-            "mode": "i2v" if keyframe_item is not None else "t2v",
+            "mode": "i2v" if kf_full is not None else "t2v",
             "render_path": "manual_stitch",
             "keyframe_strength": keyframe_strength,
             "image_cond_noise_scale": samp["image_cond_noise_scale"],
