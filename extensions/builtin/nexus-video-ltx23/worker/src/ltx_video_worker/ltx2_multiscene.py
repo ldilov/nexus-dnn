@@ -35,10 +35,13 @@ from .rpc import ErrorCodes, Notifications
 from .seam import apply_seam, seam_params
 from .vram import evict_models, memory_stats
 
-# Low-weight anchor to scene-0's first latent frame — caps cumulative
-# colour / identity drift across a 3-scene chain without freezing motion
-# (spec 048 D12 / R1).
-_GLOBAL_ANCHOR_STRENGTH = 0.15
+# Soft-overlap continuation strength. The carried latent tail conditions
+# the next scene at denoise_mask = 1 - strength; ~0.5 leaves the overlap
+# re-denoisable under the new prompt instead of hard-pinning old content.
+_DEF_CONTINUATION_STRENGTH = 0.5
+# AdaIN blend factor — pulls each continuation scene's latent statistics
+# toward scene 0's to cap colour / exposure drift across the chain.
+_ADAIN_FACTOR = 0.2
 # Pixel frames of the prior scene handed to `apply_seam` as the colour /
 # overlap reference.
 _SEAM_PREV_TAIL = 16
@@ -118,21 +121,18 @@ def _scene_conditioning(
     keyframe_stage1: Any | None,
     keyframe_stage2: Any | None,
     prev_tail: Any | None,
-    anchor_latent: Any | None,
     condition_strength: float,
-    use_global_anchor: bool,
 ) -> tuple[list[Any], list[Any]]:
     """Build ``(stage1, stage2)`` conditioning item lists for one scene.
 
     Scene 0 anchors to the i2v keyframe — ``keyframe_stage1`` conditions
     the (half-res) stage-1 pass, ``keyframe_stage2`` the full-res refine.
-    Scene N>0 replaces its opening latent frames with the prior scene's
-    stage-1 tail (``build_continuation_condition`` — a literal
-    continuation) plus an optional low-weight global anchor, all at the
-    stage-1 resolution; the refine needs no condition because the
-    continuity is already carried in the upsampled latent. With the
-    single-stage path ``keyframe_stage1 == keyframe_stage2`` and only the
-    stage-1 list is used.
+    Scene N>0 carries the prior scene's stage-1 tail as a soft overlap
+    (``build_continuation_condition`` at ``condition_strength`` ~0.5): the
+    overlap latent frames are re-denoised under the new prompt rather than
+    hard-pinned. The refine needs no condition — continuity is carried in
+    the upsampled latent. With the single-stage path ``keyframe_stage1 ==
+    keyframe_stage2`` and only the stage-1 list is used.
     """
     if scene_index == 0:
         s1 = [keyframe_stage1] if keyframe_stage1 is not None else []
@@ -142,10 +142,6 @@ def _scene_conditioning(
     if prev_tail is not None:
         s1.append(
             cond.build_continuation_condition(prev_tail, condition_strength)
-        )
-    if use_global_anchor and anchor_latent is not None:
-        s1.append(
-            cond.build_reference_condition(anchor_latent, _GLOBAL_ANCHOR_STRENGTH)
         )
     return s1, []
 
@@ -283,23 +279,20 @@ async def run_multiscene(
         )
         return
 
-    # Continuation is a latent-frame replace (build_continuation_condition):
-    # the carried tail frames ARE the new scene's opening frames, so the
-    # strength is held near-clean (0.9) — the 0.5 append-reference default
-    # left the overlap half-denoised. Two tail frames anchor continuity
-    # without over-pinning the new scene's opening motion.
+    # Soft latent-overlap continuation: the carried tail conditions the
+    # next scene at denoise_mask = 1 - strength, so ~0.5 lets the overlap
+    # be re-denoised under the new prompt. A near-clean pin (0.9) carries
+    # the old prompt's content fingerprint and the 8-step distilled
+    # schedule cannot reconcile it on a prompt change.
     condition_strength = pl._coerce_float(
         advanced.get("condition_strength")
         or render_block.get("condition_strength"),
-        0.9,
+        _DEF_CONTINUATION_STRENGTH,
     )
     tail_frames = pl._coerce_int(
         advanced.get("condition_tail_frames")
         or render_block.get("condition_tail_frames"),
         2,
-    )
-    use_global_anchor = bool(
-        render_block.get("global_anchor", render_block.get("color_anchor", True))
     )
 
     # Stage 3 — denoise every scene with the transformer warm, carrying
@@ -322,13 +315,13 @@ async def run_multiscene(
     grids: list[Any] = []
     try:
         prev_tail = None
-        anchor_latent = None
+        scene0_full = None
+        scene0_stage1 = None
         for i, scene in enumerate(scenes):
             if rs.cancelled:
                 raise RuntimeError("render cancelled by user")
             stage1, stage2 = _scene_conditioning(
-                i, keyframe_stage1, kf_full, prev_tail, anchor_latent,
-                condition_strength, use_global_anchor,
+                i, keyframe_stage1, kf_full, prev_tail, condition_strength,
             )
             scene_geo = _scene_geometry(geometry, scene["num_frames"])
             if two_stage:
@@ -345,9 +338,23 @@ async def run_multiscene(
                     scene["seed"], None, worker.logger, stage1,
                 )
                 grid_tail = grid
-            prev_tail = cond.extract_tail_latent(grid_tail, tail_frames)
+            # AdaIN every continuation scene back toward scene 0's latent
+            # statistics so colour / exposure does not ratchet down the
+            # chain; scene 0 is the reference and is left untouched.
             if i == 0:
-                anchor_latent = grid_tail[:, :, :1, :, :].contiguous()
+                scene0_full = grid
+                scene0_stage1 = grid_tail
+            else:
+                grid = cond.adain_normalize_latent(
+                    grid, scene0_full, _ADAIN_FACTOR
+                )
+                if two_stage:
+                    grid_tail = cond.adain_normalize_latent(
+                        grid_tail, scene0_stage1, _ADAIN_FACTOR
+                    )
+                else:
+                    grid_tail = grid
+            prev_tail = cond.extract_tail_latent(grid_tail, tail_frames)
             grids.append(grid.to("cpu"))
             await worker.emit_notification(
                 Notifications.PROGRESS,
@@ -489,6 +496,7 @@ async def run_multiscene(
             "image_cond_noise_scale": samp["image_cond_noise_scale"],
             "condition_strength": condition_strength,
             "condition_tail_frames": tail_frames,
+            "adain_factor": _ADAIN_FACTOR if scene_count > 1 else 0.0,
         },
         scene_count=scene_count,
         duration=duration,
