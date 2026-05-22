@@ -1362,6 +1362,38 @@ def _resolve_sigmas(target_shape: Any, steps: int, torch_mod: Any) -> Any:
     return sigmas.to(torch_mod.float32)
 
 
+def _renoise_soft_conditioned_tokens(
+    latent: Any,
+    clean_latent: Any,
+    denoise_mask: Any,
+    noise: Any,
+    sigma0: float,
+) -> Any:
+    """Re-noise softly-conditioned tokens to their declared noise level.
+
+    A conditioning item writes its clean latent into ``latent`` and
+    ``clean_latent`` and sets ``denoise_mask = 1 - strength``. The loop
+    steps every token at ``sigma * denoise_mask``. A hard pin (mask 0)
+    and a pure-noise token (mask 1) are already seed-consistent; a SOFT
+    token (0 < mask < 1) is seeded clean but declared noised at
+    ``sigma0 * mask`` — a mismatch that melts the overlap. This re-noises
+    only the soft tokens to the rectified-flow seed
+    ``(1 - sigma0*mask)*clean + sigma0*mask*noise``.
+    """
+    import torch
+
+    mask = denoise_mask[..., 0]
+    soft = (mask > 0.0) & (mask < 1.0)
+    if not bool(soft.any()):
+        return latent
+    sigma_eff = (sigma0 * mask).unsqueeze(-1)
+    reseeded = (
+        (1.0 - sigma_eff) * clean_latent.to(torch.float32)
+        + sigma_eff * noise.to(torch.float32)
+    ).to(latent.dtype)
+    return torch.where(soft.unsqueeze(-1), reseeded, latent)
+
+
 def run_native_denoise(
     stack: _NativeStack,
     embeds: dict[str, Any],
@@ -1497,6 +1529,10 @@ def run_native_denoise(
     denoise_mask = state.denoise_mask.to(torch.float32)
     clean_latent = state.clean_latent
     attention_mask = state.attention_mask
+    if has_cond:
+        latent = _renoise_soft_conditioned_tokens(
+            latent, clean_latent, denoise_mask, noise, sigma0
+        )
     mask_flat = denoise_mask[..., 0]
 
     diffusion_step = EulerDiffusionStep()
