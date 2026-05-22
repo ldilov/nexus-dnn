@@ -92,7 +92,7 @@ def test_ltxv2_distilled_q4_retuned_for_i2v() -> None:
     profile = gp.get_profile("ltxv2-distilled-q4")
     assert profile is not None
     assert profile.render["path"] == "single"
-    assert profile.render["frames"] == 105
+    assert profile.render["frames"] == 49
     assert profile.render["base_fps"] == 16
     assert profile.render["output_fps"] == 32
     assert (profile.render["frames"] - 1) % 8 == 0
@@ -106,7 +106,7 @@ def test_ltxv2_quality_profile_runs_uncond_branch() -> None:
     assert profile.sampling["guidance_scale"] == 1.1
     assert profile.sampling["guidance_scale"] > 1.0
     assert profile.render["path"] == "single"
-    assert profile.render["frames"] == 105
+    assert profile.render["frames"] == 49
 
 
 def test_ltxv2_multiscene_profile_drives_manual_stitch() -> None:
@@ -117,7 +117,7 @@ def test_ltxv2_multiscene_profile_drives_manual_stitch() -> None:
     assert profile.render["condition_tail_frames"] == 3
     assert 0.0 < profile.render["condition_strength"] <= 1.0
     assert profile.render["color_anchor"] is True
-    assert profile.render["frames"] == 105
+    assert profile.render["frames"] == 49
 
 
 def test_motion_profiles_declare_motion_prompts() -> None:

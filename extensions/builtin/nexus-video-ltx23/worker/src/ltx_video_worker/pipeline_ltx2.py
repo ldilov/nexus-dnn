@@ -109,7 +109,7 @@ _DEF_WIDTH = 768
 _DEF_HEIGHT = 512
 # Spec 048: 105 = 8*13+1 (8n+1 conforming, ~6.56 s at 16 fps). The clip
 # renders at 16 fps base and is RIFE-interpolated to 32 fps output.
-_DEF_FRAMES = 105
+_DEF_FRAMES = 49
 _DEF_BASE_FPS = 16
 _DEF_OUTPUT_FPS = 32
 _DEF_KEYFRAME_STRENGTH = 1.0
