@@ -58,3 +58,32 @@ def test_stage2_distilled_sigmas_are_a_descending_3_step_schedule() -> None:
     assert sigmas[0] == pytest.approx(0.909375)
     assert sigmas[-1] == 0.0
     assert list(sigmas) == sorted(sigmas, reverse=True)
+
+
+def test_renoise_leaves_hard_and_noise_tokens_untouched() -> None:
+    latent = torch.randn(1, 4, 8)
+    clean = torch.randn(1, 4, 8)
+    noise = torch.randn(1, 4, 8)
+    # All tokens are either hard pins (mask 0) or pure noise (mask 1).
+    denoise_mask = torch.tensor([[[0.0], [1.0], [0.0], [1.0]]])
+    out = pl._renoise_soft_conditioned_tokens(
+        latent, clean, denoise_mask, noise, sigma0=1.0
+    )
+    assert torch.equal(out, latent)
+
+
+def test_renoise_reseeds_soft_tokens_to_declared_sigma() -> None:
+    latent = torch.randn(1, 3, 8)
+    clean = torch.randn(1, 3, 8)
+    noise = torch.randn(1, 3, 8)
+    # Token 1 is soft (mask 0.5); tokens 0 and 2 are hard pin / pure noise.
+    denoise_mask = torch.tensor([[[0.0], [0.5], [1.0]]])
+    out = pl._renoise_soft_conditioned_tokens(
+        latent, clean, denoise_mask, noise, sigma0=1.0
+    )
+    # Soft token 1: (1 - 1.0*0.5)*clean + 1.0*0.5*noise.
+    expected_soft = 0.5 * clean[:, 1] + 0.5 * noise[:, 1]
+    assert torch.allclose(out[:, 1], expected_soft, atol=1e-5)
+    # Untouched.
+    assert torch.equal(out[:, 0], latent[:, 0])
+    assert torch.equal(out[:, 2], latent[:, 2])
