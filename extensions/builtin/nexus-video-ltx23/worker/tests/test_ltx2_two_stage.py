@@ -87,3 +87,30 @@ def test_renoise_reseeds_soft_tokens_to_declared_sigma() -> None:
     # Untouched.
     assert torch.equal(out[:, 0], latent[:, 0])
     assert torch.equal(out[:, 2], latent[:, 2])
+
+
+def test_soft_pin_mask_hard_and_noise_tokens_ignore_scale() -> None:
+    # denoise_mask 0 = hard pin -> pin fraction 1.0 (fully pinned);
+    # denoise_mask 1 = pure noise -> pin fraction 0.0 (not pinned).
+    dm = torch.tensor([[[0.0], [1.0]]])
+    for scale in (0.0, 0.5, 1.0):
+        pin = pl._soft_pin_mask(dm, scale)
+        assert pin[0, 0, 0] == pytest.approx(1.0)
+        assert pin[0, 1, 0] == pytest.approx(0.0)
+
+
+def test_soft_pin_mask_scales_only_soft_tokens() -> None:
+    dm = torch.tensor([[[0.5]]])  # soft token, denoise_mask 0.5
+    # scale 1.0 == welded behaviour: pin fraction == 1 - denoise_mask.
+    assert pl._soft_pin_mask(dm, 1.0)[0, 0, 0] == pytest.approx(0.5)
+    # scale 0.5 decouples: pin fraction halved, sigma mask untouched.
+    assert pl._soft_pin_mask(dm, 0.5)[0, 0, 0] == pytest.approx(0.25)
+    # scale 0.0: soft token noised but not pinned to old content at all.
+    assert pl._soft_pin_mask(dm, 0.0)[0, 0, 0] == pytest.approx(0.0)
+
+
+def test_resolve_sampling_soft_pin_scale_default_and_clamp() -> None:
+    assert pl._resolve_sampling({})["soft_pin_scale"] == pl._DEF_SOFT_PIN_SCALE
+    assert pl._resolve_sampling({"soft_pin_scale": 0.3})["soft_pin_scale"] == 0.3
+    assert pl._resolve_sampling({"soft_pin_scale": 5.0})["soft_pin_scale"] == 1.0
+    assert pl._resolve_sampling({"soft_pin_scale": -1.0})["soft_pin_scale"] == 0.0
