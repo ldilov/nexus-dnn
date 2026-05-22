@@ -57,33 +57,33 @@ def test_scene_geometry_overrides_frame_count_only() -> None:
 def test_scene_0_conditioning_uses_keyframe_per_stage() -> None:
     kf_stage1, kf_stage2 = object(), object()
     stage1, stage2 = ms._scene_conditioning(
-        0, kf_stage1, kf_stage2, None, None, 0.5, True
+        0, kf_stage1, kf_stage2, None, 0.5
     )
     assert stage1 == [kf_stage1]
     assert stage2 == [kf_stage2]
 
 
 def test_scene_0_conditioning_empty_without_keyframe() -> None:
-    stage1, stage2 = ms._scene_conditioning(0, None, None, None, None, 0.5, True)
+    stage1, stage2 = ms._scene_conditioning(0, None, None, None, 0.5)
     assert stage1 == []
     assert stage2 == []
 
 
-def test_continuation_scene_carries_tail_and_global_anchor() -> None:
+def test_continuation_scene_carries_tail_only() -> None:
     from ltx_core.conditioning.types.latent_cond import VideoConditionByLatentIndex
 
     tail = torch.randn(1, 128, 2, 4, 6)
-    anchor = torch.randn(1, 128, 1, 4, 6)
-    stage1, stage2 = ms._scene_conditioning(
-        1, None, None, tail, anchor, 0.9, True
-    )
-    assert len(stage1) == 2  # continuation + global anchor
-    assert stage2 == []  # the refine needs no condition
-    s1_no, s2_no = ms._scene_conditioning(
-        1, None, None, tail, anchor, 0.9, False
-    )
-    assert len(s1_no) == 1
-    # Continuation replaces the new scene's opening latent frames in place.
-    assert isinstance(s1_no[0], VideoConditionByLatentIndex)
-    assert s1_no[0].latent_idx == 0
-    assert s1_no[0].latent is tail
+    stage1, stage2 = ms._scene_conditioning(1, None, None, tail, 0.5)
+    # Continuation scene carries exactly one condition — the soft tail.
+    assert len(stage1) == 1
+    assert stage2 == []
+    assert isinstance(stage1[0], VideoConditionByLatentIndex)
+    assert stage1[0].latent_idx == 0
+    assert stage1[0].latent is tail
+    assert stage1[0].strength == 0.5
+
+
+def test_default_continuation_strength_is_soft() -> None:
+    # Guard against regressing to the hard near-clean pin.
+    assert ms._DEF_CONTINUATION_STRENGTH == 0.5
+    assert ms._DEF_CONTINUATION_STRENGTH < 0.9
