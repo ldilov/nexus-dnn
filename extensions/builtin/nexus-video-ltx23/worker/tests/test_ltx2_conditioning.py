@@ -126,3 +126,32 @@ def test_build_continuation_condition_replaces_opening_frames() -> None:
     assert item.latent_idx == 0
     assert item.strength == 0.9
     assert item.latent is tail
+
+
+def test_adain_normalize_latent_factor_zero_is_noop() -> None:
+    latent = torch.randn(1, 128, 4, 4, 6)
+    reference = torch.randn(1, 128, 4, 4, 6) * 3.0 + 5.0
+    out = cond.adain_normalize_latent(latent, reference, factor=0.0)
+    assert torch.equal(out, latent)
+
+
+def test_adain_normalize_latent_factor_one_matches_reference_stats() -> None:
+    latent = torch.randn(2, 8, 3, 5, 6)
+    reference = torch.randn(2, 8, 3, 5, 6) * 4.0 - 2.0
+    out = cond.adain_normalize_latent(latent, reference, factor=1.0)
+    dims = (0, 2, 3, 4)
+    assert torch.allclose(
+        out.mean(dim=dims), reference.mean(dim=dims), atol=1e-3
+    )
+    assert torch.allclose(
+        out.std(dim=dims), reference.std(dim=dims), atol=1e-3
+    )
+
+
+def test_adain_normalize_latent_partial_factor_moves_toward_reference() -> None:
+    latent = torch.zeros(1, 4, 2, 3, 3)
+    reference = torch.ones(1, 4, 2, 3, 3) * 10.0
+    out = cond.adain_normalize_latent(latent, reference, factor=0.2)
+    # latent mean 0, reference mean 10 -> 0.2 blend lands strictly between.
+    out_mean = float(out.mean())
+    assert 0.0 < out_mean < 10.0

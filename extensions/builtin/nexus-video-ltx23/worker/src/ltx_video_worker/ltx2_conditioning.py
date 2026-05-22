@@ -266,3 +266,34 @@ def decay_condition_strength(
     start = base_strength * _DECAY_START_FRACTION
     fraction = pos / decay_span
     return start + (base_strength - start) * fraction
+
+
+def adain_normalize_latent(
+    latent: Any, reference: Any, factor: float = 0.2
+) -> Any:
+    """Pull ``latent``'s per-channel mean/std toward ``reference``'s.
+
+    AdaIN drift control: each continuation scene's latent statistics are
+    nudged back toward scene 0's so colour / exposure does not ratchet
+    across a chain. ``factor`` 0.0 is a no-op; 1.0 fully replaces the
+    statistics; 0.1-0.3 is the usable band — higher flattens intended
+    lighting changes. Statistics are taken per channel (dim 1) over the
+    batch / frame / spatial axes. Computed in float32 for stability,
+    returned in ``latent``'s dtype.
+    """
+    import torch
+
+    if factor <= 0.0:
+        return latent
+
+    dims = (0, 2, 3, 4)
+    eps = 1e-5
+    work = latent.to(torch.float32)
+    ref = reference.to(torch.float32)
+    lat_mean = work.mean(dim=dims, keepdim=True)
+    lat_std = work.std(dim=dims, keepdim=True)
+    ref_mean = ref.mean(dim=dims, keepdim=True)
+    ref_std = ref.std(dim=dims, keepdim=True)
+    normalized = (work - lat_mean) / (lat_std + eps) * ref_std + ref_mean
+    out = work + factor * (normalized - work)
+    return out.to(latent.dtype)
