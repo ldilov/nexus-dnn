@@ -124,6 +124,16 @@ _DEF_IMAGE_COND_NOISE_SCALE = 0.0
 # needs to coordinate motion — motion is suppressed / back-loaded. The
 # operator can force the legacy single-stage path with two_stage=false.
 _DEF_TWO_STAGE = True
+# Soft-pin decoupling. The x0-pin blend pulls a conditioned token toward its
+# clean target by a pin fraction. For a hard pin (denoise_mask 0 — i2v keyframe)
+# that fraction must be 1.0; for pure noise (mask 1) it is 0.0. For a SOFT
+# overlap token (0 < mask < 1) the welded default would pin it by (1 - mask),
+# coupling the pin to the sigma mask — so a soft token noised enough to move is
+# also dragged that hard back to stale prior-scene content. _DEF_SOFT_PIN_SCALE
+# scales the soft pin fraction DOWN independently of the sigma mask: 1.0 = the
+# legacy welded behaviour, 0.5 = soft tokens noised at the mask but pinned half
+# as hard. Tunable via advanced.soft_pin_scale.
+_DEF_SOFT_PIN_SCALE = 0.5
 _STAGE2_DISTILLED_SIGMAS = (0.909375, 0.725, 0.421875, 0.0)
 # Motion-intensity prompt nudge. A head-to-head proved an abstract
 # adjective tag ("energetic motion") does NOT animate the model — motion
@@ -700,6 +710,9 @@ def _resolve_sampling(advanced: dict[str, Any]) -> dict[str, Any]:
         _DEF_IMAGE_COND_NOISE_SCALE,
     )
     two_stage = _coerce_bool(_pick("two_stage", _DEF_TWO_STAGE), _DEF_TWO_STAGE)
+    soft_pin = _coerce_float(
+        _pick("soft_pin_scale", _DEF_SOFT_PIN_SCALE), _DEF_SOFT_PIN_SCALE
+    )
     intensity = str(
         _pick("motion_intensity", _DEF_MOTION_INTENSITY)
         or _DEF_MOTION_INTENSITY
@@ -711,6 +724,7 @@ def _resolve_sampling(advanced: dict[str, Any]) -> dict[str, Any]:
         "guidance_scale": max(1.0, guidance),
         "image_cond_noise_scale": max(0.0, cond_noise),
         "two_stage": two_stage,
+        "soft_pin_scale": min(1.0, max(0.0, soft_pin)),
         "motion_intensity": intensity,
     }
 
@@ -1394,6 +1408,26 @@ def _renoise_soft_conditioned_tokens(
     return torch.where(soft.unsqueeze(-1), reseeded, latent)
 
 
+def _soft_pin_mask(denoise_mask: Any, soft_pin_scale: float) -> Any:
+    """Per-token x0-pin fraction, decoupled from the sigma mask.
+
+    The x0-pin blend pulls a conditioned token toward its clean target.
+    A hard pin (``denoise_mask`` 0 — i2v keyframe) must stay fully pinned
+    (fraction 1.0); a pure-noise token (mask 1) is never pinned (0.0). A
+    SOFT overlap token (0 < mask < 1) would, under the welded default, be
+    pinned by ``1 - mask`` — the same scalar that sets its noise level —
+    so a token noised enough to move is also dragged that hard toward
+    stale prior-scene content. ``soft_pin_scale`` scales ONLY the soft
+    tokens' pin fraction: 1.0 reproduces the welded behaviour, lower
+    values pin soft tokens looser while leaving their sigma mask intact.
+    """
+    import torch
+
+    base = 1.0 - denoise_mask
+    soft = (denoise_mask > 0.0) & (denoise_mask < 1.0)
+    return torch.where(soft, base * float(soft_pin_scale), base)
+
+
 def run_native_denoise(
     stack: _NativeStack,
     embeds: dict[str, Any],
@@ -1534,6 +1568,9 @@ def run_native_denoise(
             latent, clean_latent, denoise_mask, noise, sigma0
         )
     mask_flat = denoise_mask[..., 0]
+    pin_mask = _soft_pin_mask(
+        denoise_mask, samp.get("soft_pin_scale", _DEF_SOFT_PIN_SCALE)
+    )
 
     diffusion_step = EulerDiffusionStep()
     perturbations = BatchedPerturbationConfig.empty(batch_size=1)
@@ -1614,20 +1651,23 @@ def run_native_denoise(
 
             # x0-space conditioning: blend conditioned tokens toward the
             # keyframe pin target in the denoised (x0) prediction BEFORE
-            # the Euler step (strength 1.0 -> fully pinned), then advance
-            # every token together. Blending the *stepped* latent (next
-            # sigma) with a raw sigma-0 clean latent — the prior approach —
-            # mixed noise levels and melted keyframe-anchored subjects.
-            # The pin target carries step-decaying noise (loose early,
-            # exact keyframe on the last step) for i2v motion headroom.
+            # the Euler step, then advance every token together. Blending
+            # the *stepped* latent (next sigma) with a raw sigma-0 clean
+            # latent — the prior approach — mixed noise levels and melted
+            # keyframe-anchored subjects. The pin target carries
+            # step-decaying noise (loose early, exact keyframe on the last
+            # step) for i2v motion headroom. ``pin_mask`` is the pin
+            # fraction decoupled from the sigma mask — a hard pin stays
+            # fully pinned, a soft overlap token is pinned looser than its
+            # sigma mask implies (see _soft_pin_mask).
             if has_cond:
                 pin = clean_latent.to(torch.float32)
                 if cond_noise is not None:
                     decay = 1.0 - step_idx / max(1, steps - 1)
                     pin = pin + (image_cond_noise_scale * decay) * cond_noise
                 denoised = (
-                    denoise_mask * denoised.to(torch.float32)
-                    + (1.0 - denoise_mask) * pin
+                    (1.0 - pin_mask) * denoised.to(torch.float32)
+                    + pin_mask * pin
                 ).to(dtype)
 
             latent = diffusion_step.step(
