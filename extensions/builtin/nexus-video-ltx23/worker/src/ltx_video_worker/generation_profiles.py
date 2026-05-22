@@ -105,7 +105,7 @@ _PROFILES: dict[str, GenerationProfile] = {
         description=(
             "LTX-2 19B distilled, Kijai Q4_K_M GGUF transformer. 8 steps, "
             "guidance 1.0, LTX-2 distilled sigma schedule. Image-to-video "
-            "primary path: input image -> 105-frame 768x512 clip at 16 fps "
+            "primary path: input image -> 49-frame 768x512 clip at 16 fps "
             "base, RIFE-interpolated to 32 fps, esrgan-upscaled to 720p. "
             "Separate Gemma-3-12B prompt encode then unload, then "
             "transformer + connector."
@@ -119,7 +119,7 @@ _PROFILES: dict[str, GenerationProfile] = {
             "path": "single",
             "width": 768,
             "height": 512,
-            "frames": 105,
+            "frames": 49,
             "base_fps": 16,
             "output_fps": 32,
         },
@@ -145,7 +145,7 @@ _PROFILES: dict[str, GenerationProfile] = {
             "path": "single",
             "width": 768,
             "height": 512,
-            "frames": 105,
+            "frames": 49,
             "base_fps": 16,
             "output_fps": 32,
         },
@@ -158,9 +158,9 @@ _PROFILES: dict[str, GenerationProfile] = {
         name="LTX-2 19B distilled — multi-scene continuation",
         description=(
             "LTX-2 19B distilled multi-scene continuation. 2-3 scenes, each "
-            "a 105-frame 768x512 i2v render where scene N continues scene "
-            "N-1 via a 3-frame latent tail carried as a reference-latent "
-            "condition. apply_seam cleans each boundary; the 19B transformer "
+            "a 49-frame 768x512 i2v render where scene N continues scene "
+            "N-1 via a soft latent-overlap condition, AdaIN-normalised to "
+            "scene 0. apply_seam cleans each boundary; the 19B transformer "
             "stays warm across all scenes."
         ),
         sampling={
@@ -172,7 +172,7 @@ _PROFILES: dict[str, GenerationProfile] = {
             "path": "manual_stitch",
             "width": 768,
             "height": 512,
-            "frames": 105,
+            "frames": 49,
             "base_fps": 16,
             "output_fps": 32,
             "condition_strength": 0.5,
