@@ -45,21 +45,47 @@ from .rpc import ErrorCodes
 
 logger = logging.getLogger(__name__)
 
-# TODO(longcat): pin to specific commit
-VENDOR_COMMIT: str = "main"
+# Pinned to meituan-longcat/LongCat-Video main HEAD as of 2026-05-23.
+# Upstream has no `longcat_video/__init__.py` (implicit namespace package);
+# the 8 entries below are the complete required surface for build_dit +
+# pipeline_longcat. Re-pin + recompute when bumping to a tagged release.
+VENDOR_COMMIT: str = "8334da9343fcf9bc8156a35d1df19d4cdfa98615"
 
 VENDOR_MODULES: list[tuple[str, str | None]] = [
-    # (repo_relative_path, expected_sha256_or_None)
-    # TODO(longcat): fill sha256 values once VENDOR_COMMIT is pinned to a release SHA
-    ("longcat_video/__init__.py", None),
-    ("longcat_video/pipeline_longcat_video.py", None),
-    ("longcat_video/modules/__init__.py", None),
-    ("longcat_video/modules/longcat_video_dit.py", None),
-    ("longcat_video/modules/autoencoder_kl_wan.py", None),
-    ("longcat_video/modules/attention.py", None),
-    ("longcat_video/modules/blocks.py", None),
-    ("longcat_video/modules/rope_3d.py", None),
-    ("longcat_video/modules/scheduling_flow_match_euler_discrete.py", None),
+    # (repo_relative_path, expected_sha256)
+    (
+        "longcat_video/pipeline_longcat_video.py",
+        "fdcb1ff211744101b8f505830d8b17adb59bab98651c6ba8a44a1ff706ad54c1",
+    ),
+    (
+        "longcat_video/modules/__init__.py",
+        # empty file
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    ),
+    (
+        "longcat_video/modules/longcat_video_dit.py",
+        "cebb2ed2cfc754b4501a36bd4e57969c5fd47f4bf1ce352587dcfac092d4d1e5",
+    ),
+    (
+        "longcat_video/modules/autoencoder_kl_wan.py",
+        "f41167750a9d50a45597fa6659f24fff4397b634c2cf546e44fdf585dfa43730",
+    ),
+    (
+        "longcat_video/modules/attention.py",
+        "d2d29f468c2b1e998adf39e740cf271e1d8a64b7fda7efb730fc8fcdbee3bd4b",
+    ),
+    (
+        "longcat_video/modules/blocks.py",
+        "596f40ba74cb429a0d05987bc75beac9b43a096cbdc37474628d165cb6ccf152",
+    ),
+    (
+        "longcat_video/modules/rope_3d.py",
+        "cca72c408d49bbb8abf9dc17784dfed4887c88a87874750a798a61ddeea6661c",
+    ),
+    (
+        "longcat_video/modules/scheduling_flow_match_euler_discrete.py",
+        "322cef12d5efa660f839fc173e83eba68b913f031b3f06643d71e5181279be5a",
+    ),
 ]
 
 PROFILE_REPO: dict[str, list[tuple[str, list[str]]]] = {
