@@ -1,0 +1,68 @@
+spec_version: "0.1"
+backend:
+  runtime_id: "nexus.video.longcat.rtx50-fp8"
+  default_version: "0.1.0"
+versions:
+  - id: "0.1.0"
+    status: "experimental"
+    artifacts:
+      # DiT FP8 (Kijai repack, ComfyUI-native naming + per-tensor scale_weight)
+      - id: "dit-fp8"
+        source:
+          kind: "huggingface"
+          repo: "Kijai/LongCat-Video_comfy"
+          revision: "main"
+          file: "LongCat_TI2V_comfy_fp8_e4m3fn_scaled_KJ.safetensors"
+        size_bytes: 16642998272  # 15.5 GiB
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+
+      # VAE (Wan 2.1, AutoencoderKLWan; sourced from upstream meituan repo)
+      - id: "vae"
+        source:
+          kind: "huggingface"
+          repo: "meituan-longcat/LongCat-Video"
+          revision: "main"
+          file: "vae/diffusion_pytorch_model.safetensors"
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+
+      # Text encoder (UMT5-XXL; sourced from upstream meituan repo, which
+      # already ships the 5-shard UMT5EncoderModel split).
+      - id: "text-encoder"
+        source:
+          kind: "huggingface_split"
+          repo: "meituan-longcat/LongCat-Video"
+          revision: "main"
+          subfolder: "text_encoder"
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+
+      # Tokenizer (UMT5 / T5-family)
+      - id: "tokenizer"
+        source:
+          kind: "huggingface_split"
+          repo: "meituan-longcat/LongCat-Video"
+          revision: "main"
+          subfolder: "tokenizer"
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+
+      # Distill LoRA (optional but recommended; 12-step path)
+      - id: "distill-lora"
+        source:
+          kind: "huggingface"
+          repo: "Kijai/LongCat-Video_comfy"
+          revision: "main"
+          file: "LongCat_distill_lora_alpha64_bf16.safetensors"
+        size_bytes: 1353384960  # 1.26 GiB
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+
+      # Refinement LoRA (optional; used by generate_refine for 720p)
+      - id: "refinement-lora"
+        source:
+          kind: "huggingface"
+          repo: "Kijai/LongCat-Video_comfy"
+          revision: "main"
+          file: "LongCat_refinement_lora_rank128_bf16.safetensors"
+        size_bytes: 2652340224  # 2.47 GiB
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"

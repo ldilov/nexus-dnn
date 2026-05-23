@@ -1,0 +1,88 @@
+[project]
+name = "nexus-video-longcat-worker"
+version = "0.1.0"
+description = "LongCat-Video TI2V render worker for the nexus.video.longcat extension. Stdio JSON-RPC over NDJSON. FP8 e4m3fn scaled (Kijai _KJ.safetensors) + BF16 paths; fake (no-GPU) mode for CI."
+requires-python = ">=3.11,<3.13"
+readme = "README.md"
+license = { text = "GPL-3.0-or-later" }
+
+dependencies = [
+  # Stdio protocol + structured logs. Heavy ML deps live in the
+  # `diffusers` extra so the `fake` runtime installs in seconds.
+  "pydantic>=2.8",
+  "pyyaml>=6.0",
+  "ffmpeg-python>=0.2",
+  "pillow>=10.0",
+  "numpy>=1.26,<3.0",
+  "huggingface_hub>=0.26",
+]
+
+[project.optional-dependencies]
+# Real-runtime deps. The fake profile installs only the base set.
+diffusers = [
+  # RTX 50 Blackwell requires cu128 wheels (torch 2.10+). LongCat
+  # upstream pins torch==2.6.0 but that is CPU+cu124 only — we keep
+  # the cu128 floor to stay compatible with the existing host GPU
+  # contract. The DiT modules are vendored so the upstream torch pin
+  # is unenforced.
+  "torch>=2.10",
+  "torchvision>=0.25",
+  "torchaudio>=2.10",
+  # LongCat-Video upstream pins diffusers==0.35.1 and
+  # transformers==4.41.0 (see meituan-longcat/LongCat-Video
+  # requirements.txt). The pins drive UMT5EncoderModel + the
+  # FlowMatchEulerDiscreteScheduler API expected by
+  # pipeline_longcat_video.py. We honor the upstream pins exactly
+  # in our own venv; the ltx23 worker's incompatible pins do not
+  # apply here (separate extension, separate uv lock).
+  "diffusers==0.35.1",
+  "transformers==4.41.0",
+  "accelerate>=1.0",
+  "safetensors>=0.4",
+  "huggingface_hub>=0.26",
+  "einops>=0.8",
+  "sentencepiece>=0.2",
+  "protobuf>=4",
+  # Block-Sparse-Attention is upstream-optional. Default attention
+  # is flash-attn-2; sdpa works as a fallback when flash-attn is
+  # absent. flash-attn 2.7.4.post1 matches the upstream pin.
+  # "flash-attn==2.7.4.post1",  # commented: prebuilt wheels are
+  # scarce on Windows; defer to runtime-selected sdpa fallback
+  # until the install flow can resolve a platform-correct wheel.
+  "av>=12.0",
+  "imageio>=2.37",
+  "imageio-ffmpeg>=0.6",
+  "opencv-python-headless>=4.10",
+]
+test = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+]
+
+[project.scripts]
+nexus-video-longcat-worker = "longcat_video_worker.__main__:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/longcat_video_worker"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+# Route torch wheels through PyTorch's cu128 index for RTX 50 Blackwell.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128" }]
+torchvision = [{ index = "pytorch-cu128" }]
+torchaudio = [{ index = "pytorch-cu128" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
