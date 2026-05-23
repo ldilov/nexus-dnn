@@ -45,6 +45,19 @@ def main() -> int:
     parser.add_argument("--swap", type=int, default=46)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--prompt", default=None)
+    parser.add_argument(
+        "--refine",
+        action="store_true",
+        help="Apply refinement LoRA + generate_refine pass on the draft",
+    )
+    parser.add_argument(
+        "--refine-steps", type=int, default=12,
+        help="num_inference_steps for the refinement pass",
+    )
+    parser.add_argument(
+        "--refine-guidance", type=float, default=1.0,
+        help="guidance_scale for the refinement pass",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -116,6 +129,9 @@ def main() -> int:
         seed=args.seed,
         max_sequence_length=256,
         offload_kv_cache=True,
+        apply_refinement=args.refine,
+        refinement_steps=args.refine_steps,
+        refinement_guidance=args.refine_guidance,
     )
     log.info("request: %r", request)
 

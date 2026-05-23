@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 RenderMode = Literal["t2v", "i2v", "vc", "refine"]
 
 _DISTILL_LORA_FILENAME = "LongCat_distill_lora_alpha64_bf16.safetensors"
+_REFINEMENT_LORA_FILENAME = "LongCat_refinement_lora_rank128_bf16.safetensors"
 _KJ_FP8_FILENAME = "LongCat_TI2V_comfy_fp8_e4m3fn_scaled_KJ.safetensors"
 _KIJAI_REPO_SUBDIR = "Kijai/LongCat-Video_comfy"
 _MEITUAN_REPO_SUBDIR = "meituan-longcat/LongCat-Video"
@@ -57,6 +58,12 @@ class LongCatRenderRequest:
     seed: Optional[int] = None
     max_sequence_length: int = 512
     offload_kv_cache: bool = False
+    # Apply LongCat_refinement_lora_rank128_bf16 + run generate_refine on the
+    # draft after the primary render. Quality pass for distill-mode smudge
+    # and 720p upscale (refinement LoRA was trained for both).
+    apply_refinement: bool = False
+    refinement_steps: int = 12
+    refinement_guidance: float = 1.0
 
 
 @dataclass
@@ -288,7 +295,9 @@ def _maybe_load_distill_lora(
         from safetensors.torch import load_file
         from longcat_video.modules.lora_utils import create_lora_network
 
+        _patch_lora_utils_for_fp8()
         lora_sd = load_file(str(lora_path), device="cpu")
+        lora_sd = _strip_diffusion_model_prefix(lora_sd)
         network = create_lora_network(
             transformer=dit,
             lora_network_state_dict_loaded=lora_sd,
@@ -311,6 +320,130 @@ def _maybe_load_distill_lora(
             exc,
         )
         return None
+
+
+def _patch_lora_utils_for_fp8() -> None:
+    # Upstream `lora_utils.LoRANetwork.__init__` and `LoRAModule.__init__`
+    # only whitelist `"Linear"` and `"QuantizedLinear"` as LoRA-target
+    # class names — FP8Linear is silently skipped, yielding 0 modules.
+    # Rebuild the relevant chunks of those methods at import time to add
+    # "FP8Linear" to the whitelist.
+    import longcat_video.modules.lora_utils as _lu
+
+    if getattr(_lu, "_NEXUS_FP8_PATCHED", False):
+        return
+
+    _orig_lora_module_init = _lu.LoRAModule.__init__
+    _orig_network_init = _lu.LoRANetwork.__init__
+    _whitelist = ("Linear", "QuantizedLinear", "FP8Linear")
+
+    def _patched_lora_module_init(self, lora_name, org_module, *args, **kwargs):
+        # Mirror upstream assert but include FP8Linear.
+        cls = org_module.__class__.__name__
+        assert cls in _whitelist, (
+            f"LoRA target must be in {_whitelist}, got {cls}"
+        )
+        # Temporarily relax the upstream assertion by routing through the
+        # original init with a fake-named wrapper. Simpler: replicate the
+        # init body inline. But to avoid re-implementing every line we
+        # cheat: alias the class name on this instance so the upstream
+        # assert sees "Linear".
+        original_class = org_module.__class__
+        try:
+            if cls == "FP8Linear":
+                # Just rename the class in-place; restore after init.
+                org_module.__class__ = type(
+                    "Linear", (original_class,), {}
+                )
+            _orig_lora_module_init(self, lora_name, org_module, *args, **kwargs)
+        finally:
+            if cls == "FP8Linear":
+                org_module.__class__ = original_class
+
+    def _patched_network_init(self, model, lora_network_state_dict_loaded,
+                              multiplier=1.0, lora_dim=128, alpha=64):
+        # Patch the class-name check in the upstream init by temporarily
+        # renaming every FP8Linear submodule before delegating.
+        renamed: list[tuple[Any, type]] = []
+        for module in model.modules():
+            if module.__class__.__name__ == "FP8Linear":
+                renamed.append((module, module.__class__))
+                module.__class__ = type("Linear", (module.__class__,), {})
+        try:
+            _orig_network_init(
+                self, model, lora_network_state_dict_loaded,
+                multiplier=multiplier, lora_dim=lora_dim, alpha=alpha,
+            )
+        finally:
+            for module, original_class in renamed:
+                module.__class__ = original_class
+
+    _lu.LoRAModule.__init__ = _patched_lora_module_init
+    _lu.LoRANetwork.__init__ = _patched_network_init
+    _lu._NEXUS_FP8_PATCHED = True
+    logger.info(
+        "_patch_lora_utils_for_fp8: extended LoRA target whitelist to %r",
+        _whitelist,
+    )
+
+
+def _encode_lora_module_path(key: str) -> str:
+    # Upstream LoRANetwork stores LoRAModule instances via `add_module(name)`
+    # which forbids '.' in `name`. Upstream therefore encodes module paths
+    # with `___lorahyphen___` separators (decoded back to '.' on lookup).
+    # Kijai LoRA files ship with plain dot-separated paths — encode them
+    # before handing to upstream.
+    candidates: list[int] = []
+    if ".lora_" in key:
+        candidates.append(key.find(".lora_"))
+    if key.endswith(".alpha"):
+        candidates.append(len(key) - len(".alpha"))
+    if not candidates:
+        return key
+    idx = min(candidates)
+    prefix = key[:idx]
+    suffix = key[idx:]
+    return prefix.replace(".", "___lorahyphen___") + suffix
+
+
+def _strip_diffusion_model_prefix(lora_sd: dict) -> dict:
+    # Kijai LoRA files prefix every module path with `diffusion_model.`
+    # (ComfyUI convention) AND use the Kijai block-attribute names
+    # (`self_attn`, `modulation`, `norm3`, `self_attn.o`, etc.) instead of
+    # the upstream LongCatVideoTransformer3DModel attribute names
+    # (`attn`, `adaLN_modulation`, `pre_crs_attn_norm`, `attn.proj`, ...).
+    #
+    # Three transforms applied per key:
+    #   1. Strip `diffusion_model.` ComfyUI prefix.
+    #   2. Apply `longcat_native_loader.KJ_BLOCK_INTERNAL_RENAMES` so the
+    #      module path lands on the upstream DiT's attribute names.
+    #   3. Encode the module path with `___lorahyphen___` separators
+    #      because upstream LoRANetwork uses `nn.Module.add_module()`
+    #      which rejects '.' in submodule names.
+    from .longcat_native_loader import (
+        KJ_BLOCK_INTERNAL_RENAMES,
+        KJ_TOP_LEVEL_PREFIX_RENAMES,
+    )
+
+    prefix = "diffusion_model."
+    rewritten: dict = {}
+    for k, v in lora_sd.items():
+        key = k[len(prefix):] if k.startswith(prefix) else k
+        # Top-level prefix rename (head→final_layer, patch_embedding→
+        # x_embedder.proj, time_embedding→t_embedder.mlp, text_embedding→
+        # y_embedder.y_proj).
+        for kj_pref, up_pref in KJ_TOP_LEVEL_PREFIX_RENAMES.items():
+            if key.startswith(kj_pref + ".") or key == kj_pref:
+                key = up_pref + key[len(kj_pref):]
+                break
+        # Block-internal substring renames (self_attn→attn, etc.).
+        for old, new in KJ_BLOCK_INTERNAL_RENAMES:
+            if old in key:
+                key = key.replace(old, new)
+                break
+        key = _encode_lora_module_path(key)
+        rewritten[key] = v
+    return rewritten
 
 
 def _state_config_key(
@@ -511,6 +644,26 @@ def render(
     except Exception as exc:
         raise _PipelineError("generate", str(exc)) from exc
 
+    if request.apply_refinement and request.mode in ("t2v", "i2v"):
+        # Two-stage quality pass: write draft to a temp MP4 + run
+        # generate_refine on it. Refinement LoRA + low-CFG few-step
+        # second pass cleans up distill smudge + 720p artifacts.
+        phase = "refinement"
+        try:
+            frames = _run_refinement_pass(
+                draft_frames=frames,
+                request=request,
+                state=state,
+                host_data_dir=host_data_dir,
+                generator=generator,
+                attn_kwargs=attn_kwargs,
+            )
+        except Exception as exc:
+            logger.warning(
+                "refinement pass failed (%s); falling back to draft frames",
+                exc,
+            )
+
     if output_dir:
         out_dir = Path(output_dir)
     else:
@@ -530,6 +683,122 @@ def render(
 
     write_video_frames(arr, fps=24, path=output_path)
     return output_path
+
+
+def _run_refinement_pass(
+    *,
+    draft_frames: Any,
+    request: LongCatRenderRequest,
+    state: _PipelineState,
+    host_data_dir: Optional[str],
+    generator: Any,
+    attn_kwargs: dict[str, Any],
+) -> Any:
+    # Stage 2: refinement LoRA + low-CFG few-step generate_refine on the
+    # draft frames. The refinement LoRA is purpose-built for this pass
+    # and must NOT be merged into FP8 weights (Kijai rule). Apply
+    # additively before generate_refine and remove after to keep the
+    # base DiT clean for subsequent renders.
+    import numpy as np
+    import tempfile as _tempfile
+
+    refinement_net = _maybe_load_refinement_lora(state.dit, host_data_dir, state.vendor_dir)
+    if refinement_net is None:
+        logger.warning(
+            "_run_refinement_pass: refinement LoRA not loaded; skipping pass."
+        )
+        return draft_frames
+
+    arr = np.asarray(draft_frames)
+    if arr.ndim == 5:
+        arr = arr[0]
+
+    # generate_refine accepts a file path OR a numpy array per upstream.
+    # Write the draft to a temp MP4 so we can pass a stable input.
+    from .ffmpeg_io import write_video_frames
+
+    tmp = Path(_tempfile.mkdtemp(prefix="nexus_longcat_refine_"))
+    draft_path = tmp / "draft.mp4"
+    write_video_frames(arr, fps=24, path=draft_path)
+
+    logger.info(
+        "_run_refinement_pass: running generate_refine on %s (%d frames, %dx%d)",
+        draft_path,
+        arr.shape[0],
+        arr.shape[2],
+        arr.shape[1],
+    )
+
+    # generate_refine accepts: image, video, prompt, stage1_video,
+    # num_cond_frames, num_inference_steps, num_videos_per_prompt,
+    # generator, latents, output_type, return_dict, attention_kwargs,
+    # max_sequence_length, t_thresh, spatial_refine_only.
+    # NOT accepted: negative_prompt, num_frames, use_distill, guidance_scale.
+    refined = state.pipeline.generate_refine(
+        stage1_video=str(draft_path),
+        prompt=request.prompt,
+        num_inference_steps=request.refinement_steps,
+        generator=generator,
+        max_sequence_length=request.max_sequence_length,
+        attention_kwargs=attn_kwargs if attn_kwargs else None,
+    )
+
+    # Best-effort LoRA detach so subsequent renders don't carry it.
+    try:
+        if hasattr(refinement_net, "unapply"):
+            refinement_net.unapply()
+        elif hasattr(refinement_net, "detach"):
+            refinement_net.detach()
+    except Exception as exc:
+        logger.warning("refinement LoRA detach failed: %s", exc)
+
+    return refined
+
+
+def _maybe_load_refinement_lora(
+    dit: Any, host_data_dir: Optional[str], vendor_dir: Path
+) -> Any:
+    root_str = host_data_dir or os.environ.get("NEXUS_HOST_DATA_DIR")
+    if not root_str:
+        return None
+
+    lora_path = Path(root_str) / "models" / _KIJAI_REPO_SUBDIR / _REFINEMENT_LORA_FILENAME
+    if not lora_path.exists():
+        logger.warning(
+            "_maybe_load_refinement_lora: not found at %s — refinement pass skipped",
+            lora_path,
+        )
+        return None
+
+    vstr = str(vendor_dir)
+    if vstr not in sys.path:
+        sys.path.insert(0, vstr)
+
+    try:
+        from safetensors.torch import load_file
+        from longcat_video.modules.lora_utils import create_lora_network
+
+        _patch_lora_utils_for_fp8()
+        lora_sd = load_file(str(lora_path), device="cpu")
+        lora_sd = _strip_diffusion_model_prefix(lora_sd)
+        network = create_lora_network(
+            transformer=dit,
+            lora_network_state_dict_loaded=lora_sd,
+            multiplier=1.0,
+            network_dim=128,
+            network_alpha=128.0,
+        )
+        import torch
+        network = network.to(dtype=torch.bfloat16, device=next(dit.parameters()).device)
+        logger.info(
+            "_maybe_load_refinement_lora: loaded from %s (%d modules)",
+            lora_path,
+            len(network.loras),
+        )
+        return network
+    except Exception as exc:
+        logger.warning("_maybe_load_refinement_lora: failed (%s)", exc)
+        return None
 
 
 def _dispatch_generate(
