@@ -38,15 +38,15 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 
 Set-Location $WorkerDir
 
-Write-Host "[install.ps1] bootstrapping worker package via uv sync (no extras)" -ForegroundColor Cyan
-& uv sync --no-dev
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "uv sync (bootstrap) failed with exit $LASTEXITCODE"
-    exit $LASTEXITCODE
+# `uv run` auto-syncs the project before exec, so a separate bootstrap is not
+# needed. fake profile skips the heavy `diffusers` extra (no torch / cu128).
+$UvRunFlags = @('run')
+if ($Profile -ne 'fake') {
+    $UvRunFlags += @('--extra', 'diffusers')
 }
 
-$argv = @(
-    'run', 'python', '-m', 'longcat_video_worker.headless_install',
+$argv = $UvRunFlags + @(
+    'python', '-m', 'longcat_video_worker.headless_install',
     '--profile', $Profile,
     '--host-data-dir', $HostDataDir
 ) + $ExtraArgs

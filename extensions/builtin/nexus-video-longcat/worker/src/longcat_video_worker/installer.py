@@ -86,7 +86,50 @@ VENDOR_MODULES: list[tuple[str, str | None]] = [
         "longcat_video/modules/scheduling_flow_match_euler_discrete.py",
         "322cef12d5efa660f839fc173e83eba68b913f031b3f06643d71e5181279be5a",
     ),
+    (
+        "longcat_video/context_parallel/context_parallel_util.py",
+        "af881eaef7e712f63b17bf6bf0f95e11f52c8fd792b5b2f9337d750e36982b1a",
+    ),
+    (
+        "longcat_video/context_parallel/ulysses_wrapper.py",
+        "356a04ecca25672df31929b4f624ddb3a7fcdf219a1684129467e526bef4101d",
+    ),
+    (
+        "longcat_video/utils/bukcet_config.py",
+        "9f2d2ae584863f9eaee9a8b6fcce80bed2c1415ef5570de62bb8c99f5547dd0b",
+    ),
+    (
+        "longcat_video/modules/lora_utils.py",
+        "fba59cd7591b1597ebb2c0517b5000273562cf1574bf0893c7a723feeab849fd",
+    ),
+    (
+        "longcat_video/block_sparse_attention/bsa_interface.py",
+        "7590c39b0aeb84d4594d57f62affbe1a92735bf4092960fc49c9a8b7b4ef3ecb",
+    ),
+    (
+        "longcat_video/block_sparse_attention/common.py",
+        "9b8d0dd7e93bfee7040b46a26104b0ebe21c10b3dcfe0f8fc71decb14259789a",
+    ),
+    (
+        "longcat_video/block_sparse_attention/communicate.py",
+        "fd8f7c3309b911c58bf96b6e563a8d2144ab8abab7b5f271a3e47facc76a548d",
+    ),
+    (
+        "longcat_video/block_sparse_attention/flash_attn_bsa_varlen_mask.py",
+        "dad6843a6ebdd0c18257813e3d1781684e62b269fd29fd4dc4d2164d097de56d",
+    ),
 ]
+
+# Upstream uses implicit namespace packages — these __init__.py files do
+# NOT exist in the git tree. Create them locally as empty files after the
+# fetch step so the vendored dir becomes a regular Python package importable
+# via `sys.path.insert + import longcat_video.modules....`.
+VENDOR_LOCAL_INIT_PACKAGES: tuple[str, ...] = (
+    "longcat_video/__init__.py",
+    "longcat_video/context_parallel/__init__.py",
+    "longcat_video/utils/__init__.py",
+    "longcat_video/block_sparse_attention/__init__.py",
+)
 
 PROFILE_REPO: dict[str, list[tuple[str, list[str]]]] = {
     "rtx50-fp8": [
@@ -410,7 +453,33 @@ async def _vendor_source_files(
         tmp.replace(dest_file)
         fetched.append(rel_path)
 
-    return {"status": "ok", "fetched": fetched, "skipped": skipped}
+    init_files: list[str] = []
+    for rel_init in VENDOR_LOCAL_INIT_PACKAGES:
+        if ".." in rel_init.split("/") or rel_init.startswith("/"):
+            raise InstallerSchemaMismatch(
+                f"vendor init rel_path {rel_init!r} rejected"
+            )
+        init_path = vendor_dir / rel_init
+        _assert_under_root(init_path, vendor_dir)
+        if init_path.exists():
+            continue
+        init_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            dir=init_path.parent,
+            delete=False,
+            prefix=".nexus-vendor-init-",
+        ) as fh:
+            tmp = Path(fh.name)
+            # explicitly write zero bytes — empty __init__.py
+        tmp.replace(init_path)
+        init_files.append(rel_init)
+
+    return {
+        "status": "ok",
+        "fetched": fetched,
+        "skipped": skipped,
+        "init_files_created": init_files,
+    }
 
 
 def _worker_dir() -> Path:
