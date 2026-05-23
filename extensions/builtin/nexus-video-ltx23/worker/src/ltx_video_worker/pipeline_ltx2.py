@@ -234,12 +234,23 @@ def register_ltx2_handlers(worker) -> None:
     cache: dict[str, Any] = {"bundle": None}
 
     async def models_list(_params: Any) -> dict[str, Any]:
-        gguf = _resolve_paths().transformer_gguf
+        paths = _resolve_paths()
+        if paths.safetensors_active:
+            assert paths.transformer_safetensors is not None
+            return {
+                "models": [
+                    {
+                        "id": "ltx-2-19b-distilled-fp8",
+                        "available": paths.transformer_safetensors.is_file(),
+                        "size_mb": 20550,
+                    }
+                ]
+            }
         return {
             "models": [
                 {
                     "id": "ltx-2-19b-distilled-q4",
-                    "available": gguf.is_file(),
+                    "available": paths.transformer_gguf.is_file(),
                     "size_mb": 11000,
                 }
             ]
@@ -314,6 +325,14 @@ def register_ltx2_handlers(worker) -> None:
 # --------------------------------------------------------------------------
 
 
+_ALLOWED_SAFETENSORS_OFFLOAD: tuple[str, ...] = (
+    "none",
+    "sequential",
+    "group",
+    "disk",
+)
+
+
 class _ResolvedPaths:
     def __init__(
         self,
@@ -324,6 +343,9 @@ class _ResolvedPaths:
         audio_vae: Path,
         gemma_dir: Path,
         latent_upsampler: Path,
+        transformer_safetensors: Path | None = None,
+        safetensors_offload_mode: str = "none",
+        safetensors_offload_folder: Path | None = None,
     ) -> None:
         self.transformer_gguf = transformer_gguf
         self.base_dir = base_dir
@@ -332,6 +354,13 @@ class _ResolvedPaths:
         self.audio_vae = audio_vae
         self.gemma_dir = gemma_dir
         self.latent_upsampler = latent_upsampler
+        self.transformer_safetensors = transformer_safetensors
+        self.safetensors_offload_mode = safetensors_offload_mode
+        self.safetensors_offload_folder = safetensors_offload_folder
+
+    @property
+    def safetensors_active(self) -> bool:
+        return self.transformer_safetensors is not None
 
 
 def _resolve_paths() -> _ResolvedPaths:
@@ -340,6 +369,14 @@ def _resolve_paths() -> _ResolvedPaths:
     Env overrides mirror the ``pipeline_ltxv097`` pattern:
     ``NEXUS_VIDEO_LTX23_LTX2_GGUF`` pins the transformer GGUF;
     ``NEXUS_VIDEO_LTX23_LTX2_BASE_DIR`` pins the tokenizer config tree.
+    ``NEXUS_VIDEO_LTX23_LTX2_SAFETENSORS`` opts into the ComfyUI-scaled
+    FP8 safetensors loader path (Kijai
+    ``ltx-2-19b-distilled-fp8_transformer_only.safetensors``) and takes
+    precedence over the GGUF loader when set to an existing file.
+    ``NEXUS_VIDEO_LTX23_LTX2_SAFETENSORS_OFFLOAD`` selects an accelerate
+    offload mode (one of ``none``/``sequential``/``group``/``disk``);
+    ``NEXUS_VIDEO_LTX23_LTX2_SAFETENSORS_OFFLOAD_FOLDER`` is required when
+    offload is ``disk``.
     """
     host_data_raw = os.environ.get("NEXUS_HOST_DATA_DIR", "").strip()
     if not host_data_raw:
@@ -369,6 +406,34 @@ def _resolve_paths() -> _ResolvedPaths:
         else models / _LATENT_UPSAMPLER_REL
     )
 
+    safetensors_env = os.environ.get(
+        "NEXUS_VIDEO_LTX23_LTX2_SAFETENSORS", ""
+    ).strip()
+    transformer_safetensors = (
+        Path(safetensors_env) if safetensors_env else None
+    )
+
+    offload_env = os.environ.get(
+        "NEXUS_VIDEO_LTX23_LTX2_SAFETENSORS_OFFLOAD", ""
+    ).strip().lower() or "none"
+    if offload_env not in _ALLOWED_SAFETENSORS_OFFLOAD:
+        raise RuntimeError(
+            f"NEXUS_VIDEO_LTX23_LTX2_SAFETENSORS_OFFLOAD={offload_env!r} is "
+            f"not one of {_ALLOWED_SAFETENSORS_OFFLOAD}."
+        )
+
+    offload_folder_env = os.environ.get(
+        "NEXUS_VIDEO_LTX23_LTX2_SAFETENSORS_OFFLOAD_FOLDER", ""
+    ).strip()
+    offload_folder = (
+        Path(offload_folder_env) if offload_folder_env else None
+    )
+    if offload_env == "disk" and offload_folder is None:
+        raise RuntimeError(
+            "NEXUS_VIDEO_LTX23_LTX2_SAFETENSORS_OFFLOAD=disk requires "
+            "NEXUS_VIDEO_LTX23_LTX2_SAFETENSORS_OFFLOAD_FOLDER to be set."
+        )
+
     return _ResolvedPaths(
         transformer_gguf=transformer_gguf,
         base_dir=base_dir,
@@ -377,6 +442,9 @@ def _resolve_paths() -> _ResolvedPaths:
         audio_vae=models / _AUDIO_VAE_REL,
         gemma_dir=models / _GEMMA_GGUF_DIR_REL,
         latent_upsampler=latent_upsampler,
+        transformer_safetensors=transformer_safetensors,
+        safetensors_offload_mode=offload_env,
+        safetensors_offload_folder=offload_folder,
     )
 
 
@@ -600,7 +668,17 @@ def _build_native_stack(logger: Any) -> _NativeStack:
     _LAZY_TORCH = torch
 
     paths = _resolve_paths()
-    if not paths.transformer_gguf.is_file():
+    if paths.safetensors_active:
+        assert paths.transformer_safetensors is not None  # for type-checker
+        if not paths.transformer_safetensors.is_file():
+            raise RuntimeError(
+                f"LTX-2 19B transformer safetensors not found at "
+                f"{paths.transformer_safetensors}. Either point "
+                "NEXUS_VIDEO_LTX23_LTX2_SAFETENSORS at the Kijai "
+                "ltx-2-19b-distilled-fp8_transformer_only.safetensors "
+                "file or unset the env var to fall back to the GGUF loader."
+            )
+    elif not paths.transformer_gguf.is_file():
         raise RuntimeError(
             f"LTX-2 19B transformer GGUF not found at "
             f"{paths.transformer_gguf}. Install the Kijai LTXV2_comfy "
@@ -612,22 +690,44 @@ def _build_native_stack(logger: Any) -> _NativeStack:
         )
 
     install_device = "cuda" if torch.cuda.is_available() else "cpu"
-    logger.info(
-        "ltx2.load_transformer",
-        gguf=str(paths.transformer_gguf),
-        install_device=install_device,
-    )
 
-    # Audio-video model: the Kijai 19B GGUF carries the full audio
-    # branch. We build the AV model so the schema is a clean 1:1 match,
-    # but only the video branch is consumed in `_generate_single`.
-    bundle = load_native_ltx2_transformer(
-        paths.transformer_gguf,
-        compute_dtype=torch.bfloat16,
-        install_device=install_device,
-        audio=True,
-        strict_schema=True,
-    )
+    if paths.safetensors_active:
+        from .ltx2_safetensors_loader import load_native_stack_from_safetensors
+
+        assert paths.transformer_safetensors is not None
+        logger.info(
+            "ltx2.load_transformer",
+            safetensors=str(paths.transformer_safetensors),
+            offload_mode=paths.safetensors_offload_mode,
+            install_device=install_device,
+        )
+        bundle = load_native_stack_from_safetensors(
+            paths.transformer_safetensors,
+            compute_dtype=torch.bfloat16,
+            install_device=install_device,
+            audio=True,
+            strict_schema=True,
+            offload_mode=paths.safetensors_offload_mode,
+            offload_folder=paths.safetensors_offload_folder,
+            logger=logger if hasattr(logger, "warning") else None,
+        )
+    else:
+        logger.info(
+            "ltx2.load_transformer",
+            gguf=str(paths.transformer_gguf),
+            install_device=install_device,
+        )
+        # Audio-video model: the Kijai 19B GGUF carries the full audio
+        # branch. We build the AV model so the schema is a clean 1:1
+        # match, but only the video branch is consumed in
+        # ``_generate_single``.
+        bundle = load_native_ltx2_transformer(
+            paths.transformer_gguf,
+            compute_dtype=torch.bfloat16,
+            install_device=install_device,
+            audio=True,
+            strict_schema=True,
+        )
     bundle.transformer.eval()
 
     embeddings_processor = build_embeddings_processor(
@@ -953,7 +1053,12 @@ def _write_render_sidecar(
                     or advanced.get("preset")
                     or "ltxv2-distilled-q4"
                 ),
-                model_file=paths.transformer_gguf.name,
+                model_file=(
+                    paths.transformer_safetensors.name
+                    if paths.safetensors_active
+                    and paths.transformer_safetensors is not None
+                    else paths.transformer_gguf.name
+                ),
                 geometry=geometry,
                 sampling=samp,
                 seed=seed,
