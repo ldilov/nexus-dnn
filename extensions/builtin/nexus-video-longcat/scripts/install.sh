@@ -26,13 +26,29 @@ fi
 
 cd "$WORKER_DIR"
 
-# The headless CLI runs `uv sync` itself when --skip-uv-sync is absent, but we
-# kick off a quick `uv sync --no-dev` here to make sure the package itself is
-# importable before we run it as a module. Avoids the chicken-and-egg case
-# where the CLI module cannot be loaded because the worker package was never
-# installed into the venv.
-echo "[install.sh] bootstrapping worker package via uv sync (no extras)" >&2
-uv sync --no-dev >&2
+# Detect whether the run targets the `fake` profile. fake skips torch +
+# diffusers entirely so we don't waste install bandwidth pulling cu128
+# wheels. Any other profile gets the full `diffusers` extra.
+UV_RUN_FLAGS=()
+EXTRA_DIFFUSERS=1
+for arg in "$@"; do
+  case "$arg" in
+    --profile=fake|fake) EXTRA_DIFFUSERS=0 ;;
+  esac
+done
+prev=""
+for arg in "$@"; do
+  if [[ "$prev" == "--profile" && "$arg" == "fake" ]]; then
+    EXTRA_DIFFUSERS=0
+  fi
+  prev="$arg"
+done
+if [ "$EXTRA_DIFFUSERS" = "1" ]; then
+  UV_RUN_FLAGS+=("--extra" "diffusers")
+fi
 
-echo "[install.sh] dispatching to longcat_video_worker.headless_install" >&2
-exec uv run python -m longcat_video_worker.headless_install "$@"
+# `uv run` auto-syncs the project before executing the command, so we don't
+# need a separate bootstrap step. Passing --extra here ensures torch + the
+# diffusers stack lands in the venv before the CLI starts.
+echo "[install.sh] dispatching: uv run ${UV_RUN_FLAGS[*]} python -m longcat_video_worker.headless_install $*" >&2
+exec uv run "${UV_RUN_FLAGS[@]}" python -m longcat_video_worker.headless_install "$@"
