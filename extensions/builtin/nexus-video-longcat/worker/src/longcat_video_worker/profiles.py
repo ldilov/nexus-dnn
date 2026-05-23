@@ -33,6 +33,9 @@ Architecture = Literal["longcat-13b"]
 Quantization = Literal["fp8_e4m3fn_scaled", "bf16", "fake"]
 
 
+OffloadMode = Literal["none", "partial", "sequential", "group", "disk"]
+
+
 @dataclass(frozen=True)
 class LongCatProfile:
     profile_id: str
@@ -48,8 +51,22 @@ class LongCatProfile:
     guidance_scale: float = 4.0
     use_distill: bool = False
     max_sequence_length: int = 512
-    # Block-swap budget for 12 GB cards (see Kijai workflow docs).
+    # CPU-offload strategy. See longcat_safetensors_loader._attach_*_offload.
+    # - none:       weights resident on GPU
+    # - partial:    tail blocks offloaded, head blocks resident
+    #               (uses block_swap_count below); Kijai-style block-swap
+    # - sequential: every block offloaded (per-block AlignDevicesHook)
+    # - group:      whole-model hook (single sync per forward)
+    # - disk:       weights paged from offload_folder via accelerate.disk_offload
+    offload_mode: OffloadMode = "none"
+    # Number of trailing DiT blocks to offload when offload_mode='partial'.
+    # 0 means no swap; 48 means full sequential (equivalent to 'sequential').
+    # Kijai workflow recommends 40 for 12 GB cards.
     block_swap_count: int = 0
+    # Move per-block (k_cache, v_cache) tensors to CPU between blocks during
+    # forward_with_kv_cache (multi-stage continuation rendering). Stacks
+    # orthogonally with offload_mode — targets activation VRAM, not weight VRAM.
+    offload_kv_cache: bool = False
     attention_mode: Literal["sdpa", "flash-attn-2", "block-sparse"] = "sdpa"
     notes: tuple[str, ...] = field(default_factory=tuple)
 
@@ -84,6 +101,41 @@ PROFILES: tuple[LongCatProfile, ...] = (
         notes=(
             "Distill LoRA path (LongCat_distill_lora_alpha64_bf16.safetensors).",
             "Applied on-the-fly: LoRAs MUST NOT be merged into FP8 weights.",
+        ),
+    ),
+    LongCatProfile(
+        profile_id="rtx50-fp8-12gb",
+        runtime_id="nexus.video.longcat.rtx50-fp8",
+        architecture="longcat-13b",
+        quantization="fp8_e4m3fn_scaled",
+        num_inference_steps=50,
+        guidance_scale=4.0,
+        use_distill=False,
+        offload_mode="partial",
+        block_swap_count=40,
+        offload_kv_cache=True,
+        attention_mode="sdpa",
+        notes=(
+            "12 GB VRAM target. 8 head blocks resident, 40 tail blocks "
+            "offloaded via accelerate AlignDevicesHook. KV-cache offload "
+            "enabled for continuation rendering. Mirrors Kijai WanVideoBlockSwap=40.",
+        ),
+    ),
+    LongCatProfile(
+        profile_id="rtx50-fp8-8gb",
+        runtime_id="nexus.video.longcat.rtx50-fp8",
+        architecture="longcat-13b",
+        quantization="fp8_e4m3fn_scaled",
+        num_inference_steps=50,
+        guidance_scale=4.0,
+        use_distill=False,
+        offload_mode="sequential",
+        block_swap_count=48,
+        offload_kv_cache=True,
+        attention_mode="sdpa",
+        notes=(
+            "8 GB VRAM target. Full per-block sequential offload (all 48 blocks). "
+            "Slow but fits on 8 GB cards. KV-cache offload mandatory at this tier.",
         ),
     ),
     LongCatProfile(

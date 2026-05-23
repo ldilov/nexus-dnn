@@ -15,7 +15,13 @@ def test_version_string() -> None:
 
 def test_profiles_registered() -> None:
     ids = {p.profile_id for p in PROFILES}
-    assert ids == {"rtx50-fp8", "rtx50-fp8-distill", "fake"}
+    assert ids == {
+        "rtx50-fp8",
+        "rtx50-fp8-distill",
+        "rtx50-fp8-12gb",
+        "rtx50-fp8-8gb",
+        "fake",
+    }
 
 
 def test_fake_profile_lookup() -> None:

@@ -50,6 +50,12 @@ class LongCatRenderRequest:
     use_distill: bool = False
     seed: Optional[int] = None
     max_sequence_length: int = 512
+    # Offload knobs, pass-through to upstream LongCatVideoPipeline.generate_*
+    # `offload_kv_cache=True` moves per-block (k_cache, v_cache) to CPU between
+    # blocks during `forward_with_kv_cache` (continuation rendering).
+    # See longcat_video/modules/longcat_video_dit.py:290,351 and
+    # pipeline_longcat_video.py:330,895.
+    offload_kv_cache: bool = False
 
 
 def render(request: LongCatRenderRequest) -> object:
@@ -98,6 +104,7 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
             use_distill=bool(params.get("use_distill", use_distill)),
             seed=params.get("seed"),
             max_sequence_length=int(params.get("max_sequence_length", 512)),
+            offload_kv_cache=bool(params.get("offload_kv_cache", False)),
         )
         try:
             return {"status": "ok", "result": str(render(request))}
