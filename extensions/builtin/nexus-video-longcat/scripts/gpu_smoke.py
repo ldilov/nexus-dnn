@@ -22,6 +22,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import argparse
 import logging
 import os
 import sys
@@ -31,6 +32,21 @@ from pathlib import Path
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", default="t2v", choices=["t2v", "i2v"])
+    parser.add_argument("--image", default=None, help="image path for --mode i2v")
+    parser.add_argument("--height", type=int, default=480)
+    parser.add_argument("--width", type=int, default=832)
+    parser.add_argument("--num-frames", type=int, default=49)
+    parser.add_argument("--steps", type=int, default=12)
+    parser.add_argument("--guidance", type=float, default=1.0)
+    parser.add_argument("--distill", action="store_true", default=True)
+    parser.add_argument("--no-distill", dest="distill", action="store_false")
+    parser.add_argument("--swap", type=int, default=46)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--prompt", default=None)
+    args = parser.parse_args()
+
     logging.basicConfig(
         level=logging.INFO,
         format="[%(asctime)s] %(name)s %(levelname)s %(message)s",
@@ -73,17 +89,31 @@ def main() -> int:
         traceback.print_exc()
         return 1
 
+    if args.mode == "i2v" and not args.image:
+        log.error("--mode i2v requires --image <path>")
+        return 2
+    if args.mode == "i2v" and not Path(args.image).is_file():
+        log.error("image path does not exist: %s", args.image)
+        return 2
+
+    default_prompt = (
+        "a black cat walks along a sunny stone path in a tranquil japanese garden, "
+        "cinematic lighting, soft shadows"
+        if args.mode == "t2v"
+        else "the scene continues with gentle natural motion, cinematic camera drift"
+    )
     request = LongCatRenderRequest(
-        mode="t2v",
-        prompt="a black cat walks along a sunny stone path in a tranquil japanese garden, cinematic lighting, soft shadows",
+        mode=args.mode,
+        prompt=args.prompt or default_prompt,
         negative_prompt="blurry, low quality, distorted",
-        height=480,
-        width=832,
-        num_frames=49,
-        num_inference_steps=12,
-        guidance_scale=1.0,
-        use_distill=True,
-        seed=42,
+        image_path=args.image,
+        height=args.height,
+        width=args.width,
+        num_frames=args.num_frames,
+        num_inference_steps=args.steps,
+        guidance_scale=args.guidance,
+        use_distill=args.distill,
+        seed=args.seed,
         max_sequence_length=256,
         offload_kv_cache=True,
     )
@@ -96,7 +126,7 @@ def main() -> int:
             output_dir=output_dir,
             host_data_dir=host_data_dir,
             offload_mode="partial",
-            block_swap_count=46,
+            block_swap_count=args.swap,
         )
     except RuntimeError as e:
         msg = str(e)
