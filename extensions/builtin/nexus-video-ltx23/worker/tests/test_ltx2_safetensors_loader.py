@@ -466,7 +466,9 @@ def test_install_raises_on_unconsumed_scale_suffix() -> None:
     )
     assert fp8_installed == 1
     assert "fc.weight" in unscaled
-    assert any("foo_scale" in k for k in unconsumed) or unconsumed == []
+    assert any(
+        "foo_scale" in k for k in unconsumed
+    ), f"expected foo_scale in {unconsumed}"
 
 
 def test_scale_suffix_coverage_includes_known_variants() -> None:
@@ -491,28 +493,36 @@ def test_partition_extras_separates_scale_like_from_orphan() -> None:
     assert any("scale_weight" in k for k in scale_like)
 
 
-def test_load_native_stack_synthetic_round_trip(
+class _SyntheticBlock(torch.nn.Module):
+    @classmethod
+    def make_meta(cls) -> "_SyntheticBlock":
+        b = cls.__new__(cls)
+        torch.nn.Module.__init__(b)
+        b.fp8_proj = torch.nn.Linear(4, 4, bias=True, device="meta")
+        b.bf16_proj = torch.nn.Linear(4, 4, bias=False, device="meta")
+        return b
+
+
+class _SyntheticTwoProjModel(torch.nn.Module):
+    @classmethod
+    def make_meta(cls) -> "_SyntheticTwoProjModel":
+        m = cls.__new__(cls)
+        torch.nn.Module.__init__(m)
+        m.transformer_blocks = torch.nn.ModuleList(
+            [_SyntheticBlock.make_meta()]
+        )
+        return m
+
+
+@pytest.fixture
+def synthetic_fp8_safetensors(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+) -> Path:
     from safetensors.torch import save_file
 
-    class _SyntheticModel(torch.nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
-            self.fp8_proj = torch.nn.Linear(4, 4, bias=True)
-            self.bf16_proj = torch.nn.Linear(4, 4, bias=False)
-
-        @classmethod
-        def make_meta(cls) -> "_SyntheticModel":
-            m = cls.__new__(cls)
-            torch.nn.Module.__init__(m)
-            m.fp8_proj = torch.nn.Linear(4, 4, bias=True, device="meta")
-            m.bf16_proj = torch.nn.Linear(4, 4, bias=False, device="meta")
-            return m
-
-    fake_create = lambda configurator, config: _SyntheticModel.make_meta()  # noqa: E731
     monkeypatch.setattr(
-        "ltx_core.loader.helpers.create_meta_model", fake_create
+        "ltx_core.loader.helpers.create_meta_model",
+        lambda configurator, config: _SyntheticTwoProjModel.make_meta(),
     )
     monkeypatch.setattr(
         "ltx_core.model.transformer.model_configurator.LTXModelConfigurator",
@@ -539,19 +549,22 @@ def test_load_native_stack_synthetic_round_trip(
     scale = torch.tensor(1.0)
 
     tensors = {
-        "fp8_proj.weight": fp8_weight_real,
-        "fp8_proj.bias": bias,
-        "fp8_proj.weight_scale": scale,
-        "bf16_proj.weight": bf16_weight,
+        "transformer_blocks.0.fp8_proj.weight": fp8_weight_real,
+        "transformer_blocks.0.fp8_proj.bias": bias,
+        "transformer_blocks.0.fp8_proj.weight_scale": scale,
+        "transformer_blocks.0.bf16_proj.weight": bf16_weight,
     }
-    metadata = {
-        "config": json.dumps({"transformer": {"any": "value"}}),
-    }
+    metadata = {"config": json.dumps({"transformer": {"any": "value"}})}
     sf_path = tmp_path / "synthetic.safetensors"
     save_file(tensors, str(sf_path), metadata=metadata)
+    return sf_path
 
+
+def test_load_native_stack_synthetic_round_trip(
+    synthetic_fp8_safetensors: Path,
+) -> None:
     bundle = load_native_stack_from_safetensors(
-        sf_path,
+        synthetic_fp8_safetensors,
         audio=False,
         install_device="cpu",
         offload_mode="none",
@@ -559,15 +572,121 @@ def test_load_native_stack_synthetic_round_trip(
     )
 
     model = bundle.transformer
+    block = model.transformer_blocks[0]
     assert sl._no_meta_tensors_remaining(model) == []
-    assert isinstance(model.fp8_proj, FP8Linear)
-    assert model.fp8_proj.weight.dtype == torch.float8_e4m3fn
-    assert model.fp8_proj.weight_scale is not None
-    assert isinstance(model.bf16_proj, torch.nn.Linear)
+    assert isinstance(block.fp8_proj, FP8Linear)
+    assert block.fp8_proj.weight.dtype == torch.float8_e4m3fn
+    assert block.fp8_proj.weight_scale is not None
+    assert isinstance(block.bf16_proj, torch.nn.Linear)
 
     x = torch.randn(1, 4, dtype=torch.bfloat16)
-    out = model.fp8_proj(x)
+    out = block.fp8_proj(x)
     assert torch.isfinite(out).all()
+
+
+def test_load_native_stack_round_trip_with_sequential_offload(
+    synthetic_fp8_safetensors: Path,
+) -> None:
+    bundle = load_native_stack_from_safetensors(
+        synthetic_fp8_safetensors,
+        audio=False,
+        install_device="cpu",
+        offload_mode="sequential",
+        strict_schema=False,
+    )
+
+    model = bundle.transformer
+    block = model.transformer_blocks[0]
+    assert isinstance(block.fp8_proj, FP8Linear)
+    assert getattr(block, "_hf_hook", None) is not None
+
+    x = torch.randn(1, 4, dtype=torch.bfloat16)
+    out = block.bf16_proj(x)
+    assert torch.isfinite(out).all()
+
+
+def test_load_native_stack_round_trip_with_group_offload(
+    synthetic_fp8_safetensors: Path,
+) -> None:
+    bundle = load_native_stack_from_safetensors(
+        synthetic_fp8_safetensors,
+        audio=False,
+        install_device="cpu",
+        offload_mode="group",
+        strict_schema=False,
+    )
+
+    model = bundle.transformer
+    block = model.transformer_blocks[0]
+    assert isinstance(block.fp8_proj, FP8Linear)
+    assert getattr(model, "_hf_hook", None) is not None
+
+    x = torch.randn(1, 4, dtype=torch.bfloat16)
+    out = block.bf16_proj(x)
+    assert torch.isfinite(out).all()
+
+
+def test_load_native_stack_raises_on_unknown_suffix_scale_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from safetensors.torch import save_file
+
+    class _SingleFp8Model(torch.nn.Module):
+        @classmethod
+        def make_meta(cls) -> "_SingleFp8Model":
+            m = cls.__new__(cls)
+            torch.nn.Module.__init__(m)
+            m.fp8_proj = torch.nn.Linear(4, 4, bias=True, device="meta")
+            return m
+
+    monkeypatch.setattr(
+        "ltx_core.loader.helpers.create_meta_model",
+        lambda configurator, config: _SingleFp8Model.make_meta(),
+    )
+    monkeypatch.setattr(
+        "ltx_core.model.transformer.model_configurator.LTXModelConfigurator",
+        object,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "ltx_core.model.transformer.model_configurator.LTXVideoOnlyModelConfigurator",
+        object,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "ltx_video_worker.ltx2_safetensors_loader._rebind_preprocessor_modules",
+        lambda _m: None,
+    )
+    monkeypatch.setattr(
+        "ltx_video_worker.ltx2_safetensors_loader.rename_comfy_keys",
+        lambda sd: sd,
+    )
+
+    fp8_weight = (torch.randn(4, 4) * 0.05).to(torch.float8_e4m3fn)
+    bias = torch.zeros(4, dtype=torch.bfloat16)
+    bogus_scale = torch.tensor(0.5)
+
+    tensors = {
+        "fp8_proj.weight": fp8_weight,
+        "fp8_proj.bias": bias,
+        "fp8_proj.foo_scale": bogus_scale,
+    }
+    metadata = {"config": json.dumps({"transformer": {"any": "value"}})}
+    sf_path = tmp_path / "bogus_scale.safetensors"
+    save_file(tensors, str(sf_path), metadata=metadata)
+
+    with pytest.raises(SafetensorsSchemaMismatch) as excinfo:
+        load_native_stack_from_safetensors(
+            sf_path,
+            audio=False,
+            install_device="cpu",
+            offload_mode="none",
+            strict_schema=False,
+        )
+
+    msg = str(excinfo.value)
+    assert "fp8_proj.foo_scale" in msg, f"expected unconsumed scale key in {msg!r}"
+    assert "fp8_proj.weight" in msg, f"expected unscaled fp8 weight in {msg!r}"
 
 
 def test_load_strict_rejects_orphan_extra(
