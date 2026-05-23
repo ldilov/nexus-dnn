@@ -225,20 +225,12 @@ wheels = [
 [[package]]
 name = "flash-attn"
 version = "2.8.3"
-source = { url = "https://github.com/bdashore3/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu128torch2.8.0cxx11abiFALSE-cp312-cp312-win_amd64.whl" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "einops", marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
-    { name = "torch", marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
+    { name = "einops", marker = "python_full_version < '3.12' or sys_platform != 'win32'" },
+    { name = "torch", marker = "python_full_version < '3.12' or sys_platform != 'win32'" },
 ]
-wheels = [
-    { url = "https://github.com/bdashore3/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu128torch2.8.0cxx11abiFALSE-cp312-cp312-win_amd64.whl", hash = "sha256:709d6663d74f96bb0304b5ba2ffee84a4dafbcb56d73d35bc90b7ca8cd44261b" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "einops" },
-    { name = "torch" },
-]
+sdist = { url = "https://files.pythonhosted.org/packages/3b/b2/8d76c41ad7974ee264754709c22963447f7f8134613fd9ce80984ed0dab7/flash_attn-2.8.3.tar.gz", hash = "sha256:1e71dd64a9e0280e0447b8a0c2541bad4bf6ac65bdeaa2f90e51a9e57de0370d", size = 8447812, upload-time = "2025-08-15T08:28:12.911Z" }
 
 [[package]]
 name = "fsspec"
@@ -474,7 +466,7 @@ diffusers = [
     { name = "xformers" },
 ]
 flash-attn = [
-    { name = "flash-attn", marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
+    { name = "flash-attn", marker = "sys_platform == 'linux'" },
 ]
 test = [
     { name = "pytest" },
@@ -488,7 +480,7 @@ requires-dist = [
     { name = "diffusers", marker = "extra == 'diffusers'", specifier = "==0.35.1" },
     { name = "einops", marker = "extra == 'diffusers'", specifier = ">=0.8" },
     { name = "ffmpeg-python", specifier = ">=0.2" },
-    { name = "flash-attn", marker = "python_full_version == '3.12.*' and sys_platform == 'win32' and extra == 'flash-attn'", url = "https://github.com/bdashore3/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu128torch2.8.0cxx11abiFALSE-cp312-cp312-win_amd64.whl" },
+    { name = "flash-attn", marker = "sys_platform == 'linux' and extra == 'flash-attn'", specifier = ">=2.6" },
     { name = "ftfy", marker = "extra == 'diffusers'", specifier = ">=6.2" },
     { name = "huggingface-hub", specifier = ">=0.26" },
     { name = "huggingface-hub", marker = "extra == 'diffusers'", specifier = ">=0.26" },
