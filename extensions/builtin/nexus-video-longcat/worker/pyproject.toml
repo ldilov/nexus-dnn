@@ -61,6 +61,7 @@ test = [
 
 [project.scripts]
 nexus-video-longcat-worker = "longcat_video_worker.__main__:cli"
+nexus-video-longcat-install = "longcat_video_worker.headless_install:main"
 
 [build-system]
 requires = ["hatchling"]
