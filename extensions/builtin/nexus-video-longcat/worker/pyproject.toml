@@ -66,6 +66,7 @@ diffusers = [
   # `block_sparse_attention.bsa_interface` unconditionally at module top.
   "triton>=3.0 ; sys_platform != 'win32'",
   "triton-windows>=3.0 ; sys_platform == 'win32'",
+  "xformers[diffusers]>=0.0.35",
 ]
 test = [
   "pytest>=8.0",
