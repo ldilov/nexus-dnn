@@ -135,7 +135,16 @@ PROFILE_REPO: dict[str, list[tuple[str, list[str]]]] = {
     "rtx50-fp8": [
         (
             "Kijai/LongCat-Video_comfy",
-            ["LongCat_TI2V_comfy_fp8_e4m3fn_scaled_KJ.safetensors"],
+            [
+                "LongCat_TI2V_comfy_fp8_e4m3fn_scaled_KJ.safetensors",
+                # Distill LoRA needed for the 12-step CFG=1 schedule that the
+                # distill profile applies; refinement LoRA drives the 720p
+                # generate_refine quality-pass. Both are small (~4 GiB total)
+                # and downloaded eagerly so any profile can switch into
+                # distill / refine mode without a second install pass.
+                "LongCat_distill_lora_alpha64_bf16.safetensors",
+                "LongCat_refinement_lora_rank128_bf16.safetensors",
+            ],
         ),
         (
             "meituan-longcat/LongCat-Video",
@@ -148,6 +157,7 @@ PROFILE_REPO: dict[str, list[tuple[str, list[str]]]] = {
             [
                 "LongCat_TI2V_comfy_fp8_e4m3fn_scaled_KJ.safetensors",
                 "LongCat_distill_lora_alpha64_bf16.safetensors",
+                "LongCat_refinement_lora_rank128_bf16.safetensors",
             ],
         ),
         (

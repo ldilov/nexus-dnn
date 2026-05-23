@@ -155,6 +155,11 @@ def _partition_extras(extras: list[str]) -> tuple[list[str], list[str]]:
 
 
 class FP8Linear(_nn.Module):
+    # Reported as "Linear" through the class-name attribute so upstream
+    # `lora_utils.LoRANetwork` accepts FP8Linear as a LoRA-target module
+    # (the upstream check whitelists "Linear" + "QuantizedLinear" only).
+    __qualname__ = "FP8Linear"
+
     def __init__(
         self,
         in_features: int,
