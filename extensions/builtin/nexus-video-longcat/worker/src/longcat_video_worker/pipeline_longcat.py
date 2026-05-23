@@ -96,19 +96,57 @@ def _load_text_encoder(
     from transformers import AutoTokenizer, UMT5EncoderModel
 
     tokenizer = AutoTokenizer.from_pretrained(str(model_dir / "tokenizer"))
+    # UMT5-XXL is ~10 GiB in bf16. Load to CPU; accelerate.cpu_offload below
+    # moves it to GPU only during encode_prompt forward. Saves ~9 GiB VRAM
+    # during the entire denoise loop.
     text_encoder = UMT5EncoderModel.from_pretrained(
         str(model_dir / "text_encoder"),
         torch_dtype=compute_dtype,
-    ).to(device)
+    )
+    _attach_cpu_offload(text_encoder, execution_device=device, label="text_encoder")
     return tokenizer, text_encoder
 
 
 def _load_vae(model_dir: Path, compute_dtype: Any, device: Any) -> Any:
     from longcat_video.modules.autoencoder_kl_wan import AutoencoderKLWan
 
-    vae = AutoencoderKLWan.from_pretrained(str(model_dir / "vae"), torch_dtype=compute_dtype)
+    # AutoencoderKLWan is ~500 MiB — small enough to stay resident, but the
+    # decode forward allocates per-frame activations that can spike. Keep
+    # the weights GPU-resident; the VideoProcessor handles tiling for memory
+    # control. If 8GB cards complain, add _attach_cpu_offload here too.
+    vae = AutoencoderKLWan.from_pretrained(
+        str(model_dir / "vae"), torch_dtype=compute_dtype
+    )
     vae = vae.to(device)
     return vae
+
+
+def _attach_cpu_offload(
+    model: Any, *, execution_device: Any, label: str
+) -> None:
+    try:
+        from accelerate.hooks import AlignDevicesHook, add_hook_to_module
+    except ImportError:
+        logger.warning(
+            "_attach_cpu_offload(%s): accelerate not importable; "
+            "model stays on its current device.",
+            label,
+        )
+        return
+
+    hook = AlignDevicesHook(
+        execution_device=execution_device,
+        offload=True,
+        io_same_device=True,
+        offload_buffers=True,
+        place_submodules=True,
+    )
+    add_hook_to_module(model, hook, append=True)
+    logger.info(
+        "_attach_cpu_offload(%s): hook attached (exec=%s, weights→cpu)",
+        label,
+        execution_device,
+    )
 
 
 def _load_scheduler(model_dir: Path, use_distill: bool) -> Any:
@@ -121,8 +159,10 @@ def _load_scheduler(model_dir: Path, use_distill: bool) -> Any:
     )
     if use_distill:
         scheduler.config.shift = 12.0
-        if hasattr(scheduler, "shift"):
-            scheduler.shift = 12.0
+        # `shift` is a read-only @property backed by `_shift`; write to the
+        # underlying attribute directly.
+        if hasattr(scheduler, "_shift"):
+            scheduler._shift = 12.0
     return scheduler
 
 
@@ -135,8 +175,9 @@ def _load_dit(
     offload_mode: str = "none",
     block_swap_count: int = 0,
 ) -> Any:
+    import json
+
     from .longcat_safetensors_loader import load_longcat_dit_from_safetensors
-    from .longcat_native_loader import read_embedded_config
 
     root_str = host_data_dir or os.environ.get("NEXUS_HOST_DATA_DIR")
     if not root_str:
@@ -146,7 +187,43 @@ def _load_dit(
     root = Path(root_str)
     kj_path = root / "models" / _KIJAI_REPO_SUBDIR / _KJ_FP8_FILENAME
 
-    config = read_embedded_config(vendor_dir)
+    dit_config_path = model_dir / "dit" / "config.json"
+    if not dit_config_path.is_file():
+        raise FileNotFoundError(
+            f"dit/config.json not found at {dit_config_path}. "
+            "Re-run the installer (PROFILE_REPO allow_patterns now includes "
+            "'dit/config.json')."
+        )
+    config = json.loads(dit_config_path.read_text(encoding="utf-8"))
+    # Single-GPU mode: upstream DiT forward subscripts cp_split_hw
+    # unconditionally (longcat_video_dit.py:329); None is a multi-GPU
+    # placeholder. Force [1,1] so the no-op branch still passes shape check.
+    if config.get("cp_split_hw") is None:
+        config["cp_split_hw"] = [1, 1]
+    # Attention backend selection. Order of preference: xformers (best VRAM)
+    # > flash-attn-2 (faster, no Windows wheels) > sdpa monkey-patch fallback.
+    # The host sets NEXUS_VIDEO_LONGCAT_ATTN to override; default = xformers
+    # when importable, else fall through to our sdpa monkey-patch.
+    config["enable_flashattn2"] = False
+    config["enable_flashattn3"] = False
+    config["enable_bsa"] = False
+    config["enable_xformers"] = False
+    attn_backend = os.environ.get("NEXUS_VIDEO_LONGCAT_ATTN", "auto").lower()
+    if attn_backend in ("auto", "xformers"):
+        try:
+            import xformers  # noqa: F401
+            config["enable_xformers"] = True
+            logger.info("_load_dit: enable_xformers=True (xformers %s detected)", xformers.__version__)
+        except ImportError:
+            logger.info(
+                "_load_dit: xformers unavailable; falling back to sdpa monkey-patch"
+            )
+    elif attn_backend == "flashattn2":
+        config["enable_flashattn2"] = True
+    elif attn_backend == "flashattn3":
+        config["enable_flashattn3"] = True
+    elif attn_backend == "sdpa":
+        pass  # all three False → SDPA monkey-patch will engage
 
     bundle = load_longcat_dit_from_safetensors(
         kj_path,
