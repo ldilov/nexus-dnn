@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +13,7 @@ from ltx_video_worker import ltx2_safetensors_loader as sl  # noqa: E402
 from ltx_video_worker.gguf_loader import GGUFSchemaMismatch  # noqa: E402
 from ltx_video_worker.ltx2_safetensors_loader import (  # noqa: E402
     ALLOWED_OFFLOAD_MODES,
+    SCALE_SUFFIXES,
     FP8Linear,
     SafetensorsSchemaMismatch,
     _is_fp8,
@@ -233,3 +236,437 @@ def test_enumerate_offload_blocks_finds_modulelist() -> None:
     model = _Outer()
     blocks = sl._enumerate_offload_blocks(model)
     assert len(blocks) == 3
+
+
+def test_fp8_linear_is_nn_module_and_exposes_params_and_buffers() -> None:
+    fp8 = FP8Linear(
+        in_features=4,
+        out_features=2,
+        bias=True,
+        compute_dtype=torch.float32,
+        device=torch.device("cpu"),
+    )
+    assert isinstance(fp8, torch.nn.Module)
+
+    param_names = {n for n, _ in fp8.named_parameters()}
+    assert "weight" in param_names
+    assert "bias" in param_names
+
+    assert "weight_scale" in fp8._buffers
+
+    state = fp8.state_dict()
+    assert "weight" in state
+    assert "bias" in state
+
+
+def test_fp8_linear_state_dict_includes_fp8_weight_when_nested() -> None:
+    class _Parent(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.fc = FP8Linear(
+                in_features=4,
+                out_features=2,
+                bias=False,
+                compute_dtype=torch.float32,
+                device=torch.device("cpu"),
+            )
+
+    parent = _Parent()
+    sd = parent.state_dict()
+    assert "fc.weight" in sd
+    assert sd["fc.weight"].dtype == torch.float8_e4m3fn
+
+    param_names = [n for n, _ in parent.named_parameters()]
+    assert "fc.weight" in param_names
+
+
+def test_replace_linears_uses_setattr_so_module_registry_sees_child() -> None:
+    class _Parent(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.proj = torch.nn.Linear(4, 2, bias=False)
+
+    parent = _Parent()
+    sd = {"proj.weight": torch.zeros(2, 4, dtype=torch.float8_e4m3fn)}
+    swapped = sl._replace_linears_with_fp8(
+        parent, sd, compute_dtype=torch.float32, device=torch.device("cpu")
+    )
+    assert swapped == 1
+    assert isinstance(parent.proj, FP8Linear)
+
+    children = {n for n, _ in parent.named_children()}
+    assert "proj" in children
+
+
+def test_fp8_linear_with_per_tensor_scale() -> None:
+    in_f, out_f = 8, 4
+    ref = torch.nn.Linear(in_f, out_f, bias=True)
+    ref.weight.data = torch.randn(out_f, in_f) * 0.05
+    ref.bias.data = torch.zeros(out_f)
+
+    scale = torch.tensor(0.5)
+    expected_w = ref.weight.data * scale
+
+    fp8 = FP8Linear(
+        in_features=in_f,
+        out_features=out_f,
+        bias=True,
+        compute_dtype=torch.float32,
+        device=torch.device("cpu"),
+    )
+    fp8.weight = torch.nn.Parameter(
+        ref.weight.data.to(torch.float8_e4m3fn), requires_grad=False
+    )
+    fp8.bias = torch.nn.Parameter(ref.bias.data.clone(), requires_grad=False)
+    fp8.attach_scale(scale)
+
+    x = torch.randn(3, in_f) * 0.1
+    out_fp8 = fp8(x)
+    out_ref = torch.nn.functional.linear(x, expected_w, ref.bias.data)
+
+    assert out_fp8.shape == out_ref.shape
+    diff = (out_fp8 - out_ref).abs().max().item()
+    assert diff < 0.1
+
+
+def test_fp8_linear_with_per_channel_scale() -> None:
+    in_f, out_f = 8, 4
+    ref = torch.nn.Linear(in_f, out_f, bias=False)
+    ref.weight.data = torch.randn(out_f, in_f) * 0.05
+
+    scale = torch.tensor([[0.1], [0.2], [0.3], [0.4]])
+    expected_w = ref.weight.data * scale
+
+    fp8 = FP8Linear(
+        in_features=in_f,
+        out_features=out_f,
+        bias=False,
+        compute_dtype=torch.float32,
+        device=torch.device("cpu"),
+    )
+    fp8.weight = torch.nn.Parameter(
+        ref.weight.data.to(torch.float8_e4m3fn), requires_grad=False
+    )
+    fp8.attach_scale(scale)
+
+    x = torch.randn(3, in_f) * 0.1
+    out_fp8 = fp8(x)
+    out_ref = torch.nn.functional.linear(x, expected_w, None)
+
+    diff = (out_fp8 - out_ref).abs().max().item()
+    assert diff < 0.1
+
+
+def test_fp8_linear_scale_shape_mismatch_raises_clearly() -> None:
+    fp8 = FP8Linear(
+        in_features=4,
+        out_features=2,
+        bias=False,
+        compute_dtype=torch.float32,
+        device=torch.device("cpu"),
+    )
+    bad_scale = torch.ones(7)
+    with pytest.raises(ValueError, match="numel"):
+        fp8.attach_scale(bad_scale)
+
+    too_many_dims = torch.ones(2, 1, 1)
+    with pytest.raises(ValueError, match="scalar, 1D, or 2D"):
+        fp8.attach_scale(too_many_dims)
+
+
+def test_fp8_linear_forward_propagates_non_fp8_runtimeerror() -> None:
+    fp8 = FP8Linear(
+        in_features=4,
+        out_features=2,
+        bias=False,
+        compute_dtype=torch.float32,
+        device=torch.device("cpu"),
+    )
+    fp8.weight = torch.nn.Parameter(
+        torch.zeros(2, 4, dtype=torch.float8_e4m3fn), requires_grad=False
+    )
+
+    class _BadScale:
+        def to(self, *_a: Any, **_k: Any) -> Any:
+            raise RuntimeError("totally unrelated tensor mismatch")
+
+        ndim = 0
+        shape = ()
+
+        def numel(self) -> int:
+            return 1
+
+    fp8.weight_scale = None
+    object.__setattr__(fp8, "weight_scale", _BadScale())
+
+    with pytest.raises(RuntimeError, match="unrelated"):
+        fp8(torch.randn(1, 4))
+
+
+def test_fp8_linear_forward_catches_fp8_runtimeerror_and_warns(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    fp8 = FP8Linear(
+        in_features=4,
+        out_features=2,
+        bias=False,
+        compute_dtype=torch.float32,
+        device=torch.device("cpu"),
+    )
+    fp8.weight = torch.nn.Parameter(
+        (torch.randn(2, 4) * 0.05).to(torch.float8_e4m3fn), requires_grad=False
+    )
+
+    class _Fp8RaisingScale:
+        ndim = 0
+        shape = ()
+
+        def numel(self) -> int:
+            return 1
+
+        def to(self, *_a: Any, **_k: Any) -> Any:
+            raise RuntimeError("float8 path not implemented on this device")
+
+    object.__setattr__(fp8, "weight_scale", _Fp8RaisingScale())
+
+    with caplog.at_level(logging.WARNING, logger="ltx_video_worker.ltx2_safetensors_loader"):
+        out = fp8(torch.randn(1, 4))
+
+    assert out.shape == (1, 2)
+    assert any("fp8-related RuntimeError" in r.message for r in caplog.records)
+
+
+def test_install_raises_on_unconsumed_scale_suffix() -> None:
+    class _Parent(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.fc = torch.nn.Linear(4, 2, bias=False)
+
+    parent = _Parent()
+    fp8_w = torch.zeros(2, 4, dtype=torch.float8_e4m3fn)
+    sd = {
+        "fc.weight": fp8_w,
+        "fc.weight.foo_scale": torch.tensor(0.5),
+    }
+
+    sl._replace_linears_with_fp8(
+        parent, sd, compute_dtype=torch.float32, device=torch.device("cpu")
+    )
+    (
+        installed,
+        skipped,
+        fp8_installed,
+        unscaled,
+        unconsumed,
+    ) = sl._install_state_dict(
+        parent,
+        sd,
+        install_device=torch.device("cpu"),
+        compute_dtype=torch.float32,
+    )
+    assert fp8_installed == 1
+    assert "fc.weight" in unscaled
+    assert any("foo_scale" in k for k in unconsumed) or unconsumed == []
+
+
+def test_scale_suffix_coverage_includes_known_variants() -> None:
+    assert ".scale_weight" in SCALE_SUFFIXES
+    assert ".weight_scale" in SCALE_SUFFIXES
+    assert ".scale" in SCALE_SUFFIXES
+    assert ".weight_scale_inv" in SCALE_SUFFIXES
+    assert ".input_scale" in SCALE_SUFFIXES
+
+
+def test_partition_extras_separates_scale_like_from_orphan() -> None:
+    extras = [
+        "random_garbage.weight",
+        "block.0.fc.weight.weight_scale_inv",
+        "block.0.fc.weight.scale_weight",
+        "totally.unrelated.bias",
+    ]
+    scale_like, orphan = sl._partition_extras(extras)
+    assert "random_garbage.weight" in orphan
+    assert "totally.unrelated.bias" in orphan
+    assert any("weight_scale_inv" in k for k in scale_like)
+    assert any("scale_weight" in k for k in scale_like)
+
+
+def test_load_native_stack_synthetic_round_trip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from safetensors.torch import save_file
+
+    class _SyntheticModel(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.fp8_proj = torch.nn.Linear(4, 4, bias=True)
+            self.bf16_proj = torch.nn.Linear(4, 4, bias=False)
+
+        @classmethod
+        def make_meta(cls) -> "_SyntheticModel":
+            m = cls.__new__(cls)
+            torch.nn.Module.__init__(m)
+            m.fp8_proj = torch.nn.Linear(4, 4, bias=True, device="meta")
+            m.bf16_proj = torch.nn.Linear(4, 4, bias=False, device="meta")
+            return m
+
+    fake_create = lambda configurator, config: _SyntheticModel.make_meta()  # noqa: E731
+    monkeypatch.setattr(
+        "ltx_core.loader.helpers.create_meta_model", fake_create
+    )
+    monkeypatch.setattr(
+        "ltx_core.model.transformer.model_configurator.LTXModelConfigurator",
+        object,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "ltx_core.model.transformer.model_configurator.LTXVideoOnlyModelConfigurator",
+        object,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "ltx_video_worker.ltx2_safetensors_loader._rebind_preprocessor_modules",
+        lambda _m: None,
+    )
+    monkeypatch.setattr(
+        "ltx_video_worker.ltx2_safetensors_loader.rename_comfy_keys",
+        lambda sd: sd,
+    )
+
+    fp8_weight_real = (torch.randn(4, 4) * 0.05).to(torch.float8_e4m3fn)
+    bf16_weight = torch.randn(4, 4, dtype=torch.bfloat16) * 0.05
+    bias = torch.zeros(4, dtype=torch.bfloat16)
+    scale = torch.tensor(1.0)
+
+    tensors = {
+        "fp8_proj.weight": fp8_weight_real,
+        "fp8_proj.bias": bias,
+        "fp8_proj.weight_scale": scale,
+        "bf16_proj.weight": bf16_weight,
+    }
+    metadata = {
+        "config": json.dumps({"transformer": {"any": "value"}}),
+    }
+    sf_path = tmp_path / "synthetic.safetensors"
+    save_file(tensors, str(sf_path), metadata=metadata)
+
+    bundle = load_native_stack_from_safetensors(
+        sf_path,
+        audio=False,
+        install_device="cpu",
+        offload_mode="none",
+        strict_schema=False,
+    )
+
+    model = bundle.transformer
+    assert sl._no_meta_tensors_remaining(model) == []
+    assert isinstance(model.fp8_proj, FP8Linear)
+    assert model.fp8_proj.weight.dtype == torch.float8_e4m3fn
+    assert model.fp8_proj.weight_scale is not None
+    assert isinstance(model.bf16_proj, torch.nn.Linear)
+
+    x = torch.randn(1, 4, dtype=torch.bfloat16)
+    out = model.fp8_proj(x)
+    assert torch.isfinite(out).all()
+
+
+def test_load_strict_rejects_orphan_extra(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from safetensors.torch import save_file
+
+    class _Tiny(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.fc = torch.nn.Linear(4, 2, bias=False, device="meta")
+
+    fake_create = lambda configurator, config: _Tiny()  # noqa: E731
+    monkeypatch.setattr(
+        "ltx_core.loader.helpers.create_meta_model", fake_create
+    )
+    monkeypatch.setattr(
+        "ltx_video_worker.ltx2_safetensors_loader._rebind_preprocessor_modules",
+        lambda _m: None,
+    )
+    monkeypatch.setattr(
+        "ltx_video_worker.ltx2_safetensors_loader.rename_comfy_keys",
+        lambda sd: sd,
+    )
+
+    tensors = {
+        "fc.weight": torch.zeros(2, 4, dtype=torch.bfloat16),
+        "random_garbage.weight": torch.zeros(2, 2, dtype=torch.bfloat16),
+    }
+    metadata = {"config": json.dumps({"transformer": {"any": "value"}})}
+    sf_path = tmp_path / "orphan.safetensors"
+    save_file(tensors, str(sf_path), metadata=metadata)
+
+    with pytest.raises(SafetensorsSchemaMismatch, match="random_garbage"):
+        load_native_stack_from_safetensors(
+            sf_path, install_device="cpu", strict_schema=True
+        )
+
+
+def test_load_strict_false_allows_orphan_extra_with_warning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from safetensors.torch import save_file
+
+    class _Tiny(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.fc = torch.nn.Linear(4, 2, bias=False, device="meta")
+
+    fake_create = lambda configurator, config: _Tiny()  # noqa: E731
+    monkeypatch.setattr(
+        "ltx_core.loader.helpers.create_meta_model", fake_create
+    )
+    monkeypatch.setattr(
+        "ltx_video_worker.ltx2_safetensors_loader._rebind_preprocessor_modules",
+        lambda _m: None,
+    )
+    monkeypatch.setattr(
+        "ltx_video_worker.ltx2_safetensors_loader.rename_comfy_keys",
+        lambda sd: sd,
+    )
+
+    tensors = {
+        "fc.weight": torch.zeros(2, 4, dtype=torch.bfloat16),
+        "random_garbage.weight": torch.zeros(2, 2, dtype=torch.bfloat16),
+    }
+    metadata = {"config": json.dumps({"transformer": {"any": "value"}})}
+    sf_path = tmp_path / "orphan.safetensors"
+    save_file(tensors, str(sf_path), metadata=metadata)
+
+    with caplog.at_level(logging.WARNING, logger="ltx_video_worker.ltx2_safetensors_loader"):
+        bundle = load_native_stack_from_safetensors(
+            sf_path, install_device="cpu", strict_schema=False
+        )
+    assert bundle.transformer is not None
+    assert any("orphan extra" in r.message for r in caplog.records)
+
+
+def test_meta_verifier_catches_uninstalled_fp8_linear() -> None:
+    class _Parent(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.fc = torch.nn.Linear(4, 2, bias=False, device="meta")
+
+    parent = _Parent()
+    sd = {"fc.weight": torch.zeros(2, 4, dtype=torch.float8_e4m3fn)}
+    sl._replace_linears_with_fp8(
+        parent, sd, compute_dtype=torch.float32, device=torch.device("cpu")
+    )
+    leftover = sl._no_meta_tensors_remaining(parent)
+    assert any("fc.weight" in n for n in leftover)
+
+
+def test_load_signature_does_not_accept_offload_device(
+    tmp_path: Path,
+) -> None:
+    import inspect
+
+    sig = inspect.signature(load_native_stack_from_safetensors)
+    assert "offload_device" not in sig.parameters
