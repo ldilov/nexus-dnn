@@ -21,7 +21,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-ALLOWED_OFFLOAD_MODES: tuple[str, ...] = ("none", "sequential", "group", "disk")
+ALLOWED_OFFLOAD_MODES: tuple[str, ...] = (
+    "none",
+    "partial",
+    "sequential",
+    "group",
+    "disk",
+)
 
 WEIGHT_SCALE_SUFFIXES: tuple[str, ...] = (
     ".scale_weight",
@@ -472,14 +478,63 @@ def _no_meta_tensors_remaining(model: Any) -> list[str]:
 
 
 def _attach_sequential_offload(model: Any, execution_device: Any) -> None:
-    from accelerate.hooks import AlignDevicesHook, add_hook_to_module
-
     blocks = _enumerate_offload_blocks(model)
     if not blocks:
         raise RuntimeError(
             "sequential offload: no transformer blocks discovered on the "
             "longcat DiT — the block-attribute heuristic must be re-probed."
         )
+    _attach_block_offload_hooks(blocks, execution_device, swap_count=len(blocks))
+    logger.info(
+        "longcat_safetensors_loader: sequential offload attached to %d blocks "
+        "(exec=%s, offload=cpu-pinned)",
+        len(blocks),
+        execution_device,
+    )
+
+
+def _attach_partial_offload(
+    model: Any, execution_device: Any, swap_count: int
+) -> None:
+    if swap_count < 0:
+        raise ValueError(
+            f"partial offload: swap_count must be >= 0; got {swap_count}"
+        )
+    blocks = _enumerate_offload_blocks(model)
+    if not blocks:
+        raise RuntimeError(
+            "partial offload: no transformer blocks discovered on the "
+            "longcat DiT — the block-attribute heuristic must be re-probed."
+        )
+    if swap_count > len(blocks):
+        raise ValueError(
+            f"partial offload: swap_count={swap_count} exceeds block count "
+            f"{len(blocks)}; clamp at caller or use offload_mode='sequential'."
+        )
+    if swap_count == 0:
+        logger.info(
+            "longcat_safetensors_loader: partial offload with swap_count=0 is "
+            "a no-op; all %d blocks resident on %s",
+            len(blocks),
+            execution_device,
+        )
+        return
+    tail = blocks[-swap_count:]
+    _attach_block_offload_hooks(tail, execution_device, swap_count=swap_count)
+    logger.info(
+        "longcat_safetensors_loader: partial offload attached "
+        "(resident=%d, swapped=%d, exec=%s)",
+        len(blocks) - swap_count,
+        swap_count,
+        execution_device,
+    )
+
+
+def _attach_block_offload_hooks(
+    blocks: list[Any], execution_device: Any, *, swap_count: int
+) -> None:
+    from accelerate.hooks import AlignDevicesHook, add_hook_to_module
+
     for block in blocks:
         hook = AlignDevicesHook(
             execution_device=execution_device,
@@ -489,12 +544,6 @@ def _attach_sequential_offload(model: Any, execution_device: Any) -> None:
             place_submodules=True,
         )
         add_hook_to_module(block, hook, append=True)
-    logger.info(
-        "longcat_safetensors_loader: sequential offload attached to %d blocks "
-        "(exec=%s, offload=cpu-pinned)",
-        len(blocks),
-        execution_device,
-    )
 
 
 def _enumerate_offload_blocks(model: Any) -> list[Any]:
@@ -552,7 +601,9 @@ def _attach_disk_offload(
 
 
 def _validate_offload_args(
-    offload_mode: str, offload_folder: str | os.PathLike | None
+    offload_mode: str,
+    offload_folder: str | os.PathLike | None,
+    block_swap_count: int = 0,
 ) -> None:
     if offload_mode not in ALLOWED_OFFLOAD_MODES:
         raise ValueError(
@@ -562,6 +613,19 @@ def _validate_offload_args(
     if offload_mode == "disk" and offload_folder is None:
         raise ValueError(
             "offload_mode='disk' requires offload_folder= to be supplied."
+        )
+    if offload_mode == "partial" and block_swap_count <= 0:
+        raise ValueError(
+            "offload_mode='partial' requires block_swap_count > 0; "
+            "use 'none' to disable offload entirely."
+        )
+    if offload_mode != "partial" and block_swap_count > 0 and offload_mode != "sequential":
+        # sequential implicitly swaps every block; other modes ignore the knob.
+        logger.warning(
+            "block_swap_count=%d ignored for offload_mode=%r (only 'partial' "
+            "and 'sequential' consume this argument)",
+            block_swap_count,
+            offload_mode,
         )
 
 
@@ -573,6 +637,7 @@ def load_longcat_dit_from_safetensors(
     strict_schema: bool = True,
     offload_mode: str = "none",
     offload_folder: "str | os.PathLike | None" = None,
+    block_swap_count: int = 0,
     log: "logging.Logger | None" = None,
 ) -> NativeLongCatSafetensorsBundle:
     """Load a LongCat DiT from a safetensors file into a ready-to-run bundle.
