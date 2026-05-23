@@ -151,7 +151,9 @@ def test_resolve_method_from_mode_vc(tmp_path: Path) -> None:
     pipeline.generate_vc.assert_called_once()
     call_kwargs = pipeline.generate_vc.call_args.kwargs
     assert call_kwargs["resolution"] == "480p"
-    assert call_kwargs["offload_kv_cache"] is False
+    # `offload_kv_cache` is routed via attention_kwargs only, not as a bare
+    # kwarg (audit 2026-05-24 dropped the duplicate top-level arg).
+    assert "offload_kv_cache" not in call_kwargs
 
 
 def test_resolve_method_from_mode_refine() -> None:

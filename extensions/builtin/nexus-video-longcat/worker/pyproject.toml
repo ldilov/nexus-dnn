@@ -66,7 +66,29 @@ diffusers = [
   # `block_sparse_attention.bsa_interface` unconditionally at module top.
   "triton>=3.0 ; sys_platform != 'win32'",
   "triton-windows>=3.0 ; sys_platform == 'win32'",
-  "xformers[diffusers]>=0.0.35",
+  # xformers 0.0.35 imports on Blackwell but the cutlassF / fa2F kernels
+  # are not built for sm_120, so attention falls back to SDPA via our
+  # monkey-patch. Keep installed for Ampere/Hopper hosts.
+  "xformers>=0.0.35",
+  # SageAttention v1 (int8 Triton-based). Works on Blackwell sm_120 via
+  # Triton JIT. Quality trade: ~2-4% numerical error vs bf16 SDPA. v2
+  # (FP8, GitHub-only) needs `pip install git+https://github.com/thu-ml/SageAttention`
+  # — pre-quant kernels with proper Blackwell support but not on PyPI.
+  "sageattention>=1.0.6",
+]
+# TODO(longcat): flash-attn 2.x on Windows for torch 2.11+cu128 — no clean
+# wheel today. Closest: bdashore3 ships up to torch 2.8+cu128
+# (https://github.com/bdashore3/flash-attention/releases v2.8.3).
+# flash-attn 3 on Windows IS available for torch 2.11+cu128 and torch 2.11+cu130
+# via windreamer/flash-attention3-wheels but FA3 does NOT support sm_120
+# Blackwell — would crash at runtime on RTX 50-series. Stay on SDPA / sage
+# for Blackwell until upstream Dao-AILab fixes the sm_120 block (FA #1987).
+flash_attn = [
+  # Activate ONLY on Ampere/Ada/Hopper (sm_80..sm_90). Blackwell users:
+  # do NOT install this extra; SDPA fallback is correct and faster than a
+  # crash. The wheel below is torch-2.8 / cu128 — works in practice with
+  # torch 2.10/2.11 cu128 via ABI compat but is unsupported by upstream.
+  "flash-attn @ https://github.com/bdashore3/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu128torch2.8.0cxx11abiFALSE-cp312-cp312-win_amd64.whl ; sys_platform == 'win32' and python_version == '3.12'",
 ]
 test = [
   "pytest>=8.0",
