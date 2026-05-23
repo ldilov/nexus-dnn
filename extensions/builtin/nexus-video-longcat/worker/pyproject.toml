@@ -76,19 +76,28 @@ diffusers = [
   # — pre-quant kernels with proper Blackwell support but not on PyPI.
   "sageattention>=1.0.6",
 ]
-# TODO(longcat): flash-attn 2.x on Windows for torch 2.11+cu128 — no clean
-# wheel today. Closest: bdashore3 ships up to torch 2.8+cu128
-# (https://github.com/bdashore3/flash-attention/releases v2.8.3).
-# flash-attn 3 on Windows IS available for torch 2.11+cu128 and torch 2.11+cu130
-# via windreamer/flash-attention3-wheels but FA3 does NOT support sm_120
-# Blackwell — would crash at runtime on RTX 50-series. Stay on SDPA / sage
-# for Blackwell until upstream Dao-AILab fixes the sm_120 block (FA #1987).
+# TODO(longcat): flash-attn 2.x on Windows for torch 2.11+cu128 — NO clean
+# wheel today, AND the closest neighbor (bdashore3 v2.8.3 cu128 torch2.8)
+# fails to load on torch 2.11 with "DLL load failed while importing
+# flash_attn_2_cuda" (probed 2026-05-24). ABI incompat between torch 2.8
+# and 2.11 PyTorch C++ extension symbols.
+#
+# Other Windows sources:
+#   - mjun0812 v0.9.22: 133 assets, zero win_amd64 — Linux aarch64 only
+#   - windreamer flash-attention3-wheels: cu128/cu130 + torch 2.11 + win
+#     wheels exist BUT FA3 hard-blocks sm_120 (Dao-AILab #1987)
+#
+# Path to a working FA2 on Blackwell + Windows + torch 2.11:
+#   1. Build from source: CUDA 12.8 toolkit + MSVC + Ninja + ~30min compile
+#   2. Wait for mjun0812 / bdashore3 to ship a torch-2.11+cu128 win wheel
+#   3. Wait for Dao-AILab to land sm_120 support upstream (#1987)
+#
+# Until one of those: stay on SDPA via _patch_attention_to_use_sdpa.
+# SageAttention v1 (Triton-based) is the Blackwell-friendly speed
+# alternative; v2 (FP8, GitHub-only) would close the quality gap.
 flash_attn = [
-  # Activate ONLY on Ampere/Ada/Hopper (sm_80..sm_90). Blackwell users:
-  # do NOT install this extra; SDPA fallback is correct and faster than a
-  # crash. The wheel below is torch-2.8 / cu128 — works in practice with
-  # torch 2.10/2.11 cu128 via ABI compat but is unsupported by upstream.
-  "flash-attn @ https://github.com/bdashore3/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu128torch2.8.0cxx11abiFALSE-cp312-cp312-win_amd64.whl ; sys_platform == 'win32' and python_version == '3.12'",
+  # Linux-only Ampere/Ada/Hopper wheels. Skipped on Windows + on Blackwell.
+  "flash-attn>=2.6 ; sys_platform == 'linux'",
 ]
 test = [
   "pytest>=8.0",
