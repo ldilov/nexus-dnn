@@ -493,6 +493,59 @@ def _attach_sequential_offload(model: Any, execution_device: Any) -> None:
     )
 
 
+def _move_non_block_params_to_device(model: Any, device: Any) -> None:
+    # After installing to CPU + attaching block hooks, the non-transformer-block
+    # params (patch_embed, time_embed, text_embed, final layer, top-level norms)
+    # are still on CPU. Move them to GPU so they're resident during forward
+    # without the per-step CPU↔GPU hop the block hooks would impose.
+    import torch
+
+    block_attr_names = ("transformer_blocks", "blocks", "layers")
+    block_modules: set[int] = set()
+    for attr in block_attr_names:
+        sub = getattr(model, attr, None)
+        if sub is None:
+            continue
+        for m in sub:
+            block_modules.add(id(m))
+    moved = 0
+    for name, param in model.named_parameters(recurse=True):
+        owner = model
+        owner_id = id(owner)
+        # walk to leaf module owner of this param
+        parts = name.split(".")
+        for part in parts[:-1]:
+            owner = getattr(owner, part)
+            owner_id = id(owner)
+            if owner_id in block_modules:
+                break
+        if owner_id in block_modules:
+            continue
+        if param.device != torch.device(device):
+            param.data = param.data.to(device)
+            moved += 1
+    for name, buf in model.named_buffers(recurse=True):
+        owner = model
+        owner_id = id(owner)
+        parts = name.split(".")
+        for part in parts[:-1]:
+            owner = getattr(owner, part)
+            owner_id = id(owner)
+            if owner_id in block_modules:
+                break
+        if owner_id in block_modules:
+            continue
+        if buf.device != torch.device(device):
+            owner_attr = parts[-1]
+            setattr(owner, owner_attr, buf.to(device))
+            moved += 1
+    logger.info(
+        "longcat_safetensors_loader: moved %d non-block params/buffers to %s",
+        moved,
+        device,
+    )
+
+
 def _attach_partial_offload(
     model: Any, execution_device: Any, swap_count: int
 ) -> None:
@@ -679,7 +732,23 @@ def load_longcat_dit_from_safetensors(
 
     model = build_dit(config, vendor_dir=vendor_dir, install_device="meta")
 
-    swapped = _replace_linears_with_fp8(model, renamed_sd, compute_dtype, install_device)
+    # Load-order OOM fix (audit 2026-05-24): when an offload mode is
+    # requested, install weights to CPU first so the accelerate hook can
+    # snapshot from CPU memory directly instead of round-tripping every
+    # block through GPU. Without this the install peak is ~28 GiB
+    # (entire 15.5 GB FP8 + activations) before tail blocks are migrated.
+    # head-resident blocks get moved to GPU explicitly after hook attach.
+    needs_cpu_first_install = offload_mode in ("partial", "sequential", "group", "disk")
+    install_target = torch.device("cpu") if needs_cpu_first_install else install_device
+    if needs_cpu_first_install:
+        _log.info(
+            "longcat_safetensors_loader: offload_mode=%r → installing weights to "
+            "CPU first to avoid load-time GPU spike; head blocks will be promoted "
+            "after hook attach.",
+            offload_mode,
+        )
+
+    swapped = _replace_linears_with_fp8(model, renamed_sd, compute_dtype, install_target)
     _log.info(
         "longcat_safetensors_loader: replaced %d Linear → FP8Linear", swapped
     )
@@ -689,7 +758,7 @@ def load_longcat_dit_from_safetensors(
     installed, skipped, fp8_installed, unscaled_fp8, unconsumed = _install_state_dict(
         model,
         renamed_sd,
-        install_device=install_device,
+        install_device=install_target,
         compute_dtype=compute_dtype,
     )
     _log.info(
@@ -730,6 +799,15 @@ def load_longcat_dit_from_safetensors(
         _attach_sequential_offload(model, install_device)
     elif offload_mode == "partial":
         _attach_partial_offload(model, install_device, block_swap_count)
+        # Promote the head-resident blocks (first N - swap_count) to GPU.
+        # Tail blocks stay on CPU per the accelerate hook semantics.
+        blocks = _enumerate_offload_blocks(model)
+        resident = blocks[: max(0, len(blocks) - block_swap_count)]
+        for block in resident:
+            block.to(install_device)
+        # Top-level non-block params (embedders, norms, final layer) — move
+        # them to GPU too; they were installed to CPU and have no hook.
+        _move_non_block_params_to_device(model, install_device)
     elif offload_mode == "group":
         _attach_group_offload(model, install_device)
     elif offload_mode == "disk":
