@@ -26,13 +26,16 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_OFFLOAD_MODES: tuple[str, ...] = ("none", "sequential", "group", "disk")
 
-SCALE_SUFFIXES: tuple[str, ...] = (
+WEIGHT_SCALE_SUFFIXES: tuple[str, ...] = (
     ".scale_weight",
     ".weight_scale",
     ".scale",
     ".weight_scale_inv",
-    ".input_scale",
 )
+
+INPUT_SCALE_SUFFIXES: tuple[str, ...] = (".input_scale",)
+
+SCALE_SUFFIXES: tuple[str, ...] = WEIGHT_SCALE_SUFFIXES + INPUT_SCALE_SUFFIXES
 
 _FP8_DTYPES: frozenset[Any] = frozenset()
 
@@ -236,6 +239,7 @@ class FP8Linear(_nn.Module):
             self.register_parameter("bias", None)
 
         self.register_buffer("weight_scale", None)
+        self.register_buffer("input_scale", None)
 
     def attach_scale(self, scale: Any) -> None:
         if scale is None:
@@ -254,7 +258,78 @@ class FP8Linear(_nn.Module):
             )
         self.weight_scale = scale
 
-    def forward(self, x: Any) -> Any:
+    def attach_input_scale(self, scale: Any) -> None:
+        if scale is None:
+            self.input_scale = None
+            return
+        if scale.numel() != 1:
+            raise ValueError(
+                f"FP8Linear.attach_input_scale: input_scale must be a scalar "
+                f"(per-tensor) — got shape {tuple(scale.shape)}, "
+                f"numel={scale.numel()}"
+            )
+        self.input_scale = scale
+
+    def _can_use_scaled_mm(self) -> bool:
+        import torch
+
+        if not hasattr(torch, "_scaled_mm"):
+            return False
+        if self.weight_scale is None or self.input_scale is None:
+            return False
+        if not _is_fp8(self.weight.dtype):
+            return False
+        if self.weight_scale.numel() != 1:
+            return False
+        if self.input_scale.numel() != 1:
+            return False
+        return True
+
+    def _scaled_mm_forward(self, x: Any) -> Any:
+        import torch
+
+        orig_shape = tuple(x.shape)
+        if orig_shape[-1] != self.in_features:
+            raise RuntimeError(
+                f"FP8Linear._scaled_mm_forward: input last-dim "
+                f"{orig_shape[-1]} != in_features {self.in_features}"
+            )
+
+        input_scale_f32 = self.input_scale.to(torch.float32).reshape(())
+        weight_scale_f32 = self.weight_scale.to(torch.float32).reshape(())
+
+        x_2d = x.reshape(-1, self.in_features).contiguous()
+        x_scaled = x_2d.to(torch.float32) / input_scale_f32
+        x_fp8 = x_scaled.clamp(-448.0, 448.0).to(torch.float8_e4m3fn)
+
+        bias_arg: Any
+        if self.bias is None:
+            bias_arg = None
+        elif self.compute_dtype in (torch.bfloat16, torch.float16):
+            bias_arg = self.bias.to(self.compute_dtype)
+        else:
+            bias_arg = self.bias.to(torch.bfloat16)
+
+        out_dtype = (
+            self.compute_dtype
+            if self.compute_dtype in (torch.bfloat16, torch.float16)
+            else torch.bfloat16
+        )
+
+        out_2d = torch._scaled_mm(
+            x_fp8,
+            self.weight.t(),
+            scale_a=input_scale_f32,
+            scale_b=weight_scale_f32,
+            bias=bias_arg,
+            out_dtype=out_dtype,
+            use_fast_accum=False,
+        )
+
+        out_2d = out_2d.to(self.compute_dtype)
+        return out_2d.reshape(*orig_shape[:-1], self.out_features)
+
+    def _upcast_forward(self, x: Any) -> Any:
         import torch.nn.functional as F
 
         w = self.weight
@@ -273,7 +348,7 @@ class FP8Linear(_nn.Module):
                 msg = str(e).lower()
                 if "float8" in msg or "fp8" in msg:
                     logger.warning(
-                        "FP8Linear.forward: fp8-related RuntimeError, "
+                        "FP8Linear._upcast_forward: fp8-related RuntimeError, "
                         "retrying without scale: %s "
                         "(x.shape=%s weight.shape=%s weight.dtype=%s)",
                         e,
@@ -288,6 +363,32 @@ class FP8Linear(_nn.Module):
                     )
                 raise
         return F.linear(x.to(self.compute_dtype), w, b)
+
+    def forward(self, x: Any) -> Any:
+        if self._can_use_scaled_mm():
+            try:
+                return self._scaled_mm_forward(x)
+            except RuntimeError as e:
+                msg = str(e).lower()
+                if (
+                    "scaled_mm" in msg
+                    or "float8" in msg
+                    or "fp8" in msg
+                    or "not supported" in msg
+                    or "not implemented" in msg
+                ):
+                    logger.warning(
+                        "FP8Linear.forward: torch._scaled_mm unsupported, "
+                        "falling back to upcast: %s "
+                        "(x.shape=%s weight.shape=%s weight.dtype=%s)",
+                        e,
+                        tuple(x.shape),
+                        tuple(self.weight.shape),
+                        self.weight.dtype,
+                    )
+                else:
+                    raise
+        return self._upcast_forward(x)
 
 
 def _replace_linears_with_fp8(
@@ -355,16 +456,25 @@ def _install_state_dict(
                 value.to(install_device), requires_grad=False
             )
             base = name[: -len(".weight")]
-            scale_attached = False
-            for suffix in SCALE_SUFFIXES:
+            weight_scale_attached = False
+            for suffix in WEIGHT_SCALE_SUFFIXES:
                 scale_key = f"{base}{suffix}"
                 scale_tensor = state_dict.get(scale_key)
                 if scale_tensor is not None:
                     module.attach_scale(scale_tensor.to(install_device))
                     consumed_scales.add(scale_key)
-                    scale_attached = True
+                    weight_scale_attached = True
                     break
-            if not scale_attached:
+            for suffix in INPUT_SCALE_SUFFIXES:
+                input_scale_key = f"{base}{suffix}"
+                input_scale_tensor = state_dict.get(input_scale_key)
+                if input_scale_tensor is not None:
+                    module.attach_input_scale(
+                        input_scale_tensor.to(install_device)
+                    )
+                    consumed_scales.add(input_scale_key)
+                    break
+            if not weight_scale_attached:
                 unscaled_fp8_weights.append(name)
             fp8_installed += 1
             installed += 1
