@@ -20,14 +20,16 @@ dependencies = [
 [project.optional-dependencies]
 # Real-runtime deps. The fake profile installs only the base set.
 diffusers = [
-  # RTX 50 Blackwell requires cu128 wheels (torch 2.10+). LongCat
-  # upstream pins torch==2.6.0 but that is CPU+cu124 only — we keep
-  # the cu128 floor to stay compatible with the existing host GPU
-  # contract. The DiT modules are vendored so the upstream torch pin
-  # is unenforced.
-  "torch>=2.10",
-  "torchvision>=0.25",
-  "torchaudio>=2.10",
+  # RTX 50 Blackwell + CUDA 13.2 path. torch 2.12.0+cu132 is the first
+  # PyTorch release w/ proper Blackwell-tuned cuBLAS/cuDNN kernels. cu128
+  # rollback tag: `longcat-cu128-stable` (git tag) — revert pyproject +
+  # `uv sync --extra diffusers` to restore.
+  "torch>=2.12",
+  "torchvision>=0.27",
+  # torchaudio dropped: cu132 index doesn't ship a Windows wheel for it
+  # (max 2.2.0, Linux aarch64 only). LongCat pipeline doesn't import
+  # torchaudio directly — diffusers may pull it transitively for some
+  # pipelines but the video stack doesn't need it.
   # LongCat-Video upstream pins diffusers==0.35.1 and
   # transformers==4.41.0 (see meituan-longcat/LongCat-Video
   # requirements.txt). The pins drive UMT5EncoderModel + the
@@ -118,15 +120,14 @@ packages = ["src/longcat_video_worker"]
 [tool.hatch.metadata]
 allow-direct-references = true
 
-# Route torch wheels through PyTorch's cu128 index for RTX 50 Blackwell.
+# Route torch wheels through PyTorch's cu132 index for RTX 50 Blackwell.
 [tool.uv.sources]
-torch = [{ index = "pytorch-cu128" }]
-torchvision = [{ index = "pytorch-cu128" }]
-torchaudio = [{ index = "pytorch-cu128" }]
+torch = [{ index = "pytorch-cu132" }]
+torchvision = [{ index = "pytorch-cu132" }]
 
 [[tool.uv.index]]
-name = "pytorch-cu128"
-url = "https://download.pytorch.org/whl/cu128"
+name = "pytorch-cu132"
+url = "https://download.pytorch.org/whl/cu132"
 explicit = true
 
 [tool.pytest.ini_options]
