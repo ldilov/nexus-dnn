@@ -95,6 +95,60 @@ def stitch_segments(segment_paths: list[Path], out_path: Path) -> None:
         out_path.write_bytes(b"NEXUS_FAKE_LONGCAT_MP4_STITCHED\x00")
 
 
+def write_video_frames(frames: "Any", fps: int, path: Path) -> None:
+    """Encode a numpy frame array to MP4 at ``path``.
+
+    Accepts a numpy ndarray of shape ``(F, H, W, C)`` with values in ``[0, 1]``
+    (float32/float64) or ``[0, 255]`` (uint8). Writes an H.264/yuv420p MP4.
+    Falls back to a sentinel file when ffmpeg is unavailable.
+    """
+    import numpy as np
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    arr = np.asarray(frames)
+    if arr.ndim == 5:
+        arr = arr[0]
+
+    if arr.dtype != np.uint8:
+        arr = (arr * 255.0).clip(0, 255).astype(np.uint8)
+
+    num_frames, height, width, channels = arr.shape
+    if channels not in (3, 4):
+        raise ValueError(f"write_video_frames: expected 3 or 4 channels; got {channels}")
+
+    try:
+        import ffmpeg
+
+        process = (
+            ffmpeg.input(
+                "pipe:",
+                format="rawvideo",
+                pix_fmt="rgb24",
+                s=f"{width}x{height}",
+                r=fps,
+            )
+            .output(
+                str(path),
+                vcodec="libx264",
+                pix_fmt="yuv420p",
+                preset="fast",
+                loglevel="error",
+            )
+            .overwrite_output()
+            .run_async(pipe_stdin=True)
+        )
+        for i in range(num_frames):
+            frame = arr[i]
+            if channels == 4:
+                frame = frame[:, :, :3]
+            process.stdin.write(frame.tobytes())
+        process.stdin.close()
+        process.wait()
+    except Exception:
+        path.write_bytes(b"NEXUS_FAKE_LONGCAT_MP4\x00")
+
+
 def trim_to_duration(
     in_path: Path, out_path: Path, *, duration_s: float
 ) -> None:

@@ -632,6 +632,8 @@ def _validate_offload_args(
 def load_longcat_dit_from_safetensors(
     safetensors_path: "str | os.PathLike",
     *,
+    vendor_dir: "Path | None" = None,
+    config: "dict | None" = None,
     install_device: "torch.device | str | None" = None,
     compute_dtype: "torch.dtype | None" = None,
     strict_schema: bool = True,
@@ -640,16 +642,103 @@ def load_longcat_dit_from_safetensors(
     block_swap_count: int = 0,
     log: "logging.Logger | None" = None,
 ) -> NativeLongCatSafetensorsBundle:
-    """Load a LongCat DiT from a safetensors file into a ready-to-run bundle.
+    import torch
 
-    Port pending: awaits vendored longcat_video_dit + build_dit wiring.
-    The generic FP8 machinery (FP8Linear, scale attachment, offload) is fully
-    operational — only the model instantiation and key-rename stubs need
-    filling in once the DiT vendor copy lands.
-    """
-    raise NotImplementedError(
-        "load_longcat_dit_from_safetensors: awaits vendored "
-        "longcat_video_dit + build_dit wiring. "
-        "FP8Linear, scale attachment, and offload helpers are all ready; "
-        "only the model-construction and key-rename stubs need filling in."
+    _log = log or logger
+    _validate_offload_args(offload_mode, offload_folder, block_swap_count)
+
+    safetensors_path = Path(safetensors_path)
+    if not safetensors_path.exists():
+        raise FileNotFoundError(f"safetensors not found: {safetensors_path}")
+
+    if install_device is None:
+        install_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        install_device = torch.device(install_device)
+
+    if compute_dtype is None:
+        compute_dtype = torch.bfloat16
+
+    raw_sd = _load_safetensors_state_dict(safetensors_path, compute_dtype, allow_lazy_fp8=True)
+    renamed_sd = rename_comfy_keys(raw_sd)
+
+    from .longcat_native_loader import build_dit, read_embedded_config
+
+    if config is None:
+        if vendor_dir is None:
+            raise ValueError(
+                "load_longcat_dit_from_safetensors: supply either config= or vendor_dir= "
+                "so the DiT architecture can be derived."
+            )
+        config = read_embedded_config(vendor_dir)
+
+    if vendor_dir is None:
+        raise ValueError(
+            "load_longcat_dit_from_safetensors: vendor_dir= is required to import the DiT class."
+        )
+
+    model = build_dit(config, vendor_dir=vendor_dir, install_device="meta")
+
+    swapped = _replace_linears_with_fp8(model, renamed_sd, compute_dtype, install_device)
+    _log.info(
+        "longcat_safetensors_loader: replaced %d Linear → FP8Linear", swapped
+    )
+
+    _audit_key_overlap(renamed_sd, [k for k, _ in model.named_parameters()] + [k for k, _ in model.named_buffers()])
+
+    installed, skipped, fp8_installed, unscaled_fp8, unconsumed = _install_state_dict(
+        model,
+        renamed_sd,
+        install_device=install_device,
+        compute_dtype=compute_dtype,
+    )
+    _log.info(
+        "longcat_safetensors_loader: installed=%d skipped=%d fp8=%d "
+        "unscaled_fp8=%d unconsumed_scales=%d",
+        installed,
+        skipped,
+        fp8_installed,
+        len(unscaled_fp8),
+        len(unconsumed),
+    )
+    if unscaled_fp8:
+        _log.warning(
+            "longcat_safetensors_loader: %d FP8 weights have no attached scale — "
+            "will fall back to upcast forward: %s",
+            len(unscaled_fp8),
+            unscaled_fp8[:8],
+        )
+
+    remaining_meta = _no_meta_tensors_remaining(model)
+    if remaining_meta and strict_schema:
+        raise SafetensorsSchemaMismatch(
+            f"load_longcat_dit_from_safetensors: {len(remaining_meta)} parameters "
+            f"remain on meta device after install (strict_schema=True). "
+            f"Sample: {remaining_meta[:8]}"
+        )
+    if remaining_meta:
+        _log.warning(
+            "longcat_safetensors_loader: %d parameters remain on meta device "
+            "(strict_schema=False — proceeding): %s",
+            len(remaining_meta),
+            remaining_meta[:8],
+        )
+
+    _rebind_preprocessor_modules(model)
+
+    if offload_mode == "sequential":
+        _attach_sequential_offload(model, install_device)
+    elif offload_mode == "partial":
+        _attach_partial_offload(model, install_device, block_swap_count)
+    elif offload_mode == "group":
+        _attach_group_offload(model, install_device)
+    elif offload_mode == "disk":
+        _attach_disk_offload(model, install_device, Path(offload_folder))
+
+    return NativeLongCatSafetensorsBundle(
+        transformer=model,
+        config=config,
+        install_device=install_device,
+        offload_mode=offload_mode,
+        compute_dtype=compute_dtype,
     )

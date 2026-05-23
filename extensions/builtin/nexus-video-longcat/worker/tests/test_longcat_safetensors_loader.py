@@ -179,8 +179,8 @@ def test_synth_fixture_loads(tmp_path: Path) -> None:
     comfy_dup = 1
     expected_fp8 = per_layer_fp8 * 2 + top_level_fp8 + comfy_dup
 
-    # 2 layers × (3 bf16 scales + 2 norm tensors) + 1 top-level scale + conv3d = 12
-    per_layer_bf16 = 5
+    # 2 layers × (3 weight_scale + 1 input_scale + 2 norm tensors) + 1 top-level scale + conv3d = 14
+    per_layer_bf16 = 6
     top_level_bf16 = 2
     expected_bf16 = per_layer_bf16 * 2 + top_level_bf16
 
