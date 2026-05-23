@@ -53,6 +53,19 @@ diffusers = [
   "imageio>=2.37",
   "imageio-ffmpeg>=0.6",
   "opencv-python-headless>=4.10",
+  # ftfy + regex are pulled in by pipeline_longcat_video.py for the
+  # T5/UMT5-style prompt cleanup helpers (`fix_text` + `whitespace_clean`).
+  "ftfy>=6.2",
+  "regex>=2024.0",
+  "loguru>=0.7",
+  # Triton powers the block-sparse-attention kernels in
+  # `longcat_video/block_sparse_attention/bsa_interface.py`. On Linux torch
+  # cu128 ships triton transitively; on Windows torch has no triton wheel,
+  # so we pin `triton-windows` explicitly. Both are import-time deps even
+  # when `enable_bsa=False`, because attention.py imports
+  # `block_sparse_attention.bsa_interface` unconditionally at module top.
+  "triton>=3.0 ; sys_platform != 'win32'",
+  "triton-windows>=3.0 ; sys_platform == 'win32'",
 ]
 test = [
   "pytest>=8.0",
