@@ -313,6 +313,16 @@ def _maybe_load_distill_lora(
         return None
 
 
+def _state_config_key(
+    *, use_distill: bool, offload_mode: str, block_swap_count: int
+) -> tuple:
+    # Cache key for _STATE. Any field that materially changes how the
+    # pipeline is constructed must be in here, otherwise a second
+    # render() call w/ different knobs silently reuses the first config.
+    attn = os.environ.get("NEXUS_VIDEO_LONGCAT_ATTN", "auto").lower()
+    return (bool(use_distill), str(offload_mode), int(block_swap_count), attn)
+
+
 def _ensure_state(
     host_data_dir: Optional[str] = None,
     use_distill: bool = False,
@@ -320,8 +330,30 @@ def _ensure_state(
     block_swap_count: int = 0,
 ) -> _PipelineState:
     global _STATE
+    requested_key = _state_config_key(
+        use_distill=use_distill,
+        offload_mode=offload_mode,
+        block_swap_count=block_swap_count,
+    )
     if _STATE is not None:
-        return _STATE
+        cached_key = getattr(_STATE, "config_key", None)
+        # Reuse on match. Treat a missing config_key (legacy / test-injected
+        # state) as compatible to avoid breaking callers that hand-build the
+        # singleton.
+        if cached_key is None or cached_key == requested_key:
+            return _STATE
+        logger.warning(
+            "_ensure_state: config changed since last build "
+            "(cached=%r, requested=%r). Rebuilding pipeline state.",
+            cached_key,
+            requested_key,
+        )
+        _STATE = None
+        try:
+            import torch as _t
+            _t.cuda.empty_cache()
+        except ImportError:
+            pass
 
     import torch
 
@@ -384,6 +416,7 @@ def _ensure_state(
         dit=dit,
         lora_network=lora_network,
     )
+    _STATE.config_key = requested_key
     return _STATE
 
 
@@ -425,10 +458,27 @@ def render(
     *,
     output_dir: Optional[str] = None,
     host_data_dir: Optional[str] = None,
-    offload_mode: str = "none",
-    block_swap_count: int = 0,
+    offload_mode: Optional[str] = None,
+    block_swap_count: Optional[int] = None,
 ) -> Path:
     import torch
+
+    # Env-var overrides for operators driving the worker without modifying the
+    # call site. RPC params (offload_mode, block_swap_count) take precedence
+    # when supplied; env vars are the fallback for headless / scripted runs.
+    if offload_mode is None:
+        offload_mode = os.environ.get("NEXUS_VIDEO_LONGCAT_OFFLOAD_MODE", "none")
+    if block_swap_count is None:
+        env_swap = os.environ.get("NEXUS_VIDEO_LONGCAT_BLOCK_SWAP")
+        try:
+            block_swap_count = int(env_swap) if env_swap is not None else 0
+        except ValueError:
+            logger.warning(
+                "NEXUS_VIDEO_LONGCAT_BLOCK_SWAP=%r is not an integer; "
+                "falling back to block_swap_count=0",
+                env_swap,
+            )
+            block_swap_count = 0
 
     phase = "build_pipeline"
     try:
@@ -532,10 +582,14 @@ def _dispatch_generate(
         raw = _load_video_frames(request.conditioning_video_path)
         frames_pil = [Image.fromarray((f * 255).clip(0, 255).astype("uint8")) for f in raw]
         resolution = "720p" if request.height >= 720 else "480p"
+        # `offload_kv_cache` is already routed through attention_kwargs via
+        # `common` (see attn_kwargs build above). Passing it again as a bare
+        # kwarg here would either shadow the attention_kwargs entry or
+        # raise TypeError on generate_vc(...) signatures that don't accept
+        # it as a top-level arg. Audit 2026-05-24 caught this.
         return pipeline.generate_vc(
             video=frames_pil,
             resolution=resolution,
-            offload_kv_cache=request.offload_kv_cache,
             **common,
         )
 

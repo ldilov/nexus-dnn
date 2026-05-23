@@ -390,11 +390,43 @@ def build_dit(config: dict, vendor_dir: Path, install_device: str = "meta") -> A
 
     _patch_attention_to_split_qkv(model)
     _patch_cross_attention_to_split_kv(model)
-    # SDPA monkey-patch is only needed when no upstream attention backend
-    # is enabled. xformers / flash-attn paths run natively without our patch.
+    # SDPA / sage / flashattn2 monkey-patch is engaged only when no upstream
+    # backend (xformers / native flashattn2 / native flashattn3 / bsa) is
+    # enabled on the model itself. NEXUS_VIDEO_LONGCAT_ATTN env var picks
+    # the kernel for the monkey-patch path.
     if not _any_upstream_attn_enabled(model):
-        _patch_attention_to_use_sdpa(model)
+        import os
+
+        attn = os.environ.get("NEXUS_VIDEO_LONGCAT_ATTN", "auto").lower()
+        # Map env-var values onto monkey-patch backends. 'auto' tries sage
+        # → flashattn2 → sdpa fallback at module-load time.
+        if attn == "auto":
+            for candidate in ("sage", "flashattn2", "sdpa"):
+                if _attn_backend_importable(candidate):
+                    attn = candidate
+                    break
+        if attn not in ("sdpa", "sage", "flashattn2"):
+            attn = "sdpa"
+        _patch_attention_to_use_sdpa(model, backend=attn)
     return model
+
+
+def _attn_backend_importable(name: str) -> bool:
+    if name == "sdpa":
+        return True
+    if name == "sage":
+        try:
+            import sageattention  # noqa: F401
+            return True
+        except ImportError:
+            return False
+    if name == "flashattn2":
+        try:
+            import flash_attn  # noqa: F401
+            return True
+        except ImportError:
+            return False
+    return False
 
 
 def _any_upstream_attn_enabled(model: Any) -> bool:
@@ -412,13 +444,18 @@ def _any_upstream_attn_enabled(model: Any) -> bool:
     return False
 
 
-def _patch_attention_to_use_sdpa(model: Any) -> int:
+def _patch_attention_to_use_sdpa(model: Any, backend: str = "sdpa") -> int:
     # Upstream attention.py has no torch-native SDPA branch — it supports
     # bsa / flashattn3 / flashattn2 / xformers only, raising "Unsupported
     # attention operations." when none are enabled. We override the inner
     # kernels on every Attention + MultiHeadCrossAttention to dispatch
-    # through F.scaled_dot_product_attention so the worker can run on any
-    # CUDA device without flash-attn or xformers.
+    # through F.scaled_dot_product_attention or sageattention so the
+    # worker can run on any CUDA device without flash-attn-2 wheels.
+    #
+    # `backend` argument:
+    #   "sdpa"       — torch.nn.functional.scaled_dot_product_attention
+    #   "sage"       — sageattention.sageattn (int8 quantized attn)
+    #   "flashattn2" — flash_attn.flash_attn_func (only patches if importable)
     import types
 
     try:
@@ -427,9 +464,46 @@ def _patch_attention_to_use_sdpa(model: Any) -> int:
     except ImportError:
         return 0
 
+    sage_fn = None
+    flash_fn = None
+    if backend == "sage":
+        try:
+            from sageattention import sageattn as sage_fn  # type: ignore
+        except ImportError:
+            logger.warning(
+                "_patch_attention_to_use_sdpa: backend=sage requested but "
+                "sageattention not importable; falling back to sdpa."
+            )
+            backend = "sdpa"
+    elif backend == "flashattn2":
+        try:
+            from flash_attn import flash_attn_func as flash_fn  # type: ignore
+        except ImportError:
+            logger.warning(
+                "_patch_attention_to_use_sdpa: backend=flashattn2 requested but "
+                "flash_attn not importable; falling back to sdpa."
+            )
+            backend = "sdpa"
+
     def _sdpa_self(self: Any, q: Any, k: Any, v: Any, shape: Any) -> Any:
-        # Self-attention q/k/v shape: [B, H, S, D]. SDPA accepts directly.
+        # q/k/v shape: [B, H, S, D]. SDPA / sage / flash-attn-2 accept variants.
         scale = getattr(self, "scale", None)
+        if backend == "sage" and sage_fn is not None:
+            # sageattn expects [B, H, S, D] (HND layout) like SDPA. Returns
+            # same shape. softmax_scale not exposed in v1; v2 accepts
+            # `sm_scale=` kwarg. Try with kwarg + fall back without.
+            try:
+                return sage_fn(q, k, v, sm_scale=scale)
+            except TypeError:
+                return sage_fn(q, k, v)
+        if backend == "flashattn2" and flash_fn is not None:
+            # flash_attn expects [B, S, H, D].
+            from einops import rearrange  # noqa: F401  ensured by upstream deps
+            q2 = q.transpose(1, 2).contiguous()
+            k2 = k.transpose(1, 2).contiguous()
+            v2 = v.transpose(1, 2).contiguous()
+            out = flash_fn(q2, k2, v2, dropout_p=0.0, softmax_scale=scale)
+            return out.transpose(1, 2)
         return F.scaled_dot_product_attention(q, k, v, scale=scale)
 
     def _sdpa_cross(self: Any, x: Any, cond: Any, kv_seqlen: Any) -> Any:
