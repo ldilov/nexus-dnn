@@ -390,7 +390,104 @@ def build_dit(config: dict, vendor_dir: Path, install_device: str = "meta") -> A
 
     _patch_attention_to_split_qkv(model)
     _patch_cross_attention_to_split_kv(model)
+    # SDPA monkey-patch is only needed when no upstream attention backend
+    # is enabled. xformers / flash-attn paths run natively without our patch.
+    if not _any_upstream_attn_enabled(model):
+        _patch_attention_to_use_sdpa(model)
     return model
+
+
+def _any_upstream_attn_enabled(model: Any) -> bool:
+    for block in getattr(model, "blocks", []):
+        attn = getattr(block, "attn", None)
+        if attn is None:
+            continue
+        if (
+            getattr(attn, "enable_xformers", False)
+            or getattr(attn, "enable_flashattn2", False)
+            or getattr(attn, "enable_flashattn3", False)
+            or getattr(attn, "enable_bsa", False)
+        ):
+            return True
+    return False
+
+
+def _patch_attention_to_use_sdpa(model: Any) -> int:
+    # Upstream attention.py has no torch-native SDPA branch — it supports
+    # bsa / flashattn3 / flashattn2 / xformers only, raising "Unsupported
+    # attention operations." when none are enabled. We override the inner
+    # kernels on every Attention + MultiHeadCrossAttention to dispatch
+    # through F.scaled_dot_product_attention so the worker can run on any
+    # CUDA device without flash-attn or xformers.
+    import types
+
+    try:
+        import torch
+        import torch.nn.functional as F
+    except ImportError:
+        return 0
+
+    def _sdpa_self(self: Any, q: Any, k: Any, v: Any, shape: Any) -> Any:
+        # Self-attention q/k/v shape: [B, H, S, D]. SDPA accepts directly.
+        scale = getattr(self, "scale", None)
+        return F.scaled_dot_product_attention(q, k, v, scale=scale)
+
+    def _sdpa_cross(self: Any, x: Any, cond: Any, kv_seqlen: Any) -> Any:
+        # Cross-attn split-KV path. x: [B, N_q, C], cond: [1, sum(kv_seqlen), C].
+        # Mirrors upstream view layout (B-flattened single sequence) when
+        # all kv_seqlen entries are equal (B=1 always satisfies). For B>1
+        # with ragged kv lengths SDPA cannot model the block-diagonal mask
+        # without padding; we pad cond to max(kv_seqlen) and apply a
+        # boolean mask. Single-batch path is the common smoke / inference
+        # case.
+        B, N_q, C = x.shape
+        H, D = self.num_heads, self.head_dim
+        max_kv = max(kv_seqlen)
+
+        if B == 1 and len(kv_seqlen) == 1:
+            q = self.q(x).view(1, N_q, H, D).permute(0, 2, 1, 3)
+            k = self.k(cond).view(1, kv_seqlen[0], H, D).permute(0, 2, 1, 3)
+            v = self.v(cond).view(1, kv_seqlen[0], H, D).permute(0, 2, 1, 3)
+            q, k = self.q_norm(q), self.k_norm(k)
+            x_out = F.scaled_dot_product_attention(q, k, v)
+            x_out = x_out.permute(0, 2, 1, 3).reshape(1, N_q, C)
+            return self.proj(x_out)
+
+        # Multi-batch / ragged path: pad cond to [B, max_kv, C] then mask.
+        device = x.device
+        cond_padded = torch.zeros((B, max_kv, C), dtype=cond.dtype, device=device)
+        cond_flat = cond.view(-1, C)
+        offsets = torch.tensor([0] + list(kv_seqlen[:-1]), device="cpu").cumsum(0)
+        for b in range(B):
+            start = int(offsets[b].item())
+            end = start + int(kv_seqlen[b])
+            cond_padded[b, : kv_seqlen[b]] = cond_flat[start:end]
+
+        q = self.q(x).view(B, N_q, H, D).permute(0, 2, 1, 3)
+        k = self.k(cond_padded).view(B, max_kv, H, D).permute(0, 2, 1, 3)
+        v = self.v(cond_padded).view(B, max_kv, H, D).permute(0, 2, 1, 3)
+        q, k = self.q_norm(q), self.k_norm(k)
+
+        attn_mask = torch.zeros((B, max_kv), dtype=torch.bool, device=device)
+        for b in range(B):
+            attn_mask[b, : kv_seqlen[b]] = True
+        attn_mask = attn_mask.view(B, 1, 1, max_kv)
+
+        x_out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask)
+        x_out = x_out.permute(0, 2, 1, 3).reshape(B, N_q, C)
+        return self.proj(x_out)
+
+    patched = 0
+    for block in model.blocks:
+        attn = getattr(block, "attn", None)
+        if attn is not None and hasattr(attn, "_process_attn"):
+            attn._process_attn = types.MethodType(_sdpa_self, attn)
+            patched += 1
+        cross = getattr(block, "cross_attn", None)
+        if cross is not None and hasattr(cross, "_process_cross_attn_split"):
+            cross._process_cross_attn_split = types.MethodType(_sdpa_cross, cross)
+            patched += 1
+    return patched
 
 
 # ---------------------------------------------------------------------------

@@ -139,7 +139,7 @@ PROFILE_REPO: dict[str, list[tuple[str, list[str]]]] = {
         ),
         (
             "meituan-longcat/LongCat-Video",
-            ["vae/*", "text_encoder/*", "tokenizer/*", "scheduler/*", "model_index.json", "config.json"],
+            ["vae/*", "text_encoder/*", "tokenizer/*", "scheduler/*", "dit/config.json", "model_index.json", "config.json"],
         ),
     ],
     "rtx50-fp8-distill": [
@@ -152,7 +152,7 @@ PROFILE_REPO: dict[str, list[tuple[str, list[str]]]] = {
         ),
         (
             "meituan-longcat/LongCat-Video",
-            ["vae/*", "text_encoder/*", "tokenizer/*", "scheduler/*", "model_index.json", "config.json"],
+            ["vae/*", "text_encoder/*", "tokenizer/*", "scheduler/*", "dit/config.json", "model_index.json", "config.json"],
         ),
     ],
     "fake": [],
