@@ -789,3 +789,290 @@ def test_load_signature_does_not_accept_offload_device(
 
     sig = inspect.signature(load_native_stack_from_safetensors)
     assert "offload_device" not in sig.parameters
+
+
+def test_fp8_linear_registers_input_scale_buffer() -> None:
+    fp8 = FP8Linear(
+        in_features=4,
+        out_features=2,
+        bias=False,
+        compute_dtype=torch.bfloat16,
+        device=torch.device("cpu"),
+    )
+    assert "input_scale" in fp8._buffers
+    assert fp8.input_scale is None
+
+
+def test_fp8_linear_attach_input_scale_rejects_non_scalar() -> None:
+    fp8 = FP8Linear(
+        in_features=4,
+        out_features=2,
+        bias=False,
+        compute_dtype=torch.bfloat16,
+        device=torch.device("cpu"),
+    )
+    with pytest.raises(ValueError, match="scalar"):
+        fp8.attach_input_scale(torch.ones(4))
+    with pytest.raises(ValueError, match="scalar"):
+        fp8.attach_input_scale(torch.ones(2, 2))
+
+
+def test_fp8_linear_attach_input_scale_accepts_scalar_and_size1() -> None:
+    fp8 = FP8Linear(
+        in_features=4,
+        out_features=2,
+        bias=False,
+        compute_dtype=torch.bfloat16,
+        device=torch.device("cpu"),
+    )
+    fp8.attach_input_scale(torch.tensor(0.125))
+    assert fp8.input_scale is not None
+    assert fp8.input_scale.numel() == 1
+    fp8.attach_input_scale(torch.tensor([0.25]))
+    assert fp8.input_scale.numel() == 1
+    fp8.attach_input_scale(None)
+    assert fp8.input_scale is None
+
+
+def test_fp8_linear_can_use_scaled_mm_gates_correctly() -> None:
+    fp8 = FP8Linear(
+        in_features=4,
+        out_features=2,
+        bias=False,
+        compute_dtype=torch.bfloat16,
+        device=torch.device("cpu"),
+    )
+    fp8.weight = torch.nn.Parameter(
+        torch.zeros(2, 4, dtype=torch.float8_e4m3fn), requires_grad=False
+    )
+    assert fp8._can_use_scaled_mm() is False
+    fp8.attach_scale(torch.tensor(0.5))
+    assert fp8._can_use_scaled_mm() is False
+    fp8.attach_input_scale(torch.tensor(0.125))
+    assert fp8._can_use_scaled_mm() is True
+    fp8.attach_scale(torch.tensor([[0.1], [0.2]]))
+    assert fp8._can_use_scaled_mm() is False
+
+
+def test_fp8_linear_scaled_mm_forward_invokes_with_correct_layout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    in_f, out_f, batch = 8, 4, 2
+    fp8 = FP8Linear(
+        in_features=in_f,
+        out_features=out_f,
+        bias=True,
+        compute_dtype=torch.bfloat16,
+        device=torch.device("cpu"),
+    )
+    w = (torch.randn(out_f, in_f) * 0.05).to(torch.float8_e4m3fn)
+    fp8.weight = torch.nn.Parameter(w, requires_grad=False)
+    fp8.bias = torch.nn.Parameter(
+        torch.zeros(out_f, dtype=torch.bfloat16), requires_grad=False
+    )
+    fp8.attach_scale(torch.tensor(0.5))
+    fp8.attach_input_scale(torch.tensor(0.125))
+
+    captured: dict[str, Any] = {}
+
+    def fake_scaled_mm(
+        mat1: Any,
+        mat2: Any,
+        scale_a: Any = None,
+        scale_b: Any = None,
+        bias: Any = None,
+        out_dtype: Any = None,
+        use_fast_accum: bool = False,
+        **kwargs: Any,
+    ) -> Any:
+        captured["mat1_shape"] = tuple(mat1.shape)
+        captured["mat1_dtype"] = mat1.dtype
+        captured["mat2_shape"] = tuple(mat2.shape)
+        captured["mat2_dtype"] = mat2.dtype
+        captured["scale_a"] = scale_a
+        captured["scale_b"] = scale_b
+        captured["bias_dtype"] = bias.dtype if bias is not None else None
+        captured["out_dtype"] = out_dtype
+        captured["use_fast_accum"] = use_fast_accum
+        return torch.zeros(mat1.shape[0], mat2.shape[1], dtype=out_dtype)
+
+    monkeypatch.setattr(torch, "_scaled_mm", fake_scaled_mm, raising=False)
+
+    x = torch.randn(batch, in_f, dtype=torch.bfloat16) * 0.1
+    out = fp8(x)
+    assert out.shape == (batch, out_f)
+    assert out.dtype == torch.bfloat16
+
+    assert captured["mat1_shape"] == (batch, in_f)
+    assert captured["mat1_dtype"] == torch.float8_e4m3fn
+    assert captured["mat2_shape"] == (in_f, out_f)
+    assert captured["mat2_dtype"] == torch.float8_e4m3fn
+    assert captured["bias_dtype"] == torch.bfloat16
+    assert captured["out_dtype"] == torch.bfloat16
+    assert captured["use_fast_accum"] is False
+    assert isinstance(captured["scale_a"], torch.Tensor)
+    assert isinstance(captured["scale_b"], torch.Tensor)
+    assert captured["scale_a"].dtype == torch.float32
+    assert captured["scale_b"].dtype == torch.float32
+
+
+def test_fp8_linear_scaled_mm_forward_flattens_3d_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    in_f, out_f = 8, 4
+    fp8 = FP8Linear(
+        in_features=in_f,
+        out_features=out_f,
+        bias=False,
+        compute_dtype=torch.bfloat16,
+        device=torch.device("cpu"),
+    )
+    fp8.weight = torch.nn.Parameter(
+        (torch.randn(out_f, in_f) * 0.05).to(torch.float8_e4m3fn),
+        requires_grad=False,
+    )
+    fp8.attach_scale(torch.tensor(0.5))
+    fp8.attach_input_scale(torch.tensor(0.125))
+
+    def fake_scaled_mm(mat1: Any, mat2: Any, **kwargs: Any) -> Any:
+        return torch.zeros(
+            mat1.shape[0], mat2.shape[1], dtype=kwargs.get("out_dtype")
+        )
+
+    monkeypatch.setattr(torch, "_scaled_mm", fake_scaled_mm, raising=False)
+
+    x = torch.randn(2, 5, in_f, dtype=torch.bfloat16) * 0.1
+    out = fp8(x)
+    assert out.shape == (2, 5, out_f)
+
+
+def test_fp8_linear_falls_back_to_upcast_when_scaled_mm_unsupported(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    in_f, out_f = 8, 4
+    fp8 = FP8Linear(
+        in_features=in_f,
+        out_features=out_f,
+        bias=False,
+        compute_dtype=torch.float32,
+        device=torch.device("cpu"),
+    )
+    fp8.weight = torch.nn.Parameter(
+        (torch.randn(out_f, in_f) * 0.05).to(torch.float8_e4m3fn),
+        requires_grad=False,
+    )
+    fp8.attach_scale(torch.tensor(0.5))
+    fp8.attach_input_scale(torch.tensor(0.125))
+
+    def raising_scaled_mm(*_a: Any, **_k: Any) -> Any:
+        raise RuntimeError("scaled_mm not supported on this device")
+
+    monkeypatch.setattr(torch, "_scaled_mm", raising_scaled_mm, raising=False)
+
+    with caplog.at_level(
+        logging.WARNING, logger="ltx_video_worker.ltx2_safetensors_loader"
+    ):
+        out = fp8(torch.randn(2, in_f) * 0.1)
+    assert out.shape == (2, out_f)
+    assert any(
+        "scaled_mm" in r.message for r in caplog.records
+    ), "expected fallback warning mentioning scaled_mm"
+
+
+def test_fp8_linear_scaled_mm_propagates_non_recognized_runtimeerror(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    in_f, out_f = 4, 2
+    fp8 = FP8Linear(
+        in_features=in_f,
+        out_features=out_f,
+        bias=False,
+        compute_dtype=torch.bfloat16,
+        device=torch.device("cpu"),
+    )
+    fp8.weight = torch.nn.Parameter(
+        torch.zeros(out_f, in_f, dtype=torch.float8_e4m3fn),
+        requires_grad=False,
+    )
+    fp8.attach_scale(torch.tensor(0.5))
+    fp8.attach_input_scale(torch.tensor(0.125))
+
+    def raising(*_a: Any, **_k: Any) -> Any:
+        raise RuntimeError("totally unrelated cuda OOM")
+
+    monkeypatch.setattr(torch, "_scaled_mm", raising, raising=False)
+
+    with pytest.raises(RuntimeError, match="cuda OOM"):
+        fp8(torch.randn(1, in_f, dtype=torch.bfloat16))
+
+
+def test_install_state_dict_captures_input_scale_separately() -> None:
+    class _Parent(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.fc = torch.nn.Linear(4, 2, bias=False)
+
+    parent = _Parent()
+    fp8_w = (torch.randn(2, 4) * 0.05).to(torch.float8_e4m3fn)
+    sd = {
+        "fc.weight": fp8_w,
+        "fc.weight_scale": torch.tensor(0.5),
+        "fc.input_scale": torch.tensor(0.125),
+    }
+    sl._replace_linears_with_fp8(
+        parent, sd, compute_dtype=torch.bfloat16, device=torch.device("cpu")
+    )
+    (
+        installed,
+        skipped,
+        fp8_installed,
+        unscaled,
+        unconsumed,
+    ) = sl._install_state_dict(
+        parent,
+        sd,
+        install_device=torch.device("cpu"),
+        compute_dtype=torch.bfloat16,
+    )
+    assert fp8_installed == 1
+    assert unscaled == []
+    assert unconsumed == []
+    assert isinstance(parent.fc, FP8Linear)
+    assert parent.fc.weight_scale is not None
+    assert parent.fc.input_scale is not None
+    assert parent.fc.weight_scale.item() == pytest.approx(0.5)
+    assert parent.fc.input_scale.item() == pytest.approx(0.125)
+
+
+def test_install_state_dict_input_scale_without_weight_scale_marks_unscaled() -> None:
+    class _Parent(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.fc = torch.nn.Linear(4, 2, bias=False)
+
+    parent = _Parent()
+    fp8_w = (torch.randn(2, 4) * 0.05).to(torch.float8_e4m3fn)
+    sd = {
+        "fc.weight": fp8_w,
+        "fc.input_scale": torch.tensor(0.125),
+    }
+    sl._replace_linears_with_fp8(
+        parent, sd, compute_dtype=torch.bfloat16, device=torch.device("cpu")
+    )
+    (
+        _installed,
+        _skipped,
+        fp8_installed,
+        unscaled,
+        unconsumed,
+    ) = sl._install_state_dict(
+        parent,
+        sd,
+        install_device=torch.device("cpu"),
+        compute_dtype=torch.bfloat16,
+    )
+    assert fp8_installed == 1
+    assert "fc.weight" in unscaled
+    assert unconsumed == []
+    assert parent.fc.input_scale is not None
+    assert parent.fc.weight_scale is None
