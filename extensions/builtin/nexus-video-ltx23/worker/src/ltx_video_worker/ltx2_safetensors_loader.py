@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable
 
+import torch.nn as _nn
+
 from .gguf_loader import GGUFSchemaMismatch
 from .ltx2_native_loader import (
     _meta_param_names,
@@ -24,7 +26,15 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_OFFLOAD_MODES: tuple[str, ...] = ("none", "sequential", "group", "disk")
 
-_FP8_DTYPES: frozenset[Any] = frozenset()  # populated lazily on first use
+SCALE_SUFFIXES: tuple[str, ...] = (
+    ".scale_weight",
+    ".weight_scale",
+    ".scale",
+    ".weight_scale_inv",
+    ".input_scale",
+)
+
+_FP8_DTYPES: frozenset[Any] = frozenset()
 
 
 class SafetensorsSchemaMismatch(GGUFSchemaMismatch):
@@ -58,6 +68,17 @@ def _fp8_dtypes() -> frozenset[Any]:
 
 def _is_fp8(dtype: Any) -> bool:
     return dtype in _fp8_dtypes()
+
+
+def _has_scale_suffix(key: str) -> bool:
+    return any(key.endswith(suf) for suf in SCALE_SUFFIXES)
+
+
+def _strip_scale_suffix(key: str) -> str | None:
+    for suf in SCALE_SUFFIXES:
+        if key.endswith(suf):
+            return key[: -len(suf)]
+    return None
 
 
 def _read_safetensors_config(path: Path) -> dict[str, Any] | None:
@@ -168,16 +189,18 @@ def _validate_against_model(
     )
 
 
-class FP8Linear:
-    """nn.Linear replacement that stores fp8 weights and upcasts at forward.
+def _partition_extras(extras: list[str]) -> tuple[list[str], list[str]]:
+    scale_like: list[str] = []
+    orphan: list[str] = []
+    for k in extras:
+        if _has_scale_suffix(k) or "scale" in k.rsplit(".", 1)[-1].lower():
+            scale_like.append(k)
+        else:
+            orphan.append(k)
+    return scale_like, orphan
 
-    Wrapper rather than subclass because torch.nn.Linear's constructor
-    allocates fresh fp32 storage we would have to discard. This class
-    exposes the .weight / .bias / forward contract nn.Module consumers
-    use, plus the ._parameters / ._buffers dict mounting the state-dict
-    install loop walks.
-    """
 
+class FP8Linear(_nn.Module):
     def __init__(
         self,
         in_features: int,
@@ -186,48 +209,50 @@ class FP8Linear:
         compute_dtype: Any,
         device: Any,
     ) -> None:
+        super().__init__()
         import torch
 
         self.in_features = int(in_features)
         self.out_features = int(out_features)
         self.compute_dtype = compute_dtype
         self._device = torch.device(device)
-        self._parameters: dict[str, Any] = {}
-        self._buffers: dict[str, Any] = {}
-        self._modules: dict[str, Any] = {}
-        self._weight_scale: Any = None
-        self.training = False
+
         weight_meta = torch.empty(
             (self.out_features, self.in_features),
             dtype=torch.float8_e4m3fn,
             device="meta",
         )
-        self._parameters["weight"] = torch.nn.Parameter(
-            weight_meta, requires_grad=False
+        self.register_parameter(
+            "weight", _nn.Parameter(weight_meta, requires_grad=False)
         )
         if bias:
             bias_meta = torch.empty(
                 (self.out_features,), dtype=compute_dtype, device="meta"
             )
-            self._parameters["bias"] = torch.nn.Parameter(
-                bias_meta, requires_grad=False
+            self.register_parameter(
+                "bias", _nn.Parameter(bias_meta, requires_grad=False)
             )
         else:
-            self._parameters["bias"] = None
+            self.register_parameter("bias", None)
 
-    @property
-    def weight(self) -> Any:
-        return self._parameters["weight"]
-
-    @property
-    def bias(self) -> Any:
-        return self._parameters["bias"]
+        self.register_buffer("weight_scale", None)
 
     def attach_scale(self, scale: Any) -> None:
-        self._weight_scale = scale
-
-    def __call__(self, x: Any) -> Any:
-        return self.forward(x)
+        if scale is None:
+            self.weight_scale = None
+            return
+        if scale.ndim > 2:
+            raise ValueError(
+                f"FP8Linear.attach_scale: weight_scale must be scalar, 1D, or "
+                f"2D — got shape {tuple(scale.shape)}"
+            )
+        if scale.numel() not in (1, self.out_features):
+            raise ValueError(
+                f"FP8Linear.attach_scale: weight_scale numel "
+                f"{scale.numel()} does not match out_features="
+                f"{self.out_features} (and is not a scalar)"
+            )
+        self.weight_scale = scale
 
     def forward(self, x: Any) -> Any:
         import torch.nn.functional as F
@@ -237,18 +262,32 @@ class FP8Linear:
         if _is_fp8(w.dtype):
             try:
                 upcast = w.to(self.compute_dtype)
-                if self._weight_scale is not None:
-                    upcast = upcast * self._weight_scale.to(self.compute_dtype)
-                out = F.linear(x.to(self.compute_dtype), upcast, b)
-            except RuntimeError:
-                out = F.linear(
-                    x.to(self.compute_dtype),
-                    w.to(self.compute_dtype),
-                    b,
-                )
-        else:
-            out = F.linear(x.to(self.compute_dtype), w, b)
-        return out
+                if self.weight_scale is not None:
+                    scale = self.weight_scale.to(self.compute_dtype)
+                    if scale.ndim == 0 or scale.numel() == 1:
+                        upcast = upcast * scale
+                    else:
+                        upcast = upcast * scale.view(self.out_features, 1)
+                return F.linear(x.to(self.compute_dtype), upcast, b)
+            except RuntimeError as e:
+                msg = str(e).lower()
+                if "float8" in msg or "fp8" in msg:
+                    logger.warning(
+                        "FP8Linear.forward: fp8-related RuntimeError, "
+                        "retrying without scale: %s "
+                        "(x.shape=%s weight.shape=%s weight.dtype=%s)",
+                        e,
+                        tuple(x.shape),
+                        tuple(w.shape),
+                        w.dtype,
+                    )
+                    return F.linear(
+                        x.to(self.compute_dtype),
+                        w.to(self.compute_dtype),
+                        b,
+                    )
+                raise
+        return F.linear(x.to(self.compute_dtype), w, b)
 
 
 def _replace_linears_with_fp8(
@@ -279,7 +318,7 @@ def _replace_linears_with_fp8(
                 compute_dtype=compute_dtype,
                 device=device,
             )
-            parent._modules[child_name] = replacement
+            setattr(parent, child_name, replacement)
             swapped += 1
     return swapped
 
@@ -290,7 +329,7 @@ def _install_state_dict(
     *,
     install_device: Any,
     compute_dtype: Any,
-) -> tuple[int, int, int]:
+) -> tuple[int, int, int, list[str], list[str]]:
     import torch
     from diffusers.utils import get_module_from_name
 
@@ -298,9 +337,10 @@ def _install_state_dict(
     installed = 0
     skipped = 0
     fp8_installed = 0
+    unscaled_fp8_weights: list[str] = []
 
     for name, value in state_dict.items():
-        if name.endswith(".scale_weight") or name.endswith(".weight_scale"):
+        if _has_scale_suffix(name):
             continue
 
         try:
@@ -311,17 +351,21 @@ def _install_state_dict(
 
         is_fp8_value = _is_fp8(value.dtype)
         if is_fp8_value and isinstance(module, FP8Linear) and tensor_name == "weight":
-            module._parameters["weight"] = torch.nn.Parameter(
+            module.weight = torch.nn.Parameter(
                 value.to(install_device), requires_grad=False
             )
             base = name[: -len(".weight")]
-            for suffix in (".scale_weight", ".weight_scale"):
+            scale_attached = False
+            for suffix in SCALE_SUFFIXES:
                 scale_key = f"{base}{suffix}"
                 scale_tensor = state_dict.get(scale_key)
                 if scale_tensor is not None:
                     module.attach_scale(scale_tensor.to(install_device))
                     consumed_scales.add(scale_key)
+                    scale_attached = True
                     break
+            if not scale_attached:
+                unscaled_fp8_weights.append(name)
             fp8_installed += 1
             installed += 1
             continue
@@ -334,19 +378,30 @@ def _install_state_dict(
             casted = value.to(install_device)
 
         if isinstance(module, FP8Linear):
-            if tensor_name in module._parameters:
-                module._parameters[tensor_name] = torch.nn.Parameter(
-                    casted, requires_grad=False
-                )
+            if tensor_name == "weight":
+                module.weight = torch.nn.Parameter(casted, requires_grad=False)
+                installed += 1
+            elif tensor_name == "bias":
+                module.bias = torch.nn.Parameter(casted, requires_grad=False)
                 installed += 1
             else:
                 skipped += 1
             continue
 
+        if not isinstance(module, torch.nn.Module):
+            skipped += 1
+            continue
+
         if tensor_name in module._parameters:
-            module._parameters[tensor_name] = torch.nn.Parameter(
-                casted, requires_grad=False
-            )
+            param_obj = module._parameters.get(tensor_name)
+            if param_obj is None and not value.is_floating_point():
+                module._parameters[tensor_name] = torch.nn.Parameter(
+                    casted, requires_grad=False
+                )
+            else:
+                module._parameters[tensor_name] = torch.nn.Parameter(
+                    casted, requires_grad=False
+                )
             installed += 1
         elif tensor_name in module._buffers:
             module._buffers[tensor_name] = casted
@@ -354,16 +409,20 @@ def _install_state_dict(
         else:
             skipped += 1
 
-    return installed, skipped, fp8_installed
+    unconsumed_scales = sorted(
+        k
+        for k in state_dict
+        if k not in consumed_scales
+        and (_has_scale_suffix(k) or "scale" in k.rsplit(".", 1)[-1].lower())
+    )
+    return installed, skipped, fp8_installed, unscaled_fp8_weights, unconsumed_scales
 
 
 def _no_meta_tensors_remaining(model: Any) -> list[str]:
     return _meta_param_names(model)
 
 
-def _attach_sequential_offload(
-    model: Any, execution_device: Any, offload_device: Any
-) -> None:
+def _attach_sequential_offload(model: Any, execution_device: Any) -> None:
     from accelerate.hooks import AlignDevicesHook, add_hook_to_module
 
     blocks = _enumerate_offload_blocks(model)
@@ -383,10 +442,9 @@ def _attach_sequential_offload(
         add_hook_to_module(block, hook, append=True)
     logger.info(
         "ltx2_safetensors_loader: sequential offload attached to %d blocks "
-        "(exec=%s, off=%s)",
+        "(exec=%s, offload=cpu-pinned)",
         len(blocks),
         execution_device,
-        offload_device,
     )
 
 
@@ -407,9 +465,7 @@ def _enumerate_offload_blocks(model: Any) -> list[Any]:
     return []
 
 
-def _attach_group_offload(
-    model: Any, execution_device: Any, offload_device: Any
-) -> None:
+def _attach_group_offload(model: Any, execution_device: Any) -> None:
     from accelerate.hooks import AlignDevicesHook, add_hook_to_module
 
     hook = AlignDevicesHook(
@@ -421,9 +477,9 @@ def _attach_group_offload(
     )
     add_hook_to_module(model, hook, append=True)
     logger.info(
-        "ltx2_safetensors_loader: group offload attached (exec=%s, off=%s)",
+        "ltx2_safetensors_loader: group offload attached "
+        "(exec=%s, offload=cpu-pinned)",
         execution_device,
-        offload_device,
     )
 
 
@@ -468,7 +524,6 @@ def load_native_stack_from_safetensors(
     compute_dtype: "torch.dtype | None" = None,
     strict_schema: bool = True,
     offload_mode: str = "none",
-    offload_device: "torch.device | str" = "cpu",
     offload_folder: "str | os.PathLike | None" = None,
     logger: "logging.Logger | None" = None,
 ) -> NativeLtx2SafetensorsBundle:
@@ -517,17 +572,35 @@ def load_native_stack_from_safetensors(
     matched, missing, extra, shape_mismatches = _validate_against_model(
         state_dict, model
     )
-    if strict_schema and (missing or shape_mismatches):
+    scale_like_extras, orphan_extras = _partition_extras(extra)
+
+    if strict_schema and (missing or shape_mismatches or orphan_extras):
         raise SafetensorsSchemaMismatch(
             f"safetensors state-dict at {path} does not match the native "
             f"LTXModel schema: matched={matched}, missing="
-            f"{len(missing)}, extra={len(extra)}, "
+            f"{len(missing)}, extra={len(extra)} "
+            f"(scale-like={len(scale_like_extras)}, "
+            f"orphan={len(orphan_extras)}), "
             f"shape_mismatches={len(shape_mismatches)}. "
-            f"Sample missing={missing[:5]}, extra={extra[:5]}, "
+            f"Sample missing={missing[:5]}, orphan_extra={orphan_extras[:5]}, "
             f"shape_mismatch={shape_mismatches[:3]}. "
             "The comfy-key rename or the embedded config diverged from "
             "what this safetensors carries — re-probe before forcing a "
             "load with strict_schema=False."
+        )
+    if scale_like_extras:
+        log.warning(
+            "ltx2_safetensors_loader: %d scale-like extra keys present "
+            "(will be consumed if a matching fp8 weight installs): %s",
+            len(scale_like_extras),
+            scale_like_extras[:5],
+        )
+    if not strict_schema and orphan_extras:
+        log.warning(
+            "ltx2_safetensors_loader: strict_schema=False — %d orphan extra "
+            "keys ignored: %s",
+            len(orphan_extras),
+            orphan_extras[:5],
         )
     log.info(
         "ltx2_safetensors_loader: schema matched=%d missing=%d extra=%d "
@@ -548,7 +621,13 @@ def load_native_stack_from_safetensors(
 
     _rebind_preprocessor_modules(model)
 
-    installed, skipped, fp8_installed = _install_state_dict(
+    (
+        installed,
+        skipped,
+        fp8_installed,
+        unscaled_fp8_weights,
+        unconsumed_scales,
+    ) = _install_state_dict(
         model,
         state_dict,
         install_device=install_target,
@@ -561,6 +640,17 @@ def load_native_stack_from_safetensors(
         fp8_installed,
     )
 
+    if fp8_installed > 0 and unconsumed_scales:
+        raise SafetensorsSchemaMismatch(
+            f"safetensors at {path} carries {len(unconsumed_scales)} "
+            f"unconsumed scale keys after fp8 install — unrecognised "
+            f"suffix. Sample unconsumed_scales={unconsumed_scales[:6]}, "
+            f"unscaled_fp8_weights={unscaled_fp8_weights[:6]}. "
+            "Extend SCALE_SUFFIXES or re-export the checkpoint with a "
+            "recognised scale-key naming convention; otherwise the fp8 "
+            "weights will silently render garbage."
+        )
+
     meta_left = _no_meta_tensors_remaining(model)
     if meta_left:
         raise SafetensorsSchemaMismatch(
@@ -571,17 +661,9 @@ def load_native_stack_from_safetensors(
         )
 
     if offload_mode == "sequential":
-        _attach_sequential_offload(
-            model,
-            execution_device=install_target,
-            offload_device=torch.device(offload_device),
-        )
+        _attach_sequential_offload(model, execution_device=install_target)
     elif offload_mode == "group":
-        _attach_group_offload(
-            model,
-            execution_device=install_target,
-            offload_device=torch.device(offload_device),
-        )
+        _attach_group_offload(model, execution_device=install_target)
     elif offload_mode == "disk":
         assert offload_folder is not None
         _attach_disk_offload(
