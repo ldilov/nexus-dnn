@@ -233,6 +233,59 @@ def _patch_attention_to_split_qkv(model: Any) -> int:
             return x_out
 
         attn.forward = types.MethodType(_split_forward, attn)
+
+        # generate_vc with use_kv_cache=True calls Attention.forward_with_kv_cache
+        # which also dereferences self.qkv. Patch it to use the split linears
+        # too, otherwise continuation crashes with "'Attention' object has no
+        # attribute 'qkv'". Mirror the upstream body exactly (including the
+        # cached-batch broadcast and rope_3d pad-and-slice trick).
+        def _split_forward_with_kv_cache(
+            self: Any,
+            x: Any,
+            shape: Any = None,
+            num_cond_latents: Any = None,
+            kv_cache: Any = None,
+        ) -> Any:
+            import torch
+
+            B, N, C = x.shape
+            q = self.q(x).view(B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+            k = self.k(x).view(B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+            v = self.v(x).view(B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+            q, k = self.q_norm(q), self.k_norm(k)
+
+            T, H, W = shape
+            k_cache, v_cache = kv_cache
+            assert k_cache.shape[0] == v_cache.shape[0] and k_cache.shape[0] in [1, B]
+            if k_cache.shape[0] == 1:
+                k_cache = k_cache.repeat(B, 1, 1, 1)
+                v_cache = v_cache.repeat(B, 1, 1, 1)
+
+            if num_cond_latents is not None and num_cond_latents > 0:
+                k_full = torch.cat([k_cache, k], dim=2).contiguous()
+                v_full = torch.cat([v_cache, v], dim=2).contiguous()
+                q_padding = torch.cat(
+                    [torch.empty_like(k_cache), q], dim=2
+                ).contiguous()
+                q_padding, k_full = self.rope_3d(
+                    q_padding, k_full, (T + num_cond_latents, H, W)
+                )
+                q = q_padding[:, :, -N:].contiguous()
+            else:
+                # Upstream omits this branch (relies on num_cond_latents>0).
+                # Apply rope on current q/k and concat cache + current for KV.
+                q, k = self.rope_3d(q, k, shape)
+                k_full = torch.cat([k_cache, k], dim=2).contiguous()
+                v_full = torch.cat([v_cache, v], dim=2).contiguous()
+
+            x_out = self._process_attn(q, k_full, v_full, shape)
+            x_out = x_out.transpose(1, 2).reshape(B, N, C)
+            x_out = self.proj(x_out)
+            return x_out
+
+        attn.forward_with_kv_cache = types.MethodType(
+            _split_forward_with_kv_cache, attn
+        )
         patched += 1
 
     return patched
