@@ -473,6 +473,9 @@ diffusers = [
 flash-attn = [
     { name = "flash-attn", marker = "sys_platform == 'linux'" },
 ]
+rtx = [
+    { name = "nvidia-vfx" },
+]
 test = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -493,6 +496,7 @@ requires-dist = [
     { name = "imageio-ffmpeg", marker = "extra == 'diffusers'", specifier = ">=0.6" },
     { name = "loguru", marker = "extra == 'diffusers'", specifier = ">=0.7" },
     { name = "numpy", specifier = ">=1.26,<3.0" },
+    { name = "nvidia-vfx", marker = "extra == 'rtx'", specifier = "==0.1.0.1" },
     { name = "opencv-python-headless", marker = "extra == 'diffusers'", specifier = ">=4.10" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "protobuf", marker = "extra == 'diffusers'", specifier = ">=4" },
@@ -511,7 +515,7 @@ requires-dist = [
     { name = "triton-windows", marker = "sys_platform == 'win32' and extra == 'diffusers'", specifier = ">=3.0" },
     { name = "xformers", marker = "extra == 'diffusers'", specifier = ">=0.0.35" },
 ]
-provides-extras = ["diffusers", "flash-attn", "test"]
+provides-extras = ["diffusers", "flash-attn", "rtx", "test"]
 
 [[package]]
 name = "numpy"
@@ -701,6 +705,12 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b0/cc/314eac684677dced22b913b5d1b3d03adcbe59d6c7332c5d04f864cdb079/nvidia_nvtx-13.2.75-py3-none-manylinux1_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:2d7c24fc582d841493c6dc2cf017c25e4428cf583a3bd9e9325a65f0ecc65f73", size = 153460, upload-time = "2026-04-13T09:46:23.256Z" },
     { url = "https://files.pythonhosted.org/packages/6a/48/c02f2aa1662edaddac87e0501142a65765af8010a788b087d920a9f80fb7/nvidia_nvtx-13.2.75-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:d8e1c4a14a21d6dd4bc2fc59eb1e3f42447db40edf5d0f580c0eba5f9abb606c", size = 154291, upload-time = "2026-04-13T09:45:53.009Z" },
 ]
+
+[[package]]
+name = "nvidia-vfx"
+version = "0.1.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/37/b4/58e1bbb8d6fc9ed786564d0878314ea2f2cd458c84861a5130927e431ff6/nvidia_vfx-0.1.0.1.tar.gz", hash = "sha256:8a26bae3a967a2ce29040f17ba9d75e106f3d0c68016d440a77ed9c7eb05daae", size = 2673, upload-time = "2026-03-09T19:29:40.556Z" }
 
 [[package]]
 name = "opencv-python-headless"

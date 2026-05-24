@@ -101,6 +101,15 @@ flash_attn = [
   # Linux-only Ampere/Ada/Hopper wheels. Skipped on Windows + on Blackwell.
   "flash-attn>=2.6 ; sys_platform == 'linux'",
 ]
+# NVIDIA Maxine VFX SDK Python bindings — for post-process upscale via
+# `upscale_rtx.py`. Requires the VFX SDK runtime installed on the host
+# (Windows: NGC installer; Linux: pre-built libs) plus a Turing-class or
+# newer NVIDIA GPU with Tensor Cores. The pip package ships only the
+# Python wrapper; the C++/CUDA runtime is a separate install. Pinned to
+# 0.1.0.1 per the upstream sample requirements.txt.
+rtx = [
+  "nvidia-vfx==0.1.0.1",
+]
 test = [
   "pytest>=8.0",
   "pytest-asyncio>=0.23",
