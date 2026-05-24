@@ -336,3 +336,165 @@ def test_render_refine_requires_low_res_path() -> None:
 
     with pytest.raises(ValueError, match="low_res_video_path"):
         _dispatch_generate(req, state, None, {})
+
+
+# ---------------------------------------------------------------------------
+# Continuation loop
+# ---------------------------------------------------------------------------
+
+
+from longcat_video_worker.pipeline_longcat import _run_continuation_loop
+
+
+def _u8_frames(f: int, h: int = 8, w: int = 8) -> Any:
+    import numpy as np
+
+    return np.full((f, h, w, 3), 128, dtype=np.uint8)
+
+
+def test_continuation_target_frames_field_default_none() -> None:
+    req = LongCatRenderRequest(mode="t2v", prompt="x")
+    assert req.target_frames is None
+    assert req.continuation_overlap_frames == 13
+    assert req.continuation_enhance_hf is None
+
+
+def test_continuation_loop_one_iteration_reaches_target() -> None:
+    pipeline = MagicMock()
+    # generate_vc returns 49 frames; overlap 13 → 36 fresh per call.
+    pipeline.generate_vc.return_value = _u8_frames(49)
+    state = _make_state(pipeline)
+    req = LongCatRenderRequest(
+        mode="i2v",
+        prompt="a cat",
+        num_frames=49,
+        target_frames=80,
+        continuation_overlap_frames=13,
+    )
+
+    primary = _u8_frames(49)  # initial clip
+    out = _run_continuation_loop(
+        primary_frames=primary,
+        request=req,
+        state=state,
+        generator=None,
+        attn_kwargs={},
+    )
+
+    assert out.shape[0] == 80  # trimmed to exactly target
+    assert pipeline.generate_vc.call_count == 1
+    kw = pipeline.generate_vc.call_args.kwargs
+    assert kw["num_cond_frames"] == 13
+    assert kw["num_frames"] == 49
+    assert kw["use_kv_cache"] is True
+    assert kw["enhance_hf"] is True  # not use_distill
+    assert len(kw["video"]) == 13  # tail = overlap frames
+
+
+def test_continuation_loop_distill_disables_enhance_hf() -> None:
+    pipeline = MagicMock()
+    pipeline.generate_vc.return_value = _u8_frames(49)
+    state = _make_state(pipeline)
+    req = LongCatRenderRequest(
+        mode="i2v",
+        prompt="a cat",
+        num_frames=49,
+        use_distill=True,
+        target_frames=60,
+        continuation_overlap_frames=13,
+    )
+
+    _run_continuation_loop(
+        primary_frames=_u8_frames(49),
+        request=req,
+        state=state,
+        generator=None,
+        attn_kwargs={},
+    )
+    kw = pipeline.generate_vc.call_args.kwargs
+    assert kw["enhance_hf"] is False
+    assert kw["use_distill"] is True
+
+
+def test_continuation_loop_distill_with_explicit_enhance_hf_raises() -> None:
+    pipeline = MagicMock()
+    state = _make_state(pipeline)
+    req = LongCatRenderRequest(
+        mode="i2v",
+        prompt="a cat",
+        use_distill=True,
+        target_frames=60,
+        continuation_enhance_hf=True,
+    )
+
+    with pytest.raises(ValueError, match="mutual exclusion"):
+        _run_continuation_loop(
+            primary_frames=_u8_frames(49),
+            request=req,
+            state=state,
+            generator=None,
+            attn_kwargs={},
+        )
+
+
+def test_continuation_loop_clears_kv_cache_on_entry() -> None:
+    pipeline = MagicMock()
+    pipeline.generate_vc.return_value = _u8_frames(49)
+    state = _make_state(pipeline)
+    req = LongCatRenderRequest(
+        mode="t2v", prompt="x", num_frames=49, target_frames=60
+    )
+
+    _run_continuation_loop(
+        primary_frames=_u8_frames(49),
+        request=req,
+        state=state,
+        generator=None,
+        attn_kwargs={},
+    )
+    pipeline._clear_cache.assert_called_once()
+
+
+def test_continuation_loop_multi_iteration() -> None:
+    pipeline = MagicMock()
+    pipeline.generate_vc.return_value = _u8_frames(49)  # 36 fresh per call
+    state = _make_state(pipeline)
+    req = LongCatRenderRequest(
+        mode="t2v", prompt="x", num_frames=49, target_frames=150
+    )
+
+    out = _run_continuation_loop(
+        primary_frames=_u8_frames(49),
+        request=req,
+        state=state,
+        generator=None,
+        attn_kwargs={},
+    )
+    # initial 49 + 36*3 = 157 → trimmed to 150
+    assert out.shape[0] == 150
+    assert pipeline.generate_vc.call_count == 3
+
+
+def test_continuation_loop_breaks_on_degenerate_return() -> None:
+    pipeline = MagicMock()
+    # Return clip smaller than overlap → would loop forever
+    pipeline.generate_vc.return_value = _u8_frames(5)
+    state = _make_state(pipeline)
+    req = LongCatRenderRequest(
+        mode="t2v",
+        prompt="x",
+        num_frames=49,
+        target_frames=200,
+        continuation_overlap_frames=13,
+    )
+
+    out = _run_continuation_loop(
+        primary_frames=_u8_frames(49),
+        request=req,
+        state=state,
+        generator=None,
+        attn_kwargs={},
+    )
+    # Only initial primary kept
+    assert out.shape[0] == 49
+    assert pipeline.generate_vc.call_count == 1

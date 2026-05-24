@@ -67,6 +67,16 @@ def main() -> int:
              "Default off — keeps frame count, only spatial upscale. "
              "Enable only on cards with >=24GiB or for small draft sizes.",
     )
+    parser.add_argument(
+        "--target-seconds", type=float, default=None,
+        help="Native long-video via chained generate_vc. Implies "
+             "target_frames=ceil(target_seconds*24). Overrides single-clip output.",
+    )
+    parser.add_argument(
+        "--continuation-overlap", type=int, default=13,
+        help="Frames of overlap between continuation clips. Must satisfy "
+             "(n-1) %% vae_temporal_scale == 0 (4 for LongCat).",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -142,6 +152,12 @@ def main() -> int:
         refinement_steps=args.refine_steps,
         refinement_guidance=args.refine_guidance,
         refinement_spatial_only=args.refine_spatial_only,
+        target_frames=(
+            int(round(args.target_seconds * 24))
+            if args.target_seconds is not None
+            else None
+        ),
+        continuation_overlap_frames=args.continuation_overlap,
     )
     log.info("request: %r", request)
 
