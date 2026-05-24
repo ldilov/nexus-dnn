@@ -38,7 +38,11 @@ def main() -> int:
     parser.add_argument("--height", type=int, default=480)
     parser.add_argument("--width", type=int, default=832)
     parser.add_argument("--num-frames", type=int, default=49)
-    parser.add_argument("--steps", type=int, default=12)
+    # Default 16 = LongCat distill training step count (paper Sec. 4.2).
+    # Running below 16 with the distill LoRA produces bursty / random
+    # speed-ups in motion because the FlowMatchEuler timestep allocation
+    # is compressed beyond the LoRA's training distribution.
+    parser.add_argument("--steps", type=int, default=16)
     parser.add_argument("--guidance", type=float, default=1.0)
     parser.add_argument("--distill", action="store_true", default=True)
     parser.add_argument("--no-distill", dest="distill", action="store_false")
@@ -84,7 +88,43 @@ def main() -> int:
              '"overlap_frames": 13, "enhance_hf": null}, ...]. '
              "Mutually exclusive with --target-seconds.",
     )
+    parser.add_argument(
+        "--quality-preset",
+        choices=["distill", "balanced", "reference"],
+        default=None,
+        help=(
+            "One-shot quality preset. Sets distill/steps/guidance to a known "
+            "operating point unless those flags were passed explicitly.\n"
+            "  distill   = use_distill=True,  steps=16, guidance=1.0  (fast, default)\n"
+            "  balanced  = use_distill=False, steps=20, guidance=3.5  (mid, ~1.7x wall)\n"
+            "  reference = use_distill=False, steps=30, guidance=4.0  (best, ~2.5x wall)"
+        ),
+    )
     args = parser.parse_args()
+
+    # Apply quality preset BEFORE argparse defaults dominate. argparse
+    # cannot tell user-supplied from default-supplied, so the preset only
+    # overrides when the user left the flag at its known default value.
+    _DEFAULT_STEPS = 16
+    _DEFAULT_GUIDANCE = 1.0
+    if args.quality_preset == "distill":
+        if args.steps == _DEFAULT_STEPS:
+            args.steps = 16
+        if args.guidance == _DEFAULT_GUIDANCE:
+            args.guidance = 1.0
+        # distill defaults True via add_argument; nothing to flip.
+    elif args.quality_preset == "balanced":
+        if args.steps == _DEFAULT_STEPS:
+            args.steps = 20
+        if args.guidance == _DEFAULT_GUIDANCE:
+            args.guidance = 3.5
+        args.distill = False
+    elif args.quality_preset == "reference":
+        if args.steps == _DEFAULT_STEPS:
+            args.steps = 30
+        if args.guidance == _DEFAULT_GUIDANCE:
+            args.guidance = 4.0
+        args.distill = False
 
     logging.basicConfig(
         level=logging.INFO,
