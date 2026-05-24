@@ -55,6 +55,10 @@ class Scene:
     duration_seconds: float
     overlap_frames: int = 13
     enhance_hf: Optional[bool] = None
+    # Per-scene override of LongCatRenderRequest.adain_factor. None inherits
+    # the base value. Set 0.0 on a scene to disable colour-anchor blending
+    # for that scene specifically (e.g. an intentional lighting change).
+    adain_factor: Optional[float] = None
 
 _DISTILL_LORA_FILENAME = "LongCat_distill_lora_alpha64_bf16.safetensors"
 _REFINEMENT_LORA_FILENAME = "LongCat_refinement_lora_rank128_bf16.safetensors"
@@ -138,6 +142,14 @@ class LongCatRenderRequest:
     # RTX upscale where VRAM headroom is the priority).
     offload_mode: Optional[str] = None  # "none" | "partial" | "sequential"
     block_swap_count: Optional[int] = None
+
+    # Multiscene chaining — AdaIN colour-match factor applied to each
+    # scene-N>1 tail BEFORE it is fed into generate_vc as conditioning.
+    # 0.0 disables (= prior hard-pin behaviour). 0.1-0.3 is the usable
+    # band — higher flattens intended lighting changes. Anchor is captured
+    # from scene-1's refined tail; subsequent scenes pull their tail
+    # toward it. See chaining.adain_color_match for the math.
+    adain_factor: float = 0.0
 
 
 @dataclass
@@ -1235,10 +1247,12 @@ def _request_with_scene_overrides(
     quantised = ((raw_frames - 1) // 4) * 4 + 1
     if quantised < 5:
         quantised = 5
+    adain = base.adain_factor if scene.adain_factor is None else scene.adain_factor
     return replace(
         base,
         prompt=scene.prompt,
         num_frames=quantised,
+        adain_factor=adain,
         # Disable nested orchestration when this request is used for a
         # single scene's primary or continuation render.
         scenes=None,
@@ -1324,6 +1338,32 @@ def _run_scene_loop(
     if acc.ndim == 5:
         acc = acc[0]
 
+    # Capture the colour anchor from the refined scene-1 output. Used by
+    # scene-N>1 AdaIN to cap per-channel drift across the chain. Computed
+    # on uint8 RGB so it matches the units we pass into generate_vc.
+    color_anchor = None
+    if any(
+        (s.adain_factor if s.adain_factor is not None else request.adain_factor) > 0
+        for s in scenes[1:]
+    ):
+        from .chaining import compute_color_anchor
+
+        anchor_src = acc
+        if anchor_src.dtype.kind == "f":
+            anchor_u8 = (np.clip(anchor_src, 0.0, 1.0) * 255.0).round().astype(np.uint8)
+        else:
+            anchor_u8 = (
+                anchor_src.astype(np.uint8)
+                if anchor_src.dtype != np.uint8
+                else anchor_src
+            )
+        color_anchor = compute_color_anchor(anchor_u8)
+        logger.info(
+            "_run_scene_loop: captured color anchor mean=%s std=%s",
+            np.round(color_anchor[0], 2).tolist(),
+            np.round(color_anchor[1], 2).tolist(),
+        )
+
     for idx, scene in enumerate(scenes[1:], start=2):
         scene_req = _request_with_scene_overrides(request, scene)
         overlap = max(1, scene.overlap_frames)
@@ -1358,6 +1398,24 @@ def _run_scene_loop(
             tail_u8 = (np.clip(tail, 0.0, 1.0) * 255.0).round().astype(np.uint8)
         else:
             tail_u8 = tail.astype(np.uint8) if tail.dtype != np.uint8 else tail
+
+        if color_anchor is not None and scene_req.adain_factor > 0:
+            from .chaining import adain_color_match
+
+            pre_mean = tail_u8.astype(np.float32).mean(axis=(0, 1, 2))
+            tail_u8 = adain_color_match(
+                tail_u8, color_anchor, factor=scene_req.adain_factor
+            )
+            post_mean = tail_u8.astype(np.float32).mean(axis=(0, 1, 2))
+            logger.info(
+                "_run_scene_loop scene=%d: AdaIN factor=%.2f anchor_mean=%s "
+                "pre_mean=%s post_mean=%s",
+                idx, scene_req.adain_factor,
+                np.round(color_anchor[0], 1).tolist(),
+                np.round(pre_mean, 1).tolist(),
+                np.round(post_mean, 1).tolist(),
+            )
+
         tail_pil = [Image.fromarray(f, mode="RGB") for f in tail_u8]
 
         logger.info(
