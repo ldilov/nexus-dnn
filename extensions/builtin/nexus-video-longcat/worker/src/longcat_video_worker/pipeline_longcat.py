@@ -1279,7 +1279,11 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
         if use_distill:
             params.setdefault("use_distill", True)
             params.setdefault("guidance_scale", 1.0)
-            params.setdefault("num_inference_steps", 12)
+            # 16 = distill LoRA training step count (LongCat paper Sec. 4.2).
+            # Running below this with distill produces bursty motion pacing
+            # because FlowMatchEuler timestep allocation is compressed past
+            # the LoRA's training distribution.
+            params.setdefault("num_inference_steps", 16)
 
         request = LongCatRenderRequest(
             mode=params.get("mode", "t2v"),
