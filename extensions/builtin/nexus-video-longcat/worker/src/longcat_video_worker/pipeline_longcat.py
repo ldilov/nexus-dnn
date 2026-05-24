@@ -71,6 +71,22 @@ class LongCatRenderRequest:
     # was rendered at a much smaller spatial resolution.
     refinement_spatial_only: bool = True
 
+    # Native long-video via upstream generate_vc(use_kv_cache=True).
+    # When target_frames > num_frames, the primary t2v/i2v render is
+    # extended by chained generate_vc calls. Each call adds
+    # `num_frames - continuation_overlap_frames` fresh frames. Stops once
+    # accumulated frame count >= target_frames (last clip may overshoot
+    # slightly; output is trimmed to exactly target_frames).
+    #
+    # Constraints upstream enforces:
+    #   * (num_frames - 1) % vae_scale_factor_temporal == 0
+    #   * continuation_overlap_frames must follow the same modulo
+    #   * use_distill and enhance_hf are MUTUALLY EXCLUSIVE — when
+    #     use_distill=True the loop forces enhance_hf=False
+    target_frames: Optional[int] = None
+    continuation_overlap_frames: int = 13
+    continuation_enhance_hf: Optional[bool] = None  # None = auto (= not use_distill)
+
 
 @dataclass
 class _PipelineState:
@@ -650,6 +666,29 @@ def render(
     except Exception as exc:
         raise _PipelineError("generate", str(exc)) from exc
 
+    if request.target_frames is not None and request.mode in ("t2v", "i2v", "vc"):
+        import numpy as np
+
+        arr = np.asarray(frames)
+        if arr.ndim == 5:
+            arr = arr[0]
+        if arr.shape[0] < request.target_frames:
+            phase = "continuation"
+            try:
+                frames = _run_continuation_loop(
+                    primary_frames=arr,
+                    request=request,
+                    state=state,
+                    generator=generator,
+                    attn_kwargs=attn_kwargs,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "continuation loop failed (%s); returning primary clip only",
+                    exc,
+                )
+                frames = arr
+
     if request.apply_refinement and request.mode in ("t2v", "i2v"):
         # Two-stage quality pass: write draft to a temp MP4 + run
         # generate_refine on it. Refinement LoRA + low-CFG few-step
@@ -810,6 +849,136 @@ def _maybe_load_refinement_lora(
     except Exception as exc:
         logger.warning("_maybe_load_refinement_lora: failed (%s)", exc)
         return None
+
+
+def _run_continuation_loop(
+    *,
+    primary_frames: Any,
+    request: LongCatRenderRequest,
+    state: _PipelineState,
+    generator: Any,
+    attn_kwargs: dict[str, Any],
+) -> Any:
+    # Native long-video orchestration: chain generate_vc(use_kv_cache=True)
+    # calls until total frame count reaches request.target_frames.
+    #
+    # Each iteration:
+    #   1. Take last `overlap` frames of accumulated output as cond video
+    #      (list of PIL Images — upstream signature).
+    #   2. Call generate_vc with num_cond_frames=overlap, num_frames=req.num_frames.
+    #   3. Drop the first `overlap` frames of the returned clip (= the
+    #      conditioning frames upstream regenerates verbatim).
+    #   4. Concat fresh frames to accumulator.
+    #
+    # Clears KV-cache on entry only; subsequent calls reuse cache across
+    # the chain for temporal coherence. Final accumulator trimmed to
+    # exactly target_frames.
+    import numpy as np
+    from PIL import Image
+
+    pipeline = state.pipeline
+    overlap = request.continuation_overlap_frames
+    target = request.target_frames
+    assert target is not None, "_run_continuation_loop called without target_frames"
+
+    if overlap <= 0:
+        raise ValueError(
+            f"continuation_overlap_frames must be > 0, got {overlap}"
+        )
+
+    enhance_hf = (
+        request.continuation_enhance_hf
+        if request.continuation_enhance_hf is not None
+        else (not request.use_distill)
+    )
+    if request.use_distill and enhance_hf:
+        raise ValueError(
+            "use_distill=True is incompatible with continuation_enhance_hf=True "
+            "(upstream asserts mutual exclusion). Set continuation_enhance_hf=False."
+        )
+
+    resolution = "720p" if request.height >= 720 else "480p"
+
+    if hasattr(pipeline, "_clear_cache"):
+        try:
+            pipeline._clear_cache()
+        except Exception as exc:
+            logger.warning("_clear_cache failed (%s); proceeding anyway", exc)
+
+    acc = np.asarray(primary_frames)
+    if acc.ndim == 5:
+        acc = acc[0]
+
+    iteration = 0
+    while acc.shape[0] < target:
+        iteration += 1
+        tail = acc[-overlap:]
+        if tail.dtype.kind == "f":
+            tail_u8 = (np.clip(tail, 0.0, 1.0) * 255.0).round().astype(np.uint8)
+        else:
+            tail_u8 = tail.astype(np.uint8) if tail.dtype != np.uint8 else tail
+        tail_pil = [Image.fromarray(f, mode="RGB") for f in tail_u8]
+
+        logger.info(
+            "_run_continuation_loop iter=%d: acc=%d target=%d overlap=%d "
+            "calling generate_vc(num_frames=%d enhance_hf=%s use_distill=%s)",
+            iteration,
+            acc.shape[0],
+            target,
+            overlap,
+            request.num_frames,
+            enhance_hf,
+            request.use_distill,
+        )
+
+        new_clip = pipeline.generate_vc(
+            video=tail_pil,
+            prompt=request.prompt,
+            negative_prompt=request.negative_prompt,
+            resolution=resolution,
+            num_frames=request.num_frames,
+            num_cond_frames=overlap,
+            num_inference_steps=request.num_inference_steps,
+            use_distill=request.use_distill,
+            guidance_scale=request.guidance_scale,
+            generator=generator,
+            max_sequence_length=request.max_sequence_length,
+            attention_kwargs=attn_kwargs if attn_kwargs else None,
+            use_kv_cache=True,
+            offload_kv_cache=request.offload_kv_cache,
+            enhance_hf=enhance_hf,
+        )
+
+        new_arr = np.asarray(new_clip)
+        if new_arr.ndim == 5:
+            new_arr = new_arr[0]
+        if new_arr.shape[0] <= overlap:
+            logger.warning(
+                "_run_continuation_loop iter=%d: generate_vc returned %d frames "
+                "(<= overlap %d); breaking to avoid infinite loop",
+                iteration,
+                new_arr.shape[0],
+                overlap,
+            )
+            break
+        fresh = new_arr[overlap:]
+        acc = np.concatenate([acc, fresh], axis=0)
+        logger.info(
+            "_run_continuation_loop iter=%d done: added %d fresh frames "
+            "(total=%d)",
+            iteration,
+            fresh.shape[0],
+            acc.shape[0],
+        )
+
+    if acc.shape[0] > target:
+        acc = acc[:target]
+    logger.info(
+        "_run_continuation_loop complete: iterations=%d total_frames=%d",
+        iteration,
+        acc.shape[0],
+    )
+    return acc
 
 
 def _dispatch_generate(
