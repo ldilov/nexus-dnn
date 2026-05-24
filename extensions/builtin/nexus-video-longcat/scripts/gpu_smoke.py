@@ -99,6 +99,15 @@ def main() -> int:
              "Enable only on cards with >=24GiB or for small draft sizes.",
     )
     parser.add_argument(
+        "--force-refine-with-upscale",
+        action="store_true",
+        default=False,
+        help="Run BOTH refinement pass AND RTX upscale. Default is "
+             "RTX-only when --upscale is set (refinement spills past "
+             "16 GiB on Blackwell). Enable only when draft res is small "
+             "(<=384p) or card has >=24 GiB headroom.",
+    )
+    parser.add_argument(
         "--target-seconds", type=float, default=None,
         help="Native long-video via chained generate_vc. Implies "
              "target_frames=ceil(target_seconds*24). Overrides single-clip output.",
@@ -273,6 +282,7 @@ def main() -> int:
         scenes=scenes_value,
         rtx_upscale_scale=(args.upscale or None),
         rtx_upscale_quality=args.upscale_quality,
+        force_refinement_with_upscale=args.force_refine_with_upscale,
     )
     log.info("request: %r", request)
 
