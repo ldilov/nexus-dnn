@@ -123,6 +123,12 @@ class LongCatRenderRequest:
     # gate is logged and the un-upscaled frames are written instead.
     rtx_upscale_scale: Optional[int] = None
     rtx_upscale_quality: str = "HIGH"
+    # Opt-in: keep model-based refinement pass even when RTX upscale is
+    # set. Default False because dual-LoRA refinement at 720p spills past
+    # 16 GiB on Blackwell (see embrace cycle 2026-05-24). Enable only
+    # when running smaller drafts (e.g. 384p) where the refinement
+    # latent footprint fits OR on cards with >=24 GiB headroom.
+    force_refinement_with_upscale: bool = False
 
     # Per-render offload + cache overrides. When None, the values fall
     # back to NEXUS_VIDEO_LONGCAT_OFFLOAD_MODE / NEXUS_VIDEO_LONGCAT_BLOCK_SWAP
@@ -746,6 +752,7 @@ def render(
     except Exception as exc:
         raise _PipelineError("generate", str(exc)) from exc
 
+    scenes_path_refined = False
     if request.scenes is not None and len(request.scenes) > 1:
         phase = "scenes"
         try:
@@ -755,7 +762,9 @@ def render(
                 state=state,
                 generator=generator,
                 attn_kwargs=attn_kwargs,
+                host_data_dir=host_data_dir,
             )
+            scenes_path_refined = bool(request.apply_refinement)
         except Exception as exc:
             logger.warning(
                 "scene loop failed (%s); returning first-scene clip only", exc
@@ -795,22 +804,39 @@ def render(
         request.apply_refinement
         and request.rtx_upscale_scale is not None
         and request.rtx_upscale_scale > 1
+        and not request.force_refinement_with_upscale
     )
     if skip_refine_for_rtx:
         logger.info(
             "skipping refinement pass: rtx_upscale_scale=%d is the spatial "
-            "polish stage (refinement would double DiT latents + spill VRAM)",
+            "polish stage (refinement would double DiT latents + spill VRAM); "
+            "set force_refinement_with_upscale=True to keep both passes",
             request.rtx_upscale_scale,
+        )
+    elif (
+        request.apply_refinement
+        and request.rtx_upscale_scale is not None
+        and request.rtx_upscale_scale > 1
+        and request.force_refinement_with_upscale
+    ):
+        logger.info(
+            "force_refinement_with_upscale=True: running refinement pass "
+            "BEFORE rtx upscale (model polish at draft res, then RTX scale)",
         )
 
     if (
         request.apply_refinement
         and request.mode in ("t2v", "i2v")
         and not skip_refine_for_rtx
+        and not scenes_path_refined
     ):
         # Two-stage quality pass: write draft to a temp MP4 + run
         # generate_refine on it. Refinement LoRA + low-CFG few-step
         # second pass cleans up distill smudge + 720p artifacts.
+        #
+        # Skipped when scenes mode already refined each clip in-flight
+        # (refining the joined output would over-process the boundaries
+        # AND spill VRAM at >49 frame counts).
         phase = "refinement"
         try:
             frames = _run_refinement_pass(
@@ -826,6 +852,11 @@ def render(
                 "refinement pass failed (%s); falling back to draft frames",
                 exc,
             )
+    elif scenes_path_refined:
+        logger.info(
+            "skipping global refinement: scenes mode already refined "
+            "each clip in-flight",
+        )
 
     if (
         request.rtx_upscale_scale is not None
@@ -894,11 +925,53 @@ def _run_refinement_pass(
     import numpy as np
     from PIL import Image
 
+    # FU-LORA-DETACH (2026-05-24): the distill LoRA loaded earlier sits on
+    # GPU consuming ~5 GiB of bf16 rank-128 LoRA tensors. Refinement
+    # loads a SECOND rank-128 LoRA on top, stacking dual-LoRA to ~10 GiB
+    # of pure LoRA tensors + 720p activations + DiT residency → spills
+    # past 16 GiB on Blackwell.
+    #
+    # Move distill LoRA params to CPU before loading refinement; restore
+    # in the finally block so subsequent renders in the same _PipelineState
+    # retain it. set_use_lora(False) + .to('cpu') is safe even if the
+    # LoRA is wired into DiT forward (use_lora gate skips the hook
+    # before any device-mismatched op runs).
+    import torch as _torch
+
+    distill_was_resident = False
+    distill_was_active = False
+    if state.lora_network is not None:
+        try:
+            distill_was_active = bool(getattr(state.lora_network, "use_lora", True))
+            if hasattr(state.lora_network, "set_use_lora"):
+                state.lora_network.set_use_lora(False)
+            state.lora_network.to("cpu")
+            distill_was_resident = True
+            _torch.cuda.empty_cache()
+            logger.info(
+                "_run_refinement_pass: distill LoRA detached to CPU (use_lora=%s -> False) "
+                "before loading refinement LoRA",
+                distill_was_active,
+            )
+        except Exception as exc:
+            logger.warning(
+                "distill LoRA detach failed (%s); proceeding anyway", exc
+            )
+
     refinement_net = _maybe_load_refinement_lora(state.dit, host_data_dir, state.vendor_dir)
     if refinement_net is None:
         logger.warning(
             "_run_refinement_pass: refinement LoRA not loaded; skipping pass."
         )
+        # Re-attach distill before bailing out so the next render is not
+        # left with the LoRA stranded on CPU.
+        if distill_was_resident and state.lora_network is not None:
+            try:
+                state.lora_network.to(state.device)
+                if hasattr(state.lora_network, "set_use_lora"):
+                    state.lora_network.set_use_lora(distill_was_active)
+            except Exception as exc:
+                logger.warning("distill LoRA re-attach failed (%s)", exc)
         return draft_frames
 
     arr = np.asarray(draft_frames)
@@ -921,29 +994,53 @@ def _run_refinement_pass(
         request.refinement_steps,
     )
 
-    # generate_refine accepts: image, video, prompt, stage1_video,
-    # num_cond_frames, num_inference_steps, num_videos_per_prompt,
-    # generator, latents, output_type, return_dict, attention_kwargs,
-    # max_sequence_length, t_thresh, spatial_refine_only.
-    # NOT accepted: negative_prompt, num_frames, use_distill, guidance_scale.
-    refined = state.pipeline.generate_refine(
-        stage1_video=pil_frames,
-        prompt=request.prompt,
-        num_inference_steps=request.refinement_steps,
-        generator=generator,
-        max_sequence_length=request.max_sequence_length,
-        attention_kwargs=attn_kwargs if attn_kwargs else None,
-        spatial_refine_only=request.refinement_spatial_only,
-    )
-
-    # Best-effort LoRA detach so subsequent renders don't carry it.
     try:
-        if hasattr(refinement_net, "unapply"):
-            refinement_net.unapply()
-        elif hasattr(refinement_net, "detach"):
-            refinement_net.detach()
-    except Exception as exc:
-        logger.warning("refinement LoRA detach failed: %s", exc)
+        # generate_refine accepts: image, video, prompt, stage1_video,
+        # num_cond_frames, num_inference_steps, num_videos_per_prompt,
+        # generator, latents, output_type, return_dict, attention_kwargs,
+        # max_sequence_length, t_thresh, spatial_refine_only.
+        # NOT accepted: negative_prompt, num_frames, use_distill, guidance_scale.
+        refined = state.pipeline.generate_refine(
+            stage1_video=pil_frames,
+            prompt=request.prompt,
+            num_inference_steps=request.refinement_steps,
+            generator=generator,
+            max_sequence_length=request.max_sequence_length,
+            attention_kwargs=attn_kwargs if attn_kwargs else None,
+            spatial_refine_only=request.refinement_spatial_only,
+        )
+    finally:
+        # Best-effort refinement-LoRA detach so subsequent renders don't
+        # carry it. Move refinement tensors off GPU regardless of how
+        # the pass exited (success, OOM, or any other exception).
+        try:
+            refinement_net.to("cpu")
+        except Exception as exc:
+            logger.warning("refinement LoRA -> cpu failed: %s", exc)
+        try:
+            if hasattr(refinement_net, "unapply"):
+                refinement_net.unapply()
+            elif hasattr(refinement_net, "detach"):
+                refinement_net.detach()
+        except Exception as exc:
+            logger.warning("refinement LoRA unapply failed: %s", exc)
+        del refinement_net
+        _torch.cuda.empty_cache()
+
+        # Re-attach distill LoRA to GPU for the next render. Skipped on
+        # the bail-out path above; only fires when refinement actually ran.
+        if distill_was_resident and state.lora_network is not None:
+            try:
+                state.lora_network.to(state.device)
+                if hasattr(state.lora_network, "set_use_lora"):
+                    state.lora_network.set_use_lora(distill_was_active)
+                logger.info(
+                    "_run_refinement_pass: distill LoRA re-attached to %s "
+                    "(use_lora=%s)",
+                    state.device, distill_was_active,
+                )
+            except Exception as exc:
+                logger.warning("distill LoRA re-attach failed (%s)", exc)
 
     return refined
 
@@ -1156,6 +1253,7 @@ def _run_scene_loop(
     state: _PipelineState,
     generator: Any,
     attn_kwargs: dict[str, Any],
+    host_data_dir: Optional[str] = None,
 ) -> Any:
     # Multi-scene chained render. Each scene after the first calls
     # generate_vc with use_kv_cache=False — the KV cache is cleared
@@ -1165,6 +1263,15 @@ def _run_scene_loop(
     # Accumulator semantics: scene N contributes `quantised_frames - overlap`
     # fresh frames (the leading `overlap` frames upstream regenerates
     # verbatim and are dropped from the output).
+    #
+    # Per-scene refinement (2026-05-24): when request.apply_refinement is
+    # True, refinement is applied to EACH rendered clip in-flight, BEFORE
+    # the overlap-drop concat. Refining a 49-57 frame clip at 720p fits
+    # in 16 GiB after distill-detach; refining the JOINED 97-frame output
+    # spilled past the budget. The refined tail also becomes a
+    # higher-quality cond input for the next scene's generate_vc.
+    # render() skips its global refinement call when scenes refinement
+    # has already run.
     import numpy as np
     from PIL import Image
 
@@ -1175,7 +1282,45 @@ def _run_scene_loop(
 
     resolution = "720p" if request.height >= 720 else "480p"
 
+    do_refine = bool(request.apply_refinement)
+
+    def _maybe_refine(clip_frames: Any, scene_idx: int, scene_obj: Any) -> Any:
+        if not do_refine:
+            return clip_frames
+        scene_request = _request_with_scene_overrides(request, scene_obj)
+        logger.info(
+            "_run_scene_loop scene=%d: per-scene refinement pass "
+            "(%d frames, %d step)",
+            scene_idx,
+            np.asarray(clip_frames).shape[0],
+            request.refinement_steps,
+        )
+        try:
+            return _run_refinement_pass(
+                draft_frames=clip_frames,
+                request=scene_request,
+                state=state,
+                host_data_dir=host_data_dir,
+                generator=generator,
+                attn_kwargs=attn_kwargs,
+            )
+        except Exception as exc:
+            logger.warning(
+                "_run_scene_loop scene=%d: per-scene refinement failed "
+                "(%s); using draft clip",
+                scene_idx, exc,
+            )
+            return clip_frames
+
     acc = np.asarray(primary_frames)
+    if acc.ndim == 5:
+        acc = acc[0]
+
+    # Refine scene 1 (the initial t2v/i2v primary) before scene 2 reads
+    # its tail. The first scene gets the same per-clip refinement
+    # treatment as the rest so the entire output is consistent quality.
+    acc = _maybe_refine(acc, 1, scenes[0])
+    acc = np.asarray(acc)
     if acc.ndim == 5:
         acc = acc[0]
 
@@ -1253,6 +1398,17 @@ def _run_scene_loop(
                 idx, new_arr.shape[0], overlap,
             )
             break
+
+        # Per-scene refinement: refine the FULL clip (overlap + fresh)
+        # so the refined tail can serve as cond input for the NEXT
+        # scene's generate_vc — even though the overlap region is
+        # dropped from `acc`, the refined version of the fresh portion
+        # is what carries forward.
+        new_arr = _maybe_refine(new_arr, idx, scene)
+        new_arr = np.asarray(new_arr)
+        if new_arr.ndim == 5:
+            new_arr = new_arr[0]
+
         fresh = new_arr[overlap:]
         acc = np.concatenate([acc, fresh], axis=0)
         logger.info(
