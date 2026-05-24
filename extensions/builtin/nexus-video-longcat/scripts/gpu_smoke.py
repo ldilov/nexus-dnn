@@ -121,8 +121,17 @@ def main() -> int:
         "--scenes-json", default=None,
         help="Path to JSON file with multi-scene composition. Format: "
              '[{"prompt": "...", "duration_seconds": 4.0, '
-             '"overlap_frames": 13, "enhance_hf": null}, ...]. '
+             '"overlap_frames": 13, "enhance_hf": null, '
+             '"adain_factor": 0.2}, ...]. '
              "Mutually exclusive with --target-seconds.",
+    )
+    parser.add_argument(
+        "--adain-factor", type=float, default=0.0,
+        help="Multiscene AdaIN colour anchor blend (0.0-1.0). 0 disables. "
+             "0.1-0.3 caps per-channel drift across scene chain. Scene-1's "
+             "refined tail is the anchor; subsequent scene tails are pulled "
+             "toward its mean/std before being fed into generate_vc. "
+             "Per-scene override via scenes JSON `adain_factor` field.",
     )
     parser.add_argument(
         "--upscale",
@@ -235,6 +244,11 @@ def main() -> int:
                 duration_seconds=float(item["duration_seconds"]),
                 overlap_frames=int(item.get("overlap_frames", 13)),
                 enhance_hf=item.get("enhance_hf"),
+                adain_factor=(
+                    float(item["adain_factor"])
+                    if "adain_factor" in item and item["adain_factor"] is not None
+                    else None
+                ),
             )
             for item in raw
         ]
@@ -283,6 +297,7 @@ def main() -> int:
         rtx_upscale_scale=(args.upscale or None),
         rtx_upscale_quality=args.upscale_quality,
         force_refinement_with_upscale=args.force_refine_with_upscale,
+        adain_factor=args.adain_factor,
     )
     log.info("request: %r", request)
 
