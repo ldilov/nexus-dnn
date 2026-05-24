@@ -77,6 +77,13 @@ def main() -> int:
         help="Frames of overlap between continuation clips. Must satisfy "
              "(n-1) %% vae_temporal_scale == 0 (4 for LongCat).",
     )
+    parser.add_argument(
+        "--scenes-json", default=None,
+        help="Path to JSON file with multi-scene composition. Format: "
+             '[{"prompt": "...", "duration_seconds": 4.0, '
+             '"overlap_frames": 13, "enhance_hf": null}, ...]. '
+             "Mutually exclusive with --target-seconds.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -114,12 +121,34 @@ def main() -> int:
     try:
         from longcat_video_worker.pipeline_longcat import (
             LongCatRenderRequest,
+            Scene,
             render,
         )
     except ImportError as e:
         log.error("worker import failed: %s", e)
         traceback.print_exc()
         return 1
+
+    scenes_value = None
+    if args.scenes_json:
+        import json as _json
+
+        scenes_path = Path(args.scenes_json)
+        if not scenes_path.is_file():
+            log.error("scenes JSON not found: %s", scenes_path)
+            return 2
+        with scenes_path.open("r", encoding="utf-8") as fh:
+            raw = _json.load(fh)
+        scenes_value = [
+            Scene(
+                prompt=item["prompt"],
+                duration_seconds=float(item["duration_seconds"]),
+                overlap_frames=int(item.get("overlap_frames", 13)),
+                enhance_hf=item.get("enhance_hf"),
+            )
+            for item in raw
+        ]
+        log.info("loaded %d scenes from %s", len(scenes_value), scenes_path)
 
     if args.mode == "i2v" and not args.image:
         log.error("--mode i2v requires --image <path>")
@@ -158,6 +187,7 @@ def main() -> int:
             else None
         ),
         continuation_overlap_frames=args.continuation_overlap,
+        scenes=scenes_value,
     )
     log.info("request: %r", request)
 
