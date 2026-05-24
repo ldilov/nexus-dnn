@@ -64,6 +64,12 @@ class LongCatRenderRequest:
     apply_refinement: bool = False
     refinement_steps: int = 12
     refinement_guidance: float = 1.0
+    # Default True: keep draft frame count, only spatial upscale. Doubling
+    # frame count via temporal interp roughly doubles DiT latent VRAM and
+    # spills past 16 GiB on RTX 5070 Ti at 480p draft → 720p refine even
+    # with block-swap=46. Flip False only when card has slack OR draft
+    # was rendered at a much smaller spatial resolution.
+    refinement_spatial_only: bool = True
 
 
 @dataclass
@@ -695,12 +701,16 @@ def _run_refinement_pass(
     attn_kwargs: dict[str, Any],
 ) -> Any:
     # Stage 2: refinement LoRA + low-CFG few-step generate_refine on the
-    # draft frames. The refinement LoRA is purpose-built for this pass
-    # and must NOT be merged into FP8 weights (Kijai rule). Apply
-    # additively before generate_refine and remove after to keep the
-    # base DiT clean for subsequent renders.
+    # draft frames. Refinement LoRA is purpose-built for this pass and
+    # must NOT be merged into FP8 weights (Kijai rule). Apply additively
+    # before generate_refine and remove after.
+    #
+    # Upstream `generate_refine(stage1_video=...)` type hint says `Optional[str]`
+    # but the body calls `.height`/`.width` on `stage1_video[0]` and runs
+    # `np.array(stage1_video)` on the iterable — i.e. it expects a list
+    # of PIL Images, not a file path. Type hint is wrong upstream.
     import numpy as np
-    import tempfile as _tempfile
+    from PIL import Image
 
     refinement_net = _maybe_load_refinement_lora(state.dit, host_data_dir, state.vendor_dir)
     if refinement_net is None:
@@ -712,21 +722,21 @@ def _run_refinement_pass(
     arr = np.asarray(draft_frames)
     if arr.ndim == 5:
         arr = arr[0]
+    if arr.dtype != np.uint8:
+        arr = np.clip(arr, 0.0, 1.0) if arr.dtype.kind == "f" and arr.max() <= 1.0 else arr
+        if arr.dtype.kind == "f":
+            arr = (arr * 255.0).round().clip(0, 255).astype(np.uint8)
+        else:
+            arr = arr.astype(np.uint8)
 
-    # generate_refine accepts a file path OR a numpy array per upstream.
-    # Write the draft to a temp MP4 so we can pass a stable input.
-    from .ffmpeg_io import write_video_frames
-
-    tmp = Path(_tempfile.mkdtemp(prefix="nexus_longcat_refine_"))
-    draft_path = tmp / "draft.mp4"
-    write_video_frames(arr, fps=24, path=draft_path)
+    pil_frames = [Image.fromarray(frame, mode="RGB") for frame in arr]
 
     logger.info(
-        "_run_refinement_pass: running generate_refine on %s (%d frames, %dx%d)",
-        draft_path,
-        arr.shape[0],
+        "_run_refinement_pass: running generate_refine (%d frames, %dx%d, %d-step)",
+        len(pil_frames),
         arr.shape[2],
         arr.shape[1],
+        request.refinement_steps,
     )
 
     # generate_refine accepts: image, video, prompt, stage1_video,
@@ -735,12 +745,13 @@ def _run_refinement_pass(
     # max_sequence_length, t_thresh, spatial_refine_only.
     # NOT accepted: negative_prompt, num_frames, use_distill, guidance_scale.
     refined = state.pipeline.generate_refine(
-        stage1_video=str(draft_path),
+        stage1_video=pil_frames,
         prompt=request.prompt,
         num_inference_steps=request.refinement_steps,
         generator=generator,
         max_sequence_length=request.max_sequence_length,
         attention_kwargs=attn_kwargs if attn_kwargs else None,
+        spatial_refine_only=request.refinement_spatial_only,
     )
 
     # Best-effort LoRA detach so subsequent renders don't carry it.

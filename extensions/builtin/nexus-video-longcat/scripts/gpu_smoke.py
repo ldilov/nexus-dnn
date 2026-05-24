@@ -58,6 +58,15 @@ def main() -> int:
         "--refine-guidance", type=float, default=1.0,
         help="guidance_scale for the refinement pass",
     )
+    parser.add_argument(
+        "--refine-temporal",
+        dest="refine_spatial_only",
+        action="store_false",
+        default=True,
+        help="Double frame count via temporal interp during refinement. "
+             "Default off — keeps frame count, only spatial upscale. "
+             "Enable only on cards with >=24GiB or for small draft sizes.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -132,6 +141,7 @@ def main() -> int:
         apply_refinement=args.refine,
         refinement_steps=args.refine_steps,
         refinement_guidance=args.refine_guidance,
+        refinement_spatial_only=args.refine_spatial_only,
     )
     log.info("request: %r", request)
 
