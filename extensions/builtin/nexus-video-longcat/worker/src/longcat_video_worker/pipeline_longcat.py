@@ -116,6 +116,14 @@ class LongCatRenderRequest:
     # bleed). Mutually exclusive with target_frames — set one or the other.
     scenes: Optional[list[Scene]] = None
 
+    # NVIDIA Maxine VFX SDK upscale post-process. None or 1 → skipped.
+    # Scale in (2, 3, 4) runs VideoSuperRes on the assembled frame stack
+    # AFTER all generation + continuation + scene work completes.
+    # Requires the [rtx] extra (nvvfx) + an RTX-class GPU; failure of the
+    # gate is logged and the un-upscaled frames are written instead.
+    rtx_upscale_scale: Optional[int] = None
+    rtx_upscale_quality: str = "HIGH"
+
 
 @dataclass
 class _PipelineState:
@@ -779,6 +787,31 @@ def render(
             logger.warning(
                 "refinement pass failed (%s); falling back to draft frames",
                 exc,
+            )
+
+    if (
+        request.rtx_upscale_scale is not None
+        and request.rtx_upscale_scale > 1
+    ):
+        phase = "rtx_upscale"
+        try:
+            from . import upscale_rtx
+
+            available, reason = upscale_rtx.is_rtx_vfx_available()
+            if not available:
+                logger.warning(
+                    "rtx upscale requested but unavailable (%s); writing "
+                    "un-upscaled frames", reason,
+                )
+            else:
+                frames = upscale_rtx.upscale_frames(
+                    frames,
+                    scale=request.rtx_upscale_scale,
+                    quality=request.rtx_upscale_quality,
+                )
+        except Exception as exc:
+            logger.warning(
+                "rtx upscale failed (%s); writing un-upscaled frames", exc,
             )
 
     if output_dir:

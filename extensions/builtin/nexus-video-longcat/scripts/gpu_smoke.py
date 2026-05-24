@@ -89,6 +89,20 @@ def main() -> int:
              "Mutually exclusive with --target-seconds.",
     )
     parser.add_argument(
+        "--upscale",
+        type=int,
+        choices=[0, 2, 3, 4],
+        default=0,
+        help="NVIDIA VFX SDK RTX upscale (post-process). 0=off, 2/3/4=scale. "
+             "Requires [rtx] extra (nvvfx) + RTX-class GPU.",
+    )
+    parser.add_argument(
+        "--upscale-quality",
+        choices=["LOW", "MEDIUM", "HIGH", "HIGHEST"],
+        default="HIGH",
+        help="VideoSuperRes quality level.",
+    )
+    parser.add_argument(
         "--quality-preset",
         choices=["distill", "balanced", "reference"],
         default=None,
@@ -228,6 +242,8 @@ def main() -> int:
         ),
         continuation_overlap_frames=args.continuation_overlap,
         scenes=scenes_value,
+        rtx_upscale_scale=(args.upscale or None),
+        rtx_upscale_quality=args.upscale_quality,
     )
     log.info("request: %r", request)
 
