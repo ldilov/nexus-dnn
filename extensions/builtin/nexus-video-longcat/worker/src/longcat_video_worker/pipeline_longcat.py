@@ -34,6 +34,28 @@ logger = logging.getLogger(__name__)
 
 RenderMode = Literal["t2v", "i2v", "vc", "refine"]
 
+
+@dataclass(frozen=True)
+class Scene:
+    """One clip in a multi-scene composition.
+
+    `prompt` drives content for this clip. `duration_seconds` is converted
+    to a frame count at 24 fps; the loop accumulates until that many fresh
+    frames have been added (cond overlap excluded).
+
+    `overlap_frames` is the number of trailing frames from the prior clip
+    fed into this clip's generate_vc as conditioning. Default 13; bump to
+    25 or 37 for hard transitions where pose / identity must be pinned.
+
+    `enhance_hf` controls upstream's high-frequency enhancement schedule.
+    None = auto (= NOT use_distill, since upstream asserts the two are
+    mutually exclusive). Set False explicitly when running distill LoRA.
+    """
+    prompt: str
+    duration_seconds: float
+    overlap_frames: int = 13
+    enhance_hf: Optional[bool] = None
+
 _DISTILL_LORA_FILENAME = "LongCat_distill_lora_alpha64_bf16.safetensors"
 _REFINEMENT_LORA_FILENAME = "LongCat_refinement_lora_rank128_bf16.safetensors"
 _KJ_FP8_FILENAME = "LongCat_TI2V_comfy_fp8_e4m3fn_scaled_KJ.safetensors"
@@ -86,6 +108,13 @@ class LongCatRenderRequest:
     target_frames: Optional[int] = None
     continuation_overlap_frames: int = 13
     continuation_enhance_hf: Optional[bool] = None  # None = auto (= not use_distill)
+
+    # Multi-scene composition. When set, the initial clip is rendered with
+    # scenes[0].prompt (uses request.image_path for i2v / no image for t2v),
+    # then each subsequent scene is rendered via generate_vc with
+    # use_kv_cache=False (KV cache cleared per scene to prevent prompt-token
+    # bleed). Mutually exclusive with target_frames — set one or the other.
+    scenes: Optional[list[Scene]] = None
 
 
 @dataclass
@@ -674,11 +703,40 @@ def render(
     if request.offload_kv_cache:
         attn_kwargs["offload_kv_cache"] = True
 
+    if request.scenes is not None and request.target_frames is not None:
+        raise ValueError(
+            "scenes and target_frames are mutually exclusive — set one"
+        )
+
     phase = "generate"
     try:
-        frames = _dispatch_generate(request, state, generator, attn_kwargs)
+        if request.scenes is not None and len(request.scenes) > 0:
+            # First scene drives the initial t2v / i2v render using the
+            # scene's own prompt + duration, then _run_scene_loop chains
+            # the remaining scenes via generate_vc.
+            primary_request = _request_with_scene_overrides(request, request.scenes[0])
+            frames = _dispatch_generate(
+                primary_request, state, generator, attn_kwargs
+            )
+        else:
+            frames = _dispatch_generate(request, state, generator, attn_kwargs)
     except Exception as exc:
         raise _PipelineError("generate", str(exc)) from exc
+
+    if request.scenes is not None and len(request.scenes) > 1:
+        phase = "scenes"
+        try:
+            frames = _run_scene_loop(
+                primary_frames=frames,
+                request=request,
+                state=state,
+                generator=generator,
+                attn_kwargs=attn_kwargs,
+            )
+        except Exception as exc:
+            logger.warning(
+                "scene loop failed (%s); returning first-scene clip only", exc
+            )
 
     if request.target_frames is not None and request.mode in ("t2v", "i2v", "vc"):
         import numpy as np
@@ -991,6 +1049,149 @@ def _run_continuation_loop(
         "_run_continuation_loop complete: iterations=%d total_frames=%d",
         iteration,
         acc.shape[0],
+    )
+    return acc
+
+
+def _request_with_scene_overrides(
+    base: LongCatRenderRequest, scene: Scene
+) -> LongCatRenderRequest:
+    # Build a per-scene request: override prompt + num_frames from the
+    # scene spec while keeping everything else (resolution, distill,
+    # guidance, seed) inherited from the base request. num_frames is
+    # quantised to the (n - 1) % 4 == 0 constraint upstream enforces
+    # (vae_scale_factor_temporal = 4 for LongCat).
+    from dataclasses import replace
+
+    raw_frames = max(1, int(round(scene.duration_seconds * 24)))
+    quantised = ((raw_frames - 1) // 4) * 4 + 1
+    if quantised < 5:
+        quantised = 5
+    return replace(
+        base,
+        prompt=scene.prompt,
+        num_frames=quantised,
+        # Disable nested orchestration when this request is used for a
+        # single scene's primary or continuation render.
+        scenes=None,
+        target_frames=None,
+    )
+
+
+def _run_scene_loop(
+    *,
+    primary_frames: Any,
+    request: LongCatRenderRequest,
+    state: _PipelineState,
+    generator: Any,
+    attn_kwargs: dict[str, Any],
+) -> Any:
+    # Multi-scene chained render. Each scene after the first calls
+    # generate_vc with use_kv_cache=False — the KV cache is cleared
+    # explicitly between scenes so the prior scene's text-token cache
+    # cannot bleed into the new scene's denoise.
+    #
+    # Accumulator semantics: scene N contributes `quantised_frames - overlap`
+    # fresh frames (the leading `overlap` frames upstream regenerates
+    # verbatim and are dropped from the output).
+    import numpy as np
+    from PIL import Image
+
+    pipeline = state.pipeline
+    scenes = request.scenes or []
+    if len(scenes) < 2:
+        return primary_frames
+
+    resolution = "720p" if request.height >= 720 else "480p"
+
+    acc = np.asarray(primary_frames)
+    if acc.ndim == 5:
+        acc = acc[0]
+
+    for idx, scene in enumerate(scenes[1:], start=2):
+        scene_req = _request_with_scene_overrides(request, scene)
+        overlap = max(1, scene.overlap_frames)
+        if overlap >= scene_req.num_frames:
+            raise ValueError(
+                f"scene {idx} overlap_frames={overlap} must be < "
+                f"quantised num_frames={scene_req.num_frames}"
+            )
+
+        enhance_hf = (
+            scene.enhance_hf
+            if scene.enhance_hf is not None
+            else (not request.use_distill)
+        )
+        if request.use_distill and enhance_hf:
+            raise ValueError(
+                f"scene {idx}: use_distill=True is mutually exclusive with "
+                "enhance_hf=True (upstream asserts). Set scene.enhance_hf=False."
+            )
+
+        if hasattr(pipeline, "_clear_cache"):
+            try:
+                pipeline._clear_cache()
+            except Exception as exc:
+                logger.warning(
+                    "scene %d: _clear_cache failed (%s); proceeding anyway",
+                    idx, exc,
+                )
+
+        tail = acc[-overlap:]
+        if tail.dtype.kind == "f":
+            tail_u8 = (np.clip(tail, 0.0, 1.0) * 255.0).round().astype(np.uint8)
+        else:
+            tail_u8 = tail.astype(np.uint8) if tail.dtype != np.uint8 else tail
+        tail_pil = [Image.fromarray(f, mode="RGB") for f in tail_u8]
+
+        logger.info(
+            "_run_scene_loop scene=%d acc=%d overlap=%d num_frames=%d "
+            "prompt=%r enhance_hf=%s",
+            idx, acc.shape[0], overlap, scene_req.num_frames,
+            scene.prompt[:80], enhance_hf,
+        )
+
+        new_clip = pipeline.generate_vc(
+            video=tail_pil,
+            prompt=scene.prompt,
+            negative_prompt=request.negative_prompt,
+            resolution=resolution,
+            num_frames=scene_req.num_frames,
+            num_cond_frames=overlap,
+            num_inference_steps=request.num_inference_steps,
+            use_distill=request.use_distill,
+            guidance_scale=request.guidance_scale,
+            generator=generator,
+            max_sequence_length=request.max_sequence_length,
+            attention_kwargs=attn_kwargs if attn_kwargs else None,
+            # Explicit per-scene cache reset; this call must NOT reuse
+            # prior scene's KV cache or text-token bleed corrupts the
+            # transition denoise.
+            use_kv_cache=False,
+            offload_kv_cache=request.offload_kv_cache,
+            enhance_hf=enhance_hf,
+        )
+
+        new_arr = np.asarray(new_clip)
+        if new_arr.ndim == 5:
+            new_arr = new_arr[0]
+        if new_arr.shape[0] <= overlap:
+            logger.warning(
+                "_run_scene_loop scene=%d: generate_vc returned %d frames "
+                "(<= overlap %d); skipping rest",
+                idx, new_arr.shape[0], overlap,
+            )
+            break
+        fresh = new_arr[overlap:]
+        acc = np.concatenate([acc, fresh], axis=0)
+        logger.info(
+            "_run_scene_loop scene=%d done: added %d fresh frames (total=%d)",
+            idx, fresh.shape[0], acc.shape[0],
+        )
+
+    logger.info(
+        "_run_scene_loop complete: scenes=%d total_frames=%d",
+        len(scenes), acc.shape[0],
     )
     return acc
 
