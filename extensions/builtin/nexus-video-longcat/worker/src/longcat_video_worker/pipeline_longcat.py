@@ -124,6 +124,15 @@ class LongCatRenderRequest:
     rtx_upscale_scale: Optional[int] = None
     rtx_upscale_quality: str = "HIGH"
 
+    # Per-render offload + cache overrides. When None, the values fall
+    # back to NEXUS_VIDEO_LONGCAT_OFFLOAD_MODE / NEXUS_VIDEO_LONGCAT_BLOCK_SWAP
+    # env vars (operator-level defaults). Explicit request values always
+    # win. Useful when one recipe wants aggressive offload (e.g. 720p
+    # refinement) and another wants tight residency (low-res draft +
+    # RTX upscale where VRAM headroom is the priority).
+    offload_mode: Optional[str] = None  # "none" | "partial" | "sequential"
+    block_swap_count: Optional[int] = None
+
 
 @dataclass
 class _PipelineState:
@@ -669,11 +678,17 @@ def render(
 ) -> Path:
     import torch
 
-    # Env-var overrides for operators driving the worker without modifying the
-    # call site. RPC params (offload_mode, block_swap_count) take precedence
-    # when supplied; env vars are the fallback for headless / scripted runs.
+    # Per-render override > kwarg > env-var > default. Request fields are
+    # the highest-precedence source so a recipe can pin a tight residency
+    # config (low-res draft + RTX upscale) without touching env or
+    # editing the call site.
+    if request.offload_mode is not None:
+        offload_mode = request.offload_mode
     if offload_mode is None:
         offload_mode = os.environ.get("NEXUS_VIDEO_LONGCAT_OFFLOAD_MODE", "none")
+
+    if request.block_swap_count is not None:
+        block_swap_count = request.block_swap_count
     if block_swap_count is None:
         env_swap = os.environ.get("NEXUS_VIDEO_LONGCAT_BLOCK_SWAP")
         try:
@@ -769,7 +784,30 @@ def render(
                 )
                 frames = arr
 
-    if request.apply_refinement and request.mode in ("t2v", "i2v"):
+    # When RTX upscale is enabled, skip the model-based refinement pass.
+    # Rationale: refinement was a workaround for distill smudge at 720p,
+    # which doubled the DiT latent count and spilled past 16 GiB even
+    # with spatial_only + block-swap=46. RTX VideoSuperRes handles
+    # spatial polish + denoise without touching the DiT, so the two
+    # post-processes are redundant + the refinement is the one that
+    # spills VRAM.
+    skip_refine_for_rtx = (
+        request.apply_refinement
+        and request.rtx_upscale_scale is not None
+        and request.rtx_upscale_scale > 1
+    )
+    if skip_refine_for_rtx:
+        logger.info(
+            "skipping refinement pass: rtx_upscale_scale=%d is the spatial "
+            "polish stage (refinement would double DiT latents + spill VRAM)",
+            request.rtx_upscale_scale,
+        )
+
+    if (
+        request.apply_refinement
+        and request.mode in ("t2v", "i2v")
+        and not skip_refine_for_rtx
+    ):
         # Two-stage quality pass: write draft to a temp MP4 + run
         # generate_refine on it. Refinement LoRA + low-CFG few-step
         # second pass cleans up distill smudge + 720p artifacts.

@@ -53,6 +53,27 @@ def main() -> int:
     parser.add_argument("--distill", action="store_true", default=True)
     parser.add_argument("--no-distill", dest="distill", action="store_false")
     parser.add_argument("--swap", type=int, default=46)
+    parser.add_argument(
+        "--offload-mode",
+        choices=["none", "partial", "sequential"],
+        default="partial",
+        help="DiT weight offload strategy. 'partial' uses block-swap; "
+             "'none' = all weights resident (lowest latency, highest VRAM); "
+             "'sequential' = accelerate hook per layer (highest offload).",
+    )
+    parser.add_argument(
+        "--no-kv-offload",
+        dest="offload_kv_cache",
+        action="store_false",
+        default=True,
+        help="Disable KV-cache CPU offload. Keeps cache resident on GPU "
+             "(faster for short clips but adds VRAM pressure).",
+    )
+    parser.add_argument(
+        "--max-seq-len", type=int, default=256,
+        help="Text-encoder max sequence length. Shorter = less VRAM in the "
+             "text-encoder pass + faster encode. 128 OK for short prompts.",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--prompt", default=None)
     parser.add_argument(
@@ -235,8 +256,10 @@ def main() -> int:
         guidance_scale=args.guidance,
         use_distill=args.distill,
         seed=args.seed,
-        max_sequence_length=256,
-        offload_kv_cache=True,
+        max_sequence_length=args.max_seq_len,
+        offload_kv_cache=args.offload_kv_cache,
+        offload_mode=args.offload_mode,
+        block_swap_count=args.swap,
         apply_refinement=args.refine,
         refinement_steps=args.refine_steps,
         refinement_guidance=args.refine_guidance,
