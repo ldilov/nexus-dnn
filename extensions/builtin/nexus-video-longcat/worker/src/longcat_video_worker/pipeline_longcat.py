@@ -229,30 +229,44 @@ def _load_dit(
     # placeholder. Force [1,1] so the no-op branch still passes shape check.
     if config.get("cp_split_hw") is None:
         config["cp_split_hw"] = [1, 1]
-    # Attention backend selection. Order of preference: xformers (best VRAM)
-    # > flash-attn-2 (faster, no Windows wheels) > sdpa monkey-patch fallback.
-    # The host sets NEXUS_VIDEO_LONGCAT_ATTN to override; default = xformers
-    # when importable, else fall through to our sdpa monkey-patch.
+    # Attention backend selection. NEXUS_VIDEO_LONGCAT_ATTN env-var picks
+    # the upstream kernel. 'auto' DOES NOT enable xformers here — even
+    # when xformers imports successfully, the C++/CUDA kernels are
+    # rejected on Blackwell (sm_120) and fa3/fa2/cutlass paths all
+    # return "no operator found". Leaving all upstream flags False
+    # delegates to longcat_native_loader._patch_attention_to_use_sdpa
+    # whose own 'auto' picker tries sage → flashattn2 → sdpa with a real
+    # importability + capability check.
     config["enable_flashattn2"] = False
     config["enable_flashattn3"] = False
     config["enable_bsa"] = False
     config["enable_xformers"] = False
     attn_backend = os.environ.get("NEXUS_VIDEO_LONGCAT_ATTN", "auto").lower()
-    if attn_backend in ("auto", "xformers"):
+    if attn_backend == "xformers":
         try:
             import xformers  # noqa: F401
             config["enable_xformers"] = True
-            logger.info("_load_dit: enable_xformers=True (xformers %s detected)", xformers.__version__)
-        except ImportError:
             logger.info(
-                "_load_dit: xformers unavailable; falling back to sdpa monkey-patch"
+                "_load_dit: enable_xformers=True (xformers %s detected) — "
+                "explicit env override; may fail on Blackwell sm_120",
+                xformers.__version__,
+            )
+        except ImportError:
+            logger.warning(
+                "_load_dit: NEXUS_VIDEO_LONGCAT_ATTN=xformers but xformers "
+                "not importable; falling back to monkey-patch dispatch"
             )
     elif attn_backend == "flashattn2":
         config["enable_flashattn2"] = True
     elif attn_backend == "flashattn3":
         config["enable_flashattn3"] = True
-    elif attn_backend == "sdpa":
-        pass  # all three False → SDPA monkey-patch will engage
+    else:
+        # 'auto', 'sdpa', 'sage' all leave upstream flags False; the
+        # native_loader patch picks the actual kernel.
+        logger.info(
+            "_load_dit: deferring attention dispatch to native_loader "
+            "(NEXUS_VIDEO_LONGCAT_ATTN=%s)", attn_backend
+        )
 
     bundle = load_longcat_dit_from_safetensors(
         kj_path,
