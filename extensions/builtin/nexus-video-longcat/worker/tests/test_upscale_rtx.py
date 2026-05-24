@@ -121,3 +121,115 @@ def test_upscale_frames_rejects_bad_quality() -> None:
                     scale=2,
                     quality="NOPE",  # type: ignore[arg-type]
                 )
+
+
+def test_upscale_frames_calls_unload_on_success() -> None:
+    fake_torch = MagicMock()
+
+    class _Q:
+        HIGH = "HIGH"
+        __members__ = {"HIGH": HIGH}
+
+        @classmethod
+        def __class_getitem__(cls, key: str) -> str:
+            return cls.__members__[key]
+
+    class _SRInst:
+        is_loaded = True
+
+        def __init__(self, device: int, quality: object) -> None:
+            self.unload = MagicMock()
+
+        def load(self) -> None:
+            pass
+
+        def run(self, *a: object, **kw: object) -> object:
+            return MagicMock(image="dlpack-stub")
+
+    instances: list[_SRInst] = []
+
+    def _factory(device: int, quality: object) -> _SRInst:
+        inst = _SRInst(device, quality)
+        instances.append(inst)
+        return inst
+
+    _SR = MagicMock(side_effect=_factory)
+    _SR.QualityLevel = _Q
+
+    fake_nvvfx = types.ModuleType("nvvfx")
+    setattr(fake_nvvfx, "VideoSuperRes", _SR)
+
+    # Patch from_dlpack to return a controllable mock; mock all the torch
+    # ops the function chains.
+    fake_output_tensor = MagicMock()
+    fake_output_tensor.clamp.return_value.__mul__.return_value.byte.return_value = (
+        fake_output_tensor
+    )
+    fake_output_tensor.permute.return_value.contiguous.return_value.cpu.return_value.numpy.return_value = (
+        np.zeros((64, 96, 3), dtype=np.uint8)
+    )
+    fake_output_tensor.clone.return_value = fake_output_tensor
+    fake_torch.from_dlpack.return_value = fake_output_tensor
+
+    # torch.from_numpy(...).to(...).permute(...).float().__truediv__(...)
+    fake_input_tensor = MagicMock()
+    fake_input_tensor.contiguous.return_value = fake_input_tensor
+    fake_torch.from_numpy.return_value.to.return_value.permute.return_value.float.return_value.__truediv__.return_value = (
+        fake_input_tensor
+    )
+
+    with patch.object(
+        upscale_rtx, "is_rtx_vfx_available", return_value=(True, "ok")
+    ):
+        with patch.dict(sys.modules, {"torch": fake_torch, "nvvfx": fake_nvvfx}):
+            upscale_rtx.upscale_frames(_frames_u8(n=2), scale=2)
+
+    assert len(instances) == 1
+    instances[0].unload.assert_called_once()
+
+
+def test_upscale_frames_unload_called_even_on_run_exception() -> None:
+    fake_torch = MagicMock()
+
+    class _Q:
+        HIGH = "HIGH"
+        __members__ = {"HIGH": HIGH}
+
+        @classmethod
+        def __class_getitem__(cls, key: str) -> str:
+            return cls.__members__[key]
+
+    class _SRInst:
+        is_loaded = True
+
+        def __init__(self, device: int, quality: object) -> None:
+            self.unload = MagicMock()
+
+        def load(self) -> None:
+            pass
+
+        def run(self, *a: object, **kw: object) -> object:
+            raise RuntimeError("simulated SDK failure")
+
+    instances: list[_SRInst] = []
+
+    def _factory(device: int, quality: object) -> _SRInst:
+        inst = _SRInst(device, quality)
+        instances.append(inst)
+        return inst
+
+    _SR = MagicMock(side_effect=_factory)
+    _SR.QualityLevel = _Q
+
+    fake_nvvfx = types.ModuleType("nvvfx")
+    setattr(fake_nvvfx, "VideoSuperRes", _SR)
+
+    with patch.object(
+        upscale_rtx, "is_rtx_vfx_available", return_value=(True, "ok")
+    ):
+        with patch.dict(sys.modules, {"torch": fake_torch, "nvvfx": fake_nvvfx}):
+            with pytest.raises(RuntimeError, match="simulated SDK failure"):
+                upscale_rtx.upscale_frames(_frames_u8(n=2), scale=2)
+
+    assert len(instances) == 1
+    instances[0].unload.assert_called_once()

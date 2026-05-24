@@ -42,8 +42,14 @@ def main() -> int:
     # Running below 16 with the distill LoRA produces bursty / random
     # speed-ups in motion because the FlowMatchEuler timestep allocation
     # is compressed beyond the LoRA's training distribution.
-    parser.add_argument("--steps", type=int, default=16)
-    parser.add_argument("--guidance", type=float, default=1.0)
+    # `_DEFAULT_STEPS` / `_DEFAULT_GUIDANCE` are read by the
+    # quality-preset block below to detect "user accepted the default"
+    # vs "user passed an explicit override"; argparse cannot distinguish
+    # those, so a single source of truth keeps preset logic in sync.
+    _DEFAULT_STEPS = 16
+    _DEFAULT_GUIDANCE = 1.0
+    parser.add_argument("--steps", type=int, default=_DEFAULT_STEPS)
+    parser.add_argument("--guidance", type=float, default=_DEFAULT_GUIDANCE)
     parser.add_argument("--distill", action="store_true", default=True)
     parser.add_argument("--no-distill", dest="distill", action="store_false")
     parser.add_argument("--swap", type=int, default=46)
@@ -119,8 +125,8 @@ def main() -> int:
     # Apply quality preset BEFORE argparse defaults dominate. argparse
     # cannot tell user-supplied from default-supplied, so the preset only
     # overrides when the user left the flag at its known default value.
-    _DEFAULT_STEPS = 16
-    _DEFAULT_GUIDANCE = 1.0
+    # `_DEFAULT_STEPS` / `_DEFAULT_GUIDANCE` are defined once at the
+    # parser-building site above (single source of truth).
     if args.quality_preset == "distill":
         if args.steps == _DEFAULT_STEPS:
             args.steps = 16

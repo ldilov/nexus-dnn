@@ -145,21 +145,38 @@ def upscale_frames(
     out = np.empty((n, out_h, out_w, 3), dtype=np.uint8)
     stream_ptr = torch.cuda.current_stream().cuda_stream
 
-    for idx in range(n):
-        frame = arr[idx]
-        if frame.dtype == np.uint8:
-            rgb_input = torch.from_numpy(frame).to(f"cuda:{device}")
-            rgb_input = rgb_input.permute(2, 0, 1).float() / 255.0
-        else:
-            f = np.clip(frame.astype(np.float32), 0.0, 1.0)
-            rgb_input = (
-                torch.from_numpy(f).to(f"cuda:{device}").permute(2, 0, 1).contiguous()
-            )
-        rgb_input = rgb_input.contiguous()
+    try:
+        for idx in range(n):
+            frame = arr[idx]
+            if frame.dtype == np.uint8:
+                rgb_input = torch.from_numpy(frame).to(f"cuda:{device}")
+                rgb_input = rgb_input.permute(2, 0, 1).float() / 255.0
+            else:
+                f = np.clip(frame.astype(np.float32), 0.0, 1.0)
+                rgb_input = (
+                    torch.from_numpy(f).to(f"cuda:{device}").permute(2, 0, 1).contiguous()
+                )
+            rgb_input = rgb_input.contiguous()
 
-        result = sr.run(rgb_input, stream_ptr=stream_ptr)
-        rgb_output = torch.from_dlpack(result.image)
-        rgb_output = (rgb_output.clamp(0.0, 1.0) * 255.0).byte()
-        out[idx] = rgb_output.permute(1, 2, 0).contiguous().cpu().numpy()
+            result = sr.run(rgb_input, stream_ptr=stream_ptr)
+            # `.clone()` takes ownership of the underlying buffer before
+            # `result` (the SDK-owned DLPack container) goes out of scope
+            # on the next iteration; without it the buffer can be freed
+            # while the .cpu() copy is still in flight.
+            rgb_output = torch.from_dlpack(result.image).clone()
+            rgb_output = (rgb_output.clamp(0.0, 1.0) * 255.0).byte()
+            out[idx] = rgb_output.permute(1, 2, 0).contiguous().cpu().numpy()
+    finally:
+        # VideoSuperRes pre-pins VRAM I/O surfaces on .load(); without
+        # explicit teardown the buffers leak for the lifetime of the
+        # worker process. unload() is the documented path; del is a
+        # belt-and-braces backup if the wrapper version lacks it.
+        try:
+            unload = getattr(sr, "unload", None)
+            if callable(unload):
+                unload()
+        except Exception as exc:
+            logger.warning("VideoSuperRes.unload() failed: %s", exc)
+        del sr
 
     return out
