@@ -105,8 +105,17 @@ flash_attn = [
 # `upscale_rtx.py`. Requires the VFX SDK runtime installed on the host
 # (Windows: NGC installer; Linux: pre-built libs) plus a Turing-class or
 # newer NVIDIA GPU with Tensor Cores. The pip package ships only the
-# Python wrapper; the C++/CUDA runtime is a separate install. Pinned to
-# 0.1.0.1 per the upstream sample requirements.txt.
+# Python wrapper; the C++/CUDA runtime is a separate install.
+#
+# NOTE on provenance: `nvidia-vfx==0.1.0.1` IS available on the standard
+# PyPI index (verified 2026-05-24), so `uv sync --extra rtx` works
+# without configuring NGC as a Python package index. The corresponding
+# C++/CUDA *runtime libraries* live on NGC and the NVIDIA developer
+# portal — those are a separate Windows installer / Linux tarball and
+# are NOT pulled by pip. The pin matches the upstream sample
+# requirements.txt at github.com/NVIDIA-Maxine/nvidia-vfx-python-samples
+# (HEAD as of 2026-05-24). Bump only after re-verifying the
+# `VideoSuperRes` import path remains stable.
 rtx = [
   "nvidia-vfx==0.1.0.1",
 ]
