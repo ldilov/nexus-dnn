@@ -69,7 +69,7 @@ def test_duration_above_range() -> None:
 def test_total_duration_exceeds_limit() -> None:
     out = validate_plan({"scenes": [
         _scene("a", per_scene_generated_seconds=10.0),
-        _scene("b", per_scene_generated_seconds=12.0, overlap_frames=0),
+        _scene("b", per_scene_generated_seconds=12.0, overlap_frames=13),
     ]})
     assert out["ok"] is False
     assert out["error"]["sub_reason"] == "TOTAL_DURATION_EXCEEDS_LIMIT"

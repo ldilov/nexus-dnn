@@ -155,7 +155,6 @@ class LongCatRenderRequest:
     adain_factor: float = 0.0
 
     image_cond_noise_scale: float = 0.15
-    force_refine_with_upscale: bool = False
 
 
 @dataclass
@@ -1455,11 +1454,11 @@ def _run_scene_loop(
 
     for idx, scene in enumerate(scenes[1:], start=2):
         scene_req = _request_with_scene_overrides(request, scene)
-        overlap = max(1, scene.overlap_frames)
-        if overlap >= scene_req.num_frames:
+        overlap = int(scene.overlap_frames)
+        if overlap < 1 or overlap >= scene_req.num_frames:
             raise ValueError(
-                f"scene {idx} overlap_frames={overlap} must be < "
-                f"quantised num_frames={scene_req.num_frames}"
+                f"scene {idx} overlap_frames={overlap} must be in "
+                f"[1, {scene_req.num_frames - 1}]"
             )
 
         enhance_hf = (
@@ -1536,43 +1535,30 @@ def _run_scene_loop(
             else request.image_cond_noise_scale
         )
 
+        vc_kwargs: dict[str, Any] = dict(
+            video=tail_pil,
+            prompt=scene.prompt,
+            negative_prompt=request.negative_prompt,
+            resolution=resolution,
+            num_frames=scene_req.num_frames,
+            num_cond_frames=overlap,
+            num_inference_steps=scene_req.num_inference_steps,
+            use_distill=scene_req.use_distill,
+            guidance_scale=scene_req.guidance_scale,
+            generator=scene_generator,
+            max_sequence_length=request.max_sequence_length,
+            attention_kwargs=attn_kwargs if attn_kwargs else None,
+            use_kv_cache=False,
+            offload_kv_cache=request.offload_kv_cache,
+            enhance_hf=enhance_hf,
+            image_cond_noise_scale=scene_icn,
+        )
         try:
-            new_clip = pipeline.generate_vc(
-                video=tail_pil,
-                prompt=scene.prompt,
-                negative_prompt=request.negative_prompt,
-                resolution=resolution,
-                num_frames=scene_req.num_frames,
-                num_cond_frames=overlap,
-                num_inference_steps=scene_req.num_inference_steps,
-                use_distill=scene_req.use_distill,
-                guidance_scale=scene_req.guidance_scale,
-                generator=scene_generator,
-                max_sequence_length=request.max_sequence_length,
-                attention_kwargs=attn_kwargs if attn_kwargs else None,
-                use_kv_cache=False,
-                offload_kv_cache=request.offload_kv_cache,
-                enhance_hf=enhance_hf,
-                image_cond_noise_scale=scene_icn,
-            )
-        except TypeError:
-            new_clip = pipeline.generate_vc(
-                video=tail_pil,
-                prompt=scene.prompt,
-                negative_prompt=request.negative_prompt,
-                resolution=resolution,
-                num_frames=scene_req.num_frames,
-                num_cond_frames=overlap,
-                num_inference_steps=scene_req.num_inference_steps,
-                use_distill=scene_req.use_distill,
-                guidance_scale=scene_req.guidance_scale,
-                generator=scene_generator,
-                max_sequence_length=request.max_sequence_length,
-                attention_kwargs=attn_kwargs if attn_kwargs else None,
-                use_kv_cache=False,
-                offload_kv_cache=request.offload_kv_cache,
-                enhance_hf=enhance_hf,
-            )
+            try:
+                new_clip = pipeline.generate_vc(**vc_kwargs)
+            except TypeError:
+                vc_kwargs.pop("image_cond_noise_scale", None)
+                new_clip = pipeline.generate_vc(**vc_kwargs)
         except Exception as exc:
             if strict_scene_errors:
                 raise
@@ -1794,13 +1780,13 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
             rtx_upscale_scale=params.get("rtx_upscale_scale"),
             rtx_upscale_quality=params.get("rtx_upscale_quality", "HIGH"),
             force_refinement_with_upscale=bool(
-                params.get("force_refinement_with_upscale", False)
+                params.get("force_refinement_with_upscale")
+                or params.get("force_refine_with_upscale", False)
             ),
             offload_mode=params.get("offload_mode"),
             block_swap_count=params.get("block_swap_count"),
             adain_factor=float(params.get("adain_factor", 0.0)),
             image_cond_noise_scale=float(params.get("image_cond_noise_scale", 0.15)),
-            force_refine_with_upscale=bool(params.get("force_refine_with_upscale", False)),
         )
 
         host_data_dir = params.get("host_data_dir") or os.environ.get("NEXUS_HOST_DATA_DIR")
