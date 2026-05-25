@@ -675,7 +675,7 @@ def test_scene_loop_overlap_too_large_raises() -> None:
             Scene(prompt="s2", duration_seconds=0.1, overlap_frames=13),
         ],
     )
-    with pytest.raises(ValueError, match="must be < "):
+    with pytest.raises(ValueError, match="must be in"):
         _run_scene_loop(
             primary_frames=_u8_frames(49),
             request=req,

@@ -6,9 +6,9 @@ from .plan_validate import (
     MODE_VALUES_SCENE_ZERO,
     ALL_MODES,
     PlanValidationError,
-    _resolve_scene_n_mode,
-    _resolve_scene_zero_mode,
-    _validate_scene_zero_image_resolution,
+    resolve_scene_n_mode,
+    resolve_scene_zero_mode,
+    validate_scene_zero_image_resolution,
 )
 
 
@@ -22,10 +22,10 @@ def infer_mode(payload: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
 
     scene_zero = scenes[0] if isinstance(scenes[0], dict) else {}
     declared_zero = scene_zero.get("mode", "auto")
-    has_scene_image, has_request_image, has_cond_video = _validate_scene_zero_image_resolution(
+    has_scene_image, has_request_image, has_cond_video = validate_scene_zero_image_resolution(
         payload, scene_zero
     )
-    mode_zero = _resolve_scene_zero_mode(
+    mode_zero = resolve_scene_zero_mode(
         declared_zero, has_scene_image or has_request_image, has_cond_video
     )
     resolved_modes.append(mode_zero)
@@ -33,7 +33,7 @@ def infer_mode(payload: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
     for idx in range(1, len(scenes)):
         raw = scenes[idx] if isinstance(scenes[idx], dict) else {}
         declared = raw.get("mode", "auto")
-        resolved_modes.append(_resolve_scene_n_mode(declared, idx))
+        resolved_modes.append(resolve_scene_n_mode(declared, idx))
 
     for idx in range(1, len(resolved_modes)):
         if resolved_modes[idx - 1] == "i2v" and resolved_modes[idx] == "vc":
@@ -56,18 +56,18 @@ def infer_modes_all(payload: dict[str, Any]) -> tuple[list[str], list[dict[str, 
     out: list[str] = []
     scene_zero = scenes[0] if isinstance(scenes[0], dict) else {}
     declared_zero = scene_zero.get("mode", "auto")
-    has_scene_image, has_request_image, has_cond_video = _validate_scene_zero_image_resolution(
+    has_scene_image, has_request_image, has_cond_video = validate_scene_zero_image_resolution(
         payload, scene_zero
     )
     out.append(
-        _resolve_scene_zero_mode(
+        resolve_scene_zero_mode(
             declared_zero, has_scene_image or has_request_image, has_cond_video
         )
     )
     for idx in range(1, len(scenes)):
         raw = scenes[idx] if isinstance(scenes[idx], dict) else {}
         declared = raw.get("mode", "auto")
-        out.append(_resolve_scene_n_mode(declared, idx))
+        out.append(resolve_scene_n_mode(declared, idx))
     for idx in range(1, len(out)):
         if out[idx - 1] == "i2v" and out[idx] == "vc":
             warnings.append(

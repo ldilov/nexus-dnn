@@ -85,7 +85,7 @@ def _read_scene_duration(raw: dict[str, Any], warnings: list[_Warning], scene_in
     return 4.0
 
 
-def _validate_scene_zero_image_resolution(
+def validate_scene_zero_image_resolution(
     payload: dict[str, Any], scene_zero: dict[str, Any]
 ) -> tuple[bool, bool, bool]:
     has_scene_image = bool(scene_zero.get("image_path"))
@@ -97,7 +97,7 @@ def _validate_scene_zero_image_resolution(
     return has_scene_image, has_request_image, has_cond_video
 
 
-def _resolve_scene_zero_mode(
+def resolve_scene_zero_mode(
     declared: str, has_image: bool, has_cond_video: bool
 ) -> str:
     if declared not in MODE_VALUES_SCENE_ZERO:
@@ -131,7 +131,7 @@ def _resolve_scene_zero_mode(
     return declared
 
 
-def _resolve_scene_n_mode(declared: str, scene_index: int) -> str:
+def resolve_scene_n_mode(declared: str, scene_index: int) -> str:
     if declared not in ALL_MODES:
         raise PlanValidationError(
             "MODE_INVALID",
@@ -188,16 +188,16 @@ def _validate_scene_dict(
         overlap = 0
     else:
         overlap = int(overlap_raw)
-        if overlap < 0 or overlap >= num_frames:
+        if overlap < 1 or overlap >= num_frames:
             raise PlanValidationError(
                 "OVERLAP_EXCEEDS_FRAMES",
-                f"scene[{scene_index}] overlap_frames={overlap} not in [0, {num_frames - 1}]",
+                f"scene[{scene_index}] overlap_frames={overlap} not in [1, {num_frames - 1}]",
                 scene_index=scene_index,
             )
-        if overlap != 0 and not _is_4n_plus_1(overlap):
+        if not _is_4n_plus_1(overlap):
             raise PlanValidationError(
                 "OVERLAP_NOT_4N_PLUS_1",
-                f"scene[{scene_index}] overlap_frames={overlap} must be 0 or 4n+1",
+                f"scene[{scene_index}] overlap_frames={overlap} must be 4n+1",
                 scene_index=scene_index,
             )
 
@@ -283,14 +283,14 @@ def _validate_scene_dict(
 
     declared_mode = raw.get("mode", "auto")
     if scene_index == 0:
-        has_scene_image, has_request_image, has_cond_video = _validate_scene_zero_image_resolution(
+        has_scene_image, has_request_image, has_cond_video = validate_scene_zero_image_resolution(
             payload, raw
         )
-        resolved_mode = _resolve_scene_zero_mode(
+        resolved_mode = resolve_scene_zero_mode(
             declared_mode, has_scene_image or has_request_image, has_cond_video
         )
     else:
-        resolved_mode = _resolve_scene_n_mode(declared_mode, scene_index)
+        resolved_mode = resolve_scene_n_mode(declared_mode, scene_index)
 
     fresh_frames = num_frames - overlap if scene_index > 0 else num_frames
     fresh_seconds = fresh_frames / FPS
@@ -327,7 +327,7 @@ def _emit_global_warnings(
     factor_threshold_breach = [
         i
         for i, s in enumerate(normalized_scenes)
-        if s["adain_factor"] > ADAIN_DRIFT_FACTOR_THRESHOLD
+        if i > 0 and s["adain_factor"] > ADAIN_DRIFT_FACTOR_THRESHOLD
     ]
     if len(normalized_scenes) >= ADAIN_DRIFT_SCENE_THRESHOLD and factor_threshold_breach:
         warnings.append(
@@ -354,7 +354,11 @@ def _emit_global_warnings(
     apply_refinement = bool(payload.get("apply_refinement", False))
     upscale_mode = payload.get("upscale_mode")
     if apply_refinement and upscale_mode and upscale_mode != "off":
-        if not bool(payload.get("force_refine_with_upscale", False)):
+        force_flag = bool(
+            payload.get("force_refinement_with_upscale")
+            or payload.get("force_refine_with_upscale", False)
+        )
+        if not force_flag:
             warnings.append(
                 _Warning(
                     "REFINE_PLUS_UPSCALE_DOUBLE_SHARPEN",

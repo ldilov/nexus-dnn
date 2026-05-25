@@ -50,9 +50,7 @@ def classify_scene_exception(exc: BaseException) -> str:
         return SCENE_NAN_LATENT
     if isinstance(exc, ValueError) and _looks_like_nan(exc):
         return SCENE_NAN_LATENT
-    if isinstance(exc, AssertionError) and _looks_like_decode(exc):
-        return SCENE_DECODE_FAILED
-    if isinstance(exc, RuntimeError) and _looks_like_decode(exc):
+    if isinstance(exc, (AssertionError, RuntimeError, ValueError)) and _looks_like_decode(exc):
         return SCENE_DECODE_FAILED
     return SCENE_UNKNOWN
 
