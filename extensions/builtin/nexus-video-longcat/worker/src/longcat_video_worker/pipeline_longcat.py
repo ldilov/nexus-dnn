@@ -37,37 +37,31 @@ RenderMode = Literal["t2v", "i2v", "vc", "refine"]
 
 @dataclass(frozen=True)
 class Scene:
-    """One clip in a multi-scene composition.
-
-    `prompt` drives content for this clip. `duration_seconds` is converted
-    to a frame count at 24 fps; the loop accumulates until that many fresh
-    frames have been added (cond overlap excluded).
-
-    `overlap_frames` is the number of trailing frames from the prior clip
-    fed into this clip's generate_vc as conditioning. Default 13; bump to
-    25 or 37 for hard transitions where pose / identity must be pinned.
-
-    `enhance_hf` controls upstream's high-frequency enhancement schedule.
-    None = auto (= NOT use_distill, since upstream asserts the two are
-    mutually exclusive). Set False explicitly when running distill LoRA.
-    """
     prompt: str
-    duration_seconds: float
+    duration_seconds: float = 4.0
     overlap_frames: int = 13
     enhance_hf: Optional[bool] = None
-    # Per-scene override of LongCatRenderRequest.adain_factor. None inherits
-    # the base value. Set 0.0 on a scene to disable colour-anchor blending
-    # for that scene specifically (e.g. an intentional lighting change).
     adain_factor: Optional[float] = None
-    # Per-scene model + sampling overrides. None inherits the base
-    # request value. Lets a chain keep scene 1 fast on distill (16 step,
-    # guidance 1.0) while scenes with big prompt-deltas drop to dev mode
-    # (use_distill=False + guidance ~3.5 + steps ~30) to recover prompt
-    # adherence. Mutual exclusion still enforced: use_distill=True with
-    # enhance_hf=True raises ValueError (upstream assert).
     use_distill: Optional[bool] = None
     guidance_scale: Optional[float] = None
     num_inference_steps: Optional[int] = None
+    negative_prompt: Optional[str] = None
+    mode: str = "auto"
+    image_path: Optional[str] = None
+    per_scene_generated_seconds: Optional[float] = None
+    image_cond_noise_scale: Optional[float] = None
+    motion_intensity: str = "dynamic"
+    seed_offset: Optional[int] = None
+    apply_refinement: Optional[bool] = None
+    refinement_steps: Optional[int] = None
+    refinement_guidance: Optional[float] = None
+    refinement_spatial_only: Optional[bool] = None
+
+    def __post_init__(self) -> None:
+        if self.per_scene_generated_seconds is None:
+            object.__setattr__(self, "per_scene_generated_seconds", self.duration_seconds)
+        else:
+            object.__setattr__(self, "duration_seconds", self.per_scene_generated_seconds)
 
 _DISTILL_LORA_FILENAME = "LongCat_distill_lora_alpha64_bf16.safetensors"
 _REFINEMENT_LORA_FILENAME = "LongCat_refinement_lora_rank128_bf16.safetensors"
@@ -159,6 +153,9 @@ class LongCatRenderRequest:
     # from scene-1's refined tail; subsequent scenes pull their tail
     # toward it. See chaining.adain_color_match for the math.
     adain_factor: float = 0.0
+
+    image_cond_noise_scale: float = 0.15
+    force_refine_with_upscale: bool = False
 
 
 @dataclass
