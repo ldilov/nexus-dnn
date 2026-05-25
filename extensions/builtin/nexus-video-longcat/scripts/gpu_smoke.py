@@ -249,6 +249,18 @@ def main() -> int:
                     if "adain_factor" in item and item["adain_factor"] is not None
                     else None
                 ),
+                use_distill=item.get("use_distill"),
+                guidance_scale=(
+                    float(item["guidance_scale"])
+                    if "guidance_scale" in item and item["guidance_scale"] is not None
+                    else None
+                ),
+                num_inference_steps=(
+                    int(item["num_inference_steps"])
+                    if "num_inference_steps" in item
+                    and item["num_inference_steps"] is not None
+                    else None
+                ),
             )
             for item in raw
         ]
