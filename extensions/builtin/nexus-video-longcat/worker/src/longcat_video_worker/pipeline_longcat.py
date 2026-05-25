@@ -699,6 +699,8 @@ def render(
     host_data_dir: Optional[str] = None,
     offload_mode: Optional[str] = None,
     block_swap_count: Optional[int] = None,
+    strict_scene_errors: bool = False,
+    failures_out: Optional[list[dict[str, Any]]] = None,
 ) -> Path:
     import torch
 
@@ -773,6 +775,7 @@ def render(
     scenes_path_refined = False
     if request.scenes is not None and len(request.scenes) > 1:
         phase = "scenes"
+        scene_failures: list[dict[str, Any]] = []
         try:
             frames = _run_scene_loop(
                 primary_frames=frames,
@@ -781,12 +784,18 @@ def render(
                 generator=generator,
                 attn_kwargs=attn_kwargs,
                 host_data_dir=host_data_dir,
+                strict_scene_errors=strict_scene_errors,
+                failures_sink=scene_failures,
             )
             scenes_path_refined = bool(request.apply_refinement)
         except Exception as exc:
+            if strict_scene_errors:
+                raise _PipelineError("scenes", str(exc)) from exc
             logger.warning(
                 "scene loop failed (%s); returning first-scene clip only", exc
             )
+        if failures_out is not None and scene_failures:
+            failures_out.extend(scene_failures)
 
     if request.target_frames is not None and request.mode in ("t2v", "i2v", "vc"):
         import numpy as np
@@ -1320,6 +1329,20 @@ def _set_distill_active(state: _PipelineState, target_active: bool) -> Optional[
         return None
 
 
+def _build_scene_generator(
+    base_seed: Optional[int], scene_idx: int, seed_offset: Optional[int], device: Any
+) -> Any:
+    import torch as _torch
+
+    try:
+        _torch.cuda.synchronize()
+    except (AssertionError, RuntimeError):
+        pass
+    seed_root = int(base_seed) if base_seed is not None else 0
+    derived = (seed_root + scene_idx * 1_000_003 + int(seed_offset or 0)) & 0x7FFFFFFF
+    return _torch.Generator(device).manual_seed(derived)
+
+
 def _run_scene_loop(
     *,
     primary_frames: Any,
@@ -1328,6 +1351,8 @@ def _run_scene_loop(
     generator: Any,
     attn_kwargs: dict[str, Any],
     host_data_dir: Optional[str] = None,
+    strict_scene_errors: bool = False,
+    failures_sink: Optional[list] = None,
 ) -> Any:
     # Multi-scene chained render. Each scene after the first calls
     # generate_vc with use_kv_cache=False — the KV cache is cleared
@@ -1357,6 +1382,8 @@ def _run_scene_loop(
     resolution = "720p" if request.height >= 720 else "480p"
 
     do_refine = bool(request.apply_refinement)
+
+    base_seed = request.seed
 
     def _maybe_refine(clip_frames: Any, scene_idx: int, scene_obj: Any) -> Any:
         if not do_refine:
@@ -1424,6 +1451,8 @@ def _run_scene_loop(
             np.round(color_anchor[1], 2).tolist(),
         )
 
+    from .scene_failure import build_failure_record
+
     for idx, scene in enumerate(scenes[1:], start=2):
         scene_req = _request_with_scene_overrides(request, scene)
         overlap = max(1, scene.overlap_frames)
@@ -1443,6 +1472,13 @@ def _run_scene_loop(
                 f"scene {idx}: use_distill=True is mutually exclusive with "
                 "enhance_hf=True (upstream asserts). Set scene.enhance_hf=False."
             )
+
+        try:
+            scene_generator = _build_scene_generator(
+                base_seed, idx - 1, scene.seed_offset, state.device
+            )
+        except Exception:
+            scene_generator = generator
 
         if hasattr(pipeline, "_clear_cache"):
             try:
@@ -1494,26 +1530,60 @@ def _run_scene_loop(
         # distill. No-op when state matches or no LoRA was loaded.
         _set_distill_active(state, scene_req.use_distill)
 
-        new_clip = pipeline.generate_vc(
-            video=tail_pil,
-            prompt=scene.prompt,
-            negative_prompt=request.negative_prompt,
-            resolution=resolution,
-            num_frames=scene_req.num_frames,
-            num_cond_frames=overlap,
-            num_inference_steps=scene_req.num_inference_steps,
-            use_distill=scene_req.use_distill,
-            guidance_scale=scene_req.guidance_scale,
-            generator=generator,
-            max_sequence_length=request.max_sequence_length,
-            attention_kwargs=attn_kwargs if attn_kwargs else None,
-            # Explicit per-scene cache reset; this call must NOT reuse
-            # prior scene's KV cache or text-token bleed corrupts the
-            # transition denoise.
-            use_kv_cache=False,
-            offload_kv_cache=request.offload_kv_cache,
-            enhance_hf=enhance_hf,
+        scene_icn = (
+            scene.image_cond_noise_scale
+            if scene.image_cond_noise_scale is not None
+            else request.image_cond_noise_scale
         )
+
+        try:
+            new_clip = pipeline.generate_vc(
+                video=tail_pil,
+                prompt=scene.prompt,
+                negative_prompt=request.negative_prompt,
+                resolution=resolution,
+                num_frames=scene_req.num_frames,
+                num_cond_frames=overlap,
+                num_inference_steps=scene_req.num_inference_steps,
+                use_distill=scene_req.use_distill,
+                guidance_scale=scene_req.guidance_scale,
+                generator=scene_generator,
+                max_sequence_length=request.max_sequence_length,
+                attention_kwargs=attn_kwargs if attn_kwargs else None,
+                use_kv_cache=False,
+                offload_kv_cache=request.offload_kv_cache,
+                enhance_hf=enhance_hf,
+                image_cond_noise_scale=scene_icn,
+            )
+        except TypeError:
+            new_clip = pipeline.generate_vc(
+                video=tail_pil,
+                prompt=scene.prompt,
+                negative_prompt=request.negative_prompt,
+                resolution=resolution,
+                num_frames=scene_req.num_frames,
+                num_cond_frames=overlap,
+                num_inference_steps=scene_req.num_inference_steps,
+                use_distill=scene_req.use_distill,
+                guidance_scale=scene_req.guidance_scale,
+                generator=scene_generator,
+                max_sequence_length=request.max_sequence_length,
+                attention_kwargs=attn_kwargs if attn_kwargs else None,
+                use_kv_cache=False,
+                offload_kv_cache=request.offload_kv_cache,
+                enhance_hf=enhance_hf,
+            )
+        except Exception as exc:
+            if strict_scene_errors:
+                raise
+            record = build_failure_record(exc, idx - 1)
+            if failures_sink is not None:
+                failures_sink.append(record)
+            logger.warning(
+                "_run_scene_loop scene=%d failed (%s); stopping after %d frames",
+                idx, record["code"], acc.shape[0],
+            )
+            break
 
         new_arr = np.asarray(new_clip)
         if new_arr.ndim == 5:
@@ -1526,11 +1596,6 @@ def _run_scene_loop(
             )
             break
 
-        # Per-scene refinement: refine the FULL clip (overlap + fresh)
-        # so the refined tail can serve as cond input for the NEXT
-        # scene's generate_vc — even though the overlap region is
-        # dropped from `acc`, the refined version of the fresh portion
-        # is what carries forward.
         new_arr = _maybe_refine(new_arr, idx, scene)
         new_arr = np.asarray(new_arr)
         if new_arr.ndim == 5:
@@ -1628,7 +1693,38 @@ class _PipelineError(RuntimeError):
         self.phase = phase
 
 
+def _parse_scene(raw: dict[str, Any]) -> Scene:
+    duration = raw.get("per_scene_generated_seconds")
+    if duration is None:
+        duration = raw.get("duration_seconds", 4.0)
+    return Scene(
+        prompt=raw["prompt"],
+        duration_seconds=float(duration),
+        overlap_frames=int(raw.get("overlap_frames", 13)),
+        enhance_hf=raw.get("enhance_hf"),
+        adain_factor=raw.get("adain_factor"),
+        use_distill=raw.get("use_distill"),
+        guidance_scale=raw.get("guidance_scale"),
+        num_inference_steps=raw.get("num_inference_steps"),
+        negative_prompt=raw.get("negative_prompt"),
+        mode=raw.get("mode", "auto"),
+        image_path=raw.get("image_path"),
+        per_scene_generated_seconds=float(duration),
+        image_cond_noise_scale=raw.get("image_cond_noise_scale"),
+        motion_intensity=raw.get("motion_intensity", "dynamic"),
+        seed_offset=raw.get("seed_offset"),
+        apply_refinement=raw.get("apply_refinement"),
+        refinement_steps=raw.get("refinement_steps"),
+        refinement_guidance=raw.get("refinement_guidance"),
+        refinement_spatial_only=raw.get("refinement_spatial_only"),
+    )
+
+
 def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None:
+    async def _plan_validate(params: dict[str, Any]) -> dict[str, Any]:
+        from .plan_validate import validate_plan
+        return validate_plan(params or {})
+
     async def _render_start(params: dict[str, Any]) -> dict[str, Any]:
         if use_distill:
             params.setdefault("use_distill", True)
@@ -1638,6 +1734,38 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
             # because FlowMatchEuler timestep allocation is compressed past
             # the LoRA's training distribution.
             params.setdefault("num_inference_steps", 16)
+
+        scenes_raw = params.get("scenes")
+        scenes_parsed: Optional[list[Scene]] = None
+        plan_warnings: list[dict[str, Any]] = []
+        if isinstance(scenes_raw, list) and len(scenes_raw) > 0:
+            from .plan_validate import validate_plan
+            validation = validate_plan(params)
+            if not validation.get("ok"):
+                err = validation["error"]
+                return {
+                    "status": "error",
+                    "code": -32108,
+                    "message": err.get("detail", "PLAN_INVALID"),
+                    "phase": "plan_validate",
+                    "data": err,
+                }
+            plan_warnings = validation.get("warnings", [])
+            scenes_parsed = [_parse_scene(s) for s in scenes_raw]
+            normalized_scenes = validation["normalized"]["scenes"]
+            if scenes_parsed and normalized_scenes:
+                params.setdefault("mode", normalized_scenes[0]["mode"])
+                params.setdefault("prompt", normalized_scenes[0]["prompt"])
+
+        if "prompt" not in params or not params["prompt"]:
+            return {
+                "status": "error",
+                "code": -32602,
+                "message": "prompt is required when scenes[] is not provided",
+                "phase": "params",
+            }
+
+        strict_scene_errors = bool(params.get("strict_scene_errors", False))
 
         request = LongCatRenderRequest(
             mode=params.get("mode", "t2v"),
@@ -1655,12 +1783,31 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
             seed=params.get("seed"),
             max_sequence_length=int(params.get("max_sequence_length", 512)),
             offload_kv_cache=bool(params.get("offload_kv_cache", False)),
+            apply_refinement=bool(params.get("apply_refinement", False)),
+            refinement_steps=int(params.get("refinement_steps", 12)),
+            refinement_guidance=float(params.get("refinement_guidance", 1.0)),
+            refinement_spatial_only=bool(params.get("refinement_spatial_only", True)),
+            target_frames=params.get("target_frames"),
+            continuation_overlap_frames=int(params.get("continuation_overlap_frames", 13)),
+            continuation_enhance_hf=params.get("continuation_enhance_hf"),
+            scenes=scenes_parsed,
+            rtx_upscale_scale=params.get("rtx_upscale_scale"),
+            rtx_upscale_quality=params.get("rtx_upscale_quality", "HIGH"),
+            force_refinement_with_upscale=bool(
+                params.get("force_refinement_with_upscale", False)
+            ),
+            offload_mode=params.get("offload_mode"),
+            block_swap_count=params.get("block_swap_count"),
+            adain_factor=float(params.get("adain_factor", 0.0)),
+            image_cond_noise_scale=float(params.get("image_cond_noise_scale", 0.15)),
+            force_refine_with_upscale=bool(params.get("force_refine_with_upscale", False)),
         )
 
         host_data_dir = params.get("host_data_dir") or os.environ.get("NEXUS_HOST_DATA_DIR")
         output_dir = params.get("output_dir")
         offload_mode = params.get("offload_mode", "none")
         block_swap_count = int(params.get("block_swap_count", 0))
+        scene_failures: list[dict[str, Any]] = []
 
         t0 = time.monotonic()
         try:
@@ -1671,14 +1818,25 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
                 host_data_dir=host_data_dir,
                 offload_mode=offload_mode,
                 block_swap_count=block_swap_count,
+                strict_scene_errors=strict_scene_errors,
+                failures_out=scene_failures,
             )
             duration = time.monotonic() - t0
-            return {
+            requested_scene_count = len(scenes_parsed) if scenes_parsed else 1
+            scenes_rendered = requested_scene_count - len(scene_failures)
+            result: dict[str, Any] = {
                 "status": "ok",
                 "output_path": str(output_path),
                 "duration_seconds": round(duration, 2),
                 "num_frames": request.num_frames,
             }
+            if plan_warnings:
+                result["warnings"] = plan_warnings
+            if scene_failures:
+                result["partial"] = True
+                result["scenes_rendered"] = max(0, scenes_rendered)
+                result["scenes_failed"] = scene_failures
+            return result
         except _PipelineError as exc:
             return {
                 "status": "error",
@@ -1695,3 +1853,4 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
             }
 
     worker.register("longcat.video.render.start", _render_start)
+    worker.register("longcat.video.plan.validate", _plan_validate)
