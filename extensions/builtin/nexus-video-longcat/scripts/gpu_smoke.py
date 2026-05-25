@@ -35,9 +35,22 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", default="t2v", choices=["t2v", "i2v"])
     parser.add_argument("--image", default=None, help="image path for --mode i2v")
-    parser.add_argument("--height", type=int, default=480)
-    parser.add_argument("--width", type=int, default=832)
-    parser.add_argument("--num-frames", type=int, default=49)
+    _DEFAULT_HEIGHT = 480
+    _DEFAULT_WIDTH = 832
+    _DEFAULT_NUM_FRAMES = 49
+    _DEFAULT_SWAP_FOR_PRESET_DETECT = 46
+    parser.add_argument("--height", type=int, default=_DEFAULT_HEIGHT)
+    parser.add_argument("--width", type=int, default=_DEFAULT_WIDTH)
+    parser.add_argument("--num-frames", type=int, default=_DEFAULT_NUM_FRAMES)
+    parser.add_argument(
+        "--resolution-preset",
+        default=None,
+        choices=["fast", "standard", "high", "max-native"],
+        help="Apply a named resolution preset from resolution_presets.PRESETS. "
+             "Overrides --height/--width/--num-frames/--swap only when those "
+             "flags are at their argparse defaults. Pass explicit values AFTER "
+             "the preset name if you want to override individual axes.",
+    )
     # Default 16 = LongCat distill training step count (paper Sec. 4.2).
     # Running below 16 with the distill LoRA produces bursty / random
     # speed-ups in motion because the FlowMatchEuler timestep allocation
@@ -160,6 +173,18 @@ def main() -> int:
         ),
     )
     args = parser.parse_args()
+
+    if args.resolution_preset is not None:
+        from longcat_video_worker.resolution_presets import get_preset
+        _rp = get_preset(args.resolution_preset)
+        if args.height == _DEFAULT_HEIGHT:
+            args.height = _rp.height
+        if args.width == _DEFAULT_WIDTH:
+            args.width = _rp.width
+        if args.num_frames == _DEFAULT_NUM_FRAMES:
+            args.num_frames = _rp.num_frames
+        if args.swap == _DEFAULT_SWAP_FOR_PRESET_DETECT:
+            args.swap = _rp.recommended_swap
 
     # Apply quality preset BEFORE argparse defaults dominate. argparse
     # cannot tell user-supplied from default-supplied, so the preset only
