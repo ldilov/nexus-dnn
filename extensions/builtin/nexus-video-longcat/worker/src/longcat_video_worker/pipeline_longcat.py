@@ -59,6 +59,15 @@ class Scene:
     # the base value. Set 0.0 on a scene to disable colour-anchor blending
     # for that scene specifically (e.g. an intentional lighting change).
     adain_factor: Optional[float] = None
+    # Per-scene model + sampling overrides. None inherits the base
+    # request value. Lets a chain keep scene 1 fast on distill (16 step,
+    # guidance 1.0) while scenes with big prompt-deltas drop to dev mode
+    # (use_distill=False + guidance ~3.5 + steps ~30) to recover prompt
+    # adherence. Mutual exclusion still enforced: use_distill=True with
+    # enhance_hf=True raises ValueError (upstream assert).
+    use_distill: Optional[bool] = None
+    guidance_scale: Optional[float] = None
+    num_inference_steps: Optional[int] = None
 
 _DISTILL_LORA_FILENAME = "LongCat_distill_lora_alpha64_bf16.safetensors"
 _REFINEMENT_LORA_FILENAME = "LongCat_refinement_lora_rank128_bf16.safetensors"
@@ -1248,16 +1257,70 @@ def _request_with_scene_overrides(
     if quantised < 5:
         quantised = 5
     adain = base.adain_factor if scene.adain_factor is None else scene.adain_factor
+    use_distill = base.use_distill if scene.use_distill is None else scene.use_distill
+    guidance = (
+        base.guidance_scale if scene.guidance_scale is None else scene.guidance_scale
+    )
+    steps = (
+        base.num_inference_steps
+        if scene.num_inference_steps is None
+        else scene.num_inference_steps
+    )
     return replace(
         base,
         prompt=scene.prompt,
         num_frames=quantised,
         adain_factor=adain,
+        use_distill=use_distill,
+        guidance_scale=guidance,
+        num_inference_steps=steps,
         # Disable nested orchestration when this request is used for a
         # single scene's primary or continuation render.
         scenes=None,
         target_frames=None,
     )
+
+
+def _set_distill_active(state: _PipelineState, target_active: bool) -> Optional[bool]:
+    # Toggle distill LoRA between GPU-active and CPU-detached.
+    #
+    # When scene N flips use_distill from prior pipeline state, the distill
+    # LoRA must be physically moved off GPU (set_use_lora False + .to('cpu'))
+    # before running generate_vc — otherwise the LoRA hook still injects
+    # rank-128 deltas into every Linear forward and contaminates dev-model
+    # output. Mirrors the FU-LORA-DETACH pattern from _run_refinement_pass
+    # (2026-05-24) but for per-scene model swaps inside the scene loop.
+    #
+    # Returns the previous `use_lora` flag so the caller can restore the
+    # state at the next iteration or in a finally block. Returns None if
+    # state.lora_network is missing (no distill ever loaded — base request
+    # was already use_distill=False; nothing to toggle).
+    if state.lora_network is None:
+        return None
+    import torch as _torch
+
+    try:
+        previous_active = bool(getattr(state.lora_network, "use_lora", True))
+        if previous_active == target_active:
+            return previous_active
+        if hasattr(state.lora_network, "set_use_lora"):
+            state.lora_network.set_use_lora(target_active)
+        if target_active:
+            state.lora_network.to(state.device)
+        else:
+            state.lora_network.to("cpu")
+            _torch.cuda.empty_cache()
+        logger.info(
+            "_set_distill_active: distill LoRA use_lora=%s -> %s",
+            previous_active, target_active,
+        )
+        return previous_active
+    except Exception as exc:
+        logger.warning(
+            "_set_distill_active(%s) failed (%s); LoRA state may be stale",
+            target_active, exc,
+        )
+        return None
 
 
 def _run_scene_loop(
@@ -1376,9 +1439,9 @@ def _run_scene_loop(
         enhance_hf = (
             scene.enhance_hf
             if scene.enhance_hf is not None
-            else (not request.use_distill)
+            else (not scene_req.use_distill)
         )
-        if request.use_distill and enhance_hf:
+        if scene_req.use_distill and enhance_hf:
             raise ValueError(
                 f"scene {idx}: use_distill=True is mutually exclusive with "
                 "enhance_hf=True (upstream asserts). Set scene.enhance_hf=False."
@@ -1420,10 +1483,19 @@ def _run_scene_loop(
 
         logger.info(
             "_run_scene_loop scene=%d acc=%d overlap=%d num_frames=%d "
-            "prompt=%r enhance_hf=%s",
+            "use_distill=%s guidance=%.2f steps=%d prompt=%r enhance_hf=%s",
             idx, acc.shape[0], overlap, scene_req.num_frames,
+            scene_req.use_distill, scene_req.guidance_scale,
+            scene_req.num_inference_steps,
             scene.prompt[:80], enhance_hf,
         )
+
+        # Plan B (2026-05-25): toggle distill LoRA to match scene's
+        # use_distill before generate_vc. Detaches the rank-128 LoRA off
+        # GPU when a scene wants dev-model output (more prompt influence
+        # for big prompt-deltas), re-attaches when next scene wants
+        # distill. No-op when state matches or no LoRA was loaded.
+        _set_distill_active(state, scene_req.use_distill)
 
         new_clip = pipeline.generate_vc(
             video=tail_pil,
@@ -1432,9 +1504,9 @@ def _run_scene_loop(
             resolution=resolution,
             num_frames=scene_req.num_frames,
             num_cond_frames=overlap,
-            num_inference_steps=request.num_inference_steps,
-            use_distill=request.use_distill,
-            guidance_scale=request.guidance_scale,
+            num_inference_steps=scene_req.num_inference_steps,
+            use_distill=scene_req.use_distill,
+            guidance_scale=scene_req.guidance_scale,
             generator=generator,
             max_sequence_length=request.max_sequence_length,
             attention_kwargs=attn_kwargs if attn_kwargs else None,
