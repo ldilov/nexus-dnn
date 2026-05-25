@@ -87,12 +87,12 @@ def cli() -> int:
             )
             return 2
         register_longcat_handlers(worker, use_distill=True)
-    elif profile == "rtx50-fp8":
+    elif profile in ("rtx50-fp8", "rtx50-fp8-12gb", "rtx50-fp8-8gb"):
         try:
             from .pipeline_longcat import register_longcat_handlers
         except ImportError as e:
             worker.logger.error(
-                "rtx50-fp8 profile requested but pipeline_longcat is not "
+                f"{profile} profile requested but pipeline_longcat is not "
                 "importable (diffusers extras missing?).",
                 profile=profile,
                 error=str(e),
