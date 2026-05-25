@@ -122,6 +122,7 @@ rtx = [
 test = [
   "pytest>=8.0",
   "pytest-asyncio>=0.23",
+  "safetensors>=0.4",
 ]
 
 [project.scripts]
@@ -151,3 +152,4 @@ explicit = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+pythonpath = ["src"]
