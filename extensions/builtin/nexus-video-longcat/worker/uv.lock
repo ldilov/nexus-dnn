@@ -479,6 +479,7 @@ rtx = [
 test = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "safetensors" },
 ]
 
 [package.metadata]
@@ -506,6 +507,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "regex", marker = "extra == 'diffusers'", specifier = ">=2024.0" },
     { name = "safetensors", marker = "extra == 'diffusers'", specifier = ">=0.4" },
+    { name = "safetensors", marker = "extra == 'test'", specifier = ">=0.4" },
     { name = "sageattention", marker = "extra == 'diffusers'", specifier = ">=1.0.6" },
     { name = "sentencepiece", marker = "extra == 'diffusers'", specifier = ">=0.2" },
     { name = "torch", marker = "extra == 'diffusers'", specifier = ">=2.12", index = "https://download.pytorch.org/whl/cu132" },
