@@ -99,7 +99,7 @@ async def test_render_start_threads_new_params(fake_worker: FakeWorker, tmp_path
     assert result["status"] == "ok"
     req = captured["request"]
     assert req.image_cond_noise_scale == pytest.approx(0.20)
-    assert req.force_refine_with_upscale is True
+    assert req.force_refinement_with_upscale is True
     assert req.apply_refinement is True
     assert req.refinement_steps == 5
     assert req.refinement_guidance == pytest.approx(3.0)

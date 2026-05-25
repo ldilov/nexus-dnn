@@ -77,9 +77,9 @@ def test_request_has_image_cond_noise_scale_default() -> None:
     assert r.image_cond_noise_scale == 0.15
 
 
-def test_request_has_force_refine_with_upscale_default() -> None:
+def test_request_has_force_refinement_with_upscale_default() -> None:
     r = LongCatRenderRequest(mode="t2v", prompt="a")
-    assert r.force_refine_with_upscale is False
+    assert r.force_refinement_with_upscale is False
 
 
 def test_request_image_cond_noise_scale_override() -> None:
