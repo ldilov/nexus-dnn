@@ -66,4 +66,27 @@ def register_fake_handlers(worker: Any) -> None:
         )
         return {"status": "ok", "output_path": str(out), "profile": "fake"}
 
+    async def _plan_expand(params: dict[str, Any]) -> dict[str, Any]:
+        from .plan_llm import expand_prompt
+        from .compile_storyboard import StoryboardCompileError
+        try:
+            result = expand_prompt(
+                prompt=str(params.get("prompt", "")),
+                duration_seconds=float(params.get("duration_seconds", 0.0)),
+                scene_count=int(params.get("scene_count", 1)),
+                style_hint=params.get("style_hint"),
+                seed=int(params.get("seed", 42)),
+                use_llm=bool(params.get("use_llm", False)),
+                lease_client=None,
+            )
+            return result.to_dict()
+        except StoryboardCompileError as exc:
+            return {"status": "error", "code": -32108, **exc.to_error_payload()}
+
+    async def _plan_validate(params: dict[str, Any]) -> dict[str, Any]:
+        from .plan_validate import validate_plan
+        return validate_plan(params or {})
+
     worker.register("longcat.video.render.start", _render_start)
+    worker.register("longcat.video.plan.expand", _plan_expand)
+    worker.register("longcat.video.plan.validate", _plan_validate)
