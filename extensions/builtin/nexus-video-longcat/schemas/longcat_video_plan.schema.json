@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus-dnn.local/extensions/nexus-video-longcat/schemas/longcat_video_plan.schema.json",
+  "title": "LongCatVideoPlan",
+  "description": "Validated multi-scene plan produced by the longcat planner (deterministic S2-1 or LLM-enhanced S2-2). Wire and disk shape, source of truth for the typed dataclass mirror in video_plan.py.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "classification", "anchor", "scenes"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Bump only with a migration path. v1 = initial Spec 050 shape."
+    },
+    "classification": {
+      "type": "string",
+      "enum": ["single_continuation", "storyboard_scenes"]
+    },
+    "anchor": {
+      "type": "string",
+      "minLength": 0,
+      "maxLength": 60,
+      "description": "Sanitised identity/style anchor shared across scenes."
+    },
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "$ref": "scene_prompt_packet.schema.json"
+      }
+    },
+    "continuity": {
+      "type": "object",
+      "description": "Continuity packet — identity/clothing/object anchors that every scene prompt should reinforce.",
+      "additionalProperties": false,
+      "properties": {
+        "identity_anchors": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 60 },
+          "default": []
+        },
+        "clothing_anchors": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 60 },
+          "default": []
+        },
+        "persistent_objects": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 60 },
+          "default": []
+        },
+        "locked_rules": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 120 },
+          "default": []
+        }
+      }
+    },
+    "style": {
+      "type": "object",
+      "description": "Style packet — visual register that applies across scenes (lighting, lens, palette).",
+      "additionalProperties": false,
+      "properties": {
+        "lighting": { "type": "string", "maxLength": 60 },
+        "lens": { "type": "string", "maxLength": 60 },
+        "palette": { "type": "string", "maxLength": 60 },
+        "register": { "type": "string", "maxLength": 60 }
+      }
+    },
+    "adain": {
+      "$ref": "adain_style_packet.schema.json"
+    },
+    "interpolation": {
+      "type": "object",
+      "description": "Hints for post-render temporal interpolation (RIFE/FILM).",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "target_fps": { "type": "integer", "minimum": 24, "maximum": 120 },
+        "method": { "type": "string", "enum": ["rife", "film", "none"], "default": "none" }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "detail"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1, "maxLength": 60 },
+          "scene_index": { "type": ["integer", "null"], "minimum": 0 },
+          "detail": { "type": "string", "minLength": 1, "maxLength": 280 }
+        }
+      },
+      "default": []
+    },
+    "source": {
+      "type": "object",
+      "description": "Provenance of the plan (which compiler / which LLM produced it).",
+      "additionalProperties": false,
+      "properties": {
+        "compiler": { "type": "string", "maxLength": 60 },
+        "llm_model": { "type": "string", "maxLength": 120 },
+        "llm_profile": { "type": "string", "maxLength": 60 }
+      }
+    }
+  }
+}

@@ -343,3 +343,35 @@ def test_prompt_inputs_appear_in_user_message():
     assert "ANCHOR" in user_msg
     assert "SCENE_COUNT: 3" in user_msg
     assert "Alice runs" in user_msg
+
+
+def test_expand_and_persist_writes_artifacts_when_paths_given(tmp_path):
+    from longcat_video_worker.plan_llm import expand_and_persist
+
+    result, bundle = expand_and_persist(
+        "Alice walks then runs then escapes",
+        9.0,
+        3,
+        "cinematic",
+        output_dir=str(tmp_path),
+        run_id="rp-1",
+    )
+    assert result.compiler == "deterministic"
+    assert bundle is not None
+    assert bundle.plan_path.exists()
+    assert len(bundle.scene_paths) == 3
+    assert bundle.run_id == "rp-1"
+
+
+def test_expand_and_persist_skips_io_without_paths(tmp_path):
+    from longcat_video_worker.plan_llm import expand_and_persist
+
+    result, bundle = expand_and_persist(
+        "Alice walks",
+        3.0,
+        1,
+        "cinematic",
+    )
+    assert result.compiler == "deterministic"
+    assert bundle is None
+    assert list(tmp_path.iterdir()) == []

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus-dnn.local/extensions/nexus-video-longcat/schemas/adain_style_packet.schema.json",
+  "title": "AdaINStylePacket",
+  "description": "Cross-scene style continuity packet. Reference anchor + per-scene factor overrides for AdaIN colour-match.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reference_scene_index", "default_factor"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "reference_scene_index": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Scene whose first/last frame defines the colour reference for subsequent scenes."
+    },
+    "default_factor": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "per_scene_overrides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scene_index", "factor"],
+        "properties": {
+          "scene_index": { "type": "integer", "minimum": 0 },
+          "factor": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+        }
+      },
+      "default": []
+    }
+  }
+}

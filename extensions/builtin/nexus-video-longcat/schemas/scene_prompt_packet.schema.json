@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus-dnn.local/extensions/nexus-video-longcat/schemas/scene_prompt_packet.schema.json",
+  "title": "ScenePromptPacket",
+  "description": "One compiled scene as emitted by the longcat storyboard compiler (S2-1) and accepted by the longcat render pipeline. Matches the CompiledScene dataclass in compile_storyboard.py.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "prompt",
+    "per_scene_generated_seconds",
+    "overlap_frames",
+    "motion_intensity",
+    "adain_factor",
+    "mode"
+  ],
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 280,
+      "description": "Compiled conditioning prompt for this scene only. Anchors + beat, trimmed to PROMPT_BUDGET_CHARS."
+    },
+    "per_scene_generated_seconds": {
+      "type": "number",
+      "exclusiveMinimum": 0.0,
+      "maximum": 15.0,
+      "description": "Fresh frames this scene contributes (excludes overlap)."
+    },
+    "overlap_frames": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 240,
+      "description": "Latent-tail frames carried from the previous scene. 0 for scene[0]."
+    },
+    "motion_intensity": {
+      "type": "string",
+      "enum": ["static", "dynamic", "intense"]
+    },
+    "adain_factor": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["auto", "t2v", "i2v", "vc"]
+    },
+    "negative_prompt": {
+      "type": "string",
+      "maxLength": 280,
+      "description": "Optional per-scene negative-prompt override."
+    }
+  }
+}
