@@ -7,6 +7,7 @@ pub mod desktop;
 pub mod draft_suggestions;
 pub mod errors;
 pub mod extension_dependencies;
+pub mod extension_settings;
 pub mod extension_ui;
 pub mod extensions;
 pub mod extensions_install;
