@@ -1817,6 +1817,9 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
         scene_failures: list[dict[str, Any]] = []
 
         t0 = time.monotonic()
+        from .render_report import write_report_swallow
+        from .vram import memory_stats as _vram_memory_stats
+
         try:
             output_path = await __import__("asyncio").to_thread(
                 render,
@@ -1831,6 +1834,7 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
             duration = time.monotonic() - t0
             requested_scene_count = len(scenes_parsed) if scenes_parsed else 1
             scenes_rendered = requested_scene_count - len(scene_failures)
+            status = "partial" if scene_failures else "ok"
             result: dict[str, Any] = {
                 "status": "ok",
                 "output_path": str(output_path),
@@ -1843,8 +1847,39 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
                 result["partial"] = True
                 result["scenes_rendered"] = max(0, scenes_rendered)
                 result["scenes_failed"] = scene_failures
+            # Spec 051 D-C: write render_report.json alongside the .mp4.
+            # Best-effort; never fails the render.
+            report_path = write_report_swallow(
+                output_dir=Path(output_path).parent if output_path else None,
+                run_id=Path(output_path).stem,
+                status=status,
+                duration_seconds=duration,
+                num_frames=request.num_frames,
+                scenes_rendered=max(0, scenes_rendered),
+                scenes_failed=scene_failures,
+                warnings=plan_warnings or None,
+                output_path=str(output_path),
+                memory_stats=_vram_memory_stats(),
+            )
+            if report_path is not None:
+                result["render_report_path"] = str(report_path)
             return result
         except _PipelineError as exc:
+            duration = time.monotonic() - t0
+            if output_dir:
+                write_report_swallow(
+                    output_dir=Path(output_dir),
+                    run_id=f"err-{int(time.time() * 1000)}",
+                    status="error",
+                    duration_seconds=duration,
+                    num_frames=request.num_frames,
+                    scenes_rendered=0,
+                    scenes_failed=scene_failures or None,
+                    warnings=plan_warnings or None,
+                    error_phase=exc.phase,
+                    error_message=str(exc),
+                    memory_stats=_vram_memory_stats(),
+                )
             return {
                 "status": "error",
                 "code": -32603,
@@ -1852,6 +1887,21 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
                 "phase": exc.phase,
             }
         except Exception as exc:
+            duration = time.monotonic() - t0
+            if output_dir:
+                write_report_swallow(
+                    output_dir=Path(output_dir),
+                    run_id=f"err-{int(time.time() * 1000)}",
+                    status="error",
+                    duration_seconds=duration,
+                    num_frames=request.num_frames,
+                    scenes_rendered=0,
+                    scenes_failed=scene_failures or None,
+                    warnings=plan_warnings or None,
+                    error_phase="generate",
+                    error_message=str(exc),
+                    memory_stats=_vram_memory_stats(),
+                )
             return {
                 "status": "error",
                 "code": -32603,
