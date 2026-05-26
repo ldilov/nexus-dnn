@@ -38,8 +38,8 @@ Operator wants "Auto Storyboard" feel. These shape the surface so existing wire 
 
 | # | Title | Effort | Value | Source | Rationale |
 |---|---|---|---|---|---|
-| **S2-1** | `compile_storyboard.py` deterministic compiler (prompt+duration+count → scenes JSON, regex+heuristic, no LLM) | M | 5 | P/UX-2 | The "one prompt → storyboard" Auto-Storyboard product promise without LLM risk. |
-| **S2-2** | `longcat.video.preset.expand` RPC method (preset_name+prompt+duration+count → scenes[]) | S | 4 | P/UX-3 | Wire entry-point for S2-1 callable from any host. |
+| **S2-1** ✅ SHIPPED 2026-05-26 (`43657cf`) | `compile_storyboard.py` deterministic compiler (prompt+duration+count → scenes JSON, regex+heuristic, no LLM) | M | 5 | P/UX-2 | The "one prompt → storyboard" Auto-Storyboard product promise without LLM risk. |
+| **S2-2** ✅ SHIPPED 2026-05-26 (`a011f00` + `20a35b6`) — renamed to `longcat.video.plan.expand` | `longcat.video.preset.expand` RPC method (preset_name+prompt+duration+count → scenes[]) | S | 4 | P/UX-3 | Wire entry-point for S2-1 callable from any host. Also wires LLM-enhancer scaffold (plan_llm.py); production lease wiring DEFERRED to follow-up spec. |
 | **S2-3** | `longcat.video.render.estimate` RPC (heuristic wall + peak_vram from current datapoint ±25%) | S | 4 | P/UX-4 | Tell user "this will take 18 min" before they hit go. |
 | **S2-4** | `scenes_templates.py` library: 2-scene-fast, 3-scene-cinematic, 4-scene-montage, dialogue-2scene | S | 3 | P/UX-1 | Templates seed S2-1's compiler + S2-2's preset RPC. |
 | **S2-5** | Example storyboard JSONs under `examples/` (5 patterns, each validator-clean) | S | 3 | P/UX-6 + DevEx-6 | Repo-internal fixtures separate from D:/longcat_install/. Onboarder copies an example. |
@@ -51,7 +51,7 @@ Operator wants "Auto Storyboard" feel. These shape the surface so existing wire 
 | **S2-11** | Adaptive max_sequence_length (clamp to next multiple of 64 ≥ token_count+8, floor 128) | S | 2 | Perf-3 | Short prompts pay less attention compute. |
 | **S2-12** | Pre-warm worker on boot (env-gated `LONGCAT_PREWARM=1`, default off) | M | 3 | Perf-5 | First render latency drops from 18.9 → 18 min — minor but stacks. |
 | **S2-13** | `migrate-storyboard.py` CLI (rewrite legacy duration_seconds → per_scene_generated_seconds) | S | 2 | DevEx-3 | Silences DEPRECATED_FIELD_ALIAS on every smoke. |
-| **S2-14** | Negative-prompt catalog `negative_prompts.py` — MELT/DEFORM/IDENTITY_DRIFT/MOTION_ARTIFACT frozensets + `compose()` | S | 4 | P/UX-8 + Q4 | Curated anti-melt vocabulary, opt-in merge into user negatives. |
+| **S2-14** ✅ SHIPPED 2026-05-26 (`43657cf`) | Negative-prompt catalog `negative_prompts.py` — MELT/DEFORM/IDENTITY_DRIFT/MOTION_ARTIFACT frozensets + `compose()` | S | 4 | P/UX-8 + Q4 | Curated anti-melt vocabulary, opt-in merge into user negatives. NOTE: auto-merge into `scenes[].negative_prompt` is DEFERRED (opt-in RPC flag in follow-up). |
 
 **Sprint 2 effort total: ~14 items, mix of S+M ≈ 3 dev-days.** Big leverage on iteration speed (S2-3/S2-6/S2-7/S2-9) and Auto-Storyboard surface (S2-1/S2-2/S2-4/S2-5).
 
@@ -90,7 +90,7 @@ These came up in council discussion and were explicitly NOT proposed:
 
 - **Pre-commit/pre-push hooks** — cross-platform .sh+.ps1 doubling overhead, blocks exploratory work
 - **Frontend storyboard editor in apps/web/** — deferred to a separate spec
-- **LLM-backed planner** — rejected by SOTA review for v1; deterministic regex compiler covers 80% (S2-1)
+- ~~**LLM-backed planner** — rejected by SOTA review for v1; deterministic regex compiler covers 80% (S2-1)~~ — SCAFFOLDED 2026-05-26 (`20a35b6`) as `plan_llm.py` with `LeaseClient` Protocol + `NoLeaseClient` default. Production cross-extension lease wiring DEFERRED to follow-up spec (3 options under consideration: reverse-RPC SDK / host-side broker / pre-injected lease handle).
 - **Migration to different package manager** — out of scope
 - **New attention kernel / FP8 path / scheduler changes** — anything that needs fresh GPU smoke validation
 - **torch.compile** — Blackwell + FP8 compile path unverified; opt-in only as future spec
