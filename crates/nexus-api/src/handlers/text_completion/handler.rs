@@ -10,6 +10,8 @@ use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use nexus_backend_runtimes::generic::leases::text_completion::ResponseFormat;
+
 use super::errors::{TextCompletionError, status_code};
 use super::service::TextCompletionService;
 
@@ -25,6 +27,11 @@ pub struct TextCompletionRequest {
     pub user: String,
     pub max_tokens: u32,
     pub timeout_ms: u32,
+    /// Optional structured-output constraint forwarded verbatim to the
+    /// worker. Pre-Spec-050 callers omit this field and observe
+    /// byte-identical request semantics.
+    #[serde(default)]
+    pub response_format: Option<ResponseFormat>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -51,7 +58,13 @@ pub async fn complete(
 
     let timeout = Duration::from_millis(request.timeout_ms as u64);
     match service
-        .complete(request.system, request.user, request.max_tokens, timeout)
+        .complete(
+            request.system,
+            request.user,
+            request.max_tokens,
+            timeout,
+            request.response_format,
+        )
         .await
     {
         Ok(text) => (StatusCode::OK, Json(TextCompletionResponse { text })).into_response(),
@@ -100,6 +113,7 @@ mod tests {
             _user: String,
             _max_tokens: u32,
             _timeout: Duration,
+            _response_format: Option<ResponseFormat>,
         ) -> Result<String, TextCompletionError> {
             self.outcome.clone()
         }
@@ -111,6 +125,32 @@ mod tests {
             user: "hello".into(),
             max_tokens: 16,
             timeout_ms: 1000,
+            response_format: None,
+        }
+    }
+
+    #[test]
+    fn request_without_response_format_field_deserializes() {
+        let body = r#"{"user":"hi","max_tokens":8,"timeout_ms":500}"#;
+        let req: TextCompletionRequest = serde_json::from_str(body).unwrap();
+        assert!(req.response_format.is_none());
+    }
+
+    #[test]
+    fn request_with_json_schema_round_trips() {
+        let body = r#"{
+            "user":"give json",
+            "max_tokens":256,
+            "timeout_ms":2000,
+            "response_format":{
+                "type":"json_schema",
+                "schema":{"type":"object"},
+                "name":"x"
+            }
+        }"#;
+        let req: TextCompletionRequest = serde_json::from_str(body).unwrap();
+        match req.response_format.expect("response_format must parse") {
+            ResponseFormat::JsonSchema { name, .. } => assert_eq!(name, "x"),
         }
     }
 

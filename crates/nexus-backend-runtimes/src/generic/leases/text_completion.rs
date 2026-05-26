@@ -71,6 +71,33 @@ pub const NOTIFY_DONE: &str = "text.complete.done";
 /// failure terminator.
 pub const NOTIFY_ERROR: &str = "text.complete.error";
 
+/// Opaque structured-output constraint passed through to the worker.
+///
+/// The host does not interpret the body. Tenants supply a schema (or a
+/// GBNF grammar) and a tenant-chosen `name` (echoed back in errors). The
+/// worker is responsible for translating to the underlying backend's
+/// native flag (`--json-schema` / `--grammar-file` for llama.cpp,
+/// `guided_json` for vLLM, etc.) or for rejecting with
+/// `unsupported_response_format`.
+///
+/// This enum is intentionally minimal at v1: only `JsonSchema`. `Gbnf`
+/// is a forward-compatible additive variant for a follow-up spec; do
+/// not add it here without a paired backend-adapter test.
+///
+/// Boundary contract: every variant body is `serde_json::Value` or
+/// `String`. The host never types the schema. No tenant identifier
+/// (extension id, profile name, render id) appears inside any variant.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ResponseFormat {
+    JsonSchema {
+        schema: serde_json::Value,
+        /// Tenant-chosen identifier echoed back on errors. Opaque
+        /// string; the host neither parses it nor restricts its values.
+        name: String,
+    },
+}
+
 /// Params for a [`METHOD_START`] request.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StartParams {
@@ -81,6 +108,11 @@ pub struct StartParams {
     pub user: String,
     /// Hard cap on the number of tokens the worker may emit.
     pub max_tokens: u32,
+    /// Optional structured-output constraint. `None` MUST serialize to
+    /// an absent field (not `null`) so pre-`ResponseFormat` tenants
+    /// produce byte-identical wire output.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_format: Option<ResponseFormat>,
 }
 
 /// Result of a successful [`METHOD_START`] request.
@@ -161,6 +193,7 @@ mod tests {
             system: "be terse".into(),
             user: "complete this".into(),
             max_tokens: 96,
+            response_format: None,
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: StartParams = serde_json::from_str(&json).unwrap();
@@ -172,6 +205,51 @@ mod tests {
         let json = r#"{"user":"x","max_tokens":1}"#;
         let p: StartParams = serde_json::from_str(json).unwrap();
         assert_eq!(p.system, "");
+        assert!(p.response_format.is_none());
+    }
+
+    #[test]
+    fn start_params_omits_none_response_format_from_wire() {
+        let p = StartParams {
+            system: "".into(),
+            user: "hello".into(),
+            max_tokens: 16,
+            response_format: None,
+        };
+        let wire = serde_json::to_string(&p).unwrap();
+        assert!(
+            !wire.contains("response_format"),
+            "None response_format must serialize to absent, got: {wire}"
+        );
+    }
+
+    #[test]
+    fn response_format_json_schema_round_trip() {
+        let rf = ResponseFormat::JsonSchema {
+            schema: serde_json::json!({"type": "object", "required": ["x"]}),
+            name: "scene_packet_v1".into(),
+        };
+        let json = serde_json::to_string(&rf).unwrap();
+        assert!(json.contains("\"type\":\"json_schema\""));
+        let back: ResponseFormat = serde_json::from_str(&json).unwrap();
+        assert_eq!(rf, back);
+    }
+
+    #[test]
+    fn start_params_with_response_format_round_trip() {
+        let p = StartParams {
+            system: "".into(),
+            user: "produce json".into(),
+            max_tokens: 256,
+            response_format: Some(ResponseFormat::JsonSchema {
+                schema: serde_json::json!({"type": "string"}),
+                name: "string_payload".into(),
+            }),
+        };
+        let wire = serde_json::to_string(&p).unwrap();
+        assert!(wire.contains("response_format"));
+        let back: StartParams = serde_json::from_str(&wire).unwrap();
+        assert_eq!(p, back);
     }
 
     #[test]

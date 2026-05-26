@@ -237,3 +237,52 @@ def test_default_lease_client_empty_port_treated_as_unset(
     monkeypatch.setenv(HOST_PORT_ENV, "")
     client = default_lease_client()
     assert isinstance(client, NoLeaseClient)
+
+
+def test_complete_omits_response_format_by_default(explicit_base_url: str) -> None:
+    spy = _UrlopenSpy(_ok("ok"))
+    client = HttpLeaseClient(base_url=explicit_base_url)
+    with patch("urllib.request.urlopen", spy):
+        client.complete("", "u", 16, 1.0)
+    body = json.loads(spy.calls[0][0].data.decode("utf-8"))
+    assert "response_format" not in body
+
+
+def test_complete_threads_response_format_when_supplied(explicit_base_url: str) -> None:
+    spy = _UrlopenSpy(_ok("ok"))
+    client = HttpLeaseClient(base_url=explicit_base_url)
+    rf = {"type": "json_schema", "schema": {"type": "object"}, "name": "x"}
+    with patch("urllib.request.urlopen", spy):
+        client.complete("", "u", 16, 1.0, response_format=rf)
+    body = json.loads(spy.calls[0][0].data.decode("utf-8"))
+    assert body["response_format"] == rf
+
+
+def test_build_response_format_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    from longcat_video_worker.plan_llm import _build_response_format, CONSTRAINED_ENV
+
+    monkeypatch.delenv(CONSTRAINED_ENV, raising=False)
+    assert _build_response_format() is None
+
+
+def test_build_response_format_enabled_by_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    from longcat_video_worker.plan_llm import (
+        CONSTRAINED_ENV,
+        CONSTRAINED_SCHEMA_NAME,
+        _build_response_format,
+    )
+
+    monkeypatch.setenv(CONSTRAINED_ENV, "1")
+    rf = _build_response_format()
+    assert rf is not None
+    assert rf["type"] == "json_schema"
+    assert rf["name"] == CONSTRAINED_SCHEMA_NAME
+    assert rf["schema"]["title"] == "LongCatVideoPlan"
+
+
+def test_build_response_format_falsy_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    from longcat_video_worker.plan_llm import CONSTRAINED_ENV, _build_response_format
+
+    for falsy in ("0", "false", "no", "off", "", "  "):
+        monkeypatch.setenv(CONSTRAINED_ENV, falsy)
+        assert _build_response_format() is None, f"expected None for {falsy!r}"

@@ -188,6 +188,9 @@ impl SuggestionStreamProvider for LeaseBackedStreamProvider {
             system: prompt.system,
             user: prompt.user,
             max_tokens: request.max_tokens,
+            // Spec 050 D2: draft_suggestions never requests constrained
+            // generation. Wire output stays byte-identical to pre-D2.
+            response_format: None,
         };
         let start_value = serde_json::to_value(&start_params)
             .map_err(|e| DraftSuggestionError::Internal(format!("encode start params: {e}")))?;
