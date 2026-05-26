@@ -9,7 +9,7 @@ One prompt + duration + scene_count → validator-clean `scenes[]` JSON the rend
 | Deterministic compiler (S2-1) | `use_llm=false` OR LLM lease unavailable | `compile_storyboard.py` | pure stdlib | always — the floor |
 | LLM enhancer (S2-2) | `use_llm=true` AND a real `LeaseClient` is injected | `plan_llm.py` | host cross-extension lease (deferred wiring) | future |
 
-The LLM path is currently **shipped dark**: the default `NoLeaseClient` raises `LeaseUnavailableError` and the planner falls back to the deterministic compiler. Wiring the production lease (host-side broker, reverse-RPC SDK, or pre-injected handle) is a follow-up spec.
+The LLM path is wired via the host's generic text-completion broker (spec 049). When the host process publishes `NEXUS_HOST_PORT` (automatic after `axum::serve` binds), the worker's `default_lease_client()` constructs an `HttpLeaseClient` that POSTs to `/api/v1/services/text-completion`. Without the env var (CI, ad-hoc smoke scripts), the planner falls back to the deterministic compiler.
 
 ## RPC contract
 
@@ -92,15 +92,26 @@ Codes emitted by this surface (in addition to the existing `plan_validate` codes
 
 Every error path lands at S2-1; the response always validates.
 
-## Deferred — production lease wiring
+## Production lease wiring (spec 049)
 
-The storyboard worker is a Python child of the host. The host's `acquire_lease()` (`crates/nexus-backend-runtimes/src/generic/leases/acquire.rs`) is Rust-only. Three options to enable the LLM path in production:
+The storyboard worker is a Python child of the host. The host runs a generic text-completion broker at `POST /api/v1/services/text-completion` that resolves any `nexus_backend_runtimes` lease tagged with the `text-completion` capability (today: `nexus.local-llm.completions`). Boundary rule: the broker handler in `crates/nexus-api/src/handlers/text_completion/` is strictly generic — no extension-specific code lives there. Enforced by CI grep guard in `.github/workflows/boundary-audit.yml`.
 
-1. Reverse-RPC: extend the worker SDK so the worker can issue JSON-RPC requests to its parent host. The host adapter then proxies into `acquire_lease` and streams `text.complete.*` notifications back.
-2. Host-side broker handler: add a generic `/api/v1/cross-extension/text-completion` handler in the host that any extension consumes; storyboard worker calls home via that endpoint. Must stay generic — no storyboard-specific routing in host code.
-3. Pre-injected lease handle: host spawns the worker with a pre-acquired lease's FDs in env/argv; the worker reads them at boot and constructs a `LeaseClient` from them. Heavier launch coupling.
+### Operator prerequisites for the LLM path
+1. Install a runtime tagged `text-completion` (today: `nexus.local-llm.completions`) and let it reach `Validated` status.
+2. Load a model and confirm one lease is `Ready` (`GET /api/v1/backend-runtime-leases`).
+3. Start the host normally (`cargo run -p nexus-core`). The host auto-publishes `NEXUS_HOST_PORT` to all child workers after binding the listener — no manual env wiring.
+4. Issue `longcat.video.plan.expand` with `use_llm=true`. The worker's `default_lease_client()` discovers the port and POSTs.
 
-None of the three are in scope for this spec. The `LeaseClient` Protocol in `plan_llm.py` is a single sync method `complete(system, user, max_tokens, timeout_s) → str`; any of the three options can adapt to that surface (async refactor possible if the chosen mechanism requires it).
+### Wire details
+- Request: `{"system": str, "user": str, "max_tokens": int, "timeout_ms": int}`
+- Response: `{"text": str}` (buffered server-side from the streaming JSON-RPC contract)
+- Errors: 503 → `LeaseUnavailableError`; 504 → `LeaseTimeoutError`; 502 → `LeaseUnavailableError` (lease-revoked or model-unavailable); 400 → `ValueError`.
+- The `LeaseClient` Protocol stays sync (`complete(...) -> str`); the `_plan_expand` RPC handler wraps the call in `asyncio.to_thread`.
+
+### Deferred (future scope)
+- Optional Unix domain socket transport on Linux/macOS (`NEXUS_HOST_SOCKET`) — eliminates loopback firewall surface. P2 of spec 049.
+- Streaming variant of the broker (`POST /api/v1/services/text-completion/stream`) — deferred until a consumer needs progressive UI.
+- Async `LeaseClient` Protocol — deferred until a consumer needs concurrent prompt expansion.
 
 ## Real-model latency benchmark (operator-run)
 
@@ -117,5 +128,8 @@ For when production wiring lands, validate the 15s timeout against your hardware
 - `tests/test_negative_prompts.py` — 7 tests, catalog + compose().
 - `tests/test_plan_llm.py` — 27 tests, mock lease, repair retry, all 6 error → fallback paths, anchor repair.
 - `tests/test_plan_expand_rpc.py` — 11 tests, RPC contract round-trip on both fake + real profiles.
+- `tests/test_http_lease_client.py` — 20 tests, stdlib `urllib`-based broker client + monkeypatched `urlopen` (spec 049).
 
-Total: 94 new tests, all pure-Python, no GPU, no torch import. Runtime delta < 0.5s.
+Total: 115 tests, all pure-Python, no GPU, no torch import. Runtime delta < 0.5s.
+
+Host-side: `cargo test -p nexus-api --lib text_completion` — 29 unit tests covering buffered streaming, status-code mapping, validation, and timeout. Boundary CI guard in `.github/workflows/boundary-audit.yml` rejects any extension-id or domain-feature string in the broker module.
