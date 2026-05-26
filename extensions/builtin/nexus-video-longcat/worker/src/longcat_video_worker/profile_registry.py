@@ -146,10 +146,10 @@ def load_registry(path: Optional[Path] = None) -> ProfileRegistry:
             f"default_profile={default_profile!r} not defined in profiles"
         )
     default_entry = next(p for p in profiles if p.id == default_profile)
-    if default_entry.is_uncensored():
+    if default_entry.safety_tier != "mainstream":
         raise ProfileRegistryError(
-            f"default_profile={default_profile!r} has safety_tier=requires_local_policy; "
-            "an uncensored model must not be the default"
+            f"default_profile={default_profile!r} has safety_tier={default_entry.safety_tier!r}; "
+            "only mainstream profiles may be the default"
         )
     return ProfileRegistry(
         schema_version=1,

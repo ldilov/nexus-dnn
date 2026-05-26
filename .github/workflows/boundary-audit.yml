@@ -54,7 +54,7 @@ jobs:
         # or domain feature. Banned forms listed inline so violation
         # messages are self-explanatory.
         run: |
-          BANNED='longcat|long_cat|storyboard|scene_context|emotion_tts|video\.plan|video_plan|adain|interpolation_plan|prompt_artifacts'
+          BANNED='longcat|long_cat|storyboard|scene_context|emotion_tts|video\.plan|video_plan|adain|interpolation_plan|prompt_artifacts|profile_registry|model_profiles|safety_tier|longcat_video'
           violation=0
           for target in \
               crates/nexus-api/src/handlers/text_completion/ \

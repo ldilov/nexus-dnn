@@ -55,6 +55,11 @@ pub async fn complete(
     if request.timeout_ms > MAX_TIMEOUT_MS {
         return validation_response("timeout_ms exceeds host upper bound");
     }
+    if let Some(ResponseFormat::JsonSchema { name, .. }) = &request.response_format {
+        if name.is_empty() {
+            return validation_response("response_format.name must be non-empty");
+        }
+    }
 
     let timeout = Duration::from_millis(request.timeout_ms as u64);
     match service
@@ -134,6 +139,23 @@ mod tests {
         let body = r#"{"user":"hi","max_tokens":8,"timeout_ms":500}"#;
         let req: TextCompletionRequest = serde_json::from_str(body).unwrap();
         assert!(req.response_format.is_none());
+    }
+
+    #[tokio::test]
+    async fn empty_response_format_name_returns_400() {
+        let service: Arc<dyn TextCompletionService> = Arc::new(FakeService {
+            outcome: Ok("".into()),
+        });
+        let req = TextCompletionRequest {
+            response_format: Some(ResponseFormat::JsonSchema {
+                schema: serde_json::json!({"type": "object"}),
+                name: String::new(),
+            }),
+            ..ok_request()
+        };
+        let (status, body) = body_text(complete(Extension(service), Json(req)).await).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body["message"].as_str().unwrap().contains("response_format.name"));
     }
 
     #[test]
