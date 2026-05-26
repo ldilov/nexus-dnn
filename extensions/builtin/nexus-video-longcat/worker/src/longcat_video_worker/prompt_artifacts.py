@@ -17,7 +17,7 @@ from .video_plan import (
     VideoPlan,
 )
 
-_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-.:]{0,63}$")
+_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-:]{0,63}$")
 
 
 class ArtifactWriteError(Exception):
@@ -51,9 +51,13 @@ class ArtifactBundle:
 
 
 def _validate_run_id(run_id: str) -> None:
-    if not _RUN_ID_PATTERN.fullmatch(run_id) or ".." in run_id:
+    # `.` deliberately omitted from the charset so a future regex refactor
+    # cannot silently re-admit `..` traversal. If dot-bearing IDs are ever
+    # required, add a negative lookahead `(?!.*\.\.)` rather than relying
+    # on a separate string check.
+    if not _RUN_ID_PATTERN.fullmatch(run_id):
         raise ArtifactWriteError(
-            "run_id must start alphanumeric, match [A-Za-z0-9_-.:]{1,64}, and contain no '..'"
+            "run_id must start alphanumeric and match [A-Za-z0-9][A-Za-z0-9_\\-:]{0,63}"
         )
 
 

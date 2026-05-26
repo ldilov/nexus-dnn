@@ -117,7 +117,17 @@ def test_write_records_raw_prompt_when_supplied(tmp_path):
 
 
 def test_write_rejects_unsafe_run_id(tmp_path):
-    for unsafe in ("../escape", "", "a/b", "..", ".hidden", "a..b", "/abs"):
+    for unsafe in (
+        "../escape",
+        "",
+        "a/b",
+        "..",
+        ".hidden",
+        "a..b",
+        "/abs",
+        "run.dot",
+        "a.b.c",
+    ):
         with pytest.raises(ArtifactWriteError):
             write_plan_artifacts(plan=_plan(), output_dir=tmp_path, run_id=unsafe)
 
