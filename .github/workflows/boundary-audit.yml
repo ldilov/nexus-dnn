@@ -48,15 +48,26 @@ jobs:
       - name: Run draft_suggestions boundary + handler tests
         run: cargo test -p nexus-api --test draft_suggestions
 
-      - name: Run text_completion boundary grep (spec 049 D9)
-        # Generic broker route must not reference any specific extension
-        # id, scene/storyboard concept, or domain feature. Banned forms
-        # listed inline so violation messages are self-explanatory.
+      - name: Run text_completion boundary grep (spec 049 D9 + spec 050 D2)
+        # Generic broker route + canonical lease contract must not
+        # reference any specific extension id, scene/storyboard concept,
+        # or domain feature. Banned forms listed inline so violation
+        # messages are self-explanatory.
         run: |
-          if grep -rnIE "longcat|long_cat|storyboard|scene_context|emotion_tts|video\.plan" crates/nexus-api/src/handlers/text_completion/ ; then
-            echo "::error::Boundary violation in crates/nexus-api/src/handlers/text_completion/ — see specs/049-longcat-llm-lease-wiring/spec.md D9"
-            exit 1
-          fi
+          BANNED='longcat|long_cat|storyboard|scene_context|emotion_tts|video\.plan|video_plan|adain|interpolation_plan|prompt_artifacts'
+          violation=0
+          for target in \
+              crates/nexus-api/src/handlers/text_completion/ \
+              crates/nexus-backend-runtimes/src/generic/leases/text_completion.rs ; do
+            if grep -rnIE "$BANNED" "$target" ; then
+              echo "::error::Boundary violation in $target — see specs/050-longcat-prompt-processing/synthesis.md and .claude/rules/host-extension-boundary.md"
+              violation=1
+            fi
+          done
+          exit $violation
 
       - name: Run text_completion handler tests
         run: cargo test -p nexus-api --lib text_completion
+
+      - name: Run generic text_completion lease contract tests (spec 050 D2)
+        run: cargo test -p nexus-backend-runtimes --lib generic::leases::text_completion
