@@ -109,12 +109,42 @@ def _empty_stats(generation_count: int) -> dict[str, Any]:
 
 
 def _free_vram_mb() -> int:
+    return free_vram_mb()
+
+
+def free_vram_mb() -> int:
+    """Free VRAM in MiB, or 0 when torch/CUDA is unavailable.
+
+    Spec 051 D-A: planner's n_gpu_layers auto-fit reads this. SECURITY
+    A1: the returned value is an internal input to a decision. Do NOT
+    log it, surface it in artifacts, or expose it via the broker
+    response envelope. Only the derived `n_gpu_layers` integer is
+    loggable. The host tracing-bridge allowlist must redact
+    `free_vram_mb`/`total_vram_mb` if any code path slips up.
+    """
     try:
         import torch
+
         if not torch.cuda.is_available():
             return 0
         free, _ = torch.cuda.mem_get_info()
         return free // (1024 * 1024)
+    except Exception:
+        return 0
+
+
+def total_vram_mb() -> int:
+    """Total VRAM in MiB, or 0 when torch/CUDA is unavailable.
+
+    Same SECURITY A1 caveat as `free_vram_mb()`.
+    """
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return 0
+        _, total = torch.cuda.mem_get_info()
+        return total // (1024 * 1024)
     except Exception:
         return 0
 

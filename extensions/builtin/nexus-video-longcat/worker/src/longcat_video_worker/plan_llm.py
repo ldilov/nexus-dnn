@@ -102,25 +102,57 @@ def _resolve_planner_profile():
         return None
 
 
+def _auto_fit_n_gpu_layers(profile=None) -> int:
+    """Spec 051 D-A: derive n_gpu_layers from free VRAM.
+
+    Precedence: profile.n_gpu_layers (explicit operator override) WINS over
+    the auto-fit. `null` in the profile means "compute from free VRAM".
+    Fallback when torch/CUDA is unavailable: -1 (let the worker try full
+    offload; it knows the model size).
+
+    SECURITY A1: free VRAM is an internal input. The probed MiB value
+    MUST NOT appear in log lines, artifacts, or response payloads. Only
+    the derived integer is loggable.
+    """
+    if profile is not None and getattr(profile, "n_gpu_layers", None) is not None:
+        return int(profile.n_gpu_layers)
+    try:
+        from .vram import free_vram_mb
+    except ImportError:
+        return -1
+    free_mb = free_vram_mb()
+    if free_mb <= 0:
+        return -1
+    # Conservative heuristic: a small Q4-Q8 instruction model layer is
+    # typically 60-90 MiB resident. Leave 1 GiB headroom for activations
+    # and KV cache, then divide. Cap at 99 ("offload everything"); the
+    # worker will clamp to the real model layer count.
+    headroom_mb = 1024
+    per_layer_mb = 80
+    usable = max(0, free_mb - headroom_mb)
+    layers = usable // per_layer_mb
+    return int(min(99, max(0, layers)))
+
+
 def _planner_call_kwargs() -> dict[str, Any]:
     """Build the planner-tenant subset of HttpLeaseClient.complete kwargs.
 
-    Defaults are intentionally aggressive: ephemeral=True so the model is
-    unloaded after every prompt (frees VRAM), n_gpu_layers=-1 so the
-    backend offloads as many layers as VRAM allows, and the profile's
-    required/preferred tags drive lease selection. Operators override per
-    profile in extensions/builtin/nexus-video-longcat/config/model_profiles.yaml.
+    Spec 050 PR-6 + Spec 051 PR-1: ephemeral=True (model unloaded after
+    every prompt), n_gpu_layers from auto-fit (or profile override),
+    required/preferred tags from the profile.
     """
+    profile = _resolve_planner_profile()
     kwargs: dict[str, Any] = {
         "ephemeral": True,
-        "n_gpu_layers": -1,
+        "n_gpu_layers": _auto_fit_n_gpu_layers(profile),
     }
-    profile = _resolve_planner_profile()
     if profile is not None:
         if profile.required_tags:
             kwargs["required_tags"] = list(profile.required_tags)
         if profile.preferred_tags:
             kwargs["preferred_tags"] = list(profile.preferred_tags)
+        if profile.context_size:
+            kwargs["ctx_size"] = int(profile.context_size)
     return kwargs
 
 
@@ -160,7 +192,20 @@ class HttpLeaseClient:
         required_tags: Optional[list[str]] = None,
         preferred_tags: Optional[list[str]] = None,
         ephemeral: bool = False,
+        ctx_size: Optional[int] = None,
     ) -> str:
+        # Spec 051 D-B: client-side ctx_size enforcement (advisory upper
+        # bound). The worker is the actual authority on its context
+        # window; if profile.context_size > worker.n_ctx the worker still
+        # truncates silently. We truncate the user-role text here using
+        # the conservative char-budget approximation (4 chars/token for
+        # English; under-estimates Chinese / code by ~30%) to avoid
+        # tiktoken's dep + cold-start cost. Reserves max_tokens of
+        # headroom so the model has space to actually generate.
+        if ctx_size is not None and ctx_size > 0:
+            char_budget = max(0, (ctx_size - max_tokens) * 4)
+            if len(user) > char_budget:
+                user = user[:char_budget]
         url = f"{self._base_url}{HOST_ROUTE}"
         body: dict[str, Any] = {
             "system": system,
