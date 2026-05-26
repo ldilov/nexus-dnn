@@ -54,10 +54,19 @@ def _valid_three_scene_json(anchor: str = "Alice cinematic") -> str:
 
 def test_constants_match_spec():
     assert LLM_TIMEOUT_S == 15.0
-    assert LLM_MAX_TOKENS == 512
+    assert LLM_MAX_TOKENS == 2048
     assert LLM_TEMPERATURE == 0.2
     assert LLM_COMBINED_WALL_TIMEOUT_S == 20.0
     assert LLM_OUTPUT_MAX_BYTES == 8192
+
+
+def test_llm_max_tokens_fits_three_scene_videoplan():
+    payload = _valid_three_scene_json("Alice cinematic, ambient lighting, slow camera")
+    approx_tokens = max(1, len(payload) // 3)
+    assert LLM_MAX_TOKENS >= approx_tokens, (
+        f"LLM_MAX_TOKENS={LLM_MAX_TOKENS} truncates a 3-scene VideoPlan (~{approx_tokens} tokens). "
+        "Raise it before shipping schema-constrained generation."
+    )
 
 
 def test_no_lease_client_raises():
