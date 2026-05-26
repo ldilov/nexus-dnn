@@ -1,0 +1,75 @@
+# Operator must explicitly enable any safety_tier:requires_local_policy entry
+# before serving it to end users. See docs/operator-model-profiles.md.
+#
+# safety_tier values:
+#   mainstream            - permissively-aligned, ship-ready default
+#   developer_preview     - dev-only; quality not validated for production
+#   requires_local_policy - uncensored / weakly-aligned; operator owns
+#                           policy + alignment + abuse-prevention layer
+schema_version: 1
+default_profile: longcat-planner-default
+
+profiles:
+
+  - id: longcat-planner-default
+    model: Qwen/Qwen3-8B-Instruct-GGUF
+    quant: Q4_K_M
+    safety_tier: mainstream
+    purpose: Multiscene LongCat storyboard prompt planning (default)
+    context_size: 8192
+    max_output_tokens: 2048
+    temperature: 0.2
+    required_tags: [text-completion]
+    preferred_tags: [json-schema, low-latency]
+    notes: |
+      Strong JSON adherence on first attempt without grammar guidance.
+      Drops to ~70% joint validity on 3-nested-object plans; D2 constrained
+      generation closes the gap. Use as the supervised default planner.
+
+  - id: longcat-planner-low-ram
+    model: Qwen/Qwen3-4B-Instruct-GGUF
+    quant: Q4_K_M
+    safety_tier: mainstream
+    purpose: CPU-only fallback for hosts without a GPU planner slot
+    context_size: 4096
+    max_output_tokens: 2048
+    temperature: 0.2
+    required_tags: [text-completion]
+    preferred_tags: [json-schema]
+
+  - id: longcat-planner-quality
+    model: Qwen/Qwen3-14B-Instruct-GGUF
+    quant: Q4_K_M
+    safety_tier: mainstream
+    purpose: Higher-quality reasoning for >5-scene storyboards
+    context_size: 8192
+    max_output_tokens: 4096
+    temperature: 0.2
+    required_tags: [text-completion]
+    preferred_tags: [json-schema, long-context]
+
+  - id: longcat-planner-mistral
+    model: mistralai/Mistral-Nemo-Instruct-2407-GGUF
+    quant: Q4_K_M
+    safety_tier: mainstream
+    purpose: 128K-context alternative for long creative briefs
+    context_size: 32768
+    max_output_tokens: 4096
+    temperature: 0.2
+    required_tags: [text-completion]
+    preferred_tags: [long-context]
+
+  - id: longcat-planner-uncensored-lab
+    model: cognitivecomputations/Dolphin3.0-Llama3.1-8B-GGUF
+    quant: Q4_K_M
+    safety_tier: requires_local_policy
+    purpose: |
+      Creative-lab preset for permissive expansion. NOT a default. Operator
+      MUST gate this profile behind a local policy / alignment layer before
+      service exposure. The model itself is highly compliant by design.
+    context_size: 8192
+    max_output_tokens: 2048
+    temperature: 0.3
+    required_tags: [text-completion]
+    preferred_tags: [json-schema]
+    requires_acknowledgement: true
