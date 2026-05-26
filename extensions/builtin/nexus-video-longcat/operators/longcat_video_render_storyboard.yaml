@@ -1,0 +1,21 @@
+schema_version: 1
+id: longcat_video_render_storyboard
+extension: nexus.video.longcat
+method: longcat.video.render.start
+title: Render a VideoPlan into a stitched video
+description: |
+  Drives pipeline_longcat.py over a validated VideoPlan. Honours per-scene
+  motion_intensity, AdaIN factor, overlap_frames, and mode (t2v/i2v/vc).
+  Emits longcat.video.progress + segment.* events; final artifact is the
+  stitched mp4 plus per-scene partial mp4s.
+required_tags: [video-render, longcat-runtime]
+preferred_tags: [rtx50, fp8, gguf]
+inputs:
+  plan: { type: object, required: true, schema: schemas/longcat_video_plan.schema.json }
+  output_dir: { type: string, required: true }
+  run_id: { type: string, required: true }
+  upscale: { type: string, required: false, enum: [none, decoupled, two_pass] }
+artifacts:
+  - longcat_1/final.mp4
+  - longcat_1/render_report.json
+  - longcat_1/partials/scene_NNN.mp4

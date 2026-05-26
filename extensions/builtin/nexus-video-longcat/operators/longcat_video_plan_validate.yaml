@@ -1,0 +1,15 @@
+schema_version: 1
+id: longcat_video_plan_validate
+extension: nexus.video.longcat
+method: longcat.video.plan.validate
+title: Validate a longcat VideoPlan
+description: |
+  Pure-Python validator over a compiled VideoPlan. Asserts duration totals,
+  scene-count bounds, frame quantisation, motion enum, and AdaIN factor
+  range. Emits PlanWarning entries for soft issues; raises PLAN_INVALID
+  for hard violations.
+required_tags: []
+preferred_tags: []
+inputs:
+  plan: { type: object, required: true, schema: schemas/longcat_video_plan.schema.json }
+artifacts: []
