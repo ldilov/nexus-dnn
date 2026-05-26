@@ -447,6 +447,30 @@ impl NexusApp {
             .await
             .with_context(|| format!("failed to bind to {bind_addr}"))?;
 
+        // Spec 049 D5 — publish the actually-bound port to child worker
+        // subprocesses via `NEXUS_HOST_PORT`. Children inherit the host's
+        // env, so any extension worker can hit
+        // `http://127.0.0.1:$NEXUS_HOST_PORT/api/v1/services/text-completion`
+        // without rolling stdio plumbing. Setting it AFTER bind eliminates
+        // the cold-start race — the port is guaranteed open by the time
+        // any child observes the var.
+        match listener.local_addr() {
+            Ok(addr) => {
+                // SAFETY: set_var is called once during startup, before any
+                // worker subprocess is spawned and before any other thread
+                // observes process env. Single-writer invariant holds.
+                unsafe {
+                    std::env::set_var("NEXUS_HOST_PORT", addr.port().to_string());
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "could not resolve bound listener port; NEXUS_HOST_PORT not published",
+                );
+            }
+        }
+
         tracing::info!(
             port = app_for_health.config.port,
             "nexus-dnn api server listening"
