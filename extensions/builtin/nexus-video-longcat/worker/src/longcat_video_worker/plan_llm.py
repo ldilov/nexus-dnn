@@ -64,6 +64,26 @@ class NoLeaseClient:
 
 HOST_PORT_ENV = "NEXUS_HOST_PORT"
 HOST_ROUTE = "/api/v1/services/text-completion"
+CONSTRAINED_ENV = "LONGCAT_LLM_CONSTRAINED"
+CONSTRAINED_SCHEMA_NAME = "longcat_video_plan_v1"
+
+
+def _constrained_enabled() -> bool:
+    return os.environ.get(CONSTRAINED_ENV, "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _build_response_format() -> Optional[dict[str, Any]]:
+    if not _constrained_enabled():
+        return None
+    try:
+        from .video_plan import load_plan_schema
+    except ImportError:
+        return None
+    return {
+        "type": "json_schema",
+        "schema": load_plan_schema(),
+        "name": CONSTRAINED_SCHEMA_NAME,
+    }
 
 
 class HttpLeaseClient:
@@ -92,17 +112,23 @@ class HttpLeaseClient:
         self._base_url = f"http://127.0.0.1:{port}"
 
     def complete(
-        self, system: str, user: str, max_tokens: int, timeout_s: float
+        self,
+        system: str,
+        user: str,
+        max_tokens: int,
+        timeout_s: float,
+        response_format: Optional[dict[str, Any]] = None,
     ) -> str:
         url = f"{self._base_url}{HOST_ROUTE}"
-        payload = json.dumps(
-            {
-                "system": system,
-                "user": user,
-                "max_tokens": max_tokens,
-                "timeout_ms": int(timeout_s * 1000),
-            }
-        ).encode("utf-8")
+        body: dict[str, Any] = {
+            "system": system,
+            "user": user,
+            "max_tokens": max_tokens,
+            "timeout_ms": int(timeout_s * 1000),
+        }
+        if response_format is not None:
+            body["response_format"] = response_format
+        payload = json.dumps(body).encode("utf-8")
         request = urllib.request.Request(
             url,
             data=payload,
@@ -363,7 +389,21 @@ def _llm_attempt(
     if remaining_wall <= 0:
         return None, "wall budget exhausted"
     timeout = min(LLM_TIMEOUT_S, remaining_wall)
+    response_format = _build_response_format()
     try:
+        if response_format is not None:
+            try:
+                return (
+                    lease_client.complete(
+                        system, user, LLM_MAX_TOKENS, timeout, response_format=response_format
+                    ),
+                    None,
+                )
+            except TypeError:
+                # LeaseClient implementation predates the response_format
+                # kwarg (e.g. scripted test doubles). Fall through to the
+                # unconstrained call so the planner can still run.
+                pass
         return lease_client.complete(system, user, LLM_MAX_TOKENS, timeout), None
     except LeaseTimeoutError as exc:
         return None, f"timeout: {exc}"

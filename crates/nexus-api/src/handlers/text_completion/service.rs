@@ -17,7 +17,7 @@ use nexus_backend_runtimes::generic::installs::BackendRuntimeInstallsRepo;
 use nexus_backend_runtimes::generic::leases::manager::LeaseManager;
 use nexus_backend_runtimes::generic::leases::text_completion::{
     CAPABILITY_TAG, CancelParams, DoneNotify, ErrorNotify, METHOD_CANCEL, METHOD_START, NOTIFY_DONE,
-    NOTIFY_ERROR, NOTIFY_TOKEN, StartParams, StartResult, TokenNotify,
+    NOTIFY_ERROR, NOTIFY_TOKEN, ResponseFormat, StartParams, StartResult, TokenNotify,
 };
 use nexus_backend_runtimes::generic::leases::trait_def::{BackendRuntimeLease, LeaseNotification};
 
@@ -100,6 +100,7 @@ pub trait TextCompletionService: Send + Sync {
         user: String,
         max_tokens: u32,
         timeout: Duration,
+        response_format: Option<ResponseFormat>,
     ) -> Result<String, TextCompletionError>;
 }
 
@@ -136,6 +137,7 @@ impl TextCompletionService for LeaseBackedTextCompletion {
         user: String,
         max_tokens: u32,
         timeout: Duration,
+        response_format: Option<ResponseFormat>,
     ) -> Result<String, TextCompletionError> {
         if user.is_empty() {
             return Err(TextCompletionError::Validation("user must be non-empty".into()));
@@ -144,7 +146,7 @@ impl TextCompletionService for LeaseBackedTextCompletion {
             return Err(TextCompletionError::Validation("max_tokens must be > 0".into()));
         }
         let timeout_ms = timeout.as_millis().min(u32::MAX as u128) as u32;
-        let inner = self.complete_inner(system, user, max_tokens);
+        let inner = self.complete_inner(system, user, max_tokens, response_format);
         match tokio::time::timeout(timeout, inner).await {
             Ok(result) => result,
             Err(_) => Err(TextCompletionError::Timeout(timeout_ms)),
@@ -158,6 +160,7 @@ impl LeaseBackedTextCompletion {
         system: String,
         user: String,
         max_tokens: u32,
+        response_format: Option<ResponseFormat>,
     ) -> Result<String, TextCompletionError> {
         let lease = self
             .finder
@@ -170,6 +173,7 @@ impl LeaseBackedTextCompletion {
             system,
             user,
             max_tokens,
+            response_format,
         };
         let start_value = serde_json::to_value(&start_params).map_err(|e| {
             TextCompletionError::Internal(format!("encode start params: {e}"))
@@ -369,7 +373,7 @@ mod tests {
     async fn no_eligible_lease_returns_no_eligible_backend() {
         let svc = LeaseBackedTextCompletion::new(Arc::new(StaticFinder(None)));
         let err = svc
-            .complete("s".into(), "u".into(), 32, Duration::from_secs(5))
+            .complete("s".into(), "u".into(), 32, Duration::from_secs(5), None)
             .await
             .unwrap_err();
         assert!(matches!(err, TextCompletionError::NoEligibleBackend));
@@ -415,7 +419,7 @@ mod tests {
         });
 
         let text = svc
-            .complete("be terse".into(), "complete this".into(), 64, Duration::from_secs(5))
+            .complete("be terse".into(), "complete this".into(), 64, Duration::from_secs(5), None)
             .await
             .expect("complete");
         assert_eq!(text, "hello world");
@@ -461,7 +465,7 @@ mod tests {
         });
 
         let text = svc
-            .complete("".into(), "u".into(), 16, Duration::from_secs(5))
+            .complete("".into(), "u".into(), 16, Duration::from_secs(5), None)
             .await
             .expect("complete");
         assert_eq!(text, "");
@@ -490,7 +494,7 @@ mod tests {
         });
 
         let err = svc
-            .complete("".into(), "u".into(), 16, Duration::from_secs(5))
+            .complete("".into(), "u".into(), 16, Duration::from_secs(5), None)
             .await
             .unwrap_err();
         match err {
@@ -522,7 +526,7 @@ mod tests {
         });
 
         let err = svc
-            .complete("".into(), "u".into(), 16, Duration::from_secs(5))
+            .complete("".into(), "u".into(), 16, Duration::from_secs(5), None)
             .await
             .unwrap_err();
         assert!(matches!(err, TextCompletionError::PromptTooLong(_)));
@@ -566,7 +570,7 @@ mod tests {
         });
 
         let text = svc
-            .complete("".into(), "u".into(), 16, Duration::from_secs(5))
+            .complete("".into(), "u".into(), 16, Duration::from_secs(5), None)
             .await
             .expect("complete");
         assert_eq!(text, "abc");
@@ -582,7 +586,7 @@ mod tests {
 
         // No publisher — buffer_loop will wait until timeout fires.
         let err = svc
-            .complete("".into(), "u".into(), 16, Duration::from_millis(50))
+            .complete("".into(), "u".into(), 16, Duration::from_millis(50), None)
             .await
             .unwrap_err();
         match err {
@@ -605,7 +609,7 @@ mod tests {
     async fn validation_rejects_empty_user() {
         let svc = LeaseBackedTextCompletion::new(Arc::new(StaticFinder(None)));
         let err = svc
-            .complete("s".into(), "".into(), 32, Duration::from_secs(1))
+            .complete("s".into(), "".into(), 32, Duration::from_secs(1), None)
             .await
             .unwrap_err();
         assert!(matches!(err, TextCompletionError::Validation(_)));
@@ -615,7 +619,7 @@ mod tests {
     async fn validation_rejects_zero_max_tokens() {
         let svc = LeaseBackedTextCompletion::new(Arc::new(StaticFinder(None)));
         let err = svc
-            .complete("s".into(), "u".into(), 0, Duration::from_secs(1))
+            .complete("s".into(), "u".into(), 0, Duration::from_secs(1), None)
             .await
             .unwrap_err();
         assert!(matches!(err, TextCompletionError::Validation(_)));
@@ -629,7 +633,7 @@ mod tests {
         ))));
 
         let err = svc
-            .complete("".into(), "u".into(), 16, Duration::from_secs(5))
+            .complete("".into(), "u".into(), 16, Duration::from_secs(5), None)
             .await
             .unwrap_err();
         assert!(matches!(err, TextCompletionError::LeaseAcquisitionFailed(_)));
