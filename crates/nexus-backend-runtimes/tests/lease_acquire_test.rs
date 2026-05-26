@@ -128,6 +128,7 @@ async fn acquire_lease_spawns_worker_handshakes_and_records_ready_state() {
     let options = AcquireOptions {
         owner_kind: OwnerKind::PreviewSession,
         owner_ref: "preview-session-1".into(),
+        idle_reapable: true,
     };
     let lease = match tokio::time::timeout(
         Duration::from_secs(10),
@@ -201,6 +202,7 @@ async fn acquire_lease_returns_unavailable_when_install_is_not_validated() {
         AcquireOptions {
             owner_kind: OwnerKind::Run,
             owner_ref: "r-1".into(),
+            idle_reapable: true,
         },
         &installs,
         &leases,
@@ -239,6 +241,7 @@ async fn acquire_lease_fails_when_family_handler_missing() {
         AcquireOptions {
             owner_kind: OwnerKind::Deployment,
             owner_ref: "d-1".into(),
+            idle_reapable: true,
         },
         &installs,
         &leases,

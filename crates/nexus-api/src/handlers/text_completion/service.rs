@@ -151,6 +151,50 @@ pub trait LeaseReleaser: Send + Sync {
     ) -> Result<(), TextCompletionError>;
 }
 
+/// Spec 051 PR-3 (Option γ). The broker bumps activity around every
+/// `send_rpc` it issues so the idle reaper cannot release a lease the
+/// broker is actively using (`in_flight_count > 0` blocks reaping).
+/// Test code can leave this `None` — buffer-loop semantics don't depend
+/// on activity tracking, only on subscriber notifications.
+#[async_trait]
+pub trait LeaseActivityTracker: Send + Sync {
+    async fn activity_start(
+        &self,
+        lease_id: &nexus_backend_runtimes::generic::ids::RuntimeLeaseId,
+    );
+    async fn activity_end(
+        &self,
+        lease_id: &nexus_backend_runtimes::generic::ids::RuntimeLeaseId,
+    );
+}
+
+/// Production tracker: delegates to [`LeaseManager`].
+pub struct LeaseManagerActivityTracker {
+    manager: Arc<LeaseManager>,
+}
+
+impl LeaseManagerActivityTracker {
+    pub fn new(manager: Arc<LeaseManager>) -> Self {
+        Self { manager }
+    }
+}
+
+#[async_trait]
+impl LeaseActivityTracker for LeaseManagerActivityTracker {
+    async fn activity_start(
+        &self,
+        lease_id: &nexus_backend_runtimes::generic::ids::RuntimeLeaseId,
+    ) {
+        self.manager.activity_start(lease_id).await;
+    }
+    async fn activity_end(
+        &self,
+        lease_id: &nexus_backend_runtimes::generic::ids::RuntimeLeaseId,
+    ) {
+        self.manager.activity_end(lease_id).await;
+    }
+}
+
 /// Production releaser: delegates to [`LeaseManager::release`]. The
 /// manager terminates the worker subprocess on release, which frees
 /// any GPU memory the model held.
@@ -186,6 +230,7 @@ impl LeaseReleaser for LeaseManagerReleaser {
 pub struct LeaseBackedTextCompletion {
     finder: Arc<dyn LeaseFinder>,
     releaser: Option<Arc<dyn LeaseReleaser>>,
+    activity: Option<Arc<dyn LeaseActivityTracker>>,
 }
 
 impl LeaseBackedTextCompletion {
@@ -193,11 +238,17 @@ impl LeaseBackedTextCompletion {
         Self {
             finder,
             releaser: None,
+            activity: None,
         }
     }
 
     pub fn with_releaser(mut self, releaser: Arc<dyn LeaseReleaser>) -> Self {
         self.releaser = Some(releaser);
+        self
+    }
+
+    pub fn with_activity_tracker(mut self, activity: Arc<dyn LeaseActivityTracker>) -> Self {
+        self.activity = Some(activity);
         self
     }
 
@@ -209,9 +260,12 @@ impl LeaseBackedTextCompletion {
     ) -> Self {
         let releaser: Arc<dyn LeaseReleaser> =
             Arc::new(LeaseManagerReleaser::new(lease_manager.clone()));
+        let activity: Arc<dyn LeaseActivityTracker> =
+            Arc::new(LeaseManagerActivityTracker::new(lease_manager.clone()));
         Self {
             finder: Arc::new(CatalogLeaseFinder::new(catalog, installs, lease_manager)),
             releaser: Some(releaser),
+            activity: Some(activity),
         }
     }
 }
@@ -264,6 +318,13 @@ impl LeaseBackedTextCompletion {
             .await?
             .ok_or(TextCompletionError::NoEligibleBackend)?;
         let lease_id = lease.id();
+        // Option γ activity tracking: bump in_flight for the whole
+        // broker call so the idle reaper cannot release this lease
+        // mid-prompt. Paired `activity_end` runs unconditionally at
+        // both happy and error exits below.
+        if let Some(tracker) = &self.activity {
+            tracker.activity_start(&lease_id).await;
+        }
         let mut subscriber = lease.subscribe_notifications();
 
         let start_params = StartParams {
@@ -316,6 +377,10 @@ impl LeaseBackedTextCompletion {
                     );
                 }
             }
+        }
+
+        if let Some(tracker) = &self.activity {
+            tracker.activity_end(&lease_id).await;
         }
 
         outcome

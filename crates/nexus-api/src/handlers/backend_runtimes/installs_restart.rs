@@ -99,13 +99,15 @@ pub async fn restart(
     };
 
     let leases = SqliteLeasesRepo::new(state.db.pool().clone());
+    let acquire_opts = AcquireOptions {
+        owner_kind: OwnerKind::PreviewSession,
+        owner_ref: format!("restart-{install_id}"),
+        idle_reapable: true,
+    };
     let lease = match acquire_lease(
         install_id,
         entry.runtime_family,
-        AcquireOptions {
-            owner_kind: OwnerKind::PreviewSession,
-            owner_ref: format!("restart-{install_id}"),
-        },
+        acquire_opts.clone(),
         &installs,
         &leases,
         &state.family_handlers,
@@ -131,7 +133,15 @@ pub async fn restart(
     let state_str = lease.state().as_str();
     state
         .lease_manager
-        .register(lease.clone(), install_id)
+        .register_with_meta(
+            lease.clone(),
+            nexus_backend_runtimes::generic::leases::manager::RegisterMeta {
+                install_id,
+                owner_kind: acquire_opts.owner_kind,
+                owner_ref: acquire_opts.owner_ref,
+                idle_reapable: acquire_opts.idle_reapable,
+            },
+        )
         .await;
 
     ApiResponse::ok(RestartResponse {
