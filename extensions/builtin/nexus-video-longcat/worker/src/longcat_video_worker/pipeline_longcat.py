@@ -1713,8 +1713,10 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
 
     async def _plan_expand(params: dict[str, Any]) -> dict[str, Any]:
         import asyncio
-        from .plan_llm import expand_prompt
+        from .plan_llm import default_lease_client, expand_prompt
         from .compile_storyboard import StoryboardCompileError
+        use_llm = bool(params.get("use_llm", False))
+        lease_client = default_lease_client() if use_llm else None
         try:
             result = await asyncio.to_thread(
                 expand_prompt,
@@ -1723,8 +1725,8 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
                 scene_count=int(params.get("scene_count", 1)),
                 style_hint=params.get("style_hint"),
                 seed=int(params.get("seed", 42)),
-                use_llm=bool(params.get("use_llm", False)),
-                lease_client=None,
+                use_llm=use_llm,
+                lease_client=lease_client,
             )
             return result.to_dict()
         except StoryboardCompileError as exc:
