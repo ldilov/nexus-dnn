@@ -20,6 +20,7 @@ pub mod recipes;
 pub mod runs;
 pub mod storage_contributions;
 pub mod system;
+pub mod text_completion;
 pub mod tools;
 pub mod ui_components;
 pub mod ui_contributions;
