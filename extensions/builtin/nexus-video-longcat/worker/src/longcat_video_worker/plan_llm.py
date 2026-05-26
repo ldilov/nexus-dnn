@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from typing import Any, Optional, Protocol
 
@@ -55,8 +58,120 @@ class NoLeaseClient:
         self, system: str, user: str, max_tokens: int, timeout_s: float
     ) -> str:
         raise LeaseUnavailableError(
-            "production lease wiring deferred; inject a LeaseClient for testing"
+            "no lease client configured; set NEXUS_HOST_PORT or inject a LeaseClient"
         )
+
+
+HOST_PORT_ENV = "NEXUS_HOST_PORT"
+HOST_ROUTE = "/api/v1/services/text-completion"
+
+
+class HttpLeaseClient:
+    """Calls the host's generic text-completion broker.
+
+    Wire shape per spec 049:
+    - POST {base_url}/api/v1/services/text-completion
+    - Body: {"system", "user", "max_tokens", "timeout_ms"}
+    - Response: {"text": <buffered string>}
+
+    Discovers the host via NEXUS_HOST_PORT injected at worker spawn (the
+    host publishes it after axum::serve binds, so the port is guaranteed
+    open by the time we observe the var). Tests may pass an explicit
+    base_url to bypass env discovery.
+    """
+
+    def __init__(self, base_url: Optional[str] = None) -> None:
+        if base_url is not None:
+            self._base_url = base_url.rstrip("/")
+            return
+        port = os.environ.get(HOST_PORT_ENV)
+        if not port:
+            raise LeaseUnavailableError(
+                f"{HOST_PORT_ENV} is not set; host did not publish bound port"
+            )
+        self._base_url = f"http://127.0.0.1:{port}"
+
+    def complete(
+        self, system: str, user: str, max_tokens: int, timeout_s: float
+    ) -> str:
+        url = f"{self._base_url}{HOST_ROUTE}"
+        payload = json.dumps(
+            {
+                "system": system,
+                "user": user,
+                "max_tokens": max_tokens,
+                "timeout_ms": int(timeout_s * 1000),
+            }
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            url,
+            data=payload,
+            method="POST",
+            headers={"content-type": "application/json"},
+        )
+        client_timeout = timeout_s + 0.5
+        try:
+            with urllib.request.urlopen(request, timeout=client_timeout) as response:
+                status = response.status
+                body = response.read()
+        except urllib.error.HTTPError as exc:
+            self._raise_for_http_error(exc)
+            raise  # unreachable; _raise_for_http_error always raises
+        except urllib.error.URLError as exc:
+            reason = getattr(exc, "reason", exc)
+            if isinstance(reason, TimeoutError) or "timed out" in str(reason).lower():
+                raise LeaseTimeoutError(f"host unreachable within timeout: {reason}")
+            raise LeaseUnavailableError(f"host unreachable: {reason}")
+        except TimeoutError as exc:
+            raise LeaseTimeoutError(str(exc))
+
+        if status != 200:
+            raise LeaseUnavailableError(f"unexpected status {status}: {body[:200]!r}")
+        try:
+            decoded = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise LeaseUnavailableError(f"malformed response body: {exc}")
+        text = decoded.get("text")
+        if not isinstance(text, str):
+            raise LeaseUnavailableError(
+                f"response missing 'text' string field: keys={list(decoded.keys())}"
+            )
+        return text
+
+    @staticmethod
+    def _raise_for_http_error(exc: urllib.error.HTTPError) -> None:
+        body_text = ""
+        try:
+            body_bytes = exc.read()
+            body_text = body_bytes.decode("utf-8", errors="replace")[:500]
+        except Exception:
+            pass
+        status = exc.code
+        if status == 503:
+            raise LeaseUnavailableError(f"503: {body_text}")
+        if status == 504:
+            raise LeaseTimeoutError(f"504: {body_text}")
+        if status == 502:
+            raise LeaseUnavailableError(f"502: {body_text}")
+        if status == 400:
+            raise ValueError(f"400: {body_text}")
+        raise LeaseUnavailableError(f"HTTP {status}: {body_text}")
+
+
+def default_lease_client() -> LeaseClient:
+    """Construct an HttpLeaseClient if NEXUS_HOST_PORT is set; else NoLeaseClient.
+
+    Use this from worker pipeline registration to wire the production
+    lease path opt-in via env. Workers running outside the host context
+    (CI, smoke scripts) get a NoLeaseClient and `use_llm=true` silently
+    falls back to the deterministic compiler.
+    """
+    if os.environ.get(HOST_PORT_ENV):
+        try:
+            return HttpLeaseClient()
+        except LeaseUnavailableError:
+            return NoLeaseClient()
+    return NoLeaseClient()
 
 
 @dataclass(frozen=True)

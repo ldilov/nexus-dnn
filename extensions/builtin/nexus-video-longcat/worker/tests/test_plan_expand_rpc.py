@@ -59,7 +59,15 @@ async def test_plan_expand_use_llm_false_returns_deterministic(real_profile_work
     assert "anchor" in result
 
 
-async def test_plan_expand_use_llm_true_no_lease_falls_back(real_profile_worker):
+async def test_plan_expand_use_llm_true_no_lease_falls_back(
+    real_profile_worker, monkeypatch
+):
+    # Spec 049: with NEXUS_HOST_PORT unset, default_lease_client() returns
+    # NoLeaseClient which raises LeaseUnavailableError; the expander then
+    # falls back to the deterministic compiler and labels the result
+    # `llm_fallback_deterministic` so callers can distinguish "LLM not
+    # configured" from "LLM not requested".
+    monkeypatch.delenv("NEXUS_HOST_PORT", raising=False)
     handler = real_profile_worker.handlers[Methods.PLAN_EXPAND]
     result = await handler(
         {
@@ -69,7 +77,10 @@ async def test_plan_expand_use_llm_true_no_lease_falls_back(real_profile_worker)
             "use_llm": True,
         }
     )
-    assert result["compiler"] == "deterministic"
+    assert result["compiler"] == "llm_fallback_deterministic"
+    assert any(
+        w.get("code") == "LLM_LEASE_UNAVAILABLE" for w in result.get("warnings", [])
+    )
 
 
 async def test_plan_expand_invalid_duration_returns_plan_invalid(real_profile_worker):
