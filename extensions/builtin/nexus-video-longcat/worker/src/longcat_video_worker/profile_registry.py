@@ -7,6 +7,12 @@ from typing import Any, Optional
 import yaml
 
 SAFETY_TIERS = frozenset({"mainstream", "developer_preview", "requires_local_policy"})
+SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2})
+_ULID_RE = __import__("re").compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
+
+
+def _looks_like_install_id(value: str) -> bool:
+    return bool(_ULID_RE.fullmatch(value)) or value.startswith("inst_")
 _DEFAULT_PROFILE_YAML = (
     Path(__file__).resolve().parents[3] / "config" / "model_profiles.yaml"
 )
@@ -30,6 +36,16 @@ class ModelProfile:
     preferred_tags: tuple[str, ...]
     notes: Optional[str] = None
     requires_acknowledgement: bool = False
+    # Spec 051 D-B (schema_version=2). `n_gpu_layers=None` means "ask the
+    # caller's auto-fit"; an explicit integer overrides auto-fit. The
+    # value flows to the broker as an opaque int per the spec-050 PR-4
+    # `StartParams.n_gpu_layers` contract. -1 = all-layers offload, 0 =
+    # CPU only, positive = explicit count.
+    n_gpu_layers: Optional[int] = None
+    # Source schema version the entry was loaded from. Pre-Spec-051 v1
+    # entries default to 1; v2 entries record 2. Lets downstream code
+    # branch on schema age without re-reading YAML.
+    schema_version: int = 1
 
     def is_uncensored(self) -> bool:
         return self.safety_tier == "requires_local_policy"
@@ -48,6 +64,8 @@ class ModelProfile:
             "preferred_tags": list(self.preferred_tags),
             "notes": self.notes,
             "requires_acknowledgement": self.requires_acknowledgement,
+            "n_gpu_layers": self.n_gpu_layers,
+            "schema_version": self.schema_version,
         }
 
 
@@ -78,7 +96,7 @@ class ProfileRegistry:
         return tuple(p for p in self.profiles if not p.is_uncensored())
 
 
-def _coerce_profile(raw: dict[str, Any]) -> ModelProfile:
+def _coerce_profile(raw: dict[str, Any], schema_version: int = 1) -> ModelProfile:
     missing = [
         key
         for key in (
@@ -105,6 +123,10 @@ def _coerce_profile(raw: dict[str, Any]) -> ModelProfile:
             f"profile {raw['id']!r}: invalid safety_tier={safety!r} "
             f"(must be one of {sorted(SAFETY_TIERS)})"
         )
+    n_gpu_layers_raw = raw.get("n_gpu_layers")
+    n_gpu_layers: Optional[int] = (
+        int(n_gpu_layers_raw) if n_gpu_layers_raw is not None else None
+    )
     return ModelProfile(
         id=str(raw["id"]),
         model=str(raw["model"]),
@@ -118,6 +140,8 @@ def _coerce_profile(raw: dict[str, Any]) -> ModelProfile:
         preferred_tags=tuple(raw["preferred_tags"]),
         notes=raw.get("notes"),
         requires_acknowledgement=bool(raw.get("requires_acknowledgement", False)),
+        n_gpu_layers=n_gpu_layers,
+        schema_version=schema_version,
     )
 
 
@@ -127,17 +151,34 @@ def load_registry(path: Optional[Path] = None) -> ProfileRegistry:
         raise ProfileRegistryError(f"profile registry not found: {yaml_path}")
     with yaml_path.open(encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
-    if int(data.get("schema_version", 0)) != 1:
+    schema_version_raw = data.get("schema_version", 0)
+    try:
+        schema_version = int(schema_version_raw)
+    except (TypeError, ValueError):
         raise ProfileRegistryError(
-            f"unsupported model_profiles schema_version={data.get('schema_version')} (this build expects 1)"
+            f"non-integer schema_version={schema_version_raw!r}"
+        )
+    if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
+        raise ProfileRegistryError(
+            f"unsupported model_profiles schema_version={schema_version} "
+            f"(this build accepts {sorted(SUPPORTED_SCHEMA_VERSIONS)})"
         )
     raw_profiles = data.get("profiles") or []
     profiles: list[ModelProfile] = []
     seen: set[str] = set()
     for raw in raw_profiles:
-        profile = _coerce_profile(raw)
+        profile = _coerce_profile(raw, schema_version=schema_version)
         if profile.id in seen:
             raise ProfileRegistryError(f"duplicate profile id: {profile.id}")
+        # SECURITY B1: profile ids MUST be model-slug-style, never a host
+        # runtime_install_id (ULID). An install-id key would couple the
+        # extension config to host-owned identity. Reject any id that
+        # parses as ULID-shaped (26 chars, Crockford base32).
+        if _looks_like_install_id(profile.id):
+            raise ProfileRegistryError(
+                f"profile id {profile.id!r} looks like a host install id (ULID); "
+                "profiles MUST use model slugs"
+            )
         seen.add(profile.id)
         profiles.append(profile)
     default_profile = str(data.get("default_profile", ""))
@@ -152,7 +193,7 @@ def load_registry(path: Optional[Path] = None) -> ProfileRegistry:
             "only mainstream profiles may be the default"
         )
     return ProfileRegistry(
-        schema_version=1,
+        schema_version=schema_version,
         default_profile=default_profile,
         profiles=tuple(profiles),
     )
