@@ -57,7 +57,18 @@ def test_default_profile_rejects_uncensored_default(tmp_path):
         "profiles": [_baseline("dolphin", safety="requires_local_policy")],
     }
     yaml_path = _write(tmp_path / "p.yaml", payload)
-    with pytest.raises(ProfileRegistryError, match="requires_local_policy"):
+    with pytest.raises(ProfileRegistryError, match="only mainstream"):
+        load_registry(yaml_path)
+
+
+def test_default_profile_rejects_developer_preview_default(tmp_path):
+    payload = {
+        "schema_version": 1,
+        "default_profile": "dev",
+        "profiles": [_baseline("dev", safety="developer_preview")],
+    }
+    yaml_path = _write(tmp_path / "p.yaml", payload)
+    with pytest.raises(ProfileRegistryError, match="only mainstream"):
         load_registry(yaml_path)
 
 

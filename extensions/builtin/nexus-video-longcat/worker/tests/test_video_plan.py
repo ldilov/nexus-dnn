@@ -107,6 +107,13 @@ def test_video_plan_rejects_future_schema_version():
         VideoPlan.from_dict(payload)
 
 
+def test_video_plan_rejects_missing_schema_version():
+    payload = _three_scene_plan().to_dict()
+    del payload["schema_version"]
+    with pytest.raises(ValueError, match="schema_version=0"):
+        VideoPlan.from_dict(payload)
+
+
 def test_scene_packet_validates_against_schema():
     schema = load_scene_schema()
     s = _scene("hello world")
