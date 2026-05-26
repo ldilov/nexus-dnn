@@ -1,0 +1,32 @@
+[
+  {
+    "prompt": "a nun in black habit walks slowly down the center aisle of a vast gothic cathedral, ice-cool blue moonlight streams through tall stained-glass windows in solid volumetric god-rays, warm orange flicker from beeswax candle pillars on either side, her hands clasped reverently in prayer, dust motes drifting in the light shafts, serene contemplative atmosphere, soft chiaroscuro, 35mm anamorphic film grain, cinematic wide shot, slow dolly forward",
+    "duration_seconds": 4.0,
+    "overlap_frames": 13,
+    "enhance_hf": false,
+    "use_distill": true,
+    "guidance_scale": 1.0,
+    "num_inference_steps": 16,
+    "adain_factor": 0.15
+  },
+  {
+    "prompt": "the same nun in the same black habit stops mid-step, her head tilts sharply to one side at an unnatural angle, her eyes go pale as the candle flames lean toward her in unison, the warm orange light shifts to a colder pale gold across her face, faint pale mist begins to curl up around her feet, slow dread builds, soft side-key lighting from a low angle, slow-motion, cinematic horror, 35mm anamorphic film grain",
+    "duration_seconds": 4.0,
+    "overlap_frames": 13,
+    "enhance_hf": false,
+    "use_distill": true,
+    "guidance_scale": 1.0,
+    "num_inference_steps": 16,
+    "adain_factor": 0.15
+  },
+  {
+    "prompt": "the same nun in the same black habit lifts a few inches off the cathedral floor, her habit billows gently in a wind that comes from nowhere, her face contorts as faint dark veins spread across her cheeks, her eyes glow soft crimson, the cathedral interior is bathed in a slow pulsing red glow, jagged shadows of unseen figures slide across the stone walls, a swirling vortex of dark smoke spirals tightly around her body, soft red rim-light from below, cinematic horror climax, 35mm anamorphic film grain",
+    "duration_seconds": 4.0,
+    "overlap_frames": 13,
+    "enhance_hf": false,
+    "use_distill": true,
+    "guidance_scale": 1.0,
+    "num_inference_steps": 16,
+    "adain_factor": 0.15
+  }
+]
