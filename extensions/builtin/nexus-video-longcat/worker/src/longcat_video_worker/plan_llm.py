@@ -86,6 +86,44 @@ def _build_response_format() -> Optional[dict[str, Any]]:
     }
 
 
+def _resolve_planner_profile():
+    """Return the operator-configured planner profile, or None when the
+    profile registry is unavailable (e.g. worker run from a tree without
+    the shipped config). Failures degrade silently — the planner
+    fallback path is unaffected.
+    """
+    try:
+        from .profile_registry import load_registry
+    except ImportError:
+        return None
+    try:
+        return load_registry().safe_default()
+    except Exception:
+        return None
+
+
+def _planner_call_kwargs() -> dict[str, Any]:
+    """Build the planner-tenant subset of HttpLeaseClient.complete kwargs.
+
+    Defaults are intentionally aggressive: ephemeral=True so the model is
+    unloaded after every prompt (frees VRAM), n_gpu_layers=-1 so the
+    backend offloads as many layers as VRAM allows, and the profile's
+    required/preferred tags drive lease selection. Operators override per
+    profile in extensions/builtin/nexus-video-longcat/config/model_profiles.yaml.
+    """
+    kwargs: dict[str, Any] = {
+        "ephemeral": True,
+        "n_gpu_layers": -1,
+    }
+    profile = _resolve_planner_profile()
+    if profile is not None:
+        if profile.required_tags:
+            kwargs["required_tags"] = list(profile.required_tags)
+        if profile.preferred_tags:
+            kwargs["preferred_tags"] = list(profile.preferred_tags)
+    return kwargs
+
+
 class HttpLeaseClient:
     """Calls the host's generic text-completion broker.
 
@@ -118,6 +156,10 @@ class HttpLeaseClient:
         max_tokens: int,
         timeout_s: float,
         response_format: Optional[dict[str, Any]] = None,
+        n_gpu_layers: Optional[int] = None,
+        required_tags: Optional[list[str]] = None,
+        preferred_tags: Optional[list[str]] = None,
+        ephemeral: bool = False,
     ) -> str:
         url = f"{self._base_url}{HOST_ROUTE}"
         body: dict[str, Any] = {
@@ -128,6 +170,14 @@ class HttpLeaseClient:
         }
         if response_format is not None:
             body["response_format"] = response_format
+        if n_gpu_layers is not None:
+            body["n_gpu_layers"] = n_gpu_layers
+        if required_tags:
+            body["required_tags"] = list(required_tags)
+        if preferred_tags:
+            body["preferred_tags"] = list(preferred_tags)
+        if ephemeral:
+            body["ephemeral"] = True
         payload = json.dumps(body).encode("utf-8")
         request = urllib.request.Request(
             url,
@@ -390,21 +440,22 @@ def _llm_attempt(
         return None, "wall budget exhausted"
     timeout = min(LLM_TIMEOUT_S, remaining_wall)
     response_format = _build_response_format()
+    extra = _planner_call_kwargs()
+    if response_format is not None:
+        extra["response_format"] = response_format
     try:
-        if response_format is not None:
-            try:
-                return (
-                    lease_client.complete(
-                        system, user, LLM_MAX_TOKENS, timeout, response_format=response_format
-                    ),
-                    None,
-                )
-            except TypeError:
-                # LeaseClient implementation predates the response_format
-                # kwarg (e.g. scripted test doubles). Fall through to the
-                # unconstrained call so the planner can still run.
-                pass
-        return lease_client.complete(system, user, LLM_MAX_TOKENS, timeout), None
+        try:
+            return (
+                lease_client.complete(
+                    system, user, LLM_MAX_TOKENS, timeout, **extra
+                ),
+                None,
+            )
+        except TypeError:
+            # LeaseClient implementation predates the kwargs (e.g.
+            # scripted test doubles). Drop the optional fields and try
+            # the legacy 4-arg shape so the planner can still run.
+            return lease_client.complete(system, user, LLM_MAX_TOKENS, timeout), None
     except LeaseTimeoutError as exc:
         return None, f"timeout: {exc}"
     except LeaseUnavailableError as exc:

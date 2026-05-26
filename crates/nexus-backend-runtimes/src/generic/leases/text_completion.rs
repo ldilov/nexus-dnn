@@ -113,6 +113,39 @@ pub struct StartParams {
     /// produce byte-identical wire output.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_format: Option<ResponseFormat>,
+    /// Optional opaque GPU-offload hint. `-1` typically means "all
+    /// layers"; positive integer = layer count; `0` = CPU only. The
+    /// broker does not interpret the value — backend adapters
+    /// translate (e.g. llama.cpp `-ngl`, vLLM `tensor_parallel_size`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub n_gpu_layers: Option<i32>,
+}
+
+/// Caller-supplied lease-selection vector. Routing is opaque set
+/// intersection: a backend whose catalog `capability_tags` are a
+/// superset of `required_tags` is eligible; `preferred_tags` are an
+/// advisory rank signal (broker MAY prefer entries that match more
+/// preferred tags but MUST NOT exclude on them).
+///
+/// Boundary contract: every tag is an opaque string supplied by the
+/// caller. No tag value is special-cased by the broker. Tenants choose
+/// vocabularies (e.g. `"json-schema"`, `"low-latency"`,
+/// `"long-context"`) and operators tag their backends accordingly.
+/// Tenant profile or extension names MUST NOT appear in either vector
+/// — the caller resolves a profile to a capability-tag vector before
+/// sending the request, so the broker stays domain-agnostic.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LeaseSelection {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub preferred_tags: Vec<String>,
+}
+
+impl LeaseSelection {
+    pub fn is_empty(&self) -> bool {
+        self.required_tags.is_empty() && self.preferred_tags.is_empty()
+    }
 }
 
 /// Result of a successful [`METHOD_START`] request.
@@ -194,6 +227,7 @@ mod tests {
             user: "complete this".into(),
             max_tokens: 96,
             response_format: None,
+            n_gpu_layers: None,
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: StartParams = serde_json::from_str(&json).unwrap();
@@ -215,12 +249,48 @@ mod tests {
             user: "hello".into(),
             max_tokens: 16,
             response_format: None,
+            n_gpu_layers: None,
         };
         let wire = serde_json::to_string(&p).unwrap();
         assert!(
             !wire.contains("response_format"),
             "None response_format must serialize to absent, got: {wire}"
         );
+        assert!(
+            !wire.contains("n_gpu_layers"),
+            "None n_gpu_layers must serialize to absent, got: {wire}"
+        );
+    }
+
+    #[test]
+    fn start_params_with_n_gpu_layers_round_trips() {
+        let p = StartParams {
+            system: "".into(),
+            user: "u".into(),
+            max_tokens: 8,
+            response_format: None,
+            n_gpu_layers: Some(-1),
+        };
+        let wire = serde_json::to_string(&p).unwrap();
+        assert!(wire.contains("\"n_gpu_layers\":-1"));
+        let back: StartParams = serde_json::from_str(&wire).unwrap();
+        assert_eq!(back.n_gpu_layers, Some(-1));
+    }
+
+    #[test]
+    fn lease_selection_round_trip_and_empty() {
+        let s = LeaseSelection::default();
+        assert!(s.is_empty());
+        let wire = serde_json::to_string(&s).unwrap();
+        assert_eq!(wire, "{}");
+
+        let s2 = LeaseSelection {
+            required_tags: vec!["text-completion".into(), "json-schema".into()],
+            preferred_tags: vec!["low-latency".into()],
+        };
+        let wire = serde_json::to_string(&s2).unwrap();
+        let back: LeaseSelection = serde_json::from_str(&wire).unwrap();
+        assert_eq!(s2, back);
     }
 
     #[test]
@@ -245,6 +315,7 @@ mod tests {
                 schema: serde_json::json!({"type": "string"}),
                 name: "string_payload".into(),
             }),
+            n_gpu_layers: Some(99),
         };
         let wire = serde_json::to_string(&p).unwrap();
         assert!(wire.contains("response_format"));

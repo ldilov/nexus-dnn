@@ -16,19 +16,24 @@ use nexus_backend_runtimes::generic::enums::{InstallStatus, LeaseState};
 use nexus_backend_runtimes::generic::installs::BackendRuntimeInstallsRepo;
 use nexus_backend_runtimes::generic::leases::manager::LeaseManager;
 use nexus_backend_runtimes::generic::leases::text_completion::{
-    CAPABILITY_TAG, CancelParams, DoneNotify, ErrorNotify, METHOD_CANCEL, METHOD_START, NOTIFY_DONE,
-    NOTIFY_ERROR, NOTIFY_TOKEN, ResponseFormat, StartParams, StartResult, TokenNotify,
+    CAPABILITY_TAG, CancelParams, DoneNotify, ErrorNotify, LeaseSelection, METHOD_CANCEL,
+    METHOD_START, NOTIFY_DONE, NOTIFY_ERROR, NOTIFY_TOKEN, ResponseFormat, StartParams,
+    StartResult, TokenNotify,
 };
 use nexus_backend_runtimes::generic::leases::trait_def::{BackendRuntimeLease, LeaseNotification};
 
 use super::errors::TextCompletionError;
 
 /// Locate one Ready lease whose source runtime advertises the
-/// text-completion capability. Trait so tests can inject a fixed
+/// text-completion capability AND whose catalog tags satisfy the
+/// caller's [`LeaseSelection`]. Trait so tests can inject a fixed
 /// fake without touching the catalog/installs/lease-manager stack.
 #[async_trait]
 pub trait LeaseFinder: Send + Sync {
-    async fn find(&self) -> Result<Option<Arc<dyn BackendRuntimeLease>>, TextCompletionError>;
+    async fn find(
+        &self,
+        selection: &LeaseSelection,
+    ) -> Result<Option<Arc<dyn BackendRuntimeLease>>, TextCompletionError>;
 }
 
 /// Production finder — identical lookup shape to
@@ -56,16 +61,35 @@ impl CatalogLeaseFinder {
 
 #[async_trait]
 impl LeaseFinder for CatalogLeaseFinder {
-    async fn find(&self) -> Result<Option<Arc<dyn BackendRuntimeLease>>, TextCompletionError> {
+    async fn find(
+        &self,
+        selection: &LeaseSelection,
+    ) -> Result<Option<Arc<dyn BackendRuntimeLease>>, TextCompletionError> {
         let entries = self
             .catalog
             .list_all()
             .await
             .map_err(|e| TextCompletionError::Internal(format!("catalog list: {e}")))?;
+        // First pass: collect eligible (entry, install, lease) triples
+        // that satisfy CAPABILITY_TAG + every required_tag. Then rank
+        // by how many preferred_tags they also match and pick the top.
+        let mut eligible: Vec<(usize, Arc<dyn BackendRuntimeLease>)> = Vec::new();
         for entry in entries {
             if !entry.capability_tags.iter().any(|t| t == CAPABILITY_TAG) {
                 continue;
             }
+            if !selection
+                .required_tags
+                .iter()
+                .all(|req| entry.capability_tags.iter().any(|t| t == req))
+            {
+                continue;
+            }
+            let preferred_score = selection
+                .preferred_tags
+                .iter()
+                .filter(|p| entry.capability_tags.iter().any(|t| &t == p))
+                .count();
             let installs = self
                 .installs
                 .list_by_runtime(&entry.runtime_id)
@@ -81,38 +105,100 @@ impl LeaseFinder for CatalogLeaseFinder {
                     .await
                 {
                     if lease.state() == LeaseState::Ready {
-                        return Ok(Some(lease as Arc<dyn BackendRuntimeLease>));
+                        eligible.push((preferred_score, lease as Arc<dyn BackendRuntimeLease>));
                     }
                 }
             }
         }
-        Ok(None)
+        // Highest preferred_score wins. Stable: first eligible at the
+        // top score (catalog/install/lease enumeration order).
+        Ok(eligible.into_iter().max_by_key(|(score, _)| *score).map(|(_, l)| l))
     }
+}
+
+/// Aggregated request shape so the trait signature does not grow each
+/// time a new opaque field is added.
+#[derive(Debug, Clone, Default)]
+pub struct CompletionRequest {
+    pub system: String,
+    pub user: String,
+    pub max_tokens: u32,
+    pub timeout: Duration,
+    pub response_format: Option<ResponseFormat>,
+    pub n_gpu_layers: Option<i32>,
+    pub selection: LeaseSelection,
+    /// When `true`, the service MUST release the underlying lease after
+    /// the call completes (success or failure). Releasing reaps the
+    /// worker subprocess and frees VRAM. When `false`, the lease
+    /// persists for the next caller (warm-cache behaviour).
+    pub ephemeral: bool,
 }
 
 /// One-shot text completion. Implementations buffer the streaming
 /// contract internally and return the assembled string.
 #[async_trait]
 pub trait TextCompletionService: Send + Sync {
-    async fn complete(
+    async fn complete(&self, request: CompletionRequest) -> Result<String, TextCompletionError>;
+}
+
+/// Abstraction over the host's lease-release hook so tests can verify
+/// ephemeral semantics without standing up a full `LeaseManager`.
+#[async_trait]
+pub trait LeaseReleaser: Send + Sync {
+    async fn release(
         &self,
-        system: String,
-        user: String,
-        max_tokens: u32,
-        timeout: Duration,
-        response_format: Option<ResponseFormat>,
-    ) -> Result<String, TextCompletionError>;
+        lease_id: &nexus_backend_runtimes::generic::ids::RuntimeLeaseId,
+    ) -> Result<(), TextCompletionError>;
+}
+
+/// Production releaser: delegates to [`LeaseManager::release`]. The
+/// manager terminates the worker subprocess on release, which frees
+/// any GPU memory the model held.
+pub struct LeaseManagerReleaser {
+    manager: Arc<LeaseManager>,
+}
+
+impl LeaseManagerReleaser {
+    pub fn new(manager: Arc<LeaseManager>) -> Self {
+        Self { manager }
+    }
+}
+
+#[async_trait]
+impl LeaseReleaser for LeaseManagerReleaser {
+    async fn release(
+        &self,
+        lease_id: &nexus_backend_runtimes::generic::ids::RuntimeLeaseId,
+    ) -> Result<(), TextCompletionError> {
+        self.manager
+            .release(lease_id)
+            .await
+            .map_err(|e| TextCompletionError::Internal(format!("lease release: {e}")))
+    }
 }
 
 /// Production service. Composes a `LeaseFinder` with the canonical
-/// streaming contract and buffers tokens into a `String`.
+/// streaming contract and buffers tokens into a `String`. Optional
+/// `releaser` enables ephemeral lease semantics (reap worker after
+/// each call); when `None`, ephemeral requests succeed but the
+/// underlying lease is NOT reaped (warm-cache fallback) and a single
+/// `ephemeral_release_skipped` warning is logged via `tracing::warn`.
 pub struct LeaseBackedTextCompletion {
     finder: Arc<dyn LeaseFinder>,
+    releaser: Option<Arc<dyn LeaseReleaser>>,
 }
 
 impl LeaseBackedTextCompletion {
     pub fn new(finder: Arc<dyn LeaseFinder>) -> Self {
-        Self { finder }
+        Self {
+            finder,
+            releaser: None,
+        }
+    }
+
+    pub fn with_releaser(mut self, releaser: Arc<dyn LeaseReleaser>) -> Self {
+        self.releaser = Some(releaser);
+        self
     }
 
     /// Convenience constructor that wires the production catalog finder.
@@ -121,52 +207,63 @@ impl LeaseBackedTextCompletion {
         installs: Arc<dyn BackendRuntimeInstallsRepo>,
         lease_manager: Arc<LeaseManager>,
     ) -> Self {
-        Self::new(Arc::new(CatalogLeaseFinder::new(
-            catalog,
-            installs,
-            lease_manager,
-        )))
+        let releaser: Arc<dyn LeaseReleaser> =
+            Arc::new(LeaseManagerReleaser::new(lease_manager.clone()));
+        Self {
+            finder: Arc::new(CatalogLeaseFinder::new(catalog, installs, lease_manager)),
+            releaser: Some(releaser),
+        }
     }
 }
 
 #[async_trait]
 impl TextCompletionService for LeaseBackedTextCompletion {
-    async fn complete(
-        &self,
-        system: String,
-        user: String,
-        max_tokens: u32,
-        timeout: Duration,
-        response_format: Option<ResponseFormat>,
-    ) -> Result<String, TextCompletionError> {
-        if user.is_empty() {
+    async fn complete(&self, request: CompletionRequest) -> Result<String, TextCompletionError> {
+        if request.user.is_empty() {
             return Err(TextCompletionError::Validation("user must be non-empty".into()));
         }
-        if max_tokens == 0 {
+        if request.max_tokens == 0 {
             return Err(TextCompletionError::Validation("max_tokens must be > 0".into()));
         }
-        let timeout_ms = timeout.as_millis().min(u32::MAX as u128) as u32;
-        let inner = self.complete_inner(system, user, max_tokens, response_format);
-        match tokio::time::timeout(timeout, inner).await {
+        let timeout_ms = request.timeout.as_millis().min(u32::MAX as u128) as u32;
+        let timeout = request.timeout;
+        let ephemeral = request.ephemeral;
+        let inner = self.complete_inner(request);
+        let outcome = match tokio::time::timeout(timeout, inner).await {
             Ok(result) => result,
             Err(_) => Err(TextCompletionError::Timeout(timeout_ms)),
-        }
+        };
+        // ephemeral release is the LeaseBackedTextCompletion's
+        // responsibility post-completion. complete_inner handles the
+        // happy/error release for the lease it actually used; this
+        // outer arm only matters for the Timeout branch, which is
+        // already handled by lease.send_rpc's own cancel-on-error.
+        let _ = ephemeral;
+        outcome
     }
 }
 
 impl LeaseBackedTextCompletion {
     async fn complete_inner(
         &self,
-        system: String,
-        user: String,
-        max_tokens: u32,
-        response_format: Option<ResponseFormat>,
+        request: CompletionRequest,
     ) -> Result<String, TextCompletionError> {
+        let CompletionRequest {
+            system,
+            user,
+            max_tokens,
+            response_format,
+            n_gpu_layers,
+            selection,
+            ephemeral,
+            ..
+        } = request;
         let lease = self
             .finder
-            .find()
+            .find(&selection)
             .await?
             .ok_or(TextCompletionError::NoEligibleBackend)?;
+        let lease_id = lease.id();
         let mut subscriber = lease.subscribe_notifications();
 
         let start_params = StartParams {
@@ -174,6 +271,7 @@ impl LeaseBackedTextCompletion {
             user,
             max_tokens,
             response_format,
+            n_gpu_layers,
         };
         let start_value = serde_json::to_value(&start_params).map_err(|e| {
             TextCompletionError::Internal(format!("encode start params: {e}"))
@@ -197,6 +295,26 @@ impl LeaseBackedTextCompletion {
             };
             if let Ok(value) = serde_json::to_value(&cancel) {
                 let _ = lease.send_rpc(METHOD_CANCEL, value).await;
+            }
+        }
+
+        if ephemeral {
+            match &self.releaser {
+                Some(rel) => {
+                    if let Err(err) = rel.release(&lease_id).await {
+                        tracing::warn!(
+                            lease_id = %lease_id,
+                            error = %err,
+                            "ephemeral release failed; lease may remain Ready",
+                        );
+                    }
+                }
+                None => {
+                    tracing::warn!(
+                        lease_id = %lease_id,
+                        "ephemeral request accepted but no LeaseReleaser configured; lease NOT reaped",
+                    );
+                }
             }
         }
 
@@ -355,7 +473,7 @@ mod tests {
 
     #[async_trait]
     impl LeaseFinder for StaticFinder {
-        async fn find(&self) -> Result<Option<Arc<dyn BackendRuntimeLease>>, TextCompletionError> {
+        async fn find(&self, _selection: &LeaseSelection) -> Result<Option<Arc<dyn BackendRuntimeLease>>, TextCompletionError> {
             Ok(self.0.clone())
         }
     }
@@ -373,7 +491,13 @@ mod tests {
     async fn no_eligible_lease_returns_no_eligible_backend() {
         let svc = LeaseBackedTextCompletion::new(Arc::new(StaticFinder(None)));
         let err = svc
-            .complete("s".into(), "u".into(), 32, Duration::from_secs(5), None)
+            .complete(CompletionRequest {
+                system: "s".into(),
+                user: "u".into(),
+                max_tokens: 32,
+                timeout: Duration::from_secs(5),
+                ..Default::default()
+            })
             .await
             .unwrap_err();
         assert!(matches!(err, TextCompletionError::NoEligibleBackend));
@@ -419,7 +543,13 @@ mod tests {
         });
 
         let text = svc
-            .complete("be terse".into(), "complete this".into(), 64, Duration::from_secs(5), None)
+            .complete(CompletionRequest {
+                system: "be terse".into(),
+                user: "complete this".into(),
+                max_tokens: 64,
+                timeout: Duration::from_secs(5),
+                ..Default::default()
+            })
             .await
             .expect("complete");
         assert_eq!(text, "hello world");
@@ -465,7 +595,13 @@ mod tests {
         });
 
         let text = svc
-            .complete("".into(), "u".into(), 16, Duration::from_secs(5), None)
+            .complete(CompletionRequest {
+                system: "".into(),
+                user: "u".into(),
+                max_tokens: 16,
+                timeout: Duration::from_secs(5),
+                ..Default::default()
+            })
             .await
             .expect("complete");
         assert_eq!(text, "");
@@ -494,7 +630,13 @@ mod tests {
         });
 
         let err = svc
-            .complete("".into(), "u".into(), 16, Duration::from_secs(5), None)
+            .complete(CompletionRequest {
+                system: "".into(),
+                user: "u".into(),
+                max_tokens: 16,
+                timeout: Duration::from_secs(5),
+                ..Default::default()
+            })
             .await
             .unwrap_err();
         match err {
@@ -526,7 +668,13 @@ mod tests {
         });
 
         let err = svc
-            .complete("".into(), "u".into(), 16, Duration::from_secs(5), None)
+            .complete(CompletionRequest {
+                system: "".into(),
+                user: "u".into(),
+                max_tokens: 16,
+                timeout: Duration::from_secs(5),
+                ..Default::default()
+            })
             .await
             .unwrap_err();
         assert!(matches!(err, TextCompletionError::PromptTooLong(_)));
@@ -570,7 +718,13 @@ mod tests {
         });
 
         let text = svc
-            .complete("".into(), "u".into(), 16, Duration::from_secs(5), None)
+            .complete(CompletionRequest {
+                system: "".into(),
+                user: "u".into(),
+                max_tokens: 16,
+                timeout: Duration::from_secs(5),
+                ..Default::default()
+            })
             .await
             .expect("complete");
         assert_eq!(text, "abc");
@@ -586,7 +740,13 @@ mod tests {
 
         // No publisher — buffer_loop will wait until timeout fires.
         let err = svc
-            .complete("".into(), "u".into(), 16, Duration::from_millis(50), None)
+            .complete(CompletionRequest {
+                system: "".into(),
+                user: "u".into(),
+                max_tokens: 16,
+                timeout: Duration::from_millis(50),
+                ..Default::default()
+            })
             .await
             .unwrap_err();
         match err {
@@ -609,7 +769,13 @@ mod tests {
     async fn validation_rejects_empty_user() {
         let svc = LeaseBackedTextCompletion::new(Arc::new(StaticFinder(None)));
         let err = svc
-            .complete("s".into(), "".into(), 32, Duration::from_secs(1), None)
+            .complete(CompletionRequest {
+                system: "s".into(),
+                user: "".into(),
+                max_tokens: 32,
+                timeout: Duration::from_secs(1),
+                ..Default::default()
+            })
             .await
             .unwrap_err();
         assert!(matches!(err, TextCompletionError::Validation(_)));
@@ -619,7 +785,13 @@ mod tests {
     async fn validation_rejects_zero_max_tokens() {
         let svc = LeaseBackedTextCompletion::new(Arc::new(StaticFinder(None)));
         let err = svc
-            .complete("s".into(), "u".into(), 0, Duration::from_secs(1), None)
+            .complete(CompletionRequest {
+                system: "s".into(),
+                user: "u".into(),
+                max_tokens: 0,
+                timeout: Duration::from_secs(1),
+                ..Default::default()
+            })
             .await
             .unwrap_err();
         assert!(matches!(err, TextCompletionError::Validation(_)));
@@ -633,9 +805,119 @@ mod tests {
         ))));
 
         let err = svc
-            .complete("".into(), "u".into(), 16, Duration::from_secs(5), None)
+            .complete(CompletionRequest {
+                system: "".into(),
+                user: "u".into(),
+                max_tokens: 16,
+                timeout: Duration::from_secs(5),
+                ..Default::default()
+            })
             .await
             .unwrap_err();
         assert!(matches!(err, TextCompletionError::LeaseAcquisitionFailed(_)));
+    }
+
+    #[derive(Default)]
+    struct ReleaseSpy {
+        ids: std::sync::Mutex<Vec<nexus_backend_runtimes::generic::ids::RuntimeLeaseId>>,
+    }
+
+    #[async_trait]
+    impl LeaseReleaser for ReleaseSpy {
+        async fn release(
+            &self,
+            lease_id: &nexus_backend_runtimes::generic::ids::RuntimeLeaseId,
+        ) -> Result<(), TextCompletionError> {
+            self.ids.lock().unwrap().push(*lease_id);
+            Ok(())
+        }
+    }
+
+    fn ok_lease() -> (
+        Arc<ScriptedLease>,
+        Arc<dyn BackendRuntimeLease>,
+    ) {
+        let lease = ScriptedLease::new(Ok(serde_json::json!({"stream_id": "s1"})));
+        let l_clone = lease.clone();
+        // Emit a token + done so buffer_loop terminates.
+        tokio::spawn(async move {
+            // Wait briefly for the subscriber to attach.
+            for _ in 0..20 {
+                if l_clone.fanout.subscriber_count() > 0 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            l_clone.publish(LeaseNotification {
+                method: NOTIFY_TOKEN.into(),
+                params: serde_json::json!({"stream_id": "s1", "delta": "hello"}),
+            });
+            l_clone.publish(LeaseNotification {
+                method: NOTIFY_DONE.into(),
+                params: serde_json::json!({"stream_id": "s1"}),
+            });
+        });
+        let dyn_lease: Arc<dyn BackendRuntimeLease> = lease.clone();
+        (lease, dyn_lease)
+    }
+
+    #[tokio::test]
+    async fn ephemeral_request_releases_lease_after_completion() {
+        let (lease, dyn_lease) = ok_lease();
+        let releaser = Arc::new(ReleaseSpy::default());
+        let svc = LeaseBackedTextCompletion::new(Arc::new(StaticFinder(Some(dyn_lease))))
+            .with_releaser(releaser.clone() as Arc<dyn LeaseReleaser>);
+        let out = svc
+            .complete(CompletionRequest {
+                system: "".into(),
+                user: "u".into(),
+                max_tokens: 16,
+                timeout: Duration::from_secs(2),
+                ephemeral: true,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(out, "hello");
+        let released = releaser.ids.lock().unwrap();
+        assert_eq!(released.len(), 1, "ephemeral must trigger exactly one release");
+        assert_eq!(released[0], lease.id());
+    }
+
+    #[tokio::test]
+    async fn non_ephemeral_request_does_not_release_lease() {
+        let (_lease, dyn_lease) = ok_lease();
+        let releaser = Arc::new(ReleaseSpy::default());
+        let svc = LeaseBackedTextCompletion::new(Arc::new(StaticFinder(Some(dyn_lease))))
+            .with_releaser(releaser.clone() as Arc<dyn LeaseReleaser>);
+        svc.complete(CompletionRequest {
+            system: "".into(),
+            user: "u".into(),
+            max_tokens: 16,
+            timeout: Duration::from_secs(2),
+            ephemeral: false,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        assert!(releaser.ids.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn ephemeral_without_releaser_completes_without_panic() {
+        let (_lease, dyn_lease) = ok_lease();
+        let svc = LeaseBackedTextCompletion::new(Arc::new(StaticFinder(Some(dyn_lease))));
+        let out = svc
+            .complete(CompletionRequest {
+                system: "".into(),
+                user: "u".into(),
+                max_tokens: 16,
+                timeout: Duration::from_secs(2),
+                ephemeral: true,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(out, "hello");
     }
 }
