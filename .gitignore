@@ -81,6 +81,11 @@ venv/
 logs/
 nexus-dnn.zip
 
+# Local operator scratch (zips, screenshots, probe artefacts)
+docs.zip
+t?.jpg
+t??.jpg
+
 # Transient commit-message files (heredoc passes used to dodge the
 # block-no-verify hook substring matcher when bodies span paragraphs).
 .commit_msg_*.txt
