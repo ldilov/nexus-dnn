@@ -12,8 +12,8 @@ default_profile: longcat-planner-default
 profiles:
 
   - id: longcat-planner-default
-    model: Qwen/Qwen3-8B-Instruct-GGUF
-    quant: Q4_K_M
+    model: unsloth/gemma-4-E4B-it-GGUF
+    quant: Q8_0
     safety_tier: mainstream
     purpose: Multiscene LongCat storyboard prompt planning (default)
     context_size: 8192
@@ -22,9 +22,14 @@ profiles:
     required_tags: [text-completion]
     preferred_tags: [json-schema, low-latency]
     notes: |
-      Strong JSON adherence on first attempt without grammar guidance.
-      Drops to ~70% joint validity on 3-nested-object plans; D2 constrained
-      generation closes the gap. Use as the supervised default planner.
+      Gemma 4 E4B-it (instruction-tuned) at Q8_0 quant. Source:
+      https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/tree/main
+      Operator-selected default (2026-05-26). Replaces previous
+      Qwen3-8B-Q4_K_M default. E4B is a smaller-footprint Gemma 4 variant
+      that fits comfortably alongside the LongCat 13B+ render model on
+      16 GB VRAM cards when paired with ephemeral lease semantics.
+      Re-evaluate JSON-schema adherence under D2 constrained generation
+      before lifting Spec 050 PR-4's LONGCAT_LLM_CONSTRAINED default-off.
 
   - id: longcat-planner-low-ram
     model: Qwen/Qwen3-4B-Instruct-GGUF
