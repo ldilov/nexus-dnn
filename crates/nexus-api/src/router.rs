@@ -143,7 +143,7 @@ use crate::handlers::{
     artifacts, backend_events_ws, backend_runtimes, backends, deployments, desktop,
     draft_suggestions, extension_dependencies, extension_ui, extensions, extensions_install,
     health, host, huggingface, metrics, modules, recipes, runs, storage_contributions, system,
-    tools, ui_components, ui_contributions, ui_layouts, workflows,
+    text_completion, tools, ui_components, ui_contributions, ui_layouts, workflows,
 };
 use crate::ws;
 
@@ -516,6 +516,30 @@ pub fn build(state: AppState) -> Router {
     );
     let draft_suggestions_router: Router<AppState> =
         draft_suggestions::router::<AppState>(draft_suggestions_provider);
+
+    // Spec 049 — generic text-completion broker. Buffered request/
+    // response over the canonical text-completion JSON-RPC contract.
+    // Boundary contract: see crate-level docstring in
+    // `handlers::text_completion`. CI grep guard enforces no
+    // extension-specific names land in this module.
+    let text_completion_catalog: std::sync::Arc<
+        dyn nexus_backend_runtimes::generic::catalog::BackendRuntimeCatalogRepo,
+    > = std::sync::Arc::new(
+        nexus_backend_runtimes::generic::catalog::SqliteCatalogRepo::new(state.db.pool().clone()),
+    );
+    let text_completion_installs: std::sync::Arc<
+        dyn nexus_backend_runtimes::generic::installs::BackendRuntimeInstallsRepo,
+    > = std::sync::Arc::new(
+        nexus_backend_runtimes::generic::installs::SqliteInstallsRepo::new(state.db.pool().clone()),
+    );
+    let text_completion_service: std::sync::Arc<dyn text_completion::TextCompletionService> =
+        std::sync::Arc::new(text_completion::LeaseBackedTextCompletion::from_components(
+            text_completion_catalog,
+            text_completion_installs,
+            state.lease_manager.clone(),
+        ));
+    let text_completion_router: Router<AppState> =
+        text_completion::router::<AppState>(text_completion_service);
     let api_v1 = api_v1
         .route(
             "/extensions/{ext_id}/{*rest}",
@@ -555,6 +579,7 @@ pub fn build(state: AppState) -> Router {
         .nest("/api/v1", api_v1)
         .nest("/api/host", api_host)
         .merge(draft_suggestions_router)
+        .merge(text_completion_router)
         .fallback(frontend::static_handler)
         .layer(CatchPanicLayer::new())
         // request_id MUST be the outermost user-visible layer so the
