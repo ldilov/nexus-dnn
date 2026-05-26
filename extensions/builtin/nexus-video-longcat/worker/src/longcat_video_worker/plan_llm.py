@@ -559,3 +559,57 @@ def _classify_fail_code(reason: str) -> str:
     if "parse" in lower or "json" in lower:
         return "LLM_INVALID_JSON"
     return "LLM_LEASE_UNAVAILABLE"
+
+
+def expand_and_persist(
+    prompt: str,
+    duration_seconds: float,
+    scene_count: int,
+    style_hint: Optional[str] = None,
+    seed: int = 42,
+    lease_client: Optional[LeaseClient] = None,
+    use_llm: bool = False,
+    output_dir: Optional[str] = None,
+    run_id: Optional[str] = None,
+):
+    """expand_prompt + optional artifact persistence under output_dir/run_id.
+
+    Returns (PlannerResult, ArtifactBundle | None). When output_dir+run_id are
+    set, writes plan.normalized.json + scene_NNN.prompt.txt under
+    `<output_dir>/<run_id>/planner_1/`. When unset, runs the planner and
+    returns None for the bundle (back-compat shape; existing callers can stay
+    on expand_prompt directly).
+    """
+    result = expand_prompt(
+        prompt=prompt,
+        duration_seconds=duration_seconds,
+        scene_count=scene_count,
+        style_hint=style_hint,
+        seed=seed,
+        lease_client=lease_client,
+        use_llm=use_llm,
+    )
+    if output_dir is None or run_id is None:
+        return result, None
+    from pathlib import Path as _Path
+    from .prompt_artifacts import (
+        video_plan_from_planner_payload,
+        write_plan_artifacts,
+    )
+
+    plan = video_plan_from_planner_payload(
+        payload={"scenes": result.scenes},
+        classification=(
+            "single_continuation" if len(result.scenes) <= 1 else "storyboard_scenes"
+        ),
+        anchor=result.anchor,
+        warnings=[w.to_dict() for w in result.warnings],
+        source={"compiler": result.compiler},
+    )
+    bundle = write_plan_artifacts(
+        plan=plan,
+        output_dir=_Path(output_dir),
+        run_id=run_id,
+        raw_prompt=prompt,
+    )
+    return result, bundle
