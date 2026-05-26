@@ -11,6 +11,7 @@ class Methods:
     HEALTH = "longcat.runtime.health"
     MODELS_LIST = "longcat.video.models.list"
     PLAN_VALIDATE = "longcat.video.plan.validate"
+    PLAN_EXPAND = "longcat.video.plan.expand"
     RENDER_START = "longcat.video.render.start"
     RENDER_CANCEL = "longcat.video.render.cancel"
     SEGMENT_RETRY = "longcat.video.segment.retry"

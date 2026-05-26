@@ -48,13 +48,16 @@ class PlanValidationError(Exception):
 
 
 @dataclass
-class _Warning:
+class PlanWarning:
     code: str
     scene_index: Optional[int]
     detail: str
 
     def to_dict(self) -> dict[str, Any]:
         return {"code": self.code, "scene_index": self.scene_index, "detail": self.detail}
+
+
+_Warning = PlanWarning
 
 
 def quantize_frames(seconds: float) -> int:
