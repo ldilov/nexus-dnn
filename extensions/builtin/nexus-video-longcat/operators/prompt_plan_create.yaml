@@ -1,0 +1,27 @@
+schema_version: 1
+id: prompt_plan_create
+extension: nexus.video.longcat
+method: longcat.video.plan.expand
+title: Auto Storyboard - Compile prompt into multiscene plan
+description: |
+  Turns one user creative prompt into a validated VideoPlan with N scene
+  prompts, AdaIN style metadata, and continuity anchors. Backed by the
+  deterministic compile_storyboard.py path; falls back from the LLM
+  enhancer when no planner lease is configured or when LLM output fails
+  validation.
+required_tags: [text-completion]
+preferred_tags: [json-schema]
+default_profile: longcat-planner-default
+inputs:
+  prompt: { type: string, required: true }
+  duration_seconds: { type: number, required: true }
+  scene_count: { type: integer, required: true }
+  style_hint: { type: string, required: false }
+  use_llm: { type: boolean, required: false, default: false }
+  output_dir: { type: string, required: false }
+  run_id: { type: string, required: false }
+artifacts:
+  - planner_1/plan.normalized.json
+  - planner_1/scene_NNN.prompt.txt
+  - postprocess_1/adain_style_packet.json
+  - postprocess_1/interpolation_plan.json
