@@ -1712,10 +1712,12 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
         return validate_plan(params or {})
 
     async def _plan_expand(params: dict[str, Any]) -> dict[str, Any]:
+        import asyncio
         from .plan_llm import expand_prompt
         from .compile_storyboard import StoryboardCompileError
         try:
-            result = expand_prompt(
+            result = await asyncio.to_thread(
+                expand_prompt,
                 prompt=str(params.get("prompt", "")),
                 duration_seconds=float(params.get("duration_seconds", 0.0)),
                 scene_count=int(params.get("scene_count", 1)),
