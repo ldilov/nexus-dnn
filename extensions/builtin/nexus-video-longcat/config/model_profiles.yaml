@@ -6,8 +6,20 @@
 #   developer_preview     - dev-only; quality not validated for production
 #   requires_local_policy - uncensored / weakly-aligned; operator owns
 #                           policy + alignment + abuse-prevention layer
-schema_version: 1
+schema_version: 2
 default_profile: longcat-planner-default
+# n_gpu_layers per profile (Spec 051 D-B):
+#   null  -> use the planner's VRAM-probe auto-fit (Spec 051 D-A)
+#   -1    -> force full offload (all layers on GPU); skips auto-fit
+#   0     -> CPU only
+#   N>0   -> explicit layer count; the worker translates to llama.cpp --ngl
+#
+# context_size is an ADVISORY upper bound. The worker is the authority
+# on its actual ctx window (GGUF metadata + llama.cpp build-time
+# n_ctx). HttpLeaseClient truncates planner prompts client-side so we
+# never knowingly send >context_size, but if profile.context_size
+# exceeds worker.n_ctx the worker still truncates silently. Operator
+# foot-gun: keep this value in sync with the worker build.
 
 profiles:
 
@@ -19,6 +31,7 @@ profiles:
     context_size: 8192
     max_output_tokens: 2048
     temperature: 0.2
+    n_gpu_layers: null    # use VRAM-probe auto-fit
     required_tags: [text-completion]
     preferred_tags: [json-schema, low-latency]
     notes: |

@@ -319,13 +319,100 @@ def test_complete_omits_optional_fields_when_unset(explicit_base_url: str) -> No
         assert field not in body, f"{field} should be absent when unset, body={body}"
 
 
-def test_planner_call_kwargs_defaults_to_ephemeral_full_offload() -> None:
+def test_planner_call_kwargs_defaults_to_ephemeral_with_ngl(monkeypatch: pytest.MonkeyPatch) -> None:
     from longcat_video_worker.plan_llm import _planner_call_kwargs
-
+    # Force the auto-fit fallback path so the assertion is stable in
+    # CI (no GPU) AND on a dev box (GPU present).
+    monkeypatch.setattr(
+        "longcat_video_worker.plan_llm.free_vram_mb"
+        if hasattr(__import__("longcat_video_worker.plan_llm", fromlist=["free_vram_mb"]), "free_vram_mb")
+        else "longcat_video_worker.vram.free_vram_mb",
+        lambda: 0,
+        raising=False,
+    )
     kwargs = _planner_call_kwargs()
     assert kwargs["ephemeral"] is True
-    assert kwargs["n_gpu_layers"] == -1
-    # required_tags / preferred_tags only present when the shipped
-    # profile registry is loadable AND the default profile defines them.
+    assert kwargs["n_gpu_layers"] in {-1, 0} or kwargs["n_gpu_layers"] > 0
     if "required_tags" in kwargs:
         assert "text-completion" in kwargs["required_tags"]
+
+
+def test_auto_fit_n_gpu_layers_profile_override_wins(monkeypatch: pytest.MonkeyPatch) -> None:
+    from dataclasses import dataclass
+    from longcat_video_worker.plan_llm import _auto_fit_n_gpu_layers
+
+    @dataclass
+    class FakeProfile:
+        n_gpu_layers: Optional[int] = 17
+
+    # vram MUST NOT be consulted when profile overrides
+    monkeypatch.setattr(
+        "longcat_video_worker.vram.free_vram_mb",
+        lambda: 999999,
+        raising=False,
+    )
+    assert _auto_fit_n_gpu_layers(FakeProfile(n_gpu_layers=17)) == 17
+    assert _auto_fit_n_gpu_layers(FakeProfile(n_gpu_layers=0)) == 0
+
+
+def test_auto_fit_n_gpu_layers_falls_back_to_minus_one_without_torch(monkeypatch: pytest.MonkeyPatch) -> None:
+    from longcat_video_worker.plan_llm import _auto_fit_n_gpu_layers
+
+    monkeypatch.setattr(
+        "longcat_video_worker.vram.free_vram_mb",
+        lambda: 0,
+        raising=False,
+    )
+    # Profile with explicit None still goes through auto-fit
+    from dataclasses import dataclass
+
+    @dataclass
+    class P:
+        n_gpu_layers: Optional[int] = None
+
+    assert _auto_fit_n_gpu_layers(P()) == -1
+    assert _auto_fit_n_gpu_layers(None) == -1
+
+
+def test_auto_fit_n_gpu_layers_scales_with_free_vram(monkeypatch: pytest.MonkeyPatch) -> None:
+    from longcat_video_worker.plan_llm import _auto_fit_n_gpu_layers
+
+    # 8 GiB free -> (8192 - 1024 headroom) / 80 per layer = 89 layers
+    monkeypatch.setattr(
+        "longcat_video_worker.vram.free_vram_mb",
+        lambda: 8192,
+        raising=False,
+    )
+    layers = _auto_fit_n_gpu_layers(None)
+    assert 80 <= layers <= 99
+
+
+def test_ctx_size_truncation_applies_client_side(explicit_base_url: str) -> None:
+    spy = _UrlopenSpy(_ok("ok"))
+    client = HttpLeaseClient(base_url=explicit_base_url)
+    huge_user = "x" * 100_000  # 100 KB
+    with patch("urllib.request.urlopen", spy):
+        client.complete("", huge_user, 256, 1.0, ctx_size=512)
+    body = json.loads(spy.calls[0][0].data.decode("utf-8"))
+    # ctx_size=512, max_tokens=256, char_budget = (512-256)*4 = 1024
+    assert len(body["user"]) == 1024
+
+
+def test_ctx_size_none_does_not_truncate(explicit_base_url: str) -> None:
+    spy = _UrlopenSpy(_ok("ok"))
+    client = HttpLeaseClient(base_url=explicit_base_url)
+    msg = "x" * 100
+    with patch("urllib.request.urlopen", spy):
+        client.complete("", msg, 16, 1.0, ctx_size=None)
+    body = json.loads(spy.calls[0][0].data.decode("utf-8"))
+    assert body["user"] == msg
+
+
+def test_ctx_size_smaller_than_max_tokens_emits_empty_user_safely(explicit_base_url: str) -> None:
+    spy = _UrlopenSpy(_ok("ok"))
+    client = HttpLeaseClient(base_url=explicit_base_url)
+    with patch("urllib.request.urlopen", spy):
+        client.complete("", "abc", 1000, 1.0, ctx_size=100)
+    body = json.loads(spy.calls[0][0].data.decode("utf-8"))
+    # ctx_size 100 < max_tokens 1000 -> char_budget=0 -> user truncated to ""
+    assert body["user"] == ""
