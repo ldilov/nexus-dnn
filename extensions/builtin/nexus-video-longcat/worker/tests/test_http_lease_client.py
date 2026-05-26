@@ -286,3 +286,46 @@ def test_build_response_format_falsy_values(monkeypatch: pytest.MonkeyPatch) -> 
     for falsy in ("0", "false", "no", "off", "", "  "):
         monkeypatch.setenv(CONSTRAINED_ENV, falsy)
         assert _build_response_format() is None, f"expected None for {falsy!r}"
+
+
+def test_complete_threads_ephemeral_and_tags_and_ngl(explicit_base_url: str) -> None:
+    spy = _UrlopenSpy(_ok("ok"))
+    client = HttpLeaseClient(base_url=explicit_base_url)
+    with patch("urllib.request.urlopen", spy):
+        client.complete(
+            "",
+            "u",
+            16,
+            1.0,
+            n_gpu_layers=-1,
+            required_tags=["text-completion", "json-schema"],
+            preferred_tags=["low-latency"],
+            ephemeral=True,
+        )
+    body = json.loads(spy.calls[0][0].data.decode("utf-8"))
+    assert body["n_gpu_layers"] == -1
+    assert body["required_tags"] == ["text-completion", "json-schema"]
+    assert body["preferred_tags"] == ["low-latency"]
+    assert body["ephemeral"] is True
+
+
+def test_complete_omits_optional_fields_when_unset(explicit_base_url: str) -> None:
+    spy = _UrlopenSpy(_ok("ok"))
+    client = HttpLeaseClient(base_url=explicit_base_url)
+    with patch("urllib.request.urlopen", spy):
+        client.complete("", "u", 16, 1.0)
+    body = json.loads(spy.calls[0][0].data.decode("utf-8"))
+    for field in ("n_gpu_layers", "required_tags", "preferred_tags", "ephemeral", "response_format"):
+        assert field not in body, f"{field} should be absent when unset, body={body}"
+
+
+def test_planner_call_kwargs_defaults_to_ephemeral_full_offload() -> None:
+    from longcat_video_worker.plan_llm import _planner_call_kwargs
+
+    kwargs = _planner_call_kwargs()
+    assert kwargs["ephemeral"] is True
+    assert kwargs["n_gpu_layers"] == -1
+    # required_tags / preferred_tags only present when the shipped
+    # profile registry is loadable AND the default profile defines them.
+    if "required_tags" in kwargs:
+        assert "text-completion" in kwargs["required_tags"]

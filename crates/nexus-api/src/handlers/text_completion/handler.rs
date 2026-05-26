@@ -10,10 +10,10 @@ use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use nexus_backend_runtimes::generic::leases::text_completion::ResponseFormat;
+use nexus_backend_runtimes::generic::leases::text_completion::{LeaseSelection, ResponseFormat};
 
 use super::errors::{TextCompletionError, status_code};
-use super::service::TextCompletionService;
+use super::service::{CompletionRequest, TextCompletionService};
 
 /// Soft upper bound on `timeout_ms`. Callers asking for more than a
 /// minute likely have a runaway request; reject early to protect the
@@ -32,6 +32,23 @@ pub struct TextCompletionRequest {
     /// byte-identical request semantics.
     #[serde(default)]
     pub response_format: Option<ResponseFormat>,
+    /// Opaque GPU-offload hint. `-1` = all layers, positive integer =
+    /// explicit count, `0` = CPU. Backend adapter translates to its
+    /// native flag. Pre-PR-6 callers omit and accept operator defaults.
+    #[serde(default)]
+    pub n_gpu_layers: Option<i32>,
+    /// Caller-supplied lease-selection vectors. `required_tags` MUST be
+    /// satisfied by the backend's catalog capability_tags;
+    /// `preferred_tags` are an advisory rank.
+    #[serde(default)]
+    pub required_tags: Vec<String>,
+    #[serde(default)]
+    pub preferred_tags: Vec<String>,
+    /// When `true`, the host releases (reaps) the underlying lease
+    /// after the call completes, freeing GPU memory. Defaults to
+    /// `false` (warm-cache reuse across callers).
+    #[serde(default)]
+    pub ephemeral: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -62,16 +79,20 @@ pub async fn complete(
     }
 
     let timeout = Duration::from_millis(request.timeout_ms as u64);
-    match service
-        .complete(
-            request.system,
-            request.user,
-            request.max_tokens,
-            timeout,
-            request.response_format,
-        )
-        .await
-    {
+    let completion = CompletionRequest {
+        system: request.system,
+        user: request.user,
+        max_tokens: request.max_tokens,
+        timeout,
+        response_format: request.response_format,
+        n_gpu_layers: request.n_gpu_layers,
+        selection: LeaseSelection {
+            required_tags: request.required_tags,
+            preferred_tags: request.preferred_tags,
+        },
+        ephemeral: request.ephemeral,
+    };
+    match service.complete(completion).await {
         Ok(text) => (StatusCode::OK, Json(TextCompletionResponse { text })).into_response(),
         Err(err) => error_response(&err),
     }
@@ -114,11 +135,7 @@ mod tests {
     impl TextCompletionService for FakeService {
         async fn complete(
             &self,
-            _system: String,
-            _user: String,
-            _max_tokens: u32,
-            _timeout: Duration,
-            _response_format: Option<ResponseFormat>,
+            _request: CompletionRequest,
         ) -> Result<String, TextCompletionError> {
             self.outcome.clone()
         }
@@ -131,6 +148,10 @@ mod tests {
             max_tokens: 16,
             timeout_ms: 1000,
             response_format: None,
+            n_gpu_layers: None,
+            required_tags: Vec::new(),
+            preferred_tags: Vec::new(),
+            ephemeral: false,
         }
     }
 
