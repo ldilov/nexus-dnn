@@ -21,11 +21,33 @@ use crate::generic::settings::RuntimeSettings;
 
 /// Options passed by the caller. The `owner_kind` + `owner_ref` pair
 /// identifies who owns this lease for cross-resource accounting (A-07).
+///
+/// `idle_reapable` (Spec 051 PR-3) governs whether the idle reaper may
+/// release this lease when its install's `idle_timeout` elapses with
+/// `in_flight_count == 0`. Defaults to `true` so operator-acquired
+/// long-lived leases reap naturally; callers that need a persistent
+/// pinned lease set it to `false` at acquire time.
 #[derive(Debug, Clone)]
 pub struct AcquireOptions {
     pub owner_kind: OwnerKind,
     /// Caller-supplied opaque identifier (deployment_id, run_id, session uuid).
     pub owner_ref: String,
+    pub idle_reapable: bool,
+}
+
+impl AcquireOptions {
+    pub fn new(owner_kind: OwnerKind, owner_ref: impl Into<String>) -> Self {
+        Self {
+            owner_kind,
+            owner_ref: owner_ref.into(),
+            idle_reapable: true,
+        }
+    }
+
+    pub fn with_idle_reapable(mut self, idle_reapable: bool) -> Self {
+        self.idle_reapable = idle_reapable;
+        self
+    }
 }
 
 /// Resolve the install, spawn the worker, handshake, persist lease

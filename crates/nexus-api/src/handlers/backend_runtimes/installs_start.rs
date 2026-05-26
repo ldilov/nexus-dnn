@@ -93,13 +93,15 @@ pub async fn start(
     };
 
     let leases_repo = SqliteLeasesRepo::new(state.db.pool().clone());
+    let acquire_opts = AcquireOptions {
+        owner_kind,
+        owner_ref: owner_ref.clone(),
+        idle_reapable: true,
+    };
     let lease = match acquire_lease(
         install_id,
         entry.runtime_family,
-        AcquireOptions {
-            owner_kind,
-            owner_ref,
-        },
+        acquire_opts.clone(),
         &installs,
         &leases_repo,
         &state.family_handlers,
@@ -124,7 +126,15 @@ pub async fn start(
     let pid = lease.pid().map(|p| p as i32);
     state
         .lease_manager
-        .register(lease.clone(), install_id)
+        .register_with_meta(
+            lease.clone(),
+            nexus_backend_runtimes::generic::leases::manager::RegisterMeta {
+                install_id,
+                owner_kind: acquire_opts.owner_kind,
+                owner_ref: acquire_opts.owner_ref,
+                idle_reapable: acquire_opts.idle_reapable,
+            },
+        )
         .await;
 
     let resp = StartResponse {

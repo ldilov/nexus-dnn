@@ -3,7 +3,7 @@ use axum::extract::Request;
 use axum::http::HeaderValue;
 use axum::middleware::{self, Next};
 use axum::response::Response;
-use axum::routing::{get, post};
+use axum::routing::{get, patch, post};
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::{Any, CorsLayer};
@@ -141,7 +141,8 @@ use crate::frontend;
 use crate::handlers;
 use crate::handlers::{
     artifacts, backend_events_ws, backend_runtimes, backends, deployments, desktop,
-    draft_suggestions, extension_dependencies, extension_ui, extensions, extensions_install,
+    draft_suggestions, extension_dependencies, extension_settings, extension_ui, extensions,
+    extensions_install,
     health, host, huggingface, metrics, modules, recipes, runs, storage_contributions, system,
     text_completion, tools, ui_components, ui_contributions, ui_layouts, workflows,
 };
@@ -188,6 +189,10 @@ pub fn build(state: AppState) -> Router {
         .route(
             "/extensions/{id}/install/cancel",
             post(extension_dependencies::cancel_install),
+        )
+        .route(
+            "/extensions/{id}/settings/idle_timeout",
+            patch(extension_settings::idle_timeout::patch_idle_timeout),
         )
         .route(
             "/extensions/{id}/enable",
