@@ -14,6 +14,7 @@ from .video_plan import (
     PlanWarningEntry,
     ScenePromptPacket,
     StylePacket,
+    TransitionPacket,
     VideoPlan,
 )
 
@@ -142,6 +143,8 @@ def video_plan_from_planner_payload(
     """
     scenes_raw = payload.get("scenes") or []
     scenes = tuple(ScenePromptPacket.from_dict(s) for s in scenes_raw)
+    transitions_raw = payload.get("transitions") or []
+    transitions = tuple(TransitionPacket.from_dict(t) for t in transitions_raw)
     warning_entries = tuple(
         PlanWarningEntry.from_dict(w) for w in (warnings or [])
     )
@@ -153,6 +156,7 @@ def video_plan_from_planner_payload(
         style=StylePacket(),
         adain=None,
         interpolation=InterpolationPlan(),
+        transitions=transitions,
         warnings=warning_entries,
         source=PlanSource.from_dict(source or {}),
     )

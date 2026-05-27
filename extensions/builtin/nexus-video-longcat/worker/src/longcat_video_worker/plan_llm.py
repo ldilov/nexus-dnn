@@ -301,6 +301,11 @@ class PlannerResult:
     compiler: str
     warnings: list[PlanWarning]
     anchor: str
+    transitions: list[dict[str, Any]] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.transitions is None:
+            object.__setattr__(self, "transitions", [])
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -308,6 +313,7 @@ class PlannerResult:
             "compiler": self.compiler,
             "anchor": self.anchor,
             "warnings": [w.to_dict() for w in self.warnings],
+            "transitions": list(self.transitions),
         }
 
 
@@ -371,6 +377,59 @@ def _coerce_scene_field(scene: dict[str, Any], anchor: str, idx: int) -> dict[st
     }
 
 
+_VALID_TRANSITION_TYPES = {"soft", "hard_cut", "dissolve"}
+_BRIDGE_TEXT_MAX_LEN = 240
+
+
+def _coerce_transitions(
+    raw_transitions: Any,
+    scene_count: int,
+) -> list[dict[str, Any]]:
+    """Coerce LLM-emitted transitions into canonical form.
+
+    Always returns scene_count-1 entries when scene_count>=2. Missing or
+    invalid entries are filled with hard_cut (legacy behavior). Soft
+    transitions with missing/empty bridge_text are downgraded to hard_cut
+    (validator would otherwise reject; downgrading keeps the plan usable).
+    """
+    if scene_count < 2:
+        return []
+
+    expected = scene_count - 1
+    items: list[Any] = list(raw_transitions) if isinstance(raw_transitions, list) else []
+    if len(items) < expected:
+        items.extend([{}] * (expected - len(items)))
+    items = items[:expected]
+
+    out: list[dict[str, Any]] = []
+    for idx, raw in enumerate(items):
+        if not isinstance(raw, dict):
+            raw = {}
+        ttype = str(raw.get("type", "hard_cut"))
+        if ttype not in _VALID_TRANSITION_TYPES:
+            ttype = "hard_cut"
+        bridge = raw.get("bridge_text")
+        if bridge is not None and not isinstance(bridge, str):
+            bridge = None
+        if isinstance(bridge, str):
+            bridge = bridge.strip()
+            if len(bridge) > _BRIDGE_TEXT_MAX_LEN:
+                bridge = bridge[:_BRIDGE_TEXT_MAX_LEN]
+        if ttype == "soft" and not bridge:
+            ttype = "hard_cut"
+            bridge = None
+        out.append(
+            {
+                "from_scene": idx,
+                "to_scene": idx + 1,
+                "type": ttype,
+                "bridge_text": bridge,
+                "ramp_frames": 8,
+            }
+        )
+    return out
+
+
 def repair_anchor(scenes: list[dict[str, Any]], anchor: str) -> tuple[list[dict[str, Any]], list[int]]:
     repaired: list[dict[str, Any]] = []
     repaired_indices: list[int] = []
@@ -431,10 +490,19 @@ def _build_system_prompt() -> str:
         "You are a video storyboard planner. Output ONLY a JSON object. "
         "No prose. No markdown fences. "
         "Schema: {\"scenes\":[{\"prompt\":str,\"duration_seconds\":number,"
-        "\"motion_intensity\":\"static|dynamic|intense\",\"adain_factor\":number}]}. "
+        "\"motion_intensity\":\"static|dynamic|intense\",\"adain_factor\":number}],"
+        "\"transitions\":[{\"type\":\"soft|hard_cut\",\"bridge_text\":str}]}. "
         "Every scene prompt MUST begin with the ANCHOR phrase verbatim. "
         "Each prompt <= 280 characters. Each scene shows ONLY its own beat — "
-        "do not leak later-scene actions into earlier prompts."
+        "do not leak later-scene actions into earlier prompts. "
+        "TRANSITIONS: when scenes are >=2, output exactly scenes.length-1 transitions "
+        "in order. Each transition links scene[i] -> scene[i+1]. "
+        "Default type=soft when the action flows continuously (same subject/location); "
+        "type=hard_cut only for deliberate scene jumps (new location, time skip). "
+        "When type=soft, bridge_text MUST be ONE camera-continuity sentence "
+        "(<=25 words). Use camera verbs (continues, drifts, settles, tracks, holds). "
+        "bridge_text MUST NOT introduce nouns absent from both adjacent scene prompts. "
+        "When type=hard_cut, bridge_text MAY be omitted or empty."
     )
 
 
@@ -449,7 +517,9 @@ def _build_user_prompt(
         '{"scenes":[{"prompt":"a fox in a meadow. red fox walks slowly across green grass",'
         '"duration_seconds":2.0,"motion_intensity":"dynamic","adain_factor":0.2},'
         '{"prompt":"a fox in a meadow. red fox rests under shade of an oak tree",'
-        '"duration_seconds":2.0,"motion_intensity":"static","adain_factor":0.2}]}'
+        '"duration_seconds":2.0,"motion_intensity":"static","adain_factor":0.2}],'
+        '"transitions":[{"type":"soft",'
+        '"bridge_text":"the fox slows as the meadow opens onto an oak tree"}]}'
     )
     style = style_hint or ""
     return (
@@ -649,7 +719,24 @@ def expand_prompt(
         )
 
     materialized = materialize_scene_dicts(repaired, clamped_duration, clamped_count)
-    validated = validate_plan({"scenes": materialized})
+    transitions = _coerce_transitions(parsed.get("transitions"), len(materialized))
+    validated = validate_plan({"scenes": materialized, "transitions": transitions})
+    if (
+        not validated["ok"]
+        and transitions
+        and str(validated.get("error", {}).get("sub_reason", "")).startswith("TRANSITION_")
+    ):
+        warnings.append(
+            PlanWarning(
+                code="TRANSITION_DROPPED",
+                scene_index=None,
+                detail=_truncate_detail(
+                    f"transitions stripped: {validated['error'].get('sub_reason')}: {validated['error'].get('detail', '')}"
+                ),
+            )
+        )
+        transitions = []
+        validated = validate_plan({"scenes": materialized})
     if not validated["ok"]:
         err = validated.get("error", {})
         warnings.append(
@@ -678,11 +765,15 @@ def expand_prompt(
                 code=w["code"], scene_index=w.get("scene_index"), detail=w.get("detail", "")
             )
         )
+    canonical_transitions = list(
+        validated.get("normalized", {}).get("transitions") or []
+    )
     return PlannerResult(
         scenes=materialized,
         compiler="llm",
         warnings=warnings,
         anchor=anchor,
+        transitions=canonical_transitions,
     )
 
 
@@ -734,7 +825,7 @@ def expand_and_persist(
     )
 
     plan = video_plan_from_planner_payload(
-        payload={"scenes": result.scenes},
+        payload={"scenes": result.scenes, "transitions": result.transitions},
         classification=(
             "single_continuation" if len(result.scenes) <= 1 else "storyboard_scenes"
         ),
