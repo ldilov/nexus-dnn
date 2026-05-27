@@ -81,6 +81,51 @@
         "method": { "type": "string", "enum": ["rife", "film", "none"], "default": "none" }
       }
     },
+    "transitions": {
+      "type": "array",
+      "description": "Optional boundary transitions between consecutive scenes. Length MUST be scenes.length - 1 when present; entries index transitions[i] = scenes[i] -> scenes[i+1]. Absent or empty array means legacy hard-pin behavior for every boundary.",
+      "minItems": 0,
+      "maxItems": 15,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from_scene", "to_scene", "type"],
+        "properties": {
+          "from_scene": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 14,
+            "description": "Index of the source scene (must equal item position in array)."
+          },
+          "to_scene": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 15,
+            "description": "Index of the destination scene (must equal from_scene + 1)."
+          },
+          "type": {
+            "type": "string",
+            "enum": ["soft", "hard_cut", "dissolve"],
+            "default": "hard_cut",
+            "description": "soft = pin-decay + bridge text-embed cross-fade (cinematic). hard_cut = current behavior (frame-exact pin, no blend). dissolve = reserved for future visual cross-fade."
+          },
+          "bridge_text": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 240,
+            "description": "Single-sentence camera-continuity statement used as the bridging text-conditioning during the pin ramp. Required when type=soft. Must NOT introduce nouns absent from both adjacent scenes (validator enforces)."
+          },
+          "ramp_frames": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 24,
+            "default": 8,
+            "description": "Length in frames of the pin-decay + cross-fade window at the start of to_scene."
+          }
+        }
+      },
+      "default": []
+    },
     "warnings": {
       "type": "array",
       "items": {

@@ -144,6 +144,40 @@ class AdaINStylePacket:
         )
 
 
+TRANSITION_TYPES = ("soft", "hard_cut", "dissolve")
+DEFAULT_RAMP_FRAMES = 8
+
+
+@dataclass(frozen=True)
+class TransitionPacket:
+    from_scene: int
+    to_scene: int
+    type: str = "hard_cut"
+    bridge_text: Optional[str] = None
+    ramp_frames: int = DEFAULT_RAMP_FRAMES
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "from_scene": self.from_scene,
+            "to_scene": self.to_scene,
+            "type": self.type,
+            "ramp_frames": self.ramp_frames,
+        }
+        if self.bridge_text is not None:
+            out["bridge_text"] = self.bridge_text
+        return out
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TransitionPacket":
+        return cls(
+            from_scene=int(data["from_scene"]),
+            to_scene=int(data["to_scene"]),
+            type=str(data.get("type", "hard_cut")),
+            bridge_text=data.get("bridge_text"),
+            ramp_frames=int(data.get("ramp_frames", DEFAULT_RAMP_FRAMES)),
+        )
+
+
 @dataclass(frozen=True)
 class InterpolationPlan:
     enabled: bool = False
@@ -217,6 +251,7 @@ class VideoPlan:
     style: StylePacket = field(default_factory=StylePacket)
     adain: Optional[AdaINStylePacket] = None
     interpolation: InterpolationPlan = field(default_factory=InterpolationPlan)
+    transitions: tuple[TransitionPacket, ...] = ()
     warnings: tuple[PlanWarningEntry, ...] = ()
     source: PlanSource = field(default_factory=PlanSource)
 
@@ -235,6 +270,8 @@ class VideoPlan:
             out["adain"] = self.adain.to_dict()
         if self.interpolation.enabled or self.interpolation.method != "none":
             out["interpolation"] = self.interpolation.to_dict()
+        if self.transitions:
+            out["transitions"] = [t.to_dict() for t in self.transitions]
         if self.warnings:
             out["warnings"] = [w.to_dict() for w in self.warnings]
         if not self.source.is_empty():
@@ -264,6 +301,9 @@ class VideoPlan:
                 else None
             ),
             interpolation=InterpolationPlan.from_dict(data.get("interpolation", {}) or {}),
+            transitions=tuple(
+                TransitionPacket.from_dict(t) for t in data.get("transitions", []) or []
+            ),
             warnings=tuple(
                 PlanWarningEntry.from_dict(w) for w in data.get("warnings", []) or []
             ),

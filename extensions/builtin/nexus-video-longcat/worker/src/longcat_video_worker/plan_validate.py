@@ -29,6 +29,164 @@ ADAIN_DRIFT_SCENE_THRESHOLD = 4
 DISTILL_STATIC_PROMPT_THRESHOLD = 3
 VAE_TILE_PIXEL_THRESHOLD = 768 * 448
 ICN_LOW_THRESHOLD = 0.05
+TRANSITION_TYPES = {"soft", "hard_cut", "dissolve"}
+BRIDGE_TEXT_MAX_LEN = 240
+BRIDGE_TEXT_MAX_TOKENS = 30
+RAMP_FRAMES_MIN = 1
+RAMP_FRAMES_MAX = 24
+DEFAULT_RAMP_FRAMES = 8
+
+_BRIDGE_STOPWORDS = frozenset(
+    {
+        "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+        "and", "or", "but", "of", "in", "on", "at", "to", "for", "with",
+        "by", "from", "into", "onto", "over", "under", "as", "it", "its",
+        "this", "that", "these", "those", "her", "his", "their", "them",
+        "they", "we", "he", "she", "i", "you", "your", "our", "us",
+        "do", "does", "did", "has", "have", "had", "will", "would",
+        "can", "could", "should", "may", "might", "must", "shall",
+        "continues", "drifts", "settles", "tracks", "holds", "lingers",
+        "moves", "shifts", "fades", "begins", "ends", "stays", "remains",
+        "opens", "opening", "closes", "closing", "enters", "entering",
+        "exits", "exiting", "leaves", "leaving", "arrives", "arriving",
+        "appears", "appearing", "emerges", "emerging", "becomes",
+        "turns", "breaks", "falls", "rises", "approaches", "pauses",
+        "lifts", "lowers", "tilts", "pans", "zooms", "rotates",
+        "across", "through", "toward", "away", "back", "around", "between",
+        "while", "as", "when", "then", "now", "still",
+        "camera", "shot", "frame", "lens", "view", "angle",
+        "light", "lights", "lighting", "color", "colors", "color",
+        "scene", "moment", "beat", "pause",
+        "very", "softly", "slowly", "quickly", "gently",
+        "not", "no",
+    }
+)
+
+
+def _tokenize_for_bridge(text: str) -> list[str]:
+    """Lowercase alphabetic word tokenization. Strips punctuation."""
+    import re
+
+    return re.findall(r"[a-zA-Z]+", text.lower())
+
+
+_STEM_LEN = 4
+
+
+def _content_nouns(text: str) -> set[str]:
+    """Heuristic content-word set: alphabetic tokens minus stopwords/verbs/camera-language."""
+    return {t for t in _tokenize_for_bridge(text) if t not in _BRIDGE_STOPWORDS and len(t) >= 3}
+
+
+def _content_stems(text: str) -> set[str]:
+    """Stem prefixes for inflection-tolerant noun matching.
+
+    `open`, `opens`, `opening` all share the 4-char stem `open` so a bridge
+    using a conjugated form of a scene word is not flagged as introducing
+    a new noun. Cheap and dependency-free; tradeoff: short words (<4 chars)
+    are kept whole, which is fine since they tend to be stopwords already.
+    """
+    return {t[:_STEM_LEN] for t in _content_nouns(text)}
+
+
+def _validate_transitions(
+    transitions_raw: list[dict[str, Any]],
+    normalized_scenes: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Validates transitions[] against normalized scenes. Returns a list of
+    canonicalized transition dicts. Raises PlanValidationError on invalid input.
+    Empty input is legal (legacy hard-pin behavior on every boundary).
+    """
+    if not transitions_raw:
+        return []
+
+    n_scenes = len(normalized_scenes)
+    expected_len = n_scenes - 1
+
+    if len(transitions_raw) != expected_len:
+        raise PlanValidationError(
+            "TRANSITION_COUNT_MISMATCH",
+            f"transitions length {len(transitions_raw)} != scenes-1 ({expected_len})",
+        )
+
+    canonical: list[dict[str, Any]] = []
+
+    for i, t in enumerate(transitions_raw):
+        if not isinstance(t, dict):
+            raise PlanValidationError(
+                "TRANSITION_INVALID",
+                f"transitions[{i}] must be an object",
+            )
+
+        from_scene = t.get("from_scene")
+        to_scene = t.get("to_scene")
+        if from_scene != i or to_scene != i + 1:
+            raise PlanValidationError(
+                "TRANSITION_INDEX_MISMATCH",
+                f"transitions[{i}] must have from_scene={i}, to_scene={i + 1}; got from={from_scene}, to={to_scene}",
+            )
+
+        ttype = t.get("type", "hard_cut")
+        if ttype not in TRANSITION_TYPES:
+            raise PlanValidationError(
+                "TRANSITION_TYPE_INVALID",
+                f"transitions[{i}].type='{ttype}' not in {sorted(TRANSITION_TYPES)}",
+            )
+
+        ramp_frames = int(t.get("ramp_frames", DEFAULT_RAMP_FRAMES))
+        if ramp_frames < RAMP_FRAMES_MIN or ramp_frames > RAMP_FRAMES_MAX:
+            raise PlanValidationError(
+                "TRANSITION_RAMP_OUT_OF_RANGE",
+                f"transitions[{i}].ramp_frames={ramp_frames} not in [{RAMP_FRAMES_MIN}, {RAMP_FRAMES_MAX}]",
+            )
+
+        bridge_text = t.get("bridge_text")
+        if bridge_text is not None and not isinstance(bridge_text, str):
+            raise PlanValidationError(
+                "TRANSITION_BRIDGE_INVALID",
+                f"transitions[{i}].bridge_text must be a string or null",
+            )
+
+        if ttype == "soft":
+            if not bridge_text or not bridge_text.strip():
+                raise PlanValidationError(
+                    "TRANSITION_BRIDGE_REQUIRED",
+                    f"transitions[{i}].type='soft' requires non-empty bridge_text",
+                )
+            if len(bridge_text) > BRIDGE_TEXT_MAX_LEN:
+                raise PlanValidationError(
+                    "TRANSITION_BRIDGE_TOO_LONG",
+                    f"transitions[{i}].bridge_text length {len(bridge_text)} > {BRIDGE_TEXT_MAX_LEN}",
+                )
+            tokens = _tokenize_for_bridge(bridge_text)
+            if len(tokens) > BRIDGE_TEXT_MAX_TOKENS:
+                raise PlanValidationError(
+                    "TRANSITION_BRIDGE_TOO_LONG",
+                    f"transitions[{i}].bridge_text token count {len(tokens)} > {BRIDGE_TEXT_MAX_TOKENS}",
+                )
+            allowed_stems = _content_stems(normalized_scenes[i]["prompt"]) | _content_stems(
+                normalized_scenes[i + 1]["prompt"]
+            )
+            bridge_nouns = _content_nouns(bridge_text)
+            unknown = {n for n in bridge_nouns if n[:_STEM_LEN] not in allowed_stems}
+            if unknown:
+                raise PlanValidationError(
+                    "TRANSITION_BRIDGE_UNKNOWN_NOUN",
+                    f"transitions[{i}].bridge_text introduces nouns absent from both adjacent scenes: {sorted(unknown)}",
+                )
+
+        canonical.append(
+            {
+                "from_scene": i,
+                "to_scene": i + 1,
+                "type": ttype,
+                "bridge_text": bridge_text,
+                "ramp_frames": ramp_frames,
+            }
+        )
+
+    return canonical
 
 
 class PlanValidationError(Exception):
@@ -480,6 +638,12 @@ def validate_plan(payload: dict[str, Any]) -> dict[str, Any]:
 
     _emit_global_warnings(payload, normalized, warnings)
 
+    transitions_raw = payload.get("transitions") or []
+    try:
+        canonical_transitions = _validate_transitions(transitions_raw, normalized)
+    except PlanValidationError as exc:
+        return {"ok": False, "error": exc.to_error_payload()}
+
     total_frames_raw = sum(s["num_frames"] for s in normalized)
     total_frames_after_overlap = sum(
         s["num_frames"] - (s["overlap_frames"] if i > 0 else 0)
@@ -491,6 +655,7 @@ def validate_plan(payload: dict[str, Any]) -> dict[str, Any]:
         "ok": True,
         "normalized": {
             "scenes": normalized,
+            "transitions": canonical_transitions,
             "total_frames_raw": total_frames_raw,
             "total_frames_after_overlap": total_frames_after_overlap,
             "estimated_duration_seconds": estimated_duration_seconds,

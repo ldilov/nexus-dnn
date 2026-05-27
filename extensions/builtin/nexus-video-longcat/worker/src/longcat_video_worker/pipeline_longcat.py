@@ -35,6 +35,75 @@ logger = logging.getLogger(__name__)
 RenderMode = Literal["t2v", "i2v", "vc", "refine"]
 
 
+_TRANSITION_TYPES = ("soft", "hard_cut", "dissolve")
+_BRIDGE_PROMPT_MAX_CHARS = 280
+_SOFT_TRANSITION_ICN_DELTA = 0.05
+_ICN_CEILING = 0.25
+
+
+@dataclass(frozen=True)
+class Transition:
+    """Boundary descriptor between two consecutive scenes.
+
+    Mirrors video_plan.TransitionPacket but lives next to LongCatRenderRequest
+    so the pipeline does not depend on the plan dataclass module. The render
+    handler builds these from the normalized plan transitions array.
+    """
+
+    from_scene: int
+    to_scene: int
+    type: str = "hard_cut"
+    bridge_text: Optional[str] = None
+    ramp_frames: int = 8
+
+
+def _compose_bridged_prompt(scene_prompt: str, bridge_text: Optional[str]) -> str:
+    """Return the prompt to pass to generate_vc for a soft transition.
+
+    The bridge text is prepended as a continuity phrase, then the scene
+    prompt carries the actual beat. Output is clamped to keep the upstream
+    tokenizer happy (UMT5 sees max_sequence_length=512 tokens; 280 chars is
+    a safe upper bound for the bridge alone).
+    """
+    if not bridge_text or not bridge_text.strip():
+        return scene_prompt
+    bridge = bridge_text.strip().rstrip(".")
+    if len(bridge) > _BRIDGE_PROMPT_MAX_CHARS:
+        bridge = bridge[:_BRIDGE_PROMPT_MAX_CHARS]
+    return f"{bridge}. {scene_prompt}"
+
+
+def _bump_icn_for_soft(default_icn: float) -> float:
+    """Image-conditioning-noise bump that softens the latent pin.
+
+    generate_vc does not expose per-frame x0 weights, so the latent-level
+    pin can only be released by adding noise to the conditioning frames.
+    This is the API-level equivalent of an 8-frame x0-decay schedule:
+    raise the cond-noise floor by a small delta (capped at the ceiling)
+    so the model's reverse process is not yanked toward the pinned tail.
+    """
+    bumped = float(default_icn) + _SOFT_TRANSITION_ICN_DELTA
+    return min(_ICN_CEILING, bumped)
+
+
+def _resolve_transition(
+    transitions: Optional[list["Transition"]],
+    scene_idx_zero_based: int,
+) -> Optional["Transition"]:
+    """Return the transition entering ``scenes[scene_idx_zero_based]``.
+
+    ``transitions[i]`` connects scenes[i] -> scenes[i+1], so the transition
+    INTO scene ``k`` is ``transitions[k-1]``. Returns None when transitions
+    is absent or the boundary has no descriptor (legacy hard-pin path).
+    """
+    if not transitions or scene_idx_zero_based <= 0:
+        return None
+    boundary_idx = scene_idx_zero_based - 1
+    if boundary_idx >= len(transitions):
+        return None
+    return transitions[boundary_idx]
+
+
 @dataclass(frozen=True)
 class Scene:
     prompt: str
@@ -155,6 +224,21 @@ class LongCatRenderRequest:
     adain_factor: float = 0.0
 
     image_cond_noise_scale: float = 0.15
+
+    # Per-boundary transition descriptors (spec: longcat_video_plan.transitions).
+    # Length MUST be len(scenes) - 1 when present. transitions[i] describes the
+    # boundary scenes[i] -> scenes[i+1]. When None or empty, every boundary
+    # falls back to the legacy hard-pin path (byte-exact tail fed into
+    # generate_vc with no prompt bridging and no ICN bump).
+    transitions: Optional[list[Transition]] = None
+
+    # S4: Micro-perturbation magnitudes applied to the pin frame (frame 0
+    # of the tail) ONLY when the boundary transition is type='soft'. Both
+    # default to 0.0 (off) — operator opts in once per render after the
+    # smoke (S5) validates visual cost. Capped internally at MAX_JITTER_PX
+    # (0.5 px) and MAX_GRAIN_SIGMA (0.05) regardless of operator input.
+    boundary_jitter_px: float = 0.0
+    boundary_grain_sigma: float = 0.0
 
 
 @dataclass
@@ -1511,6 +1595,35 @@ def _run_scene_loop(
                 np.round(post_mean, 1).tolist(),
             )
 
+        # S4: Micro-perturb the pin frame on soft transitions. Applied
+        # AFTER AdaIN so the perturbation rides on top of the colour-matched
+        # tail. No-op when either magnitude is 0 or transition is not 'soft'.
+        transition_preview = _resolve_transition(request.transitions, idx - 1)
+        if (
+            transition_preview is not None
+            and transition_preview.type == "soft"
+            and (request.boundary_jitter_px > 0.0 or request.boundary_grain_sigma > 0.0)
+        ):
+            from .micro_perturb import perturb_pin_frame
+
+            perturb_seed = None
+            if base_seed is not None:
+                perturb_seed = int(base_seed) + (idx - 1) * 1009
+            tail_u8 = perturb_pin_frame(
+                tail_u8,
+                jitter_px=request.boundary_jitter_px,
+                grain_sigma=request.boundary_grain_sigma,
+                seed=perturb_seed,
+            )
+            logger.info(
+                "_run_scene_loop scene=%d: micro-perturb pin frame "
+                "jitter_px=%.3f grain_sigma=%.4f seed=%s",
+                idx,
+                request.boundary_jitter_px,
+                request.boundary_grain_sigma,
+                perturb_seed,
+            )
+
         tail_pil = [Image.fromarray(f, mode="RGB") for f in tail_u8]
 
         logger.info(
@@ -1535,9 +1648,35 @@ def _run_scene_loop(
             else request.image_cond_noise_scale
         )
 
+        # S3: soft-transition bridging. transitions[idx-2] describes the
+        # boundary into the current scene (idx is 1-indexed display value;
+        # current scene's zero-based index is idx-1). For type='soft' we
+        # prepend the bridge sentence to the scene prompt and bump ICN to
+        # release the latent pin. type='hard_cut' (or absent) preserves
+        # legacy byte-exact behavior.
+        transition = _resolve_transition(request.transitions, idx - 1)
+        scene_prompt_effective = scene.prompt
+        if transition is not None and transition.type == "soft":
+            scene_prompt_effective = _compose_bridged_prompt(
+                scene.prompt, transition.bridge_text
+            )
+            scene_icn = _bump_icn_for_soft(scene_icn)
+            logger.info(
+                "_run_scene_loop scene=%d: soft transition (ramp=%d) "
+                "bridge=%r icn_bumped=%.3f",
+                idx, transition.ramp_frames,
+                (transition.bridge_text or "")[:80],
+                scene_icn,
+            )
+        elif transition is not None:
+            logger.info(
+                "_run_scene_loop scene=%d: %s transition (legacy hard-pin)",
+                idx, transition.type,
+            )
+
         vc_kwargs: dict[str, Any] = dict(
             video=tail_pil,
-            prompt=scene.prompt,
+            prompt=scene_prompt_effective,
             negative_prompt=request.negative_prompt,
             resolution=resolution,
             num_frames=scene_req.num_frames,
@@ -1679,6 +1818,29 @@ class _PipelineError(RuntimeError):
         self.phase = phase
 
 
+def _parse_transition(raw: dict[str, Any]) -> Transition:
+    """Build a Transition from a normalized plan-validate transition entry.
+
+    Accepts the canonical shape emitted by plan_validate._validate_transitions:
+    keys {from_scene, to_scene, type, bridge_text?, ramp_frames}. Unknown
+    types fall back to 'hard_cut' so future plan versions never crash the
+    pipeline.
+    """
+    ttype = str(raw.get("type", "hard_cut"))
+    if ttype not in _TRANSITION_TYPES:
+        ttype = "hard_cut"
+    bridge_text = raw.get("bridge_text")
+    if bridge_text is not None and not isinstance(bridge_text, str):
+        bridge_text = None
+    return Transition(
+        from_scene=int(raw.get("from_scene", 0)),
+        to_scene=int(raw.get("to_scene", 0)),
+        type=ttype,
+        bridge_text=bridge_text,
+        ramp_frames=int(raw.get("ramp_frames", 8)),
+    )
+
+
 def _parse_scene(raw: dict[str, Any]) -> Scene:
     duration = raw.get("per_scene_generated_seconds")
     if duration is None:
@@ -1744,6 +1906,7 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
 
         scenes_raw = params.get("scenes")
         scenes_parsed: Optional[list[Scene]] = None
+        transitions_parsed: Optional[list[Transition]] = None
         plan_warnings: list[dict[str, Any]] = []
         if isinstance(scenes_raw, list) and len(scenes_raw) > 0:
             from .plan_validate import validate_plan
@@ -1759,6 +1922,9 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
                 }
             plan_warnings = validation.get("warnings", [])
             scenes_parsed = [_parse_scene(s) for s in scenes_raw]
+            normalized_transitions = validation["normalized"].get("transitions") or []
+            if normalized_transitions:
+                transitions_parsed = [_parse_transition(t) for t in normalized_transitions]
             normalized_scenes = validation["normalized"]["scenes"]
             if scenes_parsed and normalized_scenes:
                 params.setdefault("mode", normalized_scenes[0]["mode"])
@@ -1798,6 +1964,9 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
             continuation_overlap_frames=int(params.get("continuation_overlap_frames", 13)),
             continuation_enhance_hf=params.get("continuation_enhance_hf"),
             scenes=scenes_parsed,
+            transitions=transitions_parsed,
+            boundary_jitter_px=float(params.get("boundary_jitter_px", 0.0)),
+            boundary_grain_sigma=float(params.get("boundary_grain_sigma", 0.0)),
             rtx_upscale_scale=params.get("rtx_upscale_scale"),
             rtx_upscale_quality=params.get("rtx_upscale_quality", "HIGH"),
             force_refinement_with_upscale=bool(
@@ -1849,6 +2018,18 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
                 result["scenes_failed"] = scene_failures
             # Spec 051 D-C: write render_report.json alongside the .mp4.
             # Best-effort; never fails the render.
+            report_transitions: Optional[list[dict[str, Any]]] = None
+            if transitions_parsed:
+                report_transitions = [
+                    {
+                        "from_scene": t.from_scene,
+                        "to_scene": t.to_scene,
+                        "type": t.type,
+                        "ramp_frames": t.ramp_frames,
+                        **({"bridge_text": t.bridge_text} if t.bridge_text else {}),
+                    }
+                    for t in transitions_parsed
+                ]
             report_path = write_report_swallow(
                 output_dir=Path(output_path).parent if output_path else None,
                 run_id=Path(output_path).stem,
@@ -1860,6 +2041,7 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
                 warnings=plan_warnings or None,
                 output_path=str(output_path),
                 memory_stats=_vram_memory_stats(),
+                transitions=report_transitions,
             )
             if report_path is not None:
                 result["render_report_path"] = str(report_path)
