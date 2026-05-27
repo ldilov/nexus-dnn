@@ -2091,6 +2091,11 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
                 "phase": "generate",
             }
 
+    async def _output_profiles_list(params: dict[str, Any]) -> dict[str, Any]:
+        from .output_profiles import list_profiles_payload
+        return list_profiles_payload()
+
     worker.register("longcat.video.render.start", _render_start)
     worker.register("longcat.video.plan.validate", _plan_validate)
     worker.register("longcat.video.plan.expand", _plan_expand)
+    worker.register("longcat.video.output_profiles.list", _output_profiles_list)
