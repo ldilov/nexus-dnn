@@ -39,6 +39,27 @@ _TRANSITION_TYPES = ("soft", "hard_cut", "dissolve")
 _BRIDGE_PROMPT_MAX_CHARS = 280
 _SOFT_TRANSITION_ICN_DELTA = 0.05
 _ICN_CEILING = 0.25
+_INTENSE_ICN_DELTA_SCALE = 0.4
+_INTENSE_REFINE_STEPS_CAP = 6
+# Auto-injected into negative_prompt when scene.motion_intensity == "intense"
+# AND use_distill is on. The distill LoRA's 8-step training distribution does
+# not cover impossible-geometry asks (facial transformations, multi-head, etc.)
+# so we steer the model AWAY from the failure modes we know it has via the
+# negative-prompt channel. Operator's own negative_prompt is preserved verbatim
+# and these tokens are appended only when absent.
+_ANTI_MELT_NEGATIVE_TOKENS = (
+    "deformed face",
+    "mutated face",
+    "multiple faces",
+    "extra face",
+    "doubled face",
+    "ghost face",
+    "smeared features",
+    "melting face",
+    "extra limbs",
+    "duplicate hands",
+    "warped anatomy",
+)
 
 
 @dataclass(frozen=True)
@@ -73,7 +94,9 @@ def _compose_bridged_prompt(scene_prompt: str, bridge_text: Optional[str]) -> st
     return f"{bridge}. {scene_prompt}"
 
 
-def _bump_icn_for_soft(default_icn: float) -> float:
+def _bump_icn_for_soft(
+    default_icn: float, motion_intensity: str = "dynamic"
+) -> float:
     """Image-conditioning-noise bump that softens the latent pin.
 
     generate_vc does not expose per-frame x0 weights, so the latent-level
@@ -81,9 +104,38 @@ def _bump_icn_for_soft(default_icn: float) -> float:
     This is the API-level equivalent of an 8-frame x0-decay schedule:
     raise the cond-noise floor by a small delta (capped at the ceiling)
     so the model's reverse process is not yanked toward the pinned tail.
+
+    On intense-motion scenes the delta is scaled down — the model is already
+    stretching its capacity on the prompt and the extra noise license raises
+    the ghost-face risk above what the freeze-frame relief is worth.
     """
-    bumped = float(default_icn) + _SOFT_TRANSITION_ICN_DELTA
+    delta = _SOFT_TRANSITION_ICN_DELTA
+    if motion_intensity == "intense":
+        delta *= _INTENSE_ICN_DELTA_SCALE
+    bumped = float(default_icn) + delta
     return min(_ICN_CEILING, bumped)
+
+
+def _augment_negative_prompt(
+    negative_prompt: Optional[str],
+    motion_intensity: str,
+    use_distill: bool,
+) -> Optional[str]:
+    """Auto-append anti-melt tokens to negative_prompt on intense+distill scenes.
+
+    Idempotent: tokens already present in the operator-supplied negative_prompt
+    are not duplicated. No-op for non-intense or non-distill scenes — the
+    operator's negative_prompt passes through verbatim.
+    """
+    if motion_intensity != "intense" or not use_distill:
+        return negative_prompt
+    base = (negative_prompt or "").strip()
+    lower = base.lower()
+    additions = [t for t in _ANTI_MELT_NEGATIVE_TOKENS if t.lower() not in lower]
+    if not additions:
+        return negative_prompt
+    joiner = ", " if base else ""
+    return f"{base}{joiner}{', '.join(additions)}"
 
 
 def _resolve_transition(
@@ -1472,12 +1524,33 @@ def _run_scene_loop(
         if not do_refine:
             return clip_frames
         scene_request = _request_with_scene_overrides(request, scene_obj)
+        # F2: cap refinement_steps on intense scenes. The refinement LoRA
+        # sharpens whatever the draft produced; on intense drafts whose
+        # geometry is already stretched (distill's 8-step training
+        # distribution does not cover impossible-motion asks) extra steps
+        # amplify ghost-face / doubled-feature artifacts rather than
+        # recovering detail. The cap kicks in only when the scene asks for
+        # MORE steps than the cap; explicit lower per-scene overrides are
+        # honoured as-is.
+        if scene_obj.motion_intensity == "intense":
+            current_steps = scene_request.refinement_steps
+            if current_steps > _INTENSE_REFINE_STEPS_CAP:
+                logger.info(
+                    "_run_scene_loop scene=%d: intense motion — capping "
+                    "refinement_steps %d -> %d (F2)",
+                    scene_idx, current_steps, _INTENSE_REFINE_STEPS_CAP,
+                )
+                from dataclasses import replace as _dc_replace
+
+                scene_request = _dc_replace(
+                    scene_request, refinement_steps=_INTENSE_REFINE_STEPS_CAP
+                )
         logger.info(
             "_run_scene_loop scene=%d: per-scene refinement pass "
             "(%d frames, %d step)",
             scene_idx,
             np.asarray(clip_frames).shape[0],
-            request.refinement_steps,
+            scene_request.refinement_steps,
         )
         try:
             return _run_refinement_pass(
@@ -1660,13 +1733,13 @@ def _run_scene_loop(
             scene_prompt_effective = _compose_bridged_prompt(
                 scene.prompt, transition.bridge_text
             )
-            scene_icn = _bump_icn_for_soft(scene_icn)
+            scene_icn = _bump_icn_for_soft(scene_icn, scene.motion_intensity)
             logger.info(
                 "_run_scene_loop scene=%d: soft transition (ramp=%d) "
-                "bridge=%r icn_bumped=%.3f",
+                "bridge=%r icn_bumped=%.3f motion=%s",
                 idx, transition.ramp_frames,
                 (transition.bridge_text or "")[:80],
-                scene_icn,
+                scene_icn, scene.motion_intensity,
             )
         elif transition is not None:
             logger.info(
@@ -1674,10 +1747,27 @@ def _run_scene_loop(
                 idx, transition.type,
             )
 
+        # F1' — anti-melt negative-prompt augmentation on intense+distill scenes.
+        # Steers the model away from the failure modes the 8-step distill LoRA
+        # cannot represent (facial transformations, ghost faces, doubled
+        # anatomy). Operator's own negative_prompt is preserved verbatim;
+        # tokens already present are not duplicated.
+        effective_negative_prompt = _augment_negative_prompt(
+            request.negative_prompt,
+            scene.motion_intensity,
+            scene_req.use_distill,
+        )
+        if effective_negative_prompt != request.negative_prompt:
+            logger.info(
+                "_run_scene_loop scene=%d: anti-melt negative augmentation "
+                "active (motion=%s distill=%s)",
+                idx, scene.motion_intensity, scene_req.use_distill,
+            )
+
         vc_kwargs: dict[str, Any] = dict(
             video=tail_pil,
             prompt=scene_prompt_effective,
-            negative_prompt=request.negative_prompt,
+            negative_prompt=effective_negative_prompt,
             resolution=resolution,
             num_frames=scene_req.num_frames,
             num_cond_frames=overlap,
