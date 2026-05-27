@@ -12,9 +12,12 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use nexus_backend_runtimes::generic::catalog::BackendRuntimeCatalogRepo;
-use nexus_backend_runtimes::generic::enums::{InstallStatus, LeaseState};
+use nexus_backend_runtimes::generic::enums::{InstallStatus, LeaseState, OwnerKind};
+use nexus_backend_runtimes::generic::family_handler::FamilyHandlerRegistry;
 use nexus_backend_runtimes::generic::installs::BackendRuntimeInstallsRepo;
+use nexus_backend_runtimes::generic::leases::acquire::{AcquireOptions, acquire_lease};
 use nexus_backend_runtimes::generic::leases::manager::LeaseManager;
+use nexus_backend_runtimes::generic::leases::repo::BackendRuntimeLeasesRepo;
 use nexus_backend_runtimes::generic::leases::text_completion::{
     CAPABILITY_TAG, CancelParams, DoneNotify, ErrorNotify, LeaseSelection, METHOD_CANCEL,
     METHOD_START, NOTIFY_DONE, NOTIFY_ERROR, NOTIFY_TOKEN, ResponseFormat, StartParams,
@@ -113,6 +116,112 @@ impl LeaseFinder for CatalogLeaseFinder {
         // Highest preferred_score wins. Stable: first eligible at the
         // top score (catalog/install/lease enumeration order).
         Ok(eligible.into_iter().max_by_key(|(score, _)| *score).map(|(_, l)| l))
+    }
+}
+
+/// On-demand lease spawn for the ephemeral path. When `LeaseFinder`
+/// returns `None` AND the caller asked for `ephemeral=true`, the broker
+/// uses this to acquire a fresh lease against the first Validated install
+/// satisfying the selection. The resulting lease is registered with the
+/// lease manager (so concurrent broker calls can discover it via
+/// `LeaseFinder`) and reaped on completion by the standard ephemeral
+/// release path in `complete_inner`.
+#[async_trait]
+pub trait LeaseAcquirer: Send + Sync {
+    async fn acquire(
+        &self,
+        selection: &LeaseSelection,
+    ) -> Result<Option<Arc<dyn BackendRuntimeLease>>, TextCompletionError>;
+}
+
+/// Production acquirer. Walks the same catalog/installs slice as
+/// `CatalogLeaseFinder` but skips the `LeaseState::Ready` gate — instead
+/// it picks the first Validated install and spawns a fresh worker via
+/// the host-side `acquire_lease` API.
+pub struct CatalogLeaseAcquirer {
+    catalog: Arc<dyn BackendRuntimeCatalogRepo>,
+    installs: Arc<dyn BackendRuntimeInstallsRepo>,
+    leases_repo: Arc<dyn BackendRuntimeLeasesRepo>,
+    family_handlers: Arc<FamilyHandlerRegistry>,
+    lease_manager: Arc<LeaseManager>,
+}
+
+impl CatalogLeaseAcquirer {
+    pub fn new(
+        catalog: Arc<dyn BackendRuntimeCatalogRepo>,
+        installs: Arc<dyn BackendRuntimeInstallsRepo>,
+        leases_repo: Arc<dyn BackendRuntimeLeasesRepo>,
+        family_handlers: Arc<FamilyHandlerRegistry>,
+        lease_manager: Arc<LeaseManager>,
+    ) -> Self {
+        Self {
+            catalog,
+            installs,
+            leases_repo,
+            family_handlers,
+            lease_manager,
+        }
+    }
+}
+
+#[async_trait]
+impl LeaseAcquirer for CatalogLeaseAcquirer {
+    async fn acquire(
+        &self,
+        selection: &LeaseSelection,
+    ) -> Result<Option<Arc<dyn BackendRuntimeLease>>, TextCompletionError> {
+        let entries = self
+            .catalog
+            .list_all()
+            .await
+            .map_err(|e| TextCompletionError::Internal(format!("catalog list: {e}")))?;
+        for entry in entries {
+            if !entry.capability_tags.iter().any(|t| t == CAPABILITY_TAG) {
+                continue;
+            }
+            if !selection
+                .required_tags
+                .iter()
+                .all(|req| entry.capability_tags.iter().any(|t| t == req))
+            {
+                continue;
+            }
+            let installs = self
+                .installs
+                .list_by_runtime(&entry.runtime_id)
+                .await
+                .map_err(|e| TextCompletionError::Internal(format!("installs list: {e}")))?;
+            for install in installs {
+                if install.status != InstallStatus::Validated {
+                    continue;
+                }
+                let options = AcquireOptions::new(
+                    OwnerKind::Deployment,
+                    format!("broker:text-completion:{}", entry.runtime_id),
+                )
+                .with_idle_reapable(true);
+                let stdio = acquire_lease(
+                    install.runtime_install_id.clone(),
+                    entry.runtime_family,
+                    options,
+                    self.installs.as_ref(),
+                    self.leases_repo.as_ref(),
+                    self.family_handlers.as_ref(),
+                    None,
+                )
+                .await
+                .map_err(|e| {
+                    TextCompletionError::LeaseAcquisitionFailed(format!("acquire: {e}"))
+                })?;
+                // Register so concurrent broker callers can discover via
+                // LeaseFinder. The reaper attributes it to this install.
+                self.lease_manager
+                    .register(stdio.clone(), install.runtime_install_id.clone())
+                    .await;
+                return Ok(Some(stdio as Arc<dyn BackendRuntimeLease>));
+            }
+        }
+        Ok(None)
     }
 }
 
@@ -229,6 +338,7 @@ impl LeaseReleaser for LeaseManagerReleaser {
 /// `ephemeral_release_skipped` warning is logged via `tracing::warn`.
 pub struct LeaseBackedTextCompletion {
     finder: Arc<dyn LeaseFinder>,
+    acquirer: Option<Arc<dyn LeaseAcquirer>>,
     releaser: Option<Arc<dyn LeaseReleaser>>,
     activity: Option<Arc<dyn LeaseActivityTracker>>,
 }
@@ -237,9 +347,15 @@ impl LeaseBackedTextCompletion {
     pub fn new(finder: Arc<dyn LeaseFinder>) -> Self {
         Self {
             finder,
+            acquirer: None,
             releaser: None,
             activity: None,
         }
+    }
+
+    pub fn with_acquirer(mut self, acquirer: Arc<dyn LeaseAcquirer>) -> Self {
+        self.acquirer = Some(acquirer);
+        self
     }
 
     pub fn with_releaser(mut self, releaser: Arc<dyn LeaseReleaser>) -> Self {
@@ -253,6 +369,9 @@ impl LeaseBackedTextCompletion {
     }
 
     /// Convenience constructor that wires the production catalog finder.
+    /// When `family_handlers` + `leases_repo` are supplied, the broker
+    /// also gains on-demand ephemeral lease spawning — `ephemeral=true`
+    /// requests no longer 503 just because no Ready lease exists yet.
     pub fn from_components(
         catalog: Arc<dyn BackendRuntimeCatalogRepo>,
         installs: Arc<dyn BackendRuntimeInstallsRepo>,
@@ -264,6 +383,37 @@ impl LeaseBackedTextCompletion {
             Arc::new(LeaseManagerActivityTracker::new(lease_manager.clone()));
         Self {
             finder: Arc::new(CatalogLeaseFinder::new(catalog, installs, lease_manager)),
+            acquirer: None,
+            releaser: Some(releaser),
+            activity: Some(activity),
+        }
+    }
+
+    /// Extended constructor that additionally wires the on-demand
+    /// ephemeral acquirer. Pass when the caller has access to the host
+    /// `FamilyHandlerRegistry` and `BackendRuntimeLeasesRepo` (typically
+    /// router-side wiring during AppState assembly).
+    pub fn from_components_with_acquirer(
+        catalog: Arc<dyn BackendRuntimeCatalogRepo>,
+        installs: Arc<dyn BackendRuntimeInstallsRepo>,
+        leases_repo: Arc<dyn BackendRuntimeLeasesRepo>,
+        family_handlers: Arc<FamilyHandlerRegistry>,
+        lease_manager: Arc<LeaseManager>,
+    ) -> Self {
+        let releaser: Arc<dyn LeaseReleaser> =
+            Arc::new(LeaseManagerReleaser::new(lease_manager.clone()));
+        let activity: Arc<dyn LeaseActivityTracker> =
+            Arc::new(LeaseManagerActivityTracker::new(lease_manager.clone()));
+        let acquirer: Arc<dyn LeaseAcquirer> = Arc::new(CatalogLeaseAcquirer::new(
+            catalog.clone(),
+            installs.clone(),
+            leases_repo,
+            family_handlers,
+            lease_manager.clone(),
+        ));
+        Self {
+            finder: Arc::new(CatalogLeaseFinder::new(catalog, installs, lease_manager)),
+            acquirer: Some(acquirer),
             releaser: Some(releaser),
             activity: Some(activity),
         }
@@ -312,11 +462,26 @@ impl LeaseBackedTextCompletion {
             ephemeral,
             ..
         } = request;
-        let lease = self
-            .finder
-            .find(&selection)
-            .await?
-            .ok_or(TextCompletionError::NoEligibleBackend)?;
+        let lease = match self.finder.find(&selection).await? {
+            Some(l) => l,
+            None => {
+                // No Ready lease — fall back to on-demand spawn iff
+                // the caller asked for ephemeral semantics AND an
+                // acquirer is wired. Otherwise behave as before (503).
+                if ephemeral {
+                    if let Some(acq) = &self.acquirer {
+                        match acq.acquire(&selection).await? {
+                            Some(fresh) => fresh,
+                            None => return Err(TextCompletionError::NoEligibleBackend),
+                        }
+                    } else {
+                        return Err(TextCompletionError::NoEligibleBackend);
+                    }
+                } else {
+                    return Err(TextCompletionError::NoEligibleBackend);
+                }
+            }
+        };
         let lease_id = lease.id();
         // Option γ activity tracking: bump in_flight for the whole
         // broker call so the idle reaper cannot release this lease

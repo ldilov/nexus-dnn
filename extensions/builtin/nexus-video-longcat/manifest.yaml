@@ -117,14 +117,7 @@ backend_runtimes:
     supported_roles:
       - "video.render"
 
-storage:
-  spec_version: "0.1"
-  engine: "sqlite"
-  namespace:
-    alias: "nexus_video_longcat"
-    prefix_mode: "host_derived"
-  migrations:
-    strategy: "sql_file_list"
-    files: []
-  sql_profile:
-    profile: "nexus_sqlite_v1"
+# NOTE: storage block intentionally omitted. LongCat worker keeps render
+# state inside its own filesystem layout under NEXUS_HOST_DATA_DIR; no
+# host-SQLite contribution is needed. Re-add a storage block ONLY when
+# at least one migration file is shipped (schema requires minItems: 1).

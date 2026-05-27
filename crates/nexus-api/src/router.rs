@@ -537,12 +537,24 @@ pub fn build(state: AppState) -> Router {
     > = std::sync::Arc::new(
         nexus_backend_runtimes::generic::installs::SqliteInstallsRepo::new(state.db.pool().clone()),
     );
+    let text_completion_leases: std::sync::Arc<
+        dyn nexus_backend_runtimes::generic::leases::repo::BackendRuntimeLeasesRepo,
+    > = std::sync::Arc::new(
+        nexus_backend_runtimes::generic::leases::sqlite::SqliteLeasesRepo::new(
+            state.db.pool().clone(),
+        ),
+    );
+    let text_completion_family_handlers = std::sync::Arc::new(state.family_handlers.clone());
     let text_completion_service: std::sync::Arc<dyn text_completion::TextCompletionService> =
-        std::sync::Arc::new(text_completion::LeaseBackedTextCompletion::from_components(
-            text_completion_catalog,
-            text_completion_installs,
-            state.lease_manager.clone(),
-        ));
+        std::sync::Arc::new(
+            text_completion::LeaseBackedTextCompletion::from_components_with_acquirer(
+                text_completion_catalog,
+                text_completion_installs,
+                text_completion_leases,
+                text_completion_family_handlers,
+                state.lease_manager.clone(),
+            ),
+        );
     let text_completion_router: Router<AppState> =
         text_completion::router::<AppState>(text_completion_service);
     let api_v1 = api_v1
