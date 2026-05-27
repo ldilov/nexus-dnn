@@ -62,9 +62,15 @@ class RenderReport:
     error_phase: Optional[str]
     error_message: Optional[str]
     memory: dict[str, Any]
+    # S5 (additive, backward-compatible): boundary-transition descriptors
+    # from the plan (one entry per boundary) and the boundary_telemetry
+    # `transition_break_score` array (one entry per boundary that fell in
+    # range). Both default to empty tuples so v1 consumers stay valid.
+    transitions: tuple[dict[str, Any], ...] = ()
+    boundary_scores: tuple[dict[str, Any], ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "schema_version": self.schema_version,
             "run_id": self.run_id,
             "status": self.status,
@@ -78,6 +84,11 @@ class RenderReport:
             "error_message": self.error_message,
             "memory": dict(self.memory),
         }
+        if self.transitions:
+            out["transitions"] = [dict(t) for t in self.transitions]
+        if self.boundary_scores:
+            out["boundary_scores"] = [dict(s) for s in self.boundary_scores]
+        return out
 
 
 def _validate_run_id(run_id: str) -> None:
@@ -152,6 +163,8 @@ def build_report(
     error_phase: Optional[str] = None,
     error_message: Optional[str] = None,
     memory_stats: Optional[dict[str, Any]] = None,
+    transitions: Optional[list[dict[str, Any]]] = None,
+    boundary_scores: Optional[list[dict[str, Any]]] = None,
 ) -> RenderReport:
     _validate_run_id(run_id)
     return RenderReport(
@@ -167,6 +180,8 @@ def build_report(
         error_phase=error_phase,
         error_message=error_message,
         memory=_scrub_memory(memory_stats),
+        transitions=tuple(transitions or ()),
+        boundary_scores=tuple(boundary_scores or ()),
     )
 
 
