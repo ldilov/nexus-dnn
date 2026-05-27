@@ -26,17 +26,17 @@ releases:
         accelerator_profile: "cpu"
         asset:
           url: "file://assets/local-llm-completions-v0_1_0.zip"
-          sha256: "de09457a216edd0f1c71cca512fde0a549047b38b50ecd2c23b6bac4638280c1"
-          size: 51538
+          sha256: "b5636ebb3b34dff2093716b291e99710e437c3acd10986f4fecc27fb1e938462"
+          size: 64654
       - platform: "linux-x64"
         accelerator_profile: "cpu"
         asset:
           url: "file://assets/local-llm-completions-v0_1_0.zip"
-          sha256: "de09457a216edd0f1c71cca512fde0a549047b38b50ecd2c23b6bac4638280c1"
-          size: 51538
+          sha256: "b5636ebb3b34dff2093716b291e99710e437c3acd10986f4fecc27fb1e938462"
+          size: 64654
       - platform: "macos-arm64"
         accelerator_profile: "cpu"
         asset:
           url: "file://assets/local-llm-completions-v0_1_0.zip"
-          sha256: "de09457a216edd0f1c71cca512fde0a549047b38b50ecd2c23b6bac4638280c1"
-          size: 51538
+          sha256: "b5636ebb3b34dff2093716b291e99710e437c3acd10986f4fecc27fb1e938462"
+          size: 64654

@@ -162,20 +162,41 @@ pub async fn install(
         return repo_500("installs_insert_failed", e.to_string());
     }
 
-    // Spawn the pipeline if an extensions_dir is configured. Without it
-    // the host cannot resolve the extension's version manifest, so the
-    // install stays `pending` and clients should see `pipeline_status:
-    // "unwired"` in the response (same effect as the legacy behaviour).
-    let pipeline_status = if let Some(ext_dir) = state.extensions_dir.clone() {
-        let req = super::pipeline_runner::PipelineRequest::from_catalog(
+    // Spawn the pipeline if we can resolve the contributing extension's
+    // on-disk directory. Builtin extensions live under the host's
+    // builtin_extensions_dir (typically `<repo>/extensions/builtin/<id>`),
+    // user-installed extensions live under `extensions_dir` (typically
+    // `~/.nexus/extensions/<id>`). The extension registry knows the
+    // canonical path for each activated extension regardless of source,
+    // so we prefer that. Falls back to the legacy `extensions_dir`
+    // join when the registry has no entry (e.g. fixture installs in
+    // unit tests).
+    let registry_dir = <nexus_extension::InMemoryExtensionRegistry as nexus_extension::ExtensionRegistry>::get_extension(
+        state.extension_registry.as_ref(),
+        entry.source_extension_id.as_str(),
+    )
+    .map(|ext| ext.directory);
+
+    let ext_root_opt = registry_dir.clone().or_else(|| {
+        state
+            .extensions_dir
+            .as_ref()
+            .map(|d| d.join(entry.source_extension_id.as_str()))
+    });
+
+    let pipeline_status = if let Some(extension_root) = ext_root_opt {
+        let req = super::pipeline_runner::PipelineRequest {
             install_id,
-            &entry,
-            record.release_id.clone(),
-            record.platform.clone(),
-            record.accelerator_profile.clone(),
-            record.install_path.clone(),
-            &ext_dir,
-        );
+            runtime_id: entry.runtime_id.clone(),
+            runtime_family: entry.runtime_family,
+            release_id: record.release_id.clone(),
+            platform: record.platform.clone(),
+            accelerator_profile: record.accelerator_profile.clone(),
+            install_path: record.install_path.clone(),
+            extension_root,
+            version_manifest_path: entry.version_manifest_path.clone(),
+            worker_entrypoint_path: entry.worker_entrypoint.clone(),
+        };
         super::pipeline_runner::spawn_pipeline(state.clone(), req);
         "running"
     } else {

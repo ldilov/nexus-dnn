@@ -154,3 +154,6 @@ explicit = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 pythonpath = ["src"]
+markers = [
+    "smoke: end-to-end smoke tests (may spawn subprocesses or require external services)",
+]

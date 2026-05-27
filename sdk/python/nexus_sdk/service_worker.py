@@ -42,21 +42,28 @@ class ServiceWorker(BaseWorker):
         asyncio.run(self._async_run())
 
     async def _async_run(self) -> None:
-        loop = asyncio.get_running_loop()
-        reader = asyncio.StreamReader()
-        transport, _ = await loop.connect_read_pipe(
-            lambda: asyncio.StreamReaderProtocol(reader),
-            sys.stdin.buffer,
-        )
+        """Drive the stdin → dispatch → stdout loop without
+        ``connect_read_pipe``.
 
+        ``connect_read_pipe`` on Windows ``ProactorEventLoop`` crashes on
+        the first read with ``OSError: [WinError 6] The handle is
+        invalid`` when stdin is a piped handle that wasn't registered
+        with IOCP — the failure cascades through
+        ``_ProactorReadPipeTransport`` and kills the read loop before
+        the handshake completes. Doing the blocking ``readline`` in a
+        worker thread sidesteps the pipe-transport plumbing entirely
+        and works on every platform / event-loop combination.
+        """
+        loop = asyncio.get_running_loop()
+        stdin = sys.stdin
         handshake_done = False
 
         try:
             while True:
-                raw = await reader.readline()
+                raw = await loop.run_in_executor(None, stdin.readline)
                 if not raw:
                     break
-                line = raw.decode(errors="replace").strip()
+                line = raw.strip()
                 if not line:
                     continue
 
@@ -64,7 +71,7 @@ class ServiceWorker(BaseWorker):
                 if response_line is not None:
                     self._write_line(response_line)
 
-                if not handshake_done and line:
+                if not handshake_done:
                     try:
                         msg = parse_message(line)
                         if msg.method == "handshake":
@@ -73,7 +80,6 @@ class ServiceWorker(BaseWorker):
                     except ValueError:
                         pass
         finally:
-            transport.close()
             await self.on_shutdown()
 
     async def _async_handle_line(self, line: str) -> str | None:

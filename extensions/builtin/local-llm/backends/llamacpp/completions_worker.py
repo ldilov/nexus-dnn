@@ -285,16 +285,156 @@ class CompletionsWorker(ServiceWorker):
         return self._adapter
 
 
+# ─── External-server adapter (operator-provisioned llama-server) ─────────
+#
+# When the operator (or a smoke harness) is already running a
+# `llama-server` listening on an HTTP port, the worker can talk to it
+# directly via the OpenAI-compatible `/v1/chat/completions` endpoint
+# without owning a `ManagedProcess` lifecycle. Selecting this path
+# requires `NEXUS_LLAMA_SERVER_URL` (e.g. `http://127.0.0.1:8085`) in
+# the worker's environment.
+#
+# This sidesteps the still-pending lifecycle wiring around
+# `LlamaCppAdapter.start(model_path, config)` — the production worker
+# never had its own auto-start path so `text.complete.start` requests
+# hung indefinitely. The external-server adapter restores end-to-end
+# completion semantics for any caller that can stand up a llama-server
+# out-of-band.
+
+import json
+import os as _os
+from urllib import error as _urlerror
+from urllib import request as _urlrequest
+
+
+class _ExternalServerAdapter:
+    """Minimal `BackendAdapter` that posts to an existing llama-server.
+
+    Streaming is implemented over the SSE shape that llama-server emits
+    from `/v1/chat/completions` when `stream=true`: lines of the form
+    `data: {...json...}\\n\\n`, terminating with `data: [DONE]`.
+    """
+
+    def __init__(self, base_url: str) -> None:
+        self._base_url = base_url.rstrip("/")
+
+    async def chat(
+        self, messages: list[dict[str, str]], params: dict[str, Any]
+    ) -> dict[str, Any]:
+        body = _build_chat_payload(messages, params, stream=False)
+        return await asyncio.to_thread(self._post_json_sync, "/v1/chat/completions", body)
+
+    async def chat_stream(
+        self, messages: list[dict[str, str]], params: dict[str, Any]
+    ) -> AsyncIterator[dict[str, Any]]:
+        body = _build_chat_payload(messages, params, stream=True)
+        # Run the blocking SSE read on a worker thread and bridge into
+        # an asyncio queue so the caller's `async for` works without
+        # blocking the event loop on socket reads.
+        queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue(maxsize=64)
+
+        loop = asyncio.get_running_loop()
+
+        def _drain() -> None:
+            try:
+                req = _urlrequest.Request(
+                    f"{self._base_url}/v1/chat/completions",
+                    data=body,
+                    method="POST",
+                    headers={"content-type": "application/json"},
+                )
+                with _urlrequest.urlopen(req, timeout=300) as resp:
+                    buf = b""
+                    while True:
+                        chunk = resp.read1(4096) if hasattr(resp, "read1") else resp.read(4096)
+                        if not chunk:
+                            break
+                        buf += chunk
+                        while b"\n" in buf:
+                            line, buf = buf.split(b"\n", 1)
+                            line = line.strip()
+                            if not line:
+                                continue
+                            if line.startswith(b"data:"):
+                                payload = line[5:].strip()
+                                if payload == b"[DONE]":
+                                    return
+                                try:
+                                    decoded = json.loads(payload)
+                                except json.JSONDecodeError:
+                                    continue
+                                asyncio.run_coroutine_threadsafe(
+                                    queue.put(decoded), loop
+                                ).result()
+            finally:
+                asyncio.run_coroutine_threadsafe(queue.put(None), loop).result()
+
+        task = asyncio.create_task(asyncio.to_thread(_drain))
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                yield item
+        finally:
+            await task
+
+    def _post_json_sync(self, path: str, body: bytes) -> dict[str, Any]:
+        req = _urlrequest.Request(
+            f"{self._base_url}{path}",
+            data=body,
+            method="POST",
+            headers={"content-type": "application/json"},
+        )
+        try:
+            with _urlrequest.urlopen(req, timeout=120) as resp:
+                raw = resp.read()
+        except _urlerror.URLError as exc:
+            raise ModelUnavailableError(f"llama-server unreachable: {exc.reason}") from exc
+        return json.loads(raw)
+
+
+def _build_chat_payload(
+    messages: list[dict[str, str]],
+    params: dict[str, Any],
+    stream: bool,
+) -> bytes:
+    payload: dict[str, Any] = {
+        "messages": messages,
+        "stream": stream,
+        "temperature": params.get("temperature", 0.7),
+        "top_p": params.get("top_p", 0.95),
+    }
+    max_tokens = params.get("max_tokens")
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
+    stop = params.get("stop_sequences")
+    if stop:
+        payload["stop"] = stop
+    return json.dumps(payload).encode("utf-8")
+
+
 # ─── Default adapter factory (production wiring) ─────────────────────────
 async def _default_adapter_factory() -> BackendAdapter:
-    """Production: spawn a `LlamaCppAdapter` against the install dir.
+    """Pick the production adapter implementation.
 
-    The host passes the install path via the launch spec environment;
-    the worker reads it and constructs the adapter on first
-    `text.complete.start`. Imported lazily so pytest can import this
-    module without dragging in the full llama.cpp adapter (which has
-    additional dependencies).
+    Selection order:
+      1. `NEXUS_LLAMA_SERVER_URL` env var → `_ExternalServerAdapter` (the
+         worker talks to an already-running llama-server). Operator-
+         provisioned mode used by smoke harnesses and dev loops.
+      2. Otherwise fall back to `LlamaCppAdapter` (owns its own
+         ManagedProcess). Note: production lifecycle wiring around
+         `LlamaCppAdapter.start(model_path, config)` is still pending —
+         until that lands, callers that don't set the env var will see
+         `text.complete.start` requests hang.
+
+    Imported lazily so pytest can import this module without dragging in
+    the full llama.cpp adapter (which has additional dependencies).
     """
+    server_url = _os.environ.get("NEXUS_LLAMA_SERVER_URL", "").strip()
+    if server_url:
+        return _ExternalServerAdapter(server_url)
+
     from worker.backends.llamacpp.adapter import LlamaCppAdapter  # type: ignore[import-not-found]
 
     install_dir = Path(_EXTENSION_ROOT)
