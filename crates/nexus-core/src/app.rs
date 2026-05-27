@@ -131,6 +131,16 @@ impl NexusApp {
                         "builtin extension discovery complete"
                     );
 
+                    let catalog_repo = std::sync::Arc::new(
+                        nexus_backend_runtimes::generic::catalog::SqliteCatalogRepo::new(
+                            db.pool().clone(),
+                        ),
+                    );
+                    let now_unix = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0);
+
                     for ext_id in &builtin_report.activated {
                         match extension_registry.activate_builtin_extension(
                             ext_id,
@@ -139,6 +149,45 @@ impl NexusApp {
                         ) {
                             Ok(()) => {
                                 tracing::info!(extension_id = %ext_id, "builtin extension activated");
+
+                                // Bridge manifest.backend_runtimes → host catalog.
+                                // Without this hop the `/api/v1/backend-runtimes` list
+                                // surface stays empty even when extensions declare
+                                // runtimes, and downstream lease acquisition (e.g.
+                                // the text-completion broker) always returns 503
+                                // `no_eligible_backend`.
+                                if let Some(activated) = <nexus_extension::InMemoryExtensionRegistry as nexus_extension::ExtensionRegistry>::get_extension(&extension_registry, ext_id) {
+                                    let contributions = &activated.manifest.backend_runtimes;
+                                    if !contributions.is_empty() {
+                                        let source_id: nexus_backend_runtimes::generic::ids::SourceExtensionId =
+                                            ext_id.as_str().into();
+                                        let version = activated.manifest.extension.version.to_string();
+                                        match nexus_api::handlers::backend_runtimes::registration::register_contributions(
+                                            catalog_repo.as_ref(),
+                                            &source_id,
+                                            &version,
+                                            contributions,
+                                            now_unix,
+                                        )
+                                        .await
+                                        {
+                                            Ok(entries) => {
+                                                tracing::info!(
+                                                    extension_id = %ext_id,
+                                                    contributed = entries.len(),
+                                                    "backend_runtime contributions registered"
+                                                );
+                                            }
+                                            Err(e) => {
+                                                tracing::warn!(
+                                                    extension_id = %ext_id,
+                                                    error = %e,
+                                                    "failed to register backend_runtime contributions"
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             Err(e) => {
                                 tracing::warn!(

@@ -18,7 +18,7 @@ from nexus_sdk.protocol import (
     PARSE_ERROR,
 )
 
-PROTOCOL_VERSION = "0.1.0"
+PROTOCOL_VERSION = "1.0"
 
 
 @dataclass(frozen=True)
@@ -163,8 +163,23 @@ class BaseWorker:
 
     def _handle_handshake(self, params: dict[str, Any]) -> dict[str, Any]:
         self._session_id = str(uuid.uuid4())
+        # Field shape must satisfy
+        # `nexus_backend_runtimes::generic::leases::handshake::HandshakeInfo`:
+        # `protocol_version` + `worker_version` are REQUIRED; missing
+        # either makes serde reject the response and the host releases
+        # the lease before it ever sees the worker's RPC surface.
+        accepts_methods = [
+            "handshake",
+            "list_operators",
+            "execute",
+            "cancel",
+            "health",
+            "validate_config",
+            *sorted(self._methods.keys()),
+        ]
         return {
             "protocol_version": PROTOCOL_VERSION,
+            "worker_version": self._extension_version,
             "worker_name": self._worker_name,
             "extension_id": self._extension_id,
             "extension_version": self._extension_version,
@@ -173,15 +188,9 @@ class BaseWorker:
                 "python_version": platform.python_version(),
                 "platform": platform.platform(),
             },
-            "supported_methods": [
-                "handshake",
-                "list_operators",
-                "execute",
-                "cancel",
-                "health",
-                "validate_config",
-                *sorted(self._methods.keys()),
-            ],
+            "supported_methods": accepts_methods,
+            "accepts_methods": accepts_methods,
+            "notification_methods": [],
         }
 
     def _handle_list_operators(self, params: dict[str, Any]) -> dict[str, Any]:
