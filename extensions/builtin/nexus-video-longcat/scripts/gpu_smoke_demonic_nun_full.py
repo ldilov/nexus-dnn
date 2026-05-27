@@ -146,7 +146,7 @@ def _decode_mp4_to_array(mp4_path: Path, height: int, width: int):
     return arr[: n_frames * bytes_per_frame].reshape(n_frames, height, width, 3).copy()
 
 
-def _build_request(profile):
+def _build_request(profile, image_path=None):
     from longcat_video_worker.pipeline_longcat import (
         LongCatRenderRequest,
         Scene,
@@ -174,12 +174,12 @@ def _build_request(profile):
         for i, spec in enumerate(_TRANSITIONS_SPEC)
     ]
     return LongCatRenderRequest(
-        mode="t2v",
+        mode=("i2v" if image_path else "t2v"),
         prompt=_SCENES[0]["prompt"],
         negative_prompt=(
-            "blurry, low quality, distorted, deformed, mutated, extra limbs, "
-            "watermark, text overlay"
+            "blurry, low quality, distorted, watermark, text overlay"
         ),
+        image_path=image_path,
         height=profile.draft_height,
         width=profile.draft_width,
         num_frames=int(round(_SCENES[0]["duration_seconds"] * _FPS)),
@@ -203,7 +203,11 @@ def _build_request(profile):
         refinement_spatial_only=True,
         rtx_upscale_scale=profile.rtx_scale,
         rtx_upscale_quality=_RTX_UPSCALE_QUALITY,
-        force_refinement_with_upscale=True,
+        # F3: drop force_refinement_with_upscale; pick refinement OR RTX, not
+        # both stacked. Refinement runs per-scene at draft res; RTX upscales
+        # the assembled stack at the end. Stacked dual-LoRA + RTX amplifies
+        # whatever artefacts the draft has.
+        force_refinement_with_upscale=False,
     )
 
 
@@ -236,6 +240,16 @@ def main() -> int:
     )
     parser.add_argument("--skip-score", action="store_true",
                         help="Skip MP4 decode + boundary score merge")
+    parser.add_argument(
+        "--image-path",
+        type=str,
+        default=None,
+        help=(
+            "Optional JPG/PNG to anchor scene 0 as i2v (identity locked to "
+            "the source image). When omitted, scene 0 runs t2v and the "
+            "subject is hallucinated from the prompt each run."
+        ),
+    )
     args = parser.parse_args()
 
     profile = get_profile(args.profile)
@@ -287,7 +301,17 @@ def main() -> int:
 
     from longcat_video_worker.pipeline_longcat import render
 
-    request = _build_request(profile)
+    image_path = args.image_path
+    if image_path:
+        from pathlib import Path as _P
+        ip = _P(image_path)
+        if not ip.exists():
+            log.error("--image-path does not exist: %s", image_path)
+            return 3
+        log.info("i2v anchor image=%s", ip)
+    else:
+        log.info("t2v mode (no --image-path supplied; subject hallucinated from prompt)")
+    request = _build_request(profile, image_path=image_path)
     torch.cuda.reset_peak_memory_stats()
     t0 = time.monotonic()
     try:
