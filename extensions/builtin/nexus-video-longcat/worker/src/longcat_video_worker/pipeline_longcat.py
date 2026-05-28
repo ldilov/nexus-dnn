@@ -1928,6 +1928,39 @@ def _run_scene_loop(
             new_arr = new_arr[0]
 
         fresh = new_arr[overlap:]
+        # Resolution-uniformity guard. Per-scene refinement spatially
+        # promotes a clip (e.g. 640x360 draft -> 768x512 refined). When a
+        # scene's refinement is discarded (NaN fallback returns the
+        # unrefined draft) its frames stay at draft res while the
+        # accumulator holds refined-res frames — np.concatenate then fails
+        # on the H/W axes. Resize the incoming fresh frames to the
+        # accumulator's H x W (bilinear) so the chain stays uniform
+        # regardless of which scenes were refined.
+        if fresh.shape[1:3] != acc.shape[1:3]:
+            target_h, target_w = int(acc.shape[1]), int(acc.shape[2])
+            logger.warning(
+                "_run_scene_loop scene=%d: frame size %dx%d != accumulator "
+                "%dx%d (refinement skipped/inconsistent); resizing to match",
+                idx, int(fresh.shape[2]), int(fresh.shape[1]), target_w, target_h,
+            )
+            fresh_u8 = (
+                fresh
+                if fresh.dtype == np.uint8
+                else _sanitize_frames(fresh).astype(np.float32)
+            )
+            if fresh_u8.dtype != np.uint8:
+                if fresh_u8.max() <= 1.0:
+                    fresh_u8 = np.clip(fresh_u8, 0.0, 1.0) * 255.0
+                fresh_u8 = fresh_u8.round().clip(0, 255).astype(np.uint8)
+            resized = [
+                np.asarray(
+                    Image.fromarray(f, mode="RGB").resize(
+                        (target_w, target_h), Image.BILINEAR
+                    )
+                )
+                for f in fresh_u8
+            ]
+            fresh = np.stack(resized, axis=0)
         acc = np.concatenate([acc, fresh], axis=0)
         logger.info(
             "_run_scene_loop scene=%d done: added %d fresh frames (total=%d)",
