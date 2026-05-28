@@ -178,12 +178,15 @@ def _decode_mp4_to_array(mp4_path: Path, height: int, width: int):
     return arr[: n_frames * bytes_per_frame].reshape(n_frames, height, width, 3).copy()
 
 
-def _build_request(profile, image_path=None):
+def _build_request(profile, image_path=None, scenes_src=None, transitions_src=None):
     from longcat_video_worker.pipeline_longcat import (
         LongCatRenderRequest,
         Scene,
         Transition,
     )
+
+    scenes_data = scenes_src if scenes_src is not None else _SCENES
+    transitions_data = transitions_src if transitions_src is not None else _TRANSITIONS_SPEC
 
     scenes = [
         Scene(
@@ -191,30 +194,30 @@ def _build_request(profile, image_path=None):
             duration_seconds=sc["duration_seconds"],
             overlap_frames=_OVERLAP_FRAMES,
             adain_factor=_ADAIN_FACTOR,
-            motion_intensity=sc["motion_intensity"],
+            motion_intensity=sc.get("motion_intensity", "dynamic"),
         )
-        for sc in _SCENES
+        for sc in scenes_data
     ]
     transitions = [
         Transition(
             from_scene=i,
             to_scene=i + 1,
             type=spec["type"],
-            bridge_text=spec["bridge_text"],
-            ramp_frames=8,
+            bridge_text=spec.get("bridge_text"),
+            ramp_frames=spec.get("ramp_frames", 8),
         )
-        for i, spec in enumerate(_TRANSITIONS_SPEC)
+        for i, spec in enumerate(transitions_data)
     ]
     return LongCatRenderRequest(
         mode=("i2v" if image_path else "t2v"),
-        prompt=_SCENES[0]["prompt"],
+        prompt=scenes_data[0]["prompt"],
         negative_prompt=(
             "blurry, low quality, distorted, watermark, text overlay"
         ),
         image_path=image_path,
         height=profile.draft_height,
         width=profile.draft_width,
-        num_frames=int(round(_SCENES[0]["duration_seconds"] * _FPS)),
+        num_frames=int(round(scenes_data[0]["duration_seconds"] * _FPS)),
         num_inference_steps=_NUM_INFERENCE_STEPS,
         guidance_scale=1.0,
         use_distill=True,
@@ -282,7 +285,60 @@ def main() -> int:
             "subject is hallucinated from the prompt each run."
         ),
     )
+    parser.add_argument(
+        "--preset",
+        type=str,
+        default=None,
+        help=(
+            "Load scenes/transitions/recommended profile/image-path defaults "
+            "from a named ScenePreset in extensions/builtin/nexus-video-"
+            "longcat/scene_presets/. CLI flags --profile / --image-path "
+            "override the preset's defaults when supplied."
+        ),
+    )
+    parser.add_argument(
+        "--list-presets",
+        action="store_true",
+        help="Print available ScenePreset names and exit.",
+    )
     args = parser.parse_args()
+
+    if args.list_presets:
+        from longcat_video_worker.scene_presets import list_presets
+        for p in list_presets():
+            print(f"{p.name:32s}  [{p.quality_status:10s}]  {p.label}")
+        return 0
+
+    preset_scenes = None
+    preset_transitions = None
+    if args.preset:
+        from longcat_video_worker.scene_presets import (
+            ScenePresetError,
+            get_preset,
+        )
+        try:
+            preset = get_preset(args.preset)
+        except ScenePresetError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+        preset_scenes = [
+            {
+                "prompt": s.prompt,
+                "duration_seconds": s.duration_seconds,
+                "motion_intensity": s.motion_intensity,
+            }
+            for s in preset.scenes
+        ]
+        preset_transitions = [t.to_dict() for t in preset.transitions]
+        # Preset defaults apply only when CLI did not specify
+        if args.image_path is None and preset.default_image_path:
+            args.image_path = preset.default_image_path
+        if args.profile == "1080p" and preset.recommended_output_profile != "1080p":
+            # CLI default is 1080p; honour preset's recommendation when CLI
+            # was not explicitly overridden. argparse cannot distinguish
+            # "user set 1080p" from "default 1080p", so we apply preset's
+            # recommendation whenever it differs from the CLI default.
+            args.profile = preset.recommended_output_profile
 
     profile = get_profile(args.profile)
     wall_budget = args.wall_budget if args.wall_budget is not None else profile.wall_budget_s
@@ -315,21 +371,25 @@ def main() -> int:
         log.error("torch import failed: %s", e)
         return 1
 
-    expected_draft = _expected_draft_frames(_SCENES, _FPS, _OVERLAP_FRAMES)
+    eff_scenes = preset_scenes if preset_scenes is not None else _SCENES
+    eff_transitions = preset_transitions if preset_transitions is not None else _TRANSITIONS_SPEC
+    expected_draft = _expected_draft_frames(eff_scenes, _FPS, _OVERLAP_FRAMES)
     expected_w = profile.final_width
     expected_h = profile.final_height
     log.info(
-        "profile=%s config: scenes=%d seed=%d draft=%dx%d->upscale=%dx%d "
+        "profile=%s preset=%s config: scenes=%d seed=%d draft=%dx%d->upscale=%dx%d "
         "expected_frames=%d wall_budget=%.0fs vram_budget=%.1fGiB",
-        profile.name, len(_SCENES), _DEFAULT_SEED,
+        profile.name, args.preset or "<inline>", len(eff_scenes), _DEFAULT_SEED,
         profile.draft_width, profile.draft_height, expected_w, expected_h,
         expected_draft, wall_budget, vram_budget,
     )
-    for i, sc in enumerate(_SCENES):
+    for i, sc in enumerate(eff_scenes):
         log.info("scene[%d] motion=%s duration=%.1fs prompt=%r",
-                 i, sc["motion_intensity"], sc["duration_seconds"], sc["prompt"][:90])
-    for i, t in enumerate(_TRANSITIONS_SPEC):
-        log.info("transition[%d]: type=%s bridge=%r", i, t["type"], t["bridge_text"])
+                 i, sc.get("motion_intensity", "dynamic"),
+                 sc["duration_seconds"], sc["prompt"][:90])
+    for i, t in enumerate(eff_transitions):
+        log.info("transition[%d]: type=%s bridge=%r",
+                 i, t["type"], t.get("bridge_text", ""))
 
     from longcat_video_worker.pipeline_longcat import render
 
@@ -343,7 +403,12 @@ def main() -> int:
         log.info("i2v anchor image=%s", ip)
     else:
         log.info("t2v mode (no --image-path supplied; subject hallucinated from prompt)")
-    request = _build_request(profile, image_path=image_path)
+    request = _build_request(
+        profile,
+        image_path=image_path,
+        scenes_src=preset_scenes,
+        transitions_src=preset_transitions,
+    )
     torch.cuda.reset_peak_memory_stats()
     t0 = time.monotonic()
     try:
@@ -412,8 +477,8 @@ def main() -> int:
             summarize_scores,
         )
 
-        per_scene_num_frames = [int(round(sc["duration_seconds"] * _FPS)) for sc in _SCENES]
-        per_scene_overlap = [0] + [_OVERLAP_FRAMES] * (len(_SCENES) - 1)
+        per_scene_num_frames = [int(round(sc["duration_seconds"] * _FPS)) for sc in eff_scenes]
+        per_scene_overlap = [0] + [_OVERLAP_FRAMES] * (len(eff_scenes) - 1)
         boundaries = boundary_frame_indices(per_scene_num_frames, per_scene_overlap)
         log.info("computed boundary indices (draft-frame domain): %s", boundaries)
 
