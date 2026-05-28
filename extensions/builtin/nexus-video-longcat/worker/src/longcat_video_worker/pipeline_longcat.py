@@ -40,7 +40,14 @@ _BRIDGE_PROMPT_MAX_CHARS = 280
 _SOFT_TRANSITION_ICN_DELTA = 0.05
 _ICN_CEILING = 0.25
 _INTENSE_ICN_DELTA_SCALE = 0.4
-_INTENSE_REFINE_STEPS_CAP = 6
+# Refinement-step cap for intense scenes. Lowered from the default 12 to
+# reduce the refinement LoRA's sharpening of already-stretched intense
+# drafts, but kept >= 8: at 6 steps the refinement sigma schedule on very
+# dark / high-contrast scenes occasionally diverges to NaN (observed on the
+# demonic-nun "pitch black voids" + rain scene). 8 keeps the anti-amplify
+# benefit with numerical headroom; the NaN guard in _run_refinement_pass is
+# the belt-and-suspenders backstop.
+_INTENSE_REFINE_STEPS_CAP = 8
 # Auto-injected into negative_prompt when scene.motion_intensity == "intense"
 # AND use_distill is on. The distill LoRA's 8-step training distribution does
 # not cover impossible-geometry asks (facial transformations, multi-head, etc.)
@@ -1146,8 +1153,12 @@ def _run_refinement_pass(
     if arr.ndim == 5:
         arr = arr[0]
     if arr.dtype != np.uint8:
-        arr = np.clip(arr, 0.0, 1.0) if arr.dtype.kind == "f" and arr.max() <= 1.0 else arr
         if arr.dtype.kind == "f":
+            # Sanitize non-finite values before the uint8 cast — np.clip
+            # leaves NaN untouched and the cast then yields 0 (black).
+            arr = np.nan_to_num(arr, nan=0.0, posinf=1.0, neginf=0.0)
+            if arr.max() <= 1.0:
+                arr = np.clip(arr, 0.0, 1.0)
             arr = (arr * 255.0).round().clip(0, 255).astype(np.uint8)
         else:
             arr = arr.astype(np.uint8)
@@ -1210,6 +1221,20 @@ def _run_refinement_pass(
             except Exception as exc:
                 logger.warning("distill LoRA re-attach failed (%s)", exc)
 
+    # NaN/inf guard: a diverged refinement pass (e.g. an unlucky sigma
+    # schedule on a very dark scene) can emit non-finite frames. If we let
+    # those propagate, the cast to uint8 yields a BLACK tail, which then
+    # poisons the NEXT scene's conditioning (black cond -> black render).
+    # Detect non-finite output and fall back to the unrefined draft for
+    # this scene — a slightly-less-polished but VALID clip beats a dead
+    # black one.
+    refined_arr = np.asarray(refined)
+    if refined_arr.dtype.kind == "f" and not np.all(np.isfinite(refined_arr)):
+        logger.warning(
+            "_run_refinement_pass: refined output contains non-finite values; "
+            "discarding refinement and returning the unrefined draft for this scene",
+        )
+        return draft_frames
     return refined
 
 
@@ -1322,6 +1347,10 @@ def _run_continuation_loop(
         iteration += 1
         tail = acc[-overlap:]
         if tail.dtype.kind == "f":
+            # Sanitize non-finite values before cast — a diverged prior-scene
+            # refinement can leave NaN/inf in the tail, which would cast to a
+            # black conditioning frame and poison this scene's render.
+            tail = np.nan_to_num(tail, nan=0.0, posinf=1.0, neginf=0.0)
             tail_u8 = (np.clip(tail, 0.0, 1.0) * 255.0).round().astype(np.uint8)
         else:
             tail_u8 = tail.astype(np.uint8) if tail.dtype != np.uint8 else tail
@@ -1653,6 +1682,10 @@ def _run_scene_loop(
 
         tail = acc[-overlap:]
         if tail.dtype.kind == "f":
+            # Sanitize non-finite values before cast — a diverged prior-scene
+            # refinement can leave NaN/inf in the tail, which would cast to a
+            # black conditioning frame and poison this scene's render.
+            tail = np.nan_to_num(tail, nan=0.0, posinf=1.0, neginf=0.0)
             tail_u8 = (np.clip(tail, 0.0, 1.0) * 255.0).round().astype(np.uint8)
         else:
             tail_u8 = tail.astype(np.uint8) if tail.dtype != np.uint8 else tail
