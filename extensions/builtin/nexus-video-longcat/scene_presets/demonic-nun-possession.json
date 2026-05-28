@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "name": "demonic-nun-possession",
+  "label": "Demonic Nun — Possession Arc",
+  "description": "Four-scene possession arc. Scene 0 anchors a sinister-grin chapel shot (i2v); scene 1 brings convulsion + rain-inside-cathedral; scene 2 confirms possession with pitch-black eye voids; scene 3 lands on the nun collapsed on the wet stone floor. All boundaries are soft transitions with hand-tuned bridge text.",
+  "quality_status": "draft",
+  "default_mode": "i2v",
+  "default_image_path": null,
+  "recommended_output_profile": "720p",
+  "scenes": [
+    {
+      "prompt": "a young nun in a black habit grins menacingly in a candlelit gothic chapel, sinister widening smile, dramatic warm candle light on her face, slow forward camera push, cinematic horror atmosphere",
+      "duration_seconds": 3.0,
+      "motion_intensity": "dynamic"
+    },
+    {
+      "prompt": "the same young nun's body convulses in the gothic chapel, her head jerking backward, the cathedral begins to rain inside, candles flicker violently around her, dramatic high-contrast lighting, intense supernatural atmosphere",
+      "duration_seconds": 3.0,
+      "motion_intensity": "intense"
+    },
+    {
+      "prompt": "the same young nun stares straight at the camera in the rain-soaked gothic chapel, her eyes pitch black voids reflecting candle light, dark veins faintly visible on her pale forehead, slow zoom on her face, cinematic horror",
+      "duration_seconds": 3.0,
+      "motion_intensity": "intense"
+    },
+    {
+      "prompt": "the same young nun collapses slowly to the wet stone cathedral floor in pouring rain, body curled and twisted on the ground, water reflecting candle light, gothic columns rising around her, cinematic dramatic anguish",
+      "duration_seconds": 3.0,
+      "motion_intensity": "intense"
+    }
+  ],
+  "transitions": [
+    {
+      "type": "soft",
+      "bridge_text": "the camera holds on the nun as the candles flicker around her face",
+      "ramp_frames": 8
+    },
+    {
+      "type": "soft",
+      "bridge_text": "the camera settles on the nun as the rain pours around her face",
+      "ramp_frames": 8
+    },
+    {
+      "type": "soft",
+      "bridge_text": "the nun lowers as the rain pours around her toward the floor",
+      "ramp_frames": 8
+    }
+  ],
+  "tags": ["horror", "narrative", "multi-scene", "possession", "i2v"],
+  "created_at": "2026-05-28",
+  "updated_at": "2026-05-28"
+}
