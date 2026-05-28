@@ -38,36 +38,62 @@ from pathlib import Path
 
 _DEFAULT_SEED = 6661666
 _FPS = 24
-_OVERLAP_FRAMES = 13
+# Bumped 13 -> 17 (next 4n+1) so each new scene re-uses more of the prior
+# tail as conditioning. Stronger temporal pin = better identity continuity
+# across the chain; soft-pin work prevents the seam tell that a longer
+# overlap would otherwise amplify.
+_OVERLAP_FRAMES = 17
 _ADAIN_FACTOR = 0.2
 _BOUNDARY_JITTER_PX = 0.35
 _BOUNDARY_GRAIN_SIGMA = 0.02
 _RTX_UPSCALE_QUALITY = "HIGH"
+# Bumped 16 -> 20 for the distill draft. 16 = the LoRA's trained step count
+# (LongCat paper Sec. 4.2 — going BELOW collapses motion pacing). Going above
+# is safe in-distribution and gives the denoise extra polish for tighter
+# temporal coherence.
+_NUM_INFERENCE_STEPS = 20
 
 _SCENES = [
     {
         "prompt": (
-            "a young nun in a black habit kneels in a candlelit gothic chapel praying, "
-            "soft warm light from candles flickering on stone walls, slow tracking camera "
-            "revealing tears running down her face, cinematic dramatic shadows"
+            "a young nun in a black habit grins menacingly in a candlelit gothic "
+            "chapel, sinister widening smile, dramatic warm candle light on her "
+            "face, slow forward camera push, cinematic horror atmosphere"
         ),
         "duration_seconds": 3.0,
         "motion_intensity": "dynamic",
     },
     {
         "prompt": (
-            "the same young nun's body tenses unnaturally as dark shadows ripple across "
-            "her face in the candlelit gothic chapel, her eyes turning black, candles "
-            "flicker violently, cinematic dramatic lighting, intense supernatural motion"
+            "the same young nun's body convulses in the gothic chapel, her head "
+            "jerking backward, the cathedral begins to rain inside, candles "
+            "flicker violently around her, dramatic high-contrast lighting, "
+            "intense supernatural atmosphere"
+        ),
+        "duration_seconds": 3.0,
+        "motion_intensity": "intense",
+    },
+    {
+        # Possession-confirmation beat. Distill struggles with eye-color
+        # transitions; the prompt asks for a STATE (eyes are pitch black
+        # voids) rather than a TRANSFORMATION (eyes turn black). The
+        # anti-melt negative tokens are auto-injected so doubled/ghost
+        # faces are suppressed.
+        "prompt": (
+            "the same young nun stares straight at the camera in the rain-"
+            "soaked gothic chapel, her eyes pitch black voids reflecting "
+            "candle light, dark veins faintly visible on her pale forehead, "
+            "slow zoom on her face, cinematic horror"
         ),
         "duration_seconds": 3.0,
         "motion_intensity": "intense",
     },
     {
         "prompt": (
-            "the same young nun rises slowly with rigid unnatural motion in the gothic "
-            "chapel, head tilting at an impossible angle, dark veins crawling under her "
-            "pale skin, candles extinguish one by one around her, cinematic dramatic"
+            "the same young nun collapses slowly to the wet stone cathedral "
+            "floor in pouring rain, body curled and twisted on the ground, "
+            "water reflecting candle light, gothic columns rising around her, "
+            "cinematic dramatic anguish"
         ),
         "duration_seconds": 3.0,
         "motion_intensity": "intense",
@@ -75,19 +101,25 @@ _SCENES = [
 ]
 
 # Bridge texts use only stems that appear in the adjacent scene prompts
-# (validator enforces) plus the transition-verb stopword list (drifts,
-# holds, lifts, settles, etc.).
+# (validator enforces on RPC path; smoke bypasses but we keep the same
+# discipline so the transitions stay portable).
 _TRANSITIONS_SPEC = [
     {
         "type": "soft",
         "bridge_text": (
-            "the camera holds on the nun as dark shadows drift across her face"
+            "the camera holds on the nun as the candles flicker around her face"
         ),
     },
     {
         "type": "soft",
         "bridge_text": (
-            "the candles flicker around the nun as her body lifts unnaturally"
+            "the camera settles on the nun as the rain pours around her face"
+        ),
+    },
+    {
+        "type": "soft",
+        "bridge_text": (
+            "the nun lowers as the rain pours around her toward the floor"
         ),
     },
 ]
@@ -183,7 +215,7 @@ def _build_request(profile, image_path=None):
         height=profile.draft_height,
         width=profile.draft_width,
         num_frames=int(round(_SCENES[0]["duration_seconds"] * _FPS)),
-        num_inference_steps=16,
+        num_inference_steps=_NUM_INFERENCE_STEPS,
         guidance_scale=1.0,
         use_distill=True,
         seed=_DEFAULT_SEED,
