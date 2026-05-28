@@ -58,21 +58,29 @@ class TestBumpIcnMotionAware:
 
 
 class TestAugmentNegativePrompt:
-    def test_no_op_when_not_intense(self):
-        assert _augment_negative_prompt("blurry", "dynamic", True) == "blurry"
-        assert _augment_negative_prompt("blurry", "static", True) == "blurry"
+    """F7: always-inject. Motion+distill gates dropped; tokens are appended
+    on every scene regardless of motion_intensity / use_distill."""
 
-    def test_no_op_when_not_distill(self):
-        assert _augment_negative_prompt("blurry", "intense", False) == "blurry"
+    def test_always_appends_regardless_of_motion(self):
+        for motion in ("static", "dynamic", "intense"):
+            out = _augment_negative_prompt("blurry", motion, True)
+            for token in _ANTI_MELT_NEGATIVE_TOKENS:
+                assert token in out, f"missing {token!r} on motion={motion}"
 
-    def test_appends_anti_melt_tokens_on_intense_distill(self):
+    def test_always_appends_regardless_of_distill(self):
+        for distill in (True, False):
+            out = _augment_negative_prompt("blurry", "intense", distill)
+            for token in _ANTI_MELT_NEGATIVE_TOKENS:
+                assert token in out, f"missing {token!r} on distill={distill}"
+
+    def test_appends_anti_melt_tokens(self):
         out = _augment_negative_prompt("blurry, low quality", "intense", True)
         assert "blurry, low quality" in out
         for token in _ANTI_MELT_NEGATIVE_TOKENS:
             assert token in out
 
     def test_empty_base_negative_still_augments(self):
-        out = _augment_negative_prompt(None, "intense", True)
+        out = _augment_negative_prompt(None)
         assert out is not None
         for token in _ANTI_MELT_NEGATIVE_TOKENS:
             assert token in out
@@ -82,6 +90,12 @@ class TestAugmentNegativePrompt:
         out = _augment_negative_prompt(seeded, "intense", True)
         for token in _ANTI_MELT_NEGATIVE_TOKENS[:3]:
             assert out.lower().count(token.lower()) == 1
+
+    def test_default_args_work(self):
+        # Callers can pass just the prompt; signature kwargs default safely
+        out = _augment_negative_prompt("blurry")
+        for token in _ANTI_MELT_NEGATIVE_TOKENS:
+            assert token in out
 
 
 class _FakePipe:
@@ -153,7 +167,8 @@ class TestSceneLoopIntegration:
         for token in _ANTI_MELT_NEGATIVE_TOKENS:
             assert token in neg
 
-    def test_dynamic_scene_negative_prompt_unchanged(self):
+    def test_dynamic_scene_also_gets_augmented_negative_prompt(self):
+        """F7: always-inject — dynamic scenes get the anti-melt tokens too."""
         from longcat_video_worker import pipeline_longcat as plc
 
         scenes = [
@@ -176,7 +191,10 @@ class TestSceneLoopIntegration:
             host_data_dir=None,
             strict_scene_errors=True,
         )
-        assert pipe.calls[0]["negative_prompt"] == "blurry, low quality"
+        neg = pipe.calls[0]["negative_prompt"]
+        assert "blurry" in neg
+        for token in _ANTI_MELT_NEGATIVE_TOKENS:
+            assert token in neg
 
     def test_intense_scene_icn_uses_scaled_delta(self):
         from longcat_video_worker import pipeline_longcat as plc
