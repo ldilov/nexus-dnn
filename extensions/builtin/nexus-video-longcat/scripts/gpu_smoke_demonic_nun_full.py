@@ -80,10 +80,11 @@ _SCENES = [
         # anti-melt negative tokens are auto-injected so doubled/ghost
         # faces are suppressed.
         "prompt": (
-            "the same young nun stares straight at the camera in the rain-"
-            "soaked gothic chapel, her eyes pitch black voids reflecting "
-            "candle light, dark veins faintly visible on her pale forehead, "
-            "slow zoom on her face, cinematic horror"
+            "extreme close-up of the same young nun's face brightly lit by "
+            "warm candle light in the gothic chapel, her eyes slowly turning "
+            "into solid pitch-black voids, dark veins spreading across her "
+            "pale skin, lips curling into a demonic grin, face fully visible "
+            "and sharply detailed, slow zoom, cinematic horror"
         ),
         "duration_seconds": 3.0,
         "motion_intensity": "intense",
@@ -113,7 +114,7 @@ _TRANSITIONS_SPEC = [
     {
         "type": "soft",
         "bridge_text": (
-            "the camera settles on the nun as the rain pours around her face"
+            "the camera pushes close on the nun as candle light catches her face"
         ),
     },
     {
