@@ -118,17 +118,23 @@ def _bump_icn_for_soft(
 
 def _augment_negative_prompt(
     negative_prompt: Optional[str],
-    motion_intensity: str,
-    use_distill: bool,
+    motion_intensity: str = "dynamic",
+    use_distill: bool = True,
 ) -> Optional[str]:
-    """Auto-append anti-melt tokens to negative_prompt on intense+distill scenes.
+    """Always prepend the anti-melt token list to the operator's negative_prompt.
 
     Idempotent: tokens already present in the operator-supplied negative_prompt
-    are not duplicated. No-op for non-intense or non-distill scenes — the
-    operator's negative_prompt passes through verbatim.
+    are not duplicated. The previous motion_intensity / use_distill gates have
+    been dropped — operator feedback was that the failure modes the tokens
+    suppress (deformed faces, ghost limbs, doubled anatomy) can surface on
+    ANY scene regardless of distill / motion, and the cost of always shipping
+    them is bounded (UMT5 sees a few extra negative tokens, no quality hit).
+
+    The keyword arguments are kept for backward compatibility with callers
+    that still pass them; their values are ignored. Future signature tightening
+    can remove them once all callers migrate.
     """
-    if motion_intensity != "intense" or not use_distill:
-        return negative_prompt
+    del motion_intensity, use_distill  # gates removed; signature kept for callers
     base = (negative_prompt or "").strip()
     lower = base.lower()
     additions = [t for t in _ANTI_MELT_NEGATIVE_TOKENS if t.lower() not in lower]
@@ -1747,21 +1753,17 @@ def _run_scene_loop(
                 idx, transition.type,
             )
 
-        # F1' — anti-melt negative-prompt augmentation on intense+distill scenes.
-        # Steers the model away from the failure modes the 8-step distill LoRA
-        # cannot represent (facial transformations, ghost faces, doubled
-        # anatomy). Operator's own negative_prompt is preserved verbatim;
-        # tokens already present are not duplicated.
-        effective_negative_prompt = _augment_negative_prompt(
-            request.negative_prompt,
-            scene.motion_intensity,
-            scene_req.use_distill,
-        )
+        # F1' — anti-melt negative-prompt augmentation. Always-on. Steers the
+        # model away from failure modes that surface across scene types
+        # (deformed faces, ghost limbs, doubled anatomy). Operator's own
+        # negative_prompt is preserved verbatim; tokens already present are
+        # not duplicated.
+        effective_negative_prompt = _augment_negative_prompt(request.negative_prompt)
         if effective_negative_prompt != request.negative_prompt:
             logger.info(
                 "_run_scene_loop scene=%d: anti-melt negative augmentation "
-                "active (motion=%s distill=%s)",
-                idx, scene.motion_intensity, scene_req.use_distill,
+                "active (always-on)",
+                idx,
             )
 
         vc_kwargs: dict[str, Any] = dict(
@@ -1840,7 +1842,11 @@ def _dispatch_generate(
 
     common = dict(
         prompt=request.prompt,
-        negative_prompt=request.negative_prompt,
+        # F1' always-on: scene-0 (t2v/i2v primary) also benefits from the
+        # anti-melt token list. The augment helper is idempotent so any
+        # tokens already present in the operator-supplied negative_prompt
+        # are not duplicated.
+        negative_prompt=_augment_negative_prompt(request.negative_prompt),
         num_frames=request.num_frames,
         num_inference_steps=request.num_inference_steps,
         use_distill=request.use_distill,

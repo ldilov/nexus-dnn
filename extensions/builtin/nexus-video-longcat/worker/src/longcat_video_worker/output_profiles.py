@@ -82,7 +82,7 @@ _PROFILES: tuple[OutputProfile, ...] = (
         draft_width=960,
         draft_height=540,
         rtx_scale=2,
-        wall_budget_s=3000.0,
+        wall_budget_s=4200.0,
         vram_budget_gib=15.5,
         description=(
             "Full HD output. Draft slightly above the LongCat sweet zone (768×448) "
@@ -96,7 +96,7 @@ _PROFILES: tuple[OutputProfile, ...] = (
         draft_width=640,
         draft_height=360,
         rtx_scale=2,
-        wall_budget_s=2100.0,
+        wall_budget_s=2700.0,
         vram_budget_gib=14.0,
         description=(
             "True HD output. Draft comfortably inside the LongCat training "
