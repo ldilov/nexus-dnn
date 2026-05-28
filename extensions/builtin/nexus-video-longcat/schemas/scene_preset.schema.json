@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus-dnn.local/extensions/nexus-video-longcat/schemas/scene_preset.schema.json",
+  "title": "ScenePreset",
+  "description": "A saved, named multi-scene composition (prompts + transitions + recommended render settings). Loaded by the worker, listed via RPC for UI consumption, and used by smoke scripts via --preset NAME.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "name", "label", "scenes"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+      "description": "Stable identifier. Lowercase kebab-case; used as filename and RPC lookup key."
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "description": "Human-readable name shown in UI dropdowns."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 600,
+      "default": ""
+    },
+    "quality_status": {
+      "type": "string",
+      "enum": ["draft", "validated", "preferred", "deprecated"],
+      "default": "draft",
+      "description": "draft = authored but unverified. validated = at least one good-quality smoke run on record. preferred = curator-blessed for general use. deprecated = kept for back-compat only."
+    },
+    "default_mode": {
+      "type": "string",
+      "enum": ["t2v", "i2v"],
+      "default": "t2v"
+    },
+    "default_image_path": {
+      "type": ["string", "null"],
+      "default": null,
+      "description": "Optional default i2v anchor image path. Operator can override at render time."
+    },
+    "recommended_output_profile": {
+      "type": "string",
+      "enum": ["720p", "1080p"],
+      "default": "720p"
+    },
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["prompt", "duration_seconds"],
+        "properties": {
+          "prompt": { "type": "string", "minLength": 1, "maxLength": 1000 },
+          "duration_seconds": { "type": "number", "minimum": 0.5, "maximum": 15.0 },
+          "motion_intensity": {
+            "type": "string",
+            "enum": ["static", "dynamic", "intense"],
+            "default": "dynamic"
+          }
+        }
+      }
+    },
+    "transitions": {
+      "type": "array",
+      "description": "Optional. When present, length MUST be scenes.length - 1.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string", "enum": ["soft", "hard_cut", "dissolve"] },
+          "bridge_text": { "type": "string", "maxLength": 240 },
+          "ramp_frames": { "type": "integer", "minimum": 1, "maximum": 24, "default": 8 }
+        }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 32 },
+      "default": []
+    },
+    "created_at": {
+      "type": "string",
+      "description": "ISO-8601 date (YYYY-MM-DD)."
+    },
+    "updated_at": {
+      "type": "string",
+      "description": "ISO-8601 date (YYYY-MM-DD)."
+    }
+  }
+}

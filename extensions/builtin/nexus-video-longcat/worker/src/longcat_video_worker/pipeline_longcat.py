@@ -2191,7 +2191,31 @@ def register_longcat_handlers(worker: Any, *, use_distill: bool = False) -> None
         from .output_profiles import list_profiles_payload
         return list_profiles_payload()
 
+    async def _scene_presets_list(params: dict[str, Any]) -> dict[str, Any]:
+        from .scene_presets import list_presets_payload
+        return list_presets_payload()
+
+    async def _scene_presets_get(params: dict[str, Any]) -> dict[str, Any]:
+        from .scene_presets import ScenePresetError, get_preset
+        name = (params or {}).get("name")
+        if not isinstance(name, str) or not name:
+            return {
+                "status": "error",
+                "code": -32602,
+                "message": "name must be a non-empty string",
+            }
+        try:
+            return {"status": "ok", "preset": get_preset(name).to_dict()}
+        except ScenePresetError as exc:
+            return {
+                "status": "error",
+                "code": -32108,
+                "message": str(exc),
+            }
+
     worker.register("longcat.video.render.start", _render_start)
     worker.register("longcat.video.plan.validate", _plan_validate)
     worker.register("longcat.video.plan.expand", _plan_expand)
     worker.register("longcat.video.output_profiles.list", _output_profiles_list)
+    worker.register("longcat.video.scene_presets.list", _scene_presets_list)
+    worker.register("longcat.video.scene_presets.get", _scene_presets_get)
