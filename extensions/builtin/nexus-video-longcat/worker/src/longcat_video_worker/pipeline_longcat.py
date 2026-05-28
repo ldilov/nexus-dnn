@@ -40,6 +40,32 @@ _BRIDGE_PROMPT_MAX_CHARS = 280
 _SOFT_TRANSITION_ICN_DELTA = 0.05
 _ICN_CEILING = 0.25
 _INTENSE_ICN_DELTA_SCALE = 0.4
+# Reseed stride for NaN-recovery retries. FP8 (e4m3, max ~448) activation
+# overflow that produces NaN/inf is stochastic per noise pattern — re-running
+# the same segment with a different seed almost always dodges the exact
+# overflow without touching the prompt. Prime stride keeps retry seeds far
+# from the per-scene seeds used elsewhere.
+_NAN_RETRY_SEED_STRIDE = 7919
+
+
+def _frames_finite(frames: Any) -> bool:
+    """True when frames contain no NaN/inf. uint8 frames are always finite."""
+    import numpy as _np
+
+    arr = _np.asarray(frames)
+    if arr.dtype.kind != "f":
+        return True
+    return bool(_np.all(_np.isfinite(arr)))
+
+
+def _sanitize_frames(frames: Any) -> Any:
+    """Map non-finite values to safe range. Last-resort after retries fail."""
+    import numpy as _np
+
+    arr = _np.asarray(frames)
+    if arr.dtype.kind != "f":
+        return frames
+    return _np.nan_to_num(arr, nan=0.0, posinf=1.0, neginf=0.0)
 # Refinement-step cap for intense scenes. Lowered from the default 12 to
 # reduce the refinement LoRA's sharpening of already-stretched intense
 # drafts, but kept >= 8: at 6 steps the refinement sigma schedule on very
@@ -917,6 +943,26 @@ def render(
             )
         else:
             frames = _dispatch_generate(request, state, generator, attn_kwargs)
+        # Layer 2/3 on the primary (scene-0) render. A reseeded retry then a
+        # sanitize fallback so a one-off fp8 overflow on the very first clip
+        # never poisons the whole chain. Scene-0 is conditioned on a clean
+        # image (i2v) or pure noise (t2v) so NaN here is rare, but the chain
+        # cannot recover from a bad scene 0 — guard it anyway.
+        if not _frames_finite(frames):
+            import torch as _torch_primary
+
+            retry_seed = (int(request.seed) if request.seed is not None else 0) + _NAN_RETRY_SEED_STRIDE
+            logger.warning(
+                "render: primary clip non-finite (fp8 overflow); retrying with reseed=%d",
+                retry_seed,
+            )
+            retry_gen = _torch_primary.Generator(device=str(state.device))
+            retry_gen.manual_seed(retry_seed)
+            retry_req = primary_request if request.scenes else request
+            frames = _dispatch_generate(retry_req, state, retry_gen, attn_kwargs)
+            if not _frames_finite(frames):
+                logger.warning("render: primary reseed still non-finite; sanitizing")
+                frames = _sanitize_frames(frames)
     except Exception as exc:
         raise _PipelineError("generate", str(exc)) from exc
 
@@ -1817,12 +1863,42 @@ def _run_scene_loop(
             enhance_hf=enhance_hf,
             image_cond_noise_scale=scene_icn,
         )
-        try:
+        def _call_generate_vc(gen: Any) -> Any:
+            kw = dict(vc_kwargs, generator=gen)
             try:
-                new_clip = pipeline.generate_vc(**vc_kwargs)
+                return pipeline.generate_vc(**kw)
             except TypeError:
-                vc_kwargs.pop("image_cond_noise_scale", None)
-                new_clip = pipeline.generate_vc(**vc_kwargs)
+                kw.pop("image_cond_noise_scale", None)
+                return pipeline.generate_vc(**kw)
+
+        try:
+            new_clip = _call_generate_vc(scene_generator)
+            # Layer 2 — NaN-recovery via reseed. FP8 overflow is seed-specific;
+            # one retry with a perturbed seed recovers the scene at full
+            # quality without depending on the prompt. Layer 3 (sanitize) only
+            # fires if the retry ALSO diverges, which is rare.
+            if not _frames_finite(new_clip):
+                import torch as _torch_retry
+
+                retry_seed = (
+                    (int(base_seed) if base_seed is not None else 0)
+                    + idx * _NAN_RETRY_SEED_STRIDE
+                )
+                logger.warning(
+                    "_run_scene_loop scene=%d: generate_vc produced non-finite "
+                    "frames (fp8 overflow); retrying with reseed=%d",
+                    idx, retry_seed,
+                )
+                retry_gen = _torch_retry.Generator(device=str(state.device))
+                retry_gen.manual_seed(retry_seed)
+                new_clip = _call_generate_vc(retry_gen)
+                if not _frames_finite(new_clip):
+                    logger.warning(
+                        "_run_scene_loop scene=%d: reseed retry still non-finite; "
+                        "sanitizing (nan->0) as last resort",
+                        idx,
+                    )
+                    new_clip = _sanitize_frames(new_clip)
         except Exception as exc:
             if strict_scene_errors:
                 raise
