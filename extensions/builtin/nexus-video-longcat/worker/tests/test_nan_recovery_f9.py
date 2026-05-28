@@ -181,3 +181,52 @@ class TestSceneLoopReseedRetry:
 class TestRetrySeedConstant:
     def test_stride_is_prime_ish_positive(self):
         assert _NAN_RETRY_SEED_STRIDE > 0
+
+
+class _SmallerFramePipe:
+    """generate_vc returns frames SMALLER than the accumulator.
+
+    Simulates the mixed-resolution case: the primary (acc seed) is at
+    refined res while a later scene's clip comes back at draft res (e.g.
+    because its refinement was discarded on NaN). The scene loop must
+    resize to the accumulator's H x W instead of crashing on concat.
+    """
+
+    def __init__(self, h=360, w=640) -> None:
+        self.calls = 0
+        self._h = h
+        self._w = w
+
+    def _clear_cache(self) -> None:
+        return None
+
+    def generate_vc(self, **kw: Any) -> Any:
+        self.calls += 1
+        n = kw["num_frames"]
+        return np.full((n, self._h, self._w, 3), 100, dtype=np.uint8)
+
+
+class TestResolutionUniformityGuard:
+    def test_smaller_clip_resized_to_accumulator(self):
+        from longcat_video_worker import pipeline_longcat as plc
+
+        pipe = _SmallerFramePipe(h=360, w=640)
+        state = _FakeState(pipe)
+        # Accumulator seed at REFINED res (512x768) — taller/wider than the
+        # 360x640 clips generate_vc returns.
+        primary = np.full((20, 512, 768, 3), 64, dtype=np.uint8)
+        acc = plc._run_scene_loop(
+            primary_frames=primary,
+            request=_request(),
+            state=state,
+            generator=None,
+            attn_kwargs={},
+            host_data_dir=None,
+            strict_scene_errors=True,
+        )
+        acc_arr = np.asarray(acc)
+        # No crash + accumulator stays at the seed resolution (512x768)
+        assert acc_arr.shape[1] == 512
+        assert acc_arr.shape[2] == 768
+        # grew beyond the seed (fresh frames appended)
+        assert acc_arr.shape[0] > 20
