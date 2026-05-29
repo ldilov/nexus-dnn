@@ -198,6 +198,8 @@ def _denoise_clip(
 ) -> Any:
     import torch
 
+    from .vram import log_vram
+
     expert_selector.reset()
     active_tier = "high"
     if move_to is not None:
@@ -227,6 +229,13 @@ def _denoise_clip(
         latent = scheduler.step(noise_pred, timestep, latent)
         latent = torch.nan_to_num(latent, nan=0.0, posinf=0.0, neginf=0.0)
 
+        if latent.is_cuda:
+            del noise_pred, noise_pred_posi
+            if cfg_scale != 1.0:
+                del noise_pred_nega
+            torch.cuda.empty_cache()
+        log_vram(f"clip step {step_idx} tier={active_tier}")
+
     return latent
 
 
@@ -243,7 +252,7 @@ def _run_render(
     from .svi_chain import stitch_clip_frames
     from .ffmpeg_io import frames_to_mp4
     from .render_report import write_render_report
-    from .vram import reset_peak, peak_allocated
+    from .vram import reset_peak, peak_allocated, log_vram
 
     output_path = Path(params["output_path"])
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -304,6 +313,7 @@ def _run_render(
     all_clips: list[list] = []
 
     for clip_idx in range(num_clips):
+        log_vram(f"clip {clip_idx} start")
         prompt = prompts[clip_idx % len(prompts)]
         seed = params["seed_multiplier"] * clip_idx
         torch.manual_seed(seed)
@@ -350,12 +360,14 @@ def _run_render(
 
         prev_last_latent = latent.detach()[0]
 
+        log_vram(f"clip {clip_idx} denoise done")
         if device == "cuda":
             models.vae.to_cuda()
         frames = models.vae.decode_latents(latent)
         if device == "cuda":
             models.vae.to_cpu()
             torch.cuda.empty_cache()
+        log_vram(f"clip {clip_idx} vae decode done")
 
         all_clips.append(_to_pil_frames(frames))
 

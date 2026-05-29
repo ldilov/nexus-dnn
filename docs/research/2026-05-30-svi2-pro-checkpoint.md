@@ -51,6 +51,34 @@ So the algorithm fits flat. **Our hand-rolled loop leaks.** We do 50 steps × 4 
 
 ---
 
+## UPDATE 2026-05-30 (session 2) — root-caused + targeted fix shipped (UNVERIFIED on GPU)
+
+**Two parallel subagents (our code + Wan2GP/`mmgp` reference) converged on the cause.**
+
+ROOT CAUSE — allocator fragmentation in the block-swap forward (`wan22/dit.py:428-455`):
+- `blocks_to_swap=40 == num_layers=40` → **all 40 blocks** stream CPU→GPU→CPU on **every** forward (~400 forwards = ~16k swaps each way).
+- Offload was `block.to(cpu, non_blocking=True)` and **no `torch.cuda.empty_cache()` anywhere in the forward or the denoise step** → freed segments never returned to the allocator → `reserved` creeps across steps → spills to shared → OOM. Within-clip, not across-clip.
+- RULED OUT: attention (flash_attn 2.8.3 IS engaged — no 131k² matrix), autograd (correctly `no_grad`), cross-clip carryover (correctly `.detach()`/CPU PIL). Caveat: silent SDPA fallback if `flash` extra missing = a separate OOM cliff (not current symptom).
+
+WHY Wan2GP fits flat in 16GB (it runs the SAME models): it hand-rolls nothing — delegates all weight residency to **`mmgp`** (`offload.profile(pipe, profile=LowRAM_LowVRAM)`), streaming blocks through **reusable pinned-memory staging buffers + async prefetch**; forces sage/flash attention; int8/fp8 weights; tiled+temporal-chunked VAE decode; `gc.collect()+empty_cache()` at every boundary; default **4-step + guidance=1.0** distill preset (1 forward/step).
+
+FIX SHIPPED (targeted, low-risk — "swap fix first" path chosen):
+- `dit.py:295` `use_non_blocking = False` → D2H offload synchronous, GPU frees deterministically before next block's H2D.
+- `pipeline_svi2.py` `_denoise_clip`: `del noise_pred*` + `torch.cuda.empty_cache()` after **every** denoise step (matches Wan2GP boundary discipline) — returns churned segments, stops the `reserved` creep.
+- Instrumentation: `vram.py` `snapshot()` + env-gated `log_vram()`; per-step + per-clip traces wired. **Gate: `SVI2_VRAM_TRACE=1`.**
+- Tests: 68/69 worker pytest pass; the 1 failure (`test_run_render_end_to_end_with_fakes`, bf16-vs-fp32 dtype) is **pre-existing** (fails on clean HEAD), unrelated, flagged for separate fix.
+
+OPERATOR — run on the RTX 5070 Ti and read the trace:
+```
+cd extensions/builtin/svi2-pro/worker
+SVI2_VRAM_TRACE=1 PYTHONPATH=src .venv/Scripts/python.exe ../scripts/gpu_smoke.py \
+  --models-dir D:/svi2_models --ref-image "D:/longcat_install/inputs/nun_possession.jpg.jpg" \
+  --num-clips 4 --output D:/longcat_install/svi2_nun.mp4 2>&1 | tee svi2_vram_trace.log
+```
+READ: `[vram] clip step N` lines. If `reserved` now stays ~flat across steps → fragmentation fixed (render should complete). If `reserved` still climbs step-over-step → fragmentation persists → escalate to **mmgp adoption** or the **LightX2V 4-step distill** path (next-highest leverage; both already scoped above).
+
+---
+
 ## NEXT SESSION — diagnose then fix (priority order)
 1. **Instrument per-step VRAM.** Log `torch.cuda.memory_allocated()/reserved()` every denoise step + per clip in `_run_render`/`_denoise_clip`. Determine: does it climb WITHIN one clip (per-step leak/fragmentation) or only ACROSS clips (per-clip leak)? This pinpoints the cause — do this FIRST.
 2. **Verify flash_attn is actually engaged on the real forward.** Seq len = f·h·w = 21·104·60 = **131,040 tokens** → if attention falls back to SDPA-materialized (not flash), the O(n²) attention matrix alone is tens of GB = instant spill. Confirm `attention_backend.scaled_attention` takes the flash path (q.is_cuda, bf16) in the real DiT forward — add a one-time log. If not flash, that's the whole bug.
