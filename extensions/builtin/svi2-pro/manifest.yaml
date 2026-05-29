@@ -1,0 +1,82 @@
+spec_version: "0.1"
+extension:
+  id: "nexus.video.svi2-pro"
+  version: "0.1.0"
+  name: "SVI 2.0 Pro Video Generator"
+  description: "Long, cross-clip-consistent image-to-video via Stable Video Infinity 2.0 Pro (two SVI LoRAs on Wan2.2-I2V-A14B dual-expert MoE). Kijai fp8 e4m3fn base for 16 GB Blackwell."
+  publisher: "nexus"
+compatibility:
+  host_api: ">=0.1.0"
+  protocol: ">=0.1.0"
+runtime:
+  family: "native"
+  entrypoint: "bin/nexus-video-svi2-pro-worker${exe_suffix}"
+  environment:
+    cuda_version: null
+    env_vars: {}
+dependencies:
+  steps:
+    - id: python
+      type: runtime
+      spec:
+        family: python
+        version: ">=3.11,<3.13"
+        accelerator_profiles: [cpu, cuda12, cuda13]
+    - id: pkgs
+      type: package_set
+      requires: [python]
+      spec:
+        manager: uv
+        manifest_path: "worker/pyproject.toml"
+        lock_path: "worker/uv.lock"
+        target: extension_local
+    - id: ffmpeg
+      type: system_binary
+      spec:
+        id: ffmpeg
+        version: ">=4.0"
+        allow_system_path: true
+        sources:
+          - platform: windows-x64
+            url: "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip"
+            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            size: 0
+            archive: zip
+          - platform: linux-x64
+            url: "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz"
+            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            size: 0
+            archive: tar.xz
+    - id: validate
+      type: validation
+      requires: [python, pkgs, ffmpeg]
+      spec:
+        kind: worker_handshake
+        timeout_seconds: 120
+capabilities:
+  - "filesystem.read"
+  - "filesystem.write"
+  - "process.spawn"
+  - "gpu.compute"
+  - "huggingface.search"
+  - "huggingface.install"
+  - "model.registry.read"
+  - "workspace.read"
+  - "workspace.write"
+backend_runtimes:
+  - runtime_id: "nexus.video.svi2-pro.rtx50-fp8"
+    display_name: "SVI 2.0 Pro i2v FP8 (RTX 50 / Blackwell, 16 GB)"
+    family: "python"
+    transport: "stdio"
+    worker_entrypoint: "worker/src/svi2_video_worker/__main__.py"
+    version_manifest: "backends/rtx50-fp8/versions.yaml"
+    capability_tags: ["video-generation", "image-to-video", "long-video", "svi", "wan22", "fp8", "blackwell"]
+    supported_roles: ["video.render"]
+  - runtime_id: "nexus.video.svi2-pro.fake"
+    display_name: "SVI 2.0 Pro Fake (CI / development)"
+    family: "python"
+    transport: "stdio"
+    worker_entrypoint: "worker/src/svi2_video_worker/__main__.py"
+    version_manifest: "backends/fake/versions.yaml"
+    capability_tags: ["video-generation", "image-to-video", "long-video", "svi", "fake"]
+    supported_roles: ["video.render"]
