@@ -3,10 +3,10 @@ from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from einops import rearrange
 
 from .camera_controller import SimpleAdapter
+from ..attention_backend import scaled_attention
 
 
 def flash_attention(
@@ -19,7 +19,7 @@ def flash_attention(
     q = rearrange(q, "b s (n d) -> b n s d", n=num_heads)
     k = rearrange(k, "b s (n d) -> b n s d", n=num_heads)
     v = rearrange(v, "b s (n d) -> b n s d", n=num_heads)
-    x = F.scaled_dot_product_attention(q, k, v)
+    x = scaled_attention(q, k, v)
     x = rearrange(x, "b n s d -> b s (n d)", n=num_heads)
     return x
 
