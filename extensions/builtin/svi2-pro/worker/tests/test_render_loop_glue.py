@@ -13,7 +13,7 @@ from svi2_video_worker.pipeline_svi2 import (
 from svi2_video_worker.wan22 import FlowMatchScheduler, WanModel
 
 
-def _tiny_dit() -> WanModel:
+def _tiny_dit(dtype: torch.dtype = torch.float32) -> WanModel:
     return WanModel(
         dim=48,
         in_dim=36,
@@ -27,16 +27,17 @@ def _tiny_dit() -> WanModel:
         num_layers=2,
         has_image_input=True,
         require_clip_embedding=False,
-    ).to(torch.float32).eval()
+    ).to(dtype).eval()
 
 
 class _FakeVae:
-    def __init__(self) -> None:
+    def __init__(self, dtype: torch.dtype = torch.float32) -> None:
         self.latent_frames = 1
+        self.dtype = dtype
 
     def encode_image(self, image):
         h, w = image.size[1], image.size[0]
-        return torch.randn(1, 16, self.latent_frames, h // 8, w // 8)
+        return torch.randn(1, 16, self.latent_frames, h // 8, w // 8, dtype=self.dtype)
 
     def decode_latents(self, latent):
         frames_lat = latent.shape[2]
@@ -53,8 +54,11 @@ class _FakeVae:
 
 
 class _FakeTextEncoder:
+    def __init__(self, dtype: torch.dtype = torch.float32) -> None:
+        self.dtype = dtype
+
     def encode_text(self, prompt):
-        return torch.randn(1, 12, 32)
+        return torch.randn(1, 12, 32, dtype=self.dtype)
 
     def to_cpu(self):
         return self
@@ -63,14 +67,14 @@ class _FakeTextEncoder:
         return self
 
 
-def _tiny_models() -> RenderModels:
-    high = ExpertModel(dit=_tiny_dit(), fp8_audit={"overlap_pct": 100.0}, lora_audit={})
-    low = ExpertModel(dit=_tiny_dit(), fp8_audit={"overlap_pct": 100.0}, lora_audit={})
+def _tiny_models(dtype: torch.dtype = torch.float32) -> RenderModels:
+    high = ExpertModel(dit=_tiny_dit(dtype), fp8_audit={"overlap_pct": 100.0}, lora_audit={})
+    low = ExpertModel(dit=_tiny_dit(dtype), fp8_audit={"overlap_pct": 100.0}, lora_audit={})
     return RenderModels(
         high=high,
         low=low,
-        vae=_FakeVae(),
-        text_encoder=_FakeTextEncoder(),
+        vae=_FakeVae(dtype),
+        text_encoder=_FakeTextEncoder(dtype),
         audit={},
     )
 
@@ -142,7 +146,9 @@ def test_run_render_end_to_end_with_fakes(tmp_path, monkeypatch):
         }
     )
 
-    result = _run_render(params, worker=None, build_models=lambda _p: _tiny_models())
+    result = _run_render(
+        params, worker=None, build_models=lambda _p: _tiny_models(torch.bfloat16)
+    )
 
     assert result["status"] == "ok"
     assert (tmp_path / "out.mp4").exists()
