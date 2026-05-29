@@ -23,7 +23,7 @@ versions:
         size_bytes: 0
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"
       - id: "text-encoder"
-        source: { kind: "huggingface", repo: "Kijai/WanVideo_comfy", revision: "main", file: "umt5-xxl-enc-fp8_e4m3fn.safetensors" }
+        source: { kind: "huggingface", repo: "Kijai/WanVideo_comfy", revision: "main", file: "umt5-xxl-enc-bf16.safetensors" }
         size_bytes: 0
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"
       - id: "vae"
