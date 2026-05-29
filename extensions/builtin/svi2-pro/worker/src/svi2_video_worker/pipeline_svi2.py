@@ -67,7 +67,7 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "switch_boundary": float(params.get("switch_boundary", _SWITCH_BOUNDARY)),
         "num_overlap_frame": int(params.get("num_overlap_frame", 4)),
         "num_motion_latent": int(params.get("num_motion_latent", 1)),
-        "blocks_to_swap": int(params.get("blocks_to_swap", 20)),
+        "blocks_to_swap": int(params.get("blocks_to_swap", 36)),
         "seed_multiplier": int(params.get("seed_multiplier", 42)),
         "models_dir": params.get("models_dir"),
         "output_path": params.get("output_path", "out.mp4"),
