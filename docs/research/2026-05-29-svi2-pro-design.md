@@ -199,6 +199,19 @@ extensions/builtin/svi2-pro/
 
 ---
 
+## 12. GPU-integration follow-up (deferred from the offline build)
+
+The offline scaffold is complete + tested (47 passing). A real GPU render still needs this remaining work, tracked here so the next session picks it up cold:
+
+1. **Vendor + wire the Wan VAE and UMT5 text encoder.** `vae.py` / `text_encoder.py` `_ensure_loaded` currently raise `NotImplementedError`. Vendor the AutoencoderKLWan + UMT5 model code (from the zip's `diffsynth/models`) and load the installed weights.
+2. **Wire the vendored `WanModel` (DiT) into `pipeline_svi2._run_render`'s denoise loop.** Today the noise prediction is zero-filled. Connect: fp8 experts (`fp8_loader.build_fp8_linears`) + runtime LoRA (`lora.apply_additive_lora` with the `scale` from `load_lora_pairs`) + `expert_router.select` per step.
+3. **Fix CFG when wiring the DiT.** Real CFG = `uncond + scale·(cond − uncond)` from TWO forward passes (cond + uncond). The current scaffold formula collapses to zero and must be replaced at wiring time, not copied forward. (Final-review HIGH finding.)
+4. **`wan22/dit.py` patchify camera-adapter branch** truncates to batch element 0 (`x = x[0].unsqueeze(0)`) — only affects the camera-control path (unused by SVI i2v). Fix to element-wise add if/when camera control is ever used. (Final-review MEDIUM finding.)
+5. **Run the GPU spikes** (`Task 2.5` fp8-load + LoRA-hit-rate; `Task 4.2` smoke) on the RTX 5070 Ti. Acceptance: ≥95% fp8 key overlap + ≥95% LoRA hit-rate, no NaN, peak ≤16 GB.
+6. **Pin `versions.yaml`** `size_bytes`/`sha256` from HF once weights are downloaded.
+
+---
+
 ### Appendix — discovery notes
 `C:\Users\lazar\AppData\Local\Temp\svi-research\findings\` → `A_pipeline_trace.md`, `B_model_manifest.md`, `C_engine_comparison.md`, `D_nexus_conventions.md`.
 Prior requirements doc: `docs/research/2026-05-29-svi2-pro-requirements.md`.
