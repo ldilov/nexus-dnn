@@ -292,7 +292,7 @@ class WanModel(nn.Module):
         self.blocks_to_swap = 0
         self.main_device = torch.device("cpu")
         self.offload_device = torch.device("cpu")
-        self.use_non_blocking = True
+        self.use_non_blocking = False
         self.patch_size = patch_size
         self.seperated_timestep = seperated_timestep
         self.require_vae_embedding = require_vae_embedding
