@@ -76,7 +76,9 @@ class ScaledFP8Linear(nn.Module):
             if self.bias is not None:
                 out = out + self.bias
             return out
-        except (RuntimeError, AssertionError):
+        except (RuntimeError, AssertionError) as exc:
+            if "out of memory" in str(exc).lower():
+                raise
             return self._fallback_forward(x)
 
     def _fallback_forward(self, x: torch.Tensor) -> torch.Tensor:
