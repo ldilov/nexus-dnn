@@ -71,22 +71,18 @@ def main() -> int:
 
     import torch
     from svi2_video_worker.wan22 import WanModel
-    from svi2_video_worker.fp8_loader import (
-        load_fp8_state_dict,
-        build_fp8_linears,
-        apply_fp8_linears_to_module,
-        audit_key_overlap,
-    )
+    from svi2_video_worker.fp8_loader import load_expert_meta
     from svi2_video_worker.lora import load_lora_pairs, wrap_module_with_lora
 
-    print("[spike] building WanModel (A14B config)…")
-    dit = WanModel(**_WAN22_A14B_CONFIG).eval()
+    def _build(config: dict) -> WanModel:
+        return WanModel(**config)
 
     fp8_path = models_dir / _ARTIFACT_HIGH_FP8
+    print("[spike] building WanModel (A14B config) on meta device + assign-loading fp8…")
     print(f"[spike] loading fp8 state dict from {fp8_path.name}…")
-    state = load_fp8_state_dict(fp8_path)
+    dit, fp8_audit = load_expert_meta(_WAN22_A14B_CONFIG, fp8_path, _build)
+    dit.eval()
 
-    fp8_audit = audit_key_overlap(state, dit)
     overlap_pct: float = fp8_audit["overlap_pct"]
     print(
         f"[spike] fp8 overlap: {fp8_audit['matched_count']}/{fp8_audit['target_count']} "
@@ -95,10 +91,6 @@ def main() -> int:
     if overlap_pct < _FP8_OVERLAP_THRESHOLD:
         print(f"[FAIL] fp8 overlap {overlap_pct:.1f}% < threshold {_FP8_OVERLAP_THRESHOLD}%", file=sys.stderr)
         return 1
-
-    linears = build_fp8_linears(state)
-    apply_fp8_linears_to_module(dit, linears)
-    print(f"[spike] applied {len(linears)} fp8 linears to WanModel")
 
     lora_path = models_dir / _ARTIFACT_LORA_HIGH
     print(f"[spike] loading high SVI LoRA from {lora_path.name}…")
@@ -114,10 +106,6 @@ def main() -> int:
     if lora_hit_pct < _LORA_HIT_THRESHOLD:
         print(f"[FAIL] LoRA hit-rate {lora_hit_pct:.1f}% < threshold {_LORA_HIT_THRESHOLD}%", file=sys.stderr)
         return 1
-
-    for p in dit.parameters():
-        if p.dtype == torch.float32:
-            p.data = p.data.to(torch.bfloat16)
 
     print(f"[spike] block-swapping {args.blocks_to_swap} blocks (CPU offload) for forward pass…")
     dit.block_swap(

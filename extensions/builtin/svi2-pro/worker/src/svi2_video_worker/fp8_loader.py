@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
@@ -190,3 +190,93 @@ def build_fp8_linears(state_dict: dict[str, torch.Tensor]) -> dict[str, ScaledFP
         )
 
     return result
+
+
+def _is_fp8_linear_weight_key(key: str, state_dict: dict[str, torch.Tensor]) -> bool:
+    return key.endswith(".weight") and is_fp8_dtype(state_dict[key].dtype)
+
+
+def _fp8_linear_member_keys(state_dict: dict[str, torch.Tensor]) -> set[str]:
+    fp8_weight_bases = {
+        key[: -len(".weight")]
+        for key in state_dict
+        if _is_fp8_linear_weight_key(key, state_dict)
+    }
+    members: set[str] = set()
+    for base in fp8_weight_bases:
+        members.add(f"{base}.weight")
+        members.add(f"{base}.bias")
+        for suffix in WEIGHT_SCALE_SUFFIXES:
+            members.add(f"{base}{suffix}")
+    return members
+
+
+def build_remainder_bf16(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    bridged = bridge_kj_keys(state_dict)
+    fp8_members = _fp8_linear_member_keys(bridged)
+    remainder: dict[str, torch.Tensor] = {}
+    for key, value in bridged.items():
+        if key in fp8_members:
+            continue
+        if _is_scale_key(key):
+            continue
+        if is_fp8_dtype(value.dtype):
+            continue
+        remainder[key] = value.to(torch.bfloat16)
+    return remainder
+
+
+def _assert_no_meta(module: nn.Module) -> None:
+    leftover: list[str] = []
+    for name, param in module.named_parameters():
+        if param.is_meta:
+            leftover.append(f"param:{name}")
+    for name, buf in module.named_buffers():
+        if buf.is_meta:
+            leftover.append(f"buffer:{name}")
+    if leftover:
+        raise RuntimeError(
+            "meta load incomplete — tensors still on meta device: " + ", ".join(sorted(leftover))
+        )
+
+
+def _materialize_freqs(dit: nn.Module) -> None:
+    from .wan22.dit import precompute_freqs_cis_3d
+
+    freqs = getattr(dit, "freqs", None)
+    if freqs is None:
+        return
+    needs_rebuild = any(
+        isinstance(f, torch.Tensor) and f.is_meta for f in freqs
+    )
+    if not needs_rebuild:
+        dit.freqs = tuple(f.to("cpu") for f in freqs)
+        return
+    dit.freqs = precompute_freqs_cis_3d(_freqs_head_dim(dit))
+
+
+def _freqs_head_dim(dit: nn.Module) -> int:
+    return dit.blocks[0].self_attn.head_dim
+
+
+def load_expert_meta(
+    config: dict,
+    dit_path: str | Path,
+    build_model: Callable[[dict], nn.Module],
+) -> tuple[nn.Module, dict[str, object]]:
+    with torch.device("meta"):
+        dit = build_model(config)
+
+    state = load_fp8_state_dict(dit_path)
+    audit = audit_key_overlap(state, dit)
+
+    linears = build_fp8_linears(state)
+    apply_fp8_linears_to_module(dit, linears)
+
+    remainder = build_remainder_bf16(state)
+    dit.load_state_dict(remainder, strict=False, assign=True)
+
+    _materialize_freqs(dit)
+    _assert_no_meta(dit)
+
+    return dit, audit
