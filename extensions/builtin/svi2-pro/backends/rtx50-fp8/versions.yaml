@@ -1,0 +1,32 @@
+﻿spec_version: "0.1"
+backend:
+  runtime_id: "nexus.video.svi2-pro.rtx50-fp8"
+  default_version: "0.1.0"
+versions:
+  - id: "0.1.0"
+    status: "experimental"
+    artifacts:
+      - id: "dit-high-fp8"
+        source: { kind: "huggingface", repo: "Kijai/WanVideo_comfy_fp8_scaled", revision: "main", file: "I2V/Wan2_2-I2V-A14B-HIGH_fp8_e4m3fn_scaled_KJ.safetensors" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      - id: "dit-low-fp8"
+        source: { kind: "huggingface", repo: "Kijai/WanVideo_comfy_fp8_scaled", revision: "main", file: "I2V/Wan2_2-I2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      - id: "svi-lora-high"
+        source: { kind: "huggingface", repo: "epfl-vita/svi-model", revision: "main", file: "version-2.0/SVI_Wan2.2-I2V-A14B_high_noise_lora_v2.0_pro.safetensors" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      - id: "svi-lora-low"
+        source: { kind: "huggingface", repo: "epfl-vita/svi-model", revision: "main", file: "version-2.0/SVI_Wan2.2-I2V-A14B_low_noise_lora_v2.0_pro.safetensors" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      - id: "text-encoder"
+        source: { kind: "huggingface", repo: "Kijai/WanVideo_comfy", revision: "main", file: "umt5-xxl-enc-fp8_e4m3fn.safetensors" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      - id: "vae"
+        source: { kind: "huggingface", repo: "Kijai/WanVideo_comfy", revision: "main", file: "Wan2_2_VAE_bf16.safetensors" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
