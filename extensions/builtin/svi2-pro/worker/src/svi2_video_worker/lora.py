@@ -5,9 +5,9 @@ from typing import Optional
 import torch
 
 _LORA_SUFFIX = re.compile(
-    r"\.(?P<half>lora_down|lora_up|lora_A|lora_B)(?:\.weight)?$"
+    r"\.(?P<half>lora_down|lora_up|lora_A|lora_B)(?:\.[A-Za-z0-9_-]+)?(?:\.weight)?$"
 )
-_ALPHA_SUFFIX = re.compile(r"\.alpha$")
+_ALPHA_SUFFIX = re.compile(r"(?:\.[A-Za-z0-9_-]+)?\.alpha$")
 _DM_PREFIX = "diffusion_model."
 
 _HALF_MAP = {
