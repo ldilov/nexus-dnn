@@ -113,11 +113,11 @@ diffusers = [
   "imageio>=2.37",
   "imageio-ffmpeg>=0.6",
 ]
-# flash_attn 2.8.3 prebuilt for Blackwell (cu132 + torch2.12). Windows wheel
-# from mjun0812 v0.9.26; Linux from PyPI. Worker falls back to SDPA if import fails.
+# flash_attn 2.8.3 prebuilt for Blackwell (cu132 + torch2.12). Windows wheels
+# are vendored IN-REPO under ../binaries/ (git-lfs); Linux from PyPI. Worker
+# falls back to SDPA if import fails. uv.sources (below) pins the local wheels.
 flash = [
-  "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.26/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-win_amd64.whl ; sys_platform == 'win32' and python_version == '3.12'",
-  "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.26/flash_attn-2.8.3+cu132torch2.12-cp311-cp311-win_amd64.whl ; sys_platform == 'win32' and python_version == '3.11'",
+  "flash-attn ; sys_platform == 'win32'",
   "flash-attn>=2.8 ; sys_platform == 'linux'",
 ]
 test = [
@@ -144,6 +144,12 @@ allow-direct-references = true
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu132" }]
 torchvision = [{ index = "pytorch-cu132" }]
+# Vendored flash_attn wheels (git-lfs, ../binaries/) — path is relative to this
+# pyproject (worker/). Per-Python markers select cp311 vs cp312 on Windows.
+flash-attn = [
+  { path = "../binaries/flash_attn-2.8.3+cu132torch2.12-cp312-cp312-win_amd64.whl", marker = "sys_platform == 'win32' and python_version == '3.12'" },
+  { path = "../binaries/flash_attn-2.8.3+cu132torch2.12-cp311-cp311-win_amd64.whl", marker = "sys_platform == 'win32' and python_version == '3.11'" },
+]
 
 [[tool.uv.index]]
 name = "pytorch-cu132"
