@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -9,6 +10,8 @@ from typing import Any, Callable
 import yaml
 
 SENTINEL_NAME = ".nexus-install-complete"
+
+_background_tasks: set[asyncio.Task[None]] = set()
 
 
 @dataclass(frozen=True)
@@ -129,7 +132,20 @@ def register_installer_handlers(worker: Any) -> None:
                         {"message": str(exc)},
                     )
 
-        asyncio.create_task(_run())
+        task = asyncio.create_task(_run())
+        _background_tasks.add(task)
+
+        def _on_done(t: asyncio.Task[None]) -> None:
+            _background_tasks.discard(t)
+            exc = t.exception() if not t.cancelled() else None
+            if exc is not None:
+                logger = getattr(worker, "_logger", None)
+                if logger is not None:
+                    logger.error("svi2 background install task failed: %s", exc)
+                else:
+                    print(f"svi2 background install task failed: {exc}", file=sys.stderr)
+
+        task.add_done_callback(_on_done)
         return {"status": "started"}
 
     async def install_status(params: Any) -> dict[str, Any]:

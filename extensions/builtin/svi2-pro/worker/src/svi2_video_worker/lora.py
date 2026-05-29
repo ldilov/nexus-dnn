@@ -33,12 +33,12 @@ def apply_additive_lora(
     x: torch.Tensor,
     A: torch.Tensor,
     B: torch.Tensor,
-    alpha: float = 1.0,
+    scale: float = 1.0,
 ) -> torch.Tensor:
     A_f = A.to(x.dtype)
     B_f = B.to(x.dtype)
     lora_delta = (x @ A_f.t()) @ B_f.t()
-    return base_out + alpha * lora_delta
+    return base_out + scale * lora_delta
 
 
 def load_lora_pairs(path: str | Path) -> dict[str, tuple[torch.Tensor, torch.Tensor, float]]:

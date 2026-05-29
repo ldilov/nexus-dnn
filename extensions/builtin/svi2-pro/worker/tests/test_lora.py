@@ -13,7 +13,7 @@ def test_additive_lora_matches_reference():
     x = torch.randn(8, in_f)
     ref = x @ (base + (B @ A)).t()
     base_out = x @ base.t()
-    out = apply_additive_lora(base_out, x, A, B, alpha=1.0)
+    out = apply_additive_lora(base_out, x, A, B, scale=1.0)
     assert torch.allclose(out, ref, atol=1e-4)
 
 
