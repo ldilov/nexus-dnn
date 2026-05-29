@@ -1,5 +1,3 @@
-"""Wan VAE wrapper with CPU/GPU offload toggles. Model load is lazy (deferred to GPU integration, Task 3.6)."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,17 +11,50 @@ class VaeWrapper:
         self._model: Any = None
 
     def _ensure_loaded(self) -> None:
-        raise NotImplementedError(
-            "VAE model load wired in GPU integration (Task 2.5/3.6)"
-        )
+        if self._model is not None:
+            return
+        from .wan22.vae_model import WanVideoVAE
+        vae = WanVideoVAE(z_dim=16)
+        if self.weights_path.exists():
+            import torch
+            from safetensors.torch import load_file
+            state = load_file(str(self.weights_path))
+            prefixed = {"model." + k: v for k, v in state.items()}
+            vae.load_state_dict(prefixed, strict=False)
+        self._model = vae
 
     def encode_image(self, image: Any) -> Any:
+        import torch
         self._ensure_loaded()
-        return self._model.encode(image)
+        if isinstance(image, list):
+            frames = image
+        else:
+            frames = [image]
+        tensors = []
+        for f in frames:
+            if hasattr(f, "convert"):
+                import numpy as np
+                arr = np.array(f.convert("RGB")).astype("float32") / 127.5 - 1.0
+                t = torch.from_numpy(arr).permute(2, 0, 1)
+            else:
+                t = f
+            tensors.append(t)
+        video = torch.stack(tensors, dim=1)
+        return self._model.encode([video], device=self.device)
 
     def decode_latents(self, latent: Any) -> Any:
+        import torch
         self._ensure_loaded()
-        return self._model.decode(latent)
+        if latent.dim() == 4:
+            latent = latent.unsqueeze(0)
+        videos = self._model.decode(latent, device=self.device)
+        frames = []
+        for t in range(videos.shape[2]):
+            frame = videos[0, :, t]
+            frame = ((frame.clamp(-1, 1) + 1.0) * 127.5).byte()
+            frame = frame.permute(1, 2, 0)
+            frames.append(frame)
+        return frames
 
     def to_cpu(self) -> "VaeWrapper":
         self.device = "cpu"
