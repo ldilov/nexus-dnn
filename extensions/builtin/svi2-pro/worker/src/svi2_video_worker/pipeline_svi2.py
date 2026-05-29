@@ -6,17 +6,17 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 _ARTIFACT_FILENAMES: dict[str, str] = {
-    "dit-high-fp8": "Wan2_2-I2V-A14B-HIGH_fp8_e4m3fn_scaled_KJ.safetensors",
-    "dit-low-fp8": "Wan2_2-I2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors",
-    "svi-lora-high": "SVI_Wan2.2-I2V-A14B_high_noise_lora_v2.0_pro.safetensors",
-    "svi-lora-low": "SVI_Wan2.2-I2V-A14B_low_noise_lora_v2.0_pro.safetensors",
-    "text-encoder": "umt5-xxl-enc-fp8_e4m3fn.safetensors",
+    "dit-high-fp8": "I2V/Wan2_2-I2V-A14B-HIGH_fp8_e4m3fn_scaled_KJ.safetensors",
+    "dit-low-fp8": "I2V/Wan2_2-I2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors",
+    "svi-lora-high": "version-2.0/SVI_Wan2.2-I2V-A14B_high_noise_lora_v2.0_pro.safetensors",
+    "svi-lora-low": "version-2.0/SVI_Wan2.2-I2V-A14B_low_noise_lora_v2.0_pro.safetensors",
+    "text-encoder": "umt5-xxl-enc-bf16.safetensors",
     "vae": "Wan2_2_VAE_bf16.safetensors",
     "tokenizer": "google/umt5-xxl",
 }
 
 _WAN22_A14B_CONFIG: dict[str, Any] = {
-    "has_image_input": True,
+    "has_image_input": False,
     "patch_size": (1, 2, 2),
     "in_dim": 36,
     "dim": 5120,
@@ -67,6 +67,7 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "switch_boundary": float(params.get("switch_boundary", _SWITCH_BOUNDARY)),
         "num_overlap_frame": int(params.get("num_overlap_frame", 4)),
         "num_motion_latent": int(params.get("num_motion_latent", 1)),
+        "blocks_to_swap": int(params.get("blocks_to_swap", 20)),
         "seed_multiplier": int(params.get("seed_multiplier", 42)),
         "models_dir": params.get("models_dir"),
         "output_path": params.get("output_path", "out.mp4"),
@@ -107,6 +108,8 @@ def _resolve(models_dir: Path, artifact_id: str) -> Path:
 
 
 def _build_expert(dit_path: Path, lora_path: Optional[Path]) -> ExpertModel:
+    import torch
+
     from .wan22 import WanModel
     from .fp8_loader import (
         load_fp8_state_dict,
@@ -129,6 +132,10 @@ def _build_expert(dit_path: Path, lora_path: Optional[Path]) -> ExpertModel:
     if lora_path is not None and lora_path.exists():
         pairs = load_lora_pairs(lora_path)
         lora_audit = wrap_module_with_lora(dit, pairs)
+
+    for p in dit.parameters():
+        if p.dtype == torch.float32:
+            p.data = p.data.to(torch.bfloat16)
 
     return ExpertModel(dit=dit, fp8_audit=fp8_audit, lora_audit=lora_audit)
 
@@ -277,6 +284,7 @@ def _run_render(
     lat_w = width // 8
 
     expert_selector = ExpertSelector(boundary=switch_boundary)
+    blocks_to_swap: int = params["blocks_to_swap"]
 
     def _move_to(tier: str) -> None:
         if device != "cuda":
@@ -284,7 +292,12 @@ def _run_render(
         keep = models.high.dit if tier == "high" else models.low.dit
         drop = models.low.dit if tier == "high" else models.high.dit
         drop.to(torch.device("cpu"))
-        keep.to(torch.device("cuda"))
+        drop.blocks_to_swap = 0
+        keep.block_swap(
+            blocks_to_swap,
+            main_device=torch.device("cuda"),
+            offload_device=torch.device("cpu"),
+        )
         torch.cuda.empty_cache()
 
     models.vae.to_cuda() if device == "cuda" else models.vae.to_cpu()
