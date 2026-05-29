@@ -27,7 +27,7 @@ versions:
         size_bytes: 0
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"
       - id: "vae"
-        source: { kind: "huggingface", repo: "Kijai/WanVideo_comfy", revision: "main", file: "Wan2_2_VAE_bf16.safetensors" }
+        source: { kind: "huggingface", repo: "Kijai/WanVideo_comfy", revision: "main", file: "Wan2_1_VAE_bf16.safetensors" }
         size_bytes: 0
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"
       - id: "tokenizer"
