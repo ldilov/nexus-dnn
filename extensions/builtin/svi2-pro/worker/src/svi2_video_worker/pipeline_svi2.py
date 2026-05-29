@@ -318,7 +318,7 @@ def _run_render(
         noise = torch.randn(
             1, _WAN22_A14B_CONFIG["out_dim"], total_latent_frames, lat_h, lat_w,
             generator=torch.Generator(device="cpu").manual_seed(seed),
-        ).to(device)
+        ).to(device=device, dtype=torch.bfloat16)
         latent = noise
 
         y = _build_image_conditioning(
