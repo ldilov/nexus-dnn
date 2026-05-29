@@ -41,6 +41,47 @@ def apply_additive_lora(
     return base_out + scale * lora_delta
 
 
+class AdditiveLoraLinear(torch.nn.Module):
+    def __init__(
+        self,
+        base: torch.nn.Module,
+        A: torch.Tensor,
+        B: torch.Tensor,
+        scale: float,
+    ) -> None:
+        super().__init__()
+        self.base = base
+        self.register_buffer("lora_A", A)
+        self.register_buffer("lora_B", B)
+        self.scale = float(scale)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        base_out = self.base(x)
+        return apply_additive_lora(base_out, x, self.lora_A, self.lora_B, self.scale)
+
+
+def wrap_module_with_lora(
+    module: torch.nn.Module,
+    lora_pairs: dict[str, tuple[torch.Tensor, torch.Tensor, float]],
+) -> dict[str, object]:
+    wrapped: list[str] = []
+    missing: list[str] = []
+    for module_path, (A, B, scale) in lora_pairs.items():
+        parent_path, _, child = module_path.rpartition(".")
+        try:
+            parent = module.get_submodule(parent_path) if parent_path else module
+        except AttributeError:
+            missing.append(module_path)
+            continue
+        if not hasattr(parent, child):
+            missing.append(module_path)
+            continue
+        base = getattr(parent, child)
+        setattr(parent, child, AdditiveLoraLinear(base, A, B, scale))
+        wrapped.append(module_path)
+    return {"wrapped_count": len(wrapped), "missing_count": len(missing), "missing": missing}
+
+
 def load_lora_pairs(path: str | Path) -> dict[str, tuple[torch.Tensor, torch.Tensor, float]]:
     from safetensors.torch import load_file
 

@@ -362,8 +362,9 @@ class WanModel(nn.Module):
         t_mod = self.time_projection(t).unflatten(1, (6, self.dim))
         context = self.text_embedding(context)
 
-        if self.has_image_input:
+        if y is not None and self.require_vae_embedding:
             x = torch.cat([x, y], dim=1)  # (b, c_x + c_y, f, h, w)
+        if clip_feature is not None and self.require_clip_embedding:
             clip_embdding = self.img_emb(clip_feature)
             context = torch.cat([clip_embdding, context], dim=1)
 
