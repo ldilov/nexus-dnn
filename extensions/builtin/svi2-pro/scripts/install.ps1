@@ -60,6 +60,15 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     exit 127
 }
 
+# Ensure the vendored flash_attn wheels (git-LFS) are real binaries, not
+# pointers — the `flash` extra resolves to ..\binaries\*.whl and uv sync
+# fails on a fresh clone otherwise. Best-effort.
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    if (git -C $ExtDir rev-parse --git-dir 2>$null) {
+        git -C $ExtDir lfs pull --include="extensions/builtin/svi2-pro/binaries/*" 2>$null
+    }
+}
+
 Set-Location $WorkerDir
 
 # `uv run` auto-syncs the project before exec. Always include diffusers +
