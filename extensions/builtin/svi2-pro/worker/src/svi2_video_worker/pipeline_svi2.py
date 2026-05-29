@@ -107,35 +107,28 @@ def _resolve(models_dir: Path, artifact_id: str) -> Path:
     return models_dir / _ARTIFACT_FILENAMES[artifact_id]
 
 
-def _build_expert(dit_path: Path, lora_path: Optional[Path]) -> ExpertModel:
-    import torch
-
+def _wan_model_builder(config: dict[str, Any]) -> Any:
     from .wan22 import WanModel
-    from .fp8_loader import (
-        load_fp8_state_dict,
-        build_fp8_linears,
-        apply_fp8_linears_to_module,
-        audit_key_overlap,
-    )
-    from .lora import load_lora_pairs, wrap_module_with_lora
 
-    dit = WanModel(**_WAN22_A14B_CONFIG).eval()
+    return WanModel(**config)
+
+
+def _build_expert(dit_path: Path, lora_path: Optional[Path]) -> ExpertModel:
+    from .wan22 import WanModel
+    from .fp8_loader import load_expert_meta
+    from .lora import load_lora_pairs, wrap_module_with_lora
 
     fp8_audit: dict[str, object] = {}
     if dit_path.exists():
-        state = load_fp8_state_dict(dit_path)
-        fp8_audit = audit_key_overlap(state, dit)
-        linears = build_fp8_linears(state)
-        apply_fp8_linears_to_module(dit, linears)
+        dit, fp8_audit = load_expert_meta(_WAN22_A14B_CONFIG, dit_path, _wan_model_builder)
+    else:
+        dit = WanModel(**_WAN22_A14B_CONFIG)
+    dit.eval()
 
     lora_audit: dict[str, object] = {}
     if lora_path is not None and lora_path.exists():
         pairs = load_lora_pairs(lora_path)
         lora_audit = wrap_module_with_lora(dit, pairs)
-
-    for p in dit.parameters():
-        if p.dtype == torch.float32:
-            p.data = p.data.to(torch.bfloat16)
 
     return ExpertModel(dit=dit, fp8_audit=fp8_audit, lora_audit=lora_audit)
 
