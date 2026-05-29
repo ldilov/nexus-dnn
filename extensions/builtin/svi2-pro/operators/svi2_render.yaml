@@ -1,0 +1,30 @@
+schema_version: 1
+id: svi2_render
+extension: nexus.video.svi2-pro
+method: svi2.video.render.start
+title: Render image-to-video clips with SVI2-Pro
+description: |
+  Drives pipeline_svi2.py over a reference image and a list of prompts.
+  Produces num_clips continuous i2v segments chained via conditioning latents.
+  Emits svi2.video.progress events; final artifact is a stitched mp4.
+required_tags: [video-render, svi2-runtime]
+preferred_tags: [rtx50, fp8, wan22]
+inputs:
+  ref_image_path: { type: string, required: true }
+  prompts: { type: array, required: true, schema: schemas/svi2_render_params.schema.json }
+  num_clips: { type: integer, required: false }
+  height: { type: integer, required: false }
+  width: { type: integer, required: false }
+  fps: { type: integer, required: false }
+  frames_per_clip: { type: integer, required: false }
+  cfg_scale: { type: number, required: false }
+  num_overlap_frame: { type: integer, required: false }
+  num_motion_latent: { type: integer, required: false }
+  seed_multiplier: { type: integer, required: false }
+  output_path: { type: string, required: false }
+  models_dir: { type: string, required: false }
+  lora_path: { type: string, required: false }
+artifacts:
+  - role: video.render
+    path: "*.mp4"
+    mime_type: video/mp4

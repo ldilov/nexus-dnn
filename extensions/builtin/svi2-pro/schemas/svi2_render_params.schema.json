@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus-dnn.local/extensions/nexus-video-svi2-pro/schemas/svi2_render_params.schema.json",
+  "title": "Svi2RenderParams",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ref_image_path", "prompts"],
+  "properties": {
+    "ref_image_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "prompts": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "num_clips": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 832
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 480
+    },
+    "fps": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 15
+    },
+    "frames_per_clip": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 81
+    },
+    "cfg_scale": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 10,
+      "default": 5.0
+    },
+    "num_overlap_frame": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 8,
+      "default": 4
+    },
+    "num_motion_latent": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5,
+      "default": 1
+    },
+    "seed_multiplier": {
+      "type": "integer",
+      "default": 42
+    },
+    "output_path": {
+      "type": "string"
+    },
+    "models_dir": {
+      "type": "string"
+    },
+    "lora_path": {
+      "type": "string"
+    }
+  }
+}
