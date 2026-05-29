@@ -11,7 +11,7 @@ _ARTIFACT_FILENAMES: dict[str, str] = {
     "svi-lora-high": "version-2.0/SVI_Wan2.2-I2V-A14B_high_noise_lora_v2.0_pro.safetensors",
     "svi-lora-low": "version-2.0/SVI_Wan2.2-I2V-A14B_low_noise_lora_v2.0_pro.safetensors",
     "text-encoder": "umt5-xxl-enc-bf16.safetensors",
-    "vae": "Wan2_2_VAE_bf16.safetensors",
+    "vae": "Wan2_1_VAE_bf16.safetensors",
     "tokenizer": "google/umt5-xxl",
 }
 
