@@ -8,15 +8,15 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 _EXT_DIR = _SCRIPT_DIR.parent
 _SRC_DIR = _EXT_DIR / "worker" / "src"
 
-_ARTIFACT_HIGH_FP8 = "Wan2_2-I2V-A14B-HIGH_fp8_e4m3fn_scaled_KJ.safetensors"
-_ARTIFACT_LORA_HIGH = "SVI_Wan2.2-I2V-A14B_high_noise_lora_v2.0_pro.safetensors"
+_ARTIFACT_HIGH_FP8 = "I2V/Wan2_2-I2V-A14B-HIGH_fp8_e4m3fn_scaled_KJ.safetensors"
+_ARTIFACT_LORA_HIGH = "version-2.0/SVI_Wan2.2-I2V-A14B_high_noise_lora_v2.0_pro.safetensors"
 
 _FP8_OVERLAP_THRESHOLD = 95.0
 _LORA_HIT_THRESHOLD = 95.0
 _VRAM_LIMIT_GIB = 16.0
 
 _WAN22_A14B_CONFIG: dict = {
-    "has_image_input": True,
+    "has_image_input": False,
     "patch_size": (1, 2, 2),
     "in_dim": 36,
     "dim": 5120,
@@ -55,6 +55,7 @@ def main() -> int:
         ),
     )
     parser.add_argument("--models-dir", required=True, help="path to downloaded model weights")
+    parser.add_argument("--blocks-to-swap", type=int, default=20, help="transformer blocks to offload to CPU")
     args = parser.parse_args()
 
     models_dir = Path(args.models_dir)
@@ -114,8 +115,16 @@ def main() -> int:
         print(f"[FAIL] LoRA hit-rate {lora_hit_pct:.1f}% < threshold {_LORA_HIT_THRESHOLD}%", file=sys.stderr)
         return 1
 
-    print("[spike] moving model to CUDA for forward pass…")
-    dit = dit.to(torch.device("cuda"))
+    for p in dit.parameters():
+        if p.dtype == torch.float32:
+            p.data = p.data.to(torch.bfloat16)
+
+    print(f"[spike] block-swapping {args.blocks_to_swap} blocks (CPU offload) for forward pass…")
+    dit.block_swap(
+        args.blocks_to_swap,
+        main_device=torch.device("cuda"),
+        offload_device=torch.device("cpu"),
+    )
     torch.cuda.reset_peak_memory_stats()
 
     height, width = 832, 480
@@ -129,17 +138,10 @@ def main() -> int:
     out_dim = _WAN22_A14B_CONFIG["out_dim"]
     text_dim = _WAN22_A14B_CONFIG["text_dim"]
 
-    x = torch.randn(batch, out_dim, total_latent_frames, lat_h, lat_w, device="cuda")
+    x = torch.randn(batch, out_dim, total_latent_frames, lat_h, lat_w, device="cuda", dtype=torch.bfloat16)
     timestep = torch.tensor([500.0], device="cuda")
-    context = torch.randn(batch, 77, text_dim, device="cuda")
-    y_msk = torch.ones(batch, total_latent_frames, lat_h, lat_w, device="cuda")
-    y_msk[:, 1:] = 0
-    y_msk_exp = torch.concat(
-        [torch.repeat_interleave(y_msk[:, 0:1], repeats=4, dim=1), y_msk[:, 1:]], dim=1
-    )
-    y_msk_exp = y_msk_exp.view(batch, total_latent_frames, 4, lat_h, lat_w).transpose(1, 2)[0]
-    y_cond = torch.randn(batch, in_dim - 1, total_latent_frames, lat_h, lat_w, device="cuda")
-    y = torch.concat([y_msk_exp.unsqueeze(0), y_cond], dim=1)
+    context = torch.randn(batch, 77, text_dim, device="cuda", dtype=torch.bfloat16)
+    y = torch.zeros(batch, in_dim - out_dim, total_latent_frames, lat_h, lat_w, device="cuda", dtype=torch.bfloat16)
 
     print(f"[spike] running forward pass: x={list(x.shape)} t={timestep.tolist()} context={list(context.shape)} y={list(y.shape)}…")
     with torch.no_grad():

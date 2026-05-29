@@ -289,6 +289,10 @@ class WanModel(nn.Module):
         self.in_dim = in_dim
         self.freq_dim = freq_dim
         self.has_image_input = has_image_input
+        self.blocks_to_swap = 0
+        self.main_device = torch.device("cpu")
+        self.offload_device = torch.device("cpu")
+        self.use_non_blocking = True
         self.patch_size = patch_size
         self.seperated_timestep = seperated_timestep
         self.require_vae_embedding = require_vae_embedding
@@ -322,6 +326,37 @@ class WanModel(nn.Module):
             )
         else:
             self.control_adapter = None
+
+    def block_swap(
+        self,
+        blocks_to_swap: int,
+        main_device: torch.device,
+        offload_device: torch.device,
+    ) -> None:
+        self.main_device = main_device
+        self.offload_device = offload_device
+        blocks_to_swap = max(0, min(blocks_to_swap, len(self.blocks)))
+        self.blocks_to_swap = blocks_to_swap
+
+        self.patch_embedding.to(main_device)
+        self.text_embedding.to(main_device)
+        self.time_embedding.to(main_device)
+        self.time_projection.to(main_device)
+        self.head.to(main_device)
+        self.freqs = tuple(f.to(main_device) for f in self.freqs)
+        if self.has_image_input:
+            self.img_emb.to(main_device)
+        if self.has_ref_conv:
+            self.ref_conv.to(main_device)
+        if self.control_adapter is not None:
+            self.control_adapter.to(main_device)
+
+        swap_start_idx = len(self.blocks) - blocks_to_swap
+        for b, block in enumerate(self.blocks):
+            if b < swap_start_idx:
+                block.to(main_device)
+            else:
+                block.to(offload_device, non_blocking=self.use_non_blocking)
 
     def patchify(
         self, x: torch.Tensor, control_camera_latents_input: Optional[torch.Tensor] = None
@@ -389,7 +424,11 @@ class WanModel(nn.Module):
 
             return custom_forward
 
-        for block in self.blocks:
+        swap_start_idx = len(self.blocks) - self.blocks_to_swap
+        for b, block in enumerate(self.blocks):
+            swap_this = self.blocks_to_swap > 0 and b >= swap_start_idx
+            if swap_this:
+                block.to(self.main_device)
             if self.training and use_gradient_checkpointing:
                 if use_gradient_checkpointing_offload:
                     with torch.autograd.graph.save_on_cpu():
@@ -412,6 +451,8 @@ class WanModel(nn.Module):
                     )
             else:
                 x = block(x, context, t_mod, freqs)
+            if swap_this:
+                block.to(self.offload_device, non_blocking=self.use_non_blocking)
 
         x = self.head(x, t)
         x = self.unpatchify(x, (f, h, w))

@@ -57,6 +57,12 @@
       "maximum": 5,
       "default": 1
     },
+    "blocks_to_swap": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 40,
+      "default": 20
+    },
     "seed_multiplier": {
       "type": "integer",
       "default": 42

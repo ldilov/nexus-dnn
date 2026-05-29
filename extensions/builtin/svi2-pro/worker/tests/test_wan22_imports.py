@@ -61,6 +61,51 @@ def test_wanmodel_forward_i2v_shape() -> None:
     assert torch.isfinite(out).all()
 
 
+def test_block_swap_sets_state_and_forward_runs() -> None:
+    torch.manual_seed(0)
+    cfg = _tiny_config()
+    cfg["num_layers"] = 4
+    dtype = torch.float32
+    model = WanModel(**cfg).to(dtype).eval()
+
+    cpu = torch.device("cpu")
+    model.block_swap(2, main_device=cpu, offload_device=cpu)
+
+    assert model.blocks_to_swap == 2
+    assert model.main_device == cpu
+    assert model.offload_device == cpu
+
+    batch = 1
+    latent_channels = 16
+    cond_channels = cfg["in_dim"] - latent_channels
+    frames, height, width = 2, 8, 8
+
+    x = torch.randn(batch, latent_channels, frames, height, width, dtype=dtype)
+    y = torch.randn(batch, cond_channels, frames, height, width, dtype=dtype)
+    timestep = torch.tensor([500], dtype=dtype)
+    context = torch.randn(batch, 12, cfg["text_dim"], dtype=dtype)
+    clip_feature = torch.randn(batch, 257, 1280, dtype=dtype)
+
+    with torch.no_grad():
+        out = model(x=x, timestep=timestep, context=context, clip_feature=clip_feature, y=y)
+
+    assert out.shape == (batch, cfg["out_dim"], frames, height, width)
+    assert torch.isfinite(out).all()
+
+
+def test_block_swap_clamps_to_block_count() -> None:
+    cfg = _tiny_config()
+    cfg["num_layers"] = 4
+    model = WanModel(**cfg).eval()
+    cpu = torch.device("cpu")
+
+    model.block_swap(99, main_device=cpu, offload_device=cpu)
+    assert model.blocks_to_swap == 4
+
+    model.block_swap(0, main_device=cpu, offload_device=cpu)
+    assert model.blocks_to_swap == 0
+
+
 def test_flow_match_scheduler_wan() -> None:
     scheduler = FlowMatchScheduler(template="Wan")
     scheduler.set_timesteps(num_inference_steps=8)
