@@ -21,7 +21,8 @@ SVI 2.0 Pro = **two LoRAs** (high-noise + low-noise) on top of **Wan 2.2 I2V A14
 | LoRA application | **Runtime additive (NOT fused)** — preserves fp8 base in RAM. |
 | 16 GB strategy | One expert on-GPU at a time; swap at boundary 0.875; block-swap as fallback knob. |
 | System RAM | 64 GB+ confirmed — both fp8 experts resident in CPU RAM. |
-| Attention | **flash_attn 2.8** required (Blackwell build risk accepted). |
+| Attention | **flash_attn 2.8.3** via prebuilt cu132 wheel (mjun0812 v0.9.26, `win_amd64`, torch2.12); SDPA runtime fallback if import fails. |
+| Torch/CUDA | **torch 2.12 + cu132** (proven Blackwell path in LongCat; matches the flash_attn wheel's `+cu132torch2.12` tag). |
 | v1 "done" | Full pipeline + installer + manifest + UI listing + fake backend + offline tests green. GPU E2E smoke scripted for operator to run. |
 | Host impact | **Zero host changes** — pure Python-worker extension. |
 | GGUF | Explicitly **not** in v1. |
@@ -141,8 +142,8 @@ extensions/builtin/svi2-pro/
     install.sh + install.ps1
     smoke-rtx50-fp8.sh + smoke-rtx50-fp8.ps1
   worker/
-    pyproject.toml              # torch via [tool.uv.sources] → pytorch cu128 index (Blackwell);
-                                # flash_attn 2.8 (Blackwell wheel or source build)
+    pyproject.toml              # torch 2.12 via [tool.uv.sources] → pytorch cu132 index (Blackwell);
+                                # flash_attn 2.8.3 from mjun0812 v0.9.26 prebuilt cu132 wheel (win_amd64)
     uv.lock
     src/svi2_video_worker/...   # §6
     tests/...                   # §9
@@ -150,7 +151,7 @@ extensions/builtin/svi2-pro/
 ```
 
 - **UI listing:** automatic via the host's generic manifest scanner — appears in the extensions gallery. No host edit.
-- **CUDA/torch:** `worker/pyproject.toml` `[tool.uv.sources]` + `[[tool.uv.index]]` route torch to the cu128 wheel index (Blackwell sm_120; matches SVI's torch 2.7.1+cu128). flash_attn 2.8 declared; if no prebuilt Blackwell wheel, install step builds from source.
+- **CUDA/torch:** `worker/pyproject.toml` `[tool.uv.sources]` + `[[tool.uv.index]]` route torch to the **cu132** wheel index (`torch>=2.12`, Blackwell sm_120 — LongCat's proven path). **flash_attn 2.8.3** declared as a direct prebuilt-wheel URL dependency from mjun0812 `flash-attention-prebuild-wheels` v0.9.26 (`flash_attn-2.8.3+cu132torch2.12-cp31x-cp31x-win_amd64.whl`), platform-gated to `win_amd64`. Linux uses the PyPI flash-attn wheel (`sys_platform == 'linux'`). Runtime guard: if `import flash_attn` fails, the vendored attention falls back to torch SDPA (mirrors LongCat's `_patch_attention_to_use_sdpa`).
 
 ---
 
@@ -193,7 +194,7 @@ extensions/builtin/svi2-pro/
 1. **Vendored WanModel scope** — pin exactly which DiffSynth modules to copy; confirm it loads a Kijai fp8 expert and runs one forward without NaN (first spike).
 2. **fp8 key-name bridge** — Kijai `_KJ` tensor names vs vendored WanModel's expected names; confirm/author the remap.
 3. **SVI LoRA key hit-rate** — verify SVI LoRA keys map onto the vendored WanModel layers after fp8 load (proven in ComfyUI; re-verify in our loader).
-4. **flash_attn 2.8 on Blackwell** — prebuilt wheel vs source build in the install step.
+4. **flash_attn 2.8 on Blackwell** — RESOLVED: mjun0812 v0.9.26 ships `flash_attn-2.8.3+cu132torch2.12-cp311/cp312-win_amd64.whl`. Declared as a direct wheel-URL dep; SDPA fallback retained as defense. (FA2 on sm_120 expected to run since the wheel is cu132-built; GPU smoke confirms.)
 5. **T5/VAE format** — Kijai fp8 UMT5 + Wan VAE bf16 must load into the vendored wrappers (vs DiffSynth-converted formats).
 
 ---
