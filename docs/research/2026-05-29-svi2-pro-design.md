@@ -151,7 +151,7 @@ extensions/builtin/svi2-pro/
 ```
 
 - **UI listing:** automatic via the host's generic manifest scanner — appears in the extensions gallery. No host edit.
-- **CUDA/torch:** `worker/pyproject.toml` `[tool.uv.sources]` + `[[tool.uv.index]]` route torch to the **cu132** wheel index (`torch>=2.12`, Blackwell sm_120 — LongCat's proven path). **flash_attn 2.8.3** declared as a direct prebuilt-wheel URL dependency from mjun0812 `flash-attention-prebuild-wheels` v0.9.26 (`flash_attn-2.8.3+cu132torch2.12-cp31x-cp31x-win_amd64.whl`), platform-gated to `win_amd64`. Linux uses the PyPI flash-attn wheel (`sys_platform == 'linux'`). Runtime guard: if `import flash_attn` fails, the vendored attention falls back to torch SDPA (mirrors LongCat's `_patch_attention_to_use_sdpa`).
+- **CUDA/torch:** `worker/pyproject.toml` `[tool.uv.sources]` + `[[tool.uv.index]]` route torch to the **cu132** wheel index (`torch>=2.12`, Blackwell sm_120 — LongCat's proven path). **flash_attn 2.8.3** declared as a direct prebuilt-wheel URL dependency from mjun0812 `flash-attention-prebuild-wheels` v0.9.26 (`flash_attn-2.8.3+cu132torch2.12-cp31x-cp31x-win_amd64.whl`), platform-gated to `win_amd64`. The Windows wheels (cp311 + cp312, ~229 MiB each) are **vendored in-repo under `binaries/` via git-lfs** and pinned through `[tool.uv.sources]` path entries (no network fetch at install). Linux uses the PyPI flash-attn wheel (`sys_platform == 'linux'`). Runtime guard: if `import flash_attn` fails, the vendored attention falls back to torch SDPA (mirrors LongCat's `_patch_attention_to_use_sdpa`).
 
 ---
 
