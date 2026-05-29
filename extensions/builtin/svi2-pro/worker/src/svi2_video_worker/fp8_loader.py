@@ -95,7 +95,71 @@ def load_fp8_state_dict(path: str | Path) -> dict[str, torch.Tensor]:
     return load_file(str(path), device="cpu")
 
 
+_COMFY_PREFIXES: tuple[str, ...] = ("diffusion_model.", "model.diffusion_model.", "model.")
+
+
+def _strip_comfy_prefix(key: str) -> str:
+    for prefix in _COMFY_PREFIXES:
+        if key.startswith(prefix):
+            return key[len(prefix) :]
+    return key
+
+
+def bridge_kj_keys(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    bridged: dict[str, torch.Tensor] = {}
+    for key, value in state_dict.items():
+        bridged[_strip_comfy_prefix(key)] = value
+    return bridged
+
+
+def audit_key_overlap(
+    state_dict: dict[str, torch.Tensor], module: nn.Module
+) -> dict[str, object]:
+    bridged = bridge_kj_keys(state_dict)
+    target_names = set(dict(module.named_parameters()).keys()) | set(
+        dict(module.named_buffers()).keys()
+    )
+    src_param_names = {k for k in bridged if not _is_scale_key(k)}
+    matched = sorted(src_param_names & target_names)
+    unmatched_src = sorted(src_param_names - target_names)
+    unmatched_target = sorted(target_names - src_param_names)
+    overlap_pct = (100.0 * len(matched) / len(target_names)) if target_names else 0.0
+    return {
+        "src_count": len(src_param_names),
+        "target_count": len(target_names),
+        "matched_count": len(matched),
+        "overlap_pct": overlap_pct,
+        "unmatched_src": unmatched_src,
+        "unmatched_target": unmatched_target,
+    }
+
+
+def _is_scale_key(key: str) -> bool:
+    return any(key.endswith(suffix) for suffix in WEIGHT_SCALE_SUFFIXES)
+
+
+def apply_fp8_linears_to_module(
+    module: nn.Module, fp8_linears: dict[str, ScaledFP8Linear]
+) -> dict[str, object]:
+    installed: list[str] = []
+    missing: list[str] = []
+    for linear_path, fp8_linear in fp8_linears.items():
+        parent, _, child = linear_path.rpartition(".")
+        try:
+            parent_module = module.get_submodule(parent) if parent else module
+        except AttributeError:
+            missing.append(linear_path)
+            continue
+        if not hasattr(parent_module, child):
+            missing.append(linear_path)
+            continue
+        setattr(parent_module, child, fp8_linear)
+        installed.append(linear_path)
+    return {"installed_count": len(installed), "missing_count": len(missing), "missing": missing}
+
+
 def build_fp8_linears(state_dict: dict[str, torch.Tensor]) -> dict[str, ScaledFP8Linear]:
+    state_dict = bridge_kj_keys(state_dict)
     weight_keys = {
         k[: -len(".weight")]
         for k in state_dict
