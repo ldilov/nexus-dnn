@@ -17,11 +17,11 @@ _DATA_DIR = _EXT_DIR / "data"
 _DEFAULT_PROMPTS_FILE = _DATA_DIR / "demonic_nun_prompts.txt"
 
 _ARTIFACT_FILENAMES: dict[str, str] = {
-    "dit-high-fp8": "Wan2_2-I2V-A14B-HIGH_fp8_e4m3fn_scaled_KJ.safetensors",
-    "dit-low-fp8": "Wan2_2-I2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors",
-    "svi-lora-high": "SVI_Wan2.2-I2V-A14B_high_noise_lora_v2.0_pro.safetensors",
-    "svi-lora-low": "SVI_Wan2.2-I2V-A14B_low_noise_lora_v2.0_pro.safetensors",
-    "text-encoder": "umt5-xxl-enc-fp8_e4m3fn.safetensors",
+    "dit-high-fp8": "I2V/Wan2_2-I2V-A14B-HIGH_fp8_e4m3fn_scaled_KJ.safetensors",
+    "dit-low-fp8": "I2V/Wan2_2-I2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors",
+    "svi-lora-high": "version-2.0/SVI_Wan2.2-I2V-A14B_high_noise_lora_v2.0_pro.safetensors",
+    "svi-lora-low": "version-2.0/SVI_Wan2.2-I2V-A14B_low_noise_lora_v2.0_pro.safetensors",
+    "text-encoder": "umt5-xxl-enc-bf16.safetensors",
     "vae": "Wan2_2_VAE_bf16.safetensors",
     "tokenizer": "google/umt5-xxl",
 }
