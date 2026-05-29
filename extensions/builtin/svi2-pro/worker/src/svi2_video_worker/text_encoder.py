@@ -28,7 +28,7 @@ class TextEncoderWrapper:
             from safetensors.torch import load_file
             state = load_file(str(self.weights_path))
             encoder.load_state_dict(state, strict=False)
-        encoder = encoder.to(torch.device(self.device))
+        encoder = encoder.to(device=torch.device(self.device), dtype=torch.bfloat16)
         encoder.eval()
         self._model = encoder
 
