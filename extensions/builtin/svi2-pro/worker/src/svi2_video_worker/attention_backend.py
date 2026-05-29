@@ -19,7 +19,7 @@ def scaled_attention(
     causal: bool = False,
     force_sdpa: bool = False,
 ) -> torch.Tensor:
-    if FLASH_AVAILABLE and not force_sdpa:
+    if FLASH_AVAILABLE and not force_sdpa and q.is_cuda:
         from flash_attn import flash_attn_func
 
         q_fa = q.transpose(1, 2)
