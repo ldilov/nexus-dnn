@@ -12,6 +12,7 @@ def _hijack_stdout() -> None:
 
 
 def cli() -> int:
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     _hijack_stdout()
     from .installer import register_installer_handlers
     from .main import Worker
