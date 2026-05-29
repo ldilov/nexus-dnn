@@ -1,6 +1,9 @@
+_TIMESTEP_SCALE: float = 1000.0
+
+
 class ExpertSelector:
     def __init__(self, boundary: float = 0.875) -> None:
-        self.threshold: float = boundary * 1000.0
+        self.threshold: float = boundary * _TIMESTEP_SCALE
         self._latched_low: bool = False
 
     def select(self, timestep: float) -> str:

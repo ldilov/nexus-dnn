@@ -1,9 +1,4 @@
 def probe_free_vram() -> int:
-    """Probe free VRAM in bytes. Returns 0 if torch/CUDA unavailable.
-    
-    Returns:
-        Free VRAM in bytes, or 0 if CUDA not available.
-    """
     try:
         import torch
 
@@ -16,11 +11,6 @@ def probe_free_vram() -> int:
 
 
 def peak_allocated() -> int:
-    """Get peak allocated VRAM in bytes. Returns 0 if torch/CUDA unavailable.
-    
-    Returns:
-        Peak allocated VRAM in bytes, or 0 if CUDA not available.
-    """
     try:
         import torch
 
@@ -32,7 +22,6 @@ def peak_allocated() -> int:
 
 
 def reset_peak() -> None:
-    """Reset peak memory statistics. Silently ignores if torch/CUDA unavailable."""
     try:
         import torch
 
