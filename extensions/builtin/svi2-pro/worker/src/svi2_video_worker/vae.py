@@ -13,15 +13,18 @@ class VaeWrapper:
     def _ensure_loaded(self) -> None:
         if self._model is not None:
             return
+        import torch
         from .wan22.vae_model import WanVideoVAE
         vae = WanVideoVAE(z_dim=16)
         if self.weights_path.exists():
-            import torch
             from safetensors.torch import load_file
             state = load_file(str(self.weights_path))
             prefixed = {"model." + k: v for k, v in state.items()}
             vae.load_state_dict(prefixed, strict=False)
-        self._model = vae
+        self._model = vae.to(device=torch.device(self.device), dtype=torch.bfloat16)
+
+    def _model_dtype(self) -> Any:
+        return next(self._model.parameters()).dtype
 
     def encode_image(self, image: Any) -> Any:
         import torch
@@ -39,12 +42,13 @@ class VaeWrapper:
             else:
                 t = f
             tensors.append(t)
-        video = torch.stack(tensors, dim=1)
+        video = torch.stack(tensors, dim=1).to(device=self.device, dtype=self._model_dtype())
         return self._model.encode([video], device=self.device)
 
     def decode_latents(self, latent: Any) -> Any:
         import torch
         self._ensure_loaded()
+        latent = latent.to(device=self.device, dtype=self._model_dtype())
         if latent.dim() == 4:
             latent = latent.unsqueeze(0)
         videos = self._model.decode(latent, device=self.device)
