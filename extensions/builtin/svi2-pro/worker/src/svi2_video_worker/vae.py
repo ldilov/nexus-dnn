@@ -21,6 +21,8 @@ class VaeWrapper:
             state = load_file(str(self.weights_path))
             prefixed = {"model." + k: v for k, v in state.items()}
             vae.load_state_dict(prefixed, strict=False)
+        vae.requires_grad_(False)
+        vae.eval()
         self._model = vae.to(device=torch.device(self.device), dtype=torch.bfloat16)
 
     def _model_dtype(self) -> Any:
@@ -43,7 +45,8 @@ class VaeWrapper:
                 t = f
             tensors.append(t)
         video = torch.stack(tensors, dim=1).to(device=self.device, dtype=self._model_dtype())
-        return self._model.encode([video], device=self.device, tiled=True)
+        with torch.no_grad():
+            return self._model.encode([video], device=self.device, tiled=True)
 
     def decode_latents(self, latent: Any) -> Any:
         import torch
@@ -51,7 +54,8 @@ class VaeWrapper:
         latent = latent.to(device=self.device, dtype=self._model_dtype())
         if latent.dim() == 4:
             latent = latent.unsqueeze(0)
-        videos = self._model.decode(latent, device=self.device, tiled=True)
+        with torch.no_grad():
+            videos = self._model.decode(latent, device=self.device, tiled=True)
         frames = []
         for t in range(videos.shape[2]):
             frame = videos[0, :, t]

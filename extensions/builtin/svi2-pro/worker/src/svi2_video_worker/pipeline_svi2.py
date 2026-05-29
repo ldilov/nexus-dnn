@@ -123,6 +123,7 @@ def _build_expert(dit_path: Path, lora_path: Optional[Path]) -> ExpertModel:
         dit, fp8_audit = load_expert_meta(_WAN22_A14B_CONFIG, dit_path, _wan_model_builder)
     else:
         dit = WanModel(**_WAN22_A14B_CONFIG)
+    dit.requires_grad_(False)
     dit.eval()
 
     lora_audit: dict[str, object] = {}
