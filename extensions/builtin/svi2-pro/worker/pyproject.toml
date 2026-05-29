@@ -2,6 +2,7 @@
 name = "nexus-video-svi2-pro-worker"
 version = "0.1.0"
 description = "Stable Video Infinity 2.0 Pro i2v render worker for nexus.video.svi2-pro. Stdio JSON-RPC. Kijai fp8 Wan2.2-A14B dual-expert + SVI LoRA. fake (no-GPU) mode for CI."
+readme = "README.md"
 requires-python = ">=3.11,<3.13"
 license = { text = "GPL-3.0-or-later" }
 
