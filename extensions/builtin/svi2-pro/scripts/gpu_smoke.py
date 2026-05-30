@@ -188,8 +188,9 @@ def main() -> int:
     parser.add_argument("--num-motion-latent", type=int, default=1)
     parser.add_argument(
         "--pixel-re-encode",
-        action="store_true",
-        help="VAE decode->re-encode the motion tail between clips (caps continuation drift)",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="VAE decode->re-encode the motion tail between clips (caps continuation drift); --no-pixel-re-encode to disable",
     )
     parser.add_argument("--num-motion-frame", type=int, default=4, help="pixel frames re-encoded for --pixel-re-encode")
     parser.add_argument(
