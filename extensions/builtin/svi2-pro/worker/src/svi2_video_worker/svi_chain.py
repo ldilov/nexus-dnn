@@ -20,6 +20,24 @@ def build_conditioning_latents(
     return y
 
 
+def adain_normalize_latent(
+    latent: torch.Tensor, reference: torch.Tensor, factor: float = 0.5
+) -> torch.Tensor:
+    # Per-channel (dim 0 = C for [C,F,H,W]) mean/std match toward the reference
+    # (clip-0) latent, blended by factor. Caps colour/exposure drift accumulating
+    # down an SVI continuation chain. factor 0 = off, 1 = full re-normalization.
+    if factor <= 0.0:
+        return latent
+    eps = 1e-5
+    dims = tuple(range(1, latent.ndim))
+    l_mean = latent.mean(dim=dims, keepdim=True)
+    l_std = latent.std(dim=dims, keepdim=True) + eps
+    r_mean = reference.mean(dim=dims, keepdim=True)
+    r_std = reference.std(dim=dims, keepdim=True) + eps
+    normalized = (latent - l_mean) / l_std * r_std + r_mean
+    return latent + factor * (normalized - latent)
+
+
 def stitch_clip_frames(clips: list[list], num_overlap_frame: int) -> list:
     if not clips:
         return []

@@ -72,6 +72,19 @@ def _run_worker(
     cfg_scale: float,
     num_overlap_frame: int,
     num_motion_latent: int,
+    teacache_thresh: float,
+    blocks_to_swap: int,
+    motion_scale_t: float,
+    motion_scale_schedule: list[float] | None,
+    adain_factor: float,
+    num_inference_steps: int,
+    sigma_shift: float,
+    switch_boundary: float,
+    distill_lora_high: str,
+    distill_lora_low: str,
+    dit_high_path: str,
+    dit_low_path: str,
+    fixed_sigmas: list[float] | None,
     log: logging.Logger,
 ) -> dict[str, Any]:
     env = os.environ.copy()
@@ -108,6 +121,19 @@ def _run_worker(
         "cfg_scale": cfg_scale,
         "num_overlap_frame": num_overlap_frame,
         "num_motion_latent": num_motion_latent,
+        "teacache_thresh": teacache_thresh,
+        "blocks_to_swap": blocks_to_swap,
+        "motion_scale_t": motion_scale_t,
+        "motion_scale_schedule": motion_scale_schedule,
+        "adain_factor": adain_factor,
+        "num_inference_steps": num_inference_steps,
+        "sigma_shift": sigma_shift,
+        "switch_boundary": switch_boundary,
+        "distill_lora_high": distill_lora_high or None,
+        "distill_lora_low": distill_lora_low or None,
+        "dit_high_path": dit_high_path or None,
+        "dit_low_path": dit_low_path or None,
+        "fixed_sigmas": fixed_sigmas,
         "output_path": str(output_path),
     }
     render_req = _build_rpc(2, "svi2.video.render.start", render_params)
@@ -156,6 +182,65 @@ def main() -> int:
     parser.add_argument("--cfg-scale", type=float, default=5.0)
     parser.add_argument("--num-overlap-frame", type=int, default=4)
     parser.add_argument("--num-motion-latent", type=int, default=1)
+    parser.add_argument(
+        "--teacache-thresh",
+        type=float,
+        default=0.0,
+        help="TeaCache accumulated rel-L1 threshold (0=off; try 0.05-0.15, higher=faster/lower quality)",
+    )
+    parser.add_argument(
+        "--blocks-to-swap",
+        type=int,
+        default=40,
+        help="DiT blocks offloaded CPU<->GPU per forward (40=all/lowest VRAM; lower=faster if VRAM fits)",
+    )
+    parser.add_argument(
+        "--motion-scale-t",
+        type=float,
+        default=1.0,
+        help="Wan motion scale: temporal RoPE stretch (1.0=off; 1.3-1.6 adds motion, fights stiff faces)",
+    )
+    parser.add_argument(
+        "--motion-scale-schedule",
+        default="",
+        help="per-clip temporal motion ramp, comma list e.g. 1.0,1.6,2.2 (overrides --motion-scale-t)",
+    )
+    parser.add_argument(
+        "--adain-factor",
+        type=float,
+        default=0.0,
+        help="latent AdaIN drift control: match later clips' colour stats to clip-0 (0=off, 0.3-0.5 typical)",
+    )
+    parser.add_argument("--num-inference-steps", type=int, default=50)
+    parser.add_argument(
+        "--sigma-shift",
+        type=float,
+        default=5.0,
+        help="FlowMatch shift (Wan default 5.0; lower ~3.5-4.0 = more motion, range 3.0-5.0)",
+    )
+    parser.add_argument(
+        "--switch-boundary",
+        type=float,
+        default=0.9,
+        help="MoE high->low expert switch boundary (Wan2.2 i2v = 0.9 / t<900)",
+    )
+    parser.add_argument(
+        "--distill-lora-high",
+        default="",
+        help="path to high-noise distill (Lightning/lightx2v) LoRA; enables 4-8 step cfg1",
+    )
+    parser.add_argument("--distill-lora-low", default="", help="path to low-noise distill LoRA")
+    parser.add_argument(
+        "--dit-high",
+        default="",
+        help="override high-noise DiT fp8 weights path (e.g. lightx2v distilled model)",
+    )
+    parser.add_argument("--dit-low", default="", help="override low-noise DiT fp8 weights path")
+    parser.add_argument(
+        "--fixed-sigmas",
+        default="",
+        help="comma sigma list for distilled models, e.g. 1.0,0.9375001,0.8333333,0.625,0.0 (overrides shift)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -196,6 +281,23 @@ def main() -> int:
         cfg_scale=args.cfg_scale,
         num_overlap_frame=args.num_overlap_frame,
         num_motion_latent=args.num_motion_latent,
+        teacache_thresh=args.teacache_thresh,
+        blocks_to_swap=args.blocks_to_swap,
+        motion_scale_t=args.motion_scale_t,
+        motion_scale_schedule=(
+            [float(s) for s in args.motion_scale_schedule.split(",")]
+            if args.motion_scale_schedule
+            else None
+        ),
+        adain_factor=args.adain_factor,
+        num_inference_steps=args.num_inference_steps,
+        sigma_shift=args.sigma_shift,
+        switch_boundary=args.switch_boundary,
+        distill_lora_high=args.distill_lora_high,
+        distill_lora_low=args.distill_lora_low,
+        dit_high_path=args.dit_high,
+        dit_low_path=args.dit_low,
+        fixed_sigmas=[float(s) for s in args.fixed_sigmas.split(",")] if args.fixed_sigmas else None,
         log=log,
     )
     wall_s = time.monotonic() - t0
