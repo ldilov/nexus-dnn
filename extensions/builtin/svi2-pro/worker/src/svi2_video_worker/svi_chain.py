@@ -1,8 +1,19 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 import torch
+
+
+def reencode_motion_tail(vae: Any, pixel_frames: list, num_motion_frame: int) -> torch.Tensor:
+    # SVI continuation drift fix: instead of carrying the RAW denoised latent
+    # tail forward (which accumulates off-manifold error clip over clip), decode
+    # the clip to pixels and re-encode the last num_motion_frame frames through
+    # the VAE. The round-trip snaps the motion-conditioning latent back onto the
+    # VAE's natural manifold, killing colour/structure drift down the chain.
+    tail = pixel_frames[-num_motion_frame:] if num_motion_frame > 0 else list(pixel_frames)
+    encoded = vae.encode_image(tail)
+    return encoded[0]
 
 
 def build_conditioning_latents(
