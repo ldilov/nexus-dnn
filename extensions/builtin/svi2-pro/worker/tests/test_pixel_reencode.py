@@ -72,7 +72,6 @@ def _build_render_models(dtype, encode_calls):
 
     class _CountingVae:
         def __init__(self):
-            self.latent_frames = 1
             self.dtype = dtype
 
         def encode_image(self, image):
@@ -80,9 +79,12 @@ def _build_render_models(dtype, encode_calls):
             if isinstance(image, list):
                 f = image[0]
                 w, h = f.size
+                frames_in = len(image)
             else:
                 w, h = image.size
-            return torch.randn(1, 16, self.latent_frames, h // 8, w // 8, dtype=self.dtype)
+                frames_in = 1
+            lat_f = 1 + (frames_in - 1) // 4  # mirror Wan VAE temporal compression
+            return torch.randn(1, 16, lat_f, h // 8, w // 8, dtype=self.dtype)
 
         def decode_latents(self, latent):
             frames_lat = latent.shape[2]
@@ -146,8 +148,54 @@ def test_pixel_re_encode_off_encodes_anchor_only(tmp_path, monkeypatch):
     assert sum(1 for c in encode_calls if isinstance(c, list)) == 0
 
 
-def test_pixel_re_encode_on_reencodes_each_clip(tmp_path, monkeypatch):
+def test_pixel_re_encode_on_reencodes_non_final_clips(tmp_path, monkeypatch):
     result, encode_calls = _run(tmp_path, monkeypatch, pixel_re_encode=True)
     assert result["status"] == "ok"
-    # one list-based re-encode per clip (2 clips)
-    assert sum(1 for c in encode_calls if isinstance(c, list)) == 2
+    # 2 clips: clip 0 re-encodes (tail feeds clip 1), final clip is skipped
+    assert sum(1 for c in encode_calls if isinstance(c, list)) == 1
+
+
+def test_validate_rejects_motion_latent_exceeding_reencode_depth():
+    import pytest as _pytest
+    from svi2_video_worker.pipeline_svi2 import validate_render_params
+
+    with _pytest.raises(ValueError, match="num_motion_frame"):
+        validate_render_params(
+            {
+                "ref_image_path": "x.png",
+                "prompts": ["a"],
+                "pixel_re_encode": True,
+                "num_motion_frame": 4,  # -> 1 latent frame
+                "num_motion_latent": 2,  # needs 2 -> reject
+            }
+        )
+
+
+def test_validate_accepts_sufficient_reencode_depth():
+    from svi2_video_worker.pipeline_svi2 import validate_render_params
+
+    out = validate_render_params(
+        {
+            "ref_image_path": "x.png",
+            "prompts": ["a"],
+            "pixel_re_encode": True,
+            "num_motion_frame": 8,  # -> 1 + 7//4 = 2 latent frames
+            "num_motion_latent": 2,
+        }
+    )
+    assert out["num_motion_frame"] == 8 and out["num_motion_latent"] == 2
+
+
+def test_validate_motion_latent_unconstrained_when_reencode_off():
+    from svi2_video_worker.pipeline_svi2 import validate_render_params
+
+    out = validate_render_params(
+        {
+            "ref_image_path": "x.png",
+            "prompts": ["a"],
+            "pixel_re_encode": False,
+            "num_motion_frame": 4,
+            "num_motion_latent": 5,
+        }
+    )
+    assert out["num_motion_latent"] == 5

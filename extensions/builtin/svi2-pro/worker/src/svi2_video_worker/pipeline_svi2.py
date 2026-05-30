@@ -52,6 +52,24 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
 
     num_clips = int(params.get("num_clips", len(prompts)))
 
+    num_motion_latent = int(params.get("num_motion_latent", 1))
+    pixel_re_encode = bool(params.get("pixel_re_encode", False))
+    num_motion_frame = int(params.get("num_motion_frame", 4))
+    # Wan VAE temporal compression: N pixel frames -> 1 + (N-1)//4 latent frames.
+    # The re-encoded tail feeds build_conditioning_latents, which assigns
+    # num_motion_latent frames into the conditioning slot. If the re-encode
+    # yields fewer latent frames than num_motion_latent the assignment is
+    # ill-shaped, so require enough pixel frames up front.
+    if pixel_re_encode:
+        reencoded_latent_frames = 1 + (num_motion_frame - 1) // 4
+        if reencoded_latent_frames < num_motion_latent:
+            raise ValueError(
+                f"pixel_re_encode with num_motion_frame={num_motion_frame} yields "
+                f"{reencoded_latent_frames} latent frame(s), fewer than "
+                f"num_motion_latent={num_motion_latent}; raise num_motion_frame to "
+                f"at least {4 * (num_motion_latent - 1) + 1}"
+            )
+
     return {
         "ref_image_path": str(ref),
         "prompts": list(prompts),
@@ -66,9 +84,9 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "sigma_shift": float(params.get("sigma_shift", _SIGMA_SHIFT)),
         "switch_boundary": float(params.get("switch_boundary", _SWITCH_BOUNDARY)),
         "num_overlap_frame": int(params.get("num_overlap_frame", 4)),
-        "num_motion_latent": int(params.get("num_motion_latent", 1)),
-        "pixel_re_encode": bool(params.get("pixel_re_encode", False)),
-        "num_motion_frame": int(params.get("num_motion_frame", 4)),
+        "num_motion_latent": num_motion_latent,
+        "pixel_re_encode": pixel_re_encode,
+        "num_motion_frame": num_motion_frame,
         "blocks_to_swap": int(params.get("blocks_to_swap", 40)),
         "teacache_thresh": float(params.get("teacache_thresh", 0.0)),
         "motion_scale_t": float(params.get("motion_scale_t", 1.0)),
@@ -443,8 +461,10 @@ def _run_render(
 
         # Pixel re-encode continuation: replace the raw denoised latent tail with
         # a VAE round-trip of the last num_motion_frame output frames so the next
-        # clip conditions on an on-manifold latent (caps escalating drift).
-        if pixel_re_encode and num_motion_frame > 0:
+        # clip conditions on an on-manifold latent (caps escalating drift). Skip
+        # on the final clip — its tail is never consumed.
+        is_last_clip = clip_idx == num_clips - 1
+        if pixel_re_encode and num_motion_frame > 0 and not is_last_clip:
             reenc = reencode_motion_tail(models.vae, pil_frames, num_motion_frame)
             prev_last_latent = reenc.to(device=device, dtype=prev_last_latent.dtype)
             log_vram(f"clip {clip_idx} pixel re-encode tail={num_motion_frame}")

@@ -11,6 +11,13 @@ def reencode_motion_tail(vae: Any, pixel_frames: list, num_motion_frame: int) ->
     # the clip to pixels and re-encode the last num_motion_frame frames through
     # the VAE. The round-trip snaps the motion-conditioning latent back onto the
     # VAE's natural manifold, killing colour/structure drift down the chain.
+    #
+    # Known limitation: the Wan VAE encoder is causal and treats frame 0 of its
+    # input as a sequence origin (distinct first-frame normalization). Encoding
+    # an isolated tail re-encodes that tail's first frame as an origin rather
+    # than a continuation, so the conditioning latent is not bit-identical to a
+    # full-clip encode. Accepted trade-off vs re-encoding from the true first
+    # frame (far more expensive); attribute any residual seam to this.
     tail = pixel_frames[-num_motion_frame:] if num_motion_frame > 0 else list(pixel_frames)
     encoded = vae.encode_image(tail)
     return encoded[0]
