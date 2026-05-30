@@ -53,7 +53,7 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
     num_clips = int(params.get("num_clips", len(prompts)))
 
     num_motion_latent = int(params.get("num_motion_latent", 1))
-    pixel_re_encode = bool(params.get("pixel_re_encode", False))
+    pixel_re_encode = bool(params.get("pixel_re_encode", True))
     num_motion_frame = int(params.get("num_motion_frame", 4))
     # Wan VAE temporal compression: N pixel frames -> 1 + (N-1)//4 latent frames.
     # The re-encoded tail feeds build_conditioning_latents, which assigns
