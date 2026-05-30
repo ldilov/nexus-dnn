@@ -1,10 +1,31 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
+
+
+def _fp8_compute_mode() -> str:
+    # "bf16" = dequant weight to bf16 + bf16 matmul (clean, default). "scaled_mm"
+    # = torch._scaled_mm fp8 fast path — fast but on Blackwell sm120 it produces
+    # muddy/color-smudge/ghosting (ComfyUI #11920). Opt-in only.
+    return os.environ.get("SVI2_FP8_COMPUTE", "bf16").strip().lower()
+
+
+_fp8_path_logged = False
+
+
+def _log_fp8_path_once(path: str) -> None:
+    global _fp8_path_logged
+    if _fp8_path_logged:
+        return
+    _fp8_path_logged = True
+    import sys
+
+    print(f"[fp8] linear compute path = {path}", file=sys.stderr, flush=True)
 
 WEIGHT_SCALE_SUFFIXES: tuple[str, ...] = (
     ".scale_weight",
@@ -55,7 +76,13 @@ class ScaledFP8Linear(nn.Module):
             self.bias: Optional[nn.Parameter] = None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if x.device.type == "cuda" and hasattr(torch, "_scaled_mm"):
+        use_scaled_mm = (
+            _fp8_compute_mode() == "scaled_mm"
+            and x.device.type == "cuda"
+            and hasattr(torch, "_scaled_mm")
+        )
+        _log_fp8_path_once("scaled_mm" if use_scaled_mm else "bf16_dequant")
+        if use_scaled_mm:
             return self._cuda_forward(x)
         return self._fallback_forward(x)
 
@@ -82,8 +109,10 @@ class ScaledFP8Linear(nn.Module):
             return self._fallback_forward(x)
 
     def _fallback_forward(self, x: torch.Tensor) -> torch.Tensor:
-        w = self.weight_fp8.float() * self.scale_weight
-        out = (x.float() @ w.t()).to(x.dtype)
+        # Dequant weight (scale applied in fp32 for accuracy) then bf16 matmul —
+        # full-precision activations, no fp8 activation quant. Clean on Blackwell.
+        w = (self.weight_fp8.float() * self.scale_weight).to(torch.bfloat16)
+        out = (x.to(torch.bfloat16) @ w.t()).to(x.dtype)
         if self.bias is not None:
             out = out + self.bias.to(out.dtype)
         return out

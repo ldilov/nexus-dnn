@@ -36,7 +36,7 @@ _NEGATIVE_PROMPT = (
     "畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走"
 )
 
-_SWITCH_BOUNDARY = 0.875
+_SWITCH_BOUNDARY = 0.9
 _NUM_INFERENCE_STEPS = 50
 _SIGMA_SHIFT = 5.0
 
@@ -68,6 +68,17 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "num_overlap_frame": int(params.get("num_overlap_frame", 4)),
         "num_motion_latent": int(params.get("num_motion_latent", 1)),
         "blocks_to_swap": int(params.get("blocks_to_swap", 40)),
+        "teacache_thresh": float(params.get("teacache_thresh", 0.0)),
+        "motion_scale_t": float(params.get("motion_scale_t", 1.0)),
+        "motion_scale_h": float(params.get("motion_scale_h", 1.0)),
+        "motion_scale_w": float(params.get("motion_scale_w", 1.0)),
+        "motion_scale_schedule": params.get("motion_scale_schedule"),
+        "adain_factor": float(params.get("adain_factor", 0.0)),
+        "distill_lora_high": params.get("distill_lora_high"),
+        "distill_lora_low": params.get("distill_lora_low"),
+        "dit_high_path": params.get("dit_high_path"),
+        "dit_low_path": params.get("dit_low_path"),
+        "fixed_sigmas": params.get("fixed_sigmas"),
         "seed_multiplier": int(params.get("seed_multiplier", 42)),
         "models_dir": params.get("models_dir"),
         "output_path": params.get("output_path", "out.mp4"),
@@ -113,7 +124,9 @@ def _wan_model_builder(config: dict[str, Any]) -> Any:
     return WanModel(**config)
 
 
-def _build_expert(dit_path: Path, lora_path: Optional[Path]) -> ExpertModel:
+def _build_expert(
+    dit_path: Path, lora_path: Optional[Path], distill_lora_path: Optional[Path] = None
+) -> ExpertModel:
     from .wan22 import WanModel
     from .fp8_loader import load_expert_meta
     from .lora import load_lora_pairs, wrap_module_with_lora
@@ -131,6 +144,13 @@ def _build_expert(dit_path: Path, lora_path: Optional[Path]) -> ExpertModel:
         pairs = load_lora_pairs(lora_path)
         lora_audit = wrap_module_with_lora(dit, pairs)
 
+    # Stack a distill (Lightning/lightx2v) LoRA on top — re-wrapping nests
+    # AdditiveLoraLinear so deltas sum: W·x + svi_delta + distill_delta.
+    if distill_lora_path is not None and distill_lora_path.exists():
+        dpairs = load_lora_pairs(distill_lora_path)
+        distill_audit = wrap_module_with_lora(dit, dpairs)
+        lora_audit = {"svi": lora_audit, "distill": distill_audit}
+
     return ExpertModel(dit=dit, fp8_audit=fp8_audit, lora_audit=lora_audit)
 
 
@@ -140,8 +160,18 @@ def _build_models(params: dict[str, Any]) -> RenderModels:
 
     models_dir = Path(params["models_dir"]) if params.get("models_dir") else Path("models")
 
-    high = _build_expert(_resolve(models_dir, "dit-high-fp8"), _resolve(models_dir, "svi-lora-high"))
-    low = _build_expert(_resolve(models_dir, "dit-low-fp8"), _resolve(models_dir, "svi-lora-low"))
+    dh = params.get("distill_lora_high")
+    dl = params.get("distill_lora_low")
+    distill_high = Path(dh) if dh else None
+    distill_low = Path(dl) if dl else None
+
+    dit_high_override = params.get("dit_high_path")
+    dit_low_override = params.get("dit_low_path")
+    dit_high = Path(dit_high_override) if dit_high_override else _resolve(models_dir, "dit-high-fp8")
+    dit_low = Path(dit_low_override) if dit_low_override else _resolve(models_dir, "dit-low-fp8")
+
+    high = _build_expert(dit_high, _resolve(models_dir, "svi-lora-high"), distill_high)
+    low = _build_expert(dit_low, _resolve(models_dir, "svi-lora-low"), distill_low)
 
     vae = VaeWrapper(_resolve(models_dir, "vae"))
     text_encoder = TextEncoderWrapper(
@@ -205,7 +235,8 @@ def _denoise_clip(
     if move_to is not None:
         move_to("high")
 
-    for step_idx in range(len(timesteps)):
+    num_steps = len(timesteps)
+    for step_idx in range(num_steps):
         timestep = timesteps[step_idx]
         tier = expert_selector.select(float(timestep.item()))
         if tier != active_tier:
@@ -216,11 +247,19 @@ def _denoise_clip(
         dit = models.high.dit if active_tier == "high" else models.low.dit
 
         ts = timestep.unsqueeze(0).to(dtype=latent.dtype, device=latent.device)
+        tea_first = step_idx == 0
+        tea_last = step_idx == num_steps - 1
 
         with torch.no_grad():
-            noise_pred_posi = dit(x=latent, timestep=ts, context=context_posi, clip_feature=None, y=y)
+            noise_pred_posi = dit(
+                x=latent, timestep=ts, context=context_posi, clip_feature=None, y=y,
+                tea_slot=0, tea_first=tea_first, tea_last=tea_last,
+            )
             if cfg_scale != 1.0:
-                noise_pred_nega = dit(x=latent, timestep=ts, context=context_nega, clip_feature=None, y=y)
+                noise_pred_nega = dit(
+                    x=latent, timestep=ts, context=context_nega, clip_feature=None, y=y,
+                    tea_slot=1, tea_first=tea_first, tea_last=tea_last,
+                )
                 noise_pred = noise_pred_nega + cfg_scale * (noise_pred_posi - noise_pred_nega)
             else:
                 noise_pred = noise_pred_posi
@@ -249,7 +288,7 @@ def _run_render(
 
     from .expert_router import ExpertSelector
     from .wan22 import FlowMatchScheduler
-    from .svi_chain import stitch_clip_frames
+    from .svi_chain import stitch_clip_frames, adain_normalize_latent
     from .ffmpeg_io import frames_to_mp4
     from .render_report import write_render_report
     from .vram import reset_peak, peak_allocated, log_vram
@@ -280,6 +319,8 @@ def _run_render(
     scheduler.set_timesteps(
         num_inference_steps=params["num_inference_steps"], shift=params["sigma_shift"]
     )
+    if params.get("fixed_sigmas"):
+        scheduler.set_fixed_sigmas(params["fixed_sigmas"])
     timesteps = scheduler.timesteps
 
     total_latent_frames = (frames_per_clip - 1) // 4 + 1
@@ -288,6 +329,17 @@ def _run_render(
 
     expert_selector = ExpertSelector(boundary=switch_boundary)
     blocks_to_swap: int = params["blocks_to_swap"]
+
+    teacache_thresh: float = params["teacache_thresh"]
+    teacache_on = teacache_thresh > 0.0
+    models.high.dit.configure_tea_cache(teacache_on, teacache_thresh)
+    models.low.dit.configure_tea_cache(teacache_on, teacache_thresh)
+
+    mst, msh, msw = params["motion_scale_t"], params["motion_scale_h"], params["motion_scale_w"]
+    motion_schedule = params.get("motion_scale_schedule")  # per-clip temporal ramp
+    if not motion_schedule and (mst, msh, msw) != (1.0, 1.0, 1.0):
+        models.high.dit.configure_motion_scale(mst, msh, msw)
+        models.low.dit.configure_motion_scale(mst, msh, msw)
 
     def _move_to(tier: str) -> None:
         if device != "cuda":
@@ -310,10 +362,20 @@ def _run_render(
         torch.cuda.empty_cache()
 
     prev_last_latent: Any = None
+    adain_reference: Any = None
+    adain_factor: float = params["adain_factor"]
     all_clips: list[list] = []
 
     for clip_idx in range(num_clips):
         log_vram(f"clip {clip_idx} start")
+        if teacache_on:
+            models.high.dit.reset_tea_cache()
+            models.low.dit.reset_tea_cache()
+        if motion_schedule:
+            ms = float(motion_schedule[min(clip_idx, len(motion_schedule) - 1)])
+            models.high.dit.configure_motion_scale(ms, msh, msw)
+            models.low.dit.configure_motion_scale(ms, msh, msw)
+            log_vram(f"clip {clip_idx} motion_scale_t={ms}")
         prompt = prompts[clip_idx % len(prompts)]
         seed = params["seed_multiplier"] * clip_idx
         torch.manual_seed(seed)
@@ -357,6 +419,15 @@ def _run_render(
             scheduler=scheduler,
             move_to=_move_to,
         )
+
+        # Cap colour/exposure drift down the continuation chain: match each
+        # later clip's per-channel latent stats toward clip-0 (AdaIN). Off at 0.
+        if clip_idx == 0:
+            adain_reference = latent.detach()[0]
+        elif adain_factor > 0.0 and adain_reference is not None:
+            adjusted = adain_normalize_latent(latent[0], adain_reference, adain_factor)
+            latent = adjusted.unsqueeze(0)
+            log_vram(f"clip {clip_idx} adain factor={adain_factor}")
 
         prev_last_latent = latent.detach()[0]
 
