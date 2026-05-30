@@ -32,12 +32,19 @@ def _tiny_dit(dtype: torch.dtype = torch.float32) -> WanModel:
 
 class _FakeVae:
     def __init__(self, dtype: torch.dtype = torch.float32) -> None:
-        self.latent_frames = 1
         self.dtype = dtype
 
     def encode_image(self, image):
-        h, w = image.size[1], image.size[0]
-        return torch.randn(1, 16, self.latent_frames, h // 8, w // 8, dtype=self.dtype)
+        # pipeline passes a single PIL (anchor) or a list of PIL (pixel re-encode tail)
+        if isinstance(image, list):
+            frame = image[0]
+            frames_in = len(image)
+        else:
+            frame = image
+            frames_in = 1
+        h, w = frame.size[1], frame.size[0]
+        lat_f = 1 + (frames_in - 1) // 4  # mirror Wan VAE temporal compression
+        return torch.randn(1, 16, lat_f, h // 8, w // 8, dtype=self.dtype)
 
     def decode_latents(self, latent):
         frames_lat = latent.shape[2]
