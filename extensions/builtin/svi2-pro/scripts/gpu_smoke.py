@@ -72,6 +72,8 @@ def _run_worker(
     cfg_scale: float,
     num_overlap_frame: int,
     num_motion_latent: int,
+    pixel_re_encode: bool,
+    num_motion_frame: int,
     teacache_thresh: float,
     blocks_to_swap: int,
     motion_scale_t: float,
@@ -121,6 +123,8 @@ def _run_worker(
         "cfg_scale": cfg_scale,
         "num_overlap_frame": num_overlap_frame,
         "num_motion_latent": num_motion_latent,
+        "pixel_re_encode": pixel_re_encode,
+        "num_motion_frame": num_motion_frame,
         "teacache_thresh": teacache_thresh,
         "blocks_to_swap": blocks_to_swap,
         "motion_scale_t": motion_scale_t,
@@ -182,6 +186,12 @@ def main() -> int:
     parser.add_argument("--cfg-scale", type=float, default=5.0)
     parser.add_argument("--num-overlap-frame", type=int, default=4)
     parser.add_argument("--num-motion-latent", type=int, default=1)
+    parser.add_argument(
+        "--pixel-re-encode",
+        action="store_true",
+        help="VAE decode->re-encode the motion tail between clips (caps continuation drift)",
+    )
+    parser.add_argument("--num-motion-frame", type=int, default=4, help="pixel frames re-encoded for --pixel-re-encode")
     parser.add_argument(
         "--teacache-thresh",
         type=float,
@@ -281,6 +291,8 @@ def main() -> int:
         cfg_scale=args.cfg_scale,
         num_overlap_frame=args.num_overlap_frame,
         num_motion_latent=args.num_motion_latent,
+        pixel_re_encode=args.pixel_re_encode,
+        num_motion_frame=args.num_motion_frame,
         teacache_thresh=args.teacache_thresh,
         blocks_to_swap=args.blocks_to_swap,
         motion_scale_t=args.motion_scale_t,

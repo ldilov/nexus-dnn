@@ -67,6 +67,8 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "switch_boundary": float(params.get("switch_boundary", _SWITCH_BOUNDARY)),
         "num_overlap_frame": int(params.get("num_overlap_frame", 4)),
         "num_motion_latent": int(params.get("num_motion_latent", 1)),
+        "pixel_re_encode": bool(params.get("pixel_re_encode", False)),
+        "num_motion_frame": int(params.get("num_motion_frame", 4)),
         "blocks_to_swap": int(params.get("blocks_to_swap", 40)),
         "teacache_thresh": float(params.get("teacache_thresh", 0.0)),
         "motion_scale_t": float(params.get("motion_scale_t", 1.0)),
@@ -288,7 +290,7 @@ def _run_render(
 
     from .expert_router import ExpertSelector
     from .wan22 import FlowMatchScheduler
-    from .svi_chain import stitch_clip_frames, adain_normalize_latent
+    from .svi_chain import stitch_clip_frames, adain_normalize_latent, reencode_motion_tail
     from .ffmpeg_io import frames_to_mp4
     from .render_report import write_render_report
     from .vram import reset_peak, peak_allocated, log_vram
@@ -312,6 +314,8 @@ def _run_render(
     height: int = params["height"]
     width: int = params["width"]
     switch_boundary: float = params["switch_boundary"]
+    pixel_re_encode: bool = params["pixel_re_encode"]
+    num_motion_frame: int = params["num_motion_frame"]
 
     ref_image = Image.open(params["ref_image_path"]).convert("RGB").resize((width, height))
 
@@ -435,12 +439,22 @@ def _run_render(
         if device == "cuda":
             models.vae.to_cuda()
         frames = models.vae.decode_latents(latent)
+        pil_frames = _to_pil_frames(frames)
+
+        # Pixel re-encode continuation: replace the raw denoised latent tail with
+        # a VAE round-trip of the last num_motion_frame output frames so the next
+        # clip conditions on an on-manifold latent (caps escalating drift).
+        if pixel_re_encode and num_motion_frame > 0:
+            reenc = reencode_motion_tail(models.vae, pil_frames, num_motion_frame)
+            prev_last_latent = reenc.to(device=device, dtype=prev_last_latent.dtype)
+            log_vram(f"clip {clip_idx} pixel re-encode tail={num_motion_frame}")
+
         if device == "cuda":
             models.vae.to_cpu()
             torch.cuda.empty_cache()
         log_vram(f"clip {clip_idx} vae decode done")
 
-        all_clips.append(_to_pil_frames(frames))
+        all_clips.append(pil_frames)
 
     stitched = stitch_clip_frames(all_clips, num_overlap_frame)
     video_path = frames_to_mp4(stitched, output_path, fps=fps)
