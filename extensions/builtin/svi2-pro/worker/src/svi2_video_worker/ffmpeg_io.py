@@ -24,19 +24,34 @@ def frames_to_mp4(
         cmd = [
             "ffmpeg",
             "-y",
+            "-nostdin",
+            "-nostats",
+            "-loglevel",
+            "error",
             "-framerate",
             str(fps),
             "-i",
             str(tmpdir / "%06d.png"),
+            "-c:v",
+            "libx264",
             "-pix_fmt",
             "yuv420p",
             "-crf",
             str(crf),
+            "-movflags",
+            "+faststart",
             str(out_path),
         ]
 
+        # -nostats/-loglevel error keep ffmpeg's stderr tiny: a chatty progress
+        # stream fills the OS pipe and deadlocks ffmpeg when it is launched
+        # through a wrapper shim that does not drain stderr (observed with the
+        # chocolatey ffmpeg shim + capture_output). stdin is closed so ffmpeg
+        # never blocks waiting on an overwrite prompt.
         try:
-            subprocess.run(cmd, check=True, capture_output=True)
+            subprocess.run(
+                cmd, check=True, stdin=subprocess.DEVNULL, capture_output=True
+            )
         except subprocess.CalledProcessError as exc:
             raise RuntimeError(f"ffmpeg failed: {exc.stderr.decode(errors='replace')}") from exc
 
