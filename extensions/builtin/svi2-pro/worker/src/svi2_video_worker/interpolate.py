@@ -74,12 +74,18 @@ def interpolate_video(
     method: str = "ffmpeg",
     rife_bin: Optional[str | Path] = None,
     rife_model: Optional[str] = None,
+    rife_weights: Optional[str] = None,
+    device: str = "cuda",
     src_frame_count: Optional[int] = None,
     runner: Optional[Runner] = None,
+    torch_backend: Optional[Callable[..., Path]] = None,
 ) -> Path:
     # Frame-interpolation post-process. Native render stays at src_fps; this
     # ADDS frames to reach target_fps (smooth high-fps without speeding motion
     # up). Returns src unchanged when target_fps <= src_fps (no-op).
+    # method: "ffmpeg" (minterpolate), "rife_torch" (IFNet on CUDA),
+    # "rife_ncnn" (rife-ncnn-vulkan binary). Engine selection for the generic
+    # "rife" request is resolved one level up (pipeline) to a concrete method.
     src_mp4 = Path(src_mp4)
     out_mp4 = Path(out_mp4)
     run = runner or _default_runner
@@ -91,9 +97,18 @@ def interpolate_video(
         run(build_minterpolate_cmd(src_mp4, out_mp4, target_fps))
         return out_mp4
 
-    if method == "rife":
+    if method == "rife_torch":
+        backend = torch_backend
+        if backend is None:
+            from .rife_torch import interpolate_rife_torch as backend  # lazy: torch + weights
+        return backend(
+            src_mp4, out_mp4, src_fps=src_fps, target_fps=target_fps,
+            weights_path=rife_weights, device=device,
+        )
+
+    if method == "rife_ncnn":
         if not rife_bin:
-            raise ValueError("method='rife' requires rife_bin (path to rife-ncnn-vulkan)")
+            raise ValueError("method='rife_ncnn' requires rife_bin (path to rife-ncnn-vulkan)")
         factor = rife_factor_for_fps(src_fps, target_fps)
         with tempfile.TemporaryDirectory() as td:
             tdp = Path(td)
@@ -108,3 +123,29 @@ def interpolate_video(
         return out_mp4
 
     raise ValueError(f"unknown interpolation method: {method}")
+
+
+def cuda_available(device: str = "cuda") -> bool:
+    if device != "cuda":
+        return False
+    try:
+        import torch
+
+        return bool(torch.cuda.is_available())
+    except Exception:
+        return False
+
+
+def resolve_rife_method(requested: str, *, device: str = "cuda", rife_bin: Optional[str] = None) -> str:
+    # Map a user-facing interpolate_method to a concrete engine. "rife" prefers
+    # torch (CUDA, works on aarch64 with no Vulkan); falls back to ncnn if a
+    # binary is present, else ffmpeg minterpolate so the default never crashes.
+    if requested in ("ffmpeg", "rife_torch", "rife_ncnn"):
+        return requested
+    if requested in ("rife", "auto"):
+        if cuda_available(device):
+            return "rife_torch"
+        if rife_bin:
+            return "rife_ncnn"
+        return "ffmpeg"
+    return "ffmpeg"

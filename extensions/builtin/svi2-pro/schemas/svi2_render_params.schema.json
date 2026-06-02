@@ -41,13 +41,16 @@
     },
     "interpolate_method": {
       "type": "string",
-      "enum": ["ffmpeg", "rife"],
-      "default": "ffmpeg"
+      "enum": ["rife", "rife_torch", "rife_ncnn", "ffmpeg"],
+      "default": "rife"
     },
     "rife_bin": {
       "type": ["string", "null"]
     },
     "rife_model": {
+      "type": ["string", "null"]
+    },
+    "rife_weights": {
       "type": ["string", "null"]
     },
     "frames_per_clip": {
