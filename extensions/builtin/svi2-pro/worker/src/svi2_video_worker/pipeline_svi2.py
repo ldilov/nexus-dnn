@@ -98,6 +98,8 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "motion_scale_h": float(params.get("motion_scale_h", 1.0)),
         "motion_scale_w": float(params.get("motion_scale_w", 1.0)),
         "motion_scale_schedule": params.get("motion_scale_schedule"),
+        "image_cond_noise_scale": float(params.get("image_cond_noise_scale", 0.0)),
+        "image_cond_noise_schedule": params.get("image_cond_noise_schedule"),
         "adain_factor": float(params.get("adain_factor", 0.0)),
         "distill_lora_high": params.get("distill_lora_high"),
         "distill_lora_low": params.get("distill_lora_low"),
@@ -216,6 +218,7 @@ def _build_image_conditioning(
     height: int,
     width: int,
     num_motion_latent: int,
+    image_cond_noise_scale: float = 0.0,
 ) -> Any:
     import torch
     from .svi_chain import build_conditioning_latents
@@ -225,6 +228,7 @@ def _build_image_conditioning(
         prev_last_latent,
         total_latent_frames=total_latent_frames,
         num_motion_latent=num_motion_latent,
+        image_cond_noise_scale=image_cond_noise_scale,
     )
 
     lat_h = height // 8
@@ -339,6 +343,8 @@ def _run_render(
     switch_boundary: float = params["switch_boundary"]
     pixel_re_encode: bool = params["pixel_re_encode"]
     num_motion_frame: int = params["num_motion_frame"]
+    icn_scale: float = params["image_cond_noise_scale"]
+    icn_schedule = params.get("image_cond_noise_schedule")
 
     ref_image = Image.open(params["ref_image_path"]).convert("RGB").resize((width, height))
 
@@ -421,6 +427,13 @@ def _run_render(
         ).to(device=device, dtype=torch.bfloat16)
         latent = noise
 
+        clip_icn = (
+            float(icn_schedule[min(clip_idx, len(icn_schedule) - 1)])
+            if icn_schedule
+            else icn_scale
+        )
+        if clip_icn > 0.0:
+            log_vram(f"clip {clip_idx} image_cond_noise_scale={clip_icn}")
         y = _build_image_conditioning(
             anchor_lat.to(device),
             prev_last_latent,
@@ -429,6 +442,7 @@ def _run_render(
             height=height,
             width=width,
             num_motion_latent=num_motion_latent,
+            image_cond_noise_scale=clip_icn,
         )
 
         context_posi = context_posi.to(device)

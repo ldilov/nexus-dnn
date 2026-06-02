@@ -76,6 +76,16 @@
       "maximum": 5,
       "default": 1
     },
+    "image_cond_noise_scale": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.0
+    },
+    "image_cond_noise_schedule": {
+      "type": ["array", "null"],
+      "items": { "type": "number" }
+    },
     "pixel_re_encode": {
       "type": "boolean",
       "default": true
