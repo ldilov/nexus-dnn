@@ -28,13 +28,22 @@ def build_conditioning_latents(
     prev_last_latent: Optional[torch.Tensor],
     total_latent_frames: int,
     num_motion_latent: int,
+    image_cond_noise_scale: float = 0.0,
 ) -> torch.Tensor:
     C, _, H, W = anchor_lat.shape
     y = torch.zeros(C, total_latent_frames, H, W, dtype=anchor_lat.dtype, device=anchor_lat.device)
     y[:, 0] = anchor_lat[:, 0]
+    n_cond = 1
     if prev_last_latent is not None and num_motion_latent > 0:
         tail = prev_last_latent[:, -num_motion_latent:]
         y[:, 1 : 1 + num_motion_latent] = tail
+        n_cond = 1 + num_motion_latent
+    # Image-conditioning noise (ICN): perturb the ref/anchor (and motion-tail)
+    # conditioning latents so the DiT is not hard-locked to the input image and
+    # can follow prompt-driven transformations (eyes/veins/pose changes). 0 =
+    # rigid ref lock; higher = more deviation (and less identity stability).
+    if image_cond_noise_scale > 0.0:
+        y[:, :n_cond] = y[:, :n_cond] + image_cond_noise_scale * torch.randn_like(y[:, :n_cond])
     return y
 
 

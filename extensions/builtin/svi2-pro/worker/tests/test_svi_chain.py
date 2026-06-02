@@ -40,3 +40,46 @@ def test_stitch_drops_overlap_frames_after_first_clip():
 def test_stitch_single_clip_unchanged():
     c0 = [f"a{i}" for i in range(81)]
     assert stitch_clip_frames([c0], num_overlap_frame=5) == c0
+
+
+def test_icn_perturbs_anchor_and_leaves_noncond_zero():
+    torch.manual_seed(0)
+    anchor_lat = torch.randn(16, 1, 8, 8)
+    y = build_conditioning_latents(
+        anchor_lat, prev_last_latent=None, total_latent_frames=21,
+        num_motion_latent=1, image_cond_noise_scale=0.5,
+    )
+    assert not torch.equal(y[:, 0], anchor_lat[:, 0])      # anchor noised
+    assert torch.count_nonzero(y[:, 1:]) == 0              # non-cond frames untouched
+
+
+def test_icn_noises_motion_tail_too():
+    torch.manual_seed(0)
+    anchor_lat = torch.randn(16, 1, 8, 8)
+    prev = torch.randn(16, 5, 8, 8)
+    y = build_conditioning_latents(
+        anchor_lat, prev_last_latent=prev, total_latent_frames=21,
+        num_motion_latent=2, image_cond_noise_scale=0.5,
+    )
+    assert not torch.equal(y[:, 1], prev[:, -2])           # tail noised
+    assert not torch.equal(y[:, 2], prev[:, -1])
+    assert torch.count_nonzero(y[:, 3:]) == 0              # beyond cond stays zero
+
+
+def test_icn_zero_is_unchanged():
+    anchor_lat = torch.randn(16, 1, 8, 8)
+    y = build_conditioning_latents(
+        anchor_lat, prev_last_latent=None, total_latent_frames=21,
+        num_motion_latent=1, image_cond_noise_scale=0.0,
+    )
+    assert torch.equal(y[:, 0], anchor_lat[:, 0])
+    assert torch.count_nonzero(y[:, 1:]) == 0
+
+
+def test_icn_deterministic_under_seed():
+    anchor_lat = torch.randn(16, 1, 8, 8)
+    torch.manual_seed(7)
+    a = build_conditioning_latents(anchor_lat, None, 21, 1, image_cond_noise_scale=0.4)
+    torch.manual_seed(7)
+    b = build_conditioning_latents(anchor_lat, None, 21, 1, image_cond_noise_scale=0.4)
+    assert torch.equal(a, b)
