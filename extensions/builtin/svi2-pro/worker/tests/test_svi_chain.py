@@ -83,3 +83,31 @@ def test_icn_deterministic_under_seed():
     torch.manual_seed(7)
     b = build_conditioning_latents(anchor_lat, None, 21, 1, image_cond_noise_scale=0.4)
     assert torch.equal(a, b)
+
+
+def test_radial_noise_mask_center_high_edge_low():
+    from svi2_video_worker.svi_chain import radial_noise_mask
+    m = radial_noise_mask(64, 64, bg_protect=1.0)
+    assert m.shape == (64, 64)
+    assert abs(float(m[32, 32]) - 1.0) < 0.05      # centre ~1
+    assert float(m[0, 0]) < 0.05                    # corner ~0 (fully protected)
+    assert float(m[0, 0]) < float(m[32, 32])
+
+
+def test_radial_noise_mask_bg_protect_zero_is_uniform():
+    from svi2_video_worker.svi_chain import radial_noise_mask
+    m = radial_noise_mask(16, 16, bg_protect=0.0)
+    assert torch.allclose(m, torch.ones_like(m))
+
+
+def test_icn_bg_protect_perturbs_center_more_than_edge():
+    torch.manual_seed(0)
+    anchor = torch.randn(16, 1, 32, 32)
+    y = build_conditioning_latents(
+        anchor, None, total_latent_frames=21, num_motion_latent=1,
+        image_cond_noise_scale=0.6, image_cond_noise_bg_protect=1.0,
+    )
+    d = (y[:, 0] - anchor[:, 0]).abs()
+    center = d[:, 14:18, 14:18].mean()
+    edge = d[:, :2, :2].mean()
+    assert center > edge * 3      # centre noised far more than protected corner

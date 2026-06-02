@@ -87,6 +87,7 @@ def _run_worker(
     adain_factor: float,
     image_cond_noise_scale: float,
     image_cond_noise_schedule: list[float] | None,
+    image_cond_noise_bg_protect: float,
     num_inference_steps: int,
     sigma_shift: float,
     switch_boundary: float,
@@ -146,6 +147,7 @@ def _run_worker(
         "adain_factor": adain_factor,
         "image_cond_noise_scale": image_cond_noise_scale,
         "image_cond_noise_schedule": image_cond_noise_schedule,
+        "image_cond_noise_bg_protect": image_cond_noise_bg_protect,
         "num_inference_steps": num_inference_steps,
         "sigma_shift": sigma_shift,
         "switch_boundary": switch_boundary,
@@ -263,7 +265,13 @@ def main() -> int:
     parser.add_argument(
         "--image-cond-noise-schedule",
         default="",
-        help="per-clip ICN ramp, comma list e.g. 0.1,0.3,0.6 (overrides --image-cond-noise-scale)",
+        help="per-clip ICN ramp, comma list e.g. 0.1,0.3,0.45 (overrides --image-cond-noise-scale)",
+    )
+    parser.add_argument(
+        "--icn-bg-protect",
+        type=float,
+        default=0.0,
+        help="spatially mask ICN toward frame centre to keep background/edges coherent (0=off, 1=corners fully protected; assumes centred subject)",
     )
     parser.add_argument("--num-inference-steps", type=int, default=50)
     parser.add_argument(
@@ -358,6 +366,7 @@ def main() -> int:
             if args.image_cond_noise_schedule
             else None
         ),
+        image_cond_noise_bg_protect=args.icn_bg_protect,
         num_inference_steps=args.num_inference_steps,
         sigma_shift=args.sigma_shift,
         switch_boundary=args.switch_boundary,
