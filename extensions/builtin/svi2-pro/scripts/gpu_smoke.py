@@ -69,6 +69,7 @@ def _run_worker(
     num_clips: int,
     height: int,
     width: int,
+    fps: int,
     cfg_scale: float,
     num_overlap_frame: int,
     num_motion_latent: int,
@@ -120,6 +121,7 @@ def _run_worker(
         "num_clips": num_clips,
         "height": height,
         "width": width,
+        "fps": fps,
         "cfg_scale": cfg_scale,
         "num_overlap_frame": num_overlap_frame,
         "num_motion_latent": num_motion_latent,
@@ -183,6 +185,7 @@ def main() -> int:
     parser.add_argument("--num-clips", type=int, default=4)
     parser.add_argument("--height", type=int, default=832)
     parser.add_argument("--width", type=int, default=480)
+    parser.add_argument("--fps", type=int, default=15, help="output mp4 playback fps")
     parser.add_argument("--cfg-scale", type=float, default=5.0)
     parser.add_argument("--num-overlap-frame", type=int, default=4)
     parser.add_argument("--num-motion-latent", type=int, default=1)
@@ -289,6 +292,7 @@ def main() -> int:
         num_clips=args.num_clips,
         height=args.height,
         width=args.width,
+        fps=args.fps,
         cfg_scale=args.cfg_scale,
         num_overlap_frame=args.num_overlap_frame,
         num_motion_latent=args.num_motion_latent,
