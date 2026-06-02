@@ -23,12 +23,26 @@ def reencode_motion_tail(vae: Any, pixel_frames: list, num_motion_frame: int) ->
     return encoded[0]
 
 
+def radial_noise_mask(
+    height: int, width: int, bg_protect: float, *, device=None, dtype=None
+) -> torch.Tensor:
+    # Spatial weight for ICN noise: 1.0 at frame centre, (1-bg_protect) at the
+    # corners. Concentrates conditioning noise on the (centred) subject and
+    # protects the edges/background so it stays coherent. bg_protect 0 = uniform
+    # (no protection), 1 = corners fully protected. Assumes a centred subject.
+    ys = torch.linspace(-1.0, 1.0, height, device=device, dtype=dtype).view(height, 1)
+    xs = torch.linspace(-1.0, 1.0, width, device=device, dtype=dtype).view(1, width)
+    r = torch.sqrt(ys * ys + xs * xs) / (2.0 ** 0.5)  # 0 centre -> 1 corner
+    return (1.0 - bg_protect * r).clamp(0.0, 1.0)
+
+
 def build_conditioning_latents(
     anchor_lat: torch.Tensor,
     prev_last_latent: Optional[torch.Tensor],
     total_latent_frames: int,
     num_motion_latent: int,
     image_cond_noise_scale: float = 0.0,
+    image_cond_noise_bg_protect: float = 0.0,
 ) -> torch.Tensor:
     C, _, H, W = anchor_lat.shape
     y = torch.zeros(C, total_latent_frames, H, W, dtype=anchor_lat.dtype, device=anchor_lat.device)
@@ -42,8 +56,14 @@ def build_conditioning_latents(
     # conditioning latents so the DiT is not hard-locked to the input image and
     # can follow prompt-driven transformations (eyes/veins/pose changes). 0 =
     # rigid ref lock; higher = more deviation (and less identity stability).
+    # image_cond_noise_bg_protect (>0) masks the noise toward the centre so the
+    # background/edges keep their structure while the subject transforms.
     if image_cond_noise_scale > 0.0:
-        y[:, :n_cond] = y[:, :n_cond] + image_cond_noise_scale * torch.randn_like(y[:, :n_cond])
+        noise = torch.randn_like(y[:, :n_cond])
+        if image_cond_noise_bg_protect > 0.0:
+            mask = radial_noise_mask(H, W, image_cond_noise_bg_protect, device=y.device, dtype=y.dtype)
+            noise = noise * mask
+        y[:, :n_cond] = y[:, :n_cond] + image_cond_noise_scale * noise
     return y
 
 
