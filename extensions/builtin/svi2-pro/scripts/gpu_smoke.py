@@ -74,6 +74,7 @@ def _run_worker(
     interpolate_method: str,
     rife_bin: str,
     rife_model: str,
+    rife_weights: str,
     cfg_scale: float,
     num_overlap_frame: int,
     num_motion_latent: int,
@@ -130,6 +131,7 @@ def _run_worker(
         "interpolate_method": interpolate_method,
         "rife_bin": rife_bin or None,
         "rife_model": rife_model or None,
+        "rife_weights": rife_weights or None,
         "cfg_scale": cfg_scale,
         "num_overlap_frame": num_overlap_frame,
         "num_motion_latent": num_motion_latent,
@@ -202,12 +204,13 @@ def main() -> int:
     )
     parser.add_argument(
         "--interpolate-method",
-        default="ffmpeg",
-        choices=["ffmpeg", "rife"],
-        help="ffmpeg=minterpolate (zero-dep); rife=rife-ncnn-vulkan (needs --rife-bin)",
+        default="rife",
+        choices=["rife", "rife_torch", "rife_ncnn", "ffmpeg"],
+        help="rife=auto (torch IFNet on CUDA, else ncnn bin, else ffmpeg fallback); ffmpeg=minterpolate",
     )
-    parser.add_argument("--rife-bin", default="", help="path to rife-ncnn-vulkan binary (for --interpolate-method rife)")
-    parser.add_argument("--rife-model", default="", help="optional rife model name/dir (-m)")
+    parser.add_argument("--rife-bin", default="", help="path to rife-ncnn-vulkan binary (rife_ncnn)")
+    parser.add_argument("--rife-model", default="", help="optional rife-ncnn model name/dir (-m)")
+    parser.add_argument("--rife-weights", default="", help="path to RIFE flownet.pkl (rife_torch; default downloads from HF)")
     parser.add_argument("--cfg-scale", type=float, default=5.0)
     parser.add_argument("--num-overlap-frame", type=int, default=4)
     parser.add_argument("--num-motion-latent", type=int, default=1)
@@ -319,6 +322,7 @@ def main() -> int:
         interpolate_method=args.interpolate_method,
         rife_bin=args.rife_bin,
         rife_model=args.rife_model,
+        rife_weights=args.rife_weights,
         cfg_scale=args.cfg_scale,
         num_overlap_frame=args.num_overlap_frame,
         num_motion_latent=args.num_motion_latent,
