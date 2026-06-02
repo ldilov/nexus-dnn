@@ -34,6 +34,22 @@
       "minimum": 1,
       "default": 15
     },
+    "interpolate_fps": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "interpolate_method": {
+      "type": "string",
+      "enum": ["ffmpeg", "rife"],
+      "default": "ffmpeg"
+    },
+    "rife_bin": {
+      "type": ["string", "null"]
+    },
+    "rife_model": {
+      "type": ["string", "null"]
+    },
     "frames_per_clip": {
       "type": "integer",
       "minimum": 1,

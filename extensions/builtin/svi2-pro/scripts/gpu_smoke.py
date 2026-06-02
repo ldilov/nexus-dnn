@@ -70,6 +70,10 @@ def _run_worker(
     height: int,
     width: int,
     fps: int,
+    interpolate_fps: int,
+    interpolate_method: str,
+    rife_bin: str,
+    rife_model: str,
     cfg_scale: float,
     num_overlap_frame: int,
     num_motion_latent: int,
@@ -122,6 +126,10 @@ def _run_worker(
         "height": height,
         "width": width,
         "fps": fps,
+        "interpolate_fps": interpolate_fps,
+        "interpolate_method": interpolate_method,
+        "rife_bin": rife_bin or None,
+        "rife_model": rife_model or None,
         "cfg_scale": cfg_scale,
         "num_overlap_frame": num_overlap_frame,
         "num_motion_latent": num_motion_latent,
@@ -185,7 +193,21 @@ def main() -> int:
     parser.add_argument("--num-clips", type=int, default=4)
     parser.add_argument("--height", type=int, default=832)
     parser.add_argument("--width", type=int, default=480)
-    parser.add_argument("--fps", type=int, default=15, help="output mp4 playback fps")
+    parser.add_argument("--fps", type=int, default=15, help="native render/playback fps")
+    parser.add_argument(
+        "--interpolate-fps",
+        type=int,
+        default=0,
+        help="post-process frame interpolation target fps (0=off; adds frames, keeps motion speed)",
+    )
+    parser.add_argument(
+        "--interpolate-method",
+        default="ffmpeg",
+        choices=["ffmpeg", "rife"],
+        help="ffmpeg=minterpolate (zero-dep); rife=rife-ncnn-vulkan (needs --rife-bin)",
+    )
+    parser.add_argument("--rife-bin", default="", help="path to rife-ncnn-vulkan binary (for --interpolate-method rife)")
+    parser.add_argument("--rife-model", default="", help="optional rife model name/dir (-m)")
     parser.add_argument("--cfg-scale", type=float, default=5.0)
     parser.add_argument("--num-overlap-frame", type=int, default=4)
     parser.add_argument("--num-motion-latent", type=int, default=1)
@@ -293,6 +315,10 @@ def main() -> int:
         height=args.height,
         width=args.width,
         fps=args.fps,
+        interpolate_fps=args.interpolate_fps,
+        interpolate_method=args.interpolate_method,
+        rife_bin=args.rife_bin,
+        rife_model=args.rife_model,
         cfg_scale=args.cfg_scale,
         num_overlap_frame=args.num_overlap_frame,
         num_motion_latent=args.num_motion_latent,
