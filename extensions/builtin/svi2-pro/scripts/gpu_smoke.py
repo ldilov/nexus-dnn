@@ -85,6 +85,8 @@ def _run_worker(
     motion_scale_t: float,
     motion_scale_schedule: list[float] | None,
     adain_factor: float,
+    image_cond_noise_scale: float,
+    image_cond_noise_schedule: list[float] | None,
     num_inference_steps: int,
     sigma_shift: float,
     switch_boundary: float,
@@ -142,6 +144,8 @@ def _run_worker(
         "motion_scale_t": motion_scale_t,
         "motion_scale_schedule": motion_scale_schedule,
         "adain_factor": adain_factor,
+        "image_cond_noise_scale": image_cond_noise_scale,
+        "image_cond_noise_schedule": image_cond_noise_schedule,
         "num_inference_steps": num_inference_steps,
         "sigma_shift": sigma_shift,
         "switch_boundary": switch_boundary,
@@ -250,6 +254,17 @@ def main() -> int:
         default=0.0,
         help="latent AdaIN drift control: match later clips' colour stats to clip-0 (0=off, 0.3-0.5 typical)",
     )
+    parser.add_argument(
+        "--image-cond-noise-scale",
+        type=float,
+        default=0.0,
+        help="ICN: noise the ref/anchor conditioning so prompt transformations (eyes/veins/pose) can override the input image (0=rigid ref-lock; try 0.2-0.6)",
+    )
+    parser.add_argument(
+        "--image-cond-noise-schedule",
+        default="",
+        help="per-clip ICN ramp, comma list e.g. 0.1,0.3,0.6 (overrides --image-cond-noise-scale)",
+    )
     parser.add_argument("--num-inference-steps", type=int, default=50)
     parser.add_argument(
         "--sigma-shift",
@@ -337,6 +352,12 @@ def main() -> int:
             else None
         ),
         adain_factor=args.adain_factor,
+        image_cond_noise_scale=args.image_cond_noise_scale,
+        image_cond_noise_schedule=(
+            [float(s) for s in args.image_cond_noise_schedule.split(",")]
+            if args.image_cond_noise_schedule
+            else None
+        ),
         num_inference_steps=args.num_inference_steps,
         sigma_shift=args.sigma_shift,
         switch_boundary=args.switch_boundary,
