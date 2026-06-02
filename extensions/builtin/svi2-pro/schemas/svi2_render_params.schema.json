@@ -86,6 +86,12 @@
       "type": ["array", "null"],
       "items": { "type": "number" }
     },
+    "image_cond_noise_bg_protect": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.0
+    },
     "pixel_re_encode": {
       "type": "boolean",
       "default": true

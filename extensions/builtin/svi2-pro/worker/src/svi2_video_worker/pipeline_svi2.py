@@ -100,6 +100,7 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "motion_scale_schedule": params.get("motion_scale_schedule"),
         "image_cond_noise_scale": float(params.get("image_cond_noise_scale", 0.0)),
         "image_cond_noise_schedule": params.get("image_cond_noise_schedule"),
+        "image_cond_noise_bg_protect": float(params.get("image_cond_noise_bg_protect", 0.0)),
         "adain_factor": float(params.get("adain_factor", 0.0)),
         "distill_lora_high": params.get("distill_lora_high"),
         "distill_lora_low": params.get("distill_lora_low"),
@@ -219,6 +220,7 @@ def _build_image_conditioning(
     width: int,
     num_motion_latent: int,
     image_cond_noise_scale: float = 0.0,
+    image_cond_noise_bg_protect: float = 0.0,
 ) -> Any:
     import torch
     from .svi_chain import build_conditioning_latents
@@ -229,6 +231,7 @@ def _build_image_conditioning(
         total_latent_frames=total_latent_frames,
         num_motion_latent=num_motion_latent,
         image_cond_noise_scale=image_cond_noise_scale,
+        image_cond_noise_bg_protect=image_cond_noise_bg_protect,
     )
 
     lat_h = height // 8
@@ -345,6 +348,7 @@ def _run_render(
     num_motion_frame: int = params["num_motion_frame"]
     icn_scale: float = params["image_cond_noise_scale"]
     icn_schedule = params.get("image_cond_noise_schedule")
+    icn_bg_protect: float = params["image_cond_noise_bg_protect"]
 
     ref_image = Image.open(params["ref_image_path"]).convert("RGB").resize((width, height))
 
@@ -443,6 +447,7 @@ def _run_render(
             width=width,
             num_motion_latent=num_motion_latent,
             image_cond_noise_scale=clip_icn,
+            image_cond_noise_bg_protect=icn_bg_protect,
         )
 
         context_posi = context_posi.to(device)
