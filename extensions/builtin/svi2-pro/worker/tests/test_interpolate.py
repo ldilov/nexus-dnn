@@ -6,6 +6,7 @@ from svi2_video_worker.interpolate import (
     build_minterpolate_cmd,
     build_rife_cmd,
     interpolate_video,
+    resolve_rife_method,
     rife_factor_for_fps,
     target_frame_count,
 )
@@ -61,15 +62,15 @@ def test_interpolate_ffmpeg_runs_minterpolate():
     assert "minterpolate=fps=24" in " ".join(calls[0])
 
 
-def test_interpolate_rife_requires_bin():
+def test_interpolate_rife_ncnn_requires_bin():
     with pytest.raises(ValueError, match="rife_bin"):
-        interpolate_video("src.mp4", "out.mp4", src_fps=16, target_fps=48, method="rife", runner=lambda c: None)
+        interpolate_video("src.mp4", "out.mp4", src_fps=16, target_fps=48, method="rife_ncnn", runner=lambda c: None)
 
 
-def test_interpolate_rife_pipeline(tmp_path):
+def test_interpolate_rife_ncnn_pipeline(tmp_path):
     calls = []
     out = interpolate_video(
-        "src.mp4", str(tmp_path / "out.mp4"), src_fps=16, target_fps=48, method="rife",
+        "src.mp4", str(tmp_path / "out.mp4"), src_fps=16, target_fps=48, method="rife_ncnn",
         rife_bin="/opt/rife", src_frame_count=81, runner=lambda c: calls.append(c),
     )
     assert out == tmp_path / "out.mp4"
@@ -82,6 +83,28 @@ def test_interpolate_rife_pipeline(tmp_path):
     assert any("fps=48" in " ".join(c) for c in calls)  # final resample to exact target
 
 
+def test_interpolate_rife_torch_uses_injected_backend():
+    seen = {}
+
+    def fake_backend(src, out, *, src_fps, target_fps, weights_path, device):
+        seen.update(src=str(src), out=str(out), src_fps=src_fps, target_fps=target_fps, device=device)
+        return Path(out)
+
+    out = interpolate_video(
+        "src.mp4", "out.mp4", src_fps=16, target_fps=48, method="rife_torch", torch_backend=fake_backend
+    )
+    assert out == Path("out.mp4")
+    assert seen["src_fps"] == 16 and seen["target_fps"] == 48
+
+
 def test_interpolate_unknown_method():
     with pytest.raises(ValueError, match="unknown"):
         interpolate_video("a.mp4", "b.mp4", src_fps=16, target_fps=24, method="bogus", runner=lambda c: None)
+
+
+def test_resolve_rife_method():
+    assert resolve_rife_method("ffmpeg") == "ffmpeg"
+    assert resolve_rife_method("rife_torch") == "rife_torch"
+    # generic "rife" with no cuda + no bin -> ffmpeg fallback (never crashes)
+    assert resolve_rife_method("rife", device="cpu") == "ffmpeg"
+    assert resolve_rife_method("rife", device="cpu", rife_bin="/opt/rife") == "rife_ncnn"
