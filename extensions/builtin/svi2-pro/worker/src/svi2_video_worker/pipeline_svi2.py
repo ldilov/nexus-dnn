@@ -87,6 +87,10 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "num_motion_latent": num_motion_latent,
         "pixel_re_encode": pixel_re_encode,
         "num_motion_frame": num_motion_frame,
+        "interpolate_fps": int(params.get("interpolate_fps", 0)),
+        "interpolate_method": str(params.get("interpolate_method", "ffmpeg")),
+        "rife_bin": params.get("rife_bin"),
+        "rife_model": params.get("rife_model"),
         "blocks_to_swap": int(params.get("blocks_to_swap", 40)),
         "teacache_thresh": float(params.get("teacache_thresh", 0.0)),
         "motion_scale_t": float(params.get("motion_scale_t", 1.0)),
@@ -479,8 +483,31 @@ def _run_render(
     stitched = stitch_clip_frames(all_clips, num_overlap_frame)
     video_path = frames_to_mp4(stitched, output_path, fps=fps)
 
+    # Optional frame interpolation: native render stays at fps; this adds frames
+    # to reach interpolate_fps (smooth high-fps, no speed-up). Off when 0/<=fps.
+    interpolate_fps: int = params["interpolate_fps"]
+    base_path = video_path
+    if interpolate_fps and interpolate_fps > fps:
+        from .interpolate import interpolate_video
+
+        interp_out = output_path.parent / f"{output_path.stem}_{interpolate_fps}fps{output_path.suffix}"
+        video_path = interpolate_video(
+            video_path,
+            interp_out,
+            src_fps=fps,
+            target_fps=interpolate_fps,
+            method=params["interpolate_method"],
+            rife_bin=params.get("rife_bin"),
+            rife_model=params.get("rife_model"),
+            src_frame_count=len(stitched),
+        )
+        log_vram(f"interpolated {fps}->{interpolate_fps}fps via {params['interpolate_method']}")
+
     report_data = {
         "output_path": str(video_path),
+        "base_output_path": str(base_path),
+        "interpolated_fps": interpolate_fps if interpolate_fps > fps else 0,
+        "interpolate_method": params["interpolate_method"],
         "num_clips": num_clips,
         "frames": len(stitched),
         "height": height,
