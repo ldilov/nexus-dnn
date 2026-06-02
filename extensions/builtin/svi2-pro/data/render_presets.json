@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "description": "svi2-pro render presets. params map 1:1 to validate_render_params keys (worker-consumable + UI-selectable). Omit motion_scale_schedule/motion_scale_t to keep RoPE motion scaling off (1.0).",
+  "presets": [
+    {
+      "id": "natural-reference",
+      "label": "Natural (reference-match)",
+      "description": "Vanilla Wan2.2-I2V dynamics: no RoPE motion scaling, native 16fps, default shift, full 50 steps. Light AdaIN + pixel re-encode for continuation. Matches the coherent motion other Wan2.2 i2v pipelines produce. Recommended baseline.",
+      "params": {
+        "width": 832,
+        "height": 480,
+        "fps": 16,
+        "num_clips": 3,
+        "num_inference_steps": 50,
+        "sigma_shift": 5.0,
+        "cfg_scale": 5.0,
+        "switch_boundary": 0.9,
+        "num_overlap_frame": 4,
+        "num_motion_latent": 1,
+        "pixel_re_encode": true,
+        "num_motion_frame": 4,
+        "adain_factor": 0.1,
+        "blocks_to_swap": 0
+      },
+      "notes": "blocks_to_swap=0 needs ~26 GiB VRAM (DGX/128G). For a 16GB card raise blocks_to_swap. RIFE 16->24/48 is a post-process (not in-pipeline yet)."
+    },
+    {
+      "id": "forced-motion-24",
+      "label": "Forced motion 24fps (over-driven)",
+      "description": "Aggressive motion via per-clip RoPE ramp + lowered shift + 24fps + stronger AdaIN, fewer steps. Produces exaggerated/uncanny movement (head-whip, face-morph) and 1.5x-fast playback vs native 16fps. Kept for A/B reference; NOT the natural look.",
+      "params": {
+        "width": 832,
+        "height": 480,
+        "fps": 24,
+        "num_clips": 3,
+        "num_inference_steps": 30,
+        "sigma_shift": 4.0,
+        "cfg_scale": 5.0,
+        "switch_boundary": 0.9,
+        "num_overlap_frame": 4,
+        "num_motion_latent": 1,
+        "pixel_re_encode": true,
+        "num_motion_frame": 4,
+        "adain_factor": 0.4,
+        "motion_scale_schedule": [1.0, 1.3, 1.6],
+        "blocks_to_swap": 0
+      },
+      "notes": "motion_scale_schedule > 1.5 drives RoPE temporal stretch past training distribution -> deformation. Diagnostic only."
+    }
+  ]
+}
