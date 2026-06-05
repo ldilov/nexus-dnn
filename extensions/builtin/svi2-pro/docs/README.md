@@ -4,6 +4,7 @@ Reference for exposing the SVI2-Pro video render in the UI.
 
 - **[presets.md](presets.md)** — every render preset, what it does, when to use it, and the resolution/length rules. Source: `data/render_presets.json`.
 - **[fields.md](fields.md)** — every nudgeable render field (type, default, range, effect, UI tier, gotchas) + the Qwen anchor-edit flags + environment levers. Source: `validate_render_params` in `worker/src/svi2_video_worker/pipeline_svi2.py`.
+- **[parameters-audit.md](parameters-audit.md)** — exhaustive inventory of EVERY parameter touching generation (render params + qwen + env + internal constants), each tagged EXPOSED / PLAN / INTERNAL with reason. The completeness ledger behind fields.md.
 - **[research/2026-06-03-transformation-levers.md](research/2026-06-03-transformation-levers.md)** — background research on transformation vs identity-lock.
 
 ## TL;DR for the UI
