@@ -13,7 +13,7 @@
         "interpolate_fps": 48,
         "interpolate_method": "rife",
         "num_clips": 5,
-        "frames_per_clip": 81,
+        "frames_per_clip": 69,
         "num_inference_steps": 50,
         "sigma_shift": 5.0,
         "cfg_scale": 4.0,
@@ -27,7 +27,7 @@
         "adain_factor": 0.0,
         "blocks_to_swap": 40
       },
-      "notes": "Reference CLI equivalents: --num_overlap_frame 5 --num_motion_latent 1 --cfg_scale 4.0, 50 steps, 832x480, 4n+1 frames. 16GB: blocks_to_swap=40; 832x480 is a smaller budget than 960x544 so peak is lower (~10 GiB est.). Pair with env SVI2_FP8_COMPUTE=bf16 + SVI2_ATTENTION=flash2 (flash_attn is NOT optional per SVI tips — mouth/16s artifacts without it). If you need a transformation (not just motion) keep identity via an edited keyframe as --ref-image (edit-then-animate), NOT via ICN or appearance-change prompts."
+      "notes": "VALIDATED 2026-06-05: 5x69f (overlap 5) -> 325f @16fps -> RIFE 48 = 20.3s; demonic-nun identity HELD across all 5 clips (no demon->human drift), even with a large multi-action prompt. Reference CLI: --num_overlap_frame 5 --num_motion_latent 1 --cfg_scale 4.0, 50 steps, 832x480, 4n+1 frames. VRAM: blocks_to_swap=40 = safe ~10 GiB peak; blocks_to_swap=28 is faster (~30 s/step) when you have >=4 GiB free headroom, but at <2 GiB free Windows (no expandable_segments) thrashes the allocator and slows ~3x. Pair with env SVI2_FP8_COMPUTE=bf16 + SVI2_ATTENTION=flash2 (flash_attn NOT optional per SVI tips). For length, raise num_clips (stitched = frames_per_clip + (num_clips-1)*(frames_per_clip-num_overlap_frame)). For transformation (not just motion) keep identity via an edited keyframe as --ref-image (edit-then-animate), NOT via ICN or appearance-change prompts."
     },
     {
       "id": "natural-reference",
