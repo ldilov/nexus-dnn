@@ -88,7 +88,11 @@ def _run_worker(
     num_motion_frame: int,
     teacache_thresh: float,
     blocks_to_swap: int,
+    negative_prompt: str,
+    seed_multiplier: int,
     motion_scale_t: float,
+    motion_scale_h: float,
+    motion_scale_w: float,
     motion_scale_schedule: list[float] | None,
     adain_factor: float,
     image_cond_noise_scale: float,
@@ -156,7 +160,10 @@ def _run_worker(
         "num_motion_frame": num_motion_frame,
         "teacache_thresh": teacache_thresh,
         "blocks_to_swap": blocks_to_swap,
+        "seed_multiplier": seed_multiplier,
         "motion_scale_t": motion_scale_t,
+        "motion_scale_h": motion_scale_h,
+        "motion_scale_w": motion_scale_w,
         "motion_scale_schedule": motion_scale_schedule,
         "adain_factor": adain_factor,
         "image_cond_noise_scale": image_cond_noise_scale,
@@ -172,6 +179,11 @@ def _run_worker(
         "fixed_sigmas": fixed_sigmas,
         "output_path": str(output_path),
     }
+    # Only override the worker's default negative prompt when a non-empty one is
+    # supplied — passing "" would replace the default with empty (removes it).
+    if negative_prompt:
+        render_params["negative_prompt"] = negative_prompt
+
     render_req = _build_rpc(2, "svi2.video.render.start", render_params)
     proc.stdin.write(render_req)
     proc.stdin.flush()
@@ -265,10 +277,33 @@ def main() -> int:
         help="DiT blocks offloaded CPU<->GPU per forward (40=all/lowest VRAM; lower=faster if VRAM fits)",
     )
     parser.add_argument(
+        "--negative-prompt",
+        default="",
+        help="override the worker's default negative prompt (empty = keep the built-in Chinese default; passing a value replaces it entirely)",
+    )
+    parser.add_argument(
+        "--seed-multiplier",
+        type=int,
+        default=42,
+        help="per-clip seed = seed_multiplier * clip_idx (clip 0 is always seed 0); change to resample clips 1+",
+    )
+    parser.add_argument(
         "--motion-scale-t",
         type=float,
         default=1.0,
         help="Wan motion scale: temporal RoPE stretch (1.0=off; 1.3-1.6 adds motion, fights stiff faces)",
+    )
+    parser.add_argument(
+        "--motion-scale-h",
+        type=float,
+        default=1.0,
+        help="Wan motion scale: vertical RoPE stretch (1.0=off; advanced, usually left at 1.0)",
+    )
+    parser.add_argument(
+        "--motion-scale-w",
+        type=float,
+        default=1.0,
+        help="Wan motion scale: horizontal RoPE stretch (1.0=off; advanced, usually left at 1.0)",
     )
     parser.add_argument(
         "--motion-scale-schedule",
@@ -438,7 +473,11 @@ def main() -> int:
         num_motion_frame=args.num_motion_frame,
         teacache_thresh=args.teacache_thresh,
         blocks_to_swap=args.blocks_to_swap,
+        negative_prompt=args.negative_prompt,
+        seed_multiplier=args.seed_multiplier,
         motion_scale_t=args.motion_scale_t,
+        motion_scale_h=args.motion_scale_h,
+        motion_scale_w=args.motion_scale_w,
         motion_scale_schedule=(
             [float(s) for s in args.motion_scale_schedule.split(",")]
             if args.motion_scale_schedule

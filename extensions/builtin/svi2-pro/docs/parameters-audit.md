@@ -30,13 +30,11 @@ All documented in [fields.md](fields.md). Status EXPOSED unless noted.
 
 > **Worker-API vs smoke-CLI:** all section-A params are EXPOSED on the worker
 > render API — the UI calls that API directly, so all are UI-reachable. The
-> `gpu_smoke.py` operator CLI currently wires only a subset: `negative_prompt`,
-> `seed_multiplier`, `motion_scale_h`, and `motion_scale_w` have NO smoke flag
-> yet (worker defaults always used from the CLI). UI exposure is unaffected;
-> these are PLAN-at-CLI (add `--negative-prompt`, `--seed-multiplier`,
-> `--motion-scale-h/-w` for operator A/B). Watch the `negative_prompt`
-> empty-string trap: passing `""` overrides the Chinese default with empty
-> rather than restoring it.
+> `gpu_smoke.py` operator CLI now wires the full set, including
+> `--negative-prompt`, `--seed-multiplier`, `--motion-scale-h`, and
+> `--motion-scale-w` (previously PLAN-at-CLI, wired 2026-06-05). The CLI guards
+> the `negative_prompt` empty-string trap: an empty `--negative-prompt` keeps
+> the built-in default instead of overriding it with empty.
 
 ## B. Qwen anchor-edit params (gpu_smoke + qwen_edit.py)
 
@@ -92,7 +90,8 @@ them would let a user produce a non-functional model — keep internal.
 3. Qwen `sampling_method` / `offload_to_cpu` / `diffusion_fa` — flagged PLAN (builder kwargs, not yet CLI/UI).
 4. Scheduler `denoising_strength` — flagged future (V2V mode).
 5. LoRA blend — corrected: scale is file-derived (`raw_alpha/rank`), not a hardcoded `alpha=1`.
-6. Review round (independent re-scan): added `NEXUS_HOST_DATA_DIR`, `nan_to_num` L1 recovery, `tea_slot`/`_TIMESTEP_SCALE`/mask-`repeats=4`/`sigma_min/max` constants; documented the `auto`-chain backend exclusion + legacy aliases; documented the `negative_prompt` empty-override trap and `seed_multiplier` clip-0=0 behaviour; clarified worker-API-exposed vs smoke-CLI-wired (negative_prompt, seed_multiplier, motion_scale_h/w are PLAN-at-CLI).
+6. Review round (independent re-scan): added `NEXUS_HOST_DATA_DIR`, `nan_to_num` L1 recovery, `tea_slot`/`_TIMESTEP_SCALE`/mask-`repeats=4`/`sigma_min/max` constants; documented the `auto`-chain backend exclusion + legacy aliases; documented the `negative_prompt` empty-override trap and `seed_multiplier` clip-0=0 behaviour.
+7. Wired the previously PLAN-at-CLI params into `gpu_smoke.py`: `--negative-prompt` (empty-guarded), `--seed-multiplier`, `--motion-scale-h`, `--motion-scale-w`. The smoke CLI now reaches the full section-A param set.
 
 ## F. Future-exposure candidates (not internal, just not built yet)
 
