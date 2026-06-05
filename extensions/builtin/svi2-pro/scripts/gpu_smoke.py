@@ -67,6 +67,8 @@ def _run_worker(
     ref_image: Path,
     output_path: Path,
     num_clips: int,
+    frames_per_clip: int,
+    last_image: str,
     height: int,
     width: int,
     fps: int,
@@ -77,6 +79,10 @@ def _run_worker(
     rife_weights: str,
     cfg_scale: float,
     num_overlap_frame: int,
+    stitch_mode: str,
+    ref_pad_num: int,
+    ref_pad_free_clips: int,
+    ref_pad_schedule: str,
     num_motion_latent: int,
     pixel_re_encode: bool,
     num_motion_frame: int,
@@ -124,9 +130,11 @@ def _run_worker(
 
     render_params = {
         "ref_image_path": str(ref_image),
+        "last_image_path": last_image or None,
         "prompts": prompts,
         "models_dir": str(models_dir),
         "num_clips": num_clips,
+        "frames_per_clip": frames_per_clip,
         "height": height,
         "width": width,
         "fps": fps,
@@ -137,6 +145,12 @@ def _run_worker(
         "rife_weights": rife_weights or None,
         "cfg_scale": cfg_scale,
         "num_overlap_frame": num_overlap_frame,
+        "stitch_mode": stitch_mode,
+        "ref_pad_num": ref_pad_num,
+        "ref_pad_free_clips": ref_pad_free_clips,
+        "ref_pad_schedule": (
+            [int(s) for s in ref_pad_schedule.split(",")] if ref_pad_schedule else None
+        ),
         "num_motion_latent": num_motion_latent,
         "pixel_re_encode": pixel_re_encode,
         "num_motion_frame": num_motion_frame,
@@ -199,6 +213,8 @@ def main() -> int:
     )
     parser.add_argument("--output", default="videos/svi2_nun.mp4", help="output mp4 path")
     parser.add_argument("--num-clips", type=int, default=4)
+    parser.add_argument("--frames-per-clip", type=int, default=81, help="frames per clip; must be 4n+1 (49, 65, 81)")
+    parser.add_argument("--last-image", default="", help="FLF2V target end keyframe; morph ref-image -> this over the clip")
     parser.add_argument("--height", type=int, default=832)
     parser.add_argument("--width", type=int, default=480)
     parser.add_argument("--fps", type=int, default=15, help="native render/playback fps")
@@ -219,12 +235,21 @@ def main() -> int:
     parser.add_argument("--rife-weights", default="", help="path to RIFE flownet.pkl (rife_torch; default downloads from HF)")
     parser.add_argument("--cfg-scale", type=float, default=5.0)
     parser.add_argument("--num-overlap-frame", type=int, default=4)
+    parser.add_argument(
+        "--stitch-mode",
+        default="crossfade",
+        choices=["crossfade", "trim"],
+        help="clip stitch: crossfade=cosine-blend overlap (hides seam, averages two draws); trim=canonical SVI/Wan2GP concat + drop next clip's leading overlap, no blend (continuity from latent conditioning)",
+    )
+    parser.add_argument("--ref-pad-num", type=int, default=0, help="MAX SVI ref_pad slots (reached at the final clip). 0=off, -1=full lock on non-free clips, small N (3-6)=balanced. Auto-ramps 0->N across clips so early clips keep full motion.")
+    parser.add_argument("--ref-pad-free-clips", type=int, default=2, help="number of early clips kept fully free (ref_pad=0) before the lock ramps in; protects the good early motion")
+    parser.add_argument("--ref-pad-schedule", default="", help="advanced: explicit per-clip ref_pad list e.g. 0,0,3,5 (overrides the auto ramp)")
     parser.add_argument("--num-motion-latent", type=int, default=1)
     parser.add_argument(
         "--pixel-re-encode",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="VAE decode->re-encode the motion tail between clips (caps continuation drift); --no-pixel-re-encode to disable",
+        default=False,
+        help="VAE decode->re-encode the motion tail between clips. OFF by default (canonical SVI 2.0 Pro carries the RAW prev-clip latent; re-encode injects VAE-roundtrip error the LoRA can't correct -> drift). --pixel-re-encode to opt in for A/B only.",
     )
     parser.add_argument("--num-motion-frame", type=int, default=4, help="pixel frames re-encoded for --pixel-re-encode")
     parser.add_argument(
@@ -324,6 +349,13 @@ def main() -> int:
             print(f"[prereq FAIL] {m}", file=sys.stderr)
         return 2
 
+    sys.path.insert(0, str(_WORKER_DIR / "src"))
+    from svi2_video_worker.svi_chain import check_trained_resolution
+
+    res_warn = check_trained_resolution(args.width, args.height)
+    if res_warn:
+        log.warning("off-distribution resolution: %s", res_warn)
+
     prompts = _load_prompts(prompts_file, args.num_clips)
     log.info("loaded %d prompts from %s", len(prompts), prompts_file)
     for i, p in enumerate(prompts):
@@ -338,6 +370,8 @@ def main() -> int:
         ref_image=ref_image,
         output_path=output_path,
         num_clips=args.num_clips,
+        frames_per_clip=args.frames_per_clip,
+        last_image=args.last_image,
         height=args.height,
         width=args.width,
         fps=args.fps,
@@ -348,6 +382,10 @@ def main() -> int:
         rife_weights=args.rife_weights,
         cfg_scale=args.cfg_scale,
         num_overlap_frame=args.num_overlap_frame,
+        stitch_mode=args.stitch_mode,
+        ref_pad_num=args.ref_pad_num,
+        ref_pad_free_clips=args.ref_pad_free_clips,
+        ref_pad_schedule=args.ref_pad_schedule,
         num_motion_latent=args.num_motion_latent,
         pixel_re_encode=args.pixel_re_encode,
         num_motion_frame=args.num_motion_frame,
