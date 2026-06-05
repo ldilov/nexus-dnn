@@ -28,6 +28,16 @@ All documented in [fields.md](fields.md). Status EXPOSED unless noted.
 | blocks_to_swap, teacache_thresh | wan22/dit.py | EXPOSED (perf) |
 | distill_lora_high/_low, dit_high_path, dit_low_path, fixed_sigmas | pipeline_svi2.py | EXPOSED (distill) |
 
+> **Worker-API vs smoke-CLI:** all section-A params are EXPOSED on the worker
+> render API — the UI calls that API directly, so all are UI-reachable. The
+> `gpu_smoke.py` operator CLI currently wires only a subset: `negative_prompt`,
+> `seed_multiplier`, `motion_scale_h`, and `motion_scale_w` have NO smoke flag
+> yet (worker defaults always used from the CLI). UI exposure is unaffected;
+> these are PLAN-at-CLI (add `--negative-prompt`, `--seed-multiplier`,
+> `--motion-scale-h/-w` for operator A/B). Watch the `negative_prompt`
+> empty-string trap: passing `""` overrides the Chinese default with empty
+> rather than restoring it.
+
 ## B. Qwen anchor-edit params (gpu_smoke + qwen_edit.py)
 
 | Param | Source | Status |
@@ -47,6 +57,14 @@ All documented in [fields.md](fields.md). Status EXPOSED unless noted.
 | NEXUS_VIDEO_SVI2_RUNTIME | __main__.py | INTERNAL (host) — selects the worker profile (fake / rtx50-fp8). Set by the host runtime, not the end user. |
 | PYTORCH_CUDA_ALLOC_CONF | __main__.py | INTERNAL — set to `expandable_segments:True` by the worker at startup (no-op on Windows). Not user-facing. |
 | SVI2_VERSIONS_YAML | installer.py | INTERNAL (install) — install/versions manifest path; host-managed, not a render param. |
+| NEXUS_HOST_DATA_DIR | installer.py | INTERNAL (install) — models destination dir for headless install; host-set, install-time only, not a render param. |
+
+> **Auto-chain note (`SVI2_ATTENTION=auto`):** the auto selector tries only
+> `flash2 → sdpa` (`attention_backend.py` `_AUTO_CHAIN`). It NEVER auto-promotes
+> to the quantized backends (`sage2`, `sage3_fp4`, `flash3_fp4`) — those require
+> explicit `SVI2_ATTENTION=<name>`. Legacy aliases `flash`→flash2, `flash3`→
+> flash3_fp4, `sage`→sage2, `sage3`→sage3_fp4 are accepted (`_ALIASES`). A UI
+> backend picker must NOT present sage/flash3 as part of "auto".
 
 ## D. Internal generation constants (deliberately NOT exposed)
 
@@ -60,8 +78,9 @@ them would let a user produce a non-functional model — keep internal.
 | Scheduler `denoising_strength` (1.0) | flow_match.py | Hardcoded 1.0 (full denoise) for i2v. **Becomes user-facing only if a V2V/init-video mode is added** (then it's the V2V strength). Tracked as future. |
 | Scheduler `num_train_timesteps` (1000) | flow_match.py | Training constant. |
 | Expert `_TIMESTEP_SCALE` | expert_router.py | Maps switch_boundary (0–1) to timestep space; switch_boundary IS the exposed knob. |
-| LoRA `alpha` / `scale` (raw_alpha/rank) | lora.py | Auto-derived from each LoRA's `.alpha` tensor; not a user knob. |
-| LoRA load `alpha=1` (svi + distill stack) | pipeline_svi2.py | SVI/distill LoRA blend weight, fixed at 1.0. Could become a "lora strength" slider if demand arises (PLAN-future). |
+| LoRA `scale` = `raw_alpha / rank` (else 1.0) | lora.py:115-116 | Blend weight is DERIVED from each LoRA file's own `.alpha` tensor ÷ rank — there is NO hardcoded `alpha=1` in code; `_build_expert` passes no override. A user-supplied distill LoRA with a different alpha/rank ratio changes the blend automatically. A "lora strength" multiplier on top would be PLAN-future. |
+| `nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)` L1 NaN recovery | pipeline_svi2.py:325,327 | Applied to `noise_pred` + `latent` every denoise step to suppress fp8 overflow (clip to 0.0) instead of crashing. Generation-stability guard, not user-tunable. Note: zeroing mid-denoise differs subtly from an epsilon clamp — intentional, fixed. |
+| `tea_slot` 0/1, `_TIMESTEP_SCALE`, mask `repeats=4`, `sigma_min/max` 0/1 | pipeline_svi2.py / expert_router.py / flow_match.py | Cache slot indices, timestep scaling, VAE temporal-stride mask expansion, Wan sigma bounds — all architecture-derived constants. |
 | Attention `sm`/`dtype` gating, `seq` length | attention_backend.py | Auto from GPU + render shape; not user-set. |
 | RIFE internal model/scale | rife/, rife_torch.py | Interpolation engine internals; user sees only fps + method. |
 | VAE tiling params | vae.py | Auto; not currently a render knob (potential future VRAM lever for decode). |
@@ -72,7 +91,8 @@ them would let a user produce a non-functional model — keep internal.
 2. `SVI2_ATTENTION` enum values (sdpa/flash2/flash3_fp4/sage2/sage3_fp4) — documented.
 3. Qwen `sampling_method` / `offload_to_cpu` / `diffusion_fa` — flagged PLAN (builder kwargs, not yet CLI/UI).
 4. Scheduler `denoising_strength` — flagged future (V2V mode).
-5. LoRA blend `alpha=1` — flagged future (lora-strength slider).
+5. LoRA blend — corrected: scale is file-derived (`raw_alpha/rank`), not a hardcoded `alpha=1`.
+6. Review round (independent re-scan): added `NEXUS_HOST_DATA_DIR`, `nan_to_num` L1 recovery, `tea_slot`/`_TIMESTEP_SCALE`/mask-`repeats=4`/`sigma_min/max` constants; documented the `auto`-chain backend exclusion + legacy aliases; documented the `negative_prompt` empty-override trap and `seed_multiplier` clip-0=0 behaviour; clarified worker-API-exposed vs smoke-CLI-wired (negative_prompt, seed_multiplier, motion_scale_h/w are PLAN-at-CLI).
 
 ## F. Future-exposure candidates (not internal, just not built yet)
 
