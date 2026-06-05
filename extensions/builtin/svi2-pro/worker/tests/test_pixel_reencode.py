@@ -199,3 +199,23 @@ def test_validate_motion_latent_unconstrained_when_reencode_off():
         }
     )
     assert out["num_motion_latent"] == 5
+
+
+def test_validate_default_pixel_re_encode_is_false():
+    # SVI 2.0 Pro carries the RAW prev-clip latent; decode->re-encode is the
+    # pre-Pro behaviour that injects VAE-roundtrip error the LoRA cannot correct.
+    from svi2_video_worker.pipeline_svi2 import validate_render_params
+
+    out = validate_render_params({"ref_image_path": "x.png", "prompts": ["a"]})
+    assert out["pixel_re_encode"] is False
+
+
+def test_validate_default_stitch_mode_is_crossfade_but_overridable():
+    from svi2_video_worker.pipeline_svi2 import validate_render_params
+
+    out = validate_render_params({"ref_image_path": "x.png", "prompts": ["a"]})
+    assert out["stitch_mode"] == "crossfade"
+    out2 = validate_render_params(
+        {"ref_image_path": "x.png", "prompts": ["a"], "stitch_mode": "trim"}
+    )
+    assert out2["stitch_mode"] == "trim"

@@ -52,8 +52,17 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
 
     num_clips = int(params.get("num_clips", len(prompts)))
 
+    frames_per_clip = int(params.get("frames_per_clip", 81))
+    if (frames_per_clip - 1) % 4 != 0:
+        raise ValueError(f"frames_per_clip must be 4n+1 (49, 65, 81); got {frames_per_clip}")
+
     num_motion_latent = int(params.get("num_motion_latent", 1))
-    pixel_re_encode = bool(params.get("pixel_re_encode", True))
+    # SVI 2.0 Pro carries the RAW previous-clip latent as the motion handoff and
+    # explicitly forbids re-using the decoded last frame. Decode->re-encode is the
+    # pre-Pro behaviour: it injects VAE-roundtrip error into the conditioning every
+    # clip — the exact cross-clip error the LoRA was NOT trained to correct — which
+    # compounds into identity drift. Default off (canonical); opt in to A/B only.
+    pixel_re_encode = bool(params.get("pixel_re_encode", False))
     num_motion_frame = int(params.get("num_motion_frame", 4))
     # Wan VAE temporal compression: N pixel frames -> 1 + (N-1)//4 latent frames.
     # The re-encoded tail feeds build_conditioning_latents, which assigns
@@ -70,20 +79,30 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
                 f"at least {4 * (num_motion_latent - 1) + 1}"
             )
 
+    last_image = params.get("last_image_path")
     return {
         "ref_image_path": str(ref),
+        "last_image_path": str(last_image) if last_image else None,
         "prompts": list(prompts),
         "negative_prompt": str(params.get("negative_prompt", _NEGATIVE_PROMPT)),
         "num_clips": num_clips,
         "height": int(params.get("height", 832)),
         "width": int(params.get("width", 480)),
         "fps": int(params.get("fps", 15)),
-        "frames_per_clip": int(params.get("frames_per_clip", 81)),
+        "frames_per_clip": frames_per_clip,
         "cfg_scale": float(params.get("cfg_scale", 5.0)),
         "num_inference_steps": int(params.get("num_inference_steps", _NUM_INFERENCE_STEPS)),
         "sigma_shift": float(params.get("sigma_shift", _SIGMA_SHIFT)),
         "switch_boundary": float(params.get("switch_boundary", _SWITCH_BOUNDARY)),
         "num_overlap_frame": int(params.get("num_overlap_frame", 4)),
+        "stitch_mode": str(params.get("stitch_mode", "crossfade")),
+        "ref_pad_num": int(params.get("ref_pad_num", 0)),
+        "ref_pad_free_clips": int(params.get("ref_pad_free_clips", 2)),
+        "ref_pad_schedule": (
+            [int(v) for v in params["ref_pad_schedule"]]
+            if params.get("ref_pad_schedule")
+            else None
+        ),
         "num_motion_latent": num_motion_latent,
         "pixel_re_encode": pixel_re_encode,
         "num_motion_frame": num_motion_frame,
@@ -221,6 +240,8 @@ def _build_image_conditioning(
     num_motion_latent: int,
     image_cond_noise_scale: float = 0.0,
     image_cond_noise_bg_protect: float = 0.0,
+    end_lat: Any = None,
+    ref_pad_num: int = 0,
 ) -> Any:
     import torch
     from .svi_chain import build_conditioning_latents
@@ -232,12 +253,17 @@ def _build_image_conditioning(
         num_motion_latent=num_motion_latent,
         image_cond_noise_scale=image_cond_noise_scale,
         image_cond_noise_bg_protect=image_cond_noise_bg_protect,
+        end_lat=end_lat,
+        ref_pad_num=ref_pad_num,
     )
 
     lat_h = height // 8
     lat_w = width // 8
     msk = torch.ones(1, num_frames, lat_h, lat_w, dtype=cond.dtype, device=cond.device)
     msk[:, 1:] = 0
+    # FLF2V: mark the last pixel frame as known conditioning too.
+    if end_lat is not None:
+        msk[:, -1] = 1.0
     msk = torch.concat([torch.repeat_interleave(msk[:, 0:1], repeats=4, dim=1), msk[:, 1:]], dim=1)
     msk = msk.view(1, msk.shape[1] // 4, 4, lat_h, lat_w)
     msk = msk.transpose(1, 2)[0]
@@ -320,8 +346,14 @@ def _run_render(
 
     from .expert_router import ExpertSelector
     from .wan22 import FlowMatchScheduler
-    from .svi_chain import stitch_clip_frames, adain_normalize_latent, reencode_motion_tail
-    from .ffmpeg_io import frames_to_mp4
+    from .svi_chain import (
+        RollingCrossfadeStitcher,
+        adain_normalize_latent,
+        check_trained_resolution,
+        reencode_motion_tail,
+        ref_pad_for_clip,
+    )
+    from .ffmpeg_io import StreamingFrameWriter
     from .render_report import write_render_report
     from .vram import reset_peak, peak_allocated, log_vram
 
@@ -349,6 +381,13 @@ def _run_render(
     icn_scale: float = params["image_cond_noise_scale"]
     icn_schedule = params.get("image_cond_noise_schedule")
     icn_bg_protect: float = params["image_cond_noise_bg_protect"]
+    ref_pad_num: int = params["ref_pad_num"]
+    ref_pad_free_clips: int = params["ref_pad_free_clips"]
+    ref_pad_schedule = params.get("ref_pad_schedule")
+
+    resolution_warning = check_trained_resolution(width, height)
+    if resolution_warning:
+        log_vram(f"WARN off-distribution resolution: {resolution_warning}")
 
     ref_image = Image.open(params["ref_image_path"]).convert("RGB").resize((width, height))
 
@@ -394,6 +433,10 @@ def _run_render(
 
     models.vae.to_cuda() if device == "cuda" else models.vae.to_cpu()
     anchor_lat = models.vae.encode_image(ref_image)[0]
+    end_lat = None
+    if params.get("last_image_path"):
+        end_image = Image.open(params["last_image_path"]).convert("RGB").resize((width, height))
+        end_lat = models.vae.encode_image(end_image)[0]
     if device == "cuda":
         models.vae.to_cpu()
         torch.cuda.empty_cache()
@@ -401,7 +444,8 @@ def _run_render(
     prev_last_latent: Any = None
     adain_reference: Any = None
     adain_factor: float = params["adain_factor"]
-    all_clips: list[list] = []
+    writer = StreamingFrameWriter()
+    stitcher = RollingCrossfadeStitcher(num_overlap_frame, mode=params["stitch_mode"])
 
     for clip_idx in range(num_clips):
         log_vram(f"clip {clip_idx} start")
@@ -438,6 +482,11 @@ def _run_render(
         )
         if clip_icn > 0.0:
             log_vram(f"clip {clip_idx} image_cond_noise_scale={clip_icn}")
+        clip_ref_pad = ref_pad_for_clip(
+            clip_idx, num_clips, ref_pad_num, ref_pad_free_clips, ref_pad_schedule
+        )
+        if clip_ref_pad != 0:
+            log_vram(f"clip {clip_idx} ref_pad_num={clip_ref_pad}")
         y = _build_image_conditioning(
             anchor_lat.to(device),
             prev_last_latent,
@@ -448,6 +497,8 @@ def _run_render(
             num_motion_latent=num_motion_latent,
             image_cond_noise_scale=clip_icn,
             image_cond_noise_bg_protect=icn_bg_protect,
+            end_lat=end_lat.to(device) if end_lat is not None else None,
+            ref_pad_num=clip_ref_pad,
         )
 
         context_posi = context_posi.to(device)
@@ -498,10 +549,14 @@ def _run_render(
             torch.cuda.empty_cache()
         log_vram(f"clip {clip_idx} vae decode done")
 
-        all_clips.append(pil_frames)
+        # Stream finalized frames to disk as each clip completes (rolling
+        # crossfade holds only the overlap tail) so length is unbounded by RAM.
+        writer.write_many(stitcher.push(pil_frames))
+        del pil_frames, frames
 
-    stitched = stitch_clip_frames(all_clips, num_overlap_frame)
-    video_path = frames_to_mp4(stitched, output_path, fps=fps)
+    writer.write_many(stitcher.flush())
+    total_frames = writer.count
+    video_path = writer.finalize(output_path, fps=fps)
 
     # Optional frame interpolation: native render stays at fps; this adds frames
     # to reach interpolate_fps (smooth high-fps, no speed-up). Off when 0/<=fps.
@@ -525,7 +580,7 @@ def _run_render(
             rife_model=params.get("rife_model"),
             rife_weights=params.get("rife_weights"),
             device=device,
-            src_frame_count=len(stitched),
+            src_frame_count=total_frames,
         )
         log_vram(f"interpolated {fps}->{interpolate_fps}fps via {interp_engine}")
 
@@ -536,12 +591,15 @@ def _run_render(
         "interpolate_method": params["interpolate_method"],
         "interpolate_engine": interp_engine,
         "num_clips": num_clips,
-        "frames": len(stitched),
+        "frames": total_frames,
         "height": height,
         "width": width,
         "fps": fps,
         "peak_vram_bytes": peak_allocated(),
         "model_audit": models.audit,
+        "stitch_mode": params["stitch_mode"],
+        "pixel_re_encode": pixel_re_encode,
+        "resolution_warning": resolution_warning or "",
     }
     write_render_report(output_path.parent, report_data)
 
