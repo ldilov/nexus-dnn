@@ -16,7 +16,7 @@ Legend — **UI tier**: `core` (always shown), `quality`, `coherence`,
 |---|---|---|---|---|
 | `ref_image_path` * | path | — | core | The i2v anchor/first frame. **Defines identity** — re-injected into every clip. Use a high-quality, aspect-matched image. For transformation, supply an *edited* keyframe here (edit-then-animate). |
 | `prompts` * | string[] | — | core | One entry per clip (cycled if fewer). **Use a single prompt** for a coherent long take. Describe **MOTION**, not appearance change — appearance verbs ("eyes deepening") fight the anchor and cause drift. |
-| `negative_prompt` | string | Wan default (CN) | quality | Standard Wan negative. Rarely changed. |
+| `negative_prompt` | string | Wan default (Chinese) | quality | Standard Wan negative (a long Chinese-language quality/artifact list). Rarely changed. **Trap:** the default applies only when the key is absent; passing an empty string `""` overrides it with empty (removes the negative). To keep the default, omit the field; to customise, send a full replacement string. |
 | `num_clips` | int | len(prompts) | core | Number of chained clips = length. Stitched frames = `frames_per_clip + (num_clips-1)×(frames_per_clip-num_overlap_frame)`. |
 | `frames_per_clip` | int (4n+1) | 81 | core | Frames per clip. **Must be 4n+1** (49, 65, 69, 81). 69 → 20 s at 5 clips. Bigger = longer clip + more VRAM at decode. |
 | `width` / `height` | int (÷16) | 480 / 832 | core | Render resolution. **832×480 (landscape) or 480×832 (portrait) = trained 480p budget.** Off-budget fires a warning and weakens identity-lock (see [presets.md](presets.md) resolution rule). Both must be divisible by 16. |
@@ -41,7 +41,7 @@ Legend — **UI tier**: `core` (always shown), `quality`, `coherence`,
 | `cfg_scale` | float | 5.0 | quality | Guidance. SVI reference = 4.0. Higher = stronger prompt/text adherence (range ~1–6). Distilled = 1.0. cfg=1.0 skips the negative pass (≈2× faster). |
 | `sigma_shift` | float | 5.0 | quality | FlowMatch shift. Wan default 5.0. Lower (3.5–4.0) = more motion. Range 3.0–5.0. |
 | `switch_boundary` | float | 0.9 | quality | MoE high→low expert switch (t<900). Wan2.2 i2v = 0.9. Rarely changed. |
-| `seed_multiplier` | int | 42 | repro | Per-clip seed = `seed_multiplier × clip_idx`. Fix for reproducibility; change to resample. |
+| `seed_multiplier` | int | 42 | repro | Per-clip seed = `seed_multiplier × clip_idx`. **Note: clip 0 always gets seed 0** regardless of this value — the first clip's noise is fixed across renders; only clips 1+ resample when you change it. Fix for reproducibility. |
 
 ## Coherence / chaining (canonical mechanics)
 
@@ -118,7 +118,7 @@ would expose these as a "transform anchor" panel.)
 | Env | Recommended | What it does |
 |---|---|---|
 | `SVI2_FP8_COMPUTE` | `bf16` | Blackwell `torch._scaled_mm` colour-smudge fix on RTX 50. |
-| `SVI2_ATTENTION` | `flash2` | Attention backend. Values: `auto`, `sdpa` (fallback, always works), `flash2` (recommended), `flash3_fp4`, `sage2`, `sage3_fp4`. flash_attn NOT optional per SVI tips. Availability auto-gated by GPU `sm` + dtype. |
+| `SVI2_ATTENTION` | `flash2` | Attention backend. Values: `auto`, `sdpa` (fallback, always works), `flash2` (recommended), `flash3_fp4`, `sage2`, `sage3_fp4`. Legacy aliases accepted: `flash`→flash2, `flash3`→flash3_fp4, `sage`→sage2, `sage3`→sage3_fp4. **`auto` only tries `flash2 → sdpa`** — it never auto-selects the quantized backends (sage/flash3); those need explicit opt-in. A UI backend picker must not present sage/flash3 under "auto". Availability auto-gated by GPU `sm` + dtype. flash_attn NOT optional per SVI tips. |
 | `SVI2_ATTENTION_STRICT` | unset | `1`/`true` = fail hard if the requested `SVI2_ATTENTION` backend is unavailable, instead of silently falling back to sdpa. Advanced/debug — use to guarantee a specific backend in benchmarks. |
 | `SVI2_VRAM_TRACE` | unset | `1`/`true` = emit per-step VRAM breadcrumbs to the worker log. Debug only; no effect on output. |
 
