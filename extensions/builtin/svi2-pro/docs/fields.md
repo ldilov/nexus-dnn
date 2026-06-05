@@ -118,7 +118,12 @@ would expose these as a "transform anchor" panel.)
 | Env | Recommended | What it does |
 |---|---|---|
 | `SVI2_FP8_COMPUTE` | `bf16` | Blackwell `torch._scaled_mm` colour-smudge fix on RTX 50. |
-| `SVI2_ATTENTION` | `flash2` | Attention backend: `flash2` (recommended), `sage2/3`, `sdpa` (fallback). flash_attn NOT optional per SVI tips. |
+| `SVI2_ATTENTION` | `flash2` | Attention backend. Values: `auto`, `sdpa` (fallback, always works), `flash2` (recommended), `flash3_fp4`, `sage2`, `sage3_fp4`. flash_attn NOT optional per SVI tips. Availability auto-gated by GPU `sm` + dtype. |
+| `SVI2_ATTENTION_STRICT` | unset | `1`/`true` = fail hard if the requested `SVI2_ATTENTION` backend is unavailable, instead of silently falling back to sdpa. Advanced/debug — use to guarantee a specific backend in benchmarks. |
+| `SVI2_VRAM_TRACE` | unset | `1`/`true` = emit per-step VRAM breadcrumbs to the worker log. Debug only; no effect on output. |
+
+> Full parameter inventory (including internal constants and future-exposure
+> candidates) is in [parameters-audit.md](parameters-audit.md).
 
 ---
 
