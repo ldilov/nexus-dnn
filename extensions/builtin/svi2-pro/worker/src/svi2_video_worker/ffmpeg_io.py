@@ -1,10 +1,18 @@
+import logging
 import shutil
 import subprocess
 import tempfile
+import weakref
 from pathlib import Path
 from typing import Sequence
 
 from PIL import Image
+
+_log = logging.getLogger(__name__)
+
+
+def _cleanup_dir(path: Path) -> None:
+    shutil.rmtree(path, ignore_errors=True)
 
 
 def _encode_png_dir(tmpdir: Path, out_path: Path, fps: int, quality: int) -> Path:
@@ -47,6 +55,22 @@ class StreamingFrameWriter:
     def __init__(self) -> None:
         self._dir = Path(tempfile.mkdtemp(prefix="svi2_stream_"))
         self._n = 0
+        # Backstop: if the writer is abandoned (render loop raises before
+        # finalize, or the caller forgets it) the temp dir of PNGs is removed
+        # when the object is collected, instead of stranding gigabytes on disk.
+        self._finalizer = weakref.finalize(self, _cleanup_dir, self._dir)
+
+    def __enter__(self) -> "StreamingFrameWriter":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        self.close()
+        return False
+
+    def close(self) -> None:
+        # Deterministic cleanup of stranded frames. Idempotent and a no-op once
+        # finalize() has already disposed of (or deliberately preserved) the dir.
+        self._finalizer()
 
     def write(self, frame: Image.Image) -> None:
         frame.save(self._dir / f"{self._n:06d}.png")
@@ -62,6 +86,13 @@ class StreamingFrameWriter:
 
     def finalize(self, out_path: Path, *, fps: int = 15, quality: int = 7) -> Path:
         try:
-            return _encode_png_dir(self._dir, out_path, fps, quality)
-        finally:
-            shutil.rmtree(self._dir, ignore_errors=True)
+            result = _encode_png_dir(self._dir, out_path, fps, quality)
+        except Exception:
+            # Mux failed (e.g. ffmpeg missing). Preserve the frames so a
+            # multi-hour render is recoverable, and cancel the cleanup backstop
+            # so neither close() nor GC wipes them.
+            self._finalizer.detach()
+            _log.error("mux failed; preserved %d frame(s) at %s", self._n, self._dir)
+            raise
+        self._finalizer()  # success: drop the frames
+        return result
