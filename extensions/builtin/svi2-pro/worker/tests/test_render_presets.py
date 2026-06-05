@@ -30,6 +30,19 @@ def test_canonical_preset_params_validate():
     assert out["width"] == 832 and out["height"] == 480
 
 
+def test_resolution_stepdown_presets_exist_and_are_offbudget():
+    from svi2_video_worker.svi_chain import check_trained_resolution
+
+    presets = _load_presets()
+    for pid, wh in (("svi-canonical-640", (640, 368)), ("svi-canonical-704", (704, 400))):
+        assert pid in presets, pid
+        p = presets[pid]["params"]
+        assert (p["width"], p["height"]) == wh
+        assert p["pixel_re_encode"] is False and p["stitch_mode"] == "trim"
+        # below the 480p budget -> resolution warning must fire
+        assert check_trained_resolution(p["width"], p["height"]) is not None
+
+
 def test_all_presets_have_unique_ids_and_required_fields():
     raw = json.loads(PRESETS.read_text())["presets"]
     ids = [p["id"] for p in raw]

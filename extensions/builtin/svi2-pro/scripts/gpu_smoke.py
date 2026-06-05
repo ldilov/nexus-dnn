@@ -328,6 +328,29 @@ def main() -> int:
         default="",
         help="comma sigma list for distilled models, e.g. 1.0,0.9375001,0.8333333,0.625,0.0 (overrides shift)",
     )
+    parser.add_argument(
+        "--qwen-edit-prompt",
+        default="",
+        help="if set, run Qwen-Image-Edit on the --ref-image FIRST (edit-then-animate), then animate the edited anchor. Coherent transformation; no per-frame flicker. Empty = no edit.",
+    )
+    parser.add_argument(
+        "--qwen-sd-bin",
+        default="D:/qwen_edit/sdcpp/sd-cli.exe",
+        help="path to stable-diffusion.cpp sd-cli binary for the Qwen edit",
+    )
+    parser.add_argument(
+        "--qwen-models-dir",
+        default="D:/qwen_edit/models",
+        help="dir holding the Qwen-Image-Edit GGUF quartet (diffusion, vae, llm, llm_vision)",
+    )
+    parser.add_argument(
+        "--qwen-edited-out",
+        default="",
+        help="where to write the edited anchor (default: <output>_anchor_edited.png next to the video)",
+    )
+    parser.add_argument("--qwen-steps", type=int, default=24, help="Qwen edit sampling steps")
+    parser.add_argument("--qwen-cfg", type=float, default=2.5, help="Qwen edit cfg-scale")
+    parser.add_argument("--qwen-flow-shift", type=float, default=3.0, help="Qwen edit flow-shift")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -355,6 +378,30 @@ def main() -> int:
     res_warn = check_trained_resolution(args.width, args.height)
     if res_warn:
         log.warning("off-distribution resolution: %s", res_warn)
+
+    # On-demand Qwen anchor edit (edit-then-animate): edit the ref/anchor BEFORE
+    # animation so the video model propagates the transformation coherently,
+    # instead of per-frame editing the output (which flickers).
+    if args.qwen_edit_prompt:
+        from svi2_video_worker.qwen_edit import qwen_edit_image
+
+        edited = (
+            Path(args.qwen_edited_out)
+            if args.qwen_edited_out
+            else output_path.parent / f"{output_path.stem}_anchor_edited.png"
+        )
+        log.info("qwen anchor edit: %s -> %s", ref_image, edited)
+        ref_image = qwen_edit_image(
+            args.qwen_sd_bin,
+            args.qwen_models_dir,
+            str(ref_image),
+            str(edited),
+            args.qwen_edit_prompt,
+            steps=args.qwen_steps,
+            cfg_scale=args.qwen_cfg,
+            flow_shift=args.qwen_flow_shift,
+        )
+        log.info("anchor edited -> %s (now the SVI ref)", ref_image)
 
     prompts = _load_prompts(prompts_file, args.num_clips)
     log.info("loaded %d prompts from %s", len(prompts), prompts_file)
