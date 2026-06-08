@@ -91,4 +91,4 @@ actions:
   - id: render
     label: Render
     operator_invoke:
-      operator: svi2_render
+      operator: svi2.video.render

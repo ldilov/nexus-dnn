@@ -164,7 +164,6 @@ backend_runtimes:
     supported_roles: ["video.render"]
 operators:
   - file: "operators/video_render.yaml"
-  - file: "operators/svi2_render.yaml"
 recipes:
   - file: "recipes/svi2_render.yaml"
 ui:

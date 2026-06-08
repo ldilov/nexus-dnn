@@ -6,7 +6,7 @@ operator:
   description: "Render a long, identity-locked image-to-video take by chaining 4n+1-frame SVI clips from one anchor image."
   category: video.image_to_video
 execution:
-  mode: long_running
+  mode: job
   cacheable: false
   resumable: true
 inputs:
