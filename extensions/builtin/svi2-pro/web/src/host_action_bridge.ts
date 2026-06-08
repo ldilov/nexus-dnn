@@ -34,14 +34,17 @@ interface BridgeHandle {
 
 export function attachActionBridge(host: HTMLElement, deploymentId: string): BridgeHandle {
   let busy = false;
+  let blocked = false;
 
   const buildPrimary = (): ActionDecl => ({
     id: ACTION_RENDER,
     label: busy ? "Rendering…" : "Render",
     icon: busy ? "hourglass_top" : "movie",
     tone: "primary",
-    state: busy ? "loading" : "idle",
-    tooltip: "Start the SVI 2.0 Pro render",
+    state: busy ? "loading" : blocked ? "disabled" : "idle",
+    tooltip: blocked
+      ? "Fix the highlighted fields before rendering"
+      : "Start the SVI 2.0 Pro render",
   });
 
   const buildSet = (): ActionSet => ({
@@ -85,6 +88,7 @@ export function attachActionBridge(host: HTMLElement, deploymentId: string): Bri
 
   const unsubscribeRenderState = subscribeRenderState((detail: RenderStateDetail) => {
     busy = detail.busy;
+    blocked = detail.blocked;
     dispatchPrimaryState();
   });
 

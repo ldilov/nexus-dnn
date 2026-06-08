@@ -67,6 +67,7 @@ export function FileDropzone({
 }: FileDropzoneProps): ReactElement {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const errorId = useId();
+  const hintId = useId();
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accepted, setAccepted] = useState<readonly File[]>([]);
@@ -127,6 +128,10 @@ export function FileDropzone({
     setIsDragging(false);
   }, []);
 
+  const describedBy = [hint ? hintId : null, error ? errorId : null]
+    .filter(Boolean)
+    .join(" ");
+
   const cls = [
     styles.dropzone,
     isDragging ? styles.dragging : "",
@@ -145,7 +150,7 @@ export function FileDropzone({
         tabIndex={disabled ? -1 : 0}
         aria-label={ariaLabel ?? "file dropzone"}
         aria-disabled={disabled}
-        aria-describedby={error ? errorId : undefined}
+        aria-describedby={describedBy || undefined}
         className={cls}
         onClick={openPicker}
         onKeyDown={handleKeyDown}
@@ -166,7 +171,11 @@ export function FileDropzone({
         <span className={styles.primaryLine}>
           {label ?? (isDragging ? "Drop to upload" : "Drop a file or click to browse")}
         </span>
-        {hint && <span className={styles.hintLine}>{hint}</span>}
+        {hint && (
+          <span id={hintId} className={styles.hintLine}>
+            {hint}
+          </span>
+        )}
         {renderPreview && accepted.length > 0 && (
           <div className={styles.previewSlot}>{renderPreview(accepted)}</div>
         )}

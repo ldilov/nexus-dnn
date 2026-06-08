@@ -67,6 +67,9 @@ export function VideoPlayer({
         <div className={styles.errorPanel}>
           <div className={styles.errorTitle}>Could not play video</div>
           <div className={styles.errorDetail}>{errorMessage ?? "unknown error"}</div>
+          <a className={styles.errorAction} href={src} download target="_blank" rel="noreferrer">
+            Download file
+          </a>
         </div>
       </div>
     );

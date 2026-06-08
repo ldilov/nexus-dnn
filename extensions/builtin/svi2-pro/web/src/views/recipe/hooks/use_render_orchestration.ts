@@ -1,9 +1,18 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { dispatchRenderState, subscribeTriggerRender } from "../../../app_events";
-import { hasBlockingErrors, validateRenderParams } from "../../../domain/validation";
+import {
+  hasBlockingErrors,
+  validateRenderParams,
+  type ValidationIssue,
+} from "../../../domain/validation";
 import { ExtensionApiError } from "../../../services/http";
 import { useRenderRequest } from "../../../store/render_request_store";
+
+export interface FocusRequest {
+  field: ValidationIssue["field"];
+  token: number;
+}
 
 export function useRenderOrchestration() {
   const {
@@ -22,6 +31,7 @@ export function useRenderOrchestration() {
         presetId,
         hasRefImage: Boolean(refImageName),
         hasLastImage: Boolean(lastImageName),
+        presetParams: params,
       }),
     [params, presetId, refImageName, lastImageName],
   );
@@ -29,8 +39,14 @@ export function useRenderOrchestration() {
   const blocked = hasBlockingErrors(issues);
   const busy = render.phase === "running";
 
+  const [focusRequest, setFocusRequest] = useState<FocusRequest | null>(null);
+
   const submit = useCallback(async () => {
     if (blocked) {
+      const firstError = issues.find((i) => i.severity === "error");
+      if (firstError) {
+        setFocusRequest({ field: firstError.field, token: Date.now() });
+      }
       toast.error("Fix the highlighted fields before rendering.");
       return;
     }
@@ -42,7 +58,7 @@ export function useRenderOrchestration() {
         err instanceof ExtensionApiError ? err.message : "Could not start the render.";
       toast.error(message);
     }
-  }, [blocked, startRenderJob]);
+  }, [blocked, issues, startRenderJob]);
 
   const cancel = useCallback(async () => {
     try {
@@ -55,8 +71,8 @@ export function useRenderOrchestration() {
   useEffect(() => subscribeTriggerRender(() => void submit()), [submit]);
 
   useEffect(() => {
-    dispatchRenderState({ busy });
-  }, [busy]);
+    dispatchRenderState({ busy, blocked });
+  }, [busy, blocked]);
 
-  return { issues, blocked, busy, submit, cancel };
+  return { issues, blocked, busy, submit, cancel, focusRequest };
 }

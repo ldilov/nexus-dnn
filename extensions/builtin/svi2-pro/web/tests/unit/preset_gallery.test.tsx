@@ -27,10 +27,31 @@ describe("PresetGallery", () => {
     expect(screen.getByText("FLF2V morph")).toBeDefined();
   });
 
-  test("marks the canonical preset as default and recommended", () => {
+  test("marks the canonical preset as default", () => {
     render(<PresetGallery presets={presets} selectedId="svi-canonical" onSelect={() => undefined} />);
-    expect(screen.getByText("Recommended baseline")).toBeDefined();
     expect(screen.getByText("Default")).toBeDefined();
+  });
+
+  test("shows a one-line tagline derived from the description", () => {
+    render(<PresetGallery presets={presets} selectedId={null} onSelect={() => undefined} />);
+    expect(screen.getByText("reference-faithful baseline")).toBeDefined();
+    expect(screen.getByText("start to end morph")).toBeDefined();
+  });
+
+  test("applies roving tabindex to the selected preset", () => {
+    render(<PresetGallery presets={presets} selectedId="svi-canonical" onSelect={() => undefined} />);
+    const radios = screen.getAllByRole("radio");
+    const focusable = radios.filter((r) => r.getAttribute("tabindex") === "0");
+    expect(focusable).toHaveLength(1);
+    expect(focusable[0]?.getAttribute("aria-checked")).toBe("true");
+  });
+
+  test("arrow keys move selection within the radiogroup", () => {
+    const onSelect = vi.fn();
+    render(<PresetGallery presets={presets} selectedId="svi-canonical" onSelect={onSelect} />);
+    const radios = screen.getAllByRole("radio");
+    fireEvent.keyDown(radios[0], { key: "ArrowDown" });
+    expect(onSelect).toHaveBeenCalledWith(presets[1]);
   });
 
   test("shows resolution and last-image badges", () => {

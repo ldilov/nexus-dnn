@@ -3,16 +3,16 @@ import { vars } from "../../../theme/tokens.css";
 
 export const grid = style({
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-  gap: vars.space.md,
+  gridTemplateColumns: "repeat(auto-fill, minmax(196px, 1fr))",
+  gap: vars.space.sm,
 });
 
 export const card = style({
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.sm,
-  padding: vars.space.lg,
-  borderRadius: vars.radius.lg,
+  gap: vars.space.xs,
+  padding: vars.space.md,
+  borderRadius: vars.radius.md,
   background: vars.color.surfaceMuted,
   boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
   cursor: "pointer",
@@ -33,8 +33,15 @@ export const card = style({
   },
 });
 
+export const cardCanonical = style({
+  gridColumn: "1 / -1",
+  padding: vars.space.lg,
+  background: `color-mix(in oklab, ${vars.color.accent} 7%, ${vars.color.surfaceRaised})`,
+  boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.accent} 40%, transparent)`,
+});
+
 export const cardSelected = style({
-  background: `color-mix(in oklab, ${vars.color.accent} 10%, ${vars.color.surfaceMuted})`,
+  background: `color-mix(in oklab, ${vars.color.accent} 12%, ${vars.color.surfaceMuted})`,
   boxShadow: `inset 0 0 0 1px ${vars.color.accent}, ${vars.shadow.glow}`,
 });
 
@@ -48,29 +55,34 @@ export const titleRow = style({
 export const cardTitle = style({
   fontFamily: vars.font.display,
   fontSize: vars.text.body,
-  fontWeight: 600,
+  fontWeight: vars.weight.semibold,
+  letterSpacing: vars.tracking.display,
   color: vars.color.text,
+  selectors: {
+    [`${cardCanonical} &`]: {
+      fontSize: vars.text.subhead,
+      fontWeight: vars.weight.display,
+    },
+  },
 });
 
-export const cardDescription = style({
+export const cardTagline = style({
   fontSize: vars.text.caption,
   color: vars.color.textMuted,
-  lineHeight: 1.5,
-  display: "-webkit-box",
-  WebkitLineClamp: 3,
-  WebkitBoxOrient: "vertical",
+  lineHeight: 1.4,
+  whiteSpace: "nowrap",
   overflow: "hidden",
+  textOverflow: "ellipsis",
+  selectors: {
+    [`${cardCanonical} &`]: {
+      whiteSpace: "normal",
+    },
+  },
 });
 
 export const badgeRow = style({
   display: "flex",
   flexWrap: "wrap",
   gap: vars.space.xs,
-  marginTop: "auto",
-});
-
-export const recommendedHint = style({
-  fontSize: vars.text.micro,
-  color: vars.color.accent,
-  fontWeight: 600,
+  marginTop: vars.space.xs,
 });

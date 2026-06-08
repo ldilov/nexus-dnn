@@ -99,6 +99,25 @@ describe("validateRenderParams", () => {
     expect(issues.some((i) => i.field === "last_image_path")).toBe(false);
   });
 
+  test("derives last-image requirement from preset param flag for renamed presets", () => {
+    expect(
+      presetRequiresLastImage("morph-renamed-2", { requires_last_image: true }),
+    ).toBe(true);
+    const issues = validateRenderParams(baseParams({ requires_last_image: true }), {
+      presetId: "morph-renamed-2",
+      hasRefImage: true,
+      hasLastImage: false,
+      presetParams: { requires_last_image: true },
+    });
+    expect(issues.some((i) => i.field === "last_image_path" && i.severity === "error")).toBe(true);
+  });
+
+  test("param flag false overrides id allowlist", () => {
+    expect(
+      presetRequiresLastImage("flf2v-morph-lowvram", { requires_last_image: false }),
+    ).toBe(false);
+  });
+
   test("flags out-of-range cfg and steps", () => {
     const issues = validateRenderParams(baseParams({ cfg_scale: 20, num_inference_steps: 200 }), {
       presetId: "svi-canonical",

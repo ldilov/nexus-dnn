@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -11,17 +12,22 @@ import {
 import { applyPreset, defaultParamsFromSettings } from "../domain/build_params";
 import {
   cancelledState,
+  connectionLostState,
   initialRenderState,
+  markStalled,
   reduceRenderFrame,
+  renderStateFromJob,
   startedState,
   type RenderState,
 } from "../domain/render_state";
 import { DEFAULT_SETTINGS } from "../domain/settings_defaults";
 import { CANONICAL_PRESET_ID } from "../domain/preset_meta";
+import { getRenderJob } from "../services/history_client";
 import { cancelRender, startRender, subscribeRenderStream } from "../services/render_client";
 import type {
   ExtensionSettings,
   PresetSummary,
+  RenderJob,
   RenderParams,
 } from "../services/types";
 
@@ -29,6 +35,10 @@ export interface QwenEditConfig {
   enabled: boolean;
   prompt: string;
 }
+
+const STALL_WARN_MS = 90_000;
+const STALL_LOST_MS = 240_000;
+const STALL_TICK_MS = 5_000;
 
 interface RenderRequestState {
   settings: ExtensionSettings;
@@ -51,6 +61,7 @@ interface RenderRequestActions {
   startRenderJob: () => Promise<void>;
   cancelRenderJob: () => Promise<void>;
   resetRender: () => void;
+  showJobResult: (job: RenderJob) => Promise<void>;
 }
 
 type RenderRequestContextValue = RenderRequestState & RenderRequestActions;
@@ -84,6 +95,34 @@ export function RenderRequestProvider({
   });
   const [render, setRender] = useState<RenderState>(initialRenderState);
   const streamCleanup = useRef<(() => void) | null>(null);
+  const stallTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopWatchdog = useCallback(() => {
+    if (stallTimer.current !== null) {
+      clearInterval(stallTimer.current);
+      stallTimer.current = null;
+    }
+  }, []);
+
+  const startWatchdog = useCallback(() => {
+    stopWatchdog();
+    stallTimer.current = setInterval(() => {
+      setRender((prev) => {
+        if (prev.phase !== "running" || prev.lastFrameAt === null) return prev;
+        const elapsed = Date.now() - prev.lastFrameAt;
+        if (elapsed >= STALL_LOST_MS) {
+          streamCleanup.current?.();
+          streamCleanup.current = null;
+          stopWatchdog();
+          return connectionLostState(prev);
+        }
+        if (elapsed >= STALL_WARN_MS) {
+          return markStalled(prev);
+        }
+        return prev;
+      });
+    }, STALL_TICK_MS);
+  }, [stopWatchdog]);
 
   const applyPresetById = useCallback((preset: PresetSummary) => {
     setPresetId(preset.id);
@@ -122,26 +161,61 @@ export function RenderRequestProvider({
   const resetRender = useCallback(() => {
     streamCleanup.current?.();
     streamCleanup.current = null;
+    stopWatchdog();
     setRender(initialRenderState());
-  }, []);
+  }, [stopWatchdog]);
 
   const startRenderJob = useCallback(async () => {
     streamCleanup.current?.();
     const { jobId } = await startRender({ presetId, params });
     setRender(startedState(jobId, qwenEdit.enabled));
-    streamCleanup.current = subscribeRenderStream(jobId, (frame) => {
-      setRender((prev) => reduceRenderFrame(prev, frame));
-    });
-  }, [params, presetId, qwenEdit.enabled]);
+    streamCleanup.current = subscribeRenderStream(
+      jobId,
+      (frame) => {
+        setRender((prev) => reduceRenderFrame(prev, frame));
+      },
+      () => {
+        setRender((prev) => markStalled(prev));
+      },
+    );
+    startWatchdog();
+  }, [params, presetId, qwenEdit.enabled, startWatchdog]);
 
   const cancelRenderJob = useCallback(async () => {
     const jobId = render.jobId;
     if (!jobId) return;
-    await cancelRender(jobId);
+    const { status } = await cancelRender(jobId);
+    if (status === "cancelling") {
+      return;
+    }
     streamCleanup.current?.();
     streamCleanup.current = null;
+    stopWatchdog();
     setRender((prev) => cancelledState(prev));
-  }, [render.jobId]);
+  }, [render.jobId, stopWatchdog]);
+
+  const showJobResult = useCallback(
+    async (job: RenderJob) => {
+      streamCleanup.current?.();
+      streamCleanup.current = null;
+      stopWatchdog();
+      try {
+        const full = await getRenderJob(job.id);
+        setRender(renderStateFromJob(full));
+      } catch {
+        setRender(renderStateFromJob(job));
+      }
+    },
+    [stopWatchdog],
+  );
+
+  useEffect(() => {
+    return () => {
+      streamCleanup.current?.();
+      streamCleanup.current = null;
+      stopWatchdog();
+    };
+  }, [stopWatchdog]);
 
   const value = useMemo<RenderRequestContextValue>(
     () => ({
@@ -162,6 +236,7 @@ export function RenderRequestProvider({
       startRenderJob,
       cancelRenderJob,
       resetRender,
+      showJobResult,
     }),
     [
       settings,
@@ -181,6 +256,7 @@ export function RenderRequestProvider({
       startRenderJob,
       cancelRenderJob,
       resetRender,
+      showJobResult,
     ],
   );
 

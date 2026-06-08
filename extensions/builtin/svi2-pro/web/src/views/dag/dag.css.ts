@@ -17,8 +17,12 @@ export const layout = style({
 export const canvasWrap = style({
   display: "flex",
   minHeight: "480px",
+  padding: vars.space.xs,
   borderRadius: vars.radius.lg,
   overflow: "hidden",
+  background: vars.color.surfaceGlass,
+  backdropFilter: "blur(20px) saturate(1.2)",
+  boxShadow: `${vars.shadow.subtle}, inset 0 0 0 1px ${vars.color.borderSubtle}`,
 });
 
 export const side = style({
