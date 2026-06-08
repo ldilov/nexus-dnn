@@ -8,7 +8,13 @@
 import { useState } from "react";
 
 import type { DependencyStep } from "../../../types/extension_dependencies";
-import { presentation, shortenSize } from "../step_type_presentation";
+import {
+  formatDuration,
+  formatSpeed,
+  presentation,
+  shortenSize,
+} from "../step_type_presentation";
+import type { LiveStepProgress } from "../use_install_progress";
 import * as s from "./step_row.css";
 
 export interface StepRowProps {
@@ -17,6 +23,8 @@ export interface StepRowProps {
   upstreamSatisfied: boolean;
   /** True while any install run is active in the host. */
   installActive: boolean;
+  /** Live event-driven download metrics for this step, if any. */
+  live?: LiveStepProgress;
   onInstallOnly: (stepId: string) => void;
   onRetry: (stepId: string) => void;
   onReinstall: (stepId: string) => void;
@@ -34,6 +42,7 @@ export function StepRow({
   step,
   upstreamSatisfied,
   installActive,
+  live,
   onInstallOnly,
   onRetry,
   onReinstall,
@@ -63,13 +72,14 @@ export function StepRow({
             ? s.statusDotSkipped
             : s.statusDotPending;
 
+  const liveActive = step.status === "running" && live !== undefined && live.totalBytes > 0;
   const showProgressBar = step.status === "running" || (step.status === "pending" && installActive);
-  const progressPct = step.progress
-    ? step.progress.total_bytes > 0
+  const dtoPct =
+    step.progress && step.progress.total_bytes > 0
       ? Math.min(100, (step.progress.current_bytes / step.progress.total_bytes) * 100)
-      : 0
-    : 0;
-  const progressIndeterminate = step.status === "running" && !step.progress;
+      : 0;
+  const progressPct = liveActive && live ? live.pct : dtoPct;
+  const progressIndeterminate = step.status === "running" && !liveActive && !step.progress;
 
   const installOnlyDisabled =
     !upstreamSatisfied || installActive || step.status === "ok" || step.status === "running";
@@ -135,6 +145,28 @@ export function StepRow({
               <span className={s.progressIndeterminate} />
             ) : (
               <span className={s.progressFill} style={{ width: `${progressPct}%` }} />
+            )}
+          </div>
+        )}
+
+        {liveActive && live && (
+          <div className={s.liveMeta} aria-live="polite">
+            <span className={s.livePrimary}>
+              {shortenSize(live.currentBytes)} / {shortenSize(live.totalBytes)}
+            </span>
+            <span className={s.metaSep}>·</span>
+            <span className={s.liveMetric}>{Math.round(live.pct)}%</span>
+            {live.speedBps > 0 && (
+              <>
+                <span className={s.metaSep}>·</span>
+                <span className={s.liveMetric}>{formatSpeed(live.speedBps)}</span>
+              </>
+            )}
+            {live.etaSeconds !== null && (
+              <>
+                <span className={s.metaSep}>·</span>
+                <span className={s.liveMetric}>ETA {formatDuration(live.etaSeconds)}</span>
+              </>
             )}
           </div>
         )}

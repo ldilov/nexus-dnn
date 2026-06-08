@@ -154,8 +154,31 @@ export const progressFill = style({
   left: 0,
   bottom: 0,
   background: `linear-gradient(90deg, ${vars.color.accent.primaryDim}, ${vars.color.accent.primary})`,
-  transition: `width ${vars.motion.durationNormal} ${vars.motion.easingDefault}`,
+  // audit-allow: px — transition timing tuned to the live-progress ticker cadence
+  transition: "width 320ms linear",
   borderRadius: vars.radius.control,
+  "@media": {
+    "(prefers-reduced-motion: reduce)": { transition: "none" },
+  },
+});
+
+export const liveMeta = style({
+  display: "flex",
+  alignItems: "center",
+  gap: vars.space.gapSm,
+  flexWrap: "wrap",
+  marginTop: vars.space.gapXs,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+});
+
+export const livePrimary = style({
+  color: vars.color.text.secondary,
+  fontWeight: vars.font.weight.semibold,
+});
+
+export const liveMetric = style({
+  color: vars.color.text.muted,
 });
 
 export const progressIndeterminate = style({

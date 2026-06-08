@@ -1,17 +1,15 @@
 /**
  * Spec 035 — useInstallProgress hook.
  *
- * Subscribes to the orchestration WebSocket bus at /api/v1/events and triggers a
- * SWR `mutate()` whenever an `extension_install_*` event for the given extension
- * arrives. Components receive fresh `dependencies` snapshots without polling.
- *
- * Optionally invokes a caller-supplied `onCompleted` callback when an
- * `extension_install_completed` event arrives so the page can surface a
- * terminal toast (success / failure) — without it, a backgrounded install
- * that fails after the initial "started" toast leaves the user with no
- * explicit feedback unless they're staring at the per-row state.
+ * Subscribes to the orchestration event bus and (a) triggers a coalesced SWR
+ * `mutate()` so the authoritative `dependencies` snapshot stays fresh, and
+ * (b) tracks per-step live download progress straight off the
+ * `extension_install_step_progress` payload — current/total bytes, a smoothed
+ * transfer speed, and an ETA — so model-download rows update in real time
+ * without waiting on a REST round-trip. A steady ticker extrapolates bytes
+ * between events so the bar glides and the ETA counts down.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useReducer, useRef } from "react";
 import { useSWRConfig } from "swr";
 
 import { subscribeEvents } from "../../services/event_streams";
@@ -23,6 +21,9 @@ const INSTALL_EVENT_TYPES = new Set([
   "extension_install_step_failed",
   "extension_install_completed",
 ]);
+
+const SPEED_SMOOTHING = 0.4;
+const TICK_MS = 300;
 
 interface InstallEventLike {
   type?: string;
@@ -37,6 +38,17 @@ interface StepFailedEventLike extends InstallEventLike {
   message?: string;
 }
 
+interface StepProgressEventLike extends InstallEventLike {
+  step_id?: string;
+  phase?: string;
+  current_bytes?: number;
+  total_bytes?: number;
+}
+
+interface StepEventLike extends InstallEventLike {
+  step_id?: string;
+}
+
 export type InstallOutcome = "success" | "failed" | "cancelled";
 
 export interface InstallCompletedDetail {
@@ -46,13 +58,64 @@ export interface InstallCompletedDetail {
   failedStep?: { stepId: string; category: string; message: string };
 }
 
+export interface LiveStepProgress {
+  currentBytes: number;
+  totalBytes: number;
+  /** 0..100, extrapolated between events. */
+  pct: number;
+  /** Smoothed bytes/second, 0 when not yet known. */
+  speedBps: number;
+  /** Seconds to completion, or null when it cannot be estimated. */
+  etaSeconds: number | null;
+  phase: string;
+}
+
 export interface InstallProgress {
   /** True iff the runner has emitted a step or progress event recently. */
   active: boolean;
+  /** Per-step live download metrics, keyed by step id. */
+  liveByStep: Record<string, LiveStepProgress>;
 }
 
 export interface UseInstallProgressOptions {
   onCompleted?: (detail: InstallCompletedDetail) => void;
+}
+
+interface StepTracker {
+  reportedBytes: number;
+  reportedAt: number;
+  totalBytes: number;
+  speedBps: number;
+  phase: string;
+}
+
+function snapshot(
+  trackers: Map<string, StepTracker>,
+  now: number,
+): Record<string, LiveStepProgress> {
+  const out: Record<string, LiveStepProgress> = {};
+  for (const [stepId, t] of trackers) {
+    const elapsed = Math.max(0, (now - t.reportedAt) / 1000);
+    const extrapolated = t.reportedBytes + t.speedBps * elapsed;
+    const current =
+      t.totalBytes > 0
+        ? Math.min(t.totalBytes, extrapolated)
+        : Math.max(t.reportedBytes, extrapolated);
+    const pct =
+      t.totalBytes > 0 ? Math.min(100, (current / t.totalBytes) * 100) : 0;
+    const remaining = t.totalBytes - current;
+    const etaSeconds =
+      t.speedBps > 0 && remaining > 0 ? remaining / t.speedBps : null;
+    out[stepId] = {
+      currentBytes: current,
+      totalBytes: t.totalBytes,
+      pct,
+      speedBps: t.speedBps,
+      etaSeconds,
+      phase: t.phase,
+    };
+  }
+  return out;
 }
 
 export function useInstallProgress(
@@ -62,8 +125,9 @@ export function useInstallProgress(
 ): InstallProgress {
   const { mutate } = useSWRConfig();
   const activeRef = useRef(false);
-  // Capture the callback in a ref so the effect doesn't resubscribe on every
-  // render when the caller passes an inline arrow.
+  const trackersRef = useRef<Map<string, StepTracker>>(new Map());
+  const liveRef = useRef<Record<string, LiveStepProgress>>({});
+  const [, forceTick] = useReducer((n: number) => n + 1, 0);
   const onCompletedRef = useRef(options?.onCompleted);
   onCompletedRef.current = options?.onCompleted;
 
@@ -72,15 +136,58 @@ export function useInstallProgress(
     let cancelled = false;
     let revalidateTimer: ReturnType<typeof setTimeout> | null = null;
     let lastFailedStep: InstallCompletedDetail["failedStep"] | undefined;
+
     const scheduleRevalidate = () => {
-      if (cancelled) return;
-      if (revalidateTimer) return;
-      // Coalesce bursts of progress events into one revalidate per ~250ms.
+      if (cancelled || revalidateTimer) return;
       revalidateTimer = setTimeout(() => {
         revalidateTimer = null;
         if (!cancelled) void mutate(swrKey);
       }, 250);
     };
+
+    const refreshLive = () => {
+      liveRef.current = snapshot(trackersRef.current, Date.now());
+      forceTick();
+    };
+
+    const recordProgress = (event: StepProgressEventLike) => {
+      const stepId = event.step_id;
+      if (!stepId) return;
+      const now = Date.now();
+      const current = event.current_bytes ?? 0;
+      const total = event.total_bytes ?? 0;
+      const prev = trackersRef.current.get(stepId);
+      let speedBps = prev?.speedBps ?? 0;
+      if (prev && current > prev.reportedBytes && now > prev.reportedAt) {
+        const instant =
+          (current - prev.reportedBytes) / ((now - prev.reportedAt) / 1000);
+        speedBps =
+          prev.speedBps > 0
+            ? SPEED_SMOOTHING * instant + (1 - SPEED_SMOOTHING) * prev.speedBps
+            : instant;
+      }
+      trackersRef.current.set(stepId, {
+        reportedBytes: current,
+        reportedAt: now,
+        totalBytes: total,
+        speedBps,
+        phase: event.phase ?? "",
+      });
+    };
+
+    const clearStep = (event: StepEventLike) => {
+      if (event.step_id) trackersRef.current.delete(event.step_id);
+    };
+
+    const ticker = setInterval(() => {
+      if (cancelled) return;
+      if (trackersRef.current.size > 0) {
+        refreshLive();
+      } else if (Object.keys(liveRef.current).length > 0) {
+        liveRef.current = {};
+        forceTick();
+      }
+    }, TICK_MS);
 
     const sub = subscribeEvents((evt) => {
       const event = evt as unknown as InstallEventLike;
@@ -88,44 +195,61 @@ export function useInstallProgress(
       if (event.extension_id !== extensionId) return;
       activeRef.current = event.type !== "extension_install_completed";
 
-      if (event.type === "extension_install_step_failed") {
-        const failed = event as StepFailedEventLike;
-        if (failed.step_id && failed.category && failed.message) {
-          lastFailedStep = {
-            stepId: failed.step_id,
-            category: failed.category,
-            message: failed.message,
-          };
+      switch (event.type) {
+        case "extension_install_step_progress":
+          recordProgress(event as StepProgressEventLike);
+          refreshLive();
+          scheduleRevalidate();
+          break;
+        case "extension_install_step_completed":
+        case "extension_install_step_failed":
+          if (event.type === "extension_install_step_failed") {
+            const failed = event as StepFailedEventLike;
+            if (failed.step_id && failed.category && failed.message) {
+              lastFailedStep = {
+                stepId: failed.step_id,
+                category: failed.category,
+                message: failed.message,
+              };
+            }
+          }
+          clearStep(event as StepEventLike);
+          refreshLive();
+          scheduleRevalidate();
+          break;
+        case "extension_install_completed": {
+          if (revalidateTimer) {
+            clearTimeout(revalidateTimer);
+            revalidateTimer = null;
+          }
+          trackersRef.current.clear();
+          liveRef.current = {};
+          forceTick();
+          void mutate(swrKey);
+          const cb = onCompletedRef.current;
+          if (cb) {
+            const outcome = (event.outcome ?? "failed") as InstallOutcome;
+            cb({
+              outcome,
+              install_run_id: event.install_run_id,
+              failedStep: outcome !== "success" ? lastFailedStep : undefined,
+            });
+          }
+          lastFailedStep = undefined;
+          break;
         }
-      }
-
-      if (event.type === "extension_install_completed") {
-        // Final revalidate happens immediately so the gallery card flips fast.
-        if (revalidateTimer) {
-          clearTimeout(revalidateTimer);
-          revalidateTimer = null;
-        }
-        void mutate(swrKey);
-        const cb = onCompletedRef.current;
-        if (cb) {
-          const outcome = (event.outcome ?? "failed") as InstallOutcome;
-          cb({
-            outcome,
-            install_run_id: event.install_run_id,
-            failedStep: outcome !== "success" ? lastFailedStep : undefined,
-          });
-        }
-        lastFailedStep = undefined;
-      } else {
-        scheduleRevalidate();
+        default:
+          scheduleRevalidate();
       }
     });
+
     return () => {
       cancelled = true;
       if (revalidateTimer) clearTimeout(revalidateTimer);
+      clearInterval(ticker);
       sub.close();
     };
   }, [extensionId, swrKey, mutate]);
 
-  return { active: activeRef.current };
+  return { active: activeRef.current, liveByStep: liveRef.current };
 }
