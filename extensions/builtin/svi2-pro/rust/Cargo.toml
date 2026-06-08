@@ -9,6 +9,10 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
+[[test]]
+name = "dep_plan_test"
+path = "tests/install_plan_test.rs"
+
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["json", "macros", "tokio", "http1", "query", "multipart"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "fs", "process", "io-util", "time"] }
@@ -33,6 +37,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+nexus-extension-deps = { path = "../../../../crates/nexus-extension-deps" }
+uuid = { version = "1", features = ["v4"] }
+serde_yaml = "0.9"
 
 [lints.rust]
 unsafe_code = "forbid"
