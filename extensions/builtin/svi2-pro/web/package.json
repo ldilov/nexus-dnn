@@ -5,7 +5,7 @@
   "description": "Frontend bundle for the SVI 2.0 Pro video Nexus extension. Mounts under the host's generic /extensions/:layoutId route as the svi2-pro-app custom element.",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --config vite.dev.config.ts",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
