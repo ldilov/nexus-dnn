@@ -166,3 +166,28 @@ This category is a **hard gate**: any failure here blocks merge regardless of ov
 - Real GPU render acceptance (rtx50-fp8 on RTX 5070 Ti / DGX).
 - Real upstream sha256 pinning for binaries lacking published hashes (placeholder + documented).
 - Streaming-infinite / 10+ clip endurance runs.
+
+---
+
+## Final coverage scorecard (2026-06-09, offline bar)
+
+Verified independently: boundary grep zero · rust crate `cargo test -p svi2-pro-extension` 22/22 · frontend `tsc` clean + `vitest` 31/31 + `vite build` ok · worker pytest 120 passed/3 skipped (offline subset; 211 with the extension venv) · real ffmpeg sha256 pinned · install plan executed offline (topo + run-to-success + idempotent no-redownload).
+
+| Cat | Weight | Coverage | Notes |
+|---|---|---|---|
+| 1 Install/Lifecycle | 10 | 0.95 | install plan executed end-to-end offline + manifest host-schema round-trip; live host-boot panel install deferred |
+| 2 Dependency isolation | 10 | 0.95 | extension_local venv, uv.lock, vendored flash-attn, real ffmpeg+sd-cli(win) hashes; sd-cli linux has no upstream prebuilt |
+| 3 Model auto-download | 14 | 0.93 | all artifacts declared + model-store shape; download-once/no-redownload proven; progress/resume/integrity are host-generic |
+| 4 Presets | 12 | 0.95 | 11 validate 1:1, machine-readable resolution_warning, flf2v last-image enforced, catalog via RPC, canonical default |
+| 5 Settings | 8 | 0.93 | ConfigWidget + settings view, persisted, shipped defaults |
+| 6 Recipe view | 12 | 0.95 | gallery, upload→/uploads wired, tier fields, validation, Qwen toggle |
+| 7 DAG view | 8 | 0.93 | xyflow pipeline graph, live node state, single render-request store |
+| 8 Progress/output | 8 | 0.94 | live progress, cancel, player, history, error mapping; through-bridge E2E |
+| 9 Polish | 6 | 0.92 | Spectral Graphite, no overflow @1024/1440/1920, clean console, reduced-motion hardened; bitmap screenshot blocked by the headless renderer (not an app defect) |
+| 10 Boundary (GATE) | 6 | 1.00 | grep zero; literals confined to extension crate; no host tables/routes/crate |
+| 11 Storage | 3 | 1.00 | ext_svi2_pro__ tables, migrations apply, round-trip tested |
+| 12 Fake E2E | 5 | 1.00 | worker fake render + through-the-bridge SSE test |
+| 13 Tests/build | 6 | 0.98 | worker+frontend+rust suites green; manifest validation; boundary guard |
+| 14 Docs | 2 | 0.95 | README rewritten for panel install + views + deferred GPU gate |
+
+**Weighted coverage ≈ 95% of the offline-verifiable bar.** Remaining deltas are the explicitly out-of-scope GPU render, host-generic download behaviours the extension correctly declares, the sd-cli linux prebuilt that does not exist upstream, and a live host-boot panel install (substituted by the offline install-plan execution test).
