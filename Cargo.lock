@@ -6252,6 +6252,7 @@ dependencies = [
  "nexus-backend-runtimes",
  "nexus-extension",
  "nexus-extension-deps",
+ "semver",
  "serde",
  "serde_json",
  "serde_yaml",

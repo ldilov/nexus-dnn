@@ -40,6 +40,7 @@ http-body-util = "0.1"
 nexus-extension-deps = { path = "../../../../crates/nexus-extension-deps" }
 uuid = { version = "1", features = ["v4"] }
 serde_yaml = "0.9"
+semver = "1"
 
 [lints.rust]
 unsafe_code = "forbid"
