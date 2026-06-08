@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use nexus_extension::{ExtensionManifest, parse_manifest};
+use nexus_extension::{ExtensionManifest, parse_manifest, validate_manifest_schema};
 
 fn manifest_path() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -10,6 +10,14 @@ fn manifest_path() -> std::path::PathBuf {
 
 fn load() -> ExtensionManifest {
     parse_manifest(&manifest_path()).expect("manifest deserializes against host ExtensionManifest")
+}
+
+#[test]
+fn manifest_passes_discovery_json_schema_gate() {
+    let yaml = std::fs::read_to_string(manifest_path()).expect("read manifest");
+    let value: serde_json::Value =
+        serde_yaml::from_str(&yaml).expect("manifest yaml parses to json value");
+    validate_manifest_schema(&value).expect("manifest passes the extension-manifest.json gate");
 }
 
 #[test]
