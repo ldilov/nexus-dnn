@@ -25078,7 +25078,7 @@ function sO({ state: t }) {
   const a = t.renderReport;
   if (!a) return null;
   const r = [];
-  return typeof a.frames == "number" && r.push(["Frames", String(a.frames)]), typeof a.duration_seconds == "number" && r.push(["Duration", `${a.duration_seconds.toFixed(1)}s`]), t.vramPeakGib !== null && r.push(["VRAM peak", `${t.vramPeakGib.toFixed(1)} GiB`]), typeof a.sha256 == "string" && r.push(["sha256", a.sha256.slice(0, 16)]), t.outputPath && r.push(["Output", t.outputPath]), r.length === 0 ? null : /* @__PURE__ */ S.jsx("div", { className: W4, children: r.map(([l, s]) => /* @__PURE__ */ S.jsxs("div", { className: eO, children: [
+  return typeof a.frames == "number" && r.push(["Frames", String(a.frames)]), typeof a.duration_seconds == "number" && r.push(["Duration", `${a.duration_seconds.toFixed(1)}s`]), t.vramPeakGib !== null && r.push(["VRAM peak", `${t.vramPeakGib.toFixed(1)} GiB`]), typeof a.sha256 == "string" && r.push(["sha256", `${a.sha256.slice(0, 16)}…`]), t.outputPath && r.push(["Output", t.outputPath]), r.length === 0 ? null : /* @__PURE__ */ S.jsx("div", { className: W4, children: r.map(([l, s]) => /* @__PURE__ */ S.jsxs("div", { className: eO, children: [
     /* @__PURE__ */ S.jsx("span", { className: tO, children: l }),
     /* @__PURE__ */ S.jsx("span", { className: nO, children: s })
   ] }, l)) });
