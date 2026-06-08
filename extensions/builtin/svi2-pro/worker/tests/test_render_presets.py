@@ -31,7 +31,7 @@ def test_canonical_preset_params_validate():
 
 
 def test_resolution_stepdown_presets_exist_and_are_offbudget():
-    from svi2_video_worker.svi_chain import check_trained_resolution
+    from svi2_video_worker.resolution import check_trained_resolution
 
     presets = _load_presets()
     for pid, wh in (("svi-canonical-640", (640, 368)), ("svi-canonical-704", (704, 400))):

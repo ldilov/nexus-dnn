@@ -12,6 +12,7 @@ class Methods:
     RENDER_CANCEL = "svi2.video.render.cancel"
     INSTALL_START = "svi2.video.install.start"
     INSTALL_STATUS = "svi2.video.install.status"
+    PRESETS_LIST = "svi2.presets.list"
 
 
 class Notifications:

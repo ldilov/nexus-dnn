@@ -120,23 +120,7 @@ def _crossfade_frames(a: list, b: list) -> list:
     return out
 
 
-_TRAINED_RESOLUTIONS = frozenset({(832, 480), (480, 832)})
-
-
-def check_trained_resolution(width: int, height: int) -> Optional[str]:
-    # The SVI LoRA is error-recycling-trained at the 480p budget (832x480 /
-    # 480x832, ~399k px). Off that budget the learned anchor-restoration is
-    # evaluated out-of-distribution, so identity-lock weakens and the subject
-    # relaxes toward the model's face prior over a long chain. Returns a warning
-    # string for off-budget resolutions, or None when on a trained budget.
-    if (width, height) in _TRAINED_RESOLUTIONS:
-        return None
-    return (
-        f"resolution {width}x{height} is off the SVI LoRA training budget "
-        f"(trained at 832x480 / 480x832, ~{832 * 480} px); identity-lock weakens "
-        f"off-distribution and the subject can drift toward the model's prior over "
-        f"a long chain. Render at 832x480 (landscape) or 480x832 (portrait)."
-    )
+from .resolution import check_trained_resolution  # noqa: E402  re-export, torch-free
 
 
 def stitch_clip_frames(
