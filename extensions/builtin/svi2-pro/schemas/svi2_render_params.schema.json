@@ -15,6 +15,13 @@
       "items": { "type": "string" },
       "minItems": 1
     },
+    "last_image_path": {
+      "type": ["string", "null"]
+    },
+    "requires_last_image": {
+      "type": "boolean",
+      "default": false
+    },
     "num_clips": {
       "type": "integer",
       "minimum": 1
@@ -58,10 +65,49 @@
       "minimum": 1,
       "default": 81
     },
+    "num_inference_steps": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 50
+    },
+    "sigma_shift": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 20,
+      "default": 5.0
+    },
+    "switch_boundary": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.9
+    },
+    "stitch_mode": {
+      "type": "string",
+      "enum": ["trim", "crossfade"],
+      "default": "crossfade"
+    },
+    "ref_pad_num": {
+      "type": "integer",
+      "minimum": -1,
+      "maximum": 16,
+      "default": 0
+    },
+    "adain_factor": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.0
+    },
+    "motion_scale_schedule": {
+      "type": ["array", "null"],
+      "items": { "type": "number" }
+    },
     "cfg_scale": {
       "type": "number",
       "minimum": 1,
-      "maximum": 10,
+      "maximum": 12,
       "default": 5.0
     },
     "num_overlap_frame": {

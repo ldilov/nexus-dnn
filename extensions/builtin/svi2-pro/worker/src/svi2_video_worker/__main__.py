@@ -17,6 +17,7 @@ def cli() -> int:
     from .installer import register_installer_handlers
     from .main import Worker
     from .pipeline_fake import register_fake_handlers
+    from .presets import register_preset_handlers
 
     profile = os.environ.get("NEXUS_VIDEO_SVI2_RUNTIME", "fake")
     if profile != "fake":
@@ -31,6 +32,7 @@ def cli() -> int:
             )
     worker = Worker(profile=profile)
     register_installer_handlers(worker)
+    register_preset_handlers(worker)
     if profile == "fake":
         register_fake_handlers(worker)
     elif profile == "rtx50-fp8":

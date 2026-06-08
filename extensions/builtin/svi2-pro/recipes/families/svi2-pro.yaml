@@ -1,0 +1,25 @@
+family_id: "svi2-pro"
+display_name: "SVI 2.0 Pro (Wan2.2-I2V-A14B + SVI LoRA)"
+model_family_ref: "Kijai/WanVideo_comfy_fp8_scaled"
+engine_version_constraint: ">=0.1.0, <0.2.0"
+expected_artifacts:
+  - "dit-high-fp8"
+  - "dit-low-fp8"
+  - "svi-lora-high"
+  - "svi-lora-low"
+  - "text-encoder"
+  - "vae"
+  - "tokenizer"
+  - "qwen-edit-diffusion"
+  - "qwen-edit-vae"
+  - "qwen-edit-llm"
+  - "qwen-edit-mmproj"
+  - "rife-flownet"
+  - "sd-cli"
+default_generation:
+  width: 832
+  height: 480
+  fps: 16
+  num_inference_steps: 50
+  cfg_scale: 4.0
+  blocks_to_swap: 40

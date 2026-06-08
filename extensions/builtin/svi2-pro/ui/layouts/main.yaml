@@ -1,0 +1,7 @@
+id: "svi2-pro.layout.main"
+displayName: "SVI 2.0 Pro"
+description: "Long, identity-locked image-to-video from a single anchor image. Recipe view + DAG view."
+icon: "movie"
+
+root:
+  type: svi2-pro-app

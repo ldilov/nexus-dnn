@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -13,6 +14,12 @@ _ARTIFACT_FILENAMES: dict[str, str] = {
     "text-encoder": "umt5-xxl-enc-bf16.safetensors",
     "vae": "Wan2_1_VAE_bf16.safetensors",
     "tokenizer": "google/umt5-xxl",
+    "qwen-edit-diffusion": "Qwen_Image_Edit_2509-Q5_K_M.gguf",
+    "qwen-edit-vae": "VAE/Qwen_Image-VAE.safetensors",
+    "qwen-edit-llm": "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
+    "qwen-edit-mmproj": "mmproj-F16.gguf",
+    "rife-flownet": "flownet.pkl",
+    "sd-cli": "sd-cli",
 }
 
 _WAN22_A14B_CONFIG: dict[str, Any] = {
@@ -80,14 +87,28 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
             )
 
     last_image = params.get("last_image_path")
+    requires_last_image = bool(params.get("requires_last_image", False))
+    if requires_last_image and not last_image:
+        raise ValueError(
+            "last_image_path is required for this preset/mode "
+            "(flf2v morph needs a target end keyframe)"
+        )
+
+    from .resolution import resolution_warning
+
+    width = int(params.get("width", 480))
+    height = int(params.get("height", 832))
+    res_warning = resolution_warning(width, height)
     return {
         "ref_image_path": str(ref),
         "last_image_path": str(last_image) if last_image else None,
         "prompts": list(prompts),
         "negative_prompt": str(params.get("negative_prompt", _NEGATIVE_PROMPT)),
         "num_clips": num_clips,
-        "height": int(params.get("height", 832)),
-        "width": int(params.get("width", 480)),
+        "height": height,
+        "width": width,
+        "requires_last_image": requires_last_image,
+        "resolution_warning": res_warning,
         "fps": int(params.get("fps", 15)),
         "frames_per_clip": frames_per_clip,
         "cfg_scale": float(params.get("cfg_scale", 5.0)),
@@ -133,9 +154,23 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def resolve_models_dir(explicit: str | None = None) -> Path:
+    if explicit:
+        return Path(explicit)
+    env_dir = os.environ.get("SVI2_MODELS_DIR")
+    if env_dir:
+        return Path(env_dir)
+    host_data = os.environ.get("NEXUS_HOST_DATA_DIR")
+    if host_data:
+        return Path(host_data) / "extensions" / "nexus.video.svi2-pro" / "models"
+    return Path("models")
+
+
 def register_svi2_handlers(worker: Any) -> None:
     async def _render_start(params: dict[str, Any]) -> dict[str, Any]:
         validated = validate_render_params(params or {})
+        if not validated.get("models_dir"):
+            validated["models_dir"] = str(resolve_models_dir())
         return await asyncio.to_thread(_run_render, validated, worker)
 
     async def _render_cancel(_params: Any) -> dict[str, Any]:
@@ -349,10 +384,10 @@ def _run_render(
     from .svi_chain import (
         RollingCrossfadeStitcher,
         adain_normalize_latent,
-        check_trained_resolution,
         reencode_motion_tail,
         ref_pad_for_clip,
     )
+    from .resolution import resolution_warning as check_trained_resolution_struct
     from .ffmpeg_io import StreamingFrameWriter
     from .render_report import write_render_report
     from .vram import reset_peak, peak_allocated, log_vram
@@ -385,9 +420,9 @@ def _run_render(
     ref_pad_free_clips: int = params["ref_pad_free_clips"]
     ref_pad_schedule = params.get("ref_pad_schedule")
 
-    resolution_warning = check_trained_resolution(width, height)
+    resolution_warning = params.get("resolution_warning") or check_trained_resolution_struct(width, height)
     if resolution_warning:
-        log_vram(f"WARN off-distribution resolution: {resolution_warning}")
+        log_vram(f"WARN off-distribution resolution: {resolution_warning['message']}")
 
     ref_image = Image.open(params["ref_image_path"]).convert("RGB").resize((width, height))
 
@@ -599,7 +634,7 @@ def _run_render(
         "model_audit": models.audit,
         "stitch_mode": params["stitch_mode"],
         "pixel_re_encode": pixel_re_encode,
-        "resolution_warning": resolution_warning or "",
+        "resolution_warning": resolution_warning,
     }
     write_render_report(output_path.parent, report_data)
 
