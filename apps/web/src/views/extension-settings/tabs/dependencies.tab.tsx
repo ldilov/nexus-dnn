@@ -14,7 +14,7 @@ import {
   retryStep,
   startInstall,
 } from "../../../services/extension_dependencies_client";
-import { shortenSize } from "../step_type_presentation";
+import { formatSpeed, shortenSize } from "../step_type_presentation";
 import { useInstallProgress, type InstallCompletedDetail } from "../use_install_progress";
 import { StepRow } from "../components/step_row";
 import * as s from "./dependencies.tab.css";
@@ -150,9 +150,15 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
     );
   }
 
+  const aggregateSpeed = Object.values(progress.liveByStep).reduce(
+    (sum, live) => sum + live.speedBps,
+    0,
+  );
   const remainingLabel =
     data.total_remaining_bytes > 0
-      ? `${shortenSize(data.total_remaining_bytes)} remaining`
+      ? aggregateSpeed > 0
+        ? `${shortenSize(data.total_remaining_bytes)} remaining · ↓ ${formatSpeed(aggregateSpeed)}`
+        : `${shortenSize(data.total_remaining_bytes)} remaining`
       : data.all_satisfied
         ? "All dependencies satisfied"
         : "Some steps need attention";
@@ -210,6 +216,7 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
               step={step}
               upstreamSatisfied={upstreamSatisfied}
               installActive={installActive}
+              live={progress.liveByStep[step.id]}
               onInstallOnly={handleRetry}
               onRetry={handleRetry}
               onReinstall={handleRetry}

@@ -63,6 +63,23 @@ export const STEP_TYPE_PRESENTATION: Record<string, StepTypePresentation> = {
   },
 };
 
+function formatSpeed(bytesPerSecond: number): string {
+  if (bytesPerSecond <= 0) return "—";
+  return `${shortenSize(bytesPerSecond)}/s`;
+}
+
+function formatDuration(seconds: number | null): string {
+  if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return "—";
+  const total = Math.round(seconds);
+  if (total < 60) return `${total}s`;
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  if (mins < 60) return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`;
+}
+
 export function presentation(step: DependencyStep): StepTypePresentation {
   return (
     STEP_TYPE_PRESENTATION[step.type] ?? {
@@ -73,4 +90,4 @@ export function presentation(step: DependencyStep): StepTypePresentation {
   );
 }
 
-export { shortenSize };
+export { shortenSize, formatSpeed, formatDuration };
