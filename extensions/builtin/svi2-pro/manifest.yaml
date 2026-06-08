@@ -38,23 +38,22 @@ dependencies:
         id: ffmpeg
         version: ">=4.0"
         # allow_system_path resolves an existing ffmpeg on PATH first (the
-        # common case), so the bundled download is a soft fallback only. The
-        # BtbN URLs below are "latest" rolling releases whose bytes change on
-        # every upstream build — they cannot be sha256-pinned offline. The
-        # zero-hashes are placeholders for that fallback; a maintainer pins
-        # them when wiring a fixed release tag. TODO(svi2-ffmpeg-hash): pin to
-        # a tagged BtbN release + real sha256/size.
+        # common case), so the bundled download is a soft fallback only.
+        # Pinned to BtbN autobuild-2026-06-08-14-24, the static n8.1.1 GPL
+        # asset. sha256/size below are the upstream published values
+        # (checksums.sha256 on that tag), cross-verified against the GitHub
+        # release asset digest.
         allow_system_path: true
         sources:
           - platform: windows-x64
-            url: "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip"
-            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
-            size: 0
+            url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-08-14-24/ffmpeg-n8.1.1-11-ge4c7fbf6c0-win64-gpl-8.1.zip"
+            sha256: "2bb6f65c4118ba1b320142082942f184522630be5b0f666717701e6a2aa8911d"
+            size: 220669120
             archive: zip
           - platform: linux-x64
-            url: "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz"
-            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
-            size: 0
+            url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-08-14-24/ffmpeg-n8.1.1-11-ge4c7fbf6c0-linux64-gpl-8.1.tar.xz"
+            sha256: "f5e8da41b674c29fd08f1e2a8513c935d0b54292b03144c1260fa2cac380653e"
+            size: 142894008
             archive: tar.xz
     - id: model_wan_base
       type: model_artifact
@@ -105,22 +104,21 @@ dependencies:
         id: sd
         version: ">=master"
         # stable-diffusion.cpp CUDA build for the Qwen edit-then-animate path.
-        # allow_system_path resolves an existing `sd` binary first. The release
-        # URLs are "latest" rolling builds that cannot be sha256-pinned offline.
-        # TODO(svi2-sdcli-hash): pin to a tagged leejet/stable-diffusion.cpp
-        # release + real sha256/size, or build from source under binaries/.
+        # allow_system_path resolves an existing `sd` binary first.
+        # windows-x64 is pinned to leejet release master-685-19bdfe2 with the
+        # upstream-published sha256/size (GitHub release asset digest).
+        # linux-x64: upstream ships NO Linux CUDA prebuilt for this release
+        # (only ROCm / Vulkan / CPU Linux assets), so the CUDA Linux source
+        # cannot be pinned. TODO(svi2-sdcli-linux): build sd-cli with CUDA from
+        # source under binaries/ for Linux, or fall back to a Vulkan asset.
+        # allow_system_path: true is the practical Linux mitigation until then.
         allow_system_path: true
         sources:
           - platform: windows-x64
-            url: "https://github.com/leejet/stable-diffusion.cpp/releases/latest/download/sd-master-cuda12-x64.zip"
-            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
-            size: 0
+            url: "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-685-19bdfe2/sd-master-19bdfe2-bin-win-cuda12-x64.zip"
+            sha256: "f15ac43cb32b4a084bc92124a002872e17bffacb51a2567a2ecea7415715ae92"
+            size: 351013798
             archive: zip
-          - platform: linux-x64
-            url: "https://github.com/leejet/stable-diffusion.cpp/releases/latest/download/sd-master-cuda12-x64.tar.gz"
-            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
-            size: 0
-            archive: tar.gz
     - id: validate
       type: validation
       requires:

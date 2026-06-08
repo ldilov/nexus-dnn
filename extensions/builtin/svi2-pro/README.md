@@ -1,43 +1,114 @@
-# Stable Video Infinity 2.0 Pro (svi2-pro)
+# SVI 2.0 Pro Video Generator (svi2-pro)
 
-Long-form image-to-video extension for nexus-dnn.
-
-## What It Does
-
-Renders multi-clip video from a single image using Stable Video Infinity 2.0 Pro: a dual-LoRA adaptation of Wan2.2-I2V-A14B (14B dual-expert MoE). Chains 81-frame clips with error-recycling for temporal consistency across the full video duration.
+Builtin extension for **one-shot long image-to-video**. From a single anchor
+image it renders an identity-locked long take by chaining 4n+1-frame clips with
+the error-recycling **Stable Video Infinity 2.0 Pro** LoRAs on top of
+Wan2.2-I2V-A14B (14B dual-expert MoE), tuned for 16 GB Blackwell (RTX 50) via
+Kijai fp8 e4m3fn base weights.
 
 ## Backends
 
-- `nexus.video.svi2-pro.fake` — no-GPU CI backend (deterministic synthetic frames)
-- `nexus.video.svi2-pro.rtx50-fp8` — RTX 50 / Blackwell, 16 GB VRAM, fp8 e4m3fn quantization
+- `nexus.video.svi2-pro.fake` — no-GPU CI/dev backend. Deterministic synthetic
+  frames; requires **zero** model weights on disk (`backends/fake/versions.yaml`
+  declares no artifacts).
+- `nexus.video.svi2-pro.rtx50-fp8` — RTX 50 / Blackwell, 16 GB VRAM, fp8 e4m3fn.
 
-## Models
+## Install (from the Extensions panel)
 
-Downloaded and installed via nexus Model Foundry:
+Install the extension from the host **Extensions panel**. Installation drives
+the full dependency plan declared in `manifest.yaml` to completion —
+**everything is fetched on install**:
 
-- **Kijai Wan2.2-I2V-A14B experts**: `Wan2_2-I2V-A14B-HIGH/LOW_fp8_e4m3fn_scaled_KJ.safetensors`
-- **SVI v2.0 LoRAs**: `epfl-vita/svi-model/version-2.0/SVI_Wan2.2-I2V-A14B_high/low_noise_lora_v2.0_pro.safetensors`
-- **T5 text encoder**: `umt5-xxl-enc-fp8_e4m3fn.safetensors`
-- **VAE decoder**: `Wan2_2_VAE_bf16.safetensors`
+- An **isolated extension-local venv** (`uv`, `worker/pyproject.toml` +
+  `worker/uv.lock`) — nothing leaks into the host interpreter. The heavy ML
+  stack (torch, diffusers, …) lives in the `diffusers` extra; the fake backend
+  runs on base deps only.
+- **All model weights**, auto-downloaded through the host **model-store** (not a
+  bespoke downloader): the Kijai Wan2.2-I2V-A14B HIGH/LOW fp8 experts, the SVI
+  v2.0 Pro high/low LoRAs (`epfl-vita/svi-model`), the UMT5-XXL text encoder +
+  tokenizer, the Wan VAE, the Qwen-Image-Edit-2509 GGUF set + Qwen2.5-VL for the
+  edit-then-animate path, and RIFE weights.
+- The **ffmpeg** and **sd-cli** (`stable-diffusion.cpp`) system binaries —
+  resolved from `PATH` first (`allow_system_path: true`), with a pinned upstream
+  download as fallback.
+- A `validate` step that runs a **worker handshake** against the worker
+  entrypoint. The fake profile validates with no GPU and no real weights.
 
-## Dependencies
+The gallery shows a "Setup required" badge until every dependency step probes
+OK; per-step progress (including model download bytes) appears in the
+Dependencies tab.
 
-Base dependencies: pydantic, pyyaml, ffmpeg-python, pillow, numpy, huggingface_hub.
+## Using it
 
-Heavy ML stack in `diffusers` extra: torch, torchvision, safetensors, einops, sentencepiece, protobuf, transformers, ftfy, regex, av, imageio, imageio-ffmpeg.
+The extension ships a React custom-element app (`svi2-pro-app`, served from
+`web/dist`) with two views of one render request:
 
-Flash attention 2.8.3 cu132 wheels are vendored in `binaries/` (git-lfs); SDPA fallback if import fails.
+- **Recipe view** — a preset gallery, the ref-image upload (required) plus an
+  optional last-image upload (required for FLF2V morph presets), a
+  single-prompt-first prompt input, and tier-grouped nudgeable fields. Selecting
+  a preset populates the form; every field stays individually adjustable.
+- **DAG view** — a live pipeline graph (`@xyflow/react`) of the render:
+  anchor → optional Qwen edit → per-clip diffusion → stitch/crossfade →
+  interpolation → mux, with node state driven by the same render notifications
+  as the progress view.
 
-## Operator Testing
+A **Settings** surface (config widget `svi2.settings` + the app's Settings view)
+holds defaults for new renders: models dir, attention backend (`SVI2_ATTENTION`),
+fp8 compute mode (`SVI2_FP8_COMPUTE`), `blocks_to_swap`, interpolation
+method + fps, and output dir.
 
-Run the GPU smoke test on the RTX 50 box:
+### Presets
+
+Eleven presets ship in `data/render_presets.json`, exposed to the UI via the
+`svi2.presets.list` RPC (the UI reads them from the contract, it does not
+hardcode preset bodies). Families:
+
+- **canonical** ×3 (`svi-canonical` + 704/640 step-downs) — reference-faithful
+  identity-locked chaining. `svi-canonical` is the **default / recommended
+  baseline** (832×480, the trained 480p budget).
+- **natural** ×2 + **natural-lowvram** ×2 — vanilla Wan2.2-I2V look (pixel
+  re-encode + crossfade); coherent motion, can drift identity over many clips.
+- **forced-motion** ×2 — diagnostic over-driven RoPE motion.
+- **flf2v-morph-lowvram** — first→last-frame morph over one clip (last image
+  required).
+- **chained-single-prompt-lowvram** — long take via one prompt + crossfade seams.
+
+Field-level documentation is the source of truth and is **not duplicated** here:
+
+- [`docs/presets.md`](docs/presets.md) — preset families, when to use each,
+  resolution rules.
+- [`docs/fields.md`](docs/fields.md) — every `validate_render_params` field with
+  tier, default, and nudge guidance.
+- [`docs/parameters-audit.md`](docs/parameters-audit.md) — full parameter
+  inventory.
+
+## GPU smoke (deferred operator gate)
+
+A real `rtx50-fp8` render is a **separate, deferred operator gate** — it needs an
+RTX 50 / Blackwell box with ~16 GB VRAM and is **out of scope for the offline
+acceptance bar**. After install, run it from the extension directory:
 
 ```bash
 cd extensions/builtin/svi2-pro
-./scripts/smoke-rtx50-fp8.sh    # Linux
-./scripts/smoke-rtx50-fp8.ps1   # Windows PowerShell
+./scripts/smoke-rtx50-fp8.sh   --models-dir <models> --ref-image <anchor.png>  # Linux
+./scripts/smoke-rtx50-fp8.ps1  --models-dir <models> --ref-image <anchor.png>  # Windows
 ```
 
-## Worker Architecture
+The script wraps `scripts/gpu_smoke.py`, expects the worker venv built by
+`scripts/install.{sh,ps1}`, and forwards extra args (`--num-clips`, `--width`,
+`--height`, `--cfg-scale`, …). Recommended environment on RTX 50:
+`SVI2_FP8_COMPUTE=bf16` (Blackwell `torch._scaled_mm` colour fix) and
+`SVI2_ATTENTION=flash2` (sdpa fallback).
 
-Stdio JSON-RPC NDJSON render worker. See `worker/README.md`.
+## Known limitations
+
+- **sd-cli on Linux is not pinned.** `leejet/stable-diffusion.cpp` publishes no
+  Linux **CUDA** prebuilt (only ROCm / Vulkan / CPU Linux assets), so the
+  manifest pins only the Windows CUDA binary. On Linux, `sd-cli` must come from
+  `PATH` (`allow_system_path: true`) or a from-source CUDA build — see
+  `TODO(svi2-sdcli-linux)` in `manifest.yaml`. The edit-then-animate path is the
+  only feature affected; the core render does not need sd-cli.
+
+## Worker architecture
+
+Stdio JSON-RPC (NDJSON) render worker. See `worker/README.md`.
