@@ -36,6 +36,9 @@ export function HistoryList({ jobs, onOpen }: HistoryListProps): ReactElement {
             <span className={styles.summary}>{paramsSummary(job)}</span>
           </span>
           <span className={styles.right}>
+            <time className={styles.time} dateTime={job.createdAt} title={absoluteTime(job.createdAt)}>
+              {relativeTime(job.createdAt)}
+            </time>
             <Badge tone={STATUS_TONE[job.status]}>{job.status}</Badge>
           </span>
         </button>
@@ -51,4 +54,26 @@ function paramsSummary(job: RenderJob): string {
   if (p.num_clips) parts.push(`${p.num_clips} clips`);
   if (p.num_inference_steps) parts.push(`${p.num_inference_steps} steps`);
   return parts.join(" · ") || "—";
+}
+
+function absoluteTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString();
+}
+
+function relativeTime(iso: string): string {
+  const date = new Date(iso);
+  const ms = date.getTime();
+  if (Number.isNaN(ms)) return "";
+  const diff = Date.now() - ms;
+  if (diff < 0) return "just now";
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString();
 }

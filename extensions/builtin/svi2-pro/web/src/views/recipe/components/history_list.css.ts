@@ -57,3 +57,9 @@ export const right = style({
   gap: vars.space.sm,
   flexShrink: 0,
 });
+
+export const time = style({
+  fontSize: vars.text.micro,
+  color: vars.color.textMuted,
+  whiteSpace: "nowrap",
+});

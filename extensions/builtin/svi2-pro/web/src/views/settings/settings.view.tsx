@@ -1,4 +1,4 @@
-import { type ReactElement, useState } from "react";
+import { type ReactElement, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Panel } from "../../components/ui/panel";
@@ -19,6 +19,14 @@ export function SettingsView(): ReactElement {
   const { settings, setSettings } = useRenderRequest();
   const [draft, setDraft] = useState<ExtensionSettings>(settings);
   const [saving, setSaving] = useState(false);
+
+  const dirty = useMemo(
+    () =>
+      (Object.keys(draft) as Array<keyof ExtensionSettings>).some(
+        (key) => draft[key] !== settings[key],
+      ),
+    [draft, settings],
+  );
 
   const update = <K extends keyof ExtensionSettings>(key: K, value: ExtensionSettings[K]) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -142,12 +150,21 @@ export function SettingsView(): ReactElement {
       </div>
 
       <div className={styles.actions}>
-        <Button loading={saving} onClick={() => void handleSave()}>
+        <Button loading={saving} disabled={!dirty} onClick={() => void handleSave()}>
           Save settings
         </Button>
-        <Button variant="secondary" onClick={() => setDraft(settings)} disabled={saving}>
-          Reset
+        <Button
+          variant="secondary"
+          onClick={() => setDraft(settings)}
+          disabled={saving || !dirty}
+        >
+          Discard changes
         </Button>
+        {dirty && (
+          <span className={styles.dirtyHint} role="status">
+            Unsaved changes
+          </span>
+        )}
       </div>
     </Panel>
   );

@@ -1,4 +1,4 @@
-import { type ReactElement, useCallback } from "react";
+import { type ReactElement, useCallback, useEffect, useState } from "react";
 import { VideoPlayer } from "../../../components/media/video_player";
 import { Button } from "../../../components/ui/button";
 import { EmptyState } from "../../../components/ui/empty_state";
@@ -14,7 +14,16 @@ interface RenderProgressProps {
 }
 
 export function RenderProgress({ state, onCancel, onReset }: RenderProgressProps): ReactElement {
-  const handleCancel = useCallback(() => onCancel(), [onCancel]);
+  const [cancelling, setCancelling] = useState(false);
+
+  useEffect(() => {
+    if (state.phase !== "running") setCancelling(false);
+  }, [state.phase]);
+
+  const handleCancel = useCallback(() => {
+    setCancelling(true);
+    onCancel();
+  }, [onCancel]);
 
   if (state.phase === "idle") {
     return (
@@ -60,7 +69,7 @@ export function RenderProgress({ state, onCancel, onReset }: RenderProgressProps
 
   if (state.phase === "done") {
     return (
-      <div className={styles.root}>
+      <output className={styles.root}>
         <VideoPlayer
           src={mediaUrlForOutput(state.outputPath)}
           fpsLabel={fps ? `${fps} fps` : undefined}
@@ -72,7 +81,7 @@ export function RenderProgress({ state, onCancel, onReset }: RenderProgressProps
             New render
           </Button>
         </div>
-      </div>
+      </output>
     );
   }
 
@@ -80,13 +89,27 @@ export function RenderProgress({ state, onCancel, onReset }: RenderProgressProps
 
   return (
     <div className={styles.root}>
-      <div className={styles.progressTrack} aria-label="overall progress">
+      {/* biome-ignore lint/a11y/useFocusableInteractive: progressbar is a non-interactive ARIA role and must not be focusable */}
+      <div
+        className={styles.progressTrack}
+        role="progressbar"
+        aria-label="overall progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+      >
         <div
           className={styles.progressFill}
           style={{ transform: `scaleX(${Math.max(0.02, state.overallFraction)})` }}
         />
       </div>
-      <div className={styles.statRow}>
+      {state.stalled && (
+        <output className={styles.stallNote}>
+          Still working… no progress for a while — the connection may be lost. The render may still
+          be running; check History if it does not resume.
+        </output>
+      )}
+      <div className={styles.statRow} aria-live="polite">
         <Stat label="Overall" value={`${pct}%`} />
         <Stat
           label="Clip"
@@ -102,8 +125,8 @@ export function RenderProgress({ state, onCancel, onReset }: RenderProgressProps
         />
       </div>
       <div className={styles.actions}>
-        <Button variant="danger" onClick={handleCancel}>
-          Cancel render
+        <Button variant="danger" onClick={handleCancel} loading={cancelling} disabled={cancelling}>
+          {cancelling ? "Cancelling…" : "Cancel render"}
         </Button>
       </div>
     </div>

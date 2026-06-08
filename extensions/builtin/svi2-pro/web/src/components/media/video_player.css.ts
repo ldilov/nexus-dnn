@@ -16,7 +16,7 @@ export const video = style({
   width: "100%",
   height: "auto",
   display: "block",
-  background: "#000",
+  background: vars.color.videoBg,
 });
 
 const spin = keyframes({
@@ -30,7 +30,7 @@ export const loadingOverlay = style({
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  background: "rgba(0,0,0,0.32)",
+  background: vars.color.scrimSoft,
   zIndex: 1,
   pointerEvents: "none",
 });
@@ -55,7 +55,7 @@ export const fpsBadge = style({
   alignItems: "center",
   padding: `${vars.space.xs} ${vars.space.sm}`,
   borderRadius: vars.radius.sm,
-  background: "rgba(0,0,0,0.55)",
+  background: vars.color.scrim,
   color: vars.color.text,
   fontFamily: vars.font.mono,
   fontSize: vars.text.caption,
@@ -95,4 +95,28 @@ export const errorTitle = style({
 export const errorDetail = style({
   fontSize: vars.text.caption,
   color: vars.color.textMuted,
+});
+
+export const errorAction = style({
+  marginTop: vars.space.sm,
+  alignSelf: "center",
+  padding: `${vars.space.xs} ${vars.space.md}`,
+  borderRadius: vars.radius.md,
+  background: vars.color.surfaceHigh,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+  color: vars.color.accent,
+  fontSize: vars.text.caption,
+  fontWeight: vars.weight.semibold,
+  textDecoration: "none",
+  transition: `box-shadow ${vars.motion.fast}, background ${vars.motion.fast}`,
+  selectors: {
+    "&:hover": {
+      background: vars.color.surfaceHighest,
+      boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}`,
+    },
+    "&:focus-visible": {
+      outline: "none",
+      boxShadow: `inset 0 0 0 1px ${vars.color.accent}, ${vars.shadow.focusRing}`,
+    },
+  },
 });

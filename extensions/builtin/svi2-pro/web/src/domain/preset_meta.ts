@@ -35,10 +35,10 @@ export function presetBadges(preset: PresetSummary): PresetBadges {
   const resolution = `${width}×${height}`;
 
   const frames = stitchedFrames(p);
-  const playbackFps = p.interpolate_fps && p.interpolate_fps > 0 ? p.fps : p.fps;
+  const nativeFps = p.fps;
   let duration = "—";
-  if (frames !== null && playbackFps) {
-    duration = `${(frames / playbackFps).toFixed(1)}s`;
+  if (frames !== null && nativeFps && nativeFps > 0) {
+    duration = `${(frames / nativeFps).toFixed(1)}s`;
   }
 
   const isLowVram = LOW_VRAM_PRESET_IDS.has(preset.id);
@@ -51,7 +51,10 @@ export function presetBadges(preset: PresetSummary): PresetBadges {
     vram,
     isLowVram,
     isOffDistribution: OFF_DISTRIBUTION_PRESET_IDS.has(preset.id),
-    requiresLastImage: REQUIRES_LAST_IMAGE.has(preset.id),
+    requiresLastImage:
+      typeof p.requires_last_image === "boolean"
+        ? p.requires_last_image
+        : REQUIRES_LAST_IMAGE.has(preset.id),
   };
 }
 

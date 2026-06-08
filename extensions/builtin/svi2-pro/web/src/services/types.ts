@@ -33,6 +33,7 @@ export interface RenderParams {
   num_motion_frame?: number;
   blocks_to_swap?: number;
   seed_multiplier?: number;
+  requires_last_image?: boolean;
   output_path?: string;
   models_dir?: string;
 }

@@ -22,6 +22,43 @@ export const modeToggle = style({
   color: vars.color.textMuted,
 });
 
+export const switchBtn = style({
+  position: "relative",
+  width: "40px",
+  height: "22px",
+  flexShrink: 0,
+  borderRadius: vars.radius.pill,
+  background: vars.color.surfaceHigh,
+  border: "none",
+  cursor: "pointer",
+  transition: `background ${vars.motion.fast}`,
+  selectors: {
+    "&[aria-checked='true']": { background: vars.color.accent },
+    "&:focus-visible": { outline: `2px solid ${vars.color.accent}`, outlineOffset: "2px" },
+  },
+});
+
+export const switchThumb = style({
+  position: "absolute",
+  top: "3px",
+  left: "3px",
+  width: "16px",
+  height: "16px",
+  borderRadius: "50%",
+  background: vars.color.text,
+  transition: `transform ${vars.motion.fast}`,
+  selectors: { "[aria-checked='true'] &": { transform: "translateX(18px)" } },
+});
+
+export const notice = style({
+  fontSize: vars.text.micro,
+  color: vars.color.textMuted,
+  lineHeight: 1.5,
+  padding: vars.space.sm,
+  borderRadius: vars.radius.sm,
+  background: `color-mix(in oklab, ${vars.color.warning} 10%, transparent)`,
+});
+
 export const textarea = style({
   width: "100%",
   minHeight: "92px",

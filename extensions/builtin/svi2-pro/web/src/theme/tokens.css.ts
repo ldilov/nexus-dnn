@@ -7,8 +7,16 @@ export const vars = createGlobalTheme("svi2-pro-app", {
     surfaceRaised: "var(--surface-default, #171a1c)",
     surfaceHigh: "var(--surface-high, #1d2023)",
     surfaceHighest: "var(--surface-highest, #232629)",
-    surfaceGlass: "rgba(29, 32, 35, 0.72)",
+    surfaceGlass:
+      "color-mix(in oklab, var(--surface-default, #171a1c) 72%, transparent)",
+    surfaceGlassRaised:
+      "color-mix(in oklab, var(--surface-high, #1d2023) 80%, transparent)",
+    surfaceInset:
+      "color-mix(in oklab, var(--surface-low, #111416) 88%, transparent)",
     canvas: "var(--surface, #0a0c0e)",
+    scrim: "color-mix(in oklab, var(--surface, #000) 78%, transparent)",
+    scrimSoft: "color-mix(in oklab, var(--surface, #000) 42%, transparent)",
+    videoBg: "var(--surface, #07090b)",
     text: "var(--on-surface, #f0f0f3)",
     textMuted: "var(--on-surface-variant, #aaabae)",
     textFaint: "var(--outline, #747578)",
@@ -28,9 +36,15 @@ export const vars = createGlobalTheme("svi2-pro-app", {
       "color-mix(in oklab, var(--outline-variant, #46484a) 50%, transparent)",
   },
   font: {
-    display: `var(--font-ui, "Inter", system-ui, -apple-system, sans-serif)`,
+    display: `var(--font-display, var(--font-ui, "Inter", system-ui, -apple-system, sans-serif))`,
     body: `var(--font-ui, "Inter", system-ui, -apple-system, sans-serif)`,
     mono: `var(--font-mono, "JetBrains Mono", ui-monospace, monospace)`,
+  },
+  weight: {
+    body: "400",
+    medium: "500",
+    semibold: "600",
+    display: "700",
   },
   text: {
     micro: "0.6875rem",
@@ -64,6 +78,7 @@ export const vars = createGlobalTheme("svi2-pro-app", {
     raised: "var(--shadow-md, 0 12px 32px rgba(0, 0, 0, 0.4))",
     glow: "var(--glow-accent, 0 0 24px rgba(132, 85, 239, 0.28))",
     focusRing: "0 0 0 2px var(--accent-glow, rgba(132, 85, 239, 0.55))",
+    inset: "inset 0 1px 0 0 color-mix(in oklab, var(--surface, #000) 80%, transparent)",
   },
   motion: {
     fast: "160ms cubic-bezier(0.2, 0, 0, 1)",

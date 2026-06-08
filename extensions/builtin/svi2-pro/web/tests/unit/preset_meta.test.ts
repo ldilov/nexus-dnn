@@ -44,6 +44,33 @@ describe("presetBadges", () => {
     expect(badges.duration).toMatch(/s$/);
   });
 
+  test("duration uses native fps and ignores interpolate_fps", () => {
+    const badges = presetBadges(canonical);
+    expect(badges.duration).toBe("20.3s");
+
+    const noInterpolate: PresetSummary = {
+      ...canonical,
+      params: { ...canonical.params, interpolate_fps: 0 },
+    };
+    expect(presetBadges(noInterpolate).duration).toBe("20.3s");
+
+    const highInterpolate: PresetSummary = {
+      ...canonical,
+      params: { ...canonical.params, interpolate_fps: 120 },
+    };
+    expect(presetBadges(highInterpolate).duration).toBe("20.3s");
+  });
+
+  test("derives last-image requirement from preset param flag", () => {
+    const flagged: PresetSummary = {
+      id: "morph-renamed",
+      label: "Morph",
+      description: "renamed morph",
+      params: { ...canonical.params, requires_last_image: true },
+    };
+    expect(presetBadges(flagged).requiresLastImage).toBe(true);
+  });
+
   test("marks off-distribution presets", () => {
     expect(presetBadges(off640).isOffDistribution).toBe(true);
     expect(presetBadges(canonical).isOffDistribution).toBe(false);

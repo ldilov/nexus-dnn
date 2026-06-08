@@ -71,7 +71,10 @@ function renderControl(
         <select
           id={id}
           aria-describedby={describedBy}
-          className={styles.selectInput}
+          aria-invalid={invalid || undefined}
+          className={[styles.selectInput, invalid ? styles.invalidInput : ""]
+            .filter(Boolean)
+            .join(" ")}
           value={String(value ?? spec.default ?? "")}
           onChange={(e) => onChange(e.target.value)}
         >
@@ -88,6 +91,7 @@ function renderControl(
           id={id}
           type="range"
           aria-describedby={describedBy}
+          aria-invalid={invalid || undefined}
           className={styles.slider}
           min={spec.min}
           max={spec.max}

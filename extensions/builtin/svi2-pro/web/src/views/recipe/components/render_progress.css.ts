@@ -81,6 +81,16 @@ export const reportValue = style({
   wordBreak: "break-all",
 });
 
+export const stallNote = style({
+  padding: vars.space.md,
+  borderRadius: vars.radius.md,
+  background: `color-mix(in oklab, ${vars.color.warning} 12%, transparent)`,
+  boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.warning} 35%, transparent)`,
+  color: vars.color.warning,
+  fontSize: vars.text.caption,
+  lineHeight: 1.5,
+});
+
 export const errorBox = style({
   display: "flex",
   flexDirection: "column",

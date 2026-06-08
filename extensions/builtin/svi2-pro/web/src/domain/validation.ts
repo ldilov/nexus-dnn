@@ -10,7 +10,13 @@ const REQUIRES_LAST_IMAGE = new Set(["flf2v-morph-lowvram"]);
 const RESOLUTION_BUDGET = 832 * 480;
 const SUB_BUDGET_RATIO = 0.85;
 
-export function presetRequiresLastImage(presetId: string | null): boolean {
+export function presetRequiresLastImage(
+  presetId: string | null,
+  presetParams?: Partial<RenderParams>,
+): boolean {
+  if (presetParams && typeof presetParams.requires_last_image === "boolean") {
+    return presetParams.requires_last_image;
+  }
   return presetId !== null && REQUIRES_LAST_IMAGE.has(presetId);
 }
 
@@ -20,7 +26,12 @@ function isMultipleOf(value: number, base: number): boolean {
 
 export function validateRenderParams(
   params: RenderParams,
-  options: { presetId: string | null; hasRefImage: boolean; hasLastImage: boolean },
+  options: {
+    presetId: string | null;
+    hasRefImage: boolean;
+    hasLastImage: boolean;
+    presetParams?: Partial<RenderParams>;
+  },
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
@@ -95,7 +106,7 @@ export function validateRenderParams(
     });
   }
 
-  if (presetRequiresLastImage(options.presetId) && !options.hasLastImage) {
+  if (presetRequiresLastImage(options.presetId, options.presetParams) && !options.hasLastImage) {
     issues.push({
       field: "last_image_path",
       message: "This preset (FLF2V morph) requires a last-image keyframe.",

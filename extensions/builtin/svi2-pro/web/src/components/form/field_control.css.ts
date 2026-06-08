@@ -60,16 +60,74 @@ const inputBase = style({
 
 export const numberInput = style([inputBase]);
 
-export const selectInput = style([inputBase, { cursor: "pointer", appearance: "none" }]);
+const selectChevron =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23aaabae' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")";
+
+export const selectInput = style([
+  inputBase,
+  {
+    cursor: "pointer",
+    appearance: "none",
+    paddingRight: vars.space.xl,
+    backgroundImage: selectChevron,
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: `right ${vars.space.md} center`,
+  },
+]);
 
 export const invalidInput = style({
   boxShadow: `inset 0 0 0 1px ${vars.color.danger}`,
 });
 
+const trackBase = {
+  height: "6px",
+  borderRadius: vars.radius.pill,
+  background: vars.color.surfaceHigh,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+};
+
+const thumbBase = {
+  width: "16px",
+  height: "16px",
+  borderRadius: "50%",
+  background: vars.color.accent,
+  border: "none",
+  boxShadow: `0 0 0 4px color-mix(in oklab, ${vars.color.accent} 22%, transparent)`,
+  cursor: "pointer",
+};
+
 export const slider = style({
   width: "100%",
-  accentColor: vars.color.accent,
+  appearance: "none",
+  background: "transparent",
   cursor: "pointer",
+  selectors: {
+    "&::-webkit-slider-runnable-track": trackBase,
+    "&::-moz-range-track": trackBase,
+    "&::-webkit-slider-thumb": {
+      ...thumbBase,
+      appearance: "none",
+      marginTop: "-5px",
+      transition: `box-shadow ${vars.motion.fast}`,
+    },
+    "&::-moz-range-thumb": thumbBase,
+    "&:hover::-webkit-slider-thumb": {
+      boxShadow: `0 0 0 6px color-mix(in oklab, ${vars.color.accent} 28%, transparent)`,
+    },
+    "&:focus-visible::-webkit-slider-thumb": {
+      boxShadow: vars.shadow.focusRing,
+    },
+    "&:focus-visible::-moz-range-thumb": {
+      boxShadow: vars.shadow.focusRing,
+    },
+  },
+  "@media": {
+    "(prefers-reduced-motion: reduce)": {
+      selectors: {
+        "&::-webkit-slider-thumb": { transition: "none" },
+      },
+    },
+  },
 });
 
 export const toggleRow = style({

@@ -3,6 +3,7 @@ export const RENDER_STATE = "svi2-pro:render-state" as const;
 
 export interface RenderStateDetail {
   busy: boolean;
+  blocked: boolean;
 }
 
 export function dispatchTriggerRender(): void {

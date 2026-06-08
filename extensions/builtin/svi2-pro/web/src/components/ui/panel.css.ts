@@ -12,6 +12,19 @@ export const panel = style({
   boxShadow: vars.shadow.subtle,
 });
 
+export const panelRaised = style({
+  background: vars.color.surfaceGlassRaised,
+  boxShadow: `${vars.shadow.raised}, ${vars.shadow.inset}`,
+});
+
+export const panelInset = style({
+  padding: vars.space.lg,
+  borderRadius: vars.radius.md,
+  background: vars.color.surfaceInset,
+  backdropFilter: "none",
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
+});
+
 export const panelHeader = style({
   display: "flex",
   flexDirection: "column",
@@ -21,7 +34,7 @@ export const panelHeader = style({
 export const panelTitle = style({
   fontFamily: vars.font.display,
   fontSize: vars.text.subhead,
-  fontWeight: 600,
+  fontWeight: vars.weight.display,
   letterSpacing: vars.tracking.display,
   color: vars.color.text,
 });
