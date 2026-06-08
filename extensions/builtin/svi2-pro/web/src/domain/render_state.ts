@@ -1,5 +1,5 @@
 import type { RenderFrame } from "../services/render_events";
-import type { RenderReport } from "../services/types";
+import type { RenderJob, RenderReport } from "../services/types";
 
 export type RenderPhase = "idle" | "running" | "done" | "error" | "cancelled";
 
@@ -26,6 +26,8 @@ export interface RenderState {
   renderReport: RenderReport | null;
   errorCode: number | null;
   errorMessage: string | null;
+  stalled: boolean;
+  lastFrameAt: number | null;
   stageStates: Record<PipelineStage, StageState>;
 }
 
@@ -63,16 +65,23 @@ export function initialRenderState(): RenderState {
     renderReport: null,
     errorCode: null,
     errorMessage: null,
+    stalled: false,
+    lastFrameAt: null,
     stageStates: idleStages(),
   };
 }
 
-export function startedState(jobId: string, hasQwenEdit: boolean): RenderState {
+export function startedState(
+  jobId: string,
+  hasQwenEdit: boolean,
+  now: number = Date.now(),
+): RenderState {
   const base = initialRenderState();
   return {
     ...base,
     phase: "running",
     jobId,
+    lastFrameAt: now,
     stageStates: {
       ...idleStages(),
       anchor: "done",
@@ -82,7 +91,12 @@ export function startedState(jobId: string, hasQwenEdit: boolean): RenderState {
   };
 }
 
-export function reduceRenderFrame(state: RenderState, frame: RenderFrame): RenderState {
+export function reduceRenderFrame(
+  base: RenderState,
+  frame: RenderFrame,
+  now: number = Date.now(),
+): RenderState {
+  const state: RenderState = { ...base, stalled: false, lastFrameAt: now };
   switch (frame.method) {
     case "svi2.video.progress":
       return { ...state, overallFraction: clamp(frame.params.fraction) };
@@ -148,6 +162,61 @@ export function reduceRenderFrame(state: RenderState, frame: RenderFrame): Rende
 
 export function cancelledState(state: RenderState): RenderState {
   return { ...state, phase: "cancelled", stageStates: idleStages() };
+}
+
+export const CONNECTION_LOST_CODE = -32108;
+
+export function connectionLostState(state: RenderState): RenderState {
+  return {
+    ...state,
+    phase: "error",
+    stalled: false,
+    errorCode: CONNECTION_LOST_CODE,
+    errorMessage:
+      "Lost connection to the render — it may still be running; check History.",
+    stageStates: markActiveAsError(state.stageStates),
+  };
+}
+
+export function markStalled(state: RenderState): RenderState {
+  if (state.phase !== "running" || state.stalled) return state;
+  return { ...state, stalled: true };
+}
+
+export function renderStateFromJob(job: RenderJob): RenderState {
+  const base = initialRenderState();
+  if (job.status === "succeeded" && job.outputPath) {
+    return {
+      ...base,
+      phase: "done",
+      jobId: job.id,
+      overallFraction: 1,
+      outputPath: job.outputPath,
+      renderReport: job.renderReport,
+      vramPeakGib: job.renderReport?.vram_peak_gib ?? null,
+      stageStates: {
+        anchor: "done",
+        qwen_edit: "done",
+        diffusion: "done",
+        stitch: "done",
+        interpolate: "done",
+        mux: "done",
+      },
+    };
+  }
+  if (job.status === "failed") {
+    return {
+      ...base,
+      phase: "error",
+      jobId: job.id,
+      errorCode: job.errorCode,
+      errorMessage: job.errorMessage,
+    };
+  }
+  if (job.status === "cancelled") {
+    return { ...base, phase: "cancelled", jobId: job.id };
+  }
+  return { ...base, jobId: job.id };
 }
 
 function clamp(value: number): number {

@@ -1,4 +1,4 @@
-import { style } from "@vanilla-extract/css";
+import { globalStyle, style } from "@vanilla-extract/css";
 import { vars } from "../../theme/tokens.css";
 
 export const layout = style({
@@ -32,6 +32,15 @@ export const rightColumn = style({
       position: "static",
     },
   },
+});
+
+export const renderCta = style({
+  display: "flex",
+  flexDirection: "column",
+});
+
+globalStyle(`${renderCta} > button`, {
+  width: "100%",
 });
 
 export const resolutionWarning = style({

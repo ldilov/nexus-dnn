@@ -6,9 +6,10 @@ export const container = style({
   width: "100%",
   height: "100%",
   minHeight: "360px",
-  borderRadius: vars.radius.lg,
+  borderRadius: vars.radius.md,
   overflow: "hidden",
   background: vars.color.canvas,
+  boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
 });
 
 export const miniMapBg = style({

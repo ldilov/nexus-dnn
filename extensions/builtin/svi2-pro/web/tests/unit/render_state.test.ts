@@ -1,11 +1,16 @@
 import { describe, expect, test } from "vitest";
 import {
+  CONNECTION_LOST_CODE,
   cancelledState,
+  connectionLostState,
   initialRenderState,
+  markStalled,
   reduceRenderFrame,
+  renderStateFromJob,
   startedState,
 } from "../../src/domain/render_state";
 import type { RenderFrame } from "../../src/services/render_events";
+import type { RenderJob } from "../../src/services/types";
 
 describe("render state machine", () => {
   test("initial state is idle", () => {
@@ -104,5 +109,74 @@ describe("render state machine", () => {
     const state = cancelledState(startedState("job", false));
     expect(state.phase).toBe("cancelled");
     expect(state.stageStates.diffusion).toBe("idle");
+  });
+
+  test("started state records last frame timestamp", () => {
+    const state = startedState("job", false, 1000);
+    expect(state.lastFrameAt).toBe(1000);
+    expect(state.stalled).toBe(false);
+  });
+
+  test("each frame advances last frame timestamp and clears stall", () => {
+    let state = markStalled(startedState("job", false, 1000));
+    expect(state.stalled).toBe(true);
+    state = reduceRenderFrame(
+      state,
+      { method: "svi2.video.progress", params: { fraction: 0.5 } },
+      2000,
+    );
+    expect(state.stalled).toBe(false);
+    expect(state.lastFrameAt).toBe(2000);
+  });
+
+  test("markStalled only flags a running render", () => {
+    expect(markStalled(initialRenderState()).stalled).toBe(false);
+    expect(markStalled(startedState("job", false)).stalled).toBe(true);
+  });
+
+  test("connection lost transitions running render to error", () => {
+    const state = connectionLostState(startedState("job", false));
+    expect(state.phase).toBe("error");
+    expect(state.errorCode).toBe(CONNECTION_LOST_CODE);
+    expect(state.errorMessage).toContain("check History");
+    expect(state.stageStates.diffusion).toBe("error");
+  });
+
+  test("renderStateFromJob maps a succeeded job to a done state", () => {
+    const job: RenderJob = {
+      id: "j1",
+      presetId: "svi-canonical",
+      params: { ref_image_path: "a.png", prompts: ["x"] },
+      status: "succeeded",
+      outputPath: "out.mp4",
+      renderReport: { frames: 100, vram_peak_gib: 11.4 },
+      errorCode: null,
+      errorMessage: null,
+      createdAt: "2026-06-09T00:00:00Z",
+      updatedAt: "2026-06-09T00:10:00Z",
+    };
+    const state = renderStateFromJob(job);
+    expect(state.phase).toBe("done");
+    expect(state.outputPath).toBe("out.mp4");
+    expect(state.vramPeakGib).toBeCloseTo(11.4);
+    expect(state.stageStates.mux).toBe("done");
+  });
+
+  test("renderStateFromJob maps a failed job to an error state", () => {
+    const job: RenderJob = {
+      id: "j2",
+      presetId: null,
+      params: { ref_image_path: "a.png", prompts: ["x"] },
+      status: "failed",
+      outputPath: null,
+      renderReport: null,
+      errorCode: -32106,
+      errorMessage: "boom",
+      createdAt: "2026-06-09T00:00:00Z",
+      updatedAt: "2026-06-09T00:10:00Z",
+    };
+    const state = renderStateFromJob(job);
+    expect(state.phase).toBe("error");
+    expect(state.errorCode).toBe(-32106);
   });
 });

@@ -7,6 +7,7 @@ export const RENDER_ERROR_CODES = {
   VRAM_BUDGET_EXCEEDED: -32105,
   RENDER_FAILED: -32106,
   RENDER_CANCELLED: -32107,
+  CONNECTION_LOST: -32108,
 } as const;
 
 interface ErrorPresentation {
@@ -46,6 +47,10 @@ const PRESENTATIONS: Record<number, ErrorPresentation> = {
   [RENDER_ERROR_CODES.RENDER_CANCELLED]: {
     title: "Render cancelled",
     hint: "The render was stopped before completion.",
+  },
+  [RENDER_ERROR_CODES.CONNECTION_LOST]: {
+    title: "Lost connection to the render",
+    hint: "The live progress stream dropped. The render may still be running — check History for the final result.",
   },
 };
 

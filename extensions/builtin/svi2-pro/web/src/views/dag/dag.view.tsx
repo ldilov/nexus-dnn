@@ -52,6 +52,7 @@ export function DagView(): ReactElement {
 
       <div className={styles.side}>
         <Panel
+          elevation="raised"
           title="Pipeline"
           description="anchor → diffusion → stitch → interpolate → mux. Live state mirrors the render."
         >
