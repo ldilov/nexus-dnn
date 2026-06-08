@@ -3438,6 +3438,7 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "sqlx",
+ "svi2-pro-extension",
  "tempfile",
  "tokio",
  "toml 0.8.23",
