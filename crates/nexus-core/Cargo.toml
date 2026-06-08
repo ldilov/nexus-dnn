@@ -34,6 +34,7 @@ nexus-models-store = { path = "../nexus-models-store" }
 nexus-local-llm-chat-history = { path = "../../extensions/builtin/local-llm/rust" }
 emotion-tts-extension = { path = "../../extensions/builtin/emotion-tts/rust" }
 nexus-video-ltx23-extension = { path = "../../extensions/builtin/nexus-video-ltx23/rust" }
+svi2-pro-extension = { path = "../../extensions/builtin/svi2-pro/rust" }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 camino = "1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
