@@ -5,6 +5,8 @@ extension:
   name: "SVI 2.0 Pro Video Generator"
   description: "Long, cross-clip-consistent image-to-video via Stable Video Infinity 2.0 Pro (two SVI LoRAs on Wan2.2-I2V-A14B dual-expert MoE). Kijai fp8 e4m3fn base for 16 GB Blackwell."
   publisher: "nexus"
+  icon:
+    symbol: "movie"
 compatibility:
   host_api: ">=0.1.0"
   protocol: ">=0.1.0"
@@ -35,6 +37,13 @@ dependencies:
       spec:
         id: ffmpeg
         version: ">=4.0"
+        # allow_system_path resolves an existing ffmpeg on PATH first (the
+        # common case), so the bundled download is a soft fallback only. The
+        # BtbN URLs below are "latest" rolling releases whose bytes change on
+        # every upstream build — they cannot be sha256-pinned offline. The
+        # zero-hashes are placeholders for that fallback; a maintainer pins
+        # them when wiring a fixed release tag. TODO(svi2-ffmpeg-hash): pin to
+        # a tagged BtbN release + real sha256/size.
         allow_system_path: true
         sources:
           - platform: windows-x64
@@ -47,9 +56,85 @@ dependencies:
             sha256: "0000000000000000000000000000000000000000000000000000000000000000"
             size: 0
             archive: tar.xz
+    - id: model_wan_base
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "huggingface:Kijai/WanVideo_comfy_fp8_scaled"
+        acceleration_match: "matches_runtime_step:python"
+    - id: model_svi_lora
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "huggingface:epfl-vita/svi-model"
+        acceleration_match: "matches_runtime_step:python"
+    - id: model_wan_encoder
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "huggingface:Kijai/WanVideo_comfy"
+        acceleration_match: "matches_runtime_step:python"
+    - id: model_tokenizer
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "huggingface:Wan-AI/Wan2.1-T2V-1.3B"
+        acceleration_match: "matches_runtime_step:python"
+    - id: model_qwen_edit
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "huggingface:QuantStack/Qwen-Image-Edit-2509-GGUF"
+        acceleration_match: "matches_runtime_step:python"
+    - id: model_qwen_vl
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "huggingface:unsloth/Qwen2.5-VL-7B-Instruct-GGUF"
+        acceleration_match: "matches_runtime_step:python"
+    - id: model_rife
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "huggingface:AlexWortega/RIFE"
+        acceleration_match: "matches_runtime_step:python"
+    - id: sdcli
+      type: system_binary
+      requires: [python]
+      spec:
+        id: sd
+        version: ">=master"
+        # stable-diffusion.cpp CUDA build for the Qwen edit-then-animate path.
+        # allow_system_path resolves an existing `sd` binary first. The release
+        # URLs are "latest" rolling builds that cannot be sha256-pinned offline.
+        # TODO(svi2-sdcli-hash): pin to a tagged leejet/stable-diffusion.cpp
+        # release + real sha256/size, or build from source under binaries/.
+        allow_system_path: true
+        sources:
+          - platform: windows-x64
+            url: "https://github.com/leejet/stable-diffusion.cpp/releases/latest/download/sd-master-cuda12-x64.zip"
+            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            size: 0
+            archive: zip
+          - platform: linux-x64
+            url: "https://github.com/leejet/stable-diffusion.cpp/releases/latest/download/sd-master-cuda12-x64.tar.gz"
+            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            size: 0
+            archive: tar.gz
     - id: validate
       type: validation
-      requires: [python, pkgs, ffmpeg]
+      requires:
+        - python
+        - pkgs
+        - ffmpeg
+        - model_wan_base
+        - model_svi_lora
+        - model_wan_encoder
+        - model_tokenizer
+        - model_qwen_edit
+        - model_qwen_vl
+        - model_rife
+        - sdcli
       spec:
         kind: worker_handshake
         timeout_seconds: 120
@@ -61,6 +146,7 @@ capabilities:
   - "huggingface.search"
   - "huggingface.install"
   - "model.registry.read"
+  - "storage.schema_contribute"
   - "workspace.read"
   - "workspace.write"
 backend_runtimes:
@@ -80,3 +166,35 @@ backend_runtimes:
     version_manifest: "backends/fake/versions.yaml"
     capability_tags: ["video-generation", "image-to-video", "long-video", "svi", "fake"]
     supported_roles: ["video.render"]
+operators:
+  - file: "operators/video_render.yaml"
+  - file: "operators/svi2_render.yaml"
+recipes:
+  - file: "recipes/svi2_render.yaml"
+ui:
+  layouts:
+    - file: "ui/layouts/main.yaml"
+      default: true
+  contributions:
+    - file: "ui/settings.yaml"
+  assets:
+    root: "web/dist"
+  custom_elements:
+    - tag: "svi2-pro-app"
+      module: "svi2-pro.js"
+      entry: "register"
+storage:
+  spec_version: "0.1"
+  engine: "sqlite"
+  namespace:
+    alias: "svi2_pro"
+    prefix_mode: "host_derived"
+  migrations:
+    strategy: "sql_file_list"
+    files:
+      - id: "001_render_jobs"
+        path: "storage/migrations/001_render_jobs.sql"
+      - id: "002_settings"
+        path: "storage/migrations/002_settings.sql"
+  sql_profile:
+    profile: "nexus_sqlite_v1"
