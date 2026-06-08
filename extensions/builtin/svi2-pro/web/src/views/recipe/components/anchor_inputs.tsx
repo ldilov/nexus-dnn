@@ -1,8 +1,9 @@
-import { type ReactElement, useState } from "react";
+import { type ReactElement, useCallback } from "react";
 import { FileDropzone } from "../../../components/primitives/file_dropzone";
 import { Badge } from "../../../components/ui/badge";
 import { useObjectUrl } from "../../../hooks/use_object_url";
 import { useRenderRequest } from "../../../store/render_request_store";
+import { useAnchorUpload } from "../hooks/use_anchor_upload";
 import * as styles from "./anchor_inputs.css";
 
 const MAX_IMAGE_BYTES = 32 * 1024 * 1024;
@@ -19,10 +20,20 @@ export function AnchorInputs({
   lastError,
 }: AnchorInputsProps): ReactElement {
   const { setRefImage, setLastImage } = useRenderRequest();
-  const [refFile, setRefFile] = useState<File | null>(null);
-  const [lastFile, setLastFile] = useState<File | null>(null);
-  const refUrl = useObjectUrl(refFile);
-  const lastUrl = useObjectUrl(lastFile);
+
+  const onRefResolved = useCallback(
+    (name: string | null, path: string | null) => setRefImage(name, path ?? ""),
+    [setRefImage],
+  );
+  const onLastResolved = useCallback(
+    (name: string | null, path: string | null) => setLastImage(name, path),
+    [setLastImage],
+  );
+
+  const refUpload = useAnchorUpload(onRefResolved);
+  const lastUpload = useAnchorUpload(onLastResolved);
+  const refUrl = useObjectUrl(refUpload.file);
+  const lastUrl = useObjectUrl(lastUpload.file);
 
   return (
     <div className={styles.grid}>
@@ -34,22 +45,26 @@ export function AnchorInputs({
           accept="image/*"
           maxSizeBytes={MAX_IMAGE_BYTES}
           ariaLabel="reference image upload"
-          label={refFile ? "Replace reference image" : "Drop the anchor image or browse"}
+          label={refUpload.file ? "Replace reference image" : "Drop the anchor image or browse"}
           hint="Defines identity. Aspect-match to the render resolution; dims divisible by 16."
-          onFiles={(files) => {
-            const file = files[0] ?? null;
-            setRefFile(file);
-            setRefImage(file?.name ?? null, file?.name ?? "");
-          }}
+          onFiles={(files) => void refUpload.pick(files[0] ?? null)}
           renderPreview={() =>
             refUrl ? (
               <img className={styles.thumb} src={refUrl} alt="reference preview" />
             ) : null
           }
         />
-        {refFile && <span className={styles.fileName}>{refFile.name}</span>}
+        {refUpload.uploading && <span className={styles.status}>Uploading…</span>}
+        {!refUpload.uploading && refUpload.file && (
+          <span className={styles.fileName}>{refUpload.file.name}</span>
+        )}
+        {refUpload.uploadError && (
+          <span role="alert" className={styles.error}>
+            {refUpload.uploadError}
+          </span>
+        )}
         {refError && (
-          <span role="alert" className={styles.fileName} style={{ color: "var(--error)" }}>
+          <span role="alert" className={styles.error}>
             {refError}
           </span>
         )}
@@ -68,20 +83,24 @@ export function AnchorInputs({
           accept="image/*"
           maxSizeBytes={MAX_IMAGE_BYTES}
           ariaLabel="last image upload"
-          label={lastFile ? "Replace last image" : "Drop the end keyframe or browse"}
+          label={lastUpload.file ? "Replace last image" : "Drop the end keyframe or browse"}
           hint="FLF2V end keyframe. Animates reference → last image over the clip."
-          onFiles={(files) => {
-            const file = files[0] ?? null;
-            setLastFile(file);
-            setLastImage(file?.name ?? null, file?.name ?? null);
-          }}
+          onFiles={(files) => void lastUpload.pick(files[0] ?? null)}
           renderPreview={() =>
             lastUrl ? <img className={styles.thumb} src={lastUrl} alt="last preview" /> : null
           }
         />
-        {lastFile && <span className={styles.fileName}>{lastFile.name}</span>}
+        {lastUpload.uploading && <span className={styles.status}>Uploading…</span>}
+        {!lastUpload.uploading && lastUpload.file && (
+          <span className={styles.fileName}>{lastUpload.file.name}</span>
+        )}
+        {lastUpload.uploadError && (
+          <span role="alert" className={styles.error}>
+            {lastUpload.uploadError}
+          </span>
+        )}
         {lastError && (
-          <span role="alert" className={styles.fileName} style={{ color: "var(--error)" }}>
+          <span role="alert" className={styles.error}>
             {lastError}
           </span>
         )}

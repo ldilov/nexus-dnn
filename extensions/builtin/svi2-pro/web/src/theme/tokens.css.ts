@@ -172,12 +172,14 @@ globalStyle(
   },
 );
 
-globalStyle("svi2-pro-app *", {
+globalStyle("svi2-pro-app *, svi2-pro-app *::before, svi2-pro-app *::after", {
   "@media": {
     "(prefers-reduced-motion: reduce)": {
+      animationName: "none",
       animationDuration: "0.01ms",
       animationIterationCount: 1,
       transitionDuration: "0.01ms",
+      scrollBehavior: "auto",
     },
   },
 });

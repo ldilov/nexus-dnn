@@ -35,3 +35,14 @@ export const fileName = style({
   color: vars.color.textMuted,
   wordBreak: "break-all",
 });
+
+export const status = style({
+  fontSize: vars.text.micro,
+  color: vars.color.accent,
+});
+
+export const error = style({
+  fontSize: vars.text.micro,
+  color: vars.color.warning,
+  wordBreak: "break-word",
+});
