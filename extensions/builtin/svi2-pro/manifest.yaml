@@ -5,8 +5,6 @@ extension:
   name: "SVI 2.0 Pro Video Generator"
   description: "Long, cross-clip-consistent image-to-video via Stable Video Infinity 2.0 Pro (two SVI LoRAs on Wan2.2-I2V-A14B dual-expert MoE). Kijai fp8 e4m3fn base for 16 GB Blackwell."
   publisher: "nexus"
-  icon:
-    symbol: "movie"
 compatibility:
   host_api: ">=0.1.0"
   protocol: ">=0.1.0"
