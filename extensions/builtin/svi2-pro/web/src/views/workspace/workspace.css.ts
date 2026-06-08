@@ -41,8 +41,8 @@ export const subtitle = style({
 
 export const tabs = style({
   display: "inline-flex",
-  gap: "2px",
-  padding: "3px",
+  gap: vars.space.xs,
+  padding: vars.space.xs,
   borderRadius: vars.radius.pill,
   background: vars.color.surfaceMuted,
 });

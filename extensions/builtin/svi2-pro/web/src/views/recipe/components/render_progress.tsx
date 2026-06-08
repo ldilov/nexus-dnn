@@ -150,7 +150,7 @@ function RenderReportView({ state }: { state: RenderState }): ReactElement | nul
   if (typeof report.duration_seconds === "number")
     entries.push(["Duration", `${report.duration_seconds.toFixed(1)}s`]);
   if (state.vramPeakGib !== null) entries.push(["VRAM peak", `${state.vramPeakGib.toFixed(1)} GiB`]);
-  if (typeof report.sha256 === "string") entries.push(["sha256", report.sha256.slice(0, 16)]);
+  if (typeof report.sha256 === "string") entries.push(["sha256", `${report.sha256.slice(0, 16)}…`]);
   if (state.outputPath) entries.push(["Output", state.outputPath]);
 
   if (entries.length === 0) return null;
