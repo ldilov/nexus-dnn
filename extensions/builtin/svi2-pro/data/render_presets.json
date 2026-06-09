@@ -85,8 +85,8 @@
     },
     {
       "id": "natural-reference",
-      "label": "Natural (reference-match)",
-      "description": "Vanilla Wan2.2-I2V dynamics: no RoPE motion scaling, native 16fps, default shift, full 50 steps. Light AdaIN + pixel re-encode for continuation. Matches the coherent motion other Wan2.2 i2v pipelines produce. Recommended baseline.",
+      "label": "Legacy A/B — Natural (reference-match)",
+      "description": "LEGACY A/B PRESET — uses pixel re-encode continuation, root-caused (2026-06-05) as the identity-drift recipe on chained long takes; prefer svi-canonical for long renders. Vanilla Wan2.2-I2V dynamics: no RoPE motion scaling, native 16fps, default shift, full 50 steps. Light AdaIN + pixel re-encode for continuation. Kept for A/B comparison only.",
       "params": {
         "width": 832,
         "height": 480,
@@ -107,8 +107,8 @@
     },
     {
       "id": "natural-rife48",
-      "label": "Natural + RIFE 48fps",
-      "description": "Same natural Wan2.2-I2V render at native 16fps, then frame-interpolated to 48fps. Adds in-between frames (no motion speed-up) for buttery playback. Uses rife-ncnn-vulkan if rife_bin is set, else falls back to ffmpeg minterpolate.",
+      "label": "Legacy A/B — Natural + RIFE 48fps",
+      "description": "LEGACY A/B PRESET — pixel re-encode continuation drifts on chained long takes; prefer svi-canonical (it includes RIFE 48fps). Same natural Wan2.2-I2V render at native 16fps, then frame-interpolated to 48fps. Uses rife-ncnn-vulkan if rife_bin is set, else falls back to ffmpeg minterpolate. Kept for A/B comparison only.",
       "params": {
         "width": 832,
         "height": 480,
@@ -131,8 +131,8 @@
     },
     {
       "id": "forced-motion-24",
-      "label": "Forced motion 24fps (over-driven)",
-      "description": "Aggressive motion via per-clip RoPE ramp + lowered shift + 24fps + stronger AdaIN, fewer steps. Produces exaggerated/uncanny movement (head-whip, face-morph) and 1.5x-fast playback vs native 16fps. Kept for A/B reference; NOT the natural look.",
+      "label": "Legacy A/B — Forced motion 24fps (over-driven)",
+      "description": "LEGACY A/B PRESET — diagnostic only; prefer svi-canonical for real renders. Aggressive motion via per-clip RoPE ramp + lowered shift + 24fps + stronger AdaIN, fewer steps. Produces exaggerated/uncanny movement (head-whip, face-morph) and 1.5x-fast playback vs native 16fps. NOT the natural look.",
       "params": {
         "width": 832,
         "height": 480,
@@ -154,8 +154,8 @@
     },
     {
       "id": "natural-reference-lowvram",
-      "label": "Natural (reference-match) — 16GB",
-      "description": "natural-reference render targeted at a 16GB card. Identical diffusion params; offloads all 40 DiT blocks to CPU (blocks_to_swap=40) so only the active block + VAE peak resides on GPU. Same quality as natural-reference, slower per step from the CPU<->GPU block traffic.",
+      "label": "Legacy A/B — Natural (reference-match) — 16GB",
+      "description": "LEGACY A/B PRESET — pixel re-encode continuation drifts on chained long takes; prefer svi-canonical (already a 16GB recipe at blocks_to_swap=40). natural-reference render targeted at a 16GB card: identical diffusion params; offloads all 40 DiT blocks to CPU. Kept for A/B comparison only.",
       "params": {
         "width": 832,
         "height": 480,
@@ -176,8 +176,8 @@
     },
     {
       "id": "natural-rife48-lowvram",
-      "label": "Natural + RIFE 48fps — 16GB",
-      "description": "natural-rife48 render targeted at a 16GB card. Identical diffusion + RIFE interpolation; offloads all 40 DiT blocks to CPU (blocks_to_swap=40). RIFE interpolation is a post-render step and adds no GPU peak to the diffusion phase.",
+      "label": "Legacy A/B — Natural + RIFE 48fps — 16GB",
+      "description": "LEGACY A/B PRESET — pixel re-encode continuation drifts on chained long takes; prefer svi-canonical (16GB-ready, includes RIFE 48fps). natural-rife48 render targeted at a 16GB card: identical diffusion + RIFE interpolation; offloads all 40 DiT blocks to CPU. Kept for A/B comparison only.",
       "params": {
         "width": 832,
         "height": 480,
@@ -200,8 +200,8 @@
     },
     {
       "id": "forced-motion-24-lowvram",
-      "label": "Forced motion 24fps (over-driven) — 16GB",
-      "description": "forced-motion-24 diagnostic render targeted at a 16GB card. Identical over-driven RoPE/AdaIN params; offloads all 40 DiT blocks to CPU (blocks_to_swap=40). Diagnostic look (head-whip/face-morph, 1.5x-fast) is unchanged — this only changes where the weights live.",
+      "label": "Legacy A/B — Forced motion 24fps (over-driven) — 16GB",
+      "description": "LEGACY A/B PRESET — diagnostic only; prefer svi-canonical for real renders. forced-motion-24 diagnostic render targeted at a 16GB card: identical over-driven RoPE/AdaIN params; offloads all 40 DiT blocks to CPU (blocks_to_swap=40). Diagnostic look (head-whip/face-morph, 1.5x-fast) is unchanged.",
       "params": {
         "width": 832,
         "height": 480,
@@ -249,8 +249,8 @@
     },
     {
       "id": "chained-single-prompt-lowvram",
-      "label": "Chained long take, single prompt — 16GB",
-      "description": "Seamless long take the SVI way: ONE prompt across every clip (SVI does not drift/forget with a single prompt) plus crossfade-blended seams. Each clip continues the previous via the re-encoded motion tail; the cosine crossfade over num_overlap_frame hides the join. Use a rich, single descriptive prompt and let it run for as many clips as you want length. 960x544, RIFE to 48fps.",
+      "label": "Legacy A/B — Chained long take, single prompt — 16GB",
+      "description": "LEGACY A/B PRESET — this exact combo (pixel re-encode continuation at off-budget 960x544) was root-caused (2026-06-05) as the identity-drift recipe on long chains; prefer svi-canonical for long takes. ONE prompt across every clip plus crossfade-blended seams; each clip continues the previous via the re-encoded motion tail. Kept for A/B comparison only.",
       "params": {
         "width": 960,
         "height": 544,

@@ -93,11 +93,23 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
             "last_image_path is required for this preset/mode "
             "(flf2v morph needs a target end keyframe)"
         )
+    # FLF2V pins the end keyframe into EVERY clip's last latent slot, so a
+    # chained render re-arrives at the keyframe each clip. Morphs are 1 clip.
+    if last_image and num_clips > 1:
+        raise ValueError(
+            f"last_image_path (FLF2V) requires num_clips=1; got num_clips={num_clips}. "
+            "For a longer morph raise frames_per_clip instead of chaining clips."
+        )
 
     from .resolution import resolution_warning
 
     width = int(params.get("width", 480))
     height = int(params.get("height", 832))
+    # Reference pipeline divides by VAE upsampling (8) x DiT patch (2) per axis.
+    if width % 16 != 0 or height % 16 != 0:
+        raise ValueError(
+            f"width and height must be multiples of 16 (Wan VAE x DiT patch); got {width}x{height}"
+        )
     res_warning = resolution_warning(width, height)
     return {
         "ref_image_path": str(ref),
