@@ -8,7 +8,7 @@ pub mod orchestrator;
 pub mod store;
 
 pub use auth::{TokenEvent, TokenStore};
-pub use install_map::{InstallMap, InstalledArtifactRecord, InstalledArtifactRow};
+pub use install_map::{GcOutcome, InstallMap, InstalledArtifactRecord, InstalledArtifactRow};
 pub use orchestrator::DownloadOrchestrator;
 pub use store::{
     CreateJobParams, JobStore, JobStoreError, JobStoreResult, JobTargetInput, PersistedJob,

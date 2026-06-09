@@ -134,6 +134,13 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StorageError> {
         true,
     )
     .await?;
+    // spec 054 — ref-counted Foundry ownership of model-store artifacts
+    execute_migration_statements(
+        pool,
+        include_str!("../../../../migrations/022_model_store_artifact_refs.sql"),
+        false,
+    )
+    .await?;
     Ok(())
 }
 
