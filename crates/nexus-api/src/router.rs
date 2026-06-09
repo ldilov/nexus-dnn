@@ -190,6 +190,14 @@ pub fn build(state: AppState) -> Router {
             "/extensions/{id}/install/cancel",
             post(extension_dependencies::cancel_install),
         )
+        // Spec 054 G5 — host-owned uninstall overlay. Generic by `:id`:
+        // releases the extension's leases, removes its runtime/venv install +
+        // data dir, drops its model refs and refcount-GCs exclusively-owned
+        // models. Zero extension literals in the handler.
+        .route(
+            "/extensions/{id}/uninstall",
+            post(extension_dependencies::uninstall_extension),
+        )
         .route(
             "/extensions/{id}/settings/idle_timeout",
             patch(extension_settings::idle_timeout::patch_idle_timeout),
