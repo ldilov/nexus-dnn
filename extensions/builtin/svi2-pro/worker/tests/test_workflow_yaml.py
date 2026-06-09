@@ -35,8 +35,8 @@ def test_workflow_edges_reference_existing_nodes():
 def test_recipe_invokes_registered_operator():
     recipe = yaml.safe_load((ROOT / "recipes" / "svi2_render.yaml").read_text())
     operator_id = recipe["actions"][0]["operator_invoke"]["operator"]
-    op = yaml.safe_load((ROOT / "operators" / "svi2_render.yaml").read_text())
+    op = yaml.safe_load((ROOT / "operators" / "video_render.yaml").read_text())["operator"]
     assert op["id"] == operator_id
     manifest = yaml.safe_load((ROOT / "manifest.yaml").read_text())
     files = {o["file"] for o in manifest["operators"]}
-    assert "operators/svi2_render.yaml" in files
+    assert "operators/video_render.yaml" in files

@@ -82,6 +82,51 @@ def test_flf2v_preset_accepts_render_with_last_image():
     assert out["requires_last_image"] is True
 
 
+def test_flf2v_rejects_multi_clip_chaining():
+    from svi2_video_worker.pipeline_svi2 import validate_render_params
+
+    flf2v = next(p for p in PRESETS if p["id"] == "flf2v-morph-lowvram")
+    body = {
+        **flf2v["params"],
+        "ref_image_path": "x.png",
+        "prompts": ["a"],
+        "last_image_path": "end.png",
+        "num_clips": 3,
+    }
+    with pytest.raises(ValueError, match="num_clips=1"):
+        validate_render_params(body)
+
+
+@pytest.mark.parametrize("width,height", [(850, 480), (832, 470)])
+def test_rejects_resolution_not_multiple_of_16(width, height):
+    from svi2_video_worker.pipeline_svi2 import validate_render_params
+
+    with pytest.raises(ValueError, match="multiples of 16"):
+        validate_render_params(
+            {"ref_image_path": "x.png", "prompts": ["a"], "width": width, "height": height}
+        )
+
+
+_LEGACY_DRIFT_PRESET_IDS = {
+    "natural-reference",
+    "natural-rife48",
+    "forced-motion-24",
+    "natural-reference-lowvram",
+    "natural-rife48-lowvram",
+    "forced-motion-24-lowvram",
+    "chained-single-prompt-lowvram",
+}
+
+
+def test_legacy_drift_presets_are_labeled_legacy():
+    for p in PRESETS:
+        if p["id"] in _LEGACY_DRIFT_PRESET_IDS:
+            assert p["label"].startswith("Legacy A/B"), p["id"]
+            assert "svi-canonical" in p["description"], p["id"]
+        elif p["id"].startswith("svi-canonical") or p["id"] in _LAST_IMAGE_PRESET_IDS:
+            assert not p["label"].startswith("Legacy"), p["id"]
+
+
 def test_presets_list_rpc_returns_catalog_from_data_file():
     from svi2_video_worker.presets import load_presets, register_preset_handlers
 
