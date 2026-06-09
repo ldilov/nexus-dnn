@@ -351,28 +351,6 @@ export function artifactUrl(artifactId: string): string {
 }
 
 const HOST_BASE = "/api/v1";
-const EXTENSION_ID = "nexus.video.ltx23";
-
-export type DepStepStatus =
-  | "pending"
-  | "running"
-  | "ok"
-  | "failed"
-  | "skipped";
-
-export interface DepStep {
-  id: string;
-  type: string;
-  status: DepStepStatus;
-  satisfied: boolean;
-  artifact?: { summary: string } | null;
-  last_error?: { category: string; message: string } | null;
-}
-
-export interface DepStatus {
-  steps: DepStep[];
-  all_satisfied: boolean;
-}
 
 async function hostJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${HOST_BASE}${path}`, {
@@ -386,16 +364,6 @@ async function hostJson<T>(path: string, init?: RequestInit): Promise<T> {
   const wire = (await res.json()) as { data: T };
   return wire.data;
 }
-
-export const hostApi = {
-  listDependencies: () =>
-    hostJson<DepStatus>(`/extensions/${EXTENSION_ID}/dependencies`),
-  startInstall: (force = false) =>
-    hostJson<{ install_run_id: string; started_at: string }>(
-      `/extensions/${EXTENSION_ID}/install${force ? "?force=true" : ""}`,
-      { method: "POST" },
-    ),
-};
 
 export interface ProfileInstallStatus {
   profile: string;
