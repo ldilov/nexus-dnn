@@ -59,42 +59,71 @@ dependencies:
       spec:
         family_id: "huggingface:Kijai/WanVideo_comfy_fp8_scaled"
         acceleration_match: "matches_runtime_step:python"
+        # Shared mega-repo (300GB+). Pull only the two A14B I2V fp8 experts
+        # the worker loads (versions.yaml dit-high/low-fp8).
+        files:
+          - "I2V/Wan2_2-I2V-A14B-HIGH_fp8_e4m3fn_scaled_KJ.safetensors"
+          - "I2V/Wan2_2-I2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors"
     - id: model_svi_lora
       type: model_artifact
       requires: [python]
       spec:
         family_id: "huggingface:epfl-vita/svi-model"
         acceleration_match: "matches_runtime_step:python"
+        files:
+          - "version-2.0/SVI_Wan2.2-I2V-A14B_high_noise_lora_v2.0_pro.safetensors"
+          - "version-2.0/SVI_Wan2.2-I2V-A14B_low_noise_lora_v2.0_pro.safetensors"
     - id: model_wan_encoder
       type: model_artifact
       requires: [python]
       spec:
         family_id: "huggingface:Kijai/WanVideo_comfy"
         acceleration_match: "matches_runtime_step:python"
+        # This repo supplies BOTH the text encoder and the VAE the worker
+        # loads (versions.yaml text-encoder + vae).
+        files:
+          - "umt5-xxl-enc-bf16.safetensors"
+          - "Wan2_1_VAE_bf16.safetensors"
     - id: model_tokenizer
       type: model_artifact
       requires: [python]
       spec:
         family_id: "huggingface:Wan-AI/Wan2.1-T2V-1.3B"
         acceleration_match: "matches_runtime_step:python"
+        # Only the umt5-xxl tokenizer subfolder, not the multi-GB T2V-1.3B
+        # diffusion weights (versions.yaml tokenizer, huggingface_split).
+        include:
+          - "google/umt5-xxl/*"
     - id: model_qwen_edit
       type: model_artifact
       requires: [python]
       spec:
         family_id: "huggingface:QuantStack/Qwen-Image-Edit-2509-GGUF"
         acceleration_match: "matches_runtime_step:python"
+        # Diffusion GGUF (Q5_K_M) + the edit VAE (versions.yaml
+        # qwen-edit-diffusion + qwen-edit-vae).
+        files:
+          - "Qwen_Image_Edit_2509-Q5_K_M.gguf"
+          - "VAE/Qwen_Image-VAE.safetensors"
     - id: model_qwen_vl
       type: model_artifact
       requires: [python]
       spec:
         family_id: "huggingface:unsloth/Qwen2.5-VL-7B-Instruct-GGUF"
         acceleration_match: "matches_runtime_step:python"
+        # VL LLM GGUF (Q4_K_M) + multimodal projector (versions.yaml
+        # qwen-edit-llm + qwen-edit-mmproj).
+        files:
+          - "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
+          - "mmproj-F16.gguf"
     - id: model_rife
       type: model_artifact
       requires: [python]
       spec:
         family_id: "huggingface:AlexWortega/RIFE"
         acceleration_match: "matches_runtime_step:python"
+        files:
+          - "flownet.pkl"
     - id: sdcli
       type: system_binary
       requires: [python]
