@@ -145,6 +145,7 @@ impl ModelStoreClient for FakeModelStore {
         &self,
         family_id: &str,
         _accelerator: Option<&str>,
+        _selection: &nexus_extension_deps::FileSelection,
     ) -> Result<String, nexus_extension_deps::DepError> {
         self.download_calls.fetch_add(1, Ordering::SeqCst);
         Ok(format!("job-{family_id}"))

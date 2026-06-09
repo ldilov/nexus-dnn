@@ -125,6 +125,7 @@ impl ModelStoreClient for MockModelStore {
         &self,
         _family_id: &str,
         accelerator: Option<&str>,
+        _selection: &nexus_extension_deps::FileSelection,
     ) -> Result<String, DepError> {
         self.download_calls.fetch_add(1, Ordering::SeqCst);
         *self.accelerator_seen.lock().expect("lock") = accelerator.map(String::from);

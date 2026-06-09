@@ -71,7 +71,12 @@ impl ModelStoreClient for AlwaysInstalledModelStore {
     ) -> Result<Option<PathBuf>, DepError> {
         Ok(Some(PathBuf::from("/.../models/test/1.0")))
     }
-    async fn start_download(&self, _f: &str, _a: Option<&str>) -> Result<String, DepError> {
+    async fn start_download(
+        &self,
+        _f: &str,
+        _a: Option<&str>,
+        _s: &nexus_extension_deps::FileSelection,
+    ) -> Result<String, DepError> {
         unreachable!()
     }
     async fn poll_job(&self, _id: &str) -> Result<ModelDownloadProgress, DepError> {

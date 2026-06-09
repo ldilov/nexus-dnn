@@ -7,6 +7,7 @@
 pub mod context;
 pub mod error;
 pub mod fetch;
+pub mod file_selection;
 pub mod handler;
 pub mod handlers;
 pub mod plan;
@@ -18,6 +19,7 @@ pub use context::{
     RuntimeBootstrapResult, RuntimeBootstrapper, StepContext, WorkerHandshake,
 };
 pub use error::DepError;
+pub use file_selection::FileSelection;
 pub use handler::{HandlerRegistry, ProbeResult, StepHandler};
 pub use plan::{DependenciesBlock, InstallPlan, Step, parse_dependencies_block};
 pub use runner::{InstallReport, InstallRunner, RunnerContext};

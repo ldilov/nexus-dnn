@@ -13,14 +13,22 @@ use serde_json::Value;
 
 use crate::context::{ModelDownloadProgress, StepContext};
 use crate::error::DepError;
+use crate::file_selection::FileSelection;
 use crate::handler::{ProbeResult, StepHandler};
 use crate::types::{ProgressEvent, StepArtifact, StepEstimate, StepProgress};
 
+/// Parsed `model_artifact` step spec.
+///
+/// File selection is flattened from the spec root (`files` / `include` /
+/// `exclude`). With none set the whole repo is snapshotted (backward
+/// compatible); see [`FileSelection`] for precedence.
 #[derive(Debug, Deserialize)]
 struct ModelArtifactSpec {
     family_id: String,
     #[serde(default)]
     acceleration_match: Option<String>,
+    #[serde(default, flatten)]
+    selection: FileSelection,
 }
 
 pub struct ModelArtifactHandler;
@@ -120,7 +128,7 @@ impl StepHandler for ModelArtifactHandler {
         let accelerator = resolve_accelerator(&parsed, ctx);
         let job_id = ctx
             .model_store
-            .start_download(&parsed.family_id, accelerator.as_deref())
+            .start_download(&parsed.family_id, accelerator.as_deref(), &parsed.selection)
             .await?;
         tracing::info!(
             target: "spec_035::model_artifact",
@@ -287,7 +295,12 @@ mod tests {
         ) -> Result<Option<PathBuf>, DepError> {
             Ok(None)
         }
-        async fn start_download(&self, _f: &str, _a: Option<&str>) -> Result<String, DepError> {
+        async fn start_download(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+            _s: &crate::FileSelection,
+        ) -> Result<String, DepError> {
             unreachable!()
         }
         async fn poll_job(&self, _id: &str) -> Result<crate::ModelDownloadProgress, DepError> {
@@ -371,7 +384,12 @@ mod tests {
         ) -> Result<Option<PathBuf>, DepError> {
             Ok(None)
         }
-        async fn start_download(&self, _f: &str, _a: Option<&str>) -> Result<String, DepError> {
+        async fn start_download(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+            _s: &crate::FileSelection,
+        ) -> Result<String, DepError> {
             Ok("job-1".to_owned())
         }
         async fn poll_job(&self, _id: &str) -> Result<crate::ModelDownloadProgress, DepError> {
@@ -495,7 +513,12 @@ mod tests {
         ) -> Result<Option<PathBuf>, DepError> {
             Ok(None)
         }
-        async fn start_download(&self, _f: &str, _a: Option<&str>) -> Result<String, DepError> {
+        async fn start_download(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+            _s: &crate::FileSelection,
+        ) -> Result<String, DepError> {
             Ok("job-ref".to_owned())
         }
         async fn poll_job(&self, _id: &str) -> Result<crate::ModelDownloadProgress, DepError> {
@@ -576,5 +599,63 @@ mod tests {
 
         let handler = ModelArtifactHandler::new();
         assert!(handler.estimate(&ctx, &spec).await.is_none());
+    }
+
+    /// AC-1.1 — a spec with no selection parses to an unrestricted (whole-repo)
+    /// selection.
+    #[test]
+    fn parses_spec_with_no_selection() {
+        let spec = serde_json::json!({ "family_id": "huggingface:Owner/Repo" });
+        let parsed = parse(&spec).expect("parse ok");
+        assert!(parsed.selection.is_unrestricted());
+    }
+
+    /// AC-1.1 — `files` (exact allowlist) is parsed onto the selection.
+    #[test]
+    fn parses_spec_with_files_allowlist() {
+        let spec = serde_json::json!({
+            "family_id": "huggingface:Owner/Repo",
+            "files": ["transformer/model.safetensors", "config.json"],
+        });
+        let parsed = parse(&spec).expect("parse ok");
+        assert_eq!(
+            parsed.selection.files,
+            vec!["transformer/model.safetensors", "config.json"]
+        );
+        assert!(!parsed.selection.is_unrestricted());
+    }
+
+    /// AC-1.1 — `include` / `exclude` globs are parsed onto the selection.
+    #[test]
+    fn parses_spec_with_include_exclude_globs() {
+        let spec = serde_json::json!({
+            "family_id": "huggingface:Owner/Repo",
+            "include": ["transformer/**", "*.json"],
+            "exclude": ["**/*.fp16.safetensors"],
+        });
+        let parsed = parse(&spec).expect("parse ok");
+        assert_eq!(parsed.selection.include, vec!["transformer/**", "*.json"]);
+        assert_eq!(parsed.selection.exclude, vec!["**/*.fp16.safetensors"]);
+    }
+
+    /// AC-1.2 — validate() accepts specs with any selection combination,
+    /// including none; it rejects nothing new (empty = whole repo).
+    #[test]
+    fn validate_accepts_any_selection_combination() {
+        let handler = ModelArtifactHandler::new();
+        for spec in [
+            serde_json::json!({ "family_id": "huggingface:Owner/Repo" }),
+            serde_json::json!({ "family_id": "huggingface:Owner/Repo", "files": ["a.bin"] }),
+            serde_json::json!({ "family_id": "huggingface:Owner/Repo", "include": ["**/*.safetensors"] }),
+            serde_json::json!({ "family_id": "huggingface:Owner/Repo", "exclude": ["junk/**"] }),
+            serde_json::json!({
+                "family_id": "huggingface:Owner/Repo",
+                "files": ["a.bin"],
+                "include": ["**"],
+                "exclude": ["junk/**"],
+            }),
+        ] {
+            assert!(handler.validate(&spec).is_ok(), "should accept {spec}");
+        }
     }
 }
