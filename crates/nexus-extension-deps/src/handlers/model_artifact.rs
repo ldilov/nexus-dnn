@@ -14,7 +14,7 @@ use serde_json::Value;
 use crate::context::{ModelDownloadProgress, StepContext};
 use crate::error::DepError;
 use crate::handler::{ProbeResult, StepHandler};
-use crate::types::{ProgressEvent, StepArtifact};
+use crate::types::{ProgressEvent, StepArtifact, StepEstimate};
 
 #[derive(Debug, Deserialize)]
 struct ModelArtifactSpec {
@@ -97,6 +97,22 @@ impl StepHandler for ModelArtifactHandler {
             }),
             None => Ok(ProbeResult::NotSatisfied),
         }
+    }
+
+    async fn estimate(&self, ctx: &StepContext<'_>, spec: &Value) -> Option<StepEstimate> {
+        let parsed = parse(spec).ok()?;
+        let accelerator = resolve_accelerator(&parsed, ctx);
+        let partial = ctx
+            .model_store
+            .family_partial_state(&parsed.family_id, accelerator.as_deref())
+            .await
+            .ok()??;
+        Some(StepEstimate {
+            remaining_bytes: partial.total_bytes.saturating_sub(partial.present_bytes),
+            present_bytes: partial.present_bytes,
+            files_present: partial.files_present,
+            files_total: partial.files_total,
+        })
     }
 
     async fn run(&self, ctx: &StepContext<'_>, spec: &Value) -> Result<StepArtifact, DepError> {
@@ -212,5 +228,145 @@ impl StepHandler for ModelArtifactHandler {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::context::ModelPartialState;
+    use std::collections::HashMap;
+    use std::path::{Path, PathBuf};
+    use std::sync::Arc;
+
+    struct PartialStateStore(Option<ModelPartialState>);
+
+    #[async_trait]
+    impl crate::ModelStoreClient for PartialStateStore {
+        async fn is_family_installed(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+        ) -> Result<Option<PathBuf>, DepError> {
+            Ok(None)
+        }
+        async fn start_download(&self, _f: &str, _a: Option<&str>) -> Result<String, DepError> {
+            unreachable!()
+        }
+        async fn poll_job(&self, _id: &str) -> Result<crate::ModelDownloadProgress, DepError> {
+            unreachable!()
+        }
+        async fn family_partial_state(
+            &self,
+            _family_id: &str,
+            _accelerator: Option<&str>,
+        ) -> Result<Option<ModelPartialState>, DepError> {
+            Ok(self.0)
+        }
+    }
+
+    struct NoopRuntime;
+    #[async_trait]
+    impl crate::RuntimeBootstrapper for NoopRuntime {
+        async fn probe(
+            &self,
+            _f: &str,
+            _v: Option<&str>,
+            _a: &[String],
+            _t: &Path,
+        ) -> Result<Option<crate::RuntimeBootstrapResult>, DepError> {
+            Ok(None)
+        }
+        async fn bootstrap(
+            &self,
+            _f: &str,
+            _v: Option<&str>,
+            _a: &[String],
+            _t: &Path,
+            _c: tokio_util::sync::CancellationToken,
+        ) -> Result<crate::RuntimeBootstrapResult, DepError> {
+            unreachable!()
+        }
+    }
+
+    struct NoopHandshake;
+    #[async_trait]
+    impl crate::WorkerHandshake for NoopHandshake {
+        async fn run_handshake(
+            &self,
+            _ext: &str,
+            _dir: &Path,
+            _data: &Path,
+            _ups: &HashMap<String, StepArtifact>,
+            _t: std::time::Duration,
+            _c: tokio_util::sync::CancellationToken,
+        ) -> Result<(), crate::HandshakeError> {
+            unreachable!()
+        }
+    }
+
+    struct NoopSink;
+    impl crate::ProgressSink for NoopSink {
+        fn emit(&self, _e: ProgressEvent) {}
+    }
+
+    fn ctx_with_store<'a>(
+        store: Arc<dyn crate::ModelStoreClient>,
+        dir: &'a Path,
+        upstream: &'a HashMap<String, StepArtifact>,
+    ) -> StepContext<'a> {
+        StepContext {
+            extension_id: "example",
+            extension_dir: dir,
+            extension_data_dir: dir,
+            host_data_dir: dir,
+            model_store: store,
+            runtime_bootstrapper: Arc::new(NoopRuntime),
+            worker_handshake: Arc::new(NoopHandshake),
+            fetch_artifact: Arc::new(|_req: crate::fetch::FetchRequest| {
+                Box::pin(async { Err(DepError::Backend("stub".into())) })
+            }),
+            progress_sink: Arc::new(NoopSink),
+            cancellation_token: tokio_util::sync::CancellationToken::new(),
+            install_run_id: uuid::Uuid::nil(),
+            upstream_artifacts: upstream,
+        }
+    }
+
+    #[tokio::test]
+    async fn estimate_maps_partial_state_to_step_estimate() {
+        let store: Arc<dyn crate::ModelStoreClient> =
+            Arc::new(PartialStateStore(Some(ModelPartialState {
+                present_bytes: 3_000_000,
+                total_bytes: 10_000_000,
+                files_present: 2,
+                files_total: 5,
+            })));
+        let dir = PathBuf::from("/tmp");
+        let upstream = HashMap::new();
+        let ctx = ctx_with_store(store, &dir, &upstream);
+        let spec = serde_json::json!({ "family_id": "huggingface:Owner/Repo" });
+
+        let handler = ModelArtifactHandler::new();
+        let est = handler
+            .estimate(&ctx, &spec)
+            .await
+            .expect("estimate present");
+        assert_eq!(est.remaining_bytes, 7_000_000);
+        assert_eq!(est.present_bytes, 3_000_000);
+        assert_eq!(est.files_present, 2);
+        assert_eq!(est.files_total, 5);
+    }
+
+    #[tokio::test]
+    async fn estimate_returns_none_when_store_has_no_job() {
+        let store: Arc<dyn crate::ModelStoreClient> = Arc::new(PartialStateStore(None));
+        let dir = PathBuf::from("/tmp");
+        let upstream = HashMap::new();
+        let ctx = ctx_with_store(store, &dir, &upstream);
+        let spec = serde_json::json!({ "family_id": "huggingface:Owner/Repo" });
+
+        let handler = ModelArtifactHandler::new();
+        assert!(handler.estimate(&ctx, &spec).await.is_none());
     }
 }

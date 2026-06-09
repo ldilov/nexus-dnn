@@ -164,6 +164,8 @@ async fn probe_step(
                 }),
                 progress: None,
                 estimated_remaining_bytes: 0,
+                files_present: None,
+                files_total: None,
             };
         }
     };
@@ -198,20 +200,28 @@ async fn probe_step(
             last_error: None,
             progress: None,
             estimated_remaining_bytes: 0,
+            files_present: None,
+            files_total: None,
         },
-        Ok(ProbeResult::NotSatisfied) => StepDto {
-            id: step.id.clone(),
-            step_type: step.step_type.clone(),
-            requires: step.requires.clone(),
-            status: StepStatusKind::Pending,
-            satisfied: false,
-            artifact: None,
-            last_error: None,
-            progress: None,
-            // probe() doesn't carry a size estimate today — surface 0; the runner
-            // emits actual progress during install.
-            estimated_remaining_bytes: 0,
-        },
+        Ok(ProbeResult::NotSatisfied) => {
+            // Only NotSatisfied steps pay for the (cheap, no-network) estimate. It
+            // surfaces "what's left / what's already present" from persisted state so
+            // the UI can show a resume-aware bar before the install even starts.
+            let estimate = handler.estimate(&step_ctx, &step.spec).await;
+            StepDto {
+                id: step.id.clone(),
+                step_type: step.step_type.clone(),
+                requires: step.requires.clone(),
+                status: StepStatusKind::Pending,
+                satisfied: false,
+                artifact: None,
+                last_error: None,
+                progress: None,
+                estimated_remaining_bytes: estimate.map(|e| e.remaining_bytes).unwrap_or(0),
+                files_present: estimate.map(|e| e.files_present),
+                files_total: estimate.map(|e| e.files_total),
+            }
+        }
         Ok(ProbeResult::Unsupported { reason }) => StepDto {
             id: step.id.clone(),
             step_type: step.step_type.clone(),
@@ -227,6 +237,8 @@ async fn probe_step(
             }),
             progress: None,
             estimated_remaining_bytes: 0,
+            files_present: None,
+            files_total: None,
         },
         Err(e) => StepDto {
             id: step.id.clone(),
@@ -243,6 +255,8 @@ async fn probe_step(
             }),
             progress: None,
             estimated_remaining_bytes: 0,
+            files_present: None,
+            files_total: None,
         },
     }
 }
@@ -251,3 +265,151 @@ async fn probe_step(
 fn _enforce_install_plan_use(_p: &InstallPlan) {}
 #[allow(dead_code)]
 fn _enforce_step_status_use(_s: &StepStatus) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use nexus_extension_deps::{
+        DepError, HandlerRegistry, HandshakeError, ModelDownloadProgress, ModelStoreClient,
+        ProgressEvent, ProgressSink, RuntimeBootstrapResult, RuntimeBootstrapper, StepEstimate,
+        StepHandler, WorkerHandshake,
+    };
+    use serde_json::Value;
+    use std::path::{Path, PathBuf};
+
+    struct EstimatingHandler;
+
+    #[async_trait]
+    impl StepHandler for EstimatingHandler {
+        fn step_type(&self) -> &'static str {
+            "estimating"
+        }
+        fn validate(&self, _spec: &Value) -> Result<(), DepError> {
+            Ok(())
+        }
+        async fn probe(
+            &self,
+            _ctx: &StepContext<'_>,
+            _spec: &Value,
+        ) -> Result<ProbeResult, DepError> {
+            Ok(ProbeResult::NotSatisfied)
+        }
+        async fn run(
+            &self,
+            _ctx: &StepContext<'_>,
+            _spec: &Value,
+        ) -> Result<StepArtifact, DepError> {
+            Ok(StepArtifact::empty("estimating"))
+        }
+        async fn estimate(&self, _ctx: &StepContext<'_>, _spec: &Value) -> Option<StepEstimate> {
+            Some(StepEstimate {
+                remaining_bytes: 7_000_000,
+                present_bytes: 3_000_000,
+                files_present: 2,
+                files_total: 5,
+            })
+        }
+    }
+
+    struct NoopStore;
+    #[async_trait]
+    impl ModelStoreClient for NoopStore {
+        async fn is_family_installed(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+        ) -> Result<Option<PathBuf>, DepError> {
+            Ok(None)
+        }
+        async fn start_download(&self, _f: &str, _a: Option<&str>) -> Result<String, DepError> {
+            unreachable!()
+        }
+        async fn poll_job(&self, _id: &str) -> Result<ModelDownloadProgress, DepError> {
+            unreachable!()
+        }
+    }
+
+    struct NoopRuntime;
+    #[async_trait]
+    impl RuntimeBootstrapper for NoopRuntime {
+        async fn probe(
+            &self,
+            _f: &str,
+            _v: Option<&str>,
+            _a: &[String],
+            _t: &Path,
+        ) -> Result<Option<RuntimeBootstrapResult>, DepError> {
+            Ok(None)
+        }
+        async fn bootstrap(
+            &self,
+            _f: &str,
+            _v: Option<&str>,
+            _a: &[String],
+            _t: &Path,
+            _c: tokio_util::sync::CancellationToken,
+        ) -> Result<RuntimeBootstrapResult, DepError> {
+            unreachable!()
+        }
+    }
+
+    struct NoopHandshake;
+    #[async_trait]
+    impl WorkerHandshake for NoopHandshake {
+        async fn run_handshake(
+            &self,
+            _ext: &str,
+            _dir: &Path,
+            _data: &Path,
+            _ups: &HashMap<String, StepArtifact>,
+            _t: std::time::Duration,
+            _c: tokio_util::sync::CancellationToken,
+        ) -> Result<(), HandshakeError> {
+            unreachable!()
+        }
+    }
+
+    struct NoopSink;
+    impl ProgressSink for NoopSink {
+        fn emit(&self, _e: ProgressEvent) {}
+    }
+
+    #[tokio::test]
+    async fn not_satisfied_step_surfaces_handler_estimate_in_dto() {
+        let mut registry = HandlerRegistry::new();
+        registry.register(Box::new(EstimatingHandler));
+
+        let dir = PathBuf::from("/tmp");
+        let upstream: HashMap<String, StepArtifact> = HashMap::new();
+        let runner_ctx = RunnerContext {
+            extension_id: "example",
+            extension_dir: dir.as_path(),
+            extension_data_dir: dir.as_path(),
+            host_data_dir: dir.as_path(),
+            model_store: Arc::new(NoopStore),
+            runtime_bootstrapper: Arc::new(NoopRuntime),
+            worker_handshake: Arc::new(NoopHandshake),
+            fetch_artifact: Arc::new(|_req| {
+                Box::pin(async { Err(DepError::Backend("stub".into())) })
+            }),
+            progress_sink: Arc::new(NoopSink),
+            cancellation_token: tokio_util::sync::CancellationToken::new(),
+            install_run_id: Uuid::nil(),
+            force: false,
+        };
+        let step = Step {
+            id: "packages".to_owned(),
+            step_type: "estimating".to_owned(),
+            requires: Vec::new(),
+            spec: serde_json::json!({}),
+        };
+
+        let dto = probe_step(&registry, &runner_ctx, &step, &upstream).await;
+        assert!(matches!(dto.status, StepStatusKind::Pending));
+        assert!(!dto.satisfied);
+        assert_eq!(dto.estimated_remaining_bytes, 7_000_000);
+        assert_eq!(dto.files_present, Some(2));
+        assert_eq!(dto.files_total, Some(5));
+    }
+}

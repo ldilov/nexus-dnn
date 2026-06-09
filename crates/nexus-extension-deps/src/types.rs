@@ -213,6 +213,17 @@ pub enum InstallOutcome {
     Cancelled,
 }
 
+/// Cheap, no-network estimate of what a `NotSatisfied` step still has to do. Derived
+/// from persisted job rows / on-disk state so the API can surface "what's left / what's
+/// present" without touching the network. Returned by [`crate::handler::StepHandler::estimate`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StepEstimate {
+    pub remaining_bytes: u64,
+    pub present_bytes: u64,
+    pub files_present: u32,
+    pub files_total: u32,
+}
+
 /// Caller-supplied sink for handler progress reports. Default impl forwards to the
 /// host event bus; tests can capture events into a buffer.
 pub trait ProgressSink: Send + Sync {

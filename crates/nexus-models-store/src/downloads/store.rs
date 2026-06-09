@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{SqlitePool, Row};
+use sqlx::{Row, SqlitePool};
 
 use crate::ids::{ArtifactId, FamilyId, JobId};
 use crate::types::{DependencyRole, DownloadState};
@@ -293,9 +293,8 @@ impl JobStore {
         let _ = sig;
         if let Some(row) = rows {
             let id: String = row.try_get("job_id")?;
-            let uuid = uuid::Uuid::parse_str(&id).map_err(|e| {
-                JobStoreError::Db(sqlx::Error::Decode(Box::new(e)))
-            })?;
+            let uuid = uuid::Uuid::parse_str(&id)
+                .map_err(|e| JobStoreError::Db(sqlx::Error::Decode(Box::new(e))))?;
             Ok(Some(JobId::from_uuid(uuid)))
         } else {
             Ok(None)
@@ -314,11 +313,7 @@ impl JobStore {
         let now = Utc::now();
         let now_iso = now.to_rfc3339();
         let total: Option<i64> = {
-            let sum: u64 = params
-                .targets
-                .iter()
-                .filter_map(|t| t.expected_bytes)
-                .sum();
+            let sum: u64 = params.targets.iter().filter_map(|t| t.expected_bytes).sum();
             if sum == 0 {
                 None
             } else {
@@ -398,6 +393,26 @@ impl JobStore {
         })
     }
 
+    /// The most-recently-created job for a family, in any state, or `None`. Used by the
+    /// dep installer's cheap no-network partial-state probe to surface "what's already
+    /// downloaded" without re-enumerating the upstream repo.
+    pub async fn latest_for_family(&self, family_id: &FamilyId) -> JobStoreResult<Option<JobId>> {
+        let row = sqlx::query(
+            "SELECT job_id FROM download_jobs
+             WHERE family_id = ?1
+             ORDER BY created_at DESC
+             LIMIT 1",
+        )
+        .bind(family_id.as_str())
+        .fetch_optional(self.pool.as_ref())
+        .await?;
+        Ok(row.and_then(|r| {
+            uuid::Uuid::parse_str(&r.get::<String, _>("job_id"))
+                .ok()
+                .map(JobId::from_uuid)
+        }))
+    }
+
     pub async fn get(&self, id: &JobId) -> JobStoreResult<Option<PersistedJob>> {
         let Some(job_row) = sqlx::query(
             "SELECT job_id, family_id, source_provider, source_repo, requested_kind,
@@ -431,8 +446,7 @@ impl JobStore {
                 expected_bytes: r
                     .get::<Option<i64>, _>("expected_bytes")
                     .and_then(|v| u64::try_from(v).ok()),
-                downloaded_bytes: u64::try_from(r.get::<i64, _>("downloaded_bytes"))
-                    .unwrap_or(0),
+                downloaded_bytes: u64::try_from(r.get::<i64, _>("downloaded_bytes")).unwrap_or(0),
                 sha256: r.get::<Option<String>, _>("sha256"),
                 state: TargetState::parse(&r.get::<String, _>("state"))
                     .unwrap_or(TargetState::Queued),
@@ -713,6 +727,24 @@ mod tests {
             .unwrap();
         let second = store.create(sample_params()).await.unwrap();
         assert_ne!(first.job_id, second.job_id);
+    }
+
+    #[tokio::test]
+    async fn latest_for_family_returns_most_recent_job_in_any_state() {
+        let pool = memory_pool().await;
+        let store = JobStore::new(pool);
+        let family = FamilyId::from("hf:test/model");
+        assert!(store.latest_for_family(&family).await.unwrap().is_none());
+
+        let first = store.create(sample_params()).await.unwrap();
+        store
+            .update_state(&first.job_id, DownloadState::Downloaded, None)
+            .await
+            .unwrap();
+        let second = store.create(sample_params()).await.unwrap();
+
+        let latest = store.latest_for_family(&family).await.unwrap().unwrap();
+        assert_eq!(latest, second.job_id);
     }
 
     #[tokio::test]
