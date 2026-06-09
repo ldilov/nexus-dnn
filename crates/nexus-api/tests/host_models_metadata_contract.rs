@@ -13,7 +13,7 @@ use http_body_util::BodyExt;
 use tower::ServiceExt;
 
 use crate::common::{
-    InstalledArtifactFixture, StubHf, harness_with, insert_installed_artifact_fixture,
+    InstalledArtifactFixture, StubHf, harness_with, insert_installed_artifact_fixture_on_disk,
 };
 
 async fn get_metadata(
@@ -50,7 +50,7 @@ async fn get_metadata(
 async fn gguf_full_metadata_returns_complete_record() {
     let harness = harness_with(StubHf::with_results(vec![])).await;
     let install_id = "hf:meta-llama/Llama-3.1-8B-Instruct-GGUF:q4_k_m";
-    insert_installed_artifact_fixture(
+    insert_installed_artifact_fixture_on_disk(
         harness.state.db.pool(),
         &InstalledArtifactFixture {
             artifact_id: install_id.to_string(),
@@ -62,6 +62,7 @@ async fn gguf_full_metadata_returns_complete_record() {
             hidden_size: Some(4096),
             extraction_status: Some("ok"),
         },
+        Some(harness.orchestrator.sink_root()),
     )
     .await
     .expect("seed fixture");
@@ -82,7 +83,7 @@ async fn gguf_full_metadata_returns_complete_record() {
 async fn safetensors_full_metadata() {
     let harness = harness_with(StubHf::with_results(vec![])).await;
     let install_id = "hf:Qwen/Qwen2.5-7B-Instruct";
-    insert_installed_artifact_fixture(
+    insert_installed_artifact_fixture_on_disk(
         harness.state.db.pool(),
         &InstalledArtifactFixture {
             artifact_id: install_id.to_string(),
@@ -94,6 +95,7 @@ async fn safetensors_full_metadata() {
             hidden_size: Some(3584),
             extraction_status: Some("ok"),
         },
+        Some(harness.orchestrator.sink_root()),
     )
     .await
     .expect("seed fixture");
@@ -114,7 +116,7 @@ async fn safetensors_full_metadata() {
 async fn pytorch_partial_returns_partial_fields() {
     let harness = harness_with(StubHf::with_results(vec![])).await;
     let install_id = "hf:legacy/old-model";
-    insert_installed_artifact_fixture(
+    insert_installed_artifact_fixture_on_disk(
         harness.state.db.pool(),
         &InstalledArtifactFixture {
             artifact_id: install_id.to_string(),
@@ -126,6 +128,7 @@ async fn pytorch_partial_returns_partial_fields() {
             hidden_size: None,
             extraction_status: Some("partial"),
         },
+        Some(harness.orchestrator.sink_root()),
     )
     .await
     .expect("seed fixture");
@@ -146,7 +149,7 @@ async fn pytorch_partial_returns_partial_fields() {
 async fn failed_extraction_returns_all_nulls() {
     let harness = harness_with(StubHf::with_results(vec![])).await;
     let install_id = "hf:unsafe/pickle-only";
-    insert_installed_artifact_fixture(
+    insert_installed_artifact_fixture_on_disk(
         harness.state.db.pool(),
         &InstalledArtifactFixture {
             artifact_id: install_id.to_string(),
@@ -158,6 +161,7 @@ async fn failed_extraction_returns_all_nulls() {
             hidden_size: None,
             extraction_status: Some("failed"),
         },
+        Some(harness.orchestrator.sink_root()),
     )
     .await
     .expect("seed fixture");

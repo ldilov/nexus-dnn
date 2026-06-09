@@ -416,10 +416,39 @@ pub async fn insert_installed_artifact_fixture(
     pool: &sqlx::SqlitePool,
     f: &InstalledArtifactFixture,
 ) -> Result<(), sqlx::Error> {
+    insert_installed_artifact_fixture_on_disk(pool, f, None).await
+}
+
+/// Like [`insert_installed_artifact_fixture`] but also materializes the row's
+/// resolved file under `<sink_root>/<job_id>/<filename>` when `sink_root` is
+/// given, so the spec-054 disk-truth reconcile path treats the row as present.
+#[allow(dead_code)]
+pub async fn insert_installed_artifact_fixture_on_disk(
+    pool: &sqlx::SqlitePool,
+    f: &InstalledArtifactFixture,
+    sink_root: Option<&std::path::Path>,
+) -> Result<(), sqlx::Error> {
     let now_rfc = chrono::Utc::now().to_rfc3339();
     let extracted_at: Option<i64> = f
         .extraction_status
         .map(|_| chrono::Utc::now().timestamp_millis());
+
+    let job_id = nexus_models_store::ids::JobId::new().to_string();
+    // Sanitize to a safe single-segment filename (artifact ids carry ':' and
+    // '/' which are invalid in Windows paths). Both the DB `filename` column
+    // and the on-disk file share this value so the disk-truth reconcile path
+    // resolves `<sink_root>/<job_id>/<filename>` consistently.
+    let safe: String = f
+        .artifact_id
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let filename = format!("{safe}.bin");
+    if let Some(root) = sink_root {
+        let dir = root.join(&job_id);
+        std::fs::create_dir_all(&dir).expect("fixture sink dir");
+        std::fs::write(dir.join(&filename), b"fixture").expect("fixture sink file");
+    }
 
     sqlx::query(
         "INSERT INTO model_store_installed_artifacts (
@@ -446,8 +475,8 @@ pub async fn insert_installed_artifact_fixture(
     .bind("huggingface")
     .bind(format!("owner/{}", f.family_id))
     .bind(Some("main"))
-    .bind(format!("{}.bin", f.artifact_id))
-    .bind(nexus_models_store::ids::JobId::new().to_string())
+    .bind(&filename)
+    .bind(&job_id)
     .bind(Option::<String>::None)
     .bind(Option::<i64>::None)
     .bind(&now_rfc)
