@@ -184,3 +184,39 @@ async fn unknown_install_id_returns_404() {
     let (status, _body) = get_metadata(harness.state, "does-not-exist").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+/// Spec 054 G7 (AC-7.3) — the metadata response exposes the owning `job_id`,
+/// resolved on-disk path, and family so a UI can map an opaque GUID dir to a
+/// model.
+#[tokio::test]
+async fn metadata_exposes_legibility_fields() {
+    let harness = harness_with(StubHf::with_results(vec![])).await;
+    let install_id = "hf:acme/legible-model";
+    insert_installed_artifact_fixture_on_disk(
+        harness.state.db.pool(),
+        &InstalledArtifactFixture {
+            artifact_id: install_id.to_string(),
+            family_id: "acme-legible-model".to_string(),
+            format: "gguf",
+            layer_count: Some(32),
+            max_context: Some(8192),
+            architecture: Some("llama".to_string()),
+            hidden_size: Some(4096),
+            extraction_status: Some("ok"),
+        },
+        Some(harness.orchestrator.sink_root()),
+    )
+    .await
+    .expect("seed fixture");
+
+    let (status, body) = get_metadata(harness.state, install_id).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["family_id"], "acme-legible-model");
+    let job_id = body["job_id"].as_str().expect("job_id present");
+    assert!(!job_id.is_empty(), "job_id must be the owning download job");
+    let on_disk = body["on_disk_path"].as_str().expect("on_disk_path present");
+    assert!(
+        on_disk.contains(job_id),
+        "on_disk_path must resolve under the job's GUID dir: {on_disk}"
+    );
+}

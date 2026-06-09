@@ -268,17 +268,19 @@ impl InstallMap {
         .bind(extension_id)
         .fetch_all(self.pool.as_ref())
         .await?;
-        Ok(rows.into_iter().map(|r| r.get::<String, _>("job_id")).collect())
+        Ok(rows
+            .into_iter()
+            .map(|r| r.get::<String, _>("job_id"))
+            .collect())
     }
 
     /// Number of distinct extensions referencing the artifact `job_id`.
     pub async fn refcount(&self, job_id: &str) -> JobStoreResult<u64> {
-        let row = sqlx::query(
-            "SELECT COUNT(*) AS n FROM model_store_artifact_refs WHERE job_id = ?1",
-        )
-        .bind(job_id)
-        .fetch_one(self.pool.as_ref())
-        .await?;
+        let row =
+            sqlx::query("SELECT COUNT(*) AS n FROM model_store_artifact_refs WHERE job_id = ?1")
+                .bind(job_id)
+                .fetch_one(self.pool.as_ref())
+                .await?;
         let n: i64 = row.get("n");
         Ok(u64::try_from(n).unwrap_or(0))
     }
@@ -322,6 +324,16 @@ impl InstallMap {
             .bind(&row.job_id)
             .execute(self.pool.as_ref())
             .await?;
+        if let Err(e) =
+            crate::downloads::legibility::remove_index_entry(sink_root, &row.job_id).await
+        {
+            tracing::warn!(
+                target: "model_store",
+                job_id = %row.job_id,
+                error = %e,
+                "reconcile: index.json entry prune failed"
+            );
+        }
         tracing::info!(
             target: "model_store",
             artifact_id = %row.artifact_id,
@@ -335,10 +347,7 @@ impl InstallMap {
     /// Sweep every install-map row, pruning those whose resolved file vanished.
     /// Returns `(checked, pruned)`. Idempotent: a second sweep with nothing
     /// missing prunes 0 (AC-2.4). Backs the `POST .../models/revalidate` route.
-    pub async fn prune_missing(
-        &self,
-        sink_root: &std::path::Path,
-    ) -> JobStoreResult<PruneReport> {
+    pub async fn prune_missing(&self, sink_root: &std::path::Path) -> JobStoreResult<PruneReport> {
         let rows = self.list_all(usize::MAX).await?;
         let checked = rows.len();
         let mut pruned = 0usize;
@@ -388,6 +397,15 @@ impl InstallMap {
             .bind(job_id)
             .execute(self.pool.as_ref())
             .await?;
+
+        if let Err(e) = crate::downloads::legibility::remove_index_entry(sink_root, job_id).await {
+            tracing::warn!(
+                target: "model_store",
+                job_id,
+                error = %e,
+                "gc: index.json entry prune failed"
+            );
+        }
 
         tracing::info!(
             target: "model_store",
@@ -734,7 +752,9 @@ mod tests {
         map.record(record).await.unwrap();
         let dir = sink_root.join(job_id);
         tokio::fs::create_dir_all(&dir).await.unwrap();
-        tokio::fs::write(dir.join(filename), contents).await.unwrap();
+        tokio::fs::write(dir.join(filename), contents)
+            .await
+            .unwrap();
     }
 
     const JOB_A: &str = "00000000-0000-7000-8000-00000000000a";
@@ -768,11 +788,22 @@ mod tests {
         let sink_root = tmp.path();
         let pool = memory_pool().await;
         let map = InstallMap::new(pool);
-        seed_install(&map, sink_root, "hf:a/shared", JOB_A, "model.gguf", b"weights").await;
+        seed_install(
+            &map,
+            sink_root,
+            "hf:a/shared",
+            JOB_A,
+            "model.gguf",
+            b"weights",
+        )
+        .await;
         map.add_ref(JOB_A, "ext.alpha").await.unwrap();
         map.add_ref(JOB_A, "ext.beta").await.unwrap();
 
-        let rows = map.list_for_family(&FamilyId::from("hf:a/shared")).await.unwrap();
+        let rows = map
+            .list_for_family(&FamilyId::from("hf:a/shared"))
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 1, "single artifact row on disk for the family");
         assert_eq!(rows[0].job_id, JOB_A);
         assert_eq!(map.refcount(JOB_A).await.unwrap(), 2, "two refs");
@@ -785,15 +816,29 @@ mod tests {
         let sink_root = tmp.path();
         let pool = memory_pool().await;
         let map = InstallMap::new(pool);
-        seed_install(&map, sink_root, "hf:a/keep", JOB_A, "model.gguf", b"weights").await;
+        seed_install(
+            &map,
+            sink_root,
+            "hf:a/keep",
+            JOB_A,
+            "model.gguf",
+            b"weights",
+        )
+        .await;
         map.add_ref(JOB_A, "ext.alpha").await.unwrap();
 
-        let outcome = map.gc_artifact_if_unreferenced(JOB_A, sink_root).await.unwrap();
+        let outcome = map
+            .gc_artifact_if_unreferenced(JOB_A, sink_root)
+            .await
+            .unwrap();
         assert!(!outcome.deleted);
         assert_eq!(outcome.freed_bytes, 0);
         assert!(sink_root.join(JOB_A).join("model.gguf").exists());
         assert_eq!(
-            map.list_for_family(&FamilyId::from("hf:a/keep")).await.unwrap().len(),
+            map.list_for_family(&FamilyId::from("hf:a/keep"))
+                .await
+                .unwrap()
+                .len(),
             1
         );
     }
@@ -811,12 +856,18 @@ mod tests {
         let dropped = map.remove_refs_for_extension("ext.alpha").await.unwrap();
         assert_eq!(dropped, vec![JOB_A.to_string()]);
 
-        let outcome = map.gc_artifact_if_unreferenced(JOB_A, sink_root).await.unwrap();
+        let outcome = map
+            .gc_artifact_if_unreferenced(JOB_A, sink_root)
+            .await
+            .unwrap();
         assert!(outcome.deleted);
         assert_eq!(outcome.freed_bytes, payload.len() as u64);
         assert!(!sink_root.join(JOB_A).exists());
         assert!(
-            map.list_for_family(&FamilyId::from("hf:a/gone")).await.unwrap().is_empty()
+            map.list_for_family(&FamilyId::from("hf:a/gone"))
+                .await
+                .unwrap()
+                .is_empty()
         );
     }
 
@@ -829,16 +880,34 @@ mod tests {
         let sink_root = tmp.path();
         let pool = memory_pool().await;
         let map = InstallMap::new(pool);
-        seed_install(&map, sink_root, "hf:a/legacy", JOB_A, "model.gguf", b"legacy").await;
+        seed_install(
+            &map,
+            sink_root,
+            "hf:a/legacy",
+            JOB_A,
+            "model.gguf",
+            b"legacy",
+        )
+        .await;
 
-        assert_eq!(map.refcount(JOB_A).await.unwrap(), 0, "legacy row has no refs");
+        assert_eq!(
+            map.refcount(JOB_A).await.unwrap(),
+            0,
+            "legacy row has no refs"
+        );
         assert!(
             sink_root.join(JOB_A).join("model.gguf").exists(),
             "legacy row + files survive until an explicit GC sweep"
         );
 
-        let outcome = map.gc_artifact_if_unreferenced(JOB_A, sink_root).await.unwrap();
-        assert!(outcome.deleted, "explicit GC reclaims the unreferenced legacy row");
+        let outcome = map
+            .gc_artifact_if_unreferenced(JOB_A, sink_root)
+            .await
+            .unwrap();
+        assert!(
+            outcome.deleted,
+            "explicit GC reclaims the unreferenced legacy row"
+        );
     }
 
     /// AC-1.1/1.2 — a row whose on-disk file is gone reconciles to `false` and
@@ -850,15 +919,94 @@ mod tests {
         let pool = memory_pool().await;
         let map = InstallMap::new(pool);
         seed_install(&map, sink_root, "hf:a/gone", JOB_A, "model.gguf", b"w").await;
-        tokio::fs::remove_dir_all(sink_root.join(JOB_A)).await.unwrap();
+        tokio::fs::remove_dir_all(sink_root.join(JOB_A))
+            .await
+            .unwrap();
 
-        let rows = map.list_for_family(&FamilyId::from("hf:a/gone")).await.unwrap();
-        let present = map.reconcile_row_present(&rows[0], sink_root).await.unwrap();
+        let rows = map
+            .list_for_family(&FamilyId::from("hf:a/gone"))
+            .await
+            .unwrap();
+        let present = map
+            .reconcile_row_present(&rows[0], sink_root)
+            .await
+            .unwrap();
         assert!(!present, "missing file reconciles to absent");
         assert!(
-            map.list_for_family(&FamilyId::from("hf:a/gone")).await.unwrap().is_empty(),
+            map.list_for_family(&FamilyId::from("hf:a/gone"))
+                .await
+                .unwrap()
+                .is_empty(),
             "stale row deleted"
         );
+    }
+
+    /// AC-7.2 — self-heal of a vanished row also prunes its `index.json` entry.
+    #[tokio::test]
+    async fn reconcile_prunes_index_entry_on_self_heal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        seed_install(&map, sink_root, "hf:a/gone", JOB_A, "model.gguf", b"w").await;
+        crate::downloads::legibility::upsert_index_entry(
+            sink_root,
+            JOB_A,
+            crate::downloads::legibility::IndexEntry {
+                family_id: "hf:a/gone".into(),
+                repo: "a/gone".into(),
+            },
+        )
+        .await
+        .unwrap();
+        tokio::fs::remove_dir_all(sink_root.join(JOB_A))
+            .await
+            .unwrap();
+
+        let rows = map
+            .list_for_family(&FamilyId::from("hf:a/gone"))
+            .await
+            .unwrap();
+        map.reconcile_row_present(&rows[0], sink_root)
+            .await
+            .unwrap();
+        let index = crate::downloads::legibility::read_index(sink_root)
+            .await
+            .unwrap();
+        assert!(
+            index.get(JOB_A).is_none(),
+            "index entry pruned on self-heal"
+        );
+    }
+
+    /// AC-7.2 — refcount==0 GC also prunes the `index.json` entry.
+    #[tokio::test]
+    async fn gc_prunes_index_entry_when_unreferenced() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        seed_install(&map, sink_root, "hf:a/gone", JOB_A, "model.gguf", b"w").await;
+        crate::downloads::legibility::upsert_index_entry(
+            sink_root,
+            JOB_A,
+            crate::downloads::legibility::IndexEntry {
+                family_id: "hf:a/gone".into(),
+                repo: "a/gone".into(),
+            },
+        )
+        .await
+        .unwrap();
+
+        let outcome = map
+            .gc_artifact_if_unreferenced(JOB_A, sink_root)
+            .await
+            .unwrap();
+        assert!(outcome.deleted);
+        let index = crate::downloads::legibility::read_index(sink_root)
+            .await
+            .unwrap();
+        assert!(index.get(JOB_A).is_none(), "index entry pruned on GC");
     }
 
     /// AC-1.1 — a row whose file is present reconciles to `true` and is kept.
@@ -870,11 +1018,20 @@ mod tests {
         let map = InstallMap::new(pool);
         seed_install(&map, sink_root, "hf:a/keep", JOB_A, "model.gguf", b"w").await;
 
-        let rows = map.list_for_family(&FamilyId::from("hf:a/keep")).await.unwrap();
-        let present = map.reconcile_row_present(&rows[0], sink_root).await.unwrap();
+        let rows = map
+            .list_for_family(&FamilyId::from("hf:a/keep"))
+            .await
+            .unwrap();
+        let present = map
+            .reconcile_row_present(&rows[0], sink_root)
+            .await
+            .unwrap();
         assert!(present);
         assert_eq!(
-            map.list_for_family(&FamilyId::from("hf:a/keep")).await.unwrap().len(),
+            map.list_for_family(&FamilyId::from("hf:a/keep"))
+                .await
+                .unwrap()
+                .len(),
             1
         );
     }
@@ -888,11 +1045,22 @@ mod tests {
         let map = InstallMap::new(pool);
         seed_install(&map, sink_root, "hf:a/gone", JOB_A, "model.gguf", b"w").await;
         map.add_ref(JOB_A, "ext.alpha").await.unwrap();
-        tokio::fs::remove_dir_all(sink_root.join(JOB_A)).await.unwrap();
+        tokio::fs::remove_dir_all(sink_root.join(JOB_A))
+            .await
+            .unwrap();
 
-        let rows = map.list_for_family(&FamilyId::from("hf:a/gone")).await.unwrap();
-        map.reconcile_row_present(&rows[0], sink_root).await.unwrap();
-        assert_eq!(map.refcount(JOB_A).await.unwrap(), 0, "no orphan refs after self-heal");
+        let rows = map
+            .list_for_family(&FamilyId::from("hf:a/gone"))
+            .await
+            .unwrap();
+        map.reconcile_row_present(&rows[0], sink_root)
+            .await
+            .unwrap();
+        assert_eq!(
+            map.refcount(JOB_A).await.unwrap(),
+            0,
+            "no orphan refs after self-heal"
+        );
     }
 
     /// AC-2.1/2.4 — prune_missing sweeps all rows, reports `{checked, pruned}`,
@@ -906,7 +1074,9 @@ mod tests {
         let job_b = "00000000-0000-7000-8000-00000000000b";
         seed_install(&map, sink_root, "hf:a/keep", JOB_A, "keep.gguf", b"w").await;
         seed_install(&map, sink_root, "hf:a/gone", job_b, "gone.gguf", b"w").await;
-        tokio::fs::remove_dir_all(sink_root.join(job_b)).await.unwrap();
+        tokio::fs::remove_dir_all(sink_root.join(job_b))
+            .await
+            .unwrap();
 
         let first = map.prune_missing(sink_root).await.unwrap();
         assert_eq!(first.checked, 2);
