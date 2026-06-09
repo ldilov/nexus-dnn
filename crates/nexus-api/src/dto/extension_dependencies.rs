@@ -48,6 +48,13 @@ pub struct StepDto {
     /// Estimated remaining bytes for the step. Pending download steps surface a
     /// useful number; satisfied/failed steps report 0.
     pub estimated_remaining_bytes: u64,
+    /// Files already present for a `NotSatisfied` step, when the handler can supply a
+    /// cheap no-network estimate (e.g. model downloads resuming from a partial job).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files_present: Option<u32>,
+    /// Total files the step needs, paired with `files_present`. `None` when unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files_total: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -22,14 +22,15 @@ use tokio_util::sync::CancellationToken;
 use nexus_backend_runtimes::family::RuntimeFamily;
 use nexus_backend_runtimes::runtime_installs_store;
 use nexus_extension_deps::{
-    DepError, HandlerRegistry, HandshakeError, ModelDownloadProgress, ModelStoreClient,
-    RuntimeBootstrapResult, RuntimeBootstrapper, StepArtifact, WorkerHandshake,
+    DepError, HandlerRegistry, HandshakeError, ModelDownloadProgress, ModelPartialState,
+    ModelStoreClient, RuntimeBootstrapResult, RuntimeBootstrapper, StepArtifact, WorkerHandshake,
     fetch::{FetchArtifact, FetchRequest, fetch_artifact},
 };
 use nexus_huggingface::{HuggingFaceCapability, SearchFilters, SearchReq};
 use nexus_models_store::capabilities::CapabilityRegistry;
 use nexus_models_store::downloads::{
     CreateJobParams, DownloadOrchestrator, InstallMap, JobStore, JobTargetInput, RequestedKind,
+    TargetState,
 };
 use nexus_models_store::ids::{ArtifactId, FamilyId, JobId};
 use nexus_models_store::types::{DependencyRole, DownloadState};
@@ -561,6 +562,47 @@ impl ModelStoreClient for RealModelStoreClient {
             "model_store: download job created and enqueued"
         );
         Ok(job_id.to_string())
+    }
+
+    async fn family_partial_state(
+        &self,
+        family_id: &str,
+        _accelerator: Option<&str>,
+    ) -> Result<Option<ModelPartialState>, DepError> {
+        let Some(store) = self.download_job_store.as_ref() else {
+            return Ok(None);
+        };
+        let family = FamilyId::from(family_id);
+        let Some(job_id) = store
+            .latest_for_family(&family)
+            .await
+            .map_err(|e| DepError::Backend(format!("job_store.latest_for_family: {e}")))?
+        else {
+            return Ok(None);
+        };
+        let Some(job) = store
+            .get(&job_id)
+            .await
+            .map_err(|e| DepError::Backend(format!("job_store.get: {e}")))?
+        else {
+            return Ok(None);
+        };
+
+        let files_total = u32::try_from(job.targets.len()).unwrap_or(u32::MAX);
+        let files_present = u32::try_from(
+            job.targets
+                .iter()
+                .filter(|t| t.state == TargetState::Downloaded)
+                .count(),
+        )
+        .unwrap_or(u32::MAX);
+
+        Ok(Some(ModelPartialState {
+            present_bytes: job.progress_bytes,
+            total_bytes: job.total_bytes.unwrap_or(0),
+            files_present,
+            files_total,
+        }))
     }
 
     async fn poll_job(&self, job_id: &str) -> Result<ModelDownloadProgress, DepError> {
