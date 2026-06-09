@@ -463,6 +463,30 @@ impl RealModelStoreClient {
                 DepError::Backend(format!("model family not found upstream: {family_id}"))
             })?;
 
+        // File sizes drive the download progress bar (`job.total_bytes`). The
+        // HF list endpoint's siblings frequently omit per-file `size`/`lfs.size`
+        // (AC-3.1), so when the search payload carries no sizes, fall back to
+        // the repo detail endpoint and merge sizes by path. `detail()` returns
+        // siblings with the LFS `size` for large weight files.
+        let mut sizes: std::collections::HashMap<&str, u64> = raw
+            .files
+            .iter()
+            .filter_map(|f| f.size_bytes.map(|b| (f.path.as_str(), b)))
+            .collect();
+
+        let detail_meta = if sizes.is_empty() {
+            hf.detail(repo_id, None).await.ok()
+        } else {
+            None
+        };
+        if let Some(meta) = detail_meta.as_ref() {
+            for sibling in &meta.siblings {
+                if let Some(bytes) = sibling.size_bytes {
+                    sizes.entry(sibling.path.as_str()).or_insert(bytes);
+                }
+            }
+        }
+
         let targets: Vec<JobTargetInput> = raw
             .files
             .iter()
@@ -472,7 +496,7 @@ impl RealModelStoreClient {
                 filename: f.path.clone(),
                 role: DependencyRole::Primary,
                 download_url: format!("https://huggingface.co/{repo_id}/resolve/main/{}", f.path),
-                expected_bytes: f.size_bytes,
+                expected_bytes: f.size_bytes.or_else(|| sizes.get(f.path.as_str()).copied()),
                 sha256: None,
             })
             .collect();
@@ -501,17 +525,22 @@ impl ModelStoreClient for RealModelStoreClient {
             .await
             .map_err(|e| DepError::Backend(format!("install_map.list_for_family: {e}")))?;
 
-        // Pick the first row — `list_for_family` orders by `installed_at DESC`,
-        // so this is the most recently installed artifact for the family. The
-        // accelerator argument is not yet part of the install-map schema; a
-        // follow-up can filter rows by `variant_id` once spec-025 stamps the
-        // accelerator profile onto the variant id.
-        Ok(rows.into_iter().next().map(|row| {
-            self.orchestrator
-                .sink_root()
-                .join(&row.job_id)
-                .join(&row.filename)
-        }))
+        // Disk is the source of truth (AC-1.1/1.2). Reconcile each row against
+        // disk — a row whose file was deleted is self-healed away (row + refs
+        // dropped) — and return the first surviving row's path. Rows are
+        // ordered `installed_at DESC`, so this is the most recent live install.
+        let sink_root = self.orchestrator.sink_root();
+        for row in rows {
+            let present = self
+                .install_map
+                .reconcile_row_present(&row, sink_root)
+                .await
+                .map_err(|e| DepError::Backend(format!("install_map.reconcile: {e}")))?;
+            if present {
+                return Ok(Some(sink_root.join(&row.job_id).join(&row.filename)));
+            }
+        }
+        Ok(None)
     }
 
     async fn start_download(
@@ -589,18 +618,28 @@ impl ModelStoreClient for RealModelStoreClient {
         };
 
         let files_total = u32::try_from(job.targets.len()).unwrap_or(u32::MAX);
-        let files_present = u32::try_from(
-            job.targets
-                .iter()
-                .filter(|t| t.state == TargetState::Downloaded)
-                .count(),
-        )
-        .unwrap_or(u32::MAX);
+
+        // Disk is the source of truth (AC-1.4): a target the store believes is
+        // `Downloaded` but whose file was deleted MUST NOT count as present.
+        // Stat each downloaded target's on-disk path under the job sink dir.
+        let sink_dir = self.orchestrator.sink_root().join(job.job_id.to_string());
+        let mut present: u32 = 0;
+        for target in &job.targets {
+            if target.state != TargetState::Downloaded {
+                continue;
+            }
+            if tokio::fs::metadata(sink_dir.join(&target.filename))
+                .await
+                .is_ok()
+            {
+                present = present.saturating_add(1);
+            }
+        }
 
         Ok(Some(ModelPartialState {
             present_bytes: job.progress_bytes,
             total_bytes: job.total_bytes.unwrap_or(0),
-            files_present,
+            files_present: present,
             files_total,
         }))
     }
@@ -1545,6 +1584,228 @@ mod tests {
             .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("python"), "msg = {msg}");
+    }
+
+    // --- G3 download-progress (HF size capture + poll_job total) ---
+
+    use nexus_huggingface::{
+        DownloadSpec, DownloadedArtifact, HfError, HfResult, RepoFile, RepoMetadata, SearchPage,
+        SearchResult,
+    };
+
+    /// HF stub whose search siblings carry real `size_bytes` so the snapshot
+    /// job's summed `expected_bytes` is non-zero (AC-3.1). `with_sizes=false`
+    /// drops sizes from search and surfaces them only via `detail()` to
+    /// exercise the detail-fallback merge path.
+    struct SizedHfStub {
+        repo_id: String,
+        files: Vec<(String, u64)>,
+        sizes_in_search: bool,
+    }
+
+    #[async_trait]
+    impl HuggingFaceCapability for SizedHfStub {
+        async fn search(&self, req: SearchReq) -> HfResult<SearchPage> {
+            let files = self
+                .files
+                .iter()
+                .map(|(path, bytes)| RepoFile {
+                    path: path.clone(),
+                    size_bytes: self.sizes_in_search.then_some(*bytes),
+                })
+                .collect();
+            Ok(SearchPage {
+                query: req.query,
+                page: 1,
+                has_next: false,
+                results: vec![SearchResult {
+                    repo_id: self.repo_id.clone(),
+                    author: None,
+                    license: None,
+                    downloads_30d: None,
+                    last_modified: None,
+                    files,
+                    formats: vec![],
+                    quantizations: vec![],
+                    pipeline_tag: None,
+                }],
+            })
+        }
+
+        async fn detail(&self, repo_id: &str, revision: Option<&str>) -> HfResult<RepoMetadata> {
+            Ok(RepoMetadata {
+                repo_id: repo_id.to_owned(),
+                revision: revision.unwrap_or("main").to_owned(),
+                author: None,
+                license: None,
+                pipeline_tag: None,
+                library_name: None,
+                tags: vec![],
+                siblings: self
+                    .files
+                    .iter()
+                    .map(|(path, bytes)| RepoFile {
+                        path: path.clone(),
+                        size_bytes: Some(*bytes),
+                    })
+                    .collect(),
+                config: None,
+                downloads: None,
+                last_modified: None,
+            })
+        }
+
+        async fn download(&self, _spec: DownloadSpec) -> HfResult<DownloadedArtifact> {
+            Err(HfError::Cancelled)
+        }
+    }
+
+    async fn model_store_pool() -> Arc<SqlitePool> {
+        let opts = SqliteConnectOptions::from_str("sqlite::memory:").unwrap();
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(opts)
+            .await
+            .unwrap();
+        for migration in [
+            include_str!("../../../migrations/013_model_store_download_jobs.sql"),
+            include_str!("../../../migrations/014_model_store_installed_artifacts.sql"),
+            include_str!("../../../migrations/022_model_store_artifact_refs.sql"),
+        ] {
+            for stmt in migration.split(';') {
+                let trimmed = stmt.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                sqlx::query(trimmed).execute(&pool).await.unwrap();
+            }
+        }
+        Arc::new(pool)
+    }
+
+    fn client_with_hf(
+        pool: Arc<SqlitePool>,
+        hf: Arc<dyn HuggingFaceCapability>,
+        sink_root: PathBuf,
+    ) -> RealModelStoreClient {
+        let install_map = InstallMap::new(pool.clone());
+        let store = Arc::new(JobStore::new(pool.clone()));
+        let orchestrator = Arc::new(DownloadOrchestrator::new(
+            JobStore::new(pool),
+            install_map.clone(),
+            sink_root,
+            reqwest::Client::new(),
+            nexus_models_store::downloads::TokenStore::new(None),
+        ));
+        RealModelStoreClient::new(install_map, orchestrator, Some(hf), None, Some(store))
+    }
+
+    /// AC-3.1 — a multi-file snapshot whose HF siblings carry sizes produces
+    /// targets summing to a non-zero expected_bytes total.
+    #[tokio::test]
+    async fn snapshot_targets_sum_nonzero_when_hf_listing_has_sizes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pool = model_store_pool().await;
+        let hf = Arc::new(SizedHfStub {
+            repo_id: "Owner/Repo".into(),
+            files: vec![
+                ("model.safetensors".into(), 4_000_000_000),
+                ("config.json".into(), 1_024),
+            ],
+            sizes_in_search: true,
+        });
+        let client = client_with_hf(pool, hf, tmp.path().to_path_buf());
+
+        let targets = client
+            .snapshot_targets_from_huggingface("huggingface:Owner/Repo")
+            .await
+            .unwrap();
+        let total: u64 = targets.iter().filter_map(|t| t.expected_bytes).sum();
+        assert_eq!(targets.len(), 2);
+        assert_eq!(total, 4_000_001_024, "summed expected_bytes must be > 0");
+    }
+
+    /// AC-3.1 — when search omits sizes, the detail() fallback merges them in.
+    #[tokio::test]
+    async fn snapshot_targets_fall_back_to_detail_sizes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pool = model_store_pool().await;
+        let hf = Arc::new(SizedHfStub {
+            repo_id: "Owner/Repo".into(),
+            files: vec![("model.gguf".into(), 7_000_000_000)],
+            sizes_in_search: false,
+        });
+        let client = client_with_hf(pool, hf, tmp.path().to_path_buf());
+
+        let targets = client
+            .snapshot_targets_from_huggingface("huggingface:Owner/Repo")
+            .await
+            .unwrap();
+        let total: u64 = targets.iter().filter_map(|t| t.expected_bytes).sum();
+        assert_eq!(total, 7_000_000_000, "detail fallback supplies sizes");
+    }
+
+    /// AC-3.2 — poll_job reports a non-zero total once known; current_bytes is
+    /// monotonic across two polls after a progress bump.
+    #[tokio::test]
+    async fn poll_job_reports_nonzero_total_and_monotonic_current() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pool = model_store_pool().await;
+        let hf = Arc::new(SizedHfStub {
+            repo_id: "Owner/Repo".into(),
+            files: vec![("model.safetensors".into(), 5_000_000_000)],
+            sizes_in_search: true,
+        });
+        let client = client_with_hf(pool.clone(), hf, tmp.path().to_path_buf());
+
+        // Build the job via the store directly (no orchestrator enqueue) so the
+        // background worker can't race a network GET to a terminal state.
+        let targets = client
+            .snapshot_targets_from_huggingface("huggingface:Owner/Repo")
+            .await
+            .unwrap();
+        let store = JobStore::new(pool.clone());
+        let params = CreateJobParams::builder(
+            FamilyId::from("huggingface:Owner/Repo"),
+            "huggingface",
+            "Owner/Repo",
+            RequestedKind::Bundle,
+        )
+        .targets(targets)
+        .build();
+        let job = store.create(params).await.unwrap();
+        let job_id = job.job_id.to_string();
+
+        let first = client.poll_job(&job_id).await.unwrap();
+        let (c0, t0) = match first {
+            ModelDownloadProgress::InProgress {
+                current_bytes,
+                total_bytes,
+                ..
+            } => (current_bytes, total_bytes),
+            other => panic!("expected InProgress, got {other:?}"),
+        };
+        assert_eq!(t0, 5_000_000_000, "total_bytes known from summed sizes");
+
+        let uuid = uuid::Uuid::parse_str(&job_id).unwrap();
+        let job = store.get(&JobId::from_uuid(uuid)).await.unwrap().unwrap();
+        let artifact = job.targets[0].artifact_id.clone();
+        store
+            .update_target_progress(&JobId::from_uuid(uuid), &artifact, 1_000_000)
+            .await
+            .unwrap();
+
+        let second = client.poll_job(&job_id).await.unwrap();
+        let (c1, t1) = match second {
+            ModelDownloadProgress::InProgress {
+                current_bytes,
+                total_bytes,
+                ..
+            } => (current_bytes, total_bytes),
+            other => panic!("expected InProgress, got {other:?}"),
+        };
+        assert_eq!(t1, 5_000_000_000);
+        assert!(c1 >= c0, "current_bytes monotonic: {c1} >= {c0}");
     }
 
     #[tokio::test]
