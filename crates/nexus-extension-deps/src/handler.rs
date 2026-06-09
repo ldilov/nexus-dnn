@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::context::StepContext;
 use crate::error::DepError;
-use crate::types::StepArtifact;
+use crate::types::{StepArtifact, StepEstimate};
 
 #[async_trait]
 pub trait StepHandler: Send + Sync + 'static {
@@ -27,6 +27,13 @@ pub trait StepHandler: Send + Sync + 'static {
     /// Execute the install. Idempotent. Streams progress via `ctx.progress_sink`.
     /// MUST observe `ctx.cancellation_token` at every I/O boundary.
     async fn run(&self, ctx: &StepContext<'_>, spec: &Value) -> Result<StepArtifact, DepError>;
+
+    /// Cheap, no-network estimate of remaining/present work for a step that probed
+    /// `NotSatisfied`. Reads persisted DB rows or on-disk state only — MUST NOT make
+    /// network calls. Defaults to `None` (no estimate available).
+    async fn estimate(&self, _ctx: &StepContext<'_>, _spec: &Value) -> Option<StepEstimate> {
+        None
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -30,6 +30,24 @@ pub trait ModelStoreClient: Send + Sync {
     /// Poll a previously-started job for current progress. Returns `Ok(None)` if the
     /// job is still running with the reported progress; `Ok(Some(path))` on success.
     async fn poll_job(&self, job_id: &str) -> Result<ModelDownloadProgress, crate::DepError>;
+
+    /// Cheap, no-network partial-state snapshot for a family, read from the persisted
+    /// download job. Returns `Ok(None)` when no job exists yet. MUST NOT hit the network.
+    async fn family_partial_state(
+        &self,
+        _family_id: &str,
+        _accelerator: Option<&str>,
+    ) -> Result<Option<ModelPartialState>, crate::DepError> {
+        Ok(None)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModelPartialState {
+    pub present_bytes: u64,
+    pub total_bytes: u64,
+    pub files_present: u32,
+    pub files_total: u32,
 }
 
 #[derive(Debug, Clone)]
