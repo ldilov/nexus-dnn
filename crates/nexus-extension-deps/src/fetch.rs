@@ -16,7 +16,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, warn};
 
 use crate::error::DepError;
-use crate::types::{ArchiveFormat, ProgressEvent, ProgressSink};
+use crate::types::{ArchiveFormat, ProgressEvent, ProgressSink, StepProgress};
 
 /// Function-object alias for the host-shared download primitive. Constructed once at
 /// host startup and shared via [`crate::context::StepContext::fetch_artifact`].
@@ -189,6 +189,18 @@ pub async fn fetch_artifact(req: FetchRequest) -> Result<PathBuf, DepError> {
     let mut current_bytes = resume_offset;
     let mut last_progress_emit = current_bytes;
 
+    // First-progress promptly: emit one event before the byte loop so the row
+    // never sits blank between `running` and the first 256 KB chunk (AC-2.6).
+    emit_progress(
+        progress.as_ref(),
+        progress_extension_id.as_deref(),
+        progress_run_id,
+        progress_step_id.as_deref(),
+        &progress_phase,
+        current_bytes,
+        total_bytes,
+    );
+
     while let Some(chunk_res) = stream.next().await {
         if let Some(token) = cancellation.as_ref()
             && token.is_cancelled()
@@ -319,15 +331,14 @@ fn emit_progress(
     else {
         return;
     };
-    sink.emit(ProgressEvent::StepProgress {
-        extension_id: extension_id.to_owned(),
+    let progress = StepProgress::bytes(phase, current_bytes, total_bytes)
+        .with_message(format!("{current_bytes}/{total_bytes} bytes"));
+    sink.emit(ProgressEvent::step_progress(
+        extension_id,
         install_run_id,
-        step_id: step_id.to_owned(),
-        phase: phase.to_owned(),
-        current_bytes,
-        total_bytes,
-        message: format!("{current_bytes}/{total_bytes} bytes"),
-    });
+        step_id,
+        progress,
+    ));
 }
 
 fn hex_lower(bytes: &[u8]) -> String {
@@ -341,10 +352,63 @@ fn hex_lower(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
 
     #[test]
     fn hex_lower_encodes_correctly() {
         assert_eq!(hex_lower(&[0xab, 0xcd, 0x01]), "abcd01");
         assert_eq!(hex_lower(&[]), "");
+    }
+
+    #[derive(Default)]
+    struct CapturingSink {
+        events: Mutex<Vec<ProgressEvent>>,
+    }
+    impl ProgressSink for CapturingSink {
+        fn emit(&self, e: ProgressEvent) {
+            self.events.lock().expect("lock").push(e);
+        }
+    }
+
+    /// AC-2.2: the byte-download path (used by `system_binary`) emits normalized
+    /// progress with `bytes_done`/`bytes_total` and a derived `pct`.
+    #[test]
+    fn emit_progress_produces_normalized_byte_event_with_derived_pct() {
+        let typed = Arc::new(CapturingSink::default());
+        let sink: Arc<dyn ProgressSink> = typed.clone();
+        emit_progress(
+            Some(&sink),
+            Some("ext"),
+            Some(uuid::Uuid::nil()),
+            Some("ffmpeg"),
+            "downloading",
+            250,
+            1000,
+        );
+        let events = typed.events.lock().expect("lock");
+        let event = events.first().expect("one event");
+        match event {
+            ProgressEvent::StepProgress {
+                step_id,
+                phase,
+                current_bytes,
+                total_bytes,
+                pct,
+                ..
+            } => {
+                assert_eq!(step_id, "ffmpeg");
+                assert_eq!(phase, "downloading");
+                assert_eq!(*current_bytes, 250);
+                assert_eq!(*total_bytes, 1000);
+                assert_eq!(*pct, Some(25.0));
+            }
+            other => panic!("expected StepProgress, got {other:?}"),
+        }
+    }
+
+    /// PATH-found / no-sink case must not panic and must emit nothing.
+    #[test]
+    fn emit_progress_noops_without_sink_or_ids() {
+        emit_progress(None, Some("ext"), None, Some("id"), "downloading", 1, 2);
     }
 }

@@ -14,7 +14,7 @@ use serde_json::Value;
 use crate::context::{ModelDownloadProgress, StepContext};
 use crate::error::DepError;
 use crate::handler::{ProbeResult, StepHandler};
-use crate::types::{ProgressEvent, StepArtifact, StepEstimate};
+use crate::types::{ProgressEvent, StepArtifact, StepEstimate, StepProgress};
 
 #[derive(Debug, Deserialize)]
 struct ModelArtifactSpec {
@@ -140,6 +140,16 @@ impl StepHandler for ModelArtifactHandler {
         let mut last_log_bytes: u64 = 0;
         let mut last_log_pct: u8 = 0;
 
+        // First-progress promptly so the row never sits blank between the
+        // runner's `running` event and the first poll result (AC-2.6).
+        ctx.progress_sink.emit(ProgressEvent::step_progress(
+            ctx.extension_id,
+            ctx.install_run_id,
+            // step_id is unknown to the handler — runner re-tags it.
+            String::new(),
+            StepProgress::bytes("downloading", 0, 0).with_message("starting download"),
+        ));
+
         loop {
             if ctx.cancellation_token.is_cancelled() {
                 tracing::warn!(
@@ -156,16 +166,14 @@ impl StepHandler for ModelArtifactHandler {
                     total_bytes,
                     message,
                 } => {
-                    ctx.progress_sink.emit(ProgressEvent::StepProgress {
-                        extension_id: ctx.extension_id.to_owned(),
-                        install_run_id: ctx.install_run_id,
+                    ctx.progress_sink.emit(ProgressEvent::step_progress(
+                        ctx.extension_id,
+                        ctx.install_run_id,
                         // step_id is unknown to the handler — runner re-tags it.
-                        step_id: String::new(),
-                        phase: "download".to_owned(),
-                        current_bytes,
-                        total_bytes,
-                        message: message.clone(),
-                    });
+                        String::new(),
+                        StepProgress::bytes("downloading", current_bytes, total_bytes)
+                            .with_message(message.clone()),
+                    ));
 
                     let elapsed = last_log_at.elapsed();
                     let pct = if total_bytes > 0 {
@@ -204,6 +212,15 @@ impl StepHandler for ModelArtifactHandler {
                         path = %path.display(),
                         "model_artifact: download completed"
                     );
+                    // Terminal `done` at 100% so the row settles full, not at
+                    // whatever the last in-progress poll reported (AC-2.1).
+                    ctx.progress_sink.emit(ProgressEvent::step_progress(
+                        ctx.extension_id,
+                        ctx.install_run_id,
+                        String::new(),
+                        StepProgress::bytes("done", bytes_placed, bytes_placed.max(1))
+                            .with_message("download complete"),
+                    ));
                     return Ok(StepArtifact {
                         path: Some(path),
                         bytes_placed,
@@ -310,8 +327,50 @@ mod tests {
         fn emit(&self, _e: ProgressEvent) {}
     }
 
+    #[derive(Default)]
+    struct CapturingSink {
+        events: std::sync::Mutex<Vec<ProgressEvent>>,
+    }
+    impl crate::ProgressSink for CapturingSink {
+        fn emit(&self, e: ProgressEvent) {
+            self.events.lock().expect("lock").push(e);
+        }
+    }
+
+    /// Model store that hands back a scripted sequence of poll results,
+    /// then completes. `start_download` returns a fixed job id.
+    struct ScriptedStore {
+        polls: std::sync::Mutex<Vec<crate::ModelDownloadProgress>>,
+    }
+    #[async_trait]
+    impl crate::ModelStoreClient for ScriptedStore {
+        async fn is_family_installed(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+        ) -> Result<Option<PathBuf>, DepError> {
+            Ok(None)
+        }
+        async fn start_download(&self, _f: &str, _a: Option<&str>) -> Result<String, DepError> {
+            Ok("job-1".to_owned())
+        }
+        async fn poll_job(&self, _id: &str) -> Result<crate::ModelDownloadProgress, DepError> {
+            let mut polls = self.polls.lock().expect("lock");
+            Ok(polls.remove(0))
+        }
+    }
+
     fn ctx_with_store<'a>(
         store: Arc<dyn crate::ModelStoreClient>,
+        dir: &'a Path,
+        upstream: &'a HashMap<String, StepArtifact>,
+    ) -> StepContext<'a> {
+        ctx_with_store_and_sink(store, Arc::new(NoopSink), dir, upstream)
+    }
+
+    fn ctx_with_store_and_sink<'a>(
+        store: Arc<dyn crate::ModelStoreClient>,
+        sink: Arc<dyn crate::ProgressSink>,
         dir: &'a Path,
         upstream: &'a HashMap<String, StepArtifact>,
     ) -> StepContext<'a> {
@@ -326,11 +385,79 @@ mod tests {
             fetch_artifact: Arc::new(|_req: crate::fetch::FetchRequest| {
                 Box::pin(async { Err(DepError::Backend("stub".into())) })
             }),
-            progress_sink: Arc::new(NoopSink),
+            progress_sink: sink,
             cancellation_token: tokio_util::sync::CancellationToken::new(),
             install_run_id: uuid::Uuid::nil(),
             upstream_artifacts: upstream,
         }
+    }
+
+    fn step_progress_fields(e: &ProgressEvent) -> Option<(String, u64, u64, Option<f32>)> {
+        match e {
+            ProgressEvent::StepProgress {
+                phase,
+                current_bytes,
+                total_bytes,
+                pct,
+                ..
+            } => Some((phase.clone(), *current_bytes, *total_bytes, *pct)),
+            _ => None,
+        }
+    }
+
+    #[tokio::test]
+    async fn run_emits_first_progress_then_monotonic_bytes_then_terminal_done() {
+        use crate::ModelDownloadProgress;
+        let store: Arc<dyn crate::ModelStoreClient> = Arc::new(ScriptedStore {
+            polls: std::sync::Mutex::new(vec![
+                ModelDownloadProgress::InProgress {
+                    current_bytes: 100,
+                    total_bytes: 1000,
+                    message: "downloading".into(),
+                },
+                ModelDownloadProgress::InProgress {
+                    current_bytes: 500,
+                    total_bytes: 1000,
+                    message: "downloading".into(),
+                },
+                ModelDownloadProgress::Completed {
+                    path: PathBuf::from("/tmp/model"),
+                    bytes_placed: 1000,
+                },
+            ]),
+        });
+        let sink = Arc::new(CapturingSink::default());
+        let dir = PathBuf::from("/tmp");
+        let upstream = HashMap::new();
+        let ctx = ctx_with_store_and_sink(store, sink.clone(), &dir, &upstream);
+        let spec = serde_json::json!({ "family_id": "huggingface:Owner/Repo" });
+
+        let handler = ModelArtifactHandler::new();
+        let artifact = handler.run(&ctx, &spec).await.expect("run ok");
+        assert_eq!(artifact.bytes_placed, 1000);
+
+        let events = sink.events.lock().expect("lock");
+        let progress: Vec<(String, u64, u64, Option<f32>)> =
+            events.iter().filter_map(step_progress_fields).collect();
+        assert!(progress.len() >= 2, "expected first-progress + updates");
+
+        // First event is emitted before the first poll (AC-2.6).
+        assert_eq!(progress[0].0, "downloading");
+
+        // Byte progress is monotonic across the in-progress polls (AC-2.1).
+        let byte_series: Vec<u64> = progress
+            .iter()
+            .filter(|(phase, _, _, _)| phase == "downloading")
+            .map(|(_, cur, _, _)| *cur)
+            .collect();
+        for w in byte_series.windows(2) {
+            assert!(w[1] >= w[0], "bytes must be monotonic, got {byte_series:?}");
+        }
+
+        // Final progress event is a terminal `done` at 100% (AC-2.1).
+        let last = progress.last().expect("at least one event");
+        assert_eq!(last.0, "done");
+        assert_eq!(last.3, Some(100.0));
     }
 
     #[tokio::test]

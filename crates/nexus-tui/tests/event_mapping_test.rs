@@ -96,6 +96,7 @@ fn extension_install_progress_classifies_as_hum_extension_category() {
         current_bytes: 10,
         total_bytes: 100,
         message: String::new(),
+        pct: Some(10.0),
     };
     let (sig, cat) = classify(&event);
     assert_eq!(sig, Significance::Hum);
