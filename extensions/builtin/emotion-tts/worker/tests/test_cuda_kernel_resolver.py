@@ -34,3 +34,25 @@ def test_auto_returns_true_when_nvcc_available() -> None:
 def test_auto_returns_false_when_nvcc_missing() -> None:
     with patch("shutil.which", return_value=None):
         assert _resolve_use_cuda_kernel(None) is False
+
+
+def _which(available: set[str]):
+    def _inner(name: str) -> str | None:
+        return f"/fake/{name}" if name in available else None
+
+    return _inner
+
+
+def test_auto_returns_false_on_windows_when_cl_missing() -> None:
+    with patch("os.name", "nt"), patch("shutil.which", side_effect=_which({"nvcc"})):
+        assert _resolve_use_cuda_kernel(None) is False
+
+
+def test_auto_returns_true_on_windows_when_nvcc_and_cl_present() -> None:
+    with patch("os.name", "nt"), patch("shutil.which", side_effect=_which({"nvcc", "cl"})):
+        assert _resolve_use_cuda_kernel(None) is True
+
+
+def test_auto_ignores_cl_on_posix() -> None:
+    with patch("os.name", "posix"), patch("shutil.which", side_effect=_which({"nvcc"})):
+        assert _resolve_use_cuda_kernel(None) is True
