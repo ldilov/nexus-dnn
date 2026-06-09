@@ -100,11 +100,21 @@ dependencies:
       spec:
         family_id: "huggingface:QuantStack/Qwen-Image-Edit-2509-GGUF"
         acceleration_match: "matches_runtime_step:python"
-        # Diffusion GGUF (Q5_K_M) + the edit VAE (versions.yaml
-        # qwen-edit-diffusion + qwen-edit-vae).
+        # Diffusion GGUF (Q5_K_M) only. The GGUF repo ships no VAE — the
+        # Qwen-Image autoencoder lives in model_qwen_vae (versions.yaml
+        # qwen-edit-diffusion).
         files:
-          - "Qwen_Image_Edit_2509-Q5_K_M.gguf"
-          - "VAE/Qwen_Image-VAE.safetensors"
+          - "Qwen-Image-Edit-2509-Q5_K_M.gguf"
+    - id: model_qwen_vae
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "huggingface:Comfy-Org/Qwen-Image_ComfyUI"
+        acceleration_match: "matches_runtime_step:python"
+        # Qwen-Image autoencoder shared by Qwen-Image-Edit; the QuantStack
+        # GGUF repo has no VAE (versions.yaml qwen-edit-vae).
+        files:
+          - "split_files/vae/qwen_image_vae.safetensors"
     - id: model_qwen_vl
       type: model_artifact
       requires: [python]
@@ -157,6 +167,7 @@ dependencies:
         - model_wan_encoder
         - model_tokenizer
         - model_qwen_edit
+        - model_qwen_vae
         - model_qwen_vl
         - model_rife
         - sdcli

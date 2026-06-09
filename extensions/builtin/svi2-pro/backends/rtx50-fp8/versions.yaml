@@ -43,12 +43,12 @@ versions:
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"
       - id: "qwen-edit-diffusion"
         role: "qwen_edit.diffusion"
-        source: { kind: "huggingface", repo: "QuantStack/Qwen-Image-Edit-2509-GGUF", revision: "main", file: "Qwen_Image_Edit_2509-Q5_K_M.gguf" }
+        source: { kind: "huggingface", repo: "QuantStack/Qwen-Image-Edit-2509-GGUF", revision: "main", file: "Qwen-Image-Edit-2509-Q5_K_M.gguf" }
         size_bytes: 0
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"
       - id: "qwen-edit-vae"
         role: "qwen_edit.vae"
-        source: { kind: "huggingface", repo: "QuantStack/Qwen-Image-Edit-2509-GGUF", revision: "main", file: "VAE/Qwen_Image-VAE.safetensors" }
+        source: { kind: "huggingface", repo: "Comfy-Org/Qwen-Image_ComfyUI", revision: "main", file: "split_files/vae/qwen_image_vae.safetensors" }
         size_bytes: 0
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"
       - id: "qwen-edit-llm"
