@@ -21,10 +21,15 @@ pub trait ModelStoreClient: Send + Sync {
 
     /// Start (or attach to) a download job and return its id. The job runs in the
     /// model-store layer; the handler watches it via `poll_job`.
+    ///
+    /// `selection` narrows the repo's file listing to the subset the extension
+    /// declared. An unrestricted selection ([`crate::FileSelection::is_unrestricted`])
+    /// pulls the whole repo — the historical, backward-compatible behavior.
     async fn start_download(
         &self,
         family_id: &str,
         accelerator: Option<&str>,
+        selection: &crate::FileSelection,
     ) -> Result<String, crate::DepError>;
 
     /// Poll a previously-started job for current progress. Returns `Ok(None)` if the

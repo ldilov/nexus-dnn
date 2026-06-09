@@ -38,7 +38,12 @@ impl ModelStoreClient for StubModelStore {
     ) -> Result<Option<PathBuf>, DepError> {
         Ok(None)
     }
-    async fn start_download(&self, _f: &str, _a: Option<&str>) -> Result<String, DepError> {
+    async fn start_download(
+        &self,
+        _f: &str,
+        _a: Option<&str>,
+        _s: &nexus_extension_deps::FileSelection,
+    ) -> Result<String, DepError> {
         unreachable!("stub model store called");
     }
     async fn poll_job(&self, _id: &str) -> Result<ModelDownloadProgress, DepError> {

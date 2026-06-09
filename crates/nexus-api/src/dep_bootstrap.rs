@@ -431,6 +431,7 @@ impl RealModelStoreClient {
     async fn snapshot_targets_from_huggingface(
         &self,
         family_id: &str,
+        selection: &nexus_extension_deps::FileSelection,
     ) -> Result<Vec<JobTargetInput>, DepError> {
         let hf = self.huggingface.as_ref().ok_or_else(|| {
             DepError::Backend(
@@ -487,10 +488,23 @@ impl RealModelStoreClient {
             }
         }
 
+        // Narrow the repo listing to the extension's declared selection before
+        // building targets. An unrestricted selection keeps every file (the
+        // historical whole-repo snapshot); a selection that matches nothing is
+        // a hard error, never a silent zero-file install.
+        let non_empty_paths: Vec<&str> = raw
+            .files
+            .iter()
+            .map(|f| f.path.as_str())
+            .filter(|p| !p.is_empty())
+            .collect();
+        let selected: std::collections::HashSet<&str> =
+            selection.filter(non_empty_paths)?.into_iter().collect();
+
         let targets: Vec<JobTargetInput> = raw
             .files
             .iter()
-            .filter(|f| !f.path.is_empty())
+            .filter(|f| selected.contains(f.path.as_str()))
             .map(|f| JobTargetInput {
                 artifact_id: ArtifactId::from(format!("{family_id}#{}", f.path)),
                 filename: f.path.clone(),
@@ -547,19 +561,22 @@ impl ModelStoreClient for RealModelStoreClient {
         &self,
         family_id: &str,
         _accelerator: Option<&str>,
+        selection: &nexus_extension_deps::FileSelection,
     ) -> Result<String, DepError> {
         let store = self
             .download_job_store
             .as_ref()
             .ok_or_else(|| DepError::Backend("download job store not initialised".into()))?;
 
-        // Snapshot-download the entire repo. Multi-file ML families keep
-        // configs, tokenizers, and additional weights alongside the
-        // primary checkpoint; the normalizer's format-based filter drops
-        // unknown-format files (configs, plain text, etc.) and the model
-        // fails to load at runtime. Side-step normalize_family entirely
-        // for dep-installer-driven installs.
-        let targets = self.snapshot_targets_from_huggingface(family_id).await?;
+        // Snapshot-download the repo, narrowed by the extension's file
+        // selection. With no selection the whole repo is pulled (multi-file ML
+        // families keep configs/tokenizers/weights alongside the primary
+        // checkpoint, which the format normalizer would wrongly drop) — the
+        // historical behavior. With a selection, only matching files become
+        // targets so shared mega-repos don't over-pull hundreds of GB.
+        let targets = self
+            .snapshot_targets_from_huggingface(family_id, selection)
+            .await?;
 
         let source_repo = Self::extract_repo(family_id)
             .map(|r| r.to_owned())
@@ -1717,12 +1734,157 @@ mod tests {
         let client = client_with_hf(pool, hf, tmp.path().to_path_buf());
 
         let targets = client
-            .snapshot_targets_from_huggingface("huggingface:Owner/Repo")
+            .snapshot_targets_from_huggingface(
+                "huggingface:Owner/Repo",
+                &nexus_extension_deps::FileSelection::default(),
+            )
             .await
             .unwrap();
         let total: u64 = targets.iter().filter_map(|t| t.expected_bytes).sum();
         assert_eq!(targets.len(), 2);
         assert_eq!(total, 4_000_001_024, "summed expected_bytes must be > 0");
+    }
+
+    fn mega_repo_stub() -> Arc<SizedHfStub> {
+        Arc::new(SizedHfStub {
+            repo_id: "Owner/Repo".into(),
+            files: vec![
+                ("config.json".into(), 1_024),
+                ("transformer/diffusion_pytorch_model.safetensors".into(), 8_000_000_000),
+                ("text_encoder/model.safetensors".into(), 2_000_000_000),
+                ("vae/diffusion_pytorch_model.safetensors".into(), 300_000_000),
+                ("variant_fp8/model.safetensors".into(), 9_000_000_000),
+            ],
+            sizes_in_search: true,
+        })
+    }
+
+    fn selection(files: &[&str], include: &[&str], exclude: &[&str]) -> nexus_extension_deps::FileSelection {
+        nexus_extension_deps::FileSelection {
+            files: files.iter().map(|s| s.to_string()).collect(),
+            include: include.iter().map(|s| s.to_string()).collect(),
+            exclude: exclude.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    /// AC-2.1 / AC-2.3 — `files` exact allowlist yields only those targets and
+    /// the summed expected_bytes reflects only the selected subset.
+    #[tokio::test]
+    async fn snapshot_filters_by_exact_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pool = model_store_pool().await;
+        let client = client_with_hf(pool, mega_repo_stub(), tmp.path().to_path_buf());
+        let sel = selection(
+            &["config.json", "transformer/diffusion_pytorch_model.safetensors"],
+            &[],
+            &[],
+        );
+
+        let targets = client
+            .snapshot_targets_from_huggingface("huggingface:Owner/Repo", &sel)
+            .await
+            .unwrap();
+        let names: Vec<&str> = targets.iter().map(|t| t.filename.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["config.json", "transformer/diffusion_pytorch_model.safetensors"]
+        );
+        let total: u64 = targets.iter().filter_map(|t| t.expected_bytes).sum();
+        assert_eq!(total, 8_000_001_024, "byte total covers only selected files");
+    }
+
+    /// AC-2.1 — `include` globs keep matching files only.
+    #[tokio::test]
+    async fn snapshot_filters_by_include_globs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pool = model_store_pool().await;
+        let client = client_with_hf(pool, mega_repo_stub(), tmp.path().to_path_buf());
+        let sel = selection(&[], &["transformer/**", "text_encoder/**"], &[]);
+
+        let targets = client
+            .snapshot_targets_from_huggingface("huggingface:Owner/Repo", &sel)
+            .await
+            .unwrap();
+        let names: Vec<&str> = targets.iter().map(|t| t.filename.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "transformer/diffusion_pytorch_model.safetensors",
+                "text_encoder/model.safetensors",
+            ]
+        );
+    }
+
+    /// AC-2.1 — `exclude` globs drop matching files (include-all default).
+    #[tokio::test]
+    async fn snapshot_filters_by_exclude_globs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pool = model_store_pool().await;
+        let client = client_with_hf(pool, mega_repo_stub(), tmp.path().to_path_buf());
+        let sel = selection(&[], &[], &["variant_fp8/**", "vae/**"]);
+
+        let targets = client
+            .snapshot_targets_from_huggingface("huggingface:Owner/Repo", &sel)
+            .await
+            .unwrap();
+        let names: Vec<&str> = targets.iter().map(|t| t.filename.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "config.json",
+                "transformer/diffusion_pytorch_model.safetensors",
+                "text_encoder/model.safetensors",
+            ]
+        );
+    }
+
+    /// AC-2.4 — no selection produces the SAME target set as the whole repo
+    /// (backward compatible — other extensions with no selection are unaffected).
+    #[tokio::test]
+    async fn snapshot_no_selection_matches_whole_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pool = model_store_pool().await;
+        let client = client_with_hf(pool, mega_repo_stub(), tmp.path().to_path_buf());
+
+        let targets = client
+            .snapshot_targets_from_huggingface(
+                "huggingface:Owner/Repo",
+                &nexus_extension_deps::FileSelection::default(),
+            )
+            .await
+            .unwrap();
+        let names: Vec<&str> = targets.iter().map(|t| t.filename.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "config.json",
+                "transformer/diffusion_pytorch_model.safetensors",
+                "text_encoder/model.safetensors",
+                "vae/diffusion_pytorch_model.safetensors",
+                "variant_fp8/model.safetensors",
+            ],
+            "no-selection target set equals the full repo listing"
+        );
+    }
+
+    /// AC-2.2 — a selection that matches nothing is an explicit error, never a
+    /// silent zero-file install.
+    #[tokio::test]
+    async fn snapshot_empty_match_is_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pool = model_store_pool().await;
+        let client = client_with_hf(pool, mega_repo_stub(), tmp.path().to_path_buf());
+        let sel = selection(&["does/not/exist.safetensors"], &[], &[]);
+
+        let err = client
+            .snapshot_targets_from_huggingface("huggingface:Owner/Repo", &sel)
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("matched no files"),
+            "expected an explicit empty-match error, got: {msg}"
+        );
     }
 
     /// AC-3.1 — when search omits sizes, the detail() fallback merges them in.
@@ -1738,7 +1900,10 @@ mod tests {
         let client = client_with_hf(pool, hf, tmp.path().to_path_buf());
 
         let targets = client
-            .snapshot_targets_from_huggingface("huggingface:Owner/Repo")
+            .snapshot_targets_from_huggingface(
+                "huggingface:Owner/Repo",
+                &nexus_extension_deps::FileSelection::default(),
+            )
             .await
             .unwrap();
         let total: u64 = targets.iter().filter_map(|t| t.expected_bytes).sum();
@@ -1761,7 +1926,10 @@ mod tests {
         // Build the job via the store directly (no orchestrator enqueue) so the
         // background worker can't race a network GET to a terminal state.
         let targets = client
-            .snapshot_targets_from_huggingface("huggingface:Owner/Repo")
+            .snapshot_targets_from_huggingface(
+                "huggingface:Owner/Repo",
+                &nexus_extension_deps::FileSelection::default(),
+            )
             .await
             .unwrap();
         let store = JobStore::new(pool.clone());
