@@ -44,6 +44,11 @@ interface StepProgressEventLike extends InstallEventLike {
   message?: string;
   current_bytes?: number;
   total_bytes?: number;
+  /** Newer aliases for the byte counts; tolerated for forward compat. */
+  bytes_done?: number;
+  bytes_total?: number;
+  /** Backend-derived percentage (0..100); present even without byte counts. */
+  pct?: number | null;
 }
 
 interface StepEventLike extends InstallEventLike {
@@ -62,8 +67,10 @@ export interface InstallCompletedDetail {
 export interface LiveStepProgress {
   currentBytes: number;
   totalBytes: number;
-  /** 0..100, extrapolated between events. */
+  /** 0..100, extrapolated between events from byte counts. */
   pct: number;
+  /** Backend-derived percentage (0..100) or null when not reported. */
+  reportedPct: number | null;
   /** Smoothed bytes/second, 0 when not yet known. */
   speedBps: number;
   /** Seconds to completion, or null when it cannot be estimated. */
@@ -91,6 +98,14 @@ interface StepTracker {
   speedBps: number;
   phase: string;
   message: string;
+  reportedPct: number | null;
+}
+
+function clampPct(value: number | null | undefined): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return null;
+  }
+  return Math.min(100, Math.max(0, value));
 }
 
 function snapshot(
@@ -114,6 +129,7 @@ function snapshot(
       currentBytes: current,
       totalBytes: t.totalBytes,
       pct,
+      reportedPct: t.reportedPct,
       speedBps: t.speedBps,
       etaSeconds,
       phase: t.phase,
@@ -159,8 +175,9 @@ export function useInstallProgress(
       const stepId = event.step_id;
       if (!stepId) return;
       const now = Date.now();
-      const current = event.current_bytes ?? 0;
-      const total = event.total_bytes ?? 0;
+      const current = event.current_bytes ?? event.bytes_done ?? 0;
+      const total = event.total_bytes ?? event.bytes_total ?? 0;
+      const reportedPct = clampPct(event.pct);
       const prev = trackersRef.current.get(stepId);
       let speedBps = prev?.speedBps ?? 0;
       if (prev && current > prev.reportedBytes && now > prev.reportedAt) {
@@ -178,6 +195,7 @@ export function useInstallProgress(
         speedBps,
         phase: event.phase ?? "",
         message: event.message ?? prev?.message ?? "",
+        reportedPct: reportedPct ?? prev?.reportedPct ?? null,
       });
     };
 
