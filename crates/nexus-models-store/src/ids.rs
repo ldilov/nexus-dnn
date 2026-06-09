@@ -129,6 +129,9 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(2));
         let second = JobId::new();
         assert_ne!(first, second);
-        assert!(first.to_string() < second.to_string(), "v7 ids are time-ordered");
+        assert!(
+            first.to_string() < second.to_string(),
+            "v7 ids are time-ordered"
+        );
     }
 }

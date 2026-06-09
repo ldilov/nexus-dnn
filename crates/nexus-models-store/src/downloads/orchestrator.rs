@@ -76,7 +76,14 @@ impl DownloadOrchestrator {
         http: reqwest::Client,
         tokens: TokenStore,
     ) -> Self {
-        Self::with_cancel(store, install_map, sink_root, http, tokens, CancellationToken::new())
+        Self::with_cancel(
+            store,
+            install_map,
+            sink_root,
+            http,
+            tokens,
+            CancellationToken::new(),
+        )
     }
 
     #[must_use]

@@ -65,10 +65,7 @@ impl CapabilityRegistry {
 
     /// Every enabled (or experimental) backend that supports a given
     /// format. Disabled backends are filtered out.
-    pub fn supporting_format(
-        &self,
-        fmt: Format,
-    ) -> impl Iterator<Item = &BackendCapability> + '_ {
+    pub fn supporting_format(&self, fmt: Format) -> impl Iterator<Item = &BackendCapability> + '_ {
         self.backends
             .iter()
             .map(|a| a.capability())
@@ -166,9 +163,7 @@ mod tests {
     use super::*;
     use crate::ids::{ArtifactId, FamilyId};
     use crate::model::{Artifact, ModelRepository, SourceProvider};
-    use crate::types::{
-        CompatibilityStatus, DependencyRole, Modality, Precision, PrecisionSource,
-    };
+    use crate::types::{CompatibilityStatus, DependencyRole, Modality, Precision, PrecisionSource};
 
     fn llm_family(fmt: Format) -> ModelFamily {
         ModelFamily {
@@ -208,7 +203,10 @@ mod tests {
     #[test]
     fn llama_cpp_adapter_advertises_gguf_and_ggml() {
         let adapter = LlamaCppAdapter::new();
-        assert_eq!(adapter.capability().supported_formats, vec![Format::Gguf, Format::Ggml]);
+        assert_eq!(
+            adapter.capability().supported_formats,
+            vec![Format::Gguf, Format::Ggml]
+        );
         assert_eq!(adapter.capability().status, BackendStatus::Enabled);
     }
 
