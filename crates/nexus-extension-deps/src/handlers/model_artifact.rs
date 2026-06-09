@@ -212,6 +212,26 @@ impl StepHandler for ModelArtifactHandler {
                         path = %path.display(),
                         "model_artifact: download completed"
                     );
+                    // Record the Foundry ownership ref so the model is GC'd only
+                    // when the last referencing extension drops it. Non-fatal:
+                    // a failed ref-write must not fail an otherwise-good install.
+                    if let Err(err) = ctx
+                        .model_store
+                        .record_reference(
+                            ctx.extension_id,
+                            &parsed.family_id,
+                            accelerator.as_deref(),
+                        )
+                        .await
+                    {
+                        tracing::warn!(
+                            target: "spec_035::model_artifact",
+                            extension_id = %ctx.extension_id,
+                            family_id = %parsed.family_id,
+                            error = %err,
+                            "model_artifact: failed to record ownership ref (install still ok)"
+                        );
+                    }
                     // Terminal `done` at 100% so the row settles full, not at
                     // whatever the last in-progress poll reported (AC-2.1).
                     ctx.progress_sink.emit(ProgressEvent::step_progress(
@@ -458,6 +478,67 @@ mod tests {
         let last = progress.last().expect("at least one event");
         assert_eq!(last.0, "done");
         assert_eq!(last.3, Some(100.0));
+    }
+
+    /// Model store that scripts polls AND captures the `record_reference` call
+    /// so the handler's post-Completed ref recording (AC-4.2) is observable.
+    struct RefRecordingStore {
+        polls: std::sync::Mutex<Vec<crate::ModelDownloadProgress>>,
+        recorded: std::sync::Mutex<Vec<(String, String)>>,
+    }
+    #[async_trait]
+    impl crate::ModelStoreClient for RefRecordingStore {
+        async fn is_family_installed(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+        ) -> Result<Option<PathBuf>, DepError> {
+            Ok(None)
+        }
+        async fn start_download(&self, _f: &str, _a: Option<&str>) -> Result<String, DepError> {
+            Ok("job-ref".to_owned())
+        }
+        async fn poll_job(&self, _id: &str) -> Result<crate::ModelDownloadProgress, DepError> {
+            Ok(self.polls.lock().expect("lock").remove(0))
+        }
+        async fn record_reference(
+            &self,
+            extension_id: &str,
+            family_id: &str,
+            _accelerator: Option<&str>,
+        ) -> Result<(), DepError> {
+            self.recorded
+                .lock()
+                .expect("lock")
+                .push((extension_id.to_owned(), family_id.to_owned()));
+            Ok(())
+        }
+    }
+
+    /// AC-4.2 — a successful `model_artifact` install records an ownership ref
+    /// for `(extension_id -> family_id)`.
+    #[tokio::test]
+    async fn run_records_reference_on_completion() {
+        use crate::ModelDownloadProgress;
+        let store = Arc::new(RefRecordingStore {
+            polls: std::sync::Mutex::new(vec![ModelDownloadProgress::Completed {
+                path: PathBuf::from("/tmp/model"),
+                bytes_placed: 10,
+            }]),
+            recorded: std::sync::Mutex::new(Vec::new()),
+        });
+        let dir = PathBuf::from("/tmp");
+        let upstream = HashMap::new();
+        let ctx = ctx_with_store(store.clone(), &dir, &upstream);
+        let spec = serde_json::json!({ "family_id": "huggingface:Owner/Repo" });
+
+        let handler = ModelArtifactHandler::new();
+        handler.run(&ctx, &spec).await.expect("run ok");
+
+        let recorded = store.recorded.lock().expect("lock");
+        assert_eq!(recorded.len(), 1, "exactly one ref recorded on success");
+        assert_eq!(recorded[0].0, "example", "extension_id from ctx");
+        assert_eq!(recorded[0].1, "huggingface:Owner/Repo", "family from spec");
     }
 
     #[tokio::test]

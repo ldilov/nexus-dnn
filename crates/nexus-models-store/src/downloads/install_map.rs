@@ -160,10 +160,7 @@ impl InstallMap {
         Ok(row.map(parse_row))
     }
 
-    pub async fn list_all(
-        &self,
-        limit: usize,
-    ) -> JobStoreResult<Vec<InstalledArtifactRow>> {
+    pub async fn list_all(&self, limit: usize) -> JobStoreResult<Vec<InstalledArtifactRow>> {
         let rows = sqlx::query(
             "SELECT artifact_id, family_id, variant_id, format,
                     source_provider, source_repo, source_revision,
@@ -235,6 +232,159 @@ impl InstallMap {
         .await?;
         Ok(rows.into_iter().map(parse_row).collect())
     }
+
+    /// Record that `extension_id` references the artifact identified by
+    /// `job_id` (the download-job grain that owns one on-disk sink dir).
+    ///
+    /// The artifact identity for ref-counting is the **`job_id`**: a single
+    /// family snapshot install produces many `model_store_installed_artifacts`
+    /// rows (one per file) that all share one `job_id`, and the sink dir
+    /// `<sink_root>/<job_id>/` is exactly the unit GC deletes. Two extensions
+    /// installing the same family resolve to the same `job_id` (duplicate-job
+    /// detection), so they produce ONE on-disk copy and TWO refs.
+    ///
+    /// Idempotent: re-recording the same `(job_id, extension_id)` is a no-op
+    /// (UNIQUE constraint + `ON CONFLICT DO NOTHING`).
+    pub async fn add_ref(&self, job_id: &str, extension_id: &str) -> JobStoreResult<()> {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            "INSERT INTO model_store_artifact_refs (job_id, extension_id, created_at)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(job_id, extension_id) DO NOTHING",
+        )
+        .bind(job_id)
+        .bind(extension_id)
+        .bind(&now)
+        .execute(self.pool.as_ref())
+        .await?;
+        Ok(())
+    }
+
+    /// All artifact `job_id`s referenced by `extension_id`.
+    pub async fn refs_for_extension(&self, extension_id: &str) -> JobStoreResult<Vec<String>> {
+        let rows = sqlx::query(
+            "SELECT DISTINCT job_id FROM model_store_artifact_refs WHERE extension_id = ?1",
+        )
+        .bind(extension_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        Ok(rows.into_iter().map(|r| r.get::<String, _>("job_id")).collect())
+    }
+
+    /// Number of distinct extensions referencing the artifact `job_id`.
+    pub async fn refcount(&self, job_id: &str) -> JobStoreResult<u64> {
+        let row = sqlx::query(
+            "SELECT COUNT(*) AS n FROM model_store_artifact_refs WHERE job_id = ?1",
+        )
+        .bind(job_id)
+        .fetch_one(self.pool.as_ref())
+        .await?;
+        let n: i64 = row.get("n");
+        Ok(u64::try_from(n).unwrap_or(0))
+    }
+
+    /// Drop every ref held by `extension_id`. Returns the distinct artifact
+    /// `job_id`s that the extension referenced (so the caller can run
+    /// [`Self::gc_artifact_if_unreferenced`] on each).
+    pub async fn remove_refs_for_extension(
+        &self,
+        extension_id: &str,
+    ) -> JobStoreResult<Vec<String>> {
+        let affected = self.refs_for_extension(extension_id).await?;
+        sqlx::query("DELETE FROM model_store_artifact_refs WHERE extension_id = ?1")
+            .bind(extension_id)
+            .execute(self.pool.as_ref())
+            .await?;
+        Ok(affected)
+    }
+
+    /// Garbage-collect an artifact ONLY when no extension references it.
+    ///
+    /// With `refcount > 0` this is a no-op (neither the rows nor the files
+    /// are touched) and returns `GcOutcome::retained`. With `refcount == 0`
+    /// it deletes the `model_store_installed_artifacts` rows for the job AND
+    /// the on-disk sink dir `<sink_root>/<job_id>/`, returning the freed byte
+    /// count.
+    ///
+    /// Legacy policy (AC-4.6): rows whose `job_id` has **no** refs at all are
+    /// pre-ref-tracking installs. They are GC-eligible by refcount==0, so an
+    /// EXPLICIT call here (driven by revalidate / uninstall) may reclaim them.
+    /// Callers MUST NOT surprise-GC every unreferenced row during routine
+    /// probes — only sweep the job_ids a deliberate action targets.
+    pub async fn gc_artifact_if_unreferenced(
+        &self,
+        job_id: &str,
+        sink_root: &std::path::Path,
+    ) -> JobStoreResult<GcOutcome> {
+        if self.refcount(job_id).await? > 0 {
+            return Ok(GcOutcome::retained());
+        }
+
+        let sink_dir = sink_root.join(job_id);
+        let freed_bytes = dir_size_bytes(&sink_dir).await;
+        if sink_dir.exists() {
+            let _ = tokio::fs::remove_dir_all(&sink_dir).await;
+        }
+
+        sqlx::query("DELETE FROM model_store_installed_artifacts WHERE job_id = ?1")
+            .bind(job_id)
+            .execute(self.pool.as_ref())
+            .await?;
+
+        tracing::info!(
+            target: "model_store",
+            job_id,
+            freed_bytes,
+            sink_dir = %sink_dir.display(),
+            "gc: artifact unreferenced — deleted rows + on-disk files"
+        );
+
+        Ok(GcOutcome {
+            deleted: true,
+            freed_bytes,
+        })
+    }
+}
+
+/// Result of [`InstallMap::gc_artifact_if_unreferenced`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GcOutcome {
+    /// Whether the artifact rows + on-disk files were deleted.
+    pub deleted: bool,
+    /// Bytes reclaimed from disk (0 when retained or already absent).
+    pub freed_bytes: u64,
+}
+
+impl GcOutcome {
+    #[must_use]
+    fn retained() -> Self {
+        Self {
+            deleted: false,
+            freed_bytes: 0,
+        }
+    }
+}
+
+/// Recursively sum the size of every file under `dir`. Missing dir → 0.
+async fn dir_size_bytes(dir: &std::path::Path) -> u64 {
+    let mut total: u64 = 0;
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        let Ok(mut entries) = tokio::fs::read_dir(&current).await else {
+            continue;
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let Ok(meta) = entry.metadata().await else {
+                continue;
+            };
+            if meta.is_dir() {
+                stack.push(entry.path());
+            } else {
+                total = total.saturating_add(meta.len());
+            }
+        }
+    }
+    total
 }
 
 fn parse_row(r: sqlx::sqlite::SqliteRow) -> InstalledArtifactRow {
@@ -255,16 +405,10 @@ fn parse_row(r: sqlx::sqlite::SqliteRow) -> InstalledArtifactRow {
         installed_at: DateTime::parse_from_rfc3339(&r.get::<String, _>("installed_at"))
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now()),
-        layer_count: r
-            .get::<Option<i64>, _>("layer_count")
-            .map(|v| v as u32),
-        max_context: r
-            .get::<Option<i64>, _>("max_context")
-            .map(|v| v as u32),
+        layer_count: r.get::<Option<i64>, _>("layer_count").map(|v| v as u32),
+        max_context: r.get::<Option<i64>, _>("max_context").map(|v| v as u32),
         architecture: r.get("architecture"),
-        hidden_size: r
-            .get::<Option<i64>, _>("hidden_size")
-            .map(|v| v as u32),
+        hidden_size: r.get::<Option<i64>, _>("hidden_size").map(|v| v as u32),
         is_moe: r.get::<Option<i64>, _>("is_moe").map(|v| v != 0),
         expert_layer_count: r
             .get::<Option<i64>, _>("expert_layer_count")
@@ -293,10 +437,9 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
-        for stmt in include_str!(
-            "../../../../migrations/015_installed_artifact_extraction_metadata.sql"
-        )
-        .split(';')
+        for stmt in
+            include_str!("../../../../migrations/015_installed_artifact_extraction_metadata.sql")
+                .split(';')
         {
             let trimmed = stmt.trim();
             if trimmed.is_empty() {
@@ -304,10 +447,17 @@ mod tests {
             }
             sqlx::query(trimmed).execute(&pool).await.unwrap();
         }
-        for stmt in include_str!(
-            "../../../../migrations/021_installed_artifact_moe_metadata.sql"
-        )
-        .split(';')
+        for stmt in include_str!("../../../../migrations/021_installed_artifact_moe_metadata.sql")
+            .split(';')
+        {
+            let trimmed = stmt.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            sqlx::query(trimmed).execute(&pool).await.unwrap();
+        }
+        for stmt in
+            include_str!("../../../../migrations/022_model_store_artifact_refs.sql").split(';')
         {
             let trimmed = stmt.trim();
             if trimmed.is_empty() {
@@ -432,9 +582,13 @@ mod tests {
     async fn update_extraction_metadata_persists_moe_fields() {
         let pool = memory_pool().await;
         let map = InstallMap::new(pool);
-        map.record(sample("hf:a/mixtral#file", "hf:a/mixtral", Some("hf:a/mixtral@Q4")))
-            .await
-            .unwrap();
+        map.record(sample(
+            "hf:a/mixtral#file",
+            "hf:a/mixtral",
+            Some("hf:a/mixtral@Q4"),
+        ))
+        .await
+        .unwrap();
         let mut meta = nexus_model_metadata::ExtractedMetadata::ok(
             "hf:a/mixtral#file",
             nexus_model_metadata::ArtifactFormat::Gguf,
@@ -485,5 +639,138 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(row.variant_id.is_none());
+    }
+
+    /// Build an install-map row for a known job_id and write a real file into
+    /// `<sink_root>/<job_id>/<filename>` so GC has bytes to free.
+    async fn seed_install(
+        map: &InstallMap,
+        sink_root: &std::path::Path,
+        family: &str,
+        job_id: &str,
+        filename: &str,
+        contents: &[u8],
+    ) {
+        let record = InstalledArtifactRecord {
+            artifact_id: ArtifactId::from(format!("{family}#{filename}")),
+            family_id: FamilyId::from(family),
+            variant_id: None,
+            format: Format::Gguf,
+            source_provider: "huggingface".into(),
+            source_repo: "acme/model".into(),
+            source_revision: Some("main".into()),
+            filename: filename.into(),
+            job_id: JobId::from_uuid(uuid::Uuid::parse_str(job_id).unwrap()),
+            sha256: None,
+            size_bytes: Some(contents.len() as u64),
+        };
+        map.record(record).await.unwrap();
+        let dir = sink_root.join(job_id);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(dir.join(filename), contents).await.unwrap();
+    }
+
+    const JOB_A: &str = "00000000-0000-7000-8000-00000000000a";
+
+    #[tokio::test]
+    async fn add_ref_is_idempotent_and_refcount_counts_distinct_extensions() {
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        map.add_ref(JOB_A, "ext.one").await.unwrap();
+        map.add_ref(JOB_A, "ext.one").await.unwrap();
+        map.add_ref(JOB_A, "ext.two").await.unwrap();
+        assert_eq!(map.refcount(JOB_A).await.unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn refs_for_extension_lists_only_that_extensions_jobs() {
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        let job_b = "00000000-0000-7000-8000-00000000000b";
+        map.add_ref(JOB_A, "ext.one").await.unwrap();
+        map.add_ref(job_b, "ext.two").await.unwrap();
+        let one = map.refs_for_extension("ext.one").await.unwrap();
+        assert_eq!(one, vec![JOB_A.to_string()]);
+    }
+
+    /// AC-4.3 — two extensions installing the same family share ONE artifact
+    /// (job_id) on disk and produce TWO refs.
+    #[tokio::test]
+    async fn two_extensions_same_family_one_artifact_two_refs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        seed_install(&map, sink_root, "hf:a/shared", JOB_A, "model.gguf", b"weights").await;
+        map.add_ref(JOB_A, "ext.alpha").await.unwrap();
+        map.add_ref(JOB_A, "ext.beta").await.unwrap();
+
+        let rows = map.list_for_family(&FamilyId::from("hf:a/shared")).await.unwrap();
+        assert_eq!(rows.len(), 1, "single artifact row on disk for the family");
+        assert_eq!(rows[0].job_id, JOB_A);
+        assert_eq!(map.refcount(JOB_A).await.unwrap(), 2, "two refs");
+    }
+
+    /// AC-4.4 — refcount > 0 deletes neither rows nor files.
+    #[tokio::test]
+    async fn gc_retains_when_referenced() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        seed_install(&map, sink_root, "hf:a/keep", JOB_A, "model.gguf", b"weights").await;
+        map.add_ref(JOB_A, "ext.alpha").await.unwrap();
+
+        let outcome = map.gc_artifact_if_unreferenced(JOB_A, sink_root).await.unwrap();
+        assert!(!outcome.deleted);
+        assert_eq!(outcome.freed_bytes, 0);
+        assert!(sink_root.join(JOB_A).join("model.gguf").exists());
+        assert_eq!(
+            map.list_for_family(&FamilyId::from("hf:a/keep")).await.unwrap().len(),
+            1
+        );
+    }
+
+    /// AC-4.4 — refcount == 0 deletes both rows and on-disk files, reports bytes.
+    #[tokio::test]
+    async fn gc_deletes_when_unreferenced() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        let payload = b"some-weights-bytes";
+        seed_install(&map, sink_root, "hf:a/gone", JOB_A, "model.gguf", payload).await;
+        map.add_ref(JOB_A, "ext.alpha").await.unwrap();
+        let dropped = map.remove_refs_for_extension("ext.alpha").await.unwrap();
+        assert_eq!(dropped, vec![JOB_A.to_string()]);
+
+        let outcome = map.gc_artifact_if_unreferenced(JOB_A, sink_root).await.unwrap();
+        assert!(outcome.deleted);
+        assert_eq!(outcome.freed_bytes, payload.len() as u64);
+        assert!(!sink_root.join(JOB_A).exists());
+        assert!(
+            map.list_for_family(&FamilyId::from("hf:a/gone")).await.unwrap().is_empty()
+        );
+    }
+
+    /// AC-4.6 — a legacy install-map row with NO refs is GC-eligible by
+    /// refcount==0, but only via an explicit GC call (this test simulates the
+    /// deliberate revalidate/uninstall path). Routine probes never call GC.
+    #[tokio::test]
+    async fn gc_reclaims_legacy_unreferenced_row_only_when_explicitly_invoked() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        seed_install(&map, sink_root, "hf:a/legacy", JOB_A, "model.gguf", b"legacy").await;
+
+        assert_eq!(map.refcount(JOB_A).await.unwrap(), 0, "legacy row has no refs");
+        assert!(
+            sink_root.join(JOB_A).join("model.gguf").exists(),
+            "legacy row + files survive until an explicit GC sweep"
+        );
+
+        let outcome = map.gc_artifact_if_unreferenced(JOB_A, sink_root).await.unwrap();
+        assert!(outcome.deleted, "explicit GC reclaims the unreferenced legacy row");
     }
 }

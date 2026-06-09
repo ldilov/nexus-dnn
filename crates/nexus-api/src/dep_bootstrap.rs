@@ -605,6 +605,44 @@ impl ModelStoreClient for RealModelStoreClient {
         }))
     }
 
+    async fn record_reference(
+        &self,
+        extension_id: &str,
+        family_id: &str,
+        _accelerator: Option<&str>,
+    ) -> Result<(), DepError> {
+        // The artifact identity for ref-counting is the download `job_id` that
+        // owns the on-disk sink dir. Resolve it from the install-map rows the
+        // orchestrator wrote for this family on the just-completed install.
+        let family = FamilyId::from(family_id);
+        let rows = self
+            .install_map
+            .list_for_family(&family)
+            .await
+            .map_err(|e| DepError::Backend(format!("install_map.list_for_family: {e}")))?;
+        let Some(job_id) = rows.into_iter().next().map(|r| r.job_id) else {
+            tracing::warn!(
+                target: "spec_035::model_store",
+                extension_id,
+                family_id,
+                "record_reference: no install-map row for family — skipping ref"
+            );
+            return Ok(());
+        };
+        self.install_map
+            .add_ref(&job_id, extension_id)
+            .await
+            .map_err(|e| DepError::Backend(format!("install_map.add_ref: {e}")))?;
+        tracing::info!(
+            target: "spec_035::model_store",
+            extension_id,
+            family_id,
+            job_id = %job_id,
+            "model_store: recorded Foundry ownership ref"
+        );
+        Ok(())
+    }
+
     async fn poll_job(&self, job_id: &str) -> Result<ModelDownloadProgress, DepError> {
         let store = self
             .download_job_store

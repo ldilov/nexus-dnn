@@ -40,6 +40,22 @@ pub trait ModelStoreClient: Send + Sync {
     ) -> Result<Option<ModelPartialState>, crate::DepError> {
         Ok(None)
     }
+
+    /// Record that `extension_id` references the model artifact resolved for
+    /// `(family_id, accelerator)`. Called by the `model_artifact` handler after
+    /// a successful install so the host can ref-count shared models and GC them
+    /// only when the last extension drops its reference.
+    ///
+    /// Default no-op: probe-only / test doubles that never persist refs accept
+    /// the default. The host's real client overrides it to write a ref row.
+    async fn record_reference(
+        &self,
+        _extension_id: &str,
+        _family_id: &str,
+        _accelerator: Option<&str>,
+    ) -> Result<(), crate::DepError> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
