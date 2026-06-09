@@ -52,17 +52,23 @@ def _resolve_use_cuda_kernel(requested: bool | None) -> bool:
     Resolution:
       * `requested=True/False` → respect the explicit setting (user opt-in
         or opt-out via the `optimizations.use_cuda_kernel` field).
-      * `requested=None` (default) → auto-detect: skip the JIT (return
-        False) when `nvcc` is not on PATH, attempt it (return True) when
-        it is. We never return None back to IndexTTS2 — leaving the kernel
-        attempt to IndexTTS2's own auto-detect would re-introduce the
-        noisy fallback for users without Toolkit.
+      * `requested=None` (default) → auto-detect: require the FULL build
+        toolchain, not just `nvcc`. We need `nvcc` on PATH and — on Windows
+        — MSVC `cl.exe` reachable too. nvcc alone greenlights a doomed JIT
+        build that spams the wire with ninja `[1/N]` progress and falls
+        back to torch anyway. We never return None back to IndexTTS2 —
+        leaving the attempt to its own auto-detect re-introduces the noise.
     """
+    import os
     import shutil
 
     if requested is not None:
         return requested
-    return shutil.which("nvcc") is not None
+    if shutil.which("nvcc") is None:
+        return False
+    if os.name == "nt" and shutil.which("cl") is None:
+        return False
+    return True
 
 
 @dataclass
