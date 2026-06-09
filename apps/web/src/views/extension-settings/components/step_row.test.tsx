@@ -132,4 +132,62 @@ describe("StepRow progress region", () => {
     expect(bar).toHaveAttribute("aria-valuemax", "100");
     expect(bar).toHaveAttribute("aria-valuenow", "25");
   });
+
+  it("AC-3.3: unknown total + bytes flowing → 'X downloaded · speed' + indeterminate bar", () => {
+    const step = makeStep({ id: "model", type: "model_artifact" });
+    const live = makeLive({
+      currentBytes: 314_572_800,
+      totalBytes: 0,
+      pct: 0,
+      reportedPct: null,
+      speedBps: 5_242_880,
+      phase: "downloading",
+    });
+    renderRow(step, live);
+
+    expect(screen.getByText(/300.*MB/)).toBeInTheDocument();
+    expect(screen.getByText("downloaded", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("5.0 MB/s")).toBeInTheDocument();
+    expect(screen.queryByText(/0%/)).not.toBeInTheDocument();
+
+    const bar = screen.getByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-busy", "true");
+    expect(bar).not.toHaveAttribute("aria-valuenow");
+  });
+
+  it("AC-3.3: unknown-total fallback omits speed when not yet measured", () => {
+    const step = makeStep({ id: "model", type: "model_artifact" });
+    const live = makeLive({
+      currentBytes: 104_857_600,
+      totalBytes: 0,
+      reportedPct: null,
+      speedBps: 0,
+      phase: "downloading",
+    });
+    renderRow(step, live);
+
+    expect(screen.getByText(/100.*MB/)).toBeInTheDocument();
+    expect(screen.getByText("downloaded", { exact: false })).toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("AC-3.4: real % path preserved when total_bytes > 0 (no unknown-total fallback)", () => {
+    const step = makeStep({ id: "model", type: "model_artifact" });
+    const live = makeLive({
+      currentBytes: 524_288_000,
+      totalBytes: 1_048_576_000,
+      pct: 50,
+      speedBps: 10_485_760,
+      etaSeconds: 50,
+      phase: "downloading",
+    });
+    renderRow(step, live);
+
+    expect(screen.getByText(/500.*MB \/ 1000.*MB/)).toBeInTheDocument();
+    expect(screen.getByText("50%")).toBeInTheDocument();
+    expect(screen.queryByText(/downloaded$/)).not.toBeInTheDocument();
+    const bar = screen.getByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "50");
+    expect(bar).not.toHaveAttribute("aria-busy");
+  });
 });

@@ -78,6 +78,12 @@ export function StepRow({
     step.status === "running" && live !== undefined && live.reportedPct !== null
       ? live.reportedPct
       : null;
+  const unknownTotalActive =
+    step.status === "running" &&
+    live !== undefined &&
+    live.totalBytes === 0 &&
+    live.currentBytes > 0 &&
+    liveReportedPct === null;
   const showProgressBar = step.status === "running" || (step.status === "pending" && installActive);
   const dtoPct =
     step.progress && step.progress.total_bytes > 0
@@ -103,7 +109,7 @@ export function StepRow({
 
   const liveBytes = liveBytesActive;
   const phaseRow =
-    step.status === "running" && !liveBytesActive && live !== undefined
+    step.status === "running" && !liveBytesActive && !unknownTotalActive && live !== undefined
       ? {
           label: live.phase.length > 0 ? formatPhase(live.phase) : "",
           message: live.message,
@@ -204,6 +210,18 @@ export function StepRow({
               <>
                 <span className={s.metaSep}>·</span>
                 <span className={s.liveMetric}>ETA {formatDuration(live.etaSeconds)}</span>
+              </>
+            )}
+          </div>
+        )}
+
+        {unknownTotalActive && live && (
+          <div className={s.liveMeta} aria-live="polite">
+            <span className={s.livePrimary}>{shortenSize(live.currentBytes)} downloaded</span>
+            {live.speedBps > 0 && (
+              <>
+                <span className={s.metaSep}>·</span>
+                <span className={s.liveMetric}>{formatSpeed(live.speedBps)}</span>
               </>
             )}
           </div>

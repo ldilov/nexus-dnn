@@ -112,4 +112,31 @@ export function presentation(step: DependencyStep): StepTypePresentation {
   );
 }
 
+export interface UninstallImpactEstimate {
+  /** Number of model-weight steps the extension installed. */
+  modelCount: number;
+  /** Sum of on-disk bytes the model steps placed (upper-bound freed estimate). */
+  modelBytes: number;
+}
+
+/**
+ * Estimate what an uninstall removes from a dependency snapshot. Keeps the
+ * `model_artifact` type discriminator inside this presentation module so the
+ * host UI shell stays type-opaque (FR-005). The host's uninstall response is
+ * authoritative; this only powers the pre-confirm copy.
+ */
+export function estimateUninstallImpact(
+  steps: readonly DependencyStep[],
+): UninstallImpactEstimate {
+  let modelCount = 0;
+  let modelBytes = 0;
+  for (const step of steps) {
+    if (step.type !== "model_artifact") continue;
+    if (!step.satisfied && step.status !== "ok") continue;
+    modelCount += 1;
+    modelBytes += step.artifact?.bytes_placed ?? 0;
+  }
+  return { modelCount, modelBytes };
+}
+
 export { shortenSize, formatSpeed, formatDuration, formatPhase };

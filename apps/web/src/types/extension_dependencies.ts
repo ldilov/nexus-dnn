@@ -65,3 +65,13 @@ export const installStartedResponseSchema = z.object({
   started_at: z.string(),
 });
 export type InstallStartedResponse = z.infer<typeof installStartedResponseSchema>;
+
+export const uninstallSummarySchema = z.object({
+  extension_id: z.string(),
+  removed_models: z.number(),
+  kept_shared_models: z.number(),
+  freed_bytes: z.number(),
+  leases_released: z.number(),
+  install_dirs_removed: z.number(),
+});
+export type UninstallSummary = z.infer<typeof uninstallSummarySchema>;
