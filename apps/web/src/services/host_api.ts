@@ -12,6 +12,9 @@ export interface ModelMetadata {
   hidden_size: number | null;
   extraction_status: ExtractionStatus;
   extracted_at: number;
+  job_id?: string;
+  on_disk_path?: string;
+  family_id?: string;
 }
 
 export interface CpuCoreFacts {
@@ -32,6 +35,9 @@ const modelMetadataSchema: z.ZodType<ModelMetadata> = z.object({
   hidden_size: z.number().int().nullable(),
   extraction_status: extractionStatusSchema,
   extracted_at: z.number(),
+  job_id: z.string().optional(),
+  on_disk_path: z.string().optional(),
+  family_id: z.string().optional(),
 });
 
 const cpuCoreFactsSchema: z.ZodType<CpuCoreFacts> = z.object({
