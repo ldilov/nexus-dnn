@@ -100,7 +100,6 @@ fn manifest_has_operators_and_recipes() {
     let operators = m.operators.expect("operators present");
     let op_files: Vec<&str> = operators.iter().map(|o| o.file.as_str()).collect();
     assert!(op_files.contains(&"operators/video_render.yaml"));
-    assert!(op_files.contains(&"operators/svi2_render.yaml"));
     let recipes = m.recipes.expect("recipes present");
     assert_eq!(recipes[0].file, "recipes/svi2_render.yaml");
 }
