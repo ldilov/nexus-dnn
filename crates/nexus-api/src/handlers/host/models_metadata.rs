@@ -56,6 +56,34 @@ pub async fn get_installed_model_metadata(
     if install_id.is_empty() {
         return not_found(&install_id);
     }
+
+    // Disk is the source of truth (AC-1.5): reconcile the row against disk
+    // through the shared `InstallMap::reconcile_row_present` path so a family
+    // whose files were deleted stops reporting as installed. Only runs when the
+    // install-map + orchestrator (sink_root) are wired; otherwise fall through
+    // to the legacy read (tests that don't plumb the model store in).
+    if let (Some(install_map), Some(orchestrator)) =
+        (state.install_map.as_ref(), state.download_orchestrator.as_ref())
+    {
+        let aid = nexus_models_store::ids::ArtifactId::from(install_id.clone());
+        match install_map.find_by_artifact(&aid).await {
+            Ok(Some(row)) => {
+                match install_map
+                    .reconcile_row_present(&row, orchestrator.sink_root())
+                    .await
+                {
+                    Ok(false) => return not_found(&install_id),
+                    Ok(true) => {}
+                    Err(err) => {
+                        return reconcile_error(&install_id, &err);
+                    }
+                }
+            }
+            Ok(None) => return not_found(&install_id),
+            Err(err) => return reconcile_error(&install_id, &err),
+        }
+    }
+
     let pool = state.db.pool();
     let query = "SELECT format, layer_count, max_context, architecture, \
                  hidden_size, extraction_status, extracted_at \
@@ -146,6 +174,21 @@ fn not_found(install_id: &str) -> Response {
         message: format!("no installed artifact with install_id = {install_id}"),
     };
     (StatusCode::NOT_FOUND, Json(body)).into_response()
+}
+
+fn reconcile_error(install_id: &str, err: &dyn std::fmt::Display) -> Response {
+    tracing::error!(
+        route = "/api/host/models/{install_id}/metadata",
+        install_id,
+        error.code = "reconcile_error",
+        error.detail = %err,
+        "handler error",
+    );
+    let body = ErrorBody {
+        code: "internal_error",
+        message: "failed to reconcile installed artifact".to_string(),
+    };
+    (StatusCode::INTERNAL_SERVER_ERROR, Json(body)).into_response()
 }
 
 fn internal_error(install_id: &str, err: sqlx::Error) -> Response {

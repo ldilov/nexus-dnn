@@ -142,9 +142,9 @@ use crate::handlers;
 use crate::handlers::{
     artifacts, backend_events_ws, backend_runtimes, backends, deployments, desktop,
     draft_suggestions, extension_dependencies, extension_settings, extension_ui, extensions,
-    extensions_install,
-    health, host, huggingface, metrics, modules, recipes, runs, storage_contributions, system,
-    text_completion, tools, ui_components, ui_contributions, ui_layouts, workflows,
+    extensions_install, health, host, huggingface, metrics, modules, recipes, runs,
+    storage_contributions, system, text_completion, tools, ui_components, ui_contributions,
+    ui_layouts, workflows,
 };
 use crate::ws;
 
@@ -479,6 +479,12 @@ pub fn build(state: AppState) -> Router {
             get(handlers::model_store::settings::get_hf_token_status)
                 .put(handlers::model_store::settings::set_hf_token)
                 .delete(handlers::model_store::settings::clear_hf_token),
+        )
+        // Spec 054 G2 — host-owned, generic model-store revalidate sweep:
+        // prunes install-map rows whose on-disk files vanished (self-heal).
+        .route(
+            "/host/models/revalidate",
+            post(host::models_revalidate::revalidate_models),
         );
 
     let cors = CorsLayer::new()
