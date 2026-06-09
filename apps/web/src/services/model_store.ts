@@ -439,3 +439,24 @@ export function isTerminalState(state: DownloadState | undefined): boolean {
     state === "incompatible"
   );
 }
+
+export interface RevalidateReport {
+  checked: number;
+  pruned: number;
+}
+
+/**
+ * Sweep every install-map row and prune those whose on-disk file vanished
+ * (spec 054 G2). Host-owned, generic — keyed by no extension id. The host
+ * returns a bare `{ checked, pruned }` object (not an envelope), so this
+ * read uses `expect: "raw"`.
+ */
+export function revalidateHostModels(
+  signal?: AbortSignal,
+): Promise<RevalidateReport> {
+  return apiFetch("/host/models/revalidate", {
+    method: "POST",
+    expect: "raw",
+    signal,
+  });
+}

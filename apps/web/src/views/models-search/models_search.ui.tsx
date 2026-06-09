@@ -10,8 +10,13 @@ import type {
   SearchPage,
 } from "../../services/model_store";
 import { FilterBar } from "./components/FilterBar";
-import { ModelCard, type DownloadKind } from "./components/ModelCard";
+import {
+  ModelCard,
+  type DownloadKind,
+  type ModelOnDiskIdentity,
+} from "./components/ModelCard";
 import { Paginator } from "./components/Paginator";
+import { RevalidateButton } from "./components/RevalidateButton";
 import {
   EmptyState,
   ErrorState,
@@ -40,6 +45,7 @@ export interface ModelsSearchUIProps {
   jobStateByArtifact: Record<string, DownloadState | undefined>;
   jobIdByArtifact: Record<string, string | undefined>;
   jobByArtifact: Record<string, DownloadJob | undefined>;
+  identityByFamily: Record<string, ModelOnDiskIdentity | undefined>;
   onQueryChange: (q: string) => void;
   onRepoChange: (repo: string) => void;
   onToggleFormat: (fmt: Format) => void;
@@ -59,6 +65,7 @@ export interface ModelsSearchUIProps {
   onResume: (jobId: string) => void;
   onAuthRequired: (family: ModelFamily) => void;
   onRetry: () => void;
+  onRevalidated: () => void;
 }
 
 function totalLabel(total: number | null): string {
@@ -86,6 +93,7 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
     jobStateByArtifact,
     jobIdByArtifact,
     jobByArtifact,
+    identityByFamily,
     onQueryChange,
     onRepoChange,
     onToggleFormat,
@@ -105,6 +113,7 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
     onResume,
     onAuthRequired,
     onRetry,
+    onRevalidated,
   } = props;
 
   const gridCls =
@@ -115,6 +124,7 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
       <PageHero
         eyebrow="Operator surface · Model registry"
         title="Model Foundry"
+        actions={<RevalidateButton onRevalidated={onRevalidated} />}
         meta={
           <>
             <span>Discover and quantize state-of-the-art architectures</span>
@@ -213,6 +223,7 @@ export function ModelsSearchUI(props: ModelsSearchUIProps) {
                 jobStateByArtifact={jobStateByArtifact}
                 jobIdByArtifact={jobIdByArtifact}
                 jobByArtifact={jobByArtifact}
+                identity={identityByFamily[family.family_id]}
                 onDownload={onDownload}
                 onPause={onPause}
                 onResume={onResume}

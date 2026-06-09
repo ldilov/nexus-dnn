@@ -29,7 +29,10 @@ import {
 } from "../../services/model_store";
 import { dispatchModelsChanged } from "../../services/model_events";
 import { ModelsSearchUI } from "./models_search.ui";
-import type { DownloadKind } from "./components/ModelCard";
+import type {
+  DownloadKind,
+  ModelOnDiskIdentity,
+} from "./components/ModelCard";
 
 export interface ModelsSearchLoaderData {
   params: ParsedSearchParams;
@@ -265,6 +268,23 @@ export function ModelsSearchView() {
     [jobByFamily],
   );
 
+  // On-disk identity (spec 054 G7.3): each download job carries the GUID
+  // `job_id` that owns the model's on-disk dir plus its `family_id`. Surface
+  // it for downloaded families so the operator can map an opaque dir to a
+  // model. Backfilled with the host-resolved on-disk path / family once the
+  // host model metadata is wired in.
+  const identityByFamily = useMemo<
+    Record<string, ModelOnDiskIdentity | undefined>
+  >(() => {
+    const out: Record<string, ModelOnDiskIdentity | undefined> = {};
+    for (const [familyId, j] of Object.entries(jobByFamily)) {
+      if (j && j.state === "downloaded") {
+        out[familyId] = { familyId: j.family_id, jobId: j.job_id };
+      }
+    }
+    return out;
+  }, [jobByFamily]);
+
   // Artifact-keyed lookups for the multi-quantization `ArtifactList`
   // rendering path. Each `DownloadJob.targets[]` carries `artifact_id`
   // entries representing the individual files being fetched. Map each
@@ -466,6 +486,10 @@ export function ModelsSearchView() {
       onResume,
       onAuthRequired,
       onRetry: () => navigate(0),
+      onRevalidated: () => {
+        dispatchModelsChanged();
+        navigate(0);
+      },
     }),
     [
       loaderData.params,
@@ -498,6 +522,7 @@ export function ModelsSearchView() {
       jobStateByArtifact={jobStateByArtifact}
       jobIdByArtifact={jobIdByArtifact}
       jobByArtifact={jobByArtifact}
+      identityByFamily={identityByFamily}
       {...handlers}
     />
   );
