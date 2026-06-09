@@ -50,6 +50,7 @@ impl ProgressSink for EventBusProgressSink {
                 current_bytes,
                 total_bytes,
                 message,
+                pct,
             } => NexusEvent::ExtensionInstallStepProgress {
                 extension_id,
                 install_run_id: install_run_id.to_string(),
@@ -58,6 +59,7 @@ impl ProgressSink for EventBusProgressSink {
                 current_bytes,
                 total_bytes,
                 message,
+                pct,
             },
             ProgressEvent::StepCompleted {
                 extension_id,

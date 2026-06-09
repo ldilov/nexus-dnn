@@ -142,6 +142,10 @@ pub enum NexusEvent {
         current_bytes: u64,
         total_bytes: u64,
         message: String,
+        /// Spec 053 — derived percentage (`0..=100`), `None` when no total is
+        /// known. Additive; consumers that ignore it keep working.
+        #[serde(default)]
+        pct: Option<f32>,
     },
     /// Spec 035 — install step completed successfully.
     ExtensionInstallStepCompleted {

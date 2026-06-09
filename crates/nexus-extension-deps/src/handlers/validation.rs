@@ -23,7 +23,7 @@ use serde_json::Value;
 use crate::context::StepContext;
 use crate::error::DepError;
 use crate::handler::{ProbeResult, StepHandler};
-use crate::types::StepArtifact;
+use crate::types::{ProgressEvent, StepArtifact, StepProgress};
 
 #[derive(Debug, Deserialize)]
 struct ValidationSpec {
@@ -124,6 +124,16 @@ impl StepHandler for ValidationHandler {
         // correctly report NotSatisfied on the next `GET /dependencies`.
         let _ = tokio::fs::remove_file(&marker).await;
 
+        // First-progress promptly so the validation row shows `running` instead
+        // of a blank cell while the worker handshake is in flight (AC-2.5/2.6).
+        ctx.progress_sink.emit(ProgressEvent::step_progress(
+            ctx.extension_id,
+            ctx.install_run_id,
+            // step_id is unknown to the handler — runner re-tags it.
+            String::new(),
+            StepProgress::phase("running").with_message("validating worker handshake"),
+        ));
+
         match ctx
             .worker_handshake
             .run_handshake(
@@ -153,6 +163,12 @@ impl StepHandler for ValidationHandler {
                             marker.display()
                         ))
                     })?;
+                ctx.progress_sink.emit(ProgressEvent::step_progress(
+                    ctx.extension_id,
+                    ctx.install_run_id,
+                    String::new(),
+                    StepProgress::phase("done").with_message("worker handshake ok"),
+                ));
                 Ok(StepArtifact {
                     path: Some(marker),
                     bytes_placed: 0,
@@ -174,4 +190,121 @@ fn marker_payload(timeout_seconds: u64) -> String {
         chrono::Utc::now().to_rfc3339(),
         timeout_seconds
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct CapturingSink {
+        events: Mutex<Vec<ProgressEvent>>,
+    }
+    impl crate::ProgressSink for CapturingSink {
+        fn emit(&self, e: ProgressEvent) {
+            self.events.lock().expect("lock").push(e);
+        }
+    }
+
+    struct OkHandshake;
+    #[async_trait]
+    impl crate::WorkerHandshake for OkHandshake {
+        async fn run_handshake(
+            &self,
+            _ext: &str,
+            _dir: &Path,
+            _data: &Path,
+            _ups: &HashMap<String, StepArtifact>,
+            _t: Duration,
+            _c: tokio_util::sync::CancellationToken,
+        ) -> Result<(), crate::HandshakeError> {
+            Ok(())
+        }
+    }
+
+    struct NoopModelStore;
+    #[async_trait]
+    impl crate::ModelStoreClient for NoopModelStore {
+        async fn is_family_installed(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+        ) -> Result<Option<PathBuf>, DepError> {
+            Ok(None)
+        }
+        async fn start_download(&self, _f: &str, _a: Option<&str>) -> Result<String, DepError> {
+            unreachable!()
+        }
+        async fn poll_job(&self, _id: &str) -> Result<crate::ModelDownloadProgress, DepError> {
+            unreachable!()
+        }
+    }
+
+    struct NoopRuntime;
+    #[async_trait]
+    impl crate::RuntimeBootstrapper for NoopRuntime {
+        async fn probe(
+            &self,
+            _f: &str,
+            _v: Option<&str>,
+            _a: &[String],
+            _t: &Path,
+        ) -> Result<Option<crate::RuntimeBootstrapResult>, DepError> {
+            Ok(None)
+        }
+        async fn bootstrap(
+            &self,
+            _f: &str,
+            _v: Option<&str>,
+            _a: &[String],
+            _t: &Path,
+            _c: tokio_util::sync::CancellationToken,
+        ) -> Result<crate::RuntimeBootstrapResult, DepError> {
+            unreachable!()
+        }
+    }
+
+    /// AC-2.5 + AC-2.6: validation emits `running` before the handshake and a
+    /// terminal `done` after a successful handshake.
+    #[tokio::test]
+    async fn run_emits_running_then_done_on_success() {
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempfile::tempdir().expect("tmp");
+        let upstream = HashMap::new();
+        let ctx = StepContext {
+            extension_id: "example",
+            extension_dir: dir.path(),
+            extension_data_dir: dir.path(),
+            host_data_dir: dir.path(),
+            model_store: Arc::new(NoopModelStore),
+            runtime_bootstrapper: Arc::new(NoopRuntime),
+            worker_handshake: Arc::new(OkHandshake),
+            fetch_artifact: Arc::new(|_req: crate::fetch::FetchRequest| {
+                Box::pin(async { Err(DepError::Backend("stub".into())) })
+            }),
+            progress_sink: sink.clone(),
+            cancellation_token: tokio_util::sync::CancellationToken::new(),
+            install_run_id: uuid::Uuid::nil(),
+            upstream_artifacts: &upstream,
+        };
+        let spec = serde_json::json!({ "kind": "worker_handshake", "timeout_seconds": 5 });
+
+        let handler = ValidationHandler::new();
+        handler.run(&ctx, &spec).await.expect("run ok");
+
+        let phases: Vec<String> = sink
+            .events
+            .lock()
+            .expect("lock")
+            .iter()
+            .filter_map(|e| match e {
+                ProgressEvent::StepProgress { phase, .. } => Some(phase.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(phases.first().map(String::as_str), Some("running"));
+        assert_eq!(phases.last().map(String::as_str), Some("done"));
+    }
 }

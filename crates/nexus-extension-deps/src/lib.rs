@@ -23,5 +23,5 @@ pub use plan::{DependenciesBlock, InstallPlan, Step, parse_dependencies_block};
 pub use runner::{InstallReport, InstallRunner, RunnerContext};
 pub use types::{
     ArchiveFormat, ExtensionInstallState, InstallOutcome, PlatformTuple, ProgressEvent,
-    ProgressSink, StepArtifact, StepError, StepEstimate, StepStatus,
+    ProgressSink, StepArtifact, StepError, StepEstimate, StepProgress, StepStatus, derive_pct,
 };
