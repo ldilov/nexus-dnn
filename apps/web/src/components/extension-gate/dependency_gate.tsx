@@ -13,6 +13,7 @@ import useSWR from "swr";
 import { fetchDependencies } from "../../services/extension_dependencies_client";
 import { useInstallProgress } from "../../views/extension-settings/use_install_progress";
 import { DependenciesTab } from "../../views/extension-settings/tabs/dependencies.tab";
+import { dependenciesSwrKey } from "./use_dependency_readiness";
 import * as s from "./dependency_gate.css";
 
 export interface DependencyGateProps {
@@ -41,7 +42,7 @@ function persistDismissed(extensionId: string): void {
 }
 
 export function DependencyGate({ extensionId, children }: DependencyGateProps) {
-  const swrKey = `/extensions/${extensionId}/dependencies`;
+  const swrKey = dependenciesSwrKey(extensionId);
   const { data, error, isLoading } = useSWR(swrKey, () =>
     fetchDependencies(extensionId),
   );
