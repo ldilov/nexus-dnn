@@ -33,6 +33,7 @@ def test_manifest_declares_model_artifact_steps_for_every_weight():
         "huggingface:Kijai/WanVideo_comfy",
         "huggingface:Wan-AI/Wan2.1-T2V-1.3B",
         "huggingface:QuantStack/Qwen-Image-Edit-2509-GGUF",
+        "huggingface:Comfy-Org/Qwen-Image_ComfyUI",
         "huggingface:unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
         "huggingface:AlexWortega/RIFE",
     }
@@ -64,8 +65,7 @@ def test_manifest_declares_ui_operators_recipes_storage():
     assert ce["entry"] == "register"
     assert any(c["file"] == "ui/settings.yaml" for c in m["ui"]["contributions"])
     operator_files = {o["file"] for o in m["operators"]}
-    assert "operators/video_render.yaml" in operator_files
-    assert "operators/svi2_render.yaml" in operator_files
+    assert operator_files == {"operators/video_render.yaml"}
     assert m["recipes"] == [{"file": "recipes/svi2_render.yaml"}]
     assert m["storage"]["namespace"]["alias"] == "svi2_pro"
     assert m["storage"]["namespace"]["prefix_mode"] == "host_derived"
