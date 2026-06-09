@@ -63,6 +63,28 @@ export const STEP_TYPE_PRESENTATION: Record<string, StepTypePresentation> = {
   },
 };
 
+const PHASE_LABELS: Record<string, string> = {
+  probing: "Probing",
+  resolving: "Resolving",
+  downloading: "Downloading",
+  extracting: "Extracting",
+  installing: "Installing",
+  verifying: "Verifying",
+  running: "Running",
+  done: "Done",
+  packages: "Installing packages",
+};
+
+/**
+ * Human label for a runner phase string. Falls back to a capitalized form of
+ * the raw phase so unknown phases still read cleanly.
+ */
+function formatPhase(phase: string): string {
+  const key = phase.trim().toLowerCase();
+  if (key.length === 0) return "Working";
+  return PHASE_LABELS[key] ?? key.charAt(0).toUpperCase() + key.slice(1);
+}
+
 function formatSpeed(bytesPerSecond: number): string {
   if (bytesPerSecond <= 0) return "—";
   return `${shortenSize(bytesPerSecond)}/s`;
@@ -90,4 +112,4 @@ export function presentation(step: DependencyStep): StepTypePresentation {
   );
 }
 
-export { shortenSize, formatSpeed, formatDuration };
+export { shortenSize, formatSpeed, formatDuration, formatPhase };
