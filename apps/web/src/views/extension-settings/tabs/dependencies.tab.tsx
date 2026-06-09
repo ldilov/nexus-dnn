@@ -13,10 +13,16 @@ import {
   fetchDependencies,
   retryStep,
   startInstall,
+  uninstallExtension,
 } from "../../../services/extension_dependencies_client";
-import { formatSpeed, shortenSize } from "../step_type_presentation";
+import {
+  estimateUninstallImpact,
+  formatSpeed,
+  shortenSize,
+} from "../step_type_presentation";
 import { useInstallProgress, type InstallCompletedDetail } from "../use_install_progress";
 import { StepRow } from "../components/step_row";
+import { ConfirmDialog } from "../../../components/base/confirm_dialog";
 import * as s from "./dependencies.tab.css";
 
 export interface DependenciesTabProps {
@@ -56,6 +62,31 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
     onCompleted: handleCompleted,
   });
   const [busy, setBusy] = useState(false);
+  const [uninstallOpen, setUninstallOpen] = useState(false);
+  const [uninstalling, setUninstalling] = useState(false);
+
+  const handleUninstall = useCallback(async () => {
+    setUninstalling(true);
+    try {
+      const summary = await uninstallExtension(extensionId);
+      const freed = summary.freed_bytes > 0 ? ` · ${shortenSize(summary.freed_bytes)} freed` : "";
+      const kept =
+        summary.kept_shared_models > 0
+          ? ` · ${summary.kept_shared_models} shared kept`
+          : "";
+      toast.success("Extension uninstalled", {
+        description: `${summary.removed_models} model${summary.removed_models === 1 ? "" : "s"} removed${freed}${kept}`,
+      });
+      setUninstallOpen(false);
+      void mutate();
+    } catch (err: unknown) {
+      toast.error("Uninstall failed", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setUninstalling(false);
+    }
+  }, [extensionId, mutate]);
 
   const handleInstallAll = useCallback(async () => {
     setBusy(true);
@@ -164,6 +195,16 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
         : "Some steps need attention";
   const stepCounts = `${data.steps.filter((step) => step.satisfied).length} of ${data.steps.length} satisfied`;
 
+  const impact = estimateUninstallImpact(data.steps);
+  const anySatisfied = data.steps.some((step) => step.satisfied);
+  const uninstallImpactLines = [
+    "The extension runtime and virtual environment (venv)",
+    impact.modelCount > 0
+      ? `${impact.modelCount} model${impact.modelCount === 1 ? "" : "s"} used only by this extension${impact.modelBytes > 0 ? ` (≈ ${shortenSize(impact.modelBytes)})` : ""}`
+      : "No exclusive model weights to remove",
+    "Models shared with another extension are kept",
+  ];
+
   return (
     <div className={s.root}>
       <header
@@ -185,6 +226,17 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
             </button>
           ) : (
             <>
+              {anySatisfied && (
+                <button
+                  type="button"
+                  className={s.uninstallButton}
+                  onClick={() => setUninstallOpen(true)}
+                  disabled={busy}
+                  title="Remove this extension's runtime, venv, and exclusive models"
+                >
+                  Uninstall
+                </button>
+              )}
               <button
                 type="button"
                 className={s.reinstallButton}
@@ -206,6 +258,19 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
           )}
         </div>
       </header>
+
+      <ConfirmDialog
+        open={uninstallOpen}
+        eyebrow="Uninstall extension"
+        title={`Uninstall ${extensionId}?`}
+        description="This reverses the install. It releases any running leases, then removes the extension's files and the models only it uses."
+        impactLines={uninstallImpactLines}
+        confirmLabel="Uninstall"
+        destructive
+        busy={uninstalling}
+        onConfirm={handleUninstall}
+        onCancel={() => setUninstallOpen(false)}
+      />
 
       <div className={s.stepList}>
         {data.steps.map((step) => {

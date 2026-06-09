@@ -6,6 +6,7 @@
  *   POST /api/v1/extensions/:id/install
  *   POST /api/v1/extensions/:id/install/steps/:step_id/retry
  *   POST /api/v1/extensions/:id/install/cancel
+ *   POST /api/v1/extensions/:id/uninstall
  *
  * Centralises fetch I/O per Constitution Principle XII.4 (SR-005). Validates the
  * response with the matching zod schema so a contract drift surfaces as a client
@@ -15,8 +16,10 @@ import { apiFetch } from "./api_client";
 import {
   dependenciesResponseSchema,
   installStartedResponseSchema,
+  uninstallSummarySchema,
   type DependenciesResponse,
   type InstallStartedResponse,
+  type UninstallSummary,
 } from "../types/extension_dependencies";
 
 export async function fetchDependencies(
@@ -56,4 +59,14 @@ export async function cancelInstall(extensionId: string): Promise<void> {
     `/extensions/${encodeURIComponent(extensionId)}/install/cancel`,
     { method: "POST" },
   );
+}
+
+export async function uninstallExtension(
+  extensionId: string,
+): Promise<UninstallSummary> {
+  const raw = await apiFetch<unknown>(
+    `/extensions/${encodeURIComponent(extensionId)}/uninstall`,
+    { method: "POST" },
+  );
+  return uninstallSummarySchema.parse(raw);
 }

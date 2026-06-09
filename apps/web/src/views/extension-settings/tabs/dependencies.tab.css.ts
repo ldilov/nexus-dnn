@@ -128,6 +128,41 @@ export const reinstallButton = style({
   },
 });
 
+/**
+ * "Uninstall" CTA. Ghost/outlined like reinstall but danger-tinted on hover so
+ * the reversal action reads as destructive without dominating the banner.
+ */
+export const uninstallButton = style({
+  fontFamily: vars.font.ui,
+  fontSize: vars.font.size.body,
+  fontWeight: vars.font.weight.semibold,
+  color: vars.color.error.text,
+  background: "transparent",
+  border: `1px solid ${vars.color.bg.bright}`,
+  cursor: "pointer",
+  // audit-allow: px — below minimum token granularity (sub-10px)
+  padding: `9px ${vars.space.insetLg}`,
+  borderRadius: vars.radius.control,
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  selectors: {
+    "&:hover:not(:disabled)": {
+      background: vars.color.bg.elevated,
+      borderColor: vars.color.error.base,
+    },
+    "&:disabled": {
+      color: vars.color.text.muted,
+      borderColor: vars.color.bg.elevated,
+      cursor: "not-allowed",
+    },
+    "&:focus-visible": {
+      // audit-allow: px — below minimum token granularity (sub-10px)
+      outline: `2px solid ${vars.color.error.base}`,
+      // audit-allow: px — below minimum token granularity (sub-10px)
+      outlineOffset: "2px",
+    },
+  },
+});
+
 export const stepList = style({
   display: "flex",
   flexDirection: "column",
