@@ -13,10 +13,9 @@ use crate::types::{DownloadState, Format, VariantType};
 /// outside this list still produce a variant (as `VariantType::Other`),
 /// preserving forward-compat with future llama.cpp quant kinds.
 const KNOWN_QUANTS: &[&str] = &[
-    "F32", "F16", "BF16", "Q2_K", "Q3_K_S", "Q3_K_M", "Q3_K_L", "Q4_0", "Q4_1",
-    "Q4_K_S", "Q4_K_M", "Q5_0", "Q5_1", "Q5_K_S", "Q5_K_M", "Q6_K", "Q8_0",
-    "IQ1_S", "IQ1_M", "IQ2_XXS", "IQ2_XS", "IQ2_S", "IQ2_M", "IQ3_XXS",
-    "IQ3_XS", "IQ3_S", "IQ3_M", "IQ4_XS", "IQ4_NL",
+    "F32", "F16", "BF16", "Q2_K", "Q3_K_S", "Q3_K_M", "Q3_K_L", "Q4_0", "Q4_1", "Q4_K_S", "Q4_K_M",
+    "Q5_0", "Q5_1", "Q5_K_S", "Q5_K_M", "Q6_K", "Q8_0", "IQ1_S", "IQ1_M", "IQ2_XXS", "IQ2_XS",
+    "IQ2_S", "IQ2_M", "IQ3_XXS", "IQ3_XS", "IQ3_S", "IQ3_M", "IQ4_XS", "IQ4_NL",
 ];
 
 /// Fallback priority for the "recommended" default variant per research
@@ -44,7 +43,9 @@ fn extract_quant_token(filename: &str) -> Option<String> {
     let cleaned = strip_shard_suffix(stem);
     for known in KNOWN_QUANTS {
         let needle = format!(".{}", known.to_ascii_lowercase());
-        if cleaned.ends_with(&needle) || cleaned.contains(&format!(".{}-", known.to_ascii_lowercase())) {
+        if cleaned.ends_with(&needle)
+            || cleaned.contains(&format!(".{}-", known.to_ascii_lowercase()))
+        {
             return Some((*known).to_string());
         }
         let underscore_needle = format!("-{}", known.to_ascii_lowercase());
@@ -134,7 +135,11 @@ mod tests {
         let labels: Vec<&str> = variants.iter().map(|v| v.label.as_str()).collect();
         assert_eq!(labels, vec!["Q4_K_M", "Q5_K_M", "Q8_0"]);
         assert!(
-            variants.iter().find(|v| v.label == "Q4_K_M").unwrap().is_default,
+            variants
+                .iter()
+                .find(|v| v.label == "Q4_K_M")
+                .unwrap()
+                .is_default,
             "Q4_K_M should be the default per R4"
         );
     }
@@ -168,7 +173,10 @@ mod tests {
             gguf_artifact(&family, "x-IQ4_XS.gguf"),
         ];
         let v = detect_variants(&family, &exotic);
-        assert!(v[0].is_default, "first variant is default when no canonical match");
+        assert!(
+            v[0].is_default,
+            "first variant is default when no canonical match"
+        );
         assert!(!v[1].is_default);
     }
 
@@ -177,10 +185,7 @@ mod tests {
         let family = FamilyId::from("hf:test/mix");
         let mut safetensors = gguf_artifact(&family, "model.safetensors");
         safetensors.format = Format::Safetensors;
-        let arts = [
-            gguf_artifact(&family, "model-Q4_K_M.gguf"),
-            safetensors,
-        ];
+        let arts = [gguf_artifact(&family, "model-Q4_K_M.gguf"), safetensors];
         let variants = detect_variants(&family, &arts);
         assert_eq!(variants.len(), 1);
         assert_eq!(variants[0].label, "Q4_K_M");

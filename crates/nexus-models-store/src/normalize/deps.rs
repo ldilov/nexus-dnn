@@ -74,10 +74,7 @@ mod tests {
     #[test]
     fn classifies_vae_and_tokenizer() {
         assert_eq!(classify_role("vae.safetensors"), DependencyRole::Vae);
-        assert_eq!(
-            classify_role("tokenizer.json"),
-            DependencyRole::Tokenizer
-        );
+        assert_eq!(classify_role("tokenizer.json"), DependencyRole::Tokenizer);
         assert_eq!(classify_role("vocab.json"), DependencyRole::Tokenizer);
     }
 
@@ -94,9 +91,6 @@ mod tests {
             required_for(DependencyRole::Tokenizer),
             Requirement::Required
         );
-        assert_eq!(
-            required_for(DependencyRole::Lora),
-            Requirement::Optional
-        );
+        assert_eq!(required_for(DependencyRole::Lora), Requirement::Optional);
     }
 }
