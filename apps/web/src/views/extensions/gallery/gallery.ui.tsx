@@ -5,6 +5,7 @@ import { InstallExtensionDrawer } from "../../../components/install/install_exte
 import { PageHero } from "../../../components/base/page_hero";
 import { Section } from "../../../components/base/section";
 import { StatusChip, type StatusKind } from "../../../components/base/status_chip";
+import { DependencyStatusChip } from "../../../components/extension-gate";
 import { EmptyState } from "../../../components/layout/empty_state";
 import * as s from "./gallery.css";
 
@@ -236,6 +237,7 @@ function ExtensionCard({
               label={statusLabelFor(extension.status)}
               pulse={extension.status === "active"}
             />
+            <DependencyStatusChip extensionId={extension.id} />
             {needsSetup && (
               <span className={s.setupBadge} aria-label="Dependency setup required">
                 <span className={s.setupBadgePulse} aria-hidden="true" />
