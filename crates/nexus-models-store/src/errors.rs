@@ -84,9 +84,7 @@ impl ModelStoreError {
         match self {
             Self::UpstreamUnavailable(_) | Self::SourceUnreachable { .. } => 502,
             Self::AuthRequired { .. } => 401,
-            Self::FamilyNotFound(_)
-            | Self::TargetNotFound
-            | Self::InstallNotFound(_) => 404,
+            Self::FamilyNotFound(_) | Self::TargetNotFound | Self::InstallNotFound(_) => 404,
             Self::Incompatible(_)
             | Self::ChecksumMismatch { .. }
             | Self::InsufficientResources { .. }
@@ -128,10 +126,7 @@ mod tests {
             ModelStoreError::Incompatible("unsupported".into()).code(),
             "incompatible"
         );
-        assert_eq!(
-            ModelStoreError::Internal("bug".into()).code(),
-            "internal"
-        );
+        assert_eq!(ModelStoreError::Internal("bug".into()).code(), "internal");
     }
 
     #[test]
@@ -149,10 +144,7 @@ mod tests {
             404
         );
         assert_eq!(ModelStoreError::TargetNotFound.status_u16(), 404);
-        assert_eq!(
-            ModelStoreError::Incompatible("x".into()).status_u16(),
-            422
-        );
+        assert_eq!(ModelStoreError::Incompatible("x".into()).status_u16(), 422);
         assert_eq!(ModelStoreError::Internal("x".into()).status_u16(), 500);
     }
 }

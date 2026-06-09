@@ -708,7 +708,11 @@ fn registry() -> CapabilityRegistry {
 #[test]
 fn fifty_repo_sweep_never_panics_and_classifies_correctly() {
     let fixtures = all_fixtures();
-    assert_eq!(fixtures.len(), 50, "expected exactly 50 fixtures for SC-002");
+    assert_eq!(
+        fixtures.len(),
+        50,
+        "expected exactly 50 fixtures for SC-002"
+    );
 
     let reg = registry();
     let mut panics = 0_usize;
@@ -759,8 +763,7 @@ fn sweep_detects_required_dependencies_when_present() {
     let reg = registry();
     for f in &fixtures {
         let family = normalize_family(&mk(f), &reg);
-        let roles: Vec<DependencyRole> =
-            family.dependencies.iter().map(|d| d.role).collect();
+        let roles: Vec<DependencyRole> = family.dependencies.iter().map(|d| d.role).collect();
         for expected in &f.expected_dependencies {
             assert!(
                 roles.contains(expected),
@@ -820,7 +823,11 @@ fn sweep_variant_counts_match_declared() {
             f.repo_id,
             expected_count,
             family.variants.len(),
-            family.variants.iter().map(|v| v.label.as_str()).collect::<Vec<_>>()
+            family
+                .variants
+                .iter()
+                .map(|v| v.label.as_str())
+                .collect::<Vec<_>>()
         );
     }
 }
