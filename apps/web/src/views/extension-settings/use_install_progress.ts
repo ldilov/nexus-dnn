@@ -41,6 +41,7 @@ interface StepFailedEventLike extends InstallEventLike {
 interface StepProgressEventLike extends InstallEventLike {
   step_id?: string;
   phase?: string;
+  message?: string;
   current_bytes?: number;
   total_bytes?: number;
 }
@@ -68,6 +69,8 @@ export interface LiveStepProgress {
   /** Seconds to completion, or null when it cannot be estimated. */
   etaSeconds: number | null;
   phase: string;
+  /** Latest human-readable line from the runner (e.g. a uv install line). */
+  message: string;
 }
 
 export interface InstallProgress {
@@ -87,6 +90,7 @@ interface StepTracker {
   totalBytes: number;
   speedBps: number;
   phase: string;
+  message: string;
 }
 
 function snapshot(
@@ -113,6 +117,7 @@ function snapshot(
       speedBps: t.speedBps,
       etaSeconds,
       phase: t.phase,
+      message: t.message,
     };
   }
   return out;
@@ -172,6 +177,7 @@ export function useInstallProgress(
         totalBytes: total,
         speedBps,
         phase: event.phase ?? "",
+        message: event.message ?? prev?.message ?? "",
       });
     };
 

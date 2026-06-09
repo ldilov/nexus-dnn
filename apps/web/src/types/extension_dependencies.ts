@@ -48,6 +48,8 @@ export const stepSchema = z.object({
   last_error: stepErrorSchema.nullable(),
   progress: stepProgressSchema.nullable(),
   estimated_remaining_bytes: z.number(),
+  files_present: z.number().optional(),
+  files_total: z.number().optional(),
 });
 export type DependencyStep = z.infer<typeof stepSchema>;
 
