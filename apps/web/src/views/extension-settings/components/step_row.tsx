@@ -10,6 +10,7 @@ import { useState } from "react";
 import type { DependencyStep } from "../../../types/extension_dependencies";
 import {
   formatDuration,
+  formatPhase,
   formatSpeed,
   presentation,
   shortenSize,
@@ -72,14 +73,23 @@ export function StepRow({
             ? s.statusDotSkipped
             : s.statusDotPending;
 
-  const liveActive = step.status === "running" && live !== undefined && live.totalBytes > 0;
+  const liveBytesActive = step.status === "running" && live !== undefined && live.totalBytes > 0;
+  const liveReportedPct =
+    step.status === "running" && live !== undefined && live.reportedPct !== null
+      ? live.reportedPct
+      : null;
   const showProgressBar = step.status === "running" || (step.status === "pending" && installActive);
   const dtoPct =
     step.progress && step.progress.total_bytes > 0
       ? Math.min(100, (step.progress.current_bytes / step.progress.total_bytes) * 100)
-      : 0;
-  const progressPct = liveActive && live ? live.pct : dtoPct;
-  const progressIndeterminate = step.status === "running" && !liveActive && !step.progress;
+      : null;
+  const determinatePct = liveBytesActive && live
+    ? live.pct
+    : liveReportedPct !== null
+      ? liveReportedPct
+      : dtoPct;
+  const progressIndeterminate = showProgressBar && determinatePct === null;
+  const progressPct = determinatePct ?? 0;
 
   const filesLabel =
     step.files_total && step.files_total > 0
@@ -91,9 +101,16 @@ export function StepRow({
       : null;
   const downloadMeta = [filesLabel, remainingLabel].filter(Boolean).join(" · ");
 
-  const liveBytes = step.status === "running" && live !== undefined && live.phase !== "packages" && live.totalBytes > 0;
-  const liveMessage =
-    step.status === "running" && live !== undefined && live.message.length > 0 && (live.phase === "packages" || live.totalBytes === 0);
+  const liveBytes = liveBytesActive;
+  const phaseRow =
+    step.status === "running" && !liveBytesActive && live !== undefined
+      ? {
+          label: live.phase.length > 0 ? formatPhase(live.phase) : "",
+          message: live.message,
+        }
+      : null;
+  const showPhaseRow =
+    phaseRow !== null && (phaseRow.label.length > 0 || phaseRow.message.length > 0);
 
   const installOnlyDisabled =
     !upstreamSatisfied || installActive || step.status === "ok" || step.status === "running";
@@ -154,7 +171,14 @@ export function StepRow({
         </div>
 
         {showProgressBar && (
-          <div className={s.progressTrack} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressPct)}>
+          <div
+            className={s.progressTrack}
+            role="progressbar"
+            aria-valuemin={progressIndeterminate ? undefined : 0}
+            aria-valuemax={progressIndeterminate ? undefined : 100}
+            aria-valuenow={progressIndeterminate ? undefined : Math.round(progressPct)}
+            aria-busy={progressIndeterminate || undefined}
+          >
             {progressIndeterminate ? (
               <span className={s.progressIndeterminate} />
             ) : (
@@ -185,9 +209,17 @@ export function StepRow({
           </div>
         )}
 
-        {liveMessage && live && (
+        {showPhaseRow && phaseRow && (
           <div className={s.liveMeta} aria-live="polite">
-            <span className={s.liveMetric}>{live.message}</span>
+            {phaseRow.label.length > 0 && (
+              <span className={s.livePrimary}>{phaseRow.label}</span>
+            )}
+            {phaseRow.label.length > 0 && phaseRow.message.length > 0 && (
+              <span className={s.metaSep}>·</span>
+            )}
+            {phaseRow.message.length > 0 && (
+              <span className={s.liveMetric}>{phaseRow.message}</span>
+            )}
           </div>
         )}
 
