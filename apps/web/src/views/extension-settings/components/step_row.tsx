@@ -81,6 +81,20 @@ export function StepRow({
   const progressPct = liveActive && live ? live.pct : dtoPct;
   const progressIndeterminate = step.status === "running" && !liveActive && !step.progress;
 
+  const filesLabel =
+    step.files_total && step.files_total > 0
+      ? `${step.files_present ?? 0}/${step.files_total} files`
+      : null;
+  const remainingLabel =
+    step.estimated_remaining_bytes > 0
+      ? `${shortenSize(step.estimated_remaining_bytes)} to download`
+      : null;
+  const downloadMeta = [filesLabel, remainingLabel].filter(Boolean).join(" · ");
+
+  const liveBytes = step.status === "running" && live !== undefined && live.phase !== "packages" && live.totalBytes > 0;
+  const liveMessage =
+    step.status === "running" && live !== undefined && live.message.length > 0 && (live.phase === "packages" || live.totalBytes === 0);
+
   const installOnlyDisabled =
     !upstreamSatisfied || installActive || step.status === "ok" || step.status === "running";
   const installOnlyTitle = !upstreamSatisfied
@@ -120,9 +134,9 @@ export function StepRow({
         <span className={s.subtitle}>{pres.subtitle(step)}</span>
 
         <div className={s.metaRow}>
-          {step.estimated_remaining_bytes > 0 && (
+          {downloadMeta && (
             <>
-              <span className={s.meta}>{shortenSize(step.estimated_remaining_bytes)} to download</span>
+              <span className={s.meta}>{downloadMeta}</span>
               {step.requires.length > 0 && <span className={s.metaSep}>·</span>}
             </>
           )}
@@ -149,7 +163,7 @@ export function StepRow({
           </div>
         )}
 
-        {liveActive && live && (
+        {liveBytes && live && (
           <div className={s.liveMeta} aria-live="polite">
             <span className={s.livePrimary}>
               {shortenSize(live.currentBytes)} / {shortenSize(live.totalBytes)}
@@ -168,6 +182,12 @@ export function StepRow({
                 <span className={s.liveMetric}>ETA {formatDuration(live.etaSeconds)}</span>
               </>
             )}
+          </div>
+        )}
+
+        {liveMessage && live && (
+          <div className={s.liveMeta} aria-live="polite">
+            <span className={s.liveMetric}>{live.message}</span>
           </div>
         )}
 
