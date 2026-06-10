@@ -1,0 +1,49 @@
+# Attention backend profiles for the svi2-pro Wan2.2 i2v worker.
+#
+# Switch the active backend per render via the SVI2_ATTENTION env var:
+#   SVI2_ATTENTION=<profile.backend>   (e.g. sage2, sage3_fp4, flash2, sdpa)
+# Hard-fail instead of silent fallback when a backend is unavailable:
+#   SVI2_ATTENTION_STRICT=1
+#
+# Each profile maps to a registry key in worker/.../attention_backend.py.
+# install_extra / install_backend feed scripts/install-attention.{sh,ps1}.
+
+spec_version = "0.1"
+default_profile = "flash2"
+
+[profiles.sdpa-reference]
+backend = "sdpa"
+description = "PyTorch scaled_dot_product_attention. Always available. Quality reference baseline for render-equivalence comparisons."
+min_arch = "0.0"
+dtypes = ["float16", "bfloat16", "float32"]
+install_backend = ""          # nothing to install
+
+[profiles.flash2]
+backend = "flash2"
+description = "FlashAttention 2.8.3 (vendored cu132/torch2.12 wheel). Render-proven default; first in the auto chain."
+min_arch = "8.0"
+dtypes = ["float16", "bfloat16"]
+install_backend = "flash2"    # vendored via pyproject 'flash' extra (already wired)
+
+[profiles.sage2]
+backend = "sage2"
+description = "SageAttention2 INT8-QK / FP8-PV (Wan2GP parity). On Blackwell sm120 uses sageattn_qk_int8_pv_fp8_cuda with qk_quant_gran=per_warp; pv_accum/smooth_v track the installed SageAttention version. ~2-4x faster than SDPA, ~0.1-0.5 dB PSNR drift."
+min_arch = "8.0"
+dtypes = ["float16", "bfloat16"]
+needs_triton = true
+install_backend = "sage2"     # pip sageattention + triton/triton-windows
+
+[profiles.sage3-fp4-blackwell]
+backend = "sage3_fp4"
+description = "SageAttention3 FP4 microscaling (Blackwell sm120 ONLY, bfloat16 ONLY). +2-3 GiB VRAM scratch; only pays off at long sequences (>=10k tokens). Use per_block_mean to stabilize temporal coherence."
+min_arch = "12.0"
+dtypes = ["bfloat16"]
+needs_triton = true
+install_backend = "sage3"     # vendored HF wheel: nhathoangfoto/SageAttention-3-Blackwell-FP4
+
+[profiles.flash3-fp4-blackwell]
+backend = "flash3_fp4"
+description = "EXPERIMENTAL. FlashAttention FP4 Blackwell path. Upstream ships this as FlashAttention-4 (flash-attn-4) on Linux; FA3 (flash_attn_interface) is Hopper-only. Not in the auto chain — explicit opt-in, validate render-equivalence before use."
+min_arch = "9.0"
+dtypes = ["float16", "bfloat16"]
+install_backend = "flash3"    # flash-attn-4 (linux) / source build

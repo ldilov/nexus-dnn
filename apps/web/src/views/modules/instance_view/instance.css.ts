@@ -99,7 +99,6 @@ export const buildChip = style({
   padding: `${vars.space.xs} ${vars.space.md}`,
   fontSize: vars.text.labelS,
   borderRadius: vars.radius.sm,
-  border: `1px solid ${vars.color.secondary}`,
   letterSpacing: vars.tracking.wide,
   textTransform: "uppercase",
 });
@@ -254,7 +253,6 @@ export const card = style({
   overflow: "hidden",
   padding: vars.space["2xl"],
   borderRadius: vars.radius.lg,
-  border: `1px solid ${vars.color.outlineVariant}`,
   background: vars.color.surfaceContainerLow,
   height: "100%",
   display: "flex",
@@ -480,7 +478,6 @@ export const instancesSection = style({
   gridColumn: "span 12",
   padding: vars.space["2xl"],
   borderRadius: vars.radius.lg,
-  border: `1px solid ${vars.color.outlineVariant}`,
   background: vars.color.surfaceContainerLow,
 });
 
@@ -712,40 +709,10 @@ export const footerCard = style({
   padding: vars.space.lg,
   background: vars.color.surfaceContainerLow,
   borderRadius: vars.radius.md,
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  borderLeft: "2px solid transparent",
-  border: `1px solid ${vars.color.outlineVariant}`,
 });
 
-export const footerCardSecondary = style({
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  borderLeft: `2px solid ${vars.color.secondary}`,
-});
-
-export const footerCardPrimary = style({
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  borderLeft: `2px solid ${vars.color.primary}`,
-});
-
-export const footerCardTertiary = style({
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  borderLeft: `2px solid ${vars.color.tertiary}`,
-});
-
-export const footerIconSecondary = style({
-  color: vars.color.secondary,
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  fontSize: "24px !important",
-});
-
-export const footerIconPrimary = style({
-  color: vars.color.primary,
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  fontSize: "24px !important",
-});
-
-export const footerIconTertiary = style({
-  color: vars.color.tertiary,
+export const footerIcon = style({
+  color: vars.color.onSurfaceVariant,
   // audit-allow: px — sub-token spacing value, no density token at this step
   fontSize: "24px !important",
 });

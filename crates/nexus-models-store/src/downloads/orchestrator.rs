@@ -35,6 +35,7 @@ use tokio_util::sync::CancellationToken;
 use crate::downloads::MAX_CONCURRENT_DOWNLOADS;
 use crate::downloads::auth::TokenStore;
 use crate::downloads::install_map::{InstallMap, InstalledArtifactRecord};
+use crate::downloads::legibility::{self, IndexEntry, ManifestSidecar};
 use crate::downloads::store::{
     JobStore, JobStoreError, PersistedJob, PersistedTarget, RequestedKind, TargetState,
 };
@@ -76,7 +77,14 @@ impl DownloadOrchestrator {
         http: reqwest::Client,
         tokens: TokenStore,
     ) -> Self {
-        Self::with_cancel(store, install_map, sink_root, http, tokens, CancellationToken::new())
+        Self::with_cancel(
+            store,
+            install_map,
+            sink_root,
+            http,
+            tokens,
+            CancellationToken::new(),
+        )
     }
 
     #[must_use]
@@ -260,6 +268,10 @@ impl DownloadOrchestrator {
         {
             let mut map = self.inner.pause_signals.lock().await;
             map.remove(&job_id);
+        }
+
+        if outcome.is_ok() {
+            self.write_legibility_sidecar(&job).await;
         }
 
         let (state, err) = match outcome {
@@ -467,6 +479,43 @@ impl DownloadOrchestrator {
 }
 
 impl DownloadOrchestrator {
+    /// Spec 054 G7 — write the per-job `manifest.json` sidecar (AC-7.1) and
+    /// upsert the top-level `index.json` entry (AC-7.2) once every target in
+    /// the job has streamed cleanly. Best-effort: the weights are already on
+    /// disk, so a legibility write failure is logged, never fatal.
+    async fn write_legibility_sidecar(&self, job: &PersistedJob) {
+        let sink_root = &self.inner.sink_root;
+        let job_id = job.job_id.to_string();
+        let files: Vec<String> = job.targets.iter().map(|t| t.filename.clone()).collect();
+        let manifest = ManifestSidecar {
+            family_id: job.family_id.as_str().to_owned(),
+            source_repo: job.source_repo.clone(),
+            accelerator: None,
+            files,
+            created_at: job.created_at.to_rfc3339(),
+        };
+        if let Err(e) = legibility::write_manifest(sink_root, &job_id, &manifest).await {
+            tracing::warn!(
+                target: "model_store",
+                job_id = %job_id,
+                error = %e,
+                "legibility: manifest.json sidecar write failed"
+            );
+        }
+        let entry = IndexEntry {
+            family_id: job.family_id.as_str().to_owned(),
+            repo: job.source_repo.clone(),
+        };
+        if let Err(e) = legibility::upsert_index_entry(sink_root, &job_id, entry).await {
+            tracing::warn!(
+                target: "model_store",
+                job_id = %job_id,
+                error = %e,
+                "legibility: index.json upsert failed"
+            );
+        }
+    }
+
     /// Write the FR-086 reverse-mapping row after a target commits
     /// cleanly. Non-fatal if it fails — the download already succeeded
     /// and the mapping can be rebuilt by a future backfill if needed.
@@ -576,4 +625,106 @@ enum TargetFailure {
 
 fn store_err(e: JobStoreError) -> TargetFailure {
     TargetFailure::Io(format!("store: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::downloads::legibility::{self, MANIFEST_FILENAME};
+    use crate::downloads::store::{PersistedTarget, TargetState};
+    use crate::ids::ArtifactId;
+    use crate::types::DependencyRole;
+    use chrono::Utc;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use std::str::FromStr;
+
+    async fn build_orchestrator(sink_root: PathBuf) -> DownloadOrchestrator {
+        let opts = SqliteConnectOptions::from_str("sqlite::memory:").unwrap();
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(opts)
+            .await
+            .unwrap();
+        sqlx::query(include_str!(
+            "../../../../migrations/013_model_store_download_jobs.sql"
+        ))
+        .execute(&pool)
+        .await
+        .unwrap();
+        let pool = Arc::new(pool);
+        DownloadOrchestrator::new(
+            JobStore::new(pool.clone()),
+            InstallMap::new(pool),
+            sink_root,
+            reqwest::Client::new(),
+            TokenStore::new(None),
+        )
+    }
+
+    fn sample_job(job_id: JobId) -> PersistedJob {
+        PersistedJob {
+            job_id,
+            family_id: crate::ids::FamilyId::from("huggingface:acme/model"),
+            source_provider: "huggingface".into(),
+            source_repo: "acme/model".into(),
+            requested_kind: RequestedKind::Bundle,
+            include_dependencies: false,
+            state: DownloadState::Downloaded,
+            progress_bytes: 7,
+            total_bytes: Some(7),
+            error_reason: None,
+            warnings: vec![],
+            created_at: Utc::now(),
+            started_at: None,
+            finished_at: None,
+            targets: vec![
+                PersistedTarget {
+                    artifact_id: ArtifactId::from("huggingface:acme/model#model.gguf"),
+                    filename: "model.gguf".into(),
+                    role: DependencyRole::Primary,
+                    download_url: "https://example/model.gguf".into(),
+                    expected_bytes: Some(7),
+                    downloaded_bytes: 7,
+                    sha256: None,
+                    state: TargetState::Downloaded,
+                },
+                PersistedTarget {
+                    artifact_id: ArtifactId::from("huggingface:acme/model#config.json"),
+                    filename: "config.json".into(),
+                    role: DependencyRole::Primary,
+                    download_url: "https://example/config.json".into(),
+                    expected_bytes: Some(2),
+                    downloaded_bytes: 2,
+                    sha256: None,
+                    state: TargetState::Downloaded,
+                },
+            ],
+        }
+    }
+
+    /// AC-7.1 / AC-7.2 — on a completed job the orchestrator writes a
+    /// `manifest.json` sidecar carrying the family + files and registers the
+    /// job in the top-level `index.json`.
+    #[tokio::test]
+    async fn completed_job_writes_sidecar_and_index_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path().to_path_buf();
+        let orch = build_orchestrator(sink_root.clone()).await;
+        let job_id = JobId::new();
+        let job = sample_job(job_id);
+
+        orch.write_legibility_sidecar(&job).await;
+
+        let manifest_path = sink_root.join(job_id.to_string()).join(MANIFEST_FILENAME);
+        let bytes = tokio::fs::read(&manifest_path).await.unwrap();
+        let manifest: ManifestSidecar = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(manifest.family_id, "huggingface:acme/model");
+        assert_eq!(manifest.source_repo, "acme/model");
+        assert_eq!(manifest.files, vec!["model.gguf", "config.json"]);
+
+        let index = legibility::read_index(&sink_root).await.unwrap();
+        let entry = index.get(&job_id.to_string()).expect("index entry present");
+        assert_eq!(entry.family_id, "huggingface:acme/model");
+        assert_eq!(entry.repo, "acme/model");
+    }
 }

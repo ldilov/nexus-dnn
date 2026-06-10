@@ -17,9 +17,9 @@ export const heroRow = style({
 });
 
 export const heroTitle = style({
-  fontFamily: vars.font.ui,
-  fontSize: "clamp(1.75rem, 1.5rem + 1.4vw, 2.75rem)",
-  fontWeight: 700,
+  fontFamily: vars.font.headline,
+  fontSize: "clamp(2.125rem, 1.45rem + 1.9vw, 3.625rem)",
+  fontWeight: vars.font.weight.semibold,
   letterSpacing: "-0.02em",
   lineHeight: 1.05,
   color: vars.color.text.primary,

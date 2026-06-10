@@ -18,13 +18,37 @@ runtime:
     cuda_version: null
     env_vars: {}
 
-runtime_dependencies:
-  - family: "llama.cpp"
-    version: ">=b4000"
-    acceleration:
-      - "cpu"
-      - "cuda12"
-      - "cuda13"
+# Spec 053 — first-class generic dependency graph (parity with the other
+# builtins). The host walks this graph for the unified install UX. The
+# legacy `runtime_dependencies` block was REMOVED (AC-6.5): its
+# `family: "llama.cpp"` row was resolved at enable-time by
+# `check_runtime_dependencies` against `host_runtime_installs`, a table
+# the spec-035/053 graph never writes — so keeping it blocked activation
+# with `RUNTIME_DEPENDENCY_UNMET` even when this graph is satisfied. Models
+# are user-selected GGUFs per profile (in-app), so no `model_artifact` step.
+dependencies:
+  steps:
+    - id: python
+      type: runtime
+      spec:
+        family: python
+        version: ">=3.11,<3.13"
+        accelerator_profiles: [cpu, cuda12, cuda13]
+
+    - id: pkgs
+      type: package_set
+      requires: [python]
+      spec:
+        manager: uv
+        manifest_path: "worker/pyproject.toml"
+        target: extension_local
+
+    - id: validate
+      type: validation
+      requires: [python, pkgs]
+      spec:
+        kind: worker_handshake
+        timeout_seconds: 60
 
 backend_runtimes:
   - runtime_id: "nexus.local-llm.completions"

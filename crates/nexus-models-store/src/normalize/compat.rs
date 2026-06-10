@@ -22,10 +22,7 @@ use crate::types::{CompatibilityStatus, DependencyRole, Format, Requirement};
 /// (_,     _,     _      ) => Unknown
 /// ```
 #[must_use]
-pub fn classify_compat(
-    family: &ModelFamily,
-    registry: &CapabilityRegistry,
-) -> CompatibilityStatus {
+pub fn classify_compat(family: &ModelFamily, registry: &CapabilityRegistry) -> CompatibilityStatus {
     let Some(primary) = family
         .artifacts
         .iter()
@@ -68,9 +65,7 @@ mod tests {
     use crate::capabilities::LlamaCppAdapter;
     use crate::ids::{ArtifactId, FamilyId};
     use crate::model::{Artifact, Dependency, ModelRepository, SourceProvider};
-    use crate::types::{
-        DownloadState, Modality, Precision, PrecisionSource,
-    };
+    use crate::types::{DownloadState, Modality, Precision, PrecisionSource};
     use std::sync::Arc;
 
     fn llm_repo() -> ModelRepository {
@@ -125,7 +120,10 @@ mod tests {
     #[test]
     fn gguf_primary_is_compatible() {
         let fam = family_with(vec![primary(Format::Gguf)], vec![]);
-        assert_eq!(classify_compat(&fam, &registry()), CompatibilityStatus::Compatible);
+        assert_eq!(
+            classify_compat(&fam, &registry()),
+            CompatibilityStatus::Compatible
+        );
     }
 
     #[test]

@@ -5,6 +5,7 @@ members = [
     "extensions/builtin/local-llm/rust",
     "extensions/builtin/emotion-tts/rust",
     "extensions/builtin/nexus-video-ltx23/rust",
+    "extensions/builtin/svi2-pro/rust",
     "apps/web/src-tauri",
     "xtask",
 ]

@@ -152,6 +152,76 @@ pub struct ExtensionInstallState {
     pub steps: HashMap<String, StepStatus>,
 }
 
+/// Normalized progress payload carried by [`ProgressEvent::StepProgress`].
+///
+/// Every long-running handler reports progress through this single shape so the
+/// frontend renders all step types consistently. `phase` is a short closed
+/// vocabulary token (e.g. `probing | resolving | downloading | extracting |
+/// installing | verifying | running | done`); `message` is a free-form live
+/// line; byte counts are present only for transfers; `pct` is derived from the
+/// byte counts (or supplied directly when only counts-of-N are known) and is
+/// guaranteed to be `0..=100`, never `NaN`/`Inf`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct StepProgress {
+    pub phase: String,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub bytes_done: Option<u64>,
+    #[serde(default)]
+    pub bytes_total: Option<u64>,
+    #[serde(default)]
+    pub pct: Option<f32>,
+}
+
+impl StepProgress {
+    /// A phase-only update (no bytes, no derived pct) — used by handlers whose
+    /// work isn't byte-quantified (runtime install, validation, handshake).
+    pub fn phase(phase: impl Into<String>) -> Self {
+        Self {
+            phase: phase.into(),
+            ..Self::default()
+        }
+    }
+
+    /// A byte-transfer update — `pct` is derived safely from the counts.
+    pub fn bytes(phase: impl Into<String>, bytes_done: u64, bytes_total: u64) -> Self {
+        let total = (bytes_total > 0).then_some(bytes_total);
+        Self {
+            phase: phase.into(),
+            message: None,
+            bytes_done: Some(bytes_done),
+            bytes_total: total,
+            pct: derive_pct(Some(bytes_done), total),
+        }
+    }
+
+    pub fn with_message(mut self, message: impl Into<String>) -> Self {
+        self.message = Some(message.into());
+        self
+    }
+
+    /// Set `pct` directly from a count-of-N signal (e.g. uv "k/N packages")
+    /// where there are no byte totals. Clamped to `0..=100`.
+    pub fn with_count(mut self, done: u64, total: u64) -> Self {
+        self.pct = derive_pct(Some(done), (total > 0).then_some(total));
+        self
+    }
+}
+
+/// Derive a safe percentage from optional byte counts. Returns `None` when
+/// either count is missing or the total is zero — never divides by zero and
+/// never yields `NaN`/`Inf`. The result is clamped to `0.0..=100.0`.
+pub fn derive_pct(bytes_done: Option<u64>, bytes_total: Option<u64>) -> Option<f32> {
+    match (bytes_done, bytes_total) {
+        (Some(done), Some(total)) if total > 0 => {
+            let pct = (done as f64 / total as f64) * 100.0;
+            Some(pct.clamp(0.0, 100.0) as f32)
+        }
+        _ => None,
+    }
+}
+
 /// Progress events emitted by handlers and the runner. The host event bus topic is
 /// `extension.install`. See `specs/035-extension-dependency-installer/contracts/sse-events.md`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -172,6 +242,10 @@ pub enum ProgressEvent {
         current_bytes: u64,
         total_bytes: u64,
         message: String,
+        /// Derived percentage (`0..=100`), `None` when no total is known.
+        /// Additive — existing consumers that ignore it keep working.
+        #[serde(default)]
+        pct: Option<f32>,
     },
     StepCompleted {
         extension_id: String,
@@ -195,6 +269,31 @@ pub enum ProgressEvent {
     },
 }
 
+impl ProgressEvent {
+    /// Build a [`ProgressEvent::StepProgress`] from the normalized [`StepProgress`]
+    /// payload. The legacy byte fields are filled (0 when absent) for backward
+    /// compatibility with existing consumers, while `pct` is carried through.
+    /// Handlers that don't know their `step_id` pass `String::new()`; the runner
+    /// re-tags it before publishing.
+    pub fn step_progress(
+        extension_id: impl Into<String>,
+        install_run_id: uuid::Uuid,
+        step_id: impl Into<String>,
+        progress: StepProgress,
+    ) -> Self {
+        ProgressEvent::StepProgress {
+            extension_id: extension_id.into(),
+            install_run_id,
+            step_id: step_id.into(),
+            phase: progress.phase,
+            current_bytes: progress.bytes_done.unwrap_or(0),
+            total_bytes: progress.bytes_total.unwrap_or(0),
+            message: progress.message.unwrap_or_default(),
+            pct: progress.pct,
+        }
+    }
+}
+
 /// Terminal outcome of an install run, carried by [`ProgressEvent::InstallCompleted`].
 /// Subscribers that only need to clear an "active" flag can ignore this; subscribers
 /// that want a one-shot success/failure signal without reconciling per-step events
@@ -211,6 +310,17 @@ pub enum InstallOutcome {
     /// cooperatively. The in-flight step is recorded as failed with category
     /// `cancelled`; downstream steps stay `Pending`.
     Cancelled,
+}
+
+/// Cheap, no-network estimate of what a `NotSatisfied` step still has to do. Derived
+/// from persisted job rows / on-disk state so the API can surface "what's left / what's
+/// present" without touching the network. Returned by [`crate::handler::StepHandler::estimate`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StepEstimate {
+    pub remaining_bytes: u64,
+    pub present_bytes: u64,
+    pub files_present: u32,
+    pub files_total: u32,
 }
 
 /// Caller-supplied sink for handler progress reports. Default impl forwards to the
@@ -276,5 +386,105 @@ mod tests {
             failed_at: Utc::now(),
         };
         assert!(!failed.is_satisfied());
+    }
+
+    #[test]
+    fn derive_pct_returns_none_for_zero_total() {
+        assert_eq!(derive_pct(Some(5), Some(0)), None);
+    }
+
+    #[test]
+    fn derive_pct_returns_none_for_missing_total() {
+        assert_eq!(derive_pct(Some(5), None), None);
+        assert_eq!(derive_pct(None, Some(10)), None);
+        assert_eq!(derive_pct(None, None), None);
+    }
+
+    #[test]
+    fn derive_pct_computes_and_clamps() {
+        assert_eq!(derive_pct(Some(0), Some(100)), Some(0.0));
+        assert_eq!(derive_pct(Some(50), Some(100)), Some(50.0));
+        assert_eq!(derive_pct(Some(100), Some(100)), Some(100.0));
+        // Over-shoot (e.g. content-length under-reported) clamps to 100, never >100.
+        assert_eq!(derive_pct(Some(250), Some(100)), Some(100.0));
+    }
+
+    #[test]
+    fn derive_pct_never_yields_nan_or_inf() {
+        for (done, total) in [(0u64, 0u64), (1, 0), (u64::MAX, 0)] {
+            let pct = derive_pct(Some(done), Some(total));
+            assert!(pct.is_none(), "zero total must be None, got {pct:?}");
+        }
+        let pct = derive_pct(Some(u64::MAX), Some(1)).expect("some");
+        assert!(pct.is_finite() && (0.0..=100.0).contains(&pct));
+    }
+
+    #[test]
+    fn step_progress_bytes_derives_pct() {
+        let p = StepProgress::bytes("downloading", 250, 1000);
+        assert_eq!(p.bytes_done, Some(250));
+        assert_eq!(p.bytes_total, Some(1000));
+        assert_eq!(p.pct, Some(25.0));
+    }
+
+    #[test]
+    fn step_progress_bytes_with_zero_total_has_null_pct() {
+        let p = StepProgress::bytes("downloading", 250, 0);
+        assert_eq!(p.bytes_total, None);
+        assert_eq!(p.pct, None);
+    }
+
+    #[test]
+    fn step_progress_phase_only_has_no_bytes_or_pct() {
+        let p = StepProgress::phase("installing").with_message("Resolving 47 packages");
+        assert_eq!(p.phase, "installing");
+        assert_eq!(p.message.as_deref(), Some("Resolving 47 packages"));
+        assert_eq!(p.bytes_done, None);
+        assert_eq!(p.bytes_total, None);
+        assert_eq!(p.pct, None);
+    }
+
+    #[test]
+    fn step_progress_with_count_derives_pct_without_bytes() {
+        let p = StepProgress::phase("installing").with_count(12, 47);
+        assert!(p.bytes_total.is_none());
+        let pct = p.pct.expect("count yields pct");
+        assert!((pct - (12.0 / 47.0 * 100.0)).abs() < 0.01);
+    }
+
+    #[test]
+    fn step_progress_serializes_snake_case() {
+        let p = StepProgress::bytes("downloading", 5, 10).with_message("file.bin");
+        let json = serde_json::to_value(&p).expect("serialize");
+        assert_eq!(json["phase"], "downloading");
+        assert_eq!(json["message"], "file.bin");
+        assert_eq!(json["bytes_done"], 5);
+        assert_eq!(json["bytes_total"], 10);
+        assert_eq!(json["pct"], 50.0);
+    }
+
+    #[test]
+    fn progress_event_step_progress_carries_pct_and_legacy_bytes() {
+        let event = ProgressEvent::step_progress(
+            "ext",
+            uuid::Uuid::nil(),
+            "step-a",
+            StepProgress::bytes("downloading", 30, 120),
+        );
+        match event {
+            ProgressEvent::StepProgress {
+                current_bytes,
+                total_bytes,
+                pct,
+                phase,
+                ..
+            } => {
+                assert_eq!(current_bytes, 30);
+                assert_eq!(total_bytes, 120);
+                assert_eq!(pct, Some(25.0));
+                assert_eq!(phase, "downloading");
+            }
+            other => panic!("expected StepProgress, got {other:?}"),
+        }
     }
 }

@@ -32,12 +32,19 @@ def _tiny_dit(dtype: torch.dtype = torch.float32) -> WanModel:
 
 class _FakeVae:
     def __init__(self, dtype: torch.dtype = torch.float32) -> None:
-        self.latent_frames = 1
         self.dtype = dtype
 
     def encode_image(self, image):
-        h, w = image.size[1], image.size[0]
-        return torch.randn(1, 16, self.latent_frames, h // 8, w // 8, dtype=self.dtype)
+        # pipeline passes a single PIL (anchor) or a list of PIL (pixel re-encode tail)
+        if isinstance(image, list):
+            frame = image[0]
+            frames_in = len(image)
+        else:
+            frame = image
+            frames_in = 1
+        h, w = frame.size[1], frame.size[0]
+        lat_f = 1 + (frames_in - 1) // 4  # mirror Wan VAE temporal compression
+        return torch.randn(1, 16, lat_f, h // 8, w // 8, dtype=self.dtype)
 
     def decode_latents(self, latent):
         frames_lat = latent.shape[2]
@@ -113,18 +120,30 @@ def test_denoise_clip_switches_expert_and_returns_finite_latent():
 
 def test_run_render_end_to_end_with_fakes(tmp_path, monkeypatch):
     import svi2_video_worker.ffmpeg_io as ffmpeg_io
+    from pathlib import Path
 
-    written = {}
+    captured = {}
 
-    def _fake_frames_to_mp4(frames, out_path, *, fps=15, quality=7):
-        written["frames"] = list(frames)
-        written["fps"] = fps
-        from pathlib import Path
+    class _FakeWriter:
+        def __init__(self):
+            self.frames = []
+            captured["writer"] = self
 
-        Path(out_path).write_bytes(b"fake-mp4")
-        return out_path
+        def write(self, frame):
+            self.frames.append(frame)
 
-    monkeypatch.setattr(ffmpeg_io, "frames_to_mp4", _fake_frames_to_mp4)
+        def write_many(self, frames):
+            self.frames.extend(frames)
+
+        @property
+        def count(self):
+            return len(self.frames)
+
+        def finalize(self, out_path, *, fps=15, quality=7):
+            Path(out_path).write_bytes(b"fake-mp4")
+            return out_path
+
+    monkeypatch.setattr(ffmpeg_io, "StreamingFrameWriter", _FakeWriter)
 
     ref_path = tmp_path / "ref.png"
     from PIL import Image
@@ -153,6 +172,6 @@ def test_run_render_end_to_end_with_fakes(tmp_path, monkeypatch):
     assert result["status"] == "ok"
     assert (tmp_path / "out.mp4").exists()
     assert (tmp_path / "render_report.json").exists()
-    assert len(written["frames"]) > 0
-    for frame in written["frames"]:
+    assert captured["writer"].count > 0
+    for frame in captured["writer"].frames:
         assert hasattr(frame, "save")

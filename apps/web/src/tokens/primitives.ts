@@ -93,7 +93,7 @@ export const radii = {
 
 export const typography = {
   family: {
-    headline: "'Sora', 'Space Grotesk', system-ui, sans-serif",
+    headline: "'Inter', system-ui, -apple-system, sans-serif",
     body: "'Inter', system-ui, -apple-system, sans-serif",
     code: "'JetBrains Mono', 'Fira Code', monospace",
   },

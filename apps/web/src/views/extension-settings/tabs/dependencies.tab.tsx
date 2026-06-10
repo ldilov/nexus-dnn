@@ -13,10 +13,18 @@ import {
   fetchDependencies,
   retryStep,
   startInstall,
+  uninstallExtension,
 } from "../../../services/extension_dependencies_client";
-import { shortenSize } from "../step_type_presentation";
+import {
+  buildStepGroups,
+  estimateUninstallImpact,
+  formatSpeed,
+  shortenSize,
+} from "../step_type_presentation";
 import { useInstallProgress, type InstallCompletedDetail } from "../use_install_progress";
+import { PlanStrip } from "../components/plan_strip";
 import { StepRow } from "../components/step_row";
+import { ConfirmDialog } from "../../../components/base/confirm_dialog";
 import * as s from "./dependencies.tab.css";
 
 export interface DependenciesTabProps {
@@ -56,6 +64,31 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
     onCompleted: handleCompleted,
   });
   const [busy, setBusy] = useState(false);
+  const [uninstallOpen, setUninstallOpen] = useState(false);
+  const [uninstalling, setUninstalling] = useState(false);
+
+  const handleUninstall = useCallback(async () => {
+    setUninstalling(true);
+    try {
+      const summary = await uninstallExtension(extensionId);
+      const freed = summary.freed_bytes > 0 ? ` · ${shortenSize(summary.freed_bytes)} freed` : "";
+      const kept =
+        summary.kept_shared_models > 0
+          ? ` · ${summary.kept_shared_models} shared kept`
+          : "";
+      toast.success("Extension uninstalled", {
+        description: `${summary.removed_models} model${summary.removed_models === 1 ? "" : "s"} removed${freed}${kept}`,
+      });
+      setUninstallOpen(false);
+      void mutate();
+    } catch (err: unknown) {
+      toast.error("Uninstall failed", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setUninstalling(false);
+    }
+  }, [extensionId, mutate]);
 
   const handleInstallAll = useCallback(async () => {
     setBusy(true);
@@ -124,7 +157,14 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
     [extensionId, mutate],
   );
 
-  const installActive = progress.active || data?.steps.some((s) => s.status === "running") || false;
+  // Authoritative-on-mount: the host's `install_active` flag means a remounted
+  // page knows an install is in flight immediately, before the first WS event.
+  // `progress.active` (live events) and a DTO `running` status are belt-and-braces.
+  const installActive =
+    progress.active ||
+    (data?.install_active ?? false) ||
+    data?.steps.some((step) => step.status === "running") ||
+    false;
 
   const satisfiedById = useMemo(() => {
     const map: Record<string, boolean> = {};
@@ -150,72 +190,152 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
     );
   }
 
+  const aggregateSpeed = Object.values(progress.liveByStep).reduce(
+    (sum, live) => sum + live.speedBps,
+    0,
+  );
   const remainingLabel =
     data.total_remaining_bytes > 0
-      ? `${shortenSize(data.total_remaining_bytes)} remaining`
+      ? aggregateSpeed > 0
+        ? `${shortenSize(data.total_remaining_bytes)} remaining · ↓ ${formatSpeed(aggregateSpeed)}`
+        : `${shortenSize(data.total_remaining_bytes)} remaining`
       : data.all_satisfied
         ? "All dependencies satisfied"
         : "Some steps need attention";
-  const stepCounts = `${data.steps.filter((step) => step.satisfied).length} of ${data.steps.length} satisfied`;
+  const satisfiedCount = data.steps.filter((step) => step.satisfied).length;
+  const totalSteps = data.steps.length;
+  const planEyebrow = `Dependency plan · ${totalSteps} step${totalSteps === 1 ? "" : "s"}`;
+  // A paused, partially-downloaded install (e.g. parked by a host restart).
+  // Triggering install resumes from the persisted partial bytes, not from zero.
+  const resumable = !installActive && Boolean(data.install_resumable);
+
+  const impact = estimateUninstallImpact(data.steps);
+  const anySatisfied = data.steps.some((step) => step.satisfied);
+  const uninstallImpactLines = [
+    "The extension runtime and virtual environment (venv)",
+    impact.modelCount > 0
+      ? `${impact.modelCount} model${impact.modelCount === 1 ? "" : "s"} used only by this extension${impact.modelBytes > 0 ? ` (≈ ${shortenSize(impact.modelBytes)})` : ""}`
+      : "No exclusive model weights to remove",
+    "Models shared with another extension are kept",
+  ];
 
   return (
     <div className={s.root}>
       <header
         className={`${s.banner}${data.all_satisfied ? ` ${s.allSatisfied}` : ""}`}
       >
-        <div className={s.bannerText}>
-          <span className={s.bannerTitle}>{stepCounts}</span>
-          <span className={s.bannerSubtitle}>{remainingLabel}</span>
-        </div>
-        <div className={s.bannerActions}>
-          {installActive ? (
-            <button
-              type="button"
-              className={s.cancelButton}
-              onClick={handleCancel}
-              disabled={busy}
-            >
-              Cancel
-            </button>
-          ) : (
-            <>
+        <div className={s.bannerRow}>
+          <span className={s.bannerFraction}>
+            {satisfiedCount}
+            <span className={s.bannerDenominator}>/{totalSteps}</span>
+          </span>
+          <div className={s.bannerText}>
+            <span className={s.bannerEyebrow}>{planEyebrow}</span>
+            <span className={s.bannerHeadline}>{remainingLabel}</span>
+            {resumable && (
+              <span className={s.bannerNote}>paused — resume to continue</span>
+            )}
+          </div>
+          <div className={s.bannerActions}>
+            {installActive ? (
               <button
                 type="button"
-                className={s.reinstallButton}
-                onClick={handleReinstallAll}
+                className={s.cancelButton}
+                onClick={handleCancel}
                 disabled={busy}
-                title="Re-run every step from scratch, ignoring already-installed state"
               >
-                Reinstall everything
+                Cancel
               </button>
-              <button
-                type="button"
-                className={s.installButton}
-                onClick={handleInstallAll}
-                disabled={busy || data.all_satisfied}
-              >
-                {data.all_satisfied ? "All set" : "Install all"}
-              </button>
-            </>
-          )}
+            ) : (
+              <>
+                {anySatisfied && (
+                  <button
+                    type="button"
+                    className={s.uninstallButton}
+                    onClick={() => setUninstallOpen(true)}
+                    disabled={busy}
+                    title="Remove this extension's runtime, venv, and exclusive models"
+                  >
+                    Uninstall
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={s.reinstallButton}
+                  onClick={handleReinstallAll}
+                  disabled={busy}
+                  title="Re-run every step from scratch, ignoring already-installed state"
+                >
+                  Reinstall everything
+                </button>
+                <button
+                  type="button"
+                  className={s.installButton}
+                  onClick={handleInstallAll}
+                  disabled={busy || data.all_satisfied}
+                  title={
+                    resumable
+                      ? "Resume the paused download from where it stopped"
+                      : "Install all dependencies"
+                  }
+                >
+                  {data.all_satisfied
+                    ? "All set"
+                    : resumable
+                      ? "Resume install"
+                      : "Install all"}
+                </button>
+              </>
+            )}
+          </div>
         </div>
+        <PlanStrip steps={data.steps} />
       </header>
 
+      <ConfirmDialog
+        open={uninstallOpen}
+        eyebrow="Uninstall extension"
+        title={`Uninstall ${extensionId}?`}
+        description="This reverses the install. It releases any running leases, then removes the extension's files and the models only it uses."
+        impactLines={uninstallImpactLines}
+        confirmLabel="Uninstall"
+        destructive
+        busy={uninstalling}
+        onConfirm={handleUninstall}
+        onCancel={() => setUninstallOpen(false)}
+      />
+
       <div className={s.stepList}>
-        {data.steps.map((step) => {
-          const upstreamSatisfied = step.requires.every((req) => satisfiedById[req] ?? false);
-          return (
-            <StepRow
-              key={step.id}
-              step={step}
-              upstreamSatisfied={upstreamSatisfied}
-              installActive={installActive}
-              onInstallOnly={handleRetry}
-              onRetry={handleRetry}
-              onReinstall={handleRetry}
-            />
-          );
-        })}
+        {buildStepGroups(data.steps).map((group) => (
+          <section key={group.id} className={s.group} aria-label={group.title}>
+            <div className={s.groupHead}>
+              <span className={s.groupIndex}>{group.index}</span>
+              <h3 className={s.groupTitle}>{group.title}</h3>
+              <span className={s.groupMeta}>{group.meta}</span>
+            </div>
+            <div className={s.groupCard}>
+              {group.steps.map((step) => {
+                const upstreamSatisfied = step.requires.every(
+                  (req) => satisfiedById[req] ?? false,
+                );
+                return (
+                  <StepRow
+                    key={step.id}
+                    step={step}
+                    grouped
+                    upstreamSatisfied={upstreamSatisfied}
+                    installActive={installActive}
+                    resumable={resumable}
+                    live={progress.liveByStep[step.id]}
+                    onInstallOnly={handleRetry}
+                    onRetry={handleRetry}
+                    onReinstall={handleRetry}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        ))}
       </div>
     </div>
   );

@@ -35,21 +35,142 @@ dependencies:
       spec:
         id: ffmpeg
         version: ">=4.0"
+        # allow_system_path resolves an existing ffmpeg on PATH first (the
+        # common case), so the bundled download is a soft fallback only.
+        # Pinned to BtbN autobuild-2026-06-08-14-24, the static n8.1.1 GPL
+        # asset. sha256/size below are the upstream published values
+        # (checksums.sha256 on that tag), cross-verified against the GitHub
+        # release asset digest.
         allow_system_path: true
         sources:
           - platform: windows-x64
-            url: "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip"
-            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
-            size: 0
+            url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-08-14-24/ffmpeg-n8.1.1-11-ge4c7fbf6c0-win64-gpl-8.1.zip"
+            sha256: "2bb6f65c4118ba1b320142082942f184522630be5b0f666717701e6a2aa8911d"
+            size: 220669120
             archive: zip
           - platform: linux-x64
-            url: "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz"
-            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
-            size: 0
+            url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-08-14-24/ffmpeg-n8.1.1-11-ge4c7fbf6c0-linux64-gpl-8.1.tar.xz"
+            sha256: "f5e8da41b674c29fd08f1e2a8513c935d0b54292b03144c1260fa2cac380653e"
+            size: 142894008
             archive: tar.xz
+    - id: model_wan_base
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "huggingface:Kijai/WanVideo_comfy_fp8_scaled"
+        acceleration_match: "matches_runtime_step:python"
+        # Shared mega-repo (300GB+). Pull only the two A14B I2V fp8 experts
+        # the worker loads (versions.yaml dit-high/low-fp8).
+        files:
+          - "I2V/Wan2_2-I2V-A14B-HIGH_fp8_e4m3fn_scaled_KJ.safetensors"
+          - "I2V/Wan2_2-I2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors"
+    - id: model_svi_lora
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "huggingface:epfl-vita/svi-model"
+        acceleration_match: "matches_runtime_step:python"
+        files:
+          - "version-2.0/SVI_Wan2.2-I2V-A14B_high_noise_lora_v2.0_pro.safetensors"
+          - "version-2.0/SVI_Wan2.2-I2V-A14B_low_noise_lora_v2.0_pro.safetensors"
+    - id: model_wan_encoder
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "huggingface:Kijai/WanVideo_comfy"
+        acceleration_match: "matches_runtime_step:python"
+        # This repo supplies BOTH the text encoder and the VAE the worker
+        # loads (versions.yaml text-encoder + vae).
+        files:
+          - "umt5-xxl-enc-bf16.safetensors"
+          - "Wan2_1_VAE_bf16.safetensors"
+    - id: model_tokenizer
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "huggingface:Wan-AI/Wan2.1-T2V-1.3B"
+        acceleration_match: "matches_runtime_step:python"
+        # Only the umt5-xxl tokenizer subfolder, not the multi-GB T2V-1.3B
+        # diffusion weights (versions.yaml tokenizer, huggingface_split).
+        include:
+          - "google/umt5-xxl/*"
+    - id: model_qwen_edit
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "huggingface:QuantStack/Qwen-Image-Edit-2509-GGUF"
+        acceleration_match: "matches_runtime_step:python"
+        # Diffusion GGUF (Q5_K_M) only. The GGUF repo ships no VAE — the
+        # Qwen-Image autoencoder lives in model_qwen_vae (versions.yaml
+        # qwen-edit-diffusion).
+        files:
+          - "Qwen-Image-Edit-2509-Q5_K_M.gguf"
+    - id: model_qwen_vae
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "huggingface:Comfy-Org/Qwen-Image_ComfyUI"
+        acceleration_match: "matches_runtime_step:python"
+        # Qwen-Image autoencoder shared by Qwen-Image-Edit; the QuantStack
+        # GGUF repo has no VAE (versions.yaml qwen-edit-vae).
+        files:
+          - "split_files/vae/qwen_image_vae.safetensors"
+    - id: model_qwen_vl
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "huggingface:unsloth/Qwen2.5-VL-7B-Instruct-GGUF"
+        acceleration_match: "matches_runtime_step:python"
+        # VL LLM GGUF (Q4_K_M) + multimodal projector (versions.yaml
+        # qwen-edit-llm + qwen-edit-mmproj).
+        files:
+          - "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
+          - "mmproj-F16.gguf"
+    - id: model_rife
+      type: model_artifact
+      requires: [python]
+      spec:
+        family_id: "huggingface:AlexWortega/RIFE"
+        acceleration_match: "matches_runtime_step:python"
+        files:
+          - "flownet.pkl"
+    - id: sdcli
+      type: system_binary
+      requires: [python]
+      spec:
+        id: sd
+        version: ">=master"
+        # stable-diffusion.cpp CUDA build for the Qwen edit-then-animate path.
+        # allow_system_path resolves an existing `sd` binary first.
+        # windows-x64 is pinned to leejet release master-685-19bdfe2 with the
+        # upstream-published sha256/size (GitHub release asset digest).
+        # linux-x64: upstream ships NO Linux CUDA prebuilt for this release
+        # (only ROCm / Vulkan / CPU Linux assets), so the CUDA Linux source
+        # cannot be pinned. TODO(svi2-sdcli-linux): build sd-cli with CUDA from
+        # source under binaries/ for Linux, or fall back to a Vulkan asset.
+        # allow_system_path: true is the practical Linux mitigation until then.
+        allow_system_path: true
+        sources:
+          - platform: windows-x64
+            url: "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-685-19bdfe2/sd-master-19bdfe2-bin-win-cuda12-x64.zip"
+            sha256: "f15ac43cb32b4a084bc92124a002872e17bffacb51a2567a2ecea7415715ae92"
+            size: 351013798
+            archive: zip
     - id: validate
       type: validation
-      requires: [python, pkgs, ffmpeg]
+      requires:
+        - python
+        - pkgs
+        - ffmpeg
+        - model_wan_base
+        - model_svi_lora
+        - model_wan_encoder
+        - model_tokenizer
+        - model_qwen_edit
+        - model_qwen_vae
+        - model_qwen_vl
+        - model_rife
+        - sdcli
       spec:
         kind: worker_handshake
         timeout_seconds: 120
@@ -61,6 +182,7 @@ capabilities:
   - "huggingface.search"
   - "huggingface.install"
   - "model.registry.read"
+  - "storage.schema_contribute"
   - "workspace.read"
   - "workspace.write"
 backend_runtimes:
@@ -80,3 +202,34 @@ backend_runtimes:
     version_manifest: "backends/fake/versions.yaml"
     capability_tags: ["video-generation", "image-to-video", "long-video", "svi", "fake"]
     supported_roles: ["video.render"]
+operators:
+  - file: "operators/video_render.yaml"
+recipes:
+  - file: "recipes/svi2_render.yaml"
+ui:
+  layouts:
+    - file: "ui/layouts/main.yaml"
+      default: true
+  contributions:
+    - file: "ui/settings.yaml"
+  assets:
+    root: "web/dist"
+  custom_elements:
+    - tag: "svi2-pro-app"
+      module: "svi2-pro.js"
+      entry: "register"
+storage:
+  spec_version: "0.1"
+  engine: "sqlite"
+  namespace:
+    alias: "svi2_pro"
+    prefix_mode: "host_derived"
+  migrations:
+    strategy: "sql_file_list"
+    files:
+      - id: "001_render_jobs"
+        path: "storage/migrations/001_render_jobs.sql"
+      - id: "002_settings"
+        path: "storage/migrations/002_settings.sql"
+  sql_profile:
+    profile: "nexus_sqlite_v1"

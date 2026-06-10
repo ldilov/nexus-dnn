@@ -63,11 +63,11 @@ fn route_passes_through_verbatim_without_pattern_matching() {
 }
 
 #[test]
-fn router_source_remains_unchanged_for_desktop_focus() {
+fn router_mounts_desktop_focus_route() {
     let source = std::fs::read_to_string(format!("{}/src/router.rs", env!("CARGO_MANIFEST_DIR")))
         .expect("read router source");
     assert!(
-        !source.contains("/desktop/focus"),
-        "desktop focus route must remain unmounted in this slice"
+        source.contains("/desktop/focus"),
+        "desktop focus route must stay mounted (spec 044 FR-027)"
     );
 }

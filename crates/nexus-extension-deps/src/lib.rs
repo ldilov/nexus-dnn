@@ -7,6 +7,7 @@
 pub mod context;
 pub mod error;
 pub mod fetch;
+pub mod file_selection;
 pub mod handler;
 pub mod handlers;
 pub mod plan;
@@ -14,14 +15,15 @@ pub mod runner;
 pub mod types;
 
 pub use context::{
-    HandshakeError, ModelDownloadProgress, ModelStoreClient, RuntimeBootstrapResult,
-    RuntimeBootstrapper, StepContext, WorkerHandshake,
+    ArtifactIntegrity, HandshakeError, ModelDownloadProgress, ModelPartialState, ModelStoreClient,
+    RuntimeBootstrapResult, RuntimeBootstrapper, StepContext, WorkerHandshake,
 };
 pub use error::DepError;
+pub use file_selection::FileSelection;
 pub use handler::{HandlerRegistry, ProbeResult, StepHandler};
 pub use plan::{DependenciesBlock, InstallPlan, Step, parse_dependencies_block};
 pub use runner::{InstallReport, InstallRunner, RunnerContext};
 pub use types::{
     ArchiveFormat, ExtensionInstallState, InstallOutcome, PlatformTuple, ProgressEvent,
-    ProgressSink, StepArtifact, StepError, StepStatus,
+    ProgressSink, StepArtifact, StepError, StepEstimate, StepProgress, StepStatus, derive_pct,
 };

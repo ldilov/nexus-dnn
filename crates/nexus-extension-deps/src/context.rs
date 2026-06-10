@@ -21,15 +21,101 @@ pub trait ModelStoreClient: Send + Sync {
 
     /// Start (or attach to) a download job and return its id. The job runs in the
     /// model-store layer; the handler watches it via `poll_job`.
+    ///
+    /// `selection` narrows the repo's file listing to the subset the extension
+    /// declared. An unrestricted selection ([`crate::FileSelection::is_unrestricted`])
+    /// pulls the whole repo — the historical, backward-compatible behavior.
     async fn start_download(
         &self,
         family_id: &str,
         accelerator: Option<&str>,
+        selection: &crate::FileSelection,
     ) -> Result<String, crate::DepError>;
 
     /// Poll a previously-started job for current progress. Returns `Ok(None)` if the
     /// job is still running with the reported progress; `Ok(Some(path))` on success.
     async fn poll_job(&self, job_id: &str) -> Result<ModelDownloadProgress, crate::DepError>;
+
+    /// Cheap, no-network partial-state snapshot for a family, read from the persisted
+    /// download job. Returns `Ok(None)` when no job exists yet. MUST NOT hit the network.
+    async fn family_partial_state(
+        &self,
+        _family_id: &str,
+        _accelerator: Option<&str>,
+    ) -> Result<Option<ModelPartialState>, crate::DepError> {
+        Ok(None)
+    }
+
+    /// Record that `extension_id` references the model artifact resolved for
+    /// `(family_id, accelerator)`. Called by the `model_artifact` handler after
+    /// a successful install so the host can ref-count shared models and GC them
+    /// only when the last extension drops its reference.
+    ///
+    /// Default no-op: probe-only / test doubles that never persist refs accept
+    /// the default. The host's real client overrides it to write a ref row.
+    async fn record_reference(
+        &self,
+        _extension_id: &str,
+        _family_id: &str,
+        _accelerator: Option<&str>,
+    ) -> Result<(), crate::DepError> {
+        Ok(())
+    }
+
+    /// Delete `extension_id`'s on-disk copy of `family_id` so a forced
+    /// reinstall re-downloads it from scratch instead of re-attaching to an
+    /// already-complete download job.
+    ///
+    /// MUST be shared-model-safe: drop only THIS extension's reference and
+    /// delete the physical bytes only when no other extension still references
+    /// the same artifact (same semantics as uninstall's GC). A family no other
+    /// extension shares is fully removed; a shared family's bytes survive for
+    /// the other holders and are re-fetched here into a fresh job.
+    ///
+    /// Default no-op: probe-only / test doubles keep the old behavior.
+    async fn purge_family(
+        &self,
+        _extension_id: &str,
+        _family_id: &str,
+        _accelerator: Option<&str>,
+    ) -> Result<(), crate::DepError> {
+        Ok(())
+    }
+
+    /// Verify the on-disk integrity of an installed family without re-downloading.
+    ///
+    /// Cheap and no-network: stats each installed file and compares it against the
+    /// recorded size (and sha256 where one was persisted). Returns:
+    /// - `Ok(None)` — nothing installed to check, or integrity is not verifiable
+    ///   (no recorded sizes). The UI treats this as "no warning".
+    /// - `Ok(Some(report))` — `report.ok` is `false` when a file is missing or its
+    ///   size/hash diverged, with `detail` naming the offending files.
+    ///
+    /// Default no-op for probe-only / test doubles.
+    async fn family_integrity(
+        &self,
+        _family_id: &str,
+        _accelerator: Option<&str>,
+    ) -> Result<Option<ArtifactIntegrity>, crate::DepError> {
+        Ok(None)
+    }
+}
+
+/// On-disk integrity verdict for an installed model family.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactIntegrity {
+    /// True when every recorded file is present and matches its recorded size/hash.
+    pub ok: bool,
+    /// Human-readable summary of what failed, when `ok` is false.
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModelPartialState {
+    pub present_bytes: u64,
+    pub total_bytes: u64,
+    pub files_present: u32,
+    pub files_total: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -126,6 +212,12 @@ pub struct StepContext<'a> {
     pub progress_sink: Arc<dyn ProgressSink>,
     pub cancellation_token: CancellationToken,
     pub install_run_id: uuid::Uuid,
+
+    /// True when the run was started with `?force=true` ("Reinstall
+    /// everything"). Handlers that cache on-disk state (e.g. `model_artifact`)
+    /// MUST purge the prior copy and re-fetch from scratch rather than
+    /// short-circuiting on an already-present artifact.
+    pub force: bool,
 
     /// Resolved artifacts of upstream `requires` steps in topo order. Available to
     /// `run()` so downstream steps can consult upstream metadata (e.g., the resolved

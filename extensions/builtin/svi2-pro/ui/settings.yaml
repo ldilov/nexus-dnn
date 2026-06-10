@@ -1,0 +1,8 @@
+kind: "config_widget"
+id: "svi2.settings"
+display_name: "SVI 2.0 Pro Settings"
+description: "Defaults for new renders: models dir, attention backend, fp8 compute, block-swap, interpolation, output dir."
+availability: "available"
+metadata:
+  icon: "tune"
+  shortcut: null

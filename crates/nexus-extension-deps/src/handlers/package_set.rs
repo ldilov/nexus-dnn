@@ -12,7 +12,7 @@ use tokio::process::Command;
 use crate::context::StepContext;
 use crate::error::DepError;
 use crate::handler::{ProbeResult, StepHandler};
-use crate::types::StepArtifact;
+use crate::types::{ProgressEvent, StepArtifact, StepProgress};
 
 #[derive(Debug, Deserialize)]
 struct PackageSetSpec {
@@ -235,18 +235,51 @@ impl StepHandler for PackageSetHandler {
         // Drain stdout/stderr concurrently with wait() so the child's pipe
         // buffers never fill up (which would deadlock it). Take the handles
         // out of the Child so we can keep `child` borrowable for kill/wait.
-        use tokio::io::AsyncReadExt;
+        // stdout is drained raw; stderr is line-streamed so uv's discrete
+        // summary lines (`Resolved/Prepared/Installed N packages`) drive a
+        // live progress bar instead of arriving in one silent blob at the end.
+        use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
         let mut stdout_pipe = child.stdout.take().expect("stdout piped");
-        let mut stderr_pipe = child.stderr.take().expect("stderr piped");
+        let stderr_pipe = child.stderr.take().expect("stderr piped");
         let stdout_task = tokio::spawn(async move {
             let mut buf = Vec::new();
             let _ = stdout_pipe.read_to_end(&mut buf).await;
             buf
         });
+
+        let progress_sink = ctx.progress_sink.clone();
+        let extension_id = ctx.extension_id.to_owned();
+        let install_run_id = ctx.install_run_id;
+
+        // First-progress promptly so the uv row shows a live phase instead of a
+        // dead spinner while resolution runs silently (AC-2.6).
+        progress_sink.emit(ProgressEvent::step_progress(
+            &extension_id,
+            install_run_id,
+            String::new(),
+            StepProgress::phase("resolving").with_message("uv sync starting"),
+        ));
+
         let stderr_task = tokio::spawn(async move {
-            let mut buf = Vec::new();
-            let _ = stderr_pipe.read_to_end(&mut buf).await;
-            buf
+            let mut reader = BufReader::new(stderr_pipe).lines();
+            let mut captured = String::new();
+            let mut total: u64 = 0;
+            while let Ok(Some(line)) = reader.next_line().await {
+                if captured.len() < UV_STDERR_CAPTURE_LIMIT {
+                    captured.push_str(&line);
+                    captured.push('\n');
+                }
+                if let Some(progress) = parse_uv_line(&line, &mut total) {
+                    // step_id is unknown to the handler — runner re-tags it.
+                    progress_sink.emit(ProgressEvent::step_progress(
+                        &extension_id,
+                        install_run_id,
+                        String::new(),
+                        progress,
+                    ));
+                }
+            }
+            captured
         });
 
         let cancel = ctx.cancellation_token.clone();
@@ -259,7 +292,8 @@ impl StepHandler for PackageSetHandler {
         };
 
         let stdout_bytes = stdout_task.await.unwrap_or_default();
-        let stderr_bytes = stderr_task.await.unwrap_or_default();
+        let stderr_text = stderr_task.await.unwrap_or_default();
+        let stderr_bytes = stderr_text.into_bytes();
 
         // Always surface uv's output — silent failures are the worst kind of
         // user-facing bug. Truncate to keep error messages bounded.
@@ -321,6 +355,15 @@ impl StepHandler for PackageSetHandler {
         )
         .await?;
 
+        // Terminal `done` so the row settles instead of resting on the last
+        // parsed uv line (AC-2.5 terminal event for the package step).
+        ctx.progress_sink.emit(ProgressEvent::step_progress(
+            ctx.extension_id,
+            ctx.install_run_id,
+            String::new(),
+            StepProgress::phase("done").with_message("packages installed"),
+        ));
+
         let total_bytes = dir_size(&venv).await.unwrap_or(0);
         Ok(StepArtifact {
             path: Some(venv),
@@ -329,6 +372,66 @@ impl StepHandler for PackageSetHandler {
             metadata: Value::Null,
         })
     }
+}
+
+/// Cap on the stderr text retained for failure reporting, so a chatty uv run
+/// can't pin unbounded memory. The live progress stream is unaffected.
+const UV_STDERR_CAPTURE_LIMIT: usize = 16384;
+
+/// Best-effort parse of one uv stderr line into `(current_packages, total_packages)`
+/// as a pseudo-progress signal. uv prints discrete summary lines even under
+/// `--no-progress`:
+/// * `Resolved N packages in 1.2s` / `Prepared N packages` → set the total.
+/// * `Installed N packages in 1.2s` / `Prepared N packages` → set current.
+/// * `Downloading <pkg>` / `Building <pkg>` → activity marker (0, 0).
+///
+/// Returns `None` for lines that carry no progress signal (so callers skip them
+/// and avoid spamming the event bus). `0` in a slot means "leave unchanged".
+fn parse_uv_progress(line: &str) -> Option<(u64, u64)> {
+    let trimmed = line.trim_start();
+    let count_after = |kw: &str| -> Option<u64> {
+        let rest = trimmed.strip_prefix(kw)?.trim_start();
+        rest.split_whitespace().next()?.parse::<u64>().ok()
+    };
+    if let Some(n) = count_after("Resolved ") {
+        return Some((0, n));
+    }
+    if let Some(n) = count_after("Prepared ") {
+        return Some((n, n));
+    }
+    if let Some(n) = count_after("Installed ") {
+        return Some((n, 0));
+    }
+    if trimmed.starts_with("Downloading ") || trimmed.starts_with("Building ") {
+        return Some((0, 0));
+    }
+    None
+}
+
+/// Map one uv stderr line into a normalized [`StepProgress`]. Carries the raw
+/// line as the live `message`, a closed-vocabulary `phase`
+/// (`resolving | downloading | installing`), and a best-effort `pct` derived
+/// from uv's "k/N packages" summary counts. `total` is threaded across calls
+/// so an `Installed k` line can be expressed as a percentage of the earlier
+/// `Resolved N`. Returns `None` for lines that carry no progress signal.
+fn parse_uv_line(line: &str, total: &mut u64) -> Option<StepProgress> {
+    let (cur, tot) = parse_uv_progress(line)?;
+    if tot > 0 {
+        *total = tot;
+    }
+    let trimmed = line.trim_start();
+    let phase = if trimmed.starts_with("Resolved") {
+        "resolving"
+    } else if trimmed.starts_with("Downloading") || trimmed.starts_with("Building") {
+        "downloading"
+    } else {
+        "installing"
+    };
+    let mut progress = StepProgress::phase(phase).with_message(line.to_owned());
+    if cur > 0 && *total > 0 {
+        progress = progress.with_count(cur, *total);
+    }
+    Some(progress)
 }
 
 /// Truncate raw bytes to `limit` chars (respecting UTF-8 boundaries) for
@@ -472,6 +575,7 @@ mod tests {
             progress_sink,
             cancellation_token: tokio_util::sync::CancellationToken::new(),
             install_run_id: uuid::Uuid::nil(),
+            force: false,
             upstream_artifacts: &upstream,
         };
 
@@ -508,6 +612,79 @@ mod tests {
         assert_eq!(default_target(), "extension_local");
     }
 
+    #[test]
+    fn parse_uv_progress_extracts_counts_from_summary_lines() {
+        assert_eq!(
+            parse_uv_progress("Resolved 47 packages in 1.2s"),
+            Some((0, 47))
+        );
+        assert_eq!(
+            parse_uv_progress("Prepared 12 packages in 800ms"),
+            Some((12, 12))
+        );
+        assert_eq!(
+            parse_uv_progress("Installed 47 packages in 3.1s"),
+            Some((47, 0))
+        );
+        assert_eq!(parse_uv_progress("   Installed 5 packages"), Some((5, 0)));
+        assert_eq!(parse_uv_progress("Downloading numpy"), Some((0, 0)));
+        assert_eq!(parse_uv_progress("Building torch"), Some((0, 0)));
+        assert_eq!(parse_uv_progress("warning: something unrelated"), None);
+        assert_eq!(parse_uv_progress(""), None);
+        assert_eq!(parse_uv_progress("Resolved no-number here"), None);
+    }
+
+    #[test]
+    fn parse_uv_line_maps_phases_and_message() {
+        let mut total = 0;
+        let resolved = parse_uv_line("Resolved 47 packages in 1.2s", &mut total)
+            .expect("resolved yields progress");
+        assert_eq!(resolved.phase, "resolving");
+        assert_eq!(
+            resolved.message.as_deref(),
+            Some("Resolved 47 packages in 1.2s")
+        );
+        assert_eq!(total, 47);
+
+        let downloading =
+            parse_uv_line("Downloading numpy", &mut total).expect("downloading yields progress");
+        assert_eq!(downloading.phase, "downloading");
+        assert_eq!(downloading.message.as_deref(), Some("Downloading numpy"));
+
+        let building =
+            parse_uv_line("Building torch", &mut total).expect("building yields progress");
+        assert_eq!(building.phase, "downloading");
+    }
+
+    #[test]
+    fn parse_uv_line_installed_derives_pct_from_resolved_total() {
+        let mut total = 0;
+        // First a Resolved line establishes the total.
+        let _ = parse_uv_line("Resolved 50 packages in 1.0s", &mut total);
+        let installed = parse_uv_line("Installed 25 packages in 3.0s", &mut total)
+            .expect("installed yields progress");
+        assert_eq!(installed.phase, "installing");
+        let pct = installed.pct.expect("pct derived from k/N");
+        assert!((pct - 50.0).abs() < 0.01, "expected ~50%, got {pct}");
+    }
+
+    #[test]
+    fn parse_uv_line_returns_none_for_noise() {
+        let mut total = 0;
+        assert!(parse_uv_line("warning: unrelated", &mut total).is_none());
+        assert!(parse_uv_line("", &mut total).is_none());
+    }
+
+    #[test]
+    fn parse_uv_line_prepared_is_installing_phase() {
+        let mut total = 0;
+        let prepared =
+            parse_uv_line("Prepared 12 packages in 800ms", &mut total).expect("prepared progress");
+        assert_eq!(prepared.phase, "installing");
+        // Prepared sets both current and total to 12 → 100% of its own batch.
+        assert_eq!(prepared.pct, Some(100.0));
+    }
+
     /// Validation MUST reject any non-extension-local `target`. Pins the
     /// FR-013 enum (v1: `extension_local` only) so a future "host_shared"
     /// requires both spec + handler approval.
@@ -541,7 +718,12 @@ mod tests {
             ) -> Result<Option<PathBuf>, DepError> {
                 Ok(None)
             }
-            async fn start_download(&self, _f: &str, _a: Option<&str>) -> Result<String, DepError> {
+            async fn start_download(
+                &self,
+                _f: &str,
+                _a: Option<&str>,
+                _s: &crate::FileSelection,
+            ) -> Result<String, DepError> {
                 unreachable!()
             }
             async fn poll_job(&self, _id: &str) -> Result<crate::ModelDownloadProgress, DepError> {

@@ -52,6 +52,7 @@ import { CanvasContextMenu, type ContextMenuItem } from "./canvas_context_menu";
 import { AlignmentGuides } from "./alignment_guides";
 import { DropProjection, computeProjection } from "./drop_projection";
 import * as styles from "./graph_view.css";
+import { vars } from "../../../../theme/contract.css";
 
 const GRID_SIZE = 16;
 const SNAP_THRESHOLD = 8;
@@ -743,14 +744,14 @@ function GraphViewInner({
           variant={BackgroundVariant.Dots}
           gap={GRID_SIZE}
           size={1.1}
-          color="rgba(186, 158, 255, 0.14)"
+          color="color-mix(in srgb, var(--accent) 14%, transparent)"
         />
         <Background
           id="major"
           variant={BackgroundVariant.Lines}
           gap={GRID_SIZE * 5}
           lineWidth={1}
-          color="rgba(186, 158, 255, 0.06)"
+          color="color-mix(in srgb, var(--accent) 6%, transparent)"
         />
         <AlignmentGuides />
         <DropProjection gridSize={GRID_SIZE} snapThreshold={SNAP_THRESHOLD} />
@@ -760,17 +761,12 @@ function GraphViewInner({
           zoomable
           maskColor="rgba(0, 0, 0, 0.6)"
           nodeColor={(n) => {
-            // audit-allow: hex — neon decorative palette per design lang
-            if (n.type === "boundary") return "#6D28D9";
-            // audit-allow: hex — neon decorative palette per design lang
-            if (n.type === "note") return "#F59E0B";
-            // audit-allow: hex — neon decorative palette per design lang
-            if (n.type === "reroute") return "#94A3B8";
-            // audit-allow: hex — neon decorative palette per design lang
-            return "#1d2023";
+            if (n.type === "boundary") return vars.color.accent.primaryHover;
+            if (n.type === "note") return vars.color.warning.base;
+            if (n.type === "reroute") return vars.color.mod.system;
+            return vars.color.bg.elevated;
           }}
-          // audit-allow: hex — neon decorative palette per design lang
-          nodeStrokeColor={() => "#ba9eff"}
+          nodeStrokeColor={() => "var(--accent)"}
           className={styles.miniMapBg}
         />
       </ReactFlow>

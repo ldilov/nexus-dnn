@@ -1,4 +1,4 @@
-﻿spec_version: "0.1"
+spec_version: "0.1"
 backend:
   runtime_id: "nexus.video.svi2-pro.rtx50-fp8"
   default_version: "0.1.0"
@@ -7,30 +7,67 @@ versions:
     status: "experimental"
     artifacts:
       - id: "dit-high-fp8"
+        role: "diffusion.high"
         source: { kind: "huggingface", repo: "Kijai/WanVideo_comfy_fp8_scaled", revision: "main", file: "I2V/Wan2_2-I2V-A14B-HIGH_fp8_e4m3fn_scaled_KJ.safetensors" }
         size_bytes: 0
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"
       - id: "dit-low-fp8"
+        role: "diffusion.low"
         source: { kind: "huggingface", repo: "Kijai/WanVideo_comfy_fp8_scaled", revision: "main", file: "I2V/Wan2_2-I2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors" }
         size_bytes: 0
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"
       - id: "svi-lora-high"
+        role: "lora.high"
         source: { kind: "huggingface", repo: "epfl-vita/svi-model", revision: "main", file: "version-2.0/SVI_Wan2.2-I2V-A14B_high_noise_lora_v2.0_pro.safetensors" }
         size_bytes: 0
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"
       - id: "svi-lora-low"
+        role: "lora.low"
         source: { kind: "huggingface", repo: "epfl-vita/svi-model", revision: "main", file: "version-2.0/SVI_Wan2.2-I2V-A14B_low_noise_lora_v2.0_pro.safetensors" }
         size_bytes: 0
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"
       - id: "text-encoder"
+        role: "text_encoder"
         source: { kind: "huggingface", repo: "Kijai/WanVideo_comfy", revision: "main", file: "umt5-xxl-enc-bf16.safetensors" }
         size_bytes: 0
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"
       - id: "vae"
+        role: "vae"
         source: { kind: "huggingface", repo: "Kijai/WanVideo_comfy", revision: "main", file: "Wan2_1_VAE_bf16.safetensors" }
         size_bytes: 0
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"
       - id: "tokenizer"
+        role: "tokenizer"
         source: { kind: "huggingface_split", repo: "Wan-AI/Wan2.1-T2V-1.3B", revision: "main", subfolder: "google/umt5-xxl" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      - id: "qwen-edit-diffusion"
+        role: "qwen_edit.diffusion"
+        source: { kind: "huggingface", repo: "QuantStack/Qwen-Image-Edit-2509-GGUF", revision: "main", file: "Qwen-Image-Edit-2509-Q5_K_M.gguf" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      - id: "qwen-edit-vae"
+        role: "qwen_edit.vae"
+        source: { kind: "huggingface", repo: "Comfy-Org/Qwen-Image_ComfyUI", revision: "main", file: "split_files/vae/qwen_image_vae.safetensors" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      - id: "qwen-edit-llm"
+        role: "qwen_edit.llm"
+        source: { kind: "huggingface", repo: "unsloth/Qwen2.5-VL-7B-Instruct-GGUF", revision: "main", file: "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      - id: "qwen-edit-mmproj"
+        role: "qwen_edit.mmproj"
+        source: { kind: "huggingface", repo: "unsloth/Qwen2.5-VL-7B-Instruct-GGUF", revision: "main", file: "mmproj-F16.gguf" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      - id: "rife-flownet"
+        role: "interpolation.rife"
+        source: { kind: "huggingface", repo: "AlexWortega/RIFE", revision: "main", file: "flownet.pkl" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      - id: "sd-cli"
+        role: "binary.stable_diffusion_cpp"
+        source: { kind: "github_release", repo: "leejet/stable-diffusion.cpp", revision: "master-cuda12", file: "sd-cli" }
         size_bytes: 0
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"

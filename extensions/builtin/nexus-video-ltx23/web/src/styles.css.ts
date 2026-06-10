@@ -288,30 +288,6 @@ export const formColumn = style({
   gap: "16px",
 });
 
-export const depHeader = style({
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-});
-
-export const depList = style({
-  display: "flex",
-  flexDirection: "column",
-  gap: "4px",
-  margin: 0,
-  padding: 0,
-  listStyle: "none",
-});
-
-export const depItem = style({
-  display: "grid",
-  gridTemplateColumns: "12px 80px 1fr",
-  alignItems: "center",
-  gap: "10px",
-  padding: "4px 0",
-  fontSize: "12px",
-});
-
 export const progressDetails = style({
   marginTop: "10px",
   borderTop: "1px solid oklch(30% 0.005 250)",

@@ -18,32 +18,47 @@ export const header = style({
 });
 
 export const title = style({
-  fontFamily: "var(--font-headline, 'Space Grotesk', sans-serif)",
+  fontFamily: vars.font.headline,
   // audit-allow: px — sub-token spacing value, no density token at this step
   fontSize: "28px",
   fontWeight: 600,
 });
 
 export const subtitle = style({
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "var(--text-secondary, #a7adbb)",
+  color: vars.color.text.secondary,
 });
 
+// Mono micro-stat line — machine counts with `·` house separators.
 export const chips = style({
   display: "flex",
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  gap: "8px",
-  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  fontSize: "12px",
+  alignItems: "center",
+  gap: vars.density.d3,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.caption,
+  fontWeight: vars.font.weight.semibold,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: vars.color.text.secondary,
+  fontVariantNumeric: "tabular-nums",
+});
+
+export const chipStat = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.density.d3,
+  selectors: {
+    "& + &::before": {
+      content: '"·"',
+      color: vars.color.text.muted,
+    },
+  },
 });
 
 export const grid = style({
   display: "grid",
   // audit-allow: px — fixed layout breakpoint
-  gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  gap: "16px",
+  gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+  gap: vars.density.gapCard,
 });
 
 // Error boundary panel — used when the backends fetch fails (e.g. server
@@ -54,8 +69,7 @@ export const errorPanel = style({
   flexDirection: "column",
   gap: vars.space.gapSm,
   padding: vars.space.insetLg,
-  background: vars.color.bg.panel,
-  border: `1px solid ${vars.color.error.base}`,
+  background: vars.color.bg.elevated,
   borderRadius: vars.radius.card,
   alignItems: "flex-start",
 });
@@ -63,7 +77,7 @@ export const errorPanel = style({
 export const errorTitle = style({
   fontSize: vars.font.size.bodyLg,
   fontWeight: vars.font.weight.semibold,
-  color: vars.color.error.base,
+  color: vars.color.error.text,
 });
 
 export const errorMessage = style({
@@ -72,9 +86,8 @@ export const errorMessage = style({
   color: vars.color.text.primary,
   wordBreak: "break-word",
   padding: vars.space.insetMd,
-  background: vars.color.bg.elevated,
+  background: vars.color.bg.lowest,
   borderRadius: vars.radius.control,
-  border: `1px solid ${vars.color.outline.variant}`,
   width: "100%",
 });
 

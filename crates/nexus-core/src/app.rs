@@ -615,6 +615,17 @@ fn build_extension_router_registry(
             }
             res
         })),
+        Arc::new(svi2_pro_extension::Svi2RouterProvider::new({
+            let mut res = svi2_pro_extension::Svi2ProviderResources::new(pool.clone());
+            let id = svi2_pro_extension::EXTENSION_ID;
+            if let Some(ext) = extension_registry.get_extension(id) {
+                res = res.with_directories(ext.directory.clone(), host_data_dir.clone());
+            }
+            if let Ok(profile) = std::env::var("NEXUS_VIDEO_SVI2_RUNTIME") {
+                res = res.with_profile(profile);
+            }
+            res
+        })),
     ];
 
     for provider in &providers {

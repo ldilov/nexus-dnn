@@ -177,26 +177,19 @@ export const meta = style({
   letterSpacing: "0.02em",
 });
 
-export const capabilityRow = style({
-  display: "flex",
-  flexWrap: "wrap",
-  gap: vars.density.d1,
-});
-
-export const capability = style({
-  display: "inline-flex",
-  alignItems: "center",
+export const capsLine = style({
   fontFamily: vars.font.code,
-  fontSize: vars.font.size.kbd,
+  fontSize: vars.font.size.caption,
   fontWeight: vars.font.weight.medium,
   letterSpacing: "0.06em",
+  lineHeight: 1.9,
   textTransform: "uppercase",
-  paddingInline: vars.density.d2,
-  // audit-allow: px — chip vertical padding 3px sits below the d1 token (4px) for compact density
-  paddingBlock: "3px",
-  borderRadius: vars.radius.control,
-  background: vars.color.bg.hover,
-  color: vars.color.text.secondary,
+  color: vars.color.text.muted,
+});
+
+export const capsSep = style({
+  color: vars.color.outline.variant,
+  whiteSpace: "pre",
 });
 
 export const metrics = style({
@@ -230,6 +223,10 @@ export const metricValue = style({
 });
 
 export const metricValueMuted = style({
+  color: vars.color.text.muted,
+});
+
+export const summaryStatValueMuted = style({
   color: vars.color.text.muted,
 });
 
@@ -415,6 +412,7 @@ export const setupBadge = style({
   display: "inline-flex",
   alignItems: "center",
   gap: vars.density.d1,
+  flexShrink: 0,
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.kbd,
   fontWeight: vars.font.weight.bold,
@@ -426,6 +424,23 @@ export const setupBadge = style({
   borderRadius: vars.radius.full,
   background: vars.color.accent.tertiary,
   color: vars.color.onColor.tertiary,
+  textDecoration: "none",
+  transition: `transform ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
+  selectors: {
+    "&:hover": { transform: "translateY(-1px)" },
+    "&:focus-visible": {
+      outline: `${vars.focus.ringWidth} solid ${vars.color.accent.tertiary}`,
+      outlineOffset: vars.focus.offset,
+    },
+  },
+});
+
+export const setupBadgeCount = style({
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.kbd,
+  fontWeight: vars.font.weight.semibold,
+  letterSpacing: "0.04em",
+  opacity: 0.78,
 });
 
 export const setupBadgePulse = style({
@@ -439,6 +454,67 @@ export const setupBadgePulse = style({
   "@media": {
     "(prefers-reduced-motion: reduce)": {
       animation: "none",
+    },
+  },
+});
+
+const checkingDotPulse = keyframes({
+  "0%, 100%": { opacity: 1, transform: "scale(1)" },
+  "50%": { opacity: 0.55, transform: "scale(0.92)" },
+});
+
+export const checkingChip = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.density.d1,
+  flexShrink: 0,
+  fontFamily: vars.font.code,
+  fontSize: vars.font.size.kbd,
+  fontWeight: vars.font.weight.semibold,
+  letterSpacing: "0.12em",
+  textTransform: "uppercase",
+  paddingInline: vars.density.d2,
+  // audit-allow: px — chip vertical padding 2px is below minimum density token granularity
+  paddingBlock: "2px",
+  borderRadius: vars.radius.full,
+  background: vars.color.bg.hover,
+  color: vars.color.text.muted,
+});
+
+export const checkingDot = style({
+  // audit-allow: px — sub-density pulse dot, sits below d1
+  width: "6px",
+  // audit-allow: px — sub-density pulse dot, sits below d1
+  height: "6px",
+  borderRadius: vars.radius.full,
+  background: vars.color.accent.primary,
+  flexShrink: 0,
+  animation: `${checkingDotPulse} 1.5s ease-in-out infinite`,
+  "@media": {
+    "(prefers-reduced-motion: reduce)": {
+      animation: "none",
+    },
+  },
+});
+
+const skeletonShimmer = keyframes({
+  "0%, 100%": { opacity: 0.55 },
+  "50%": { opacity: 1 },
+});
+
+export const actionSkeleton = style({
+  // audit-allow: px — matches the 36×20 toggle footprint so the resolved control swaps in without layout shift
+  width: "36px",
+  // audit-allow: px — matches the 36×20 toggle footprint so the resolved control swaps in without layout shift
+  height: "20px",
+  borderRadius: vars.radius.full,
+  background: vars.color.bg.hover,
+  flexShrink: 0,
+  animation: `${skeletonShimmer} 1.5s ease-in-out infinite`,
+  "@media": {
+    "(prefers-reduced-motion: reduce)": {
+      animation: "none",
+      opacity: 0.7,
     },
   },
 });

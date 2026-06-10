@@ -171,11 +171,7 @@ export const tabs = style({
   display: "flex",
   alignItems: "stretch",
   gap: vars.density.d1,
-  // audit-allow: px — hairline border
-  borderBottom: `1px solid ${vars.color.outline.variant}`,
   position: "relative",
-  // audit-allow: px — hairline negative offset
-  marginBottom: "-1px",
   overflowX: "auto",
   scrollbarWidth: "none",
   // The detail page root is `display: flex; flex-direction: column`. Without
@@ -206,8 +202,6 @@ export const tab = style({
   transition: `color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   // audit-allow: px — hairline border
   borderBottom: "2px solid transparent",
-  // audit-allow: px — hairline negative offset to align with strip baseline
-  marginBottom: "-1px",
   selectors: {
     "&:hover": { color: vars.color.text.primary },
     "&:focus-visible": {
@@ -288,8 +282,6 @@ export const stub = style({
   // audit-allow: px — design-spec stub body padding
   padding: "80px 32px",
   background: vars.card.bg,
-  // audit-allow: px — hairline dashed border
-  border: `1px dashed ${vars.color.outline.variant}`,
   borderRadius: vars.radius.card,
   // audit-allow: px — design-spec stub body min-height
   minHeight: "360px",
