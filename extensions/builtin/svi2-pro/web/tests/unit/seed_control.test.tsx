@@ -77,4 +77,16 @@ describe("SeedControl", () => {
     fireEvent.change(input, { target: { value: "" } });
     expect(captured?.params.seed).toBeUndefined();
   });
+
+  test("switching back to image-to-video strips a previously-entered seed", () => {
+    render(<Root />);
+    selectMode("Text-to-Video");
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Seed" }), {
+      target: { value: "13579" },
+    });
+    expect(captured?.params.seed).toBe(13579);
+
+    selectMode("Image-to-Video");
+    expect(captured?.params.seed).toBeUndefined();
+  });
 });
