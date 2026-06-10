@@ -334,6 +334,7 @@ async fn run_one_step(
         progress_sink: scoped_sink,
         cancellation_token: ctx.cancellation_token.clone(),
         install_run_id: ctx.install_run_id,
+        force: ctx.force,
         upstream_artifacts,
     };
 
@@ -921,9 +922,9 @@ mod tests {
         runner.run_install(&mut rctx).await;
 
         let captured = capturing.events.lock().expect("lock");
-        let started_idx = captured.iter().position(|e| {
-            matches!(e, ProgressEvent::StepStarted { step_id, .. } if step_id == "only")
-        });
+        let started_idx = captured.iter().position(
+            |e| matches!(e, ProgressEvent::StepStarted { step_id, .. } if step_id == "only"),
+        );
         let progress_idx = captured.iter().position(
             |e| matches!(e, ProgressEvent::StepProgress { step_id, phase, .. } if step_id == "only" && phase == "downloading"),
         );

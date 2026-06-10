@@ -575,6 +575,7 @@ mod tests {
             progress_sink,
             cancellation_token: tokio_util::sync::CancellationToken::new(),
             install_run_id: uuid::Uuid::nil(),
+            force: false,
             upstream_artifacts: &upstream,
         };
 

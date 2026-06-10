@@ -26,7 +26,18 @@ requires-python = ">=3.11"
 #   `requirements.txt`; the legacy extension worker imports it.
 dependencies = [
     "huggingface_hub>=0.25.0",
+    "nexus-sdk",
 ]
+
+# Spec-035 validate step contract: the host derives the runnable worker
+# module from the first scripts entry and spawns `python -m <package>`.
+[project.scripts]
+local-llm-worker = "local_llm_worker.__main__:main"
+
+[tool.uv.sources]
+# In-repo Python SDK (builtin source-tree install path). The spec-032
+# archive path bundles the SDK alongside the worker tree instead.
+nexus-sdk = { path = "../../../../sdk/python", editable = true }
 
 [project.optional-dependencies]
 # Test dependencies. Activated via `uv sync --extra dev` or pip install
@@ -47,4 +58,4 @@ build-backend = "hatchling.build"
 # The worker tree isn't wheel-distributed — production install path is
 # archive-extract + path-import. This entry only exists so `uv sync`
 # can resolve a build backend without erroring on missing packages.
-packages = ["backends", "chat", "methods", "models", "operators", "rag"]
+packages = ["backends", "chat", "methods", "models", "operators", "rag", "local_llm_worker"]

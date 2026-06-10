@@ -152,14 +152,20 @@ mod tests {
     #[test]
     fn files_exact_allowlist_wins() {
         let s = sel(
-            &["config.json", "transformer/diffusion_pytorch_model.safetensors"],
+            &[
+                "config.json",
+                "transformer/diffusion_pytorch_model.safetensors",
+            ],
             &["**/*.json"],
             &["config.json"],
         );
         let got = s.filter(LISTING.iter().copied()).unwrap();
         assert_eq!(
             got,
-            vec!["config.json", "transformer/diffusion_pytorch_model.safetensors"]
+            vec![
+                "config.json",
+                "transformer/diffusion_pytorch_model.safetensors"
+            ]
         );
     }
 

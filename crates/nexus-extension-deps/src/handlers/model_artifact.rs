@@ -107,6 +107,20 @@ impl StepHandler for ModelArtifactHandler {
         }
     }
 
+    async fn integrity(
+        &self,
+        ctx: &StepContext<'_>,
+        spec: &Value,
+    ) -> Option<crate::ArtifactIntegrity> {
+        let parsed = parse(spec).ok()?;
+        let accelerator = resolve_accelerator(&parsed, ctx);
+        ctx.model_store
+            .family_integrity(&parsed.family_id, accelerator.as_deref())
+            .await
+            .ok()
+            .flatten()
+    }
+
     async fn estimate(&self, ctx: &StepContext<'_>, spec: &Value) -> Option<StepEstimate> {
         let parsed = parse(spec).ok()?;
         let accelerator = resolve_accelerator(&parsed, ctx);
@@ -126,6 +140,20 @@ impl StepHandler for ModelArtifactHandler {
     async fn run(&self, ctx: &StepContext<'_>, spec: &Value) -> Result<StepArtifact, DepError> {
         let parsed = parse(spec)?;
         let accelerator = resolve_accelerator(&parsed, ctx);
+        // Forced reinstall: wipe this extension's prior copy first so the
+        // download below starts fresh (and reports byte progress) instead of
+        // re-attaching to an already-complete job that streams nothing.
+        if ctx.force {
+            tracing::info!(
+                target: "spec_035::model_artifact",
+                extension_id = %ctx.extension_id,
+                family_id = %parsed.family_id,
+                "model_artifact: force reinstall — purging prior copy before re-download"
+            );
+            ctx.model_store
+                .purge_family(ctx.extension_id, &parsed.family_id, accelerator.as_deref())
+                .await?;
+        }
         let job_id = ctx
             .model_store
             .start_download(&parsed.family_id, accelerator.as_deref(), &parsed.selection)
@@ -426,6 +454,7 @@ mod tests {
             progress_sink: sink,
             cancellation_token: tokio_util::sync::CancellationToken::new(),
             install_run_id: uuid::Uuid::nil(),
+            force: false,
             upstream_artifacts: upstream,
         }
     }
@@ -562,6 +591,153 @@ mod tests {
         assert_eq!(recorded.len(), 1, "exactly one ref recorded on success");
         assert_eq!(recorded[0].0, "example", "extension_id from ctx");
         assert_eq!(recorded[0].1, "huggingface:Owner/Repo", "family from spec");
+    }
+
+    /// Records the order of `purge_family` and `start_download` so the
+    /// force-reinstall sequencing (purge BEFORE download) is observable.
+    #[derive(Default)]
+    struct OrderTrackingStore {
+        calls: std::sync::Mutex<Vec<&'static str>>,
+    }
+    #[async_trait]
+    impl crate::ModelStoreClient for OrderTrackingStore {
+        async fn is_family_installed(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+        ) -> Result<Option<PathBuf>, DepError> {
+            Ok(None)
+        }
+        async fn start_download(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+            _s: &crate::FileSelection,
+        ) -> Result<String, DepError> {
+            self.calls.lock().expect("lock").push("start_download");
+            Ok("job-force".to_owned())
+        }
+        async fn poll_job(&self, _id: &str) -> Result<crate::ModelDownloadProgress, DepError> {
+            Ok(crate::ModelDownloadProgress::Completed {
+                path: PathBuf::from("/tmp/model"),
+                bytes_placed: 1,
+            })
+        }
+        async fn purge_family(
+            &self,
+            _extension_id: &str,
+            _family_id: &str,
+            _accelerator: Option<&str>,
+        ) -> Result<(), DepError> {
+            self.calls.lock().expect("lock").push("purge_family");
+            Ok(())
+        }
+    }
+
+    /// Forced reinstall purges the prior copy BEFORE re-downloading.
+    #[tokio::test]
+    async fn force_run_purges_before_download() {
+        let store = Arc::new(OrderTrackingStore::default());
+        let dir = PathBuf::from("/tmp");
+        let upstream = HashMap::new();
+        let mut ctx = ctx_with_store(store.clone(), &dir, &upstream);
+        ctx.force = true;
+        let spec = serde_json::json!({ "family_id": "huggingface:Owner/Repo" });
+
+        ModelArtifactHandler::new()
+            .run(&ctx, &spec)
+            .await
+            .expect("run ok");
+
+        let calls = store.calls.lock().expect("lock");
+        assert_eq!(
+            calls.as_slice(),
+            ["purge_family", "start_download"],
+            "force must purge before re-downloading"
+        );
+    }
+
+    /// A non-forced run never purges — the historical fast path is preserved.
+    #[tokio::test]
+    async fn non_force_run_does_not_purge() {
+        let store = Arc::new(OrderTrackingStore::default());
+        let dir = PathBuf::from("/tmp");
+        let upstream = HashMap::new();
+        let ctx = ctx_with_store(store.clone(), &dir, &upstream);
+        let spec = serde_json::json!({ "family_id": "huggingface:Owner/Repo" });
+
+        ModelArtifactHandler::new()
+            .run(&ctx, &spec)
+            .await
+            .expect("run ok");
+
+        let calls = store.calls.lock().expect("lock");
+        assert_eq!(calls.as_slice(), ["start_download"]);
+    }
+
+    struct IntegrityStore(Option<crate::ArtifactIntegrity>);
+    #[async_trait]
+    impl crate::ModelStoreClient for IntegrityStore {
+        async fn is_family_installed(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+        ) -> Result<Option<PathBuf>, DepError> {
+            Ok(Some(PathBuf::from("/tmp/model")))
+        }
+        async fn start_download(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+            _s: &crate::FileSelection,
+        ) -> Result<String, DepError> {
+            unreachable!()
+        }
+        async fn poll_job(&self, _id: &str) -> Result<crate::ModelDownloadProgress, DepError> {
+            unreachable!()
+        }
+        async fn family_integrity(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+        ) -> Result<Option<crate::ArtifactIntegrity>, DepError> {
+            Ok(self.0.clone())
+        }
+    }
+
+    #[tokio::test]
+    async fn integrity_delegates_to_model_store_and_surfaces_corruption() {
+        let store: Arc<dyn crate::ModelStoreClient> =
+            Arc::new(IntegrityStore(Some(crate::ArtifactIntegrity {
+                ok: false,
+                detail: Some("weights.bin truncated".into()),
+            })));
+        let dir = PathBuf::from("/tmp");
+        let upstream = HashMap::new();
+        let ctx = ctx_with_store(store, &dir, &upstream);
+        let spec = serde_json::json!({ "family_id": "huggingface:Owner/Repo" });
+
+        let report = ModelArtifactHandler::new()
+            .integrity(&ctx, &spec)
+            .await
+            .expect("integrity report present");
+        assert!(!report.ok);
+        assert_eq!(report.detail.as_deref(), Some("weights.bin truncated"));
+    }
+
+    #[tokio::test]
+    async fn integrity_is_none_when_store_cannot_verify() {
+        let store: Arc<dyn crate::ModelStoreClient> = Arc::new(IntegrityStore(None));
+        let dir = PathBuf::from("/tmp");
+        let upstream = HashMap::new();
+        let ctx = ctx_with_store(store, &dir, &upstream);
+        let spec = serde_json::json!({ "family_id": "huggingface:Owner/Repo" });
+        assert!(
+            ModelArtifactHandler::new()
+                .integrity(&ctx, &spec)
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]

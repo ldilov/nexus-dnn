@@ -26,6 +26,15 @@ pub struct StepArtifactDto {
     pub summary: String,
 }
 
+/// On-disk integrity verdict for a satisfied step. Present only when the step's
+/// handler can verify integrity (e.g. `model_artifact`). `ok: false` drives a
+/// per-row "corrupt — reinstall" warning in the UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StepIntegrityDto {
+    pub ok: bool,
+    pub detail: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StepErrorDto {
     pub category: String,
@@ -55,6 +64,10 @@ pub struct StepDto {
     /// Total files the step needs, paired with `files_present`. `None` when unknown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub files_total: Option<u32>,
+    /// On-disk integrity verdict for a satisfied step. `None` when not verifiable;
+    /// `Some(ok=false)` drives the per-row "corrupt — reinstall" warning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub integrity: Option<StepIntegrityDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,6 +75,17 @@ pub struct DependenciesResponseDto {
     pub steps: Vec<StepDto>,
     pub all_satisfied: bool,
     pub total_remaining_bytes: u64,
+    /// True while an install run is active for this extension. Lets a freshly
+    /// (re)mounted Dependencies page know an install is in flight immediately —
+    /// without waiting for the next WebSocket progress event.
+    #[serde(default)]
+    pub install_active: bool,
+    /// True when no run is active but a partially-downloaded (paused) artifact
+    /// exists on disk — e.g. a host restart parked an in-flight download. Drives
+    /// a "Resume install" affordance; triggering install continues from the
+    /// persisted partial bytes rather than restarting.
+    #[serde(default)]
+    pub install_resumable: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

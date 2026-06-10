@@ -34,6 +34,18 @@ pub trait StepHandler: Send + Sync + 'static {
     async fn estimate(&self, _ctx: &StepContext<'_>, _spec: &Value) -> Option<StepEstimate> {
         None
     }
+
+    /// Verify the on-disk integrity of an already-satisfied step without
+    /// re-installing. Cheap and no-network. Defaults to `None` (not verifiable);
+    /// only handlers backed by recorded file sizes/hashes (e.g. `model_artifact`)
+    /// override it. The UI shows a "reinstall" warning when `ok` is false.
+    async fn integrity(
+        &self,
+        _ctx: &StepContext<'_>,
+        _spec: &Value,
+    ) -> Option<crate::ArtifactIntegrity> {
+        None
+    }
 }
 
 #[derive(Debug, Clone)]

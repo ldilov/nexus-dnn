@@ -110,7 +110,10 @@ impl HuggingFaceClient {
             StatusCode::TOO_MANY_REQUESTS => HfError::RateLimited {
                 retry_after_seconds: 30,
             },
-            StatusCode::SERVICE_UNAVAILABLE
+            // 500 included: the Hub intermittently returns it under burst and
+            // recovers on retry — terminal classification halted whole installs.
+            StatusCode::INTERNAL_SERVER_ERROR
+            | StatusCode::SERVICE_UNAVAILABLE
             | StatusCode::BAD_GATEWAY
             | StatusCode::GATEWAY_TIMEOUT => HfError::Unreachable {
                 retry_after_seconds: Some(30),
@@ -358,19 +361,17 @@ fn map_raw_to_search_result(value: serde_json::Value) -> SearchResult {
         .map(|arr| {
             arr.iter()
                 .filter_map(|s| {
-                    s.get("rfilename")
-                        .and_then(|p| p.as_str())
-                        .map(|p| {
-                            let direct = s.get("size").and_then(|b| b.as_u64());
-                            let lfs_size = s
-                                .get("lfs")
-                                .and_then(|l| l.get("size"))
-                                .and_then(|b| b.as_u64());
-                            RepoFile {
-                                path: p.to_owned(),
-                                size_bytes: direct.or(lfs_size),
-                            }
-                        })
+                    s.get("rfilename").and_then(|p| p.as_str()).map(|p| {
+                        let direct = s.get("size").and_then(|b| b.as_u64());
+                        let lfs_size = s
+                            .get("lfs")
+                            .and_then(|l| l.get("size"))
+                            .and_then(|b| b.as_u64());
+                        RepoFile {
+                            path: p.to_owned(),
+                            size_bytes: direct.or(lfs_size),
+                        }
+                    })
                 })
                 .collect::<Vec<_>>()
         })
@@ -475,6 +476,19 @@ mod tests {
         async fn download(&self, _spec: DownloadSpec) -> HfResult<DownloadedArtifact> {
             Err(HfError::Cancelled)
         }
+    }
+
+    /// Regression — the Hub intermittently returns 500 under burst; it must
+    /// classify as retryable `Unreachable`, never a terminal InvalidResponse
+    /// that halts a whole dependency-install run.
+    #[test]
+    fn http_500_classifies_as_transient_unreachable() {
+        let err =
+            HuggingFaceClient::classify_response_error(StatusCode::INTERNAL_SERVER_ERROR, false);
+        assert!(
+            matches!(err, HfError::Unreachable { .. }),
+            "500 must be retryable, got: {err:?}"
+        );
     }
 
     #[tokio::test]
