@@ -44,7 +44,9 @@ async fn seed_row(
     if on_disk {
         let dir = sink_root.join(job_id);
         tokio::fs::create_dir_all(&dir).await.unwrap();
-        tokio::fs::write(dir.join(filename), b"weights").await.unwrap();
+        tokio::fs::write(dir.join(filename), b"weights")
+            .await
+            .unwrap();
     }
 }
 

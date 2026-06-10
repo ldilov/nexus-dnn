@@ -56,7 +56,11 @@ pub async fn patch_idle_timeout(
     // Validate the extension exists in the host's extension registry —
     // otherwise the request silently no-ops and operators can't tell
     // typos from "extension contributes no runtimes".
-    if state.extension_registry.get_extension(&extension_id).is_none() {
+    if state
+        .extension_registry
+        .get_extension(&extension_id)
+        .is_none()
+    {
         return Err(ApiError::NotFound(format!(
             "extension {extension_id} not found"
         )));
