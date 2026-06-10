@@ -12,6 +12,7 @@ function fieldDefaults(): Partial<RenderParams> {
 export function defaultParamsFromSettings(settings: ExtensionSettings): RenderParams {
   return {
     ...fieldDefaults(),
+    mode: "image_to_video",
     ref_image_path: "",
     prompts: [""],
     last_image_path: null,

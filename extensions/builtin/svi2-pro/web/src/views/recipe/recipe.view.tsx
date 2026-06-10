@@ -11,6 +11,7 @@ import { useRenderRequest } from "../../store/render_request_store";
 import { AnchorInputs } from "./components/anchor_inputs";
 import { BaseModelSelect } from "./components/base_model_select";
 import { DistributionBanner } from "./components/distribution_banner";
+import { GenerationModeToggle } from "./components/generation_mode_toggle";
 import { HistoryList } from "./components/history_list";
 import { LengthControl } from "./components/length_control";
 import { OutputSpecBar } from "./components/output_spec_bar";
@@ -27,8 +28,16 @@ const ANCHOR_PANEL_ID = "svi2-anchor-panel";
 const PROMPT_INPUT_ID = "svi2-prompt-input";
 
 export function RecipeView(): ReactElement {
-  const { presetId, presetApplied, params, render, applyPresetById, resetRender, showJobResult } =
-    useRenderRequest();
+  const {
+    presetId,
+    presetApplied,
+    params,
+    render,
+    applyPresetById,
+    setMode,
+    resetRender,
+    showJobResult,
+  } = useRenderRequest();
   const { issues, blocked, busy, submit, cancel, focusRequest } = useRenderOrchestration();
 
   useFocusOnBlock(focusRequest);
@@ -44,6 +53,8 @@ export function RecipeView(): ReactElement {
     if (current) applyPresetById(current);
   }, [presetApplied, presets, presetId, applyPresetById]);
   const jobs = historyQuery.data?.jobs ?? [];
+  const mode = params.mode ?? "image_to_video";
+  const refImageRequired = mode !== "text_to_video";
   const lastImageRequired = presetRequiresLastImage(presetId, params);
   const refError = issues.find((i) => i.field === "ref_image_path")?.message;
   const lastError = issues.find((i) => i.field === "last_image_path")?.message;
@@ -69,12 +80,20 @@ export function RecipeView(): ReactElement {
           <PresetGallery presets={presets} selectedId={presetId} onSelect={applyPresetById} />
         </Panel>
 
+        <Panel
+          title="Mode"
+          description="Image-to-Video anchors identity to a reference. Text-to-Video synthesizes the seed from the prompt."
+        >
+          <GenerationModeToggle value={mode} onChange={setMode} />
+        </Panel>
+
         <div id={ANCHOR_PANEL_ID}>
           <Panel
             title="Anchor"
             description="The reference image defines identity for the whole take."
           >
             <AnchorInputs
+              refImageRequired={refImageRequired}
               lastImageRequired={lastImageRequired}
               refError={refError}
               lastError={lastError}
