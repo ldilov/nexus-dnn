@@ -15,6 +15,7 @@ from typing import Any, Callable
 from .render_report import write_render_report
 from .resolution import resolution_warning
 from .rpc import Notifications
+from .seed_synthesis import synthesize_seed_frame
 
 _FAKE_PEAK_VRAM_BYTES = 0
 _CLIP_COLORS = ("0x141414", "0x1a1a1a", "0x202020", "0x161616", "0x1c1c1c")
@@ -52,6 +53,38 @@ def _write_synthetic_mp4(
     return output_path
 
 
+def _write_synthetic_seed(seed_path: Path, *, width: int, height: int) -> Path:
+    seed_path.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "lavfi",
+        "-i", f"color=c=0x1a1a1a:s={width}x{height}:d=1",
+        "-frames:v", "1",
+        str(seed_path),
+    ]
+    subprocess.run(cmd, check=True, capture_output=True)
+    return seed_path
+
+
+def _seed_pre_step(validated: dict[str, Any], seed_dst: Path) -> Path:
+    """Fake t2v seed pre-step. Routes through ``synthesize_seed_frame`` (so the
+    wiring is observable/patchable) but falls back to a synthetic frame when no
+    real sd.cpp binary is available, keeping the fake profile fully offline.
+    """
+    try:
+        return synthesize_seed_frame(
+            "sd-cli",
+            str(validated["models_dir"]),
+            seed_dst,
+            validated["prompts"][0],
+            width=validated["width"],
+            height=validated["height"],
+            seed=validated.get("seed"),
+        )
+    except (FileNotFoundError, OSError, subprocess.SubprocessError, RuntimeError):
+        return _write_synthetic_seed(seed_dst, width=validated["width"], height=validated["height"])
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -64,11 +97,21 @@ async def render_fake_e2e(
     params: dict[str, Any],
     emit: Callable[[str, dict[str, Any]], Any],
 ) -> dict[str, Any]:
-    from .pipeline_svi2 import validate_render_params, resolve_models_dir
+    from .pipeline_svi2 import (
+        needs_seed_synthesis,
+        resolve_models_dir,
+        seed_origin,
+        validate_render_params,
+    )
 
     validated = validate_render_params(params or {})
     if not validated.get("models_dir"):
         validated["models_dir"] = str(resolve_models_dir())
+
+    if needs_seed_synthesis(validated):
+        out = Path(validated["output_path"])
+        seed_dst = out.parent / f"{out.stem}_seed.png"
+        _seed_pre_step(validated, seed_dst)
 
     num_clips: int = validated["num_clips"]
     frames_per_clip: int = validated["frames_per_clip"]
@@ -147,6 +190,10 @@ async def render_fake_e2e(
         "output_path": str(video_path),
         "base_output_path": str(video_path),
         "sha256": sha256,
+        "mode": validated["mode"],
+        "seed_origin": seed_origin(validated),
+        "seed_value": validated.get("seed"),
+        "last_image_path": validated.get("last_image_path"),
         "num_clips": num_clips,
         "frames": total_frames,
         "frames_per_clip": frames_per_clip,
