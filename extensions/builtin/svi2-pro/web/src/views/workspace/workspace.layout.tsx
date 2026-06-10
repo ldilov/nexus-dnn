@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { NavLink, Outlet, useLoaderData, useParams } from "react-router";
+import { Outlet, useLoaderData } from "react-router";
 import { Toaster } from "sonner";
 import { CANONICAL_PRESET_ID } from "../../domain/preset_meta";
 import { DEFAULT_SETTINGS } from "../../domain/settings_defaults";
@@ -12,15 +12,8 @@ export interface WorkspaceLoaderData {
   settings: ExtensionSettings;
 }
 
-const TABS: Array<{ to: string; label: string }> = [
-  { to: "recipe", label: "Recipe" },
-  { to: "dag", label: "Pipeline" },
-  { to: "settings", label: "Settings" },
-];
-
 export function WorkspaceLayout(): ReactElement {
   const data = useLoaderData() as WorkspaceLoaderData;
-  const { deploymentId } = useParams();
 
   const initialPreset = pickCanonical(data.catalog?.presets ?? []);
 
@@ -35,19 +28,6 @@ export function WorkspaceLayout(): ReactElement {
               clips with the error-recycling SVI LoRA for coherent long takes.
             </p>
           </div>
-          <nav className={styles.tabs} aria-label="Workspace views">
-            {TABS.map((tab) => (
-              <NavLink
-                key={tab.to}
-                to={`/${deploymentId}/${tab.to}`}
-                className={({ isActive }) =>
-                  [styles.tab, isActive ? styles.tabActive : ""].filter(Boolean).join(" ")
-                }
-              >
-                {tab.label}
-              </NavLink>
-            ))}
-          </nav>
         </header>
         <main className={styles.main}>
           <Outlet />

@@ -122,6 +122,19 @@ export function PresetGallery({
               <div className={styles.titleRow}>
                 <span className={styles.cardTitle}>{preset.label}</span>
                 {isCanonical && <Badge tone="accent">Default</Badge>}
+                <span className={styles.checkSlot} aria-hidden="true">
+                  <svg viewBox="0 0 20 20" width="100%" height="100%" fill="none">
+                    <title>selected</title>
+                    <circle cx="10" cy="10" r="8.25" stroke="currentColor" strokeWidth="1.5" />
+                    <path
+                      d="M6.5 10.2l2.3 2.3 4.7-4.8"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
               </div>
               <span className={styles.cardTagline}>{tagline(preset.description)}</span>
               <div className={styles.badgeRow}>

@@ -2,12 +2,19 @@ import { describe, expect, test } from "vitest";
 import {
   CUSTOM_LENGTH,
   DEFAULT_LENGTH_SECONDS,
+  FLF2V_MAX_FRAMES,
+  FLF2V_MIN_FRAMES,
   LENGTH_OPTIONS_SECONDS,
   actualSeconds,
   deriveNumClips,
+  flf2vFramesForSeconds,
+  flf2vMaxSeconds,
+  flf2vSeconds,
+  flf2vSummary,
   lengthSummary,
   matchLengthOption,
   segmentDefaults,
+  snapToValidFrames,
   stitchedFrames,
 } from "../../src/domain/length";
 
@@ -100,5 +107,54 @@ describe("segmentDefaults / lengthSummary", () => {
       interpolate_fps: 0,
     });
     expect(summary).toBe("6 × 85 frames @ 16 fps → 30.3s native");
+  });
+});
+
+describe("snapToValidFrames", () => {
+  test("snaps to nearest 4n+1", () => {
+    expect(snapToValidFrames(80)).toBe(81);
+    expect(snapToValidFrames(81)).toBe(81);
+    expect(snapToValidFrames(64)).toBe(65);
+    expect(snapToValidFrames(66)).toBe(65);
+  });
+
+  test("clamps to the FLF2V frame range", () => {
+    expect(snapToValidFrames(1)).toBe(FLF2V_MIN_FRAMES);
+    expect(snapToValidFrames(500)).toBe(FLF2V_MAX_FRAMES);
+  });
+
+  test("always produces 4n+1 within bounds", () => {
+    for (let frames = 0; frames <= 200; frames += 1) {
+      const snapped = snapToValidFrames(frames);
+      expect((snapped - 1) % 4).toBe(0);
+      expect(snapped).toBeGreaterThanOrEqual(FLF2V_MIN_FRAMES);
+      expect(snapped).toBeLessThanOrEqual(FLF2V_MAX_FRAMES);
+    }
+  });
+});
+
+describe("flf2v length helpers", () => {
+  test("frames = fps × seconds snapped to 4n+1", () => {
+    expect(flf2vFramesForSeconds(5, 16)).toBe(81);
+    expect(flf2vFramesForSeconds(4, 16)).toBe(65);
+    expect(flf2vFramesForSeconds(20, 16)).toBe(FLF2V_MAX_FRAMES);
+  });
+
+  test("max seconds derives from the frame cap", () => {
+    expect(flf2vMaxSeconds(16)).toBe(8);
+    expect(flf2vMaxSeconds(0)).toBe(0);
+  });
+
+  test("seconds round-trips from params", () => {
+    expect(flf2vSeconds({ frames_per_clip: 65, fps: 16 })).toBeCloseTo(4.0625, 4);
+  });
+
+  test("summary names single clip, frames, fps, morph seconds and RIFE target", () => {
+    const summary = flf2vSummary({
+      frames_per_clip: 65,
+      fps: 16,
+      interpolate_fps: 48,
+    });
+    expect(summary).toBe("1 × 65 frames @ 16 fps → 4.1s morph (RIFE → 48 fps)");
   });
 });

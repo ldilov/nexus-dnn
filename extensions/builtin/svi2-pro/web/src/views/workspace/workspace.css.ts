@@ -39,42 +39,6 @@ export const subtitle = style({
   maxWidth: "60ch",
 });
 
-export const tabs = style({
-  display: "inline-flex",
-  gap: vars.space.xs,
-  padding: vars.space.xs,
-  borderRadius: vars.radius.pill,
-  background: vars.color.surfaceMuted,
-});
-
-export const tab = style({
-  display: "inline-flex",
-  alignItems: "center",
-  gap: vars.space.xs,
-  padding: `${vars.space.sm} ${vars.space.lg}`,
-  borderRadius: vars.radius.pill,
-  border: "none",
-  background: "transparent",
-  color: vars.color.textMuted,
-  fontFamily: vars.font.body,
-  fontSize: vars.text.caption,
-  fontWeight: 600,
-  cursor: "pointer",
-  transition: `background ${vars.motion.fast}, color ${vars.motion.fast}`,
-  selectors: {
-    "&:hover": { color: vars.color.text },
-    "&:focus-visible": { outline: `2px solid ${vars.color.accent}`, outlineOffset: "2px" },
-  },
-});
-
-export const tabActive = style({
-  background: vars.color.accent,
-  color: vars.color.accentOn,
-  selectors: {
-    "&:hover": { color: vars.color.accentOn },
-  },
-});
-
 export const main = style({
   display: "flex",
   flexDirection: "column",

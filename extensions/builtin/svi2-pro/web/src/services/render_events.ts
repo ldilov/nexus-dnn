@@ -22,7 +22,12 @@ export interface ClipStartedFrame {
 
 export interface ClipStepFrame {
   method: "svi2.video.clip.step";
-  params: { clip_index: number; step: number; total_steps: number };
+  params: {
+    clip_index: number;
+    step: number;
+    total_steps: number;
+    seconds_per_step?: number;
+  };
 }
 
 export interface ClipCompletedFrame {

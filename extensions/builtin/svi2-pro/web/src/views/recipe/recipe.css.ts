@@ -43,18 +43,19 @@ globalStyle(`${renderCta} > button`, {
   width: "100%",
 });
 
-export const resolutionWarning = style({
-  padding: vars.space.md,
-  borderRadius: vars.radius.md,
-  background: `color-mix(in oklab, ${vars.color.warning} 12%, transparent)`,
-  boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.warning} 35%, transparent)`,
-  color: vars.color.warning,
-  fontSize: vars.text.caption,
+export const panelEyebrow = style({
+  display: "block",
+  fontFamily: vars.font.mono,
+  fontSize: "10.5px",
+  letterSpacing: "0.2em",
+  textTransform: "uppercase",
+  color: vars.color.accent,
+  marginBottom: vars.space.xs,
 });
 
 export const quickControls = style({
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.md,
-  marginBottom: vars.space.md,
+  gap: vars.space.xl,
+  marginBlock: vars.space.sm,
 });

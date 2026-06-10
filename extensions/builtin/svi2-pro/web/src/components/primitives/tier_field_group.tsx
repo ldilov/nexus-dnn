@@ -5,6 +5,7 @@ export type TierFieldGroupProps = {
   title: ReactNode;
   description?: ReactNode;
   badge?: ReactNode;
+  summary?: ReactNode;
   defaultCollapsed?: boolean;
   collapsible?: boolean;
   className?: string;
@@ -15,6 +16,7 @@ export function TierFieldGroup({
   title,
   description,
   badge,
+  summary,
   defaultCollapsed = false,
   collapsible = true,
   className,
@@ -57,13 +59,22 @@ export function TierFieldGroup({
           <span className={styles.title}>{title}</span>
           {description && <span className={styles.description}>{description}</span>}
         </span>
-        {badge && <span className={styles.badgeSlot}>{badge}</span>}
+        {(summary || badge) && (
+          <span className={styles.badgeSlot}>
+            {summary && <span className={styles.summaryChip}>{summary}</span>}
+            {badge}
+          </span>
+        )}
       </button>
-      {isOpen && (
-        <div id={bodyId} className={styles.body}>
-          {children}
+      <div
+        id={bodyId}
+        className={[styles.bodyShell, isOpen ? styles.bodyShellOpen : ""].filter(Boolean).join(" ")}
+        inert={!isOpen || undefined}
+      >
+        <div className={styles.bodyClip}>
+          <div className={styles.body}>{children}</div>
         </div>
-      )}
+      </div>
     </section>
   );
 }

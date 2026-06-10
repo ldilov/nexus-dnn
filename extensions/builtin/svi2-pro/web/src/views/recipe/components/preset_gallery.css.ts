@@ -41,34 +41,61 @@ export const cardCanonical = style({
   gridColumn: "1 / -1",
   padding: vars.space.lg,
   background: `
-    radial-gradient(120% 180% at 0% 0%, color-mix(in oklab, ${vars.color.accent} 14%, transparent) 0%, transparent 55%),
-    color-mix(in oklab, ${vars.color.accent} 6%, ${vars.color.surfaceRaised})
+    radial-gradient(120% 180% at 0% 0%, color-mix(in oklab, ${vars.color.accent} 10%, transparent) 0%, transparent 55%),
+    color-mix(in oklab, ${vars.color.accent} 4%, ${vars.color.surfaceRaised})
   `,
-  boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.accent} 40%, transparent)`,
+  boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.accent} 18%, transparent)`,
   selectors: {
     "&:hover": {
       background: `
-        radial-gradient(120% 180% at 0% 0%, color-mix(in oklab, ${vars.color.accent} 18%, transparent) 0%, transparent 55%),
-        color-mix(in oklab, ${vars.color.accent} 8%, ${vars.color.surfaceRaised})
+        radial-gradient(120% 180% at 0% 0%, color-mix(in oklab, ${vars.color.accent} 14%, transparent) 0%, transparent 55%),
+        color-mix(in oklab, ${vars.color.accent} 6%, ${vars.color.surfaceRaised})
       `,
-      boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.accent} 55%, transparent)`,
+      boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${vars.color.accent} 30%, transparent)`,
     },
   },
 });
 
+const selectedRing = `inset 0 0 0 1.5px ${vars.color.accent}, 0 0 0 3px ${vars.color.accentGlow}, ${vars.shadow.glow}`;
+
 export const cardSelected = style({
   background: `color-mix(in oklab, ${vars.color.accent} 12%, ${vars.color.surfaceMuted})`,
-  boxShadow: `inset 0 0 0 1px ${vars.color.accent}, ${vars.shadow.glow}`,
+  boxShadow: selectedRing,
+  selectors: {
+    "&:hover": {
+      boxShadow: selectedRing,
+      transform: "none",
+    },
+  },
+});
+
+export const checkSlot = style({
+  display: "inline-flex",
+  width: "20px",
+  height: "20px",
+  marginLeft: "auto",
+  flexShrink: 0,
+  color: vars.color.accent,
+  opacity: 0,
+  transform: "scale(0.7)",
+  transition: `opacity ${vars.motion.fast}, transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1)`,
+  selectors: {
+    [`${cardSelected} &`]: {
+      opacity: 1,
+      transform: "scale(1)",
+    },
+  },
 });
 
 export const titleRow = style({
   display: "flex",
   alignItems: "center",
-  justifyContent: "space-between",
   gap: vars.space.sm,
 });
 
 export const cardTitle = style({
+  flex: 1,
+  minWidth: 0,
   fontFamily: vars.font.display,
   fontSize: vars.text.body,
   fontWeight: vars.weight.semibold,

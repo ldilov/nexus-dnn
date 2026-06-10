@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   hasBlockingErrors,
+  isFlf2vMode,
   presetRequiresLastImage,
   validateRenderParams,
 } from "../../src/domain/validation";
@@ -116,6 +117,43 @@ describe("validateRenderParams", () => {
     expect(
       presetRequiresLastImage("flf2v-morph-lowvram", { requires_last_image: false }),
     ).toBe(false);
+  });
+
+  test("flf2v mode with multiple clips is a blocking error", () => {
+    const issues = validateRenderParams(baseParams({ num_clips: 5 }), {
+      presetId: "flf2v-morph-lowvram",
+      hasRefImage: true,
+      hasLastImage: true,
+    });
+    expect(issues.some((i) => i.field === "num_clips" && i.severity === "error")).toBe(true);
+  });
+
+  test("flf2v mode with one clip passes the clip rule", () => {
+    const issues = validateRenderParams(baseParams({ num_clips: 1, frames_per_clip: 65 }), {
+      presetId: "flf2v-morph-lowvram",
+      hasRefImage: true,
+      hasLastImage: true,
+    });
+    expect(issues.some((i) => i.field === "num_clips")).toBe(false);
+  });
+
+  test("an uploaded last image triggers the clip rule on any preset", () => {
+    const issues = validateRenderParams(
+      baseParams({ num_clips: 5, last_image_path: "/tmp/end.png" }),
+      {
+        presetId: "svi-canonical",
+        hasRefImage: true,
+        hasLastImage: true,
+      },
+    );
+    expect(issues.some((i) => i.field === "num_clips" && i.severity === "error")).toBe(true);
+  });
+
+  test("isFlf2vMode detects preset flag or uploaded last image", () => {
+    expect(isFlf2vMode("flf2v-morph-lowvram", {})).toBe(true);
+    expect(isFlf2vMode("svi-canonical", { last_image_path: "/tmp/end.png" })).toBe(true);
+    expect(isFlf2vMode("svi-canonical", { last_image_path: null })).toBe(false);
+    expect(isFlf2vMode("svi-canonical", {})).toBe(false);
   });
 
   test("flags out-of-range cfg and steps", () => {
