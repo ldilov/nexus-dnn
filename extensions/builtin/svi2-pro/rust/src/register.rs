@@ -10,14 +10,14 @@ use crate::backend_client::{LeaseFactory, LeaseProvider};
 use crate::dispatcher::RenderChannels;
 use crate::domain::Result as DomainResult;
 use crate::host_adapter::Svi2LeaseFactory;
-use crate::host_contract::SharedLease;
+use crate::host_contract::{ModelArtifactLocator, SharedLease};
 use crate::router::{self, AppState};
 use crate::storage::Store;
 use crate::{EXTENSION_VERSION, MIGRATIONS};
 
 pub const EXTENSION_ID: &str = "nexus.video.svi2-pro";
 
-const DEFAULT_PROFILE: &str = "fake";
+const DEFAULT_PROFILE: &str = "rtx50-fp8";
 
 #[derive(Clone)]
 pub struct Svi2ProviderResources {
@@ -26,6 +26,7 @@ pub struct Svi2ProviderResources {
     pub host_data_dir: Option<PathBuf>,
     pub models_dir: Option<PathBuf>,
     pub profile: Option<String>,
+    pub model_locator: Option<Arc<dyn ModelArtifactLocator>>,
 }
 
 impl Svi2ProviderResources {
@@ -37,6 +38,7 @@ impl Svi2ProviderResources {
             host_data_dir: None,
             models_dir: None,
             profile: None,
+            model_locator: None,
         }
     }
 
@@ -56,6 +58,12 @@ impl Svi2ProviderResources {
     #[must_use]
     pub fn with_profile(mut self, profile: impl Into<String>) -> Self {
         self.profile = Some(profile.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_model_locator(mut self, locator: Arc<dyn ModelArtifactLocator>) -> Self {
+        self.model_locator = Some(locator);
         self
     }
 }
@@ -88,12 +96,15 @@ impl Svi2RouterProvider {
         ) {
             (Some(ext_dir), Some(host_data_dir)) => {
                 let factory_data_dir = host_data_dir.join("extensions").join(EXTENSION_ID);
-                Arc::new(Svi2LeaseFactory::new(
-                    ext_dir,
-                    factory_data_dir,
-                    profile,
-                    self.resources.models_dir.clone(),
-                ))
+                Arc::new(
+                    Svi2LeaseFactory::new(
+                        ext_dir,
+                        factory_data_dir,
+                        profile,
+                        self.resources.models_dir.clone(),
+                    )
+                    .with_model_locator(self.resources.model_locator.clone()),
+                )
             }
             _ => Arc::new(StubLeaseFactory),
         };

@@ -235,6 +235,17 @@ impl Store {
         Ok(rows.into_iter().map(map_job_row).collect())
     }
 
+    pub async fn clear_output(&self, job_id: &str) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE ext_svi2_pro__render_jobs SET output_path = NULL WHERE job_id = ? \
+             AND output_path IS NOT NULL",
+        )
+        .bind(job_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn get_settings(&self) -> Result<JsonValue> {
         let row = sqlx::query("SELECT settings_json FROM ext_svi2_pro__settings WHERE id = 1")
             .fetch_optional(&self.pool)

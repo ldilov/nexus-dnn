@@ -30,6 +30,10 @@ dependencies:
         manifest_path: "worker/pyproject.toml"
         lock_path: "worker/uv.lock"
         target: extension_local
+        # Real-runtime ML stack (torch/cu132, transformers, …) + vendored
+        # flash-attn wheel + NVIDIA Maxine RTX VSR (Windows-only wheel).
+        # Base deps alone only cover the `fake` profile.
+        extras: [diffusers, flash, rtx-upscale]
     - id: ffmpeg
       type: system_binary
       spec:

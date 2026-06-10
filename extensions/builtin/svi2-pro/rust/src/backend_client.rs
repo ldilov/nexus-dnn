@@ -36,7 +36,20 @@ impl BackendClient {
             .await
             .map_err(lease_error_to_domain)
     }
+
+    /// For RPCs that legitimately run for hours (`render.start` blocks until
+    /// the whole chain renders). The transport's 30s default would kill every
+    /// real render during model load alone.
+    pub async fn call_long_running(&self, method: &str, params: JsonValue) -> Result<JsonValue> {
+        self.lease
+            .send_rpc_with_timeout(method, params, LONG_RUNNING_RPC_TIMEOUT)
+            .await
+            .map_err(lease_error_to_domain)
+    }
 }
+
+pub const LONG_RUNNING_RPC_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(24 * 60 * 60);
 
 pub fn lease_error_to_domain(err: LeaseError) -> Svi2Error {
     match err {
@@ -75,6 +88,11 @@ impl LeaseProvider {
             .cloned()
         {
             return Ok(existing);
+        }
+        // Release the dead/failed lease before replacing it — dropping it
+        // silently leaks the worker process (and its tens of GiB of weights).
+        if let Some(stale) = slot.take() {
+            let _ = stale.lease().release().await;
         }
         let lease = self.factory.acquire().await?;
         let client = BackendClient::new(lease);

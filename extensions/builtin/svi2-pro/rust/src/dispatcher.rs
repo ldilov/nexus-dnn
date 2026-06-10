@@ -134,7 +134,7 @@ pub fn spawn_render(task: RenderTask) {
             }
         });
 
-        let outcome = client.call(methods::RENDER_START, params).await;
+        let outcome = client.call_long_running(methods::RENDER_START, params).await;
 
         relay.abort();
 
