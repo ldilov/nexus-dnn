@@ -20,6 +20,44 @@ def test_canonical_preset_exists_and_is_reference_faithful():
     assert params.get("adain_factor", 0.0) == 0.0              # rely on anchor + LoRA, not colour patch
 
 
+def test_canonical_family_defaults_are_85_frames_16fps_6_clips():
+    presets = _load_presets()
+    for pid in ("svi-canonical", "svi-canonical-704", "svi-canonical-640"):
+        params = presets[pid]["params"]
+        assert params["frames_per_clip"] == 85, pid
+        assert (params["frames_per_clip"] - 1) % 4 == 0, pid
+        assert params["fps"] == 16, pid
+        assert params["num_clips"] == 6, pid
+        assert params["num_overlap_frame"] == 5, pid
+
+
+_LEGACY_IDS = {
+    "natural-reference",
+    "natural-rife48",
+    "forced-motion-24",
+    "natural-reference-lowvram",
+    "natural-rife48-lowvram",
+    "forced-motion-24-lowvram",
+    "chained-single-prompt-lowvram",
+}
+_HIDDEN_IDS = {"svi-canonical-704", "svi-canonical-640"}
+
+
+def test_legacy_and_hidden_flags_match_catalog_contract():
+    presets = _load_presets()
+    for pid, preset in presets.items():
+        legacy = preset.get("legacy", False)
+        hidden = preset.get("hidden", False)
+        assert isinstance(legacy, bool), pid
+        assert isinstance(hidden, bool), pid
+        assert legacy == (pid in _LEGACY_IDS), pid
+        assert hidden == (pid in _HIDDEN_IDS), pid
+    assert not (_LEGACY_IDS & _HIDDEN_IDS)
+    for visible_id in ("svi-canonical", "flf2v-morph-lowvram"):
+        assert not presets[visible_id].get("legacy", False)
+        assert not presets[visible_id].get("hidden", False)
+
+
 def test_canonical_preset_params_validate():
     from svi2_video_worker.pipeline_svi2 import validate_render_params
 

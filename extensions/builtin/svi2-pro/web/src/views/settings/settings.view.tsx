@@ -160,11 +160,7 @@ export function SettingsView(): ReactElement {
         >
           Discard changes
         </Button>
-        {dirty && (
-          <span className={styles.dirtyHint} role="status">
-            Unsaved changes
-          </span>
-        )}
+        {dirty && <output className={styles.dirtyHint}>Unsaved changes</output>}
       </div>
     </Panel>
   );

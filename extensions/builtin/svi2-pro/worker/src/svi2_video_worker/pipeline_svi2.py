@@ -248,6 +248,23 @@ def _build_expert(
     return ExpertModel(dit=dit, fp8_audit=fp8_audit, lora_audit=lora_audit)
 
 
+def resolve_dit_paths(
+    params: dict[str, Any], models_dir: Path, *, require_overrides_exist: bool = False
+) -> tuple[Path, Path]:
+    dit_high_override = params.get("dit_high_path")
+    dit_low_override = params.get("dit_low_path")
+    dit_high = Path(dit_high_override) if dit_high_override else _resolve(models_dir, "dit-high-fp8")
+    dit_low = Path(dit_low_override) if dit_low_override else _resolve(models_dir, "dit-low-fp8")
+    if require_overrides_exist:
+        for label, override, path in (
+            ("dit_high_path", dit_high_override, dit_high),
+            ("dit_low_path", dit_low_override, dit_low),
+        ):
+            if override and not path.exists():
+                raise ValueError(f"{label} does not exist: {path}")
+    return dit_high, dit_low
+
+
 def _build_models(params: dict[str, Any]) -> RenderModels:
     from .vae import VaeWrapper
     from .text_encoder import TextEncoderWrapper
@@ -259,10 +276,7 @@ def _build_models(params: dict[str, Any]) -> RenderModels:
     distill_high = Path(dh) if dh else None
     distill_low = Path(dl) if dl else None
 
-    dit_high_override = params.get("dit_high_path")
-    dit_low_override = params.get("dit_low_path")
-    dit_high = Path(dit_high_override) if dit_high_override else _resolve(models_dir, "dit-high-fp8")
-    dit_low = Path(dit_low_override) if dit_low_override else _resolve(models_dir, "dit-low-fp8")
+    dit_high, dit_low = resolve_dit_paths(params, models_dir, require_overrides_exist=True)
 
     high = _build_expert(dit_high, _resolve(models_dir, "svi-lora-high"), distill_high)
     low = _build_expert(dit_low, _resolve(models_dir, "svi-lora-low"), distill_low)

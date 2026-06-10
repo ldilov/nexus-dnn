@@ -166,6 +166,14 @@
     },
     "lora_path": {
       "type": "string"
+    },
+    "dit_high_path": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "dit_low_path": {
+      "type": ["string", "null"],
+      "minLength": 1
     }
   }
 }

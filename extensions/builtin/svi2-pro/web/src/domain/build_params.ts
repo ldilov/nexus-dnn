@@ -20,6 +20,8 @@ export function defaultParamsFromSettings(settings: ExtensionSettings): RenderPa
     interpolate_fps: settings.interpolateFps,
     models_dir: settings.modelsDir || undefined,
     output_path: settings.outputDir ? `${settings.outputDir}/svi2_out.mp4` : undefined,
+    dit_high_path: settings.ditHighPath || undefined,
+    dit_low_path: settings.ditLowPath || undefined,
   } as RenderParams;
 }
 

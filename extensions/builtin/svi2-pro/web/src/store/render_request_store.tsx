@@ -43,6 +43,7 @@ const STALL_TICK_MS = 5_000;
 interface RenderRequestState {
   settings: ExtensionSettings;
   presetId: string | null;
+  presetApplied: boolean;
   params: RenderParams;
   refImageName: string | null;
   lastImageName: string | null;
@@ -83,6 +84,7 @@ export function RenderRequestProvider({
   const [presetId, setPresetId] = useState<string | null>(
     initialPreset?.id ?? CANONICAL_PRESET_ID,
   );
+  const [presetApplied, setPresetApplied] = useState<boolean>(initialPreset !== null);
   const [params, setParams] = useState<RenderParams>(() => {
     const base = defaultParamsFromSettings(initialSettings);
     return initialPreset ? applyPreset(base, initialPreset) : base;
@@ -124,10 +126,26 @@ export function RenderRequestProvider({
     }, STALL_TICK_MS);
   }, [stopWatchdog]);
 
-  const applyPresetById = useCallback((preset: PresetSummary) => {
-    setPresetId(preset.id);
-    setParams((prev) => applyPreset(prev, preset));
-  }, []);
+  const applyPresetById = useCallback(
+    (preset: PresetSummary) => {
+      const requiresLast = preset.params.requires_last_image === true;
+      setPresetId(preset.id);
+      setPresetApplied(true);
+      setParams((prev) => {
+        // Rebuild from settings defaults so keys set by the PREVIOUS preset
+        // (requires_last_image, off-budget width, …) never leak across.
+        const base = {
+          ...defaultParamsFromSettings(settings),
+          ref_image_path: prev.ref_image_path,
+          prompts: prev.prompts,
+          last_image_path: requiresLast ? (prev.last_image_path ?? null) : null,
+        };
+        return applyPreset(base, preset);
+      });
+      if (!requiresLast) setLastImageName(null);
+    },
+    [settings],
+  );
 
   const updateParam = useCallback(
     <K extends keyof RenderParams>(key: K, value: RenderParams[K]) => {
@@ -221,6 +239,7 @@ export function RenderRequestProvider({
     () => ({
       settings,
       presetId,
+      presetApplied,
       params,
       refImageName,
       lastImageName,
@@ -241,6 +260,7 @@ export function RenderRequestProvider({
     [
       settings,
       presetId,
+      presetApplied,
       params,
       refImageName,
       lastImageName,

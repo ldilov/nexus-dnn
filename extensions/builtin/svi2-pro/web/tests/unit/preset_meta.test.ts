@@ -3,6 +3,7 @@ import {
   CANONICAL_PRESET_ID,
   presetBadges,
   sortPresets,
+  splitPresetVisibility,
 } from "../../src/domain/preset_meta";
 import type { PresetSummary } from "../../src/services/types";
 
@@ -86,5 +87,37 @@ describe("sortPresets", () => {
   test("canonical sorts first", () => {
     const sorted = sortPresets([off640, flf2v, canonical]);
     expect(sorted[0]?.id).toBe(CANONICAL_PRESET_ID);
+  });
+});
+
+describe("splitPresetVisibility", () => {
+  const legacyPreset: PresetSummary = {
+    id: "natural-reference",
+    label: "Legacy",
+    description: "legacy",
+    params: {},
+    legacy: true,
+  };
+  const hiddenPreset: PresetSummary = { ...off640, hidden: true };
+
+  test("featured excludes legacy and hidden, keeps canonical first", () => {
+    const { featured } = splitPresetVisibility([legacyPreset, hiddenPreset, flf2v, canonical]);
+    expect(featured.map((p) => p.id)).toEqual(["svi-canonical", "flf2v-morph-lowvram"]);
+  });
+
+  test("legacy bucket holds only legacy-flagged presets", () => {
+    const { legacy } = splitPresetVisibility([legacyPreset, hiddenPreset, flf2v, canonical]);
+    expect(legacy.map((p) => p.id)).toEqual(["natural-reference"]);
+  });
+
+  test("hidden presets appear in neither bucket", () => {
+    const { featured, legacy } = splitPresetVisibility([hiddenPreset, canonical]);
+    expect([...featured, ...legacy].some((p) => p.id === hiddenPreset.id)).toBe(false);
+  });
+
+  test("flags are driven by catalog metadata, not id lists", () => {
+    const renamed: PresetSummary = { ...legacyPreset, id: "totally-new-id" };
+    const { legacy } = splitPresetVisibility([renamed, canonical]);
+    expect(legacy.map((p) => p.id)).toEqual(["totally-new-id"]);
   });
 });
