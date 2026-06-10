@@ -27,6 +27,8 @@ export interface FieldSpec {
   step?: number;
   default?: number | boolean | string;
   options?: FieldOption[];
+  /** Select stores a number in params (option values are stringified). */
+  numeric?: boolean;
 }
 
 export interface TierMeta {
@@ -161,6 +163,37 @@ export const FIELDS: FieldSpec[] = [
       { value: "ffmpeg", label: "ffmpeg minterpolate" },
     ],
     help: "rife = torch IFNet on CUDA → ncnn → ffmpeg fallback.",
+  },
+  {
+    key: "upscale_factor",
+    label: "RTX upscale",
+    tier: "core",
+    control: "select",
+    numeric: true,
+    default: 0,
+    options: [
+      { value: "0", label: "Off" },
+      { value: "2", label: "2× (Maxine VSR)" },
+      { value: "3", label: "3× (Maxine VSR)" },
+      { value: "4", label: "4× (Maxine VSR)" },
+    ],
+    help: "NVIDIA Maxine RTX Video Super Resolution after stitch, before interpolation. Tensor-Core fast; Windows + RTX only.",
+  },
+  {
+    key: "upscale_quality",
+    label: "Upscale quality",
+    tier: "core",
+    control: "select",
+    default: "HIGH",
+    options: [
+      { value: "LOW", label: "Low (fastest)" },
+      { value: "MEDIUM", label: "Medium" },
+      { value: "HIGH", label: "High" },
+      { value: "ULTRA", label: "Ultra (best)" },
+      { value: "HIGHBITRATE_HIGH", label: "High-bitrate High" },
+      { value: "HIGHBITRATE_ULTRA", label: "High-bitrate Ultra" },
+    ],
+    help: "Maxine VSR quality preset. HIGHBITRATE_* favours clean (uncompressed) sources like fresh renders.",
   },
   {
     key: "num_inference_steps",

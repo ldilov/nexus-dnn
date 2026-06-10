@@ -84,7 +84,7 @@ export function AnchorInputs({
           maxSizeBytes={MAX_IMAGE_BYTES}
           ariaLabel="last image upload"
           label={lastUpload.file ? "Replace last image" : "Drop the end keyframe or browse"}
-          hint="FLF2V end keyframe. Animates reference → last image over the clip."
+          hint="FLF2V end keyframe. Animates reference → last image over one clip — switches the render to single-clip morph (Clips locked to 1)."
           onFiles={(files) => void lastUpload.pick(files[0] ?? null)}
           renderPreview={() =>
             lastUrl ? <img className={styles.thumb} src={lastUrl} alt="last preview" /> : null

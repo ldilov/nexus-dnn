@@ -10,8 +10,10 @@ import type { RenderJob } from "../../services/types";
 import { useRenderRequest } from "../../store/render_request_store";
 import { AnchorInputs } from "./components/anchor_inputs";
 import { BaseModelSelect } from "./components/base_model_select";
+import { DistributionBanner } from "./components/distribution_banner";
 import { HistoryList } from "./components/history_list";
 import { LengthControl } from "./components/length_control";
+import { OutputSpecBar } from "./components/output_spec_bar";
 import { PresetGallery } from "./components/preset_gallery";
 import { PromptInput } from "./components/prompt_input";
 import { QwenEditPanel } from "./components/qwen_edit_panel";
@@ -88,16 +90,36 @@ export function RecipeView(): ReactElement {
           <QwenEditPanel />
         </Panel>
 
-        <Panel title="Parameters" description="Grouped by tier. Advanced tiers stay collapsed.">
-          {resolutionWarning && (
-            <output className={styles.resolutionWarning}>{resolutionWarning}</output>
-          )}
+        <Panel
+          title={
+            <>
+              <span className={styles.panelEyebrow}>Inference · Parameters</span>
+              Parameters
+            </>
+          }
+          description="Grouped by tier. Advanced tiers stay collapsed."
+          actions={
+            <Button
+              variant="secondary"
+              size="sm"
+              title="Re-apply the active preset's defaults"
+              onClick={() => {
+                const current = presets.find((p) => p.id === presetId);
+                if (current) applyPresetById(current);
+              }}
+            >
+              Reset to defaults
+            </Button>
+          }
+        >
+          <DistributionBanner presets={presets} warningText={resolutionWarning} />
           <div className={styles.quickControls}>
             <LengthControl />
             <ResolutionControl presets={presets} />
             <BaseModelSelect />
           </div>
           <TierForm issues={issues} />
+          <OutputSpecBar presets={presets} />
         </Panel>
       </div>
 

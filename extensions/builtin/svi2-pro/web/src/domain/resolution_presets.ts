@@ -7,17 +7,39 @@ export interface ResolutionOption {
   width: number;
   height: number;
   label: string;
+  sub: string;
+  stepsDown: number;
   offDistribution: boolean;
 }
 
-const STEP_SOURCES: Array<{ presetId: string; label: string; offDistribution: boolean }> = [
+const STEP_SOURCES: Array<{
+  presetId: string;
+  label: string;
+  sub: string;
+  stepsDown: number;
+  offDistribution: boolean;
+}> = [
   {
     presetId: "svi-canonical",
-    label: "Native — SVI 2.0 Pro 480p training budget",
+    label: "Native",
+    sub: "SVI 2.0 Pro 480p training budget",
+    stepsDown: 0,
     offDistribution: false,
   },
-  { presetId: "svi-canonical-704", label: "One step down", offDistribution: true },
-  { presetId: "svi-canonical-640", label: "Two steps down", offDistribution: true },
+  {
+    presetId: "svi-canonical-704",
+    label: "One step down",
+    sub: "Mild downscale from native",
+    stepsDown: 1,
+    offDistribution: true,
+  },
+  {
+    presetId: "svi-canonical-640",
+    label: "Two steps down",
+    sub: "Below 480p training budget",
+    stepsDown: 2,
+    offDistribution: true,
+  },
 ];
 
 export function buildResolutionOptions(presets: PresetSummary[]): ResolutionOption[] {
@@ -33,6 +55,8 @@ export function buildResolutionOptions(presets: PresetSummary[]): ResolutionOpti
       width,
       height,
       label: source.label,
+      sub: source.sub,
+      stepsDown: source.stepsDown,
       offDistribution: source.offDistribution,
     });
   }

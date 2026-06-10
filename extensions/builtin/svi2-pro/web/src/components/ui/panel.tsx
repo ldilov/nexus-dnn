@@ -33,9 +33,11 @@ export function Panel({
     <section className={cls}>
       {(title || actions) && (
         <header className={styles.panelHeader}>
-          {title && <span className={styles.panelTitle}>{title}</span>}
-          {description && <span className={styles.panelDescription}>{description}</span>}
-          {actions}
+          <div className={styles.panelHeading}>
+            {title && <span className={styles.panelTitle}>{title}</span>}
+            {description && <span className={styles.panelDescription}>{description}</span>}
+          </div>
+          {actions && <div className={styles.panelActions}>{actions}</div>}
         </header>
       )}
       {children}

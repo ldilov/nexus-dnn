@@ -4,17 +4,18 @@ import { vars } from "../../theme/tokens.css";
 export const root = style({
   display: "flex",
   flexDirection: "column",
-  borderRadius: vars.radius.lg,
-  background: vars.color.surfaceMuted,
+  borderRadius: "16px",
+  background: vars.color.surfaceRaised,
+  boxShadow: "inset 0 0 0 1px color-mix(in oklab, var(--outline-variant, #46484a) 18%, transparent)",
   overflow: "hidden",
 });
 
 export const header = style({
   display: "flex",
   alignItems: "center",
-  gap: vars.space.sm,
+  gap: "14px",
   width: "100%",
-  padding: `${vars.space.md} ${vars.space.lg}`,
+  padding: "18px 20px",
   background: "transparent",
   border: "none",
   color: vars.color.text,
@@ -33,10 +34,11 @@ export const header = style({
 
 export const chevron = style({
   display: "inline-flex",
-  width: "16px",
-  height: "16px",
+  width: "20px",
+  height: "20px",
   color: vars.color.textMuted,
-  transition: `transform ${vars.motion.fast}`,
+  flexShrink: 0,
+  transition: `transform ${vars.motion.slow}`,
 });
 
 export const chevronCollapsed = style({
@@ -46,7 +48,7 @@ export const chevronCollapsed = style({
 export const titleBlock = style({
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.xs,
+  gap: "3px",
   flex: 1,
   minWidth: 0,
 });
@@ -66,12 +68,42 @@ export const description = style({
 export const badgeSlot = style({
   display: "inline-flex",
   alignItems: "center",
+  gap: vars.space.sm,
   marginLeft: "auto",
+});
+
+export const summaryChip = style({
+  fontFamily: vars.font.mono,
+  fontSize: "11px",
+  letterSpacing: "0.02em",
+  color: vars.color.textMuted,
+  background: vars.color.surface,
+  padding: "6px 11px",
+  borderRadius: "8px",
+  fontVariantNumeric: "tabular-nums",
+  whiteSpace: "nowrap",
+});
+
+export const bodyShell = style({
+  display: "grid",
+  gridTemplateRows: "0fr",
+  opacity: 0,
+  transition: "grid-template-rows 420ms cubic-bezier(0.2, 0, 0, 1), opacity 300ms ease",
+});
+
+export const bodyShellOpen = style({
+  gridTemplateRows: "1fr",
+  opacity: 1,
+});
+
+export const bodyClip = style({
+  minHeight: 0,
+  overflow: "hidden",
 });
 
 export const body = style({
   display: "flex",
   flexDirection: "column",
   gap: vars.space.md,
-  padding: `0 ${vars.space.lg} ${vars.space.lg}`,
+  padding: "2px 20px 22px",
 });

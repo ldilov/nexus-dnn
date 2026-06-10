@@ -6,6 +6,15 @@ export interface ErrorEnvelope {
 
 export type InterpolateMethod = "rife" | "rife_torch" | "rife_ncnn" | "ffmpeg";
 export type StitchMode = "trim" | "crossfade";
+export type UpscaleQuality =
+  | "LOW"
+  | "MEDIUM"
+  | "HIGH"
+  | "ULTRA"
+  | "HIGHBITRATE_LOW"
+  | "HIGHBITRATE_MEDIUM"
+  | "HIGHBITRATE_HIGH"
+  | "HIGHBITRATE_ULTRA";
 
 export interface RenderParams {
   ref_image_path: string;
@@ -17,6 +26,8 @@ export interface RenderParams {
   fps?: number;
   interpolate_fps?: number;
   interpolate_method?: InterpolateMethod;
+  upscale_factor?: number;
+  upscale_quality?: UpscaleQuality;
   frames_per_clip?: number;
   num_inference_steps?: number;
   sigma_shift?: number;

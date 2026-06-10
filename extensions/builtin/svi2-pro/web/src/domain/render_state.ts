@@ -16,11 +16,13 @@ export type StageState = "idle" | "active" | "done" | "error";
 export interface RenderState {
   phase: RenderPhase;
   jobId: string | null;
+  stage: string | null;
   overallFraction: number;
   clipIndex: number;
   numClips: number;
   step: number;
   totalSteps: number;
+  secondsPerStep: number | null;
   vramPeakGib: number | null;
   outputPath: string | null;
   renderReport: RenderReport | null;
@@ -55,11 +57,13 @@ export function initialRenderState(): RenderState {
   return {
     phase: "idle",
     jobId: null,
+    stage: null,
     overallFraction: 0,
     clipIndex: 0,
     numClips: 0,
     step: 0,
     totalSteps: 0,
+    secondsPerStep: null,
     vramPeakGib: null,
     outputPath: null,
     renderReport: null,
@@ -99,7 +103,11 @@ export function reduceRenderFrame(
   const state: RenderState = { ...base, stalled: false, lastFrameAt: now };
   switch (frame.method) {
     case "svi2.video.progress":
-      return { ...state, overallFraction: clamp(frame.params.fraction) };
+      return {
+        ...state,
+        overallFraction: clamp(frame.params.fraction),
+        stage: frame.params.stage ?? state.stage,
+      };
     case "svi2.video.clip.started":
       return {
         ...state,
@@ -114,6 +122,10 @@ export function reduceRenderFrame(
         clipIndex: frame.params.clip_index,
         step: frame.params.step,
         totalSteps: frame.params.total_steps,
+        secondsPerStep: smoothSecondsPerStep(
+          state.secondsPerStep,
+          frame.params.seconds_per_step,
+        ),
       };
     case "svi2.video.clip.completed":
       return {
@@ -222,6 +234,29 @@ export function renderStateFromJob(job: RenderJob): RenderState {
 function clamp(value: number): number {
   if (Number.isNaN(value)) return 0;
   return Math.min(1, Math.max(0, value));
+}
+
+const STEP_SPEED_SMOOTHING = 0.3;
+
+function smoothSecondsPerStep(
+  previous: number | null,
+  incoming: number | undefined,
+): number | null {
+  if (incoming === undefined || !Number.isFinite(incoming) || incoming <= 0) {
+    return previous;
+  }
+  if (previous === null) return incoming;
+  return previous + STEP_SPEED_SMOOTHING * (incoming - previous);
+}
+
+export function estimateRemainingSeconds(state: RenderState): number | null {
+  if (state.secondsPerStep === null || state.totalSteps <= 0 || state.numClips <= 0) {
+    return null;
+  }
+  const remainingInClip = Math.max(0, state.totalSteps - state.step);
+  const remainingClips = Math.max(0, state.numClips - state.clipIndex - 1);
+  const remainingSteps = remainingInClip + remainingClips * state.totalSteps;
+  return remainingSteps * state.secondsPerStep;
 }
 
 function doneIfActive(state: RenderState, stage: PipelineStage): StageState {

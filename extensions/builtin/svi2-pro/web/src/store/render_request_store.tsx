@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { applyPreset, defaultParamsFromSettings } from "../domain/build_params";
+import { snapToValidFrames } from "../domain/length";
 import {
   cancelledState,
   connectionLostState,
@@ -165,7 +166,17 @@ export function RenderRequestProvider({
 
   const setLastImage = useCallback((name: string | null, path: string | null) => {
     setLastImageName(name);
-    setParams((prev) => ({ ...prev, last_image_path: path }));
+    setParams((prev) => {
+      if (path === null || path.length === 0) {
+        return { ...prev, last_image_path: path };
+      }
+      return {
+        ...prev,
+        last_image_path: path,
+        num_clips: 1,
+        frames_per_clip: snapToValidFrames(prev.frames_per_clip ?? 81),
+      };
+    });
   }, []);
 
   const setQwenEdit = useCallback((config: Partial<QwenEditConfig>) => {
