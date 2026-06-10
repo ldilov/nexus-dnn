@@ -63,6 +63,16 @@ pub struct InstalledArtifactRow {
     pub extracted_at: Option<i64>,
 }
 
+impl InstalledArtifactRow {
+    /// Absolute on-disk location of the installed file. The sink layout is
+    /// `<sink_root>/<job_id>/<filename>` — the same convention
+    /// [`InstallMap::reconcile_row_present`] checks against.
+    #[must_use]
+    pub fn install_path(&self, sink_root: &std::path::Path) -> std::path::PathBuf {
+        sink_root.join(&self.job_id).join(&self.filename)
+    }
+}
+
 fn extraction_status_str(status: nexus_model_metadata::ExtractionStatus) -> &'static str {
     match status {
         nexus_model_metadata::ExtractionStatus::Ok => "ok",
@@ -283,6 +293,21 @@ impl InstallMap {
                 .await?;
         let n: i64 = row.get("n");
         Ok(u64::try_from(n).unwrap_or(0))
+    }
+
+    /// Drop a single `(job_id, extension_id)` ref. Idempotent: removing a ref
+    /// that was never present is a no-op. Used by a forced single-family
+    /// reinstall to release just that family's artifact before GC, leaving the
+    /// extension's other refs intact.
+    pub async fn remove_ref(&self, job_id: &str, extension_id: &str) -> JobStoreResult<()> {
+        sqlx::query(
+            "DELETE FROM model_store_artifact_refs WHERE job_id = ?1 AND extension_id = ?2",
+        )
+        .bind(job_id)
+        .bind(extension_id)
+        .execute(self.pool.as_ref())
+        .await?;
+        Ok(())
     }
 
     /// Drop every ref held by `extension_id`. Returns the distinct artifact
@@ -869,6 +894,65 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    /// Forced-reinstall purge — `remove_ref` drops just one holder's ref. An
+    /// exclusively-owned family is then GC-deletable (delete + fresh download);
+    /// a shared family survives because the other extension still references it.
+    #[tokio::test]
+    async fn remove_ref_then_gc_deletes_exclusive_keeps_shared() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink_root = tmp.path();
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+
+        // Exclusive family: only ext.alpha references it.
+        seed_install(&map, sink_root, "hf:a/solo", JOB_A, "solo.gguf", b"solo").await;
+        map.add_ref(JOB_A, "ext.alpha").await.unwrap();
+
+        // Shared family: both ext.alpha and ext.beta reference it.
+        let job_shared = "00000000-0000-0000-0000-0000000000bb";
+        seed_install(
+            &map,
+            sink_root,
+            "hf:a/shared",
+            job_shared,
+            "shared.gguf",
+            b"shared",
+        )
+        .await;
+        map.add_ref(job_shared, "ext.alpha").await.unwrap();
+        map.add_ref(job_shared, "ext.beta").await.unwrap();
+
+        // ext.alpha reinstalls both families: drop its ref, GC each.
+        for job in [JOB_A, job_shared] {
+            map.remove_ref(job, "ext.alpha").await.unwrap();
+            map.gc_artifact_if_unreferenced(job, sink_root)
+                .await
+                .unwrap();
+        }
+
+        // Exclusive copy is gone (will be re-downloaded fresh).
+        assert!(!sink_root.join(JOB_A).exists());
+        assert!(
+            map.list_for_family(&FamilyId::from("hf:a/solo"))
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        // Shared copy survives for ext.beta; one ref remains.
+        assert!(sink_root.join(job_shared).join("shared.gguf").exists());
+        assert_eq!(map.refcount(job_shared).await.unwrap(), 1);
+    }
+
+    /// `remove_ref` is idempotent — dropping a ref that was never added is a
+    /// no-op and never errors.
+    #[tokio::test]
+    async fn remove_ref_is_idempotent() {
+        let pool = memory_pool().await;
+        let map = InstallMap::new(pool);
+        map.remove_ref(JOB_A, "ext.absent").await.unwrap();
+        assert_eq!(map.refcount(JOB_A).await.unwrap(), 0);
     }
 
     /// AC-4.6 — a legacy install-map row with NO refs is GC-eligible by

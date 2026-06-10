@@ -15,7 +15,7 @@ pub mod runner;
 pub mod types;
 
 pub use context::{
-    HandshakeError, ModelDownloadProgress, ModelPartialState, ModelStoreClient,
+    ArtifactIntegrity, HandshakeError, ModelDownloadProgress, ModelPartialState, ModelStoreClient,
     RuntimeBootstrapResult, RuntimeBootstrapper, StepContext, WorkerHandshake,
 };
 pub use error::DepError;

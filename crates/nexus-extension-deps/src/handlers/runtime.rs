@@ -151,7 +151,9 @@ impl StepHandler for RuntimeHandler {
             )
             .await?;
 
-        emit(StepProgress::phase("done").with_message(format!("{} ready", result.resolved_version)));
+        emit(
+            StepProgress::phase("done").with_message(format!("{} ready", result.resolved_version)),
+        );
 
         Ok(build_artifact(&parsed, result))
     }
@@ -312,6 +314,7 @@ mod tests {
             progress_sink: sink.clone(),
             cancellation_token: tokio_util::sync::CancellationToken::new(),
             install_run_id: uuid::Uuid::nil(),
+            force: false,
             upstream_artifacts: &upstream,
         };
         let spec = serde_json::json!({ "family": "python", "version": ">=3.11" });

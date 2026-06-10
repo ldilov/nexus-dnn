@@ -213,6 +213,7 @@ async fn probe_p95_under_100ms_across_5_step_plan() {
                 progress_sink: runner_ctx_fields.progress_sink.clone(),
                 cancellation_token: runner_ctx_fields.cancellation_token.clone(),
                 install_run_id: runner_ctx_fields.install_run_id,
+                force: false,
                 upstream_artifacts: &upstream,
             };
             let _ = handler.probe(&step_ctx, &step.spec).await;
@@ -236,6 +237,7 @@ async fn probe_p95_under_100ms_across_5_step_plan() {
                 progress_sink: runner_ctx_fields.progress_sink.clone(),
                 cancellation_token: runner_ctx_fields.cancellation_token.clone(),
                 install_run_id: runner_ctx_fields.install_run_id,
+                force: false,
                 upstream_artifacts: &upstream,
             };
             let outcome = handler.probe(&step_ctx, &step.spec).await;

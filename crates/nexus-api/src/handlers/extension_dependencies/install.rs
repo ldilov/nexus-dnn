@@ -76,7 +76,11 @@ pub async fn start_install(
         .map_err(|e| ApiError::Internal(format!("failed to ensure extension data dir: {e}")))?;
 
     let progress_sink: Arc<dyn nexus_extension_deps::ProgressSink> =
-        Arc::new(EventBusProgressSink::new(state.event_bus.clone()));
+        Arc::new(EventBusProgressSink::with_state(
+            state.event_bus.clone(),
+            state.dep_install_state.clone(),
+            extension_id.clone(),
+        ));
 
     let registry = inputs.registry.clone();
     let runtime_bootstrapper = inputs.runtime_bootstrapper.clone();

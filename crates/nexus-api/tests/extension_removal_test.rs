@@ -19,9 +19,7 @@ use tower::ServiceExt;
 
 use nexus_api::create_router;
 use nexus_api::handlers::backend_runtimes::registration::register_contributions;
-use nexus_api::handlers::extension_dependencies::uninstall::{
-    UninstallDeps, perform_uninstall,
-};
+use nexus_api::handlers::extension_dependencies::uninstall::{UninstallDeps, perform_uninstall};
 use nexus_backend_runtimes::generic::catalog::SqliteCatalogRepo;
 use nexus_backend_runtimes::generic::enums::InstallStatus;
 use nexus_backend_runtimes::generic::ids::{
@@ -104,8 +102,24 @@ async fn uninstall_deletes_exclusive_models_and_keeps_shared() {
     let sink_root = h.orchestrator.sink_root().to_path_buf();
 
     let exclusive_payload = b"exclusive-weights";
-    seed_model(&map, &sink_root, "hf:a/solo", JOB_EXCLUSIVE, "solo.gguf", exclusive_payload).await;
-    seed_model(&map, &sink_root, "hf:a/shared", JOB_SHARED, "shared.gguf", b"shared-weights").await;
+    seed_model(
+        &map,
+        &sink_root,
+        "hf:a/solo",
+        JOB_EXCLUSIVE,
+        "solo.gguf",
+        exclusive_payload,
+    )
+    .await;
+    seed_model(
+        &map,
+        &sink_root,
+        "hf:a/shared",
+        JOB_SHARED,
+        "shared.gguf",
+        b"shared-weights",
+    )
+    .await;
 
     // alpha owns the exclusive job; both alpha and beta reference the shared job.
     map.add_ref(JOB_EXCLUSIVE, EXT_ALPHA).await.unwrap();
@@ -120,7 +134,14 @@ async fn uninstall_deletes_exclusive_models_and_keeps_shared() {
 
     let summary = perform_uninstall(
         EXT_ALPHA,
-        build_deps(&catalog, &installs, &lease_manager, &map, &sink_root, data_dir),
+        build_deps(
+            &catalog,
+            &installs,
+            &lease_manager,
+            &map,
+            &sink_root,
+            data_dir,
+        ),
     )
     .await
     .unwrap();
@@ -130,19 +151,32 @@ async fn uninstall_deletes_exclusive_models_and_keeps_shared() {
     assert_eq!(summary.freed_bytes, exclusive_payload.len() as u64);
 
     // Disk + DB reflect the GC: exclusive gone, shared retained.
-    assert!(!sink_root.join(JOB_EXCLUSIVE).exists(), "exclusive sink dir removed");
+    assert!(
+        !sink_root.join(JOB_EXCLUSIVE).exists(),
+        "exclusive sink dir removed"
+    );
     assert!(sink_root.join(JOB_SHARED).exists(), "shared sink dir kept");
     assert!(
-        map.list_for_family(&FamilyId::from("hf:a/solo")).await.unwrap().is_empty(),
+        map.list_for_family(&FamilyId::from("hf:a/solo"))
+            .await
+            .unwrap()
+            .is_empty(),
         "exclusive row deleted"
     );
     assert_eq!(
-        map.list_for_family(&FamilyId::from("hf:a/shared")).await.unwrap().len(),
+        map.list_for_family(&FamilyId::from("hf:a/shared"))
+            .await
+            .unwrap()
+            .len(),
         1,
         "shared row retained"
     );
     // beta's ref survives (alpha's was dropped).
-    assert_eq!(map.refcount(JOB_SHARED).await.unwrap(), 1, "beta still references shared");
+    assert_eq!(
+        map.refcount(JOB_SHARED).await.unwrap(),
+        1,
+        "beta still references shared"
+    );
     assert_eq!(map.refcount(JOB_EXCLUSIVE).await.unwrap(), 0);
 }
 
@@ -173,8 +207,12 @@ async fn uninstall_removes_install_and_data_dirs() {
 
     let tmp = tempfile::tempdir().unwrap();
     let install_dir = tmp.path().join("installs").join("alpha-runtime");
-    tokio::fs::create_dir_all(install_dir.join("bin")).await.unwrap();
-    tokio::fs::write(install_dir.join("bin").join("worker"), b"x").await.unwrap();
+    tokio::fs::create_dir_all(install_dir.join("bin"))
+        .await
+        .unwrap();
+    tokio::fs::write(install_dir.join("bin").join("worker"), b"x")
+        .await
+        .unwrap();
     let install_id = RuntimeInstallId::new();
     installs
         .insert(&install_record(install_id, "alpha.runtime", &install_dir))
@@ -186,13 +224,23 @@ async fn uninstall_removes_install_and_data_dirs() {
     tokio::fs::create_dir_all(data_dir.join("runtime").join("python").join("lib"))
         .await
         .unwrap();
-    tokio::fs::write(data_dir.join("runtime").join("python").join("pyvenv.cfg"), b"home=x")
-        .await
-        .unwrap();
+    tokio::fs::write(
+        data_dir.join("runtime").join("python").join("pyvenv.cfg"),
+        b"home=x",
+    )
+    .await
+    .unwrap();
 
     let summary = perform_uninstall(
         EXT_ALPHA,
-        build_deps(&catalog, &installs, &lease_manager, &map, &sink_root, data_dir.clone()),
+        build_deps(
+            &catalog,
+            &installs,
+            &lease_manager,
+            &map,
+            &sink_root,
+            data_dir.clone(),
+        ),
     )
     .await
     .unwrap();
@@ -223,7 +271,14 @@ async fn uninstall_is_idempotent_on_never_installed_extension() {
 
     let summary = perform_uninstall(
         "ext.ghost",
-        build_deps(&catalog, &installs, &lease_manager, &map, &sink_root, data_dir.clone()),
+        build_deps(
+            &catalog,
+            &installs,
+            &lease_manager,
+            &map,
+            &sink_root,
+            data_dir.clone(),
+        ),
     )
     .await
     .unwrap();
@@ -237,7 +292,14 @@ async fn uninstall_is_idempotent_on_never_installed_extension() {
     // Running it a second time is still a clean no-op.
     let again = perform_uninstall(
         "ext.ghost",
-        build_deps(&catalog, &installs, &lease_manager, &map, &sink_root, data_dir),
+        build_deps(
+            &catalog,
+            &installs,
+            &lease_manager,
+            &map,
+            &sink_root,
+            data_dir,
+        ),
     )
     .await
     .unwrap();
@@ -303,7 +365,9 @@ async fn uninstall_drains_leases_then_removes_files_in_order() {
     let tmp = tempfile::tempdir().unwrap();
     let install_dir = tmp.path().join("installs").join("alpha-runtime");
     tokio::fs::create_dir_all(&install_dir).await.unwrap();
-    tokio::fs::write(install_dir.join("marker"), b"x").await.unwrap();
+    tokio::fs::write(install_dir.join("marker"), b"x")
+        .await
+        .unwrap();
     let install_id = RuntimeInstallId::new();
     installs
         .insert(&install_record(install_id, "alpha.runtime", &install_dir))
@@ -318,16 +382,29 @@ async fn uninstall_drains_leases_then_removes_files_in_order() {
 
     let summary = perform_uninstall(
         EXT_ALPHA,
-        build_deps(&catalog, &installs, &lease_manager, &map, &sink_root, data_dir),
+        build_deps(
+            &catalog,
+            &installs,
+            &lease_manager,
+            &map,
+            &sink_root,
+            data_dir,
+        ),
     )
     .await
     .unwrap();
 
     // The lease-drain ran (empty manager → 0 live, reported cleanly) and the
     // file removal followed.
-    assert_eq!(summary.leases_released, 0, "drain ran (no live leases registered)");
+    assert_eq!(
+        summary.leases_released, 0,
+        "drain ran (no live leases registered)"
+    );
     assert_eq!(summary.install_dirs_removed, 1);
-    assert!(!install_dir.exists(), "install dir removed only after the lease drain");
+    assert!(
+        !install_dir.exists(),
+        "install dir removed only after the lease drain"
+    );
     assert_eq!(
         lease_manager.live_count_for_install(&install_id).await,
         0,
@@ -370,4 +447,3 @@ fn install_record(id: RuntimeInstallId, runtime_id: &str, install_dir: &Path) ->
         updated_at: now,
     }
 }
-
