@@ -66,11 +66,14 @@ describe("GenerationModeToggle", () => {
     render(<Harness />);
     selectMode("Text-to-Video");
 
-    const issues = validateRenderParams(captured?.params ?? ({} as never), {
-      presetId: null,
-      hasRefImage: false,
-      hasLastImage: false,
-    });
+    const issues = validateRenderParams(
+      { mode: "text_to_video", ref_image_path: "", prompts: [""] },
+      {
+        presetId: null,
+        hasRefImage: false,
+        hasLastImage: false,
+      },
+    );
     expect(issues.some((i) => i.field === "ref_image_path" && i.severity === "error")).toBe(false);
   });
 
@@ -96,6 +99,21 @@ describe("GenerationModeToggle", () => {
     selectMode("Image-to-Video");
     expect(captured?.params.prompts).toEqual(["a slow dolly across the room"]);
     expect(captured?.params.ref_image_path).toBe("/up/anchor.png");
+  });
+
+  test("arrow keys move the selection within the radiogroup", () => {
+    render(<Harness />);
+    const group = screen.getByRole("radiogroup");
+
+    fireEvent.keyDown(group, { key: "ArrowRight" });
+    expect(captured?.params.mode).toBe("text_to_video");
+    expect(screen.getByRole("radio", { name: "Text-to-Video" }).getAttribute("tabindex")).toBe("0");
+    expect(screen.getByRole("radio", { name: "Image-to-Video" }).getAttribute("tabindex")).toBe(
+      "-1",
+    );
+
+    fireEvent.keyDown(group, { key: "ArrowLeft" });
+    expect(captured?.params.mode).toBe("image_to_video");
   });
 
   test("the expectation note renders only in text-to-video mode", () => {
