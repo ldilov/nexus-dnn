@@ -1,3 +1,4 @@
+pub mod artifacts;
 pub mod media;
 pub mod presets;
 pub mod render;
@@ -54,6 +55,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(render::router())
         .merge(media::router())
         .merge(uploads::router())
+        .merge(artifacts::router())
         .with_state(state)
 }
 
@@ -70,5 +72,10 @@ pub fn http_routes() -> Vec<String> {
         "/render/jobs/{job_id}/output".into(),
         "/media".into(),
         "/uploads".into(),
+        "/deployments/{deployment_id}/artifacts".into(),
+        "/deployments/{deployment_id}/artifacts.zip".into(),
+        "/deployments/{deployment_id}/artifacts/{job_id}".into(),
+        "/deployments/{deployment_id}/artifacts/{job_id}/download".into(),
+        "/deployments/{deployment_id}/runs".into(),
     ]
 }

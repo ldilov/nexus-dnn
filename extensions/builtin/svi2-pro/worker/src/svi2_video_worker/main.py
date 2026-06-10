@@ -47,6 +47,7 @@ class Worker:
         self._shutdown = asyncio.Event()
         self._stdout_lock = asyncio.Lock()
         self._stdout_sync_lock = threading.Lock()
+        self._inflight: set[asyncio.Task[None]] = set()
         self.logger = WorkerLogger()
         self._register_intrinsic()
 
@@ -63,6 +64,12 @@ class Worker:
         line = notification(method, params)
         async with self._stdout_lock:
             await asyncio.to_thread(self._write, line)
+
+    def notify_from_thread(self, method: str, params: dict[str, Any]) -> None:
+        """Emit a notification from a worker thread (e.g. the render thread
+        running under asyncio.to_thread). `_write` serializes via the sync
+        stdout lock, so this is safe alongside the async path."""
+        self._write(notification(method, params))
 
     def _write(self, line: str) -> None:
         with self._stdout_sync_lock:
@@ -117,6 +124,9 @@ class Worker:
 
         threading.Thread(target=_stdin_pump, name="stdin-pump", daemon=True).start()
 
+        # Dispatch each request as its own task — a long-running handler
+        # (render.start blocks for the whole render) must not starve
+        # health/presets/cancel RPCs of the event loop.
         while not self._shutdown.is_set():
             line = await reader_q.get()
             if line is None:
@@ -124,7 +134,9 @@ class Worker:
             line = line.strip()
             if not line:
                 continue
-            await self._dispatch_line(line)
+            task = asyncio.create_task(self._dispatch_line(line))
+            self._inflight.add(task)
+            task.add_done_callback(self._inflight.discard)
 
         self.logger.info("worker.stop")
         return 0

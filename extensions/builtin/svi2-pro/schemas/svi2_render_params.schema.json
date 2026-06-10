@@ -46,6 +46,25 @@
       "minimum": 0,
       "default": 0
     },
+    "upscale_factor": {
+      "type": "integer",
+      "enum": [0, 2, 3, 4],
+      "default": 0
+    },
+    "upscale_quality": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "ULTRA",
+        "HIGHBITRATE_LOW",
+        "HIGHBITRATE_MEDIUM",
+        "HIGHBITRATE_HIGH",
+        "HIGHBITRATE_ULTRA"
+      ],
+      "default": "HIGH"
+    },
     "interpolate_method": {
       "type": "string",
       "enum": ["rife", "rife_torch", "rife_ncnn", "ffmpeg"],

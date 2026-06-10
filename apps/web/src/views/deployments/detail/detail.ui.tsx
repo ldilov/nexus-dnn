@@ -6,6 +6,7 @@ import { StatusChip, type StatusKind } from "../../../components/base/status_chi
 import { GraphView } from "../../workflows/components/canvas/graph_view";
 import { ExtensionLayoutView } from "../../extensions/layout/layout.view";
 import { ArtifactsView } from "./artifacts/artifacts.view";
+import { RunsView } from "./runs/runs.view";
 import {
   EXT_ACTIONS_DECLARE,
   EXT_ACTIONS_REQUEST,
@@ -47,19 +48,13 @@ interface StubCopy {
 }
 
 const STUBS: Record<
-  Exclude<DetailTabId, "recipe" | "graph" | "artifacts">,
+  Exclude<DetailTabId, "recipe" | "graph" | "artifacts" | "runs">,
   StubCopy
 > = {
   stages: {
     icon: "timeline",
     heading: "Stages",
     body: "Pipeline checkpoints with per-stage durations and cache hits — prepare, generate, persist, and any extension-declared stages with the operators grouped under them.",
-    hint: "phase 3 · stub",
-  },
-  runs: {
-    icon: "timer",
-    heading: "Runs & Traces",
-    body: "Per-run trace tree, span breakdown, and span-level logs. Selecting a run opens the per-node trace timeline so you can see status, progress, and per-node duration without leaving this page.",
     hint: "phase 3 · stub",
   },
   settings: {
@@ -260,8 +255,6 @@ export function DeploymentDetailUI({
     [onTabChange, tab],
   );
 
-  const handleHistory = () => onTabChange("runs");
-
   // ── Per-extension action contract ────────────────────────────────
   // The host shell is generic. It listens on the embedded extension
   // custom element for `ext-actions-declare` / `ext-action-state` events
@@ -355,20 +348,6 @@ export function DeploymentDetailUI({
           </div>
 
           <div className={s.actions}>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={handleHistory}
-            >
-              <span
-                className={`material-symbols-outlined ${s.actionIcon}`}
-                aria-hidden="true"
-              >
-                history
-              </span>
-              History
-            </Button>
             {actions?.secondary && (
               <ExtensionActionButton
                 action={actions.secondary}
@@ -484,6 +463,18 @@ export function DeploymentDetailUI({
           </section>
         )}
 
+        {tab === "runs" && (
+          <section
+            id="panel-runs"
+            className={s.panelLive}
+            role="tabpanel"
+            aria-labelledby="tab-runs"
+            tabIndex={0}
+          >
+            <RunsView deploymentId={deploymentId} extensionId={extensionId} />
+          </section>
+        )}
+
         {tab === "artifacts" && (
           <section
             id="panel-artifacts"
@@ -499,7 +490,7 @@ export function DeploymentDetailUI({
           </section>
         )}
 
-        {tab !== "recipe" && tab !== "graph" && tab !== "artifacts" && (
+        {tab !== "recipe" && tab !== "graph" && tab !== "artifacts" && tab !== "runs" && (
           <section
             id={`panel-${tab}`}
             className={s.stub}

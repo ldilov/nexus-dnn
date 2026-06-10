@@ -22,6 +22,11 @@ struct PackageSetSpec {
     lock_path: Option<String>,
     #[serde(default = "default_target")]
     target: String,
+    /// Optional-dependency extras to install (`uv sync --extra <name>` per
+    /// entry). Empty (default) installs only the base dependency set, so
+    /// existing manifests keep their behaviour.
+    #[serde(default)]
+    extras: Vec<String>,
 }
 
 fn default_target() -> String {
@@ -95,6 +100,22 @@ impl StepHandler for PackageSetHandler {
                 "v1 only supports 'extension_local'",
             ));
         }
+        for extra in &parsed.extras {
+            let starts_alnum = extra.chars().next().is_some_and(|c| c.is_ascii_alphanumeric());
+            let valid = starts_alnum
+                && extra
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+            if !valid {
+                return Err(DepError::invalid_spec(
+                    "",
+                    "extras",
+                    format!(
+                        "invalid extra name '{extra}' — expected [A-Za-z0-9][A-Za-z0-9._-]*"
+                    ),
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -116,6 +137,22 @@ impl StepHandler for PackageSetHandler {
             .and_then(Value::as_str)
             .unwrap_or("");
         if recorded != current_sha {
+            return Ok(ProbeResult::NotSatisfied);
+        }
+        // Extras drift (e.g. a manifest update adds `extras: [gpu]`) must also
+        // trigger a re-sync — the venv on disk lacks those packages.
+        let recorded_extras: Vec<String> = marker_json
+            .get("extras")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default();
+        if recorded_extras != parsed.extras {
             return Ok(ProbeResult::NotSatisfied);
         }
         let total_bytes = dir_size(&venv).await.unwrap_or(0);
@@ -175,8 +212,11 @@ impl StepHandler for PackageSetHandler {
         tokio::fs::create_dir_all(&uv_cache).await?;
 
         let mut cmd = Command::new(&uv_bin);
-        cmd.arg("sync")
-            .arg("--project")
+        cmd.arg("sync");
+        for extra in &parsed.extras {
+            cmd.arg("--extra").arg(extra);
+        }
+        cmd.arg("--project")
             .arg(&project_dir)
             .arg("--no-progress")
             // Pin venv + cache locations to the extension's data dir.
@@ -347,6 +387,7 @@ impl StepHandler for PackageSetHandler {
             "manifest_path": parsed.manifest_path,
             "manifest_sha256": manifest_sha,
             "lock_path": parsed.lock_path,
+            "extras": parsed.extras,
             "synced_at": chrono::Utc::now().to_rfc3339(),
         });
         tokio::fs::write(
@@ -610,6 +651,44 @@ mod tests {
     #[test]
     fn default_target_is_extension_local() {
         assert_eq!(default_target(), "extension_local");
+    }
+
+    #[test]
+    fn spec_without_extras_defaults_to_empty() {
+        let spec = serde_json::json!({
+            "manager": "uv",
+            "manifest_path": "worker/pyproject.toml",
+        });
+        let parsed = parse(&spec).expect("valid spec");
+        assert!(parsed.extras.is_empty());
+        PackageSetHandler::new().validate(&spec).expect("valid");
+    }
+
+    #[test]
+    fn spec_extras_are_parsed_in_order() {
+        let spec = serde_json::json!({
+            "manager": "uv",
+            "manifest_path": "worker/pyproject.toml",
+            "extras": ["diffusers", "flash"],
+        });
+        let parsed = parse(&spec).expect("valid spec");
+        assert_eq!(parsed.extras, vec!["diffusers", "flash"]);
+        PackageSetHandler::new().validate(&spec).expect("valid");
+    }
+
+    #[test]
+    fn validate_rejects_malformed_extra_names() {
+        for bad in ["", "--all-extras", "name with space", "a;b"] {
+            let spec = serde_json::json!({
+                "manager": "uv",
+                "manifest_path": "worker/pyproject.toml",
+                "extras": [bad],
+            });
+            assert!(
+                PackageSetHandler::new().validate(&spec).is_err(),
+                "extra '{bad}' must be rejected"
+            );
+        }
     }
 
     #[test]

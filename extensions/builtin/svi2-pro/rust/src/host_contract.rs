@@ -52,6 +52,18 @@ pub type NotificationStream = BoxStream<'static, NotificationEnvelope>;
 pub trait BackendRuntimeLease: Send + Sync {
     fn state(&self) -> LeaseState;
     async fn send_rpc(&self, method: &str, params: JsonValue) -> Result<JsonValue, LeaseError>;
+    /// Long-running RPC variant. The default delegates to [`Self::send_rpc`]
+    /// (whatever timeout the transport applies); transports that enforce a
+    /// short default timeout MUST override this so multi-hour calls like
+    /// `render.start` survive.
+    async fn send_rpc_with_timeout(
+        &self,
+        method: &str,
+        params: JsonValue,
+        _timeout: std::time::Duration,
+    ) -> Result<JsonValue, LeaseError> {
+        self.send_rpc(method, params).await
+    }
     async fn subscribe_notifications(&self) -> NotificationStream;
     async fn release(&self) -> Result<(), LeaseError>;
 }
