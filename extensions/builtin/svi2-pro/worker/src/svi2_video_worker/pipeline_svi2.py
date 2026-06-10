@@ -48,9 +48,27 @@ _NUM_INFERENCE_STEPS = 50
 _SIGMA_SHIFT = 5.0
 
 
+_MODE_IMAGE_TO_VIDEO = "image_to_video"
+_MODE_TEXT_TO_VIDEO = "text_to_video"
+_RENDER_MODES = frozenset({_MODE_IMAGE_TO_VIDEO, _MODE_TEXT_TO_VIDEO})
+
+
 def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
+    """Normalise and validate a render-params dict into the worker's canonical shape.
+
+    ``seed`` feeds text-to-video seed-frame synthesis (consumed by the T2V seed
+    pre-step) and is distinct from ``seed_multiplier``, which derives per-clip
+    noise seeds during a chained render. ``seed_strength`` is reserved: accepted
+    and carried through, but not yet wired into any pipeline stage.
+    """
+    mode = str(params.get("mode", _MODE_IMAGE_TO_VIDEO))
+    if mode not in _RENDER_MODES:
+        raise ValueError(
+            f"mode must be one of {sorted(_RENDER_MODES)}; got {mode!r}"
+        )
+
     ref = params.get("ref_image_path")
-    if not ref:
+    if mode == _MODE_IMAGE_TO_VIDEO and not ref:
         raise ValueError("ref_image_path is required")
 
     prompts = params.get("prompts")
@@ -111,8 +129,13 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
             f"width and height must be multiples of 16 (Wan VAE x DiT patch); got {width}x{height}"
         )
     res_warning = resolution_warning(width, height)
+    seed = params.get("seed")
+    seed_strength = params.get("seed_strength")
     return {
-        "ref_image_path": str(ref),
+        "mode": mode,
+        "seed": int(seed) if seed is not None else None,
+        "seed_strength": float(seed_strength) if seed_strength is not None else None,
+        "ref_image_path": str(ref) if ref else None,
         "last_image_path": str(last_image) if last_image else None,
         "prompts": list(prompts),
         "negative_prompt": str(params.get("negative_prompt", _NEGATIVE_PROMPT)),

@@ -11,10 +11,16 @@ fields:
     label: Preset
     default: svi-canonical
     bind: render.preset_id
+  - id: mode
+    type: enum
+    label: Mode
+    values: [image_to_video, text_to_video]
+    default: image_to_video
+    bind: render.mode
   - id: ref_image_path
     type: image
     label: Reference image (anchor)
-    required: true
+    required: false
     bind: render.ref_image_path
   - id: last_image_path
     type: image
