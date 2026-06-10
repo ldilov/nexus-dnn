@@ -152,7 +152,11 @@ export function RenderRequestProvider({
   );
 
   const setMode = useCallback((mode: GenerationMode) => {
-    setParams((prev) => ({ ...prev, mode }));
+    setParams((prev) => {
+      if (mode === "text_to_video") return { ...prev, mode };
+      const { seed: _drop, ...rest } = prev;
+      return { ...rest, mode };
+    });
   }, []);
 
   const updateParam = useCallback(
