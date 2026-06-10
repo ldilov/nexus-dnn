@@ -115,7 +115,10 @@ impl LeaseFinder for CatalogLeaseFinder {
         }
         // Highest preferred_score wins. Stable: first eligible at the
         // top score (catalog/install/lease enumeration order).
-        Ok(eligible.into_iter().max_by_key(|(score, _)| *score).map(|(_, l)| l))
+        Ok(eligible
+            .into_iter()
+            .max_by_key(|(score, _)| *score)
+            .map(|(_, l)| l))
     }
 }
 
@@ -267,14 +270,8 @@ pub trait LeaseReleaser: Send + Sync {
 /// on activity tracking, only on subscriber notifications.
 #[async_trait]
 pub trait LeaseActivityTracker: Send + Sync {
-    async fn activity_start(
-        &self,
-        lease_id: &nexus_backend_runtimes::generic::ids::RuntimeLeaseId,
-    );
-    async fn activity_end(
-        &self,
-        lease_id: &nexus_backend_runtimes::generic::ids::RuntimeLeaseId,
-    );
+    async fn activity_start(&self, lease_id: &nexus_backend_runtimes::generic::ids::RuntimeLeaseId);
+    async fn activity_end(&self, lease_id: &nexus_backend_runtimes::generic::ids::RuntimeLeaseId);
 }
 
 /// Production tracker: delegates to [`LeaseManager`].
@@ -296,10 +293,7 @@ impl LeaseActivityTracker for LeaseManagerActivityTracker {
     ) {
         self.manager.activity_start(lease_id).await;
     }
-    async fn activity_end(
-        &self,
-        lease_id: &nexus_backend_runtimes::generic::ids::RuntimeLeaseId,
-    ) {
+    async fn activity_end(&self, lease_id: &nexus_backend_runtimes::generic::ids::RuntimeLeaseId) {
         self.manager.activity_end(lease_id).await;
     }
 }
@@ -424,10 +418,14 @@ impl LeaseBackedTextCompletion {
 impl TextCompletionService for LeaseBackedTextCompletion {
     async fn complete(&self, request: CompletionRequest) -> Result<String, TextCompletionError> {
         if request.user.is_empty() {
-            return Err(TextCompletionError::Validation("user must be non-empty".into()));
+            return Err(TextCompletionError::Validation(
+                "user must be non-empty".into(),
+            ));
         }
         if request.max_tokens == 0 {
-            return Err(TextCompletionError::Validation("max_tokens must be > 0".into()));
+            return Err(TextCompletionError::Validation(
+                "max_tokens must be > 0".into(),
+            ));
         }
         let timeout_ms = request.timeout.as_millis().min(u32::MAX as u128) as u32;
         let timeout = request.timeout;
@@ -499,16 +497,14 @@ impl LeaseBackedTextCompletion {
             response_format,
             n_gpu_layers,
         };
-        let start_value = serde_json::to_value(&start_params).map_err(|e| {
-            TextCompletionError::Internal(format!("encode start params: {e}"))
-        })?;
+        let start_value = serde_json::to_value(&start_params)
+            .map_err(|e| TextCompletionError::Internal(format!("encode start params: {e}")))?;
         let start_resp = lease
             .send_rpc(METHOD_START, start_value)
             .await
             .map_err(|e| TextCompletionError::LeaseAcquisitionFailed(format!("start: {e}")))?;
-        let start_result: StartResult = serde_json::from_value(start_resp).map_err(|e| {
-            TextCompletionError::Internal(format!("decode start result: {e}"))
-        })?;
+        let start_result: StartResult = serde_json::from_value(start_resp)
+            .map_err(|e| TextCompletionError::Internal(format!("decode start result: {e}")))?;
         let stream_id = start_result.stream_id;
 
         let outcome = buffer_loop(&mut subscriber, &stream_id).await;
@@ -687,7 +683,9 @@ mod tests {
                 if let Some(r) = self.start_response.lock().unwrap().take() {
                     return r;
                 }
-                return Err(LeaseError::Internal("start_response already consumed".into()));
+                return Err(LeaseError::Internal(
+                    "start_response already consumed".into(),
+                ));
             }
             Ok(serde_json::Value::Null)
         }
@@ -703,7 +701,10 @@ mod tests {
 
     #[async_trait]
     impl LeaseFinder for StaticFinder {
-        async fn find(&self, _selection: &LeaseSelection) -> Result<Option<Arc<dyn BackendRuntimeLease>>, TextCompletionError> {
+        async fn find(
+            &self,
+            _selection: &LeaseSelection,
+        ) -> Result<Option<Arc<dyn BackendRuntimeLease>>, TextCompletionError> {
             Ok(self.0.clone())
         }
     }
@@ -1044,7 +1045,10 @@ mod tests {
             })
             .await
             .unwrap_err();
-        assert!(matches!(err, TextCompletionError::LeaseAcquisitionFailed(_)));
+        assert!(matches!(
+            err,
+            TextCompletionError::LeaseAcquisitionFailed(_)
+        ));
     }
 
     #[derive(Default)]
@@ -1063,10 +1067,7 @@ mod tests {
         }
     }
 
-    fn ok_lease() -> (
-        Arc<ScriptedLease>,
-        Arc<dyn BackendRuntimeLease>,
-    ) {
+    fn ok_lease() -> (Arc<ScriptedLease>, Arc<dyn BackendRuntimeLease>) {
         let lease = ScriptedLease::new(Ok(serde_json::json!({"stream_id": "s1"})));
         let l_clone = lease.clone();
         // Emit a token + done so buffer_loop terminates.
@@ -1110,7 +1111,11 @@ mod tests {
             .unwrap();
         assert_eq!(out, "hello");
         let released = releaser.ids.lock().unwrap();
-        assert_eq!(released.len(), 1, "ephemeral must trigger exactly one release");
+        assert_eq!(
+            released.len(),
+            1,
+            "ephemeral must trigger exactly one release"
+        );
         assert_eq!(released[0], lease.id());
     }
 

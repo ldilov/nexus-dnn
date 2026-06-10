@@ -168,9 +168,15 @@ mod tests {
 
     #[test]
     fn error_code_wire_strings_are_stable() {
-        assert_eq!(ErrorCode::NoEligibleBackend.as_wire_str(), "no_eligible_backend");
+        assert_eq!(
+            ErrorCode::NoEligibleBackend.as_wire_str(),
+            "no_eligible_backend"
+        );
         assert_eq!(ErrorCode::LeaseRevoked.as_wire_str(), "lease_revoked");
-        assert_eq!(ErrorCode::ModelUnavailable.as_wire_str(), "model_unavailable");
+        assert_eq!(
+            ErrorCode::ModelUnavailable.as_wire_str(),
+            "model_unavailable"
+        );
         assert_eq!(ErrorCode::PromptTooLong.as_wire_str(), "prompt_too_long");
         assert_eq!(ErrorCode::Timeout.as_wire_str(), "timeout");
         assert_eq!(ErrorCode::ValidationError.as_wire_str(), "validation_error");

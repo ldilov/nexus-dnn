@@ -27,9 +27,10 @@ struct ErrorBody {
 }
 
 pub async fn revalidate_models(State(state): State<AppState>) -> Response {
-    let (Some(install_map), Some(orchestrator)) =
-        (state.install_map.as_ref(), state.download_orchestrator.as_ref())
-    else {
+    let (Some(install_map), Some(orchestrator)) = (
+        state.install_map.as_ref(),
+        state.download_orchestrator.as_ref(),
+    ) else {
         let body = ErrorBody {
             code: "model_store_unavailable",
             message: "model store is not configured on this host".to_string(),
