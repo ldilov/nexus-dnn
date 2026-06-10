@@ -27,8 +27,23 @@ export const panelInset = style({
 
 export const panelHeader = style({
   display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: vars.space.lg,
+});
+
+export const panelHeading = style({
+  display: "flex",
   flexDirection: "column",
   gap: vars.space.xs,
+  minWidth: 0,
+});
+
+export const panelActions = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: vars.space.sm,
+  flexShrink: 0,
 });
 
 export const panelTitle = style({

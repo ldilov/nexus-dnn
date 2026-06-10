@@ -7,10 +7,32 @@ export const root = style({
   gap: vars.space.lg,
 });
 
-export const statRow = style({
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+export const stageLine = style({
+  fontFamily: vars.font.display,
+  fontSize: vars.text.body,
+  fontWeight: 600,
+  color: vars.color.text,
+  letterSpacing: "0.01em",
+});
+
+export const telemetryRow = style({
+  display: "flex",
   gap: vars.space.md,
+  alignItems: "stretch",
+  "@media": {
+    "screen and (max-width: 520px)": {
+      flexDirection: "column",
+    },
+  },
+});
+
+export const statRow = style({
+  flex: 1,
+  minWidth: 0,
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
+  gap: vars.space.md,
+  alignContent: "stretch",
 });
 
 export const stat = style({

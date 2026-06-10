@@ -63,8 +63,15 @@ function buildRenderTimeline(params: RenderParams): MockFrame[] {
   for (let clip = 0; clip < numClips; clip += 1) {
     push(jrpc("svi2.video.clip.started", { clip_index: clip, num_clips: numClips }), 250);
     for (let step = 1; step <= totalSteps; step += 1) {
+      const progress = (clip * totalSteps + step) / (numClips * totalSteps);
+      const wobble = Math.sin((clip * totalSteps + step) / 2.5) * 2.2;
       push(
-        jrpc("svi2.video.clip.step", { clip_index: clip, step, total_steps: totalSteps }),
+        jrpc("svi2.video.clip.step", {
+          clip_index: clip,
+          step,
+          total_steps: totalSteps,
+          seconds_per_step: 75 - 30 * progress + wobble,
+        }),
         90,
       );
       const fraction = (clip + step / totalSteps) / numClips;

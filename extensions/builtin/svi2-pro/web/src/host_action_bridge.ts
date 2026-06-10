@@ -26,13 +26,12 @@ const EXT_ACTION_INVOKE = "ext-action-invoke";
 export const INTERNAL_NAVIGATE = "svi2-pro:navigate";
 
 const ACTION_RENDER = "svi2-pro.render";
-const ACTION_DAG = "svi2-pro.dag";
 
 interface BridgeHandle {
   dispose: () => void;
 }
 
-export function attachActionBridge(host: HTMLElement, deploymentId: string): BridgeHandle {
+export function attachActionBridge(host: HTMLElement, _deploymentId: string): BridgeHandle {
   let busy = false;
   let blocked = false;
 
@@ -49,13 +48,6 @@ export function attachActionBridge(host: HTMLElement, deploymentId: string): Bri
 
   const buildSet = (): ActionSet => ({
     primary: buildPrimary(),
-    secondary: {
-      id: ACTION_DAG,
-      label: "Pipeline",
-      icon: "account_tree",
-      tone: "secondary",
-      tooltip: "Open the pipeline DAG view",
-    },
   });
 
   const dispatchDeclare = () => {
@@ -76,13 +68,6 @@ export function attachActionBridge(host: HTMLElement, deploymentId: string): Bri
     const id = (event as CustomEvent<{ id?: string }>).detail?.id;
     if (id === ACTION_RENDER) {
       dispatchTriggerRender();
-    } else if (id === ACTION_DAG) {
-      host.dispatchEvent(
-        new CustomEvent(INTERNAL_NAVIGATE, {
-          detail: { path: `/${deploymentId}/dag` },
-          bubbles: false,
-        }),
-      );
     }
   };
 

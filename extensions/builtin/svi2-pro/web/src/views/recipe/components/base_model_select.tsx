@@ -47,19 +47,33 @@ export function BaseModelSelect(): ReactElement {
       <label className={styles.groupLabel} htmlFor="svi2-base-model">
         Base model (Wan2.2-I2V)
       </label>
-      <select
-        id="svi2-base-model"
-        className={styles.select}
-        value={selected}
-        onChange={(e) => handleChange(e.target.value)}
-      >
-        <option value={BUNDLED_VALUE}>{BUNDLED_BASE_MODEL_LABEL}</option>
-        {candidates.map((candidate) => (
-          <option key={candidate.familyId} value={candidate.familyId}>
-            {candidate.label}
-          </option>
-        ))}
-      </select>
+      <div className={styles.selectWrap}>
+        <select
+          id="svi2-base-model"
+          className={styles.select}
+          value={selected}
+          onChange={(e) => handleChange(e.target.value)}
+        >
+          <option value={BUNDLED_VALUE}>{BUNDLED_BASE_MODEL_LABEL}</option>
+          {candidates.map((candidate) => (
+            <option key={candidate.familyId} value={candidate.familyId}>
+              {candidate.label}
+            </option>
+          ))}
+        </select>
+        <span className={styles.selectChevron} aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="100%" height="100%" fill="none" aria-hidden="true">
+            <title>open</title>
+            <path
+              d="M4 6l4 4 4-4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+      </div>
       {failed && (
         <span className={styles.hint}>
           Model Foundry list unavailable — using the bundled base model.

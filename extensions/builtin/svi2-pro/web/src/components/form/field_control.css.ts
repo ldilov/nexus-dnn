@@ -4,7 +4,7 @@ import { vars } from "../../theme/tokens.css";
 export const field = style({
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.xs,
+  gap: "9px",
 });
 
 export const labelRow = style({
@@ -15,21 +15,25 @@ export const labelRow = style({
 });
 
 export const label = style({
-  fontSize: vars.text.caption,
-  fontWeight: 600,
-  color: vars.color.text,
+  fontSize: "11px",
+  fontWeight: vars.weight.semibold,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: vars.color.textMuted,
 });
 
 export const valueReadout = style({
   fontFamily: vars.font.mono,
-  fontSize: vars.text.caption,
+  fontSize: "13.5px",
+  fontWeight: 700,
   color: vars.color.accent,
+  fontVariantNumeric: "tabular-nums",
 });
 
 export const help = style({
-  fontSize: vars.text.micro,
+  fontSize: "11px",
   color: vars.color.textMuted,
-  lineHeight: 1.4,
+  lineHeight: 1.45,
 });
 
 export const errorText = style({
@@ -39,26 +43,34 @@ export const errorText = style({
 
 const inputBase = style({
   width: "100%",
-  height: "38px",
-  padding: `0 ${vars.space.md}`,
-  borderRadius: vars.radius.md,
+  height: "44px",
+  padding: "0 14px",
+  borderRadius: "9px",
   background: vars.color.surface,
   color: vars.color.text,
   border: "none",
   boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
   fontFamily: vars.font.body,
-  fontSize: vars.text.body,
+  fontSize: "13.5px",
   transition: `box-shadow ${vars.motion.fast}`,
   selectors: {
     "&:hover": { boxShadow: `inset 0 0 0 1px ${vars.color.borderGhost}` },
     "&:focus-visible": {
       outline: "none",
-      boxShadow: `inset 0 0 0 1px ${vars.color.accent}, ${vars.shadow.focusRing}`,
+      boxShadow: `inset 0 0 0 1px ${vars.color.accent}, 0 0 0 3px ${vars.color.accentGlow}`,
     },
   },
 });
 
-export const numberInput = style([inputBase]);
+export const numberInput = style([
+  inputBase,
+  {
+    fontFamily: vars.font.mono,
+    fontSize: "16px",
+    fontWeight: vars.weight.semibold,
+    fontVariantNumeric: "tabular-nums",
+  },
+]);
 
 const selectChevron =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23aaabae' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")";
@@ -80,9 +92,9 @@ export const invalidInput = style({
 });
 
 const trackBase = {
-  height: "6px",
+  height: "5px",
   borderRadius: vars.radius.pill,
-  background: vars.color.surfaceHigh,
+  background: `linear-gradient(to right, ${vars.color.accent} var(--svi2-slider-fill, 0%), ${vars.color.surface} var(--svi2-slider-fill, 0%))`,
   boxShadow: `inset 0 0 0 1px ${vars.color.borderSubtle}`,
 };
 
@@ -92,8 +104,8 @@ const thumbBase = {
   borderRadius: "50%",
   background: vars.color.accent,
   border: "none",
-  boxShadow: `0 0 0 4px color-mix(in oklab, ${vars.color.accent} 22%, transparent)`,
-  cursor: "pointer",
+  boxShadow: `0 0 0 5px color-mix(in oklab, ${vars.color.accent} 16%, transparent), 0 2px 7px rgba(0,0,0,0.55)`,
+  cursor: "grab",
 };
 
 export const slider = style({
@@ -107,7 +119,7 @@ export const slider = style({
     "&::-webkit-slider-thumb": {
       ...thumbBase,
       appearance: "none",
-      marginTop: "-5px",
+      marginTop: "-5.5px",
       transition: `box-shadow ${vars.motion.fast}`,
     },
     "&::-moz-range-thumb": thumbBase,

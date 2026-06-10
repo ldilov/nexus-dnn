@@ -40,6 +40,37 @@ export function deriveNumClips(durationSeconds: number, defaults: SegmentDefault
   return Math.max(1, Math.ceil((targetFrames - framesPerClip) / stride) + 1);
 }
 
+export const FLF2V_MIN_FRAMES = 5;
+export const FLF2V_MAX_FRAMES = 129;
+export const FLF2V_PRESET_SECONDS = [2, 3, 4, 5, 6, 8] as const;
+
+export function snapToValidFrames(frames: number): number {
+  const snapped = Math.round((frames - 1) / 4) * 4 + 1;
+  return Math.min(FLF2V_MAX_FRAMES, Math.max(FLF2V_MIN_FRAMES, snapped));
+}
+
+export function flf2vFramesForSeconds(seconds: number, fps: number): number {
+  return snapToValidFrames(seconds * fps);
+}
+
+export function flf2vMaxSeconds(fps: number): number {
+  if (fps <= 0) return 0;
+  return Math.floor(FLF2V_MAX_FRAMES / fps);
+}
+
+export function flf2vSeconds(params: Partial<RenderParams>): number {
+  const { framesPerClip, fps } = segmentDefaults(params);
+  if (fps <= 0) return 0;
+  return framesPerClip / fps;
+}
+
+export function flf2vSummary(params: Partial<RenderParams>): string {
+  const { framesPerClip, fps } = segmentDefaults(params);
+  const base = `1 × ${framesPerClip} frames @ ${fps} fps → ${flf2vSeconds(params).toFixed(1)}s morph`;
+  const interp = params.interpolate_fps ?? 0;
+  return interp > 0 ? `${base} (RIFE → ${interp} fps)` : base;
+}
+
 export function matchLengthOption(
   numClips: number,
   defaults: SegmentDefaults,

@@ -3,9 +3,10 @@ import { VideoPlayer } from "../../../components/media/video_player";
 import { Button } from "../../../components/ui/button";
 import { EmptyState } from "../../../components/ui/empty_state";
 import { presentRenderError } from "../../../domain/error_codes";
-import type { RenderState } from "../../../domain/render_state";
+import { estimateRemainingSeconds, type RenderState } from "../../../domain/render_state";
 import { mediaUrlForOutput } from "../../../services/media_url";
 import * as styles from "./render_progress.css";
+import { SpeedGauge } from "./speed_gauge";
 
 interface RenderProgressProps {
   state: RenderState;
@@ -89,6 +90,9 @@ export function RenderProgress({ state, onCancel, onReset }: RenderProgressProps
 
   return (
     <div className={styles.root}>
+      <output className={styles.stageLine} aria-live="polite">
+        {stageLabel(state)}
+      </output>
       {/* biome-ignore lint/a11y/useFocusableInteractive: progressbar is a non-interactive ARIA role and must not be focusable */}
       <div
         className={styles.progressTrack}
@@ -109,20 +113,24 @@ export function RenderProgress({ state, onCancel, onReset }: RenderProgressProps
           be running; check History if it does not resume.
         </output>
       )}
-      <div className={styles.statRow} aria-live="polite">
-        <Stat label="Overall" value={`${pct}%`} />
-        <Stat
-          label="Clip"
-          value={state.numClips ? `${state.clipIndex + 1} / ${state.numClips}` : "—"}
-        />
-        <Stat
-          label="Step"
-          value={state.totalSteps ? `${state.step} / ${state.totalSteps}` : "—"}
-        />
-        <Stat
-          label="VRAM peak"
-          value={state.vramPeakGib !== null ? `${state.vramPeakGib.toFixed(1)} GiB` : "—"}
-        />
+      <div className={styles.telemetryRow} aria-live="polite">
+        <SpeedGauge secondsPerStep={state.secondsPerStep} />
+        <div className={styles.statRow}>
+          <Stat label="Overall" value={`${pct}%`} />
+          <Stat
+            label="Clip"
+            value={state.numClips ? `${state.clipIndex + 1} / ${state.numClips}` : "—"}
+          />
+          <Stat
+            label="Step"
+            value={state.totalSteps ? `${state.step} / ${state.totalSteps}` : "—"}
+          />
+          <Stat label="ETA" value={formatEta(estimateRemainingSeconds(state))} />
+          <Stat
+            label="VRAM peak"
+            value={state.vramPeakGib !== null ? `${state.vramPeakGib.toFixed(1)} GiB` : "—"}
+          />
+        </div>
       </div>
       <div className={styles.actions}>
         <Button variant="danger" onClick={handleCancel} loading={cancelling} disabled={cancelling}>
@@ -131,6 +139,37 @@ export function RenderProgress({ state, onCancel, onReset }: RenderProgressProps
       </div>
     </div>
   );
+}
+
+function formatEta(seconds: number | null): string {
+  if (seconds === null) return "—";
+  const total = Math.max(0, Math.round(seconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  if (m > 0) return `${m}m ${String(s).padStart(2, "0")}s`;
+  return `${s}s`;
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  loading_text_encoder: "Loading text encoder (UMT5-xxl)…",
+  encoding_prompts: "Encoding prompts…",
+  encoding_anchors: "Encoding anchor keyframes…",
+  loading_experts: "Loading Wan2.2 diffusion experts (~28 GiB)…",
+  denoising: "Denoising",
+  stitching: "Assembling frames (overlap trim)…",
+  upscaling: "RTX upscaling (Maxine VSR)…",
+  interpolating: "Interpolating to target fps (RIFE)…",
+};
+
+function stageLabel(state: RenderState): string {
+  if (!state.stage) return "Starting worker…";
+  const base = STAGE_LABELS[state.stage] ?? state.stage;
+  if (state.stage === "denoising" && state.numClips > 0) {
+    return `${base} — clip ${state.clipIndex + 1} of ${state.numClips}`;
+  }
+  return base;
 }
 
 function Stat({ label, value }: { label: string; value: string }): ReactElement {

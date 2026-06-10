@@ -10,5 +10,6 @@ export const stack = style({
 export const fieldGrid = style({
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-  gap: vars.space.lg,
+  gap: `${vars.space.lg} ${vars.space.xl}`,
+  alignItems: "start",
 });

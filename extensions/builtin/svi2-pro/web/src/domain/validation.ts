@@ -20,6 +20,11 @@ export function presetRequiresLastImage(
   return presetId !== null && REQUIRES_LAST_IMAGE.has(presetId);
 }
 
+export function isFlf2vMode(presetId: string | null, params: Partial<RenderParams>): boolean {
+  if (presetRequiresLastImage(presetId, params)) return true;
+  return typeof params.last_image_path === "string" && params.last_image_path.length > 0;
+}
+
 function isMultipleOf(value: number, base: number): boolean {
   return Number.isFinite(value) && value % base === 0;
 }
@@ -110,6 +115,14 @@ export function validateRenderParams(
     issues.push({
       field: "last_image_path",
       message: "This preset (FLF2V morph) requires a last-image keyframe.",
+      severity: "error",
+    });
+  }
+
+  if (isFlf2vMode(options.presetId, params) && clips !== undefined && clips > 1) {
+    issues.push({
+      field: "num_clips",
+      message: `FLF2V (last-image morph) requires exactly 1 clip (got ${clips}). The end keyframe pins the clip's final frame — chaining has no free tail to continue from.`,
       severity: "error",
     });
   }
