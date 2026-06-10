@@ -1,10 +1,26 @@
 # SVI 2.0 Pro Video Generator (svi2-pro)
 
-Builtin extension for **one-shot long image-to-video**. From a single anchor
-image it renders an identity-locked long take by chaining 4n+1-frame clips with
-the error-recycling **Stable Video Infinity 2.0 Pro** LoRAs on top of
+Builtin extension for **one-shot long video**. From a single anchor image it
+renders an identity-locked long take by chaining 4n+1-frame clips with the
+error-recycling **Stable Video Infinity 2.0 Pro** LoRAs on top of
 Wan2.2-I2V-A14B (14B dual-expert MoE), tuned for 16 GB Blackwell (RTX 50) via
 Kijai fp8 e4m3fn base weights.
+
+## Modes
+
+Selected per render via `mode` (recipe screen toggle, default `image_to_video`):
+
+- **Image-to-Video** (`image_to_video`) — the operator supplies the anchor image;
+  it conditions clip 0. Original behaviour, unchanged.
+- **Text-to-Video** (`text_to_video`) — no image required. The worker synthesizes
+  a single **seed frame** from the prompt (stable-diffusion.cpp txt2img, base
+  Qwen-Image, reusing the same sd-cli + Qwen VAE/text-encoder as the edit path),
+  then feeds it as the clip-0 anchor and runs the **unchanged** i2v + SVI chain.
+  Length still comes from i2v chaining; there is no native long-T2V model. An
+  optional numeric `seed` makes the synthesized frame reproducible. Note: the
+  prompt drives content (via the seed) and motion (per-clip), but not mid-take
+  appearance changes — appearance is locked to the seed (Wan2.2-i2v ref-lock).
+  A supplied image in T2V mode is used as the seed (synthesis skipped).
 
 ## Backends
 
@@ -43,10 +59,12 @@ Dependencies tab.
 The extension ships a React custom-element app (`svi2-pro-app`, served from
 `web/dist`) with two views of one render request:
 
-- **Recipe view** — a preset gallery, the ref-image upload (required) plus an
-  optional last-image upload (required for FLF2V morph presets), a
-  single-prompt-first prompt input, and tier-grouped nudgeable fields. Selecting
-  a preset populates the form; every field stays individually adjustable.
+- **Recipe view** — a preset gallery, a **mode toggle** (Image-to-Video /
+  Text-to-Video), the ref-image upload (required for i2v; optional in t2v) plus
+  an optional last-image upload (required for FLF2V morph presets), a
+  single-prompt-first prompt input, an optional numeric **seed** (t2v only), and
+  tier-grouped nudgeable fields. Selecting a preset populates the form; every
+  field stays individually adjustable.
 - **DAG view** — a live pipeline graph (`@xyflow/react`) of the render:
   anchor → optional Qwen edit → per-clip diffusion → stitch/crossfade →
   interpolation → mux, with node state driven by the same render notifications
@@ -102,6 +120,13 @@ The script wraps `scripts/gpu_smoke.py`, expects the worker venv built by
 
 ## Known limitations
 
+- **Text-to-Video seed model is not yet pinned.** The base Qwen-Image **txt2img**
+  GGUF used for T2V seed synthesis is referenced as a single constant
+  (`_QWEN_IMAGE_TXT2IMG` in `worker/src/svi2_video_worker/seed_synthesis.py`) but
+  is **not yet registered** in `manifest.yaml` / `backends/rtx50-fp8/versions.yaml`,
+  and the installed sd-cli build's Qwen-Image txt2img support is unconfirmed. The
+  exact filename + manifest entry MUST be validated before a real T2V GPU render
+  (deferred operator/hardware gate, alongside the GPU smoke).
 - **sd-cli on Linux is not pinned.** `leejet/stable-diffusion.cpp` publishes no
   Linux **CUDA** prebuilt (only ROCm / Vulkan / CPU Linux assets), so the
   manifest pins only the Windows CUDA binary. On Linux, `sd-cli` must come from
