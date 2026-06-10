@@ -20,6 +20,7 @@ import { PromptInput } from "./components/prompt_input";
 import { QwenEditPanel } from "./components/qwen_edit_panel";
 import { RenderProgress } from "./components/render_progress";
 import { ResolutionControl } from "./components/resolution_control";
+import { SeedControl } from "./components/seed_control";
 import { TierForm } from "./components/tier_form";
 import { type FocusRequest, useRenderOrchestration } from "./hooks/use_render_orchestration";
 import * as styles from "./recipe.css";
@@ -85,6 +86,7 @@ export function RecipeView(): ReactElement {
           description="Image-to-Video anchors identity to a reference. Text-to-Video synthesizes the seed from the prompt."
         >
           <GenerationModeToggle value={mode} onChange={setMode} />
+          {mode === "text_to_video" && <SeedControl />}
         </Panel>
 
         <div id={ANCHOR_PANEL_ID}>
