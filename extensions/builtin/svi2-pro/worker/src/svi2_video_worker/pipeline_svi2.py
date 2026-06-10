@@ -488,6 +488,7 @@ def _run_render(
         reencode_motion_tail,
         ref_pad_for_clip,
     )
+    from .resolution import fit_to_resolution
     from .resolution import resolution_warning as check_trained_resolution_struct
     from .ffmpeg_io import StreamingFrameWriter
     from .render_report import write_render_report
@@ -529,7 +530,7 @@ def _run_render(
     if resolution_warning:
         log_vram(f"WARN off-distribution resolution: {resolution_warning['message']}")
 
-    ref_image = Image.open(params["ref_image_path"]).convert("RGB").resize((width, height))
+    ref_image = fit_to_resolution(Image.open(params["ref_image_path"]).convert("RGB"), width, height)
 
     scheduler = FlowMatchScheduler(template="Wan")
     scheduler.set_timesteps(
@@ -575,7 +576,7 @@ def _run_render(
     anchor_lat = vae.encode_image(ref_image)[0]
     end_lat = None
     if params.get("last_image_path"):
-        end_image = Image.open(params["last_image_path"]).convert("RGB").resize((width, height))
+        end_image = fit_to_resolution(Image.open(params["last_image_path"]).convert("RGB"), width, height)
         end_lat = vae.encode_image(end_image)[0]
     if device == "cuda":
         vae.to_cpu()
