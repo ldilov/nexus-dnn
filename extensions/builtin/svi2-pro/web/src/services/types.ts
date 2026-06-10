@@ -4,6 +4,7 @@ export interface ErrorEnvelope {
   requestId?: string;
 }
 
+export type GenerationMode = "image_to_video" | "text_to_video";
 export type InterpolateMethod = "rife" | "rife_torch" | "rife_ncnn" | "ffmpeg";
 export type StitchMode = "trim" | "crossfade";
 export type UpscaleQuality =
@@ -17,6 +18,7 @@ export type UpscaleQuality =
   | "HIGHBITRATE_ULTRA";
 
 export interface RenderParams {
+  mode?: GenerationMode;
   ref_image_path: string;
   prompts: string[];
   last_image_path?: string | null;

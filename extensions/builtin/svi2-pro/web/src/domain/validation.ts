@@ -40,7 +40,8 @@ export function validateRenderParams(
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
-  if (!options.hasRefImage || !params.ref_image_path) {
+  const refRequired = params.mode !== "text_to_video";
+  if (refRequired && (!options.hasRefImage || !params.ref_image_path)) {
     issues.push({
       field: "ref_image_path",
       message: "A reference (anchor) image is required.",
