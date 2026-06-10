@@ -45,6 +45,7 @@ export interface RenderParams {
   pixel_re_encode?: boolean;
   num_motion_frame?: number;
   blocks_to_swap?: number;
+  seed?: number;
   seed_multiplier?: number;
   requires_last_image?: boolean;
   output_path?: string;

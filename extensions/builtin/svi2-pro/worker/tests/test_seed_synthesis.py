@@ -44,6 +44,18 @@ def test_build_cmd_omits_seed_flag_when_none():
     assert "-s" not in cmd
 
 
+def test_build_cmd_is_deterministic_for_fixed_seed():
+    first = build_seed_txt2img_cmd(
+        "sd", "m", "o.png", "a stormy castle", width=832, height=480, seed=4242,
+    )
+    second = build_seed_txt2img_cmd(
+        "sd", "m", "o.png", "a stormy castle", width=832, height=480, seed=4242,
+    )
+    assert first == second
+    assert first[first.index("-s") + 1] == "4242"
+    assert second[second.index("-s") + 1] == "4242"
+
+
 def test_synthesize_returns_path_on_success(tmp_path: Path, monkeypatch):
     import svi2_video_worker.seed_synthesis as ss
 
