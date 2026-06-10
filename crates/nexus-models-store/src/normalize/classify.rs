@@ -48,9 +48,7 @@ pub fn classify_modality(pipeline_tag: Option<&str>, tags: &[String]) -> Modalit
         if lower.contains("audio") || lower.contains("speech") {
             return Modality::Audio;
         }
-        if lower.contains("sentence-similarity")
-            || lower.contains("feature-extraction")
-        {
+        if lower.contains("sentence-similarity") || lower.contains("feature-extraction") {
             return Modality::Embedding;
         }
         if lower.contains("super-resolution") || lower.contains("upscal") {
@@ -79,26 +77,14 @@ mod tests {
     #[test]
     fn classifies_gguf_and_shards() {
         assert_eq!(classify_format("model.gguf"), Format::Gguf);
-        assert_eq!(
-            classify_format("llama-3-Q5_K_M.gguf"),
-            Format::Gguf
-        );
-        assert_eq!(
-            classify_format("model-00001-of-00003.gguf"),
-            Format::Gguf
-        );
+        assert_eq!(classify_format("llama-3-Q5_K_M.gguf"), Format::Gguf);
+        assert_eq!(classify_format("model-00001-of-00003.gguf"), Format::Gguf);
     }
 
     #[test]
     fn classifies_safetensors_and_pytorch() {
-        assert_eq!(
-            classify_format("model.safetensors"),
-            Format::Safetensors
-        );
-        assert_eq!(
-            classify_format("pytorch_model.bin"),
-            Format::PytorchBin
-        );
+        assert_eq!(classify_format("model.safetensors"), Format::Safetensors);
+        assert_eq!(classify_format("pytorch_model.bin"), Format::PytorchBin);
         assert_eq!(classify_format("checkpoint.bin"), Format::PytorchBin);
         assert_eq!(classify_format("upscaler_x4.pth"), Format::Pth);
     }
@@ -142,15 +128,15 @@ mod tests {
             classify_modality(None, &["stable-diffusion-xl".into()]),
             Modality::Image
         );
-        assert_eq!(
-            classify_modality(None, &["llama".into()]),
-            Modality::Llm
-        );
+        assert_eq!(classify_modality(None, &["llama".into()]), Modality::Llm);
     }
 
     #[test]
     fn unknown_modality_is_other() {
         assert_eq!(classify_modality(None, &[]), Modality::Other);
-        assert_eq!(classify_modality(Some("mystery-task"), &[]), Modality::Other);
+        assert_eq!(
+            classify_modality(Some("mystery-task"), &[]),
+            Modality::Other
+        );
     }
 }

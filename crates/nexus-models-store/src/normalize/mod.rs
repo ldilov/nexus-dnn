@@ -35,10 +35,7 @@ pub fn normalize_family(raw: &HfSearchResult, registry: &CapabilityRegistry) -> 
     let repo_id = raw.repo_id.clone();
     let (owner, name) = split_repo_id(&repo_id);
     let family_id = FamilyId::from(format!("huggingface:{repo_id}"));
-    let modality = classify::classify_modality(
-        raw.pipeline_tag.as_deref(),
-        &[],
-    );
+    let modality = classify::classify_modality(raw.pipeline_tag.as_deref(), &[]);
     let repository = ModelRepository {
         repo_id,
         source_provider: SourceProvider::Huggingface,
@@ -91,18 +88,12 @@ fn build_artifact(
         return None;
     }
     let format = classify::classify_format(&filename);
-    if matches!(
-        format,
-        crate::types::Format::Unknown
-    ) && !is_candidate_companion(&filename)
-    {
+    if matches!(format, crate::types::Format::Unknown) && !is_candidate_companion(&filename) {
         return None;
     }
     let role = deps::classify_role(&filename);
     let (precision, precision_source) = precision::infer_precision(format, &filename, None);
-    let download_url = format!(
-        "https://huggingface.co/{repo_id}/resolve/main/{filename}",
-    );
+    let download_url = format!("https://huggingface.co/{repo_id}/resolve/main/{filename}",);
     Some(Artifact {
         artifact_id: ArtifactId::from(format!("{family_id}#{filename}")),
         role,
@@ -205,10 +196,7 @@ mod tests {
         assert_eq!(fam.repository.modality, Modality::Llm);
         assert_eq!(fam.artifacts.len(), 2, "README is dropped, 2 GGUF kept");
         assert_eq!(fam.variants.len(), 2);
-        assert_eq!(
-            fam.compat,
-            crate::types::CompatibilityStatus::Compatible
-        );
+        assert_eq!(fam.compat, crate::types::CompatibilityStatus::Compatible);
         let default = fam.variants.iter().find(|v| v.is_default).unwrap();
         assert_eq!(default.label, "Q4_K_M");
     }

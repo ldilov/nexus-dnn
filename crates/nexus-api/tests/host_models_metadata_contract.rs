@@ -13,7 +13,7 @@ use http_body_util::BodyExt;
 use tower::ServiceExt;
 
 use crate::common::{
-    InstalledArtifactFixture, StubHf, harness_with, insert_installed_artifact_fixture,
+    InstalledArtifactFixture, StubHf, harness_with, insert_installed_artifact_fixture_on_disk,
 };
 
 async fn get_metadata(
@@ -50,7 +50,7 @@ async fn get_metadata(
 async fn gguf_full_metadata_returns_complete_record() {
     let harness = harness_with(StubHf::with_results(vec![])).await;
     let install_id = "hf:meta-llama/Llama-3.1-8B-Instruct-GGUF:q4_k_m";
-    insert_installed_artifact_fixture(
+    insert_installed_artifact_fixture_on_disk(
         harness.state.db.pool(),
         &InstalledArtifactFixture {
             artifact_id: install_id.to_string(),
@@ -62,6 +62,7 @@ async fn gguf_full_metadata_returns_complete_record() {
             hidden_size: Some(4096),
             extraction_status: Some("ok"),
         },
+        Some(harness.orchestrator.sink_root()),
     )
     .await
     .expect("seed fixture");
@@ -82,7 +83,7 @@ async fn gguf_full_metadata_returns_complete_record() {
 async fn safetensors_full_metadata() {
     let harness = harness_with(StubHf::with_results(vec![])).await;
     let install_id = "hf:Qwen/Qwen2.5-7B-Instruct";
-    insert_installed_artifact_fixture(
+    insert_installed_artifact_fixture_on_disk(
         harness.state.db.pool(),
         &InstalledArtifactFixture {
             artifact_id: install_id.to_string(),
@@ -94,6 +95,7 @@ async fn safetensors_full_metadata() {
             hidden_size: Some(3584),
             extraction_status: Some("ok"),
         },
+        Some(harness.orchestrator.sink_root()),
     )
     .await
     .expect("seed fixture");
@@ -114,7 +116,7 @@ async fn safetensors_full_metadata() {
 async fn pytorch_partial_returns_partial_fields() {
     let harness = harness_with(StubHf::with_results(vec![])).await;
     let install_id = "hf:legacy/old-model";
-    insert_installed_artifact_fixture(
+    insert_installed_artifact_fixture_on_disk(
         harness.state.db.pool(),
         &InstalledArtifactFixture {
             artifact_id: install_id.to_string(),
@@ -126,6 +128,7 @@ async fn pytorch_partial_returns_partial_fields() {
             hidden_size: None,
             extraction_status: Some("partial"),
         },
+        Some(harness.orchestrator.sink_root()),
     )
     .await
     .expect("seed fixture");
@@ -146,7 +149,7 @@ async fn pytorch_partial_returns_partial_fields() {
 async fn failed_extraction_returns_all_nulls() {
     let harness = harness_with(StubHf::with_results(vec![])).await;
     let install_id = "hf:unsafe/pickle-only";
-    insert_installed_artifact_fixture(
+    insert_installed_artifact_fixture_on_disk(
         harness.state.db.pool(),
         &InstalledArtifactFixture {
             artifact_id: install_id.to_string(),
@@ -158,6 +161,7 @@ async fn failed_extraction_returns_all_nulls() {
             hidden_size: None,
             extraction_status: Some("failed"),
         },
+        Some(harness.orchestrator.sink_root()),
     )
     .await
     .expect("seed fixture");
@@ -179,4 +183,40 @@ async fn unknown_install_id_returns_404() {
     let harness = harness_with(StubHf::with_results(vec![])).await;
     let (status, _body) = get_metadata(harness.state, "does-not-exist").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+/// Spec 054 G7 (AC-7.3) — the metadata response exposes the owning `job_id`,
+/// resolved on-disk path, and family so a UI can map an opaque GUID dir to a
+/// model.
+#[tokio::test]
+async fn metadata_exposes_legibility_fields() {
+    let harness = harness_with(StubHf::with_results(vec![])).await;
+    let install_id = "hf:acme/legible-model";
+    insert_installed_artifact_fixture_on_disk(
+        harness.state.db.pool(),
+        &InstalledArtifactFixture {
+            artifact_id: install_id.to_string(),
+            family_id: "acme-legible-model".to_string(),
+            format: "gguf",
+            layer_count: Some(32),
+            max_context: Some(8192),
+            architecture: Some("llama".to_string()),
+            hidden_size: Some(4096),
+            extraction_status: Some("ok"),
+        },
+        Some(harness.orchestrator.sink_root()),
+    )
+    .await
+    .expect("seed fixture");
+
+    let (status, body) = get_metadata(harness.state, install_id).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["family_id"], "acme-legible-model");
+    let job_id = body["job_id"].as_str().expect("job_id present");
+    assert!(!job_id.is_empty(), "job_id must be the owning download job");
+    let on_disk = body["on_disk_path"].as_str().expect("on_disk_path present");
+    assert!(
+        on_disk.contains(job_id),
+        "on_disk_path must resolve under the job's GUID dir: {on_disk}"
+    );
 }

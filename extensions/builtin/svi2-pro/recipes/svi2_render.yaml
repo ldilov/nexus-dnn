@@ -1,0 +1,94 @@
+spec_version: "0.1"
+recipe:
+  id: svi2_render_recipe
+  version: 1.0.0
+  display_name: "SVI 2.0 Pro — Long Image-to-Video"
+  summary: "Drop a reference image, pick a preset, write one motion prompt, render an identity-locked long take."
+  category: video.image_to_video
+fields:
+  - id: preset
+    type: enum
+    label: Preset
+    default: svi-canonical
+    bind: render.preset_id
+  - id: ref_image_path
+    type: image
+    label: Reference image (anchor)
+    required: true
+    bind: render.ref_image_path
+  - id: last_image_path
+    type: image
+    label: Last image (FLF2V end keyframe)
+    required: false
+    bind: render.last_image_path
+  - id: prompts
+    type: multiline_text
+    label: Motion prompt
+    placeholder: "Describe the MOTION, not appearance changes. Keep one prompt for coherent long takes."
+    bind: render.prompts
+  - id: num_clips
+    type: integer
+    label: Clips
+    min: 1
+    max: 64
+    default: 5
+    bind: render.num_clips
+  - id: frames_per_clip
+    type: integer
+    label: Frames per clip (4n+1)
+    min: 5
+    max: 121
+    step: 4
+    default: 69
+    bind: render.frames_per_clip
+  - id: resolution
+    type: form_group
+    label: Resolution
+    bind: render.resolution
+    fields:
+      - id: width
+        type: integer
+        min: 256
+        max: 1280
+        step: 16
+        default: 832
+      - id: height
+        type: integer
+        min: 256
+        max: 1280
+        step: 16
+        default: 480
+  - id: num_inference_steps
+    type: integer
+    label: Steps
+    min: 4
+    max: 60
+    default: 50
+    bind: render.num_inference_steps
+  - id: cfg_scale
+    type: number
+    label: CFG scale
+    min: 1.0
+    max: 12.0
+    step: 0.5
+    default: 4.0
+    bind: render.cfg_scale
+  - id: interpolate_fps
+    type: integer
+    label: Interpolate to fps
+    min: 0
+    max: 120
+    default: 48
+    bind: render.interpolate_fps
+  - id: blocks_to_swap
+    type: integer
+    label: Blocks to swap (VRAM)
+    min: 0
+    max: 40
+    default: 40
+    bind: render.blocks_to_swap
+actions:
+  - id: render
+    label: Render
+    operator_invoke:
+      operator: svi2.video.render

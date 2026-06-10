@@ -1,5 +1,4 @@
 // audit-allow: px — sub-token spacing value, no density token at this step
-// audit-allow: hex — neon decorative palette per design lang
 import { style } from "@vanilla-extract/css";
 import { vars } from "../../theme/contract.css";
 
@@ -18,12 +17,11 @@ export const groupSection = style({
 });
 
 export const groupHeader = style({
-  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+  fontFamily: vars.font.code,
   fontSize: vars.font.size.bodySm,
   textTransform: "uppercase",
   letterSpacing: "0.08em",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "var(--text-secondary, #a7adbb)",
+  color: vars.color.text.secondary,
 });
 
 export const grid = style({
@@ -39,10 +37,8 @@ export const card = style({
   // audit-allow: px — sub-token spacing value, no density token at this step
   gap: "10px",
   padding: vars.density.d4,
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  borderRadius: "12px",
-  background: "var(--surface-elevated, rgba(255,255,255,0.04))",
-  boxShadow: "0 0 0 1px rgba(255,255,255,0.06)",
+  borderRadius: vars.radius.card,
+  background: vars.color.bg.panel,
 });
 
 export const cardHeader = style({
@@ -53,17 +49,16 @@ export const cardHeader = style({
 });
 
 export const runtimeName = style({
-  fontWeight: 600,
+  fontWeight: vars.font.weight.semibold,
   fontSize: vars.font.size.headingSm,
 });
 
 export const runtimeFamily = style({
-  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+  fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,
   textTransform: "uppercase",
   letterSpacing: "0.05em",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "var(--text-secondary, #a7adbb)",
+  color: vars.color.text.secondary,
 });
 
 export const statusBadge = style({
@@ -71,34 +66,30 @@ export const statusBadge = style({
   // audit-allow: px — below minimum token granularity (sub-10px)
   padding: "2px 10px",
   borderRadius: vars.radius.full,
-  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+  fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,
   textTransform: "uppercase",
   letterSpacing: "0.05em",
 });
 
 export const statusAvailable = style({
-  background: "rgba(80, 200, 120, 0.15)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "#79e0a5",
+  background: `color-mix(in oklab, ${vars.color.success.base} 15%, transparent)`,
+  color: vars.color.success.base,
 });
 
 export const statusUnavailable = style({
-  background: "rgba(255, 184, 0, 0.15)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "#ffc857",
+  background: `color-mix(in oklab, ${vars.color.warning.base} 15%, transparent)`,
+  color: vars.color.warning.base,
 });
 
 export const statusDeprecated = style({
-  background: "rgba(160, 130, 255, 0.15)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "#b39bff",
+  background: `color-mix(in oklab, ${vars.color.accent.accent} 15%, transparent)`,
+  color: vars.color.accent.accent,
 });
 
 export const statusAbandoned = style({
-  background: "rgba(255, 100, 100, 0.15)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "#ff8585",
+  background: `color-mix(in oklab, ${vars.color.error.base} 15%, transparent)`,
+  color: vars.color.error.base,
 });
 
 export const pillRow = style({
@@ -113,17 +104,15 @@ export const pill = style({
   padding: "2px 8px",
   borderRadius: vars.radius.full,
   fontSize: vars.font.size.caption,
-  background: "rgba(255,255,255,0.06)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "var(--text-secondary, #a7adbb)",
+  background: vars.color.bg.elevated,
+  color: vars.color.text.secondary,
 });
 
 export const empty = style({
   // audit-allow: px — sub-token spacing value, no density token at this step
   padding: "32px 16px",
   textAlign: "center",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "var(--text-secondary, #a7adbb)",
+  color: vars.color.text.secondary,
   fontStyle: "italic",
 });
 
@@ -131,9 +120,8 @@ export const errorBox = style({
   padding: vars.density.d4,
   // audit-allow: px — below minimum token granularity (sub-10px)
   borderRadius: "8px",
-  background: "rgba(255,100,100,0.08)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "#ff8585",
+  background: `color-mix(in oklab, ${vars.color.error.base} 10%, transparent)`,
+  color: vars.color.error.base,
 });
 
 export const actionsRow = style({
@@ -149,16 +137,15 @@ export const actionButton = style({
   // audit-allow: px — below minimum token granularity (sub-10px)
   borderRadius: "8px",
   fontSize: vars.font.size.bodySm,
-  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+  fontFamily: vars.font.code,
   textTransform: "uppercase",
   letterSpacing: "0.05em",
-  background: "rgba(255,255,255,0.06)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "var(--text-primary, #e8ecf2)",
+  background: vars.color.bg.elevated,
+  color: vars.color.text.primary,
   border: "none",
   cursor: "pointer",
-  transition: "background 150ms",
-  ":hover": { background: "rgba(255,255,255,0.12)" },
+  transition: `background ${vars.motion.durationFast}`,
+  ":hover": { background: vars.color.bg.hover },
   ":disabled": {
     cursor: "not-allowed",
     opacity: 0.5,
@@ -166,36 +153,35 @@ export const actionButton = style({
 });
 
 export const actionButtonPrimary = style({
-  background: "rgba(80, 200, 120, 0.18)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "#79e0a5",
-  ":hover": { background: "rgba(80, 200, 120, 0.28)" },
+  background: `color-mix(in oklab, ${vars.color.success.base} 18%, transparent)`,
+  color: vars.color.success.base,
+  ":hover": {
+    background: `color-mix(in oklab, ${vars.color.success.base} 28%, transparent)`,
+  },
 });
 
 export const actionButtonDanger = style({
-  background: "rgba(255, 100, 100, 0.12)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "#ff8585",
-  ":hover": { background: "rgba(255, 100, 100, 0.22)" },
+  background: `color-mix(in oklab, ${vars.color.error.base} 12%, transparent)`,
+  color: vars.color.error.base,
+  ":hover": {
+    background: `color-mix(in oklab, ${vars.color.error.base} 22%, transparent)`,
+  },
 });
 
 export const modalBackdrop = style({
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,0.55)",
+  background: vars.color.scrim,
   display: "flex",
   justifyContent: "center",
   alignItems: "center",
-  zIndex: 100,
+  zIndex: vars.z.modal,
 });
 
 export const modalPanel = style({
-  // audit-allow: hex — neon decorative palette per design lang
-  background: "var(--surface-elevated, #1a1d24)",
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  borderRadius: "12px",
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  boxShadow: "0 12px 48px rgba(0,0,0,0.6)",
+  background: vars.color.bg.elevated,
+  borderRadius: vars.radius.panel,
+  boxShadow: vars.shadow.lg,
   // audit-allow: px — fixed layout breakpoint
   width: "min(480px, 92vw)",
   padding: vars.density.d5,
@@ -205,9 +191,8 @@ export const modalPanel = style({
 });
 
 export const modalTitle = style({
-  // audit-allow: px — sub-token spacing value, no density token at this step
-  fontSize: "18px",
-  fontWeight: 600,
+  fontSize: vars.font.size.headingSm,
+  fontWeight: vars.font.weight.semibold,
 });
 
 export const modalField = style({
@@ -220,19 +205,17 @@ export const modalLabel = style({
   fontSize: vars.font.size.caption,
   textTransform: "uppercase",
   letterSpacing: "0.05em",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "var(--text-secondary, #a7adbb)",
+  color: vars.color.text.secondary,
 });
 
 export const modalInput = style({
   // audit-allow: px — below minimum token granularity (sub-10px)
   padding: "8px 10px",
   borderRadius: vars.radius.control,
-  background: "rgba(255,255,255,0.06)",
-  border: "1px solid rgba(255,255,255,0.08)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "var(--text-primary, #e8ecf2)",
-  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+  background: vars.color.bg.lowest,
+  border: `1px solid ${vars.color.outline.variant}`,
+  color: vars.color.text.primary,
+  fontFamily: vars.font.code,
   fontSize: vars.font.size.body,
 });
 
@@ -258,26 +241,23 @@ export const stepperRow = style({
   // audit-allow: px — below minimum token granularity (sub-10px)
   padding: "6px 10px",
   borderRadius: vars.radius.control,
-  background: "rgba(255,255,255,0.03)",
-  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+  background: vars.color.bg.panel,
+  fontFamily: vars.font.code,
   fontSize: vars.font.size.bodySm,
 });
 
 export const stepperRowActive = style({
-  background: "rgba(80, 200, 120, 0.12)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "#79e0a5",
+  background: `color-mix(in oklab, ${vars.color.success.base} 12%, transparent)`,
+  color: vars.color.success.base,
 });
 
 export const stepperRowDone = style({
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "var(--text-secondary, #a7adbb)",
+  color: vars.color.text.secondary,
 });
 
 export const stepperRowFailed = style({
-  background: "rgba(255, 100, 100, 0.12)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "#ff8585",
+  background: `color-mix(in oklab, ${vars.color.error.base} 12%, transparent)`,
+  color: vars.color.error.base,
 });
 
 export const stepperElapsed = style({
@@ -292,12 +272,11 @@ export const cachedChip = style({
   padding: "1px 7px",
   borderRadius: vars.radius.full,
   fontSize: vars.font.size.kbd,
-  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+  fontFamily: vars.font.code,
   textTransform: "uppercase",
   letterSpacing: "0.05em",
-  background: "rgba(160, 130, 255, 0.18)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "#b39bff",
+  background: `color-mix(in oklab, ${vars.color.accent.accent} 18%, transparent)`,
+  color: vars.color.accent.accent,
 });
 
 export const installRow = style({
@@ -309,8 +288,8 @@ export const installRow = style({
   padding: "10px",
   // audit-allow: px — below minimum token granularity (sub-10px)
   borderRadius: "8px",
-  background: "rgba(255,255,255,0.03)",
-  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+  background: vars.color.bg.panel,
+  fontFamily: vars.font.code,
   fontSize: vars.font.size.bodySm,
 });
 
@@ -322,8 +301,7 @@ export const installRowHeader = style({
 });
 
 export const installId = style({
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "var(--text-secondary, #a7adbb)",
+  color: vars.color.text.secondary,
   fontSize: vars.font.size.caption,
 });
 
@@ -338,27 +316,23 @@ export const installStatusBadge = style({
 });
 
 export const installStatusValidated = style({
-  background: "rgba(80, 200, 120, 0.18)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "#79e0a5",
+  background: `color-mix(in oklab, ${vars.color.success.base} 18%, transparent)`,
+  color: vars.color.success.base,
 });
 
 export const installStatusFailed = style({
-  background: "rgba(255, 100, 100, 0.15)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "#ff8585",
+  background: `color-mix(in oklab, ${vars.color.error.base} 15%, transparent)`,
+  color: vars.color.error.base,
 });
 
 export const installStatusPending = style({
-  background: "rgba(255, 184, 0, 0.15)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "#ffc857",
+  background: `color-mix(in oklab, ${vars.color.warning.base} 15%, transparent)`,
+  color: vars.color.warning.base,
 });
 
 export const installStatusAbandoned = style({
-  background: "rgba(160, 160, 160, 0.15)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "#a7adbb",
+  background: vars.color.bg.elevated,
+  color: vars.color.text.muted,
 });
 
 export const liveLeaseBadge = style({
@@ -371,27 +345,22 @@ export const liveLeaseBadge = style({
   fontSize: vars.font.size.kbd,
   textTransform: "uppercase",
   letterSpacing: "0.04em",
-  background: "rgba(80, 160, 255, 0.15)",
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "#7bb3ff",
+  background: vars.color.bg.elevated,
+  color: vars.color.text.secondary,
 });
 
 export const liveLeaseDot = style({
   display: "inline-block",
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  width: "6px",
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  height: "6px",
+  width: vars.chip.dot,
+  height: vars.chip.dot,
   borderRadius: "50%",
-  // audit-allow: hex — neon decorative palette per design lang
-  background: "#7bb3ff",
+  background: vars.color.success.base,
   // audit-allow: px — below minimum token granularity (sub-10px)
-  boxShadow: "0 0 6px rgba(123,179,255,0.8)",
+  boxShadow: `0 0 6px color-mix(in oklab, ${vars.color.success.base} 80%, transparent)`,
 });
 
 export const failureNote = style({
   fontSize: vars.font.size.caption,
-  // audit-allow: hex — neon decorative palette per design lang
-  color: "#ff8585",
+  color: vars.color.error.base,
   opacity: 0.8,
 });

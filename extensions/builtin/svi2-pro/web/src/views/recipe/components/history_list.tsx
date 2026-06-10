@@ -1,0 +1,79 @@
+import type { ReactElement } from "react";
+import { Badge, type BadgeTone } from "../../../components/ui/badge";
+import { EmptyState } from "../../../components/ui/empty_state";
+import type { RenderJob, RenderJobStatus } from "../../../services/types";
+import * as styles from "./history_list.css";
+
+interface HistoryListProps {
+  jobs: RenderJob[];
+  onOpen: (job: RenderJob) => void;
+}
+
+const STATUS_TONE: Record<RenderJobStatus, BadgeTone> = {
+  queued: "neutral",
+  running: "accent",
+  succeeded: "success",
+  failed: "warning",
+  cancelled: "neutral",
+};
+
+export function HistoryList({ jobs, onOpen }: HistoryListProps): ReactElement {
+  if (jobs.length === 0) {
+    return (
+      <EmptyState
+        title="No renders yet"
+        detail="Completed renders appear here with their preset, parameters and status."
+      />
+    );
+  }
+
+  return (
+    <div className={styles.list}>
+      {jobs.map((job) => (
+        <button key={job.id} type="button" className={styles.row} onClick={() => onOpen(job)}>
+          <span className={styles.meta}>
+            <span className={styles.preset}>{job.presetId ?? "custom"}</span>
+            <span className={styles.summary}>{paramsSummary(job)}</span>
+          </span>
+          <span className={styles.right}>
+            <time className={styles.time} dateTime={job.createdAt} title={absoluteTime(job.createdAt)}>
+              {relativeTime(job.createdAt)}
+            </time>
+            <Badge tone={STATUS_TONE[job.status]}>{job.status}</Badge>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function paramsSummary(job: RenderJob): string {
+  const p = job.params;
+  const parts: string[] = [];
+  if (p.width && p.height) parts.push(`${p.width}×${p.height}`);
+  if (p.num_clips) parts.push(`${p.num_clips} clips`);
+  if (p.num_inference_steps) parts.push(`${p.num_inference_steps} steps`);
+  return parts.join(" · ") || "—";
+}
+
+function absoluteTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString();
+}
+
+function relativeTime(iso: string): string {
+  const date = new Date(iso);
+  const ms = date.getTime();
+  if (Number.isNaN(ms)) return "";
+  const diff = Date.now() - ms;
+  if (diff < 0) return "just now";
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString();
+}

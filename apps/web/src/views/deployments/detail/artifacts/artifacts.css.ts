@@ -231,9 +231,8 @@ export const selectionBanner = style({
   justifyContent: "space-between",
   gap: vars.space.gapMd,
   padding: `${vars.space.insetSm} ${vars.space.insetMd}`,
-  background: vars.color.bg.panel,
+  background: vars.color.bg.elevated,
   borderRadius: vars.radius.control,
-  border: `1px solid ${vars.color.outline.variant}`,
   flexWrap: "wrap",
 });
 

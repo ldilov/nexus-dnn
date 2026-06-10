@@ -14,7 +14,14 @@ import {
   DownloadedChip,
 } from "./DownloadProgress";
 import { VariantList } from "./VariantList";
+import { ModelIdentity } from "./ModelIdentity";
 import * as s from "./ModelCard.css";
+
+export interface ModelOnDiskIdentity {
+  familyId?: string;
+  onDiskPath?: string;
+  jobId?: string;
+}
 
 function copyRepoId(repoId: string) {
   if (typeof navigator !== "undefined" && navigator.clipboard) {
@@ -39,6 +46,7 @@ interface ModelCardProps {
   jobStateByArtifact?: Record<string, DownloadState | undefined>;
   jobIdByArtifact?: Record<string, string | undefined>;
   jobByArtifact?: Record<string, DownloadJob | undefined>;
+  identity?: ModelOnDiskIdentity;
   onDownload: (family: ModelFamily, target: DownloadKind) => void;
   onPause: (jobId: string) => void;
   onResume: (jobId: string) => void;
@@ -104,6 +112,7 @@ export function ModelCard({
   jobStateByArtifact,
   jobIdByArtifact,
   jobByArtifact,
+  identity,
   onDownload,
   onPause,
   onResume,
@@ -257,6 +266,14 @@ export function ModelCard({
 
       {hasRequiredDeps && (
         <DependencyStrip dependencies={family.dependencies} />
+      )}
+
+      {identity && (
+        <ModelIdentity
+          familyId={identity.familyId}
+          onDiskPath={identity.onDiskPath}
+          jobId={identity.jobId}
+        />
       )}
 
       <footer className={s.actions}>

@@ -52,7 +52,9 @@ fn scan_filename(lower: &str) -> Option<Precision> {
     if lower.contains("-fp16") || lower.contains("_fp16") || lower.contains(".fp16") {
         return Some(Precision::Fp16);
     }
-    if lower.contains("-int8") || lower.contains("_int8") || lower.contains("-awq")
+    if lower.contains("-int8")
+        || lower.contains("_int8")
+        || lower.contains("-awq")
         || lower.contains("-gptq")
     {
         return Some(Precision::Int8);
@@ -73,19 +75,14 @@ mod tests {
 
     #[test]
     fn safetensors_explicit_dtype_wins() {
-        let (p, s) =
-            infer_precision(Format::Safetensors, "model.safetensors", Some("BF16"));
+        let (p, s) = infer_precision(Format::Safetensors, "model.safetensors", Some("BF16"));
         assert_eq!(p, Precision::Bf16);
         assert_eq!(s, PrecisionSource::Explicit);
     }
 
     #[test]
     fn safetensors_filename_fallback_is_inferred() {
-        let (p, s) = infer_precision(
-            Format::Safetensors,
-            "sdxl-fp16-model.safetensors",
-            None,
-        );
+        let (p, s) = infer_precision(Format::Safetensors, "sdxl-fp16-model.safetensors", None);
         assert_eq!(p, Precision::Fp16);
         assert_eq!(s, PrecisionSource::Inferred);
     }
@@ -106,11 +103,7 @@ mod tests {
 
     #[test]
     fn quantization_tokens_recognise_awq_gptq() {
-        let (p, _) = infer_precision(
-            Format::Safetensors,
-            "llama-3-AWQ-4bit.safetensors",
-            None,
-        );
+        let (p, _) = infer_precision(Format::Safetensors, "llama-3-AWQ-4bit.safetensors", None);
         assert_eq!(p, Precision::Int8);
     }
 }

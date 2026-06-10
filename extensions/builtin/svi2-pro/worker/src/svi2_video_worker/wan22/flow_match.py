@@ -142,6 +142,18 @@ class FlowMatchScheduler:
             bsmntw_weighing = bsmntw_weighing + bsmntw_weighing[1]
         self.linear_timesteps_weights = bsmntw_weighing
 
+    def set_fixed_sigmas(self, sigmas) -> None:
+        # Distilled models (lightx2v / Wan2.2-Lightning) require an EXACT sigma
+        # schedule, not a shift-derived one. e.g. [1.0,0.9375001,0.8333333,0.625,0.0].
+        # The trailing 0.0 terminal is implicit in step() (sigma_=0 at last), so
+        # keep only the per-step sigmas. timestep = sigma * num_train_timesteps.
+        s = torch.tensor([float(x) for x in sigmas], dtype=torch.float32)
+        if s.numel() > 1 and float(s[-1].item()) == 0.0:
+            s = s[:-1]
+        self.sigmas = s
+        self.timesteps = s * self.num_train_timesteps
+        self.training = False
+
     def set_timesteps(
         self, num_inference_steps=100, denoising_strength=1.0, training=False, **kwargs
     ) -> None:

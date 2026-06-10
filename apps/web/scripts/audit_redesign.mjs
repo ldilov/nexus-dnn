@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // Spec 037 / Phase 10 / T092 — full implementation.
 //
 // Plain Node 20+ ESM (no transpiler runtime). Six checks per
