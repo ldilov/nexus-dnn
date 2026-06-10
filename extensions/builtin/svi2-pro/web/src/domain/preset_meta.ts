@@ -65,3 +65,16 @@ export function sortPresets(presets: PresetSummary[]): PresetSummary[] {
     return 0;
   });
 }
+
+export interface PresetVisibility {
+  featured: PresetSummary[];
+  legacy: PresetSummary[];
+}
+
+export function splitPresetVisibility(presets: PresetSummary[]): PresetVisibility {
+  const shown = presets.filter((p) => !p.hidden);
+  return {
+    featured: sortPresets(shown.filter((p) => !p.legacy)),
+    legacy: shown.filter((p) => p.legacy === true),
+  };
+}

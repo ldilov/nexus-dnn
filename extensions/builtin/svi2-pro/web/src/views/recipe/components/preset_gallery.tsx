@@ -1,7 +1,7 @@
-import { type KeyboardEvent, type ReactElement, useCallback, useMemo, useRef } from "react";
+import { type KeyboardEvent, type ReactElement, useCallback, useMemo, useRef, useState } from "react";
 import { Badge } from "../../../components/ui/badge";
 import { EmptyState } from "../../../components/ui/empty_state";
-import { CANONICAL_PRESET_ID, presetBadges, sortPresets } from "../../../domain/preset_meta";
+import { CANONICAL_PRESET_ID, presetBadges, splitPresetVisibility } from "../../../domain/preset_meta";
 import type { PresetSummary } from "../../../services/types";
 import * as styles from "./preset_gallery.css";
 
@@ -22,7 +22,15 @@ export function PresetGallery({
   selectedId,
   onSelect,
 }: PresetGalleryProps): ReactElement {
-  const ordered = useMemo(() => sortPresets(presets), [presets]);
+  const [showLegacy, setShowLegacy] = useState(false);
+  const visibility = useMemo(() => splitPresetVisibility(presets), [presets]);
+
+  const ordered = useMemo(() => {
+    const selectedLegacy = visibility.legacy.filter((p) => p.id === selectedId);
+    const legacyShown = showLegacy ? visibility.legacy : selectedLegacy;
+    return [...visibility.featured, ...legacyShown];
+  }, [visibility, showLegacy, selectedId]);
+
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const focusIndex = useCallback(
@@ -78,50 +86,70 @@ export function PresetGallery({
     ordered.findIndex((preset) => preset.id === selectedId),
   );
 
+  const legacyCount = visibility.legacy.length;
+
   return (
-    <div className={styles.grid} role="radiogroup" aria-label="Render presets">
-      {ordered.map((preset, index) => {
-        const badges = presetBadges(preset);
-        const isSelected = preset.id === selectedId;
-        const isCanonical = preset.id === CANONICAL_PRESET_ID;
-        const cls = [
-          styles.card,
-          isCanonical ? styles.cardCanonical : "",
-          isSelected ? styles.cardSelected : "",
-        ]
-          .filter(Boolean)
-          .join(" ");
-        return (
+    <div className={styles.stack}>
+      <div className={styles.grid} role="radiogroup" aria-label="Render presets">
+        {ordered.map((preset, index) => {
+          const badges = presetBadges(preset);
+          const isSelected = preset.id === selectedId;
+          const isCanonical = preset.id === CANONICAL_PRESET_ID;
+          const cls = [
+            styles.card,
+            preset.legacy ? "" : styles.cardWide,
+            isCanonical ? styles.cardCanonical : "",
+            isSelected ? styles.cardSelected : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+          return (
+            <button
+              key={preset.id}
+              ref={(el) => {
+                refs.current[index] = el;
+              }}
+              type="button"
+              // biome-ignore lint/a11y/useSemanticElements: radiogroup of clickable preset cards
+              role="radio"
+              aria-checked={isSelected}
+              tabIndex={index === activeIndex ? 0 : -1}
+              title={preset.description}
+              className={cls}
+              onClick={() => onSelect(preset)}
+              onKeyDown={(e) => handleKeyDown(e, index)}
+            >
+              <div className={styles.titleRow}>
+                <span className={styles.cardTitle}>{preset.label}</span>
+                {isCanonical && <Badge tone="accent">Default</Badge>}
+              </div>
+              <span className={styles.cardTagline}>{tagline(preset.description)}</span>
+              <div className={styles.badgeRow}>
+                <Badge tone="neutral">{badges.resolution}</Badge>
+                <Badge tone="neutral">{badges.duration}</Badge>
+                <Badge tone={badges.isLowVram ? "success" : "neutral"}>{badges.vram}</Badge>
+                {badges.isOffDistribution && <Badge tone="warning">off-distribution</Badge>}
+                {badges.requiresLastImage && <Badge tone="warning">needs last image</Badge>}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      {legacyCount > 0 && (
+        <div className={styles.legacyRow}>
+          <span className={styles.legacyLine} aria-hidden="true" />
           <button
-            key={preset.id}
-            ref={(el) => {
-              refs.current[index] = el;
-            }}
             type="button"
-            // biome-ignore lint/a11y/useSemanticElements: radiogroup of clickable preset cards
-            role="radio"
-            aria-checked={isSelected}
-            tabIndex={index === activeIndex ? 0 : -1}
-            title={preset.description}
-            className={cls}
-            onClick={() => onSelect(preset)}
-            onKeyDown={(e) => handleKeyDown(e, index)}
+            className={styles.legacyToggle}
+            aria-expanded={showLegacy}
+            onClick={() => setShowLegacy((prev) => !prev)}
           >
-            <div className={styles.titleRow}>
-              <span className={styles.cardTitle}>{preset.label}</span>
-              {isCanonical && <Badge tone="accent">Default</Badge>}
-            </div>
-            <span className={styles.cardTagline}>{tagline(preset.description)}</span>
-            <div className={styles.badgeRow}>
-              <Badge tone="neutral">{badges.resolution}</Badge>
-              <Badge tone="neutral">{badges.duration}</Badge>
-              <Badge tone={badges.isLowVram ? "success" : "neutral"}>{badges.vram}</Badge>
-              {badges.isOffDistribution && <Badge tone="warning">off-distribution</Badge>}
-              {badges.requiresLastImage && <Badge tone="warning">needs last image</Badge>}
-            </div>
+            <span className={styles.legacyCaret} aria-hidden="true" />
+            {showLegacy ? "Hide legacy presets" : `Show legacy presets (${legacyCount})`}
           </button>
-        );
-      })}
+          <span className={styles.legacyLine} aria-hidden="true" />
+        </div>
+      )}
     </div>
   );
 }

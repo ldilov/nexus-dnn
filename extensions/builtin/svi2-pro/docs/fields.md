@@ -18,7 +18,7 @@ Legend — **UI tier**: `core` (always shown), `quality`, `coherence`,
 | `prompts` * | string[] | — | core | One entry per clip (cycled if fewer). **Use a single prompt** for a coherent long take. Describe **MOTION**, not appearance change — appearance verbs ("eyes deepening") fight the anchor and cause drift. |
 | `negative_prompt` | string | Wan default (Chinese) | quality | Standard Wan negative (a long Chinese-language quality/artifact list). Rarely changed. **Trap:** the default applies only when the key is absent; passing an empty string `""` overrides it with empty (removes the negative). To keep the default, omit the field; to customise, send a full replacement string. |
 | `num_clips` | int | len(prompts) | core | Number of chained clips = length. Stitched frames = `frames_per_clip + (num_clips-1)×(frames_per_clip-num_overlap_frame)`. |
-| `frames_per_clip` | int (4n+1) | 81 | core | Frames per clip. **Must be 4n+1** (49, 65, 69, 81). 69 → 20 s at 5 clips. Bigger = longer clip + more VRAM at decode. |
+| `frames_per_clip` | int (4n+1) | 81 | core | Frames per clip. **Must be 4n+1** (49, 65, 85, 129). 85 → ~30 s at 6 clips (UI default). Bigger = longer clip + more VRAM at decode. |
 | `width` / `height` | int (÷16) | 480 / 832 | core | Render resolution. **832×480 (landscape) or 480×832 (portrait) = trained 480p budget.** Off-budget fires a warning and weakens identity-lock (see [presets.md](presets.md) resolution rule). Both must be divisible by 16. |
 | `fps` | int | 15 | core | Native render fps (playback speed). 16 is the SVI clip rate. |
 | `output_path` | path | out.mp4 | core | Output mp4. RIFE variant written as `<stem>_<interpolate_fps>fps.mp4`. |

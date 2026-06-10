@@ -51,3 +51,10 @@ export const resolutionWarning = style({
   color: vars.color.warning,
   fontSize: vars.text.caption,
 });
+
+export const quickControls = style({
+  display: "flex",
+  flexDirection: "column",
+  gap: vars.space.md,
+  marginBottom: vars.space.md,
+});

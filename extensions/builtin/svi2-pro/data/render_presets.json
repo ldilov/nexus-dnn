@@ -12,8 +12,8 @@
         "fps": 16,
         "interpolate_fps": 48,
         "interpolate_method": "rife",
-        "num_clips": 5,
-        "frames_per_clip": 69,
+        "num_clips": 6,
+        "frames_per_clip": 85,
         "num_inference_steps": 50,
         "sigma_shift": 5.0,
         "cfg_scale": 4.0,
@@ -27,10 +27,11 @@
         "adain_factor": 0.0,
         "blocks_to_swap": 40
       },
-      "notes": "VALIDATED 2026-06-05: 5x69f (overlap 5) -> 325f @16fps -> RIFE 48 = 20.3s; demonic-nun identity HELD across all 5 clips (no demon->human drift), even with a large multi-action prompt. Reference CLI: --num_overlap_frame 5 --num_motion_latent 1 --cfg_scale 4.0, 50 steps, 832x480, 4n+1 frames. VRAM: blocks_to_swap=40 = safe ~10 GiB peak; blocks_to_swap=28 is faster (~30 s/step) when you have >=4 GiB free headroom, but at <2 GiB free Windows (no expandable_segments) thrashes the allocator and slows ~3x. Pair with env SVI2_FP8_COMPUTE=bf16 + SVI2_ATTENTION=flash2 (flash_attn NOT optional per SVI tips). For length, raise num_clips (stitched = frames_per_clip + (num_clips-1)*(frames_per_clip-num_overlap_frame)). For transformation (not just motion) keep identity via an edited keyframe as --ref-image (edit-then-animate), NOT via ICN or appearance-change prompts."
+      "notes": "VALIDATED 2026-06-05 at 5x69f; defaults now 6x85f (overlap 5) -> 485f @16fps ~= 30.3s native -> RIFE 48fps. 85 frames per segment ~= 5.3s per group; raise the length control (num_clips) for longer takes — stitched = frames_per_clip + (num_clips-1)*(frames_per_clip-num_overlap_frame), so 60s needs 12 clips. demonic-nun identity HELD across all clips (no demon->human drift), even with a large multi-action prompt. Reference CLI: --num_overlap_frame 5 --num_motion_latent 1 --cfg_scale 4.0, 50 steps, 832x480, 4n+1 frames. VRAM: blocks_to_swap=40 = safe ~10 GiB peak; blocks_to_swap=28 is faster (~30 s/step) when you have >=4 GiB free headroom, but at <2 GiB free Windows (no expandable_segments) thrashes the allocator and slows ~3x. Pair with env SVI2_FP8_COMPUTE=bf16 + SVI2_ATTENTION=flash2 (flash_attn NOT optional per SVI tips). For transformation (not just motion) keep identity via an edited keyframe as --ref-image (edit-then-animate), NOT via ICN or appearance-change prompts."
     },
     {
       "id": "svi-canonical-704",
+      "hidden": true,
       "label": "SVI canonical — 704x400 (one step down)",
       "description": "svi-canonical at 704x400 (~281k px, 0.7x the 480p budget). One notch below the trained resolution: faster and less VRAM, but OFF-DISTRIBUTION — the SVI LoRA was trained at 480p, so identity-lock weakens below it and some drift may return. Fires the resolution warning by design. Use when speed/VRAM matters more than maximal identity stability.",
       "params": {
@@ -39,8 +40,8 @@
         "fps": 16,
         "interpolate_fps": 48,
         "interpolate_method": "rife",
-        "num_clips": 5,
-        "frames_per_clip": 69,
+        "num_clips": 6,
+        "frames_per_clip": 85,
         "num_inference_steps": 50,
         "sigma_shift": 5.0,
         "cfg_scale": 4.0,
@@ -58,6 +59,7 @@
     },
     {
       "id": "svi-canonical-640",
+      "hidden": true,
       "label": "SVI canonical — 640x368 (two steps down)",
       "description": "svi-canonical at 640x368 (~235k px, 0.6x the 480p budget). Smallest/fastest/lowest-VRAM step. Clearly OFF-DISTRIBUTION — expect weaker identity-lock and possible drift return; this is the resolution the SVI fix specifically warns against. Fires the resolution warning. Use for fast iteration/preview, not final identity-critical renders.",
       "params": {
@@ -66,8 +68,8 @@
         "fps": 16,
         "interpolate_fps": 48,
         "interpolate_method": "rife",
-        "num_clips": 5,
-        "frames_per_clip": 69,
+        "num_clips": 6,
+        "frames_per_clip": 85,
         "num_inference_steps": 50,
         "sigma_shift": 5.0,
         "cfg_scale": 4.0,
@@ -85,6 +87,7 @@
     },
     {
       "id": "natural-reference",
+      "legacy": true,
       "label": "Legacy A/B — Natural (reference-match)",
       "description": "LEGACY A/B PRESET — uses pixel re-encode continuation, root-caused (2026-06-05) as the identity-drift recipe on chained long takes; prefer svi-canonical for long renders. Vanilla Wan2.2-I2V dynamics: no RoPE motion scaling, native 16fps, default shift, full 50 steps. Light AdaIN + pixel re-encode for continuation. Kept for A/B comparison only.",
       "params": {
@@ -107,6 +110,7 @@
     },
     {
       "id": "natural-rife48",
+      "legacy": true,
       "label": "Legacy A/B — Natural + RIFE 48fps",
       "description": "LEGACY A/B PRESET — pixel re-encode continuation drifts on chained long takes; prefer svi-canonical (it includes RIFE 48fps). Same natural Wan2.2-I2V render at native 16fps, then frame-interpolated to 48fps. Uses rife-ncnn-vulkan if rife_bin is set, else falls back to ffmpeg minterpolate. Kept for A/B comparison only.",
       "params": {
@@ -131,6 +135,7 @@
     },
     {
       "id": "forced-motion-24",
+      "legacy": true,
       "label": "Legacy A/B — Forced motion 24fps (over-driven)",
       "description": "LEGACY A/B PRESET — diagnostic only; prefer svi-canonical for real renders. Aggressive motion via per-clip RoPE ramp + lowered shift + 24fps + stronger AdaIN, fewer steps. Produces exaggerated/uncanny movement (head-whip, face-morph) and 1.5x-fast playback vs native 16fps. NOT the natural look.",
       "params": {
@@ -147,13 +152,18 @@
         "pixel_re_encode": true,
         "num_motion_frame": 4,
         "adain_factor": 0.4,
-        "motion_scale_schedule": [1.0, 1.3, 1.6],
+        "motion_scale_schedule": [
+          1.0,
+          1.3,
+          1.6
+        ],
         "blocks_to_swap": 0
       },
       "notes": "motion_scale_schedule > 1.5 drives RoPE temporal stretch past training distribution -> deformation. Diagnostic only."
     },
     {
       "id": "natural-reference-lowvram",
+      "legacy": true,
       "label": "Legacy A/B — Natural (reference-match) — 16GB",
       "description": "LEGACY A/B PRESET — pixel re-encode continuation drifts on chained long takes; prefer svi-canonical (already a 16GB recipe at blocks_to_swap=40). natural-reference render targeted at a 16GB card: identical diffusion params; offloads all 40 DiT blocks to CPU. Kept for A/B comparison only.",
       "params": {
@@ -176,6 +186,7 @@
     },
     {
       "id": "natural-rife48-lowvram",
+      "legacy": true,
       "label": "Legacy A/B — Natural + RIFE 48fps — 16GB",
       "description": "LEGACY A/B PRESET — pixel re-encode continuation drifts on chained long takes; prefer svi-canonical (16GB-ready, includes RIFE 48fps). natural-rife48 render targeted at a 16GB card: identical diffusion + RIFE interpolation; offloads all 40 DiT blocks to CPU. Kept for A/B comparison only.",
       "params": {
@@ -200,6 +211,7 @@
     },
     {
       "id": "forced-motion-24-lowvram",
+      "legacy": true,
       "label": "Legacy A/B — Forced motion 24fps (over-driven) — 16GB",
       "description": "LEGACY A/B PRESET — diagnostic only; prefer svi-canonical for real renders. forced-motion-24 diagnostic render targeted at a 16GB card: identical over-driven RoPE/AdaIN params; offloads all 40 DiT blocks to CPU (blocks_to_swap=40). Diagnostic look (head-whip/face-morph, 1.5x-fast) is unchanged.",
       "params": {
@@ -216,7 +228,11 @@
         "pixel_re_encode": true,
         "num_motion_frame": 4,
         "adain_factor": 0.4,
-        "motion_scale_schedule": [1.0, 1.3, 1.6],
+        "motion_scale_schedule": [
+          1.0,
+          1.3,
+          1.6
+        ],
         "blocks_to_swap": 40
       },
       "notes": "16GB recipe: blocks_to_swap=40 (full DiT block swap; VAE auto-offloads to CPU). Diagnostic only — motion_scale_schedule > 1.5 deforms past training distribution. Pair with env SVI2_FP8_COMPUTE=bf16 + SVI2_ATTENTION."
@@ -249,6 +265,7 @@
     },
     {
       "id": "chained-single-prompt-lowvram",
+      "legacy": true,
       "label": "Legacy A/B — Chained long take, single prompt — 16GB",
       "description": "LEGACY A/B PRESET — this exact combo (pixel re-encode continuation at off-budget 960x544) was root-caused (2026-06-05) as the identity-drift recipe on long chains; prefer svi-canonical for long takes. ONE prompt across every clip plus crossfade-blended seams; each clip continues the previous via the re-encoded motion tail. Kept for A/B comparison only.",
       "params": {

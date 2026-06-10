@@ -17,11 +17,11 @@ defines identity, the prompt drives MOTION.
 
 | Preset | Resolution | In-distribution? | Use when |
 |---|---|---|---|
-| **`svi-canonical`** | 832×480 | ✅ trained 480p budget | Default. Best identity stability. **Validated 2026-06-05: demonic-nun identity held across all 5 clips / 20s.** |
+| **`svi-canonical`** | 832×480 | ✅ trained 480p budget | Default. Best identity stability. **Validated 2026-06-05 (5×69f run): demonic-nun identity held across the whole take.** |
 | `svi-canonical-704` | 704×400 | ⚠️ one step down (~0.7× budget) | Faster / less VRAM, mild drift risk. Fires the resolution warning. |
 | `svi-canonical-640` | 640×368 | ⚠️ two steps down (~0.6× budget) | Fast preview / iteration. Weakest identity-lock — drift may resurface. Not for final renders. |
 
-All three: 5 clips × 69f (overlap 5) → 325f @16fps → RIFE 48 = **20.3 s**;
+All three: 6 clips × 85f (overlap 5) → 485f @16fps → RIFE 48 = **30.3 s** (85f ≈ 5.3 s per segment);
 50 steps, cfg 4.0, sigma_shift 5.0, switch 0.9, swap 40.
 
 **Length scaling:** stitched frames = `frames_per_clip + (num_clips-1) × (frames_per_clip - num_overlap_frame)`. Raise `num_clips` for a longer take (one prompt, identity holds).
