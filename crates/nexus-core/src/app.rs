@@ -624,6 +624,12 @@ fn build_extension_router_registry(
             if let Ok(profile) = std::env::var("NEXUS_VIDEO_SVI2_RUNTIME") {
                 res = res.with_profile(profile);
             }
+            // Same generic bridge as emotion-tts: resolve installed model
+            // families so the lease factory can assemble the worker's
+            // merged models dir at acquire time.
+            res = res.with_model_locator(Arc::new(ModelStoreLocatorAdapter {
+                inner: model_store_client.clone(),
+            }));
             res
         })),
     ];
@@ -701,6 +707,35 @@ impl emotion_tts_extension::host_contract::ModelArtifactLocator for ModelStoreLo
         // s2mel.pth, qwen subdir, etc.). Normalize to the parent directory
         // when the resolved path is a regular file. If it's already a dir
         // (or a missing path), pass through unchanged.
+        if raw.is_file() {
+            raw.parent().map(std::path::Path::to_path_buf)
+        } else {
+            Some(raw)
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl svi2_pro_extension::host_contract::ModelArtifactLocator for ModelStoreLocatorAdapter {
+    async fn locate_family(&self, family_id: &str) -> Option<std::path::PathBuf> {
+        let raw = self
+            .inner
+            .is_family_installed(family_id, None)
+            .await
+            .ok()
+            .flatten()?;
+        // svi2's worker resolves artifacts by RELATIVE path under one merged
+        // models dir (e.g. `I2V/<file>.safetensors`), so the locator must
+        // return the family SNAPSHOT ROOT — not the first file or its parent.
+        // The store lays snapshots out as `.../model-store-downloads/<id>/…`;
+        // climb to the direct child of that marker dir.
+        let mut cursor = raw.as_path();
+        while let (Some(parent), candidate) = (cursor.parent(), cursor) {
+            if parent.file_name().is_some_and(|n| n == "model-store-downloads") {
+                return Some(candidate.to_path_buf());
+            }
+            cursor = parent;
+        }
         if raw.is_file() {
             raw.parent().map(std::path::Path::to_path_buf)
         } else {

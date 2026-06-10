@@ -10,7 +10,7 @@ use crate::backend_client::LeaseFactory as ExtLeaseFactory;
 use crate::domain::{Result as ExtResult, Svi2Error};
 use crate::host_contract::{
     BackendRuntimeLease as ExtLease, LeaseError as ExtLeaseError, LeaseState as ExtLeaseState,
-    NotificationEnvelope, NotificationStream, SharedLease,
+    ModelArtifactLocator, NotificationEnvelope, NotificationStream, SharedLease,
 };
 
 use nexus_backend_runtimes::generic::enums::LeaseState as HostLeaseState;
@@ -30,7 +30,22 @@ pub struct Svi2LeaseFactory {
     extension_data_dir: PathBuf,
     profile: String,
     models_dir: Option<PathBuf>,
+    model_locator: Option<Arc<dyn ModelArtifactLocator>>,
 }
+
+/// Model-store families the worker's `_ARTIFACT_FILENAMES` layout draws
+/// from. Each family's blob dir already mirrors the relative paths the
+/// worker resolves, so a per-file hardlink merge reproduces the layout.
+const MODEL_FAMILIES: &[&str] = &[
+    "huggingface:Kijai/WanVideo_comfy_fp8_scaled",
+    "huggingface:epfl-vita/svi-model",
+    "huggingface:Kijai/WanVideo_comfy",
+    "huggingface:Wan-AI/Wan2.1-T2V-1.3B",
+    "huggingface:QuantStack/Qwen-Image-Edit-2509-GGUF",
+    "huggingface:Comfy-Org/Qwen-Image_ComfyUI",
+    "huggingface:unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
+    "huggingface:AlexWortega/RIFE",
+];
 
 impl Svi2LeaseFactory {
     #[must_use]
@@ -45,18 +60,113 @@ impl Svi2LeaseFactory {
             extension_data_dir,
             profile: profile.into(),
             models_dir,
+            model_locator: None,
         }
     }
+
+    #[must_use]
+    pub fn with_model_locator(mut self, locator: Option<Arc<dyn ModelArtifactLocator>>) -> Self {
+        self.model_locator = locator;
+        self
+    }
+
+    /// Assemble `<extension_data_dir>/models` by hardlinking (copy fallback)
+    /// every file from each installed family's blob dir, preserving relative
+    /// paths. Idempotent — existing destination files are kept.
+    async fn ensure_models_dir(&self) -> Option<PathBuf> {
+        if let Some(explicit) = &self.models_dir {
+            return Some(explicit.clone());
+        }
+        let locator = self.model_locator.as_ref()?;
+        let merged = self.extension_data_dir.join("models");
+        if let Err(e) = std::fs::create_dir_all(&merged) {
+            tracing::warn!(target: "svi2_lease::models", error = %e, "models dir create failed");
+            return None;
+        }
+        for family in MODEL_FAMILIES {
+            match locator.locate_family(family).await {
+                Some(root) => {
+                    let (linked, failed) = merge_tree(&root, &merged);
+                    tracing::info!(
+                        target: "svi2_lease::models",
+                        family,
+                        root = %root.display(),
+                        linked,
+                        failed,
+                        "merged model family into worker models dir"
+                    );
+                }
+                None => {
+                    tracing::warn!(
+                        target: "svi2_lease::models",
+                        family,
+                        "model family not installed — worker may fail on its artifacts"
+                    );
+                }
+            }
+        }
+        Some(merged)
+    }
+}
+
+/// Recursively link `src` into `dst`, returning `(linked, failed)` counts.
+/// Hardlink first (same volume, zero copy); fall back to a byte copy.
+fn merge_tree(src: &Path, dst: &Path) -> (u64, u64) {
+    let mut linked = 0u64;
+    let mut failed = 0u64;
+    let mut stack = vec![src.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(_) => {
+                failed += 1;
+                continue;
+            }
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let Ok(rel) = path.strip_prefix(src) else {
+                failed += 1;
+                continue;
+            };
+            let target = dst.join(rel);
+            if target.exists() {
+                continue;
+            }
+            if let Some(parent) = target.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let ok = std::fs::hard_link(&path, &target).is_ok()
+                || std::fs::copy(&path, &target).is_ok();
+            if ok {
+                linked += 1;
+            } else {
+                failed += 1;
+                tracing::warn!(
+                    target: "svi2_lease::models",
+                    src = %path.display(),
+                    dst = %target.display(),
+                    "failed to link model file"
+                );
+            }
+        }
+    }
+    (linked, failed)
 }
 
 #[async_trait]
 impl ExtLeaseFactory for Svi2LeaseFactory {
     async fn acquire(&self) -> ExtResult<SharedLease> {
+        let models_dir = self.ensure_models_dir().await;
         let launch = build_launch_spec(
             &self.extension_dir,
             &self.extension_data_dir,
             &self.profile,
-            self.models_dir.as_deref(),
+            models_dir.as_deref(),
         )
         .map_err(|e| Svi2Error::RuntimeUnavailable(format!("worker spawn setup failed: {e}")))?;
 
@@ -123,6 +233,18 @@ impl ExtLease for Svi2LeaseAdapter {
     async fn send_rpc(&self, method: &str, params: JsonValue) -> Result<JsonValue, ExtLeaseError> {
         self.inner
             .send_rpc(method, params)
+            .await
+            .map_err(map_error_host_to_ext)
+    }
+
+    async fn send_rpc_with_timeout(
+        &self,
+        method: &str,
+        params: JsonValue,
+        timeout: std::time::Duration,
+    ) -> Result<JsonValue, ExtLeaseError> {
+        self.inner
+            .send_rpc_with_timeout(method, params, timeout)
             .await
             .map_err(map_error_host_to_ext)
     }
@@ -206,10 +328,12 @@ fn build_launch_spec(
         .with_env("NEXUS_VIDEO_SVI2_RUNTIME", profile.to_string());
 
     if let Some(models_dir) = models_dir {
-        spec = spec.with_env(
-            "NEXUS_VIDEO_SVI2_MODELS_DIR",
-            models_dir.to_string_lossy().to_string(),
-        );
+        let dir = models_dir.to_string_lossy().to_string();
+        // The worker's resolve_models_dir reads SVI2_MODELS_DIR; the
+        // NEXUS_-prefixed name is kept for older worker revisions.
+        spec = spec
+            .with_env("SVI2_MODELS_DIR", dir.clone())
+            .with_env("NEXUS_VIDEO_SVI2_MODELS_DIR", dir);
     }
 
     if let Ok(existing_path) = std::env::var("PATH") {

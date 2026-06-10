@@ -139,6 +139,8 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "num_motion_latent": num_motion_latent,
         "pixel_re_encode": pixel_re_encode,
         "num_motion_frame": num_motion_frame,
+        "upscale_factor": _validate_upscale_factor(params),
+        "upscale_quality": _validate_upscale_quality(params),
         "interpolate_fps": int(params.get("interpolate_fps", 0)),
         "interpolate_method": str(params.get("interpolate_method", "rife")),
         "rife_bin": params.get("rife_bin"),
@@ -166,6 +168,28 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _validate_upscale_factor(params: dict[str, Any]) -> int:
+    from .rtx_upscale import UPSCALE_FACTORS
+
+    factor = int(params.get("upscale_factor", 0))
+    if factor not in UPSCALE_FACTORS:
+        raise ValueError(
+            f"upscale_factor must be one of {UPSCALE_FACTORS} (0 = off); got {factor}"
+        )
+    return factor
+
+
+def _validate_upscale_quality(params: dict[str, Any]) -> str:
+    from .rtx_upscale import DEFAULT_QUALITY, UPSCALE_QUALITIES
+
+    quality = str(params.get("upscale_quality", DEFAULT_QUALITY)).upper()
+    if quality not in UPSCALE_QUALITIES:
+        raise ValueError(
+            f"upscale_quality must be one of {UPSCALE_QUALITIES}; got {quality}"
+        )
+    return quality
+
+
 def resolve_models_dir(explicit: str | None = None) -> Path:
     if explicit:
         return Path(explicit)
@@ -176,6 +200,16 @@ def resolve_models_dir(explicit: str | None = None) -> Path:
     if host_data:
         return Path(host_data) / "extensions" / "nexus.video.svi2-pro" / "models"
     return Path("models")
+
+
+def _notify(worker: Any, method: str, params: dict[str, Any]) -> None:
+    fn = getattr(worker, "notify_from_thread", None)
+    if fn is None:
+        return
+    try:
+        fn(method, params)
+    except Exception:
+        pass
 
 
 def register_svi2_handlers(worker: Any) -> None:
@@ -265,11 +299,38 @@ def resolve_dit_paths(
     return dit_high, dit_low
 
 
-def _build_models(params: dict[str, Any]) -> RenderModels:
-    from .vae import VaeWrapper
+def _models_dir_from(params: dict[str, Any]) -> Path:
+    return Path(params["models_dir"]) if params.get("models_dir") else Path("models")
+
+
+def _require(path: Path, what: str, models_dir: Path) -> Path:
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{what} not found at {path} (models_dir={models_dir}). "
+            "Run the extension dependency installer, or set models_dir/SVI2_MODELS_DIR."
+        )
+    return path
+
+
+def _build_text_encoder(params: dict[str, Any]) -> Any:
     from .text_encoder import TextEncoderWrapper
 
-    models_dir = Path(params["models_dir"]) if params.get("models_dir") else Path("models")
+    models_dir = _models_dir_from(params)
+    return TextEncoderWrapper(
+        _require(_resolve(models_dir, "text-encoder"), "umt5-xxl text encoder", models_dir),
+        tokenizer_path=_require(_resolve(models_dir, "tokenizer"), "umt5-xxl tokenizer", models_dir),
+    )
+
+
+def _build_vae(params: dict[str, Any]) -> Any:
+    from .vae import VaeWrapper
+
+    models_dir = _models_dir_from(params)
+    return VaeWrapper(_require(_resolve(models_dir, "vae"), "Wan2.1 VAE", models_dir))
+
+
+def _build_experts(params: dict[str, Any]) -> tuple[ExpertModel, ExpertModel]:
+    models_dir = _models_dir_from(params)
 
     dh = params.get("distill_lora_high")
     dl = params.get("distill_lora_low")
@@ -277,18 +338,24 @@ def _build_models(params: dict[str, Any]) -> RenderModels:
     distill_low = Path(dl) if dl else None
 
     dit_high, dit_low = resolve_dit_paths(params, models_dir, require_overrides_exist=True)
+    _require(dit_high, "Wan2.2 high-noise DiT (fp8)", models_dir)
+    _require(dit_low, "Wan2.2 low-noise DiT (fp8)", models_dir)
 
     high = _build_expert(dit_high, _resolve(models_dir, "svi-lora-high"), distill_high)
     low = _build_expert(dit_low, _resolve(models_dir, "svi-lora-low"), distill_low)
+    return high, low
 
-    vae = VaeWrapper(_resolve(models_dir, "vae"))
-    text_encoder = TextEncoderWrapper(
-        _resolve(models_dir, "text-encoder"),
-        tokenizer_path=_resolve(models_dir, "tokenizer"),
-    )
 
+def _build_models(params: dict[str, Any]) -> RenderModels:
+    high, low = _build_experts(params)
     audit = {"high_fp8": high.fp8_audit, "low_fp8": low.fp8_audit, "high_lora": high.lora_audit, "low_lora": low.lora_audit}
-    return RenderModels(high=high, low=low, vae=vae, text_encoder=text_encoder, audit=audit)
+    return RenderModels(
+        high=high,
+        low=low,
+        vae=_build_vae(params),
+        text_encoder=_build_text_encoder(params),
+        audit=audit,
+    )
 
 
 def _build_image_conditioning(
@@ -344,7 +411,10 @@ def _denoise_clip(
     expert_selector: Any,
     scheduler: Any,
     move_to: Optional[Callable[[str], None]] = None,
+    on_step: Optional[Callable[[int, int, float], None]] = None,
 ) -> Any:
+    import time
+
     import torch
 
     from .vram import log_vram
@@ -356,6 +426,7 @@ def _denoise_clip(
 
     num_steps = len(timesteps)
     for step_idx in range(num_steps):
+        step_started = time.perf_counter()
         timestep = timesteps[step_idx]
         tier = expert_selector.select(float(timestep.item()))
         if tier != active_tier:
@@ -393,6 +464,8 @@ def _denoise_clip(
                 del noise_pred_nega
             torch.cuda.empty_cache()
         log_vram(f"clip step {step_idx} tier={active_tier}")
+        if on_step is not None:
+            on_step(step_idx + 1, num_steps, time.perf_counter() - step_started)
 
     return latent
 
@@ -400,8 +473,10 @@ def _denoise_clip(
 def _run_render(
     params: dict[str, Any],
     worker: Any = None,
-    build_models: Callable[[dict[str, Any]], RenderModels] = _build_models,
+    build_models: Optional[Callable[[dict[str, Any]], RenderModels]] = None,
 ) -> dict[str, Any]:
+    import gc
+
     import torch
     from PIL import Image
 
@@ -424,7 +499,11 @@ def _run_render(
     device = params.get("device") or ("cuda" if torch.cuda.is_available() else "cpu")
     reset_peak()
 
-    models = build_models(params)
+    # Staged loading keeps peak host RAM at max(stage) instead of sum(stages):
+    # encode prompts → FREE the 11 GiB text encoder → encode anchors with the
+    # small VAE → only then load the two 14 GiB fp8 experts. A prebuilt
+    # RenderModels (tests / callers) short-circuits the staging.
+    prebuilt = build_models(params) if build_models is not None else None
 
     num_clips: int = params["num_clips"]
     prompts: list[str] = params["prompts"]
@@ -467,6 +546,58 @@ def _run_render(
     expert_selector = ExpertSelector(boundary=switch_boundary)
     blocks_to_swap: int = params["blocks_to_swap"]
 
+    # Stage 1 — encode every prompt once, then release the text encoder
+    # entirely (UMT5-xxl is the single largest host-RAM tenant after the
+    # experts). Contexts are tiny (1 x L x 4096) and cached on CPU.
+    _notify(worker, "svi2.video.progress", {"fraction": 0.01, "stage": "loading_text_encoder"})
+    text_encoder = prebuilt.text_encoder if prebuilt is not None else _build_text_encoder(params)
+    if device == "cuda":
+        text_encoder.to_cuda()
+    _notify(worker, "svi2.video.progress", {"fraction": 0.03, "stage": "encoding_prompts"})
+    unique_prompts = list(dict.fromkeys(prompts[i % len(prompts)] for i in range(num_clips)))
+    ctx_cache = {p: text_encoder.encode_text(p).to("cpu") for p in unique_prompts}
+    neg_context = (
+        text_encoder.encode_text(negative_prompt).to("cpu") if cfg_scale != 1.0 else None
+    )
+    if device == "cuda":
+        text_encoder.to_cpu()
+        torch.cuda.empty_cache()
+    if prebuilt is None:
+        del text_encoder
+        gc.collect()
+    log_vram("stage1 done: prompts encoded, text encoder released")
+
+    # Stage 2 — anchor/end keyframes through the (small) VAE before the
+    # experts exist, so the encode never overlaps the 28 GiB expert load.
+    _notify(worker, "svi2.video.progress", {"fraction": 0.05, "stage": "encoding_anchors"})
+    vae = prebuilt.vae if prebuilt is not None else _build_vae(params)
+    vae.to_cuda() if device == "cuda" else vae.to_cpu()
+    anchor_lat = vae.encode_image(ref_image)[0]
+    end_lat = None
+    if params.get("last_image_path"):
+        end_image = Image.open(params["last_image_path"]).convert("RGB").resize((width, height))
+        end_lat = vae.encode_image(end_image)[0]
+    if device == "cuda":
+        vae.to_cpu()
+        torch.cuda.empty_cache()
+    log_vram("stage2 done: anchors encoded")
+
+    # Stage 3 — the two fp8 experts, the only stage that needs big RAM.
+    _notify(worker, "svi2.video.progress", {"fraction": 0.06, "stage": "loading_experts"})
+    if prebuilt is not None:
+        high, low = prebuilt.high, prebuilt.low
+        audit = prebuilt.audit
+    else:
+        high, low = _build_experts(params)
+        audit = {
+            "high_fp8": high.fp8_audit,
+            "low_fp8": low.fp8_audit,
+            "high_lora": high.lora_audit,
+            "low_lora": low.lora_audit,
+        }
+    models = RenderModels(high=high, low=low, vae=vae, text_encoder=None, audit=audit)
+    log_vram("stage3 done: experts loaded")
+
     teacache_thresh: float = params["teacache_thresh"]
     teacache_on = teacache_thresh > 0.0
     models.high.dit.configure_tea_cache(teacache_on, teacache_thresh)
@@ -492,24 +623,21 @@ def _run_render(
         )
         torch.cuda.empty_cache()
 
-    models.vae.to_cuda() if device == "cuda" else models.vae.to_cpu()
-    anchor_lat = models.vae.encode_image(ref_image)[0]
-    end_lat = None
-    if params.get("last_image_path"):
-        end_image = Image.open(params["last_image_path"]).convert("RGB").resize((width, height))
-        end_lat = models.vae.encode_image(end_image)[0]
-    if device == "cuda":
-        models.vae.to_cpu()
-        torch.cuda.empty_cache()
-
     prev_last_latent: Any = None
     adain_reference: Any = None
     adain_factor: float = params["adain_factor"]
     writer = StreamingFrameWriter()
     stitcher = RollingCrossfadeStitcher(num_overlap_frame, mode=params["stitch_mode"])
 
+    denoise_span = 0.90 / max(num_clips, 1)
+
     for clip_idx in range(num_clips):
         log_vram(f"clip {clip_idx} start")
+        _notify(
+            worker,
+            "svi2.video.clip.started",
+            {"clip_index": clip_idx, "num_clips": num_clips},
+        )
         if teacache_on:
             models.high.dit.reset_tea_cache()
             models.low.dit.reset_tea_cache()
@@ -522,13 +650,8 @@ def _run_render(
         seed = params["seed_multiplier"] * clip_idx
         torch.manual_seed(seed)
 
-        if device == "cuda":
-            models.text_encoder.to_cuda()
-        context_posi = models.text_encoder.encode_text(prompt)
-        context_nega = models.text_encoder.encode_text(negative_prompt) if cfg_scale != 1.0 else context_posi
-        if device == "cuda":
-            models.text_encoder.to_cpu()
-            torch.cuda.empty_cache()
+        context_posi = ctx_cache[prompt].to(device)
+        context_nega = neg_context.to(device) if neg_context is not None else context_posi
 
         noise = torch.randn(
             1, _WAN22_A14B_CONFIG["out_dim"], total_latent_frames, lat_h, lat_w,
@@ -562,8 +685,25 @@ def _run_render(
             ref_pad_num=clip_ref_pad,
         )
 
-        context_posi = context_posi.to(device)
-        context_nega = context_nega.to(device)
+        def _on_step(
+            step: int, total_steps: int, seconds: float, _clip_idx: int = clip_idx
+        ) -> None:
+            _notify(
+                worker,
+                "svi2.video.clip.step",
+                {
+                    "clip_index": _clip_idx,
+                    "step": step,
+                    "total_steps": total_steps,
+                    "seconds_per_step": round(seconds, 2),
+                },
+            )
+            fraction = 0.07 + denoise_span * (_clip_idx + step / max(total_steps, 1))
+            _notify(
+                worker,
+                "svi2.video.progress",
+                {"fraction": round(min(fraction, 0.97), 4), "stage": "denoising"},
+            )
 
         latent = _denoise_clip(
             models=models,
@@ -576,6 +716,7 @@ def _run_render(
             expert_selector=expert_selector,
             scheduler=scheduler,
             move_to=_move_to,
+            on_step=_on_step,
         )
 
         # Cap colour/exposure drift down the continuation chain: match each
@@ -614,17 +755,67 @@ def _run_render(
         # crossfade holds only the overlap tail) so length is unbounded by RAM.
         writer.write_many(stitcher.push(pil_frames))
         del pil_frames, frames
+        _notify(
+            worker,
+            "svi2.video.clip.completed",
+            {"clip_index": clip_idx, "num_clips": num_clips},
+        )
+        if device == "cuda":
+            _notify(
+                worker,
+                "runtime.memory_stats",
+                {
+                    "vram_peak_gib": round(peak_allocated() / 1024**3, 2),
+                    "vram_used_gib": round(torch.cuda.memory_allocated() / 1024**3, 2),
+                },
+            )
 
+    _notify(worker, "svi2.video.progress", {"fraction": 0.97, "stage": "stitching"})
     writer.write_many(stitcher.flush())
     total_frames = writer.count
     video_path = writer.finalize(output_path, fps=fps)
 
+    # Denoise + decode are done — drop the 28 GiB of expert weights (and the
+    # VAE) before interpolation, which only needs the tiny RIFE net.
+    del models, high, low, vae
+    gc.collect()
+    if device == "cuda":
+        torch.cuda.empty_cache()
+    log_vram("experts released post-render")
+
+    # Optional Maxine RTX super-resolution BEFORE interpolation — fewer frames
+    # to upscale at native fps, and RIFE then interpolates at the final size.
+    upscale_factor: int = params["upscale_factor"]
+    upscale_engine = ""
+    base_path = video_path
+    if upscale_factor > 0:
+        from .rtx_upscale import try_rtx_upscale
+
+        _notify(worker, "svi2.video.progress", {"fraction": 0.975, "stage": "upscaling"})
+        up_out = output_path.parent / (
+            f"{output_path.stem}_x{upscale_factor}{output_path.suffix}"
+        )
+        upscaled = try_rtx_upscale(
+            video_path,
+            up_out,
+            upscale_factor,
+            quality=params["upscale_quality"],
+            fps=fps,
+            logger=getattr(worker, "logger", None),
+        )
+        if upscaled:
+            video_path = up_out
+            upscale_engine = "maxine_vsr"
+            log_vram(f"rtx upscale x{upscale_factor} ({params['upscale_quality']})")
+        else:
+            log_vram("rtx upscale unavailable — keeping native resolution")
+
     # Optional frame interpolation: native render stays at fps; this adds frames
     # to reach interpolate_fps (smooth high-fps, no speed-up). Off when 0/<=fps.
     interpolate_fps: int = params["interpolate_fps"]
-    base_path = video_path
     interp_engine = ""
     if interpolate_fps and interpolate_fps > fps:
+        _notify(worker, "svi2.video.progress", {"fraction": 0.98, "stage": "interpolating"})
         from .interpolate import interpolate_video, resolve_rife_method
 
         interp_engine = resolve_rife_method(
@@ -651,13 +842,16 @@ def _run_render(
         "interpolated_fps": interpolate_fps if interpolate_fps > fps else 0,
         "interpolate_method": params["interpolate_method"],
         "interpolate_engine": interp_engine,
+        "upscale_factor": upscale_factor if upscale_engine else 0,
+        "upscale_quality": params["upscale_quality"],
+        "upscale_engine": upscale_engine,
         "num_clips": num_clips,
         "frames": total_frames,
         "height": height,
         "width": width,
         "fps": fps,
         "peak_vram_bytes": peak_allocated(),
-        "model_audit": models.audit,
+        "model_audit": audit,
         "stitch_mode": params["stitch_mode"],
         "pixel_re_encode": pixel_re_encode,
         "resolution_warning": resolution_warning,
