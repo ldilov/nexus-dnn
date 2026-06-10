@@ -176,7 +176,12 @@ mod tests {
         };
         let (status, body) = body_text(complete(Extension(service), Json(req)).await).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(body["message"].as_str().unwrap().contains("response_format.name"));
+        assert!(
+            body["message"]
+                .as_str()
+                .unwrap()
+                .contains("response_format.name")
+        );
     }
 
     #[test]
@@ -261,7 +266,8 @@ mod tests {
         let service: Arc<dyn TextCompletionService> = Arc::new(FakeService {
             outcome: Err(TextCompletionError::NoEligibleBackend),
         });
-        let (status, body) = body_text(complete(Extension(service), Json(ok_request())).await).await;
+        let (status, body) =
+            body_text(complete(Extension(service), Json(ok_request())).await).await;
         assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(body["code"], "no_eligible_backend");
     }
@@ -271,7 +277,8 @@ mod tests {
         let service: Arc<dyn TextCompletionService> = Arc::new(FakeService {
             outcome: Err(TextCompletionError::Timeout(1000)),
         });
-        let (status, body) = body_text(complete(Extension(service), Json(ok_request())).await).await;
+        let (status, body) =
+            body_text(complete(Extension(service), Json(ok_request())).await).await;
         assert_eq!(status, StatusCode::GATEWAY_TIMEOUT);
         assert_eq!(body["code"], "timeout");
     }
@@ -281,7 +288,8 @@ mod tests {
         let service: Arc<dyn TextCompletionService> = Arc::new(FakeService {
             outcome: Err(TextCompletionError::ModelUnavailable("nope".into())),
         });
-        let (status, body) = body_text(complete(Extension(service), Json(ok_request())).await).await;
+        let (status, body) =
+            body_text(complete(Extension(service), Json(ok_request())).await).await;
         assert_eq!(status, StatusCode::BAD_GATEWAY);
         assert_eq!(body["code"], "model_unavailable");
     }
@@ -291,7 +299,8 @@ mod tests {
         let service: Arc<dyn TextCompletionService> = Arc::new(FakeService {
             outcome: Err(TextCompletionError::LeaseRevoked("gone".into())),
         });
-        let (status, body) = body_text(complete(Extension(service), Json(ok_request())).await).await;
+        let (status, body) =
+            body_text(complete(Extension(service), Json(ok_request())).await).await;
         assert_eq!(status, StatusCode::BAD_GATEWAY);
         assert_eq!(body["code"], "lease_revoked");
     }
@@ -310,7 +319,8 @@ mod tests {
         let service: Arc<dyn TextCompletionService> = Arc::new(FakeService {
             outcome: Err(TextCompletionError::Internal("stack frame leak".into())),
         });
-        let (status, body) = body_text(complete(Extension(service), Json(ok_request())).await).await;
+        let (status, body) =
+            body_text(complete(Extension(service), Json(ok_request())).await).await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert!(!body["message"].as_str().unwrap().contains("stack"));
     }
