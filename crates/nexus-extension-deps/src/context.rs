@@ -61,6 +61,53 @@ pub trait ModelStoreClient: Send + Sync {
     ) -> Result<(), crate::DepError> {
         Ok(())
     }
+
+    /// Delete `extension_id`'s on-disk copy of `family_id` so a forced
+    /// reinstall re-downloads it from scratch instead of re-attaching to an
+    /// already-complete download job.
+    ///
+    /// MUST be shared-model-safe: drop only THIS extension's reference and
+    /// delete the physical bytes only when no other extension still references
+    /// the same artifact (same semantics as uninstall's GC). A family no other
+    /// extension shares is fully removed; a shared family's bytes survive for
+    /// the other holders and are re-fetched here into a fresh job.
+    ///
+    /// Default no-op: probe-only / test doubles keep the old behavior.
+    async fn purge_family(
+        &self,
+        _extension_id: &str,
+        _family_id: &str,
+        _accelerator: Option<&str>,
+    ) -> Result<(), crate::DepError> {
+        Ok(())
+    }
+
+    /// Verify the on-disk integrity of an installed family without re-downloading.
+    ///
+    /// Cheap and no-network: stats each installed file and compares it against the
+    /// recorded size (and sha256 where one was persisted). Returns:
+    /// - `Ok(None)` — nothing installed to check, or integrity is not verifiable
+    ///   (no recorded sizes). The UI treats this as "no warning".
+    /// - `Ok(Some(report))` — `report.ok` is `false` when a file is missing or its
+    ///   size/hash diverged, with `detail` naming the offending files.
+    ///
+    /// Default no-op for probe-only / test doubles.
+    async fn family_integrity(
+        &self,
+        _family_id: &str,
+        _accelerator: Option<&str>,
+    ) -> Result<Option<ArtifactIntegrity>, crate::DepError> {
+        Ok(None)
+    }
+}
+
+/// On-disk integrity verdict for an installed model family.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactIntegrity {
+    /// True when every recorded file is present and matches its recorded size/hash.
+    pub ok: bool,
+    /// Human-readable summary of what failed, when `ok` is false.
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,6 +212,12 @@ pub struct StepContext<'a> {
     pub progress_sink: Arc<dyn ProgressSink>,
     pub cancellation_token: CancellationToken,
     pub install_run_id: uuid::Uuid,
+
+    /// True when the run was started with `?force=true` ("Reinstall
+    /// everything"). Handlers that cache on-disk state (e.g. `model_artifact`)
+    /// MUST purge the prior copy and re-fetch from scratch rather than
+    /// short-circuiting on an already-present artifact.
+    pub force: bool,
 
     /// Resolved artifacts of upstream `requires` steps in topo order. Available to
     /// `run()` so downstream steps can consult upstream metadata (e.g., the resolved

@@ -26,7 +26,7 @@ use nexus_extension_deps::{
     ModelStoreClient, RuntimeBootstrapResult, RuntimeBootstrapper, StepArtifact, WorkerHandshake,
     fetch::{FetchArtifact, FetchRequest, fetch_artifact},
 };
-use nexus_huggingface::{HuggingFaceCapability, SearchFilters, SearchReq};
+use nexus_huggingface::{HfError, HuggingFaceCapability, RepoFile, SearchFilters, SearchReq};
 use nexus_models_store::capabilities::CapabilityRegistry;
 use nexus_models_store::downloads::{
     CreateJobParams, DownloadOrchestrator, InstallMap, JobStore, JobTargetInput, RequestedKind,
@@ -421,6 +421,49 @@ impl RealModelStoreClient {
         family_id.split_once(':').map(|(_, r)| r)
     }
 
+    /// `detail()` with a bounded retry on transient Hub failures
+    /// (`Unreachable` — which includes 5xx — and `RateLimited`). Honors the
+    /// error's `retry_after` hint capped at 10s so a flaky Hub stalls a step
+    /// by seconds, not by the full advisory window. Non-transient errors
+    /// (404, auth, parse) return immediately.
+    async fn detail_with_retry(
+        hf: &dyn HuggingFaceCapability,
+        repo_id: &str,
+    ) -> Result<nexus_huggingface::RepoMetadata, HfError> {
+        const ATTEMPTS: u32 = 3;
+        const MAX_BACKOFF_SECS: u64 = 10;
+        let mut last_err = None;
+        for attempt in 1..=ATTEMPTS {
+            match hf.detail(repo_id, None).await {
+                Ok(meta) => return Ok(meta),
+                Err(err) => {
+                    let retry_after = match &err {
+                        HfError::Unreachable {
+                            retry_after_seconds,
+                        } => retry_after_seconds.unwrap_or(5),
+                        HfError::RateLimited {
+                            retry_after_seconds,
+                        } => *retry_after_seconds,
+                        _ => return Err(err),
+                    };
+                    tracing::warn!(
+                        target: "spec_035::model_artifact",
+                        repo_id,
+                        attempt,
+                        error = %err,
+                        "hf detail transient failure — retrying"
+                    );
+                    if attempt < ATTEMPTS {
+                        let secs = u64::from(retry_after).clamp(1, MAX_BACKOFF_SECS);
+                        tokio::time::sleep(std::time::Duration::from_secs(secs)).await;
+                    }
+                    last_err = Some(err);
+                }
+            }
+        }
+        Err(last_err.expect("loop ran at least once"))
+    }
+
     /// Build a snapshot-style file list for `family_id`. Queries HuggingFace
     /// directly and bypasses `normalize_family` because runtime configs
     /// (`config.yaml`, `*.json`) and tokenizer subfolders are essential for
@@ -446,54 +489,54 @@ impl RealModelStoreClient {
                  'huggingface:Owner/Repo')",
             )
         })?;
-        let req = SearchReq {
-            query: repo_id.to_owned(),
-            filters: SearchFilters::default(),
-            limit: 10,
-            page: 1,
-        };
-        let page = hf
-            .search(req)
-            .await
-            .map_err(|e| DepError::Backend(format!("huggingface search: {e}")))?;
-        let raw = page
-            .results
-            .iter()
-            .find(|r| r.repo_id == repo_id)
-            .ok_or_else(|| {
-                DepError::Backend(format!("model family not found upstream: {family_id}"))
-            })?;
-
-        // File sizes drive the download progress bar (`job.total_bytes`). The
-        // HF list endpoint's siblings frequently omit per-file `size`/`lfs.size`
-        // (AC-3.1), so when the search payload carries no sizes, fall back to
-        // the repo detail endpoint and merge sizes by path. `detail()` returns
-        // siblings with the LFS `size` for large weight files.
-        let mut sizes: std::collections::HashMap<&str, u64> = raw
-            .files
-            .iter()
-            .filter_map(|f| f.size_bytes.map(|b| (f.path.as_str(), b)))
-            .collect();
-
-        let detail_meta = if sizes.is_empty() {
-            hf.detail(repo_id, None).await.ok()
-        } else {
-            None
-        };
-        if let Some(meta) = detail_meta.as_ref() {
-            for sibling in &meta.siblings {
-                if let Some(bytes) = sibling.size_bytes {
-                    sizes.entry(sibling.path.as_str()).or_insert(bytes);
-                }
+        // The detail endpoint is the authoritative enumeration for a KNOWN
+        // repo id: exact lookup, full sibling listing, LFS sizes (AC-3.1).
+        // The previous search-first path was doubly fragile — the Hub's
+        // free-text search intermittently 500s under burst (one flake halted
+        // the whole install run), and the repo had to land in the top-10
+        // results to be found at all.
+        let files: Vec<RepoFile> = match Self::detail_with_retry(hf.as_ref(), repo_id).await {
+            Ok(meta) => meta.siblings,
+            Err(HfError::RepoNotFound(_)) => {
+                return Err(DepError::Backend(format!(
+                    "model family not found upstream: {family_id}"
+                )));
             }
-        }
+            Err(detail_err) => {
+                // Resilience fallback: one search attempt keeps installs
+                // alive if the detail endpoint regresses while search works.
+                tracing::warn!(
+                    target: "spec_035::model_artifact",
+                    repo_id,
+                    error = %detail_err,
+                    "hf detail enumeration failed after retries — falling back to search"
+                );
+                let req = SearchReq {
+                    query: repo_id.to_owned(),
+                    filters: SearchFilters::default(),
+                    limit: 10,
+                    page: 1,
+                };
+                let page = hf.search(req).await.map_err(|e| {
+                    DepError::Backend(format!(
+                        "huggingface detail: {detail_err}; search fallback: {e}"
+                    ))
+                })?;
+                page.results
+                    .into_iter()
+                    .find(|r| r.repo_id == repo_id)
+                    .map(|r| r.files)
+                    .ok_or_else(|| {
+                        DepError::Backend(format!("model family not found upstream: {family_id}"))
+                    })?
+            }
+        };
 
         // Narrow the repo listing to the extension's declared selection before
         // building targets. An unrestricted selection keeps every file (the
         // historical whole-repo snapshot); a selection that matches nothing is
         // a hard error, never a silent zero-file install.
-        let non_empty_paths: Vec<&str> = raw
-            .files
+        let non_empty_paths: Vec<&str> = files
             .iter()
             .map(|f| f.path.as_str())
             .filter(|p| !p.is_empty())
@@ -501,8 +544,7 @@ impl RealModelStoreClient {
         let selected: std::collections::HashSet<&str> =
             selection.filter(non_empty_paths)?.into_iter().collect();
 
-        let targets: Vec<JobTargetInput> = raw
-            .files
+        let targets: Vec<JobTargetInput> = files
             .iter()
             .filter(|f| selected.contains(f.path.as_str()))
             .map(|f| JobTargetInput {
@@ -510,7 +552,7 @@ impl RealModelStoreClient {
                 filename: f.path.clone(),
                 role: DependencyRole::Primary,
                 download_url: format!("https://huggingface.co/{repo_id}/resolve/main/{}", f.path),
-                expected_bytes: f.size_bytes.or_else(|| sizes.get(f.path.as_str()).copied()),
+                expected_bytes: f.size_bytes,
                 sha256: None,
             })
             .collect();
@@ -661,6 +703,69 @@ impl ModelStoreClient for RealModelStoreClient {
         }))
     }
 
+    async fn family_integrity(
+        &self,
+        family_id: &str,
+        _accelerator: Option<&str>,
+    ) -> Result<Option<nexus_extension_deps::ArtifactIntegrity>, DepError> {
+        let family = FamilyId::from(family_id);
+        let rows = self
+            .install_map
+            .list_for_family(&family)
+            .await
+            .map_err(|e| DepError::Backend(format!("install_map.list_for_family: {e}")))?;
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        // Disk is the source of truth. Stat each recorded file under its job sink
+        // dir and compare to the recorded size. A missing file or a size that
+        // diverged from the record means the install is corrupt and should be
+        // reinstalled. sha256 is not recorded for HF snapshots, so size is the
+        // pragmatic verification floor (truncation/partial-write detection).
+        let sink_root = self.orchestrator.sink_root();
+        let mut bad: Vec<String> = Vec::new();
+        let mut sized_checks: u32 = 0;
+        for row in &rows {
+            let path = sink_root.join(&row.job_id).join(&row.filename);
+            match tokio::fs::metadata(&path).await {
+                Err(_) => bad.push(format!("{} is missing", row.filename)),
+                Ok(meta) => {
+                    if let Some(expected) = row.size_bytes.filter(|b| *b > 0) {
+                        sized_checks = sized_checks.saturating_add(1);
+                        if meta.len() != expected {
+                            bad.push(format!(
+                                "{} is {} bytes, expected {expected}",
+                                row.filename,
+                                meta.len()
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Nothing verifiable (no recorded sizes and every file present) — report
+        // `None` rather than a false "ok", so the UI shows no misleading badge.
+        if bad.is_empty() && sized_checks == 0 {
+            return Ok(None);
+        }
+        if bad.is_empty() {
+            return Ok(Some(nexus_extension_deps::ArtifactIntegrity {
+                ok: true,
+                detail: None,
+            }));
+        }
+        let count = bad.len();
+        Ok(Some(nexus_extension_deps::ArtifactIntegrity {
+            ok: false,
+            detail: Some(format!(
+                "{count} file(s) failed integrity check: {}",
+                bad.join("; ")
+            )),
+        }))
+    }
+
     async fn record_reference(
         &self,
         extension_id: &str,
@@ -695,6 +800,52 @@ impl ModelStoreClient for RealModelStoreClient {
             family_id,
             job_id = %job_id,
             "model_store: recorded Foundry ownership ref"
+        );
+        Ok(())
+    }
+
+    async fn purge_family(
+        &self,
+        extension_id: &str,
+        family_id: &str,
+        _accelerator: Option<&str>,
+    ) -> Result<(), DepError> {
+        let family = FamilyId::from(family_id);
+        let rows = self
+            .install_map
+            .list_for_family(&family)
+            .await
+            .map_err(|e| DepError::Backend(format!("install_map.list_for_family: {e}")))?;
+
+        // Distinct job ids own one sink dir each. Drop this extension's ref to
+        // each, then GC the artifact only when no other extension still holds
+        // one — shared models survive, exclusively-owned models are deleted.
+        let mut job_ids: Vec<String> = rows.into_iter().map(|r| r.job_id).collect();
+        job_ids.sort();
+        job_ids.dedup();
+
+        let sink_root = self.orchestrator.sink_root();
+        let mut freed_bytes: u64 = 0;
+        for job_id in &job_ids {
+            self.install_map
+                .remove_ref(job_id, extension_id)
+                .await
+                .map_err(|e| DepError::Backend(format!("install_map.remove_ref: {e}")))?;
+            let outcome = self
+                .install_map
+                .gc_artifact_if_unreferenced(job_id, sink_root)
+                .await
+                .map_err(|e| DepError::Backend(format!("install_map.gc: {e}")))?;
+            freed_bytes = freed_bytes.saturating_add(outcome.freed_bytes);
+        }
+
+        tracing::info!(
+            target: "spec_035::model_store",
+            extension_id,
+            family_id,
+            jobs = job_ids.len(),
+            freed_bytes,
+            "model_store: purged family for forced reinstall"
         );
         Ok(())
     }
@@ -1677,6 +1828,149 @@ mod tests {
         }
     }
 
+    struct FlakyDetailHfStub {
+        repo_id: String,
+        files: Vec<(String, u64)>,
+        detail_failures_remaining: std::sync::atomic::AtomicU32,
+        detail_error_is_transient: bool,
+        search_calls: std::sync::atomic::AtomicU32,
+    }
+
+    #[async_trait]
+    impl HuggingFaceCapability for FlakyDetailHfStub {
+        async fn search(&self, req: SearchReq) -> HfResult<SearchPage> {
+            self.search_calls
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(SearchPage {
+                query: req.query,
+                page: 1,
+                has_next: false,
+                results: vec![SearchResult {
+                    repo_id: self.repo_id.clone(),
+                    author: None,
+                    license: None,
+                    downloads_30d: None,
+                    last_modified: None,
+                    files: self
+                        .files
+                        .iter()
+                        .map(|(path, bytes)| RepoFile {
+                            path: path.clone(),
+                            size_bytes: Some(*bytes),
+                        })
+                        .collect(),
+                    formats: vec![],
+                    quantizations: vec![],
+                    pipeline_tag: None,
+                }],
+            })
+        }
+
+        async fn detail(&self, repo_id: &str, revision: Option<&str>) -> HfResult<RepoMetadata> {
+            let remaining = self
+                .detail_failures_remaining
+                .load(std::sync::atomic::Ordering::SeqCst);
+            if remaining > 0 {
+                self.detail_failures_remaining
+                    .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                return Err(if self.detail_error_is_transient {
+                    // What a Hub 500 now classifies as.
+                    HfError::Unreachable {
+                        retry_after_seconds: Some(1),
+                    }
+                } else {
+                    HfError::InvalidResponse("unexpected status 418 I'm a teapot".into())
+                });
+            }
+            Ok(RepoMetadata {
+                repo_id: repo_id.to_owned(),
+                revision: revision.unwrap_or("main").to_owned(),
+                author: None,
+                license: None,
+                pipeline_tag: None,
+                library_name: None,
+                tags: vec![],
+                siblings: self
+                    .files
+                    .iter()
+                    .map(|(path, bytes)| RepoFile {
+                        path: path.clone(),
+                        size_bytes: Some(*bytes),
+                    })
+                    .collect(),
+                config: None,
+                downloads: None,
+                last_modified: None,
+            })
+        }
+
+        async fn download(&self, _spec: DownloadSpec) -> HfResult<DownloadedArtifact> {
+            Err(HfError::Cancelled)
+        }
+    }
+
+    /// Regression (svi2-pro reinstall halt) — a transient Hub failure on the
+    /// enumeration call no longer fails the step: detail retries and recovers.
+    /// Real ~2s wall time: paused-clock mode starves the sqlx pool's acquire
+    /// timeout, so the 1s retry_after backoffs run on the real clock.
+    #[tokio::test]
+    async fn snapshot_recovers_from_transient_detail_failures() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pool = model_store_pool().await;
+        let hf = Arc::new(FlakyDetailHfStub {
+            repo_id: "Owner/Repo".into(),
+            files: vec![("lora.safetensors".into(), 1_000_000)],
+            detail_failures_remaining: std::sync::atomic::AtomicU32::new(2),
+            detail_error_is_transient: true,
+            search_calls: std::sync::atomic::AtomicU32::new(0),
+        });
+        let client = client_with_hf(pool, hf.clone(), tmp.path().to_path_buf());
+
+        let targets = client
+            .snapshot_targets_from_huggingface(
+                "huggingface:Owner/Repo",
+                &nexus_extension_deps::FileSelection::default(),
+            )
+            .await
+            .expect("transient detail failures must be retried, not fatal");
+        assert_eq!(targets.len(), 1);
+        assert_eq!(
+            hf.search_calls.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "happy path must not touch the flaky search endpoint"
+        );
+    }
+
+    /// Resilience — if detail hard-fails (non-transient), the legacy search
+    /// enumeration still completes the step.
+    #[tokio::test]
+    async fn snapshot_falls_back_to_search_when_detail_hard_fails() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pool = model_store_pool().await;
+        let hf = Arc::new(FlakyDetailHfStub {
+            repo_id: "Owner/Repo".into(),
+            files: vec![("lora.safetensors".into(), 1_000_000)],
+            detail_failures_remaining: std::sync::atomic::AtomicU32::new(u32::MAX),
+            detail_error_is_transient: false,
+            search_calls: std::sync::atomic::AtomicU32::new(0),
+        });
+        let client = client_with_hf(pool, hf.clone(), tmp.path().to_path_buf());
+
+        let targets = client
+            .snapshot_targets_from_huggingface(
+                "huggingface:Owner/Repo",
+                &nexus_extension_deps::FileSelection::default(),
+            )
+            .await
+            .expect("search fallback must keep the install alive");
+        assert_eq!(targets.len(), 1);
+        assert_eq!(
+            hf.search_calls.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "fallback goes through search exactly once"
+        );
+    }
+
     async fn model_store_pool() -> Arc<SqlitePool> {
         let opts = SqliteConnectOptions::from_str("sqlite::memory:").unwrap();
         let pool = SqlitePoolOptions::new()
@@ -1750,16 +2044,26 @@ mod tests {
             repo_id: "Owner/Repo".into(),
             files: vec![
                 ("config.json".into(), 1_024),
-                ("transformer/diffusion_pytorch_model.safetensors".into(), 8_000_000_000),
+                (
+                    "transformer/diffusion_pytorch_model.safetensors".into(),
+                    8_000_000_000,
+                ),
                 ("text_encoder/model.safetensors".into(), 2_000_000_000),
-                ("vae/diffusion_pytorch_model.safetensors".into(), 300_000_000),
+                (
+                    "vae/diffusion_pytorch_model.safetensors".into(),
+                    300_000_000,
+                ),
                 ("variant_fp8/model.safetensors".into(), 9_000_000_000),
             ],
             sizes_in_search: true,
         })
     }
 
-    fn selection(files: &[&str], include: &[&str], exclude: &[&str]) -> nexus_extension_deps::FileSelection {
+    fn selection(
+        files: &[&str],
+        include: &[&str],
+        exclude: &[&str],
+    ) -> nexus_extension_deps::FileSelection {
         nexus_extension_deps::FileSelection {
             files: files.iter().map(|s| s.to_string()).collect(),
             include: include.iter().map(|s| s.to_string()).collect(),
@@ -1775,7 +2079,10 @@ mod tests {
         let pool = model_store_pool().await;
         let client = client_with_hf(pool, mega_repo_stub(), tmp.path().to_path_buf());
         let sel = selection(
-            &["config.json", "transformer/diffusion_pytorch_model.safetensors"],
+            &[
+                "config.json",
+                "transformer/diffusion_pytorch_model.safetensors",
+            ],
             &[],
             &[],
         );
@@ -1787,10 +2094,16 @@ mod tests {
         let names: Vec<&str> = targets.iter().map(|t| t.filename.as_str()).collect();
         assert_eq!(
             names,
-            vec!["config.json", "transformer/diffusion_pytorch_model.safetensors"]
+            vec![
+                "config.json",
+                "transformer/diffusion_pytorch_model.safetensors"
+            ]
         );
         let total: u64 = targets.iter().filter_map(|t| t.expected_bytes).sum();
-        assert_eq!(total, 8_000_001_024, "byte total covers only selected files");
+        assert_eq!(
+            total, 8_000_001_024,
+            "byte total covers only selected files"
+        );
     }
 
     /// AC-2.1 — `include` globs keep matching files only.
