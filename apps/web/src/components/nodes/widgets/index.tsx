@@ -1,6 +1,7 @@
 import { useState, type ChangeEvent } from "react";
 import type { WidgetProps, WidgetSpec } from "./types";
 import * as styles from "./widgets.css";
+import { color } from "../../../tokens/primitives";
 
 export { type WidgetKind, type WidgetSpec } from "./types";
 
@@ -159,8 +160,7 @@ function CodeWidget({ spec, value, editable, onChange }: WidgetProps) {
 }
 
 function ColorWidget({ value, editable, onChange }: WidgetProps) {
-  // audit-allow: hex — neon decorative palette per design lang
-  const current = toString(value, "#ba9eff");
+  const current = toString(value, color.primary.base);
   if (!editable) {
     return (
       <span

@@ -12,14 +12,15 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { container, miniMapBg } from "./dag_canvas.css";
+import { vars } from "../../theme/contract.css";
 
 const GRID_SIZE = 16;
 
-const DOT_COLOR = "rgba(186, 158, 255, 0.14)";
-const LINE_COLOR = "rgba(186, 158, 255, 0.06)";
+const DOT_COLOR = "color-mix(in srgb, var(--accent) 14%, transparent)";
+const LINE_COLOR = "color-mix(in srgb, var(--accent) 6%, transparent)";
 const MINIMAP_MASK = "rgba(0, 0, 0, 0.6)";
-const MINIMAP_NODE = "#1d2023";
-const MINIMAP_STROKE = "#ba9eff";
+const MINIMAP_NODE = vars.color.bg.elevated;
+const MINIMAP_STROKE = "var(--accent)";
 
 export type DagCanvasProps = {
   nodes: Node[];

@@ -101,23 +101,30 @@ function bindCtas(state: CardState, handlers: Omit<Props, "backend">, backend: B
   }
 }
 
-function badgeFor(backend: BackendSummary): string {
-  if (backend.implementation_status === "unavailable") return "UNAVAILABLE IN THIS BUILD";
+interface BadgeContent {
+  label: string;
+  title?: string;
+}
+
+function badgeFor(backend: BackendSummary): BadgeContent {
+  if (backend.implementation_status === "unavailable") {
+    return { label: "UNAVAILABLE", title: "Unavailable in this build" };
+  }
   switch (backend.card_state) {
     case "ready":
-      return "READY";
+      return { label: "READY" };
     case "not_installed":
-      return "NOT INSTALLED";
+      return { label: "NOT INSTALLED" };
     case "installed_unvalidated":
-      return "INSTALLED · UNVALIDATED";
+      return { label: "UNVALIDATED", title: "Installed · unvalidated" };
     case "installing":
-      return "INSTALLING";
+      return { label: "INSTALLING" };
     case "updating":
-      return "UPDATING";
+      return { label: "UPDATING" };
     case "broken":
-      return "ISSUE";
+      return { label: "ISSUE" };
     case "unsupported":
-      return "UNSUPPORTED";
+      return { label: "UNSUPPORTED" };
   }
 }
 
@@ -144,6 +151,7 @@ export function BackendCard({ backend, ...handlers }: Props) {
   const binding = bindCtas(backend.card_state, handlers, backend);
   const version = versionLabel(backend);
   const variant = badgeVariantFor(backend);
+  const badgeContent = badgeFor(backend);
   const description =
     backend.id === "llama.cpp"
       ? "GGUF-first local runtime using the upstream llama-server executable."
@@ -155,7 +163,9 @@ export function BackendCard({ backend, ...handlers }: Props) {
     <section className={css.card} data-backend-id={backend.id} data-card-state={backend.card_state}>
       <div className={css.header}>
         <div className={css.title}>{backend.display_name}</div>
-        <span className={css.badge[variant]}>{badgeFor(backend)}</span>
+        <span className={css.badge[variant]} title={badgeContent.title}>
+          {badgeContent.label}
+        </span>
       </div>
       {version && <div className={css.version}>{version}</div>}
       {description && <p className={css.body}>{description}</p>}

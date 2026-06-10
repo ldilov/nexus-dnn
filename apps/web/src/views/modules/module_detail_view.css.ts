@@ -102,7 +102,6 @@ export const sectionTitle = style({
 
 export const card = style({
   background: vars.color.surfaceContainerLow,
-  border: `1px solid ${vars.color.outlineVariant}`,
   borderRadius: vars.radius.lg,
   padding: vars.space.lg,
   display: "flex",
@@ -122,7 +121,6 @@ export const deploymentRow = style({
   alignItems: "center",
   padding: `${vars.space.md} ${vars.space.lg}`,
   background: vars.color.surfaceContainerLow,
-  border: `1px solid ${vars.color.outlineVariant}`,
   borderRadius: vars.radius.md,
 });
 

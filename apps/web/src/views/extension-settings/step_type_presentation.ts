@@ -112,6 +112,77 @@ export function presentation(step: DependencyStep): StepTypePresentation {
   );
 }
 
+export type StepGroupId = "toolchain" | "model_weights" | "validation";
+
+export interface StepGroup {
+  id: StepGroupId;
+  /** Mono micro-cap ordinal rendered in the group header, e.g. "01". */
+  index: string;
+  title: string;
+  /** Right-aligned mono meta string, e.g. "9 items · 1/17 files · 25.4 GB to download". */
+  meta: string;
+  steps: DependencyStep[];
+}
+
+/**
+ * Maps a step to its Dependencies-tab section. Keeps the `type` discriminator
+ * inside this presentation module (FR-005): unknown types fall into the
+ * toolchain group so a new host step type still renders somewhere sensible.
+ */
+export function stepGroupFor(step: DependencyStep): StepGroupId {
+  if (step.type === "model_artifact") return "model_weights";
+  if (step.type === "validation") return "validation";
+  return "toolchain";
+}
+
+function countMeta(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+function modelGroupMeta(steps: readonly DependencyStep[]): string {
+  const parts = [countMeta(steps.length, "item")];
+  const filesTotal = steps.reduce((sum, step) => sum + (step.files_total ?? 0), 0);
+  const filesPresent = steps.reduce((sum, step) => sum + (step.files_present ?? 0), 0);
+  if (filesTotal > 0) parts.push(`${filesPresent}/${filesTotal} files`);
+  const allSatisfied = steps.every((step) => step.satisfied);
+  if (allSatisfied) {
+    const onDisk = steps.reduce((sum, step) => sum + (step.artifact?.bytes_placed ?? 0), 0);
+    if (onDisk > 0) parts.push(`${shortenSize(onDisk)} on disk`);
+  } else {
+    const remaining = steps.reduce((sum, step) => sum + step.estimated_remaining_bytes, 0);
+    if (remaining > 0) parts.push(`${shortenSize(remaining)} to download`);
+  }
+  return parts.join(" · ");
+}
+
+const GROUP_ORDER: ReadonlyArray<{ id: StepGroupId; title: string }> = [
+  { id: "toolchain", title: "Toolchain" },
+  { id: "model_weights", title: "Model weights" },
+  { id: "validation", title: "Validation" },
+];
+
+/**
+ * Splits a dependency plan into the tab's numbered sections, preserving host
+ * step order within each group. Empty groups are omitted and the remaining
+ * ones are renumbered sequentially ("01", "02", …).
+ */
+export function buildStepGroups(steps: readonly DependencyStep[]): StepGroup[] {
+  const byGroup: Record<StepGroupId, DependencyStep[]> = {
+    toolchain: [],
+    model_weights: [],
+    validation: [],
+  };
+  for (const step of steps) byGroup[stepGroupFor(step)].push(step);
+
+  return GROUP_ORDER.filter(({ id }) => byGroup[id].length > 0).map(({ id, title }, idx) => ({
+    id,
+    title,
+    index: String(idx + 1).padStart(2, "0"),
+    meta: id === "model_weights" ? modelGroupMeta(byGroup[id]) : countMeta(byGroup[id].length, "step"),
+    steps: byGroup[id],
+  }));
+}
+
 export interface UninstallImpactEstimate {
   /** Number of model-weight steps the extension installed. */
   modelCount: number;

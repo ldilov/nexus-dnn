@@ -171,6 +171,178 @@ describe("StepRow progress region", () => {
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-busy", "true");
   });
 
+  it("no cross-row bleed: a pending row with no live progress shows no bar even while a global install is active", () => {
+    const step = makeStep({ id: "model", type: "model_artifact", status: "pending" });
+    // installActive=true (sibling row installing), but THIS row has no live → no bar.
+    render(
+      <StepRow
+        step={step}
+        upstreamSatisfied
+        installActive
+        live={undefined}
+        onInstallOnly={noop}
+        onRetry={noop}
+        onReinstall={noop}
+      />,
+    );
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
+  it("a pending row that has its own live progress DOES show a bar (targeted single-row install)", () => {
+    const step = makeStep({ id: "model", type: "model_artifact", status: "pending" });
+    const live = makeLive({ currentBytes: 250, totalBytes: 1000, pct: 25, phase: "downloading" });
+    renderRow(step, live);
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "25");
+  });
+
+  it("paused partial: a pending+resumable row with partial bytes shows PAUSED + frozen progress", () => {
+    const step = makeStep({
+      id: "model_wan_base",
+      type: "model_artifact",
+      status: "pending",
+      satisfied: false,
+      progress: { phase: "downloading", current_bytes: 3_221_225_472, total_bytes: 8_589_934_592 },
+      estimated_remaining_bytes: 5_368_709_120,
+    });
+    render(
+      <StepRow
+        step={step}
+        upstreamSatisfied
+        installActive={false}
+        resumable
+        live={undefined}
+        onInstallOnly={noop}
+        onRetry={noop}
+        onReinstall={noop}
+      />,
+    );
+    // Status label + frozen progress line both read "Paused".
+    expect(screen.getAllByText("Paused")).toHaveLength(2);
+    expect(screen.getByText(/3\.0 GB \/ 8\.0 GB/)).toBeInTheDocument();
+    expect(screen.getByText("38%")).toBeInTheDocument();
+    const bar = screen.getByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "38");
+    expect(screen.getByRole("button", { name: "Install only this" })).toBeEnabled();
+  });
+
+  it("paused partial: no PAUSED treatment while an install run is active or nothing is resumable", () => {
+    const step = makeStep({
+      id: "model_wan_base",
+      type: "model_artifact",
+      status: "pending",
+      satisfied: false,
+      progress: { phase: "downloading", current_bytes: 1024, total_bytes: 4096 },
+      estimated_remaining_bytes: 3072,
+    });
+    render(
+      <StepRow
+        step={step}
+        upstreamSatisfied
+        installActive={false}
+        resumable={false}
+        live={undefined}
+        onInstallOnly={noop}
+        onRetry={noop}
+        onReinstall={noop}
+      />,
+    );
+    expect(screen.getByText("Pending")).toBeInTheDocument();
+    expect(screen.queryByText("Paused", { selector: "span" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
+  it("running bytes line carries the phase label prefix (canonical mock anatomy)", () => {
+    const step = makeStep({ id: "python", type: "runtime", status: "running" });
+    const live = makeLive({
+      currentBytes: 130_023_424,
+      totalBytes: 228_589_568,
+      pct: 59,
+      speedBps: 8_808_038,
+      etaSeconds: 12,
+      phase: "installing",
+    });
+    renderRow(step, live);
+    // Status label + live-line prefix both read "Installing".
+    expect(screen.getAllByText("Installing").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(/124.*MB \/ 218.*MB/)).toBeInTheDocument();
+    expect(screen.getByText("59%")).toBeInTheDocument();
+    expect(screen.getByText("ETA 12s")).toBeInTheDocument();
+  });
+
+  it("integrity failure: a satisfied-but-corrupt row warns and prompts reinstall", () => {
+    const step = makeStep({
+      id: "model",
+      type: "model_artifact",
+      status: "ok",
+      satisfied: true,
+      integrity: { ok: false, detail: "weights.bin is 5 bytes, expected 9000" },
+    });
+    render(
+      <StepRow
+        step={step}
+        upstreamSatisfied
+        installActive={false}
+        live={undefined}
+        onInstallOnly={noop}
+        onRetry={noop}
+        onReinstall={noop}
+      />,
+    );
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText(/Integrity check failed/)).toBeInTheDocument();
+    expect(screen.getByText("Needs reinstall")).toBeInTheDocument();
+    expect(screen.getByText(/expected 9000/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reinstall" })).toBeInTheDocument();
+  });
+
+  it("integrity ok: a verified row shows no warning", () => {
+    const step = makeStep({
+      id: "model",
+      type: "model_artifact",
+      status: "ok",
+      satisfied: true,
+      integrity: { ok: true, detail: null },
+    });
+    render(
+      <StepRow
+        step={step}
+        upstreamSatisfied
+        installActive={false}
+        live={undefined}
+        onInstallOnly={noop}
+        onRetry={noop}
+        onReinstall={noop}
+      />,
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("Installed")).toBeInTheDocument();
+  });
+
+  it("G10: every status renders exactly one status-dot signal in the status pill", () => {
+    const statuses: DependencyStep["status"][] = [
+      "pending",
+      "running",
+      "ok",
+      "failed",
+      "skipped",
+    ];
+    for (const status of statuses) {
+      const { unmount } = render(
+        <StepRow
+          step={makeStep({ id: `step-${status}`, status, satisfied: status === "ok" })}
+          upstreamSatisfied
+          installActive={false}
+          live={undefined}
+          onInstallOnly={noop}
+          onRetry={noop}
+          onReinstall={noop}
+        />,
+      );
+      expect(screen.getAllByTestId("step-status-dot")).toHaveLength(1);
+      unmount();
+    }
+  });
+
   it("AC-3.4: real % path preserved when total_bytes > 0 (no unknown-total fallback)", () => {
     const step = makeStep({ id: "model", type: "model_artifact" });
     const live = makeLive({

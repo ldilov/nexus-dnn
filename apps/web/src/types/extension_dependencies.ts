@@ -38,6 +38,12 @@ export const stepErrorSchema = z.object({
 });
 export type StepError = z.infer<typeof stepErrorSchema>;
 
+export const stepIntegritySchema = z.object({
+  ok: z.boolean(),
+  detail: z.string().nullable(),
+});
+export type StepIntegrity = z.infer<typeof stepIntegritySchema>;
+
 export const stepSchema = z.object({
   id: z.string(),
   type: z.string(),
@@ -50,6 +56,9 @@ export const stepSchema = z.object({
   estimated_remaining_bytes: z.number(),
   files_present: z.number().optional(),
   files_total: z.number().optional(),
+  // On-disk integrity verdict for a satisfied step. Absent when not verifiable;
+  // `ok: false` drives the per-row "corrupt — reinstall" warning.
+  integrity: stepIntegritySchema.optional(),
 });
 export type DependencyStep = z.infer<typeof stepSchema>;
 
@@ -57,6 +66,14 @@ export const dependenciesResponseSchema = z.object({
   steps: z.array(stepSchema),
   all_satisfied: z.boolean(),
   total_remaining_bytes: z.number(),
+  // True while an install run is active host-side. Lets a freshly (re)mounted
+  // page know it's still installing without waiting for the next WS event.
+  // Optional for tolerance against older host payloads (treated as false).
+  install_active: z.boolean().optional(),
+  // True when no run is active but a paused, partially-downloaded artifact
+  // exists (e.g. a host restart parked an in-flight download). Drives the
+  // "Resume install" affordance; installing continues from the partial bytes.
+  install_resumable: z.boolean().optional(),
 });
 export type DependenciesResponse = z.infer<typeof dependenciesResponseSchema>;
 
