@@ -29,6 +29,14 @@ _ARTIFACT_FILENAMES: dict[str, str] = {
 _VRAM_WARN_GIB = 16.0
 _PROFILE = "rtx50-fp8"
 
+sys.path.insert(0, str(_WORKER_DIR / "src"))
+from svi2_video_worker.pipeline_svi2 import (  # noqa: E402
+    _MODE_IMAGE_TO_VIDEO,
+    _MODE_TEXT_TO_VIDEO,
+)
+
+_MODE_MAP: dict[str, str] = {"i2v": _MODE_IMAGE_TO_VIDEO, "t2v": _MODE_TEXT_TO_VIDEO}
+
 
 def _load_prompts(path: Path, num_clips: int) -> list[str]:
     lines = [l.strip() for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
@@ -40,9 +48,9 @@ def _load_prompts(path: Path, num_clips: int) -> list[str]:
     return extended
 
 
-def _probe_prereqs(models_dir: Path, ref_image: Path) -> list[str]:
+def _probe_prereqs(models_dir: Path, ref_image: Path | None) -> list[str]:
     missing: list[str] = []
-    if not ref_image.is_file():
+    if ref_image is not None and not ref_image.is_file():
         missing.append(f"ref-image not found: {ref_image}")
     for artifact_id, filename in _ARTIFACT_FILENAMES.items():
         candidate = models_dir / filename
@@ -64,8 +72,10 @@ def _build_rpc(request_id: int, method: str, params: Any) -> str:
 def _run_worker(
     prompts: list[str],
     models_dir: Path,
-    ref_image: Path,
+    ref_image: Path | None,
     output_path: Path,
+    mode: str,
+    seed: int | None,
     num_clips: int,
     frames_per_clip: int,
     last_image: str,
@@ -133,7 +143,9 @@ def _run_worker(
     log.info("handshake: %s", hs.get("result", hs))
 
     render_params = {
-        "ref_image_path": str(ref_image),
+        "mode": mode,
+        "seed": seed,
+        "ref_image_path": str(ref_image) if ref_image is not None else None,
         "last_image_path": last_image or None,
         "prompts": prompts,
         "models_dir": str(models_dir),
@@ -217,7 +229,23 @@ def main() -> int:
         description="Operator i2v smoke: demonic nun SVI2-Pro render on RTX 5070 Ti",
     )
     parser.add_argument("--models-dir", required=True, help="path to downloaded model weights")
-    parser.add_argument("--ref-image", required=True, help="i2v conditioning image")
+    parser.add_argument(
+        "--mode",
+        default="i2v",
+        choices=["i2v", "t2v"],
+        help="i2v=image-to-video (needs --ref-image); t2v=text-to-video (synthesizes a seed frame from the prompt when no --ref-image given)",
+    )
+    parser.add_argument(
+        "--ref-image",
+        default="",
+        help="i2v conditioning image (required for --mode i2v; optional for --mode t2v, used as the seed if given)",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="numeric seed for t2v seed-frame synthesis (sd.cpp txt2img); omit for sd.cpp default",
+    )
     parser.add_argument(
         "--prompts-file",
         default=None,
@@ -396,10 +424,16 @@ def main() -> int:
     )
     log = logging.getLogger("svi2-smoke")
 
+    render_mode = _MODE_MAP[args.mode]
+
     models_dir = Path(args.models_dir)
-    ref_image = Path(args.ref_image)
+    ref_image = Path(args.ref_image) if args.ref_image else None
     output_path = Path(args.output)
     prompts_file = Path(args.prompts_file) if args.prompts_file else _DEFAULT_PROMPTS_FILE
+
+    if args.mode == "i2v" and ref_image is None:
+        print("[prereq FAIL] --ref-image is required for --mode i2v", file=sys.stderr)
+        return 2
 
     missing = _probe_prereqs(models_dir, ref_image)
     if missing:
@@ -407,7 +441,6 @@ def main() -> int:
             print(f"[prereq FAIL] {m}", file=sys.stderr)
         return 2
 
-    sys.path.insert(0, str(_WORKER_DIR / "src"))
     from svi2_video_worker.svi_chain import check_trained_resolution
 
     res_warn = check_trained_resolution(args.width, args.height)
@@ -418,6 +451,9 @@ def main() -> int:
     # animation so the video model propagates the transformation coherently,
     # instead of per-frame editing the output (which flickers).
     if args.qwen_edit_prompt:
+        if ref_image is None:
+            print("[prereq FAIL] --qwen-edit-prompt needs a --ref-image to edit", file=sys.stderr)
+            return 2
         from svi2_video_worker.qwen_edit import qwen_edit_image
 
         edited = (
@@ -451,6 +487,8 @@ def main() -> int:
         models_dir=models_dir,
         ref_image=ref_image,
         output_path=output_path,
+        mode=render_mode,
+        seed=args.seed,
         num_clips=args.num_clips,
         frames_per_clip=args.frames_per_clip,
         last_image=args.last_image,
