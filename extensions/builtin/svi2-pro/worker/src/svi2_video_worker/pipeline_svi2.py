@@ -52,6 +52,53 @@ _MODE_IMAGE_TO_VIDEO = "image_to_video"
 _MODE_TEXT_TO_VIDEO = "text_to_video"
 _RENDER_MODES = frozenset({_MODE_IMAGE_TO_VIDEO, _MODE_TEXT_TO_VIDEO})
 
+_SEED_ORIGIN_OPERATOR = "operator"
+_SEED_ORIGIN_SYNTHESIZED = "synthesized"
+
+
+def needs_seed_synthesis(params: dict[str, Any]) -> bool:
+    """True when a seed frame must be synthesized: t2v mode with no ref image."""
+    return params.get("mode") == _MODE_TEXT_TO_VIDEO and not params.get("ref_image_path")
+
+
+def seed_origin(params: dict[str, Any]) -> str:
+    """Report tag: ``synthesized`` when the anchor is generated, else ``operator``."""
+    return _SEED_ORIGIN_SYNTHESIZED if needs_seed_synthesis(params) else _SEED_ORIGIN_OPERATOR
+
+
+def resolve_anchor_image_path(params: dict[str, Any]) -> str:
+    """Return the clip-0 anchor image path, synthesizing a t2v seed if absent.
+
+    For text-to-video without an operator-supplied ``ref_image_path`` this runs
+    the sd.cpp txt2img seed pre-step (its weights are freed on subprocess exit,
+    so they never co-reside with the in-process i2v chain). Otherwise the
+    supplied ``ref_image_path`` is used unchanged (image-to-video, or t2v with an
+    operator seed — FR-006).
+    """
+    if not needs_seed_synthesis(params):
+        ref = params.get("ref_image_path")
+        if not ref:
+            raise ValueError("ref_image_path is required when no seed is synthesized")
+        return str(ref)
+
+    from .seed_synthesis import synthesize_seed_frame
+
+    models_dir = _models_dir_from(params)
+    sd_bin = params.get("sd_bin") or str(_resolve(models_dir, "sd-cli"))
+    qwen_models_dir = params.get("qwen_models_dir") or str(models_dir)
+    out = Path(params["output_path"])
+    seed_dst = out.parent / f"{out.stem}_seed.png"
+    result = synthesize_seed_frame(
+        sd_bin,
+        qwen_models_dir,
+        seed_dst,
+        params["prompts"][0],
+        width=int(params["width"]),
+        height=int(params["height"]),
+        seed=params.get("seed"),
+    )
+    return str(result)
+
 
 def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
     """Normalise and validate a render-params dict into the worker's canonical shape.
@@ -185,6 +232,8 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         "dit_low_path": params.get("dit_low_path"),
         "fixed_sigmas": params.get("fixed_sigmas"),
         "seed_multiplier": int(params.get("seed_multiplier", 42)),
+        "sd_bin": params.get("sd_bin"),
+        "qwen_models_dir": params.get("qwen_models_dir"),
         "models_dir": params.get("models_dir"),
         "output_path": params.get("output_path", "out.mp4"),
         "device": params.get("device"),
@@ -553,7 +602,9 @@ def _run_render(
     if resolution_warning:
         log_vram(f"WARN off-distribution resolution: {resolution_warning['message']}")
 
-    ref_image = fit_to_resolution(Image.open(params["ref_image_path"]).convert("RGB"), width, height)
+    _notify(worker, "svi2.video.progress", {"fraction": 0.005, "stage": "seed_synthesis"})
+    anchor_image_path = resolve_anchor_image_path(params)
+    ref_image = fit_to_resolution(Image.open(anchor_image_path).convert("RGB"), width, height)
 
     scheduler = FlowMatchScheduler(template="Wan")
     scheduler.set_timesteps(
@@ -863,6 +914,9 @@ def _run_render(
     report_data = {
         "output_path": str(video_path),
         "base_output_path": str(base_path),
+        "mode": params["mode"],
+        "seed_origin": seed_origin(params),
+        "seed_value": params.get("seed"),
         "interpolated_fps": interpolate_fps if interpolate_fps > fps else 0,
         "interpolate_method": params["interpolate_method"],
         "interpolate_engine": interp_engine,
