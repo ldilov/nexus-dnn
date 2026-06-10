@@ -79,6 +79,12 @@ fields:
     step: 0.5
     default: 4.0
     bind: render.cfg_scale
+  - id: seed
+    type: integer
+    label: Seed
+    required: false
+    min: 0
+    bind: render.seed
   - id: interpolate_fps
     type: integer
     label: Interpolate to fps
