@@ -22902,7 +22902,11 @@ function G3({
     },
     [l]
   ), A = _.useCallback((Z) => {
-    y((D) => ({ ...D, mode: Z }));
+    y((D) => {
+      if (Z === "text_to_video") return { ...D, mode: Z };
+      const { seed: H, ...P } = D;
+      return { ...P, mode: Z };
+    });
   }, []), Y = _.useCallback(
     (Z, D) => {
       y((H) => ({ ...H, [Z]: D }));
