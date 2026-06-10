@@ -38,7 +38,7 @@ export const tabsContainer = style({
 export const tabsHeader = style({
   display: "flex",
   gap: vars.space.gapXs,
-  borderBottom: `1px solid ${vars.color.outline.variant}`,
+  backgroundColor: vars.color.bg.panel,
   padding: `0 ${vars.space.insetMd}`,
   flexShrink: 0,
 });
@@ -189,11 +189,10 @@ export const chatBubbleAssistant = style({
 
 export const chatCodeBlock = style({
   position: "relative",
-  backgroundColor: "rgba(0, 0, 0, 0.8)",
+  backgroundColor: vars.color.bg.lowest,
   borderRadius: vars.density.d3,
   marginTop: vars.space.gapSm,
   overflow: "hidden",
-  border: `1px solid ${vars.color.outline.variant}`,
 });
 
 export const chatCodeBlockHeader = style({
@@ -611,9 +610,9 @@ export const formLabel = style({
 export const formSelect = style({
   width: "100%",
   height: vars.control.heightMd,
-  backgroundColor: vars.color.bg.app,
+  backgroundColor: vars.color.bg.lowest,
   color: vars.color.text.primary,
-  border: `1px solid ${vars.color.outline.variant}`,
+  border: "1px solid transparent",
   borderRadius: vars.radius.control,
   padding: `0 ${vars.space.insetMd}`,
   fontFamily: vars.font.ui,
@@ -628,9 +627,9 @@ export const formTextarea = style({
   width: "100%",
   // audit-allow: px — fixed textarea minimum height per UX spec
   minHeight: "80px",
-  backgroundColor: vars.color.bg.app,
+  backgroundColor: vars.color.bg.lowest,
   color: vars.color.text.primary,
-  border: `1px solid ${vars.color.outline.variant}`,
+  border: "1px solid transparent",
   borderRadius: vars.radius.control,
   padding: vars.space.insetMd,
   fontFamily: vars.font.ui,
@@ -766,7 +765,6 @@ export const statusBar = style({
   gap: vars.space.gapMd,
   padding: `${vars.space.insetSm} ${vars.space.insetMd}`,
   backgroundColor: vars.color.bg.panel,
-  borderBottom: `1px solid ${vars.color.outline.variant}`,
   flexShrink: 0,
   minHeight: vars.control.heightSm,
 });
@@ -797,7 +795,7 @@ export const actionBar = style({
   alignItems: "center",
   gap: vars.space.gapSm,
   padding: `${vars.space.insetSm} ${vars.space.insetMd}`,
-  borderBottom: `1px solid ${vars.color.outline.variant}`,
+  backgroundColor: vars.color.bg.panel,
   flexShrink: 0,
 });
 
@@ -871,9 +869,8 @@ export const detailHeaderTitle = style({
 });
 
 export const detailModelCard = style({
-  backgroundColor: vars.color.bg.canvas,
+  backgroundColor: vars.color.bg.panel,
   borderRadius: vars.radius.panel,
-  border: `1px solid ${vars.color.outline.variant}`,
   padding: vars.space.insetLg,
   display: "flex",
   flexDirection: "column",
@@ -929,9 +926,8 @@ export const detailMetricsGrid = style({
 });
 
 export const detailMetricCard = style({
-  backgroundColor: vars.color.bg.canvas,
+  backgroundColor: vars.color.bg.panel,
   borderRadius: vars.radius.panel,
-  border: `1px solid ${vars.color.outline.variant}`,
   padding: vars.space.insetMd,
   display: "flex",
   flexDirection: "column",
@@ -1282,7 +1278,7 @@ export const logMessage = style({
 });
 
 export const codeBlock = style({
-  backgroundColor: vars.color.bg.app,
+  backgroundColor: vars.color.bg.lowest,
   borderRadius: vars.radius.card,
   padding: vars.space.insetMd,
   fontFamily: vars.font.code,
@@ -1291,7 +1287,6 @@ export const codeBlock = style({
   color: vars.color.text.primary,
   overflow: "auto",
   whiteSpace: "pre-wrap",
-  border: `1px solid ${vars.color.outline.variant}`,
 });
 
 export const codeBlockHeader = style({
@@ -1366,12 +1361,11 @@ globalStyle(`${markdownView} code`, {
 });
 
 globalStyle(`${markdownView} pre`, {
-  backgroundColor: vars.color.bg.app,
+  backgroundColor: vars.color.bg.lowest,
   padding: vars.space.insetMd,
   borderRadius: vars.radius.card,
   overflow: "auto",
   marginBottom: vars.space.gapSm,
-  border: `1px solid ${vars.color.outline.variant}`,
 });
 
 globalStyle(`${markdownView} pre code`, {
@@ -1451,8 +1445,7 @@ export const chatMessageParams = style({
   fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,
   color: vars.color.text.muted,
-  background: "rgba(186, 158, 255, 0.05)",
-  border: `1px solid ${vars.color.outline.variant}`,
+  background: "rgba(0, 0, 0, 0.35)",
   borderRadius: vars.density.d2,
   lineHeight: 1.4,
 });

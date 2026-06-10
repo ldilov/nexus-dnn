@@ -1,7 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { WorkflowCatalog } from "./workflow_catalog";
+import { SWRConfig } from "swr";
+import { WorkflowCatalog, type WorkflowCatalogProps } from "./workflow_catalog";
 import type { Workflow } from "../../../api/client";
+
+function renderCatalog(props: WorkflowCatalogProps = {}) {
+  return render(
+    <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+      <WorkflowCatalog {...props} />
+    </SWRConfig>,
+  );
+}
 
 const apiClient = vi.hoisted(() => ({
   fetchWorkflows: vi.fn(),
@@ -83,7 +92,7 @@ describe("<WorkflowCatalog /> state", () => {
     ]);
     apiClient.fetchExtensions.mockResolvedValueOnce([makeExt("nexus.chatllm")]);
 
-    render(<WorkflowCatalog />);
+    renderCatalog();
 
     await waitFor(() => {
       expect(screen.getByText(/Local Chat/i)).toBeTruthy();
@@ -106,7 +115,7 @@ describe("<WorkflowCatalog /> state", () => {
       makeExt("nexus.vision", "disabled"),
     ]);
 
-    render(<WorkflowCatalog />);
+    renderCatalog();
 
     await waitFor(() => {
       expect(screen.getByText("From Active")).toBeTruthy();
@@ -128,7 +137,7 @@ describe("<WorkflowCatalog /> state", () => {
       makeExt("nexus.vision", "disabled"),
     ]);
 
-    render(<WorkflowCatalog />);
+    renderCatalog();
 
     await waitFor(() => {
       expect(screen.getByText("Edited Copy")).toBeTruthy();
@@ -142,7 +151,7 @@ describe("<WorkflowCatalog /> state", () => {
     ]);
     apiClient.fetchExtensions.mockResolvedValueOnce([makeExt("nexus.chatllm")]);
 
-    render(<WorkflowCatalog />);
+    renderCatalog();
 
     await waitFor(() => {
       expect(screen.getByText("Local Chat")).toBeTruthy();
@@ -165,7 +174,7 @@ describe("<WorkflowCatalog /> state", () => {
     const resume = makeWorkflow("local_chat_basic", { title: "Local Chat" });
     const onResume = vi.fn();
 
-    render(<WorkflowCatalog resumeWorkflow={resume} onResume={onResume} />);
+    renderCatalog({ resumeWorkflow: resume, onResume });
 
     await waitFor(() => {
       expect(screen.getByText(/Continue editing/i)).toBeTruthy();
@@ -182,7 +191,7 @@ describe("<WorkflowCatalog /> state", () => {
     apiClient.fetchExtensions.mockResolvedValueOnce([makeExt("nexus.chatllm")]);
 
     const onSelect = vi.fn();
-    render(<WorkflowCatalog onSelect={onSelect} />);
+    renderCatalog({ onSelect });
 
     await waitFor(() => {
       expect(screen.getByText("Local Chat")).toBeTruthy();
@@ -196,7 +205,7 @@ describe("<WorkflowCatalog /> state", () => {
     apiClient.fetchWorkflows.mockResolvedValueOnce([]);
     apiClient.fetchExtensions.mockResolvedValueOnce([]);
 
-    render(<WorkflowCatalog />);
+    renderCatalog();
 
     await waitFor(() => {
       expect(screen.getByText(/no workflows available/i)).toBeTruthy();

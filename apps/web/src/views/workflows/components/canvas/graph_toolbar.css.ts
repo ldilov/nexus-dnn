@@ -99,7 +99,7 @@ export const button = style({
     "&:hover:not(:disabled)": {
       color: vars.color.text.primary,
       borderColor: vars.color.accent.primary,
-      background: "rgba(186, 158, 255, 0.1)",
+      background: `color-mix(in srgb, ${vars.color.accent.primary} 10%, transparent)`,
     },
     "&:disabled": {
       opacity: 0.4,

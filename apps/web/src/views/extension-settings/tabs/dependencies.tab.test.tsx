@@ -108,11 +108,13 @@ describe("DependenciesTab — uninstall", () => {
     render(<DependenciesTab extensionId="ext.demo" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Uninstall" }));
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText(/virtual environment/i)).toBeInTheDocument();
-    expect(screen.getByText(/1 model used only by this extension/)).toBeInTheDocument();
-    expect(screen.getByText(/2\.0 GB/)).toBeInTheDocument();
-    expect(screen.getByText(/shared with another extension are kept/i)).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/virtual environment/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/1 model used only by this extension/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/2\.0 GB/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/shared with another extension are kept/i),
+    ).toBeInTheDocument();
   });
 
   it("AC-6.1/6.2: confirming calls the client then mutates readiness", async () => {
@@ -147,5 +149,83 @@ describe("DependenciesTab — uninstall", () => {
 
     await waitFor(() => expect(toastError).toHaveBeenCalled());
     expect(mutateMock).not.toHaveBeenCalled();
+  });
+
+  it("resume: a paused, resumable install relabels the action and shows a hint", () => {
+    setResponse({
+      steps: [makeStep({ status: "pending", satisfied: false })],
+      all_satisfied: false,
+      install_active: false,
+      install_resumable: true,
+    });
+    render(<DependenciesTab extensionId="ext.demo" />);
+    expect(screen.getByRole("button", { name: "Resume install" })).toBeInTheDocument();
+    expect(screen.getByText(/paused — resume to continue/)).toBeInTheDocument();
+  });
+
+  it("grouping: steps render under numbered Toolchain / Model weights / Validation sections", () => {
+    setResponse({
+      steps: [
+        makeStep({ id: "python", type: "runtime", status: "ok", satisfied: true }),
+        makeStep({ id: "pkgs", type: "package_set", status: "pending", satisfied: false }),
+        makeStep({
+          id: "model_a",
+          type: "model_artifact",
+          status: "pending",
+          satisfied: false,
+          files_present: 0,
+          files_total: 2,
+          estimated_remaining_bytes: 2_147_483_648,
+        }),
+        makeStep({ id: "validate", type: "validation", status: "pending", satisfied: false }),
+      ],
+      all_satisfied: false,
+      total_remaining_bytes: 2_147_483_648,
+    });
+    render(<DependenciesTab extensionId="ext.demo" />);
+
+    const toolchain = screen.getByRole("region", { name: "Toolchain" });
+    expect(within(toolchain).getByText("01")).toBeInTheDocument();
+    expect(within(toolchain).getByText("2 steps")).toBeInTheDocument();
+    expect(within(toolchain).getByText("python")).toBeInTheDocument();
+    expect(within(toolchain).getByText("pkgs")).toBeInTheDocument();
+
+    const models = screen.getByRole("region", { name: "Model weights" });
+    expect(within(models).getByText("02")).toBeInTheDocument();
+    expect(within(models).getByText("1 item · 0/2 files · 2.0 GB to download")).toBeInTheDocument();
+    expect(within(models).getByText("model_a")).toBeInTheDocument();
+
+    const validation = screen.getByRole("region", { name: "Validation" });
+    expect(within(validation).getByText("03")).toBeInTheDocument();
+    expect(within(validation).getByText("1 step")).toBeInTheDocument();
+    expect(within(validation).getByText("validate")).toBeInTheDocument();
+  });
+
+  it("grouping: an empty group is omitted and the rest renumber", () => {
+    setResponse({
+      steps: [
+        makeStep({ id: "python", type: "runtime", status: "ok", satisfied: true }),
+        makeStep({ id: "validate", type: "validation", status: "pending", satisfied: false }),
+      ],
+      all_satisfied: false,
+      total_remaining_bytes: 0,
+    });
+    render(<DependenciesTab extensionId="ext.demo" />);
+
+    expect(screen.queryByRole("region", { name: "Model weights" })).not.toBeInTheDocument();
+    const validation = screen.getByRole("region", { name: "Validation" });
+    expect(within(validation).getByText("02")).toBeInTheDocument();
+  });
+
+  it("resume: a fresh (non-resumable) install keeps the 'Install all' label", () => {
+    setResponse({
+      steps: [makeStep({ status: "pending", satisfied: false })],
+      all_satisfied: false,
+      install_active: false,
+      install_resumable: false,
+    });
+    render(<DependenciesTab extensionId="ext.demo" />);
+    expect(screen.getByRole("button", { name: "Install all" })).toBeInTheDocument();
+    expect(screen.queryByText(/paused/)).not.toBeInTheDocument();
   });
 });
