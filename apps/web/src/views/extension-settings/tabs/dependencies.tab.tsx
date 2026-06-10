@@ -16,11 +16,13 @@ import {
   uninstallExtension,
 } from "../../../services/extension_dependencies_client";
 import {
+  buildStepGroups,
   estimateUninstallImpact,
   formatSpeed,
   shortenSize,
 } from "../step_type_presentation";
 import { useInstallProgress, type InstallCompletedDetail } from "../use_install_progress";
+import { PlanStrip } from "../components/plan_strip";
 import { StepRow } from "../components/step_row";
 import { ConfirmDialog } from "../../../components/base/confirm_dialog";
 import * as s from "./dependencies.tab.css";
@@ -155,7 +157,14 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
     [extensionId, mutate],
   );
 
-  const installActive = progress.active || data?.steps.some((s) => s.status === "running") || false;
+  // Authoritative-on-mount: the host's `install_active` flag means a remounted
+  // page knows an install is in flight immediately, before the first WS event.
+  // `progress.active` (live events) and a DTO `running` status are belt-and-braces.
+  const installActive =
+    progress.active ||
+    (data?.install_active ?? false) ||
+    data?.steps.some((step) => step.status === "running") ||
+    false;
 
   const satisfiedById = useMemo(() => {
     const map: Record<string, boolean> = {};
@@ -193,7 +202,12 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
       : data.all_satisfied
         ? "All dependencies satisfied"
         : "Some steps need attention";
-  const stepCounts = `${data.steps.filter((step) => step.satisfied).length} of ${data.steps.length} satisfied`;
+  const satisfiedCount = data.steps.filter((step) => step.satisfied).length;
+  const totalSteps = data.steps.length;
+  const planEyebrow = `Dependency plan · ${totalSteps} step${totalSteps === 1 ? "" : "s"}`;
+  // A paused, partially-downloaded install (e.g. parked by a host restart).
+  // Triggering install resumes from the persisted partial bytes, not from zero.
+  const resumable = !installActive && Boolean(data.install_resumable);
 
   const impact = estimateUninstallImpact(data.steps);
   const anySatisfied = data.steps.some((step) => step.satisfied);
@@ -210,53 +224,72 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
       <header
         className={`${s.banner}${data.all_satisfied ? ` ${s.allSatisfied}` : ""}`}
       >
-        <div className={s.bannerText}>
-          <span className={s.bannerTitle}>{stepCounts}</span>
-          <span className={s.bannerSubtitle}>{remainingLabel}</span>
-        </div>
-        <div className={s.bannerActions}>
-          {installActive ? (
-            <button
-              type="button"
-              className={s.cancelButton}
-              onClick={handleCancel}
-              disabled={busy}
-            >
-              Cancel
-            </button>
-          ) : (
-            <>
-              {anySatisfied && (
+        <div className={s.bannerRow}>
+          <span className={s.bannerFraction}>
+            {satisfiedCount}
+            <span className={s.bannerDenominator}>/{totalSteps}</span>
+          </span>
+          <div className={s.bannerText}>
+            <span className={s.bannerEyebrow}>{planEyebrow}</span>
+            <span className={s.bannerHeadline}>{remainingLabel}</span>
+            {resumable && (
+              <span className={s.bannerNote}>paused — resume to continue</span>
+            )}
+          </div>
+          <div className={s.bannerActions}>
+            {installActive ? (
+              <button
+                type="button"
+                className={s.cancelButton}
+                onClick={handleCancel}
+                disabled={busy}
+              >
+                Cancel
+              </button>
+            ) : (
+              <>
+                {anySatisfied && (
+                  <button
+                    type="button"
+                    className={s.uninstallButton}
+                    onClick={() => setUninstallOpen(true)}
+                    disabled={busy}
+                    title="Remove this extension's runtime, venv, and exclusive models"
+                  >
+                    Uninstall
+                  </button>
+                )}
                 <button
                   type="button"
-                  className={s.uninstallButton}
-                  onClick={() => setUninstallOpen(true)}
+                  className={s.reinstallButton}
+                  onClick={handleReinstallAll}
                   disabled={busy}
-                  title="Remove this extension's runtime, venv, and exclusive models"
+                  title="Re-run every step from scratch, ignoring already-installed state"
                 >
-                  Uninstall
+                  Reinstall everything
                 </button>
-              )}
-              <button
-                type="button"
-                className={s.reinstallButton}
-                onClick={handleReinstallAll}
-                disabled={busy}
-                title="Re-run every step from scratch, ignoring already-installed state"
-              >
-                Reinstall everything
-              </button>
-              <button
-                type="button"
-                className={s.installButton}
-                onClick={handleInstallAll}
-                disabled={busy || data.all_satisfied}
-              >
-                {data.all_satisfied ? "All set" : "Install all"}
-              </button>
-            </>
-          )}
+                <button
+                  type="button"
+                  className={s.installButton}
+                  onClick={handleInstallAll}
+                  disabled={busy || data.all_satisfied}
+                  title={
+                    resumable
+                      ? "Resume the paused download from where it stopped"
+                      : "Install all dependencies"
+                  }
+                >
+                  {data.all_satisfied
+                    ? "All set"
+                    : resumable
+                      ? "Resume install"
+                      : "Install all"}
+                </button>
+              </>
+            )}
+          </div>
         </div>
+        <PlanStrip steps={data.steps} />
       </header>
 
       <ConfirmDialog
@@ -273,21 +306,36 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
       />
 
       <div className={s.stepList}>
-        {data.steps.map((step) => {
-          const upstreamSatisfied = step.requires.every((req) => satisfiedById[req] ?? false);
-          return (
-            <StepRow
-              key={step.id}
-              step={step}
-              upstreamSatisfied={upstreamSatisfied}
-              installActive={installActive}
-              live={progress.liveByStep[step.id]}
-              onInstallOnly={handleRetry}
-              onRetry={handleRetry}
-              onReinstall={handleRetry}
-            />
-          );
-        })}
+        {buildStepGroups(data.steps).map((group) => (
+          <section key={group.id} className={s.group} aria-label={group.title}>
+            <div className={s.groupHead}>
+              <span className={s.groupIndex}>{group.index}</span>
+              <h3 className={s.groupTitle}>{group.title}</h3>
+              <span className={s.groupMeta}>{group.meta}</span>
+            </div>
+            <div className={s.groupCard}>
+              {group.steps.map((step) => {
+                const upstreamSatisfied = step.requires.every(
+                  (req) => satisfiedById[req] ?? false,
+                );
+                return (
+                  <StepRow
+                    key={step.id}
+                    step={step}
+                    grouped
+                    upstreamSatisfied={upstreamSatisfied}
+                    installActive={installActive}
+                    resumable={resumable}
+                    live={progress.liveByStep[step.id]}
+                    onInstallOnly={handleRetry}
+                    onRetry={handleRetry}
+                    onReinstall={handleRetry}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        ))}
       </div>
     </div>
   );

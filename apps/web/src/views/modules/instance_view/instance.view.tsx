@@ -512,9 +512,9 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
 
         {/* ── Footer info strip ────────────────────────────────────────── */}
         <div className={s.footerGrid}>
-          <div className={`${s.footerCard} ${s.footerCardSecondary}`}>
+          <div className={s.footerCard}>
             <span
-              className={`material-symbols-outlined ${s.footerIconSecondary}`}
+              className={`material-symbols-outlined ${s.footerIcon}`}
               aria-hidden="true"
             >
               verified_user
@@ -531,9 +531,9 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
             </div>
           </div>
 
-          <div className={`${s.footerCard} ${s.footerCardPrimary}`}>
+          <div className={s.footerCard}>
             <span
-              className={`material-symbols-outlined ${s.footerIconPrimary}`}
+              className={`material-symbols-outlined ${s.footerIcon}`}
               aria-hidden="true"
             >
               history
@@ -546,9 +546,9 @@ export function InstanceView({ moduleId }: InstanceViewProps) {
             </div>
           </div>
 
-          <div className={`${s.footerCard} ${s.footerCardTertiary}`}>
+          <div className={s.footerCard}>
             <span
-              className={`material-symbols-outlined ${s.footerIconTertiary}`}
+              className={`material-symbols-outlined ${s.footerIcon}`}
               aria-hidden="true"
             >
               fingerprint

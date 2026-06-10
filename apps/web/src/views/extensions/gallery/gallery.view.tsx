@@ -24,7 +24,9 @@ export function ExtensionsGallery({
   const [error, setError] = useState<string | null>(null);
   const [action, setAction] = useState<GalleryActionState>(IDLE);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [setupRequired, setSetupRequired] = useState<Record<string, boolean>>({});
+  const [setupRequired, setSetupRequired] = useState<
+    Record<string, number | undefined>
+  >({});
 
   const refresh = useCallback(() => {
     fetchExtensions()
@@ -41,32 +43,25 @@ export function ExtensionsGallery({
     refresh();
   }, [refresh]);
 
-  // Fan out dependency probes per extension. Best-effort: a failure on any one
-  // extension just leaves it out of the setupRequired map (gallery falls back
-  // to "no badge").
+  // Fan out dependency probes per extension; each card resolves on its own
+  // (absent entry = probe still in flight). Probe failure degrades to 0.
   useEffect(() => {
     let cancelled = false;
-    if (extensions.length === 0) {
-      setSetupRequired({});
-      return () => {
-        cancelled = true;
-      };
+    setSetupRequired({});
+    for (const ext of extensions) {
+      fetchDependencies(ext.id)
+        .then((resp) => {
+          if (cancelled) return;
+          const missing = resp.all_satisfied
+            ? 0
+            : Math.max(1, resp.steps.filter((step) => !step.satisfied).length);
+          setSetupRequired((prev) => ({ ...prev, [ext.id]: missing }));
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setSetupRequired((prev) => ({ ...prev, [ext.id]: 0 }));
+        });
     }
-    Promise.all(
-      extensions.map(async (ext) => {
-        try {
-          const resp = await fetchDependencies(ext.id);
-          return [ext.id, !resp.all_satisfied] as const;
-        } catch {
-          return [ext.id, false] as const;
-        }
-      }),
-    ).then((results) => {
-      if (cancelled) return;
-      const next: Record<string, boolean> = {};
-      for (const [id, needsSetup] of results) next[id] = needsSetup;
-      setSetupRequired(next);
-    });
     return () => {
       cancelled = true;
     };

@@ -53,7 +53,8 @@ vi.mock("../../services/extension_chat", () => ({
   SchemaVersionMismatchError: FakeSchemaVersionMismatchError,
 }));
 
-vi.mock("../../services/local_llm_chat", () => ({
+vi.mock("../../services/local_llm_chat", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../services/local_llm_chat")>()),
   streamMessage: (...args: unknown[]) => streamMessageMock(...args),
   fetchAvailableModels: (...args: unknown[]) => fetchAvailableModelsMock(...args),
   fetchRuntimeDefaults: (...args: unknown[]) => fetchRuntimeDefaultsMock(...args),

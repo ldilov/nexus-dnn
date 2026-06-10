@@ -188,8 +188,7 @@ export function DropProjection({
                 y1={draggedRect.y + draggedRect.height / 2}
                 x2={projection.x + projection.width / 2}
                 y2={projection.y + projection.height / 2}
-                // audit-allow: hex — neon decorative palette per design lang
-                stroke="#ba9eff"
+                stroke="var(--accent)"
                 strokeWidth={strokeWidth}
                 strokeDasharray={`${3 / viewport.zoom} ${3 / viewport.zoom}`}
                 opacity={0.45}
@@ -206,8 +205,7 @@ export function DropProjection({
                 cx={projection.x + projection.width / 2}
                 cy={projection.y + projection.height / 2}
                 r={4 / viewport.zoom}
-                // audit-allow: hex — neon decorative palette per design lang
-                fill="#ba9eff"
+                fill="var(--accent)"
                 opacity={0.9}
               >
                 <animate
@@ -226,9 +224,8 @@ export function DropProjection({
             width={projection.width}
             height={projection.height}
             rx={12}
-            fill="rgba(186, 158, 255, 0.06)"
-            // audit-allow: hex — neon decorative palette per design lang
-            stroke="#ba9eff"
+            fill="color-mix(in srgb, var(--accent) 6%, transparent)"
+            stroke="var(--accent)"
             strokeWidth={strokeWidth}
             strokeDasharray={dash}
             opacity={0.9}
@@ -265,8 +262,7 @@ export function DropProjection({
                 y1={c.y}
                 x2={c.x + c.dx}
                 y2={c.y}
-                // audit-allow: hex — neon decorative palette per design lang
-                stroke="#ba9eff"
+                stroke="var(--accent)"
                 strokeWidth={strokeWidth * 2}
                 opacity={0.95}
               />
@@ -275,8 +271,7 @@ export function DropProjection({
                 y1={c.y}
                 x2={c.x}
                 y2={c.y + c.dy}
-                // audit-allow: hex — neon decorative palette per design lang
-                stroke="#ba9eff"
+                stroke="var(--accent)"
                 strokeWidth={strokeWidth * 2}
                 opacity={0.95}
               />
@@ -295,8 +290,7 @@ export function DropProjection({
               height={14 / viewport.zoom}
               rx={4 / viewport.zoom}
               fill="rgba(17, 20, 22, 0.95)"
-              // audit-allow: hex — neon decorative palette per design lang
-              stroke="#ba9eff"
+              stroke="var(--accent)"
               strokeWidth={strokeWidth}
               opacity={0.95}
             />
@@ -304,8 +298,7 @@ export function DropProjection({
               x={0}
               y={-5 / viewport.zoom}
               textAnchor="middle"
-              // audit-allow: hex — neon decorative palette per design lang
-              fill="#ba9eff"
+              fill="var(--accent)"
               fontFamily="JetBrains Mono, monospace"
               fontSize={labelFont}
               fontWeight={600}

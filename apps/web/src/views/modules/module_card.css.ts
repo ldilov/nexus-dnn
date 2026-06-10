@@ -6,17 +6,18 @@ export const card = style({
   flexDirection: "column",
   gap: vars.space.md,
   background: vars.color.surfaceContainerLow,
-  border: `1px solid ${vars.color.outlineVariant}`,
+  border: "1px solid transparent",
   borderRadius: vars.radius.lg,
   padding: vars.space.lg,
-  transition: `transform ${motion.duration.cardHoverLift}, box-shadow ${motion.duration.cardGlow}`,
+  transition: `transform ${motion.duration.cardHoverLift}, box-shadow ${motion.duration.cardGlow}, border-color ${motion.duration.cardGlow}`,
   cursor: "pointer",
   selectors: {
     "&:hover": {
       // audit-allow: px — below minimum token granularity (sub-10px)
       transform: "translateY(-2px)",
+      borderColor: `color-mix(in srgb, ${vars.color.primary} 25%, transparent)`,
       // audit-allow: px — below minimum token granularity (sub-10px)
-      boxShadow: `0 0 0 1px ${vars.color.primaryDim}, 0 8px 24px ${vars.color.shadowElevation}`,
+      boxShadow: `0 8px 24px ${vars.color.shadowElevation}`,
     },
     "&:focus-within": {
       // audit-allow: px — below minimum token granularity (sub-10px)
@@ -36,8 +37,7 @@ export const card = style({
 });
 
 export const blankCard = style({
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  border: `2px dashed ${vars.color.outline}`,
+  border: `1px dashed ${vars.color.outlineVariant}`,
   background: "transparent",
 });
 

@@ -7,7 +7,7 @@ import { vars } from "../theme/contract.css";
 
 const COLLAPSED_WIDTH = "64px";
 // audit-allow: px — workspace shell scaffolding dimension
-const EXPANDED_WIDTH = "256px";
+const EXPANDED_WIDTH = "232px";
 
 export const container = style({
   position: "fixed",
@@ -26,11 +26,13 @@ export const container = style({
 
 export const containerExpanded = style({
   width: EXPANDED_WIDTH,
+  borderTopRightRadius: vars.radius.panel,
+  borderBottomRightRadius: vars.radius.panel,
 });
 
 export const containerFloat = style({
   width: EXPANDED_WIDTH,
-  left: vars.density.d4,
+  left: vars.density.d6,
   top: vars.density.d6,
   bottom: vars.density.d6,
   borderRadius: vars.radius.panel,

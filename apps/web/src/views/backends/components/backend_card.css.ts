@@ -1,95 +1,98 @@
 import { style, styleVariants } from "@vanilla-extract/css";
 import { vars } from "../../../theme/contract.css";
 
-// Spectral Graphite-aligned BackendCard — drops the pre-theme fallback hex
-// audit-allow: hex — neon decorative palette per design lang
-// literals (var(--surface-raised, #1c1d22)) that pre-dated the vanilla-extract
-// theme contract; every value now flows through `vars.*` so the card
-// participates in the same design system as the rest of the shell.
+// Canonical Spectral Graphite RuntimeCard — flat borderless card, density
+// tokens, mono pill status chips, sentence-case action buttons.
 
 export const card = style({
   display: "flex",
   flexDirection: "column",
-  gap: vars.space.gapSm,
-  padding: vars.space.insetLg,
+  gap: vars.density.d3,
+  padding: vars.density.padCard,
   borderRadius: vars.radius.card,
-  background: vars.color.bg.panel,
-  border: `1px solid ${vars.color.outline.variant}`,
+  background: vars.card.bg,
+  boxShadow: vars.card.shadow,
+  // audit-allow: px — hover-warm hairline, documented accent-25% exception
+  border: "1px solid transparent",
   // audit-allow: px — fixed layout breakpoint
-  minWidth: "320px",
-  transition: "border-color 150ms ease, background 150ms ease",
+  minWidth: "280px",
+  transition: `border-color ${vars.motion.durationFast} ${vars.motion.easingDefault}, background ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
   selectors: {
     "&:hover": {
-      borderColor: vars.color.outline.base,
+      borderColor: `color-mix(in srgb, ${vars.color.accent.accent} 25%, transparent)`,
     },
   },
 });
 
 export const header = style({
   display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: vars.space.insetMd,
+  alignItems: "flex-start",
+  gap: vars.density.d3,
 });
 
 export const title = style({
   fontFamily: vars.font.headline,
-  fontSize: vars.font.size.heading,
+  // audit-allow: px — RuntimeCard canonical name size per design kit
+  fontSize: "17px",
   fontWeight: vars.font.weight.semibold,
   color: vars.color.text.primary,
-  lineHeight: 1.2,
+  lineHeight: 1.3,
   letterSpacing: "-0.01em",
+  flex: 1,
+  minWidth: 0,
 });
 
-// State-aware badges — each card_state picks its own pill color.
+// Status chips — fixed-height mono pills; status color on text + hairline only.
 const badgeBase = {
-  // audit-allow: px — below minimum token granularity (sub-10px)
-  padding: `2px ${vars.space.insetSm}`,
+  display: "inline-flex" as const,
+  alignItems: "center" as const,
+  // audit-allow: px — RuntimeCard canonical chip height per design kit
+  height: "22px",
+  // audit-allow: px — RuntimeCard canonical chip inset per design kit
+  padding: "0 10px",
   borderRadius: vars.radius.full,
-  fontSize: vars.font.size.caption,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase" as const,
   fontFamily: vars.font.code,
+  fontSize: vars.font.size.kbd,
   fontWeight: vars.font.weight.semibold,
-  border: "1px solid transparent",
+  letterSpacing: "0.12em",
+  textTransform: "uppercase" as const,
   whiteSpace: "nowrap" as const,
+  flexShrink: 0,
+  background: "transparent",
+  // audit-allow: px — hairline status outline per chip anatomy
+  border: "1px solid transparent",
 };
 
 export const badge = styleVariants({
   neutral: {
     ...badgeBase,
-    background: vars.color.bg.elevated,
     color: vars.color.text.secondary,
-    borderColor: vars.color.outline.variant,
+    borderColor: `color-mix(in srgb, ${vars.color.outline.variant} 40%, transparent)`,
   },
   ready: {
     ...badgeBase,
-    background: vars.color.bg.elevated,
     color: vars.color.success.base,
-    borderColor: vars.color.success.base,
+    borderColor: `color-mix(in srgb, ${vars.color.success.base} 50%, transparent)`,
   },
   installing: {
     ...badgeBase,
-    background: vars.color.bg.elevated,
-    color: vars.color.accent.primary,
-    borderColor: vars.color.accent.primary,
+    color: vars.color.accent.accent,
+    borderColor: `color-mix(in srgb, ${vars.color.accent.accent} 50%, transparent)`,
   },
   warn: {
     ...badgeBase,
-    background: vars.color.bg.elevated,
     color: vars.color.warning.base,
-    borderColor: vars.color.warning.base,
+    borderColor: `color-mix(in srgb, ${vars.color.warning.base} 50%, transparent)`,
   },
   error: {
     ...badgeBase,
-    background: vars.color.bg.elevated,
     color: vars.color.error.base,
-    borderColor: vars.color.error.base,
+    borderColor: `color-mix(in srgb, ${vars.color.error.base} 50%, transparent)`,
   },
 });
 
 export const body = style({
-  fontSize: vars.font.size.bodySm,
+  fontSize: vars.font.size.body,
   lineHeight: 1.55,
   color: vars.color.text.secondary,
   margin: 0,
@@ -98,72 +101,71 @@ export const body = style({
 export const version = style({
   fontFamily: vars.font.code,
   fontSize: vars.font.size.caption,
-  color: vars.color.text.muted,
-  letterSpacing: "0.04em",
+  color: vars.color.text.secondary,
+  fontVariantNumeric: "tabular-nums",
 });
 
 export const actions = style({
   display: "flex",
-  gap: vars.space.insetSm,
-  marginTop: vars.space.insetXs,
+  gap: vars.density.d2,
   flexWrap: "wrap",
 });
 
 const buttonBase = {
   display: "inline-flex" as const,
   alignItems: "center" as const,
-  gap: vars.space.insetXs,
-  padding: `${vars.space.insetSm} ${vars.space.insetMd}`,
+  justifyContent: "center" as const,
+  gap: vars.density.d2,
+  height: vars.control.heightMd,
+  padding: `0 ${vars.density.d3}`,
   borderRadius: vars.radius.control,
   fontFamily: vars.font.ui,
   fontSize: vars.font.size.bodySm,
-  fontWeight: vars.font.weight.semibold,
-  letterSpacing: "0.04em",
+  fontWeight: vars.font.weight.medium,
+  letterSpacing: "0",
   cursor: "pointer",
-  border: "1px solid transparent",
-  textTransform: "uppercase" as const,
-  transition: "background 150ms ease, border-color 150ms ease, color 150ms ease",
+  border: "none",
+  whiteSpace: "nowrap" as const,
+  transition: `background ${vars.motion.durationFast} ${vars.motion.easingDefault}, box-shadow ${vars.motion.durationNormal} ${vars.motion.easingDefault}, color ${vars.motion.durationFast} ${vars.motion.easingDefault}`,
 };
 
 export const buttonPrimary = style({
   ...buttonBase,
-  background: vars.color.accent.primary,
+  background: vars.color.accent.accent,
   color: vars.color.onColor.primary,
   selectors: {
     "&:hover:not(:disabled)": {
-      background: vars.color.accent.primaryHover,
+      boxShadow: vars.shadow.glowAccent,
+    },
+    "&:active:not(:disabled)": {
+      background: vars.color.accent.accentDim,
     },
     "&:focus-visible": {
-      // audit-allow: px — below minimum token granularity (sub-10px)
-      outline: `2px solid ${vars.color.accent.primary}`,
-      // audit-allow: px — below minimum token granularity (sub-10px)
-      outlineOffset: "2px",
+      outline: `${vars.focus.ringWidth} solid ${vars.color.accent.accent}`,
+      outlineOffset: vars.focus.offset,
     },
     "&:disabled": {
-      opacity: 0.5,
+      opacity: 0.45,
       cursor: "not-allowed",
+      boxShadow: "none",
     },
   },
 });
 
 export const buttonSecondary = style({
   ...buttonBase,
-  background: "transparent",
+  background: vars.color.bg.hover,
   color: vars.color.text.primary,
-  borderColor: vars.color.outline.variant,
   selectors: {
     "&:hover:not(:disabled)": {
-      borderColor: vars.color.outline.base,
-      background: vars.color.bg.hover,
+      background: vars.color.bg.bright,
     },
     "&:focus-visible": {
-      // audit-allow: px — below minimum token granularity (sub-10px)
-      outline: `2px solid ${vars.color.accent.primary}`,
-      // audit-allow: px — below minimum token granularity (sub-10px)
-      outlineOffset: "2px",
+      outline: `${vars.focus.ringWidth} solid ${vars.color.accent.accent}`,
+      outlineOffset: vars.focus.offset,
     },
     "&:disabled": {
-      opacity: 0.5,
+      opacity: 0.45,
       cursor: "not-allowed",
     },
   },
@@ -172,7 +174,9 @@ export const buttonSecondary = style({
 export const footerNote = style({
   fontSize: vars.font.size.bodySm,
   lineHeight: 1.5,
-  color: vars.color.text.muted,
+  color: vars.color.text.secondary,
   margin: 0,
-  marginTop: vars.space.insetXs,
+  paddingTop: vars.density.d2,
+  // audit-allow: px — legal hairline row divider inside card
+  borderTop: `1px solid color-mix(in srgb, ${vars.color.outline.variant} 16%, transparent)`,
 });

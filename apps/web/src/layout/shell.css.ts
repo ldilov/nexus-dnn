@@ -15,7 +15,7 @@ export const shellContainer = style({
 
 export const shellContainerSidebarPinned = style({
   // audit-allow: px — workspace shell scaffolding dimension
-  marginLeft: "256px",
+  marginLeft: "232px",
 });
 
 export const topBar = style({
@@ -34,6 +34,27 @@ export const canvas = style({
   overflow: "hidden",
   backgroundColor: vars.color.bg.canvas,
   paddingInline: vars.density.padSection,
+  position: "relative",
+  isolation: "isolate",
+  "::before": {
+    content: "",
+    position: "fixed",
+    // audit-allow: px — atmosphere blob geometry, single fixed decoration
+    top: "-180px",
+    // audit-allow: px — atmosphere blob geometry, single fixed decoration
+    left: "-140px",
+    // audit-allow: px — atmosphere blob geometry, single fixed decoration
+    width: "560px",
+    // audit-allow: px — atmosphere blob geometry, single fixed decoration
+    height: "560px",
+    borderRadius: vars.radius.full,
+    background: `radial-gradient(circle, ${vars.color.accent.accentGlow} 0%, transparent 70%)`,
+    // audit-allow: px — atmosphere blob blur per design spec (60px)
+    filter: "blur(60px)",
+    opacity: 0.6,
+    pointerEvents: "none",
+    zIndex: -1,
+  },
 });
 
 export const inspector = style({

@@ -24,6 +24,10 @@ export interface StepRowProps {
   upstreamSatisfied: boolean;
   /** True while any install run is active in the host. */
   installActive: boolean;
+  /** True when a paused, partially-downloaded install can be resumed. */
+  resumable?: boolean;
+  /** Renders the row flat inside a grouped section card (no own panel). */
+  grouped?: boolean;
   /** Live event-driven download metrics for this step, if any. */
   live?: LiveStepProgress;
   onInstallOnly: (stepId: string) => void;
@@ -43,6 +47,8 @@ export function StepRow({
   step,
   upstreamSatisfied,
   installActive,
+  resumable = false,
+  grouped = false,
   live,
   onInstallOnly,
   onRetry,
@@ -51,19 +57,36 @@ export function StepRow({
   const [errorOpen, setErrorOpen] = useState(false);
   const pres = presentation(step);
 
-  const accentClass =
-    step.status === "running"
-      ? s.accentRunning
-      : step.status === "ok"
-        ? s.accentOk
-        : step.status === "failed"
-          ? s.accentFailed
-          : step.status === "skipped"
-            ? s.accentSkipped
-            : "";
+  // A satisfied step whose files failed the on-disk integrity check: the row is
+  // "installed" but corrupt, so it gets a warning sign and a reinstall prompt.
+  const integrityFailed = step.integrity != null && step.integrity.ok === false;
 
-  const dotClass =
-    step.status === "running"
+  // A pending step parked mid-download (partial bytes/files on disk) while no
+  // install is running and the host says the run can resume → PAUSED.
+  const hasPartial =
+    (step.progress !== null && step.progress.current_bytes > 0) ||
+    (step.files_present ?? 0) > 0 ||
+    (step.artifact?.bytes_placed ?? 0) > 0;
+  const paused =
+    step.status === "pending" && !installActive && resumable && hasPartial && live === undefined;
+  const pausedCurrent =
+    step.progress !== null && step.progress.current_bytes > 0
+      ? step.progress.current_bytes
+      : (step.artifact?.bytes_placed ?? 0);
+  const pausedTotal =
+    step.progress !== null && step.progress.total_bytes > 0
+      ? step.progress.total_bytes
+      : pausedCurrent + Math.max(0, step.estimated_remaining_bytes);
+  const pausedPct =
+    paused && pausedCurrent > 0 && pausedTotal > 0
+      ? Math.min(100, (pausedCurrent / pausedTotal) * 100)
+      : null;
+
+  const accentClass = step.status === "running" ? s.accentRunning : "";
+
+  const dotClass = paused
+    ? s.statusDotPaused
+    : step.status === "running"
       ? s.statusDotRunning
       : step.status === "ok"
         ? s.statusDotOk
@@ -73,18 +96,35 @@ export function StepRow({
             ? s.statusDotSkipped
             : s.statusDotPending;
 
-  const liveBytesActive = step.status === "running" && live !== undefined && live.totalBytes > 0;
+  const statusTextClass = integrityFailed
+    ? s.statusTextFailed
+    : paused
+      ? s.statusTextPaused
+      : step.status === "running"
+        ? s.statusTextRunning
+        : step.status === "ok"
+          ? s.statusTextOk
+          : step.status === "failed"
+            ? s.statusTextFailed
+            : "";
+
+  // A row renders live progress when it is running OR still DTO-pending but
+  // already streaming its own live bytes. The pending-with-live arm matters
+  // because the REST snapshot lags the event bus (no Running overlay), and it
+  // is gated on THIS row's `live` — never the global `installActive` — so a
+  // single-row install never paints bars across sibling rows.
+  const rowActive =
+    step.status === "running" || (step.status === "pending" && live !== undefined);
+  const liveBytesActive = rowActive && live !== undefined && live.totalBytes > 0;
   const liveReportedPct =
-    step.status === "running" && live !== undefined && live.reportedPct !== null
-      ? live.reportedPct
-      : null;
+    rowActive && live !== undefined && live.reportedPct !== null ? live.reportedPct : null;
   const unknownTotalActive =
-    step.status === "running" &&
+    rowActive &&
     live !== undefined &&
     live.totalBytes === 0 &&
     live.currentBytes > 0 &&
     liveReportedPct === null;
-  const showProgressBar = step.status === "running" || (step.status === "pending" && installActive);
+  const showProgressBar = rowActive;
   const dtoPct =
     step.progress && step.progress.total_bytes > 0
       ? Math.min(100, (step.progress.current_bytes / step.progress.total_bytes) * 100)
@@ -101,15 +141,16 @@ export function StepRow({
     step.files_total && step.files_total > 0
       ? `${step.files_present ?? 0}/${step.files_total} files`
       : null;
-  const remainingLabel =
+  const sizeBytes =
     step.estimated_remaining_bytes > 0
-      ? `${shortenSize(step.estimated_remaining_bytes)} to download`
-      : null;
-  const downloadMeta = [filesLabel, remainingLabel].filter(Boolean).join(" · ");
+      ? step.estimated_remaining_bytes
+      : (step.artifact?.bytes_placed ?? 0);
+  const sizeLabel = sizeBytes > 0 ? shortenSize(sizeBytes) : null;
+  const downloadMeta = [filesLabel, sizeLabel].filter(Boolean).join(" · ");
 
   const liveBytes = liveBytesActive;
   const phaseRow =
-    step.status === "running" && !liveBytesActive && !unknownTotalActive && live !== undefined
+    rowActive && !liveBytesActive && !unknownTotalActive && live !== undefined
       ? {
           label: live.phase.length > 0 ? formatPhase(live.phase) : "",
           message: live.message,
@@ -130,7 +171,7 @@ export function StepRow({
 
   return (
     <article
-      className={`${s.row}${
+      className={`${s.row}${grouped ? ` ${s.rowGrouped}` : ""}${
         step.status === "running"
           ? ` ${s.rowRunning}`
           : step.status === "failed"
@@ -165,13 +206,7 @@ export function StepRow({
           )}
           {step.requires.length > 0 && (
             <span className={s.meta}>
-              requires{" "}
-              {step.requires.map((req, idx) => (
-                <span key={req}>
-                  <span className={s.requiresChip}>{req}</span>
-                  {idx < step.requires.length - 1 ? " " : ""}
-                </span>
-              ))}
+              requires <span className={s.requiresName}>{step.requires.join(", ")}</span>
             </span>
           )}
         </div>
@@ -193,9 +228,39 @@ export function StepRow({
           </div>
         )}
 
+        {pausedPct !== null && (
+          <>
+            <div
+              className={s.progressTrack}
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(pausedPct)}
+            >
+              <span
+                className={`${s.progressFill} ${s.progressFillPaused}`}
+                style={{ width: `${pausedPct}%` }}
+              />
+            </div>
+            <div className={s.liveMeta}>
+              <span className={s.livePrimary}>Paused</span>
+              <span className={s.metaSep}>·</span>
+              <span className={s.liveMetric}>
+                {shortenSize(pausedCurrent)} / {shortenSize(pausedTotal)}
+              </span>
+              <span className={s.metaSep}>·</span>
+              <span className={s.liveMetric}>{Math.round(pausedPct)}%</span>
+            </div>
+          </>
+        )}
+
         {liveBytes && live && (
           <div className={s.liveMeta} aria-live="polite">
             <span className={s.livePrimary}>
+              {live.phase.length > 0 ? formatPhase(live.phase) : "Installing"}
+            </span>
+            <span className={s.metaSep}>·</span>
+            <span className={s.liveMetric}>
               {shortenSize(live.currentBytes)} / {shortenSize(live.totalBytes)}
             </span>
             <span className={s.metaSep}>·</span>
@@ -241,6 +306,17 @@ export function StepRow({
           </div>
         )}
 
+        {integrityFailed && (
+          <div className={s.errorPanel} role="alert">
+            <span className={s.errorLine}>
+              ⚠ Integrity check failed — this item is installed but corrupt. Reinstall it.
+            </span>
+            {step.integrity?.detail && (
+              <span className={s.errorHint}>{step.integrity.detail}</span>
+            )}
+          </div>
+        )}
+
         {step.last_error && (
           <>
             <button
@@ -268,14 +344,17 @@ export function StepRow({
         )}
       </div>
       <div className={s.trailing}>
-        <span className={s.statusPill}>
-          <span className={`${s.statusDot} ${dotClass}`} />
-          {STATUS_LABEL[step.status]}
+        <span className={`${s.statusPill}${statusTextClass ? ` ${statusTextClass}` : ""}`}>
+          <span
+            className={`${s.statusDot} ${integrityFailed ? s.statusDotFailed : dotClass}`}
+            data-testid="step-status-dot"
+          />
+          {integrityFailed ? "Needs reinstall" : paused ? "Paused" : STATUS_LABEL[step.status]}
         </span>
         {step.status === "failed" && (
           <button
             type="button"
-            className={`${s.ctaButton} ${s.ctaPrimary}`}
+            className={s.retryChip}
             onClick={() => onRetry(step.id)}
             disabled={installActive}
           >
