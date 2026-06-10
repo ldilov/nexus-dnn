@@ -1,0 +1,49 @@
+[package]
+name = "svi2-pro-extension"
+version = "0.1.0"
+edition = "2021"
+description = "Rust shim for the SVI 2.0 Pro video extension. Mounts the HTTP router under the host's generic extension prefix, bridges REST to the Python svi2 render worker over a host-issued BackendRuntimeLease, persists render jobs/settings, streams render progress as SSE, and serves output media."
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["json", "macros", "tokio", "http1", "query", "multipart"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "fs", "process", "io-util", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+thiserror = "1"
+ulid = { version = "1", features = ["serde"] }
+sha2 = "0.10"
+async-trait = "0.1"
+futures = "0.3"
+tokio-util = { version = "0.7", features = ["io"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+async-stream = "0.3"
+urlencoding = "2"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
+nexus-extension = { path = "../../../../crates/nexus-extension" }
+nexus-backend-runtimes = { path = "../../../../crates/nexus-backend-runtimes" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+nexus-extension-deps = { path = "../../../../crates/nexus-extension-deps" }
+uuid = { version = "1", features = ["v4"] }
+serde_yaml = "0.9"
+semver = "1"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

@@ -7,26 +7,40 @@ import sys
 import time
 from pathlib import Path
 
-# stdout is the JSON-RPC wire protocol, NOT a log channel. Save the real
-# stdout privately and replace `sys.stdout` with stderr so any rogue
-# `print()` (from torch / transformers / huggingface_hub / scipy / etc.)
-# goes to the log instead of corrupting our framer with empty lines or
-# non-JSON output. The Worker's `emit()` writes directly to the saved
-# `_JSONRPC_STDOUT` reference, bypassing the swap.
-_JSONRPC_STDOUT = sys.stdout  # captured BEFORE any heavy import
-sys.stdout = sys.stderr  # type: ignore[assignment]
+def _isolate_stdout_fd() -> object:
+    """Hard-isolate the JSON-RPC wire (OS fd 1) from non-frame output.
 
-# Expose the captured stdout via an attribute the Worker reads at init.
-# Module attribute lookup is the simplest cross-module handoff that
-# doesn't introduce a circular import.
-sys.__nexus_jsonrpc_stdout__ = _JSONRPC_STDOUT  # type: ignore[attr-defined]
+    Swapping `sys.stdout` only catches Python-level writes. Subprocesses
+    spawned by torch's `cpp_extension.load()` (ninja, nvcc, cl) inherit OS
+    fd 1 and write `[1/N]` build progress straight to the wire — ninja
+    prints it even on a successful build — corrupting the host framer
+    (`worker emitted malformed frame`). We dup the real fd 1 to a private
+    fd for the framer, then point fd 1 at stderr so every inherited write
+    lands in the log. Returns the framer file object; also stashes it on
+    `sys.__nexus_jsonrpc_stdout__`, which `main.Worker.emit` reads.
+
+    Falls back to a plain `sys.stdout`/`sys.stderr` swap when stdio has no
+    real fd (pytest capture, embedded interpreter).
+    """
+    framer: object
+    try:
+        wire_fd = os.dup(1)
+        framer = os.fdopen(wire_fd, "w", buffering=1, encoding="utf-8", newline="\n")
+        os.dup2(sys.stderr.fileno(), 1)
+    except (OSError, ValueError, AttributeError):
+        framer = sys.stdout
+    sys.stdout = sys.stderr  # type: ignore[assignment]
+    sys.__nexus_jsonrpc_stdout__ = framer  # type: ignore[attr-defined]
+    return framer
+
 
 # OpenMP duplicate-runtime workaround. PyTorch's MKL and scipy's OpenBLAS
 # each ship their own `libiomp5md.dll`; loading both into one process on
 # Windows can lock up indefinitely inside OMP's duplicate-detection path.
-# Setting this env var BEFORE any heavy import is what counts. Defense-
-# in-depth: also set on the host launch spec.
-os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+# Setting this env var BEFORE any heavy import is what counts. Called from
+# `main()` so importing this module stays side-effect free (testable).
+def _set_omp_workaround() -> None:
+    os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 # Make `ninja` findable by torch.utils.cpp_extension's
 # `verify_ninja_availability()`, which does
@@ -73,9 +87,6 @@ def _ensure_ninja_on_path() -> str | None:
           "to torch. Install with `uv sync` in the worker dir.",
           file=sys.stderr, flush=True)
     return None
-
-
-_ensure_ninja_on_path()
 
 
 def _do_heavy_imports_serially() -> None:
@@ -143,6 +154,11 @@ def main() -> int:
         sys.stderr.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
     except Exception:
         pass
+
+    # Protect the JSON-RPC wire BEFORE any heavy import or subprocess spawn.
+    _isolate_stdout_fd()
+    _set_omp_workaround()
+    _ensure_ninja_on_path()
 
     print("[main] worker.__main__ entered", file=sys.stderr, flush=True)
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { SWRConfig } from "swr";
 import { RecipeCatalog } from "./recipe_catalog";
 import type { Recipe } from "../api/client";
 
@@ -56,6 +57,14 @@ function makeRecipe(id: string, overrides: Partial<Recipe> = {}): Recipe {
   };
 }
 
+function renderCatalog() {
+  return render(
+    <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+      <RecipeCatalog />
+    </SWRConfig>,
+  );
+}
+
 beforeEach(() => {
   apiClient.fetchRecipes.mockReset();
   apiClient.fetchExtensions.mockReset();
@@ -75,7 +84,7 @@ describe("<RecipeCatalog /> search", () => {
     ]);
     apiClient.fetchExtensions.mockResolvedValueOnce([makeExt("nexus.chatllm")]);
 
-    render(<RecipeCatalog />);
+    renderCatalog();
 
     await waitFor(() => {
       expect(screen.getByText("Local Chat")).toBeTruthy();
@@ -90,7 +99,7 @@ describe("<RecipeCatalog /> search", () => {
     ]);
     apiClient.fetchExtensions.mockResolvedValueOnce([makeExt("nexus.chatllm")]);
 
-    render(<RecipeCatalog />);
+    renderCatalog();
 
     await waitFor(() => {
       expect(screen.getByText("Local Chat")).toBeTruthy();
@@ -112,7 +121,7 @@ describe("<RecipeCatalog /> search", () => {
     ]);
     apiClient.fetchExtensions.mockResolvedValueOnce([makeExt("nexus.chatllm")]);
 
-    render(<RecipeCatalog />);
+    renderCatalog();
 
     await waitFor(() => {
       expect(screen.getByText("Chat")).toBeTruthy();
@@ -137,7 +146,7 @@ describe("<RecipeCatalog /> search", () => {
     ]);
     apiClient.fetchExtensions.mockResolvedValueOnce([makeExt("nexus.chatllm")]);
 
-    render(<RecipeCatalog />);
+    renderCatalog();
 
     await waitFor(() => {
       expect(screen.getByText("A")).toBeTruthy();
@@ -158,7 +167,7 @@ describe("<RecipeCatalog /> search", () => {
     ]);
     apiClient.fetchExtensions.mockResolvedValueOnce([makeExt("nexus.chatllm")]);
 
-    render(<RecipeCatalog />);
+    renderCatalog();
     await waitFor(() => {
       expect(screen.getByText("Local Chat")).toBeTruthy();
     });
@@ -178,7 +187,7 @@ describe("<RecipeCatalog /> search", () => {
     ]);
     apiClient.fetchExtensions.mockResolvedValueOnce([makeExt("nexus.chatllm")]);
 
-    render(<RecipeCatalog />);
+    renderCatalog();
     await waitFor(() => {
       expect(screen.getByText("Local Chat")).toBeTruthy();
     });

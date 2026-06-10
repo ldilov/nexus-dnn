@@ -64,9 +64,7 @@ pub async fn install_from_staging(
     };
 
     if let Some(existing) = find_existing(pool, &key).await? {
-        if existing.private_model
-            && existing.owner_extension_id != req.owner_extension_id
-        {
+        if existing.private_model && existing.owner_extension_id != req.owner_extension_id {
             return Err(ModelStoreError::ManifestInvalid(
                 "model_private: this model is owned by another extension".into(),
             ));
@@ -153,7 +151,9 @@ pub async fn install_from_staging(
 
 pub(super) fn guard_relative_path(untrusted: &str) -> ModelStoreResult<()> {
     if untrusted.is_empty() {
-        return Err(ModelStoreError::ManifestInvalid("file path is empty".into()));
+        return Err(ModelStoreError::ManifestInvalid(
+            "file path is empty".into(),
+        ));
     }
     if untrusted.contains('\0') {
         return Err(ModelStoreError::ManifestInvalid(

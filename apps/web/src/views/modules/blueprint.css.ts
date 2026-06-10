@@ -132,7 +132,6 @@ export const pillRow = style({
   gap: vars.space.sm,
   flexWrap: "wrap",
   paddingBottom: vars.space.md,
-  borderBottom: `1px solid ${vars.color.outlineVariant}`,
 });
 
 export const primaryStar = style({
@@ -183,14 +182,14 @@ export const step = style({
   gap: vars.space.lg,
   padding: vars.space.lg,
   background: vars.color.surfaceContainerLow,
-  border: `1px solid ${vars.color.outlineVariant}`,
+  border: "1px solid transparent",
   borderRadius: vars.radius.md,
   transition: `background ${motion.duration.cardGlow}, border-color ${motion.duration.cardGlow}`,
   alignItems: "start",
   selectors: {
     "&:hover": {
       background: vars.color.surfaceContainer,
-      borderColor: vars.color.primary,
+      borderColor: `color-mix(in srgb, ${vars.color.primary} 25%, transparent)`,
     },
   },
   "@media": {
@@ -314,7 +313,6 @@ export const stepsStageHeader = style({
 
 export const graphBox = style({
   background: vars.color.surfaceContainerLowest,
-  border: `1px solid ${vars.color.outlineVariant}`,
   borderRadius: vars.radius.md,
   padding: vars.space.lg,
   overflowX: "auto",
@@ -371,7 +369,6 @@ export const graphLegend = style({
   padding: vars.space.md,
   background: vars.color.surfaceContainerLow,
   borderRadius: vars.radius.md,
-  border: `1px solid ${vars.color.outlineVariant}`,
   fontSize: vars.text.labelS,
   color: vars.color.onSurfaceVariant,
   fontFamily: vars.font.mono,
@@ -458,7 +455,6 @@ export const emptyGraph = style({
 export const instancesSection = style({
   padding: vars.space["2xl"],
   borderRadius: vars.radius.lg,
-  border: `1px solid ${vars.color.outlineVariant}`,
   background: vars.color.surfaceContainerLow,
 });
 

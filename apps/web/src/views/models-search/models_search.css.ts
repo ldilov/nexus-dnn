@@ -55,12 +55,11 @@ export const filterBar = style({
   gap: vars.density.d3,
   paddingBlock: vars.density.d4,
   paddingInline: vars.density.d5,
-  background: `color-mix(in oklch, ${vars.color.bg.canvas} 78%, transparent)`,
+  background: vars.color.bg.panel,
   borderRadius: vars.radius.panel,
   position: "sticky",
   top: 0,
   zIndex: 4,
-  backdropFilter: "blur(20px) saturate(1.2)",
 });
 
 export const filterRow = style({

@@ -11,7 +11,7 @@ use serde_json::Value;
 use crate::context::StepContext;
 use crate::error::DepError;
 use crate::handler::{ProbeResult, StepHandler};
-use crate::types::StepArtifact;
+use crate::types::{ProgressEvent, StepArtifact, StepProgress};
 
 #[derive(Debug, Deserialize)]
 struct RuntimeSpec {
@@ -118,6 +118,28 @@ impl StepHandler for RuntimeHandler {
         let target_dir = runtime_dir(ctx, &parsed.family);
         tokio::fs::create_dir_all(&target_dir).await?;
 
+        let emit = |progress: StepProgress| {
+            ctx.progress_sink.emit(ProgressEvent::step_progress(
+                ctx.extension_id,
+                ctx.install_run_id,
+                // step_id is unknown to the handler — runner re-tags it.
+                String::new(),
+                progress,
+            ));
+        };
+
+        // The bootstrapper is opaque (download + verify + extract happen inside
+        // the host adapter), so we bracket it with explicit phase transitions
+        // rather than mid-flight bytes (AC-2.4).
+        emit(
+            StepProgress::phase("resolving")
+                .with_message(format!("resolving {} runtime", parsed.family)),
+        );
+        emit(
+            StepProgress::phase("installing")
+                .with_message(format!("installing {} runtime", parsed.family)),
+        );
+
         let result = ctx
             .runtime_bootstrapper
             .bootstrap(
@@ -128,6 +150,10 @@ impl StepHandler for RuntimeHandler {
                 ctx.cancellation_token.clone(),
             )
             .await?;
+
+        emit(
+            StepProgress::phase("done").with_message(format!("{} ready", result.resolved_version)),
+        );
 
         Ok(build_artifact(&parsed, result))
     }
@@ -181,5 +207,134 @@ mod tests {
         // Neither is a parent of the other.
         assert!(!py.starts_with(&llama));
         assert!(!llama.starts_with(&py));
+    }
+
+    use std::collections::HashMap;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex};
+
+    use crate::context::RuntimeBootstrapResult;
+
+    #[derive(Default)]
+    struct CapturingSink {
+        events: Mutex<Vec<ProgressEvent>>,
+    }
+    impl crate::ProgressSink for CapturingSink {
+        fn emit(&self, e: ProgressEvent) {
+            self.events.lock().expect("lock").push(e);
+        }
+    }
+
+    struct OkBootstrapper;
+    #[async_trait]
+    impl crate::RuntimeBootstrapper for OkBootstrapper {
+        async fn probe(
+            &self,
+            _f: &str,
+            _v: Option<&str>,
+            _a: &[String],
+            _t: &Path,
+        ) -> Result<Option<RuntimeBootstrapResult>, DepError> {
+            Ok(None)
+        }
+        async fn bootstrap(
+            &self,
+            _f: &str,
+            _v: Option<&str>,
+            _a: &[String],
+            target: &Path,
+            _c: tokio_util::sync::CancellationToken,
+        ) -> Result<RuntimeBootstrapResult, DepError> {
+            Ok(RuntimeBootstrapResult {
+                install_dir: target.to_path_buf(),
+                resolved_version: "3.11.13".to_owned(),
+                resolved_profile: Some("cpu".to_owned()),
+                bytes_placed: 42,
+            })
+        }
+    }
+
+    struct NoopModelStore;
+    #[async_trait]
+    impl crate::ModelStoreClient for NoopModelStore {
+        async fn is_family_installed(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+        ) -> Result<Option<PathBuf>, DepError> {
+            Ok(None)
+        }
+        async fn start_download(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+            _s: &crate::FileSelection,
+        ) -> Result<String, DepError> {
+            unreachable!()
+        }
+        async fn poll_job(&self, _id: &str) -> Result<crate::ModelDownloadProgress, DepError> {
+            unreachable!()
+        }
+    }
+
+    struct NoopHandshake;
+    #[async_trait]
+    impl crate::WorkerHandshake for NoopHandshake {
+        async fn run_handshake(
+            &self,
+            _ext: &str,
+            _dir: &Path,
+            _data: &Path,
+            _ups: &HashMap<String, StepArtifact>,
+            _t: std::time::Duration,
+            _c: tokio_util::sync::CancellationToken,
+        ) -> Result<(), crate::HandshakeError> {
+            unreachable!()
+        }
+    }
+
+    /// AC-2.4 + AC-2.6: the runtime handler emits an early phase transition and a
+    /// terminal `done` around the opaque bootstrapper call.
+    #[tokio::test]
+    async fn run_emits_phase_transitions_and_terminal_done() {
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempfile::tempdir().expect("tmp");
+        let upstream = HashMap::new();
+        let ctx = StepContext {
+            extension_id: "example",
+            extension_dir: dir.path(),
+            extension_data_dir: dir.path(),
+            host_data_dir: dir.path(),
+            model_store: Arc::new(NoopModelStore),
+            runtime_bootstrapper: Arc::new(OkBootstrapper),
+            worker_handshake: Arc::new(NoopHandshake),
+            fetch_artifact: Arc::new(|_req: crate::fetch::FetchRequest| {
+                Box::pin(async { Err(DepError::Backend("stub".into())) })
+            }),
+            progress_sink: sink.clone(),
+            cancellation_token: tokio_util::sync::CancellationToken::new(),
+            install_run_id: uuid::Uuid::nil(),
+            force: false,
+            upstream_artifacts: &upstream,
+        };
+        let spec = serde_json::json!({ "family": "python", "version": ">=3.11" });
+
+        let handler = RuntimeHandler::new();
+        let artifact = handler.run(&ctx, &spec).await.expect("run ok");
+        assert_eq!(artifact.bytes_placed, 42);
+
+        let phases: Vec<String> = sink
+            .events
+            .lock()
+            .expect("lock")
+            .iter()
+            .filter_map(|e| match e {
+                ProgressEvent::StepProgress { phase, .. } => Some(phase.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(!phases.is_empty(), "expected phase transitions");
+        assert_eq!(phases.first().map(String::as_str), Some("resolving"));
+        assert_eq!(phases.last().map(String::as_str), Some("done"));
     }
 }

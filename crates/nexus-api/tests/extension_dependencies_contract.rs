@@ -32,6 +32,9 @@ fn dependencies_response_shape_matches_contract() {
                 last_error: None,
                 progress: None,
                 estimated_remaining_bytes: 0,
+                files_present: None,
+                files_total: None,
+                integrity: None,
             },
             StepDto {
                 id: "ffmpeg".to_owned(),
@@ -48,6 +51,9 @@ fn dependencies_response_shape_matches_contract() {
                 }),
                 progress: None,
                 estimated_remaining_bytes: 12_345_678,
+                files_present: None,
+                files_total: None,
+                integrity: None,
             },
             StepDto {
                 id: "models".to_owned(),
@@ -63,10 +69,15 @@ fn dependencies_response_shape_matches_contract() {
                     total_bytes: 12_000_000_000,
                 }),
                 estimated_remaining_bytes: 7_480_000_000,
+                files_present: Some(3),
+                files_total: Some(8),
+                integrity: None,
             },
         ],
         all_satisfied: false,
         total_remaining_bytes: 7_492_345_678,
+        install_active: true,
+        install_resumable: false,
     };
 
     let v = serde_json::to_value(&dto).expect("serialize");
@@ -116,11 +127,15 @@ fn dependencies_response_shape_matches_contract() {
                     "current_bytes": 4_520_000_000_u64,
                     "total_bytes": 12_000_000_000_u64
                 },
-                "estimated_remaining_bytes": 7_480_000_000_u64
+                "estimated_remaining_bytes": 7_480_000_000_u64,
+                "files_present": 3,
+                "files_total": 8
             }
         ],
         "all_satisfied": false,
-        "total_remaining_bytes": 7_492_345_678_u64
+        "total_remaining_bytes": 7_492_345_678_u64,
+        "install_active": true,
+        "install_resumable": false
     });
     assert_eq!(v, expected, "wire format must match the OpenAPI contract");
 }
@@ -170,9 +185,16 @@ fn nullable_fields_serialise_as_null_not_omitted() {
         last_error: None,
         progress: None,
         estimated_remaining_bytes: 0,
+        files_present: None,
+        files_total: None,
+        integrity: None,
     };
     let v = serde_json::to_value(&step).expect("serialize");
     assert!(v.get("artifact").is_some_and(|x| x.is_null()));
     assert!(v.get("last_error").is_some_and(|x| x.is_null()));
     assert!(v.get("progress").is_some_and(|x| x.is_null()));
+    // files_present/files_total/integrity are omitted (not null) when absent.
+    assert!(v.get("files_present").is_none());
+    assert!(v.get("files_total").is_none());
+    assert!(v.get("integrity").is_none());
 }

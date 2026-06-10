@@ -47,8 +47,8 @@ export const controls = style({
 });
 
 export const search = style({
-  background: vars.color.surfaceContainer,
-  border: `1px solid ${vars.color.outlineVariant}`,
+  background: vars.color.surfaceContainerLowest,
+  border: "none",
   borderRadius: vars.radius.md,
   padding: `${vars.space.sm} ${vars.space.md}`,
   color: vars.color.onSurface,
@@ -122,16 +122,16 @@ export const primaryCta = style({
 });
 
 export const secondaryCta = style({
-  background: "transparent",
+  background: vars.color.surfaceContainerHighest,
   color: vars.color.onSurface,
-  border: `1px solid ${vars.color.outlineVariant}`,
+  border: "none",
   padding: `${vars.space.sm} ${vars.space.lg}`,
   borderRadius: vars.radius.md,
   cursor: "pointer",
   fontFamily: vars.font.ui,
   fontSize: vars.text.bodyS,
   selectors: {
-    "&:hover": { background: vars.color.surfaceContainer },
+    "&:hover": { background: vars.color.surfaceBright },
   },
 });
 

@@ -4,11 +4,15 @@
 
 pub mod auth;
 pub mod install_map;
+pub mod legibility;
 pub mod orchestrator;
 pub mod store;
 
 pub use auth::{TokenEvent, TokenStore};
-pub use install_map::{InstallMap, InstalledArtifactRecord, InstalledArtifactRow};
+pub use install_map::{
+    GcOutcome, InstallMap, InstalledArtifactRecord, InstalledArtifactRow, PruneReport,
+};
+pub use legibility::{IndexEntry, LegibilityIndex, ManifestSidecar};
 pub use orchestrator::DownloadOrchestrator;
 pub use store::{
     CreateJobParams, JobStore, JobStoreError, JobStoreResult, JobTargetInput, PersistedJob,

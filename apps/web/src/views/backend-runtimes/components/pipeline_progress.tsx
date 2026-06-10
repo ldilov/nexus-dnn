@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { PhaseEvent } from "../../../services/backend_runtimes_client";
 import { PHASE_ORDER, subscribeInstallProgress } from "../../../services/backend_runtimes_client";
+import { vars } from "../../../theme/contract.css";
 import * as css from "../backend_runtimes.css";
 
 interface Props {
@@ -76,8 +77,7 @@ export function PipelineProgress({ installId, onTerminal, onClose }: Props) {
       <div className={css.modalPanel}>
         <div id="progress-title" className={css.modalTitle}>
           Installing{" "}
-          // audit-allow: px — sub-token spacing value, no density token at this step
-          <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "13px" }}>
+          <span style={{ fontFamily: vars.font.code, fontSize: vars.font.size.body }}>
             {installId.slice(0, 12)}…
           </span>
         </div>

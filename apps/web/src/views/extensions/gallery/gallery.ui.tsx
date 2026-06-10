@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router";
 import type { Extension } from "../../../api/client";
 import { InstallExtensionDrawer } from "../../../components/install/install_extension_drawer";
@@ -24,8 +24,11 @@ export interface ExtensionsGalleryUIProps {
   onOpenDrawer: () => void;
   onCloseDrawer: () => void;
   onInstalled: () => void;
-  /** Spec 035 — extension ids that need user-driven dep installs. */
-  setupRequired?: Record<string, boolean>;
+  /**
+   * Spec 035 — missing-dependency count per extension id (0 = satisfied).
+   * An absent/undefined entry means the dependency probe is still in flight.
+   */
+  setupRequired?: Record<string, number | undefined>;
 }
 
 function statusKindFor(status: string): StatusKind {
@@ -55,12 +58,14 @@ export function ExtensionsGalleryUI({
   onInstalled,
   setupRequired,
 }: ExtensionsGalleryUIProps) {
+  const allItems = [...builtins, ...externals];
+  const probesPending = setupRequired
+    ? allItems.some((ext) => setupRequired[ext.id] === undefined)
+    : false;
   const setupCount = setupRequired
-    ? Object.values(setupRequired).filter(Boolean).length
+    ? Object.values(setupRequired).filter((missing) => (missing ?? 0) > 0).length
     : 0;
-  const activeCount = [...builtins, ...externals].filter(
-    (ext) => ext.status === "active",
-  ).length;
+  const activeCount = allItems.filter((ext) => ext.status === "active").length;
 
   return (
     <div className={s.root}>
@@ -84,7 +89,11 @@ export function ExtensionsGalleryUI({
           <div className={s.summaryGrid}>
             <SummaryStat label="Total" value={totalCount} />
             <SummaryStat label="Active" value={activeCount} />
-            <SummaryStat label="Setup required" value={setupCount} />
+            <SummaryStat
+              label="Setup required"
+              value={probesPending ? "—" : setupCount}
+              muted={probesPending}
+            />
           </div>
 
           {totalCount === 0 ? (
@@ -130,14 +139,19 @@ export function ExtensionsGalleryUI({
 
 interface SummaryStatProps {
   label: string;
-  value: number;
+  value: number | string;
+  muted?: boolean;
 }
 
-function SummaryStat({ label, value }: SummaryStatProps) {
+function SummaryStat({ label, value, muted }: SummaryStatProps) {
   return (
     <div className={s.summaryStat}>
       <span className={s.summaryStatLabel}>{label}</span>
-      <span className={s.summaryStatValue}>{value}</span>
+      <span
+        className={`${s.summaryStatValue}${muted ? ` ${s.summaryStatValueMuted}` : ""}`}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -150,7 +164,7 @@ interface ExtensionSectionProps {
   onToggle: (id: string, enable: boolean) => void;
   showDelete: boolean;
   trailing?: ReactNode;
-  setupRequired?: Record<string, boolean>;
+  setupRequired?: Record<string, number | undefined>;
 }
 
 function ExtensionSection({
@@ -176,7 +190,7 @@ function ExtensionSection({
               busy={action.loading && action.targetId === ext.id}
               onToggle={onToggle}
               showDelete={showDelete}
-              needsSetup={Boolean(setupRequired?.[ext.id])}
+              missingDeps={setupRequired ? setupRequired[ext.id] : 0}
             />
           </li>
         ))}
@@ -191,7 +205,11 @@ interface ExtensionCardProps {
   busy: boolean;
   onToggle: (id: string, enable: boolean) => void;
   showDelete: boolean;
-  needsSetup?: boolean;
+  /**
+   * Count of unsatisfied dependency steps; > 0 means the card needs setup.
+   * `undefined` means the dependency probe is still in flight (checking).
+   */
+  missingDeps: number | undefined;
 }
 
 function ExtensionCard({
@@ -199,10 +217,14 @@ function ExtensionCard({
   busy,
   onToggle,
   showDelete,
-  needsSetup,
+  missingDeps,
 }: ExtensionCardProps) {
   const active = extension.status === "active";
   const invalid = extension.status === "invalid";
+  const checking = missingDeps === undefined;
+  const needsSetup = (missingDeps ?? 0) > 0;
+  const settingsHref = `/extensions/${encodeURIComponent(extension.id)}/settings`;
+  const depsHref = `${settingsHref}?tab=dependencies`;
   const displayName = extension.name ?? extension.id;
   const initials =
     displayName
@@ -223,7 +245,7 @@ function ExtensionCard({
           <div className={s.titleRow}>
             <Link
               className={s.titleLink}
-              to={`/extensions/${encodeURIComponent(extension.id)}/settings`}
+              to={settingsHref}
               title="Open extension settings"
             >
               {displayName}
@@ -231,33 +253,52 @@ function ExtensionCard({
             <span className={s.sourceChip}>
               {extension.source === "builtin" ? "Core" : "External"}
             </span>
-            <StatusChip
-              kind={statusKindFor(extension.status)}
-              label={statusLabelFor(extension.status)}
-              pulse={extension.status === "active"}
-            />
-            {needsSetup && (
-              <span className={s.setupBadge} aria-label="Dependency setup required">
-                <span className={s.setupBadgePulse} aria-hidden="true" />
-                Setup required
-              </span>
-            )}
           </div>
           <span className={s.meta}>
             v{extension.version}
             {extension.publisher ? ` · ${extension.publisher}` : ""}
           </span>
         </div>
+        {checking ? (
+          <span
+            className={s.checkingChip}
+            role="status"
+            aria-label="Checking dependencies"
+          >
+            <span className={s.checkingDot} aria-hidden="true" />
+            Checking
+          </span>
+        ) : needsSetup ? (
+          <Link
+            className={s.setupBadge}
+            to={depsHref}
+            aria-label={`Dependency setup required — ${missingDeps} missing`}
+            title="Open dependency setup"
+          >
+            <span className={s.setupBadgePulse} aria-hidden="true" />
+            Setup required
+            <span className={s.setupBadgeCount}>{missingDeps} missing</span>
+          </Link>
+        ) : (
+          <StatusChip
+            kind={statusKindFor(extension.status)}
+            label={statusLabelFor(extension.status)}
+            pulse={extension.status === "active"}
+          />
+        )}
       </div>
 
-      {extension.capabilities.length > 0 && (
-        <div className={s.capabilityRow}>
-          {extension.capabilities.slice(0, 4).map((cap) => (
-            <span key={cap} className={s.capability}>
-              {cap}
-            </span>
+      {extension.capabilities.length > 0 ? (
+        <div className={s.capsLine}>
+          {extension.capabilities.slice(0, 4).map((cap, idx) => (
+            <Fragment key={cap}>
+              {idx > 0 && <span className={s.capsSep}>{" · "}</span>}
+              <span>{cap}</span>
+            </Fragment>
           ))}
         </div>
+      ) : (
+        <div className={s.capsLine}>—</div>
       )}
 
       <div className={s.metrics}>
@@ -275,7 +316,7 @@ function ExtensionCard({
         <div className={s.footerActions}>
           <Link
             className={s.iconButtonLink}
-            to={`/extensions/${encodeURIComponent(extension.id)}/settings`}
+            to={settingsHref}
             aria-label="Extension settings"
             title="Settings"
           >
@@ -309,11 +350,10 @@ function ExtensionCard({
             </IconButton>
           )}
         </div>
-        {needsSetup ? (
-          <Link
-            className={s.setupCta}
-            to={`/extensions/${encodeURIComponent(extension.id)}/settings?tab=dependencies`}
-          >
+        {checking ? (
+          <span className={s.actionSkeleton} aria-hidden="true" />
+        ) : needsSetup ? (
+          <Link className={s.setupCta} to={depsHref}>
             <span
               className={`material-symbols-outlined ${s.iconGlyph}`}
               aria-hidden="true"

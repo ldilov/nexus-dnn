@@ -36,6 +36,16 @@ pub struct ExtractedMetadataDto {
     pub hidden_size: Option<u32>,
     pub extraction_status: String,
     pub extracted_at: i64,
+    /// Spec 054 G7 (AC-7.3) — the download job that owns this artifact's
+    /// on-disk GUID dir, the resolved on-disk path, and the model family,
+    /// so the UI can map an opaque `<sink_root>/<job_id>/` dir to a model.
+    /// `None` when the model store isn't wired (legacy fallback read).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub job_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub on_disk_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub family_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -56,6 +66,48 @@ pub async fn get_installed_model_metadata(
     if install_id.is_empty() {
         return not_found(&install_id);
     }
+
+    // Disk is the source of truth (AC-1.5): reconcile the row against disk
+    // through the shared `InstallMap::reconcile_row_present` path so a family
+    // whose files were deleted stops reporting as installed. Only runs when the
+    // install-map + orchestrator (sink_root) are wired; otherwise fall through
+    // to the legacy read (tests that don't plumb the model store in).
+    // Spec 054 G7 (AC-7.3) — legibility fields resolved from the reconciled
+    // install-map row: the owning job_id, on-disk path, and family.
+    let mut legibility: Option<(String, String, String)> = None;
+    if let (Some(install_map), Some(orchestrator)) = (
+        state.install_map.as_ref(),
+        state.download_orchestrator.as_ref(),
+    ) {
+        let aid = nexus_models_store::ids::ArtifactId::from(install_id.clone());
+        match install_map.find_by_artifact(&aid).await {
+            Ok(Some(row)) => {
+                match install_map
+                    .reconcile_row_present(&row, orchestrator.sink_root())
+                    .await
+                {
+                    Ok(false) => return not_found(&install_id),
+                    Ok(true) => {
+                        let path = orchestrator
+                            .sink_root()
+                            .join(&row.job_id)
+                            .join(&row.filename);
+                        legibility = Some((
+                            row.job_id.clone(),
+                            path.display().to_string(),
+                            row.family_id.clone(),
+                        ));
+                    }
+                    Err(err) => {
+                        return reconcile_error(&install_id, &err);
+                    }
+                }
+            }
+            Ok(None) => return not_found(&install_id),
+            Err(err) => return reconcile_error(&install_id, &err),
+        }
+    }
+
     let pool = state.db.pool();
     let query = "SELECT format, layer_count, max_context, architecture, \
                  hidden_size, extraction_status, extracted_at \
@@ -107,6 +159,11 @@ pub async fn get_installed_model_metadata(
         (None, _) => (STATUS_FAILED.to_string(), 0),
     };
 
+    let (job_id, on_disk_path, family_id) = match legibility {
+        Some((job, path, family)) => (Some(job), Some(path), Some(family)),
+        None => (None, None, None),
+    };
+
     let dto = ExtractedMetadataDto {
         install_id,
         format: canonical_format(&raw_format),
@@ -116,6 +173,9 @@ pub async fn get_installed_model_metadata(
         hidden_size,
         extraction_status,
         extracted_at,
+        job_id,
+        on_disk_path,
+        family_id,
     };
 
     (StatusCode::OK, Json(dto)).into_response()
@@ -146,6 +206,21 @@ fn not_found(install_id: &str) -> Response {
         message: format!("no installed artifact with install_id = {install_id}"),
     };
     (StatusCode::NOT_FOUND, Json(body)).into_response()
+}
+
+fn reconcile_error(install_id: &str, err: &dyn std::fmt::Display) -> Response {
+    tracing::error!(
+        route = "/api/host/models/{install_id}/metadata",
+        install_id,
+        error.code = "reconcile_error",
+        error.detail = %err,
+        "handler error",
+    );
+    let body = ErrorBody {
+        code: "internal_error",
+        message: "failed to reconcile installed artifact".to_string(),
+    };
+    (StatusCode::INTERNAL_SERVER_ERROR, Json(body)).into_response()
 }
 
 fn internal_error(install_id: &str, err: sqlx::Error) -> Response {

@@ -92,13 +92,15 @@ export function BackendsUI({
       {data && (
         <>
           <div className={css.chips} data-testid="backends-summary-chips">
-            <span data-testid="chip-installed">
+            <span className={css.chipStat} data-testid="chip-installed">
               Installed runtimes: {data.summary.installed}
             </span>
-            <span data-testid="chip-validated">
+            <span className={css.chipStat} data-testid="chip-validated">
               Validated: {data.summary.validated}
             </span>
-            <span data-testid="chip-issues">Issues: {data.summary.issues}</span>
+            <span className={css.chipStat} data-testid="chip-issues">
+              Issues: {data.summary.issues}
+            </span>
           </div>
           <div className={css.grid}>
             {data.backends.map((b) => (

@@ -41,17 +41,27 @@ def sinusoidal_embedding_1d(dim: int, position: torch.Tensor) -> torch.Tensor:
 
 
 def precompute_freqs_cis_3d(
-    dim: int, end: int = 1024, theta: float = 10000.0
+    dim: int,
+    end: int = 1024,
+    theta: float = 10000.0,
+    scale_t: float = 1.0,
+    scale_h: float = 1.0,
+    scale_w: float = 1.0,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    f_freqs_cis = precompute_freqs_cis(dim - 2 * (dim // 3), end, theta)
-    h_freqs_cis = precompute_freqs_cis(dim // 3, end, theta)
-    w_freqs_cis = precompute_freqs_cis(dim // 3, end, theta)
+    # scale_t > 1 stretches the temporal RoPE positions -> the model perceives
+    # larger time deltas between frames -> amplified motion (Wan Motion Scale).
+    f_freqs_cis = precompute_freqs_cis(dim - 2 * (dim // 3), end, theta, pos_scale=scale_t)
+    h_freqs_cis = precompute_freqs_cis(dim // 3, end, theta, pos_scale=scale_h)
+    w_freqs_cis = precompute_freqs_cis(dim // 3, end, theta, pos_scale=scale_w)
     return f_freqs_cis, h_freqs_cis, w_freqs_cis
 
 
-def precompute_freqs_cis(dim: int, end: int = 1024, theta: float = 10000.0) -> torch.Tensor:
+def precompute_freqs_cis(
+    dim: int, end: int = 1024, theta: float = 10000.0, pos_scale: float = 1.0
+) -> torch.Tensor:
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].double() / dim))
-    freqs = torch.outer(torch.arange(end, device=freqs.device), freqs)
+    positions = torch.arange(end, device=freqs.device).double() * pos_scale
+    freqs = torch.outer(positions, freqs)
     freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
     return freqs_cis
 
@@ -294,6 +304,9 @@ class WanModel(nn.Module):
         self.offload_device = torch.device("cpu")
         self.use_non_blocking = False
         self.patch_size = patch_size
+        self.enable_teacache = False
+        self.teacache_thresh = 0.0
+        self._tc: dict = {}
         self.seperated_timestep = seperated_timestep
         self.require_vae_embedding = require_vae_embedding
         self.require_clip_embedding = require_clip_embedding
@@ -311,8 +324,8 @@ class WanModel(nn.Module):
             [DiTBlock(has_image_input, dim, num_heads, ffn_dim, eps) for _ in range(num_layers)]
         )
         self.head = Head(dim, out_dim, patch_size, eps)
-        head_dim = dim // num_heads
-        self.freqs = precompute_freqs_cis_3d(head_dim)
+        self._head_dim = dim // num_heads
+        self.freqs = precompute_freqs_cis_3d(self._head_dim)
 
         if has_image_input:
             self.img_emb = MLP(1280, dim, has_pos_emb=has_image_pos_emb)  # clip_feature_dim = 1280
@@ -326,6 +339,46 @@ class WanModel(nn.Module):
             )
         else:
             self.control_adapter = None
+
+    def configure_motion_scale(
+        self, scale_t: float = 1.0, scale_h: float = 1.0, scale_w: float = 1.0
+    ) -> None:
+        # Recompute the 3D RoPE table with stretched positions. scale_t > 1 adds
+        # motion. Rebuilt on CPU; block_swap / .to() re-place it on device after.
+        self.freqs = precompute_freqs_cis_3d(
+            self._head_dim, scale_t=scale_t, scale_h=scale_h, scale_w=scale_w
+        )
+
+    def configure_tea_cache(self, enable: bool, thresh: float) -> None:
+        self.enable_teacache = bool(enable) and thresh > 0.0
+        self.teacache_thresh = float(thresh)
+        self._tc = {}
+
+    def reset_tea_cache(self) -> None:
+        self._tc = {}
+
+    def _tea_cache_gate(self, t_mod: torch.Tensor, kwargs: dict) -> Tuple[bool, Optional[dict]]:
+        if not self.enable_teacache:
+            return True, None
+        slot = int(kwargs.get("tea_slot", 0))
+        tea_first = bool(kwargs.get("tea_first", False))
+        tea_last = bool(kwargs.get("tea_last", False))
+        tc = self._tc.setdefault(slot, {"acc": 0.0, "prev": None, "resid": None})
+        mod = t_mod.detach().float()
+        if tc["prev"] is None or tc["resid"] is None or tea_first or tea_last:
+            should = True
+            tc["acc"] = 0.0
+        else:
+            denom = tc["prev"].abs().mean() + 1e-8
+            rel = ((mod - tc["prev"]).abs().mean() / denom).item()
+            tc["acc"] += rel
+            if tc["acc"] < self.teacache_thresh:
+                should = False
+            else:
+                should = True
+                tc["acc"] = 0.0
+        tc["prev"] = mod
+        return should, tc
 
     def block_swap(
         self,
@@ -424,14 +477,29 @@ class WanModel(nn.Module):
 
             return custom_forward
 
-        swap_start_idx = len(self.blocks) - self.blocks_to_swap
-        for b, block in enumerate(self.blocks):
-            swap_this = self.blocks_to_swap > 0 and b >= swap_start_idx
-            if swap_this:
-                block.to(self.main_device)
-            if self.training and use_gradient_checkpointing:
-                if use_gradient_checkpointing_offload:
-                    with torch.autograd.graph.save_on_cpu():
+        should_calc, tc = self._tea_cache_gate(t_mod, kwargs)
+
+        if tc is not None and not should_calc:
+            x = x + tc["resid"]
+        else:
+            ori_x = x if tc is not None else None
+            swap_start_idx = len(self.blocks) - self.blocks_to_swap
+            for b, block in enumerate(self.blocks):
+                swap_this = self.blocks_to_swap > 0 and b >= swap_start_idx
+                if swap_this:
+                    block.to(self.main_device)
+                if self.training and use_gradient_checkpointing:
+                    if use_gradient_checkpointing_offload:
+                        with torch.autograd.graph.save_on_cpu():
+                            x = torch.utils.checkpoint.checkpoint(
+                                create_custom_forward(block),
+                                x,
+                                context,
+                                t_mod,
+                                freqs,
+                                use_reentrant=False,
+                            )
+                    else:
                         x = torch.utils.checkpoint.checkpoint(
                             create_custom_forward(block),
                             x,
@@ -441,18 +509,11 @@ class WanModel(nn.Module):
                             use_reentrant=False,
                         )
                 else:
-                    x = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(block),
-                        x,
-                        context,
-                        t_mod,
-                        freqs,
-                        use_reentrant=False,
-                    )
-            else:
-                x = block(x, context, t_mod, freqs)
-            if swap_this:
-                block.to(self.offload_device, non_blocking=self.use_non_blocking)
+                    x = block(x, context, t_mod, freqs)
+                if swap_this:
+                    block.to(self.offload_device, non_blocking=self.use_non_blocking)
+            if tc is not None:
+                tc["resid"] = (x - ori_x).detach()
 
         x = self.head(x, t)
         x = self.unpatchify(x, (f, h, w))

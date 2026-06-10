@@ -1,0 +1,114 @@
+specVersion: "0.1"
+workflow:
+  id: "svi2_render"
+  version: "1.0.0"
+  title: "SVI 2.0 Pro Long Image-to-Video"
+
+  inputs:
+    - name: "ref_image_path"
+      type: "string"
+    - name: "last_image_path"
+      type: "string"
+    - name: "prompts"
+      type: "array"
+    - name: "preset_id"
+      type: "string"
+    - name: "params"
+      type: "object"
+
+  stages:
+    - id: "anchor"
+      label: "Anchor Encode"
+    - id: "qwen_edit"
+      label: "Qwen Anchor Edit (optional)"
+      optional: true
+    - id: "diffusion"
+      label: "Per-Clip Diffusion"
+    - id: "stitch"
+      label: "Stitch / Crossfade"
+    - id: "interpolate"
+      label: "Frame Interpolation"
+    - id: "mux"
+      label: "Mux Output"
+
+  nodes:
+    - id: "anchor_encode"
+      operator: "svi2.video.anchor@1.0.0"
+      stage: "anchor"
+      inputs:
+        ref_image_path:
+          from: "input:ref_image_path"
+      config: {}
+
+    - id: "qwen_edit"
+      stage: "qwen_edit"
+      optional: true
+      inputs:
+        anchor:
+          from: "anchor_encode:anchor_latent"
+      config: {}
+
+    - id: "clip_diffusion"
+      operator: "svi2_render@1.0.0"
+      stage: "diffusion"
+      inputs:
+        anchor:
+          from: "anchor_encode:anchor_latent"
+        prompts:
+          from: "input:prompts"
+        params:
+          from: "input:params"
+      config: {}
+
+    - id: "stitch"
+      stage: "stitch"
+      inputs:
+        clips:
+          from: "clip_diffusion:clip_frames"
+      config: {}
+
+    - id: "interpolate"
+      stage: "interpolate"
+      inputs:
+        video:
+          from: "stitch:stitched_video"
+      config: {}
+
+    - id: "mux"
+      stage: "mux"
+      inputs:
+        frames:
+          from: "interpolate:interpolated_video"
+      config: {}
+
+  edges:
+    - sourceNode: "anchor_encode"
+      sourcePort: "anchor_latent"
+      targetNode: "qwen_edit"
+      targetPort: "anchor"
+    - sourceNode: "anchor_encode"
+      sourcePort: "anchor_latent"
+      targetNode: "clip_diffusion"
+      targetPort: "anchor"
+    - sourceNode: "qwen_edit"
+      sourcePort: "edited_anchor"
+      targetNode: "clip_diffusion"
+      targetPort: "anchor"
+    - sourceNode: "clip_diffusion"
+      sourcePort: "clip_frames"
+      targetNode: "stitch"
+      targetPort: "clips"
+    - sourceNode: "stitch"
+      sourcePort: "stitched_video"
+      targetNode: "interpolate"
+      targetPort: "video"
+    - sourceNode: "interpolate"
+      sourcePort: "interpolated_video"
+      targetNode: "mux"
+      targetPort: "frames"
+
+  outputs:
+    - name: "output_path"
+      from: "mux:output_path"
+    - name: "render_report"
+      from: "mux:render_report"

@@ -150,10 +150,7 @@ impl DownloadState {
     /// expected. Used by the frontend to stop per-job SWR polling.
     #[must_use]
     pub fn is_terminal(self) -> bool {
-        matches!(
-            self,
-            Self::Downloaded | Self::Failed | Self::Incompatible
-        )
+        matches!(self, Self::Downloaded | Self::Failed | Self::Incompatible)
     }
 
     /// `true` while the orchestrator still owns a semaphore slot for

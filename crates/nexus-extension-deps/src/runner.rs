@@ -233,6 +233,48 @@ enum StepOutcome {
     },
 }
 
+/// Sink wrapper that stamps the active step's id onto handler-emitted progress
+/// events that left it blank. Handlers don't know their own step id (the same
+/// handler instance serves every step of its type), so they emit `String::new()`
+/// and the runner fills it in here — keeping the host event bus payload keyed by
+/// step id without leaking step identity into the handler trait.
+struct StepScopedSink {
+    inner: Arc<dyn ProgressSink>,
+    step_id: String,
+}
+
+impl ProgressSink for StepScopedSink {
+    fn emit(&self, event: ProgressEvent) {
+        let tagged = match event {
+            ProgressEvent::StepProgress {
+                extension_id,
+                install_run_id,
+                step_id,
+                phase,
+                current_bytes,
+                total_bytes,
+                message,
+                pct,
+            } => ProgressEvent::StepProgress {
+                extension_id,
+                install_run_id,
+                step_id: if step_id.is_empty() {
+                    self.step_id.clone()
+                } else {
+                    step_id
+                },
+                phase,
+                current_bytes,
+                total_bytes,
+                message,
+                pct,
+            },
+            other => other,
+        };
+        self.inner.emit(tagged);
+    }
+}
+
 fn upstream_satisfied(step: &Step, statuses: &HashMap<String, StepStatus>) -> bool {
     step.requires.iter().all(|r| {
         statuses
@@ -271,6 +313,15 @@ async fn run_one_step(
         return StepOutcome::Failed { error };
     };
 
+    // Wrap the shared sink so handler-emitted progress events (which don't know
+    // their own step id and pass `String::new()`) are re-tagged with this step's
+    // id before reaching the host event bus. The byte-stream fetch path already
+    // tags its own step id; the wrapper only fills blanks, never overwrites.
+    let scoped_sink: Arc<dyn ProgressSink> = Arc::new(StepScopedSink {
+        inner: ctx.progress_sink.clone(),
+        step_id: step.id.clone(),
+    });
+
     let step_ctx = StepContext {
         extension_id: ctx.extension_id,
         extension_dir: ctx.extension_dir,
@@ -280,9 +331,10 @@ async fn run_one_step(
         runtime_bootstrapper: ctx.runtime_bootstrapper.clone(),
         worker_handshake: ctx.worker_handshake.clone(),
         fetch_artifact: ctx.fetch_artifact.clone(),
-        progress_sink: ctx.progress_sink.clone(),
+        progress_sink: scoped_sink,
         cancellation_token: ctx.cancellation_token.clone(),
         install_run_id: ctx.install_run_id,
+        force: ctx.force,
         upstream_artifacts,
     };
 
@@ -579,7 +631,12 @@ mod tests {
         ) -> Result<Option<PathBuf>, DepError> {
             Ok(None)
         }
-        async fn start_download(&self, _f: &str, _a: Option<&str>) -> Result<String, DepError> {
+        async fn start_download(
+            &self,
+            _f: &str,
+            _a: Option<&str>,
+            _s: &crate::FileSelection,
+        ) -> Result<String, DepError> {
             unreachable!()
         }
         async fn poll_job(&self, _id: &str) -> Result<ModelDownloadProgress, DepError> {
@@ -778,6 +835,105 @@ mod tests {
         let report = runner.run_install(&mut rctx).await;
         assert!(report.all_satisfied);
         assert!(matches!(report.statuses["a"], StepStatus::Skipped { .. }));
+    }
+
+    #[test]
+    fn step_scoped_sink_fills_blank_step_id_only() {
+        let inner = Arc::new(CapturingSink::default());
+        let scoped = StepScopedSink {
+            inner: inner.clone(),
+            step_id: "step-x".to_owned(),
+        };
+        scoped.emit(ProgressEvent::step_progress(
+            "ext",
+            uuid::Uuid::nil(),
+            String::new(),
+            crate::types::StepProgress::phase("downloading"),
+        ));
+        scoped.emit(ProgressEvent::step_progress(
+            "ext",
+            uuid::Uuid::nil(),
+            "explicit-id",
+            crate::types::StepProgress::phase("done"),
+        ));
+        let events = inner.events.lock().expect("lock");
+        let ids: Vec<String> = events
+            .iter()
+            .filter_map(|e| match e {
+                ProgressEvent::StepProgress { step_id, .. } => Some(step_id.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ids, vec!["step-x".to_owned(), "explicit-id".to_owned()]);
+    }
+
+    /// AC-2.6 at the runner level: a handler whose `run()` emits a blank-step-id
+    /// progress event has it re-tagged with the active step id, AND the runner's
+    /// `StepStarted` precedes the first progress event for that step.
+    #[tokio::test]
+    async fn runner_retags_handler_progress_and_orders_started_first() {
+        struct ProgressEmittingHandler;
+        #[async_trait]
+        impl StepHandler for ProgressEmittingHandler {
+            fn step_type(&self) -> &'static str {
+                "emitter"
+            }
+            fn validate(&self, _spec: &Value) -> Result<(), DepError> {
+                Ok(())
+            }
+            async fn probe(
+                &self,
+                _ctx: &StepContext<'_>,
+                _spec: &Value,
+            ) -> Result<crate::handler::ProbeResult, DepError> {
+                Ok(crate::handler::ProbeResult::NotSatisfied)
+            }
+            async fn run(
+                &self,
+                ctx: &StepContext<'_>,
+                _spec: &Value,
+            ) -> Result<StepArtifact, DepError> {
+                ctx.progress_sink.emit(ProgressEvent::step_progress(
+                    ctx.extension_id,
+                    ctx.install_run_id,
+                    String::new(),
+                    crate::types::StepProgress::bytes("downloading", 1, 2),
+                ));
+                Ok(StepArtifact::empty("ok"))
+            }
+        }
+
+        let mut registry = HandlerRegistry::new();
+        registry.register(Box::new(ProgressEmittingHandler));
+        let runner = build_runner(
+            vec![Step {
+                id: "only".to_owned(),
+                step_type: "emitter".to_owned(),
+                requires: vec![],
+                spec: Value::Null,
+            }],
+            registry,
+        );
+
+        let capturing = Arc::new(CapturingSink::default());
+        let sink: Arc<dyn ProgressSink> = capturing.clone();
+        let tmp = tempfile::tempdir().unwrap();
+        let mut rctx = build_runner_ctx(&sink, tmp.path());
+        runner.run_install(&mut rctx).await;
+
+        let captured = capturing.events.lock().expect("lock");
+        let started_idx = captured.iter().position(
+            |e| matches!(e, ProgressEvent::StepStarted { step_id, .. } if step_id == "only"),
+        );
+        let progress_idx = captured.iter().position(
+            |e| matches!(e, ProgressEvent::StepProgress { step_id, phase, .. } if step_id == "only" && phase == "downloading"),
+        );
+        let started_idx = started_idx.expect("StepStarted emitted");
+        let progress_idx = progress_idx.expect("re-tagged StepProgress emitted");
+        assert!(
+            started_idx < progress_idx,
+            "StepStarted must precede first progress (AC-2.6)"
+        );
     }
 
     #[tokio::test]
