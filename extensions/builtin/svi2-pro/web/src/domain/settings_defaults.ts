@@ -21,4 +21,9 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   interpolateMethod: "rife",
   interpolateFps: 48,
   outputDir: "",
+  baseModelFamilyId: "",
+  ditHighPath: "",
+  ditLowPath: "",
 };
+
+export const BUNDLED_BASE_MODEL_LABEL = "Wan2.2-I2V-A14B fp8 (Kijai, bundled)";

@@ -98,7 +98,10 @@ async fn settings_seed_and_upsert() {
         "blocksToSwap": 28,
         "interpolateMethod": "ffmpeg",
         "interpolateFps": 30,
-        "outputDir": "/out"
+        "outputDir": "/out",
+        "baseModelFamilyId": "huggingface:acme/Wan-pack",
+        "ditHighPath": "/sink/job/high.safetensors",
+        "ditLowPath": "/sink/job/low.safetensors"
     });
     let saved = store.put_settings(&updated).await.unwrap();
     assert_eq!(saved["attentionBackend"], "sdpa");
@@ -106,4 +109,7 @@ async fn settings_seed_and_upsert() {
 
     let reread = store.get_settings().await.unwrap();
     assert_eq!(reread["modelsDir"], "/models");
+    assert_eq!(reread["baseModelFamilyId"], "huggingface:acme/Wan-pack");
+    assert_eq!(reread["ditHighPath"], "/sink/job/high.safetensors");
+    assert_eq!(reread["ditLowPath"], "/sink/job/low.safetensors");
 }

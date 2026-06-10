@@ -36,6 +36,8 @@ export interface RenderParams {
   requires_last_image?: boolean;
   output_path?: string;
   models_dir?: string;
+  dit_high_path?: string | null;
+  dit_low_path?: string | null;
 }
 
 export interface PresetSummary {
@@ -44,6 +46,8 @@ export interface PresetSummary {
   description: string;
   params: Partial<RenderParams>;
   notes?: string;
+  legacy?: boolean;
+  hidden?: boolean;
 }
 
 export interface PresetCatalog {
@@ -89,4 +93,24 @@ export interface ExtensionSettings {
   interpolateMethod: InterpolateMethod;
   interpolateFps: number;
   outputDir: string;
+  baseModelFamilyId?: string;
+  ditHighPath?: string;
+  ditLowPath?: string;
+}
+
+export interface InstalledModelArtifact {
+  artifact_id: string;
+  family_id: string;
+  variant_id: string | null;
+  format: string;
+  filename: string;
+  size_bytes: number | null;
+  source_repo: string;
+  install_path: string | null;
+}
+
+export interface InstalledModelsIndex {
+  family_ids: string[];
+  installed: InstalledModelArtifact[];
+  truncated: boolean;
 }

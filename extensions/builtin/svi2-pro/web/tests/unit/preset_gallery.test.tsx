@@ -79,3 +79,83 @@ describe("PresetGallery", () => {
     expect(screen.getByText("No presets available")).toBeDefined();
   });
 });
+
+const legacyPresets: PresetSummary[] = [
+  {
+    id: "natural-reference",
+    label: "Legacy A/B — Natural",
+    description: "legacy natural",
+    params: { width: 832, height: 480, fps: 16, num_clips: 3, blocks_to_swap: 0 },
+    legacy: true,
+  },
+  {
+    id: "forced-motion-24",
+    label: "Legacy A/B — Forced motion",
+    description: "legacy forced",
+    params: { width: 832, height: 480, fps: 24, num_clips: 3, blocks_to_swap: 0 },
+    legacy: true,
+  },
+];
+
+const hiddenPreset: PresetSummary = {
+  id: "svi-canonical-704",
+  label: "704 step down",
+  description: "one step down",
+  params: { width: 704, height: 400, fps: 16, num_clips: 6, frames_per_clip: 85 },
+  hidden: true,
+};
+
+const fullCatalog = [...presets, ...legacyPresets, hiddenPreset];
+
+describe("PresetGallery legacy disclosure", () => {
+  test("legacy presets are hidden by default", () => {
+    render(<PresetGallery presets={fullCatalog} selectedId={null} onSelect={() => undefined} />);
+    expect(screen.queryByText("Legacy A/B — Natural")).toBeNull();
+    expect(screen.queryByText("Legacy A/B — Forced motion")).toBeNull();
+  });
+
+  test("hidden presets never render as cards", () => {
+    render(<PresetGallery presets={fullCatalog} selectedId={null} onSelect={() => undefined} />);
+    fireEvent.click(screen.getByText("Show legacy presets (2)"));
+    expect(screen.queryByText("704 step down")).toBeNull();
+  });
+
+  test("toggle shows the legacy count, expands in place and flips its label", () => {
+    render(<PresetGallery presets={fullCatalog} selectedId={null} onSelect={() => undefined} />);
+    const toggle = screen.getByText("Show legacy presets (2)");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(screen.getByText("Legacy A/B — Natural")).toBeDefined();
+    expect(screen.getByText("Legacy A/B — Forced motion")).toBeDefined();
+    expect(screen.getByText("Hide legacy presets")).toBeDefined();
+    fireEvent.click(screen.getByText("Hide legacy presets"));
+    expect(screen.queryByText("Legacy A/B — Natural")).toBeNull();
+  });
+
+  test("a selected legacy preset stays visible while collapsed", () => {
+    render(
+      <PresetGallery
+        presets={fullCatalog}
+        selectedId="natural-reference"
+        onSelect={() => undefined}
+      />,
+    );
+    expect(screen.getByText("Legacy A/B — Natural")).toBeDefined();
+    expect(screen.queryByText("Legacy A/B — Forced motion")).toBeNull();
+  });
+
+  test("no toggle renders when the catalog has no legacy presets", () => {
+    render(<PresetGallery presets={presets} selectedId={null} onSelect={() => undefined} />);
+    expect(screen.queryByText(/legacy presets/)).toBeNull();
+  });
+
+  test("keyboard navigation spans featured plus expanded legacy cards", () => {
+    const onSelect = vi.fn();
+    render(<PresetGallery presets={fullCatalog} selectedId="svi-canonical" onSelect={onSelect} />);
+    fireEvent.click(screen.getByText("Show legacy presets (2)"));
+    const radios = screen.getAllByRole("radio");
+    expect(radios).toHaveLength(4);
+    fireEvent.keyDown(radios[radios.length - 1], { key: "ArrowDown" });
+    expect(onSelect).toHaveBeenCalledWith(presets[0]);
+  });
+});

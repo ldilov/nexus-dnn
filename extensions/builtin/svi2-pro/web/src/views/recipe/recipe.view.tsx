@@ -9,11 +9,14 @@ import { listPresets } from "../../services/presets_client";
 import type { RenderJob } from "../../services/types";
 import { useRenderRequest } from "../../store/render_request_store";
 import { AnchorInputs } from "./components/anchor_inputs";
+import { BaseModelSelect } from "./components/base_model_select";
 import { HistoryList } from "./components/history_list";
+import { LengthControl } from "./components/length_control";
 import { PresetGallery } from "./components/preset_gallery";
 import { PromptInput } from "./components/prompt_input";
 import { QwenEditPanel } from "./components/qwen_edit_panel";
 import { RenderProgress } from "./components/render_progress";
+import { ResolutionControl } from "./components/resolution_control";
 import { TierForm } from "./components/tier_form";
 import { type FocusRequest, useRenderOrchestration } from "./hooks/use_render_orchestration";
 import * as styles from "./recipe.css";
@@ -22,7 +25,7 @@ const ANCHOR_PANEL_ID = "svi2-anchor-panel";
 const PROMPT_INPUT_ID = "svi2-prompt-input";
 
 export function RecipeView(): ReactElement {
-  const { presetId, params, render, applyPresetById, resetRender, showJobResult } =
+  const { presetId, presetApplied, params, render, applyPresetById, resetRender, showJobResult } =
     useRenderRequest();
   const { issues, blocked, busy, submit, cancel, focusRequest } = useRenderOrchestration();
 
@@ -32,6 +35,12 @@ export function RecipeView(): ReactElement {
   const historyQuery = useSWR("svi2/history", () => listRenderJobs(25));
 
   const presets = presetsQuery.data?.presets ?? [];
+
+  useEffect(() => {
+    if (presetApplied || presets.length === 0) return;
+    const current = presets.find((p) => p.id === presetId) ?? presets[0];
+    if (current) applyPresetById(current);
+  }, [presetApplied, presets, presetId, applyPresetById]);
   const jobs = historyQuery.data?.jobs ?? [];
   const lastImageRequired = presetRequiresLastImage(presetId, params);
   const refError = issues.find((i) => i.field === "ref_image_path")?.message;
@@ -83,6 +92,11 @@ export function RecipeView(): ReactElement {
           {resolutionWarning && (
             <output className={styles.resolutionWarning}>{resolutionWarning}</output>
           )}
+          <div className={styles.quickControls}>
+            <LengthControl />
+            <ResolutionControl presets={presets} />
+            <BaseModelSelect />
+          </div>
           <TierForm issues={issues} />
         </Panel>
       </div>
