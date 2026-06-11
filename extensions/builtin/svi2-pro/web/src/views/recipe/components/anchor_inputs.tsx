@@ -9,12 +9,14 @@ import * as styles from "./anchor_inputs.css";
 const MAX_IMAGE_BYTES = 32 * 1024 * 1024;
 
 interface AnchorInputsProps {
+  refImageRequired: boolean;
   lastImageRequired: boolean;
   refError?: string | undefined;
   lastError?: string | undefined;
 }
 
 export function AnchorInputs({
+  refImageRequired,
   lastImageRequired,
   refError,
   lastError,
@@ -39,14 +41,23 @@ export function AnchorInputs({
     <div className={styles.grid}>
       <div className={styles.slot}>
         <span className={styles.slotLabel}>
-          Reference image <Badge tone="accent">required</Badge>
+          Reference image{" "}
+          {refImageRequired ? (
+            <Badge tone="accent">required</Badge>
+          ) : (
+            <Badge tone="neutral">optional</Badge>
+          )}
         </span>
         <FileDropzone
           accept="image/*"
           maxSizeBytes={MAX_IMAGE_BYTES}
           ariaLabel="reference image upload"
           label={refUpload.file ? "Replace reference image" : "Drop the anchor image or browse"}
-          hint="Defines identity. Aspect-match to the render resolution; dims divisible by 16."
+          hint={
+            refImageRequired
+              ? "Defines identity. Aspect-match to the render resolution; dims divisible by 16."
+              : "Optional in Text-to-Video. Provide one to anchor identity, or leave empty to synthesize a seed from the prompt."
+          }
           onFiles={(files) => void refUpload.pick(files[0] ?? null)}
           renderPreview={() =>
             refUrl ? (

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from PIL.Image import Image as PILImage
 
 _TRAINED_RESOLUTIONS = frozenset({(832, 480), (480, 832)})
 _TRAINED_BUDGET_PX = 832 * 480
@@ -36,4 +39,25 @@ def resolution_warning(width: int, height: int) -> Optional[dict[str, Any]]:
     }
 
 
-__all__ = ["check_trained_resolution", "resolution_warning"]
+def fit_to_resolution(img: "PILImage", width: int, height: int) -> "PILImage":
+    """Cover-crop an image to exactly width x height without stretching.
+
+    Scales the source up/down so it covers the target box (preserving aspect),
+    then centre-crops the overflow. A raw `img.resize((width, height))` ignores
+    aspect and squashes a portrait into a landscape box (and vice versa), which
+    distorts the whole render because the conditioning latent is that image.
+    """
+    from PIL import Image
+
+    src_w, src_h = img.size
+    if (src_w, src_h) == (width, height):
+        return img
+    scale = max(width / src_w, height / src_h)
+    rw, rh = max(width, round(src_w * scale)), max(height, round(src_h * scale))
+    resized = img.resize((rw, rh), Image.LANCZOS)
+    left = (rw - width) // 2
+    top = (rh - height) // 2
+    return resized.crop((left, top, left + width, top + height))
+
+
+__all__ = ["check_trained_resolution", "resolution_warning", "fit_to_resolution"]

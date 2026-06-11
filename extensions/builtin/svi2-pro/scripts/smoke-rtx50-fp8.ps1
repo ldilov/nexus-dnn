@@ -5,7 +5,9 @@
 # worker venv built (install.ps1 handles both).
 #
 # Usage:
-#   smoke-rtx50-fp8.ps1 --models-dir D:\models --ref-image D:\inputs\nun.jpg
+#   smoke-rtx50-fp8.ps1 --models-dir D:\models --ref-image D:\inputs\nun.jpg   # i2v
+#   smoke-rtx50-fp8.ps1 --models-dir D:\models --mode t2v                        # t2v (bundled prompts)
+#   smoke-rtx50-fp8.ps1 --models-dir D:\models --mode t2v --prompts-file P.txt    # t2v (own prompts)
 #   smoke-rtx50-fp8.ps1 -Help
 #
 # All additional args are forwarded to gpu_smoke.py.
@@ -17,11 +19,13 @@ $ExtDir = Resolve-Path (Join-Path $ScriptDir '..')
 $WorkerDir = Join-Path $ExtDir 'worker'
 
 if ($args -contains '--help' -or $args -contains '-Help' -or $args -contains '-h') {
-    Write-Host "Usage: smoke-rtx50-fp8.ps1 --models-dir PATH --ref-image PATH [options]"
+    Write-Host "Usage: smoke-rtx50-fp8.ps1 --models-dir PATH [--ref-image PATH | --mode t2v] [options]"
     Write-Host ""
     Write-Host "Options forwarded to gpu_smoke.py:"
     Write-Host "  --models-dir PATH       (required) path to downloaded model weights"
-    Write-Host "  --ref-image PATH        (required) i2v conditioning image"
+    Write-Host "  --mode i2v|t2v          render mode (default i2v); t2v synthesizes clip 0 from the prompt"
+    Write-Host "  --ref-image PATH        i2v conditioning image (required for i2v; optional for t2v)"
+    Write-Host "  --seed N                numeric seed for the t2v clip-0 noise (reproducible)"
     Write-Host "  --prompts-file PATH     override bundled demonic_nun_prompts.txt"
     Write-Host "  --output PATH           output mp4 (default: videos/svi2_nun.mp4)"
     Write-Host "  --num-clips N           number of clips to render (default: 4)"
