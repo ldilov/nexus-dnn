@@ -66,6 +66,10 @@ export const canvas = style({
   border: `1px solid ${vars.color.borderGhost}`,
   borderRadius: vars.radius.lg,
   boxShadow: `inset 2px 0 0 ${vars.color.accent}`,
+  // Click-to-cast surface — kill native text selection so shift-clicking a
+  // word range never paints the browser's selection over our highlight.
+  userSelect: "none",
+  WebkitUserSelect: "none",
 });
 
 export const editBtn = style({
