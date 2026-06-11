@@ -9,8 +9,8 @@ function renderBoard(text = "First phrase here. Second phrase too.\n\nThird stan
   );
 }
 
-function firstPhrase(): HTMLElement {
-  return screen.getByRole("button", { name: /First phrase here\./ });
+function word(name: string): HTMLElement {
+  return screen.getByRole("button", { name });
 }
 
 describe("Storyboard interaction flow", () => {
@@ -26,38 +26,48 @@ describe("Storyboard interaction flow", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("selecting a phrase opens the casting overlay (AC-1.3)", () => {
+  it("selecting a single word opens the casting overlay (AC-1.2 / AC-1.3)", () => {
     renderBoard();
-    fireEvent.click(firstPhrase());
+    fireEvent.click(word("First"));
     const dialog = screen.getByRole("dialog", { name: "Cast voice" });
     expect(dialog).toBeTruthy();
     expect(within(dialog).getByRole("radio", { name: /Aether/ })).toBeTruthy();
   });
 
-  it("casting creates a segment card labelled SEG-001 (AC-0.1 / AC-4.1)", () => {
+  it("shift-click selects a contiguous subset of words (AC-1.2)", () => {
     renderBoard();
-    fireEvent.click(firstPhrase());
+    fireEvent.click(word("First"));
+    fireEvent.click(word("here."), { shiftKey: true });
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cast" }));
+    // the cast covers exactly "First phrase here." — not the trailing sentence
+    expect(screen.getByText(/^First phrase here\.\s*$/)).toBeTruthy();
+    expect(screen.getByText("SEG-001")).toBeTruthy();
+  });
+
+  it("casting a word creates a segment card labelled SEG-001 (AC-0.1 / AC-4.1)", () => {
+    renderBoard();
+    fireEvent.click(word("First"));
     const dialog = screen.getByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Cast" }));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByText("SEG-001")).toBeTruthy();
-    // the carousel card exposes voice + SEG id + status in its accessible name
     expect(screen.getByRole("button", { name: /Aether SEG-001/ })).toBeTruthy();
   });
 
-  it("clicking an assigned phrase reopens the editor (AC-1.5)", () => {
+  it("clicking an assigned word reopens the editor (AC-1.5)", () => {
     renderBoard();
-    fireEvent.click(firstPhrase());
+    fireEvent.click(word("First"));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cast" }));
-    // re-click the now-assigned phrase
-    fireEvent.click(firstPhrase());
+    // the assigned word now carries the voice in its accessible name
+    fireEvent.click(word("Aether · First"));
     expect(screen.getByRole("dialog", { name: "Edit casting" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Update" })).toBeTruthy();
   });
 
   it("removing a casting deletes both card and marker (AC-4.5)", () => {
     renderBoard();
-    fireEvent.click(firstPhrase());
+    fireEvent.click(word("First"));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cast" }));
     expect(screen.getByText("SEG-001")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Remove SEG-001/ }));
@@ -65,17 +75,16 @@ describe("Storyboard interaction flow", () => {
     expect(screen.getByText("No segments cast yet. Select a phrase above to begin.")).toBeTruthy();
   });
 
-  it("opens the overlay via keyboard Enter on a phrase (AC-2.5)", () => {
+  it("opens the overlay via keyboard Enter on a word (AC-2.5)", () => {
     renderBoard();
-    fireEvent.keyDown(firstPhrase(), { key: "Enter" });
+    fireEvent.keyDown(word("First"), { key: "Enter" });
     expect(screen.getByRole("dialog", { name: "Cast voice" })).toBeTruthy();
   });
 
   it("arrow keys cycle the active voice in the overlay (AC-2.5)", () => {
     renderBoard();
-    fireEvent.click(firstPhrase());
+    fireEvent.click(word("First"));
     const group = screen.getByRole("radiogroup", { name: "Voice" });
-    // first voice (Aether) starts checked
     expect(within(group).getByRole("radio", { name: /Aether/ }).getAttribute("aria-checked")).toBe("true");
     fireEvent.keyDown(group, { key: "ArrowRight" });
     expect(within(group).getByRole("radio", { name: /Vesper/ }).getAttribute("aria-checked")).toBe("true");
@@ -85,13 +94,13 @@ describe("Storyboard interaction flow", () => {
 
   it("changing the voice then updating re-casts the same segment (AC-4.4)", () => {
     renderBoard();
-    fireEvent.click(firstPhrase());
+    fireEvent.click(word("First"));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cast" }));
-    fireEvent.click(firstPhrase());
+    // reopen via the assigned segment card (card → text bidirectional, AC-4.2)
+    fireEvent.click(screen.getByRole("button", { name: /Aether SEG-001/ }));
     const dialog = screen.getByRole("dialog", { name: "Edit casting" });
     fireEvent.click(within(dialog).getByRole("radio", { name: /Vesper/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
-    // still exactly one segment, now Vesper
     expect(screen.getByText("SEG-001")).toBeTruthy();
     const cards = screen.getAllByText("Vesper");
     expect(cards.length).toBeGreaterThan(0);
