@@ -270,7 +270,6 @@ export function Storyboard({
     for (const j of jobs) for (const id of j.segIds) s.add(id);
     return s.size;
   }, [jobs]);
-  const totalPhrases = useMemo(() => flatSegments(paragraphs).length, [paragraphs]);
   const words = useMemo(() => countWords(paragraphs), [paragraphs]);
   const summary = statusSummary(jobs);
 
@@ -281,29 +280,21 @@ export function Storyboard({
   return (
     <div className={css.root}>
       <div style={HEADER_ROW}>
-        <span className={css.caption}>
-          Storyboard · click a word to cast it · shift-click another to select a range
+        <span className={css.counters}>
+          <span><strong>{assignedCount}</strong> cast</span>
+          <span><strong>{words}</strong> words</span>
         </span>
         <button
           type="button"
-          className={css.iconBtn}
-          style={{ width: 30, height: 30 }}
+          className={css.editBtn}
           aria-pressed={editingText}
-          title={editingText ? "Done editing text" : "Edit script text"}
           onClick={() => setEditingText((v) => !v)}
         >
-          <span className="material-symbols-outlined" style={{ fontSize: 18 }} aria-hidden="true">
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }} aria-hidden="true">
             {editingText ? "check" : "edit"}
           </span>
+          {editingText ? "Done" : "Edit text"}
         </button>
-      </div>
-
-      <div style={COUNTERS_WRAP}>
-        <span className={css.counters}>
-          <span><strong>{assignedCount}</strong> cast</span>
-          <span><strong>{totalPhrases}</strong> phrases</span>
-          <span><strong>{words}</strong> words</span>
-        </span>
       </div>
 
       {editingText ? (
@@ -605,8 +596,7 @@ export function Storyboard({
   );
 }
 
-const HEADER_ROW: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between" };
-const COUNTERS_WRAP: CSSProperties = { display: "flex" };
+const HEADER_ROW: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 };
 const TILE_ROLE: CSSProperties = { fontFamily: "var(--font-mono)", fontSize: 8, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--on-surface-muted)" };
 const LIVE_CHIP: CSSProperties = {
   display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 10px",

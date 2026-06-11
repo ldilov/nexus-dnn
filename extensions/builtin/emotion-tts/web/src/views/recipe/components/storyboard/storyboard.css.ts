@@ -49,7 +49,6 @@ export const counters = style({
   fontSize: "12px",
   fontVariantNumeric: "tabular-nums",
   color: onSurfaceMuted,
-  marginBottom: vars.space.lg,
 });
 
 globalStyle(`${counters} strong`, {
@@ -57,12 +56,40 @@ globalStyle(`${counters} strong`, {
   fontWeight: 600,
 });
 
-/** Reading column with the accent rail down its left edge (vision inset bar). */
+/** Reading box — a recessed, bordered well so the text region's bounds read
+ * clearly, with the accent rail down its left edge. */
 export const canvas = style({
   position: "relative",
-  // audit-allow: px — reading-rail inset matches design spec
-  padding: "6px 0 6px 22px",
+  // audit-allow: px — reading well padding (extra left for the accent rail)
+  padding: "16px 18px 16px 22px",
+  background: surfaceFloor,
+  border: `1px solid ${vars.color.borderGhost}`,
+  borderRadius: vars.radius.lg,
   boxShadow: `inset 2px 0 0 ${vars.color.accent}`,
+});
+
+export const editBtn = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  // audit-allow: px — compact control metrics
+  height: "28px",
+  padding: "0 10px",
+  background: "transparent",
+  border: `1px solid ${vars.color.borderGhost}`,
+  borderRadius: "8px",
+  color: vars.color.textMuted,
+  fontFamily: vars.font.body,
+  fontSize: "11.5px",
+  fontWeight: 500,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+  transition: `color ${vars.motion.fast}, border-color ${vars.motion.fast}`,
+  selectors: {
+    "&:hover": { color: vars.color.text, borderColor: vars.color.accent },
+    "&[aria-pressed='true']": { color: vars.color.accent, borderColor: vars.color.accent },
+    "&:focus-visible": { outline: `2px solid ${vars.color.accent}`, outlineOffset: "2px" },
+  },
 });
 
 export const paragraph = style({
