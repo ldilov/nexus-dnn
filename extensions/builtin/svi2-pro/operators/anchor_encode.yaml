@@ -1,0 +1,21 @@
+spec_version: "0.1"
+operator:
+  id: svi2.video.anchor
+  version: 1.0.0
+  display_name: "Anchor Encode"
+  description: "Encode the reference image into the anchor latent that locks identity across the long take (VAE + text-encoder)."
+  category: video.image_to_video
+execution:
+  mode: job
+  cacheable: false
+  resumable: false
+inputs:
+  - name: ref_image_path
+    type: string
+    required: true
+outputs:
+  - name: anchor_latent
+    type: object
+resources:
+  gpu: true
+  min_vram_mb: 4096

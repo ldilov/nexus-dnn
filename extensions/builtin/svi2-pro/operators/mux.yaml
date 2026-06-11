@@ -1,0 +1,22 @@
+spec_version: "0.1"
+operator:
+  id: svi2.video.mux
+  version: 1.0.0
+  display_name: "Mux Output"
+  description: "Encode interpolated frames into the final container and emit the render report."
+  category: video.image_to_video
+execution:
+  mode: job
+  cacheable: false
+  resumable: false
+inputs:
+  - name: frames
+    type: string
+    required: true
+outputs:
+  - name: output_path
+    type: string
+  - name: render_report
+    type: object
+resources:
+  gpu: false

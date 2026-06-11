@@ -5,6 +5,7 @@ recipe:
   display_name: "SVI 2.0 Pro — Long Image-to-Video"
   summary: "Drop a reference image, pick a preset, write one motion prompt, render an identity-locked long take."
   category: video.image_to_video
+workflow_template: "workflows/svi2_render.yaml"
 fields:
   - id: preset
     type: enum
