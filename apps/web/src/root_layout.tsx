@@ -86,14 +86,27 @@ export function useRootOutletContext(): RootOutletContext {
   return useOutletContext<RootOutletContext>();
 }
 
+// The orchestration bus tags node events by `type` (snake_case NexusEvent
+// variant) and does not carry an explicit `status` field. Map the variant to
+// the status vocabulary the graph renderer understands so the live overlay
+// actually lights up; events with an explicit `status` still win.
+const NODE_STATUS_BY_TYPE: Record<string, string> = {
+  node_started: "running",
+  node_progress: "running",
+  node_completed: "completed",
+  node_failed: "failed",
+};
+
 function latestProgressByNode(
-  events: { node_id?: string; status?: string; progress?: number }[],
+  events: { type?: string; node_id?: string; status?: string; progress?: number; percent?: number }[],
 ): Record<string, { status: string; progress: number }> {
   const map: Record<string, { status: string; progress: number }> = {};
   for (const e of events) {
-    if (e.node_id && e.status !== undefined) {
-      map[e.node_id] = { status: e.status, progress: e.progress ?? 0 };
-    }
+    if (!e.node_id) continue;
+    const status = e.status ?? (e.type ? NODE_STATUS_BY_TYPE[e.type] : undefined);
+    if (status === undefined) continue;
+    const progress = e.progress ?? (typeof e.percent === "number" ? e.percent / 100 : 0);
+    map[e.node_id] = { status, progress };
   }
   return map;
 }
