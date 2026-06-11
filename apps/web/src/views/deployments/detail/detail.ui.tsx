@@ -418,31 +418,34 @@ export function DeploymentDetailUI({
       </div>
 
       <div className={s.body}>
-        {tab === "recipe" && (
-          <section
-            id="panel-recipe"
-            className={s.panelDocument}
-            role="tabpanel"
-            aria-labelledby="tab-recipe"
-            tabIndex={0}
-          >
-            {extensionLayout ? (
-              <div className={s.documentFrame}>
-                <ExtensionLayoutView
-                  layoutId={extensionLayout.id}
-                  deploymentId={deploymentId}
-                  rootElementRef={handleElementRef}
-                />
-              </div>
-            ) : (
-              <div className={s.fallbackNote}>
-                This deployment's source extension hasn't registered a Recipe
-                layout yet. Once it does, the extension's own UI renders here —
-                same surface as the Extensions tab.
-              </div>
-            )}
-          </section>
-        )}
+        {/* Recipe stays MOUNTED across tab switches — it hosts the extension's
+            own app (filled inputs + in-flight render state). Conditionally
+            unmounting it would destroy that state; hide it instead. */}
+        <section
+          id="panel-recipe"
+          className={s.panelDocument}
+          role="tabpanel"
+          aria-labelledby="tab-recipe"
+          tabIndex={0}
+          hidden={tab !== "recipe"}
+          style={tab === "recipe" ? undefined : { display: "none" }}
+        >
+          {extensionLayout ? (
+            <div className={s.documentFrame}>
+              <ExtensionLayoutView
+                layoutId={extensionLayout.id}
+                deploymentId={deploymentId}
+                rootElementRef={handleElementRef}
+              />
+            </div>
+          ) : (
+            <div className={s.fallbackNote}>
+              This deployment's source extension hasn't registered a Recipe
+              layout yet. Once it does, the extension's own UI renders here —
+              same surface as the Extensions tab.
+            </div>
+          )}
+        </section>
 
         {tab === "graph" && (
           <section
