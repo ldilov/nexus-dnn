@@ -175,3 +175,76 @@ def test_run_render_end_to_end_with_fakes(tmp_path, monkeypatch):
     assert captured["writer"].count > 0
     for frame in captured["writer"].frames:
         assert hasattr(frame, "save")
+
+
+def _tiny_t2v_experts(dtype: torch.dtype = torch.float32):
+    def _t2v_dit() -> WanModel:
+        return WanModel(
+            dim=48, in_dim=16, ffn_dim=128, out_dim=16, text_dim=32, freq_dim=64,
+            eps=1e-6, patch_size=(1, 2, 2), num_heads=4, num_layers=2,
+            has_image_input=False, require_vae_embedding=False, require_clip_embedding=False,
+        ).to(dtype).eval()
+
+    high = ExpertModel(dit=_t2v_dit(), fp8_audit={"overlap_pct": 100.0}, lora_audit={})
+    low = ExpertModel(dit=_t2v_dit(), fp8_audit={"overlap_pct": 100.0}, lora_audit={})
+    return high, low
+
+
+def test_run_render_t2v_generates_seed_clip_then_chains(tmp_path, monkeypatch):
+    import json
+
+    import svi2_video_worker.ffmpeg_io as ffmpeg_io
+    from pathlib import Path
+
+    captured = {}
+
+    class _FakeWriter:
+        def __init__(self):
+            self.frames = []
+            captured["writer"] = self
+
+        def write(self, frame):
+            self.frames.append(frame)
+
+        def write_many(self, frames):
+            self.frames.extend(frames)
+
+        @property
+        def count(self):
+            return len(self.frames)
+
+        def finalize(self, out_path, *, fps=15, quality=7):
+            Path(out_path).write_bytes(b"fake-mp4")
+            return out_path
+
+    monkeypatch.setattr(ffmpeg_io, "StreamingFrameWriter", _FakeWriter)
+
+    params = validate_render_params(
+        {
+            "mode": "text_to_video",
+            "prompts": ["a cat", "a dog"],
+            "num_clips": 2,
+            "height": 16,
+            "width": 16,
+            "frames_per_clip": 5,
+            "num_inference_steps": 2,
+            "num_overlap_frame": 1,
+            "seed": 99,
+            "output_path": str(tmp_path / "out.mp4"),
+            "device": "cpu",
+        }
+    )
+
+    result = _run_render(
+        params,
+        worker=None,
+        build_models=lambda _p: _tiny_models(torch.bfloat16),
+        build_t2v_experts=lambda _p: _tiny_t2v_experts(torch.bfloat16),
+    )
+
+    assert result["status"] == "ok"
+    assert captured["writer"].count > 0
+    report = json.loads((tmp_path / "render_report.json").read_text())
+    assert report["seed_origin"] == "t2v_clip"
+    assert report["mode"] == "text_to_video"
+    assert "t2v_high_fp8" in report["model_audit"]

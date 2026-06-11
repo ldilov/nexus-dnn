@@ -16,6 +16,16 @@ versions:
         source: { kind: "huggingface", repo: "Kijai/WanVideo_comfy_fp8_scaled", revision: "main", file: "I2V/Wan2_2-I2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors" }
         size_bytes: 0
         sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      - id: "dit-t2v-high"
+        role: "diffusion.t2v.high"
+        source: { kind: "huggingface", repo: "Kijai/WanVideo_comfy_fp8_scaled", revision: "main", file: "T2V/Wan2_2-T2V-A14B_HIGH_fp8_e4m3fn_scaled_KJ.safetensors" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      - id: "dit-t2v-low"
+        role: "diffusion.t2v.low"
+        source: { kind: "huggingface", repo: "Kijai/WanVideo_comfy_fp8_scaled", revision: "main", file: "T2V/Wan2_2-T2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors" }
+        size_bytes: 0
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
       - id: "svi-lora-high"
         role: "lora.high"
         source: { kind: "huggingface", repo: "epfl-vita/svi-model", revision: "main", file: "version-2.0/SVI_Wan2.2-I2V-A14B_high_noise_lora_v2.0_pro.safetensors" }
