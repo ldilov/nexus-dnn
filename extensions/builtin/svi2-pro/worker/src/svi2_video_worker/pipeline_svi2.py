@@ -772,10 +772,15 @@ def _run_render(
     # Text-to-video seed: generate clip 0 with the Wan2.2-T2V experts (freed
     # before the i2v experts load), then seed the chain from its last frame.
     if generate_seed_clip:
-        _notify(worker, "svi2.video.progress", {"fraction": 0.02, "stage": "t2v_seed_clip"})
+        _notify(worker, "svi2.video.progress", {"fraction": 0.02, "stage": "loading_t2v_experts"})
         first_prompt = prompts[0]
         seed_ctx_posi = ctx_cache[first_prompt].to(device)
         seed_ctx_nega = neg_context.to(device) if neg_context is not None else seed_ctx_posi
+
+        def _t2v_seed_on_step(step_idx: int, num_steps: int, _sigma: float) -> None:
+            frac = 0.02 + 0.03 * ((step_idx + 1) / max(num_steps, 1))
+            _notify(worker, "svi2.video.progress", {"fraction": round(frac, 4), "stage": "t2v_seed_clip"})
+
         t2v_clip = _generate_t2v_clip0(
             params,
             context_posi=seed_ctx_posi,
@@ -785,6 +790,7 @@ def _run_render(
             timesteps=timesteps,
             device=device,
             build_t2v_experts=build_t2v_experts,
+            on_step=_t2v_seed_on_step,
         )
         seed_clip_frames = t2v_clip.frames
         seed_clip_last_latent = t2v_clip.last_latent
