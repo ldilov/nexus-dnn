@@ -282,7 +282,7 @@ export function Storyboard({
     <div className={css.root}>
       <div style={HEADER_ROW}>
         <span className={css.caption}>
-          Storyboard · click a phrase to cast it · shift-click to extend
+          Storyboard · click a word to cast it · shift-click another to select a range
         </span>
         <button
           type="button"
