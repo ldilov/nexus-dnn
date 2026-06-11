@@ -27,6 +27,7 @@ import { getRenderJob } from "../services/history_client";
 import { cancelRender, startRender, subscribeRenderStream } from "../services/render_client";
 import type {
   ExtensionSettings,
+  GenerationMode,
   PresetSummary,
   RenderJob,
   RenderParams,
@@ -54,6 +55,7 @@ interface RenderRequestState {
 
 interface RenderRequestActions {
   applyPresetById: (preset: PresetSummary) => void;
+  setMode: (mode: GenerationMode) => void;
   updateParam: <K extends keyof RenderParams>(key: K, value: RenderParams[K]) => void;
   setPrompts: (prompts: string[]) => void;
   setRefImage: (name: string | null, path: string) => void;
@@ -137,6 +139,7 @@ export function RenderRequestProvider({
         // (requires_last_image, off-budget width, …) never leak across.
         const base = {
           ...defaultParamsFromSettings(settings),
+          mode: prev.mode ?? "image_to_video",
           ref_image_path: prev.ref_image_path,
           prompts: prev.prompts,
           last_image_path: requiresLast ? (prev.last_image_path ?? null) : null,
@@ -147,6 +150,14 @@ export function RenderRequestProvider({
     },
     [settings],
   );
+
+  const setMode = useCallback((mode: GenerationMode) => {
+    setParams((prev) => {
+      if (mode === "text_to_video") return { ...prev, mode };
+      const { seed: _drop, ...rest } = prev;
+      return { ...rest, mode };
+    });
+  }, []);
 
   const updateParam = useCallback(
     <K extends keyof RenderParams>(key: K, value: RenderParams[K]) => {
@@ -257,6 +268,7 @@ export function RenderRequestProvider({
       qwenEdit,
       render,
       applyPresetById,
+      setMode,
       updateParam,
       setPrompts,
       setRefImage,
@@ -278,6 +290,7 @@ export function RenderRequestProvider({
       qwenEdit,
       render,
       applyPresetById,
+      setMode,
       updateParam,
       setPrompts,
       setRefImage,

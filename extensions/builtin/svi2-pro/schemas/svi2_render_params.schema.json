@@ -4,8 +4,34 @@
   "title": "Svi2RenderParams",
   "type": "object",
   "additionalProperties": false,
-  "required": ["ref_image_path", "prompts"],
+  "required": ["prompts"],
+  "allOf": [
+    {
+      "if": {
+        "properties": { "mode": { "const": "text_to_video" } },
+        "required": ["mode"]
+      },
+      "then": true,
+      "else": {
+        "required": ["ref_image_path"]
+      }
+    }
+  ],
   "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["image_to_video", "text_to_video"],
+      "default": "image_to_video"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "seed_strength": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
     "ref_image_path": {
       "type": "string",
       "minLength": 1
@@ -113,6 +139,11 @@
       "maximum": 16,
       "default": 0
     },
+    "ref_pad_free_clips": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 2
+    },
     "adain_factor": {
       "type": "number",
       "minimum": 0,
@@ -193,6 +224,19 @@
     "dit_low_path": {
       "type": ["string", "null"],
       "minLength": 1
+    },
+    "device": {
+      "type": ["string", "null"]
+    },
+    "distill_lora_high": {
+      "type": ["string", "null"]
+    },
+    "distill_lora_low": {
+      "type": ["string", "null"]
+    },
+    "fixed_sigmas": {
+      "type": ["array", "null"],
+      "items": { "type": "number" }
     }
   }
 }
