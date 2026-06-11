@@ -64,6 +64,8 @@ fi
 cd "$WORKER_DIR"
 
 # `uv run` auto-syncs the project before executing the command, so we don't
-# need a separate bootstrap step. Always include diffusers + flash extras.
-echo "[install.sh] dispatching: uv run --extra diffusers --extra flash python -m svi2_video_worker.headless_install $*" >&2
-exec uv run --extra diffusers --extra flash python -m svi2_video_worker.headless_install "$@"
+# need a separate bootstrap step. Always include diffusers + flash +
+# rtx-upscale extras (rtx-upscale is win32-only via its dependency marker, so
+# it is a no-op on Linux).
+echo "[install.sh] dispatching: uv run --extra diffusers --extra flash --extra rtx-upscale python -m svi2_video_worker.headless_install $*" >&2
+exec uv run --extra diffusers --extra flash --extra rtx-upscale python -m svi2_video_worker.headless_install "$@"

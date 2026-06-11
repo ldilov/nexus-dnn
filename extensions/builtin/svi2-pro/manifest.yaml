@@ -63,11 +63,14 @@ dependencies:
       spec:
         family_id: "huggingface:Kijai/WanVideo_comfy_fp8_scaled"
         acceleration_match: "matches_runtime_step:python"
-        # Shared mega-repo (300GB+). Pull only the two A14B I2V fp8 experts
-        # the worker loads (versions.yaml dit-high/low-fp8).
+        # Shared mega-repo (300GB+). Pull the two A14B I2V fp8 experts the
+        # chain loads plus the two A14B T2V fp8 experts the text-to-video
+        # seed-clip uses (versions.yaml dit-high/low-fp8 + dit-t2v-high/low).
         files:
           - "I2V/Wan2_2-I2V-A14B-HIGH_fp8_e4m3fn_scaled_KJ.safetensors"
           - "I2V/Wan2_2-I2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors"
+          - "T2V/Wan2_2-T2V-A14B_HIGH_fp8_e4m3fn_scaled_KJ.safetensors"
+          - "T2V/Wan2_2-T2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors"
     - id: model_svi_lora
       type: model_artifact
       requires: [python]

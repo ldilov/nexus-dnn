@@ -1,10 +1,28 @@
 # SVI 2.0 Pro Video Generator (svi2-pro)
 
-Builtin extension for **one-shot long image-to-video**. From a single anchor
-image it renders an identity-locked long take by chaining 4n+1-frame clips with
-the error-recycling **Stable Video Infinity 2.0 Pro** LoRAs on top of
+Builtin extension for **one-shot long video**. From a single anchor image it
+renders an identity-locked long take by chaining 4n+1-frame clips with the
+error-recycling **Stable Video Infinity 2.0 Pro** LoRAs on top of
 Wan2.2-I2V-A14B (14B dual-expert MoE), tuned for 16 GB Blackwell (RTX 50) via
 Kijai fp8 e4m3fn base weights.
+
+## Modes
+
+Selected per render via `mode` (recipe screen toggle, default `image_to_video`):
+
+- **Image-to-Video** (`image_to_video`) — the operator supplies the anchor image;
+  it conditions clip 0. Original behaviour, unchanged.
+- **Text-to-Video** (`text_to_video`) — no image required. The worker generates
+  **clip 0** from the prompt with **Wan2.2-T2V-A14B** (the same in-process Wan
+  stack — `WanModel` loader, `flow_match`, Wan VAE, UMT5-XXL — as the i2v path,
+  with a `in_dim=16` T2V config, no `y` conditioning, no SVI LoRA), then seeds the
+  **unchanged** i2v + SVI chain with clip 0's last frame (anchor) and last latents
+  (motion carry) for the remaining clips. No sd-cli, no Qwen — pure in-process
+  torch. T2V experts load → clip 0 → freed → i2v experts load (sequential, not
+  co-resident). An optional numeric `seed` makes clip 0 reproducible. Note: the
+  prompt drives content + motion, but appearance is locked to the generated seed
+  clip across the take (Wan2.2-i2v ref-lock). A supplied image in T2V mode is used
+  as the anchor directly (no t2v clip generated).
 
 ## Backends
 
@@ -43,10 +61,12 @@ Dependencies tab.
 The extension ships a React custom-element app (`svi2-pro-app`, served from
 `web/dist`) with two views of one render request:
 
-- **Recipe view** — a preset gallery, the ref-image upload (required) plus an
-  optional last-image upload (required for FLF2V morph presets), a
-  single-prompt-first prompt input, and tier-grouped nudgeable fields. Selecting
-  a preset populates the form; every field stays individually adjustable.
+- **Recipe view** — a preset gallery, a **mode toggle** (Image-to-Video /
+  Text-to-Video), the ref-image upload (required for i2v; optional in t2v) plus
+  an optional last-image upload (required for FLF2V morph presets), a
+  single-prompt-first prompt input, an optional numeric **seed** (t2v only), and
+  tier-grouped nudgeable fields. Selecting a preset populates the form; every
+  field stays individually adjustable.
 - **DAG view** — a live pipeline graph (`@xyflow/react`) of the render:
   anchor → optional Qwen edit → per-clip diffusion → stitch/crossfade →
   interpolation → mux, with node state driven by the same render notifications
@@ -102,6 +122,15 @@ The script wraps `scripts/gpu_smoke.py`, expects the worker venv built by
 
 ## Known limitations
 
+- **Text-to-Video real-GPU path is unproven.** The Wan2.2-T2V-A14B fp8 experts
+  (`dit-t2v-high`/`dit-t2v-low`, Kijai repo) are wired into `manifest.yaml` +
+  `versions.yaml` and the seed-clip code is verified via the fake profile + unit
+  tests, but loading the real 28 GB experts, generating clip 0, freeing them, and
+  handing off to the i2v chain has **not** been run end-to-end on a GPU. The
+  sequential VRAM load-order (t2v experts freed before i2v experts load) is
+  structurally correct but unverified against the 16 GB Blackwell target. Run
+  `gpu_smoke.py --mode t2v` on `rtx50-fp8` before relying on it (deferred operator
+  gate).
 - **sd-cli on Linux is not pinned.** `leejet/stable-diffusion.cpp` publishes no
   Linux **CUDA** prebuilt (only ROCm / Vulkan / CPU Linux assets), so the
   manifest pins only the Windows CUDA binary. On Linux, `sd-cli` must come from

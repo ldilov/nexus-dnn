@@ -72,8 +72,8 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 Set-Location $WorkerDir
 
 # `uv run` auto-syncs the project before exec. Always include diffusers +
-# flash extras for svi2-pro.
-$UvRunFlags = @('run', '--extra', 'diffusers', '--extra', 'flash')
+# flash + rtx-upscale extras for svi2-pro.
+$UvRunFlags = @('run', '--extra', 'diffusers', '--extra', 'flash', '--extra', 'rtx-upscale')
 
 $argv = $UvRunFlags + @(
     'python', '-m', 'svi2_video_worker.headless_install',
