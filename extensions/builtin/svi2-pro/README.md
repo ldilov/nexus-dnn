@@ -12,15 +12,17 @@ Selected per render via `mode` (recipe screen toggle, default `image_to_video`):
 
 - **Image-to-Video** (`image_to_video`) — the operator supplies the anchor image;
   it conditions clip 0. Original behaviour, unchanged.
-- **Text-to-Video** (`text_to_video`) — no image required. The worker synthesizes
-  a single **seed frame** from the prompt (stable-diffusion.cpp txt2img, base
-  Qwen-Image, reusing the same sd-cli + Qwen VAE/text-encoder as the edit path),
-  then feeds it as the clip-0 anchor and runs the **unchanged** i2v + SVI chain.
-  Length still comes from i2v chaining; there is no native long-T2V model. An
-  optional numeric `seed` makes the synthesized frame reproducible. Note: the
-  prompt drives content (via the seed) and motion (per-clip), but not mid-take
-  appearance changes — appearance is locked to the seed (Wan2.2-i2v ref-lock).
-  A supplied image in T2V mode is used as the seed (synthesis skipped).
+- **Text-to-Video** (`text_to_video`) — no image required. The worker generates
+  **clip 0** from the prompt with **Wan2.2-T2V-A14B** (the same in-process Wan
+  stack — `WanModel` loader, `flow_match`, Wan VAE, UMT5-XXL — as the i2v path,
+  with a `in_dim=16` T2V config, no `y` conditioning, no SVI LoRA), then seeds the
+  **unchanged** i2v + SVI chain with clip 0's last frame (anchor) and last latents
+  (motion carry) for the remaining clips. No sd-cli, no Qwen — pure in-process
+  torch. T2V experts load → clip 0 → freed → i2v experts load (sequential, not
+  co-resident). An optional numeric `seed` makes clip 0 reproducible. Note: the
+  prompt drives content + motion, but appearance is locked to the generated seed
+  clip across the take (Wan2.2-i2v ref-lock). A supplied image in T2V mode is used
+  as the anchor directly (no t2v clip generated).
 
 ## Backends
 
@@ -120,13 +122,15 @@ The script wraps `scripts/gpu_smoke.py`, expects the worker venv built by
 
 ## Known limitations
 
-- **Text-to-Video seed model is not yet pinned.** The base Qwen-Image **txt2img**
-  GGUF used for T2V seed synthesis is referenced as a single constant
-  (`_QWEN_IMAGE_TXT2IMG` in `worker/src/svi2_video_worker/seed_synthesis.py`) but
-  is **not yet registered** in `manifest.yaml` / `backends/rtx50-fp8/versions.yaml`,
-  and the installed sd-cli build's Qwen-Image txt2img support is unconfirmed. The
-  exact filename + manifest entry MUST be validated before a real T2V GPU render
-  (deferred operator/hardware gate, alongside the GPU smoke).
+- **Text-to-Video real-GPU path is unproven.** The Wan2.2-T2V-A14B fp8 experts
+  (`dit-t2v-high`/`dit-t2v-low`, Kijai repo) are wired into `manifest.yaml` +
+  `versions.yaml` and the seed-clip code is verified via the fake profile + unit
+  tests, but loading the real 28 GB experts, generating clip 0, freeing them, and
+  handing off to the i2v chain has **not** been run end-to-end on a GPU. The
+  sequential VRAM load-order (t2v experts freed before i2v experts load) is
+  structurally correct but unverified against the 16 GB Blackwell target. Run
+  `gpu_smoke.py --mode t2v` on `rtx50-fp8` before relying on it (deferred operator
+  gate).
 - **sd-cli on Linux is not pinned.** `leejet/stable-diffusion.cpp` publishes no
   Linux **CUDA** prebuilt (only ROCm / Vulkan / CPU Linux assets), so the
   manifest pins only the Windows CUDA binary. On Linux, `sd-cli` must come from
