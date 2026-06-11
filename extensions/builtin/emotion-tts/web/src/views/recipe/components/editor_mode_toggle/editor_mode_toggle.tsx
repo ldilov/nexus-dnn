@@ -20,7 +20,7 @@ const OPTIONS: readonly Option[] = [
   { id: "quick", label: "Quick", glyph: "01", description: "Single voice · plain prose" },
   { id: "rows", label: "Per-character", glyph: "02", description: "One row per line · multi-voice" },
   { id: "story", label: "Story", glyph: "03", description: "Free-form text with @character and /emotion commands" },
-  { id: "storyboard", label: "Storyboard", glyph: "04", description: "Click phrases to cast voice + emotion in bulk" },
+  { id: "storyboard", label: "Storyboard", glyph: "04", description: "Click words to cast voice + emotion in bulk · shift-click to extend a range" },
 ];
 
 export const EDITOR_MODE_OPTIONS = OPTIONS;
