@@ -211,6 +211,12 @@ backend_runtimes:
     supported_roles: ["video.render"]
 operators:
   - file: "operators/video_render.yaml"
+  - file: "operators/anchor_encode.yaml"
+  - file: "operators/qwen_edit.yaml"
+  - file: "operators/clip_diffusion.yaml"
+  - file: "operators/stitch.yaml"
+  - file: "operators/interpolate.yaml"
+  - file: "operators/mux.yaml"
 recipes:
   - file: "recipes/svi2_render.yaml"
 ui:

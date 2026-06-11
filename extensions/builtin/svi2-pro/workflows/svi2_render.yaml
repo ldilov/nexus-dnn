@@ -20,8 +20,7 @@ workflow:
     - id: "anchor"
       label: "Anchor Encode"
     - id: "qwen_edit"
-      label: "Qwen Anchor Edit (optional)"
-      optional: true
+      label: "Qwen Anchor Edit"
     - id: "diffusion"
       label: "Per-Clip Diffusion"
     - id: "stitch"
@@ -41,19 +40,21 @@ workflow:
       config: {}
 
     - id: "qwen_edit"
+      operator: "svi2.video.qwen_edit@1.0.0"
       stage: "qwen_edit"
-      optional: true
       inputs:
-        anchor:
+        anchor_latent:
           from: "anchor_encode:anchor_latent"
+        prompts:
+          from: "input:prompts"
       config: {}
 
     - id: "clip_diffusion"
-      operator: "svi2_render@1.0.0"
+      operator: "svi2.video.diffuse@1.0.0"
       stage: "diffusion"
       inputs:
         anchor:
-          from: "anchor_encode:anchor_latent"
+          from: "qwen_edit:edited_anchor"
         prompts:
           from: "input:prompts"
         params:
@@ -61,6 +62,7 @@ workflow:
       config: {}
 
     - id: "stitch"
+      operator: "svi2.video.stitch@1.0.0"
       stage: "stitch"
       inputs:
         clips:
@@ -68,6 +70,7 @@ workflow:
       config: {}
 
     - id: "interpolate"
+      operator: "svi2.video.interpolate@1.0.0"
       stage: "interpolate"
       inputs:
         video:
@@ -75,37 +78,12 @@ workflow:
       config: {}
 
     - id: "mux"
+      operator: "svi2.video.mux@1.0.0"
       stage: "mux"
       inputs:
         frames:
           from: "interpolate:interpolated_video"
       config: {}
-
-  edges:
-    - sourceNode: "anchor_encode"
-      sourcePort: "anchor_latent"
-      targetNode: "qwen_edit"
-      targetPort: "anchor"
-    - sourceNode: "anchor_encode"
-      sourcePort: "anchor_latent"
-      targetNode: "clip_diffusion"
-      targetPort: "anchor"
-    - sourceNode: "qwen_edit"
-      sourcePort: "edited_anchor"
-      targetNode: "clip_diffusion"
-      targetPort: "anchor"
-    - sourceNode: "clip_diffusion"
-      sourcePort: "clip_frames"
-      targetNode: "stitch"
-      targetPort: "clips"
-    - sourceNode: "stitch"
-      sourcePort: "stitched_video"
-      targetNode: "interpolate"
-      targetPort: "video"
-    - sourceNode: "interpolate"
-      sourcePort: "interpolated_video"
-      targetNode: "mux"
-      targetPort: "frames"
 
   outputs:
     - name: "output_path"

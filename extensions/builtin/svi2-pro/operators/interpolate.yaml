@@ -1,0 +1,24 @@
+spec_version: "0.1"
+operator:
+  id: svi2.video.interpolate
+  version: 1.0.0
+  display_name: "Frame Interpolation"
+  description: "Raise the take to target fps with RIFE frame interpolation."
+  category: video.image_to_video
+execution:
+  mode: job
+  cacheable: false
+  resumable: false
+inputs:
+  - name: video
+    type: string
+    required: true
+  - name: interpolate_fps
+    type: integer
+    required: false
+outputs:
+  - name: interpolated_video
+    type: string
+resources:
+  gpu: true
+  min_vram_mb: 2048
