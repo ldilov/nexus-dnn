@@ -44,52 +44,56 @@ def test_t2v_no_image_matches_i2v_frame_count(tmp_path: Path):
     assert t2v["frames"] == i2v["frames"]
 
 
-def test_t2v_no_image_invokes_seed_pre_step(tmp_path: Path, monkeypatch):
+def test_t2v_no_image_generates_seed_clip(tmp_path: Path, monkeypatch):
     import svi2_video_worker.pipeline_fake as pf
 
     calls: list[str] = []
 
-    def _spy(*args, **kwargs):
-        calls.append("synth")
+    def _spy(validated, seed_dst):
+        calls.append("seed_clip")
         return Path("seed.png")
 
-    monkeypatch.setattr(pf, "synthesize_seed_frame", _spy)
+    monkeypatch.setattr(pf, "generate_t2v_seed_clip", _spy)
     _run(_base(tmp_path, mode="text_to_video", seed=7))
-    assert calls == ["synth"]
+    assert calls == ["seed_clip"]
 
 
-def test_t2v_with_ref_image_skips_seed_synthesis(tmp_path: Path, monkeypatch):
+def test_t2v_with_ref_image_skips_seed_clip(tmp_path: Path, monkeypatch):
     import svi2_video_worker.pipeline_fake as pf
 
     calls: list[str] = []
-    monkeypatch.setattr(pf, "synthesize_seed_frame", lambda *a, **k: calls.append("synth"))
+    monkeypatch.setattr(
+        pf, "generate_t2v_seed_clip", lambda *a, **k: calls.append("seed_clip")
+    )
     _run(_base(tmp_path, mode="text_to_video", ref_image_path="x.png"))
     assert calls == []
 
 
-def test_i2v_does_not_invoke_seed_synthesis(tmp_path: Path, monkeypatch):
+def test_i2v_does_not_generate_seed_clip(tmp_path: Path, monkeypatch):
     import svi2_video_worker.pipeline_fake as pf
 
     calls: list[str] = []
-    monkeypatch.setattr(pf, "synthesize_seed_frame", lambda *a, **k: calls.append("synth"))
+    monkeypatch.setattr(
+        pf, "generate_t2v_seed_clip", lambda *a, **k: calls.append("seed_clip")
+    )
     _run(_base(tmp_path, ref_image_path="x.png"))
     assert calls == []
 
 
-def test_t2v_records_seed_origin_synthesized_in_report(tmp_path: Path, monkeypatch):
+def test_t2v_records_seed_origin_t2v_clip_in_report(tmp_path: Path, monkeypatch):
     import svi2_video_worker.pipeline_fake as pf
 
-    monkeypatch.setattr(pf, "synthesize_seed_frame", lambda *a, **k: Path("seed.png"))
+    monkeypatch.setattr(pf, "generate_t2v_seed_clip", lambda *a, **k: Path("seed.png"))
     result = _run(_base(tmp_path, mode="text_to_video", seed=11))
     report = result["render_report"]
-    assert report["seed_origin"] == "synthesized"
+    assert report["seed_origin"] == "t2v_clip"
     assert report["seed_value"] == 11
 
 
 def test_t2v_with_operator_ref_records_origin_operator(tmp_path: Path, monkeypatch):
     import svi2_video_worker.pipeline_fake as pf
 
-    monkeypatch.setattr(pf, "synthesize_seed_frame", lambda *a, **k: Path("seed.png"))
+    monkeypatch.setattr(pf, "generate_t2v_seed_clip", lambda *a, **k: Path("seed.png"))
     result = _run(_base(tmp_path, mode="text_to_video", ref_image_path="x.png"))
     assert result["render_report"]["seed_origin"] == "operator"
 
@@ -97,7 +101,7 @@ def test_t2v_with_operator_ref_records_origin_operator(tmp_path: Path, monkeypat
 def test_t2v_honors_last_image_flf2v(tmp_path: Path, monkeypatch):
     import svi2_video_worker.pipeline_fake as pf
 
-    monkeypatch.setattr(pf, "synthesize_seed_frame", lambda *a, **k: Path("seed.png"))
+    monkeypatch.setattr(pf, "generate_t2v_seed_clip", lambda *a, **k: Path("seed.png"))
     params = _base(
         tmp_path,
         mode="text_to_video",
