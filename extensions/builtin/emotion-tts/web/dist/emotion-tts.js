@@ -24452,6 +24452,9 @@ function zL({
                   "aria-label": ye ? `${ec(o, ye.voiceId).name} · ${ce.text.trim()}` : ce.text.trim(),
                   className: YO,
                   style: VL(ze, he, Fe, ce.kind),
+                  onMouseDown: (je) => {
+                    je.shiftKey && je.preventDefault();
+                  },
                   onClick: (je) => {
                     je.stopPropagation(), de(ce.id, je.currentTarget, je.shiftKey);
                   },
