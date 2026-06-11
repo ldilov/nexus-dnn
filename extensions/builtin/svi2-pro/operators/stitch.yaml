@@ -1,0 +1,20 @@
+spec_version: "0.1"
+operator:
+  id: svi2.video.stitch
+  version: 1.0.0
+  display_name: "Stitch / Crossfade"
+  description: "Join per-clip frames into one continuous take with rolling crossfade at clip boundaries."
+  category: video.image_to_video
+execution:
+  mode: job
+  cacheable: false
+  resumable: false
+inputs:
+  - name: clips
+    type: array
+    required: true
+outputs:
+  - name: stitched_video
+    type: string
+resources:
+  gpu: false

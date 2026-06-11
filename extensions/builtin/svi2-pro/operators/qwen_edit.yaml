@@ -1,0 +1,24 @@
+spec_version: "0.1"
+operator:
+  id: svi2.video.qwen_edit
+  version: 1.0.0
+  display_name: "Qwen Anchor Edit"
+  description: "Optional Qwen-Image-Edit pass that transforms the anchor before diffusion. Passthrough when disabled."
+  category: video.image_to_video
+execution:
+  mode: job
+  cacheable: false
+  resumable: false
+inputs:
+  - name: anchor_latent
+    type: object
+    required: true
+  - name: prompts
+    type: array
+    required: false
+outputs:
+  - name: edited_anchor
+    type: object
+resources:
+  gpu: true
+  min_vram_mb: 4096
