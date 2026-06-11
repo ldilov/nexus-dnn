@@ -14,6 +14,8 @@ export interface RunEvent {
   node_id?: string;
   status?: string;
   progress?: number;
+  /** NexusEvent::NodeProgress carries `percent` (0–100), not `progress`. */
+  percent?: number;
   message?: string;
   timestamp: string;
 }
