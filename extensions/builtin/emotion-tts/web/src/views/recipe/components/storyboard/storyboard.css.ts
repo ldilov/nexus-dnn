@@ -511,28 +511,16 @@ export const libName = style({
   fontSize: "11.5px",
 });
 
-export const renderBtn = style({
-  // audit-allow: px — render CTA height fixed to design spec
-  height: "34px",
-  padding: "0 16px",
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "7px",
-  background: vars.color.accent,
-  border: "none",
-  // audit-allow: px — render CTA radius pinned to vision (8px)
-  borderRadius: "8px",
-  color: vars.color.accentOn,
+export const footerHint = style({
+  // audit-allow: px — hint scale fixed to design spec
+  fontSize: "11.5px",
+  color: onSurfaceMuted,
   fontFamily: vars.font.body,
-  fontSize: "12.5px",
-  fontWeight: 700,
-  cursor: "pointer",
-  boxShadow: `0 0 14px ${vars.color.accentGlow}`,
-  transition: `filter ${vars.motion.fast}`,
-  selectors: {
-    "&:hover:not(:disabled)": { filter: "brightness(1.06)" },
-    "&:disabled": { opacity: 0.5, cursor: "not-allowed", boxShadow: "none" },
-  },
+});
+
+globalStyle(`${footerHint} strong`, {
+  color: vars.color.text,
+  fontWeight: 600,
 });
 
 globalStyle(`${root} .material-symbols-outlined`, {
