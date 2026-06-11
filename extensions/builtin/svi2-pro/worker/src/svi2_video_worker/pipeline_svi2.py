@@ -38,11 +38,7 @@ _WAN22_A14B_CONFIG: dict[str, Any] = {
     "require_clip_embedding": False,
 }
 
-# Wan2.2-T2V-A14B: identical transformer to the i2v expert but in_dim=16
-# (latent only — no 4-channel mask + 16-channel VAE-conditioning that the i2v
-# `y` tensor carries). With require_vae_embedding off the DiT never concats `y`,
-# so the seed clip is driven by text cross-attention alone. No SVI LoRA — the
-# SVI LoRAs are i2v-trained and do not apply to the t2v experts.
+# T2V variant of the i2v expert: latent-only in_dim=16, no y/clip conditioning.
 _WAN22_T2V_A14B_CONFIG: dict[str, Any] = {
     **_WAN22_A14B_CONFIG,
     "in_dim": 16,
@@ -403,12 +399,6 @@ def _build_experts(params: dict[str, Any]) -> tuple[ExpertModel, ExpertModel]:
     return high, low
 
 
-def _wan_t2v_model_builder(config: dict[str, Any]) -> Any:
-    from .wan22 import WanModel
-
-    return WanModel(**config)
-
-
 def _build_t2v_expert(dit_path: Path) -> ExpertModel:
     """Build one Wan2.2-T2V-A14B expert: t2v config, fp8 weights, no SVI LoRA."""
     from .wan22 import WanModel
@@ -417,7 +407,7 @@ def _build_t2v_expert(dit_path: Path) -> ExpertModel:
     fp8_audit: dict[str, object] = {}
     if dit_path.exists():
         dit, fp8_audit = load_expert_meta(
-            _WAN22_T2V_A14B_CONFIG, dit_path, _wan_t2v_model_builder
+            _WAN22_T2V_A14B_CONFIG, dit_path, _wan_model_builder
         )
     else:
         dit = WanModel(**_WAN22_T2V_A14B_CONFIG)
@@ -635,7 +625,6 @@ def _generate_t2v_clip0(
 
     seed = params.get("seed")
     seed = int(seed) if seed is not None else 0
-    torch.manual_seed(seed)
     noise = torch.randn(
         1, _WAN22_T2V_A14B_CONFIG["out_dim"], total_latent_frames, lat_h, lat_w,
         generator=torch.Generator(device="cpu").manual_seed(seed),
@@ -802,6 +791,7 @@ def _run_render(
         t2v_audit = t2v_clip.audit
         ref_image = fit_to_resolution(seed_clip_frames[-1], width, height)
         writer.write_many(stitcher.push(seed_clip_frames))
+        del seed_clip_frames
         _notify(worker, "svi2.video.clip.completed", {"clip_index": 0, "num_clips": num_clips})
     else:
         ref_image = fit_to_resolution(
@@ -962,7 +952,7 @@ def _run_render(
 
         # Cap colour/exposure drift down the continuation chain: match each
         # later clip's per-channel latent stats toward clip-0 (AdaIN). Off at 0.
-        if clip_idx == 0:
+        if clip_idx == chain_start and not generate_seed_clip:
             adain_reference = latent.detach()[0]
         elif adain_factor > 0.0 and adain_reference is not None:
             adjusted = adain_normalize_latent(latent[0], adain_reference, adain_factor)

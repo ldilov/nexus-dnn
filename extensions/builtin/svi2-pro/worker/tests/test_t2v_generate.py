@@ -26,7 +26,7 @@ def test_t2v_artifact_filenames_registered():
 
 
 def test_t2v_expert_carries_no_lora():
-    torch = pytest.importorskip("torch")
+    pytest.importorskip("torch")
     from svi2_video_worker.pipeline_svi2 import _build_t2v_expert
 
     expert = _build_t2v_expert(__import__("pathlib").Path("does-not-exist.safetensors"))
