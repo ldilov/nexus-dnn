@@ -156,7 +156,7 @@ export function RecipeView(): JSX.Element {
   );
   const [editorMode, setEditorMode] = useState<EditorMode>(() => {
     const persisted = seededRecipeMeta["editorMode"];
-    if (persisted === "quick" || persisted === "rows" || persisted === "story") {
+    if (persisted === "quick" || persisted === "rows" || persisted === "story" || persisted === "storyboard") {
       return persisted;
     }
     if (typeof seededRecipeMeta["quickMode"] === "boolean") {
@@ -220,6 +220,7 @@ export function RecipeView(): JSX.Element {
               quick: "Quick",
               rows: "Per-character",
               story: "Story",
+              storyboard: "Storyboard",
             };
             const countLines = (s: string): number =>
               s.split(/\r?\n/).filter((l) => l.trim().length > 0).length;
@@ -629,6 +630,7 @@ export function RecipeView(): JSX.Element {
             defaultVoiceAssetId={defaultVoiceAssetId}
             onDefaultVoiceAssetIdChange={setDefaultVoiceAssetId}
             presets={vectorPresets}
+            voiceAssets={voiceAssets}
           />
         }
         parsedDialogueSection={
