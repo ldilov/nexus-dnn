@@ -12,6 +12,7 @@ import {
 import { useRuntimeStatus } from "../../../hooks/use_runtime_status";
 import type { StatusKind } from "../../../components/base/status_chip";
 import { deleteDeployment } from "../../../services/deployments";
+import { useRootOutletContext } from "../../../root_layout";
 import { DeploymentDetailUI, type DetailTabId } from "./detail.ui";
 
 export interface DeploymentDetailPlaceholderProps {
@@ -26,6 +27,10 @@ export function DeploymentDetailPlaceholder({
   const [tab, setTab] = useState<DetailTabId>("recipe");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
+
+  // Live execution state from the host event bus (shared root subscription).
+  // Lights up the Workflow Graph tab with per-node run status (P0 wire-up).
+  const { nodeProgress, runId } = useRootOutletContext();
 
   const { data: deployment } = useDeployment(deploymentId);
   const { data: modulesEnvelope } = useModules({ limit: 200 });
@@ -150,6 +155,8 @@ export function DeploymentDetailPlaceholder({
         onBack={onBack}
         workflow={workflow ?? null}
         workflowLoading={workflowLoading}
+        nodeProgress={nodeProgress}
+        runId={runId}
         extensionLayout={extensionLayout}
         extensionId={deployment?.source_extension_id ?? null}
         onRequestDelete={() => setDeleteOpen(true)}

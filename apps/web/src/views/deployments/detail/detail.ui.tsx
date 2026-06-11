@@ -85,6 +85,11 @@ export interface DeploymentDetailUIProps {
   onBack: () => void;
   workflow: Workflow | null;
   workflowLoading: boolean;
+  /** Live per-node run status from the host event bus — drives the Workflow
+   * Graph tab's execution overlay. Empty map when no run is active. */
+  nodeProgress: Record<string, { status: string; progress: number }>;
+  /** Active run id for the live graph's port-value overlay; null when idle. */
+  runId: string | null;
   extensionLayout: LayoutSummary | null;
   /** The owning extension id for the deployment, when bound to one. Drives the
    * generic `/api/v1/extensions/{ext-id}/...` mount path for extension-owned
@@ -200,6 +205,8 @@ export function DeploymentDetailUI({
   onBack,
   workflow,
   workflowLoading,
+  nodeProgress,
+  runId,
   extensionLayout,
   extensionId,
   onRequestDelete,
@@ -450,7 +457,7 @@ export function DeploymentDetailUI({
             )}
             {!workflowLoading && workflow && (
               <div className={s.realGraphFrame}>
-                <GraphView workflow={workflow} nodeProgress={{}} />
+                <GraphView workflow={workflow} nodeProgress={nodeProgress} runId={runId} />
               </div>
             )}
             {!workflowLoading && !workflow && (
