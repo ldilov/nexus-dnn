@@ -78,7 +78,6 @@ export function Storyboard({
   const carRef = useRef<HTMLDivElement | null>(null);
   const segRefs = useRef<Map<string, HTMLElement>>(new Map());
   const popoverRef = useRef<HTMLDivElement | null>(null);
-  const renderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const jobSeq = useRef(1000);
   const nextJobId = useCallback((): string => {
     jobSeq.current += 1;
@@ -93,10 +92,6 @@ export function Storyboard({
     return m;
   }, [paragraphs]);
   const orderOf = useCallback((id: string) => orderMap.get(id) ?? Number.MAX_SAFE_INTEGER, [orderMap]);
-
-  useEffect(() => () => {
-    if (renderTimer.current) clearTimeout(renderTimer.current);
-  }, []);
 
   // Drop jobs whose segments no longer exist when the script text changes
   // (keeps text ↔ panel in sync — AC-9.3).
@@ -206,14 +201,6 @@ export function Storyboard({
 
   const playJob = useCallback((id: string) => {
     setPlayingJobId((cur) => (cur === id ? null : id));
-  }, []);
-
-  const onRenderAll = useCallback(() => {
-    setJobs((prev) => prev.map((j) => (j.status === "ready" ? j : { ...j, status: "rendering" as JobStatus })));
-    if (renderTimer.current) clearTimeout(renderTimer.current);
-    renderTimer.current = setTimeout(() => {
-      setJobs((prev) => prev.map((j) => (j.status === "rendering" ? { ...j, status: "ready" as JobStatus } : j)));
-    }, 2600);
   }, []);
 
   const scrollCar = useCallback((dir: number) => {
@@ -612,10 +599,7 @@ export function Storyboard({
             })}
           </div>
         </div>
-        <button type="button" className={css.renderBtn} onClick={onRenderAll} disabled={jobs.length === 0}>
-          <span className="material-symbols-outlined" style={{ fontSize: 16 }} aria-hidden="true">bolt</span>
-          Render queue
-        </button>
+        <span className={css.footerHint}>Cast every phrase, then <strong>Generate</strong> from the top bar.</span>
       </div>
     </div>
   );
