@@ -159,34 +159,28 @@ export function buildEmotions(presets: readonly VectorPreset[]): readonly Emotio
   return out.length > 0 ? out : DEMO_EMOTIONS;
 }
 
-const SENTENCE_BOUNDARY = /[^.!?…”’"]*(?:[.!?…][\s”’"]*|[”’"]+\s*|$)/g;
-
-/** Split a script into paragraphs of clickable phrase segments. Concatenating
- * every segment's text in order reproduces the source exactly, so previews and
- * ordering stay lossless. Segment ids are deterministic by position. */
+/** Split a script into paragraphs of clickable WORD segments — each word keeps
+ * its trailing whitespace, so concatenating segments in order reproduces the
+ * source losslessly (previews + ordering stay exact). Word granularity lets a
+ * user cast an arbitrary contiguous subset of words via click + shift-click.
+ * Quote-aware: words inside “…” are tagged dialogue. Ids are deterministic. */
 export function segmentScript(text: string): Paragraph[] {
   const paraChunks = text.split(/\n\s*\n/);
   const paragraphs: Paragraph[] = [];
   let pi = 0;
   for (const chunk of paraChunks) {
     if (!chunk.trim()) continue;
-    const segs: Segment[] = [];
-    let si = 0;
-    let match: RegExpExecArray | null;
-    SENTENCE_BOUNDARY.lastIndex = 0;
-    while ((match = SENTENCE_BOUNDARY.exec(chunk)) !== null) {
-      const piece = match[0];
-      if (piece === "") {
-        if (SENTENCE_BOUNDARY.lastIndex >= chunk.length) break;
-        SENTENCE_BOUNDARY.lastIndex += 1;
-        continue;
+    const words = chunk.match(/\S+\s*/g) ?? [chunk];
+    let inQuote = false;
+    const segs: Segment[] = words.map((w, si) => {
+      const kind: Segment["kind"] = inQuote || /[“”"]/.test(w) ? "dialogue" : "narration";
+      for (const ch of w) {
+        if (ch === "“") inQuote = true;
+        else if (ch === "”") inQuote = false;
+        else if (ch === '"') inQuote = !inQuote;
       }
-      if (piece.trim().length === 0) continue;
-      const kind: Segment["kind"] = /[“”"]/.test(piece) ? "dialogue" : "narration";
-      segs.push({ id: `p${pi}s${si}`, text: piece, kind });
-      si += 1;
-    }
-    if (segs.length === 0) segs.push({ id: `p${pi}s0`, text: chunk, kind: /[“”"]/.test(chunk) ? "dialogue" : "narration" });
+      return { id: `p${pi}s${si}`, text: w, kind };
+    });
     paragraphs.push({ id: `p${pi}`, segs });
     pi += 1;
   }
