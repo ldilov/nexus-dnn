@@ -3,6 +3,7 @@ pub mod dispatcher;
 pub mod domain;
 pub mod host_adapter;
 pub mod host_contract;
+pub mod node_events;
 pub mod register;
 pub mod router;
 pub mod storage;
