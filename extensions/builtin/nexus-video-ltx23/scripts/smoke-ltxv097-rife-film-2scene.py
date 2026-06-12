@@ -169,11 +169,6 @@ def main() -> int:
                 print(f"FAIL scene{si} seg{seg_in_scene}: {e}")
                 traceback.print_exc()
                 return 1
-            # apply_seam needs the PREVIOUS segment's trailing frames as
-            # a list at THIS segment's output resolution (mirrors
-            # pipeline_ltxv097: apply_seam(last_frame_image, list(frames),
-            # ...)). Passing a single frame makes apply_seam early-return
-            # (tail=[]), silently skipping the seam + FILM bridge.
             fr = apply_seam(prev_seam_tail, fr, seam, log)
             peak = torch.cuda.max_memory_allocated() / 1024**3
             tag = f"s{si}_g{seg_in_scene}"
@@ -194,9 +189,6 @@ def main() -> int:
             )
             prev_last = fr[-1]
             tcount = max(1, min(samp["condition_tail_frames"], len(fr)))
-            # Output-resolution tail (1280×720 when upscaling) for the
-            # NEXT segment's seam bridge — must match the next segment's
-            # output frames so FILM/linear blends same-sized frames.
             prev_seam_tail = fr[-tcount:]
             tail = fr[-tcount:]
             if upscale:

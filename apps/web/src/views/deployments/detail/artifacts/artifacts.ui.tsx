@@ -74,10 +74,6 @@ export function ArtifactsUI({
   const someSelected = selectedCount > 0 && !allSelected;
   const hasSelection = selectedCount > 0;
   const selectAllRef = useRef<HTMLInputElement | null>(null);
-  // Re-apply `indeterminate` AFTER React's reconciliation has written
-  // `checked`. Setting it via a callback ref races browser-specific
-  // DOM ordering (Safari / Firefox can reset indeterminate when checked
-  // is assigned via property), so we own the order explicitly here.
   useEffect(() => {
     if (selectAllRef.current) {
       selectAllRef.current.indeterminate = someSelected;

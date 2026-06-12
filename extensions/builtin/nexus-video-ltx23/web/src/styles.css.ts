@@ -11,10 +11,6 @@ const danger = "oklch(70% 0.22 25)";
 const success = "oklch(72% 0.16 145)";
 const warning = "oklch(80% 0.18 80)";
 
-// The stylesheet is injected into the custom element's shadow root
-// (see main.tsx). `:host` matches the shadow root's host element from
-// inside the shadow tree — replaces the prior light-DOM globalStyle on
-// the tag name which would no longer match anything.
 globalStyle(":host", {
   display: "block",
   minHeight: "100%",

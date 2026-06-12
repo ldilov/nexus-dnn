@@ -154,10 +154,6 @@ export function ModelsSearchView() {
         const next = { ...prev };
         for (const job of updates) {
           if (!job) continue;
-          // Detect non-terminal → `downloaded` transition and broadcast
-          // a "models changed" event so listening surfaces (Local
-          // Chat's model picker, etc.) refresh their installed-model
-          // lists immediately, without waiting for a window focus.
           const prior = prev[job.job_id];
           const wasNonTerminal = prior && !isTerminalState(prior.state);
           if (wasNonTerminal && job.state === "downloaded") {
@@ -268,11 +264,6 @@ export function ModelsSearchView() {
     [jobByFamily],
   );
 
-  // On-disk identity (spec 054 G7.3): each download job carries the GUID
-  // `job_id` that owns the model's on-disk dir plus its `family_id`. Surface
-  // it for downloaded families so the operator can map an opaque dir to a
-  // model. Backfilled with the host-resolved on-disk path / family once the
-  // host model metadata is wired in.
   const identityByFamily = useMemo<
     Record<string, ModelOnDiskIdentity | undefined>
   >(() => {
@@ -285,15 +276,6 @@ export function ModelsSearchView() {
     return out;
   }, [jobByFamily]);
 
-  // Artifact-keyed lookups for the multi-quantization `ArtifactList`
-  // rendering path. Each `DownloadJob.targets[]` carries `artifact_id`
-  // entries representing the individual files being fetched. Map each
-  // artifact to the job that owns it so the per-file row can render
-  // its own queued / downloading / paused / downloaded state — this is
-  // the missing wiring that left ArtifactList rows stuck on
-  // `not_downloaded` even with a job in flight. Job-level state takes
-  // precedence over `Artifact.install_state` so live progress shows
-  // even before the host confirms the install_state flip.
   const jobByArtifact = useMemo<Record<string, DownloadJob | undefined>>(
     () => {
       const out: Record<string, DownloadJob | undefined> = {};
@@ -343,14 +325,6 @@ export function ModelsSearchView() {
       };
       try {
         const job = await createDownload(body);
-        // Defensive: pre-fix versions of the host returned a stub
-        // `{ job_id, existing }` body when a duplicate job existed,
-        // leaving `state` / `family_id` / `targets` undefined. The
-        // host now always returns the full DTO, but a mixed-version
-        // deploy or an older host instance could still trip this.
-        // Guard by re-fetching the canonical job whenever the
-        // response is missing required fields, so the UI state never
-        // contains a partial record.
         const canonical =
           typeof job.state === "string" && typeof job.family_id === "string"
             ? job
@@ -362,15 +336,6 @@ export function ModelsSearchView() {
             [canonical.job_id]: target.variantId,
           }));
         }
-        // `downloadable_but_not_runnable` (the "DOWNLOAD ONLY" chip)
-        // means the file can be fetched but no runtime in the active
-        // backend roster can load it — typically a safetensors LLM
-        // when only llama.cpp / GGUF is enabled. Surface this
-        // up-front in the toast so the user doesn't go looking for
-        // the model in Local Chat after download completes and find
-        // nothing (the chat picker filters to GGUF only). The
-        // "DOWNLOAD ONLY" chip is already visible on the card; the
-        // toast is the moment-of-action reinforcement.
         const isDownloadOnly = family.compat === "downloadable_but_not_runnable";
         const baseMessage =
           target.kind === "variant"

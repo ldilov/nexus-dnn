@@ -162,15 +162,6 @@ pub async fn install(
         return repo_500("installs_insert_failed", e.to_string());
     }
 
-    // Spawn the pipeline if we can resolve the contributing extension's
-    // on-disk directory. Builtin extensions live under the host's
-    // builtin_extensions_dir (typically `<repo>/extensions/builtin/<id>`),
-    // user-installed extensions live under `extensions_dir` (typically
-    // `~/.nexus/extensions/<id>`). The extension registry knows the
-    // canonical path for each activated extension regardless of source,
-    // so we prefer that. Falls back to the legacy `extensions_dir`
-    // join when the registry has no entry (e.g. fixture installs in
-    // unit tests).
     let registry_dir = <nexus_extension::InMemoryExtensionRegistry as nexus_extension::ExtensionRegistry>::get_extension(
         state.extension_registry.as_ref(),
         entry.source_extension_id.as_str(),

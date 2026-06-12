@@ -69,10 +69,6 @@ fn no_extension_id_literals_in_source() {
 
 #[test]
 fn spec_value_is_opaque_outside_handler_modules() {
-    // Inside src/handlers/, handlers are *expected* to read fields out of `spec`.
-    // Everywhere else (`plan.rs`, `runner.rs`, `handler.rs`, `context.rs`, `fetch.rs`,
-    // `error.rs`, `types.rs`, `lib.rs`), the spec value is opaque — host generic code
-    // MUST NOT pattern-match on its internal shape.
     const FORBIDDEN_SHAPES: &[&str] = &[
         "spec[\"",
         "spec.get(",

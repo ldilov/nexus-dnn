@@ -434,10 +434,6 @@ pub async fn insert_installed_artifact_fixture_on_disk(
         .map(|_| chrono::Utc::now().timestamp_millis());
 
     let job_id = nexus_models_store::ids::JobId::new().to_string();
-    // Sanitize to a safe single-segment filename (artifact ids carry ':' and
-    // '/' which are invalid in Windows paths). Both the DB `filename` column
-    // and the on-disk file share this value so the disk-truth reconcile path
-    // resolves `<sink_root>/<job_id>/<filename>` consistently.
     let safe: String = f
         .artifact_id
         .chars()

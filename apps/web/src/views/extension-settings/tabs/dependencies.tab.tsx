@@ -157,9 +157,6 @@ export function DependenciesTab({ extensionId }: DependenciesTabProps) {
     [extensionId, mutate],
   );
 
-  // Authoritative-on-mount: the host's `install_active` flag means a remounted
-  // page knows an install is in flight immediately, before the first WS event.
-  // `progress.active` (live events) and a DTO `running` status are belt-and-braces.
   const installActive =
     progress.active ||
     (data?.install_active ?? false) ||

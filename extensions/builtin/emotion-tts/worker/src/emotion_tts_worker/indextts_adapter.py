@@ -133,9 +133,6 @@ class IndexTtsAdapter:
         self._speaker_cache_path.mkdir(parents=True, exist_ok=True)
         self._model_family = model_family
         self._runtime_version = runtime_version
-        # Spec 034 US3 — byte-budgeted LRU over computed speaker-conditioning
-        # embeddings. Budget comes from AdapterSettings so the Rust shim can
-        # tune it via the EMOTION_TTS_SPEAKER_CACHE_MB env var (T075).
         self._speaker_cache: SpeakerCache[Any] = SpeakerCache(
             budget_mb=self._settings.speaker_cache_mb,
         )
@@ -146,11 +143,6 @@ class IndexTtsAdapter:
         with self._lock:
             if self._model is not None:
                 return
-            # Direct-to-stderr checkpoints (bypass logging buffers) so we can
-            # see EXACTLY where a multi-minute hang is sitting. The host
-            # forwards stderr line-by-line into the host log via the
-            # StdioLease stderr forwarder, so each `print(..., flush=True)`
-            # below shows up immediately in the host trace.
             import sys as _sys
             import time as _time
             def _ckpt(label: str) -> float:

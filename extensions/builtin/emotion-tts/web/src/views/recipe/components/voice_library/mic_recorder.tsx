@@ -71,9 +71,6 @@ export function MicRecorder({
   const recordButtonRef = useRef<HTMLButtonElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
-  // When the dialog opens: stash the previously-focused element, scroll the
-  // dialog into view, and focus the primary action so keyboard users land on
-  // it. On close, restore focus to wherever the trigger lived.
   useEffect(() => {
     if (!open) return undefined;
     previousFocusRef.current = (document.activeElement as HTMLElement) ?? null;
@@ -96,10 +93,6 @@ export function MicRecorder({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  // Focus trap: Tab/Shift-Tab cycles within the dialog's focusable elements
-  // so keyboard users can't escape into the obscured background. Computed
-  // on each keypress so dynamically-rendered controls (Stop/Re-record/Save)
-  // stay in the cycle without explicit list refresh.
   const onDialogKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>): void => {
       if (event.key !== "Tab") return;

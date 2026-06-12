@@ -41,9 +41,6 @@ class FamilyLoader:
         self._descriptors = list(descriptors)
         self._by_id = {d.family_id: d for d in descriptors}
         if active_family_id not in self._by_id and descriptors:
-            # Fall back to the alphabetically-first descriptor when the
-            # requested active family isn't registered. Keeps behaviour
-            # defined even if the YAML changes out from under us.
             active_family_id = sorted(self._by_id.keys())[0]
         self._active_family_id = active_family_id
 

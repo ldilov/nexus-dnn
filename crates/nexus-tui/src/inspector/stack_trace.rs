@@ -80,9 +80,6 @@ impl StackFrame {
 /// Returns an empty vec when no recognisable frames are found —
 /// callers can short-circuit on `frames.is_empty()`.
 pub fn parse(text: &str) -> Vec<StackFrame> {
-    // Python takes precedence: its header is unambiguous and the frame
-    // shape collides with our Rust regexes (the `File "..."` line
-    // doesn't, but the `at` heuristic is broad).
     if text.contains("Traceback (most recent call last):") {
         return parse_python(text);
     }

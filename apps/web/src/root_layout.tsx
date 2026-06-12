@@ -90,10 +90,6 @@ export function useRootOutletContext(): RootOutletContext {
   return useOutletContext<RootOutletContext>();
 }
 
-// The orchestration bus tags node events by `type` (snake_case NexusEvent
-// variant) and does not carry an explicit `status` field. Map the variant to
-// the status vocabulary the graph renderer understands so the live overlay
-// actually lights up; events with an explicit `status` still win.
 const NODE_STATUS_BY_TYPE: Record<string, string> = {
   node_started: "running",
   node_progress: "running",

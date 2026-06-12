@@ -139,9 +139,6 @@ pub async fn load_model(
         }
     };
 
-    // 3. Validate hyperparameters against the parameter catalog. Reject any
-    //    flags marked managed-spawn-disallowed (port/host/etc.) — those
-    //    belong to the host, not the extension.
     let catalog = match nexus_backend_runtimes::parameter_catalog::catalog_for(runtime_family) {
         Ok(c) => c,
         Err(e) => {

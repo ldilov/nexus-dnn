@@ -245,10 +245,6 @@ async fn install_records_failure_when_family_handler_is_missing() {
     drop(inner);
 }
 
-// -----------------------------------------------------------------------------
-// T066 — SSE progress stream
-// -----------------------------------------------------------------------------
-
 #[tokio::test]
 async fn progress_stream_emits_phase_events_and_terminates_with_done() {
     let h = spawn_harness().await;

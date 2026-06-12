@@ -222,10 +222,6 @@ fn build_extension_module(
         publisher: ext.publisher.clone(),
         runtime_family: Some(ext.runtime_family.clone()),
         installed_at: Some(ext.installed_at.clone()),
-        // Prefer the recipe-resolved workflow id (derived from the primary
-        // recipe's `workflow_template_ref`) over the manually-curated
-        // `ext.default_workflow_id` so frontend "Workflow graph" tab can
-        // render a real DAG even on extensions that predate FR-034.
         workflow_id: resolved_workflow_id.or_else(|| ext.default_workflow_id.clone()),
         extension_status: Some(status),
     }

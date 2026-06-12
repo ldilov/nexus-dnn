@@ -109,21 +109,7 @@ pub const fn resolve_runtime_id(preference: RuntimeProfilePreference) -> &'stati
 pub const fn default_offload_mode_for_profile(profile: &str) -> OffloadMode {
     match profile.as_bytes() {
         b"rtx50-gguf" => OffloadMode::Group,
-        // `rtx50-nvfp4` → bnb-NF4 pages cleanly under model offload
-        // (047-verified). `rtx50-ltxv097-gguf` → LTX-Video 0.9.7 13B Q4
-        // (~8 GB) + its own VAE fit 16 GB resident alongside a paged
-        // T5; `model` keeps the GGUF transformer resident (never pages,
-        // so GGUFParameter offload-hook opacity is moot) while T5 can
-        // swap. Neither wants `none` (worker <16 GB full-resident
-        // rejection) nor `group`/`sequential`.
         b"rtx50-nvfp4" | b"rtx50-ltxv097-gguf" => OffloadMode::Model,
-        // Every other profile → `Sequential`. This includes
-        // `rtx50-ltx2-gguf`: the LTX-2 19B Kijai-distilled Q4_K_M stack
-        // (~12.65 GB transformer + Gemma-3-12B Q4 text encoder + two
-        // BF16 VAEs) is too large to keep resident on a 16 GB card, so
-        // sequential's per-layer paging (~2 GB peak, never touches
-        // shared VRAM) is the safe default — the same reasoning as the
-        // bf16 fp8 profiles.
         _ => OffloadMode::Sequential,
     }
 }
@@ -389,23 +375,11 @@ pub const fn placement_for_offload_mode(mode: OffloadMode) -> ComponentPlacement
             vae: DevicePreference::Cuda,
             text_encoder: DevicePreference::Cuda,
         },
-        // `Model`: model_cpu_offload pages the transformer's submodules
-        // onto GPU one at a time. VAE + text encoder still benefit from
-        // being CUDA-resident (one-shot calls).
         OffloadMode::Model => ComponentPlacement {
             transformer: DevicePreference::Cpu,
             vae: DevicePreference::Cuda,
             text_encoder: DevicePreference::Cuda,
         },
-        // `Sequential`: every layer paged. Stays on CPU for stable
-        // storage; this is the lowest-VRAM mode.
-        //
-        // `Auto` should not reach this fn — the runner resolves Auto
-        // before dispatch — but if it ever does we fall through to
-        // Sequential's safe shape rather than panic.
-        // `Group`: block-level group-offload hook owns placement and
-        // pages block-groups from CPU stable storage — same reported
-        // shape as Sequential (all CPU; hook bridges per forward).
         OffloadMode::Sequential | OffloadMode::Group | OffloadMode::Auto => ComponentPlacement {
             transformer: DevicePreference::Cpu,
             vae: DevicePreference::Cpu,

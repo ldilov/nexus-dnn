@@ -84,9 +84,6 @@ impl RuntimeBootstrapper for RealRuntimeBootstrapper {
         accelerator_profiles: &[String],
         target_dir: &std::path::Path,
     ) -> Result<Option<RuntimeBootstrapResult>, DepError> {
-        // Reject runtime families the host catalog does not recognise — keeps
-        // probe results faithful to spec-032's canonical set instead of
-        // returning false negatives for typos.
         let Some(canonical_family) = RuntimeFamily::canonical(family) else {
             tracing::debug!(
                 target: "spec_035::probe",
@@ -96,12 +93,6 @@ impl RuntimeBootstrapper for RealRuntimeBootstrapper {
             return Ok(None);
         };
 
-        // FR-033: the disk layout is the source of truth for probe(). Check the
-        // filesystem at the dep-installer's per-extension target_dir FIRST so an
-        // install completed via bootstrap_python (which doesn't insert into the
-        // legacy `host_runtime_installs` table) is correctly recognised as
-        // satisfied on the next /dependencies poll. Fall back to the DB query
-        // for the legacy "user installed Python via the Backends page" path.
         if let RuntimeFamily::Python = canonical_family {
             let interpreter = nexus_backend_runtimes::family_python::python_exe_in(target_dir);
             // TRACE because this fires on every probe iteration; debug-level
@@ -118,12 +109,6 @@ impl RuntimeBootstrapper for RealRuntimeBootstrapper {
                     .await
                     .map(|m| m.len())
                     .unwrap_or(0);
-                // DEBUG, not INFO — the runner re-probes satisfied steps in
-                // a tight loop while waiting for downstream steps, so an
-                // INFO line per probe spams the terminal once any
-                // long-running step (`package_set`, `model_artifact`) is
-                // active. The first transition None→Satisfied is logged at
-                // INFO from the bootstrap path; routine re-probes stay quiet.
                 tracing::debug!(
                     target: "spec_035::probe",
                     family,
@@ -489,12 +474,6 @@ impl RealModelStoreClient {
                  'huggingface:Owner/Repo')",
             )
         })?;
-        // The detail endpoint is the authoritative enumeration for a KNOWN
-        // repo id: exact lookup, full sibling listing, LFS sizes (AC-3.1).
-        // The previous search-first path was doubly fragile — the Hub's
-        // free-text search intermittently 500s under burst (one flake halted
-        // the whole install run), and the repo had to land in the top-10
-        // results to be found at all.
         let files: Vec<RepoFile> = match Self::detail_with_retry(hf.as_ref(), repo_id).await {
             Ok(meta) => meta.siblings,
             Err(HfError::RepoNotFound(_)) => {
@@ -532,10 +511,6 @@ impl RealModelStoreClient {
             }
         };
 
-        // Narrow the repo listing to the extension's declared selection before
-        // building targets. An unrestricted selection keeps every file (the
-        // historical whole-repo snapshot); a selection that matches nothing is
-        // a hard error, never a silent zero-file install.
         let non_empty_paths: Vec<&str> = files
             .iter()
             .map(|f| f.path.as_str())
@@ -581,10 +556,6 @@ impl ModelStoreClient for RealModelStoreClient {
             .await
             .map_err(|e| DepError::Backend(format!("install_map.list_for_family: {e}")))?;
 
-        // Disk is the source of truth (AC-1.1/1.2). Reconcile each row against
-        // disk — a row whose file was deleted is self-healed away (row + refs
-        // dropped) — and return the first surviving row's path. Rows are
-        // ordered `installed_at DESC`, so this is the most recent live install.
         let sink_root = self.orchestrator.sink_root();
         for row in rows {
             let present = self
@@ -610,12 +581,6 @@ impl ModelStoreClient for RealModelStoreClient {
             .as_ref()
             .ok_or_else(|| DepError::Backend("download job store not initialised".into()))?;
 
-        // Snapshot-download the repo, narrowed by the extension's file
-        // selection. With no selection the whole repo is pulled (multi-file ML
-        // families keep configs/tokenizers/weights alongside the primary
-        // checkpoint, which the format normalizer would wrongly drop) — the
-        // historical behavior. With a selection, only matching files become
-        // targets so shared mega-repos don't over-pull hundreds of GB.
         let targets = self
             .snapshot_targets_from_huggingface(family_id, selection)
             .await?;
@@ -678,9 +643,6 @@ impl ModelStoreClient for RealModelStoreClient {
 
         let files_total = u32::try_from(job.targets.len()).unwrap_or(u32::MAX);
 
-        // Disk is the source of truth (AC-1.4): a target the store believes is
-        // `Downloaded` but whose file was deleted MUST NOT count as present.
-        // Stat each downloaded target's on-disk path under the job sink dir.
         let sink_dir = self.orchestrator.sink_root().join(job.job_id.to_string());
         let mut present: u32 = 0;
         for target in &job.targets {
@@ -718,11 +680,6 @@ impl ModelStoreClient for RealModelStoreClient {
             return Ok(None);
         }
 
-        // Disk is the source of truth. Stat each recorded file under its job sink
-        // dir and compare to the recorded size. A missing file or a size that
-        // diverged from the record means the install is corrupt and should be
-        // reinstalled. sha256 is not recorded for HF snapshots, so size is the
-        // pragmatic verification floor (truncation/partial-write detection).
         let sink_root = self.orchestrator.sink_root();
         let mut bad: Vec<String> = Vec::new();
         let mut sized_checks: u32 = 0;
@@ -772,9 +729,6 @@ impl ModelStoreClient for RealModelStoreClient {
         family_id: &str,
         _accelerator: Option<&str>,
     ) -> Result<(), DepError> {
-        // The artifact identity for ref-counting is the download `job_id` that
-        // owns the on-disk sink dir. Resolve it from the install-map rows the
-        // orchestrator wrote for this family on the just-completed install.
         let family = FamilyId::from(family_id);
         let rows = self
             .install_map
@@ -817,9 +771,6 @@ impl ModelStoreClient for RealModelStoreClient {
             .await
             .map_err(|e| DepError::Backend(format!("install_map.list_for_family: {e}")))?;
 
-        // Distinct job ids own one sink dir each. Drop this extension's ref to
-        // each, then GC the artifact only when no other extension still holds
-        // one — shared models survive, exclusively-owned models are deleted.
         let mut job_ids: Vec<String> = rows.into_iter().map(|r| r.job_id).collect();
         job_ids.sort();
         job_ids.dedup();
@@ -887,9 +838,6 @@ impl ModelStoreClient for RealModelStoreClient {
                 })
             }
             DownloadState::Downloaded => {
-                // Per-job sink directory contains the downloaded artifact(s).
-                // Downstream steps (validation/worker handshake) and the
-                // probe path (`is_family_installed`) expect this layout.
                 let path = self.orchestrator.sink_root().join(job.job_id.to_string());
                 Ok(ModelDownloadProgress::Completed {
                     path,
@@ -958,9 +906,6 @@ impl WorkerHandshake for RealWorkerHandshake {
         timeout: std::time::Duration,
         cancellation: CancellationToken,
     ) -> Result<(), HandshakeError> {
-        // Log every upstream artifact's id + path so when the handshake
-        // can't find what it needs, the next bug report shows exactly
-        // what was on the table at validation time.
         let upstream_summary: Vec<String> = upstream_artifacts
             .iter()
             .map(|(id, art)| {
@@ -983,24 +928,12 @@ impl WorkerHandshake for RealWorkerHandshake {
             "handshake: resolving runtime + venv from upstream artifacts"
         );
 
-        // Convention paths the runtime + package_set handlers write to.
-        // Used as a fallback when upstream_artifacts is missing the
-        // python or venv entry — happens on hosts built before the
-        // runner's probe-skip-with-artifact propagation fix landed.
         let runtime_convention = extension_data_dir.join("runtime").join("python");
         let venv_convention = extension_data_dir
             .join("runtime")
             .join("packages")
             .join(".venv");
 
-        // Resolve the BASE interpreter only as a sanity check that the
-        // runtime step actually placed Python on disk. The handshake
-        // invokes Python through the venv's own python (set further
-        // below) so the extension's editable worker package — and
-        // every other dep uv installed into the venv — is on
-        // sys.path. Spawning the base interpreter directly would
-        // produce `No module named <package>` because the base
-        // interpreter doesn't see venv site-packages.
         let _base_python = match find_python_interpreter(upstream_artifacts) {
             Some(p) => p,
             None => {
@@ -1065,13 +998,6 @@ impl WorkerHandshake for RealWorkerHandshake {
             }
         };
 
-        // Resolve the venv's bin/Scripts dir + the venv-owned python.
-        // uv-managed venvs always ship a Scripts/python.exe (windows) or
-        // bin/python (unix) launcher that's pre-configured to use the
-        // venv's site-packages. Spawning this is the *only* way to make
-        // the editable `<package>` install (and every transitive dep)
-        // visible to `python -m`. Falling back to the base interpreter
-        // would produce `No module named <package>`.
         let venv_bin = if cfg!(windows) {
             venv_dir.join("Scripts")
         } else {
@@ -1203,9 +1129,6 @@ async fn run_handshake_protocol(
 ) -> Result<(), HandshakeError> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-    // Drain stderr in the background so the worker doesn't block on a
-    // full pipe. Captured stderr is included in error messages on
-    // protocol failures.
     let stderr_handle = tokio::spawn(async move {
         let mut buf = String::new();
         let mut reader = BufReader::new(stderr);

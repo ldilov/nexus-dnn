@@ -1,105 +1,113 @@
 # 🔧 Configuration
 
-nexus-dnn is configured through environment variables and CLI flags. All settings have sensible defaults so the platform runs out of the box with zero configuration.
+This page reflects the current host configuration behavior in `crates/nexus-core/src/config.rs`.
 
----
+## Priority Order
 
-## ⚡ Quick Reference
+Configuration resolves in this order:
 
-| Variable | CLI Flag | Default | Description |
-|----------|----------|---------|-------------|
-| `NEXUS_DATA_DIR` | `--data-dir` | `~/.nexus` | Root data directory for all persistent state |
-| `NEXUS_PORT` | `--port` | `3000` | HTTP/WebSocket API server port |
-| `NEXUS_LOG_LEVEL` | `--log-level` | `info` | Default log level for all crates |
-| `RUST_LOG` | — | — | Per-crate log level overrides |
+1. CLI flags
+2. Environment variables
+3. `config.toml`
+4. Built-in defaults
 
-> 💡 **Tip:** CLI flags take precedence over environment variables.
+## CLI And Environment Reference
 
----
+| CLI flag | Environment variable | Default | Meaning |
+|----------|----------------------|---------|---------|
+| `--config` | `NEXUS_CONFIG` | `<data-dir>/config.toml` | config file path |
+| `--data-dir` | `NEXUS_DATA_DIR` | `~/.nexus` | root for persistent state |
+| `--port` | `NEXUS_PORT` | `3000` | host HTTP port |
+| `--log-level` | `NEXUS_LOG_LEVEL` | `info,tower_http=debug` | tracing filter baseline |
+| `--debug-async` | `NEXUS_DEBUG_ASYNC` | `false` | async diagnostics toggle |
+| `--with-tui` | — | `false` | launch the TUI as a child process |
+| `--tui-bin <PATH>` | — | auto-discovered | override the `nexus` TUI binary |
 
-## 📁 Data Directory
+Additional TUI settings:
 
-The data directory holds all persistent state. By default it lives at `~/.nexus/`.
+| Environment variable | Meaning |
+|----------------------|---------|
+| `NEXUS_TUI_RING_BUFFER_CAPACITY` | event ring-buffer size |
+| `NEXUS_TUI_TRACING_BRIDGE_ENABLED` | enable/disable tracing bridge |
+| `NEXUS_TUI_TRACING_BRIDGE_EXTRA_SENSITIVE_PATTERNS` | comma-separated redaction patterns |
+| `NEXUS_BUILTIN_EXTENSIONS_DIR` | override built-in extension source directory |
 
+## Example `config.toml`
+
+By default the host looks for `~/.nexus/config.toml`.
+
+```toml
+data_dir = "D:/nexus-data"
+port = 3100
+log_level = "info,tower_http=debug"
+debug_async = false
+
+[tui]
+ring_buffer_capacity = 50000
+
+[tui.tracing_bridge]
+enabled = true
+extra_sensitive_patterns = ["hf_token", "authorization"]
 ```
+
+## Runtime Defaults
+
+| Setting | Current default |
+|---------|-----------------|
+| Data dir | `~/.nexus` |
+| Port | `3000` |
+| Log filter | `info,tower_http=debug` |
+| Built-in extension dir | `<workspace>/extensions/builtin` unless overridden |
+
+## Data Directory Layout
+
+```text
 ~/.nexus/
-├── db/nexus.db          # SQLite metadata database
-├── artifacts/           # Content-addressed blob storage
-│   ├── blobs/
-│   ├── manifests/
-│   ├── temp/
-│   └── cache/
-├── extensions/          # Installed extension packages
-└── logs/               # Log files (when file logging is enabled)
+├── config.toml
+├── db/
+│   └── nexus.db
+├── artifacts/
+├── extensions/
+├── logs/
+└── ... extension/runtime-managed subdirectories
 ```
 
-| Subdirectory | Contents |
-|--------------|----------|
-| `db/` | SQLite database with workflow definitions, run records, extension metadata |
-| `artifacts/blobs/` | SHA-256 addressed output blobs from node executions |
-| `artifacts/manifests/` | JSON manifests linking blobs to their run lineage |
-| `artifacts/temp/` | Staging area for in-progress blob writes |
-| `artifacts/cache/` | Derived artifacts cached for faster re-access |
-| `extensions/` | Each child directory is an extension package containing a `manifest.yaml` |
-| `logs/` | Structured runtime logs |
+## Important Behavior Notes
 
-### Moving the Data Directory
+- The host listener binds to `0.0.0.0:<port>`.
+- The local browser/TUI helpers still use `127.0.0.1:<port>` when they connect back to the host.
+- The config file is optional. If it is absent, startup continues with defaults.
+- If you explicitly point `--config` or `NEXUS_CONFIG` at a missing file, startup fails.
 
-Set `NEXUS_DATA_DIR` to relocate all persistent state:
+## Common Examples
+
+### Run on another port
 
 ```bash
-NEXUS_DATA_DIR=/opt/nexus-data ./target/release/nexus-dnn
+cargo host -- --port 4000
 ```
 
-Or via CLI flag:
+### Move the data directory
 
 ```bash
-./target/release/nexus-dnn --data-dir /opt/nexus-data
+cargo host -- --data-dir D:/nexus-data
 ```
 
-> ⚠️ **Warning:** The host does not migrate data between directories. Copy the contents manually if you need to preserve existing state.
-
----
-
-## 📊 Logging
-
-nexus-dnn uses the `tracing` framework. The `NEXUS_LOG_LEVEL` variable sets the default level for all crates. For fine-grained control, use `RUST_LOG` with per-crate directives.
-
-### Default Level
+### Start host and TUI together
 
 ```bash
-NEXUS_LOG_LEVEL=debug ./target/release/nexus-dnn
+cargo dev -- --port 3100
 ```
 
-### Per-Crate Levels
+### Override built-in extensions during development
 
-`RUST_LOG` accepts a comma-separated list of `target=level` pairs:
-
-```bash
-RUST_LOG=nexus_core=debug,nexus_worker=trace,tower_http=info cargo run
+```powershell
+$env:NEXUS_BUILTIN_EXTENSIONS_DIR="D:\\Workspace\\repos\\nexus-dnn\\extensions\\builtin"
+cargo host
 ```
 
-### Common Configurations
+## Where To Look For More
 
-| Scenario | Command |
-|----------|---------|
-| Quiet production | `NEXUS_LOG_LEVEL=warn` |
-| Debug workflow engine | `RUST_LOG=nexus_workflow=debug,nexus_scheduler=debug` |
-| Trace worker communication | `RUST_LOG=nexus_worker=trace,nexus_protocol=trace` |
-| Debug HTTP requests | `RUST_LOG=tower_http=debug` |
-| Full debug (verbose) | `RUST_LOG=debug` |
-
-> 💡 **Tip:** `RUST_LOG` overrides `NEXUS_LOG_LEVEL` when both are set. Use `NEXUS_LOG_LEVEL` for a simple baseline and `RUST_LOG` when you need surgical control.
-
----
-
-## 🔗 Related Documentation
-
-| Document | Description |
-|----------|-------------|
-| [⚡ Getting Started](getting-started.md) | Build and run your first workflow |
-| [🏗️ Architecture](architecture.md) | System layers, crate map, data directory layout |
-
----
-
-> 🔗 [Back to Documentation Hub](README.md) | [Back to Project Root](../README.md)
+- [getting-started.md](getting-started.md)
+- [architecture.md](architecture.md)
+- [requirements.md](requirements.md)

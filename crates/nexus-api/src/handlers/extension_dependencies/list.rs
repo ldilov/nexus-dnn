@@ -41,10 +41,6 @@ pub async fn list_dependencies(
     };
 
     let inputs = runner_context_inputs(&state)?;
-    // Compute the path but do NOT create it here. Probe handlers must tolerate a
-    // missing directory (a missing dir IS the "not satisfied" signal). The dir is
-    // created lazily by `start_install` on the install path; doing it on every
-    // `GET /dependencies` would be a wasteful filesystem touch on a hot read path.
     let extension_data_dir = inputs.host_data_dir.join("extensions").join(&extension_id);
 
     let extension = state
@@ -76,14 +72,6 @@ pub async fn list_dependencies(
         force: false,
     };
 
-    // Snapshot any in-memory runner state for this extension. Probe is the source of
-    // truth for satisfaction, but a step that probes `NotSatisfied` while the runner
-    // recorded a `Failed` status from a prior install attempt MUST surface as
-    // `failed` so the user sees why the install halted (without this overlay, the
-    // step appears `pending` forever and the failure is silent).
-    // Clone the Arc out under the DashMap shard lock and drop the shard guard
-    // before awaiting on the per-extension Mutex — holding both is unnecessary
-    // and would block other extensions' state lookups.
     let runner_state_arc = state
         .dep_install_state
         .get(&extension_id)
@@ -102,9 +90,6 @@ pub async fn list_dependencies(
         let (mut dto, has_partial_bytes) =
             probe_step(&inputs.registry, &runner_ctx, step, &upstream).await;
         apply_runner_overlay(&mut dto, runner_state.get(&step.id));
-        // A still-pending step that already has partial bytes on disk is a paused,
-        // resumable download (the overlay may have flipped it terminal — only count
-        // it if it's genuinely still pending).
         if has_partial_bytes && matches!(dto.status, StepStatusKind::Pending) {
             any_partial = true;
         }
@@ -240,9 +225,6 @@ async fn probe_step(
 
     match handler.probe(&step_ctx, &step.spec).await {
         Ok(ProbeResult::Satisfied { artifact }) => {
-            // A satisfied step may still be corrupt on disk — verify integrity so
-            // the row can warn + offer reinstall. Cheap, no-network; `None` when
-            // the handler can't verify (most step types).
             let integrity =
                 handler
                     .integrity(&step_ctx, &step.spec)
@@ -274,9 +256,6 @@ async fn probe_step(
             )
         }
         Ok(ProbeResult::NotSatisfied) => {
-            // Only NotSatisfied steps pay for the (cheap, no-network) estimate. It
-            // surfaces "what's left / what's already present" from persisted state so
-            // the UI can show a resume-aware bar before the install even starts.
             let estimate = handler.estimate(&step_ctx, &step.spec).await;
             // present_bytes > 0 on a not-yet-satisfied step means a paused,
             // resumable partial download exists on disk.

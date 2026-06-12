@@ -184,13 +184,6 @@ impl InMemoryExtensionRegistry {
         match activate_extension_inner(&ext_dir, &manifest, host_version, protocol_version) {
             Ok(activated) => {
                 *ext = activated;
-                // Scan-time `process_builtin_extension` returns the extension
-                // with `operators: []` (status AvailableBuiltin); operators
-                // are only loaded here inside `activate_extension_inner`. So
-                // the operator index — built once at scan time — is empty
-                // for builtins until we reindex. Without this call, workflow
-                // save/validate emits `UnknownOperator` for every reference
-                // into a just-activated builtin extension.
                 state.operator_index =
                     OperatorIndex::build(rebuild_operator_entries(&state.extensions));
                 Ok(())

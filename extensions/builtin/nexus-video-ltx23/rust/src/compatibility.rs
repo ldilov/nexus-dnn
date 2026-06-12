@@ -103,16 +103,6 @@ pub fn check_known_incompatibilities(
 ) -> Result<()> {
     let short = short_profile_slug(runtime_profile_full);
 
-    // Guard 0 — real NVIDIA ModelOpt NVFP4 is under construction /
-    // host-blocked: NVFP4 layers cannot CPU-offload, diffusers blocks
-    // pre-quant cpu device_map, and `modelopt_cuda_ext_mx` will not
-    // build without a CUDA toolchain on this host (see
-    // checkpoints/2026-05-17-nvfp4-offload-blocker.md). The `Nvfp4`
-    // value stays for honest naming + future use, but resolves only
-    // via an EXPLICIT operator request (it is not a profile default —
-    // `default_quant_for_profile` keeps `rtx50-nvfp4` on the verified
-    // bnb path). Reject the explicit request at plan time rather than
-    // letting it reach a worker with no nvfp4 branch.
     if matches!(effective_quant(advanced, short), ModelQuant::Nvfp4) {
         return Err(ExtensionError::InvalidRequest(
             "quantization='nvfp4' (real NVIDIA ModelOpt FP4) is under \
@@ -126,15 +116,6 @@ pub fn check_known_incompatibilities(
         ));
     }
 
-    // Guard 0b — official Lightricks `LTX-2.3-fp8` is wired at the
-    // host/contract level (`Fp8Official`, wire "fp8", the `rtx*-fp8`
-    // profile default) but the worker single-file transformer override
-    // + the schema-parity → hidden-state → render-equivalence proof are
-    // GPU/host-restart-bound and not yet landed. Gated on
-    // `fp8_official_proven()` (NOT a version literal — same de-rot
-    // discipline as Guard 0c's `gguf_diffusers_fit_proven()`): while
-    // unproven, reject `Fp8Official` (explicit OR the profile default)
-    // at plan time so it never hits a worker with no fp8 branch.
     if matches!(effective_quant(advanced, short), ModelQuant::Fp8Official) && !fp8_official_proven()
     {
         return Err(ExtensionError::InvalidRequest(
@@ -150,24 +131,6 @@ pub fn check_known_incompatibilities(
         ));
     }
 
-    // Guard 0c — GGUF is structurally VRAM-bound on the installed
-    // diffusers. The GGUF code path is complete and proven schema-clean
-    // (4186/4186), but diffusers' `group_offloading` has no branch for
-    // the `GGUFParameter` subclass, so the dequant-per-matmul
-    // transformer is opaque to every offload hook — 9 runs on
-    // 2026-05-17 OOM'd byte-identically at 14.84 GiB across model/group
-    // offload and all resolutions. Surface that at plan time instead of
-    // letting a 16 GB render OOM, exactly as Guards 0/0b do for
-    // nvfp4/fp8_official. The de-rot trigger is the local-benchmark
-    // smoke script behind `gguf_diffusers_fit_proven()`, NOT a diffusers
-    // version literal — only a passing GGUF-fit smoke run lifts this.
-    // Keeps the path selectable the moment fit is proven (e.g. a future
-    // diffusers GGUF-aware offload, or a non-diffusers runtime).
-    //
-    // EXCLUDES the LTX-Video 0.9.7 line (`is_ltxv097_family`): its 13B
-    // Q4 transformer (~8 GB) fits 16 GB RESIDENT, so it never pages and
-    // the GGUFParameter offload-hook opacity is moot. 0.9.7 has its own
-    // gate (Guard 0d / `ltxv097_proven()`), not this one.
     if is_gguf_family(short)
         && !is_ltxv097_family(short)
         && matches!(effective_quant(advanced, short), ModelQuant::Gguf)
@@ -188,16 +151,6 @@ pub fn check_known_incompatibilities(
         ));
     }
 
-    // Guard 0d — LTX-Video 0.9.7 13B GGUF is a SEPARATE model line
-    // (base_model `Lightricks/LTX-Video`, T5 encoder, own VAE,
-    // diffusers-native `LTXConditionPipeline`). Its Q4 transformer
-    // (~8 GB) genuinely fits 16 GB resident — but the worker branch
-    // that loads it (LTXConditionPipeline + T5 + companion VAE +
-    // `from_single_file` GGUF, NOT the LTX2Pipeline+dg845 path every
-    // other profile uses) is not wired yet. Gated on `ltxv097_proven()`
-    // (same de-rot discipline as Guards 0b/0c): while unproven, reject
-    // at plan time so an `rtx50-ltxv097-gguf` request can't be silently
-    // routed into the LTX-2.3 pipeline and fail deep in the worker.
     if is_ltxv097_family(short)
         && matches!(effective_quant(advanced, short), ModelQuant::Gguf)
         && !ltxv097_proven()
@@ -215,12 +168,6 @@ pub fn check_known_incompatibilities(
         ));
     }
 
-    // Guard 1 — bitsandbytes (NF4 *or* INT8) + sequential offload is
-    // an immediate accelerate crash. BOTH 4-bit and 8-bit bnb load
-    // params via accelerate's meta-device dispatch, so
-    // `enable_sequential_cpu_offload` hits the identical "Cannot copy
-    // out of meta tensor; no data!" on either — the guard must cover
-    // both quant variants, not just NF4.
     if matches!(
         effective_quant(advanced, short),
         ModelQuant::Nf4Bnb | ModelQuant::Int8
@@ -248,9 +195,6 @@ pub fn check_known_incompatibilities(
         )));
     }
 
-    // Guard 3 — NVFP4 GEMM NaN-bursts past a 121-frame context.
-    // `is_nvfp4_family` (not a literal slug) so a future *-nvfp4
-    // profile is covered automatically.
     if is_nvfp4_family(short) && max_segment_frames > NVFP4_MAX_SEGMENT_FRAMES {
         return Err(ExtensionError::InvalidRequest(format!(
             "segment frame count {max_segment_frames} exceeds the NVFP4 \
@@ -286,19 +230,11 @@ mod tests {
     fn short_profile_slug_takes_last_segment() {
         assert_eq!(short_profile_slug(NVFP4), "rtx50-nvfp4");
         assert_eq!(short_profile_slug("bare"), "bare");
-        // `"".rsplit('.').next()` is `Some("")`, so the slug is "" —
-        // identical to runner.rs::short_profile. Not a real input
-        // (runtime ids are always dotted); pinned to document parity.
         assert_eq!(short_profile_slug(""), "");
     }
 
     #[test]
     fn nvfp4_profile_default_plus_sequential_is_blocked() {
-        // Real NVFP4 is shelved/host-blocked, so the `rtx50-nvfp4`
-        // profile default resolves to `Nf4Bnb` (the verified bnb
-        // path). Nf4Bnb + sequential is the Guard-1 meta-tensor crash
-        // and must be blocked at plan time. (This is the original
-        // pre-N3c semantic, restored after the NVFP4 shelve decision.)
         let adv = advanced(OffloadMode::Sequential, ModelQuant::None, None);
         let err = check_known_incompatibilities(NVFP4, &adv, 97)
             .expect_err("nf4_bnb (nvfp4 profile default) + sequential must block");
@@ -314,11 +250,6 @@ mod tests {
 
     #[test]
     fn explicit_nvfp4_is_rejected_as_under_construction() {
-        // Real NVFP4 is host-blocked / under construction (Guard 0).
-        // An explicit operator `quantization='nvfp4'` must be rejected
-        // at plan time with the actionable code, on any profile and
-        // any offload mode — it must NOT reach a worker that has no
-        // nvfp4 branch.
         for offload in [
             OffloadMode::Model,
             OffloadMode::Sequential,
@@ -337,14 +268,6 @@ mod tests {
 
     #[test]
     fn gguf_guard_rejects_vram_bound_diffusers_path() {
-        // WANT 2 honest surfacing: GGUF is structurally VRAM-bound on
-        // the installed diffusers (GGUFParameter is opaque to every
-        // offload hook; byte-identical 14.84 GiB OOM, 9 runs
-        // 2026-05-17). It must reject at plan time — mirroring how
-        // Guard 0 treats nvfp4 — instead of OOMing a 16 GB render.
-        // Both the rtx50-gguf profile DEFAULT (None → Gguf) and an
-        // explicit `quantization='gguf'` must be rejected, on any
-        // offload/CFG/segment combo, while fit is unproven.
         const GGUF: &str = "nexus.video.ltx23.rtx50-gguf";
         let dflt = advanced(OffloadMode::Auto, ModelQuant::None, None);
         let err = check_known_incompatibilities(GGUF, &dflt, 97)
@@ -360,12 +283,6 @@ mod tests {
 
     #[test]
     fn gguf_guard_is_keyed_to_local_smoke_test_not_a_version() {
-        // De-rot contract: the guard is gated on
-        // `gguf_diffusers_fit_proven()` (a local-benchmark smoke-test
-        // signal), NOT a diffusers version literal. While fit is
-        // unproven the guard fires and the message must name the
-        // cross-platform smoke script as the trigger — so the guard
-        // cannot silently rot into dead code on a diffusers bump.
         const GGUF: &str = "nexus.video.ltx23.rtx50-gguf";
         assert!(
             !crate::runtime_selection::gguf_diffusers_fit_proven(),
@@ -385,13 +302,6 @@ mod tests {
 
     #[test]
     fn explicit_fp8_official_is_rejected_as_under_construction() {
-        // Guard 0b: the official Lightricks diffusers-native fp8 enum +
-        // wire contract exist (S2a) but the official-repo wiring and
-        // the schema-parity gate are a GPU/network-bound seam
-        // (S2b/S2c). An explicit `quantization='fp8_official'` must be
-        // rejected at plan time on any profile/offload — exactly as
-        // explicit nvfp4 is — so it never reaches a worker with no
-        // matching branch.
         for offload in [
             OffloadMode::Model,
             OffloadMode::Sequential,
@@ -409,11 +319,6 @@ mod tests {
 
     #[test]
     fn rtx_fp8_profile_default_is_rejected_until_proven() {
-        // S2c: `default_quant_for_profile` now resolves rtx50-fp8 /
-        // rtx40-fp8 → Fp8Official. While the worker single-file loader
-        // is unproven, even the PROFILE DEFAULT (quant left None) must
-        // plan-reject — mirroring how the rtx50-gguf default rejects —
-        // so an unset request can't silently hit a missing fp8 branch.
         for full in ["nexus.video.ltx23.rtx50-fp8", "nexus.video.ltx23.rtx40-fp8"] {
             let dflt = advanced(OffloadMode::Auto, ModelQuant::None, None);
             let err = check_known_incompatibilities(full, &dflt, 97)
@@ -425,12 +330,6 @@ mod tests {
 
     #[test]
     fn fp8_official_guard_is_keyed_to_proven_flag_not_a_version() {
-        // De-rot contract (same discipline as the gguf guard): Guard 0b
-        // is gated on `fp8_official_proven()`, NOT a repo/diffusers
-        // version literal. While unproven the guard fires and the
-        // message must name the flag — so wiring the worker loader
-        // without flipping the proof cannot silently ship a broken
-        // fp8 path.
         assert!(
             !crate::runtime_selection::fp8_official_proven(),
             "fp8 worker loader is not GPU-verified yet"
@@ -449,9 +348,6 @@ mod tests {
 
     #[test]
     fn explicit_int8_plus_sequential_is_blocked() {
-        // DEFECT 1 regression guard: INT8 also loads via bnb
-        // meta-device dispatch, so int8+sequential crashes identically
-        // to nf4+sequential. Must be blocked at plan time.
         let adv = advanced(OffloadMode::Sequential, ModelQuant::Int8, None);
         let err =
             check_known_incompatibilities(FP8, &adv, 97).expect_err("int8+sequential must block");
@@ -481,10 +377,6 @@ mod tests {
 
     #[test]
     fn fp8_guidance_above_ceiling_blocked() {
-        // Explicit Int8+Model isolates Guard 2 (the slug-keyed FP8 CFG
-        // ceiling): it clears Guard 0b (quant ≠ Fp8Official) and Guard 1
-        // (Model ≠ Sequential), so the rtx50-fp8 default-quant gate
-        // doesn't mask the CFG guard under test.
         let adv = advanced(OffloadMode::Model, ModelQuant::Int8, Some(6.0));
         let err =
             check_known_incompatibilities(FP8, &adv, 97).expect_err("fp8 + cfg>5.5 must block");
@@ -551,11 +443,6 @@ mod tests {
 
     #[test]
     fn future_nvfp4_profile_is_covered_by_guards_2_and_3() {
-        // DEFECT 2 regression guard: a hypothetical 2nd NVFP4 profile
-        // must be picked up by the FP8 guidance guard AND the NVFP4
-        // frame-count guard with ZERO code changes — proving the
-        // single-source `is_*_family` predicates, not slug literals,
-        // drive classification.
         const FUTURE: &str = "nexus.video.ltx23.rtx60-nvfp4";
         let hi_cfg = advanced(OffloadMode::Model, ModelQuant::None, Some(7.0));
         assert!(
@@ -586,12 +473,6 @@ mod tests {
 
     #[test]
     fn ltxv097_is_proven_and_plan_allowed() {
-        // GPU-VERIFIED 2026-05-18 (scripts/smoke-ltxv097-render.py:
-        // real 25-frame 512x320 render, valid H.264 MP4, peak
-        // 9.92/15.92 GiB). `ltxv097_proven()` is now true, so Guard 0d
-        // no longer fires: the rtx50-ltxv097-gguf profile default AND
-        // an explicit `gguf` request must both pass plan-time checks
-        // (it is not bnb, not fp8-class, not nvfp4, not VRAM-bound).
         assert!(
             crate::runtime_selection::ltxv097_proven(),
             "0.9.7 worker branch is GPU-verified — flag must stay true"
@@ -609,11 +490,6 @@ mod tests {
 
     #[test]
     fn ltxv097_is_excluded_from_the_ltx23_gguf_vram_guard() {
-        // Guard 0c (LTX-2.3 GGUF VRAM-bound) MUST NEVER fire for the
-        // 0.9.7 line — it fits 16 GB resident (smoke: 9.92 GiB). With
-        // 0.9.7 now proven the request is simply allowed; the critical
-        // invariant is that it is NEVER rejected with the LTX-2.3
-        // [gguf_vram_bound_diffusers] code, on any offload/segment.
         for (off, frames) in [
             (OffloadMode::Auto, 97u32),
             (OffloadMode::Model, 200u32),
@@ -632,16 +508,7 @@ mod tests {
 
     #[test]
     fn ltxv097_guard_is_keyed_to_proven_flag() {
-        // De-rot contract intact: Guard 0d is gated on
-        // `ltxv097_proven()`. Proven=true → the path is allowed.
-        // Regressing the flag to false MUST re-reject with the named
-        // code (proven this direction so the gate can't silently rot
-        // open if the flag is ever flipped back without re-verifying).
         assert!(crate::runtime_selection::ltxv097_proven());
-        // The guard code + flag name are still present in the message
-        // path (asserted by source, not runtime, now that proven=true):
-        // see compatibility.rs Guard 0d — `ltxv097_proven()` +
-        // `[ltxv097_under_construction]`. A plain proven render is ok:
         let adv = advanced(OffloadMode::Auto, ModelQuant::None, None);
         assert!(check_known_incompatibilities(LTXV097, &adv, 97).is_ok());
     }

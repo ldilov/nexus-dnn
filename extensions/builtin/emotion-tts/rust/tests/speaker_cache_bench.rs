@@ -59,9 +59,6 @@ fn speaker_cache_hint_serialisation_fits_budget() {
 
 #[test]
 fn speaker_cache_hint_defaults_match_adapter_settings_default() {
-    // SpeakerCache default in AdapterSettings.speaker_cache_mb is 200 (spec
-    // 034 T002). The helper constructor must produce a hint with that
-    // same budget so dispatcher code doesn't accidentally override with 0.
     let hint = SpeakerCacheHint::from_budget_mb(200);
     let wire = serde_json::to_value(&hint).unwrap();
     assert_eq!(wire, json!({ "enabled": true, "budget_mb": 200 }));

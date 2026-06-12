@@ -76,9 +76,6 @@ fn empty_string_field_blocked_with_specific_field_name() {
 
 #[test]
 fn structural_validation_fails_before_handler_is_invoked() {
-    // A duplicate id should be caught by structural validation BEFORE the
-    // handler's validate() is invoked — handler errors don't mask structural
-    // bugs.
     let mut registry = HandlerRegistry::new();
     registry.register(Box::new(TestEchoHandler::new()));
 

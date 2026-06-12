@@ -1,8 +1,3 @@
-// Spec 019 FR-BM01 — client-minted UUID v4 for blank-module drafts.
-// Mint with `crypto.randomUUID()` when available (all modern browsers);
-// fall back to a hand-rolled v4 generator for headless test harnesses
-// where the Web Crypto surface might be stubbed.
-
 const UUID_V4_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 

@@ -121,18 +121,8 @@ def validate_render_params(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"frames_per_clip must be 4n+1 (49, 65, 81); got {frames_per_clip}")
 
     num_motion_latent = int(params.get("num_motion_latent", 1))
-    # SVI 2.0 Pro carries the RAW previous-clip latent as the motion handoff and
-    # explicitly forbids re-using the decoded last frame. Decode->re-encode is the
-    # pre-Pro behaviour: it injects VAE-roundtrip error into the conditioning every
-    # clip — the exact cross-clip error the LoRA was NOT trained to correct — which
-    # compounds into identity drift. Default off (canonical); opt in to A/B only.
     pixel_re_encode = bool(params.get("pixel_re_encode", False))
     num_motion_frame = int(params.get("num_motion_frame", 4))
-    # Wan VAE temporal compression: N pixel frames -> 1 + (N-1)//4 latent frames.
-    # The re-encoded tail feeds build_conditioning_latents, which assigns
-    # num_motion_latent frames into the conditioning slot. If the re-encode
-    # yields fewer latent frames than num_motion_latent the assignment is
-    # ill-shaped, so require enough pixel frames up front.
     if pixel_re_encode:
         reencoded_latent_frames = 1 + (num_motion_frame - 1) // 4
         if reencoded_latent_frames < num_motion_latent:
@@ -652,8 +642,6 @@ def _generate_t2v_clip0(
         generator=torch.Generator(device="cpu").manual_seed(seed),
     ).to(device=device, dtype=torch.bfloat16)
 
-    # On cancel (or any error) the experts must not leak — free them and empty
-    # the CUDA caching allocator in finally before the exception unwinds.
     try:
         latent = _denoise_clip(
             models=t2v_models,
@@ -719,10 +707,6 @@ def _run_render(
     device = params.get("device") or ("cuda" if torch.cuda.is_available() else "cpu")
     reset_peak()
 
-    # Staged loading keeps peak host RAM at max(stage) instead of sum(stages):
-    # encode prompts → FREE the 11 GiB text encoder → encode anchors with the
-    # small VAE → only then load the two 14 GiB fp8 experts. A prebuilt
-    # RenderModels (tests / callers) short-circuits the staging.
     prebuilt = build_models(params) if build_models is not None else None
 
     num_clips: int = params["num_clips"]
@@ -768,9 +752,6 @@ def _run_render(
     expert_selector = ExpertSelector(boundary=switch_boundary)
     blocks_to_swap: int = params["blocks_to_swap"]
 
-    # Stage 1 — encode every prompt once, then release the text encoder
-    # entirely (UMT5-xxl is the single largest host-RAM tenant after the
-    # experts). Contexts are tiny (1 x L x 4096) and cached on CPU.
     _notify(worker, "svi2.video.progress", {"fraction": 0.01, "stage": "loading_text_encoder"})
     text_encoder = prebuilt.text_encoder if prebuilt is not None else _build_text_encoder(params)
     if device == "cuda":
@@ -896,9 +877,6 @@ def _run_render(
 
     denoise_span = 0.90 / max(num_clips, 1)
 
-    # Expert weights + VAE are the dominant GPU/host tenants. The finally frees
-    # them on EVERY exit — success, error, or cooperative cancel — so a cancelled
-    # render returns VRAM/RAM to the driver instead of leaving 28 GiB pinned.
     try:
         for clip_idx in range(chain_start, num_clips):
             if cancel_event is not None and cancel_event.is_set():
@@ -1008,10 +986,6 @@ def _run_render(
             frames = models.vae.decode_latents(latent)
             pil_frames = _to_pil_frames(frames)
 
-            # Pixel re-encode continuation: replace the raw denoised latent tail with
-            # a VAE round-trip of the last num_motion_frame output frames so the next
-            # clip conditions on an on-manifold latent (caps escalating drift). Skip
-            # on the final clip — its tail is never consumed.
             is_last_clip = clip_idx == num_clips - 1
             if pixel_re_encode and num_motion_frame > 0 and not is_last_clip:
                 reenc = reencode_motion_tail(models.vae, pil_frames, num_motion_frame)
@@ -1047,9 +1021,6 @@ def _run_render(
         total_frames = writer.count
         video_path = writer.finalize(output_path, fps=fps)
     finally:
-        # Drop the 28 GiB of expert weights (and the VAE) before interpolation,
-        # which only needs the tiny RIFE net. Idempotent: empty_cache is safe to
-        # call after the refs are already gone.
         models = high = low = vae = None
         gc.collect()
         if device == "cuda":

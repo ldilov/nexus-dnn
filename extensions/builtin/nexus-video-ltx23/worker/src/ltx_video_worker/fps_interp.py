@@ -7,12 +7,6 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-# RIFE FPS interpolation via the upstream nihui/rife-ncnn-vulkan prebuilt
-# binary (MIT, models bundled in the release zip — provenance-clean, no
-# pip build, no redistributed weights). Auto-staged on first use the same
-# way the FILM seam model is, with a silent fall-through to ffmpeg
-# minterpolate so a render never fails on the optional interpolation path.
-
 _RIFE_BIN_ENV = "NEXUS_VIDEO_LTX23_RIFE_BIN"
 _RIFE_AUTOSTAGE_ENV = "NEXUS_VIDEO_LTX23_RIFE_AUTOSTAGE"
 _RIFE_URL_ENV = "NEXUS_VIDEO_LTX23_RIFE_URL"
