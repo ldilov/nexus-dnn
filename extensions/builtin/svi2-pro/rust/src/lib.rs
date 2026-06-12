@@ -61,5 +61,6 @@ pub fn build_router_with_factory(
         channels: RenderChannels::new(),
         workspace_dir,
         extension_version: EXTENSION_VERSION.to_string(),
+        event_bus: None,
     })
 }

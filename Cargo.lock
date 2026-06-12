@@ -6275,6 +6275,7 @@ dependencies = [
  "futures",
  "http-body-util",
  "nexus-backend-runtimes",
+ "nexus-events",
  "nexus-extension",
  "nexus-extension-deps",
  "semver",

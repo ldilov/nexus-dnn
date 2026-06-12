@@ -27,6 +27,7 @@ urlencoding = "2"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
 nexus-extension = { path = "../../../../crates/nexus-extension" }
 nexus-backend-runtimes = { path = "../../../../crates/nexus-backend-runtimes" }
+nexus-events = { path = "../../../../crates/nexus-events" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }

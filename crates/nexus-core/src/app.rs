@@ -375,6 +375,7 @@ impl NexusApp {
             model_store_client.clone(),
             artifact_store.clone(),
             host_model_registrar,
+            event_bus.clone(),
         );
 
         // Resolve the embedded-Python asset once: env-var override wins, then
@@ -565,6 +566,7 @@ fn build_extension_router_registry(
     host_model_registrar: Option<
         Arc<dyn nexus_backend_runtimes::generic::host_model_registrar::HostModelRegistrar>,
     >,
+    event_bus: Arc<dyn EventBus>,
 ) -> nexus_api::extension_router::SharedRegistry {
     use nexus_api::extension_router::{DefaultRegistry, ExtensionId, ExtensionRouterRegistry};
     use nexus_extension::{ExtensionContext, ExtensionRouterProvider, HostFacts};
@@ -630,6 +632,9 @@ fn build_extension_router_registry(
             res = res.with_model_locator(Arc::new(ModelStoreLocatorAdapter {
                 inner: model_store_client.clone(),
             }));
+            // Spec 057: hand svi2 the orchestration bus so renders publish
+            // per-node status for the Workflow Graph overlay.
+            res = res.with_event_bus(event_bus.clone());
             res
         })),
     ];

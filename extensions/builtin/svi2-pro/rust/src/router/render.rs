@@ -7,6 +7,8 @@ use serde::Deserialize;
 use serde_json::{json, Value as JsonValue};
 use std::convert::Infallible;
 
+use nexus_events::emitter::RunNodeEmitter;
+
 use crate::backend_client::methods;
 use crate::dispatcher::{spawn_render, RenderTask};
 use crate::domain::{JobId, Result, Svi2Error};
@@ -59,12 +61,20 @@ async fn start_impl(state: &AppState, body: StartRequest) -> Result<JobId> {
     // finds a live sink — closing the start→subscribe race.
     state.channels.register(job_id.as_str()).await;
 
+    // When the host wired its event bus, publish per-node status for this run
+    // so the deployment's Workflow Graph tab animates (spec 057). run_id = job_id.
+    let emitter = state
+        .event_bus
+        .clone()
+        .map(|bus| RunNodeEmitter::new(bus, job_id.as_str().to_string()));
+
     spawn_render(RenderTask {
         job_id: job_id.clone(),
         params: prepared,
         client,
         store: state.store.clone(),
         channels: state.channels.clone(),
+        emitter,
     });
 
     Ok(job_id)
