@@ -187,6 +187,20 @@ pub fn spawn_render(task: RenderTask) {
         relay.abort();
 
         match outcome {
+            // A cooperative cancel resolves the long-running call with a
+            // `cancelled` reply instead of an error. Honour it as terminal —
+            // never overwrite the cancelled row with a completed one.
+            Ok(result)
+                if result.get("status").and_then(JsonValue::as_str) == Some("cancelled") =>
+            {
+                let _ = store.mark_cancelled(&job_id).await;
+                if let Some(em) = &emitter {
+                    let transitions = { tracker.lock().await.on_failure() };
+                    for transition in &transitions {
+                        emit_transition(em, transition);
+                    }
+                }
+            }
             Ok(result) => {
                 let output_path = result
                     .get("output_path")
