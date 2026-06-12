@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import {
   Outlet,
   useLoaderData,
@@ -23,12 +23,16 @@ import { useEventStream } from "./hooks/use_event_stream";
 import { usePollingMetrics } from "./hooks/use_polling_metrics";
 import { fetchLayouts } from "./services/layouts";
 import { createRun } from "./services/runs";
+import { fetchDeployments } from "./services/deployments";
+import { SearchPalette } from "./layout/search/search_palette";
+import type { SearchItem } from "./layout/search/search_results";
 import type {
   RuntimeMetrics,
   Workflow,
   WorkflowNode,
   LayoutSummary,
   Recipe,
+  DeploymentSummary,
 } from "./services/api_client";
 import * as styles from "./app.css";
 
@@ -169,6 +173,9 @@ export default function RootLayout() {
   const [isRunning, setIsRunning] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sidebarPinned, setSidebarPinned] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [deployments, setDeployments] = useState<DeploymentSummary[]>([]);
+  const [deploymentsLoading, setDeploymentsLoading] = useState(false);
 
   const { specs: operatorSpecs } = useOperatorSpecs();
   const { events } = useEventStream();
@@ -267,6 +274,41 @@ export default function RootLayout() {
     [],
   );
 
+  useEffect(() => {
+    if (!searchOpen) return;
+    let cancelled = false;
+    setDeploymentsLoading(true);
+    fetchDeployments()
+      .then((rows) => {
+        if (!cancelled) setDeployments(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setDeployments([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDeploymentsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [searchOpen]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const handleSearchSelect = useCallback(
+    (item: SearchItem) => navigate(item.to),
+    [navigate],
+  );
+
   return (
     <FocusedBlockProvider>
       <Shell
@@ -275,7 +317,7 @@ export default function RootLayout() {
             breadcrumbs={breadcrumbs}
             host={runtime.host}
             runtimes={runtime.runtimes}
-            onOpenSearch={notYetWired("Search")}
+            onOpenSearch={() => setSearchOpen(true)}
             onOpenNotifications={notYetWired("Notifications")}
             onOpenProfile={notYetWired("Profile")}
             tweakPanel={<TweakPanel />}
@@ -321,6 +363,14 @@ export default function RootLayout() {
           </div>
         }
         inspectorVisible={inspectorVisible}
+      />
+      <SearchPalette
+        open={searchOpen}
+        deployments={deployments}
+        extensions={extensionLayouts}
+        loading={deploymentsLoading}
+        onClose={() => setSearchOpen(false)}
+        onSelect={handleSearchSelect}
       />
       <CursorRoot />
       <PulseFloor />
