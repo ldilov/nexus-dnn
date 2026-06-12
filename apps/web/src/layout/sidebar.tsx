@@ -24,8 +24,6 @@ const CORE_NAV_ITEMS: readonly NavItem[] = [
   { path: "/deployments", label: "Deployments", icon: "rocket_launch" },
   { path: "/backends", label: "Backends", icon: "developer_board" },
   { path: "/models", label: "Models", icon: "model_training" },
-  { path: "/runs", label: "Runs", icon: "play_arrow" },
-  { path: "/artifacts", label: "Artifacts", icon: "inventory_2" },
   { path: "/extensions", label: "Extensions", icon: "extension", match: "exact" },
 ];
 
