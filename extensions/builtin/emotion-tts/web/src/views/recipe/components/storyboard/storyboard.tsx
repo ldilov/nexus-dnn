@@ -311,6 +311,9 @@ export function Storyboard({
           className={css.canvas}
           role="group"
           aria-label="Story script — select a phrase to cast a voice"
+          onMouseDown={(e) => {
+            if (e.shiftKey) e.preventDefault();
+          }}
           onClick={() => {
             if (popoverPos) closePopover();
           }}
@@ -340,9 +343,6 @@ export function Storyboard({
                       aria-label={job ? `${voiceById(voices, job.voiceId).name} · ${seg.text.trim()}` : seg.text.trim()}
                       className={css.seg}
                       style={segStyle(selected, v, hovered, seg.kind)}
-                      onMouseDown={(e) => {
-                        if (e.shiftKey) e.preventDefault();
-                      }}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleSegInteract(seg.id, e.currentTarget, e.shiftKey);
