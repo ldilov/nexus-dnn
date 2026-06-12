@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
+import threading
 from pathlib import Path
 from typing import Any, Callable
 
@@ -85,8 +86,10 @@ def _sha256(path: Path) -> str:
 async def render_fake_e2e(
     params: dict[str, Any],
     emit: Callable[[str, dict[str, Any]], Any],
+    cancel_event: threading.Event | None = None,
 ) -> dict[str, Any]:
     from .pipeline_svi2 import (
+        RenderCancelled,
         needs_seed_clip,
         resolve_models_dir,
         seed_origin,
@@ -134,6 +137,8 @@ async def render_fake_e2e(
             "frames_per_clip": frames_per_clip,
         })
         for step_idx in range(num_inference_steps):
+            if cancel_event is not None and cancel_event.is_set():
+                raise RenderCancelled()
             completed_steps += 1
             progress = completed_steps / total_steps
             await emit(Notifications.CLIP_STEP, {
@@ -251,13 +256,23 @@ def render_fake(
 
 
 def register_fake_handlers(worker: Any) -> None:
+    from .pipeline_svi2 import RenderCancelled
+
+    cancel_event = threading.Event()
+
     async def _render_start(params: dict[str, Any]) -> dict[str, Any]:
+        cancel_event.clear()
+
         async def _emit(method: str, payload: dict[str, Any]) -> None:
             await worker.emit_notification(method, payload)
 
-        return await render_fake_e2e(params or {}, _emit)
+        try:
+            return await render_fake_e2e(params or {}, _emit, cancel_event=cancel_event)
+        except RenderCancelled:
+            return {"status": "cancelled", "profile": "fake"}
 
     async def _render_cancel(_params: Any) -> dict[str, Any]:
+        cancel_event.set()
         return {"cancelled": True}
 
     worker.register("svi2.video.render.start", _render_start)

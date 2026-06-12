@@ -136,6 +136,31 @@ def test_fake_render_rejects_flf2v_without_last_image(tmp_path: Path):
         _drive_render(tmp_path, params)
 
 
+def test_fake_render_cancels_cooperatively_and_writes_no_artifact(tmp_path: Path):
+    import asyncio
+    import threading
+
+    from svi2_video_worker.pipeline_fake import render_fake_e2e
+    from svi2_video_worker.pipeline_svi2 import RenderCancelled
+
+    params = _base_params(tmp_path)
+    notes: list[tuple[str, dict]] = []
+
+    async def _emit(method: str, payload: dict) -> None:
+        notes.append((method, payload))
+
+    cancel_event = threading.Event()
+    cancel_event.set()  # signal cancel before the first diffusion step
+
+    with pytest.raises(RenderCancelled):
+        asyncio.new_event_loop().run_until_complete(
+            render_fake_e2e(params, _emit, cancel_event=cancel_event)
+        )
+
+    assert not Path(params["output_path"]).exists()
+    assert Notifications.DONE not in [m for m, _ in notes]
+
+
 def test_fake_render_accepts_same_params_as_real_validator(tmp_path: Path):
     from svi2_video_worker.pipeline_svi2 import validate_render_params
 
