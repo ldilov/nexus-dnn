@@ -23,6 +23,10 @@ cd nexus-dnn
 
 # Host only: browser UI served from the embedded frontend bundle
 cargo host
+
+# or
+
+cargo run -p nexus-core --bin nexus-dnn
 ```
 
 Open [http://127.0.0.1:3000](http://127.0.0.1:3000).
