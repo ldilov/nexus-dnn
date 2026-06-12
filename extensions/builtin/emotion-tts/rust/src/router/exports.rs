@@ -92,9 +92,6 @@ async fn download_export(
         }
     };
 
-    // Derive a user-facing download filename. The export id is already a
-    // stable, slug-safe ULID-like string; suffix with `.zip` so the
-    // browser saves it sensibly.
     let download_filename = format!("emotion-tts-export-{export_id}.zip");
     let stream = ReaderStream::new(file);
     let body = Body::from_stream(stream);

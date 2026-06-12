@@ -102,10 +102,6 @@ export interface DeploymentDetailUIProps {
   onRequestDelete?: () => void;
 }
 
-// Title splits into module (left, dim) + accent dash + name (right).
-// Screen readers read the three sibling spans as "Module, em dash, Name"
-// without intervention — we set aria-label on the <h1> to flatten the
-// reading to a clean joined string, and aria-hide every visual child.
 function renderTitle(moduleName: string | null, name: string) {
   if (!moduleName) {
     return <span className={s.titleName}>{name}</span>;
@@ -130,10 +126,6 @@ function buildTitleAriaLabel(moduleName: string | null, name: string): string {
   return `${moduleName} ${name}`;
 }
 
-// Merge a single-action update from `ext-action-state` into the live
-// action set. The slot (primary vs. secondary) is identified by id —
-// extensions own their action ids and may not change them after the
-// initial declaration.
 function mergeActionState(
   prev: ExtensionActionSet | null,
   updated: ExtensionActionDeclaration,
@@ -160,10 +152,6 @@ interface ExtensionActionButtonProps {
   onInvoke: (id: string) => void;
 }
 
-// Renders a single extension-declared action as a host shell button.
-// The host applies its own theme (variant + size) — `tone` is only a
-// hint. `state: "loading"` → inline spinner + disabled. `state:
-// "disabled"` → disabled without spinner.
 function ExtensionActionButton({ action, fallbackVariant, onInvoke }: ExtensionActionButtonProps) {
   const variant = action.tone ? TONE_TO_VARIANT[action.tone] : fallbackVariant;
   const loading = action.state === "loading";
@@ -223,10 +211,6 @@ export function DeploymentDetailUI({
     [],
   );
 
-  // WAI-ARIA APG Tabs — manual activation. Arrow keys move focus only;
-  // selection still happens via Enter/Space/click on the focused tab.
-  // This is the less-aggressive variant (no surprise tab switch when the
-  // user is just sweeping with the keyboard).
   const handleTabKeyDown = useCallback(
     (event: KeyboardEvent<HTMLButtonElement>) => {
       const order = TABS;
@@ -262,12 +246,6 @@ export function DeploymentDetailUI({
     [onTabChange, tab],
   );
 
-  // ── Per-extension action contract ────────────────────────────────
-  // The host shell is generic. It listens on the embedded extension
-  // custom element for `ext-actions-declare` / `ext-action-state` events
-  // and dispatches `ext-action-invoke` when the user clicks a host shell
-  // button. The host knows nothing about what the actions DO — that
-  // contract is opaque per `apps/web/src/types/extension_actions.ts`.
   const [actions, setActions] = useState<ExtensionActionSet | null>(null);
   const [hostEl, setHostEl] = useState<HTMLElement | null>(null);
 

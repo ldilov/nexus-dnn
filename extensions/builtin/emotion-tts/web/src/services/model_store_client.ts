@@ -34,11 +34,6 @@ export function subscribeDownloadProgress(
       /* drop malformed frame */
     }
   };
-  // Without an onerror handler the browser silently retries the SSE
-  // connection every 3 seconds forever on persistent failure (404,
-  // network drop, host restart). Close on terminal error and surface
-  // to the caller so the UI can decide whether to retry or show an
-  // error state.
   es.onerror = (err) => {
     es.close();
     onError?.(err);

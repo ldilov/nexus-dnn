@@ -91,18 +91,6 @@ globalStyle("button", {
   fontSize: "inherit",
 });
 
-/* ── Scrollbars ────────────────────────────────────────────────────
- * Restrained, design-system-aligned scrollbars across the app shell.
- * Track is fully transparent so it disappears against any surface;
- * thumb uses outline tokens at low opacity, brightening on hover. The
- * thin width (10px) keeps it from competing with content. Firefox uses
- * its own properties (scrollbar-width, scrollbar-color) — both surfaces
- * are styled together so the look is consistent.
- *
- * Applies to every scroll container in the host. The EmotionTTS bundle
- * mirrors the same contract on its custom-element root (see
- * extensions/builtin/emotion-tts/web/src/theme/tokens.css.ts).
- */
 globalStyle("*", {
   scrollbarWidth: "thin",
   scrollbarColor: `${vars.color.outline.variant} transparent`,

@@ -280,9 +280,6 @@ class VideoPlan:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "VideoPlan":
-        # Default to 0 so an absent schema_version surfaces as a version
-        # mismatch instead of silently loading a partial / corrupted blob
-        # as if it were current. Producers MUST stamp schema_version.
         version = int(data.get("schema_version", 0))
         if version != SCHEMA_VERSION:
             raise ValueError(

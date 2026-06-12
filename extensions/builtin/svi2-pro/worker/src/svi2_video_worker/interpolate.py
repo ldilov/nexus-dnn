@@ -22,9 +22,6 @@ def target_frame_count(src_count: int, factor: int) -> int:
 
 
 def rife_factor_for_fps(src_fps: int, target_fps: int) -> int:
-    # rife-ncnn-vulkan interpolates by frame-doubling; pick the smallest
-    # power-of-two factor that reaches >= the requested fps ratio, then a
-    # final ffmpeg fps pass trims to the exact target.
     if target_fps <= src_fps:
         return 1
     ratio = target_fps / src_fps
@@ -80,12 +77,6 @@ def interpolate_video(
     runner: Optional[Runner] = None,
     torch_backend: Optional[Callable[..., Path]] = None,
 ) -> Path:
-    # Frame-interpolation post-process. Native render stays at src_fps; this
-    # ADDS frames to reach target_fps (smooth high-fps without speeding motion
-    # up). Returns src unchanged when target_fps <= src_fps (no-op).
-    # method: "ffmpeg" (minterpolate), "rife_torch" (IFNet on CUDA),
-    # "rife_ncnn" (rife-ncnn-vulkan binary). Engine selection for the generic
-    # "rife" request is resolved one level up (pipeline) to a concrete method.
     src_mp4 = Path(src_mp4)
     out_mp4 = Path(out_mp4)
     run = runner or _default_runner
@@ -137,9 +128,6 @@ def cuda_available(device: str = "cuda") -> bool:
 
 
 def resolve_rife_method(requested: str, *, device: str = "cuda", rife_bin: Optional[str] = None) -> str:
-    # Map a user-facing interpolate_method to a concrete engine. "rife" prefers
-    # torch (CUDA, works on aarch64 with no Vulkan); falls back to ncnn if a
-    # binary is present, else ffmpeg minterpolate so the default never crashes.
     if requested in ("ffmpeg", "rife_torch", "rife_ncnn"):
         return requested
     if requested in ("rife", "auto"):

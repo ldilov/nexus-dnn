@@ -157,10 +157,6 @@ async fn sc_004_swapped_registration_order_still_correct() {
 
 #[tokio::test]
 async fn sc_005_registration_failure_returns_503_sibling_unaffected() {
-    // SC-005: "Measured across 10 startup runs: 100%." Loop the
-    // build-from-scratch + assertion 10× to honour the statistical
-    // claim — each iteration constructs a fresh registry, simulating
-    // an independent host startup.
     for run in 0..10 {
         let registry: Arc<DefaultRegistry> = Arc::new(DefaultRegistry::new());
         registry

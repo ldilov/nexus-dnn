@@ -25,9 +25,6 @@ def _reset_probe_cache():
 
 @requires_torch
 def test_probe_succeeds_on_healthy_torch_install():
-    # Note: a truly healthy env also has triton; on Windows without it the
-    # probe may still succeed via the "reduced backend" path — either
-    # outcome is acceptable. The point is the probe MUST NOT raise.
     result = probe()
     assert isinstance(result, ProbeResult)
     assert result.duration_ms >= 0

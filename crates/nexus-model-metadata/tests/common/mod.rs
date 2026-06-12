@@ -135,10 +135,6 @@ pub fn write_gguf_truncated(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-// -------------------------------------------------------------------------
-// PyTorch index sidecar helpers (pytorch_model.bin.index.json)
-// -------------------------------------------------------------------------
-
 /// Write a `pytorch_model.bin.index.json` sidecar describing a model with the
 /// given number of transformer decoder layers. Each layer contributes two
 /// weight entries partitioned across two shard files. Optionally writes a

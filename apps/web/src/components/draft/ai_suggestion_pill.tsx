@@ -50,9 +50,6 @@ export function AiSuggestionPill({
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (state.phase !== "ready") return;
-      // Only intercept Tab/Esc when a text-input element is focused.
-      // Otherwise Tab is the user navigating UI chrome (sidebar, modals,
-      // etc.) and stealing it would feel like a keyboard trap.
       const active = document.activeElement;
       const isTextInputFocused =
         active instanceof HTMLInputElement ||

@@ -46,8 +46,6 @@ def main() -> int:
         print("FAIL: CUDA not available")
         return 2
 
-    # (1)+(2) exercise the REAL module: import it and use its path
-    # resolver — proves the shipped module imports under this stack.
     try:
         from ltx_video_worker import pipeline_ltx2 as mod  # type: ignore
     except Exception as e:  # noqa: BLE001
@@ -143,10 +141,6 @@ def main() -> int:
         traceback.print_exc()
         return 2
 
-    # (3d) the native VideoEncoder load + evict (spec 048 i2v keyframe
-    # encode). The encoder is a small transient — it loads on top of the
-    # resident transformer here purely to prove the load path and the
-    # per-channel-statistics extraction, then is freed immediately.
     try:
         import gc as _gc
 
@@ -175,10 +169,6 @@ def main() -> int:
         f"--- transformer+connector resident peak = {peak:.2f} GiB / "
         f"{total:.2f} GiB card ---"
     )
-    # Gemma-3-12B adds ~7 GB transiently in Stage 1 of the full pipeline
-    # but is unloaded before the transformer loads; the VAE decoder is
-    # loaded only after the transformer is evicted — so the bound that
-    # matters here is transformer+connector+activations.
     fits = peak < 15.0
     print(
         "RESIDENT-FIT VERDICT:",

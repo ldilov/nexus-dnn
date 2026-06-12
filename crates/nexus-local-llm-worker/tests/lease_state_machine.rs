@@ -36,9 +36,6 @@ async fn state_transitions_observable_and_terminal_states_evict() {
         lease("lease-A", "install-X"),
     ));
 
-    // Insert into pool via internal acquire shortcut: reuse public evict to simulate state push.
-    // We simulate by directly using on_backend_state since no model.get call happens.
-    // The state watcher default is Ready; push each state and observe.
     let mut rx = guard.subscribe();
     assert_eq!(*rx.borrow(), LeaseState::Ready);
 

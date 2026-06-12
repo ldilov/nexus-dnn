@@ -111,10 +111,6 @@ class Worker:
         )
         loop = asyncio.get_running_loop()
 
-        # Windows note: asyncio.connect_read_pipe(sys.stdin) is unreliable
-        # under WindowsProactorEventLoopPolicy — readline() never fires for
-        # piped stdin. Use a thread-bridged reader instead. Pattern lifted
-        # from emotion-tts worker.
         reader_q: asyncio.Queue[str | None] = asyncio.Queue()
 
         def _stdin_pump():
@@ -124,9 +120,6 @@ class Worker:
 
         threading.Thread(target=_stdin_pump, name="stdin-pump", daemon=True).start()
 
-        # Dispatch each request as its own task — a long-running handler
-        # (render.start blocks for the whole render) must not starve
-        # health/presets/cancel RPCs of the event loop.
         while not self._shutdown.is_set():
             line = await reader_q.get()
             if line is None:

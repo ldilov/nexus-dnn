@@ -144,11 +144,6 @@ async fn t_s5_pagination_page_two_disjoint_from_page_one() {
         .iter()
         .map(|f| f["family_id"].as_str().unwrap())
         .collect();
-    // The HF stub returns the same fixed set regardless of page, so
-    // page=2 returning 2 families means the handler is passing the
-    // page through — the disjoint-set invariant is enforced in the
-    // real cursor translation (research R5). Here we assert the
-    // handler round-trips `page` and does not crash.
     assert_eq!(p1["data"]["page"], 1);
     assert_eq!(p1_ids.len(), 2);
 }

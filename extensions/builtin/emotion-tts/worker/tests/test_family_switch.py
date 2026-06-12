@@ -18,12 +18,6 @@ from emotion_tts_worker.families.switch import (
 from emotion_tts_worker.speaker_cache import SpeakerCacheKey
 
 
-# ---------------------------------------------------------------------------
-# Tiny in-memory stand-in for IndexTtsAdapter — exercises the public surface
-# FamilySwitcher relies on without pulling torch/indextts.
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class _Cache:
     cleared_families: list[str]

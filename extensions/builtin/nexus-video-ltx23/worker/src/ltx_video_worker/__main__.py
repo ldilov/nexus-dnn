@@ -40,44 +40,11 @@ def cli() -> int:
 
     profile = os.environ.get("NEXUS_VIDEO_LTX23_RUNTIME", "fake")
 
-    # Windows LoaderLock workaround. The diffusers pipeline imports
-    # numpy + torch lazily inside `asyncio.to_thread(_ensure_pipeline_loaded)`.
-    # On Windows those imports load C extensions (numpy._core._multiarray_umath,
-    # torch._C, MKL, OpenMP, CUDA runtime) whose DllMain spawns helper
-    # threads. When the loading thread holds the GIL while waiting on
-    # those helper threads (which need the GIL to call back into Python),
-    # the process deadlocks — both UserModeTime and KernelModeTime go
-    # flat, py-spy shows the thread suspended inside
-    # `importlib._bootstrap_external.create_module`, and no progress
-    # events ever fire. Verified via py-spy on 2026-05-15.
-    #
-    # Pre-importing on the MAIN thread BEFORE asyncio.run starts cures
-    # this: the GIL contention only happens during initial module load,
-    # and once cached, the in-thread `import torch` becomes a no-op.
-    # `fake` profile skips this — its render path never touches torch.
     if profile != "fake":
         try:
             import numpy  # noqa: F401 — pre-import side-effect
             import torch  # noqa: F401 — pre-import side-effect
 
-            # Same LoaderLock cure for the modelopt -> scipy chain.
-            # `nvidia-modelopt` (a quant backend dep) pulls in `scipy`;
-            # diffusers' quantizer auto-mapping imports the modelopt
-            # quantizer module -> modelopt -> scipy.{linalg,optimize,
-            # interpolate,special,...} during the OFF-thread
-            # `_ensure_pipeline_loaded`. Each scipy subpackage loads its
-            # own BLAS/LAPACK/_fitpack C-extension whose DllMain spawns
-            # OpenMP/MKL helper threads -> the Windows LoaderLock
-            # deadlock (py-spy 2026-05-17 pinned it walking forward:
-            # scipy.linalg.blas -> scipy.interpolate._fitpack as each
-            # was individually pre-imported — whack-a-mole). Root lever:
-            # pre-import `modelopt.torch.quantization` HERE on the MAIN
-            # thread; it transitively forces modelopt's ENTIRE scipy +
-            # native C-ext tree to load once at boot (no render
-            # timeout), so every off-thread import is a cached no-op.
-            # ~10 s one-time. Best-effort: absent unless a modelopt
-            # backend is installed; the explicit scipy lines remain as
-            # a defensive fallback for a no-modelopt-but-scipy env.
             try:
                 import modelopt.torch.quantization  # noqa: F401
             except ImportError:
@@ -89,28 +56,11 @@ def cli() -> int:
             except ImportError:
                 pass
 
-            # Same rationale for bitsandbytes. bnb 0.49.x runs
-            # `subprocess.run("pip list | grep habana-torch-plugin",
-            # shell=True)` at import of `bitsandbytes.backends.default.ops`
-            # (`get_gaudi_sw_version`). In this uv-managed runtime that
-            # `pip list` subprocess is pathologically slow; when the
-            # FIRST bnb import happens OFF-thread inside the
-            # render-timeout-bounded `_ensure_pipeline_loaded` it eats
-            # the 1800 s budget and the render times out (py-spy
-            # 2026-05-17: asyncio thread parked in
-            # `bitsandbytes\backends\utils.py:71` subprocess.communicate
-            # join). Doing this slow first-import HERE — at boot, with
-            # no render timeout — lets it complete once and caches the
-            # module so the in-render import is a no-op (the nf4/int8
-            # bnb path and the gguf text-encoder bnb both rely on this).
             try:
                 import bitsandbytes  # noqa: F401 — pre-import side-effect
             except ImportError:
                 pass
         except ImportError as e:
-            # Diffusers extras may not be installed yet for first-boot
-            # install flows; log via stderr (telemetry isn't set up yet)
-            # and let the worker continue with the lazy path.
             print(
                 '{"level":"warn","target":"nexus.video.ltx23",'
                 '"event":"pre_import_failed","error":"' + str(e) + '"}',

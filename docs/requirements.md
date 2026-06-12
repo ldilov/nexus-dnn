@@ -5,8 +5,8 @@ an extension. The host auto-provisions some of these on first run
 (embedded Python, ffmpeg, model weights), but a few must already be on
 your system or the dependency installer will refuse to proceed.
 
-This document is the single source of truth — if a step here disagrees
-with another doc, fix this file. Last reviewed 2026-05-13.
+This document is the single source of truth for prerequisites and
+resource expectations. Last reviewed 2026-06-12.
 
 ## Host-level requirements
 
@@ -62,12 +62,14 @@ error.
 
 ### `uv` — **REQUIRED for every extension with a Python worker**
 
-Every built-in extension today (`emotion-tts`, `local-llm`,
-`nexus-video-ltx23`) has a `package_set` step with `manager: uv` in its
-manifest. The host's `package_set` handler looks for `uv` in this order:
+Every Python-worker-oriented built-in extension path in the repo relies
+on `uv` somewhere in its dependency graph, including `emotion-tts`,
+`local-llm`, `nexus-video-ltx23`, `nexus-video-longcat`, and
+`svi2-pro`. The host's `package_set` handler looks for `uv` in this
+order:
 
 1. The extension's embedded Python runtime
-   (`<NEXUS_HOST_DATA_DIR>/extensions/<ext-id>/runtime/python/Scripts/uv.exe`
+   (`<NEXUS_DATA_DIR>/extensions/<ext-id>/runtime/python/Scripts/uv.exe`
    on Windows, `.../bin/uv` on POSIX).
 2. The system `PATH`.
 
@@ -115,7 +117,7 @@ choco install ffmpeg            # Windows (Chocolatey)
 
 The host downloads `python-build-standalone` (currently 3.11.13) from
 the registered Astral / Indygreg release on first activation. Lives at
-`<NEXUS_HOST_DATA_DIR>/extensions/<ext-id>/runtime/python/`.
+`<NEXUS_DATA_DIR>/extensions/<ext-id>/runtime/python/`.
 
 You do NOT need Python on your system PATH for extensions to work. If
 you want to inspect or debug, the installer logs the resolved Python
@@ -133,7 +135,7 @@ path on every activation.
 | Frontend `node_modules` | ~600 MB |
 
 `~/.nexus/` is the default data root on every platform. Override via
-`NEXUS_HOST_DATA_DIR` if disk is tight.
+`NEXUS_DATA_DIR` if disk is tight.
 
 ## GPU-bound extensions
 

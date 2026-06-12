@@ -70,9 +70,6 @@ Env knobs:
 Exit: 0 PASS, 1 FAIL (render crash / wrong frame count), 2 prereq missing.
 """
 
-# Two-scene continuity content. CHARACTER + STYLE anchor every segment;
-# only the per-segment action changes. Segments 0..h-1 are scene 1,
-# h..n-1 are scene 2 — scene 2 continues scene 1 with a different action.
 CHARACTER = (
     "the same pale-faced young nun, black veil, white wimple, "
     "dark hollow eyes"
@@ -364,11 +361,6 @@ def _render_path_a(
             gc.collect()
             torch.cuda.empty_cache()
             continue
-        # Cross-segment anchor: segment 0 sets the reference; every later
-        # segment is AdaIN-shifted (colour mean/std) AND high-frequency
-        # attenuated back to it, before the seam and before its tail
-        # feeds the next segment — so neither contrast nor over-sharpen
-        # can compound down the conditioning chain.
         anchored = ""
         if si == 0:
             ref_color = _seg_color_stats(fr)

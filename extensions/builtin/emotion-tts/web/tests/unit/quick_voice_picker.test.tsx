@@ -70,10 +70,6 @@ describe("QuickVoicePicker → recipe state mirroring (HIGH-3)", () => {
   });
 
   it("propagates the new id into a recipe-style harness so unmappedCount-style derivations re-evaluate", async () => {
-    // Recipe view's contract: it lifts defaultVoiceAssetId into local state and
-    // passes setter as onChange. Anything derived from defaultVoiceAssetId
-    // (like the Quick voice diagnostic + unmappedCount) must observe the new
-    // id without a loader refetch.
     function Harness(): JSX.Element {
       const [defaultVoiceAssetId, setDefaultVoiceAssetId] = useState<string | null>(null);
       return (

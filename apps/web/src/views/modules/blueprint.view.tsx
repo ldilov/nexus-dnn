@@ -156,13 +156,6 @@ export function BlueprintView({
   }
   const multi = detail.summary.blueprints.length > 1;
   const hasDeployments = detail.deployments.length > 0;
-  // Extension lifecycle gate — the Blueprint view's Recipe + Workflow
-  // Graph tabs both call extension APIs (workflow_template_ref → DAG,
-  // dry-run plan, clone-to-deployment). When the source extension is
-  // disabled or in error state the host won't have mounted its router,
-  // so every extension API call would 404 and the user would land on
-  // an "Unexpected Application Error" boundary. Surface the failure
-  // up front instead, with an actionable hint.
   const extStatus = detail.summary.extension_status ?? null;
   const isExtensionInactive =
     detail.summary.source_kind === "extension" &&

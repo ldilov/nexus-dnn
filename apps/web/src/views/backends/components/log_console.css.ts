@@ -1,15 +1,6 @@
 import { style, styleVariants } from "@vanilla-extract/css";
 import { vars } from "../../../theme/contract.css";
 
-// Polished backend log console. Design notes:
-// - Monospace everywhere — log viewers that mix fonts feel wrong.
-// - Severity pills carry theme semantic colors (success-adjacent info,
-//   warn, error). Namespace/source render as neutral chips you can click
-//   to filter.
-// - Virtualized via `@tanstack/react-virtual` so 10k+ lines stay smooth.
-// - Controls row mirrors a terminal: pause / auto-scroll toggle / copy
-//   visible / clear / download.
-
 export const root = style({
   display: "flex",
   flexDirection: "column",

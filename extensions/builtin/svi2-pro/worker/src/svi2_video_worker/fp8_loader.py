@@ -9,9 +9,6 @@ import torch.nn as nn
 
 
 def _fp8_compute_mode() -> str:
-    # "bf16" = dequant weight to bf16 + bf16 matmul (clean, default). "scaled_mm"
-    # = torch._scaled_mm fp8 fast path — fast but on Blackwell sm120 it produces
-    # muddy/color-smudge/ghosting (ComfyUI #11920). Opt-in only.
     return os.environ.get("SVI2_FP8_COMPUTE", "bf16").strip().lower()
 
 

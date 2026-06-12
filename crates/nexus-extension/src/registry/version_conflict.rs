@@ -99,9 +99,6 @@ fn pair_overlaps(a: &ParsedReq, b: &ParsedReq) -> bool {
         (ParsedReq::Any, _) | (_, ParsedReq::Any) => true,
         (ParsedReq::Semver(ra), ParsedReq::Semver(rb)) => semver_pair_overlaps(ra, rb),
         (ParsedReq::Build(ra), ParsedReq::Build(rb)) => ra.overlaps(rb),
-        // Mixed semver + llama.cpp build numbers in the same family is a
-        // category error in the manifest; treat as non-overlapping so the
-        // conflict surfaces with a clear error for the operator to fix.
         (ParsedReq::Semver(_), ParsedReq::Build(_))
         | (ParsedReq::Build(_), ParsedReq::Semver(_)) => false,
     }

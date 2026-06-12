@@ -6,7 +6,7 @@ interface BrandMarkProps {
   ariaLabel?: string;
 }
 
-export function BrandMark({ wordmark = true, size = 20, ariaLabel = "NexuDNN" }: BrandMarkProps) {
+export function BrandMark({ wordmark = true, size = 20, ariaLabel = "NexusDNN" }: BrandMarkProps) {
   return (
     <span role="img" aria-label={ariaLabel} className={styles.root}>
       <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
@@ -26,7 +26,7 @@ export function BrandMark({ wordmark = true, size = 20, ariaLabel = "NexuDNN" }:
         />
         <circle cx="20" cy="20" r="2.4" fill="var(--color-tertiary)" />
       </svg>
-      {wordmark ? <span className={styles.wordmark}>NexuDNN</span> : null}
+      {wordmark ? <span className={styles.wordmark}>NexusDNN</span> : null}
     </span>
   );
 }

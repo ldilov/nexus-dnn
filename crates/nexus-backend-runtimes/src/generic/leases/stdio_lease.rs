@@ -154,16 +154,6 @@ impl StdioLease {
         params: serde_json::Value,
         timeout: Duration,
     ) -> Result<serde_json::Value, LeaseError> {
-        // RPC trace span. Every log line emitted while the RPC is in
-        // flight (including `worker.stderr` lines forwarded by the
-        // stderr_forwarder task running concurrently) is correlated
-        // back to the active method via this span's fields. The span's
-        // duration is captured automatically — making "which RPC was
-        // hung when the worker timed out?" answerable from the log.
-        //
-        // We use `Instrument::instrument` rather than `info_span!()`
-        // followed by `_enter` because the body is async and `_enter`
-        // doesn't survive across `.await` points.
         use tracing::Instrument;
         let span = tracing::info_span!(
             "rpc",
@@ -378,12 +368,6 @@ async fn reader_loop(
 async fn stderr_forwarder(stderr: tokio::process::ChildStderr, lease_id: RuntimeLeaseId) {
     let mut lines = BufReader::new(stderr).lines();
     while let Ok(Some(line)) = lines.next_line().await {
-        // Classify the line so warnings + errors don't all show up as INFO.
-        // Most worker output is from Python's `logging` module, which formats
-        // as `<timestamp> <LEVEL> <module> <msg>` — that's the easy case.
-        // We also catch a few other heuristic cues (`Traceback`,
-        // `RuntimeError(`, leading `>> Failed`, etc.) that appear in libraries
-        // like indextts/BigVGAN that print directly to stderr.
         match classify_stderr_line(&line) {
             StderrLevel::Error => {
                 tracing::error!(target: "worker.stderr", lease_id = %lease_id, "{line}");
@@ -421,11 +405,6 @@ fn classify_stderr_line(line: &str) -> StderrLevel {
         return level;
     }
     let trimmed = line.trim_start();
-    // Tracebacks and explicit error names → ERROR. Match BOTH `RuntimeError(`
-    // (the `repr()` output that BigVGAN prints) AND `<Word>Error:` (the
-    // standard exception traceback final line). Without the second match,
-    // a real traceback's terminal `RuntimeError: ...` line was being
-    // classified as INFO.
     if trimmed.starts_with("Traceback (most recent call last)")
         || trimmed.starts_with("RuntimeError(")
         || trimmed.contains("Error: ")
@@ -442,11 +421,6 @@ fn classify_stderr_line(line: &str) -> StderrLevel {
 }
 
 fn extract_python_logging_level(line: &str) -> Option<StderrLevel> {
-    // Tokenize on whitespace; find the first token that's a level word.
-    // Python `logging`'s default format puts level after timestamp:
-    //   "2026-04-28 22:16:43,191 WARNING indextts.gpt..."
-    // The timestamp consumes the first two whitespace-separated tokens
-    // (date + "HH:MM:SS,mmm"); the third is the level.
     for token in line.split_ascii_whitespace().take(5) {
         match token {
             "DEBUG" => return Some(StderrLevel::Debug),

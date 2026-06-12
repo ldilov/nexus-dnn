@@ -319,11 +319,6 @@ export const graphBox = style({
   overflowY: "hidden",
 });
 
-// SVG rule blocks — applied via className on SVG elements so vanilla-extract
-// compiles them into the stylesheet rather than leaking literal hex values
-// at the JSX layer. Using CSS-property `fill`/`stroke` (which map directly
-// to SVG's own attributes) rather than `background-color`.
-
 export const svgNode = style({
   fill: vars.color.surfaceContainerHighest,
   stroke: vars.color.outline,

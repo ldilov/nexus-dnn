@@ -20,10 +20,6 @@ fn current_prompt_row() -> Option<u16> {
     crossterm::cursor::position().ok().map(|(_, row)| row)
 }
 
-// ANSI colour primitives used by the prompt. Truecolor + 256-colour
-// terminals get the project's Spectral Graphite accents; 16-colour
-// terminals fall back to the closest base colour because the escapes
-// below (38;5;…) gracefully degrade in those emulators.
 const ANSI_RESET: &str = "\x1b[0m";
 const ANSI_DIM: &str = "\x1b[2m";
 const ANSI_ACCENT_CYAN: &str = "\x1b[38;5;75m"; // graphite blue
