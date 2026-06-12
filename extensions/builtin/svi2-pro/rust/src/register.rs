@@ -27,6 +27,9 @@ pub struct Svi2ProviderResources {
     pub models_dir: Option<PathBuf>,
     pub profile: Option<String>,
     pub model_locator: Option<Arc<dyn ModelArtifactLocator>>,
+    /// Host orchestration bus. When present, renders publish per-node status
+    /// (spec 057) so the deployment's Workflow Graph tab animates.
+    pub event_bus: Option<Arc<dyn nexus_events::bus::EventBus>>,
 }
 
 impl Svi2ProviderResources {
@@ -39,7 +42,14 @@ impl Svi2ProviderResources {
             models_dir: None,
             profile: None,
             model_locator: None,
+            event_bus: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_event_bus(mut self, event_bus: Arc<dyn nexus_events::bus::EventBus>) -> Self {
+        self.event_bus = Some(event_bus);
+        self
     }
 
     #[must_use]
@@ -127,6 +137,7 @@ impl Svi2RouterProvider {
             channels: RenderChannels::new(),
             workspace_dir,
             extension_version: EXTENSION_VERSION.to_string(),
+            event_bus: self.resources.event_bus.clone(),
         }))
     }
 }

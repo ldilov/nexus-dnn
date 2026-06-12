@@ -25,6 +25,9 @@ pub struct AppState {
     pub channels: RenderChannels,
     pub workspace_dir: PathBuf,
     pub extension_version: String,
+    /// Host orchestration bus; `Some` when the host wired it (spec 057). Drives
+    /// the per-node Workflow Graph overlay during a render.
+    pub event_bus: Option<Arc<dyn nexus_events::bus::EventBus>>,
 }
 
 #[derive(Debug, Serialize)]
