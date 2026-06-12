@@ -107,6 +107,75 @@ flowchart LR
 | Workflow storage, runs, artifacts | Host |
 | Extension-specific logic and UX | Extension, but only through host-owned surfaces |
 
+## 🖼️ UI Screenshots
+
+<table>
+<tr>
+<td align="center" width="50%">
+
+**Extensions gallery**
+
+![Extensions](docs/screenshots/extensions.png)
+
+</td>
+<td align="center" width="50%">
+
+**Models browser**
+
+![Models](docs/screenshots/models.png)
+
+</td>
+</tr>
+<tr>
+<td align="center" width="50%">
+
+**Deployments**
+
+![Deployments](docs/screenshots/deployments.png)
+
+</td>
+<td align="center" width="50%">
+
+**Backend runtimes**
+
+![Backend runtimes](docs/screenshots/backends-shared.png)
+
+</td>
+</tr>
+<tr>
+<td align="center" width="50%">
+
+**Dependency installer**
+
+![Dependency installer](docs/screenshots/depsinstall.png)
+
+</td>
+<td align="center" width="50%">
+
+**Modules**
+
+![Modules](docs/screenshots/modules.png)
+
+</td>
+</tr>
+<tr>
+<td align="center" width="50%">
+
+**SVI2 recipe**
+
+![SVI2 recipe](docs/screenshots/svi2recipe.png)
+
+</td>
+<td align="center" width="50%">
+
+**SVI2 recipe graph**
+
+![SVI2 recipe graph](docs/screenshots/svi2-graph.png)
+
+</td>
+</tr>
+</table>
+
 ## 🔌 Built-in Extensions
 
 | Extension | Status | What it adds |
