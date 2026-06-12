@@ -276,10 +276,6 @@ async fn duplicate_into_other_deployment_works() {
     assert_eq!(body["characterName"].as_str().unwrap(), "Bob");
     assert_ne!(body["mappingId"].as_str().unwrap(), mapping_id);
 
-    // Cross-deployment regression: caller claims dep_dst as the source
-    // deployment but the mapping actually belongs to dep_src. Must 404
-    // (not 403) and must not produce a duplicated row in dep_dst beyond
-    // the legitimate one above.
     let resp_bleed = router
         .oneshot(
             Request::builder()

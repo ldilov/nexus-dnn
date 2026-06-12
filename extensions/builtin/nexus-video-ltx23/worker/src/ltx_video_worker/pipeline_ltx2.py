@@ -117,32 +117,9 @@ _DEF_KEYFRAME_STRENGTH = 1.0
 # default; a per-step re-noise sweep found it inert for motion). An
 # optional configurable knob, off by default.
 _DEF_IMAGE_COND_NOISE_SCALE = 0.0
-# Two-stage distilled pipeline (default ON). The distilled 19B is trained
-# to generate stage 1 at HALF the target resolution, then a LatentUpsampler
-# doubles the latent and a short STAGE_2 refine restores detail. Running
-# stage 1 at full res starves the 8-step model of the token budget it
-# needs to coordinate motion — motion is suppressed / back-loaded. The
-# operator can force the legacy single-stage path with two_stage=false.
 _DEF_TWO_STAGE = True
-# Soft-pin decoupling. The x0-pin blend pulls a conditioned token toward its
-# clean target by a pin fraction. For a hard pin (denoise_mask 0 — i2v keyframe)
-# that fraction must be 1.0; for pure noise (mask 1) it is 0.0. For a SOFT
-# overlap token (0 < mask < 1) the welded default would pin it by (1 - mask),
-# coupling the pin to the sigma mask — so a soft token noised enough to move is
-# also dragged that hard back to stale prior-scene content. _DEF_SOFT_PIN_SCALE
-# scales the soft pin fraction DOWN independently of the sigma mask: 1.0 = the
-# legacy welded behaviour, 0.5 = soft tokens noised at the mask but pinned half
-# as hard. Tunable via advanced.soft_pin_scale.
 _DEF_SOFT_PIN_SCALE = 0.5
 _STAGE2_DISTILLED_SIGMAS = (0.909375, 0.725, 0.421875, 0.0)
-# Motion-intensity prompt nudge. A head-to-head proved an abstract
-# adjective tag ("energetic motion") does NOT animate the model — motion
-# comes from action VERBS describing what the subject does. Each level
-# appends a verb-driven action clause. Two levels: "dynamic" (default —
-# the energetic-but-coherent operating point) and "intense" (maximum
-# motion, costs some fast-frame softness). An unknown value falls back to
-# the default. The operator's own action verbs in the prompt body remain
-# the strongest motion lever.
 _DEF_MOTION_INTENSITY = "dynamic"
 _MOTION_INTENSITY_SUFFIX = {
     "dynamic": (
@@ -154,33 +131,13 @@ _MOTION_INTENSITY_SUFFIX = {
         "and whipping in fast intense motion"
     ),
 }
-# VAE latent geometry. The LTX-2 video VAE downscales 8x temporally and
-# 32x spatially with 128 latent channels — the SpatioTemporalScaleFactors
-# default. A pixel frame count of 8n+1 maps to a clean latent frame
-# count; non-conforming counts are snapped at geometry resolution.
 _LATENT_CHANNELS = 128
 _VAE_TIME_SCALE = 8
 _VAE_SPATIAL_SCALE = 32
-# Width/height snap. 64 (not the VAE's 32) so the two-stage half-res
-# stage-1 geometry is itself an exact 32-multiple — half of a 64-snapped
-# dimension divides cleanly by the VAE spatial scale.
 _DIM_SNAP = 64
 
-# VAE-decode tiling defaults (16 GiB-fit). A one-shot decode of the full
-# 121-frame latent peaks ~23 GiB; temporal tiling decodes the clip in
-# overlapping pixel-frame windows and trapezoidally blends the overlap,
-# keeping peak well under the RTX 5070 Ti's 16 GiB. ltx-core's
-# TemporalTilingConfig requires the frame counts to be >= 16 and divisible
-# by 8. 48-frame tiles with a 16-frame overlap chunk a 121-frame clip into
-# ~3 windows; the overlap respects the causal VAE (split_temporal_causal
-# shifts each tile back by 1 + widens its left ramp for causal continuity).
-# 0 disables a tiling axis. Both knobs are overridable via the request's
-# `advanced` block.
 _DEF_VAE_TEMPORAL_TILE_FRAMES = 48
 _DEF_VAE_TEMPORAL_TILE_OVERLAP = 16
-# Spatial tiling stays off by default — at 768x512 the temporal tiling
-# alone fits 16 GiB, and a spatial split costs blend seams for no VRAM
-# need here. It is exposed as a lever for larger frames.
 _DEF_VAE_SPATIAL_TILE_PIXELS = 0
 _DEF_VAE_SPATIAL_TILE_OVERLAP = 64
 _DEF_NEGATIVE_PROMPT = (
@@ -188,27 +145,7 @@ _DEF_NEGATIVE_PROMPT = (
     "disfigured, motion smear, motion artifacts, fused fingers, bad "
     "anatomy, weird hand, ugly, transition, static, strobing, flickering."
 )
-# Anti-artifact terms folded into the positive prompt. At guidance 1.0
-# the uncond branch is skipped, so `_DEF_NEGATIVE_PROMPT` is inert —
-# these positive cues are the only quality lever on the default profile.
-# 16 fps base + RIFE doubling is prone to temporal aliasing; "stable
-# motion" and "consistent lighting" steer away from the flicker RIFE
-# would otherwise amplify.
 _POSITIVE_QUALITY_SUFFIX = "stable motion, consistent lighting, sharp"
-# Gemma packs chat-style prompts; the connector's FeatureExtractorV1 was
-# trained against `caption_channels=3840` * 49 hidden states. The
-# connector is sequence-length agnostic in CONTENT — its binary
-# attention mask carries token validity — but its
-# `_replace_padded_with_learnable_registers` step asserts the sequence
-# length is an exact multiple of `connector_num_learnable_registers`.
-# So the padded length is snapped UP to that register count rather than
-# left at the fixed 1024 the old code used. `_GEMMA_MAX_SEQUENCE_LENGTH`
-# is the hard cap (matches the diffusers `_get_gemma_prompt_embeds`
-# ceiling). A typical render prompt is ~30-60 tokens, so for the usual
-# 128-register checkpoint the encoder forward runs over 128 tokens
-# instead of 1024 — an ~8x cut in the encoder's activation footprint
-# (the dominant VRAM spike of the whole render), with no change to the
-# connector output for the real tokens.
 _GEMMA_MAX_SEQUENCE_LENGTH = 1024
 # Fallback register count when the embedded config does not carry
 # `transformer.connector_num_learnable_registers`.
@@ -717,10 +654,6 @@ def _build_native_stack(logger: Any) -> _NativeStack:
             gguf=str(paths.transformer_gguf),
             install_device=install_device,
         )
-        # Audio-video model: the Kijai 19B GGUF carries the full audio
-        # branch. We build the AV model so the schema is a clean 1:1
-        # match, but only the video branch is consumed in
-        # ``_generate_single``.
         bundle = load_native_ltx2_transformer(
             paths.transformer_gguf,
             compute_dtype=torch.bfloat16,
@@ -1222,9 +1155,6 @@ async def _render_loop(
         },
     )
 
-    # Stage 1b — i2v keyframe source. The keyframe is VAE-encoded inside
-    # `_generate_single`, per stage (half + full res for the two-stage
-    # pipeline); the handler only resolves the request fields here.
     input_image_block = raw_params.get("input_image") or {}
     input_image_path = (
         input_image_block.get("path")
@@ -1267,12 +1197,6 @@ async def _render_loop(
             loop,
         )
 
-    # Stage 3 — native denoise + VAE-decode.
-    # `_generate_single` evicts the 19B transformer from the cached
-    # `_NativeStack` mid-render (VRAM staging), so the stack is
-    # single-use — the `finally` drops the cache ref on EVERY exit
-    # (success or failure) so a later render rebuilds cleanly rather
-    # than reusing a transformer-less stack.
     try:
         frames = await asyncio.to_thread(
             functools.partial(
@@ -1633,11 +1557,6 @@ def run_native_denoise(
         1, token_count, _LATENT_CHANNELS,
         generator=generator, dtype=torch.float32,
     ).to(device=device, dtype=dtype)
-    # Rectified-flow seed: x_sigma0 = (1 - sigma0)*x0 + sigma0*noise.
-    # Stage 1 / single-stage has no initial latent (x0 = zeros) and
-    # sigma0 = 1.0, so the seed is pure noise — bit-identical to the prior
-    # start. The stage-2 refine passes the 2x-upsampled stage-1 latent as
-    # x0 and renoises at sigma0 = STAGE_2_DISTILLED_SIGMAS[0] (0.909375).
     latent_seed = (
         (1.0 - sigma0) * init_state.latent.to(torch.float32)
         + sigma0 * noise.to(torch.float32)
@@ -1680,14 +1599,6 @@ def run_native_denoise(
     diffusion_step = EulerDiffusionStep()
     perturbations = BatchedPerturbationConfig.empty(batch_size=1)
 
-    # i2v motion headroom: a keyframe pinned to a fixed clean target on
-    # every step reads to the model as a finished frame 0 from step 1, so
-    # the safest temporally-coherent continuation is to copy it — motion
-    # is suppressed or back-loaded. Re-noising the conditioned-token pin
-    # target, decaying linearly from full at step 0 to zero on the last
-    # step, keeps frame 0 a loose target while early steps decide motion,
-    # then locks it to the exact keyframe. ``cond_noise`` is a fixed
-    # seeded tensor so the decay is deterministic.
     image_cond_noise_scale = float(samp.get("image_cond_noise_scale", 0.0))
     cond_noise = None
     if has_cond and image_cond_noise_scale > 0.0:
@@ -1737,9 +1648,6 @@ def run_native_denoise(
         for step_idx in range(steps):
             sigma = sigmas[step_idx]
             sigma_f = float(sigma)
-            # Per-token sigma — ltx-core's X0Model contract: a token's
-            # velocity->x0 conversion uses timesteps = sigma * denoise_mask.
-            # Clean conditioning tokens (denoise_mask < 1) convert at ~0.
             token_sigma = sigma * denoise_mask
 
             velocity = _run_transformer(
@@ -1754,17 +1662,6 @@ def run_native_denoise(
                 neg_denoised = to_denoised(latent, neg_velocity, token_sigma)
                 denoised = neg_denoised + guidance * (denoised - neg_denoised)
 
-            # x0-space conditioning: blend conditioned tokens toward the
-            # keyframe pin target in the denoised (x0) prediction BEFORE
-            # the Euler step, then advance every token together. Blending
-            # the *stepped* latent (next sigma) with a raw sigma-0 clean
-            # latent — the prior approach — mixed noise levels and melted
-            # keyframe-anchored subjects. The pin target carries
-            # step-decaying noise (loose early, exact keyframe on the last
-            # step) for i2v motion headroom. ``pin_mask`` is the pin
-            # fraction decoupled from the sigma mask — a hard pin stays
-            # fully pinned, a soft overlap token is pinned looser than its
-            # sigma mask implies (see _soft_pin_mask).
             if has_cond:
                 pin = clean_latent.to(torch.float32)
                 if cond_noise is not None:
@@ -2097,11 +1994,6 @@ def _decode_video_latent(
     decoder_sd.update(
         {k: v for k, v in raw.items() if k.startswith("per_channel_statistics.")}
     )
-    # `assign=True` is mandatory here: the decoder was built on the meta
-    # device by `create_meta_model`, and the default copy-in-place load is
-    # a silent no-op for meta params (torch warns "copying to a meta
-    # parameter ... is a no-op"). `assign` swaps the meta placeholders for
-    # the real CPU tensors, which the `.to(device)` below then moves.
     missing, _unexpected = decoder.load_state_dict(
         decoder_sd, strict=False, assign=True
     )
@@ -2133,11 +2025,6 @@ def _decode_video_latent(
 
     chunks: list[Any] = []
     with torch.no_grad():
-        # `decode_video` yields RGB chunks shaped [f, h, w, c] in [0, 1].
-        # A `tiling_config` decodes in causal overlapping windows; `None`
-        # falls back to the one-shot decode. Each yielded chunk is moved
-        # to CPU before the next window decodes so the GPU only ever holds
-        # one window's worth of pixel-space output.
         for chunk in decoder.decode_video(
             grid_latent.to(torch.bfloat16), tiling_config=tiling_config
         ):

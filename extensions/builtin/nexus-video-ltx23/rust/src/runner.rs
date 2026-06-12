@@ -26,11 +26,6 @@ use crate::vram_supervisor::{VramSupervisor, VramVerdict};
 /// taken by the worker, so we claim `-32110` for host-side halts).
 pub const VRAM_SUPERVISOR_BREACH_CODE: i64 = -32110;
 
-// Worker JSON-RPC error code constants. These mirror the worker's
-// `rpc.py::ErrorCodes` namespace — kept in sync by hand because the
-// extension's Rust + Python halves don't share a generated schema.
-// If the worker adds a new code, add the matching match arm in
-// `map_worker_error_code` so the host UI gets a discriminator.
 const W_DRIVER_TOO_OLD: i64 = -32100;
 const W_TORCH_CUDA_MISMATCH: i64 = -32101;
 const W_GPU_NOT_SUPPORTED: i64 = -32102;
@@ -80,11 +75,6 @@ fn typed_error_for(code: i64, message: String) -> crate::errors::ExtensionError 
 
 // Hard cap on transparent restart-mid-chain attempts before the runner
 // gives up and surfaces the supervisor halt to the UI. Three is the
-// sweet spot from spec-046 measurements: one restart is often enough to
-// drain the fragmented CUDA pool; two covers slow-leak pathologies;
-// three is the canary for "something else is wrong, stop wasting GPU
-// time". Configurable via env var so operators can tune for their
-// hardware without rebuilding.
 const DEFAULT_MAX_RESTARTS: u32 = 3;
 const MAX_RESTARTS_ENV: &str = "NEXUS_VIDEO_LTX23_VRAM_MAX_RESTARTS";
 
@@ -105,18 +95,7 @@ pub fn max_restarts_from_env_public() -> u32 {
     max_restarts_from_env()
 }
 
-// Render wall-clock budget. The real LTX-2.3 pipeline on a single 16 GB
-// GPU takes ~750 s per 4-second segment (60 s cold pipeline load + 8
-// inference steps @ ~75 s each, measured 2026-05-13 on RTX 5070 Ti with
-// BF16 weights spilling to system RAM). The fake pipeline finishes in
-// seconds. 30 minutes covers both modes plus headroom for multi-segment
-// runs; cancellation still pre-empts via the Notify path so a stuck
-// render isn't unconditionally blocking the lease.
 const RENDER_TIMEOUT: Duration = Duration::from_secs(1800);
-// Single-segment retry budget. One segment instead of the full chain —
-// cold pipeline load + one 8-step inference at the real-runtime rate
-// is ~800 s tops on a 16 GB card; 15 minutes covers worst case with
-// the same safety pattern as RENDER_TIMEOUT.
 const RETRY_SEGMENT_TIMEOUT: Duration = Duration::from_secs(900);
 /// Window the worker is given to flush its in-flight segment, emit
 /// `ltx.video.error{code:RENDER_CANCELLED}`, and clean up resources after
@@ -507,11 +486,6 @@ async fn run_via_lease(
                 }
                 restart_attempts += 1;
                 last_breach_reason = Some(reason.clone());
-                // Persist the breach reason BEFORE the budget check so
-                // that even the budget-exhausted halt path's DB row
-                // reflects *why* the chain stopped. Cheap (one UPDATE)
-                // and the UI's tooltip needs it on both happy + halt
-                // paths.
                 if let Err(e) = cfg.repos.update_last_breach_reason(run_id, &reason).await {
                     tracing::warn!(
                         extension_id = "nexus.video.ltx23",
@@ -544,12 +518,6 @@ async fn run_via_lease(
                     next_offset,
                     "vram supervisor: restarting chain at next segment"
                 );
-                // Bump the persisted counter so polling clients see
-                // the restart in real time (DB row reflects intent
-                // BEFORE the new lease acquire — the row may show
-                // restart_count=N briefly even if the next attempt
-                // fails immediately, but that's the right semantic:
-                // the restart was attempted).
                 if let Err(e) = cfg.repos.increment_restart_count(run_id).await {
                     tracing::warn!(
                         extension_id = "nexus.video.ltx23",
@@ -564,9 +532,6 @@ async fn run_via_lease(
         }
     };
 
-    // Stash the last breach reason on a transient log so the final
-    // error message can mention it when the chain ultimately Done's
-    // after one or more restarts — useful operator diagnostic.
     if let Some(reason) = &last_breach_reason {
         if matches!(outcome, NotificationOutcome::Done { .. }) {
             tracing::info!(
@@ -579,12 +544,6 @@ async fn run_via_lease(
         }
     }
 
-    // Item B: drain the notification buffer before flipping the run
-    // row to a terminal status. Guarantees that any client that sees
-    // status=completed/failed/cancelled also sees every segment row
-    // in its final state — no "completed run with rendering segments"
-    // window. Best-effort: a flusher failure is logged but doesn't
-    // mask the actual outcome.
     if let Err(e) = cfg.notification_buffer.flush_now().await {
         tracing::warn!(
             extension_id = "nexus.video.ltx23",
@@ -629,11 +588,6 @@ async fn run_via_lease(
                 cleanup_workdir(&workdir, run_id).await;
                 return Err(crate::errors::ExtensionError::RenderCancelled);
             }
-            // Map JSON-RPC error codes from the worker's ErrorCodes
-            // namespace to the typed `error_code` strings the UI
-            // discriminates on. Falls through to `worker_error:<code>`
-            // for any code not in the known namespace so we don't
-            // silently swallow new error types.
             let error_code = map_worker_error_code(code);
             cfg.repos
                 .update_run_status(
@@ -654,10 +608,6 @@ async fn run_via_lease(
             cleanup_workdir(&workdir, run_id).await;
             Err(crate::errors::ExtensionError::RenderCancelled)
         }
-        // The loop above only `break`s with Done / Error / Cancelled.
-        // This arm exists for exhaustiveness — the type system won't
-        // let us drop it without a wildcard, and a wildcard would hide
-        // future variants.
         NotificationOutcome::RestartRequired { .. } => {
             unreachable!("RestartRequired must be consumed by the restart loop")
         }
@@ -704,10 +654,6 @@ async fn run_attempt(
             input_image_artifact_id,
         )
     } else {
-        // Resume mid-chain: trim the segments + point at the prior
-        // chain's last_frame.png so the worker re-anchors visual
-        // continuity. The path is the workdir layout the worker
-        // itself writes (`<workdir>/segments/<NNN>/last_frame.png`).
         let prev_idx = segment_offset.saturating_sub(1);
         let cond_image = workdir
             .join("segments")
@@ -716,11 +662,6 @@ async fn run_attempt(
         let cond_image_opt = if cond_image.is_file() {
             Some(cond_image.as_path())
         } else {
-            // Best effort — if the prior segment's last_frame.png was
-            // never written (worker crash before flush), fall through
-            // without cond_image. The worker will still render the
-            // remaining segments, just without the visual-continuity
-            // anchor. Logged so an operator can correlate.
             tracing::warn!(
                 extension_id = "nexus.video.ltx23",
                 run_id = %run_id,
@@ -979,10 +920,6 @@ async fn retry_segment_via_lease(
     let lease = cfg.factory.acquire_lease(short_profile(profile)).await?;
     let target = i64::from(seg_idx);
 
-    // Single-exit pattern: do the work inside an inner async block,
-    // capture its Result, then release the lease ONCE on every path
-    // (timeout, channel close, worker error, success). Avoids the
-    // "lease leaked on timeout" anti-pattern the prior structure had.
     let outcome_result: Result<RetryOutcome> = async {
         let mut notifications = lease.subscribe_notifications();
 
@@ -996,11 +933,6 @@ async fn retry_segment_via_lease(
             advanced,
             &workdir,
             &cfg.inputs_dir,
-            // Only the first-segment retry conditions on the original
-            // upload — later segments retry against the chain's own
-            // last_frame.png, which the worker reads internally. Soft-
-            // failing for seg_idx > 0 keeps the retry behaviour aligned
-            // with the resume path's "prior segment wins" invariant.
             if seg_idx == 0 {
                 input_image_artifact_id
             } else {
@@ -1025,9 +957,6 @@ async fn retry_segment_via_lease(
                 match notifications.recv().await {
                     Ok(note) => {
                         if !notification_matches_run(&note.params, run_id) {
-                            // Notification from a different run sharing the
-                            // pool — defence-in-depth so a mis-routed event
-                            // can't prematurely succeed our retry.
                             continue;
                         }
                         match note.method.as_str() {
@@ -1183,10 +1112,6 @@ async fn handle_notification(
         "ltx.video.segment.completed" => {
             if let Some(i) = segment_index(&note.params) {
                 enqueue_segment_status(&cfg.notification_buffer, run_id, i, "completed").await;
-                // Supervisor breach pending? Now is the right moment to
-                // halt: the segment just landed cleanly on disk + the
-                // worker is between segments, so releasing the lease
-                // here gives a clean restart point.
                 if let Some(reason) = breach_latch.take().await {
                     if let Some(outcome) =
                         restart_outcome_for_latched_breach(&reason, i, total_segments)
@@ -1208,12 +1133,6 @@ async fn handle_notification(
             Ok(None)
         }
         "ltx.video.segment.step" => {
-            // Per-inference-step heartbeat from pipeline_diffusers' diffusers
-            // `callback_on_step_end` hook. Solves the "worker silent for
-            // minutes" UX problem — gives the recipe UI a live per-step
-            // progress counter even when the segment-level progress
-            // hasn't ticked yet. Logged at TRACE so it doesn't spam the
-            // host log; the notification still reaches any SSE subscriber.
             let step = note.params.get("step").and_then(Value::as_u64).unwrap_or(0);
             let total = note
                 .params
@@ -1614,11 +1533,6 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
         SchedulerChoice::FlowMatchEuler => "flow_match_euler",
         SchedulerChoice::FlowMatchHeun => "flow_match_heun",
     };
-    // The shipped checkpoint is unquantized bf16 (~83 GB). When the
-    // operator leaves quant on the default `None`, resolve a
-    // per-profile default so nvfp4 actually quantises (nf4) instead of
-    // trying to load 83 GB onto a 16 GB card. Explicit operator choice
-    // always wins.
     let quant = match advanced.quantization {
         ModelQuant::None => default_quant_for_profile(short_profile(runtime_profile)),
         explicit => explicit,
@@ -1648,17 +1562,7 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
     let guidance_rescale = advanced
         .guidance_rescale
         .map_or(Value::Null, |v| Value::from(f64::from(v)));
-    // Operator VRAM ceiling. `None` → JSON null → worker leaves the
-    // accelerate device-map heuristic untouched (pre-cap behaviour).
-    // A concrete value → worker pins `max_memory[0]` to it under
-    // model / sequential offload. Bounds were already enforced by
-    // `CreateRenderRequest::validate_field_bounds` before this runs.
     let max_gpu_vram_gib = advanced.max_gpu_vram_gib.map_or(Value::Null, Value::from);
-    // Operator's scene-boundary seam method. `None` → JSON null →
-    // worker resolves env/default (the LTX-Video 0.9.7 path defaults to
-    // its `overlap_blend` seam fix). Workers that don't treat seams
-    // ignore the key (call-kwarg filtered), so this is contract-safe
-    // across profiles.
     let interpolation = advanced.interpolation.map_or(Value::Null, |m| {
         serde_json::to_value(m).unwrap_or(Value::Null)
     });
@@ -1679,9 +1583,6 @@ fn build_advanced_block(advanced: &AdvancedSettings, runtime_profile: &str) -> V
         .vae_tiling
         .as_deref()
         .map_or(Value::Null, Value::from);
-    // Remaining worker-honoured knobs. All null-when-unset so the
-    // worker's _sampling_params / seam_params single-source-of-truth
-    // defaults stand unless the operator overrides them.
     let f = |o: Option<f32>| o.map_or(Value::Null, |v| Value::from(f64::from(v)));
     let decode_noise_scale = f(advanced.decode_noise_scale);
     let condition_strength = f(advanced.condition_strength);

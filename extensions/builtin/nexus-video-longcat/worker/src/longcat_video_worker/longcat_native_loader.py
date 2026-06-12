@@ -498,17 +498,6 @@ def _any_upstream_attn_enabled(model: Any) -> bool:
 
 
 def _patch_attention_to_use_sdpa(model: Any, backend: str = "sdpa") -> int:
-    # Upstream attention.py has no torch-native SDPA branch — it supports
-    # bsa / flashattn3 / flashattn2 / xformers only, raising "Unsupported
-    # attention operations." when none are enabled. We override the inner
-    # kernels on every Attention + MultiHeadCrossAttention to dispatch
-    # through F.scaled_dot_product_attention or sageattention so the
-    # worker can run on any CUDA device without flash-attn-2 wheels.
-    #
-    # `backend` argument:
-    #   "sdpa"       — torch.nn.functional.scaled_dot_product_attention
-    #   "sage"       — sageattention.sageattn (int8 quantized attn)
-    #   "flashattn2" — flash_attn.flash_attn_func (only patches if importable)
     import types
 
     try:
@@ -634,9 +623,6 @@ def _meta_param_names(model: Any) -> list[str]:
 
 
 def _rebind_preprocessor_modules(model: Any) -> None:
-    # LongCat-Video has no separate preprocessor wrapper module around the DiT
-    # (unlike LTX-2 which has a patchify/unpatchify split); PatchEmbed3D is a
-    # plain sub-module of the transformer. Nothing to rebind.
     return None
 
 

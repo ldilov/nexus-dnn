@@ -394,12 +394,6 @@ fn resolve_snapshot_path(arg: &str) -> std::path::PathBuf {
 fn render_inspect(handles: &ControllerHandles, id: &str) {
     set_holding(handles, true);
     let depth = detect_color_depth();
-    // Lock ordering: never hold the `ring` guard while taking the
-    // `inspector_collapsed` guard (review H1 — nested-lock fragility).
-    // Clone the target `EventLine` out of the ring so the ring guard
-    // is released before we touch the collapsed-map. The renderer
-    // needs the ring again for correlation walking; re-acquire it
-    // separately once the collapsed set is known.
     let target_owned: Option<crate::stream::event_line::EventLine> = match handles.ring.lock() {
         Ok(buf) => find_event_by_id_str(&buf, id).cloned(),
         Err(_) => None,
@@ -436,13 +430,6 @@ fn render_inspect(handles: &ControllerHandles, id: &str) {
     match rendered {
         Some((layout, event_id)) => {
             clear_prior_inspector_block(handles);
-            // Capture cursor row BEFORE and AFTER print so we can detect
-            // terminal scroll. A 20-row inspector card printed when the
-            // prompt sits near the bottom of the terminal scrolls
-            // pre-existing content up; absolute screen rows the layout
-            // expects no longer match where the rows actually land. The
-            // ambient-render path uses the same pattern (runtime.rs ::
-            // `register_targets` + `click_row_after_print`).
             let old_row = crossterm::cursor::position().ok().map(|(_, r)| r);
             print!("{}", layout.rendered);
             use std::io::Write as _;
@@ -450,9 +437,6 @@ fn render_inspect(handles: &ControllerHandles, id: &str) {
             let new_row = crossterm::cursor::position().ok().map(|(_, r)| r);
             let total_rows = layout.total_rows;
             let block_top = compute_block_top(old_row, new_row, total_rows);
-            // Compute scroll delta so any pre-existing registry entries
-            // (older ambient `EventLineBody`s now sitting under the
-            // inspector card) get shifted to their new on-screen rows.
             if let (Some(old), Some(new)) = (old_row, new_row) {
                 let expected = (old as i32).saturating_add(total_rows as i32);
                 let scroll_delta = (expected - new as i32).max(0) as u16;
@@ -464,12 +448,6 @@ fn render_inspect(handles: &ControllerHandles, id: &str) {
             }
             remember_inspector_anchor(handles, block_top, total_rows);
             if let (Some(start), Ok(mut reg)) = (block_top, handles.click_registry.lock()) {
-                // Evict any prior inspector-section / ambient targets
-                // that overlapped the rows now owned by the new card.
-                // Reverse-iter lookup in ClickRegistry would otherwise
-                // return a stale `EventLineBody` for a click that hit
-                // the new card's text — exactly the "prints something
-                // unrelated" failure mode the user reported.
                 let max_row = start.saturating_add(total_rows);
                 reg.retain_targets(|t| {
                     !matches!(
@@ -496,13 +474,6 @@ fn render_inspect(handles: &ControllerHandles, id: &str) {
                     );
                 }
             }
-            // Mark the inspector session active. The HoldQueue stays
-            // locked (`set_holding(true)` from line 360) so ambient
-            // events buffer behind the inspector card instead of
-            // scrolling it off-screen — which keeps the cached
-            // `inspector_anchor.start_row` valid for the next
-            // toggle-click redraw. The session is dismissed by the
-            // next non-inspector command (see `execute()` prelude).
             handles
                 .inspector_session_active
                 .store(true, std::sync::atomic::Ordering::Release);

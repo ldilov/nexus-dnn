@@ -67,13 +67,6 @@ pub async fn get_installed_model_metadata(
         return not_found(&install_id);
     }
 
-    // Disk is the source of truth (AC-1.5): reconcile the row against disk
-    // through the shared `InstallMap::reconcile_row_present` path so a family
-    // whose files were deleted stops reporting as installed. Only runs when the
-    // install-map + orchestrator (sink_root) are wired; otherwise fall through
-    // to the legacy read (tests that don't plumb the model store in).
-    // Spec 054 G7 (AC-7.3) — legibility fields resolved from the reconciled
-    // install-map row: the owning job_id, on-disk path, and family.
     let mut legibility: Option<(String, String, String)> = None;
     if let (Some(install_map), Some(orchestrator)) = (
         state.install_map.as_ref(),

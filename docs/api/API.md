@@ -7,7 +7,7 @@
 This document describes **everything a client can do** against a running `nexus-dnn` host:
 
 1. The HTTP surface exposed by the host crate (`crates/nexus-api`).
-2. The routes contributed by the two **builtin extensions** (`local-llm`, `emotion-tts`), mounted under the generic extension router.
+2. The routes contributed by built-in extensions, mounted under the generic extension router. This document currently gives the deepest route-level detail for `local-llm` and `emotion-tts`, while the repo also ships newer built-ins such as `nexus-video-ltx23`, `nexus-video-longcat`, and `nexus-video-svi2-pro`.
 3. The WebSocket and Server-Sent-Events streams.
 4. The supporting functionality (deployments, runs, model store, backend runtimes, etc.) — what each surface enables, not just the wire shape.
 
@@ -56,7 +56,7 @@ For the full architectural picture (crate map, data flow, host ↔ extension bou
 | `/api/host`     | Host introspection (Spec 028) — facts the host exposes to extensions. |
 | `/`             | SPA frontend fallback (`apps/web` static bundle).                      |
 
-The host binds to `127.0.0.1` by default and has no built-in authentication; trust the local user. Front the process with a reverse proxy if you bind a non-loopback interface.
+The host currently binds to `0.0.0.0` by default and has no built-in authentication; trust the local user. In normal local usage, clients should still connect through `127.0.0.1`. If you expose the host beyond loopback, front it with an authenticating reverse proxy.
 
 ### Response envelope
 
@@ -177,10 +177,16 @@ The host never imports an extension's types or knows what a given extension does
 
 ```jsonc
 {
-  "status": "ok",
-  "uptime_secs": 3612,
-  "extensions_loaded": 3,
-  "workers_active": 2
+  "data": {
+    "status": "ok",
+    "details": {
+      "uptime_secs": 3612,
+      "extensions_loaded": 3,
+      "workers_active": 2
+    }
+  },
+  "meta": { "timestamp": "2026-06-12T00:00:00Z" },
+  "error": null
 }
 ```
 
@@ -266,7 +272,7 @@ The host exposes a generic mount point that forwards everything after the extens
 
 Supported methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`. The registry of extension routers is sealed at startup; runtime registration is not allowed once the HTTP listener is bound.
 
-The two builtin extensions live behind this mount point:
+Built-in extensions live behind this mount point. Two especially mature route surfaces documented in detail below are:
 
 - `nexus.local-llm` — see [§ Builtin extension: nexus.local-llm](#builtin-extension-nexuslocal-llm).
 - `nexus.audio.emotiontts` — see [§ Builtin extension: nexus.audio.emotiontts](#builtin-extension-nexusaudioemotiontts).

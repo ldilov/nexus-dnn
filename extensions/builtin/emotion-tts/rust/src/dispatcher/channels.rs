@@ -61,11 +61,6 @@ impl Drop for RegistrationGuard {
     fn drop(&mut self) {
         let inner = self.inner.clone();
         let run_id = std::mem::take(&mut self.run_id);
-        // Removal must run on the runtime even though Drop is sync. Spawn
-        // a detached task — registry shutdown is best-effort. If we are
-        // dropped after the runtime is gone (e.g., process shutdown),
-        // silently leak the entry rather than panic — the Arc holding
-        // the map is itself about to be dropped.
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
                 inner.write().await.remove(&run_id);

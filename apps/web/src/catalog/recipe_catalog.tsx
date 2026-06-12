@@ -76,9 +76,6 @@ export function RecipeCatalog({ onOpenRecipe }: RecipeCatalogProps) {
   const enabled = useMemo(
     () =>
       filterByExtensionEnablement(recipes, extensions, {
-        // Recipes are tightly tied to their extension — if the extension is
-        // disabled the recipe can't execute, so we hide it regardless of
-        // whether the user touched the underlying workflow.
         keepUserEditedFromDisabled: false,
       }),
     [recipes, extensions],

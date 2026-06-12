@@ -204,10 +204,6 @@ mod tests {
     use sqlx::sqlite::SqlitePoolOptions;
     use tempfile::TempDir;
 
-    // Byte-for-byte copy of the historical Foundry host algorithm
-    // (`run_host_install::compute_root_sha`). The contract test below locks
-    // `compute_sha256_root` to this so a registered row's dedup key cannot
-    // silently diverge from a Foundry-installed one.
     fn legacy_compute_root_sha(files: &[(String, String)]) -> String {
         let mut sorted: Vec<&(String, String)> = files.iter().collect();
         sorted.sort_by(|a, b| a.0.cmp(&b.0));

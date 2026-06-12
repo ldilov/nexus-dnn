@@ -360,14 +360,6 @@ pub async fn create_download(
     let job = match store.create(params).await {
         Ok(job) => job,
         Err(JobStoreError::Duplicate(existing)) => {
-            // The frontend relies on a full `DownloadJob` DTO to drive
-            // its progress state machine (jobByFamily lookups, SWR poll
-            // gating, etc.). Returning the bare `{ job_id, existing }`
-            // shape leaves `state`, `family_id`, `progress_bytes` all
-            // undefined on the client — the progress bar never renders
-            // for re-clicked or retry-after-completion flows. Fetch the
-            // canonical persisted job and return its DTO so the client
-            // can reconcile against an authoritative snapshot.
             match store.get(&existing).await {
                 Ok(Some(persisted)) => {
                     let dto = DownloadJobDto::from_persisted(persisted);
@@ -376,9 +368,6 @@ pub async fn create_download(
                     return resp;
                 }
                 Ok(None) => {
-                    // Duplicate flag is set but the job vanished — very
-                    // narrow race. Fall back to the minimal shape so the
-                    // client at least gets the id and can re-fetch.
                     return ApiResponse::ok(serde_json::json!({
                         "job_id": existing.to_string(),
                         "existing": true,

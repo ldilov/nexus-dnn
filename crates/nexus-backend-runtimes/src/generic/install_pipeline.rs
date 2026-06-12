@@ -213,13 +213,6 @@ fn check_cancelled(ctx: &InstallCtx, phase: Phase) -> Result<(), GenericInstallE
     Ok(())
 }
 
-// ---- Generic phase hooks ----------------------------------------------------
-//
-// resolve / download / verify / extract are now implemented in
-// `crate::generic::phases::*`. detect_models / persist remain Ok-stubs
-// since their real behaviour is per-family + tied to the model store
-// (own follow-up work).
-
 async fn detect_models_phase(_ctx: &mut InstallCtx) -> Result<(), GenericInstallError> {
     Ok(())
 }

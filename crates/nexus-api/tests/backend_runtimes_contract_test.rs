@@ -64,10 +64,6 @@ async fn body_to_json(body: Body) -> Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
-// -----------------------------------------------------------------------------
-// T029 — list + filters
-// -----------------------------------------------------------------------------
-
 #[tokio::test]
 async fn list_returns_envelope_with_runtimes_array() {
     let h = harness().await;
@@ -197,10 +193,6 @@ async fn list_dto_matches_contract_schema_required_fields() {
     assert_eq!(entry["implementation_status"], "available");
 }
 
-// -----------------------------------------------------------------------------
-// T030 — get by id
-// -----------------------------------------------------------------------------
-
 #[tokio::test]
 async fn get_by_id_returns_200_when_present() {
     let h = harness().await;
@@ -267,10 +259,6 @@ async fn get_by_id_returns_400_on_invalid_id() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
-
-// -----------------------------------------------------------------------------
-// T032 — registration cascades
-// -----------------------------------------------------------------------------
 
 #[tokio::test]
 async fn register_then_deactivate_flips_status_to_unavailable() {
@@ -378,10 +366,6 @@ async fn cross_extension_duplicate_runtime_id_is_rejected() {
     );
 }
 
-// -----------------------------------------------------------------------------
-// T047 — POST /install + GET /:install_id + POST /retry contract
-// -----------------------------------------------------------------------------
-
 async fn seed_runtime(h: &CatalogHarness, runtime_id: &str) {
     let catalog = SqliteCatalogRepo::new(h.pool.clone());
     register_contributions(
@@ -424,10 +408,6 @@ async fn install_returns_202_with_runtime_install_id() {
         .as_str()
         .expect("install_id missing");
     assert!(!install_id.is_empty());
-    // Test harness does not configure `extensions_dir`, so the install
-    // handler reports `unwired` instead of spawning the pipeline. Both
-    // `unwired` and `running` are valid 202 responses depending on host
-    // configuration; tests below exercise the spawn path explicitly.
     let pipeline_status = body["data"]["pipeline_status"].as_str().unwrap();
     assert!(
         matches!(pipeline_status, "unwired" | "running"),
@@ -670,10 +650,6 @@ async fn retry_only_permitted_on_failed_status() {
     let after = installs.get(&install_id).await.unwrap().unwrap();
     assert_eq!(after.status, InstallStatus::Pending);
 }
-
-// -----------------------------------------------------------------------------
-// T087 — GET /backend-runtime-installs list endpoint
-// -----------------------------------------------------------------------------
 
 #[tokio::test]
 async fn installs_list_returns_400_when_runtime_id_is_missing() {

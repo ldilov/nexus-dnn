@@ -28,20 +28,6 @@ use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;
 use tokio::sync::mpsc;
 
-// ---------------------------------------------------------------------------
-// Channel-based mock lease
-//
-// The existing `MockBackendRuntimeLease` in `fixtures/mock_backend.rs` uses a
-// snapshot-based `subscribe_notifications` (returns items buffered *before*
-// subscribe is called). The dispatcher calls `subscribe_notifications` once
-// then immediately fires `synthesize.batch`, so any notifications pushed
-// inside the RPC handler arrive *after* the snapshot was taken and are never
-// seen by the drain loop.
-//
-// This file-local mock replaces that with an mpsc channel so notifications
-// pushed at any time after subscribe are delivered to the stream.
-// ---------------------------------------------------------------------------
-
 struct ChannelLease {
     id: RuntimeLeaseId,
     /// Receiver wrapped in a Mutex so `subscribe_notifications` can take it
@@ -116,10 +102,6 @@ impl LeaseFactory for StaticLeaseFactory {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 async fn fresh_pool() -> SqlitePool {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -134,10 +116,6 @@ async fn fresh_pool() -> SqlitePool {
     }
     pool
 }
-
-// ---------------------------------------------------------------------------
-// The test
-// ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn dispatcher_emits_segment_events_and_runs_to_completion() {
@@ -417,10 +395,6 @@ async fn dispatcher_emits_segment_events_and_runs_to_completion() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Test: dispatcher writes ExportHistoryRow when artifact store is wired
-// ---------------------------------------------------------------------------
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn dispatcher_writes_export_history_on_completed_run() {
     let pool = fresh_pool().await;
@@ -671,17 +645,7 @@ async fn dispatcher_writes_export_history_on_completed_run() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Test: cache-hit-only run never calls synthesize.batch
-// ---------------------------------------------------------------------------
-//
-// Pre-seeds a SynthesisCacheRow whose content_hash exactly matches what
-// prepare() computes for the single segment in "Narrator: Hello world." with
-// cache_policy="use_cache". Asserts:
-//   - synthesize.batch handler call count is 0 (RPC short-circuited)
-//   - run row reaches "completed"
-//   - utterance row has cache_hit=true + cached audio_artifact_ref
-// ---------------------------------------------------------------------------
+
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn dispatcher_serves_cache_hits_without_calling_worker() {
@@ -803,22 +767,6 @@ async fn dispatcher_serves_cache_hits_without_calling_worker() {
         .await
         .unwrap();
 
-    // Compute the same hash that prepare() will compute for the single segment.
-    // The inputs mirror prepare.rs exactly:
-    //   extension_version  → passed to spawn_dispatcher as "0.0.0-test"
-    //   runtime_version    → FALLBACK_RUNTIME_VERSION ("unknown-runtime")
-    //                         because no handshake has populated
-    //                         LeaseProvider::cached_handshake in this test
-    //   model_version      → FALLBACK_MODEL_VERSION ("unknown-model")
-    //   model_family       → FALLBACK_MODEL_FAMILY ("unknown-model")
-    //   text               → dialogue parser treats "Narrator: Hello world." as an
-    //                         UNTAGGED line (no leading `[`), so the full trimmed
-    //                         line becomes the utterance text unchanged.
-    //   speaker_ref_sha256 → voice_sha256 above
-    //   seed               → run.base_seed = 42
-    //   speed_factor       → run.speed_factor = 1.0
-    //   speed_mode         → run.speed_mode = "preserve_pitch"
-    //   output_format      → run.output_format = "wav"
     let cache_input = CacheKeyInput {
         extension_version: "0.0.0-test".into(),
         runtime_version: emotion_tts_extension::backend_client::FALLBACK_RUNTIME_VERSION.into(),
@@ -941,19 +889,6 @@ async fn dispatcher_serves_cache_hits_without_calling_worker() {
         "utterance must reference the pre-seeded cached audio file"
     );
 }
-
-// ---------------------------------------------------------------------------
-// Test: resume run reuses cache rows from the original run
-// ---------------------------------------------------------------------------
-//
-// Seeds an original run (status=partial) and a cache row whose hash matches
-// what the dispatcher will compute for the single segment. Then enqueues a
-// NEW resume run that points at the original via `original_run_id`. Asserts:
-//   - synthesize.batch handler call count is 0 (cache hit short-circuits)
-//   - all utterance rows for the resume run have cache_hit=true
-//   - all utterance rows have source_run_id=Some(original_run_id) (C2 fix)
-//   - resume run reaches "completed"
-// ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn resume_run_reuses_cache_from_original() {
@@ -1241,24 +1176,6 @@ async fn resume_run_reuses_cache_from_original() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Test: raw_text run uses deployment default voice when no character mapping
-// exists
-// ---------------------------------------------------------------------------
-//
-// Seeds a deployment with `default_voice_asset_id` set to a real voice, but
-// does NOT insert any CharacterMappingRow. Enqueues a run with
-// parser_mode="raw_text" and script="Hello.\nWorld." — the raw_text parser
-// attributes both lines to "Narrator" (no character tag). With no mapping for
-// "Narrator" the prepare() path must fall back to the deployment's
-// `default_voice_asset_id` (G3 fallback) rather than returning a Conflict
-// error.
-//
-// Validates G3 + G1 together. Pins the Quick voice mode contract:
-// adding a default voice unblocks plain-text synthesis without any
-// per-character setup.
-// ---------------------------------------------------------------------------
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn raw_text_run_uses_deployment_default_voice() {
     let pool = fresh_pool().await;
@@ -1519,24 +1436,6 @@ async fn raw_text_run_uses_deployment_default_voice() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Test: test_line run does NOT write cache rows and does NOT write export ZIP
-// ---------------------------------------------------------------------------
-//
-// Enqueues a run with kind="test_line" and cache_policy="use_cache" (so the
-// cache-write code path would run for a normal batch run). Also wires in a
-// real FakeArtifactStore (so the export-write code path would also run for a
-// normal batch run). The mock handler writes a WAV stub to disk so that
-// build_zip_bytes could succeed *if* it were called.
-//
-// After RunTerminal, asserts:
-//   - synthesis_cache table is empty (cache.total_size_bytes() == 0)
-//   - exports.get_latest_for_run() returns None
-//   - run row status = "completed"
-//
-// Validates F1's two gates (is_test_line short-circuits both side-effects).
-// ---------------------------------------------------------------------------
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_line_skips_cache_and_export() {
     let pool = fresh_pool().await;
@@ -1620,11 +1519,6 @@ async fn test_line_skips_cache_and_export() {
         .await
         .unwrap();
 
-    // Seed the run row with kind="test_line" and cache_policy="use_cache".
-    // The dispatcher reads run.kind from this row to decide whether to apply
-    // the cache-write and export-write gates (both are skipped when
-    // is_test_line=true). Using cache_policy="use_cache" ensures the cache
-    // lookup path runs; the gate we're testing is the *write* path.
     let run_id = RunId::new();
     repos
         .runs
@@ -1658,9 +1552,6 @@ async fn test_line_skips_cache_and_export() {
         .await
         .unwrap();
 
-    // Write a real WAV stub to a temp file so build_zip_bytes *could* read it
-    // if the export gate were absent. This is defensive — the test asserts that
-    // the export path is never reached at all.
     let wav_dir = std::env::temp_dir().join("nexus-emotion-tts-test-test-line");
     std::fs::create_dir_all(&wav_dir).unwrap();
     let wav_path = wav_dir.join("seg_000_tl.wav");
@@ -1737,9 +1628,6 @@ async fn test_line_skips_cache_and_export() {
         std::env::temp_dir().join(emotion_tts_extension::FALLBACK_RUNS_DIR),
     );
 
-    // Enqueue via the test-line priority slot. The dispatcher's gating reads
-    // run.kind from the DB row ("test_line") — the queue class is consistent
-    // with that but the gate does NOT use it.
     queue
         .enqueue_test_line(run_id.clone(), dep.as_str())
         .await
@@ -1806,31 +1694,6 @@ async fn test_line_skips_cache_and_export() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Test: per-character mapping vector_preset default flows into the cache key
-// ---------------------------------------------------------------------------
-//
-// Backlog Task 2 — `domain::emotion::resolve()` precedence:
-//   inline > legacy_ref > mapping > global > none
-//
-// Seeds:
-//   - a vector preset with a known [f64; 8]
-//   - a character mapping for "Narrator" with default_emotion_mode="vector_preset"
-//     pointing at that preset
-//   - a SynthesisCacheRow whose content_hash is computed using the EXPECTED
-//     emotion payload — `EmotionPayload::EmotionVector { vector, alpha: 1.0 }`
-//
-// If prepare() correctly applies the mapping default through `resolve()`,
-// the per-utterance cache_input.emotion will match the seeded row and the
-// utterance will land with cache_hit=true.
-//
-// If prepare() regresses to using a global EmotionPayload::None, the hash
-// will not match the seeded row and the test will fail (cache_hit=false).
-//
-// This pins the contract that mapping defaults are resolved per-utterance
-// rather than ignored in favor of the run-level global emotion.
-// ---------------------------------------------------------------------------
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn mapping_vector_preset_default_applied_to_cache_key() {
     let pool = fresh_pool().await;
@@ -1892,10 +1755,6 @@ async fn mapping_vector_preset_default_applied_to_cache_key() {
         .await
         .unwrap();
 
-    // Seed the vector preset with a known 8-tuple. The order matches
-    // VECTOR_KEYS = [happy, angry, sad, afraid, disgusted, melancholic,
-    // surprised, calm] but the emotion resolver does not validate order —
-    // it just round-trips the array.
     let preset_id = PresetId::new();
     let vector: [f64; 8] = [0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2, 0.1];
     let vector_json = serde_json::to_string(&vector).unwrap();
@@ -1969,9 +1828,6 @@ async fn mapping_vector_preset_default_applied_to_cache_key() {
         .await
         .unwrap();
 
-    // Build the cache key prepare() is expected to produce. The emotion
-    // payload reflects the mapping default — vector preset with alpha=1.0
-    // (no inline alpha, no mapping alpha column → resolver default).
     let expected_cache_input = CacheKeyInput {
         extension_version: "0.0.0-test".into(),
         runtime_version: emotion_tts_extension::backend_client::FALLBACK_RUNTIME_VERSION.into(),
@@ -2109,35 +1965,6 @@ async fn mapping_vector_preset_default_applied_to_cache_key() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Test: inline emotion_vector override applied to cache key
-// ---------------------------------------------------------------------------
-//
-// Pins the contract that script-level inline overrides flow through
-// `domain::emotion::resolve()` with the precedence chain
-// `inline > mapping > global > none` (Task 3).
-//
-// Setup:
-//   - mapping with `default_emotion_mode="none"` (so the mapping branch
-//     would yield no emotion if the inline override were ignored)
-//   - run with `global_emotion_snapshot_json=None` (no global emotion)
-//   - script tagged with an inline `emotion_vector` override —
-//     `[Narrator|emotion_vector:happy=0.9,calm=0.1] Hi.`
-//   - a SynthesisCacheRow whose content_hash is computed using the
-//     EXPECTED `EmotionPayload::EmotionVector { vector, alpha: 1.0 }`
-//
-// If prepare() correctly consumes inline_overrides through `resolve()`,
-// the per-utterance cache_input.emotion will match the seeded row and
-// the utterance will land with cache_hit=true.
-//
-// If prepare() regresses to passing `InlineOverrides::default()`, the
-// hash will not match (mapping=none → global=none → EmotionPayload::None)
-// and the assertion will fail.
-//
-// Also asserts that the regression hash (with EmotionPayload::None) is
-// distinct from the expected hash so the test cannot pass by accident.
-// ---------------------------------------------------------------------------
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn inline_emotion_vector_override_applied_to_cache_key() {
     let pool = fresh_pool().await;
@@ -2222,11 +2049,6 @@ async fn inline_emotion_vector_override_applied_to_cache_key() {
         .await
         .unwrap();
 
-    // Tagged script with inline emotion_vector override. Tag grammar:
-    //   `[CHAR (|KEY:VALUE)*] TEXT`
-    // VECTOR_KEYS order is [happy, angry, sad, afraid, disgusted,
-    // melancholic, surprised, calm], so happy=0.9,calm=0.1 → [0.9, 0, 0,
-    // 0, 0, 0, 0, 0.1].
     let script = "[Narrator|emotion_vector:happy=0.9,calm=0.1] Hello world.";
     let run_id = RunId::new();
     repos
@@ -2263,9 +2085,6 @@ async fn inline_emotion_vector_override_applied_to_cache_key() {
 
     let inline_vector: [f64; 8] = [0.9, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1];
 
-    // Prepare() strips the tag from the utterance text, so the cache key
-    // text is just the trailing payload — `Hello world.` (parser tests
-    // confirm this contract).
     let expected_cache_input = CacheKeyInput {
         extension_version: "0.0.0-test".into(),
         runtime_version: emotion_tts_extension::backend_client::FALLBACK_RUNTIME_VERSION.into(),
@@ -2403,22 +2222,6 @@ async fn inline_emotion_vector_override_applied_to_cache_key() {
         "utterance must reference the pre-seeded cached audio file"
     );
 }
-
-// ---------------------------------------------------------------------------
-// Test: cache_policy="read_only_cache" produces NO writes to synthesis_cache
-// ---------------------------------------------------------------------------
-//
-// HIGH-B regression guard. Read-only cache means the dispatcher may consume
-// existing rows but must not create new ones. Pre-fix the write site only
-// gated on `is_test_line`, so a normal batch run with `read_only_cache`
-// would still seal a fresh cache row on every miss — defeating the policy.
-//
-// The flow:
-//   - Seed a single-utterance run with cache_policy="read_only_cache".
-//   - The cache table is empty, so every utterance is a miss.
-//   - The mock worker reports segment_completed.
-//   - After RunTerminal, synthesis_cache must still be empty.
-// ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn read_only_cache_policy_skips_cache_writes() {

@@ -1,48 +1,44 @@
-# 📚 nexus-dnn Documentation
+# 📚 nexus-dnn Docs
 
-nexus-dnn is a local-first, extensible AI workflow platform for composing, executing, and debugging multimodal pipelines across image, video, audio, and LLM tasks. It provides a developer-grade Rust runtime that treats generative workflows as structured, reproducible software pipelines.
+This documentation set has been revised to reflect the current host-first architecture of the repo as of June 2026.
 
----
+## Start Here
 
-## ⚡ Getting Started
+| Document | Why read it first |
+|----------|-------------------|
+| [getting-started.md](getting-started.md) | Fastest way to install, run, and verify a local instance |
+| [platform-support.md](platform-support.md) | What hardware and operating-system paths are validated today |
+| [architecture.md](architecture.md) | How the host, extensions, workers, and runtimes fit together |
+| [configuration.md](configuration.md) | Real CLI flags, env vars, config file behavior, and data-dir layout |
 
-| Document | Description |
-|----------|-------------|
-| [📋 Requirements](requirements.md) | What to install before building — uv, Rust, Node, GPU drivers, per-extension prerequisites |
-| [⚡ Getting Started](getting-started.md) | Install, build, run your first workflow in under 10 minutes |
+## Core Concepts
 
----
+| Document | Focus |
+|----------|-------|
+| [extension-internals.md](extension-internals.md) | How extension discovery, mounting, storage, and host authority work |
+| [extension-guide.md](extension-guide.md) | Practical authoring guidance for new extensions |
+| [data-model.md](data-model.md) | Current logical entities and ownership boundaries |
+| [database-schema.md](database-schema.md) | What lives in host SQLite vs extension-owned namespaces |
 
-## 📖 Guides
+## API And Interfaces
 
-| Document | Description |
-|----------|-------------|
-| [🏗️ Architecture](architecture.md) | System layers, crate map, request flows, data directory layout |
-| [🔧 Configuration](configuration.md) | Environment variables, CLI flags, logging, data directory |
-| [📊 Workflow Authoring](workflow-authoring.md) | Writing and validating workflow YAML definitions |
-| [🔌 Extension Development](extension-guide.md) | Building custom operators, recipes, and extensions |
+| Document | Focus |
+|----------|-------|
+| [api-reference.md](api-reference.md) | Human-friendly map of the live API surface |
+| [api/API.md](api/API.md) | Deep route-by-route reference and maintenance notes |
+| [worker-protocol.md](worker-protocol.md) | Host/worker transport contract |
 
----
+## Product Direction
 
-## 🔬 Deep Dives
+| Document | Focus |
+|----------|-------|
+| [roadmap.md](roadmap.md) | Current future direction: MCP control, remote workers, Extensions SDK |
+| [requirements.md](requirements.md) | Host and extension prerequisites, GPU caveats, disk budgets |
 
-| Document | Description |
-|----------|-------------|
-| [📋 Schemas Explained](schemas-explained.md) | What is an operator, recipe, workflow, UI contribution — in plain language |
-| [🔌 How Extensions Work](extension-internals.md) | Architecture, lifecycle state machine, protocol internals, UI contribution model |
-| [🗄️ Database Schema](database-schema.md) | Every table, every column, indexes, relationships, data flow diagrams |
+## Notes On Scope
 
----
+- `docs/` is the recommended entrypoint for humans.
+- `specs/` contains feature contracts, design exploration, and verification evidence.
+- If a historical doc in `specs/` conflicts with these top-level docs, treat source code and these revised docs as authoritative.
 
-## 📋 Reference
-
-| Document | Description |
-|----------|-------------|
-| [📋 API Reference](api-reference.md) | All HTTP and WebSocket endpoint specifications |
-| [📡 Worker Protocol](worker-protocol.md) | JSON-RPC 2.0 host-worker communication contract |
-| [📊 Data Model](data-model.md) | Entities, relationships, state machines, enums |
-| [🐍 Python SDK](python-sdk.md) | Python worker SDK usage, BaseWorker, ExecutionContext |
-
----
-
-> 🔗 **Back to project root:** [README.md](../README.md)
+Back to the repo root: [README.md](../README.md)

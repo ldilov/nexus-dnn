@@ -162,10 +162,6 @@ async fn deleting_deployment_cascades_to_all_child_tables() {
     .await
     .expect("insert workflow");
 
-    // Synthesis cache rows are intentionally cross-deployment (content-hash
-    // dedup). Seed one independent of `dep` so we can assert it survives
-    // the deployment delete — locks in the audit's "cache_excluded by design"
-    // decision against accidental future cascade.
     sqlx::query(
         "INSERT INTO ext_emotion_tts__synthesis_cache
             (content_hash, audio_artifact_ref, extension_version,

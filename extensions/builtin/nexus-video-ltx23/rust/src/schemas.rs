@@ -712,17 +712,11 @@ mod tests {
         assert!(is_valid_input_artifact_id(
             "ltx23-input-01J9ABCDEFGHJKMNPQRSTVWXYZ"
         ));
-        // Lowercase ULIDs are also accepted (the upload route uses
-        // Ulid::new().to_string() which produces upper-case, but a
-        // future change shouldn't trip the validator).
         assert!(is_valid_input_artifact_id("ltx23-input-abc123"));
     }
 
     #[test]
     fn is_valid_input_artifact_id_rejects_traversal_and_junk() {
-        // Path-traversal shapes — the resolver canonicalises before
-        // joining, but rejecting at the schema layer means a crafted
-        // body never reaches the filesystem in the first place.
         assert!(!is_valid_input_artifact_id("../escape"));
         assert!(!is_valid_input_artifact_id("ltx23-input-../escape"));
         assert!(!is_valid_input_artifact_id("ltx23-input-with/slash"));

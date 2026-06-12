@@ -4,11 +4,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# RIFE IFNet (HDv3) — vendored from hzwer/Practical-RIFE / ECCV2022-RIFE
-# (MIT licensed). Matches the 160-key `flownet.pkl` used by the Wan i2v
-# ecosystem (DeepBeepMeep/Wan2.1). Inference-only: produces the middle frame
-# (t=0.5); higher factors come from recursive doubling in rife_torch.
-
 _backwarp_grid: dict[tuple[str, str], torch.Tensor] = {}
 
 

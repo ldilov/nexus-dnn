@@ -234,9 +234,6 @@ async fn list_profiles(State(state): State<Arc<ApiState>>) -> Json<Vec<RuntimePr
                 status_message: "ready".into(),
             }
         } else {
-            // Real-runtime profile — check the on-disk sentinel via the
-            // install service. Avoids hand-rolling another stat-the-
-            // sentinel path and stays in sync with the install POST.
             let install_status = state.profile_install.status(short).await.ok();
             let installed = install_status.as_ref().is_some_and(|s| s.installed);
             let in_flight = install_status.as_ref().is_some_and(|s| s.in_flight);
@@ -289,18 +286,9 @@ async fn create_render(
     headers: HeaderMap,
     Json(req): Json<CreateRenderRequest>,
 ) -> ApiResult<(StatusCode, Json<CreateRenderResponse>)> {
-    // Bound free-text + scene-array sizes before any planner work / DB
-    // write so a giant prompt can't blow up the request_json column or
-    // multiply across segments.
     req.validate_field_bounds()
         .map_err(ExtensionError::InvalidRequest)?;
 
-    // Pre-flight the input-image artifact id against the inputs
-    // directory. The runner soft-fails a stale id (renders text-only +
-    // logs a warn) — fine for an in-flight breach, wrong for a fresh
-    // submission. Catching it here turns "GPU-hour run silently ignored
-    // your reference image" into an immediate, actionable 400. Uses the
-    // exact resolver the runner uses so accept/reject can never diverge.
     if let Some(id) = req.input_image_artifact_id.clone() {
         let inputs_dir = state.inputs_dir.clone();
         let resolves = tokio::task::spawn_blocking(move || {
@@ -689,9 +677,6 @@ async fn retry_segment(
         .prompt_override
         .clone()
         .unwrap_or_else(|| request.prompt.clone());
-    // Silent "fake" fallback when runtime_profile is null was a data-
-    // corruption hazard — would re-render with placeholder MP4s over a
-    // real run. Refuse the retry with a clear message instead.
     let runtime_id = run.runtime_profile.clone().ok_or_else(|| {
         ExtensionError::InvalidRequest(format!(
             "run '{run_id}' has no runtime_profile stored; cannot retry safely \

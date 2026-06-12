@@ -51,14 +51,6 @@ def main() -> int:
              "flags are at their argparse defaults. Pass explicit values AFTER "
              "the preset name if you want to override individual axes.",
     )
-    # Default 16 = LongCat distill training step count (paper Sec. 4.2).
-    # Running below 16 with the distill LoRA produces bursty / random
-    # speed-ups in motion because the FlowMatchEuler timestep allocation
-    # is compressed beyond the LoRA's training distribution.
-    # `_DEFAULT_STEPS` / `_DEFAULT_GUIDANCE` are read by the
-    # quality-preset block below to detect "user accepted the default"
-    # vs "user passed an explicit override"; argparse cannot distinguish
-    # those, so a single source of truth keeps preset logic in sync.
     _DEFAULT_STEPS = 16
     _DEFAULT_GUIDANCE = 1.0
     parser.add_argument("--steps", type=int, default=_DEFAULT_STEPS)
@@ -186,11 +178,6 @@ def main() -> int:
         if args.swap == _DEFAULT_SWAP_FOR_PRESET_DETECT:
             args.swap = _rp.recommended_swap
 
-    # Apply quality preset BEFORE argparse defaults dominate. argparse
-    # cannot tell user-supplied from default-supplied, so the preset only
-    # overrides when the user left the flag at its known default value.
-    # `_DEFAULT_STEPS` / `_DEFAULT_GUIDANCE` are defined once at the
-    # parser-building site above (single source of truth).
     if args.quality_preset == "distill":
         if args.steps == _DEFAULT_STEPS:
             args.steps = 16

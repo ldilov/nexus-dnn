@@ -203,11 +203,6 @@ export function RunPanel(props: Props): JSX.Element {
         ? "idle"
         : "blocked";
 
-  // Single-Generate-CTA gate (I-3a). Once the floating sticky toolbar shows
-  // (user scrolled past STICKY_BAR_THRESHOLD) the in-page Generate button
-  // collapses to a quiet status line — the toolbar's Generate is now the
-  // single visible primary action. Cancel + run-in-progress still render
-  // the inline Cancel button so the user can abort without scrolling back.
   const stickyVisible = useScrollPastThreshold(STICKY_BAR_THRESHOLD);
   const showInlineGenerate = !stickyVisible || isRunning;
 

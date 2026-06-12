@@ -49,15 +49,9 @@ def frames_to_mp4(
 
 
 class StreamingFrameWriter:
-    # Writes frames to disk PNGs as they are produced (O(1) RAM in video length),
-    # then muxes the sequence to mp4 on finalize. Lets the render stream clips of
-    # unbounded count without accumulating every decoded frame in host RAM.
     def __init__(self) -> None:
         self._dir = Path(tempfile.mkdtemp(prefix="svi2_stream_"))
         self._n = 0
-        # Backstop: if the writer is abandoned (render loop raises before
-        # finalize, or the caller forgets it) the temp dir of PNGs is removed
-        # when the object is collected, instead of stranding gigabytes on disk.
         self._finalizer = weakref.finalize(self, _cleanup_dir, self._dir)
 
     def __enter__(self) -> "StreamingFrameWriter":
@@ -88,9 +82,6 @@ class StreamingFrameWriter:
         try:
             result = _encode_png_dir(self._dir, out_path, fps, quality)
         except Exception:
-            # Mux failed (e.g. ffmpeg missing). Preserve the frames so a
-            # multi-hour render is recoverable, and cancel the cleanup backstop
-            # so neither close() nor GC wipes them.
             self._finalizer.detach()
             _log.error("mux failed; preserved %d frame(s) at %s", self._n, self._dir)
             raise

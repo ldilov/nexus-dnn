@@ -104,10 +104,6 @@ fn build_launch_spec(
         ));
     }
 
-    // Walk up from extension_data_dir to surface the host data root so the
-    // worker's diffusers pipeline can resolve <host_data_dir>/models/Lightricks/
-    // LTX-2.3-<quant>/ for real profiles. NEXUS_VIDEO_LTX23_MODEL_DIR can
-    // override this for tests or future per-profile install plumbing.
     let host_data_root = extension_data_dir
         .parent()
         .and_then(|p| p.parent())

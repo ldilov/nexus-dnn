@@ -57,12 +57,6 @@ fn dispatch_unknown_when_nothing_matches() {
 
 #[test]
 fn dispatch_never_attempts_pickle() {
-    // A bare `.bin` file with no sidecar is a potential pickle ACE vector.
-    // Dispatch MUST NOT open/read the file contents. We prove this by
-    // snapshotting the bin file's mtime before and after dispatch: reading
-    // the file would update atime on some filesystems, but mtime must be
-    // unchanged regardless. We also assert format is either Unknown or
-    // PytorchIndex-with-Failed — never a successful extraction.
     let tmp = tempdir().unwrap();
     let bin = tmp.path().join("pytorch_model.bin");
     std::fs::write(&bin, b"\x80\x04REFUSE_TO_UNPICKLE").unwrap();

@@ -95,9 +95,6 @@ def test_write_swallow_swallows_invalid_run_id(tmp_path):
 
 
 def test_write_swallow_swallows_banned_key(tmp_path, monkeypatch):
-    # Inject a banned-key path: the build path keeps free_mb out, but
-    # if a future regression slips one in via output_path the writer
-    # must still reject loudly via _assert_no_banned_keys -> swallow.
     from longcat_video_worker import render_report as rr
 
     original = rr.build_report

@@ -3,10 +3,6 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-# Qwen-Image-Edit-2509 keyframe edit via stable-diffusion.cpp. Edits the SVI
-# anchor/ref image BEFORE animation (edit-then-animate): the video model then
-# propagates the edit coherently, avoiding the per-frame flicker of editing the
-# output video directly. Model filenames are the fixed GGUF/safetensors quartet.
 _QWEN_DIFFUSION = "Qwen-Image-Edit-2509-Q5_K_M.gguf"
 _QWEN_VAE = "qwen_image_vae.safetensors"
 _QWEN_LLM = "Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf"

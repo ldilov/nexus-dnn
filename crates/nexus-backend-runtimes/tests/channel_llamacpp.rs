@@ -8,11 +8,6 @@ use nexus_backend_runtimes::events::BackendEventBus;
 use nexus_backend_runtimes::settings::AcceleratorProfile;
 use nexus_backend_runtimes::spawn::{RuntimeBindMode, SpawnRuntimeRequest};
 
-// Both tests are marked #[ignore] so `cargo test` does not report failure.
-// The Spawner call bodies are fully commented out so `cargo check --tests`
-//   "process.started"  → emitted as soon as the child process is forked
-//   "channel.ready"    → emitted when the health probe gets 2× consecutive 200s
-//   "process.exited"   → emitted when the child process terminates for any reason
 
 #[allow(dead_code)]
 fn make_request(port: u16) -> SpawnRuntimeRequest {

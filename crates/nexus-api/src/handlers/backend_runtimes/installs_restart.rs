@@ -65,9 +65,6 @@ pub async fn restart(
         }
     };
 
-    // Then re-acquire. Duplicates most of installs_start.rs's resolution
-    // logic — lightweight enough that sharing via a helper would obscure
-    // rather than simplify.
     let installs = SqliteInstallsRepo::new(state.db.pool().clone());
     let install = match installs.get(&install_id).await {
         Ok(Some(i)) => i,

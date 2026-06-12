@@ -71,10 +71,6 @@ export function GenerationSettingsPanel({
     onGenerationChange({ ...generation, [key]: value });
   };
 
-  // Seed mode is derived from the presence of `seed` in the generation
-  // record. `undefined` → random (worker rolls fresh each run); a number →
-  // fixed (worker seeds RNGs deterministically). Switching modes preserves
-  // the last-known fixed value so flipping back doesn't lose it.
   const seedMode: "fixed" | "random" =
     generation["seed"] === undefined || generation["seed"] === null ? "random" : "fixed";
 

@@ -155,9 +155,6 @@ def _partition_extras(extras: list[str]) -> tuple[list[str], list[str]]:
 
 
 class FP8Linear(_nn.Module):
-    # Reported as "Linear" through the class-name attribute so upstream
-    # `lora_utils.LoRANetwork` accepts FP8Linear as a LoRA-target module
-    # (the upstream check whitelists "Linear" + "QuantizedLinear" only).
     __qualname__ = "FP8Linear"
 
     def __init__(
@@ -499,10 +496,6 @@ def _attach_sequential_offload(model: Any, execution_device: Any) -> None:
 
 
 def _move_non_block_params_to_device(model: Any, device: Any) -> None:
-    # After installing to CPU + attaching block hooks, the non-transformer-block
-    # params (patch_embed, time_embed, text_embed, final layer, top-level norms)
-    # are still on CPU. Move them to GPU so they're resident during forward
-    # without the per-step CPU↔GPU hop the block hooks would impose.
     import torch
 
     block_attr_names = ("transformer_blocks", "blocks", "layers")
@@ -737,12 +730,6 @@ def load_longcat_dit_from_safetensors(
 
     model = build_dit(config, vendor_dir=vendor_dir, install_device="meta")
 
-    # Load-order OOM fix (audit 2026-05-24): when an offload mode is
-    # requested, install weights to CPU first so the accelerate hook can
-    # snapshot from CPU memory directly instead of round-tripping every
-    # block through GPU. Without this the install peak is ~28 GiB
-    # (entire 15.5 GB FP8 + activations) before tail blocks are migrated.
-    # head-resident blocks get moved to GPU explicitly after hook attach.
     needs_cpu_first_install = offload_mode in ("partial", "sequential", "group", "disk")
     install_target = torch.device("cpu") if needs_cpu_first_install else install_device
     if needs_cpu_first_install:
