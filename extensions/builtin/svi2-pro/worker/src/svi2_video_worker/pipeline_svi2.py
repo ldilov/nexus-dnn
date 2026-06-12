@@ -2,9 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import os
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
+
+
+class RenderCancelled(Exception):
+    """Raised inside the render thread when a cooperative cancel signal fires.
+
+    Carries no payload — the cancel handler already set the shared Event; this
+    just unwinds the diffusion loop so the ``finally`` cleanup frees GPU/host
+    memory before the worker replies."""
 
 _ARTIFACT_FILENAMES: dict[str, str] = {
     "dit-high-fp8": "I2V/Wan2_2-I2V-A14B-HIGH_fp8_e4m3fn_scaled_KJ.safetensors",
@@ -266,13 +275,22 @@ def _notify(worker: Any, method: str, params: dict[str, Any]) -> None:
 
 
 def register_svi2_handlers(worker: Any) -> None:
+    cancel_event = threading.Event()
+
     async def _render_start(params: dict[str, Any]) -> dict[str, Any]:
+        cancel_event.clear()
         validated = validate_render_params(params or {})
         if not validated.get("models_dir"):
             validated["models_dir"] = str(resolve_models_dir())
-        return await asyncio.to_thread(_run_render, validated, worker)
+        try:
+            return await asyncio.to_thread(
+                _run_render, validated, worker, cancel_event=cancel_event
+            )
+        except RenderCancelled:
+            return {"status": "cancelled"}
 
     async def _render_cancel(_params: Any) -> dict[str, Any]:
+        cancel_event.set()
         return {"cancelled": True}
 
     worker.register("svi2.video.render.start", _render_start)
@@ -493,6 +511,7 @@ def _denoise_clip(
     scheduler: Any,
     move_to: Optional[Callable[[str], None]] = None,
     on_step: Optional[Callable[[int, int, float], None]] = None,
+    cancel_event: Optional[threading.Event] = None,
 ) -> Any:
     import time
 
@@ -507,6 +526,8 @@ def _denoise_clip(
 
     num_steps = len(timesteps)
     for step_idx in range(num_steps):
+        if cancel_event is not None and cancel_event.is_set():
+            raise RenderCancelled()
         step_started = time.perf_counter()
         timestep = timesteps[step_idx]
         tier = expert_selector.select(float(timestep.item()))
@@ -591,6 +612,7 @@ def _generate_t2v_clip0(
     device: str,
     build_t2v_experts: Optional[Callable[[dict[str, Any]], tuple[ExpertModel, ExpertModel]]] = None,
     on_step: Optional[Callable[[int, int, float], None]] = None,
+    cancel_event: Optional[threading.Event] = None,
 ) -> T2vClip:
     """Generate the text-to-video seed clip (clip 0) with the Wan2.2-T2V experts.
 
@@ -630,32 +652,36 @@ def _generate_t2v_clip0(
         generator=torch.Generator(device="cpu").manual_seed(seed),
     ).to(device=device, dtype=torch.bfloat16)
 
-    latent = _denoise_clip(
-        models=t2v_models,
-        latent=noise,
-        y=None,
-        context_posi=context_posi,
-        context_nega=context_nega,
-        timesteps=timesteps,
-        cfg_scale=params["cfg_scale"],
-        expert_selector=ExpertSelector(boundary=params["switch_boundary"]),
-        scheduler=scheduler,
-        move_to=move_to,
-        on_step=on_step,
-    )
+    # On cancel (or any error) the experts must not leak — free them and empty
+    # the CUDA caching allocator in finally before the exception unwinds.
+    try:
+        latent = _denoise_clip(
+            models=t2v_models,
+            latent=noise,
+            y=None,
+            context_posi=context_posi,
+            context_nega=context_nega,
+            timesteps=timesteps,
+            cfg_scale=params["cfg_scale"],
+            expert_selector=ExpertSelector(boundary=params["switch_boundary"]),
+            scheduler=scheduler,
+            move_to=move_to,
+            on_step=on_step,
+            cancel_event=cancel_event,
+        )
 
-    if device == "cuda":
-        vae.to_cuda()
-    frames = _to_pil_frames(vae.decode_latents(latent))
-    if device == "cuda":
-        vae.to_cpu()
-        torch.cuda.empty_cache()
-    last_latent = latent.detach()[0]
-
-    del high, low, t2v_models
-    gc.collect()
-    if device == "cuda":
-        torch.cuda.empty_cache()
+        if device == "cuda":
+            vae.to_cuda()
+        frames = _to_pil_frames(vae.decode_latents(latent))
+        if device == "cuda":
+            vae.to_cpu()
+            torch.cuda.empty_cache()
+        last_latent = latent.detach()[0]
+    finally:
+        high = low = t2v_models = None
+        gc.collect()
+        if device == "cuda":
+            torch.cuda.empty_cache()
     log_vram("t2v experts released")
 
     return T2vClip(frames=frames, last_latent=last_latent, audit=audit)
@@ -666,6 +692,7 @@ def _run_render(
     worker: Any = None,
     build_models: Optional[Callable[[dict[str, Any]], RenderModels]] = None,
     build_t2v_experts: Optional[Callable[[dict[str, Any]], tuple[ExpertModel, ExpertModel]]] = None,
+    cancel_event: Optional[threading.Event] = None,
 ) -> dict[str, Any]:
     import gc
 
@@ -791,6 +818,7 @@ def _run_render(
             device=device,
             build_t2v_experts=build_t2v_experts,
             on_step=_t2v_seed_on_step,
+            cancel_event=cancel_event,
         )
         seed_clip_frames = t2v_clip.frames
         seed_clip_last_latent = t2v_clip.last_latent
@@ -868,157 +896,165 @@ def _run_render(
 
     denoise_span = 0.90 / max(num_clips, 1)
 
-    for clip_idx in range(chain_start, num_clips):
-        log_vram(f"clip {clip_idx} start")
-        _notify(
-            worker,
-            "svi2.video.clip.started",
-            {"clip_index": clip_idx, "num_clips": num_clips},
-        )
-        if teacache_on:
-            models.high.dit.reset_tea_cache()
-            models.low.dit.reset_tea_cache()
-        if motion_schedule:
-            ms = float(motion_schedule[min(clip_idx, len(motion_schedule) - 1)])
-            models.high.dit.configure_motion_scale(ms, msh, msw)
-            models.low.dit.configure_motion_scale(ms, msh, msw)
-            log_vram(f"clip {clip_idx} motion_scale_t={ms}")
-        prompt = prompts[clip_idx % len(prompts)]
-        seed = params["seed_multiplier"] * clip_idx
-        torch.manual_seed(seed)
-
-        context_posi = ctx_cache[prompt].to(device)
-        context_nega = neg_context.to(device) if neg_context is not None else context_posi
-
-        noise = torch.randn(
-            1, _WAN22_A14B_CONFIG["out_dim"], total_latent_frames, lat_h, lat_w,
-            generator=torch.Generator(device="cpu").manual_seed(seed),
-        ).to(device=device, dtype=torch.bfloat16)
-        latent = noise
-
-        clip_icn = (
-            float(icn_schedule[min(clip_idx, len(icn_schedule) - 1)])
-            if icn_schedule
-            else icn_scale
-        )
-        if clip_icn > 0.0:
-            log_vram(f"clip {clip_idx} image_cond_noise_scale={clip_icn}")
-        clip_ref_pad = ref_pad_for_clip(
-            clip_idx, num_clips, ref_pad_num, ref_pad_free_clips, ref_pad_schedule
-        )
-        if clip_ref_pad != 0:
-            log_vram(f"clip {clip_idx} ref_pad_num={clip_ref_pad}")
-        y = _build_image_conditioning(
-            anchor_lat.to(device),
-            prev_last_latent,
-            total_latent_frames=total_latent_frames,
-            num_frames=frames_per_clip,
-            height=height,
-            width=width,
-            num_motion_latent=num_motion_latent,
-            image_cond_noise_scale=clip_icn,
-            image_cond_noise_bg_protect=icn_bg_protect,
-            end_lat=end_lat.to(device) if end_lat is not None else None,
-            ref_pad_num=clip_ref_pad,
-        )
-
-        def _on_step(
-            step: int, total_steps: int, seconds: float, _clip_idx: int = clip_idx
-        ) -> None:
+    # Expert weights + VAE are the dominant GPU/host tenants. The finally frees
+    # them on EVERY exit — success, error, or cooperative cancel — so a cancelled
+    # render returns VRAM/RAM to the driver instead of leaving 28 GiB pinned.
+    try:
+        for clip_idx in range(chain_start, num_clips):
+            if cancel_event is not None and cancel_event.is_set():
+                raise RenderCancelled()
+            log_vram(f"clip {clip_idx} start")
             _notify(
                 worker,
-                "svi2.video.clip.step",
-                {
-                    "clip_index": _clip_idx,
-                    "step": step,
-                    "total_steps": total_steps,
-                    "seconds_per_step": round(seconds, 2),
-                },
+                "svi2.video.clip.started",
+                {"clip_index": clip_idx, "num_clips": num_clips},
             )
-            fraction = 0.07 + denoise_span * (_clip_idx + step / max(total_steps, 1))
+            if teacache_on:
+                models.high.dit.reset_tea_cache()
+                models.low.dit.reset_tea_cache()
+            if motion_schedule:
+                ms = float(motion_schedule[min(clip_idx, len(motion_schedule) - 1)])
+                models.high.dit.configure_motion_scale(ms, msh, msw)
+                models.low.dit.configure_motion_scale(ms, msh, msw)
+                log_vram(f"clip {clip_idx} motion_scale_t={ms}")
+            prompt = prompts[clip_idx % len(prompts)]
+            seed = params["seed_multiplier"] * clip_idx
+            torch.manual_seed(seed)
+
+            context_posi = ctx_cache[prompt].to(device)
+            context_nega = neg_context.to(device) if neg_context is not None else context_posi
+
+            noise = torch.randn(
+                1, _WAN22_A14B_CONFIG["out_dim"], total_latent_frames, lat_h, lat_w,
+                generator=torch.Generator(device="cpu").manual_seed(seed),
+            ).to(device=device, dtype=torch.bfloat16)
+            latent = noise
+
+            clip_icn = (
+                float(icn_schedule[min(clip_idx, len(icn_schedule) - 1)])
+                if icn_schedule
+                else icn_scale
+            )
+            if clip_icn > 0.0:
+                log_vram(f"clip {clip_idx} image_cond_noise_scale={clip_icn}")
+            clip_ref_pad = ref_pad_for_clip(
+                clip_idx, num_clips, ref_pad_num, ref_pad_free_clips, ref_pad_schedule
+            )
+            if clip_ref_pad != 0:
+                log_vram(f"clip {clip_idx} ref_pad_num={clip_ref_pad}")
+            y = _build_image_conditioning(
+                anchor_lat.to(device),
+                prev_last_latent,
+                total_latent_frames=total_latent_frames,
+                num_frames=frames_per_clip,
+                height=height,
+                width=width,
+                num_motion_latent=num_motion_latent,
+                image_cond_noise_scale=clip_icn,
+                image_cond_noise_bg_protect=icn_bg_protect,
+                end_lat=end_lat.to(device) if end_lat is not None else None,
+                ref_pad_num=clip_ref_pad,
+            )
+
+            def _on_step(
+                step: int, total_steps: int, seconds: float, _clip_idx: int = clip_idx
+            ) -> None:
+                _notify(
+                    worker,
+                    "svi2.video.clip.step",
+                    {
+                        "clip_index": _clip_idx,
+                        "step": step,
+                        "total_steps": total_steps,
+                        "seconds_per_step": round(seconds, 2),
+                    },
+                )
+                fraction = 0.07 + denoise_span * (_clip_idx + step / max(total_steps, 1))
+                _notify(
+                    worker,
+                    "svi2.video.progress",
+                    {"fraction": round(min(fraction, 0.97), 4), "stage": "denoising"},
+                )
+
+            latent = _denoise_clip(
+                models=models,
+                latent=latent,
+                y=y,
+                context_posi=context_posi,
+                context_nega=context_nega,
+                timesteps=timesteps,
+                cfg_scale=cfg_scale,
+                expert_selector=expert_selector,
+                scheduler=scheduler,
+                move_to=_move_to,
+                on_step=_on_step,
+                cancel_event=cancel_event,
+            )
+
+            # Cap colour/exposure drift down the continuation chain: match each
+            # later clip's per-channel latent stats toward clip-0 (AdaIN). Off at 0.
+            if clip_idx == chain_start and not generate_seed_clip:
+                adain_reference = latent.detach()[0]
+            elif adain_factor > 0.0 and adain_reference is not None:
+                adjusted = adain_normalize_latent(latent[0], adain_reference, adain_factor)
+                latent = adjusted.unsqueeze(0)
+                log_vram(f"clip {clip_idx} adain factor={adain_factor}")
+
+            prev_last_latent = latent.detach()[0]
+
+            log_vram(f"clip {clip_idx} denoise done")
+            if device == "cuda":
+                models.vae.to_cuda()
+            frames = models.vae.decode_latents(latent)
+            pil_frames = _to_pil_frames(frames)
+
+            # Pixel re-encode continuation: replace the raw denoised latent tail with
+            # a VAE round-trip of the last num_motion_frame output frames so the next
+            # clip conditions on an on-manifold latent (caps escalating drift). Skip
+            # on the final clip — its tail is never consumed.
+            is_last_clip = clip_idx == num_clips - 1
+            if pixel_re_encode and num_motion_frame > 0 and not is_last_clip:
+                reenc = reencode_motion_tail(models.vae, pil_frames, num_motion_frame)
+                prev_last_latent = reenc.to(device=device, dtype=prev_last_latent.dtype)
+                log_vram(f"clip {clip_idx} pixel re-encode tail={num_motion_frame}")
+
+            if device == "cuda":
+                models.vae.to_cpu()
+                torch.cuda.empty_cache()
+            log_vram(f"clip {clip_idx} vae decode done")
+
+            # Stream finalized frames to disk as each clip completes (rolling
+            # crossfade holds only the overlap tail) so length is unbounded by RAM.
+            writer.write_many(stitcher.push(pil_frames))
+            del pil_frames, frames
             _notify(
                 worker,
-                "svi2.video.progress",
-                {"fraction": round(min(fraction, 0.97), 4), "stage": "denoising"},
+                "svi2.video.clip.completed",
+                {"clip_index": clip_idx, "num_clips": num_clips},
             )
+            if device == "cuda":
+                _notify(
+                    worker,
+                    "runtime.memory_stats",
+                    {
+                        "vram_peak_gib": round(peak_allocated() / 1024**3, 2),
+                        "vram_used_gib": round(torch.cuda.memory_allocated() / 1024**3, 2),
+                    },
+                )
 
-        latent = _denoise_clip(
-            models=models,
-            latent=latent,
-            y=y,
-            context_posi=context_posi,
-            context_nega=context_nega,
-            timesteps=timesteps,
-            cfg_scale=cfg_scale,
-            expert_selector=expert_selector,
-            scheduler=scheduler,
-            move_to=_move_to,
-            on_step=_on_step,
-        )
-
-        # Cap colour/exposure drift down the continuation chain: match each
-        # later clip's per-channel latent stats toward clip-0 (AdaIN). Off at 0.
-        if clip_idx == chain_start and not generate_seed_clip:
-            adain_reference = latent.detach()[0]
-        elif adain_factor > 0.0 and adain_reference is not None:
-            adjusted = adain_normalize_latent(latent[0], adain_reference, adain_factor)
-            latent = adjusted.unsqueeze(0)
-            log_vram(f"clip {clip_idx} adain factor={adain_factor}")
-
-        prev_last_latent = latent.detach()[0]
-
-        log_vram(f"clip {clip_idx} denoise done")
+        _notify(worker, "svi2.video.progress", {"fraction": 0.97, "stage": "stitching"})
+        writer.write_many(stitcher.flush())
+        total_frames = writer.count
+        video_path = writer.finalize(output_path, fps=fps)
+    finally:
+        # Drop the 28 GiB of expert weights (and the VAE) before interpolation,
+        # which only needs the tiny RIFE net. Idempotent: empty_cache is safe to
+        # call after the refs are already gone.
+        models = high = low = vae = None
+        gc.collect()
         if device == "cuda":
-            models.vae.to_cuda()
-        frames = models.vae.decode_latents(latent)
-        pil_frames = _to_pil_frames(frames)
-
-        # Pixel re-encode continuation: replace the raw denoised latent tail with
-        # a VAE round-trip of the last num_motion_frame output frames so the next
-        # clip conditions on an on-manifold latent (caps escalating drift). Skip
-        # on the final clip — its tail is never consumed.
-        is_last_clip = clip_idx == num_clips - 1
-        if pixel_re_encode and num_motion_frame > 0 and not is_last_clip:
-            reenc = reencode_motion_tail(models.vae, pil_frames, num_motion_frame)
-            prev_last_latent = reenc.to(device=device, dtype=prev_last_latent.dtype)
-            log_vram(f"clip {clip_idx} pixel re-encode tail={num_motion_frame}")
-
-        if device == "cuda":
-            models.vae.to_cpu()
             torch.cuda.empty_cache()
-        log_vram(f"clip {clip_idx} vae decode done")
-
-        # Stream finalized frames to disk as each clip completes (rolling
-        # crossfade holds only the overlap tail) so length is unbounded by RAM.
-        writer.write_many(stitcher.push(pil_frames))
-        del pil_frames, frames
-        _notify(
-            worker,
-            "svi2.video.clip.completed",
-            {"clip_index": clip_idx, "num_clips": num_clips},
-        )
-        if device == "cuda":
-            _notify(
-                worker,
-                "runtime.memory_stats",
-                {
-                    "vram_peak_gib": round(peak_allocated() / 1024**3, 2),
-                    "vram_used_gib": round(torch.cuda.memory_allocated() / 1024**3, 2),
-                },
-            )
-
-    _notify(worker, "svi2.video.progress", {"fraction": 0.97, "stage": "stitching"})
-    writer.write_many(stitcher.flush())
-    total_frames = writer.count
-    video_path = writer.finalize(output_path, fps=fps)
-
-    # Denoise + decode are done — drop the 28 GiB of expert weights (and the
-    # VAE) before interpolation, which only needs the tiny RIFE net.
-    del models, high, low, vae
-    gc.collect()
-    if device == "cuda":
-        torch.cuda.empty_cache()
-    log_vram("experts released post-render")
+        log_vram("experts released post-render")
 
     # Optional Maxine RTX super-resolution BEFORE interpolation — fewer frames
     # to upscale at native fps, and RIFE then interpolates at the final size.
