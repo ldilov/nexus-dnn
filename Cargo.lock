@@ -3426,6 +3426,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "nexus-builtins"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "emotion-tts-extension",
+ "nexus-api",
+ "nexus-artifact",
+ "nexus-backend-runtimes",
+ "nexus-events",
+ "nexus-extension",
+ "nexus-extension-deps",
+ "nexus-local-llm-chat-history",
+ "nexus-models-store",
+ "nexus-video-ltx23-extension",
+ "sqlx",
+ "svi2-pro-extension",
+ "tracing",
+]
+
+[[package]]
 name = "nexus-core"
 version = "0.1.0"
 dependencies = [
@@ -3438,21 +3458,19 @@ dependencies = [
  "console-subscriber",
  "criterion",
  "dirs",
- "emotion-tts-extension",
  "nexus-api",
  "nexus-artifact",
  "nexus-backend-runtimes",
+ "nexus-builtins",
  "nexus-events",
  "nexus-extension",
  "nexus-extension-deps",
  "nexus-huggingface",
- "nexus-local-llm-chat-history",
  "nexus-models-store",
  "nexus-protocol",
  "nexus-run",
  "nexus-scheduler",
  "nexus-storage",
- "nexus-video-ltx23-extension",
  "nexus-worker",
  "nexus-workflow",
  "reqwest 0.12.28",
@@ -3461,7 +3479,6 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "sqlx",
- "svi2-pro-extension",
  "tempfile",
  "tokio",
  "toml 0.8.23",
