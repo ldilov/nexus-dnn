@@ -75,21 +75,35 @@ fn parse_driver_major(text: &str) -> Option<u32> {
 }
 
 /// Compile-time host platform tuple in canonical `os-arch` form, mirroring
-/// the arch handling in `family_python::asset`. `windows` stays `windows-x64`
-/// (no win-arm64 runtime path); linux distinguishes `linux-arm64` so aarch64
-/// hosts resolve aarch64 assets instead of silently matching x64.
+/// the arch handling in `family_python::asset`.
 fn host_platform_string() -> String {
-    let arch = if cfg!(target_arch = "aarch64") {
-        "arm64"
-    } else {
-        "x64"
-    };
-    if cfg!(target_os = "windows") {
-        "windows-x64".to_string()
+    let os = if cfg!(target_os = "windows") {
+        "windows"
     } else if cfg!(target_os = "linux") {
-        format!("linux-{arch}")
+        "linux"
+    } else if cfg!(target_os = "macos") {
+        "macos"
     } else {
-        "unsupported".to_string()
+        "other"
+    };
+    let arch = if cfg!(target_arch = "aarch64") {
+        "aarch64"
+    } else {
+        "x86_64"
+    };
+    platform_for(os, arch)
+}
+
+/// Maps an `(os, arch)` pair to the canonical `os-arch` platform tuple used in
+/// version manifests. `windows` is always `windows-x64` (no win-arm64 runtime
+/// path); only linux distinguishes `linux-arm64`; anything else is
+/// `unsupported`. Pure (no `cfg!`) so it is testable on any build host.
+fn platform_for(os: &str, arch: &str) -> String {
+    match (os, arch) {
+        ("windows", _) => "windows-x64".to_string(),
+        ("linux", "aarch64") => "linux-arm64".to_string(),
+        ("linux", _) => "linux-x64".to_string(),
+        _ => "unsupported".to_string(),
     }
 }
 
@@ -159,6 +173,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn platform_for_maps_os_arch() {
+        // Host-agnostic: locks the load-bearing "linux-arm64" literal (must
+        // match versions.yaml + the manifest platform enums) on every build.
+        assert_eq!(platform_for("linux", "aarch64"), "linux-arm64");
+        assert_eq!(platform_for("linux", "x86_64"), "linux-x64");
+        assert_eq!(platform_for("windows", "x86_64"), "windows-x64");
+        assert_eq!(platform_for("windows", "aarch64"), "windows-x64");
+        assert_eq!(platform_for("macos", "aarch64"), "unsupported");
+        assert_eq!(platform_for("other", "x86_64"), "unsupported");
+    }
+
+    #[test]
     fn host_platform_reflects_compile_target() {
         let platform = host_platform_string();
         #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
@@ -167,6 +193,5 @@ mod tests {
         assert_eq!(platform, "linux-x64");
         #[cfg(target_os = "windows")]
         assert_eq!(platform, "windows-x64");
-        assert_ne!(platform, "unsupported");
     }
 }

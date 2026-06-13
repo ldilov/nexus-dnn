@@ -26,7 +26,7 @@ This page describes what the repo appears to support today and where the stronge
 **aarch64 Linux notes:**
 
 - **Managed llama.cpp is CPU-only.** Upstream ggml-org ships no CUDA arm64 build. For GPU LLM, build `llama-server` natively (aarch64 + CUDA) and point the host at it via `NEXUS_LLAMA_SERVER_URL` — the external-server path is fully arch-agnostic.
-- **GPU attention accelerators (flash-attn, sageattention) have no aarch64 wheels.** The video extensions fall back to SDPA; install-time gating to skip the source build is a pending follow-up, so a first `uv sync` on aarch64 may attempt a long source compile.
+- **GPU attention accelerators (flash-attn, sageattention) have no aarch64 wheels.** SVI2-Pro's managed install currently **fails** on aarch64: its `flash` extra declares `flash-attn` with only a `sys_platform == 'linux'` marker, so `uv sync` tries a from-source `nvcc` build that needs a matching CUDA toolkit and aborts the install on a stock host. LTX-2.3 / LongCat fall back to SDPA at runtime. Arch-gating these extras to `x86_64` (so aarch64 skips them) is a pending follow-up that requires a `uv.lock` regeneration; until it lands, install the affected workers manually on aarch64.
 - **stable-diffusion.cpp (svi2-pro edit-then-animate) has no Linux arm64/CUDA build.** Core image-to-video render works; the edit path needs an operator-built `sd` on `PATH`.
 
 ## Tested Machine Evidence
