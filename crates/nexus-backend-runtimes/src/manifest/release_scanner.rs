@@ -229,6 +229,12 @@ fn parse_asset_name(name: &str) -> Option<ParsedAsset> {
     let after_bin = &rest[body_start + "-bin-".len()..];
     let (os_token, after_os) = split_once(after_bin, '-')?;
     let (accelerator_profile, tail) = parse_accelerator(after_os)?;
+    // Upstream ships no CUDA/Vulkan arm64 llama.cpp build — only the CPU
+    // `ubuntu-arm64` tarball is valid. Reject any arm64 asset carrying an
+    // accelerator so a future `ubuntu-cuda-*-arm64` name never surfaces.
+    if tail == "arm64" && accelerator_profile != AcceleratorProfile::Cpu {
+        return None;
+    }
     let platform = match (os_token, tail) {
         ("win", "x64") => "windows-x64",
         ("ubuntu", "x64") => "linux-x64",
@@ -438,6 +444,18 @@ mod tests {
     fn rejects_linux_vulkan_arm64() {
         assert_eq!(
             parse_asset_name("llama-b9626-bin-ubuntu-vulkan-arm64.tar.gz"),
+            None
+        );
+    }
+
+    #[test]
+    fn rejects_linux_cuda_arm64() {
+        assert_eq!(
+            parse_asset_name("llama-b9626-bin-ubuntu-cuda-12.4-arm64.tar.gz"),
+            None
+        );
+        assert_eq!(
+            parse_asset_name("llama-b9626-bin-ubuntu-cuda-13.0-arm64.tar.gz"),
             None
         );
     }

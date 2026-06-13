@@ -55,10 +55,12 @@ jobs:
           key: ${{ matrix.target }}
 
       - name: Build host + TUI (release)
+        # `--bin` is a global target filter across all -p packages, so the TUI
+        # binary (`nexus`) must be named explicitly or it is silently excluded.
         run: >
           cargo build --release --target ${{ matrix.target }}
           -p nexus-core --bin nexus-dnn
-          -p nexus-tui
+          -p nexus-tui --bin nexus
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
