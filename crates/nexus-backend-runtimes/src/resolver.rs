@@ -13,14 +13,7 @@ pub struct MachineDescriptor {
 
 impl MachineDescriptor {
     pub async fn detect() -> Self {
-        let platform = if cfg!(target_os = "windows") {
-            "windows-x64"
-        } else if cfg!(target_os = "linux") {
-            "linux-x64"
-        } else {
-            "unsupported"
-        }
-        .to_string();
+        let platform = host_platform_string();
         let cuda_toolkit_line = detect_cuda_line().await;
         Self {
             platform,
@@ -79,6 +72,25 @@ fn parse_cuda_line(text: &str) -> Option<u8> {
 
 fn parse_driver_major(text: &str) -> Option<u32> {
     text.trim().split('.').next()?.trim().parse::<u32>().ok()
+}
+
+/// Compile-time host platform tuple in canonical `os-arch` form, mirroring
+/// the arch handling in `family_python::asset`. `windows` stays `windows-x64`
+/// (no win-arm64 runtime path); linux distinguishes `linux-arm64` so aarch64
+/// hosts resolve aarch64 assets instead of silently matching x64.
+fn host_platform_string() -> String {
+    let arch = if cfg!(target_arch = "aarch64") {
+        "arm64"
+    } else {
+        "x64"
+    };
+    if cfg!(target_os = "windows") {
+        "windows-x64".to_string()
+    } else if cfg!(target_os = "linux") {
+        format!("linux-{arch}")
+    } else {
+        "unsupported".to_string()
+    }
 }
 
 pub async fn detect_gpu_compute_cap_major() -> Option<u8> {
@@ -140,4 +152,21 @@ pub fn resolve_runtime_asset<'a>(
                 wanted_profile.as_wire()
             ))
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_platform_reflects_compile_target() {
+        let platform = host_platform_string();
+        #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+        assert_eq!(platform, "linux-arm64");
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        assert_eq!(platform, "linux-x64");
+        #[cfg(target_os = "windows")]
+        assert_eq!(platform, "windows-x64");
+        assert_ne!(platform, "unsupported");
+    }
 }
