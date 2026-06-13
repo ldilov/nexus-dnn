@@ -318,17 +318,6 @@ impl NexusApp {
         }
 
         let pool_for_extensions = db.pool().clone();
-        let chat_resources =
-            std::sync::Arc::new(nexus_local_llm_chat_history::ChatHandlerResources::new(
-                pool_for_extensions.clone(),
-                Some(install_map.clone()),
-                Some(download_orchestrator.clone()),
-                spawner.clone(),
-                backend_event_bus.clone(),
-                backend_event_bus.clone(),
-                nexus_local_llm_chat_history::ModelLoadRegistry::new(),
-                nexus_local_llm_chat_history::InferenceCancelRegistry::new(),
-            ));
         // Spec 035 — clone the handles the dep adapters need before they get
         // moved into the AppState fields below.
         let db_for_dep = db.clone();
@@ -366,17 +355,21 @@ impl NexusApp {
                 >
             });
 
-        let extension_router_registry = build_extension_router_registry(
-            pool_for_extensions,
-            app_for_health.config.port,
-            chat_resources,
-            extension_registry.clone(),
-            app_for_health.config.resolved_data_dir(),
-            model_store_client.clone(),
-            artifact_store.clone(),
-            host_model_registrar,
-            event_bus.clone(),
-        );
+        let extension_router_registry =
+            nexus_builtins::build_registry(nexus_builtins::BuiltinContext {
+                pool: pool_for_extensions,
+                host_port: app_for_health.config.port,
+                extension_registry: extension_registry.clone(),
+                host_data_dir: app_for_health.config.resolved_data_dir(),
+                model_store_client: model_store_client.clone(),
+                artifact_store: artifact_store.clone(),
+                host_model_registrar,
+                event_bus: event_bus.clone(),
+                spawner: spawner.clone(),
+                backend_event_bus: backend_event_bus.clone(),
+                install_map: install_map.clone(),
+                download_orchestrator: download_orchestrator.clone(),
+            });
 
         // Resolve the embedded-Python asset once: env-var override wins, then
         // the spec-032 REGISTRY pin for the host's target triple. The same
@@ -552,200 +545,6 @@ impl NexusApp {
         }
 
         Ok(())
-    }
-}
-
-fn build_extension_router_registry(
-    pool: sqlx::SqlitePool,
-    host_port: u16,
-    chat_resources: Arc<nexus_local_llm_chat_history::ChatHandlerResources>,
-    extension_registry: Arc<nexus_extension::InMemoryExtensionRegistry>,
-    host_data_dir: std::path::PathBuf,
-    model_store_client: Arc<dyn nexus_extension_deps::ModelStoreClient>,
-    artifact_store: Arc<nexus_artifact::FilesystemArtifactStore>,
-    host_model_registrar: Option<
-        Arc<dyn nexus_backend_runtimes::generic::host_model_registrar::HostModelRegistrar>,
-    >,
-    event_bus: Arc<dyn EventBus>,
-) -> nexus_api::extension_router::SharedRegistry {
-    use nexus_api::extension_router::{DefaultRegistry, ExtensionId, ExtensionRouterRegistry};
-    use nexus_extension::{ExtensionContext, ExtensionRouterProvider, HostFacts};
-
-    let registry = Arc::new(DefaultRegistry::new());
-    let host_base_url = format!("http://127.0.0.1:{host_port}");
-
-    let providers: Vec<Arc<dyn ExtensionRouterProvider>> = vec![
-        Arc::new(nexus_local_llm_chat_history::LocalLlmRouterProvider::new(
-            nexus_local_llm_chat_history::LocalLlmProviderResources::from_host_base_url(
-                pool.clone(),
-                host_base_url.clone(),
-                chat_resources,
-            ),
-        )),
-        Arc::new(emotion_tts_extension::EmotionTtsRouterProvider::new({
-            let mut res = emotion_tts_extension::EmotionTtsProviderResources::new(pool.clone());
-            let id = emotion_tts_extension::EXTENSION_ID;
-            if let Some(ext) = extension_registry.get_extension(id) {
-                res = res.with_directories(ext.directory.clone(), host_data_dir.clone());
-            }
-            // Adapt the generic spec-035 model-store client to the extension's
-            // own `ModelArtifactLocator` contract so the lease factory can
-            // resolve IndexTTS-2's on-disk path at acquire time.
-            res = res.with_model_locator(Arc::new(ModelStoreLocatorAdapter {
-                inner: model_store_client.clone(),
-            }));
-            // Wire the host's artifact store through the extension's
-            // own `HostArtifactStore` adapter so the voice-asset upload +
-            // resolve path is functional. Without this the recipe page
-            // throws "voice asset store not configured by host" on load.
-            res = res.with_artifact_store(Arc::new(
-                emotion_tts_extension::host_adapter::HostArtifactStoreAdapter::new(
-                    artifact_store.clone(),
-                ),
-            ));
-            res
-        })),
-        Arc::new(nexus_video_ltx23_extension::LtxRouterProvider::new({
-            let mut res = nexus_video_ltx23_extension::LtxProviderResources::new(pool.clone());
-            res = res.with_host_data_dir(host_data_dir.clone());
-            let id = nexus_video_ltx23_extension::EXTENSION_ID;
-            if let Some(ext) = extension_registry.get_extension(id) {
-                res = res.with_extension_dir(ext.directory.clone());
-            }
-            if let Some(registrar) = host_model_registrar.clone() {
-                res = res.with_host_model_registrar(registrar);
-            }
-            res
-        })),
-        Arc::new(svi2_pro_extension::Svi2RouterProvider::new({
-            let mut res = svi2_pro_extension::Svi2ProviderResources::new(pool.clone());
-            let id = svi2_pro_extension::EXTENSION_ID;
-            if let Some(ext) = extension_registry.get_extension(id) {
-                res = res.with_directories(ext.directory.clone(), host_data_dir.clone());
-            }
-            if let Ok(profile) = std::env::var("NEXUS_VIDEO_SVI2_RUNTIME") {
-                res = res.with_profile(profile);
-            }
-            // Same generic bridge as emotion-tts: resolve installed model
-            // families so the lease factory can assemble the worker's
-            // merged models dir at acquire time.
-            res = res.with_model_locator(Arc::new(ModelStoreLocatorAdapter {
-                inner: model_store_client.clone(),
-            }));
-            // Spec 057: hand svi2 the orchestration bus so renders publish
-            // per-node status for the Workflow Graph overlay.
-            res = res.with_event_bus(event_bus.clone());
-            res
-        })),
-    ];
-
-    for provider in &providers {
-        let id_str = provider.extension_id();
-        let parsed_id = match ExtensionId::parse(id_str) {
-            Ok(id) => id,
-            Err(e) => {
-                tracing::error!(
-                    extension_id = id_str,
-                    error = %e,
-                    "extension id failed validation; skipping",
-                );
-                continue;
-            }
-        };
-        let cx = ExtensionContext::new(id_str, HostFacts::new(&host_base_url));
-        match provider.build_router(&cx) {
-            Ok((router, http_routes)) => {
-                if let Err(e) = registry.register(parsed_id, router, http_routes) {
-                    tracing::error!(
-                        extension_id = id_str,
-                        error = %e,
-                        "extension router registration rejected",
-                    );
-                }
-            }
-            Err(e) => {
-                let reason = e.to_string();
-                tracing::warn!(
-                    extension_id = id_str,
-                    error = %reason,
-                    "extension router build failed; recorded as registration_failed",
-                );
-                if let Err(reg_err) = registry.register_failure(parsed_id, reason) {
-                    tracing::error!(
-                        extension_id = id_str,
-                        error = %reg_err,
-                        "could not record registration failure",
-                    );
-                }
-            }
-        }
-    }
-
-    registry.seal();
-    registry as nexus_api::extension_router::SharedRegistry
-}
-
-/// Bridges the spec-035 generic `ModelStoreClient` to extension-defined
-/// `ModelArtifactLocator` traits. Lives here (host-side) so individual
-/// extensions stay free of host-runtime crate dependencies. Generic in name
-/// — any extension that defines a similar locator trait can be served by
-/// this same adapter.
-struct ModelStoreLocatorAdapter {
-    inner: Arc<dyn nexus_extension_deps::ModelStoreClient>,
-}
-
-#[async_trait::async_trait]
-impl emotion_tts_extension::host_contract::ModelArtifactLocator for ModelStoreLocatorAdapter {
-    async fn locate_family(&self, family_id: &str) -> Option<std::path::PathBuf> {
-        // The spec-035 trait surfaces an accelerator filter; we don't need
-        // it here — the worker picks the variant at load time. Pass `None`.
-        let raw = self
-            .inner
-            .is_family_installed(family_id, None)
-            .await
-            .ok()
-            .flatten()?;
-        // `is_family_installed`'s contract returns the path to *one file* in
-        // the snapshot (the install_map's first row) — useful for single-file
-        // formats like GGUF, but for multi-file snapshot installs the worker
-        // wants the *directory* containing every file (config.yaml, gpt.pth,
-        // s2mel.pth, qwen subdir, etc.). Normalize to the parent directory
-        // when the resolved path is a regular file. If it's already a dir
-        // (or a missing path), pass through unchanged.
-        if raw.is_file() {
-            raw.parent().map(std::path::Path::to_path_buf)
-        } else {
-            Some(raw)
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl svi2_pro_extension::host_contract::ModelArtifactLocator for ModelStoreLocatorAdapter {
-    async fn locate_family(&self, family_id: &str) -> Option<std::path::PathBuf> {
-        let raw = self
-            .inner
-            .is_family_installed(family_id, None)
-            .await
-            .ok()
-            .flatten()?;
-        // svi2's worker resolves artifacts by RELATIVE path under one merged
-        // models dir (e.g. `I2V/<file>.safetensors`), so the locator must
-        // return the family SNAPSHOT ROOT — not the first file or its parent.
-        // The store lays snapshots out as `.../model-store-downloads/<id>/…`;
-        // climb to the direct child of that marker dir.
-        let mut cursor = raw.as_path();
-        while let (Some(parent), candidate) = (cursor.parent(), cursor) {
-            if parent.file_name().is_some_and(|n| n == "model-store-downloads") {
-                return Some(candidate.to_path_buf());
-            }
-            cursor = parent;
-        }
-        if raw.is_file() {
-            raw.parent().map(std::path::Path::to_path_buf)
-        } else {
-            Some(raw)
-        }
     }
 }
 
