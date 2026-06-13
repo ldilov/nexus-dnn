@@ -75,6 +75,11 @@ dependencies:
             sha256: "0000000000000000000000000000000000000000000000000000000000000000"
             size: 0
             archive: tar.xz
+          - platform: linux-arm64
+            url: "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linuxarm64-gpl.tar.xz"
+            sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            size: 0
+            archive: tar.xz
           - platform: darwin-arm64
             url: "https://evermeet.cx/ffmpeg/getrelease/zip"
             sha256: "0000000000000000000000000000000000000000000000000000000000000000"

@@ -57,6 +57,11 @@ dependencies:
             sha256: "f5e8da41b674c29fd08f1e2a8513c935d0b54292b03144c1260fa2cac380653e"
             size: 142894008
             archive: tar.xz
+          - platform: linux-arm64
+            url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-08-14-24/ffmpeg-n8.1.1-11-ge4c7fbf6c0-linuxarm64-gpl-8.1.tar.xz"
+            sha256: "81320c34924bccafbb885073945b8a8dec38ba5e789ca644fa44daf66d397b0b"
+            size: 0
+            archive: tar.xz
     - id: model_wan_base
       type: model_artifact
       requires: [python]
