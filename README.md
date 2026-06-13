@@ -2,6 +2,34 @@
 
 > Local-first AI orchestration with a host-authoritative Rust runtime, extension-driven capabilities, and first-party support for local LLM, audio, and video workflows.
 
+<p align="center">
+  <img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-blue.svg">
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-stable-orange.svg?logo=rust&logoColor=white">
+  <img alt="Local-first" src="https://img.shields.io/badge/local--first-100%25-brightgreen.svg">
+  <img alt="VRAM" src="https://img.shields.io/badge/runs%20on-16%20GB%20VRAM-success.svg">
+  <br>
+  <img alt="Video" src="https://img.shields.io/badge/🎬%20Video-SVI2--Pro%20·%20LongCat%20·%20LTX--2.3-ff5c5c.svg">
+  <img alt="LLM" src="https://img.shields.io/badge/🧠%20LLM-llama.cpp%20%2B%20MTP-8b5cf6.svg">
+  <img alt="Voice" src="https://img.shields.io/badge/🎤%20Voice-IndexTTS--2-22c55e.svg">
+  <img alt="Image" src="https://img.shields.io/badge/🎨%20Image-SD%20%2B%20FLUX%20(soon)-f59e0b.svg">
+</p>
+
+## 📋 Table of Contents
+
+- [🚀 Run It Locally First](#-run-it-locally-first)
+- [🧩 Supported Capabilities](#-supported-capabilities)
+  - [🎬 Video Generation](#-video-generation) — SVI2-Pro · LongCat · LTX-2.3, RIFE frame-gen, RTX ×2/×4 upscale
+  - [🧠 LLM Inference](#-llm-inference) — llama.cpp + speculative decoding (MTP)
+  - [🎤 Voice Generation (EmotionTTS)](#-voice-generation-emotiontts) — IndexTTS-2 emotion vectors + storyboard
+  - [🎨 Image Generation](#-image-generation) — Stable Diffusion · FLUX (coming soon)
+- [✨ What nexus-dnn Is For](#-what-nexus-dnn-is-for)
+- [🧭 System At A Glance](#-system-at-a-glance)
+- [🖼️ UI Screenshots](#-ui-screenshots)
+- [🔌 Built-in Extensions](#-built-in-extensions)
+- [📚 Documentation Map](#-documentation-map)
+- [🛣️ Future Roadmap](#-future-roadmap)
+- [📄 License](#-license)
+
 ## 🚀 Run It Locally First
 
 ### 1. Install prerequisites
@@ -79,6 +107,76 @@ Today that means the repo can host:
 - Emotional TTS pipelines
 - Image-to-video and long-video generation flows
 - Extension-owned UI surfaces mounted inside the host app
+
+## 🧩 Supported Capabilities
+
+Everything below runs **locally**, on a single consumer GPU, behind the same host-managed runtime-lease + model-store foundation.
+
+| Capability | Engines | Highlights | Status |
+|---|---|---|---|
+| 🎬 **[Video Generation](#-video-generation)** | SVI2-Pro · LongCat · LTX-2.3 | Text→Video, Image→Video, **infinite length**, **RIFE** frame-gen, **RTX ×2/×4** upscale | 🟢 Stable |
+| 🧠 **[LLM Inference](#-llm-inference)** | llama.cpp | **Speculative decoding via MTP**, GGUF, host-managed runtime leases | 🟢 Stable |
+| 🎤 **[Voice Generation](#-voice-generation-emotiontts)** | IndexTTS-2 (EmotionTTS) | **8-axis emotion vectors**, **storyboard**, custom-voice upload | 🟢 Stable |
+| 🎨 **[Image Generation](#-image-generation)** | Stable Diffusion · FLUX | Text→Image | 🟠 Coming soon |
+
+---
+
+### 🎬 Video Generation
+
+> `nexus.video.svi2-pro` · `nexus.video.longcat` · `nexus.video.ltx23`
+
+Generate video from a text prompt or a still image — then push it past what a single diffusion pass yields: **higher frame-rate** and **higher resolution**, all on a local GPU.
+
+**Engines**
+
+- **SVI2-Pro** — Stable Video Infinity 2.0 Pro (two SVI LoRAs over the Wan2.2-I2V-A14B dual-expert MoE). Does **both Image→Video and Text→Video**, with **infinite, cross-clip-consistent length**: clips are chained with rolling cross-fade + reference anchoring so the subject stays coherent across arbitrarily many segments. The fp8 e4m3fn base **fits in 16 GB of VRAM — or less**.
+- **LTX-2.3** — fast image-to-video with host-managed runtime profiles. RTX 40 FP8, RTX 50 Blackwell FP8 (production) + RTX 50 NVFP4 (experimental). 16 GB-safe by default via external-segment rendering.
+- **LongCat** — 13.6B DiT (UMT5-XXL text encoder, Wan 2.1 VAE) for text→video, image→video, and long-video continuations. FP8 e4m3fn path for 12–16 GB; BF16 path for 24 GB+.
+
+**Post-processing stack — applies on top of any engine**
+
+- 🌀 **RIFE frame interpolation (frame-gen)** — torch-RIFE (vendored IFNet HDv3) synthesizes in-between frames to multiply FPS (e.g. **16 → 48 fps**) for fluid motion, with no extra diffusion cost.
+- 🔍 **RTX ×2 / ×4 upscaling** — NVIDIA Maxine RTX super-resolution on RTX GPUs upscales the output in a hardware-accelerated pass (e.g. 1216×768 → 2432×1536).
+- ⚙️ Attention backends (SDPA / FlashAttention-2/3 / SageAttention) are auto-selected per GPU architecture + dtype.
+
+**16 GB-friendly by design** — staged CPU offload, fp8 compute, and external-segment rendering keep peak VRAM under consumer-card budgets.
+
+---
+
+### 🧠 LLM Inference
+
+> `nexus.local-llm`
+
+Local large-language-model inference and chat, served through host-managed backend runtimes.
+
+- ⚡ **Latest llama.cpp** backend with **speculative decoding via MTP (Multi-Token Prediction)** — a draft head proposes several tokens per step and the main model verifies them in one pass, for materially higher tokens/sec at identical output quality.
+- 📦 **GGUF** models with quantization-aware install and an on-disk model store.
+- 🛡️ **Host-managed runtime leases** — the host owns process lifecycle, VRAM budgeting, and idle reaping; the extension simply acquires a lease.
+- 💬 Interactive chat threads with per-thread generation settings, model picker, and RAG workflows.
+- 🎚️ Throughput knobs: KV-cache reuse, MoE offload, min-p / DRY sampling, context cram.
+
+---
+
+### 🎤 Voice Generation (EmotionTTS)
+
+> `nexus.audio.emotiontts`
+
+State-of-the-art emotional text-to-speech via **IndexTTS-2**, running in a host-managed Python subprocess.
+
+- 🎚️ **8-axis emotion vectors** — dial the emotional tone (joy, anger, sadness, surprise, …) per line. Optional **Qwen text-emotion** inference reads the intended emotion straight from the text, and **audio-reference** transfer copies the feeling from a sample clip.
+- 🎬 **Storyboard** — author a multi-line script/dialogue, assign a **voice and an emotion vector to every line**, and batch-synthesize the whole scene in a single run. The lines render as one coherent, ordered sequence with independent per-line control — think a screenplay that compiles to audio, with each character speaking in their own voice and mood.
+- 🎙️ **Custom voice upload** — drop in your own reference audio to mint a custom voice ("voice asset"). Automatic reference-audio preprocessing, alignment-score observability, and speaker-prefix caching keep quality high and re-synthesis fast.
+- 🗂️ Deployment-scoped character→voice mappings, a global content-hash synthesis cache (10 GB LRU), and partial-ZIP install with auto-resume.
+
+---
+
+### 🎨 Image Generation
+
+> 🟠 Coming soon
+
+Text-to-image generation via **Stable Diffusion** and **FLUX**, packaged as host-managed extensions on the same runtime-lease + model-store foundation as the video and LLM stacks — so installs, VRAM budgeting, and UI mounting work exactly the same way.
+
+![status](https://img.shields.io/badge/status-coming%20soon-orange.svg)
 
 ## 🧭 System At A Glance
 
