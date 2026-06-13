@@ -8,6 +8,27 @@ This page describes what the repo appears to support today and where the stronge
 - The strongest recent validation evidence in the repo is Windows + NVIDIA-focused.
 - The most demanding built-in extensions are tuned around recent RTX hardware, especially Blackwell-era workflows.
 
+## Architecture Support
+
+`nexus-dnn` targets three host architectures. The host binary, embedded Python, ffmpeg, and the LLM install pipeline are arch-aware across all three; GPU-heavy paths degrade on aarch64 where upstream prebuilt assets do not yet exist.
+
+| Capability | amd64 Windows | amd64 Linux | aarch64 Linux (DGX Spark / GB10) |
+|------------|:---:|:---:|:---|
+| Host binary (`nexus-dnn`) | 🟢 | 🟢 | 🟢 build natively or cross-compile |
+| Embedded Python runtime | 🟢 | 🟢 | 🟢 |
+| ffmpeg (managed install) | 🟢 | 🟢 | 🟢 |
+| LLM via llama.cpp (managed) | 🟢 cpu/cuda | 🟢 cpu/cuda | 🟡 CPU-only — no upstream CUDA arm64 build |
+| LLM via external server | 🟢 | 🟢 | 🟢 GPU-capable (operator runs llama-server) |
+| EmotionTTS | 🟢 | 🟢 | 🟡 experimental — verify CUDA torch on hardware |
+| LTX-2.3 / LongCat video | 🟢 | 🟢 | 🟡 experimental — SDPA fallback, no flash-attn arm64 wheel |
+| SVI2-Pro | 🟢 | 🟡 | 🟡 experimental — i2v works; sd-cli edit path needs a system binary |
+
+**aarch64 Linux notes:**
+
+- **Managed llama.cpp is CPU-only.** Upstream ggml-org ships no CUDA arm64 build. For GPU LLM, build `llama-server` natively (aarch64 + CUDA) and point the host at it via `NEXUS_LLAMA_SERVER_URL` — the external-server path is fully arch-agnostic.
+- **GPU attention accelerators (flash-attn, sageattention) have no aarch64 wheels.** The video extensions fall back to SDPA; install-time gating to skip the source build is a pending follow-up, so a first `uv sync` on aarch64 may attempt a long source compile.
+- **stable-diffusion.cpp (svi2-pro edit-then-animate) has no Linux arm64/CUDA build.** Core image-to-video render works; the edit path needs an operator-built `sd` on `PATH`.
+
 ## Tested Machine Evidence
 
 The clearest recent repo evidence points to a workstation with:
