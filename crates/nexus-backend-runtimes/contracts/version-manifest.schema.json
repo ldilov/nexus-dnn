@@ -31,7 +31,7 @@
               "properties": {
                 "platform": {
                   "type": "string",
-                  "enum": ["windows-x64", "linux-x64"]
+                  "enum": ["windows-x64", "linux-x64", "linux-arm64"]
                 },
                 "accelerator_profile": {
                   "type": "string",

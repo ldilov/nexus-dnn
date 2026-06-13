@@ -329,6 +329,8 @@ The strongest recent validation evidence in the repo is centered on a Windows wo
 | Python evidence | 3.12.11 |
 | Torch evidence | 2.12.0 + CUDA 13.2 |
 
+**Architectures:** the host targets **amd64 Windows**, **amd64 Linux**, and **aarch64 Linux** (e.g. DGX Spark / GB10). The host, embedded Python, ffmpeg, and the LLM install pipeline are arch-aware across all three; on aarch64, managed llama.cpp is CPU-only (GPU via external `llama-server`) and GPU video paths are experimental. See the [Architecture Support matrix](docs/platform-support.md#architecture-support).
+
 For the detailed support notes and caveats, read [docs/platform-support.md](docs/platform-support.md) and [docs/requirements.md](docs/requirements.md).
 
 ## 📚 Documentation Map

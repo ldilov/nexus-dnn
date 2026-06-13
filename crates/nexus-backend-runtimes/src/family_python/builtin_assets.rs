@@ -12,13 +12,13 @@ struct BuiltinEntry {
 }
 
 /// Pinned `python-build-standalone` `install_only.tar.gz` artifacts for the
-/// three primary host targets. SHA-256s sourced from the official
-/// `SHA256SUMS` file at
+/// four primary host targets (win-x64, linux-x64, linux-arm64, darwin-arm64).
+/// SHA-256s sourced from the official `SHA256SUMS` file at
 /// `https://github.com/astral-sh/python-build-standalone/releases/download/{RELEASE_TAG}/SHA256SUMS`.
 /// `size: 0` is intentional — the bootstrap path's `verify_checksum` skips the
 /// size check when expected_size is zero (the SHA-256 is the cryptographic
 /// guarantee; size is a redundant convenience). When refreshing the release
-/// tag, fetch the new SHA256SUMS and update all three entries together.
+/// tag, fetch the new SHA256SUMS and update all four entries together.
 const REGISTRY: &[BuiltinEntry] = &[
     BuiltinEntry {
         target_triple: "x86_64-pc-windows-msvc",
@@ -31,6 +31,13 @@ const REGISTRY: &[BuiltinEntry] = &[
         target_triple: "x86_64-unknown-linux-gnu",
         url: "https://github.com/astral-sh/python-build-standalone/releases/download/20250818/cpython-3.11.13+20250818-x86_64-unknown-linux-gnu-install_only.tar.gz",
         sha256: "b3d07471abdf1b3d2867dd44f095c891fb072bab5667b9322355546f9f9c5dda",
+        size: 0,
+        kind: PythonArchiveKind::TarGz,
+    },
+    BuiltinEntry {
+        target_triple: "aarch64-unknown-linux-gnu",
+        url: "https://github.com/astral-sh/python-build-standalone/releases/download/20250818/cpython-3.11.13+20250818-aarch64-unknown-linux-gnu-install_only.tar.gz",
+        sha256: "c04b98b4332ea0d8be0222e7ca7959e1398c6ebf7f2102b47f9e4fb85f841f59",
         size: 0,
         kind: PythonArchiveKind::TarGz,
     },
@@ -74,7 +81,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registry_pins_the_three_primary_host_targets() {
+    fn registry_pins_the_four_primary_host_targets() {
         let triples: Vec<_> = REGISTRY.iter().map(|e| e.target_triple).collect();
         assert!(
             triples.contains(&"x86_64-pc-windows-msvc"),
@@ -83,6 +90,10 @@ mod tests {
         assert!(
             triples.contains(&"x86_64-unknown-linux-gnu"),
             "linux-x64 pin missing"
+        );
+        assert!(
+            triples.contains(&"aarch64-unknown-linux-gnu"),
+            "linux-arm64 pin missing"
         );
         assert!(
             triples.contains(&"aarch64-apple-darwin"),
