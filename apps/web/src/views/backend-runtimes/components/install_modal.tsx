@@ -120,7 +120,10 @@ export function InstallModal({ runtime, onInstalled, onClose }: Props) {
 function detectPlatform(): string {
   if (typeof navigator === "undefined") return "linux-x64";
   const platform = navigator.platform?.toLowerCase() ?? "";
+  const ua = navigator.userAgent?.toLowerCase() ?? "";
+  const isArm64 = ua.includes("aarch64") || ua.includes("arm64") || ua.includes("armv8");
   if (platform.includes("win")) return "windows-x64";
   if (platform.includes("mac")) return "darwin-arm64";
+  if (isArm64) return "linux-arm64";
   return "linux-x64";
 }

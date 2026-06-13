@@ -24,3 +24,10 @@ releases:
         accelerator_profile: cuda12
         url: https://github.com/ggml-org/llama.cpp/releases/download/b4970/llama-b4970-bin-ubuntu-cuda-cu12.4.1-x64.zip
         archive_kind: zip
+      # linux-arm64 is CPU-only upstream (no CUDA arm64 build). b4970 predates
+      # upstream ubuntu-arm64 publishing, so this offline-fallback entry pins the
+      # b9626 arm64 tarball; the live release scanner serves same-build arm64.
+      - platform: linux-arm64
+        accelerator_profile: cpu
+        url: https://github.com/ggml-org/llama.cpp/releases/download/b9626/llama-b9626-bin-ubuntu-arm64.tar.gz
+        archive_kind: tar.gz

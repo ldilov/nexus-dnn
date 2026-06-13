@@ -1,0 +1,74 @@
+name: release-build
+
+# Builds the host binary (`nexus-dnn`) + TUI for the three supported host
+# architectures: amd64 Windows, amd64 Linux, aarch64 Linux (DGX Spark / GB10).
+# CPU/host build only — GitHub-hosted ARM runners have no GPU, so GPU render
+# paths are validated manually on real hardware (see docs/platform-support.md).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/release-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-host:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    # Do not fail the whole matrix if one runner image is unavailable on the
+    # account's plan (e.g. ubuntu-24.04-arm); the other targets still build.
+    continue-on-error: ${{ matrix.experimental == true }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            experimental: false
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            experimental: false
+          # GitHub-hosted ARM64 Linux runner (GA). If unavailable on this
+          # account's plan, swap to cross-compilation from ubuntu-latest via
+          # cargo-zigbuild --target aarch64-unknown-linux-gnu.
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            experimental: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build host + TUI (release)
+        # `--bin` is a global target filter across all -p packages, so the TUI
+        # binary (`nexus`) must be named explicitly or it is silently excluded.
+        run: >
+          cargo build --release --target ${{ matrix.target }}
+          -p nexus-core --bin nexus-dnn
+          -p nexus-tui --bin nexus
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-dnn-${{ matrix.target }}
+          path: |
+            target/${{ matrix.target }}/release/nexus-dnn
+            target/${{ matrix.target }}/release/nexus-dnn.exe
+            target/${{ matrix.target }}/release/nexus
+            target/${{ matrix.target }}/release/nexus.exe
+          if-no-files-found: warn
