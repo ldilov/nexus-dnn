@@ -232,7 +232,7 @@ pub async fn update_workflow_graph(
     let now = Utc::now().to_rfc3339();
     let mut record = build_workflow_record(&workflow, &now)?;
     record.created_at = existing.created_at.clone();
-    record.user_edited_at = Some(now);
+    record.user_edited_at = Some(now.clone());
     record.extension_id = existing.extension_id.clone();
     record.extension_version = existing.extension_version.clone();
     record.extension_version_first_seen = existing.extension_version_first_seen.clone();
@@ -242,6 +242,12 @@ pub async fn update_workflow_graph(
         .update_workflow(&record)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let author = nexus_storage::versioning::VersionAuthor::User;
+    if let Ok(nv) = crate::workflow_versioning::new_version_from(&workflow, &record, author) {
+        let _ =
+            nexus_storage::versioning::record_version_if_changed(&*state.db, &id, nv, &now).await;
+    }
 
     let fresh = state
         .db
