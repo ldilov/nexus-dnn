@@ -386,6 +386,7 @@ pub(super) fn row_to_install_manifest(
         .and_then(|v| v.into_iter().next())
         .unwrap_or_default();
     let accel = match row.accelerator.as_str() {
+        "vulkan" => AcceleratorProfile::Vulkan,
         "cuda12" => AcceleratorProfile::Cuda12,
         "cuda13" => AcceleratorProfile::Cuda13,
         _ => AcceleratorProfile::Cpu,

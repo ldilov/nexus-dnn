@@ -93,6 +93,7 @@ fn profile_wire(p: AcceleratorProfile) -> &'static str {
 fn profile_from_wire(raw: &str) -> Option<AcceleratorProfile> {
     match raw {
         "cpu" => Some(AcceleratorProfile::Cpu),
+        "vulkan" => Some(AcceleratorProfile::Vulkan),
         "cuda12" => Some(AcceleratorProfile::Cuda12),
         "cuda13" => Some(AcceleratorProfile::Cuda13),
         _ => None,

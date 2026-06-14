@@ -10,24 +10,25 @@ This page describes what the repo appears to support today and where the stronge
 
 ## Architecture Support
 
-`nexus-dnn` targets three host architectures. The host binary, embedded Python, ffmpeg, and the LLM install pipeline are arch-aware across all three; GPU-heavy paths degrade on aarch64 where upstream prebuilt assets do not yet exist.
+`nexus-dnn` targets three host architectures. The host binary, embedded Python, ffmpeg, and the LLM install pipeline are arch-aware across all three. On aarch64, CPU paths and GPU LLM (Vulkan, or an external CUDA `llama-server`) work today; the only real gaps are that the managed picker does not yet surface the Vulkan arm64 build, and some GPU Python wheels (flash-attn) have no aarch64 build so they compile from source.
 
 | Capability | amd64 Windows | amd64 Linux | aarch64 Linux (DGX Spark / GB10) |
 |------------|:---:|:---:|:---|
 | Host binary (`nexus-dnn`) | 🟢 | 🟢 | 🟢 build natively or cross-compile |
 | Embedded Python runtime | 🟢 | 🟢 | 🟢 |
 | ffmpeg (managed install) | 🟢 | 🟢 | 🟢 |
-| LLM via llama.cpp (managed) | 🟢 cpu/cuda | 🟢 cpu/cuda | 🟡 CPU-only — no upstream CUDA arm64 build |
-| LLM via external server | 🟢 | 🟢 | 🟢 GPU-capable (operator runs llama-server) |
-| EmotionTTS | 🟢 | 🟢 | 🟡 experimental — verify CUDA torch on hardware |
-| LTX-2.3 / LongCat video | 🟢 | 🟢 | 🟡 experimental — SDPA fallback, no flash-attn arm64 wheel |
-| SVI2-Pro | 🟢 | 🟡 | 🟡 experimental — i2v works; sd-cli edit path needs a system binary |
+| LLM via llama.cpp (managed) | 🟢 cpu/cuda | 🟢 cpu/cuda | 🟢 CPU + Vulkan GPU; no official CUDA arm64 (CUDA via external server) |
+| LLM via external server | 🟢 | 🟢 | 🟢 GPU-capable — CUDA `llama-server` on GB10 / sbsa |
+| EmotionTTS | 🟢 | 🟢 | 🟢 works (cu128 torch arm64; no flash-attn dependency) |
+| LTX-2.3 / LongCat video | 🟢 | 🟢 | 🟡 works; SDPA fallback (flash-attn has no arm64 wheel) |
+| SVI2-Pro | 🟢 | 🟡 | 🟡 GB10-validated; flash-attn builds from source or SDPA; sd-cli edit needs system binary |
 
 **aarch64 Linux notes:**
 
-- **Managed llama.cpp is CPU-only.** Upstream ggml-org ships no CUDA arm64 build. For GPU LLM, build `llama-server` natively (aarch64 + CUDA) and point the host at it via `NEXUS_LLAMA_SERVER_URL` — the external-server path is fully arch-agnostic.
-- **GPU attention accelerators (flash-attn, sageattention) have no aarch64 wheels.** SVI2-Pro's managed install currently **fails** on aarch64: its `flash` extra declares `flash-attn` with only a `sys_platform == 'linux'` marker, so `uv sync` tries a from-source `nvcc` build that needs a matching CUDA toolkit and aborts the install on a stock host. LTX-2.3 / LongCat fall back to SDPA at runtime. Arch-gating these extras to `x86_64` (so aarch64 skips them) is a pending follow-up that requires a `uv.lock` regeneration; until it lands, install the affected workers manually on aarch64.
-- **stable-diffusion.cpp (svi2-pro edit-then-animate) has no Linux arm64/CUDA build.** Core image-to-video render works; the edit path needs an operator-built `sd` on `PATH`.
+- **Managed llama.cpp on aarch64 offers CPU and Vulkan GPU.** The managed installer surfaces both the official arm64 **CPU** build (`ubuntu-arm64`) and the arm64 **Vulkan** GPU build (`ubuntu-vulkan-arm64`, GPU-capable on GB10); on a host with a GPU/CUDA stack present, the installer defaults to the Vulkan variant. There is no *official* CUDA arm64 prebuilt — CUDA on aarch64 comes from a source build (see Arm's GB10 llama.cpp guide) or third-party arm64 CUDA tarballs (e.g. ai-dock). For the fastest CUDA path on a DGX Spark, run a CUDA `llama-server` and reach it via `NEXUS_LLAMA_SERVER_URL` (arch-agnostic).
+- **EmotionTTS works on aarch64.** IndexTTS-2 uses cu128 torch (arm64 CUDA wheels exist) with no flash-attn dependency, so `uv sync` resolves cleanly.
+- **SVI2-Pro / LongCat: the GPU attention wheels (flash-attn, sageattention) have no aarch64 builds.** On a host with a CUDA toolkit (e.g. DGX Spark — validated on GB10) `uv sync` compiles flash-attn from source (slow, ~30–90 min) and the render works; without a toolkit that build fails and the worker falls back to SDPA (already the Blackwell default). Arch-gating these extras to `x86_64` so the source build is skipped on aarch64 is a pending follow-up (needs a `uv.lock` regen).
+- **stable-diffusion.cpp (svi2-pro edit-then-animate) has no Linux arm64/CUDA prebuilt.** Core image-to-video render works; the optional edit path needs an operator-built `sd` on `PATH`.
 
 ## Tested Machine Evidence
 
