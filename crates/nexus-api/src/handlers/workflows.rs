@@ -143,6 +143,23 @@ pub async fn create_workflow(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
+    let author = match &record.extension_id {
+        Some(id) => nexus_storage::versioning::VersionAuthor::Extension {
+            id: id.clone(),
+            version: record.extension_version.clone().unwrap_or_default(),
+        },
+        None => nexus_storage::versioning::VersionAuthor::User,
+    };
+    if let Ok(nv) = crate::workflow_versioning::new_version_from(&workflow, &record, author) {
+        let _ = nexus_storage::versioning::record_version_if_changed(
+            &*state.db,
+            &workflow.id,
+            nv,
+            &now,
+        )
+        .await;
+    }
+
     Ok(ApiResponse::created(WorkflowMutationResponseDto {
         id: workflow.id,
         title: workflow.title,
