@@ -459,3 +459,22 @@ async fn recipe_roundtrip_carries_projection_fields() {
     assert_eq!(got.projection_schema_version, Some(1));
     assert_eq!(got.projection.as_deref(), Some("{}"));
 }
+
+#[tokio::test]
+async fn extension_delete_spares_user_recipes() {
+    let db = setup_db().await;
+    db.insert_extension(&make_extension("test.ext"))
+        .await
+        .unwrap();
+    db.insert_recipe(&make_recipe("ext-r", "extension"))
+        .await
+        .unwrap();
+    let mut user = make_recipe("user-r", "user");
+    user.extension_id = "test.ext".into();
+    db.insert_recipe(&user).await.unwrap();
+
+    db.delete_recipes_by_extension("test.ext").await.unwrap();
+
+    assert!(db.get_recipe("ext-r").await.is_err());
+    assert!(db.get_recipe("user-r").await.is_ok());
+}
