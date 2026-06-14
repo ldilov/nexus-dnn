@@ -313,3 +313,16 @@ async fn extensions_upsert_primary_refs_roundtrip() {
     assert_eq!(fetched.primary_recipe_id.as_deref(), Some("rcp.default"));
     assert_eq!(fetched.default_workflow_id.as_deref(), Some("wfl.default"));
 }
+
+#[tokio::test]
+async fn migration_023_creates_workflow_versions_and_current_version() {
+    let db = setup_db().await;
+    sqlx::query("SELECT workflow_id, version, canonical_hash, author_kind FROM workflow_versions")
+        .fetch_all(db.pool())
+        .await
+        .expect("workflow_versions table should exist");
+    sqlx::query("SELECT current_version FROM workflows")
+        .fetch_all(db.pool())
+        .await
+        .expect("workflows.current_version column should exist");
+}

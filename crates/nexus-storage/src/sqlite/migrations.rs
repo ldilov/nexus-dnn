@@ -141,6 +141,13 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StorageError> {
         false,
     )
     .await?;
+    // spec workflow-driven-recipes P0 — immutable workflow version history
+    execute_migration_statements(
+        pool,
+        include_str!("../../../../migrations/023_workflow_versions.sql"),
+        true,
+    )
+    .await?;
     Ok(())
 }
 
