@@ -258,9 +258,10 @@ pub async fn update_workflow_graph(
     Ok(ApiResponse::ok(WorkflowDto::from(&fresh)))
 }
 
-/// `POST /workflows/:id/revert` — clear the user-edit stamp so the next boot
-/// reapplies the shipped extension YAML. The current row contents are left
-/// in place until the backend restarts (low-risk, no destructive writes).
+/// `POST /workflows/:id/revert` — clear the user-edit stamp and re-point the
+/// head to the latest extension-authored version so the workflow reflects the
+/// shipped graph again. When no extension version exists the stamp is cleared
+/// without moving the head.
 pub async fn revert_workflow(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -270,6 +271,20 @@ pub async fn revert_workflow(
         .clear_workflow_user_edit(&id)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let versions = state
+        .db
+        .list_workflow_versions(&id)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    if let Some(latest_ext) = versions.iter().rfind(|v| v.author_kind == "extension") {
+        let now = Utc::now().to_rfc3339();
+        state
+            .db
+            .set_workflow_current_version(&id, &latest_ext.version, &now)
+            .await
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
+    }
 
     let fresh = state
         .db

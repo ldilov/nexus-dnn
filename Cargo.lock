@@ -3884,12 +3884,14 @@ name = "nexus-workflow"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "json-canon",
  "jsonschema 0.28.3",
  "nexus-extension",
  "nexus-protocol",
  "serde",
  "serde-saphyr",
  "serde_json",
+ "sha2",
  "thiserror 2.0.18",
  "tracing",
  "uuid",
