@@ -233,12 +233,15 @@ async fn handler_reports_python_family_and_bootstrap_delegates() {
     fs::create_dir_all(&cache).unwrap();
     fs::create_dir_all(&partial).unwrap();
 
-    let handler = FamilyPythonHandler::new();
+    // `without_asset()` makes the no-asset condition deterministic: the handler
+    // delegates to `bootstrap::run(ctx, None)` and fails with
+    // PythonBootstrapFailed regardless of the host's builtin pin or network.
+    let handler = FamilyPythonHandler::without_asset();
     let mut ctx = fixture_ctx(&partial, &install, &cache);
     let err = handler
         .bootstrap_runtime(&mut ctx)
         .await
-        .expect_err("no asset → error");
+        .expect_err("no configured asset → bootstrap delegates and fails");
     assert_eq!(err.category, PipelineFailureCategory::PythonBootstrapFailed);
     assert_eq!(handler.family().as_str(), "python");
 }
