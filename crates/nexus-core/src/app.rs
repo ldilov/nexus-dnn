@@ -216,6 +216,7 @@ impl NexusApp {
         let extension_registry = Arc::new(extension_registry);
 
         persist_discovery_to_db(&db, &extension_registry).await?;
+        backfill_workflow_versions(&db).await?;
 
         let worker_manager = Arc::new(DefaultWorkerManager::new(event_bus.clone()));
         let scheduler: Arc<RoundRobinScheduler> = Arc::new(RoundRobinScheduler);
@@ -607,6 +608,54 @@ async fn persist_workflow_records(
         let now = chrono::Utc::now().to_rfc3339();
         let existing = db.get_workflow(&workflow.id).await.ok();
 
+        let first_seen = existing
+            .as_ref()
+            .and_then(|e| e.extension_version_first_seen.clone())
+            .unwrap_or_else(|| now.clone());
+        let created_at = existing
+            .as_ref()
+            .map(|e| e.created_at.clone())
+            .unwrap_or_else(|| now.clone());
+        let record = match build_workflow_record(
+            &workflow,
+            &created_at,
+            &now,
+            Some(&ext.manifest.extension.id),
+            Some(&ext.manifest.extension.version),
+            Some(&first_seen),
+        ) {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to build workflow record; skipping");
+                continue;
+            }
+        };
+
+        let author = nexus_storage::versioning::VersionAuthor::Extension {
+            id: ext.manifest.extension.id.clone(),
+            version: ext.manifest.extension.version.clone(),
+        };
+        let nv = nexus_storage::versioning::NewWorkflowVersion {
+            canonical_hash: match nexus_workflow::compute_canonical_hash(&workflow) {
+                Ok(h) => h,
+                Err(_) => continue,
+            },
+            operator_schema_hash: None,
+            inputs: record.inputs.clone(),
+            outputs: record.outputs.clone(),
+            nodes: record.nodes.clone(),
+            edges: record.edges.clone(),
+            stages: record.stages.clone(),
+            author,
+        };
+        let _ = nexus_storage::versioning::record_version_if_changed(
+            db.as_ref(),
+            &workflow.id,
+            nv,
+            &now,
+        )
+        .await;
+
         if let Some(existing) = existing.as_ref()
             && existing.user_edited_at.is_some()
         {
@@ -633,29 +682,6 @@ async fn persist_workflow_records(
             );
             continue;
         }
-
-        let first_seen = existing
-            .as_ref()
-            .and_then(|e| e.extension_version_first_seen.clone())
-            .unwrap_or_else(|| now.clone());
-        let created_at = existing
-            .as_ref()
-            .map(|e| e.created_at.clone())
-            .unwrap_or_else(|| now.clone());
-        let record = match build_workflow_record(
-            &workflow,
-            &created_at,
-            &now,
-            Some(&ext.manifest.extension.id),
-            Some(&ext.manifest.extension.version),
-            Some(&first_seen),
-        ) {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::warn!(error = %e, "failed to build workflow record; skipping");
-                continue;
-            }
-        };
 
         if let Err(e) = db.insert_workflow(&record).await {
             tracing::debug!(workflow_id = %workflow.id, error = %e, "insert_workflow failed");
@@ -1110,4 +1136,88 @@ async fn create_directory_if_missing(path: &Path) -> anyhow::Result<()> {
             .with_context(|| format!("failed to create directory: {}", path.display()))?;
     }
     Ok(())
+}
+
+/// One-shot: for every workflow row that has no `current_version`, seed an
+/// immutable version "1" from its stored graph so pre-P0 workflows participate
+/// in version history.
+pub async fn backfill_workflow_versions(db: &SqliteDatabase) -> anyhow::Result<()> {
+    use nexus_workflow::hash_canonical_value;
+    for wf in db.list_workflows().await? {
+        if db.get_workflow_current_version(&wf.id).await?.is_some() {
+            continue;
+        }
+        let value = serde_json::json!({
+            "inputs": wf.inputs.as_deref().map(parse_or_null).unwrap_or(serde_json::Value::Null),
+            "outputs": wf.outputs.as_deref().map(parse_or_null).unwrap_or(serde_json::Value::Null),
+            "nodes": parse_or_null(&wf.nodes),
+            "stages": wf.stages.as_deref().map(parse_or_null).unwrap_or(serde_json::Value::Null),
+        });
+        let hash = hash_canonical_value(&value)?;
+        let author = match (&wf.extension_id, wf.user_edited_at.is_some()) {
+            (Some(id), false) => nexus_storage::versioning::VersionAuthor::Extension {
+                id: id.clone(),
+                version: wf.extension_version.clone().unwrap_or_default(),
+            },
+            _ => nexus_storage::versioning::VersionAuthor::User,
+        };
+        let nv = nexus_storage::versioning::NewWorkflowVersion {
+            canonical_hash: hash,
+            operator_schema_hash: None,
+            inputs: wf.inputs.clone(),
+            outputs: wf.outputs.clone(),
+            nodes: wf.nodes.clone(),
+            edges: wf.edges.clone(),
+            stages: wf.stages.clone(),
+            author,
+        };
+        let now = chrono::Utc::now().to_rfc3339();
+        nexus_storage::versioning::record_version_if_changed(db, &wf.id, nv, &now).await?;
+    }
+    Ok(())
+}
+
+fn parse_or_null(s: &str) -> serde_json::Value {
+    serde_json::from_str(s).unwrap_or(serde_json::Value::Null)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn backfill_seeds_version_for_preexisting_workflow() {
+        let db = nexus_storage::SqliteDatabase::new("sqlite::memory:")
+            .await
+            .unwrap();
+        db.insert_workflow(&nexus_storage::records::WorkflowRecord {
+            id: "wf".into(),
+            title: "T".into(),
+            version: "0.1.0".into(),
+            inputs: Some("[]".into()),
+            outputs: Some("[]".into()),
+            nodes: "[]".into(),
+            edges: "[]".into(),
+            stages: Some("[]".into()),
+            created_at: "t".into(),
+            updated_at: "t".into(),
+            user_edited_at: None,
+            extension_id: None,
+            extension_version: None,
+            extension_version_first_seen: None,
+        })
+        .await
+        .unwrap();
+
+        super::backfill_workflow_versions(&db).await.unwrap();
+
+        assert_eq!(
+            db.get_workflow_current_version("wf")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("1")
+        );
+        assert_eq!(db.list_workflow_versions("wf").await.unwrap().len(), 1);
+    }
 }
