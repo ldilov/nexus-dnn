@@ -218,10 +218,10 @@ struct ParsedAsset {
 ///
 /// Accepts the historical `-cuda-cu12.4-` and current `-cuda-12.4-` naming
 /// schemes, Windows `.zip` and Linux `.tar.gz` archives, x64 cpu / cuda12 /
-/// cuda13 combinations, and the linux arm64 CPU build (`ubuntu-arm64`).
-/// Everything else (vulkan, hip, sycl, rocm, openvino, windows-arm64,
-/// cuda-arm64, macos, xcframework, cudart runtime bundles, cuda11) returns
-/// `None` so it never surfaces in the install picker.
+/// cuda13 combinations, and the linux arm64 CPU (`ubuntu-arm64`) and Vulkan
+/// (`ubuntu-vulkan-arm64`) GPU builds. Everything else (x64 vulkan, hip, sycl,
+/// rocm, openvino, windows-arm64, cuda-arm64, macos, xcframework, cudart
+/// runtime bundles, cuda11) returns `None` so it never surfaces in the picker.
 fn parse_asset_name(name: &str) -> Option<ParsedAsset> {
     let (stem, archive_kind) = strip_archive_suffix(name)?;
     let rest = stem.strip_prefix("llama-")?;
@@ -229,18 +229,21 @@ fn parse_asset_name(name: &str) -> Option<ParsedAsset> {
     let after_bin = &rest[body_start + "-bin-".len()..];
     let (os_token, after_os) = split_once(after_bin, '-')?;
     let (accelerator_profile, tail) = parse_accelerator(after_os)?;
-    // Upstream ships no CUDA/Vulkan arm64 llama.cpp build — only the CPU
-    // `ubuntu-arm64` tarball is valid. Reject any arm64 asset carrying an
-    // accelerator so a future `ubuntu-cuda-*-arm64` name never surfaces.
-    if tail == "arm64" && accelerator_profile != AcceleratorProfile::Cpu {
-        return None;
-    }
     let platform = match (os_token, tail) {
         ("win", "x64") => "windows-x64",
         ("ubuntu", "x64") => "linux-x64",
         ("ubuntu", "arm64") => "linux-arm64",
         _ => return None,
     };
+    // Accelerator availability is platform-specific:
+    //  - linux-arm64: CPU + Vulkan (upstream ships no CUDA arm64 build).
+    //  - x64 (win/linux): CPU + CUDA (Vulkan x64 is not surfaced — CUDA is the
+    //    preferred GPU path there).
+    match (platform, accelerator_profile) {
+        ("linux-arm64", AcceleratorProfile::Cuda12 | AcceleratorProfile::Cuda13) => return None,
+        ("windows-x64" | "linux-x64", AcceleratorProfile::Vulkan) => return None,
+        _ => {}
+    }
     Some(ParsedAsset {
         platform,
         accelerator_profile,
@@ -266,6 +269,9 @@ fn split_once(s: &str, sep: char) -> Option<(&str, &str)> {
 fn parse_accelerator(after_os: &str) -> Option<(AcceleratorProfile, &str)> {
     if let Some(cpu_tail) = after_os.strip_prefix("cpu-") {
         return Some((AcceleratorProfile::Cpu, cpu_tail));
+    }
+    if let Some(vulkan_tail) = after_os.strip_prefix("vulkan-") {
+        return Some((AcceleratorProfile::Vulkan, vulkan_tail));
     }
     if let Some(cuda_rest) = after_os.strip_prefix("cuda-") {
         let major_end = cuda_rest.find(['-', '.'])?;
@@ -441,9 +447,23 @@ mod tests {
     }
 
     #[test]
-    fn rejects_linux_vulkan_arm64() {
+    fn accepts_linux_vulkan_arm64() {
         assert_eq!(
             parse_asset_name("llama-b9626-bin-ubuntu-vulkan-arm64.tar.gz"),
+            Some(ParsedAsset {
+                platform: "linux-arm64",
+                accelerator_profile: AcceleratorProfile::Vulkan,
+                archive_kind: ArchiveKind::TarGz,
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_x64_vulkan() {
+        // Vulkan x64 is intentionally not surfaced (CUDA is the GPU path there).
+        assert_eq!(parse_asset_name("llama-b8827-bin-win-vulkan-x64.zip"), None);
+        assert_eq!(
+            parse_asset_name("llama-b9626-bin-ubuntu-vulkan-x64.tar.gz"),
             None
         );
     }

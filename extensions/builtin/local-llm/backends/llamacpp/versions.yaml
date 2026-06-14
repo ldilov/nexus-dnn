@@ -31,3 +31,9 @@ releases:
         accelerator_profile: cpu
         url: https://github.com/ggml-org/llama.cpp/releases/download/b9626/llama-b9626-bin-ubuntu-arm64.tar.gz
         archive_kind: tar.gz
+      # linux-arm64 Vulkan GPU build (GB10-capable). Upstream ships no CUDA
+      # arm64 binary; Vulkan is the accelerated managed option on aarch64.
+      - platform: linux-arm64
+        accelerator_profile: vulkan
+        url: https://github.com/ggml-org/llama.cpp/releases/download/b9626/llama-b9626-bin-ubuntu-vulkan-arm64.tar.gz
+        archive_kind: tar.gz
