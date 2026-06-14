@@ -82,7 +82,7 @@ export interface FilterableCatalogItem {
   readonly description?: string | null;
   readonly summary?: string | null;
   readonly extension_id?: string | null;
-  readonly status?: StatusKey | null;
+  readonly status?: string | null;
 }
 
 export function matchesControls<T extends FilterableCatalogItem>(

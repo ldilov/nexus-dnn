@@ -52,6 +52,10 @@ function makeRecipe(id: string, overrides: Partial<Recipe> = {}): Recipe {
     thumbnail: null,
     input_summary: null,
     bindings: [],
+    workflow_id: null,
+    workflow_version: null,
+    status: null,
+    author_kind: "extension",
     created_at: "2026-04-14T00:00:00Z",
     ...overrides,
   };
