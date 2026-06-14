@@ -4,6 +4,7 @@ pub mod manager;
 pub mod records;
 mod row_mapping;
 pub mod sqlite;
+pub mod versioning;
 pub use manager as storage_manager;
 
 pub use database::Database;
@@ -17,3 +18,4 @@ pub use records::{
 pub use sqlite::SqliteDatabase;
 pub use sqlite::deployments::{DeploymentMappers, DeploymentRowRaw, RevisionRowRaw};
 pub use sqlite::extensions::{upsert_icon, upsert_primary_refs};
+pub use versioning::{NewWorkflowVersion, VersionAuthor, record_version_if_changed};
