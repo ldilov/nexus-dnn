@@ -8,7 +8,7 @@ export type CardState =
   | "updating";
 
 export type PortMode = "auto" | "fixed";
-export type AcceleratorProfile = "cpu" | "cuda12" | "cuda13";
+export type AcceleratorProfile = "cpu" | "vulkan" | "cuda12" | "cuda13";
 
 export interface InstallSummary {
   runtime_install_id: string;

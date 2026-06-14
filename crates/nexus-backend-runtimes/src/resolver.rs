@@ -22,6 +22,11 @@ impl MachineDescriptor {
     }
 
     pub fn supported_profiles(&self) -> Vec<AcceleratorProfile> {
+        if self.platform == "linux-arm64" {
+            // No upstream CUDA arm64 build; the Vulkan GPU build is the
+            // accelerated option, CPU the baseline.
+            return vec![AcceleratorProfile::Cpu, AcceleratorProfile::Vulkan];
+        }
         let mut out = vec![AcceleratorProfile::Cpu];
         match self.cuda_toolkit_line {
             Some(13) => out.push(AcceleratorProfile::Cuda13),
@@ -32,6 +37,15 @@ impl MachineDescriptor {
     }
 
     pub fn preferred_profile(&self) -> AcceleratorProfile {
+        if self.platform == "linux-arm64" {
+            // Prefer the Vulkan GPU build when a GPU/CUDA stack is present
+            // (e.g. GB10), else CPU — there is no CUDA arm64 asset to pick.
+            return if self.cuda_toolkit_line.is_some() {
+                AcceleratorProfile::Vulkan
+            } else {
+                AcceleratorProfile::Cpu
+            };
+        }
         match self.cuda_toolkit_line {
             Some(13) => AcceleratorProfile::Cuda13,
             Some(12) => AcceleratorProfile::Cuda12,
@@ -171,6 +185,30 @@ pub fn resolve_runtime_asset<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn arm64_prefers_vulkan_when_gpu_present_else_cpu() {
+        let gpu = MachineDescriptor {
+            platform: "linux-arm64".to_string(),
+            cuda_toolkit_line: Some(13),
+        };
+        assert_eq!(gpu.preferred_profile(), AcceleratorProfile::Vulkan);
+        assert!(
+            gpu.supported_profiles()
+                .contains(&AcceleratorProfile::Vulkan)
+        );
+        // No CUDA arm64 asset exists — never prefer CUDA on arm64.
+        assert!(
+            !gpu.supported_profiles()
+                .contains(&AcceleratorProfile::Cuda13)
+        );
+
+        let no_gpu = MachineDescriptor {
+            platform: "linux-arm64".to_string(),
+            cuda_toolkit_line: None,
+        };
+        assert_eq!(no_gpu.preferred_profile(), AcceleratorProfile::Cpu);
+    }
 
     #[test]
     fn platform_for_maps_os_arch() {

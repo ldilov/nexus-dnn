@@ -93,6 +93,7 @@ fn build_variant(
         Some(match asset.accelerator_profile {
             AcceleratorProfile::Cuda12 => "No CUDA 12 toolkit detected on this machine".into(),
             AcceleratorProfile::Cuda13 => "No CUDA 13 toolkit detected on this machine".into(),
+            AcceleratorProfile::Vulkan => "No Vulkan-capable GPU detected on this machine".into(),
             AcceleratorProfile::Cpu => "CPU variant is always supported".into(),
         })
     } else {
