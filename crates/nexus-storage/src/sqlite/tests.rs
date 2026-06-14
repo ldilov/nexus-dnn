@@ -326,3 +326,84 @@ async fn migration_023_creates_workflow_versions_and_current_version() {
         .await
         .expect("workflows.current_version column should exist");
 }
+
+fn make_workflow(id: &str) -> WorkflowRecord {
+    WorkflowRecord {
+        id: id.into(),
+        title: "T".into(),
+        version: "0.1.0".into(),
+        inputs: Some("[]".into()),
+        outputs: Some("[]".into()),
+        nodes: "[]".into(),
+        edges: "[]".into(),
+        stages: Some("[]".into()),
+        created_at: "2026-01-01T00:00:00Z".into(),
+        updated_at: "2026-01-01T00:00:00Z".into(),
+        user_edited_at: None,
+        extension_id: None,
+        extension_version: None,
+        extension_version_first_seen: None,
+    }
+}
+
+fn make_version(
+    workflow_id: &str,
+    version: &str,
+    hash: &str,
+    author: &str,
+) -> WorkflowVersionRecord {
+    WorkflowVersionRecord {
+        workflow_id: workflow_id.into(),
+        version: version.into(),
+        canonical_hash: hash.into(),
+        operator_schema_hash: None,
+        inputs: Some("[]".into()),
+        outputs: Some("[]".into()),
+        nodes: "[]".into(),
+        edges: "[]".into(),
+        stages: Some("[]".into()),
+        author_kind: author.into(),
+        extension_id: None,
+        extension_version: None,
+        created_at: "2026-01-01T00:00:00Z".into(),
+    }
+}
+
+#[tokio::test]
+async fn workflow_version_insert_list_and_current_pointer() {
+    let db = setup_db().await;
+    db.insert_workflow(&make_workflow("wf-1")).await.unwrap();
+
+    db.insert_workflow_version(&make_version("wf-1", "1", "hashA", "extension"))
+        .await
+        .unwrap();
+    db.insert_workflow_version(&make_version("wf-1", "2", "hashB", "user"))
+        .await
+        .unwrap();
+
+    let versions = db.list_workflow_versions("wf-1").await.unwrap();
+    assert_eq!(versions.len(), 2);
+    assert_eq!(versions[0].version, "1");
+    assert_eq!(versions[1].version, "2");
+    assert_eq!(versions[1].author_kind, "user");
+
+    assert!(
+        db.get_workflow_current_version("wf-1")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    db.set_workflow_current_version("wf-1", "2", "2026-01-02T00:00:00Z")
+        .await
+        .unwrap();
+    assert_eq!(
+        db.get_workflow_current_version("wf-1")
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("2")
+    );
+
+    let v = db.get_workflow_version("wf-1", "1").await.unwrap();
+    assert_eq!(v.canonical_hash, "hashA");
+}

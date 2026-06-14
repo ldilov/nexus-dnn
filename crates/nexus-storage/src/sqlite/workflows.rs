@@ -144,3 +144,87 @@ pub async fn set_canvas_state(
     .await?;
     Ok(())
 }
+
+pub async fn insert_workflow_version(
+    pool: &SqlitePool,
+    r: &WorkflowVersionRecord,
+) -> Result<(), StorageError> {
+    sqlx::query(include_str!("../../queries/workflows/insert_version.sql"))
+        .bind(&r.workflow_id)
+        .bind(&r.version)
+        .bind(&r.canonical_hash)
+        .bind(&r.operator_schema_hash)
+        .bind(&r.inputs)
+        .bind(&r.outputs)
+        .bind(&r.nodes)
+        .bind(&r.edges)
+        .bind(&r.stages)
+        .bind(&r.author_kind)
+        .bind(&r.extension_id)
+        .bind(&r.extension_version)
+        .bind(&r.created_at)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn get_workflow_version(
+    pool: &SqlitePool,
+    workflow_id: &str,
+    version: &str,
+) -> Result<WorkflowVersionRecord, StorageError> {
+    sqlx::query(include_str!("../../queries/workflows/get_version.sql"))
+        .bind(workflow_id)
+        .bind(version)
+        .map(map_workflow_version_row)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| StorageError::NotFound {
+            entity: "workflow_version".into(),
+            id: format!("{workflow_id}@{version}"),
+        })
+}
+
+pub async fn list_workflow_versions(
+    pool: &SqlitePool,
+    workflow_id: &str,
+) -> Result<Vec<WorkflowVersionRecord>, StorageError> {
+    Ok(
+        sqlx::query(include_str!("../../queries/workflows/list_versions.sql"))
+            .bind(workflow_id)
+            .map(map_workflow_version_row)
+            .fetch_all(pool)
+            .await?,
+    )
+}
+
+pub async fn get_workflow_current_version(
+    pool: &SqlitePool,
+    id: &str,
+) -> Result<Option<String>, StorageError> {
+    use sqlx::Row;
+    let row = sqlx::query(include_str!(
+        "../../queries/workflows/get_current_version.sql"
+    ))
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.and_then(|r| r.try_get::<Option<String>, _>("current_version").ok().flatten()))
+}
+
+pub async fn set_workflow_current_version(
+    pool: &SqlitePool,
+    id: &str,
+    version: &str,
+    updated_at: &str,
+) -> Result<(), StorageError> {
+    sqlx::query(include_str!(
+        "../../queries/workflows/set_current_version.sql"
+    ))
+    .bind(version)
+    .bind(updated_at)
+    .bind(id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}

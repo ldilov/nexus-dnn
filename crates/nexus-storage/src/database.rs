@@ -2,7 +2,7 @@ use crate::error::StorageError;
 use crate::records::{
     ArchiveRecord, ArtifactRecord, ExtensionRecord, LineageEdgeRecord, MigrationRecord,
     NamespaceRecord, NodeExecutionRecord, ObjectRecord, OperationRecord, OperatorRecord,
-    RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord,
+    RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord, WorkflowVersionRecord,
 };
 
 #[allow(async_fn_in_trait)]
@@ -28,6 +28,29 @@ pub trait Database: Send + Sync {
     /// Clear the `user_edited_at` stamp so the next boot re-applies the
     /// shipped extension YAML for this workflow.
     async fn clear_workflow_user_edit(&self, id: &str) -> Result<(), StorageError>;
+    async fn insert_workflow_version(
+        &self,
+        record: &WorkflowVersionRecord,
+    ) -> Result<(), StorageError>;
+    async fn get_workflow_version(
+        &self,
+        workflow_id: &str,
+        version: &str,
+    ) -> Result<WorkflowVersionRecord, StorageError>;
+    async fn list_workflow_versions(
+        &self,
+        workflow_id: &str,
+    ) -> Result<Vec<WorkflowVersionRecord>, StorageError>;
+    async fn get_workflow_current_version(
+        &self,
+        id: &str,
+    ) -> Result<Option<String>, StorageError>;
+    async fn set_workflow_current_version(
+        &self,
+        id: &str,
+        version: &str,
+        updated_at: &str,
+    ) -> Result<(), StorageError>;
     /// Stamp extension attribution on an existing workflow row without
     /// rewriting its graph. Used by the boot-time one-shot backfill for rows
     /// that pre-date migration 006.

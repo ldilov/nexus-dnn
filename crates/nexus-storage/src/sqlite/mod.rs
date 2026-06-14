@@ -17,7 +17,7 @@ use crate::error::StorageError;
 use crate::records::{
     ArchiveRecord, ArtifactRecord, ExtensionRecord, LineageEdgeRecord, MigrationRecord,
     NamespaceRecord, NodeExecutionRecord, ObjectRecord, OperationRecord, OperatorRecord,
-    RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord,
+    RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord, WorkflowVersionRecord,
 };
 pub struct SqliteDatabase {
     pool: SqlitePool,
@@ -99,6 +99,44 @@ impl Database for SqliteDatabase {
 
     async fn clear_workflow_user_edit(&self, id: &str) -> Result<(), StorageError> {
         workflows::clear_workflow_user_edit(&self.pool, id).await
+    }
+
+    async fn insert_workflow_version(
+        &self,
+        r: &WorkflowVersionRecord,
+    ) -> Result<(), StorageError> {
+        workflows::insert_workflow_version(&self.pool, r).await
+    }
+
+    async fn get_workflow_version(
+        &self,
+        workflow_id: &str,
+        version: &str,
+    ) -> Result<WorkflowVersionRecord, StorageError> {
+        workflows::get_workflow_version(&self.pool, workflow_id, version).await
+    }
+
+    async fn list_workflow_versions(
+        &self,
+        workflow_id: &str,
+    ) -> Result<Vec<WorkflowVersionRecord>, StorageError> {
+        workflows::list_workflow_versions(&self.pool, workflow_id).await
+    }
+
+    async fn get_workflow_current_version(
+        &self,
+        id: &str,
+    ) -> Result<Option<String>, StorageError> {
+        workflows::get_workflow_current_version(&self.pool, id).await
+    }
+
+    async fn set_workflow_current_version(
+        &self,
+        id: &str,
+        version: &str,
+        updated_at: &str,
+    ) -> Result<(), StorageError> {
+        workflows::set_workflow_current_version(&self.pool, id, version, updated_at).await
     }
 
     async fn stamp_workflow_extension(
