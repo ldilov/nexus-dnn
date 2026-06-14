@@ -284,6 +284,14 @@ pub fn build(state: AppState) -> Router {
         )
         .route("/workflows/{id}/revert", post(workflows::revert_workflow))
         .route(
+            "/workflows/{id}/versions",
+            get(workflows::list_workflow_versions),
+        )
+        .route(
+            "/workflows/{id}/versions/{version}",
+            get(workflows::get_workflow_version),
+        )
+        .route(
             "/workflows/{id}/canvas",
             get(workflows::get_workflow_canvas).put(workflows::put_workflow_canvas),
         )

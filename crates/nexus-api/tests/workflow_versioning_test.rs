@@ -5,7 +5,10 @@ use axum::Json;
 use axum::extract::{Path, State};
 
 use nexus_api::dto::{WorkflowPortDto, WorkflowStageDefDto, WorkflowUpdatePayloadDto};
-use nexus_api::handlers::workflows::{create_workflow, revert_workflow, update_workflow_graph};
+use nexus_api::handlers::workflows::{
+    create_workflow, get_workflow_version, list_workflow_versions, revert_workflow,
+    update_workflow_graph,
+};
 use nexus_storage::Database;
 use nexus_storage::records::{WorkflowRecord, WorkflowVersionRecord};
 
@@ -213,4 +216,62 @@ async fn revert_repoints_head_to_latest_extension_version() {
             .as_deref(),
         Some("1")
     );
+}
+
+#[tokio::test]
+async fn version_read_apis_list_and_detail_with_is_current_flag() {
+    let harness = harness_with(StubHf::with_results(vec![])).await;
+    let state = harness.state;
+    let id = "wf-versioning";
+
+    create_workflow(State(state.clone()), CREATE_YAML.to_string())
+        .await
+        .expect("create_workflow");
+    update_workflow_graph(
+        State(state.clone()),
+        Path(id.to_string()),
+        Json(payload(&["a"])),
+    )
+    .await
+    .expect("update_workflow_graph (changed)");
+
+    let list = list_workflow_versions(State(state.clone()), Path(id.to_string()))
+        .await
+        .expect("list_workflow_versions");
+    let items = list.data.expect("list data").items;
+    assert_eq!(
+        items.iter().map(|v| v.version.as_str()).collect::<Vec<_>>(),
+        ["1", "2"]
+    );
+    assert!(!items[0].is_current);
+    assert!(items[1].is_current);
+
+    let v1 = get_workflow_version(
+        State(state.clone()),
+        Path((id.to_string(), "1".to_string())),
+    )
+    .await
+    .expect("get_workflow_version 1")
+    .data
+    .expect("version data");
+    assert_eq!(v1.version, "1");
+    assert!(!v1.is_current);
+    assert_eq!(v1.canonical_hash.len(), 64);
+
+    let v2 = get_workflow_version(
+        State(state.clone()),
+        Path((id.to_string(), "2".to_string())),
+    )
+    .await
+    .expect("get_workflow_version 2")
+    .data
+    .expect("version data");
+    assert!(v2.is_current);
+
+    let missing = get_workflow_version(
+        State(state.clone()),
+        Path((id.to_string(), "99".to_string())),
+    )
+    .await;
+    assert!(missing.is_err());
 }

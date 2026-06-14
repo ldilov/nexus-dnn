@@ -9,6 +9,7 @@ pub mod runs;
 pub mod system;
 pub mod tools;
 pub mod ui;
+pub mod workflow_versions;
 pub mod workflows;
 
 pub use artifacts::{ArtifactDto, ArtifactLineageDto, LineageEdgeDto, ViewerCandidateDto};
@@ -29,6 +30,7 @@ pub use runs::{CreateRunResponseDto, NodeExecutionDto, RunDetailDto, RunDto};
 pub use system::{HealthDto, RuntimeMetricsDto, SystemInfoDto};
 pub use tools::ToolDto;
 pub use ui::{LayoutSummaryDto, UIContributionDto};
+pub use workflow_versions::WorkflowVersionDto;
 pub use workflows::{
     WorkflowDto, WorkflowEdgeDto, WorkflowNodeDto, WorkflowNodeInputDto, WorkflowOutputBindingDto,
     WorkflowPortDto, WorkflowStageDefDto, WorkflowStageDto, WorkflowStatusDto,
@@ -112,5 +114,6 @@ mod export_tests {
         WorkflowStageDefDto::export_all().unwrap();
         WorkflowStatusDto::export_all().unwrap();
         WorkflowValidationErrorDto::export_all().unwrap();
+        WorkflowVersionDto::export_all().unwrap();
     }
 }

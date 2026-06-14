@@ -470,6 +470,49 @@ pub async fn put_workflow_canvas(
     Ok(ApiResponse::ok(payload))
 }
 
+/// `GET /workflows/:id/versions` — the append-only version history for a
+/// workflow, oldest first, with `is_current` set on the head version.
+pub async fn list_workflow_versions(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<ApiResponse<ListResponseDto<crate::dto::WorkflowVersionDto>>, ApiError> {
+    let current = state
+        .db
+        .get_workflow_current_version(&id)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let versions = state
+        .db
+        .list_workflow_versions(&id)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let items = versions
+        .iter()
+        .map(|v| crate::dto::WorkflowVersionDto::from_record(v, current.as_deref()))
+        .collect();
+    Ok(ApiResponse::ok(ListResponseDto { items }))
+}
+
+/// `GET /workflows/:id/versions/:version` — one immutable version snapshot.
+pub async fn get_workflow_version(
+    State(state): State<AppState>,
+    Path((id, version)): Path<(String, String)>,
+) -> Result<ApiResponse<crate::dto::WorkflowVersionDto>, ApiError> {
+    let current = state
+        .db
+        .get_workflow_current_version(&id)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let record = state
+        .db
+        .get_workflow_version(&id, &version)
+        .await
+        .map_err(|e| ApiError::NotFound(e.to_string()))?;
+    Ok(ApiResponse::ok(
+        crate::dto::WorkflowVersionDto::from_record(&record, current.as_deref()),
+    ))
+}
+
 fn build_workflow_record(
     workflow: &nexus_workflow::Workflow,
     now: &str,
