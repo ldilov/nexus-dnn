@@ -148,6 +148,13 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StorageError> {
         true,
     )
     .await?;
+    // spec workflow-driven-recipes P1 — additive recipe-projection columns
+    execute_migration_statements(
+        pool,
+        include_str!("../../../../migrations/024_recipe_projection.sql"),
+        true,
+    )
+    .await?;
     Ok(())
 }
 

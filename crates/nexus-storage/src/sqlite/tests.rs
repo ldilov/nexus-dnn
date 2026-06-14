@@ -407,3 +407,14 @@ async fn workflow_version_insert_list_and_current_pointer() {
     let v = db.get_workflow_version("wf-1", "1").await.unwrap();
     assert_eq!(v.canonical_hash, "hashA");
 }
+
+#[tokio::test]
+async fn migration_024_adds_recipe_projection_columns() {
+    let db = setup_db().await;
+    sqlx::query(
+        "SELECT workflow_id, workflow_version, projection_schema_version, projection, status, author_kind FROM recipes",
+    )
+    .fetch_all(db.pool())
+    .await
+    .expect("recipe projection columns should exist");
+}
