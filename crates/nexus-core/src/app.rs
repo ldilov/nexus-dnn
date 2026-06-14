@@ -905,6 +905,12 @@ async fn persist_recipe_records(
             thumbnail: recipe.recipe.thumbnail.clone(),
             input_summary: recipe.recipe.input_summary.clone(),
             bindings,
+            workflow_id: None,
+            workflow_version: None,
+            projection_schema_version: None,
+            projection: None,
+            status: None,
+            author_kind: "extension".to_owned(),
             created_at: chrono::Utc::now().to_rfc3339(),
         };
 

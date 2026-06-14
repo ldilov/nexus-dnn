@@ -113,6 +113,12 @@ async fn recipe_references_workflow_with_attributed_nodes() {
         thumbnail: None,
         input_summary: None,
         bindings: "[]".into(),
+        workflow_id: None,
+        workflow_version: None,
+        projection_schema_version: None,
+        projection: None,
+        status: None,
+        author_kind: "extension".into(),
         created_at: "2026-04-14T00:00:00Z".into(),
     };
     db.insert_recipe(&recipe).await.unwrap();
@@ -198,6 +204,12 @@ async fn user_edit_preserves_recipe_linkage() {
         thumbnail: None,
         input_summary: None,
         bindings: "[]".into(),
+        workflow_id: None,
+        workflow_version: None,
+        projection_schema_version: None,
+        projection: None,
+        status: None,
+        author_kind: "extension".into(),
         created_at: "2026-04-14T00:00:00Z".into(),
     };
     db.insert_recipe(&recipe).await.unwrap();

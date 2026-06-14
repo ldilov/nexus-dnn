@@ -23,6 +23,10 @@ pub struct RecipeDto {
     pub thumbnail: Option<String>,
     pub input_summary: Option<String>,
     pub bindings: Vec<RecipeFieldBindingDto>,
+    pub workflow_id: Option<String>,
+    pub workflow_version: Option<String>,
+    pub status: Option<String>,
+    pub author_kind: String,
     pub created_at: String,
 }
 
@@ -50,6 +54,10 @@ impl From<&RecipeRecord> for RecipeDto {
             thumbnail: r.thumbnail.clone(),
             input_summary: r.input_summary.clone(),
             bindings,
+            workflow_id: r.workflow_id.clone(),
+            workflow_version: r.workflow_version.clone(),
+            status: r.status.clone(),
+            author_kind: r.author_kind.clone(),
             created_at: r.created_at.clone(),
         }
     }

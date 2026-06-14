@@ -136,6 +136,12 @@ fn rcp(id: &str, ext_id: &str) -> RecipeRecord {
         thumbnail: None,
         input_summary: None,
         bindings: "{}".into(),
+        workflow_id: None,
+        workflow_version: None,
+        projection_schema_version: None,
+        projection: None,
+        status: None,
+        author_kind: "extension".into(),
         created_at: "2026-04-16T00:00:00Z".into(),
     }
 }

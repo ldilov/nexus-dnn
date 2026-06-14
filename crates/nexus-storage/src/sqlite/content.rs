@@ -17,6 +17,12 @@ pub async fn insert_recipe(pool: &SqlitePool, r: &RecipeRecord) -> Result<(), St
         .bind(&r.thumbnail)
         .bind(&r.input_summary)
         .bind(&r.bindings)
+        .bind(&r.workflow_id)
+        .bind(&r.workflow_version)
+        .bind(r.projection_schema_version)
+        .bind(&r.projection)
+        .bind(&r.status)
+        .bind(&r.author_kind)
         .bind(&r.created_at)
         .execute(pool)
         .await?;

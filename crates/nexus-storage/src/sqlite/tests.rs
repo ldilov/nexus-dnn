@@ -418,3 +418,44 @@ async fn migration_024_adds_recipe_projection_columns() {
     .await
     .expect("recipe projection columns should exist");
 }
+
+fn make_recipe(id: &str, author: &str) -> RecipeRecord {
+    RecipeRecord {
+        id: id.into(),
+        version: "1".into(),
+        display_name: "R".into(),
+        summary: "s".into(),
+        category: "c".into(),
+        extension_id: "test.ext".into(),
+        extension_version: "1.0.0".into(),
+        workflow_template_ref: "workflows/x.yaml".into(),
+        thumbnail: None,
+        input_summary: None,
+        bindings: "{}".into(),
+        workflow_id: Some("wf".into()),
+        workflow_version: Some("1".into()),
+        projection_schema_version: Some(1),
+        projection: Some("{}".into()),
+        status: Some("healthy".into()),
+        author_kind: author.into(),
+        created_at: "t".into(),
+    }
+}
+
+#[tokio::test]
+async fn recipe_roundtrip_carries_projection_fields() {
+    let db = setup_db().await;
+    db.insert_extension(&make_extension("test.ext"))
+        .await
+        .unwrap();
+
+    db.insert_recipe(&make_recipe("r1", "extension"))
+        .await
+        .unwrap();
+    let got = db.get_recipe("r1").await.unwrap();
+    assert_eq!(got.workflow_version.as_deref(), Some("1"));
+    assert_eq!(got.author_kind, "extension");
+    assert_eq!(got.status.as_deref(), Some("healthy"));
+    assert_eq!(got.projection_schema_version, Some(1));
+    assert_eq!(got.projection.as_deref(), Some("{}"));
+}

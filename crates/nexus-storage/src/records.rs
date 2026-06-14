@@ -180,6 +180,12 @@ pub struct RecipeRecord {
     pub thumbnail: Option<String>,
     pub input_summary: Option<String>,
     pub bindings: String,
+    pub workflow_id: Option<String>,
+    pub workflow_version: Option<String>,
+    pub projection_schema_version: Option<i64>,
+    pub projection: Option<String>,
+    pub status: Option<String>,
+    pub author_kind: String,
     pub created_at: String,
 }
 
