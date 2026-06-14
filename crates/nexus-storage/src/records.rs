@@ -97,6 +97,27 @@ pub struct WorkflowRecord {
     pub extension_version_first_seen: Option<String>,
 }
 
+/// An immutable snapshot of a workflow's graph at one point in time. Rows are
+/// append-only; `(workflow_id, version)` is the primary key. `version` is a
+/// per-workflow monotonic integer string ("1", "2", ...), distinct from the
+/// authored semver carried on `WorkflowRecord.version`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkflowVersionRecord {
+    pub workflow_id: String,
+    pub version: String,
+    pub canonical_hash: String,
+    pub operator_schema_hash: Option<String>,
+    pub inputs: Option<String>,
+    pub outputs: Option<String>,
+    pub nodes: String,
+    pub edges: String,
+    pub stages: Option<String>,
+    pub author_kind: String,
+    pub extension_id: Option<String>,
+    pub extension_version: Option<String>,
+    pub created_at: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunRecord {
     pub id: String,

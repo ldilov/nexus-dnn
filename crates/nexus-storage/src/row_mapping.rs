@@ -4,6 +4,7 @@ use sqlx::sqlite::SqliteRow;
 use crate::records::{
     ArtifactRecord, ExtensionRecord, IconKind, LineageEdgeRecord, NodeExecutionRecord,
     OperatorRecord, RecipeRecord, RunRecord, UIContributionRecord, WorkflowRecord,
+    WorkflowVersionRecord,
 };
 
 pub fn map_extension_row(row: SqliteRow) -> ExtensionRecord {
@@ -68,6 +69,24 @@ pub fn map_workflow_row(row: SqliteRow) -> WorkflowRecord {
         extension_id: row.try_get("extension_id").ok().flatten(),
         extension_version: row.try_get("extension_version").ok().flatten(),
         extension_version_first_seen: row.try_get("extension_version_first_seen").ok().flatten(),
+    }
+}
+
+pub fn map_workflow_version_row(row: SqliteRow) -> WorkflowVersionRecord {
+    WorkflowVersionRecord {
+        workflow_id: row.get("workflow_id"),
+        version: row.get("version"),
+        canonical_hash: row.get("canonical_hash"),
+        operator_schema_hash: row.try_get("operator_schema_hash").ok().flatten(),
+        inputs: row.try_get("inputs").ok().flatten(),
+        outputs: row.try_get("outputs").ok().flatten(),
+        nodes: row.get("nodes"),
+        edges: row.get("edges"),
+        stages: row.try_get("stages").ok().flatten(),
+        author_kind: row.get("author_kind"),
+        extension_id: row.try_get("extension_id").ok().flatten(),
+        extension_version: row.try_get("extension_version").ok().flatten(),
+        created_at: row.get("created_at"),
     }
 }
 
