@@ -501,7 +501,7 @@ export function fetchRuntimes(): Promise<HostRuntimesResponse> {
   return apiFetch("/backends");
 }
 
-export type AcceleratorProfile = "cpu" | "cuda12" | "cuda13";
+export type AcceleratorProfile = "cpu" | "vulkan" | "cuda12" | "cuda13";
 
 export interface BackendVariant {
   release_id: string;

@@ -8,6 +8,7 @@ use crate::error::SettingsError;
 #[serde(rename_all = "snake_case")]
 pub enum AcceleratorProfile {
     Cpu,
+    Vulkan,
     Cuda12,
     Cuda13,
 }
@@ -16,6 +17,7 @@ impl AcceleratorProfile {
     pub fn as_wire(&self) -> &'static str {
         match self {
             Self::Cpu => "cpu",
+            Self::Vulkan => "vulkan",
             Self::Cuda12 => "cuda12",
             Self::Cuda13 => "cuda13",
         }
